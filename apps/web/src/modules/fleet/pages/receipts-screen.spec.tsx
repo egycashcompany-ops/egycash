@@ -181,6 +181,19 @@ const mount = (qc: QueryClient, permissions: string[], path: string, page: JSX.E
     </Provider>,
   );
 
+/** One row of Fleet's people list — the shape `/fleet/people` answers with. */
+const person = (employeeId: string, code: string, fullNameAr: string) => ({
+  employeeId,
+  code,
+  fullNameAr,
+  status: 'active' as const,
+  branchId: null,
+  address: null,
+  governorate: null,
+  phone: null,
+  hiredAt: null,
+});
+
 const renderReceipts = ({
   permissions = [
     'fleetReceipt.view',
@@ -189,8 +202,14 @@ const renderReceipts = ({
     'fleetReceipt.delete',
   ],
   rows = [receipt()],
-}: { permissions?: string[]; rows?: FleetReceiptDto[] } = {}): string => {
+  people,
+}: {
+  permissions?: string[];
+  rows?: FleetReceiptDto[];
+  people?: ReturnType<typeof person>[];
+} = {}): string => {
   const qc = client();
+  if (people !== undefined) qc.setQueryData(['fleet', 'people'], people);
   qc.setQueryData(
     listKey('fleet', 'receipts', {
       ...RECEIPT_FILTERS,
@@ -297,6 +316,60 @@ describe('the receipts table', () => {
     expect(figures).toContain('1,520.00');
   });
 
+  it('writes the row as the drivers board does — a year-first Latin date, the code bold, figures grouped, every value centred', () => {
+    const html = renderReceipts({
+      rows: [receipt({ litres: 1037.1, amount: 17890 })],
+    });
+    const row = rowWith(html, '17,890.00');
+    // «2026/10/01» — year first, slashes, Latin digits — never the Arabic-Indic «١ أكتوبر ٢٠٢٦».
+    expect(row).toContain('2026/10/01');
+    expect(row, 'no Arabic-Indic digit on the row').not.toMatch(/[٠-٩]/u);
+    // Litres grouped with a comma, two decimals; the money keeps its formatter («ج.م.»).
+    expect(row).toContain('1,037.10');
+    expect(row).toContain('ج.م');
+    // The car's code bold, left to right.
+    expect(row).toMatch(/<span dir="ltr" class="[^"]*font-bold[^"]*">204<\/span>/u);
+    // Every value and header centred, as on the drivers board; the actions at the row's end.
+    const cells = row.match(/<td[^>]*>/gu) ?? [];
+    expect(cells.length).toBe(9);
+    for (const cell of cells.slice(0, 8)) expect(cell).toContain('text-center');
+    expect(cells[8]).toContain('text-end');
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(8);
+    // An empty car is the boards' grey dash.
+    const none = rowWith(renderReceipts({ rows: [receipt({ vehicleCode: null })] }), '640.00');
+    expect(none).toContain('<span class="text-slate-400">—</span>');
+  });
+
+  it('draws the driver as the drivers board does — badge, name, code under it; a name the roster does not know, grey', () => {
+    const known = renderReceipts({
+      permissions: ['fleetReceipt.view', 'fleetDriver.view'],
+      rows: [receipt({ driverEmployeeId: 'e-7', driverName: 'ابراهيم السيد رزق' })],
+      people: [person('e-7', '0100765', 'ابراهيم السيد رزق')],
+    });
+    const row = rowWith(known, '640.00');
+    expect(row).toContain('ابراهيم السيد رزق');
+    // The code UNDER the name, never glued to its last letter.
+    expect(row).toContain('0100765</span>');
+    expect(row).not.toContain('رزق0100765');
+    expect(row, 'the badge with the first letters').toContain('>اس</span>');
+    expect(row).not.toContain('data-legacy-name');
+    // A receipt whose driver was typed by hand: the name as written, grey, saying so.
+    const typed = rowWith(renderReceipts(), '640.00');
+    expect(typed).toContain('data-legacy-name="true"');
+    expect(typed).toContain('أيمن حسن مصطفى');
+    // Nobody at all: a dash.
+    const nobody = rowWith(
+      renderReceipts({ rows: [receipt({ driverEmployeeId: null, driverName: null })] }),
+      '640.00',
+    );
+    expect(nobody).toContain('<span class="text-slate-400">—</span>');
+    expect(PAGE).toContain(
+      '<DriverCell employeeId={row.driverEmployeeId} name={row.driverName} />',
+    );
+    expect(PAGE).not.toContain('<DriverName ');
+  });
+
   it('offers Excel and PDF in the toolbar above the filters, and «إيصال جديد» to whoever may create — no page title', () => {
     const html = renderReceipts();
     expect(html).toContain('data-print="receipts"');
@@ -344,7 +417,58 @@ describe('the receipt modal', () => {
     expect(FORM).toContain("useRosterDay(open && row === null && vehicleId !== '' ? date : '')");
     expect(FORM).toContain('line?.driver1EmployeeId');
     expect(FORM).toContain('if (!driverTouched && rosterDriver !== null) setDriver(rosterDriver);');
-    expect(FORM).toContain('list="receipt-drivers"');
+  });
+
+  it('offers Fleet’s roster under the driver box as it is typed into — still a NAME, the id resolved from it', () => {
+    // The browser's bare datalist is gone: the box is the roster combobox, drawn through the
+    // form's own ruled `Input`.
+    expect(FORM).not.toContain('<datalist');
+    expect(FORM).not.toContain('list="receipt-drivers"');
+    const at = FORM.indexOf('<DriverNameCombobox');
+    expect(at, 'the driver box is the roster combobox').toBeGreaterThan(-1);
+    const box = FORM.slice(at);
+    const start = box.indexOf('input={(props) => (');
+    expect(start, 'drawn through the combobox’s input render prop').toBeGreaterThan(-1);
+    const input = box.slice(start, box.indexOf('/>', start));
+    for (const prop of [
+      '{...props}',
+      'value={driver}',
+      'setDriverTouched(true);',
+      'setDriver(e.target.value);',
+      "placeholder={t('fleet.receipts.fields.driverPlaceholder')}",
+      'data-receipt-driver="true"',
+      'rule="arabic"',
+      'tone={box}',
+    ]) {
+      expect(input, `the driver box keeps ${prop}`).toContain(prop);
+    }
+    // A pick writes the NAME in and counts as the clerk's — the roster never overwrites it.
+    expect(box).toMatch(
+      /onChange=\{\(name\) => \{\s*setDriverTouched\(true\);\s*setDriver\(name\);/u,
+    );
+    // The value saved is the name; the employee id is the roster person of exactly that name.
+    expect(FORM).toContain(
+      '[...people.values()].find((p) => p.fullNameAr === typed)?.employeeId ?? null',
+    );
+    expect(FORM).toContain("driverName: driver.trim() === '' ? null : driver.trim(),");
+
+    // Rendered: the receipt's name in the box, a combobox over the roster, Arabic-only.
+    const qc = client();
+    const html = mount(
+      qc,
+      ['fleetReceipt.view', 'fleetReceipt.edit'],
+      '/fleet/receipts',
+      <ReceiptDialog open onClose={() => undefined} row={receipt()} />,
+    );
+    const boxAt = html.lastIndexOf('<input', html.indexOf('data-receipt-driver="true"'));
+    expect(boxAt, 'the form has its driver box').toBeGreaterThan(-1);
+    const driverBox = html.slice(boxAt, html.indexOf('>', boxAt) + 1);
+    expect(driverBox).toContain('role="combobox"');
+    expect(driverBox).toContain('aria-autocomplete="list"');
+    expect(driverBox).toContain('value="أيمن حسن مصطفى"');
+    expect(driverBox).toContain('data-input-rule="arabic"');
+    expect(driverBox).toContain(`placeholder="${ar('fleet.receipts.fields.driverPlaceholder')}"`);
+    expect(html).not.toContain('<datalist');
   });
 
   it('prices the litres from the fleet settings and shows what the card was and becomes', () => {

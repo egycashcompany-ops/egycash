@@ -42,6 +42,7 @@ import {
   useVehicle,
 } from '../api/fleet-queries';
 import { useFleetPeopleMap } from './EmployeeName';
+import { DriverNameCombobox } from './DriverPerson';
 import { FuelCompanyLogo } from './FuelCardTiles';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
@@ -237,7 +238,6 @@ export const ReceiptDialog = ({
   useEffect(() => {
     if (!driverTouched && rosterDriver !== null) setDriver(rosterDriver);
   }, [rosterDriver, driverTouched]);
-  const names = useMemo(() => [...people.values()].map((p) => p.fullNameAr), [people]);
   const driverEmployeeId = useMemo(() => {
     const typed = driver.trim();
     if (typed === '') return null;
@@ -405,23 +405,31 @@ export const ReceiptDialog = ({
             label={t('fleet.receipts.columns.driver')}
             hint={t('fleet.receipts.fields.driverHint')}
           >
-            <Input
-              list="receipt-drivers"
+            {/* «تحسين اختيار السواقيين»: still a NAME box — typed, or picked off Fleet's roster, which
+                opens under it narrowed by what is typed (name or code), each person with the
+                drivers board's badge and code. A pick writes the person's name in, as typing would;
+                the employee id is resolved from the name above, as before. */}
+            <DriverNameCombobox
               value={driver}
-              onChange={(e) => {
+              onChange={(name) => {
                 setDriverTouched(true);
-                setDriver(e.target.value);
+                setDriver(name);
               }}
-              placeholder={t('fleet.receipts.fields.driverPlaceholder')}
-              data-receipt-driver="true"
-              rule="arabic"
-              tone={box}
+              input={(props) => (
+                <Input
+                  {...props}
+                  value={driver}
+                  onChange={(e) => {
+                    setDriverTouched(true);
+                    setDriver(e.target.value);
+                  }}
+                  placeholder={t('fleet.receipts.fields.driverPlaceholder')}
+                  data-receipt-driver="true"
+                  rule="arabic"
+                  tone={box}
+                />
+              )}
             />
-            <datalist id="receipt-drivers">
-              {names.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
           </DesignField>
         </div>
       </DesignSection>

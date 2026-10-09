@@ -6,6 +6,10 @@
 // «حسن الui زى شاشة السيارات و السواقيين»: the drivers board's look — no page title, a bar with
 // the count and the add button, the dark filter bar with an icon on its filter, and the vehicles
 // table without lines between its columns.
+//
+// «تحسين شكل البيانات فى جداول … التمامات»: the drivers board's table — every value and header
+// centred, a date year first with slashes in Latin digits («2026/10/25»), each driver drawn as
+// the drivers board draws one (badge, name, code under it), an empty cell a grey dash.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type FleetDriverUnavailabilityDto, type Locale } from '@ecms/contracts';
@@ -23,13 +27,13 @@ import { Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { cn } from '../../../shared/lib/cn';
-import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { formatNumber } from '../../../shared/lib/format';
 import { useCancelUnavailability, useUnavailability } from '../api/fleet-queries';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { BoardIcon, PATH } from '../components/FuelCardBoard';
+import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
-import { EmployeeName } from '../components/EmployeeName';
+import { DriverCell } from '../components/DriverPerson';
 import { UnavailabilityDialog } from '../components/UnavailabilityDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
@@ -54,6 +58,22 @@ const DEFAULT_SORT = 'from:desc';
 const TIGHT = 'tight' as const;
 
 /** The vehicles board's add button: the site's purple, as a gradient. */
+/** An empty cell, as the boards draw one. */
+const DASH = <span className="text-slate-400">—</span>;
+
+/**
+ * «2026/10/25»: a day as the vehicles and drivers boards write one — year first, slashes, Latin
+ * digits, in the boards' tabular monospace, left to right and never broken over two lines.
+ */
+const Day = ({ iso }: { iso: string }): JSX.Element => (
+  <span dir="ltr" className={cn('whitespace-nowrap', NUM)}>
+    {ymd(iso)}
+  </span>
+);
+
+/** A free text on the row, wrapped and centred in its cell. */
+const PROSE = 'mx-auto block max-w-xs whitespace-normal break-words';
+
 const ADD_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs active:scale-95';
 
@@ -119,39 +139,40 @@ export const AttendancePage = (): JSX.Element => {
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   const columns: Column<FleetDriverUnavailabilityDto>[] = [
+    // The person, as the drivers board draws one: the badge, the name, the code under it.
     {
       key: 'driver',
+      align: 'center',
       header: t('fleet.attendance.fields.driver'),
-      render: (r) => <EmployeeName employeeId={r.employeeId} />,
+      render: (r) => <DriverCell employeeId={r.employeeId} />,
     },
     {
       key: 'from',
+      align: 'center',
       header: t('fleet.attendance.fields.from'),
       sortable: true,
-      render: (r) => <span className="tabular-nums">{formatDate(r.from, locale)}</span>,
+      render: (r) => <Day iso={r.from} />,
     },
     {
       key: 'to',
+      align: 'center',
       header: t('fleet.attendance.fields.to'),
       sortable: true,
-      render: (r) => <span className="tabular-nums">{formatDate(r.to, locale)}</span>,
+      render: (r) => <Day iso={r.to} />,
     },
     // Wrapped, as the other boards' notes are: the dark table keeps its cells on one line, and a
     // reason or a note that could not wrap would widen the row and push its actions away.
     {
       key: 'reason',
+      align: 'center',
       header: t('fleet.attendance.fields.reason'),
-      render: (r) => <span className="block max-w-xs whitespace-normal break-words">{r.reason}</span>,
+      render: (r) => <span className={PROSE}>{r.reason}</span>,
     },
     {
       key: 'notes',
+      align: 'center',
       header: t('fleet.attendance.fields.notes'),
-      render: (r) =>
-        r.notes === null ? (
-          <span className="text-slate-400">—</span>
-        ) : (
-          <span className="block max-w-xs whitespace-normal break-words">{r.notes}</span>
-        ),
+      render: (r) => (r.notes === null ? DASH : <span className={PROSE}>{r.notes}</span>),
     },
     ...(can('fleetAvailability.edit')
       ? [

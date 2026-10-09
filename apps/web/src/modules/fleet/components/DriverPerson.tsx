@@ -180,6 +180,9 @@ const useRosterMatches = (term: string): FleetPersonDto[] => {
  * resize, in a layer of its own. A form's body scrolls, and a list drawn INSIDE it would be cut
  * off by it; flipped above the box when there is no room below.
  */
+/** A layout effect in the browser; a plain one where there is no layout (a static render). */
+const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
 const useAnchoredPanel = (
   open: boolean,
   anchor: RefObject<HTMLElement>,
@@ -190,7 +193,7 @@ const useAnchoredPanel = (
     width: number;
     maxHeight: number;
   } | null>(null);
-  useLayoutEffect(() => {
+  useBrowserLayoutEffect(() => {
     if (!open) return undefined;
     const place = (): void => {
       const rect = anchor.current?.getBoundingClientRect();

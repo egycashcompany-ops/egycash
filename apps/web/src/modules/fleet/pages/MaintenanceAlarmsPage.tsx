@@ -45,7 +45,7 @@ import {
 } from '../components/AlarmBadge';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { BoardIcon, PATH } from '../components/FuelCardBoard';
+import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
@@ -99,6 +99,36 @@ const PILL =
   'inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80';
 const PILL_BUTTON =
   'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
+
+/**
+ * «تحسين شكل البيانات»: a figure in the table as the vehicles and drivers boards write one — Latin
+ * digits grouped with a comma, «5,250», never the Arabic-Indic «٥٬٢٥٠». The count over the table
+ * and the Excel file keep their own formatting.
+ */
+const LATIN = new Intl.NumberFormat('en-US');
+const latin = (value: number): string => LATIN.format(value);
+
+/** The boards' figure: monospace, tabular, left to right, never broken over two lines. */
+const FIGURE = cn('whitespace-nowrap', NUM);
+
+/** An empty cell, as the boards draw one. */
+const DASH = <span className="text-slate-400">—</span>;
+
+/**
+ * «شاشه انذارات الصيانه كبر الخط»: this board's type a clear size up from the shared board table —
+ * values about 16px, headers 14px, a roomier row — on THIS page only, from its own wrapper.
+ *
+ * Each selector names `tbody td` / `thead th` rather than the board's bare `td` / `th`, which is
+ * one element more specific: the board table's own sizes (and their laptop and wide-screen
+ * variants) are `!important` too, so specificity is what decides, not stylesheet order.
+ */
+const BIG_TYPE = cn(
+  '[&_tbody_td]:!px-3 [&_tbody_td]:!py-3.5 [&_tbody_td]:!text-base',
+  '[&_thead_th]:!px-3 [&_thead_th]:!py-3 [&_thead_th]:!text-sm',
+  'min-[1750px]:[&_tbody_td]:!py-4 min-[1750px]:[&_tbody_td]:!text-[17px] min-[1750px]:[&_thead_th]:!text-[15px]',
+  // The headings a step darker, so the bigger words over the saturated rows still read first.
+  '[&_thead_tr_th]:!text-slate-600 dark:[&_thead_tr_th]:!text-slate-300',
+);
 
 /** Two arrows round a circle — «تحديث». */
 const REFRESH_PATH = [
@@ -246,38 +276,54 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     }
   };
 
+  // «تحسين شكل البيانات»: the drivers board's table — every value and header CENTRED, a date year
+  // first with slashes, every figure in Latin digits with a comma, the car's code bold and a size
+  // up, an empty cell a grey dash. «حسن تشبع الالوان»: the level a solid pill, and the distance
+  // left in the colour of the car's level — see `AlarmBadge`, where both colours are defined.
   const columns: Column<FleetMaintenanceAlarmDto>[] = [
     {
       key: 'code',
+      align: 'center',
       sortable: true,
       header: t('fleet.odometer.columns.vehicle'),
       render: (alarm) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span
+          dir="ltr"
+          data-alarm-code="true"
+          className={cn(FIGURE, 'text-lg min-[1750px]:text-[19px]')}
+        >
           {alarm.code}
         </span>
       ),
     },
     {
       key: 'level',
+      align: 'center',
       sortable: true,
       header: t('fleet.alarms.columns.level'),
       render: (alarm) => (
-        <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} />
+        <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} variant="solid" />
       ),
     },
     {
       key: 'sinceServiceKm',
+      align: 'center',
       sortable: true,
       header: t('fleet.alarms.columns.sinceService'),
-      align: 'end',
       render: (alarm) =>
-        alarm.sinceServiceKm === null ? '—' : formatNumber(alarm.sinceServiceKm, locale),
+        alarm.sinceServiceKm === null ? (
+          DASH
+        ) : (
+          <span dir="ltr" className={FIGURE}>
+            {latin(alarm.sinceServiceKm)}
+          </span>
+        ),
     },
     {
       key: 'daysWithoutReading',
+      align: 'center',
       sortable: true,
       header: t('fleet.alarms.columns.daysWithoutReading'),
-      align: 'end',
       /*
        * «يدله انذار ان العربيه دى المفروض تدخل الرقم عشان احسب الصيانه».
        *
@@ -291,29 +337,37 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
        */
       render: (alarm) =>
         alarm.daysWithoutReading === 0 ? (
-          <span className="text-slate-400 dark:text-slate-600">—</span>
+          DASH
         ) : (
           <span
-            className="tabular-nums font-medium text-amber-700 dark:text-amber-300"
+            dir="ltr"
+            className={cn(FIGURE, 'text-amber-700 dark:text-amber-400')}
             title={t('fleet.alarms.daysWithoutReadingHint')}
           >
-            {formatNumber(alarm.daysWithoutReading, locale)}
+            {latin(alarm.daysWithoutReading)}
           </span>
         ),
     },
     {
       key: 'remainingKm',
+      align: 'center',
       sortable: true,
       header: t('fleet.alarms.columns.remaining'),
-      align: 'end',
-      // Drawn by the shared cell, exactly as the maintenance screen draws it — the two print the
-      // same figure for the same car, so they read the sign the same way too.
+      // Drawn by the shared cell, which reads the sign — «متأخر … كم» once the service is missed —
+      // and, handed the car's level, writes the distance in its colour.
       render: (alarm) => (
-        <RemainingKm remainingKm={alarm.remainingKm} locale={locale} formatNumber={formatNumber} />
+        <RemainingKm
+          remainingKm={alarm.remainingKm}
+          locale={locale}
+          formatNumber={latin}
+          level={alarm.level}
+          figureClassName={FIGURE}
+        />
       ),
     },
     {
       key: 'lastServiceAt',
+      align: 'center',
       sortable: true,
       header: t('fleet.vehicle.lastService'),
       // A DATE column, so an absent date reads as one — the same dash the two figures beside it
@@ -325,9 +379,11 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       // answers only "when", and the honest answer to "when" is nothing.
       render: (alarm) =>
         alarm.lastServiceAt === null ? (
-          <span className="text-slate-400 dark:text-slate-600">—</span>
+          DASH
         ) : (
-          <span className="tabular-nums">{formatDate(alarm.lastServiceAt, locale)}</span>
+          <span dir="ltr" className={FIGURE}>
+            {ymd(alarm.lastServiceAt)}
+          </span>
         ),
     },
   ];
@@ -455,6 +511,8 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
             '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
             // Every value heavy, the Arabic in Cairo's own bold.
             "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+            // «كبر الخط»: this board's type a size up — see `BIG_TYPE`.
+            BIG_TYPE,
             // The board table paints every row's hover grey from here; the alarm rows keep their
             // red and amber through it — see `ALARM_ROW_HOLD`.
             ALARM_ROW_HOLD,

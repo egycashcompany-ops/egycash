@@ -28,12 +28,15 @@ import { cn } from '../../../shared/lib/cn';
  * colouring it would spend the reader's attention on the ordinary case.
  */
 const ALARM_TINT: Record<'yellow' | 'red', { row: string; cell: string }> = {
+  // «حسن تشبع الالوان»: the row is the alarms board's alone, and it was asked to read DEEPER — a
+  // clearly red row and a clearly amber one, in the light theme as much as the dark. The `cell`
+  // patch is the odometer log's and stays exactly what it was.
   yellow: {
-    row: 'bg-amber-100/70 dark:bg-amber-500/[0.12]',
+    row: 'bg-amber-200/70 dark:bg-amber-500/[0.22]',
     cell: 'bg-amber-100/80 dark:bg-amber-950/50',
   },
   red: {
-    row: 'bg-red-100 dark:bg-red-500/[0.18]',
+    row: 'bg-red-200/80 dark:bg-red-600/[0.30]',
     cell: 'bg-red-100/80 dark:bg-red-950/50',
   },
 };
@@ -74,10 +77,10 @@ export const alarmRowAttrs = (level: FleetAlarmLevel): HTMLAttributes<HTMLTableR
  * a string assembled from `ALARM_TINT` would produce no CSS at all.
  */
 export const ALARM_ROW_HOLD = cn(
-  '[&_tbody_tr[data-alarm=red]]:!bg-red-100 dark:[&_tbody_tr[data-alarm=red]]:!bg-red-500/[0.18]',
-  '[&_tbody_tr[data-alarm=red]:hover]:!bg-red-200/70 dark:[&_tbody_tr[data-alarm=red]:hover]:!bg-red-500/[0.26]',
-  '[&_tbody_tr[data-alarm=yellow]]:!bg-amber-100/70 dark:[&_tbody_tr[data-alarm=yellow]]:!bg-amber-500/[0.12]',
-  '[&_tbody_tr[data-alarm=yellow]:hover]:!bg-amber-200/60 dark:[&_tbody_tr[data-alarm=yellow]:hover]:!bg-amber-500/[0.2]',
+  '[&_tbody_tr[data-alarm=red]]:!bg-red-200/80 dark:[&_tbody_tr[data-alarm=red]]:!bg-red-600/[0.30]',
+  '[&_tbody_tr[data-alarm=red]:hover]:!bg-red-300/70 dark:[&_tbody_tr[data-alarm=red]:hover]:!bg-red-600/[0.40]',
+  '[&_tbody_tr[data-alarm=yellow]]:!bg-amber-200/70 dark:[&_tbody_tr[data-alarm=yellow]]:!bg-amber-500/[0.22]',
+  '[&_tbody_tr[data-alarm=yellow]:hover]:!bg-amber-300/60 dark:[&_tbody_tr[data-alarm=yellow]:hover]:!bg-amber-500/[0.32]',
 );
 
 /**
@@ -126,14 +129,40 @@ export const alarmText = (
     : t(`fleet.alarms.noAlarmReason.${noAlarmReason}`);
 };
 
+/**
+ * The alarms board's own pill — «كبر الخط وحسن تشبع الالوان».
+ *
+ * SOLID rather than the design system's pale `-100` wash: a full red with white type, a full amber
+ * with near-black type, so the level reads from across the room and still reads on a row that is
+ * itself tinted red or amber (a pale pill on a tinted row all but disappears). A size up as well,
+ * to sit beside the board's larger figures. The quiet `none` stays grey — a healthy car and a car
+ * the projection could not measure are still not states worth colouring — only firmer.
+ *
+ * The board's alone: the odometer log keeps the shared `Badge` and its cell patch untouched.
+ */
+const SOLID_PILL =
+  'inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-[15px] leading-5 shadow-sm';
+const SOLID_TONE: Record<FleetAlarmLevel, string> = {
+  red: 'bg-red-600 text-white ring-1 ring-inset ring-red-700/60 dark:bg-red-600 dark:text-white dark:ring-red-400/40',
+  yellow:
+    'bg-amber-400 text-amber-950 ring-1 ring-inset ring-amber-500/70 dark:bg-amber-400 dark:text-amber-950 dark:ring-amber-300/50',
+  none: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+};
+
 export const AlarmBadge = ({
   level,
   noAlarmReason = null,
   reasonDisplay = 'text',
+  variant = 'soft',
 }: {
   level: FleetAlarmLevel;
   /** `null` = the alarm was computed, so `level` is the whole answer. */
   noAlarmReason?: FleetNoAlarmReason | null;
+  /**
+   * `'soft'` is the shared pill every screen draws. `'solid'` is the alarms board's — see
+   * `SOLID_TONE`. The words, the reason and where the reason goes are the same either way.
+   */
+  variant?: 'soft' | 'solid';
   /**
    * How much room the reason may take.
    *
@@ -149,6 +178,16 @@ export const AlarmBadge = ({
   reasonDisplay?: 'text' | 'tooltip';
 }): JSX.Element => {
   const t = useT();
+  if (variant === 'solid') {
+    // The same words as the soft pill below, in the same places — only the paint differs.
+    const tooltip = level === 'none' && noAlarmReason !== null && reasonDisplay === 'tooltip';
+    const pill = (
+      <span className={cn(SOLID_PILL, SOLID_TONE[level])}>
+        {tooltip ? t('fleet.vehicle.alarmNone') : alarmText(t, level, noAlarmReason)}
+      </span>
+    );
+    return tooltip ? <span title={alarmText(t, level, noAlarmReason)}>{pill}</span> : pill;
+  }
   if (level === 'none') {
     // A computed `none` is a healthy car: it keeps the word it has always had, and says no more.
     if (noAlarmReason === null) return <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>;
@@ -178,29 +217,90 @@ export const AlarmBadge = ({
  * into the sentence it means, using the same two strings the dashboard and the alarms board
  * already use for it.
  */
+/**
+ * The colour a remaining distance is written in on the alarms board, by the car's level — the
+ * server's level, read, never re-derived. Overdue is red whatever the level says, because a
+ * missed service is the most urgent thing a row can report. Saturated, and dark enough in the
+ * light theme to read on a tinted row.
+ */
+const REMAINING_TONE: Record<FleetAlarmLevel | 'overdue', string> = {
+  overdue: 'text-red-700 dark:text-red-400',
+  red: 'text-red-700 dark:text-red-400',
+  yellow: 'text-amber-800 dark:text-amber-400',
+  none: 'text-emerald-700 dark:text-emerald-400',
+};
+
+/**
+ * A sentence with its figure set apart — «متأخر <250> كم» — so the figure can wear the boards'
+ * monospace while the words keep the page's own face (a monospace font has no Arabic letters).
+ * The template is split rather than the unit appended, so each locale keeps its own word order.
+ */
+const withFigure = (
+  t: (key: string, params?: Record<string, string | number>) => string,
+  key: string,
+  figure: string,
+  figureClassName: string,
+): JSX.Element => {
+  const [before = '', after = ''] = t(key, { km: '\u0000' }).split('\u0000');
+  return (
+    <>
+      {before}
+      <span dir="ltr" className={figureClassName}>
+        {figure}
+      </span>
+      {after}
+    </>
+  );
+};
+
 export const RemainingKm = ({
   remainingKm,
   locale,
   formatNumber,
+  level,
+  figureClassName,
 }: {
   remainingKm: number | null;
   locale: 'ar' | 'en';
   formatNumber: (value: number, locale: 'ar' | 'en') => string;
+  /**
+   * The alarms board's colouring — «حسن تشبع الالوان»: the distance takes the car's level (red,
+   * amber, emerald) and an overdue one is red. Absent, the figure is drawn as it always was.
+   */
+  level?: FleetAlarmLevel;
+  /** When given, the figure alone is set in this class (the boards' monospace), left to right. */
+  figureClassName?: string;
 }): JSX.Element => {
   const t = useT();
   if (remainingKm === null) {
-    return <span className="text-slate-400 dark:text-slate-600">—</span>;
+    // The board's dash is the boards' one grey; elsewhere it keeps the dimmer dark shade it had.
+    return (
+      <span
+        className={level === undefined ? 'text-slate-400 dark:text-slate-600' : 'text-slate-400'}
+      >
+        —
+      </span>
+    );
   }
+  const say = (key: string, km: number): JSX.Element | string =>
+    figureClassName === undefined
+      ? t(key, { km: formatNumber(km, locale) })
+      : withFigure(t, key, formatNumber(km, locale), figureClassName);
   if (remainingKm < 0) {
     return (
-      <span className="font-medium text-red-700 dark:text-red-300">
-        {t('fleet.dashboard.overdueKm', { km: formatNumber(Math.abs(remainingKm), locale) })}
+      <span
+        className={cn(
+          'font-medium',
+          level === undefined ? 'text-red-700 dark:text-red-300' : REMAINING_TONE.overdue,
+        )}
+      >
+        {say('fleet.dashboard.overdueKm', Math.abs(remainingKm))}
       </span>
     );
   }
   return (
-    <span className="tabular-nums">
-      {t('fleet.odometer.kmValue', { km: formatNumber(remainingKm, locale) })}
+    <span className={cn('tabular-nums', level !== undefined && REMAINING_TONE[level])}>
+      {say('fleet.odometer.kmValue', remainingKm)}
     </span>
   );
 };

@@ -5,16 +5,22 @@
 //
 // «بالفورم بتاعت التسجيل والتعديل»: drawn in the vehicle form's design — its header, its sections
 // and its boxes — through the shared `DesignDialog` shell.
+//
+// «تحسين اختيار السواقيين فى … التمامات»: the driver is picked with `DriverPicker` — the whole
+// roster the moment it opens, each driver drawn with the badge, the name and the code under it,
+// searched by either — and a driver already decided is drawn the same way in its fixed box.
 import { useEffect, useState } from 'react';
 import { type FleetDriverUnavailabilityDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
 import { Input, Textarea } from '../../../shared/ui/form';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useRecordUnavailability, useUpdateUnavailability } from '../api/fleet-queries';
-import { EmployeeSearchPicker } from './EmployeeSearchPicker';
-import { EmployeeName } from './EmployeeName';
+import { DriverIdentity, DriverPicker } from './DriverPerson';
+import { DRIVER_BOX } from './OptionalDriverField';
+import { useEmployeeRecord } from './EmployeeName';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
 import { DATE_ICON, DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
@@ -34,23 +40,23 @@ const NOTE_BOX = cn(
 );
 
 /**
- * The driver search (`EmployeeSearchPicker`) in the design: its box drawn as the form's boxes, its
- * matches on the form's surface. The picker draws its own controls, so the look is laid on from
- * outside; the picked driver keeps the site's purple, and a missing one keeps the picker's red ring.
+ * A driver already decided (the profile page, or an edit): drawn as the picker draws its pick —
+ * badge, name, code — in a box of the picker's height that cannot be typed in.
  */
-const PICKER_BOX = cn(
-  '[&_input]:!rounded-xl [&_input]:!py-3 [&_input]:!text-[15px] [&_input]:!font-medium [&_input]:shadow-inner',
-  '[&_input]:!border-slate-200 dark:[&_input]:!border-[#2b3b6b] [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#0a1233] [&_input]:!text-slate-900 dark:[&_input]:!text-white',
-  '[&_input]:placeholder:!text-slate-500 dark:[&_input]:placeholder:!text-slate-400',
-  '[&_input:focus]:!border-indigo-500 [&_input:focus]:!outline-none [&_input:focus]:ring-1 [&_input:focus]:ring-indigo-500',
-  '[&_.ring-red-400]:!rounded-xl [&_.ring-red-400_input]:!border-rose-500/70',
-  '[&_.max-h-56]:!rounded-xl [&_.max-h-56]:!border-slate-200 dark:[&_.max-h-56]:!border-[#2b3b6b] [&_.max-h-56]:bg-white dark:[&_.max-h-56]:bg-[#0a1233]/80',
-  '[&_li_button]:!py-2.5 [&_li_button]:!text-[15px]',
-);
-
-/** A driver already decided (the profile page, or an edit): shown in a box that cannot be typed in. */
 const FIXED_BOX =
-  'rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] font-bold text-slate-900 shadow-inner dark:border-[#2b3b6b] dark:bg-[#0a1233]/60 dark:text-white';
+  'flex min-h-[3rem] items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[15px] text-slate-900 shadow-inner dark:border-[#2b3b6b] dark:bg-[#0a1233]/60 dark:text-white';
+
+/** The decided driver: the person the roster knows, or — not (yet) in it — the id's tail. */
+const FixedDriver = ({ employeeId }: { employeeId: string }): JSX.Element => {
+  const person = useEmployeeRecord(employeeId);
+  return person === undefined ? (
+    <span className="font-mono text-xs text-slate-400" dir="ltr">
+      {employeeId.slice(-8)}
+    </span>
+  ) : (
+    <DriverIdentity name={person.fullNameAr} code={person.code} />
+  );
+};
 
 /** Two boxes to a row on a computer, one on a phone — the vehicle form's grid. */
 const GRID = 'grid grid-cols-1 items-start gap-5 md:grid-cols-2';
@@ -88,6 +94,7 @@ export const UnavailabilityDialog = ({
   fixedEmployeeId?: string | null;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const [form, setForm] = useState<FormState>(fromRecord(record, fixedEmployeeId));
   useEffect(() => {
     if (open) setForm(fromRecord(record, fixedEmployeeId));
@@ -167,21 +174,29 @@ export const UnavailabilityDialog = ({
             required
             missing={required.isMissing('driver')}
           >
-            <div className={PICKER_BOX}>
-              <EmployeeSearchPicker
+            {/* Fleet's roster is read under the drivers' view grant: without it the picker says so
+                rather than opening an empty list that silently finds nobody. */}
+            {can('fleetDriver.view') ? (
+              <DriverPicker
                 value={form.employeeId}
-                onPick={(employeeId) => setForm((prev) => ({ ...prev, employeeId }))}
+                onChange={(employeeId) => setForm((prev) => ({ ...prev, employeeId }))}
+                className={DRIVER_BOX}
+                testId="attendance-driver"
               />
-            </div>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t('fleet.drivers.pickerNeedsDirectory')}
+              </p>
+            )}
           </DesignField>
         ) : (
           <DesignField
             label={t('fleet.attendance.fields.driver')}
             missing={required.isMissing('driver')}
           >
-            <p className={FIXED_BOX}>
-              <EmployeeName employeeId={form.employeeId} />
-            </p>
+            <div className={FIXED_BOX} data-attendance-driver="fixed">
+              <FixedDriver employeeId={form.employeeId} />
+            </div>
           </DesignField>
         )}
         <div className={GRID}>

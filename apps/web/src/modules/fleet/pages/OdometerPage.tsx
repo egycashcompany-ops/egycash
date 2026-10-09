@@ -46,12 +46,12 @@ import { useDeleteOdometer, useMaintenanceAlarms, useOdometerLogs } from '../api
 import { cn } from '../../../shared/lib/cn';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { BoardIcon, PATH } from '../components/FuelCardBoard';
+import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { odometerRange, widerRange } from '../lib/odometer-range';
-import { DriverName } from '../components/EmployeeName';
+import { DriverCell } from '../components/DriverPerson';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
@@ -89,6 +89,20 @@ const ADD_BUTTON =
  * first click REPLACES it rather than joining it — see `clickSort`.
  */
 const DEFAULT_SORT = 'date:desc';
+
+/**
+ * «تحسين شكل البيانات فى جداول العدادات»: a figure in the table as the vehicles and drivers boards
+ * write one — Latin digits grouped with a comma, «150,250», never the Arabic-Indic «١٥٠٬٢٥٠» whose
+ * light separator reads as one long number. A counter is read against the car's own dial, which
+ * is written in Latin digits. The count over the table and the dialogs keep `formatNumber`.
+ */
+const LATIN = new Intl.NumberFormat('en-US');
+
+/** The boards' figure: monospace, tabular, left to right, never broken over two lines. */
+const FIGURE = cn('whitespace-nowrap', NUM);
+
+/** An empty cell, as the boards draw one. */
+const DASH = <span className="text-slate-400">—</span>;
 
 export const OdometerPage = (): JSX.Element => {
   const t = useT();
@@ -247,7 +261,7 @@ export const OdometerPage = (): JSX.Element => {
   /**
    * THE DRIVERS' NAMES FOR A WHOLE EXPORT, through the very cache the table's cells fill.
    *
-   * A driver column on screen is a `DriverName`, and for an employee-backed row that is an HR
+   * A driver column on screen is a `DriverCell`, and for an employee-backed row that is an HR
    * read: `driver1Name` is set only where HR has no employee for the spelling, so the register
    * itself carries an ID and nothing else for everyone still on the payroll. The export cannot
    * call the cell's hook — it runs in a callback, over rows that were never rendered — so it asks
@@ -354,15 +368,40 @@ export const OdometerPage = (): JSX.Element => {
     }
   };
 
+  /**
+   * «2026/09/01» or «150,250»: one figure on the row, in the boards' figure — see `FIGURE`. An
+   * empty cell is `DASH`, and a reading that is a STATE («بدون قراءة», the open period) keeps its
+   * badge; neither comes through here.
+   */
+  const figure = (text: string): JSX.Element => (
+    <span dir="ltr" className={FIGURE}>
+      {text}
+    </span>
+  );
+  /**
+   * «5,250 كم»: the figure in the boards' figure, the unit in the page's own words — and in the
+   * order the locale's sentence puts them, which is why the template is split rather than the
+   * unit appended. A monospace face has no Arabic letters, so the unit must not wear it.
+   */
+  const [kmBefore = '', kmAfter = ''] = t('fleet.odometer.kmValue', { km: '\u0000' }).split(
+    '\u0000',
+  );
+
+  // «تحسين شكل البيانات»: the drivers board's table — every value and header CENTRED, a date year
+  // first with slashes, every figure in Latin digits with a comma, the car's code bold, an empty
+  // cell a grey dash, and each driver drawn as the drivers board draws one (badge, name, code).
+  // The row's actions stay at its end.
   const columns: Column<FleetOdometerLogDto>[] = [
     {
       key: 'date',
+      align: 'center',
       header: t('fleet.odometer.fields.date'),
       sortable: true,
-      render: (log) => <span className="tabular-nums">{formatDate(log.date, locale)}</span>,
+      render: (log) => figure(ymd(log.date)),
     },
     {
       key: 'vehicle',
+      align: 'center',
       header: t('fleet.odometer.columns.vehicle'),
       // Ordered by the car's CODE, which the server joins in from the registry before it cuts the
       // page — the register is paged, so ordering the rows in hand would sort twenty-five
@@ -371,11 +410,14 @@ export const OdometerPage = (): JSX.Element => {
       sortKey: 'vehicleCode',
       // A SERVER fact on the row, like every other number in this table. `null` only when the
       // vehicle no longer exists at all — a scrapped one keeps its code.
-      render: (log) => (
-        <span className="font-mono text-xs" dir="ltr">
-          {log.vehicleCode ?? '—'}
-        </span>
-      ),
+      render: (log) =>
+        log.vehicleCode === null ? (
+          DASH
+        ) : (
+          <span dir="ltr" className={cn('text-sm font-bold', FIGURE)}>
+            {log.vehicleCode}
+          </span>
+        ),
     },
     // TWO COLUMNS, ONE PER SHIFT — «تفصل الصباحى عن المسائى كل واحد فى عمود».
     //
@@ -386,40 +428,41 @@ export const OdometerPage = (): JSX.Element => {
     // because the name is joined in by the server before the page is cut (`driverNameSorts`).
     //
     // The tones stay what they were, one per shift, so the two columns still read as the pair they
-    // were when they shared a cell. An empty shift is a dash, never a blank.
+    // were when they shared a cell — on the NAME now, beside the badge and over the code. An empty
+    // shift is a dash, never a blank.
     {
       key: 'driver1',
+      align: 'center',
       header: t('fleet.odometer.columns.driver1'),
       sortable: true,
       sortKey: 'driver1Name',
-      render: (log) =>
-        log.driver1EmployeeId === null && !log.driver1Name ? (
-          '—'
-        ) : (
-          <span className="text-amber-700 dark:text-amber-300">
-            <DriverName employeeId={log.driver1EmployeeId} name={log.driver1Name} />
-          </span>
-        ),
+      render: (log) => (
+        <DriverCell
+          employeeId={log.driver1EmployeeId}
+          name={log.driver1Name}
+          nameClassName="text-amber-700 dark:text-amber-300"
+        />
+      ),
     },
     {
       key: 'driver2',
+      align: 'center',
       header: t('fleet.odometer.columns.driver2'),
       sortable: true,
       sortKey: 'driver2Name',
-      render: (log) =>
-        log.driver2EmployeeId === null && !log.driver2Name ? (
-          '—'
-        ) : (
-          <span className="text-indigo-700 dark:text-indigo-300">
-            <DriverName employeeId={log.driver2EmployeeId} name={log.driver2Name} />
-          </span>
-        ),
+      render: (log) => (
+        <DriverCell
+          employeeId={log.driver2EmployeeId}
+          name={log.driver2Name}
+          nameClassName="text-indigo-700 dark:text-indigo-300"
+        />
+      ),
     },
     {
       key: 'outReading',
       header: t('fleet.odometer.columns.outReading'),
       sortable: true,
-      align: 'end',
+      align: 'center',
       // A DAY RECORDED WITH NO READING says so, in words. A dash would read as "nothing here" in
       // a column where every other row carries a number, and the reader would take the day for a
       // gap in the log rather than for what it is: a day somebody recorded, with a counter nobody
@@ -429,32 +472,33 @@ export const OdometerPage = (): JSX.Element => {
         log.outReading === null ? (
           <Badge tone="neutral">{t('fleet.odometer.noReading')}</Badge>
         ) : (
-          formatNumber(log.outReading, locale)
+          figure(LATIN.format(log.outReading))
         ),
     },
     {
       key: 'inReading',
       header: t('fleet.odometer.columns.inReading'),
-      align: 'end',
+      align: 'center',
       // Such a row closes nothing, so it is NOT the open period either — the badge here means
       // "waiting for the next reading", and this row is not waiting for anything.
       render: (log) =>
         log.outReading === null ? (
-          <span className="text-slate-400">—</span>
+          DASH
         ) : log.inReading === null ? (
           <Badge tone="info">{t('fleet.odometer.openPeriod')}</Badge>
         ) : (
-          formatNumber(log.inReading, locale)
+          figure(LATIN.format(log.inReading))
         ),
     },
     {
       key: 'km',
       header: t('fleet.odometer.columns.km'),
-      align: 'end',
-      render: (log) => (log.km === null ? '—' : formatNumber(log.km, locale)),
+      align: 'center',
+      render: (log) => (log.km === null ? DASH : figure(LATIN.format(log.km))),
     },
     {
       key: 'notes',
+      align: 'center',
       // The one free-text column, and a table column is sized by its content: a note carrying an
       // unbroken run of characters — a pasted reference, a URL — has no break point to wrap at, so
       // the column grows to fit it and pushes the columns after it off the screen. A bounded box
@@ -462,16 +506,18 @@ export const OdometerPage = (): JSX.Element => {
       // maintenance figure and the row's actions where the reader left them.
       header: t('fleet.odometer.columns.notes'),
       // `whitespace-normal`: the boards' table keeps its cells on one line, and a note that may
-      // not wrap would spill over the columns beside it however bounded its box.
+      // not wrap would spill over the columns beside it however bounded its box. `mx-auto`: a
+      // block ignores the cell's centring, so the box itself is centred.
       render: (log) =>
         log.notes === null ? (
-          '—'
+          DASH
         ) : (
-          <span className="block max-w-xs whitespace-normal break-words">{log.notes}</span>
+          <span className="mx-auto block max-w-xs whitespace-normal break-words">{log.notes}</span>
         ),
     },
     {
       key: 'maintenance',
+      align: 'center',
       header: t('fleet.odometer.columns.sinceService'),
       // Ordered by the CAR's figure, computed for the fleet and handed to the query — see
       // `alarm-sort.ts`. A car the projection has no answer for sorts with the other blanks.
@@ -486,16 +532,21 @@ export const OdometerPage = (): JSX.Element => {
         // of them reads as several problems instead of one. It is said once per car, on the
         // alarms board, where a row IS a vehicle.
         if (alarm === undefined || alarm.sinceServiceKm === null) {
-          return <span className="text-slate-400">—</span>;
+          return DASH;
         }
         return (
           // The tint is on this element, NOT on the row: a row here is one READING, and a car has
           // many — tinting them all would show five alarms for one car.
           <span
-            className={cn('inline-flex flex-wrap items-center gap-2', alarmCellTint(alarm.level))}
+            className={cn(
+              'inline-flex flex-wrap items-center justify-center gap-2',
+              alarmCellTint(alarm.level),
+            )}
           >
-            <span className="tabular-nums">
-              {t('fleet.odometer.kmValue', { km: formatNumber(alarm.sinceServiceKm, locale) })}
+            <span className="whitespace-nowrap">
+              {kmBefore}
+              {figure(LATIN.format(alarm.sinceServiceKm))}
+              {kmAfter}
             </span>
             <AlarmBadge level={alarm.level} />
           </span>

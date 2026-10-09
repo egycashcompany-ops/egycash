@@ -148,6 +148,10 @@ const render = (node: JSX.Element, path: string, qc: QueryClient, permissions = 
     </Provider>,
   );
 
+/** Whether `markup` writes a figure in any of the given spellings — one per digit set. */
+const shows = (markup: string, spellings: readonly string[]): boolean =>
+  spellings.some((spelling) => markup.includes(spelling));
+
 /** Seed a maintenance page that has both its visits and the shared alarm. */
 const maintenance = (alarms: FleetMaintenanceAlarmDto[] = [ALARM], visits = [visit()]): string => {
   const qc = client(alarms);
@@ -288,16 +292,28 @@ describe('the three screens agree about one vehicle', () => {
   });
 
   it('shows the same SINCE-SERVICE distance where it is shown — no longer on maintenance', () => {
-    const since = '٥٬٢٥٠';
-    expect(maintenance(), 'maintenance carries no since-service column').not.toContain(since);
-    expect(alarmsBoard(), 'alarms board').toContain(since);
-    expect(odometer(), 'odometer').toContain(since);
+    // «تحسين شكل البيانات فى جداول …»: the boards are moving their figures to Latin digits, so the
+    // distance is looked for in BOTH digit sets — the claim is that the same figure is shown (or,
+    // on maintenance, that it is not), whichever digits a board writes it in.
+    const since = ['٥٬٢٥٠', '5,250'];
+    for (const spelling of since) {
+      expect(
+        maintenance(),
+        `maintenance carries no since-service column (${spelling})`,
+      ).not.toContain(spelling);
+    }
+    expect(shows(alarmsBoard(), since), 'alarms board').toBe(true);
+    expect(shows(odometer(), since), 'odometer').toBe(true);
   });
 
   it('shows the OVERDUE distance as overdue, not as a negative number', () => {
     const markup = alarmsBoard();
-    expect(markup, 'alarms board').toContain('٢٥٠');
-    expect(markup, 'never a bare minus').not.toContain('-٢٥٠');
+    expect(shows(markup, ['٢٥٠', '250']), 'alarms board').toBe(true);
+    // Read off the TEXT, so a class name with a number in it cannot pass for a minus.
+    const text = markup.replace(/<[^>]*>/g, ' ');
+    for (const minus of ['-٢٥٠', '-250', '−٢٥٠', '−250']) {
+      expect(text, `never a bare minus (${minus})`).not.toContain(minus);
+    }
     expect(maintenance(), 'maintenance carries no remaining column').not.toContain(
       translate('ar', 'fleet.alarms.columns.remaining'),
     );

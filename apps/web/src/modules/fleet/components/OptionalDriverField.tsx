@@ -21,7 +21,7 @@ import { cn } from '../../../shared/lib/cn';
 import { DriverPicker } from './DriverPerson';
 
 /** The design forms' box, around the picker's own. Red with the design's glow while missing. */
-const DRIVER_BOX = cn(
+export const DRIVER_BOX = cn(
   'rounded-xl px-3 py-1.5 text-[15px] shadow-inner transition-all',
   'border-slate-200 bg-slate-50 text-slate-900 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-white',
   'hover:border-indigo-400/60 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500',

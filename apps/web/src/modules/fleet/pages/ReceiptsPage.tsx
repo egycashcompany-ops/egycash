@@ -37,10 +37,10 @@ import { useDeleteReceipt, useReceiptSummary, useReceipts } from '../api/fleet-q
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { FigureChip } from '../components/FleetFigures';
-import { BoardIcon, PATH } from '../components/FuelCardBoard';
+import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { DriverName } from '../components/EmployeeName';
+import { DriverCell } from '../components/DriverPerson';
 import { FuelCompanyLogo } from '../components/FuelCardTiles';
 import { ReceiptDialog } from '../components/ReceiptDialog';
 import { ReceiptImageCell, ReceiptImagePreviewDialog } from '../components/ReceiptImageCell';
@@ -65,6 +65,19 @@ const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) 
 const one = (value: string): string[] => (value === '' ? [] : [value]);
 /** Litres, two decimals, Latin digits — beside the money, which prints the same way. */
 const litresText = (value: number): string => value.toFixed(2);
+/**
+ * «تحسين شكل البيانات فى جداول … خصم الايصالات»: litres in the TABLE as the vehicles and drivers
+ * boards write a figure — Latin digits, grouped with a comma, two decimals («1,037.10»). The
+ * totals' note and the printed sheet keep `litresText`.
+ */
+const LITRES = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+/** The boards' figure: monospace, tabular, never broken over two lines. */
+const FIGURE = cn('whitespace-nowrap', NUM);
+/** An empty cell, as the boards draw one. */
+const DASH = <span className="text-slate-400">—</span>;
 const actionButton =
   'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
@@ -96,7 +109,7 @@ export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Elemen
     return (
       <span className="inline-flex items-center gap-2">
         <FuelCompanyLogo company={row.cardCompany} size="sm" />
-        <span className="tabular-nums" dir="ltr">
+        <span className={FIGURE} dir="ltr">
           •••• {(row.cardNumber ?? '').replace(/\s+/g, '').slice(-4)}
         </span>
       </span>
@@ -244,29 +257,51 @@ export const ReceiptsPage = (): JSX.Element => {
     row.source === 'card'
       ? `${t(`fleet.fuelCards.company.${row.cardCompany ?? 'wataniya'}`)} ${row.cardNumber ?? ''}`
       : t('fleet.receipts.source.custody');
-  const dash = <span className="text-slate-400">—</span>;
+  /** «2026/10/01», «1,037.10»: one figure on the row, in the boards' figure — see `FIGURE`. */
+  const figure = (text: string): JSX.Element => (
+    <span dir="ltr" className={FIGURE}>
+      {text}
+    </span>
+  );
 
+  // «تحسين شكل البيانات»: the drivers board's table — every value and header CENTRED, a date year
+  // first with slashes, every figure in Latin digits with a comma, the car's code bold, an empty
+  // cell a grey dash, and the driver drawn as the drivers board draws one (badge, name, code). The
+  // row's actions stay at its end.
   const columns: Column<FleetReceiptDto>[] = [
     {
       key: 'date',
+      align: 'center',
       header: t('fleet.receipts.columns.date'),
       sortable: true,
-      render: (row) => <span className="tabular-nums">{formatDate(row.date, locale)}</span>,
+      render: (row) => figure(ymd(row.date)),
     },
     {
       key: 'vehicleCode',
+      align: 'center',
       header: t('fleet.odometer.columns.vehicle'),
       sortable: true,
-      render: (row) => row.vehicleCode ?? dash,
+      render: (row) =>
+        row.vehicleCode === null ? (
+          DASH
+        ) : (
+          <span dir="ltr" className={cn('text-sm font-bold', FIGURE)}>
+            {row.vehicleCode}
+          </span>
+        ),
     },
     {
       key: 'driverName',
+      align: 'center',
       header: t('fleet.receipts.columns.driver'),
       sortable: true,
-      render: (row) => <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />,
+      // The person Fleet knows (badge, name, code), or — a name typed for somebody the roster does
+      // not carry — that name, grey; or a dash.
+      render: (row) => <DriverCell employeeId={row.driverEmployeeId} name={row.driverName} />,
     },
     {
       key: 'kind',
+      align: 'center',
       header: t('fleet.receipts.columns.kind'),
       sortable: true,
       render: (row) => (
@@ -278,6 +313,7 @@ export const ReceiptsPage = (): JSX.Element => {
     },
     {
       key: 'source',
+      align: 'center',
       header: t('fleet.receipts.columns.source'),
       sortable: true,
       render: (row) => <ReceiptSourceCell row={row} />,
@@ -286,21 +322,28 @@ export const ReceiptsPage = (): JSX.Element => {
       key: 'amount',
       header: t('fleet.receipts.columns.amount'),
       sortable: true,
-      align: 'end',
-      render: (row) => <span className="tabular-nums">{money(row.amount)}</span>,
+      align: 'center',
+      // Money keeps the money formatter — Latin digits, grouped, «ج.م.» — in the boards' figure,
+      // read in the page's own direction so «ج.م.» stays where the sentence puts it.
+      render: (row) => <span className={FIGURE}>{money(row.amount)}</span>,
     },
     {
       key: 'litres',
       header: t('fleet.receipts.columns.litres'),
       sortable: true,
-      align: 'end',
-      render: (row) =>
-        row.litres === null ? dash : <span className="tabular-nums">{litresText(row.litres)}</span>,
+      align: 'center',
+      render: (row) => (row.litres === null ? DASH : figure(LITRES.format(row.litres))),
     },
     {
       key: 'image',
+      align: 'center',
       header: t('fleet.receipts.columns.image'),
-      render: (row) => <ReceiptImageCell row={row} onPreview={setPreviewing} />,
+      // The cell's buttons sit in a block row of their own; an inline box lets the column centre it.
+      render: (row) => (
+        <span className="inline-flex">
+          <ReceiptImageCell row={row} onPreview={setPreviewing} />
+        </span>
+      ),
     },
     {
       key: 'actions',

@@ -199,7 +199,8 @@ describe('nothing else about the reason moved', () => {
       ],
     );
     const markup = draw(<MaintenanceAlarmsPage />, '/fleet/maintenance-alarms', qc);
-    expect(markup).toContain('٢٠٢٦');
+    // «تحسين شكل البيانات»: the boards write a date year first, in Latin digits, with slashes.
+    expect(markup).toContain('>2026/06/01<');
     expect(markup).not.toContain(REASON);
   });
 });

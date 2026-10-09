@@ -52,7 +52,7 @@ import { CornerDownIcon, EditIcon, TrashIcon, WrenchIcon } from '../../../shared
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { BoardIcon, PATH } from '../components/FuelCardBoard';
+import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
 import {
   useDeleteMaintenance,
@@ -62,7 +62,7 @@ import {
 } from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
-import { DriverName } from '../components/EmployeeName';
+import { DriverCell } from '../components/DriverPerson';
 import {
   CheckInDialog,
   CheckOutDialog,
@@ -107,6 +107,19 @@ const ADD_BUTTON =
  */
 const CLOSED_ROW =
   '[&_tbody_tr[data-closed=true]]:!bg-emerald-50 dark:[&_tbody_tr[data-closed=true]]:!bg-[#10241c] [&_tbody_tr[data-closed=true]:hover]:!bg-emerald-100 dark:[&_tbody_tr[data-closed=true]:hover]:!bg-[#143026]';
+
+/**
+ * A figure in the table — «120,000»: Latin digits and a thousands comma, as the vehicles and
+ * drivers boards write one. `formatNumber` stays for the count above the table, and the Excel
+ * file keeps its own formatting.
+ */
+const LATIN = new Intl.NumberFormat('en-US');
+
+/**
+ * «حسن شكل البيانات فى جداول … الصيانه»: the vehicles board's figure — monospace, tabular,
+ * left to right — for every date and reading on the row.
+ */
+const FIGURE = cn('whitespace-nowrap', NUM);
 
 /** A csv URL parameter as the list it stands for; an absent one is an empty list, never `['']`. */
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
@@ -269,6 +282,12 @@ export const MaintenancePage = (): JSX.Element => {
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
   const dash = <span className="text-slate-400">—</span>;
+  /** A day on the row — «2026/09/01», year first, Latin digits. */
+  const day = (iso: string): JSX.Element => (
+    <span dir="ltr" className={FIGURE}>
+      {ymd(iso)}
+    </span>
+  );
 
   /**
    * The drivers' NAMES for the export, out of the SAME cache the cells read.
@@ -293,7 +312,7 @@ export const MaintenancePage = (): JSX.Element => {
     );
   };
 
-  /** One driver cell, resolved as the column resolves it — see `DriverName`. */
+  /** One driver cell, resolved as the column resolves it — see `DriverCell`. */
   const driverCell = (
     employeeId: string | null,
     legacyName: string | null,
@@ -383,43 +402,53 @@ export const MaintenancePage = (): JSX.Element => {
     }
   };
 
+  // «تحسين شكل البيانات فى جداول … الصيانه»: the drivers board's table — every value centred
+  // under a centred header, dates year first and figures in Latin digits — with the row's
+  // controls kept at the end.
   const columns: Column<FleetMaintenanceVisitDto>[] = [
     {
       key: 'inDate',
+      align: 'center',
       header: t('fleet.maintenance.fields.inDate'),
       sortable: true,
-      render: (visit) => <span className="tabular-nums">{formatDate(visit.inDate, locale)}</span>,
+      render: (visit) => day(visit.inDate),
     },
     {
       key: 'outDate',
+      align: 'center',
       header: t('fleet.maintenance.fields.outDate'),
       sortable: true,
       render: (visit) =>
         visit.outDate === null ? (
           <Badge tone="info">{t('fleet.maintenance.open')}</Badge>
         ) : (
-          <span className="tabular-nums">{formatDate(visit.outDate, locale)}</span>
+          day(visit.outDate)
         ),
     },
     {
       key: 'vehicle',
+      align: 'center',
       header: t('fleet.odometer.columns.vehicle'),
       // The car's CODE, joined in by the server before the page is cut — see the odometer board.
       sortable: true,
       sortKey: 'vehicleCode',
       // A SERVER fact on the row. `null` only when the vehicle no longer exists at all — a
       // scrapped one keeps its code, so history stays readable.
-      render: (visit) => (
-        <span className="font-mono text-xs" dir="ltr">
-          {visit.vehicleCode ?? '—'}
-        </span>
-      ),
+      render: (visit) =>
+        visit.vehicleCode === null ? (
+          dash
+        ) : (
+          <span dir="ltr" className={cn('font-bold', FIGURE)}>
+            {visit.vehicleCode}
+          </span>
+        ),
     },
     // «ضيف عمود فى الجدول ب نوع التشغيل» — the CAR's operation, beside its code. The server reads
     // it off the registry for the page like the code; it is the car's operation today, and a car
     // with none on file (or one the registry never had) prints a dash.
     {
       key: 'operation',
+      align: 'center',
       header: t('fleet.maintenance.fields.operation'),
       render: (visit) =>
         visit.operationId === null ? dash : (catalogName.get(visit.operationId) ?? dash),
@@ -435,46 +464,54 @@ export const MaintenancePage = (): JSX.Element => {
     // driver in the success tone. Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`:
     // those are the custody employees, they belong to the audit trail, and this grid never showed
     // them. An open visit has no exit driver yet, and that is a dash.
+    //
+    // «تحسين اختيار السواقيين … وشكل البيانات»: each leg is drawn the way the drivers board draws a
+    // person — the badge with the name's first letters, the name in the leg's tone, the employee
+    // code under it — through the one driver cell every Fleet board shares. A name from the old
+    // books that the roster never had stays grey, its badge uncoloured, as it was.
     {
       key: 'driverIn',
+      align: 'center',
       header: t('fleet.maintenance.fields.driverIn'),
       sortable: true,
       sortKey: 'driverInName',
-      render: (visit) =>
-        visit.driverInEmployeeId === null && !visit.driverInName ? (
-          dash
-        ) : (
-          <span className="text-red-700 dark:text-red-300">
-            <DriverName employeeId={visit.driverInEmployeeId} name={visit.driverInName} />
-          </span>
-        ),
+      render: (visit) => (
+        <DriverCell
+          employeeId={visit.driverInEmployeeId}
+          name={visit.driverInName}
+          nameClassName="text-red-700 dark:text-red-300"
+        />
+      ),
     },
     {
       key: 'driverOut',
+      align: 'center',
       header: t('fleet.maintenance.fields.driverOut'),
       sortable: true,
       sortKey: 'driverOutName',
-      render: (visit) =>
-        visit.driverOutEmployeeId === null && !visit.driverOutName ? (
-          dash
-        ) : (
-          <span className="text-emerald-700 dark:text-emerald-300">
-            <DriverName employeeId={visit.driverOutEmployeeId} name={visit.driverOutName} />
-          </span>
-        ),
+      render: (visit) => (
+        <DriverCell
+          employeeId={visit.driverOutEmployeeId}
+          name={visit.driverOutName}
+          nameClassName="text-emerald-700 dark:text-emerald-300"
+        />
+      ),
     },
     {
       key: 'workshop',
+      align: 'center',
       header: t('fleet.maintenance.fields.workshop'),
       render: (visit) => catalogName.get(visit.workshopId) ?? dash,
     },
     {
       key: 'workType',
+      align: 'center',
       header: t('fleet.maintenance.fields.workType'),
       render: (visit) => catalogName.get(visit.workTypeId) ?? dash,
     },
     {
       key: 'spareParts',
+      align: 'center',
       header: t('fleet.maintenance.fields.spareParts'),
       // Catalog parts first, then whatever an older visit recorded as free text. The old words
       // are the only record of what was fitted on those visits, so they are SHOWN rather than
@@ -484,7 +521,7 @@ export const MaintenancePage = (): JSX.Element => {
         const legacy = visit.spareParts;
         if (named.length === 0 && legacy.length === 0) return dash;
         return (
-          <span className="flex flex-col gap-0.5">
+          <span className="flex flex-col items-center gap-0.5 text-center">
             {named.length > 0 && (
               <span className="block max-w-xs whitespace-normal break-words">
                 {named.join('، ')}
@@ -504,11 +541,19 @@ export const MaintenancePage = (): JSX.Element => {
       header: t('fleet.maintenance.fields.odometerAtService'),
       // A stored figure on the visit, so the whole register orders by it for free.
       sortable: true,
-      align: 'end',
-      render: (visit) => formatNumber(visit.odometerAtService, locale),
+      align: 'center',
+      render: (visit) =>
+        visit.odometerAtService === null ? (
+          dash
+        ) : (
+          <span dir="ltr" className={FIGURE}>
+            {LATIN.format(visit.odometerAtService)}
+          </span>
+        ),
     },
     {
       key: 'notes',
+      align: 'center',
       // LAST of the data columns, by request — «الملاحظات تكون اخر حاجه خالص». It is also where
       // it does least harm: the one free-text column, and a table column is sized by its content,
       // so an unbroken run of characters has no break point to wrap at and the column grows to fit
@@ -524,7 +569,9 @@ export const MaintenancePage = (): JSX.Element => {
         ) : (
           // `whitespace-normal`: the vehicles table keeps its cells on one line, and a note that
           // could not wrap would be the one cell that widened the row anyway.
-          <span className="block max-w-xs whitespace-normal break-words">{visit.notes}</span>
+          <span className="mx-auto block max-w-xs whitespace-normal break-words">
+            {visit.notes}
+          </span>
         ),
     },
     {

@@ -77,8 +77,9 @@ const BOARD_TABLE = cn(
 /** The work's tag: a dot and a word, each kind its own colour. */
 const WORK_TAG: Record<'maintenance' | 'repair' | 'other', string> = {
   maintenance: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 [&>i]:bg-sky-400',
+  // «خلى لون الاصلاح مختلف عن لون انذار الفاتوره»: not the amber the awaiting-invoice tag wears.
   repair:
-    'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 [&>i]:bg-amber-400',
+    'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300 [&>i]:bg-fuchsia-400',
   other:
     'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300 [&>i]:bg-violet-400',
 };

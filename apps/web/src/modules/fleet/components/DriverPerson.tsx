@@ -10,6 +10,7 @@
 //   whose driver is a name that may be somebody the roster does not know.
 // Both search Fleet's own roster by name or code, Arabic folded («احمد» finds «أحمد»).
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -107,11 +108,15 @@ export const DriverIdentity = ({
         {name}
       </span>
       {code !== null && code !== '' && (
-        <span
-          dir="ltr"
-          className="mt-0.5 block text-start font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400 [unicode-bidi:plaintext]"
-        >
-          {code}
+        // Under the START of the name — the code reads left to right, but sits where the name
+        // begins, not at the far end of the line.
+        <span className="mt-0.5 block">
+          <span
+            dir="ltr"
+            className="inline-block font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+          >
+            {code}
+          </span>
         </span>
       )}
     </span>
@@ -200,11 +205,16 @@ const useAnchoredPanel = (
       if (rect === undefined) return;
       const room = window.innerHeight - rect.bottom - 12;
       const above = room < 220 && rect.top > room;
-      const maxHeight = Math.min(320, Math.max(160, above ? rect.top - 12 : room));
+      const maxHeight = Math.min(340, Math.max(160, above ? rect.top - 12 : room));
+      // Wide enough for a whole name; its start edge on the box's start edge (the right, in
+      // Arabic), and kept on the screen.
+      const width = Math.min(window.innerWidth - 16, Math.max(rect.width, 340));
+      const rtl = getComputedStyle(anchor.current as Element).direction === 'rtl';
+      const left = rtl ? rect.right - width : rect.left;
       setAt({
         top: above ? Math.max(8, rect.top - maxHeight - 4) : rect.bottom + 4,
-        left: rect.left,
-        width: rect.width,
+        left: Math.min(window.innerWidth - width - 8, Math.max(8, left)),
+        width,
         maxHeight,
       });
     };
@@ -230,6 +240,7 @@ const RosterList = ({
   onHover,
   search,
   listId,
+  hideWhenEmpty = false,
 }: {
   open: boolean;
   anchor: RefObject<HTMLElement>;
@@ -242,6 +253,8 @@ const RosterList = ({
   /** The search box the person-picker puts on top; the name box searches in its own box. */
   search?: ReactNode;
   listId: string;
+  /** Draw nothing rather than «no match» — the name box, where a name nobody knows is fine. */
+  hideWhenEmpty?: boolean;
 }): JSX.Element | null => {
   const t = useT();
   const at = useAnchoredPanel(open, anchor);
@@ -252,6 +265,7 @@ const RosterList = ({
       ?.scrollIntoView({ block: 'nearest' });
   }, [active]);
   if (!open || at === null || typeof document === 'undefined') return null;
+  if (hideWhenEmpty && matches.length === 0) return null;
   return createPortal(
     <div
       ref={panelRef}
@@ -259,7 +273,7 @@ const RosterList = ({
       style={{
         top: at.top,
         left: at.left,
-        width: Math.max(at.width, 260),
+        width: at.width,
         maxHeight: at.maxHeight,
       }}
       className="fixed z-[100] flex animate-menu-in flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-[#2b3b6b] dark:bg-[#131d35] [font-family:'Cairo',sans-serif]"
@@ -296,7 +310,12 @@ const RosterList = ({
                       : 'hover:bg-slate-50 dark:hover:bg-slate-800/50',
                 )}
               >
-                <DriverIdentity name={person.fullNameAr} code={person.code} />
+                {/* The whole name in the list — a long one wraps rather than being cut. */}
+                <DriverIdentity
+                  name={person.fullNameAr}
+                  code={person.code}
+                  nameClassName="!max-w-none whitespace-normal"
+                />
                 {picked && (
                   <span className="shrink-0 text-xs font-black text-brand-600 dark:text-brand-300">
                     ✓
@@ -312,7 +331,11 @@ const RosterList = ({
   );
 };
 
-/** Arrow keys walk the list, Enter picks, Escape closes it — and only it, not the form. */
+/**
+ * Arrow keys walk the list, Enter picks the highlighted one, Escape closes it — and only it, not
+ * the form — and Tab closes it and lets the focus go on to the next field. `closed` runs after a
+ * close from the keyboard, so the person-picker can give the focus back to its box.
+ */
 const useListKeys = (
   open: boolean,
   setOpen: (next: boolean) => void,
@@ -320,6 +343,7 @@ const useListKeys = (
   active: number,
   setActive: (next: number) => void,
   pick: (person: FleetPersonDto) => void,
+  closed: () => void = () => undefined,
 ) => {
   return (e: KeyboardEvent<HTMLElement>): void => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -340,6 +364,11 @@ const useListKeys = (
       e.preventDefault();
       e.stopPropagation();
       setOpen(false);
+      closed();
+    } else if (e.key === 'Tab' && open) {
+      // Not prevented: the focus moves on from wherever `closed` puts it.
+      setOpen(false);
+      closed();
     }
   };
 };
@@ -400,10 +429,12 @@ export const DriverPicker = ({
   const [term, setTerm] = useState('');
   const [active, setActive] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const comboRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
   const matches = useRosterMatches(term);
   const picked = useEmployeeRecord(value);
+  /** The list closed from inside it: the focus goes back to the box, not to the page. */
+  const backToBox = (): void => comboRef.current?.focus();
   const listId = useListId();
   const setOpen = (next: boolean): void => {
     setOpenState(next);
@@ -415,14 +446,17 @@ export const DriverPicker = ({
   const close = useMemo(() => () => setOpenState(false), []);
   const refs = useMemo(() => [boxRef, panelRef] as const, []);
   useOutsidePress(open, refs, close);
-  useEffect(() => {
-    if (open) searchRef.current?.focus();
-  }, [open]);
+  // The search box is drawn once the list has its place — after this effect would run — so it
+  // takes the focus as it mounts, and typing goes straight into it.
+  const focusOnMount = useCallback((el: HTMLInputElement | null): void => {
+    el?.focus();
+  }, []);
   const pick = (person: FleetPersonDto): void => {
     onChange(person.employeeId);
     setOpenState(false);
+    backToBox();
   };
-  const keys = useListKeys(open, setOpen, matches, active, setActive, pick);
+  const keys = useListKeys(open, setOpen, matches, active, setActive, pick, backToBox);
 
   return (
     <div
@@ -431,6 +465,7 @@ export const DriverPicker = ({
       {...(testId === undefined ? {} : { 'data-testid': testId })}
     >
       <div
+        ref={comboRef}
         role="combobox"
         tabIndex={0}
         aria-haspopup="listbox"
@@ -441,6 +476,8 @@ export const DriverPicker = ({
         data-driver-picker="true"
         onClick={() => setOpen(!open)}
         onKeyDown={(e) => {
+          // The ✕ inside the box handles its own keys: Enter on it clears, it does not open.
+          if (e.target !== e.currentTarget) return;
           if (!open && (e.key === 'Enter' || e.key === ' ')) {
             e.preventDefault();
             setOpen(true);
@@ -490,10 +527,10 @@ export const DriverPicker = ({
         listId={listId}
         search={
           <div className="border-b border-slate-200 p-2 dark:border-[#2b3b6b]">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 dark:border-[#2b3b6b] dark:bg-[#0a1233]">
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 dark:border-[#2b3b6b] dark:bg-[#0a1233]">
               <SearchIcon className="h-4 w-4 shrink-0 text-slate-400" />
               <input
-                ref={searchRef}
+                ref={focusOnMount}
                 value={term}
                 onChange={(e) => {
                   setTerm(e.target.value);
@@ -503,7 +540,8 @@ export const DriverPicker = ({
                 placeholder={t('fleet.drivers.pickerPlaceholder')}
                 aria-label={t('fleet.drivers.pickerPlaceholder')}
                 aria-controls={listId}
-                className="h-9 w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white"
+                // The site's focus ring is drawn by the box around it, not by the bare input.
+                className="h-9 w-full appearance-none border-0 !bg-transparent p-0 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus-visible:!ring-0 focus-visible:!ring-offset-0 dark:text-white"
               />
             </div>
           </div>
@@ -534,7 +572,9 @@ export const DriverNameCombobox = ({
   input: (props: InputHTMLAttributes<HTMLInputElement>) => ReactNode;
 }): JSX.Element => {
   const [open, setOpenState] = useState(false);
-  const [active, setActive] = useState(0);
+  // NOTHING highlighted until the arrows move onto a name: Enter in this box keeps what was
+  // typed, as the plain box did — a name nobody knows must not become the first one that does.
+  const [active, setActive] = useState(-1);
   const boxRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const roster = useFleetPeopleMap();
@@ -545,8 +585,10 @@ export const DriverNameCombobox = ({
     [...roster.values()].find((person) => person.fullNameAr === value.trim())?.employeeId ?? null;
   const listId = useListId();
   const setOpen = (next: boolean): void => {
-    setOpenState(next);
-    if (next) setActive(0);
+    // Nobody to offer — the reader may not read the roster, or it is empty: the box is the plain
+    // box it always was.
+    setOpenState(next && roster.size > 0);
+    if (next) setActive(-1);
   };
   const close = useMemo(() => () => setOpenState(false), []);
   const refs = useMemo(() => [boxRef, panelRef] as const, []);
@@ -570,8 +612,11 @@ export const DriverNameCombobox = ({
         // Typing after a pick opens the list again, narrowed by what is typed.
         onInput: () => {
           if (!open) setOpen(true);
+          else setActive(-1);
         },
         onKeyDown: keys,
+        // Leaving the box closes the list (a pick keeps the focus — its press is held back).
+        onBlur: () => setOpenState(false),
       })}
       <RosterList
         open={open}
@@ -583,6 +628,7 @@ export const DriverNameCombobox = ({
         onPick={pick}
         onHover={setActive}
         listId={listId}
+        hideWhenEmpty
       />
     </div>
   );

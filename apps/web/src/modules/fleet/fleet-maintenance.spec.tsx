@@ -490,7 +490,7 @@ describe('the maintenance table’s look', () => {
     });
   });
 
-  it('draws each driver as the drivers board draws a person — badge, name, and code under it', () => {
+  it('draws each driver in look د — the name in the leg’s tone, the code under it, no badge', () => {
     const qc = client([
       visit({
         outDate: '2026-09-03T00:00:00.000Z',
@@ -501,12 +501,23 @@ describe('the maintenance table’s look', () => {
     const markup = render({ qc });
     expect(cells(markup)[4], 'the entry driver and code').toContain('سائق الصباح HR-D1');
     expect(cells(markup)[5], 'the exit driver and code').toContain('سائق المساء HR-D2');
-    // The badge: the first letters of the name, beside it.
-    expect(cellTag(markup, 4)).toContain('rounded-full');
-    expect(cellTag(markup, 5)).toContain('rounded-full');
+    // «دى خليها للصيانه»: no badge beside the name; the whole name on hover.
+    expect(cellTag(markup, 4)).not.toContain('rounded-full');
+    expect(cellTag(markup, 5)).not.toContain('rounded-full');
+    expect(cellTag(markup, 4)).toContain('title="سائق الصباح"');
+    expect(tone(tbody(markup), 'سائق الصباح'), 'the entry leg’s tone').toContain('text-red-700');
+    expect(tone(tbody(markup), 'سائق المساء'), 'the exit leg’s tone').toContain('text-emerald-700');
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
     expect(source, 'the one driver cell every Fleet board shares').toContain('<DriverCell');
     expect(source, 'not the bare name it replaced').not.toContain('<DriverName');
+  });
+
+  it('writes a long name as its first and last words, the whole of it on hover', () => {
+    const qc = client([visit({ driverInName: 'ابراهيم محمد محفوظ اسماعيل صيام' })]);
+    const markup = render({ qc });
+    expect(cells(markup)[4]).toContain('ابراهيم صيام');
+    expect(cells(markup)[4]).not.toContain('محفوظ');
+    expect(cellTag(markup, 4)).toContain('title="ابراهيم محمد محفوظ اسماعيل صيام"');
   });
 
   it('keeps a name from the old books, grey, under the leg it was written for', () => {

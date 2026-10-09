@@ -51,11 +51,14 @@ import { DARK_TABLE } from './VehiclesListPage';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { odometerRange, widerRange } from '../lib/odometer-range';
-import { DriverCell } from '../components/DriverPerson';
+import { DriverCell, DriverCodeCell, type DriverLook } from '../components/DriverPerson';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** «ورينى اللى بعدها»: the driver's look on this board, tried here. */
+const DRIVER_LOOK = 'identity' as DriverLook;
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -441,6 +444,7 @@ export const OdometerPage = (): JSX.Element => {
           employeeId={log.driver1EmployeeId}
           name={log.driver1Name}
           nameClassName="text-amber-700 dark:text-amber-300"
+          look={DRIVER_LOOK}
         />
       ),
     },
@@ -455,9 +459,27 @@ export const OdometerPage = (): JSX.Element => {
           employeeId={log.driver2EmployeeId}
           name={log.driver2Name}
           nameClassName="text-indigo-700 dark:text-indigo-300"
+          look={DRIVER_LOOK}
         />
       ),
     },
+    // Look و: each shift's code in a column of its own, beside the names.
+    ...(DRIVER_LOOK === 'nameOnly'
+      ? ([
+          {
+            key: 'driver1Code',
+            align: 'center',
+            header: `${t('fleet.drivers.columns.employeeCode')} — ${t('fleet.odometer.columns.driver1')}`,
+            render: (log) => <DriverCodeCell employeeId={log.driver1EmployeeId} />,
+          },
+          {
+            key: 'driver2Code',
+            align: 'center',
+            header: `${t('fleet.drivers.columns.employeeCode')} — ${t('fleet.odometer.columns.driver2')}`,
+            render: (log) => <DriverCodeCell employeeId={log.driver2EmployeeId} />,
+          },
+        ] satisfies Column<FleetOdometerLogDto>[])
+      : []),
     {
       key: 'outReading',
       header: t('fleet.odometer.columns.outReading'),

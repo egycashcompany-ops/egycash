@@ -33,16 +33,12 @@ import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
-import { DriverCell, DriverCodeCell, type DriverLook } from '../components/DriverPerson';
+import { DriverCell } from '../components/DriverPerson';
 import { UnavailabilityDialog } from '../components/UnavailabilityDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
-/** «غير شكل اسم السواق … ف شاشه واحده ورينى سامبل»: the driver's look, tried here first. */
-const DRIVER_LOOK = 'identity' as DriverLook;
-
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
-
 const REMEMBERED_FILTERS = [
   'size',
   'sort',
@@ -143,23 +139,12 @@ export const AttendancePage = (): JSX.Element => {
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   const columns: Column<FleetDriverUnavailabilityDto>[] = [
-    // Look و: the code in a column of its own, before the name — as the design board drew it.
-    ...(DRIVER_LOOK === 'nameOnly'
-      ? ([
-          {
-            key: 'employeeCode',
-            align: 'center',
-            header: t('fleet.drivers.columns.employeeCode'),
-            render: (r) => <DriverCodeCell employeeId={r.employeeId} />,
-          },
-        ] satisfies Column<FleetDriverUnavailabilityDto>[])
-      : []),
-    // The person, as the drivers board draws one: the badge, the name, the code under it.
+    // «اعتمد دى»: the person as the drivers board draws one — the badge, the name, the code under it.
     {
       key: 'driver',
       align: 'center',
       header: t('fleet.attendance.fields.driver'),
-      render: (r) => <DriverCell employeeId={r.employeeId} look={DRIVER_LOOK} />,
+      render: (r) => <DriverCell employeeId={r.employeeId} />,
     },
     {
       key: 'from',

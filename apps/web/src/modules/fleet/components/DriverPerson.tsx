@@ -131,7 +131,18 @@ export const DriverIdentity = ({
  * - `chip`: the name in a soft pill of the person's own colour, the code after a dot.
  * - `board`: the drivers board's own — the badge and the name; the code on hover.
  */
-export type DriverLook = 'identity' | 'badge' | 'chip' | 'board';
+export type DriverLook =
+  | 'identity'
+  | 'badge'
+  | 'chip'
+  | 'board'
+  // The design board's six, tried on the workshop board:
+  | 'underPill' // أ: the name, the code under it in a small pill
+  | 'split' // ب: one split pill — the code | the name
+  | 'person' // ج: a person mark, the name, a rule, the code faint
+  | 'short' // د: the first and last names, the code under; the whole name on hover
+  | 'dot' // هـ: a coloured dot, the name, #code faint
+  | 'nameOnly'; // و: the name alone — its board writes the code in a column of its own
 
 /** The soft surface of a person's colour, for the `chip` look. */
 const CHIP_TONES = [
@@ -143,6 +154,18 @@ const CHIP_TONES = [
   'bg-indigo-500/15 text-indigo-800 ring-indigo-500/30 dark:text-indigo-200',
   'bg-sky-500/15 text-sky-800 ring-sky-500/30 dark:text-sky-200',
 ] as const;
+/** A person's dot and its halo, for the `dot` look. */
+const DOT_TONES = [
+  'bg-violet-400 ring-violet-400/25',
+  'bg-emerald-400 ring-emerald-400/25',
+  'bg-amber-400 ring-amber-400/25',
+  'bg-rose-400 ring-rose-400/25',
+  'bg-sky-400 ring-sky-400/25',
+  'bg-teal-400 ring-teal-400/25',
+] as const;
+const dotToneOf = (key: string): string =>
+  DOT_TONES[[...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % DOT_TONES.length]!;
+
 const chipToneOf = (key: string): string =>
   CHIP_TONES[[...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % CHIP_TONES.length]!;
 
@@ -204,6 +227,166 @@ const DriverLookView = ({
             </span>
           </>
         )}
+      </span>
+    );
+  }
+  const codeShown = code !== null && code !== '';
+  const mono = 'font-mono font-bold';
+  if (look === 'underPill') {
+    return (
+      <span className="inline-flex flex-col items-start gap-1 text-start" title={name}>
+        <span
+          className={cn(
+            'max-w-[14rem] truncate font-extrabold',
+            muted && 'text-slate-500',
+            nameClassName,
+          )}
+        >
+          {name}
+        </span>
+        {codeShown && (
+          <span
+            dir="ltr"
+            className={cn(
+              mono,
+              'rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 text-[11px] text-indigo-700 dark:text-indigo-300',
+            )}
+          >
+            {code}
+          </span>
+        )}
+      </span>
+    );
+  }
+  if (look === 'split') {
+    return (
+      <span
+        title={name}
+        className="inline-flex max-w-full items-stretch overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600"
+      >
+        {codeShown && (
+          <span
+            dir="ltr"
+            className={cn(
+              mono,
+              'flex items-center bg-slate-200 px-2 text-[12px] text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+            )}
+          >
+            {code}
+          </span>
+        )}
+        <span
+          className={cn(
+            'flex items-center truncate px-2.5 py-1 font-extrabold',
+            muted && 'text-slate-500',
+            nameClassName,
+          )}
+        >
+          {name}
+        </span>
+      </span>
+    );
+  }
+  if (look === 'person') {
+    return (
+      <span className="inline-flex min-w-0 items-center gap-2" title={name}>
+        <span
+          aria-hidden
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-700 dark:text-sky-300"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21c0-4 4-6 8-6s8 2 8 6" />
+          </svg>
+        </span>
+        <span
+          className={cn(
+            'max-w-[13rem] truncate font-extrabold',
+            muted && 'text-slate-500',
+            nameClassName,
+          )}
+        >
+          {name}
+        </span>
+        {codeShown && (
+          <>
+            <span aria-hidden className="h-4 w-px shrink-0 bg-slate-300 dark:bg-slate-600" />
+            <span dir="ltr" className={cn(mono, 'shrink-0 text-[12px] text-slate-500')}>
+              {code}
+            </span>
+          </>
+        )}
+      </span>
+    );
+  }
+  if (look === 'short') {
+    const words = name.trim().split(/\s+/u);
+    const short = words.length > 2 ? `${words[0]} ${words[words.length - 1]}` : name;
+    return (
+      <span className="inline-flex flex-col items-center gap-0.5" title={name}>
+        <span
+          className={cn(
+            'whitespace-nowrap text-[15px] font-extrabold',
+            muted && 'text-slate-500',
+            nameClassName,
+          )}
+        >
+          {short}
+        </span>
+        {codeShown && (
+          <span dir="ltr" className={cn(mono, 'text-[11px] tracking-wide text-slate-500')}>
+            {code}
+          </span>
+        )}
+      </span>
+    );
+  }
+  if (look === 'dot') {
+    return (
+      <span className="inline-flex min-w-0 items-center gap-2.5" title={name}>
+        <span
+          aria-hidden
+          className={cn(
+            'h-2.5 w-2.5 shrink-0 rounded-full ring-[3px]',
+            muted ? 'bg-slate-400 ring-slate-400/20' : dotToneOf(code ?? name),
+          )}
+        />
+        <span
+          className={cn(
+            'max-w-[13rem] truncate font-extrabold',
+            muted && 'text-slate-500',
+            nameClassName,
+          )}
+        >
+          {name}
+        </span>
+        {codeShown && (
+          <span dir="ltr" className={cn(mono, 'shrink-0 text-[12px] text-slate-500')}>
+            #{code}
+          </span>
+        )}
+      </span>
+    );
+  }
+  if (look === 'nameOnly') {
+    return (
+      <span
+        title={name}
+        className={cn(
+          'block max-w-[14rem] truncate text-start font-extrabold',
+          muted && 'text-slate-500',
+          nameClassName,
+        )}
+      >
+        {name}
       </span>
     );
   }

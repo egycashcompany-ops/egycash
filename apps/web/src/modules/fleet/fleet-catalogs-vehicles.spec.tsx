@@ -838,10 +838,14 @@ describe('the odometer and workshop driver slots ask the registry', () => {
   const HERE_DIR = dirname(fileURLToPath(import.meta.url));
   const read = (rel: string): string => readFileSync(join(HERE_DIR, rel), 'utf8');
 
-  it('the field reaches for the registry picker', () => {
+  it('the field reaches for the roster picker', () => {
     const field = read('components/OptionalDriverField.tsx');
-    expect(field).toContain('RegistryDriverPicker');
+    expect(field).toContain('<DriverPicker');
     expect(field, 'not the payroll search box').not.toContain('EmployeeSearchPicker');
+    // `DriverPicker` reads Fleet's own roster — the registry — and nothing of HR's.
+    const picker = read('components/DriverPerson.tsx');
+    expect(picker).toContain('useFleetPeopleMap');
+    expect(picker).not.toContain('employee.view');
   });
 
   it('the payroll-backed field is gone from the module', () => {
@@ -860,7 +864,7 @@ describe('the odometer and workshop driver slots ask the registry', () => {
   });
 
   it('the seat stays OPTIONAL — a reading with nobody named is a real state', () => {
-    const field = read('components/OptionalDriverField.tsx');
-    expect(field, 'clearing it is offered').toContain("onChange('')");
+    const picker = read('components/DriverPerson.tsx');
+    expect(picker, 'clearing it is offered').toContain("onChange('')");
   });
 });

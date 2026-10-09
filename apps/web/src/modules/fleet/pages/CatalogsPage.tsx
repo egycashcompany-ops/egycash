@@ -19,6 +19,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Button } from '../../../shared/ui/Button';
 import { Badge, StatusBadge } from '../../../shared/ui/Badge';
+import { cn } from '../../../shared/lib/cn';
 import { Select } from '../../../shared/ui/form';
 import { ChevronIcon, EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -168,6 +169,32 @@ export const CatalogsPage = (): JSX.Element => {
             header: t('fleet.catalogs.fields.countsForAlarm'),
             render: (r: FleetCatalogItemDto) =>
               r.countsForAlarm ? <Badge tone="info">{t('fleet.catalogs.countsBadge')}</Badge> : '—',
+          } satisfies Column<FleetCatalogItemDto>,
+        ]
+      : []),
+    // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده»: the memo whose counters offer it.
+    ...(kind === 'licenseExpenseItem'
+      ? [
+          {
+            key: 'licenseExpenseKind',
+            header: t('fleet.catalogs.fields.licenseExpenseKind'),
+            render: (r: FleetCatalogItemDto) => (
+              <span
+                data-license-expense-kind={r.licenseExpenseKind ?? 'both'}
+                className={cn(
+                  'inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold',
+                  r.licenseExpenseKind === 'renewal'
+                    ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                    : r.licenseExpenseKind === 'extension'
+                      ? 'bg-violet-500/15 text-violet-700 dark:text-violet-300'
+                      : 'bg-slate-500/15 text-slate-600 dark:text-slate-300',
+                )}
+              >
+                {r.licenseExpenseKind === null || r.licenseExpenseKind === undefined
+                  ? t('fleet.catalogs.licenseExpenseKind.both')
+                  : t(`fleet.licenseExpenses.kinds.${r.licenseExpenseKind}`)}
+              </span>
+            ),
           } satisfies Column<FleetCatalogItemDto>,
         ]
       : []),

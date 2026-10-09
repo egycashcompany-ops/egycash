@@ -95,6 +95,15 @@ export const FLEET_VIOLATION_SIDES = ['company', 'driver'] as const;
 export const FleetViolationSideSchema = z.enum(FLEET_VIOLATION_SIDES);
 export type FleetViolationSide = z.infer<typeof FleetViolationSideSchema>;
 
+/**
+ * The two licensing-expenses memos: renewing licences («تجديد تراخيص») and extending their term
+ * («مد مدة»). Declared here, ahead of the catalogs, because a `licenseExpenseItem` says which of
+ * the two offers it — see `licenseExpenseKind`.
+ */
+export const FLEET_LICENSE_EXPENSE_KINDS = ['renewal', 'extension'] as const;
+export const FleetLicenseExpenseKindSchema = z.enum(FLEET_LICENSE_EXPENSE_KINDS);
+export type FleetLicenseExpenseKind = z.infer<typeof FleetLicenseExpenseKindSchema>;
+
 export interface FleetCatalogItemDto {
   id: string;
   kind: FleetCatalogKind;
@@ -103,6 +112,11 @@ export interface FleetCatalogItemDto {
   countsForAlarm: boolean;
   /** `violationType` only: which half of the violations screen offers it. Null elsewhere. */
   violationSide: FleetViolationSide | null;
+  /**
+   * `licenseExpenseItem` only: which memo counts it — «هضيف البنود واحدد تبع تجديد التراخيص ولا مد
+   * المده». `null` is both, which every item was before the question was asked; null elsewhere.
+   */
+  licenseExpenseKind: FleetLicenseExpenseKind | null;
   isActive: boolean;
   /**
    * Where the item sits in its list — «اقدر ارتبهم عن طريق الشد والترك». Every list of this kind,
@@ -149,6 +163,8 @@ export const CreateFleetCatalogItemSchema = z
     name: LocalizedStringSchema,
     countsForAlarm: z.boolean().default(false),
     violationSide: FleetViolationSideSchema.optional(),
+    /** Left out or null: both memos. Nothing here is required — «ومش عاوز اى داتا اجبارى». */
+    licenseExpenseKind: FleetLicenseExpenseKindSchema.nullable().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -176,6 +192,17 @@ export const CreateFleetCatalogItemSchema = z
         message: 'only a violationType has a side',
       });
     }
+    if (
+      value.kind !== 'licenseExpenseItem' &&
+      value.licenseExpenseKind !== undefined &&
+      value.licenseExpenseKind !== null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['licenseExpenseKind'],
+        message: 'only a licenseExpenseItem belongs to a licensing-expenses memo',
+      });
+    }
   });
 export type CreateFleetCatalogItem = z.infer<typeof CreateFleetCatalogItemSchema>;
 
@@ -184,6 +211,8 @@ export const UpdateFleetCatalogItemSchema = z
     name: LocalizedStringSchema.optional(),
     countsForAlarm: z.boolean().optional(),
     violationSide: FleetViolationSideSchema.optional(),
+    /** null puts the item back in both memos. */
+    licenseExpenseKind: FleetLicenseExpenseKindSchema.nullable().optional(),
     isActive: z.boolean().optional(),
     version: z.number().int().min(0),
   })
@@ -3670,10 +3699,6 @@ export interface FleetCustodyMovementDto {
 // extension, or both: «ممكن اعمل مد مده لوحده او تجديد ترخيص لوحده او الاتنين». Nothing in it is
 // required — «ومش عاوز اى داتا اجبارى» — beyond saying which of the two it is.
 
-export const FLEET_LICENSE_EXPENSE_KINDS = ['renewal', 'extension'] as const;
-export const FleetLicenseExpenseKindSchema = z.enum(FLEET_LICENSE_EXPENSE_KINDS);
-export type FleetLicenseExpenseKind = z.infer<typeof FleetLicenseExpenseKindSchema>;
-
 /** By the traffic department's card («فيزا»), or in cash («نقدي»). */
 export const FLEET_LICENSE_EXPENSE_PAYMENTS = ['visa', 'cash'] as const;
 export const FleetLicenseExpensePaidBySchema = z.enum(FLEET_LICENSE_EXPENSE_PAYMENTS);
@@ -3816,26 +3841,11 @@ export const FleetLicenseExpenseTemplatesSchema = z
   .strict();
 export type FleetLicenseExpenseTemplates = z.infer<typeof FleetLicenseExpenseTemplatesSchema>;
 
-/**
- * «عاوز البيان اللى فى تجديد التراخيص و مد المده انا اللى احدد يبقى فى كل واحده»: which of the
- * department's items (`licenseExpenseItem`) each memo's counters offer, renewal and extension
- * apart. `null` until somebody chooses — every item then, as it always was.
- */
-export const FleetLicenseExpenseItemChoiceSchema = z
-  .object({
-    renewal: z.array(objectId()).max(500).nullable(),
-    extension: z.array(objectId()).max(500).nullable(),
-  })
-  .strict();
-export type FleetLicenseExpenseItemChoice = z.infer<typeof FleetLicenseExpenseItemChoiceSchema>;
-
 /** «تتظبط مرة في الإعداد وتتعدل في كل مذكرة»: the names every new memo starts with. */
 export interface FleetLicenseExpenseSettingsDto {
   signatures: FleetLicenseExpenseSignatures;
   /** The four templates; each empty until somebody saves one. */
   templates: FleetLicenseExpenseTemplates;
-  /** The items each memo offers; each `null` until somebody chooses. */
-  items: FleetLicenseExpenseItemChoice;
   /** `null` before anybody saved the set-up — the defaults are then the department's own. */
   version: number | null;
 }
@@ -3845,8 +3855,6 @@ export const SaveFleetLicenseExpenseSettingsSchema = z
     signatures: FleetLicenseExpenseSignaturesSchema,
     /** Left out, the saved templates stay as they are. */
     templates: FleetLicenseExpenseTemplatesSchema.optional(),
-    /** Left out, the saved choice of items stays as it is. */
-    items: FleetLicenseExpenseItemChoiceSchema.optional(),
     version: z.number().int().min(0).optional(),
   })
   .strict();

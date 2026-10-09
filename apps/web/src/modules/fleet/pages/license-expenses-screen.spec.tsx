@@ -21,7 +21,8 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { LicenseExpensesPage } from './LicenseExpensesPage';
 import { LicenseExpenseEditorPage } from './LicenseExpenseEditorPage';
-import { LicenseExpenseItemChoiceDialog } from '../components/LicenseExpenseItemChoiceDialog';
+import { CatalogsPage } from './CatalogsPage';
+import { CatalogItemDialog } from '../components/CatalogDialogs';
 import { carsPhrase, memoHtml, memosOf, memoTitle, sumOf } from '../lib/license-expense-memo';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -119,26 +120,28 @@ const renderList = (permissions = ALL, rows = [memo()]): string => {
   );
 };
 
-const catalogItem = (id: string, name: string): FleetCatalogItemDto =>
+const catalogItem = (
+  id: string,
+  name: string,
+  licenseExpenseKind: 'renewal' | 'extension' | null = null,
+): FleetCatalogItemDto =>
   ({
     id,
     kind: 'licenseExpenseItem',
     name: { ar: name, en: name },
+    licenseExpenseKind,
     isActive: true,
   }) as unknown as FleetCatalogItemDto;
 
 const renderEditor = (
-  options: {
-    items?: { renewal: string[] | null; extension: string[] | null };
-    permissions?: string[];
-  } = {},
+  items: FleetCatalogItemDto[] = [catalogItem('i-1', 'براءة ذمة'), catalogItem('i-2', 'ضرائب')],
 ): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   qc.setQueryData(listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }), {
-    items: [catalogItem('i-1', 'براءة ذمة'), catalogItem('i-2', 'ضرائب')],
-    meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
+    items,
+    meta: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1 },
   });
   qc.setQueryData(listKey('fleet', 'vehicles', { whole: true, anyStatus: true }), {
     items: [],
@@ -147,11 +150,10 @@ const renderEditor = (
   qc.setQueryData(['fleet', 'licenseExpenses', 'settings'], {
     signatures: SIGNATURES,
     templates: { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } },
-    ...(options.items === undefined ? {} : { items: options.items }),
     version: 0,
   });
   return renderToStaticMarkup(
-    <Provider store={store(options.permissions ?? ALL)}>
+    <Provider store={store(ALL)}>
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={['/fleet/license-expenses/new']}>
           <Routes>
@@ -276,73 +278,86 @@ describe('a new licensing-expenses memo', () => {
   });
 });
 
-describe("each memo's items, as the owner chooses them", () => {
-  it('offers every item while nobody has chosen, as before', () => {
-    const html = renderEditor({ items: { renewal: null, extension: null } });
+describe("each memo's items, as «قوائم الحركة» sets them", () => {
+  // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده».
+  const ITEMS = [
+    catalogItem('i-1', 'براءة ذمة', 'renewal'),
+    catalogItem('i-2', 'استعلام أمني', 'extension'),
+    catalogItem('i-3', 'ضرائب'),
+  ];
+
+  it("counts the renewal's items and those in both, in the card's group and the cash group", () => {
+    const html = renderEditor(ITEMS);
+    for (const paid of ['visa', 'cash']) {
+      expect(html).toContain(`data-license-expense-count="renewal:${paid}:i-1"`);
+      expect(html).toContain(`data-license-expense-count="renewal:${paid}:i-3"`);
+      expect(html, 'an extension item').not.toContain(
+        `data-license-expense-count="renewal:${paid}:i-2"`,
+      );
+    }
+  });
+
+  it('offers every item while none says which memo it belongs to, as before', () => {
+    const html = renderEditor();
     expect(html).toContain('data-license-expense-count="renewal:visa:i-1"');
     expect(html).toContain('data-license-expense-count="renewal:visa:i-2"');
-    expect(html).toContain(ar('fleet.licenseExpenses.itemChoice.button', { n: 2, total: 2 }));
-  });
-
-  it("offers only the memo's chosen items as counters, in the card's group and the cash group", () => {
-    // «انا اللى احدد يبقى فى كل واحده».
-    const html = renderEditor({ items: { renewal: ['i-2'], extension: null } });
-    expect(html).toContain('data-license-expense-count="renewal:visa:i-2"');
-    expect(html).toContain('data-license-expense-count="renewal:cash:i-2"');
-    expect(html).not.toContain('data-license-expense-count="renewal:visa:i-1"');
-    expect(html).not.toContain('data-license-expense-count="renewal:cash:i-1"');
-    expect(html).toContain('data-license-expense-choose-items="renewal"');
-    expect(html).toContain(ar('fleet.licenseExpenses.itemChoice.button', { n: 1, total: 2 }));
-  });
-
-  it('keeps the choosing to a writer who may keep the set-up', () => {
-    const html = renderEditor({
-      items: { renewal: ['i-2'], extension: null },
-      permissions: ['fleetLicenseExpense.view', 'fleetLicenseExpense.create'],
-    });
-    expect(html).not.toContain('data-license-expense-choose-items=');
-    // The choice still applies to them.
-    expect(html).not.toContain('data-license-expense-count="renewal:visa:i-1"');
   });
 });
 
-describe("the list the owner ticks a memo's items in", () => {
+describe('«قوائم الحركة» says which memo each item belongs to', () => {
   const ITEMS = [
-    { id: 'i-1', name: 'براءة ذمة' },
-    { id: 'i-2', name: 'ضرائب' },
-    { id: 'i-3', name: 'دمغة' },
+    catalogItem('i-1', 'براءة ذمة', 'renewal'),
+    catalogItem('i-2', 'استعلام أمني', 'extension'),
+    catalogItem('i-3', 'ضرائب'),
   ];
-  const dialog = (chosen: ReadonlySet<string> | null, items = ITEMS): string =>
-    renderToStaticMarkup(
-      <Provider store={store(ALL)}>
-        <LicenseExpenseItemChoiceDialog
-          open
-          onClose={() => undefined}
-          kind="extension"
-          items={items}
-          chosen={chosen}
-          saving={false}
-          onSave={() => undefined}
-        />
+  const mount = (node: JSX.Element, route = '/fleet/catalogs'): string => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+    });
+    qc.setQueryData(listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }), {
+      items: ITEMS,
+      meta: { page: 1, pageSize: 100, totalItems: ITEMS.length, totalPages: 1 },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store([...ALL, 'fleetCatalog.manage'])}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={[route]}>{node}</MemoryRouter>
+        </QueryClientProvider>
       </Provider>,
     );
+  };
 
-  it("lists every item, the memo's own pressed", () => {
-    const html = dialog(new Set(['i-2']));
-    expect(html).toContain(ar('fleet.licenseExpenses.itemChoice.title.extension'));
-    expect(html).toMatch(
-      /aria-pressed="false"[^>]*data-license-expense-item-choice="extension:i-1"/u,
-    );
-    expect(html).toMatch(
-      /aria-pressed="true"[^>]*data-license-expense-item-choice="extension:i-2"/u,
-    );
-    expect(html).toMatch(
-      /aria-pressed="false"[^>]*data-license-expense-item-choice="extension:i-3"/u,
-    );
+  it('shows the memo on the items tab — the renewal, the extension, or both', () => {
+    const html = mount(<CatalogsPage />, '/fleet/catalogs?kind=licenseExpenseItem');
+    expect(html).toContain(ar('fleet.catalogs.fields.licenseExpenseKind'));
+    expect(html).toMatch(/data-license-expense-kind="renewal"[^>]*>تجديد تراخيص</u);
+    expect(html).toMatch(/data-license-expense-kind="extension"[^>]*>مد مدة</u);
+    expect(html).toMatch(/data-license-expense-kind="both"[^>]*>كليهما</u);
   });
 
-  it('cannot be saved before the list has loaded — an empty list would erase the choice', () => {
-    const html = dialog(new Set(['i-2']), []);
-    expect(html).toMatch(/disabled=""[^>]*data-license-expense-item-choice-save="extension"/u);
+  it('asks it in the item form, the saved one pressed and both for a new item', () => {
+    const edit = mount(
+      <CatalogItemDialog
+        open
+        onClose={() => undefined}
+        kind="licenseExpenseItem"
+        item={ITEMS[1]!}
+      />,
+    );
+    expect(edit).toMatch(/aria-pressed="true"[^>]*data-license-expense-kind-option="extension"/u);
+    expect(edit).toMatch(/aria-pressed="false"[^>]*data-license-expense-kind-option="renewal"/u);
+    expect(edit).toMatch(/aria-pressed="false"[^>]*data-license-expense-kind-option="both"/u);
+    const fresh = mount(
+      <CatalogItemDialog open onClose={() => undefined} kind="licenseExpenseItem" item={null} />,
+    );
+    // Nothing is required: a new item is in both until somebody says otherwise.
+    expect(fresh).toMatch(/aria-pressed="true"[^>]*data-license-expense-kind-option="both"/u);
+  });
+
+  it('asks it of no other list', () => {
+    const html = mount(
+      <CatalogItemDialog open onClose={() => undefined} kind="workshop" item={null} />,
+    );
+    expect(html).not.toContain('data-license-expense-kind-option');
   });
 });

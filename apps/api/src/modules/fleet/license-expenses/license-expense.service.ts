@@ -4,7 +4,6 @@ import { Types, type FilterQuery } from 'mongoose';
 import {
   type CreateFleetLicenseExpense,
   type FleetLicenseExpenseDto,
-  type FleetLicenseExpenseItemChoice,
   type FleetLicenseExpensePart,
   type FleetLicenseExpensePartDto,
   type FleetLicenseExpenseSettingsDto,
@@ -47,15 +46,6 @@ const templatesOf = (
   renewal: { visa: value?.renewal?.visa ?? [], cash: value?.renewal?.cash ?? [] },
   extension: { visa: value?.extension?.visa ?? [], cash: value?.extension?.cash ?? [] },
 });
-
-/** The items each memo offers: a side nobody chose is `null` — every item, as before. */
-const itemsOf = (
-  value: FleetLicenseExpenseItemChoice | null | undefined,
-): FleetLicenseExpenseItemChoice => {
-  const side = (ids: unknown): string[] | null =>
-    Array.isArray(ids) ? ids.map((id) => String(id)) : null;
-  return { renewal: side(value?.renewal), extension: side(value?.extension) };
-};
 
 /** The day after — a «to» date counts its whole day. */
 const dayAfter = (day: Date): Date => new Date(day.getTime() + 24 * 60 * 60 * 1000);
@@ -272,13 +262,11 @@ class FleetLicenseExpenseService {
       ? {
           signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
           templates: EMPTY_TEMPLATES,
-          items: itemsOf(null),
           version: null,
         }
       : {
           signatures: signaturesOf(doc.signatures),
           templates: templatesOf(doc.templates),
-          items: itemsOf(doc.items),
           version: doc.__v,
         };
   }
@@ -290,17 +278,15 @@ class FleetLicenseExpenseService {
     const before = await fleetLicenseExpenseSettingsRepository.findOne({ key: SETTINGS_KEY });
     // Templates left out of the request stay as they were.
     const templates = input.templates ?? templatesOf(before?.templates);
-    // …and so does the choice of items.
-    const items = input.items ?? itemsOf(before?.items);
     const saved =
       before === null
         ? await fleetLicenseExpenseSettingsRepository.create(
-            { key: SETTINGS_KEY, signatures: input.signatures, templates, items },
+            { key: SETTINGS_KEY, signatures: input.signatures, templates },
             { by },
           )
         : await fleetLicenseExpenseSettingsRepository.updateById(
             String(before._id),
-            { signatures: input.signatures, templates, items },
+            { signatures: input.signatures, templates },
             { by, version: input.version ?? before.__v },
           );
     await auditService.record({
@@ -316,19 +302,13 @@ class FleetLicenseExpenseService {
           : {
               signatures: signaturesOf(before.signatures),
               templates: templatesOf(before.templates),
-              items: itemsOf(before.items),
             },
-        {
-          signatures: signaturesOf(saved.signatures),
-          templates: templatesOf(saved.templates),
-          items: itemsOf(saved.items),
-        },
+        { signatures: signaturesOf(saved.signatures), templates: templatesOf(saved.templates) },
       ),
     });
     return {
       signatures: signaturesOf(saved.signatures),
       templates: templatesOf(saved.templates),
-      items: itemsOf(saved.items),
       version: saved.__v,
     };
   }

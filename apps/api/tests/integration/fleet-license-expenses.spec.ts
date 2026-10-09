@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Types } from 'mongoose';
 import {
+  CreateFleetCatalogItemSchema,
   CreateFleetLicenseExpenseSchema,
   ListFleetLicenseExpensesQuerySchema,
 } from '@ecms/contracts';
@@ -17,6 +18,8 @@ import {
   fleetLicenseExpenseService,
 } from '../../src/modules/fleet/license-expenses/license-expense.service';
 import { FleetCatalogItemModel } from '../../src/modules/fleet/catalogs/catalog-item.model';
+import { fleetCatalogItemService } from '../../src/modules/fleet/catalogs/catalog-item.service';
+import { toCatalogItemDto } from '../../src/modules/fleet/fleet.mappers';
 
 let replset: MongoMemoryReplSet | undefined;
 
@@ -176,21 +179,13 @@ describe('a licensing-expenses memo', () => {
 
   it('starts the set-up from the department names, then keeps what is saved', async () => {
     const empty = { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } };
-    // Nobody has chosen either memo's items yet: every item, as before.
-    const unchosen = { renewal: null, extension: null };
     expect(await fleetLicenseExpenseService.getSettings()).toEqual({
       signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
       templates: empty,
-      items: unchosen,
       version: null,
     });
     const saved = await fleetLicenseExpenseService.saveSettings({ signatures: SIGNATURES }, ACTOR);
-    expect(saved).toEqual({
-      signatures: SIGNATURES,
-      templates: empty,
-      items: unchosen,
-      version: 0,
-    });
+    expect(saved).toEqual({ signatures: SIGNATURES, templates: empty, version: 0 });
     const again = await fleetLicenseExpenseService.saveSettings(
       { signatures: { ...SIGNATURES, agent: 'هـ' }, version: 0 },
       ACTOR,
@@ -217,53 +212,6 @@ describe('a licensing-expenses memo', () => {
     expect(signaturesOnly.templates, 'untouched by a save without them').toEqual(templates);
   });
 
-  it("keeps each memo's choice of items, and leaves it alone when a save does not name it", async () => {
-    const before = await fleetLicenseExpenseService.getSettings();
-    const [a, b, c] = [
-      '6600000000000000000000a1',
-      '6600000000000000000000a2',
-      '6600000000000000000000a3',
-    ];
-    // «انا اللى احدد يبقى فى كل واحده»: the renewal and the extension each their own; a side left
-    // null still means every item.
-    const items = { renewal: [a, b], extension: null };
-    const saved = await fleetLicenseExpenseService.saveSettings(
-      { signatures: SIGNATURES, items, version: before.version ?? 0 },
-      ACTOR,
-    );
-    expect(saved.items).toEqual(items);
-    const both = await fleetLicenseExpenseService.saveSettings(
-      {
-        signatures: SIGNATURES,
-        items: { renewal: [a, b], extension: [c] },
-        version: saved.version ?? 0,
-      },
-      ACTOR,
-    );
-    expect(both.items).toEqual({ renewal: [a, b], extension: [c] });
-    // A template or the signatures saved afterwards do not undo it.
-    const templatesOnly = await fleetLicenseExpenseService.saveSettings(
-      {
-        signatures: SIGNATURES,
-        templates: { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } },
-        version: both.version ?? 0,
-      },
-      ACTOR,
-    );
-    expect(templatesOnly.items, 'untouched by a save without them').toEqual(both.items);
-    expect((await fleetLicenseExpenseService.getSettings()).items).toEqual(both.items);
-    // Nothing chosen is a choice too: an empty memo list is kept as empty, not read as «every».
-    const none = await fleetLicenseExpenseService.saveSettings(
-      {
-        signatures: SIGNATURES,
-        items: { renewal: [], extension: [c] },
-        version: templatesOnly.version ?? 0,
-      },
-      ACTOR,
-    );
-    expect(none.items).toEqual({ renewal: [], extension: [c] });
-  });
-
   it('seeds the memo items the department lists', async () => {
     const items = await FleetCatalogItemModel.find({ kind: 'licenseExpenseItem', isDeleted: false })
       .lean()
@@ -272,5 +220,73 @@ describe('a licensing-expenses memo', () => {
       expect.arrayContaining(['براءة ذمة', 'تأمين إجباري', 'ضرائب', 'أمان', 'استمارة بيانات']),
     );
     expect(items).toHaveLength(13);
+  });
+
+  it('keeps which memo an item belongs to, both by default, and only on a memo item', async () => {
+    // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده».
+    const seeded = await FleetCatalogItemModel.findOne({
+      kind: 'licenseExpenseItem',
+      isDeleted: false,
+    })
+      .lean()
+      .exec();
+    expect(seeded, 'a seeded item').not.toBeNull();
+    // An item from before the question reads as both memos — as it always was offered.
+    expect(toCatalogItemDto(seeded!).licenseExpenseKind).toBeNull();
+
+    const renewalOnly = await fleetCatalogItemService.create(
+      CreateFleetCatalogItemSchema.parse({
+        kind: 'licenseExpenseItem',
+        name: { ar: 'رسوم تجديد', en: 'Renewal fee' },
+        licenseExpenseKind: 'renewal',
+      }),
+      ACTOR,
+    );
+    expect(toCatalogItemDto(renewalOnly).licenseExpenseKind).toBe('renewal');
+    // Nothing is required: left out, the item is in both.
+    const unsaid = await fleetCatalogItemService.create(
+      CreateFleetCatalogItemSchema.parse({
+        kind: 'licenseExpenseItem',
+        name: { ar: 'رسوم أخرى', en: 'Other fee' },
+      }),
+      ACTOR,
+    );
+    expect(toCatalogItemDto(unsaid).licenseExpenseKind).toBeNull();
+
+    const moved = await fleetCatalogItemService.update(
+      String(renewalOnly._id),
+      { licenseExpenseKind: 'extension', version: renewalOnly.__v },
+      ACTOR,
+    );
+    expect(toCatalogItemDto(moved).licenseExpenseKind).toBe('extension');
+    const both = await fleetCatalogItemService.update(
+      String(moved._id),
+      { licenseExpenseKind: null, version: moved.__v },
+      ACTOR,
+    );
+    expect(toCatalogItemDto(both).licenseExpenseKind, 'null puts it back in both').toBeNull();
+
+    // A memo means nothing on any other list.
+    expect(
+      CreateFleetCatalogItemSchema.safeParse({
+        kind: 'workshop',
+        name: { ar: 'ورشة', en: 'Workshop' },
+        licenseExpenseKind: 'renewal',
+      }).success,
+    ).toBe(false);
+    const workshop = await fleetCatalogItemService.create(
+      CreateFleetCatalogItemSchema.parse({
+        kind: 'workshop',
+        name: { ar: 'ورشة ت', en: 'Workshop T' },
+      }),
+      ACTOR,
+    );
+    await expect(
+      fleetCatalogItemService.update(
+        String(workshop._id),
+        { licenseExpenseKind: 'renewal', version: workshop.__v },
+        ACTOR,
+      ),
+    ).rejects.toThrow(/licenseExpenseItem/u);
   });
 });

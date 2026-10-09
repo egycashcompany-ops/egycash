@@ -593,9 +593,24 @@ describe('the filter bar', () => {
     // not a third stored status.
     const bar = filterBar(render());
     expect(bar).toContain(t('fleet.maintenance.stateFilter'));
-    expect(bar).toContain(t('fleet.maintenance.stillIn'));
-    expect(bar).toContain(t('fleet.maintenance.leftWorkshop'));
+    expect(
+      bar.split(`aria-label="${t('fleet.maintenance.stateFilter')}"`).length - 1,
+      'one control asks it',
+    ).toBe(1);
     expect(t('fleet.maintenance.stateFilter')).toBe('حالة الصيانة');
+    // The board's list keeps its options closed until pressed, so each half is read where the
+    // control SAYS it: the chosen state, in the words the screen uses for it.
+    const stillIn = filterBar(
+      render({ route: '/fleet/maintenance?state=open', qc: client([visit()], { open: true }) }),
+    );
+    expect(stillIn).toContain(t('fleet.maintenance.stillIn'));
+    const left = filterBar(
+      render({ route: '/fleet/maintenance?state=closed', qc: client([visit()], { open: false }) }),
+    );
+    expect(left).toContain(t('fleet.maintenance.leftWorkshop'));
+    // ONE answer at a time — ticking the other replaces it — so both halves at once never travel.
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).toContain("patch({ state: pickOne(state === '' ? [] : [state], next) })");
   });
 
   it('never offers the derived ALARM level as a maintenance status', () => {
@@ -708,9 +723,10 @@ describe('the check-in dialog', () => {
     expect(code.slice(at, code.indexOf(';', at)), 'the gate says nothing about it').not.toContain(
       'driverIn',
     );
+    // The form wears the vehicle form's design now, so the field is a `DesignField`.
     const field = code.slice(
       code.indexOf("t('fleet.maintenance.fields.driverIn')"),
-      code.indexOf('</Field>', code.indexOf("t('fleet.maintenance.fields.driverIn')")),
+      code.indexOf('</DesignField>', code.indexOf("t('fleet.maintenance.fields.driverIn')")),
     );
     expect(field, 'no required star on the entry driver').not.toContain('required');
     // An empty box travels as null, because an empty string is not an id.
@@ -807,13 +823,19 @@ describe('the check-out dialog', () => {
       </Provider>,
     );
   /**
-   * The Save button's own attributes — the footer's last button. The class list is dropped first:
-   * Tailwind's `disabled:` variants live in it and would match the attribute being looked for.
+   * The Save button's own opening tag — found by its hook: the design's footer puts Save FIRST
+   * and «إلغاء» after it, so it is no longer the dialog's last button.
    */
-  const saveButtonAttributes = (markup: string): string => {
-    const at = markup.lastIndexOf('<button');
-    return markup.slice(at, markup.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
+  const saveButtonTag = (markup: string): string => {
+    const at = markup.lastIndexOf('<button', markup.indexOf('data-maintenance-save="checkOut"'));
+    return markup.slice(at, markup.indexOf('>', at) + 1);
   };
+  /**
+   * The Save button's own attributes. The class list is dropped first: Tailwind's `disabled:`
+   * variants live in it and would match the attribute being looked for.
+   */
+  const saveButtonAttributes = (markup: string): string =>
+    saveButtonTag(markup).replace(/class="[^"]*"/, '');
   /** The check-out dialog's own code, comments left out. */
   const checkOutSource = (): string => {
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
@@ -888,9 +910,9 @@ describe('the check-out dialog', () => {
     // is what is still missing — and that is the point: the one field this door cannot infer is
     // the one that still gates it.
     const markup = open();
-    expect(markup.slice(markup.lastIndexOf('<button')), 'the last button is Save').toContain(
-      t('common.save'),
-    );
+    expect(markup, 'the dialog has its Save').toContain('data-maintenance-save="checkOut"');
+    const save = markup.slice(markup.indexOf(saveButtonTag(markup)));
+    expect(save.slice(0, save.indexOf('</button>')), 'and it says so').toContain(t('common.save'));
     expect(saveButtonAttributes(markup), 'Save is pressable').not.toContain('disabled');
     expect(markup, 'and nothing is red before the first press').not.toContain(
       'data-missing-fields',

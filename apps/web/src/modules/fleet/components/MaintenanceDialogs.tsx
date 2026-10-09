@@ -2,16 +2,20 @@
 // pre-trims cars already in the workshop, the server remains the authority), check-out (records
 // the custody and the exit date), and the facts edit. All version-aware; the counter hint is
 // the server's expected reading, never a client computation.
-import { useEffect, useMemo, useState } from 'react';
+//
+// «حسن الui … بالفورم بتاعت التسجيل والتعديل»: all three wear the vehicle form's design — its
+// panel, header, sections, boxes and footer (`DesignDialog`) — around the same fields, rules and
+// required marks as before. Like the vehicle form, none of them closes on a stray click outside
+// it: only the ✕, «إلغاء» and Escape do.
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { type FleetMaintenanceVisitDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { Input, Textarea } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { cn } from '../../../shared/lib/cn';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import {
@@ -31,6 +35,100 @@ import {
 } from '../lib/workshop-odometer-warning';
 import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
 import { CatalogSelect } from './CatalogSelect';
+import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
+import { DATE_ICON, DesignField, LOOK, MONO, boxTone, carBoxClass } from './FuelCardDialog';
+import { PATH } from './FuelCardBoard';
+
+/** The vehicle form's boxes — text, figures, dates — from the design's `add` look. */
+const box = boxTone(LOOK.add);
+const numberBox = cn(box, MONO);
+// A date's text starts at the box's left, where a refused box draws its «!».
+const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+
+/** The rose frame and glow of a required box Save found empty, laid over a control from outside. */
+const MISSING_GLOW =
+  'shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] dark:!bg-[#0a1233]';
+
+/**
+ * A `<select>` takes no tone of its own — the same box, forced over the control's base, as the
+ * vehicle form draws its catalogs; red with the design's glow while a required one is empty.
+ */
+const selectBox = (missing = false): string =>
+  cn(
+    '!h-auto !rounded-xl !py-3 !ps-4 !text-[15px] !font-medium !text-slate-900 dark:!text-white focus:!border-indigo-500 focus:!ring-1 focus:!ring-indigo-500',
+    missing
+      ? cn('!border-rose-500/70 !bg-slate-50', MISSING_GLOW)
+      : '!border-slate-200 !bg-slate-50 dark:!border-[#2b3b6b] dark:!bg-[#0a1233]',
+  );
+
+/**
+ * The same box for a LIST — the spare parts and the driver pickers, whose trigger is a button —
+ * and for the chosen driver's row with its ✕. The open list sits on the design's panel colour, and
+ * what is picked in it is the site's purple.
+ */
+const listBox = (missing = false): string =>
+  cn(
+    '[&_button[aria-haspopup]]:!w-full [&_button[aria-haspopup]]:!justify-between [&_button[aria-haspopup]]:!rounded-xl [&_button[aria-haspopup]]:!py-3 [&_button[aria-haspopup]]:!ps-4 [&_button[aria-haspopup]]:!text-[15px] [&_button[aria-haspopup]]:!font-medium [&_button[aria-haspopup]]:shadow-inner',
+    '[&_button[aria-haspopup]]:!text-slate-900 dark:[&_button[aria-haspopup]]:!text-white [&_button[aria-haspopup]:focus]:!border-indigo-500',
+    missing
+      ? '[&_button[aria-haspopup]]:!border-rose-500/70 [&_button[aria-haspopup]]:!bg-slate-50 dark:[&_button[aria-haspopup]]:!bg-[#0a1233] [&_button[aria-haspopup]]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]'
+      : '[&_button[aria-haspopup]]:!border-slate-200 dark:[&_button[aria-haspopup]]:!border-[#2b3b6b] [&_button[aria-haspopup]]:!bg-slate-50 dark:[&_button[aria-haspopup]]:!bg-[#0a1233]',
+    '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-slate-200 dark:[&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-white dark:[&_[role=listbox]]:!bg-[#131d35] [&_[role=listbox]]:!shadow-2xl',
+    '[&_[role=option]:hover]:!bg-brand-500/15 [&_[role=option][aria-selected=true]]:!font-bold [&_[role=option][aria-selected=true]]:!text-brand-700 dark:[&_[role=option][aria-selected=true]]:!text-brand-200',
+    // A driver already named: the row that shows them, in the same box.
+    '[&>.justify-between]:!rounded-xl [&>.justify-between]:!border-slate-200 dark:[&>.justify-between]:!border-[#2b3b6b] [&>.justify-between]:!bg-slate-50 dark:[&>.justify-between]:!bg-[#0a1233] [&>.justify-between]:!py-3 [&>.justify-between]:!ps-4 [&>.justify-between]:shadow-inner [&>.justify-between_.text-sm]:!text-[15px] [&>.justify-between_.text-sm]:!font-medium',
+  );
+
+/**
+ * The design's car box (`carBoxClass`). It draws its own frame, so a required car Save found empty
+ * is turned red here, over that frame, as every other box of the form is.
+ */
+const carBox = (missing: boolean): string =>
+  cn(
+    carBoxClass(false),
+    missing &&
+      '[&&_input]:!border-rose-500/70 dark:[&&_input]:!border-rose-500/70 [&&_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
+  );
+
+/** The notes box — `Textarea` takes no tone, so the design's colours are forced over its own. */
+const notesBox =
+  '!rounded-xl !border-slate-200 !bg-slate-50 !px-4 !py-3 !text-[15px] !font-medium !text-slate-900 shadow-inner focus:!border-indigo-500 focus:!ring-1 focus:!ring-indigo-500 dark:!border-[#2b3b6b] dark:!bg-[#0a1233] dark:!text-white';
+
+/** Two boxes to a row on a computer, one on a phone — the vehicle form's grid. */
+const GRID = 'grid grid-cols-1 items-start gap-5 md:grid-cols-2';
+
+/**
+ * «فورم ادخال الورشه كبرها بالطول» — the check-in and the edit open TALL, so the parts list opens
+ * inside them with room to show rather than against the panel's bottom edge.
+ */
+const TALL = 'min-h-[55vh] space-y-7';
+
+/**
+ * A design field that can also ADVISE — `Field`'s amber `warning`, which `DesignField` does not
+ * draw: the value is probably not what was meant, and the save goes through anyway. Advice gives
+ * way to anything the field itself has to say — a refused keystroke, an error, «حقل مطلوب» —
+ * exactly as it did under `Field`, and it takes the place of the grey hint.
+ */
+const AdvisedField = ({
+  warning,
+  hint,
+  children,
+  ...field
+}: ComponentProps<typeof DesignField> & { warning?: string | undefined }): JSX.Element => (
+  <div className="space-y-2 [&:has([role=alert])>[data-field-warning]]:hidden">
+    <DesignField {...field} {...(warning === undefined && hint !== undefined ? { hint } : {})}>
+      {children}
+    </DesignField>
+    {warning !== undefined && (
+      <p
+        data-field-warning="true"
+        className="text-[13px] font-semibold text-amber-600 dark:text-amber-400"
+      >
+        {warning}
+      </p>
+    )}
+  </div>
+);
 
 /**
  * «نوع العمل ده مش بيصفّر عداد الصيانة» — the warning, or `undefined` when there is nothing to say.
@@ -141,6 +239,9 @@ const SparePartsField = ({
     <MultiSelect
       clearable
       showSelectedValues
+      // The design's box is the whole width of its row, so the trigger is too.
+      fullWidth
+      className="w-full"
       // The `<Field>` above already names this; the trigger says what to DO with it instead of
       // repeating the label. `label` remains the accessible name.
       label={t('fleet.maintenance.fields.spareParts')}
@@ -308,112 +409,145 @@ export const CheckInDialog = ({
   };
 
   return (
-    <Dialog
+    <DesignDialog
       // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
-      // لما ادوس على الاكس». Escape still closes it.
-      dismissOnOutsideClick={false}
-      // «فورم ادخال الورشه كبرها بالطول» — the parts list opens inside it with room to show.
-      tall
+      // لما ادوس على الاكس». The design's backdrop takes no click; the ✕, «إلغاء» and Escape close.
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.checkIn')}
-      description={t('fleet.maintenance.checkInHint')}
+      subtitle={t('fleet.maintenance.checkInHint')}
+      icon={PATH.truck}
+      panelProps={{ 'data-maintenance-form': 'checkIn' }}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button loading={checkIn.isPending} onClick={required.guard(submit)}>
-            {t('common.save')}
-          </Button>
+          <DesignSave
+            data-maintenance-save="checkIn"
+            busy={checkIn.isPending}
+            onClick={required.guard(submit)}
+          />
+          <DesignCancel onClick={onClose} />
         </>
       }
     >
-      <div className="space-y-4">
+      {/* «فورم ادخال الورشه كبرها بالطول» — the parts list opens inside it with room to show. */}
+      <div className={TALL}>
         <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
-        <Field
-          label={t('fleet.odometer.fields.vehicle')}
-          required
-          missing={required.isMissing('vehicle')}
-        >
-          <VehicleCodeCombobox
-            value={vehicleId}
-            onChange={(id) => {
-              setVehicleId(id);
-              setPickedCode('');
-            }}
-            excludeInWorkshop
-            // A carried-in code is named from the first paint, while it is being resolved.
-            pendingCode={pickedCode}
-            placeholder={t('fleet.odometer.vehiclePlaceholder')}
-            emptyText={t('fleet.odometer.vehicleNotFound')}
-          />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label={t('fleet.maintenance.fields.inDate')}
+        <DesignSection title={t('fleet.maintenance.form.sections.visit')} icon={PATH.truck}>
+          <DesignField
+            label={t('fleet.odometer.fields.vehicle')}
             required
-            missing={required.isMissing('inDate')}
+            missing={required.isMissing('vehicle')}
           >
-            <Input type="date" value={inDate} onChange={(e) => setInDate(e.target.value)} />
-          </Field>
-          <Field
-            label={t('fleet.maintenance.fields.odometerAtService')}
-            missing={required.isMissing('odometer')}
-            hint={
-              expected.data?.expectedReading == null
-                ? t('fleet.maintenance.odometerOptional')
-                : t('fleet.odometer.expectedHint', {
-                    km: formatNumber(expected.data.expectedReading, locale),
-                  })
-            }
-            {...(belowLast && lastReading !== null
-              ? {
-                  error: t('fleet.maintenance.odometerBelowLast', {
-                    km: formatNumber(lastReading, locale),
-                    date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
-                  }),
-                }
-              : {})}
-            warning={belowLast ? undefined : counterWarningText}
-          >
-            <Input
-              rule="integer"
-              value={odometer}
-              onChange={(e) => setOdometer(e.target.value)}
-              dir="ltr"
+            <div className={carBox(required.isMissing('vehicle'))}>
+              <VehicleCodeCombobox
+                value={vehicleId}
+                onChange={(id) => {
+                  setVehicleId(id);
+                  setPickedCode('');
+                }}
+                excludeInWorkshop
+                // A carried-in code is named from the first paint, while it is being resolved.
+                pendingCode={pickedCode}
+                placeholder={t('fleet.odometer.vehiclePlaceholder')}
+                emptyText={t('fleet.odometer.vehicleNotFound')}
+              />
+            </div>
+          </DesignField>
+          <div className={GRID}>
+            <DesignField
+              label={t('fleet.maintenance.fields.inDate')}
+              required
+              missing={required.isMissing('inDate')}
+            >
+              <Input
+                type="date"
+                value={inDate}
+                onChange={(e) => setInDate(e.target.value)}
+                tone={dateBox}
+              />
+            </DesignField>
+            <AdvisedField
+              label={t('fleet.maintenance.fields.odometerAtService')}
+              missing={required.isMissing('odometer')}
+              hint={
+                expected.data?.expectedReading == null
+                  ? t('fleet.maintenance.odometerOptional')
+                  : t('fleet.odometer.expectedHint', {
+                      km: formatNumber(expected.data.expectedReading, locale),
+                    })
+              }
+              {...(belowLast && lastReading !== null
+                ? {
+                    error: t('fleet.maintenance.odometerBelowLast', {
+                      km: formatNumber(lastReading, locale),
+                      date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                    }),
+                  }
+                : {})}
+              warning={belowLast ? undefined : counterWarningText}
+            >
+              <Input
+                rule="integer"
+                value={odometer}
+                onChange={(e) => setOdometer(e.target.value)}
+                dir="ltr"
+                tone={numberBox}
+              />
+            </AdvisedField>
+            <DesignField
+              label={t('fleet.maintenance.fields.workshop')}
+              required
+              missing={required.isMissing('workshop')}
+            >
+              <CatalogSelect
+                kind="workshop"
+                value={workshopId}
+                onChange={setWorkshopId}
+                ariaLabel={t('fleet.maintenance.fields.workshop')}
+                className={selectBox(required.isMissing('workshop'))}
+              />
+            </DesignField>
+            <AdvisedField
+              label={t('fleet.maintenance.fields.workType')}
+              required
+              missing={required.isMissing('workType')}
+              {...(notCounting === undefined ? {} : { warning: notCounting })}
+            >
+              <CatalogSelect
+                kind="workType"
+                value={workTypeId}
+                onChange={setWorkTypeId}
+                ariaLabel={t('fleet.maintenance.fields.workType')}
+                className={selectBox(required.isMissing('workType'))}
+              />
+            </AdvisedField>
+          </div>
+        </DesignSection>
+        <DesignSection title={t('fleet.maintenance.form.sections.details')} icon={PATH.box}>
+          {/* The DRIVER who brought the car in — the same directory picker the odometer's driver
+              slots use. Not the custody employee: that one is the logged-in user, recorded by the
+              server, and never asked for here. */}
+          <DesignField label={t('fleet.maintenance.fields.driverIn')}>
+            <div className={listBox()}>
+              <OptionalDriverField value={driverIn} onChange={setDriverIn} />
+            </div>
+          </DesignField>
+          <DesignField label={t('fleet.maintenance.fields.spareParts')}>
+            <div className={listBox()}>
+              <SparePartsField value={partIds} onChange={setPartIds} />
+            </div>
+          </DesignField>
+          <DesignField label={t('fleet.attendance.fields.notes')}>
+            <Textarea
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className={notesBox}
             />
-          </Field>
-          <Field
-            label={t('fleet.maintenance.fields.workshop')}
-            required
-            missing={required.isMissing('workshop')}
-          >
-            <CatalogSelect kind="workshop" value={workshopId} onChange={setWorkshopId} />
-          </Field>
-          <Field
-            label={t('fleet.maintenance.fields.workType')}
-            required
-            missing={required.isMissing('workType')}
-            {...(notCounting === undefined ? {} : { warning: notCounting })}
-          >
-            <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />
-          </Field>
-        </div>
-        {/* The DRIVER who brought the car in — the same directory picker the odometer's driver
-            slots use. Not the custody employee: that one is the logged-in user, recorded by the
-            server, and never asked for here. */}
-        <Field label={t('fleet.maintenance.fields.driverIn')}>
-          <OptionalDriverField value={driverIn} onChange={setDriverIn} />
-        </Field>
-        <Field label={t('fleet.maintenance.fields.spareParts')}>
-          <SparePartsField value={partIds} onChange={setPartIds} />
-        </Field>
-        <Field label={t('fleet.attendance.fields.notes')}>
-          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </Field>
+          </DesignField>
+        </DesignSection>
       </div>
-    </Dialog>
+    </DesignDialog>
   );
 };
 
@@ -515,90 +649,95 @@ export const CheckOutDialog = ({
   };
 
   return (
-    <Dialog
+    <DesignDialog
       // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
-      // لما ادوس على الاكس». Escape still closes it.
-      dismissOnOutsideClick={false}
+      // لما ادوس على الاكس». The design's backdrop takes no click; the ✕, «إلغاء» and Escape close.
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.checkOut')}
-      description={t('fleet.maintenance.checkOutHint')}
+      subtitle={t('fleet.maintenance.checkOutHint')}
+      icon={PATH.truck}
+      panelProps={{ 'data-maintenance-form': 'checkOut' }}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button loading={checkOut.isPending} onClick={required.guard(submit)}>
-            {t('common.save')}
-          </Button>
+          <DesignSave
+            data-maintenance-save="checkOut"
+            busy={checkOut.isPending}
+            onClick={required.guard(submit)}
+          />
+          <DesignCancel onClick={onClose} />
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <MissingFieldsBanner
-          missing={required.missing}
-          attempt={required.attempt}
-          className="sm:col-span-2"
-        />
-        <div className="sm:col-span-2">
-          {/* Who drove it away. Required, like the exit reading beside it — and, like the
-              check-in driver, distinct from the custody employee the server records. */}
-          <Field
-            label={t('fleet.maintenance.fields.driverOut')}
-            required
-            missing={required.isMissing('driverOut')}
-          >
-            <OptionalDriverField value={driverOut} onChange={setDriverOut} />
-          </Field>
-        </div>
-        <Field
-          label={t('fleet.maintenance.fields.outDate')}
+      <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+      <DesignSection title={t('fleet.maintenance.form.sections.exit')} icon={PATH.truck}>
+        {/* Who drove it away. Required, like the exit reading beside it — and, like the
+            check-in driver, distinct from the custody employee the server records. */}
+        <DesignField
+          label={t('fleet.maintenance.fields.driverOut')}
           required
-          missing={required.isMissing('outDate')}
+          missing={required.isMissing('driverOut')}
         >
-          <Input type="date" value={outDate} onChange={(e) => setOutDate(e.target.value)} />
-        </Field>
-        <Field
-          label={t('fleet.maintenance.fields.exitOdometer')}
-          missing={required.isMissing('exitOdometer')}
-          hint={
-            visit === null || visit.odometerAtService === null
-              ? t('fleet.maintenance.odometerOptional')
-              : t('fleet.maintenance.exitOdometerHint', {
-                  km: formatNumber(visit.odometerAtService, locale),
-                })
-          }
-          error={
-            belowEntry
-              ? t('fleet.maintenance.exitBelowEntry')
-              : exitBelowLast && exitLast !== null
-                ? t('fleet.maintenance.odometerBelowLast', {
-                    km: formatNumber(exitLast, locale),
-                    date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+          <div className={listBox(required.isMissing('driverOut'))}>
+            <OptionalDriverField value={driverOut} onChange={setDriverOut} />
+          </div>
+        </DesignField>
+        <div className={GRID}>
+          <DesignField
+            label={t('fleet.maintenance.fields.outDate')}
+            required
+            missing={required.isMissing('outDate')}
+          >
+            <Input
+              type="date"
+              value={outDate}
+              onChange={(e) => setOutDate(e.target.value)}
+              tone={dateBox}
+            />
+          </DesignField>
+          <AdvisedField
+            label={t('fleet.maintenance.fields.exitOdometer')}
+            missing={required.isMissing('exitOdometer')}
+            hint={
+              visit === null || visit.odometerAtService === null
+                ? t('fleet.maintenance.odometerOptional')
+                : t('fleet.maintenance.exitOdometerHint', {
+                    km: formatNumber(visit.odometerAtService, locale),
                   })
-                : undefined
-          }
-          warning={belowEntry || exitBelowLast ? undefined : counterWarningText}
-        >
-          <Input
-            rule="integer"
-            value={exitOdometer}
-            onChange={(e) => setExitOdometer(e.target.value)}
-            error={belowEntry || exitBelowLast}
-            dir="ltr"
-          />
-        </Field>
+            }
+            error={
+              belowEntry
+                ? t('fleet.maintenance.exitBelowEntry')
+                : exitBelowLast && exitLast !== null
+                  ? t('fleet.maintenance.odometerBelowLast', {
+                      km: formatNumber(exitLast, locale),
+                      date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                    })
+                  : undefined
+            }
+            warning={belowEntry || exitBelowLast ? undefined : counterWarningText}
+          >
+            <Input
+              rule="integer"
+              value={exitOdometer}
+              onChange={(e) => setExitOdometer(e.target.value)}
+              error={belowEntry || exitBelowLast}
+              dir="ltr"
+              tone={numberBox}
+            />
+          </AdvisedField>
+        </div>
         {/* THE PARTS, ON THE DOOR THE CAR LEAVES BY — «قطع الغيار دى بتكون لما باجى اخرجه من
             الورشه برضو». The workshop finds out what a car needs while it has it, so the check-in
             list is a guess and this one is the record. It starts from that guess rather than from
             nothing, so an unchanged list is saved unchanged. */}
-        <div className="sm:col-span-2">
-          <Field label={t('fleet.maintenance.fields.spareParts')}>
+        <DesignField label={t('fleet.maintenance.fields.spareParts')}>
+          <div className={listBox()}>
             <SparePartsField value={partIds} onChange={setPartIds} />
-          </Field>
-        </div>
-      </div>
-    </Dialog>
+          </div>
+        </DesignField>
+      </DesignSection>
+    </DesignDialog>
   );
 };
 
@@ -692,94 +831,127 @@ export const MaintenanceEditDialog = ({
   };
 
   return (
-    <Dialog
+    <DesignDialog
       // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
-      // لما ادوس على الاكس». Escape still closes it.
-      dismissOnOutsideClick={false}
-      // «فورم ادخال الورشه كبرها بالطول» — the parts list opens inside it with room to show.
-      tall
+      // لما ادوس على الاكس». The design's backdrop takes no click; the ✕, «إلغاء» and Escape close.
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.edit')}
+      // The car the visit is for, as the vehicle form names the car it edits.
+      {...(visit?.vehicleCode == null
+        ? {}
+        : {
+            subtitle: (
+              <span dir="ltr" className={MONO}>
+                {visit.vehicleCode}
+              </span>
+            ),
+          })}
+      icon={PATH.edit}
+      panelProps={{ 'data-maintenance-form': 'edit' }}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button loading={update.isPending} onClick={required.guard(submit)}>
-            {t('common.save')}
-          </Button>
+          <DesignSave
+            data-maintenance-save="edit"
+            busy={update.isPending}
+            onClick={required.guard(submit)}
+          />
+          <DesignCancel onClick={onClose} />
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <MissingFieldsBanner
-          missing={required.missing}
-          attempt={required.attempt}
-          className="sm:col-span-2"
-        />
-        <Field
-          label={t('fleet.maintenance.fields.inDate')}
-          required
-          missing={required.isMissing('inDate')}
-        >
-          <Input type="date" value={inDate} onChange={(e) => setInDate(e.target.value)} />
-        </Field>
-        <Field
-          label={t('fleet.maintenance.fields.odometerAtService')}
-          missing={required.isMissing('odometer')}
-          hint={t('fleet.maintenance.odometerOptional')}
-          {...(editBelowLast && editLast !== null
-            ? {
-                error: t('fleet.maintenance.odometerBelowLast', {
-                  km: formatNumber(editLast, locale),
-                  date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
-                }),
-              }
-            : {})}
-          warning={editBelowLast ? undefined : counterWarningText}
-        >
-          <Input
-            rule="integer"
-            value={odometer}
-            onChange={(e) => setOdometer(e.target.value)}
-            dir="ltr"
-          />
-        </Field>
-        <Field
-          label={t('fleet.maintenance.fields.workshop')}
-          required
-          missing={required.isMissing('workshop')}
-        >
-          <CatalogSelect kind="workshop" value={workshopId} onChange={setWorkshopId} />
-        </Field>
-        <Field
-          label={t('fleet.maintenance.fields.workType')}
-          required
-          missing={required.isMissing('workType')}
-          {...(notCounting === undefined ? {} : { warning: notCounting })}
-        >
-          <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label={t('fleet.maintenance.fields.driverIn')}>
-            <OptionalDriverField value={driverIn} onChange={setDriverIn} />
-          </Field>
-        </div>
-        <div className="sm:col-span-2">
-          <Field
+      {/* «فورم ادخال الورشه كبرها بالطول» — the parts list opens inside it with room to show. */}
+      <div className={TALL}>
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+        <DesignSection title={t('fleet.maintenance.form.sections.visit')} icon={PATH.calendar}>
+          <div className={GRID}>
+            <DesignField
+              label={t('fleet.maintenance.fields.inDate')}
+              required
+              missing={required.isMissing('inDate')}
+            >
+              <Input
+                type="date"
+                value={inDate}
+                onChange={(e) => setInDate(e.target.value)}
+                tone={dateBox}
+              />
+            </DesignField>
+            <AdvisedField
+              label={t('fleet.maintenance.fields.odometerAtService')}
+              missing={required.isMissing('odometer')}
+              hint={t('fleet.maintenance.odometerOptional')}
+              {...(editBelowLast && editLast !== null
+                ? {
+                    error: t('fleet.maintenance.odometerBelowLast', {
+                      km: formatNumber(editLast, locale),
+                      date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                    }),
+                  }
+                : {})}
+              warning={editBelowLast ? undefined : counterWarningText}
+            >
+              <Input
+                rule="integer"
+                value={odometer}
+                onChange={(e) => setOdometer(e.target.value)}
+                dir="ltr"
+                tone={numberBox}
+              />
+            </AdvisedField>
+            <DesignField
+              label={t('fleet.maintenance.fields.workshop')}
+              required
+              missing={required.isMissing('workshop')}
+            >
+              <CatalogSelect
+                kind="workshop"
+                value={workshopId}
+                onChange={setWorkshopId}
+                ariaLabel={t('fleet.maintenance.fields.workshop')}
+                className={selectBox(required.isMissing('workshop'))}
+              />
+            </DesignField>
+            <AdvisedField
+              label={t('fleet.maintenance.fields.workType')}
+              required
+              missing={required.isMissing('workType')}
+              {...(notCounting === undefined ? {} : { warning: notCounting })}
+            >
+              <CatalogSelect
+                kind="workType"
+                value={workTypeId}
+                onChange={setWorkTypeId}
+                ariaLabel={t('fleet.maintenance.fields.workType')}
+                className={selectBox(required.isMissing('workType'))}
+              />
+            </AdvisedField>
+          </div>
+        </DesignSection>
+        <DesignSection title={t('fleet.maintenance.form.sections.details')} icon={PATH.box}>
+          <DesignField label={t('fleet.maintenance.fields.driverIn')}>
+            <div className={listBox()}>
+              <OptionalDriverField value={driverIn} onChange={setDriverIn} />
+            </div>
+          </DesignField>
+          <DesignField
             label={t('fleet.maintenance.fields.spareParts')}
             hint={t('fleet.maintenance.sparePartsHint')}
           >
-            <SparePartsField value={partIds} onChange={setPartIds} />
-          </Field>
-        </div>
-        <div className="sm:col-span-2">
-          <Field label={t('fleet.attendance.fields.notes')}>
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </Field>
-        </div>
+            <div className={listBox()}>
+              <SparePartsField value={partIds} onChange={setPartIds} />
+            </div>
+          </DesignField>
+          <DesignField label={t('fleet.attendance.fields.notes')}>
+            <Textarea
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className={notesBox}
+            />
+          </DesignField>
+        </DesignSection>
       </div>
-    </Dialog>
+    </DesignDialog>
   );
 };

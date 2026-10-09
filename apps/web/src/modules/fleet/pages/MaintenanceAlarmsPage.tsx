@@ -7,7 +7,12 @@
 // Both filters take more than one answer, because both questions usually have more than one:
 // "which cars am I chasing?" is a shortlist, and "which alarms?" is «أحمر وأصفر, not the quiet
 // ones». Within a filter the answers are OR'd; the two filters AND together.
-import { useMemo } from 'react';
+//
+// «حسن الui زى شاشة السيارات و السواقيين»: the drivers board's look — no page title, a bar with the
+// count and the Excel pill, the dark filter bar with an icon on every filter, and the vehicles
+// table. «الاحمر يكون الصف كله زى ما كان»: the red car's whole row stays red on that table, and
+// the yellow one amber, at rest and under the pointer.
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   fleetVehicleCodeOrderKey,
@@ -16,20 +21,32 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
-import { FilteredCount } from '../components/FilteredCount';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
+import { Spinner } from '../../../shared/ui/Spinner';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
+import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { ExportSheetButton } from '../components/ExportSheetButton';
 import { saveSheet } from '../lib/fleet-sheet';
-import { Button } from '../../../shared/ui/Button';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
-import { AlarmBadge, RemainingKm, alarmRowTint, alarmText } from '../components/AlarmBadge';
+import {
+  ALARM_ROW_HOLD,
+  AlarmBadge,
+  RemainingKm,
+  alarmRowAttrs,
+  alarmRowTint,
+  alarmText,
+} from '../components/AlarmBadge';
+import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
+import { BoardIcon, PATH } from '../components/FuelCardBoard';
+import { DARK_TABLE } from './VehiclesListPage';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
@@ -74,6 +91,20 @@ const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) 
  */
 const DEFAULT_SORT = 'level:asc';
 
+/** Every filter is `density="tight"`, as on the vehicles board. */
+const TIGHT = 'tight' as const;
+
+/** The board's toolbar buttons, from the drivers screen. */
+const PILL =
+  'inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80';
+const PILL_BUTTON =
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
+
+/** Two arrows round a circle — «تحديث». */
+const REFRESH_PATH = [
+  'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+] as const;
+
 export const MaintenanceAlarmsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -106,6 +137,8 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
   };
 
   const alarmsQuery = useMaintenanceAlarms();
+  /** True while the file is being written — the pill shows a spinner and takes no second press. */
+  const [exporting, setExporting] = useState(false);
   const rows = useMemo(() => {
     const all = alarmsQuery.data ?? [];
     // An empty filter is not a filter: it asks nothing and keeps every row. A non-empty one keeps
@@ -199,6 +232,19 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       },
     );
   };
+  // What the reader is told while the file is written, and when it fails — NAMED, not swallowed:
+  // a button that silently does nothing is read as broken, and the next move is to press it again.
+  const runExport = async (): Promise<void> => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await exportSheet();
+    } catch (error) {
+      toast.error(errorMessage(error, locale));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const columns: Column<FleetMaintenanceAlarmDto>[] = [
     {
@@ -288,61 +334,132 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
-      <PageHeader
-        title={t('fleet.nav.maintenanceAlarms')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.maintenanceAlarms') },
-        ]}
-        actions={
-          <>
+      <div className={BOARD_FRAME}>
+        <div
+          className="flex shrink-0 items-center justify-between gap-2"
+          data-alarms-toolbar="true"
+        >
+          {/* This board holds the WHOLE set — it has no paging at all and both its filters run in
+              the browser over every row — so the rows in hand ARE the answer. One row is one car,
+              so the count is said in cars. Nothing is drawn while the answer is in flight: a 0
+              there would be a claim. */}
+          <span
+            role="status"
+            title={t('fleet.filters.matchedRows')}
+            className="text-sm font-bold text-slate-600 dark:text-slate-300"
+          >
+            {alarmsQuery.isPending
+              ? ''
+              : t('fleet.vehicles.count', { count: formatNumber(rows.length, locale) })}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
                 told the reader it has no data reads as a way out of the failure, and the
                 file behind it would be empty or short. Disabling is not enough — it still
                 draws. */}
-            {!alarmsQuery.isError && <ExportSheetButton name="maintenance-alarms" onExport={exportSheet} />}
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={alarmsQuery.isFetching}
-              onClick={() => void alarmsQuery.refetch()}
-            >
-              {t('fleet.alarms.refresh')}
-            </Button>
-          </>
-        }
-      />
+            {!alarmsQuery.isError && (
+              <div className={PILL}>
+                <button
+                  type="button"
+                  data-export="maintenance-alarms"
+                  title={t('fleet.export.excel')}
+                  disabled={exporting}
+                  onClick={() => void runExport()}
+                  className={cn(
+                    PILL_BUTTON,
+                    'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300',
+                  )}
+                >
+                  {exporting ? (
+                    <Spinner className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <BoardIcon
+                      d={PATH.excel}
+                      className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                    />
+                  )}
+                  <span className="sm:hidden">Excel</span>
+                  <span className="hidden sm:inline">{t('fleet.fuelCards.board.excel')}</span>
+                </button>
+              </div>
+            )}
+            <div className={PILL}>
+              <button
+                type="button"
+                data-alarms-refresh="true"
+                disabled={alarmsQuery.isFetching}
+                aria-busy={alarmsQuery.isFetching}
+                onClick={() => void alarmsQuery.refetch()}
+                className={cn(
+                  PILL_BUTTON,
+                  'hover:bg-white hover:text-slate-900 dark:hover:bg-slate-700/60 dark:hover:text-white',
+                )}
+              >
+                {alarmsQuery.isFetching ? (
+                  <Spinner className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                ) : (
+                  <BoardIcon
+                    d={REFRESH_PATH}
+                    className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400"
+                  />
+                )}
+                {t('fleet.alarms.refresh')}
+              </button>
+            </div>
+          </span>
+        </div>
 
-      <div className={BOARD_FRAME}>
-        <FilterBar
-          hasActiveFilters={levels.length > 0 || vehicleCodes.length > 0}
-          onClear={() => patch({ level: null, vehicleCodes: null })}
-          // This board holds the WHOLE set — it has no paging at all and both its filters run in
-          // the browser over every row — so the rows in hand ARE the answer, and the badge says
-          // the same thing here as on the two registers.
-          trailing={<FilteredCount value={alarmsQuery.isPending ? undefined : rows.length} />}
+        {/* The vehicles board's dark bar: an icon at every filter's start, one row on a computer. */}
+        <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
+          <FilterBar
+            hasActiveFilters={levels.length > 0 || vehicleCodes.length > 0}
+            onClear={() => patch({ level: null, vehicleCodes: null })}
+          >
+            {/* The same control as every other screen — but fed from the BOARD it already holds
+                rather than a registry search, because this page is the whole fleet's alarms, not a
+                page of them. That is also why its filtering stays client-side: there is no
+                paginated list here to narrow server-side. */}
+            <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-600 dark:text-emerald-400">
+              <VehicleCodeFilter
+                fullWidth
+                density={TIGHT}
+                className="w-full"
+                options={vehicleOptions}
+                value={vehicleCodes}
+                onChange={(next) =>
+                  patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+                }
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={PATH.warn} tone="text-amber-700 dark:text-amber-300">
+              <MultiSelect
+                clearable
+                fullWidth
+                density={TIGHT}
+                className="w-full"
+                label={t('fleet.alarms.allAlarms')}
+                options={levelOptions}
+                value={levels}
+                onChange={(next) => patch({ level: next.length === 0 ? null : next.join(',') })}
+              />
+            </FilterWithIcon>
+          </FilterBar>
+        </div>
+
+        {/* The vehicles table — «زى السيارات» — as the drivers board draws it. */}
+        <div
+          className={cn(
+            DARK_TABLE,
+            BOARD_TABLE_FILL,
+            // No line between the columns on this table, as on the drivers board.
+            '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
+            // Every value heavy, the Arabic in Cairo's own bold.
+            "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+            // The board table paints every row's hover grey from here; the alarm rows keep their
+            // red and amber through it — see `ALARM_ROW_HOLD`.
+            ALARM_ROW_HOLD,
+          )}
         >
-          {/* The same control as every other screen — but fed from the BOARD it already holds
-              rather than a registry search, because this page is the whole fleet's alarms, not a
-              page of them. That is also why its filtering stays client-side: there is no paginated
-              list here to narrow server-side. */}
-          <VehicleCodeFilter
-            className="shrink-0"
-            options={vehicleOptions}
-            value={vehicleCodes}
-            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
-          />
-          <MultiSelect
-            clearable
-            className="shrink-0"
-            label={t('fleet.alarms.allAlarms')}
-            options={levelOptions}
-            value={levels}
-            onChange={(next) => patch({ level: next.length === 0 ? null : next.join(',') })}
-          />
-        </FilterBar>
-
-        <div className={BOARD_TABLE_FILL}>
           <DataTable
             columns={columns}
             rows={rows}
@@ -350,11 +467,13 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
             // One row IS one vehicle here, so the level belongs to the whole row — this is the one
             // screen where that is true, and the triage sort already puts the red ones on top.
             rowClassName={(alarm) => alarmRowTint(alarm.level)}
+            rowProps={(alarm) => alarmRowAttrs(alarm.level)}
             loading={alarmsQuery.isPending}
             error={alarmsQuery.isError ? alarmsQuery.error : undefined}
             onRetry={() => void alarmsQuery.refetch()}
             sort={sorts}
             onSortChange={changeSort}
+            minColumnWidth={4}
             stickyHead
           />
         </div>

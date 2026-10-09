@@ -788,13 +788,25 @@ describe('the Fleet form dialogs survive a click outside them', () => {
     expect(DIALOG).toContain("if (e.key === 'Escape') onClose()");
   });
 
-  it('the reading dialog turns it off', () => {
-    expect(read('components/RecordOdometerDialog.tsx')).toContain('dismissOnOutsideClick={false}');
+  // The reading and workshop forms are drawn in the vehicle form's design now: `DesignDialog`'s
+  // backdrop takes no click at all, so only the ✕, «إلغاء» and Escape close them.
+  const SHELL = read('components/DesignDialog.tsx');
+  it('the design shell has no click on its backdrop, and closes on Escape', () => {
+    expect(SHELL).not.toMatch(/aria-hidden="true"\s*onClick/u);
+    expect(SHELL).not.toContain('useOnClickOutside');
+    expect(SHELL).toContain("if (e.key === 'Escape') onClose()");
   });
 
-  it('so do all three workshop dialogs — in, out, and the edit', () => {
+  it('the reading dialog is drawn in it', () => {
+    const source = read('components/RecordOdometerDialog.tsx');
+    expect(source).toContain('<DesignDialog');
+    expect(source).not.toContain('<Dialog');
+  });
+
+  it('so are all three workshop dialogs — in, out, and the edit', () => {
     const source = read('components/MaintenanceDialogs.tsx');
-    expect(source.split('dismissOnOutsideClick={false}')).toHaveLength(4);
+    expect(source.split('<DesignDialog')).toHaveLength(4);
+    expect(source).not.toContain('dismissOnOutsideClick');
   });
 
   it('and so does the vehicle form — the longest form in the module', () => {

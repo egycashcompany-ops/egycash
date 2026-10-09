@@ -14,12 +14,11 @@ import { type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { Input, Textarea } from '../../../shared/ui/form';
 import { SwapIcon } from '../../../shared/ui/icons';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import {
   useExpectedReading,
@@ -31,6 +30,11 @@ import {
 import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { OptionalDriverField } from './OptionalDriverField';
+import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
+import { DATE_ICON, DesignField, LOOK, MONO, boxTone, carBoxClass } from './FuelCardDialog';
+import { PATH } from './FuelCardBoard';
+import { FILTER_ICON } from './FilterWithIcon';
+import { ODOMETER_DRIVER_BOX, ODOMETER_NOTE_BOX, ODOMETER_SWAP_BUTTON } from './OdometerFormParts';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -229,130 +233,206 @@ export const RecordOdometerDialog = ({
             km: formatNumber(expected.data.expectedReading, locale),
           });
 
+  // ADVICE, NOT A REFUSAL — the warning channel `Field` had: the save goes through either way.
+  const readingAdvice: { warning?: string } =
+    dayHasPassed && !readingGiven
+      ? { warning: t('fleet.odometer.recordingWithoutReading') }
+      : derivedKm === 0
+        ? { warning: t('fleet.odometer.sameAsPrevious') }
+        : {};
+
+  // «حسن الui … بالفورم بتاعت التسجيل والتعديل»: the vehicle form's design — its panel, sections
+  // and boxes — around the same fields, rules and required marks as before.
+  const box = boxTone(LOOK.add);
+  // A number reads left to right; held at the box's right edge, clear of the «!» a refused box
+  // draws at its left — as the vehicle form's code box is.
+  const numberBox = cn(box, MONO, 'text-right');
+  // A date's text starts at the box's left, where a refused box draws its «!».
+  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+  const vehicleMissing = required.isMissing('vehicle');
+
   return (
-    <Dialog
-      // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
-      // لما ادوس على الاكس». Escape still closes it.
-      dismissOnOutsideClick={false}
+    // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
+    // لما ادوس على الاكس». The design's backdrop has no click of its own; the ✕, «إلغاء» and
+    // Escape close it.
+    <DesignDialog
       open={open}
       onClose={onClose}
       title={t('fleet.odometer.record')}
-      description={t('fleet.odometer.recordHint')}
+      subtitle={t('fleet.odometer.recordHint')}
+      icon={PATH.trend}
+      panelProps={{ 'data-odometer-form': 'record' }}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button loading={record.isPending} onClick={required.guard(submit)}>
-            {t('common.save')}
-          </Button>
+          <DesignSave
+            data-odometer-save="true"
+            busy={record.isPending}
+            onClick={required.guard(submit)}
+          />
+          <DesignCancel onClick={onClose} />
         </>
       }
     >
-      <div className="space-y-4">
-        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
-        <Field
-          label={t('fleet.odometer.fields.vehicle')}
-          required
-          missing={required.isMissing('vehicle')}
-        >
-          <VehicleCodeCombobox
-            value={vehicleId}
-            onChange={(id) => {
-              setVehicleId(id);
-              setPickedCode('');
-            }}
-            anyStatus
-            // A carried-in code is named from the first paint, while it is being resolved.
-            pendingCode={pickedCode}
-            placeholder={t('fleet.odometer.vehiclePlaceholder')}
-            emptyText={t('fleet.odometer.vehicleNotFound')}
-          />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+      <DesignSection title={t('fleet.odometer.form.sections.reading')} icon={PATH.truck}>
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <DesignField
+              label={t('fleet.odometer.fields.vehicle')}
+              required
+              missing={required.isMissing('vehicle')}
+            >
+              <div
+                {...(vehicleMissing ? { 'data-car-missing': 'true' } : {})}
+                className={cn(
+                  carBoxClass(false),
+                  // Empty when Save was pressed: the design's rose frame and glow, and the box's
+                  // ✕ and chevron step inward to leave the far end to the «!».
+                  '[&[data-car-missing]_input]:!border-rose-500/70 [&[data-car-missing]_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
+                  '[&[data-car-missing]_input]:!pe-28 [&[data-car-missing]_.end-2]:!end-10',
+                )}
+              >
+                <VehicleCodeCombobox
+                  value={vehicleId}
+                  onChange={(id) => {
+                    setVehicleId(id);
+                    setPickedCode('');
+                  }}
+                  anyStatus
+                  // A carried-in code is named from the first paint, while it is being resolved.
+                  pendingCode={pickedCode}
+                  ariaLabel={t('fleet.odometer.fields.vehicle')}
+                  placeholder={t('fleet.odometer.vehiclePlaceholder')}
+                  emptyText={t('fleet.odometer.vehicleNotFound')}
+                />
+              </div>
+            </DesignField>
+          </div>
           {/* A READING EQUAL TO THE LAST ONE IS ALLOWED, AND WARNED ABOUT.
-              
+
               FR-2 refuses a reading BELOW the previous one — `input.reading < floor` throws — so
               an equal one passes, and it should: a vehicle that did not move all day really did
               read the same twice. But it is also exactly what a double-press of «تسجيل قراءة»
               produces, and that writes a second row with `km = 0` that nothing on the screen
               explains. Observed on a real stack while walking a car through its cycle.
-              
-              So it warns rather than refuses — `Field`'s own distinction: an `error` says the
-              save will be refused, a `warning` says the value is probably not what was meant and
-              the save goes through anyway. Refusing would make a legitimate standing day
-              unrecordable to stop a slip. */}
-          <Field
-            label={t('fleet.odometer.fields.reading')}
-            required={!dayHasPassed}
-            missing={required.isMissing('reading')}
-            hint={dayHasPassed ? t('fleet.odometer.readingOptionalHint') : expectedHint}
-            {...(dayHasPassed && !readingGiven
-              ? { warning: t('fleet.odometer.recordingWithoutReading') }
-              : derivedKm === 0
-                ? { warning: t('fleet.odometer.sameAsPrevious') }
-                : {})}
-          >
-            <Input
-              rule="integer"
-              value={reading}
-              onChange={(e) => setReading(e.target.value)}
-              dir="ltr"
-            />
-          </Field>
-          <Field
+
+              So it warns rather than refuses — an `error` says the save will be refused, a
+              `warning` says the value is probably not what was meant and the save goes through
+              anyway. Refusing would make a legitimate standing day unrecordable to stop a slip. */}
+          <div className="space-y-2">
+            <DesignField
+              label={t('fleet.odometer.fields.reading')}
+              required={!dayHasPassed}
+              missing={required.isMissing('reading')}
+              hint={
+                readingAdvice.warning !== undefined
+                  ? undefined
+                  : dayHasPassed
+                    ? t('fleet.odometer.readingOptionalHint')
+                    : expectedHint
+              }
+            >
+              <Input
+                rule="integer"
+                value={reading}
+                onChange={(e) => setReading(e.target.value)}
+                dir="ltr"
+                tone={numberBox}
+              />
+            </DesignField>
+            {readingAdvice.warning !== undefined && (
+              <p
+                data-field-warning="true"
+                className="text-[13px] font-semibold text-amber-600 dark:text-amber-400"
+              >
+                {readingAdvice.warning}
+              </p>
+            )}
+          </div>
+          <DesignField
             label={t('fleet.odometer.fields.date')}
             required
             missing={required.isMissing('date')}
           >
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              tone={dateBox}
+            />
+          </DesignField>
+          <div className="md:col-span-2">
+            <DesignField
+              label={t('fleet.odometer.columns.km')}
+              hint={t('fleet.odometer.kmDerivedHint')}
+            >
+              <p
+                className={cn(
+                  'flex items-center rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-3 text-[15px] font-bold tabular-nums text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233]/50 dark:text-slate-200',
+                  MONO,
+                )}
+              >
+                {derivedKm === null ? (
+                  <span className="text-slate-400">—</span>
+                ) : derivedKm < 0 ? (
+                  // FR-2 refuses a reading below the previous one; saying so here spares the
+                  // operator a round-trip, and the server stays the authority that refuses it.
+                  <span className="text-red-600 dark:text-red-400">
+                    {t('fleet.odometer.kmBelowPrevious')}
+                  </span>
+                ) : (
+                  t('fleet.odometer.kmValue', { km: formatNumber(derivedKm, locale) })
+                )}
+              </p>
+            </DesignField>
+          </div>
         </div>
-        <Field label={t('fleet.odometer.columns.km')} hint={t('fleet.odometer.kmDerivedHint')}>
-          <p className="text-sm tabular-nums text-slate-700 dark:text-slate-200">
-            {derivedKm === null ? (
-              <span className="text-slate-400">—</span>
-            ) : derivedKm < 0 ? (
-              // FR-2 refuses a reading below the previous one; saying so here spares the operator
-              // a round-trip, and the server stays the authority that actually refuses it.
-              <span className="text-red-600 dark:text-red-400">
-                {t('fleet.odometer.kmBelowPrevious')}
-              </span>
-            ) : (
-              t('fleet.odometer.kmValue', { km: formatNumber(derivedKm, locale) })
-            )}
-          </p>
-        </Field>
-        {/* Named by their SHIFT, in the same words the table uses. The two slots are not
-            interchangeable — slot 1 is the morning, slot 2 the evening — and the generic
-            "السائق الأول/الثاني" the roster screens use leaves the operator to guess which is
-            which at the one moment it is being decided. */}
-        <Field label={t('fleet.odometer.columns.driver1')}>
-          <OptionalDriverField value={driver1} onChange={setDriver1} />
-        </Field>
-        {/* «زرار ابدل بين اتنين سواقيين»: the morning driver becomes the evening one and back. */}
-        <div className="flex justify-center">
-          <button
-            type="button"
-            data-odometer-swap-drivers="true"
-            disabled={driver1 === '' && driver2 === ''}
-            onClick={() => {
-              setDriver1(driver2);
-              setDriver2(driver1);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            <SwapIcon className="h-3.5 w-3.5 rotate-90" />
-            {t('fleet.odometer.swapDrivers')}
-          </button>
+      </DesignSection>
+
+      {/* Named by their SHIFT, in the same words the table uses. The two slots are not
+          interchangeable — slot 1 is the morning, slot 2 the evening — and the generic
+          "السائق الأول/الثاني" the roster screens use leaves the operator to guess which is
+          which at the one moment it is being decided. */}
+      <DesignSection title={t('fleet.odometer.columns.drivers')} icon={FILTER_ICON.person}>
+        <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+          <DesignField label={t('fleet.odometer.columns.driver1')}>
+            <div className={ODOMETER_DRIVER_BOX}>
+              <OptionalDriverField value={driver1} onChange={setDriver1} />
+            </div>
+          </DesignField>
+          {/* «زرار ابدل بين اتنين سواقيين»: the morning driver becomes the evening one and back. */}
+          <div className="flex justify-center md:pb-0.5">
+            <button
+              type="button"
+              data-odometer-swap-drivers="true"
+              disabled={driver1 === '' && driver2 === ''}
+              onClick={() => {
+                setDriver1(driver2);
+                setDriver2(driver1);
+              }}
+              className={ODOMETER_SWAP_BUTTON}
+            >
+              <SwapIcon className="h-4 w-4 rotate-90 md:rotate-0" />
+              {t('fleet.odometer.swapDrivers')}
+            </button>
+          </div>
+          <DesignField label={t('fleet.odometer.columns.driver2')}>
+            <div className={ODOMETER_DRIVER_BOX}>
+              <OptionalDriverField value={driver2} onChange={setDriver2} />
+            </div>
+          </DesignField>
         </div>
-        <Field label={t('fleet.odometer.columns.driver2')}>
-          <OptionalDriverField value={driver2} onChange={setDriver2} />
-        </Field>
-        <Field label={t('fleet.attendance.fields.notes')}>
-          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </Field>
-      </div>
-    </Dialog>
+      </DesignSection>
+
+      <DesignSection title={t('fleet.attendance.fields.notes')} icon={PATH.edit}>
+        <Textarea
+          rows={2}
+          aria-label={t('fleet.attendance.fields.notes')}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className={ODOMETER_NOTE_BOX}
+        />
+      </DesignSection>
+    </DesignDialog>
   );
 };

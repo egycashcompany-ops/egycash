@@ -7,30 +7,33 @@
 //
 // Presentation ONLY. The level itself is `computeAlarm`'s, derived server-side per request; this
 // module decides no threshold and recomputes nothing.
+import { type HTMLAttributes } from 'react';
 import { type FleetAlarmLevel, type FleetNoAlarmReason } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Badge } from '../../../shared/ui/Badge';
+import { cn } from '../../../shared/lib/cn';
 
 /**
  * The alarm's colour as a SURFACE — the one definition of what red and yellow look like when they
  * tint something rather than sit in a pill.
  *
- * Two intensities of one decision, in one object. A `row` tint spans a whole table row and has to
- * stay quiet enough to read text through, so it matches the weight of the green already used for a
- * closed visit; a `cell` tint is a small patch sitting beside a badge that is itself `-100`, and at
- * row weight it would simply not be visible. Different surfaces, same colour choice — and both
- * here, because the alternative is each screen inventing its own red.
+ * Two intensities of one decision, in one object. A `row` tint spans a whole table row: «الاحمر
+ * يكون الصف كله زى ما كان» — the red car's WHOLE row reads red, in the dark theme as much as the
+ * light one, so it is a full step of the colour (a translucent wash of the hue on the dark board,
+ * not the `-950` that vanished into it), and still light enough to read the row's text through. A
+ * `cell` tint is a small patch sitting beside a badge that is itself `-100`. Different surfaces,
+ * same colour choice — and both here, because the alternative is each screen inventing its own red.
  *
  * `none` is deliberately absent: a vehicle with no alarm is not a state worth tinting, and
  * colouring it would spend the reader's attention on the ordinary case.
  */
 const ALARM_TINT: Record<'yellow' | 'red', { row: string; cell: string }> = {
   yellow: {
-    row: 'bg-amber-50/70 dark:bg-amber-950/30',
+    row: 'bg-amber-100/70 dark:bg-amber-500/[0.12]',
     cell: 'bg-amber-100/80 dark:bg-amber-950/50',
   },
   red: {
-    row: 'bg-red-50/70 dark:bg-red-950/30',
+    row: 'bg-red-100 dark:bg-red-500/[0.18]',
     cell: 'bg-red-100/80 dark:bg-red-950/50',
   },
 };
@@ -43,6 +46,39 @@ const ALARM_TINT: Record<'yellow' | 'red', { row: string; cell: string }> = {
  */
 export const alarmRowTint = (level: FleetAlarmLevel | undefined): string | undefined =>
   level === 'red' || level === 'yellow' ? ALARM_TINT[level].row : undefined;
+
+/**
+ * The row's level as an attribute — `data-alarm="red" | "yellow" | "none"` — for `rowProps`.
+ *
+ * The board table of the Fleet screens paints EVERY row's hover itself, from the table's wrapper,
+ * and a rule written there outranks any class on the `<tr>`: the red row turned grey the moment
+ * the pointer reached it. The attribute is what lets the wrapper hold the tint instead — see
+ * `ALARM_ROW_HOLD`, which reads exactly this name.
+ */
+export const alarmRowAttrs = (level: FleetAlarmLevel): HTMLAttributes<HTMLTableRowElement> => {
+  const attrs: HTMLAttributes<HTMLTableRowElement> & { 'data-alarm': FleetAlarmLevel } = {
+    'data-alarm': level,
+  };
+  return attrs;
+};
+
+/**
+ * The row tint, HELD under the board table — for the table's wrapper, beside `DARK_TABLE`.
+ *
+ * The same red and amber as `ALARM_TINT.row`, at rest, and one step deeper on hover, so a tinted
+ * row still answers the pointer without dropping its colour for the board's grey. The attribute
+ * selector is one step more specific than the board's own `tbody tr:hover`, which is the whole
+ * trick (the dealership board holds its green rows the same way).
+ *
+ * Spelled out in full because Tailwind only generates the classes it can read whole in the source;
+ * a string assembled from `ALARM_TINT` would produce no CSS at all.
+ */
+export const ALARM_ROW_HOLD = cn(
+  '[&_tbody_tr[data-alarm=red]]:!bg-red-100 dark:[&_tbody_tr[data-alarm=red]]:!bg-red-500/[0.18]',
+  '[&_tbody_tr[data-alarm=red]:hover]:!bg-red-200/70 dark:[&_tbody_tr[data-alarm=red]:hover]:!bg-red-500/[0.26]',
+  '[&_tbody_tr[data-alarm=yellow]]:!bg-amber-100/70 dark:[&_tbody_tr[data-alarm=yellow]]:!bg-amber-500/[0.12]',
+  '[&_tbody_tr[data-alarm=yellow]:hover]:!bg-amber-200/60 dark:[&_tbody_tr[data-alarm=yellow]:hover]:!bg-amber-500/[0.2]',
+);
 
 /**
  * The tint for the CELL's own content — a patch around the figure and its badge, never the row.

@@ -1281,6 +1281,9 @@ export const DARK_TABLE = cn(
   '[&_tbody_tr]:!border-slate-200 dark:[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-slate-100 dark:[&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-800 dark:[&_tbody_td]:!text-slate-200',
   '[&_th]:!px-1.5 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_th]:!text-[13px] [&_th]:!font-bold [&_td]:!px-1.5 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-sm [&_td]:!font-semibold',
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
+  // …a row's action icons only. The empty and error states are drawn in one cell across the row;
+  // their buttons («إعادة المحاولة», «اعرض آخر ١٢ شهر») keep their own size and their words wrap.
+  '[&_td[colspan]_button]:!h-auto [&_td[colspan]_button]:!w-auto [&_td[colspan]]:!whitespace-normal',
   // «لما عملت المتصفح على 110 ف الميه الداتا ظاهره احسن»: a wide screen takes the type a size up,
   // from where the whole table still fits beside the menu.
   // «خط شاشه السيارات زى خط رقم الفيزا»: the card number's type — the system monospace, heavy —

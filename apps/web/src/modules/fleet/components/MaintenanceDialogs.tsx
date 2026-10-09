@@ -41,7 +41,9 @@ import { PATH } from './FuelCardBoard';
 
 /** The vehicle form's boxes — text, figures, dates — from the design's `add` look. */
 const box = boxTone(LOOK.add);
-const numberBox = cn(box, MONO);
+// Right-aligned like the reading forms' boxes: the «!» of a refused or empty box sits at the far
+// (left) end, and a number written from there would run under it.
+const numberBox = cn(box, MONO, 'text-right');
 // A date's text starts at the box's left, where a refused box draws its «!».
 const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
 
@@ -88,6 +90,8 @@ const carBox = (missing: boolean): string =>
     carBoxClass(false),
     missing &&
       '[&&_input]:!border-rose-500/70 dark:[&&_input]:!border-rose-500/70 [&&_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
+    // …and the box's ✕ and chevron step inward to leave the far end to the «!».
+    missing && '[&_input]:!pe-28 [&_.end-2]:!end-10',
   );
 
 /** The notes box — `Textarea` takes no tone, so the design's colours are forced over its own. */

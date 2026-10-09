@@ -1,6 +1,7 @@
 // The receipts screen (خصم الإيصالات) and the custody ledger (العهدة), proven against what they
-// produce: the totals between the filters and the table, the card or the fund as the source of a
-// row, the modal that asks the kind first, and the ledger's per-car summary with its grand total.
+// produce: the totals between the filters and the table (behind «الإحصائيات»), the card or the
+// fund as the source of a row, the modal that asks the kind first, and the ledger's per-car
+// summary with its grand total.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,7 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
-import { ReceiptsPage } from './ReceiptsPage';
+import { ReceiptFigures, ReceiptsPage } from './ReceiptsPage';
 import { CustodyPage } from './CustodyPage';
 import { ReceiptDialog } from '../components/ReceiptDialog';
 
@@ -36,6 +37,7 @@ vi.mock('react-dom', async () => {
 });
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const PAGE = readFileSync(join(HERE, 'ReceiptsPage.tsx'), 'utf8');
 const FORM = readFileSync(join(HERE, '../components/ReceiptDialog.tsx'), 'utf8');
 const CELL = readFileSync(join(HERE, '../components/ReceiptImageCell.tsx'), 'utf8');
 const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -263,24 +265,48 @@ describe('the receipts table', () => {
     expect(row).not.toContain('data-fuel-company=');
   });
 
-  it('puts the totals BETWEEN the filters and the table — the fund, the cards, fuel with its litres', () => {
+  it('puts the totals BETWEEN the filters and the table, behind «الإحصائيات» — the fund, the cards, fuel with its litres', () => {
     const html = renderReceipts();
-    const filters = html.indexOf('data-date-caption="from"');
-    const strip = html.indexOf('2,020.00');
-    const table = html.indexOf('<table');
+    // The figures open from the toolbar's toggle, as on the vehicles and drivers boards.
+    expect(html).toContain('data-receipt-stats-toggle="true"');
+    expect(html, 'closed on the way in').not.toContain('data-receipt-figures');
+    expect(html).toContain('data-date-caption="from"');
+    const filters = PAGE.indexOf('DARK_FILTER_BAR, ');
+    const strip = PAGE.indexOf('<ReceiptFigures totals={summary.data} />');
+    const table = PAGE.indexOf('<DataTable');
     expect(filters).toBeGreaterThan(-1);
-    expect(strip).toBeGreaterThan(filters);
-    expect(table).toBeGreaterThan(strip);
-    expect(html).toContain(ar('fleet.receipts.totals.custody'));
-    expect(html).toContain('1,440.00');
-    expect(html).toContain('115.74');
+    expect(strip, 'after the filters').toBeGreaterThan(filters);
+    expect(table, 'before the table').toBeGreaterThan(strip);
+    expect(PAGE).toContain('useReceiptSummary(filters)');
+    // Opened, they are the server's sums: the fund, the cards, fuel with its litres, tyres + wash.
+    const figures = mount(
+      client(),
+      ['fleetReceipt.view'],
+      '/fleet/receipts',
+      <ReceiptFigures totals={receiptTotals} />,
+    );
+    expect(figures).toContain('data-receipt-figures="true"');
+    expect(figures).toContain(ar('fleet.receipts.totals.custody'));
+    expect(figures).toContain('2,020.00');
+    expect(figures).toContain(ar('fleet.receipts.totals.card'));
+    expect(figures).toContain('1,440.00');
+    expect(figures).toContain(ar('fleet.receipts.totals.fuel'));
+    expect(figures).toContain('1,940.00');
+    expect(figures).toContain('115.74');
+    expect(figures).toContain(ar('fleet.receipts.totals.tyresWash'));
+    expect(figures).toContain('1,520.00');
   });
 
-  it('offers print and Excel as icons in the page header, and «إيصال جديد» to whoever may create', () => {
+  it('offers Excel and PDF in the toolbar above the filters, and «إيصال جديد» to whoever may create — no page title', () => {
     const html = renderReceipts();
     expect(html).toContain('data-print="receipts"');
     expect(html).toContain('data-export="receipts"');
     expect(html).toContain('data-receipt-new="true"');
+    expect(PAGE).not.toContain('<PageHeader');
+    expect(PAGE).not.toContain('<DocumentActions');
+    expect(html.indexOf('data-export="receipts"'), 'above the filters').toBeLessThan(
+      html.indexOf('data-date-caption="from"'),
+    );
     const viewer = renderReceipts({ permissions: ['fleetReceipt.view'] });
     expect(viewer).not.toContain('data-receipt-new=');
     expect(viewer).not.toContain('data-receipt-edit=');
@@ -473,8 +499,11 @@ describe('the card after a car is picked — «هل فى كارت واحد عل�
     expect(html).toContain(ar('fleet.receipts.summary.pickCard'));
     expect(html).toContain('bg-amber-50');
     // Save is still pressable — the press names the card — and nothing is red before it.
-    const at = html.lastIndexOf('<button');
-    expect(html.slice(at), 'the last button is Save').toContain(ar('common.save'));
+    const at = html.lastIndexOf('<button', html.indexOf('data-receipt-save="true"'));
+    expect(at, 'the form has its Save').toBeGreaterThan(-1);
+    expect(html.slice(at, html.indexOf('</button>', at)), 'it is Save').toContain(
+      ar('common.save'),
+    );
     const save = html.slice(at, html.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
     expect(save, 'Save is pressable').not.toContain('disabled');
     expect(html).not.toContain('data-missing-fields');

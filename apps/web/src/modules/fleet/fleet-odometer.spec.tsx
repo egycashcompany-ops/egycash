@@ -33,7 +33,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
-import { formatDate } from '../../shared/lib/format';
+import { formatDate, formatNumber } from '../../shared/lib/format';
 import { OdometerPage } from './pages/OdometerPage';
 import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
@@ -182,6 +182,8 @@ const filterBar = (markup: string): string =>
     markup.indexOf('<div class="flex flex-wrap items-center gap-2'),
     markup.lastIndexOf('<div', markup.indexOf(BOARD_TABLE_FILL.split(' ')[1]!)),
   );
+/** A class as it appears in rendered markup — React escapes `&` and `>` inside an attribute. */
+const escaped = (cls: string): string => cls.replace(/&/g, '&amp;').replace(/>/g, '&gt;');
 
 /**
  * The header cells in document order, as TEXT — sortable headers wrap their label in a button and
@@ -703,29 +705,34 @@ describe('the filter bar', () => {
     expect(bar).toContain(t('fleet.odometer.columns.alert'));
   });
 
-  it('lines the sized filters up on ONE row, with only the note box taking the leftover', () => {
+  it('lines the filters up on ONE row on a computer, with only the note box taking the leftover below it', () => {
     const html = render();
     const bar = filterBar(html);
-    // The container stops wrapping once the viewport is wide enough to hold the whole row, and
-    // not one pixel before: `flex-nowrap` does not shorten a row that will not fit, it pushes it
-    // off the page. Below that it still wraps — the fallback for a screen too narrow for five.
-    //
-    // 1440, not the 1400 measured for the bare five filters: the count badge beside the reset is
-    // width the old figure did not know about, and a threshold left below where the row fits
-    // trades a tidy wrap for a horizontally scrolling page.
-    const open = html.slice(html.indexOf('<div class="flex flex-wrap items-center gap-2'));
-    expect(open.slice(0, open.indexOf('>')), 'one row on a desktop').toContain(
-      'min-[1440px]:flex-nowrap',
+    // «زى شاشة السيارات و السواقيين»: the bar is the vehicles board's dark one. From a computer's
+    // width it holds every filter on ONE row and SHARES the row between them, so the row always
+    // fits rather than being pushed off the page — the threshold this bar used to measure for its
+    // fixed widths has nothing left to guard. Below that it still wraps: the fallback for a tablet.
+    const barAt = html.indexOf('<div class="flex flex-wrap items-center gap-2');
+    const wrapper = html.slice(html.lastIndexOf('<div', barAt - 1), barAt);
+    expect(wrapper, 'one row on a computer').toContain(escaped('lg:[&>div]:!flex-nowrap'));
+    expect(wrapper, 'the row shared between the filters').toContain(
+      escaped('lg:[&>div>*]:!flex-1'),
     );
+    const open = html.slice(barAt);
     expect(open.slice(0, open.indexOf('>')), 'wrap is the narrow-screen fallback').toContain(
       'flex-wrap',
     );
-    // EXACTLY ONE control takes the leftover space, and it is the note box — «خلى في انبوت يسمح
-    // ان ابحث بالملاحظات». Every SIZED filter still holds its own width instead of being squeezed
-    // by its neighbours; the flexible one is how a sixth control was added without moving the
-    // threshold above, because it shrinks into whatever the row has rather than demanding its own.
+    // Wrapped, EXACTLY ONE control takes the leftover space, and it is the note box — «خلى في
+    // انبوت يسمح ان ابحث بالملاحظات». Every SIZED filter still holds its own width instead of being
+    // squeezed by its neighbours; the flexible one shrinks into whatever the row has rather than
+    // demanding its own.
     // (`w-full` is not the test: `Input` carries it at its base and merely fills its wrapper.)
-    expect(bar.match(/flex-1/g)?.length ?? 0, 'one, and only one, flexible control').toBe(1);
+    // (Counted unprefixed: on a computer the bar shares the row, and the date boxes fill their
+    // share with `lg:flex-1` — that is the shared row, not a second leftover-taker below it.)
+    expect(
+      bar.match(/(?<![\w:-])flex-1\b/g)?.length ?? 0,
+      'one, and only one, flexible control',
+    ).toBe(1);
     expect(bar, 'and it is the note box').toContain('min-w-[8rem] flex-1');
     expect(bar, 'nothing else grows').not.toMatch(/\bgrow\b/);
     expect(bar, 'nothing is sized by the row').not.toMatch(/\bbasis-/);
@@ -734,7 +741,7 @@ describe('the filter bar', () => {
       'each sized filter is shrink-0',
     ).toBeGreaterThanOrEqual(5);
     // The date bounds are the narrow ones — a date needs ten characters, not a share of the row.
-    expect(bar.match(/class="w-36"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
+    expect(bar.match(/class="w-36 lg:flex-1"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
     // …and the driver picker is the medium one — wider than a date, because it draws a NAME.
     expect(bar, 'the driver picker is medium').toContain('w-56');
   });
@@ -875,11 +882,13 @@ describe('the filter bar', () => {
 
   it('clears every filter at once', () => {
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    // From the reset up to the first filter it resets.
     const clear = source.slice(
       source.indexOf('onClear={'),
-      source.indexOf('>\n          {/* Several'),
+      source.indexOf('<VehicleCodeFilter', source.indexOf('onClear={')),
     );
-    for (const key of ['vehicleCodes', 'from', 'to', 'drv', 'alerts']) {
+    expect(clear, 'the reset was found').toContain('patch({');
+    for (const key of ['vehicleCodes', 'from', 'to', 'drv', 'alerts', 'notes']) {
       expect(clear, `${key} cleared`).toContain(`${key}: null`);
     }
   });
@@ -905,15 +914,28 @@ describe('the filter bar', () => {
     expect(source).not.toContain('items.filter(');
   });
 
-  it('the count beside the filters is the WHOLE set, never the page', () => {
-    // «رقم الاجمالى الموجود فى الجدول بعد الفلاتر ... زى دا اللى فى شاشه مخالفات» — one badge on
-    // the filter bar, carrying one number. `meta.totalItems` is the count the server matched;
-    // `rows.length` is how many of them fit on this page, and using it would make the figure jump
-    // on the last page of every filter.
+  it('the count over the table is the WHOLE set, never the page', () => {
+    // «رقم الاجمالى الموجود فى الجدول بعد الفلاتر ... زى دا اللى فى شاشه مخالفات» — one number,
+    // written on the board's toolbar as the vehicles and drivers boards write theirs.
+    // `meta.totalItems` is the count the server matched; `rows.length` is how many of them fit on
+    // this page, and using it would make the figure jump on the last page of every filter.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
-    expect(source).toContain('<FilteredCount value={data?.meta.totalItems} />');
-    expect(source, 'a page is not an answer about the set').not.toContain(
-      '<FilteredCount value={rows.length}',
+    expect(source).toContain('formatNumber(data.meta.totalItems, locale)');
+    expect(source, 'a page is not an answer about the set').not.toMatch(
+      /count: formatNumber\(rows\.length/u,
+    );
+    // Page 3 of 73 holds one row here: the count says 73, which nothing on the page could count.
+    const qc = client();
+    qc.setQueryData(ODOMETER_KEY({ page: 3 }), {
+      items: [log()],
+      meta: { page: 3, pageSize: 25, totalItems: 73, totalPages: 3 },
+    });
+    const html = render({ route: '/fleet/odometer?page=3', qc });
+    const at = html.lastIndexOf('<span', html.indexOf('data-filtered-count'));
+    const count = html.slice(at, html.indexOf('</span>', at));
+    expect(count, 'announced as it changes').toContain('role="status"');
+    expect(count).toContain(
+      translate('ar', 'fleet.vehicle.count.odometer', { count: formatNumber(73, 'ar') }),
     );
   });
 
@@ -1176,8 +1198,11 @@ describe('recording a reading', () => {
     const html = renderDialog({
       qc: new QueryClient({ defaultOptions: { queries: { retry: false } } }),
     });
-    const at = html.lastIndexOf('<button');
-    expect(html.slice(at), 'the last button is Save').toContain(t('common.save'));
+    // The design's footer puts Save first and «إلغاء» after it; Save carries its own hook.
+    const at = html.lastIndexOf('<button', html.indexOf('data-odometer-save="true"'));
+    expect(html.slice(at, html.indexOf('</button>', at)), 'that button is Save').toContain(
+      t('common.save'),
+    );
     // The class list is dropped first: Tailwind's `disabled:` variants live in it.
     const save = html.slice(at, html.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
     expect(save, 'Save is pressable').not.toContain('disabled');
@@ -1359,7 +1384,8 @@ describe('correcting a reading', () => {
   it('leaves a day recorded without a reading correctable — its reading box shut, unstarred', () => {
     const html = renderCorrect(log({ outReading: null, inReading: null }));
     expect(outBox(html), 'the box is shut').toMatch(/<input[^>]*\sdisabled=""/u);
-    expect(outBox(html), 'and not starred').not.toContain('text-red-500');
+    // The design's star is rose.
+    expect(outBox(html), 'and not starred').not.toContain('text-rose-500');
     expect(html, 'never the text «null»').not.toContain('value="null"');
     expect(source, 'it is seeded empty').toContain(
       "setOutReading(log.outReading === null ? '' : String(log.outReading));",
@@ -1369,7 +1395,7 @@ describe('correcting a reading', () => {
   it('still requires the reading on a day that has one', () => {
     const html = renderCorrect(log({ outReading: 120000, inReading: 120150 }));
     expect(outBox(html)).not.toMatch(/<input[^>]*\sdisabled=""/u);
-    expect(outBox(html), 'starred').toContain('text-red-500');
+    expect(outBox(html), 'starred').toContain('text-rose-500');
   });
 });
 

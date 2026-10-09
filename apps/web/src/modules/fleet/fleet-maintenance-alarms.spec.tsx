@@ -166,6 +166,27 @@ describe('the alarms filter bar', () => {
   });
 });
 
+// ── 1b. The drivers board's look ────────────────────────────────────────────
+
+describe('the board’s bar — «زى شاشة السيارات و السواقيين»', () => {
+  it('opens on the toolbar, not a page title: the count in cars, the Excel pill and «تحديث»', () => {
+    const markup = render();
+    expect(SOURCE, 'no page title').not.toContain('<PageHeader');
+    const toolbar = markup.slice(markup.indexOf('data-alarms-toolbar'), markup.indexOf('<table'));
+    // One row is one car, so the count is said in cars — of the FILTERED set.
+    expect(toolbar).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '٣' })}</span>`);
+    const red = render({ route: '/fleet/maintenance-alarms?level=red' });
+    expect(red).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '١' })}</span>`);
+    expect(toolbar, 'the Excel file is still offered').toContain(
+      'data-export="maintenance-alarms"',
+    );
+    expect(toolbar, 'and the board can still be refreshed').toContain(t('fleet.alarms.refresh'));
+    // Both filters sit in the dark bar, each with its icon.
+    expect(SOURCE).toContain('DARK_FILTER_BAR');
+    expect((SOURCE.match(/<FilterWithIcon /g) ?? []).length).toBe(2);
+  });
+});
+
 // ── 2. OR inside a filter, AND across them ──────────────────────────────────
 
 describe('what the filters keep', () => {

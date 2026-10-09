@@ -91,13 +91,14 @@ const ruleLists = (source: string): { list: string; owner: string }[] => {
 
 /**
  * Every `<Button …>` opening tag in a file — and every raw `<button …>`, which a form drawn to the
- * owner's own design (the fuel card form) uses for its Save — braces balanced so a `>` inside
- * `{…}` does not end it.
+ * owner's own design (the fuel card form) uses for its Save, and every `<DesignSave …>`, the same
+ * design's Save shared by the forms drawn in it since — braces balanced so a `>` inside `{…}` does
+ * not end it.
  */
 const buttonTags = (source: string): string[] => {
   const tags: string[] = [];
   const next = (from: number): number => {
-    const found = ['<Button', '<button']
+    const found = ['<Button', '<button', '<DesignSave']
       .map((tag) => source.indexOf(tag, from))
       .filter((index) => index !== -1);
     return found.length === 0 ? -1 : Math.min(...found);

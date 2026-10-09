@@ -6,14 +6,18 @@
 import { useEffect, useState } from 'react';
 import { type CorrectFleetOdometer, type FleetOdometerLogDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { Input, Textarea } from '../../../shared/ui/form';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { SwapIcon } from '../../../shared/ui/icons';
+import { cn } from '../../../shared/lib/cn';
 import { useCorrectOdometer } from '../api/fleet-queries';
 import { OptionalDriverField } from './OptionalDriverField';
+import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
+import { DATE_ICON, DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
+import { PATH } from './FuelCardBoard';
+import { FILTER_ICON } from './FilterWithIcon';
+import { ODOMETER_DRIVER_BOX, ODOMETER_NOTE_BOX, ODOMETER_SWAP_BUTTON } from './OdometerFormParts';
 
 export const CorrectOdometerDialog = ({
   open,
@@ -89,83 +93,115 @@ export const CorrectOdometerDialog = ({
     onClose();
   };
 
+  // «حسن الui … بالفورم بتاعت التسجيل والتعديل»: the vehicle form's design around the same
+  // fields, rules and required mark as before.
+  const box = boxTone(LOOK.add);
+  // A number reads left to right; held at the box's right edge, clear of the «!» a refused box
+  // draws at its left. A box that cannot be corrected here reads as shut.
+  const numberBox = cn(box, MONO, 'text-right disabled:cursor-not-allowed disabled:opacity-50');
+  // A date's text starts at the box's left, where a refused box draws its «!».
+  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+
   return (
-    <Dialog
+    // A form: the design's backdrop has no click of its own — the ✕, «إلغاء» and Escape close it.
+    <DesignDialog
       open={open}
       onClose={onClose}
-      dismissOnOutsideClick={false}
       title={t('fleet.odometer.correct')}
-      description={t('fleet.odometer.correctHint')}
+      subtitle={t('fleet.odometer.correctHint')}
+      icon={PATH.edit}
+      panelProps={{ 'data-odometer-form': 'correct' }}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button variant="danger" loading={correct.isPending} onClick={required.guard(submit)}>
-            {t('fleet.odometer.correct')}
-          </Button>
+          <DesignSave
+            data-odometer-correct-save="true"
+            label={t('fleet.odometer.correct')}
+            busy={correct.isPending}
+            onClick={required.guard(submit)}
+          />
+          <DesignCancel onClick={onClose} />
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        <MissingFieldsBanner
-          missing={required.missing}
-          attempt={required.attempt}
-          className="sm:col-span-2"
-        />
-        <Field
-          label={t('fleet.odometer.columns.outReading')}
-          required={!noReading}
-          missing={required.isMissing('outReading')}
-        >
-          <Input
-            rule="integer"
-            value={outReading}
-            onChange={(e) => setOutReading(e.target.value)}
-            disabled={noReading}
-            dir="ltr"
-          />
-        </Field>
-        <Field
-          label={t('fleet.odometer.columns.inReading')}
-          hint={log?.inReading === null ? t('fleet.odometer.openPeriodHint') : undefined}
-        >
-          <Input
-            rule="integer"
-            value={inReading}
-            onChange={(e) => setInReading(e.target.value)}
-            disabled={log?.inReading === null}
-            dir="ltr"
-          />
-        </Field>
-        <Field label={t('fleet.odometer.fields.date')}>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </Field>
-        <Field label={t('fleet.attendance.fields.notes')}>
-          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </Field>
-        <Field label={t('fleet.odometer.columns.driver1')}>
-          <OptionalDriverField value={driver1} onChange={setDriver1} />
-        </Field>
-        <Field label={t('fleet.odometer.columns.driver2')}>
-          <OptionalDriverField value={driver2} onChange={setDriver2} />
-        </Field>
-        <div className="flex justify-center sm:col-span-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            data-odometer-correct-swap="true"
-            disabled={driver1 === '' && driver2 === ''}
-            onClick={() => {
-              setDriver1(driver2);
-              setDriver2(driver1);
-            }}
+      <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+      <DesignSection title={t('fleet.odometer.form.sections.reading')} icon={PATH.trend}>
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+          <DesignField
+            label={t('fleet.odometer.columns.outReading')}
+            required={!noReading}
+            missing={required.isMissing('outReading')}
           >
-            <SwapIcon className="h-3.5 w-3.5" />
-            {t('fleet.odometer.swapDrivers')}
-          </Button>
+            <Input
+              rule="integer"
+              value={outReading}
+              onChange={(e) => setOutReading(e.target.value)}
+              disabled={noReading}
+              dir="ltr"
+              tone={numberBox}
+            />
+          </DesignField>
+          <DesignField
+            label={t('fleet.odometer.columns.inReading')}
+            hint={log?.inReading === null ? t('fleet.odometer.openPeriodHint') : undefined}
+          >
+            <Input
+              rule="integer"
+              value={inReading}
+              onChange={(e) => setInReading(e.target.value)}
+              disabled={log?.inReading === null}
+              dir="ltr"
+              tone={numberBox}
+            />
+          </DesignField>
+          <DesignField label={t('fleet.odometer.fields.date')}>
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              tone={dateBox}
+            />
+          </DesignField>
+          <DesignField label={t('fleet.attendance.fields.notes')}>
+            <Textarea
+              rows={2}
+              aria-label={t('fleet.attendance.fields.notes')}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className={ODOMETER_NOTE_BOX}
+            />
+          </DesignField>
         </div>
-      </div>
-    </Dialog>
+      </DesignSection>
+
+      <DesignSection title={t('fleet.odometer.columns.drivers')} icon={FILTER_ICON.person}>
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+          <DesignField label={t('fleet.odometer.columns.driver1')}>
+            <div className={ODOMETER_DRIVER_BOX}>
+              <OptionalDriverField value={driver1} onChange={setDriver1} />
+            </div>
+          </DesignField>
+          <DesignField label={t('fleet.odometer.columns.driver2')}>
+            <div className={ODOMETER_DRIVER_BOX}>
+              <OptionalDriverField value={driver2} onChange={setDriver2} />
+            </div>
+          </DesignField>
+          <div className="flex justify-center md:col-span-2">
+            <button
+              type="button"
+              data-odometer-correct-swap="true"
+              disabled={driver1 === '' && driver2 === ''}
+              onClick={() => {
+                setDriver1(driver2);
+                setDriver2(driver1);
+              }}
+              className={ODOMETER_SWAP_BUTTON}
+            >
+              <SwapIcon className="h-4 w-4" />
+              {t('fleet.odometer.swapDrivers')}
+            </button>
+          </div>
+        </div>
+      </DesignSection>
+    </DesignDialog>
   );
 };

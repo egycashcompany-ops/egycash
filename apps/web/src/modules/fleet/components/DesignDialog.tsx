@@ -65,12 +65,16 @@ export const DesignDialog = ({
         {...panelProps}
         className={cn(
           SANS,
-          'relative my-auto w-full animate-dialog-in overflow-hidden rounded-2xl border text-slate-900 antialiased dark:text-slate-100',
+          // A column the height of the screen at most: the header and the buttons keep their place
+          // and only the fields between them scroll, so Save is never below the edge.
+          'relative my-auto flex max-h-[calc(100vh-1.5rem)] w-full animate-dialog-in flex-col overflow-hidden rounded-2xl border text-slate-900 antialiased sm:max-h-[calc(100vh-2rem)] dark:text-slate-100',
           look.panel,
           WIDTH[width],
         )}
       >
-        <header className={cn('flex items-center justify-between border-b px-6', look.header)}>
+        <header
+          className={cn('flex shrink-0 items-center justify-between border-b px-6', look.header)}
+        >
           <div className="flex min-w-0 items-center gap-3">
             <div
               className={cn(
@@ -103,11 +107,14 @@ export const DesignDialog = ({
             <Stroke d={CLOSE_PATH} className="h-5 w-5" />
           </button>
         </header>
-        <div className={cn('max-h-[calc(100vh-9rem)] space-y-7 overflow-y-auto', look.body)}>
-          {children}
-          <div className={cn('mt-2 flex items-center justify-start gap-3 border-t', look.footer)}>
-            {footer}
-          </div>
+        <div className={cn('min-h-0 flex-1 space-y-7 overflow-y-auto', look.body)}>{children}</div>
+        <div
+          className={cn(
+            'flex shrink-0 items-center justify-start gap-3 border-t px-6 pb-5 sm:px-7',
+            look.footer,
+          )}
+        >
+          {footer}
         </div>
       </div>
     </div>,

@@ -617,9 +617,9 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
     // `templateOf` reads `settings.data`, which is a dependency.
   }, [editingId, settings.data, kinds]);
   // ONE SET-UP WRITE AT A TIME, each reading the set-up when its turn comes — from the cache the
-  // last save wrote into, not from the render it was clicked in. A template saved while a choice of
-  // items is still on its way would otherwise carry the version the choice is about to replace,
-  // and be refused as stale; or worse, put back what the choice had just changed.
+  // last save wrote into, not from the render it was clicked in. The signatures saved while a
+  // template is still on its way would otherwise carry the version the template is about to
+  // replace, and be refused as stale.
   const latestSettings = (): FleetLicenseExpenseSettingsDto | undefined =>
     qc.getQueryData<FleetLicenseExpenseSettingsDto>(licenseExpenseSettingsKey) ?? settings.data;
   const writes = useRef<Promise<unknown>>(Promise.resolve());
@@ -771,6 +771,14 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
     }
   };
   const addToCatalog = async (kind: LicenseExpenseKind, label: string): Promise<string | null> => {
+    // ALREADY ON THE LIST — under the other memo, or archived: the line is linked to it instead of
+    // being refused as a duplicate and left a loose line. Which memo it belongs to stays as
+    // «قوائم الحركة» set it; the line keeps its counter here because it is counted.
+    const existing = (catalog.data?.items ?? []).find((item) => item.name.ar.trim() === label);
+    if (existing !== undefined) {
+      toast.success(t('fleet.licenseExpenses.linkedToListToast'));
+      return existing.id;
+    }
     try {
       const item = await createCatalogItem.mutateAsync({
         kind: 'licenseExpenseItem',

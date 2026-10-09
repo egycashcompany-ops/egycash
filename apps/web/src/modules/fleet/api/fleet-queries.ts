@@ -1127,9 +1127,9 @@ export const useLicenseExpenseSettings = () =>
     queryFn: () => api.getLicenseExpenseSettings(),
   });
 /**
- * The saved set-up goes straight into the cache, its new version with it: the next save — a
- * template right after a choice of items — then carries the version the server now holds instead
- * of waiting for the refetch, and is not refused as stale.
+ * The saved set-up goes straight into the cache, its new version with it: the next save — the
+ * signatures right after a template — then carries the version the server now holds instead of
+ * waiting for the refetch, and is not refused as stale.
  */
 export const useSaveLicenseExpenseSettings = () => {
   const qc = useQueryClient();

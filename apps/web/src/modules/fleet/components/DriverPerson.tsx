@@ -124,6 +124,119 @@ export const DriverIdentity = ({
 );
 
 /**
+ * How a board writes a driver — «غير شكل اسم السواق»: three looks to choose from, shown on one
+ * board first.
+ * - `identity`: the badge, the name, the code under it (the pickers' look).
+ * - `badge`: the name, and the code in a small pill beside it — one line, no badge.
+ * - `chip`: the name in a soft pill of the person's own colour, the code after a dot.
+ * - `board`: the drivers board's own — the badge and the name; the code on hover.
+ */
+export type DriverLook = 'identity' | 'badge' | 'chip' | 'board';
+
+/** The soft surface of a person's colour, for the `chip` look. */
+const CHIP_TONES = [
+  'bg-violet-500/15 text-violet-800 ring-violet-500/30 dark:text-violet-200',
+  'bg-emerald-500/15 text-emerald-800 ring-emerald-500/30 dark:text-emerald-200',
+  'bg-amber-500/15 text-amber-800 ring-amber-500/30 dark:text-amber-200',
+  'bg-rose-500/15 text-rose-800 ring-rose-500/30 dark:text-rose-200',
+  'bg-teal-500/15 text-teal-800 ring-teal-500/30 dark:text-teal-200',
+  'bg-indigo-500/15 text-indigo-800 ring-indigo-500/30 dark:text-indigo-200',
+  'bg-sky-500/15 text-sky-800 ring-sky-500/30 dark:text-sky-200',
+] as const;
+const chipToneOf = (key: string): string =>
+  CHIP_TONES[[...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % CHIP_TONES.length]!;
+
+const DriverLookView = ({
+  look,
+  name,
+  code,
+  nameClassName,
+  muted = false,
+}: {
+  look: DriverLook;
+  name: string;
+  code: string | null;
+  nameClassName?: string;
+  muted?: boolean;
+}): JSX.Element => {
+  if (look === 'badge') {
+    return (
+      <span className="inline-flex max-w-full items-center gap-2" title={name}>
+        <span
+          className={cn(
+            'truncate font-bold',
+            muted && 'text-slate-500 dark:text-slate-400',
+            nameClassName,
+          )}
+        >
+          {name}
+        </span>
+        {code !== null && code !== '' && (
+          <span
+            dir="ltr"
+            className="shrink-0 rounded-md border border-slate-300 bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+          >
+            {code}
+          </span>
+        )}
+      </span>
+    );
+  }
+  if (look === 'chip') {
+    return (
+      <span
+        title={name}
+        className={cn(
+          'inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 ring-1',
+          muted
+            ? 'bg-slate-500/15 text-slate-600 ring-slate-500/30 dark:text-slate-300'
+            : chipToneOf(code ?? name),
+        )}
+      >
+        <span className={cn('truncate font-bold', nameClassName)}>{name}</span>
+        {code !== null && code !== '' && (
+          <>
+            <span aria-hidden className="opacity-50">
+              •
+            </span>
+            <span dir="ltr" className="shrink-0 font-mono text-[11px] font-bold opacity-80">
+              {code}
+            </span>
+          </>
+        )}
+      </span>
+    );
+  }
+  if (look === 'board') {
+    return (
+      <span
+        className="inline-flex min-w-0 items-center gap-2.5"
+        title={code === null ? name : `${name} — ${code}`}
+      >
+        <DriverAvatar name={name} seed={code ?? name} muted={muted} />
+        <span
+          className={cn(
+            'max-w-[14rem] truncate font-bold',
+            muted && 'text-slate-500 dark:text-slate-400',
+            nameClassName,
+          )}
+        >
+          {name}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <DriverIdentity
+      name={name}
+      code={code}
+      muted={muted}
+      {...(nameClassName === undefined ? {} : { nameClassName })}
+    />
+  );
+};
+
+/**
  * A DRIVER cell on a board's row. The person Fleet knows, by id; or — on a row from the old books
  * whose spelling HR never had — the name as the book wrote it, grey, saying where it came from;
  * or a dash.
@@ -132,15 +245,18 @@ export const DriverCell = ({
   employeeId,
   name,
   nameClassName,
+  look = 'identity',
 }: {
   employeeId: string | null;
   name?: string | null;
   nameClassName?: string;
+  look?: DriverLook;
 }): JSX.Element => {
   const person = useEmployeeRecord(employeeId ?? '');
   if (employeeId !== null && person !== undefined && person.fullNameAr !== '') {
     return (
-      <DriverIdentity
+      <DriverLookView
+        look={look}
         name={person.fullNameAr}
         code={person.code}
         {...(nameClassName === undefined ? {} : { nameClassName })}
@@ -158,7 +274,7 @@ export const DriverCell = ({
   if (name != null && name !== '') {
     return (
       <span data-legacy-name="true">
-        <DriverIdentity name={name} code={null} muted />
+        <DriverLookView look={look} name={name} code={null} muted />
       </span>
     );
   }

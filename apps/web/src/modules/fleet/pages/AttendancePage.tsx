@@ -33,12 +33,15 @@ import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
-import { DriverCell } from '../components/DriverPerson';
+import { DriverCell, type DriverLook } from '../components/DriverPerson';
 import { UnavailabilityDialog } from '../components/UnavailabilityDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+/** «غير شكل اسم السواق … ف شاشه واحده ورينى سامبل»: the driver's look, tried here first. */
+const DRIVER_LOOK: DriverLook = 'identity';
+
 const REMEMBERED_FILTERS = [
   'size',
   'sort',
@@ -144,7 +147,7 @@ export const AttendancePage = (): JSX.Element => {
       key: 'driver',
       align: 'center',
       header: t('fleet.attendance.fields.driver'),
-      render: (r) => <DriverCell employeeId={r.employeeId} />,
+      render: (r) => <DriverCell employeeId={r.employeeId} look={DRIVER_LOOK} />,
     },
     {
       key: 'from',

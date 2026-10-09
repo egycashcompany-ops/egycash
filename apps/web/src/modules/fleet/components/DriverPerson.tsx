@@ -464,6 +464,21 @@ export const DriverCell = ({
   return <span className="text-slate-400">—</span>;
 };
 
+/** Look و's other half: the driver's employee code, in a column of its own; or a dash. */
+export const DriverCodeCell = ({ employeeId }: { employeeId: string | null }): JSX.Element => {
+  const person = useEmployeeRecord(employeeId ?? '');
+  return employeeId === null || person === undefined ? (
+    <span className="text-slate-400">—</span>
+  ) : (
+    <span
+      dir="ltr"
+      className="font-mono text-[13px] font-extrabold text-indigo-700 dark:text-indigo-300"
+    >
+      {person.code}
+    </span>
+  );
+};
+
 // ── The list both pickers open ──────────────────────────────────────────────────────────────
 
 /** Fleet's roster, by name, narrowed by what was typed — name or code, Arabic folded. */

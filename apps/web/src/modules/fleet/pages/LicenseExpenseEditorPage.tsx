@@ -40,7 +40,6 @@ import {
   useUpdateLicenseExpense,
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { LicenseExpenseItemChoiceDialog } from '../components/LicenseExpenseItemChoiceDialog';
 import { BoardIcon, PATH } from '../components/FuelCardBoard';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import {
@@ -100,6 +99,8 @@ interface CatalogEntry {
   id: string;
   name: string;
   index: number;
+  /** The memo that counts it, as set on «قوائم الحركة» — `null` is both. */
+  memo: LicenseExpenseKind | null;
 }
 
 /** A two-way switch in the site's purple: the pressed side is the chosen one. */
@@ -142,7 +143,6 @@ const PaidGroup = ({
   items,
   setDraft,
   catalogItems,
-  chosen,
   template,
   onAddToCatalog,
   onSaveTemplate,
@@ -152,8 +152,6 @@ const PaidGroup = ({
   items: LicenseExpenseItemLine[];
   setDraft: (update: (held: Draft) => Draft) => void;
   catalogItems: readonly CatalogEntry[];
-  /** The items this memo offers — `null` is every item. */
-  chosen: ReadonlySet<string> | null;
   template: LicenseExpenseItemLine[];
   onAddToCatalog?: (label: string) => Promise<string | null>;
   onSaveTemplate?: (items: LicenseExpenseItemLine[]) => void;
@@ -171,8 +169,10 @@ const PaidGroup = ({
     );
     if (counted.length > 0) setKept((held) => new Set([...held, ...counted]));
   }, [items, kept]);
+  // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده»: this memo's items as «قوائم الحركة» sets
+  // them, and those in both.
   const counters = catalogItems.filter(
-    (item) => chosen === null || chosen.has(item.id) || kept.has(item.id) || countOf(item.id) > 0,
+    (item) => item.memo === null || item.memo === kind || kept.has(item.id) || countOf(item.id) > 0,
   );
   const newLine = (itemId: string | null, label: string): LicenseExpenseItemLine => ({
     key: newKey(),
@@ -378,9 +378,6 @@ const MemoBlock = ({
   setDraft,
   byCode,
   catalogItems,
-  chosen,
-  onChooseItems,
-  choosing,
   onAddToCatalog,
   templateOf,
   onSaveTemplate,
@@ -390,11 +387,6 @@ const MemoBlock = ({
   setDraft: (update: (held: Draft) => Draft) => void;
   byCode: ReadonlyMap<string, { id: string; plateNumber: string }>;
   catalogItems: readonly CatalogEntry[];
-  /** «انا اللى احدد يبقى فى كل واحده»: the items this memo offers — `null` is every item. */
-  chosen: ReadonlySet<string> | null;
-  /** Keep this memo's choice of items; absent without the grant. Resolves once it is saved. */
-  onChooseItems?: (ids: string[]) => Promise<boolean>;
-  choosing: boolean;
   /** «البيان … قائمة + نص حر»: a hand-written item kept for next time; absent without the grant. */
   onAddToCatalog?: (label: string) => Promise<string | null>;
   /** The saved template's lines for one group, ready to drop in. */
@@ -403,9 +395,7 @@ const MemoBlock = ({
   onSaveTemplate?: (paid: LicenseExpensePaidBy, items: LicenseExpenseItemLine[]) => void;
 }): JSX.Element => {
   const t = useT();
-  const [choiceOpen, setChoiceOpen] = useState(false);
   const items = draft.items;
-  const offered = catalogItems.filter((item) => chosen === null || chosen.has(item.id)).length;
   const visaTotal = sumOf(items.filter((item) => item.paidBy === 'visa'));
   const cashTotal = sumOf(items.filter((item) => item.paidBy === 'cash'));
   const subTitle = (text: string): JSX.Element => (
@@ -433,38 +423,7 @@ const MemoBlock = ({
         >
           {t(`fleet.licenseExpenses.kinds.${kind}`)}
         </span>
-        <span className="flex-1" />
-        {/* Offered once the department's list is loaded: a list chosen from nothing is empty. */}
-        {onChooseItems !== undefined && catalogItems.length > 0 && (
-          <button
-            type="button"
-            data-license-expense-choose-items={kind}
-            onClick={() => setChoiceOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-brand-500/50 bg-brand-500/10 px-2.5 py-1 text-xs font-bold text-brand-700 hover:bg-brand-500/20 dark:text-brand-200"
-          >
-            <span aria-hidden>⚙</span>
-            {t('fleet.licenseExpenses.itemChoice.button', {
-              n: offered,
-              total: catalogItems.length,
-            })}
-          </button>
-        )}
       </div>
-      {onChooseItems !== undefined && (
-        <LicenseExpenseItemChoiceDialog
-          open={choiceOpen}
-          onClose={() => setChoiceOpen(false)}
-          kind={kind}
-          items={catalogItems}
-          chosen={chosen}
-          saving={choosing}
-          onSave={(ids) =>
-            void onChooseItems(ids).then((done) => {
-              if (done) setChoiceOpen(false);
-            })
-          }
-        />
-      )}
 
       <div>
         {subTitle(t('fleet.licenseExpenses.carsSection'))}
@@ -553,7 +512,6 @@ const MemoBlock = ({
           items={items.filter((item) => item.paidBy === paid)}
           setDraft={setDraft}
           catalogItems={catalogItems}
-          chosen={chosen}
           template={templateOf(paid)}
           {...(onAddToCatalog === undefined ? {} : { onAddToCatalog })}
           {...(onSaveTemplate === undefined
@@ -710,41 +668,6 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       toast.error(errorMessage(failure, locale));
     }
   };
-  /** «انا اللى احدد يبقى فى كل واحده»: the items one memo offers — `null` is every item. */
-  const chosenByKind = useMemo(() => {
-    const side = (ids: string[] | null | undefined): ReadonlySet<string> | null =>
-      ids === null || ids === undefined ? null : new Set(ids);
-    return {
-      renewal: side(settings.data?.items?.renewal),
-      extension: side(settings.data?.items?.extension),
-    };
-  }, [settings.data]);
-  /** One memo's items replaced — or, given a function, worked out from the ones saved now. */
-  const writeChoice = (
-    kind: LicenseExpenseKind,
-    ids: (held: string[] | null) => string[] | null,
-  ): Promise<boolean> =>
-    writeSettings((held) => {
-      if (held === undefined) return null;
-      const side = {
-        renewal: held.items?.renewal ?? null,
-        extension: held.items?.extension ?? null,
-      };
-      const next = ids(side[kind]);
-      return next === null
-        ? null
-        : { signatures: held.signatures, items: { ...side, [kind]: next } };
-    });
-  const saveChoice = async (kind: LicenseExpenseKind, ids: string[]): Promise<boolean> => {
-    try {
-      const saved = await writeChoice(kind, () => ids);
-      if (saved) toast.success(t('fleet.licenseExpenses.itemChoice.savedToast'));
-      return saved;
-    } catch (failure) {
-      toast.error(errorMessage(failure, locale));
-      return false;
-    }
-  };
   const editSignatures = (patch: Partial<LicenseExpenseSignatures>): void => {
     signaturesTouched.current = true;
     setSignatures((held) => ({ ...held, ...patch }));
@@ -762,6 +685,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
         id: item.id,
         name: localized(item.name, locale),
         index,
+        memo: item.licenseExpenseKind ?? null,
       })),
     [catalog.data, locale],
   );
@@ -852,17 +776,10 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
         kind: 'licenseExpenseItem',
         name: { ar: label, en: label },
         countsForAlarm: false,
+        // Added from this memo, it is this memo's item — «قوائم الحركة» can put it in both.
+        licenseExpenseKind: kind,
       });
       toast.success(t('fleet.licenseExpenses.addedToListToast'));
-      // Added from this memo, it is one of this memo's items from now on — the other memo's choice
-      // is left to its owner. Only for a writer who may keep a choice at all, and only when this
-      // memo has one: with none, every item is offered already. The line takes its item at once;
-      // the choice follows in the background.
-      if (can('fleetLicenseExpense.edit')) {
-        writeChoice(kind, (held) =>
-          held === null || held.includes(item.id) ? null : [...held, item.id],
-        ).catch((failure: unknown) => toast.error(errorMessage(failure, locale)));
-      }
       return item.id;
     } catch (failure) {
       toast.error(errorMessage(failure, locale));
@@ -977,11 +894,6 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
               setDraft={(update) => setDrafts((held) => ({ ...held, [kind]: update(held[kind]) }))}
               byCode={byCode}
               catalogItems={catalogItems}
-              chosen={chosenByKind[kind]}
-              choosing={saveSettings.isPending}
-              {...(can('fleetLicenseExpense.edit')
-                ? { onChooseItems: (ids: string[]) => saveChoice(kind, ids) }
-                : {})}
               {...(can('fleetCatalog.manage')
                 ? { onAddToCatalog: (label: string) => addToCatalog(kind, label) }
                 : {})}

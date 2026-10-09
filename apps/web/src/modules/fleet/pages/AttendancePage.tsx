@@ -136,11 +136,22 @@ export const AttendancePage = (): JSX.Element => {
       sortable: true,
       render: (r) => <span className="tabular-nums">{formatDate(r.to, locale)}</span>,
     },
-    { key: 'reason', header: t('fleet.attendance.fields.reason'), render: (r) => r.reason },
+    // Wrapped, as the other boards' notes are: the dark table keeps its cells on one line, and a
+    // reason or a note that could not wrap would widen the row and push its actions away.
+    {
+      key: 'reason',
+      header: t('fleet.attendance.fields.reason'),
+      render: (r) => <span className="block max-w-xs whitespace-normal break-words">{r.reason}</span>,
+    },
     {
       key: 'notes',
       header: t('fleet.attendance.fields.notes'),
-      render: (r) => r.notes ?? <span className="text-slate-400">—</span>,
+      render: (r) =>
+        r.notes === null ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <span className="block max-w-xs whitespace-normal break-words">{r.notes}</span>
+        ),
     },
     ...(can('fleetAvailability.edit')
       ? [

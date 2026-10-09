@@ -62,7 +62,26 @@ import {
 } from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
-import { DriverCell } from '../components/DriverPerson';
+import { DriverCell, type DriverLook } from '../components/DriverPerson';
+import { useEmployeeRecord } from '../components/EmployeeName';
+
+/** «ورينى سامبل دى فى شاشه الصيانات»: the driver's look on this board, tried here. */
+const DRIVER_LOOK = 'identity' as DriverLook;
+
+/** The look that leaves the code out of the name: the code in a column of its own. */
+const DriverCode = ({ employeeId }: { employeeId: string | null }): JSX.Element => {
+  const person = useEmployeeRecord(employeeId ?? '');
+  return person === undefined ? (
+    <span className="text-slate-400">—</span>
+  ) : (
+    <span
+      dir="ltr"
+      className="font-mono text-[13px] font-extrabold text-indigo-700 dark:text-indigo-300"
+    >
+      {person.code}
+    </span>
+  );
+};
 import {
   CheckInDialog,
   CheckOutDialog,
@@ -480,6 +499,7 @@ export const MaintenancePage = (): JSX.Element => {
           employeeId={visit.driverInEmployeeId}
           name={visit.driverInName}
           nameClassName="text-red-700 dark:text-red-300"
+          look={DRIVER_LOOK}
         />
       ),
     },
@@ -494,9 +514,27 @@ export const MaintenancePage = (): JSX.Element => {
           employeeId={visit.driverOutEmployeeId}
           name={visit.driverOutName}
           nameClassName="text-emerald-700 dark:text-emerald-300"
+          look={DRIVER_LOOK}
         />
       ),
     },
+    // Look و: the codes in columns of their own, beside the names.
+    ...(DRIVER_LOOK === 'nameOnly'
+      ? ([
+          {
+            key: 'driverInCode',
+            align: 'center',
+            header: `${t('fleet.drivers.columns.employeeCode')} — ${t('fleet.maintenance.fields.driverIn')}`,
+            render: (visit) => <DriverCode employeeId={visit.driverInEmployeeId} />,
+          },
+          {
+            key: 'driverOutCode',
+            align: 'center',
+            header: `${t('fleet.drivers.columns.employeeCode')} — ${t('fleet.maintenance.fields.driverOut')}`,
+            render: (visit) => <DriverCode employeeId={visit.driverOutEmployeeId} />,
+          },
+        ] satisfies Column<FleetMaintenanceVisitDto>[])
+      : []),
     {
       key: 'workshop',
       align: 'center',

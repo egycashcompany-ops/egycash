@@ -360,10 +360,9 @@ describe('the odometer table', () => {
     expect(markup).toContain('data-legacy-name="true"');
   });
 
-  it('draws a roster driver as the drivers board does — badge, name, the code under it, in the shift’s tone', () => {
-    // «تحسين اختيار السواقيين … وتحسين شكل البيانات»: one person drawn one way on every board —
-    // never the code glued to the last letter of the name. Each shift keeps its own colour, on
-    // the NAME, so the two columns still read as the pair they are.
+  it('draws a roster driver in look ج — a person mark, the name in the shift’s tone, the code after a rule', () => {
+    // «اعتمد دى»: never the code glued to the last letter of the name. Each shift keeps its own
+    // colour, on the NAME, so the two columns still read as the pair they are.
     const qc = client([log({ driver1EmployeeId: DRIVER_A, driver2EmployeeId: DRIVER_B })]);
     qc.setQueryData(
       ['fleet', 'people'],
@@ -376,12 +375,14 @@ describe('the odometer table', () => {
       return body.slice(body.lastIndexOf('<td', at), body.indexOf('</td>', at));
     };
     const morning = cellOf('محمد السيد');
-    expect(morning, 'the badge').toContain('rounded-full');
-    expect(morning, 'with the name’s initials').toContain('>مس<');
-    expect(morning, 'the code under the name').toContain('>HR-1001<');
+    expect(morning, 'the person mark, not the initials badge').toContain('<svg');
+    expect(morning, 'no initials').not.toContain('>مس<');
+    expect(morning, 'the rule between the name and the code').toContain('w-px');
+    expect(morning, 'the code after the name').toContain('>HR-1001<');
+    expect(morning, 'the whole name on hover').toContain('title="محمد السيد"');
     expect(morning, 'the morning tone').toContain('text-amber-700 dark:text-amber-300');
     const evening = cellOf('أحمد علي');
-    expect(evening, 'the code under the name').toContain('>HR-1002<');
+    expect(evening, 'the code after the name').toContain('>HR-1002<');
     expect(evening, 'the evening tone').toContain('text-indigo-700 dark:text-indigo-300');
     expect(body, 'no raw id where the roster knows the person').not.toContain(DRIVER_A.slice(-8));
   });

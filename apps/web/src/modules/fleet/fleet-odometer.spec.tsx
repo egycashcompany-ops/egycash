@@ -33,11 +33,12 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
-import { formatDate } from '../../shared/lib/format';
+import { formatNumber } from '../../shared/lib/format';
 import { OdometerPage } from './pages/OdometerPage';
 import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from './components/CorrectOdometerDialog';
+import { BOARD_TABLE_FILL } from './components/board-scroll';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
 // tree in place is enough to read what the dialog produces.
@@ -78,6 +79,19 @@ const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   createdAt: '2026-08-18T00:00:00.000Z',
   updatedAt: '2026-08-18T00:00:00.000Z',
   ...o,
+});
+
+/** One row of Fleet's people list — the shape `/fleet/people` answers with. */
+const person = (employeeId: string, code: string, fullNameAr: string) => ({
+  employeeId,
+  code,
+  fullNameAr,
+  status: 'active' as const,
+  branchId: null,
+  address: null,
+  governorate: null,
+  phone: null,
+  hiredAt: null,
 });
 
 const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarmDto => ({
@@ -174,11 +188,15 @@ const thead = (markup: string): string =>
 const tbody = (markup: string): string =>
   markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
 /** Just the filter bar: everything the `FilterBar` container opens, up to the table. */
+// Up to the table's wrapper, not the table: the wrapper is what hands the table the screen's
+// leftover height (`board-scroll`), and its `flex-1` is not a filter's.
 const filterBar = (markup: string): string =>
   markup.slice(
     markup.indexOf('<div class="flex flex-wrap items-center gap-2'),
-    markup.indexOf('<table'),
+    markup.lastIndexOf('<div', markup.indexOf(BOARD_TABLE_FILL.split(' ')[1]!)),
   );
+/** A class as it appears in rendered markup — React escapes `&` and `>` inside an attribute. */
+const escaped = (cls: string): string => cls.replace(/&/g, '&amp;').replace(/>/g, '&gt;');
 
 /**
  * The header cells in document order, as TEXT — sortable headers wrap their label in a button and
@@ -235,7 +253,7 @@ describe('the odometer table', () => {
 
   it('carries no serial column — the first cell is the DATE, on page 2 as on page 1', () => {
     // The removed column used to number rows through the pagination, so page 2 is where a
-    // leftover would be loudest: a stray serial there would read «٢٦», never a date.
+    // leftover would be loudest: a stray serial there would read «26» (or «٢٦»), never a date.
     const logs = [log({ id: 'a' }), log({ id: 'b' }), log({ id: 'c' })];
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(ODOMETER_KEY({ page: 2 }), {
@@ -251,10 +269,13 @@ describe('the odometer table', () => {
     const onPageTwo = firstCells(render({ route: '/fleet/odometer?page=2', qc }));
     expect(onPageTwo, 'three rows, and not one of them is a number').toHaveLength(3);
     for (const first of onPageTwo) {
-      expect(first, 'the first cell is a date').toMatch(/[٠-٩]+‏\/[٠-٩]+‏\/[٠-٩]+/);
-      expect(first, 'no serial survived the offset arithmetic').not.toBe('٢٦');
+      // «تحسين شكل البيانات»: the boards' date — year first, slashes, Latin digits.
+      expect(first, 'the first cell is a date').toMatch(/^\d{4}\/\d{2}\/\d{2}$/u);
+      expect(first, 'no serial survived the offset arithmetic').not.toBe('26');
+      expect(first, 'in either numbering').not.toBe('٢٦');
     }
-    expect(firstCells(render()), 'page 1 opens on a date too').not.toEqual(['١']);
+    expect(firstCells(render()), 'page 1 opens on a date too').not.toEqual(['1']);
+    expect(firstCells(render()), 'in either numbering').not.toEqual(['١']);
   });
 
   it('computes no row offset at all — the page-size clamp has nothing left to get wrong', () => {
@@ -273,9 +294,8 @@ describe('the odometer table', () => {
     expect(head[0], 'the first header is the date').toBe(t('fleet.odometer.fields.date'));
     expect(head, 'and «م» is nowhere in the head').not.toContain(t('fleet.odometer.columns.no'));
     // …and it is the first CELL of every row, not merely the first header.
-    expect(firstCells(html), 'the first cell of page 1 is a date').toEqual([
-      formatDate(log().date, 'ar'),
-    ]);
+    // Written as the vehicles and drivers boards write a day: «2026/08/18».
+    expect(firstCells(html), 'the first cell of page 1 is a date').toEqual(['2026/08/18']);
 
   });
 
@@ -340,6 +360,33 @@ describe('the odometer table', () => {
     expect(markup).toContain('data-legacy-name="true"');
   });
 
+  it('draws a roster driver in look ج — a person mark, the name in the shift’s tone, the code after a rule', () => {
+    // «اعتمد دى»: never the code glued to the last letter of the name. Each shift keeps its own
+    // colour, on the NAME, so the two columns still read as the pair they are.
+    const qc = client([log({ driver1EmployeeId: DRIVER_A, driver2EmployeeId: DRIVER_B })]);
+    qc.setQueryData(
+      ['fleet', 'people'],
+      [person(DRIVER_A, 'HR-1001', 'محمد السيد'), person(DRIVER_B, 'HR-1002', 'أحمد علي')],
+    );
+    const body = tbody(render({ qc }));
+    const cellOf = (name: string): string => {
+      const at = body.indexOf(`>${name}<`);
+      expect(at, `${name} is drawn`).toBeGreaterThan(-1);
+      return body.slice(body.lastIndexOf('<td', at), body.indexOf('</td>', at));
+    };
+    const morning = cellOf('محمد السيد');
+    expect(morning, 'the person mark, not the initials badge').toContain('<svg');
+    expect(morning, 'no initials').not.toContain('>مس<');
+    expect(morning, 'the rule between the name and the code').toContain('w-px');
+    expect(morning, 'the code after the name').toContain('>HR-1001<');
+    expect(morning, 'the whole name on hover').toContain('title="محمد السيد"');
+    expect(morning, 'the morning tone').toContain('text-amber-700 dark:text-amber-300');
+    const evening = cellOf('أحمد علي');
+    expect(evening, 'the code after the name').toContain('>HR-1002<');
+    expect(evening, 'the evening tone').toContain('text-indigo-700 dark:text-indigo-300');
+    expect(body, 'no raw id where the roster knows the person').not.toContain(DRIVER_A.slice(-8));
+  });
+
   it('keeps an unbreakable note inside its column instead of widening the table', () => {
     // A table column is sized by its content, and a note carrying an unbroken run of characters
     // (a pasted reference, a URL) has no break point to wrap at — so the column grew to fit it and
@@ -391,10 +438,50 @@ describe('the odometer table', () => {
   });
 
   it('renders the readings and the derived km as the server gave them', () => {
+    // «تحسين شكل البيانات»: Latin digits with a comma, as the vehicles board writes a figure —
+    // never the Arabic-Indic «١٥٠٬٢٥٠», whose light separator reads as one long number.
     const body = tbody(render());
-    for (const value of ['١٥٠٬٠٠٠', '١٥٠٬٢٥٠', '٢٥٠']) {
+    for (const value of ['150,000', '150,250', '>250<']) {
       expect(body, `${value} rendered`).toContain(value);
     }
+    expect(body, 'no Arabic-Indic figure left in the grid').not.toMatch(/[٠-٩]/u);
+  });
+
+  it('writes every date and figure in the boards’ figure — monospace, tabular, left to right', () => {
+    const body = tbody(render());
+    for (const value of ['2026/08/18', '150,000', '150,250', '>250<', '150']) {
+      const at = body.indexOf(value.startsWith('>') ? value : `>${value}<`);
+      expect(at, `${value} is drawn`).toBeGreaterThan(-1);
+      const tag = body.slice(body.lastIndexOf('<span', at), at);
+      expect(tag, `${value} reads left to right`).toContain('dir="ltr"');
+      expect(tag, `${value} in tabular figures`).toContain('tabular-nums');
+    }
+    // The car's code is the row's name: bold, as on the vehicles board.
+    const code = body.slice(
+      body.lastIndexOf('<span', body.indexOf('>150<')),
+      body.indexOf('>150<'),
+    );
+    expect(code).toContain('font-bold');
+  });
+
+  it('centres every column as the drivers board does — the row’s actions stay at its end', () => {
+    const html = render();
+    const heads = [...thead(html).matchAll(/<th\b[^>]*class="([^"]*)"/g)].map(
+      (m) => m[1] as string,
+    );
+    expect(heads).toHaveLength(REQUIRED_COLUMNS.length);
+    heads.slice(0, -1).forEach((cls, i) => {
+      expect(cls, `${REQUIRED_COLUMNS[i]} header`).toContain('text-center');
+    });
+    expect(heads.at(-1), 'the actions header').toContain('text-end');
+    const cells = [...tbody(html).matchAll(/<td\b[^>]*class="([^"]*)"/g)].map(
+      (m) => m[1] as string,
+    );
+    expect(cells).toHaveLength(REQUIRED_COLUMNS.length);
+    cells.slice(0, -1).forEach((cls, i) => {
+      expect(cls, `${REQUIRED_COLUMNS[i]} cell`).toContain('text-center');
+    });
+    expect(cells.at(-1), 'the actions cell').toContain('text-end');
   });
 
   it('shows the OPEN period as a state, never as a zero', () => {
@@ -402,6 +489,7 @@ describe('the odometer table', () => {
     // number the server never produced.
     const body = tbody(render({ qc: client([log({ inReading: null, km: null })]) }));
     expect(body).toContain(t('fleet.odometer.openPeriod'));
+    expect(body).not.toContain('>0<');
     expect(body).not.toContain('>٠<');
   });
 
@@ -417,7 +505,12 @@ describe('the distance since the last service', () => {
     render({ qc: client([log()], [alarm({ level, sinceServiceKm })]) });
 
   it('reports the DERIVED distance, with the units', () => {
-    expect(tbody(withAlarm('none', 2000))).toContain('٢٬٠٠٠');
+    const body = tbody(withAlarm('none', 2000));
+    // The figure in the boards' Latin digits; the unit in the page's own words, outside the
+    // monospace figure — a monospace face has no Arabic letters.
+    expect(body).toContain('>2,000<');
+    expect(body).toContain(t('fleet.odometer.kmValue').replace('{{km}}', '').trim());
+    expect(body).not.toContain('٢٬٠٠٠');
   });
 
   it('carries the design system’s own alarm badge for each level', () => {
@@ -511,7 +604,7 @@ describe('the server answers the whole question — the page never slices', () =
     // history. The default is a window, and it is the server that applies it: the rows below can
     // only appear if the request carried this month's bounds, because that is the key they sit on.
     const qc = seeded(ODOMETER_KEY({ from: MONTH.from, to: MONTH.to }), pageOf([log()]));
-    expect(tbody(render({ qc }))).toContain('١٥٠٬٠٠٠');
+    expect(tbody(render({ qc }))).toContain('150,000');
     // …and the two date boxes show the window, so the reader can see which days these are.
     const bar = filterBar(render({ qc }));
     expect(bar, 'the start bound is shown').toContain(`value="${MONTH.from}"`);
@@ -700,29 +793,34 @@ describe('the filter bar', () => {
     expect(bar).toContain(t('fleet.odometer.columns.alert'));
   });
 
-  it('lines the sized filters up on ONE row, with only the note box taking the leftover', () => {
+  it('lines the filters up on ONE row on a computer, with only the note box taking the leftover below it', () => {
     const html = render();
     const bar = filterBar(html);
-    // The container stops wrapping once the viewport is wide enough to hold the whole row, and
-    // not one pixel before: `flex-nowrap` does not shorten a row that will not fit, it pushes it
-    // off the page. Below that it still wraps — the fallback for a screen too narrow for five.
-    //
-    // 1440, not the 1400 measured for the bare five filters: the count badge beside the reset is
-    // width the old figure did not know about, and a threshold left below where the row fits
-    // trades a tidy wrap for a horizontally scrolling page.
-    const open = html.slice(html.indexOf('<div class="flex flex-wrap items-center gap-2'));
-    expect(open.slice(0, open.indexOf('>')), 'one row on a desktop').toContain(
-      'min-[1440px]:flex-nowrap',
+    // «زى شاشة السيارات و السواقيين»: the bar is the vehicles board's dark one. From a computer's
+    // width it holds every filter on ONE row and SHARES the row between them, so the row always
+    // fits rather than being pushed off the page — the threshold this bar used to measure for its
+    // fixed widths has nothing left to guard. Below that it still wraps: the fallback for a tablet.
+    const barAt = html.indexOf('<div class="flex flex-wrap items-center gap-2');
+    const wrapper = html.slice(html.lastIndexOf('<div', barAt - 1), barAt);
+    expect(wrapper, 'one row on a computer').toContain(escaped('lg:[&>div]:!flex-nowrap'));
+    expect(wrapper, 'the row shared between the filters').toContain(
+      escaped('lg:[&>div>*]:!flex-1'),
     );
+    const open = html.slice(barAt);
     expect(open.slice(0, open.indexOf('>')), 'wrap is the narrow-screen fallback').toContain(
       'flex-wrap',
     );
-    // EXACTLY ONE control takes the leftover space, and it is the note box — «خلى في انبوت يسمح
-    // ان ابحث بالملاحظات». Every SIZED filter still holds its own width instead of being squeezed
-    // by its neighbours; the flexible one is how a sixth control was added without moving the
-    // threshold above, because it shrinks into whatever the row has rather than demanding its own.
+    // Wrapped, EXACTLY ONE control takes the leftover space, and it is the note box — «خلى في
+    // انبوت يسمح ان ابحث بالملاحظات». Every SIZED filter still holds its own width instead of being
+    // squeezed by its neighbours; the flexible one shrinks into whatever the row has rather than
+    // demanding its own.
     // (`w-full` is not the test: `Input` carries it at its base and merely fills its wrapper.)
-    expect(bar.match(/flex-1/g)?.length ?? 0, 'one, and only one, flexible control').toBe(1);
+    // (Counted unprefixed: on a computer the bar shares the row, and the date boxes fill their
+    // share with `lg:flex-1` — that is the shared row, not a second leftover-taker below it.)
+    expect(
+      bar.match(/(?<![\w:-])flex-1\b/g)?.length ?? 0,
+      'one, and only one, flexible control',
+    ).toBe(1);
     expect(bar, 'and it is the note box').toContain('min-w-[8rem] flex-1');
     expect(bar, 'nothing else grows').not.toMatch(/\bgrow\b/);
     expect(bar, 'nothing is sized by the row').not.toMatch(/\bbasis-/);
@@ -731,7 +829,7 @@ describe('the filter bar', () => {
       'each sized filter is shrink-0',
     ).toBeGreaterThanOrEqual(5);
     // The date bounds are the narrow ones — a date needs ten characters, not a share of the row.
-    expect(bar.match(/class="w-36"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
+    expect(bar.match(/class="w-36 lg:flex-1"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
     // …and the driver picker is the medium one — wider than a date, because it draws a NAME.
     expect(bar, 'the driver picker is medium').toContain('w-56');
   });
@@ -813,7 +911,7 @@ describe('the filter bar', () => {
     const body = tbody(
       render({ route: '/fleet/odometer?vehicleCodes=ZZ0104,ZZ0105&alerts=red', qc }),
     );
-    expect(body, 'the request is unchanged').toContain('١٥٠٬٠٠٠');
+    expect(body, 'the request is unchanged').toContain('150,000');
   });
 
   it('takes SEVERAL vehicles and SEVERAL alert levels at once', () => {
@@ -844,7 +942,7 @@ describe('the filter bar', () => {
     });
     expect(html).toContain('value="2026-08-01"');
     expect(html).toContain('value="2026-08-18"');
-    expect(tbody(html), 'the picked drivers narrowed the request').toContain('١٥٠٬٠٠٠');
+    expect(tbody(html), 'the picked drivers narrowed the request').toContain('150,000');
   });
 
   it('sends NO driver parameter at all when nobody is picked', () => {
@@ -872,11 +970,13 @@ describe('the filter bar', () => {
 
   it('clears every filter at once', () => {
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    // From the reset up to the first filter it resets.
     const clear = source.slice(
       source.indexOf('onClear={'),
-      source.indexOf('>\n          {/* Several'),
+      source.indexOf('<VehicleCodeFilter', source.indexOf('onClear={')),
     );
-    for (const key of ['vehicleCodes', 'from', 'to', 'drv', 'alerts']) {
+    expect(clear, 'the reset was found').toContain('patch({');
+    for (const key of ['vehicleCodes', 'from', 'to', 'drv', 'alerts', 'notes']) {
       expect(clear, `${key} cleared`).toContain(`${key}: null`);
     }
   });
@@ -902,15 +1002,28 @@ describe('the filter bar', () => {
     expect(source).not.toContain('items.filter(');
   });
 
-  it('the count beside the filters is the WHOLE set, never the page', () => {
-    // «رقم الاجمالى الموجود فى الجدول بعد الفلاتر ... زى دا اللى فى شاشه مخالفات» — one badge on
-    // the filter bar, carrying one number. `meta.totalItems` is the count the server matched;
-    // `rows.length` is how many of them fit on this page, and using it would make the figure jump
-    // on the last page of every filter.
+  it('the count over the table is the WHOLE set, never the page', () => {
+    // «رقم الاجمالى الموجود فى الجدول بعد الفلاتر ... زى دا اللى فى شاشه مخالفات» — one number,
+    // written on the board's toolbar as the vehicles and drivers boards write theirs.
+    // `meta.totalItems` is the count the server matched; `rows.length` is how many of them fit on
+    // this page, and using it would make the figure jump on the last page of every filter.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
-    expect(source).toContain('<FilteredCount value={data?.meta.totalItems} />');
-    expect(source, 'a page is not an answer about the set').not.toContain(
-      '<FilteredCount value={rows.length}',
+    expect(source).toContain('formatNumber(data.meta.totalItems, locale)');
+    expect(source, 'a page is not an answer about the set').not.toMatch(
+      /count: formatNumber\(rows\.length/u,
+    );
+    // Page 3 of 73 holds one row here: the count says 73, which nothing on the page could count.
+    const qc = client();
+    qc.setQueryData(ODOMETER_KEY({ page: 3 }), {
+      items: [log()],
+      meta: { page: 3, pageSize: 25, totalItems: 73, totalPages: 3 },
+    });
+    const html = render({ route: '/fleet/odometer?page=3', qc });
+    const at = html.lastIndexOf('<span', html.indexOf('data-filtered-count'));
+    const count = html.slice(at, html.indexOf('</span>', at));
+    expect(count, 'announced as it changes').toContain('role="status"');
+    expect(count).toContain(
+      translate('ar', 'fleet.vehicle.count.odometer', { count: formatNumber(73, 'ar') }),
     );
   });
 
@@ -1173,8 +1286,11 @@ describe('recording a reading', () => {
     const html = renderDialog({
       qc: new QueryClient({ defaultOptions: { queries: { retry: false } } }),
     });
-    const at = html.lastIndexOf('<button');
-    expect(html.slice(at), 'the last button is Save').toContain(t('common.save'));
+    // The design's footer puts Save first and «إلغاء» after it; Save carries its own hook.
+    const at = html.lastIndexOf('<button', html.indexOf('data-odometer-save="true"'));
+    expect(html.slice(at, html.indexOf('</button>', at)), 'that button is Save').toContain(
+      t('common.save'),
+    );
     // The class list is dropped first: Tailwind's `disabled:` variants live in it.
     const save = html.slice(at, html.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
     expect(save, 'Save is pressable').not.toContain('disabled');
@@ -1356,7 +1472,8 @@ describe('correcting a reading', () => {
   it('leaves a day recorded without a reading correctable — its reading box shut, unstarred', () => {
     const html = renderCorrect(log({ outReading: null, inReading: null }));
     expect(outBox(html), 'the box is shut').toMatch(/<input[^>]*\sdisabled=""/u);
-    expect(outBox(html), 'and not starred').not.toContain('text-red-500');
+    // The design's star is rose.
+    expect(outBox(html), 'and not starred').not.toContain('text-rose-500');
     expect(html, 'never the text «null»').not.toContain('value="null"');
     expect(source, 'it is seeded empty').toContain(
       "setOutReading(log.outReading === null ? '' : String(log.outReading));",
@@ -1366,7 +1483,7 @@ describe('correcting a reading', () => {
   it('still requires the reading on a day that has one', () => {
     const html = renderCorrect(log({ outReading: 120000, inReading: 120150 }));
     expect(outBox(html)).not.toMatch(/<input[^>]*\sdisabled=""/u);
-    expect(outBox(html), 'starred').toContain('text-red-500');
+    expect(outBox(html), 'starred').toContain('text-rose-500');
   });
 });
 

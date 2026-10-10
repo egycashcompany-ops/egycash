@@ -22,9 +22,9 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { fetchEmployeeNames, personCell } from '../lib/fleet-people';
 import * as fleetApi from '../api/fleet-api';
@@ -36,17 +36,22 @@ import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
-import { EditIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { Dialog } from '../../../shared/ui/Dialog';
+import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useDeleteOdometer, useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
-import { FilteredCount } from '../components/FilteredCount';
 import { cn } from '../../../shared/lib/cn';
+import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
+import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
+import { DARK_TABLE } from './VehiclesListPage';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { odometerRange, widerRange } from '../lib/odometer-range';
-import { DriverName } from '../components/EmployeeName';
+import { DriverCell } from '../components/DriverPerson';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
@@ -66,6 +71,17 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
+/** Every filter is `density="tight"`, as on the vehicles and drivers boards. */
+const TIGHT = 'tight' as const;
+
+/** The boards' toolbar pill (Excel), from the drivers screen. */
+const PILL_BUTTON =
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
+
+/** The vehicles board's add button — the purple gradient, for the one thing this screen creates. */
+const ADD_BUTTON =
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs active:scale-95';
+
 /**
  * The order this screen opens in, before the reader has asked for one.
  *
@@ -73,6 +89,20 @@ const DEFAULT_PAGE_SIZE = 25;
  * first click REPLACES it rather than joining it — see `clickSort`.
  */
 const DEFAULT_SORT = 'date:desc';
+
+/**
+ * «تحسين شكل البيانات فى جداول العدادات»: a figure in the table as the vehicles and drivers boards
+ * write one — Latin digits grouped with a comma, «150,250», never the Arabic-Indic «١٥٠٬٢٥٠» whose
+ * light separator reads as one long number. A counter is read against the car's own dial, which
+ * is written in Latin digits. The count over the table and the dialogs keep `formatNumber`.
+ */
+const LATIN = new Intl.NumberFormat('en-US');
+
+/** The boards' figure: monospace, tabular, left to right, never broken over two lines. */
+const FIGURE = cn('whitespace-nowrap', NUM);
+
+/** An empty cell, as the boards draw one. */
+const DASH = <span className="text-slate-400">—</span>;
 
 export const OdometerPage = (): JSX.Element => {
   const t = useT();
@@ -231,7 +261,7 @@ export const OdometerPage = (): JSX.Element => {
   /**
    * THE DRIVERS' NAMES FOR A WHOLE EXPORT, through the very cache the table's cells fill.
    *
-   * A driver column on screen is a `DriverName`, and for an employee-backed row that is an HR
+   * A driver column on screen is a `DriverCell`, and for an employee-backed row that is an HR
    * read: `driver1Name` is set only where HR has no employee for the spelling, so the register
    * itself carries an ID and nothing else for everyone still on the payroll. The export cannot
    * call the cell's hook — it runs in a callback, over rows that were never rendered — so it asks
@@ -320,16 +350,58 @@ export const OdometerPage = (): JSX.Element => {
       },
     );
   };
+  /**
+   * The toolbar's «Excel», as `ExportSheetButton` ran it: one file at a time, a spinner while the
+   * rows are gathered, and a failure NAMED rather than swallowed — a button that silently does
+   * nothing is read as broken, and the reader's next move is to press it again.
+   */
+  const [exporting, setExporting] = useState(false);
+  const runExport = async (): Promise<void> => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await exportSheet();
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    } finally {
+      setExporting(false);
+    }
+  };
 
+  /**
+   * «2026/09/01» or «150,250»: one figure on the row, in the boards' figure — see `FIGURE`. An
+   * empty cell is `DASH`, and a reading that is a STATE («بدون قراءة», the open period) keeps its
+   * badge; neither comes through here.
+   */
+  const figure = (text: string): JSX.Element => (
+    <span dir="ltr" className={FIGURE}>
+      {text}
+    </span>
+  );
+  /**
+   * «5,250 كم»: the figure in the boards' figure, the unit in the page's own words — and in the
+   * order the locale's sentence puts them, which is why the template is split rather than the
+   * unit appended. A monospace face has no Arabic letters, so the unit must not wear it.
+   */
+  const [kmBefore = '', kmAfter = ''] = t('fleet.odometer.kmValue', { km: '\u0000' }).split(
+    '\u0000',
+  );
+
+  // «تحسين شكل البيانات»: the drivers board's table — every value and header CENTRED, a date year
+  // first with slashes, every figure in Latin digits with a comma, the car's code bold, an empty
+  // cell a grey dash, and each driver drawn as the drivers board draws one (badge, name, code).
+  // The row's actions stay at its end.
   const columns: Column<FleetOdometerLogDto>[] = [
     {
       key: 'date',
+      align: 'center',
       header: t('fleet.odometer.fields.date'),
       sortable: true,
-      render: (log) => <span className="tabular-nums">{formatDate(log.date, locale)}</span>,
+      render: (log) => figure(ymd(log.date)),
     },
     {
       key: 'vehicle',
+      align: 'center',
       header: t('fleet.odometer.columns.vehicle'),
       // Ordered by the car's CODE, which the server joins in from the registry before it cuts the
       // page — the register is paged, so ordering the rows in hand would sort twenty-five
@@ -338,11 +410,14 @@ export const OdometerPage = (): JSX.Element => {
       sortKey: 'vehicleCode',
       // A SERVER fact on the row, like every other number in this table. `null` only when the
       // vehicle no longer exists at all — a scrapped one keeps its code.
-      render: (log) => (
-        <span className="font-mono text-xs" dir="ltr">
-          {log.vehicleCode ?? '—'}
-        </span>
-      ),
+      render: (log) =>
+        log.vehicleCode === null ? (
+          DASH
+        ) : (
+          <span dir="ltr" className={cn('text-sm font-bold', FIGURE)}>
+            {log.vehicleCode}
+          </span>
+        ),
     },
     // TWO COLUMNS, ONE PER SHIFT — «تفصل الصباحى عن المسائى كل واحد فى عمود».
     //
@@ -353,40 +428,43 @@ export const OdometerPage = (): JSX.Element => {
     // because the name is joined in by the server before the page is cut (`driverNameSorts`).
     //
     // The tones stay what they were, one per shift, so the two columns still read as the pair they
-    // were when they shared a cell. An empty shift is a dash, never a blank.
+    // were when they shared a cell. «اعتمد دى»: each shift in look ج — a person mark, the name in
+    // the shift's tone, a rule, the code faint after it. An empty shift is a dash, never a blank.
     {
       key: 'driver1',
+      align: 'center',
       header: t('fleet.odometer.columns.driver1'),
       sortable: true,
       sortKey: 'driver1Name',
-      render: (log) =>
-        log.driver1EmployeeId === null && !log.driver1Name ? (
-          '—'
-        ) : (
-          <span className="text-amber-700 dark:text-amber-300">
-            <DriverName employeeId={log.driver1EmployeeId} name={log.driver1Name} />
-          </span>
-        ),
+      render: (log) => (
+        <DriverCell
+          employeeId={log.driver1EmployeeId}
+          name={log.driver1Name}
+          nameClassName="text-amber-700 dark:text-amber-300"
+          look="person"
+        />
+      ),
     },
     {
       key: 'driver2',
+      align: 'center',
       header: t('fleet.odometer.columns.driver2'),
       sortable: true,
       sortKey: 'driver2Name',
-      render: (log) =>
-        log.driver2EmployeeId === null && !log.driver2Name ? (
-          '—'
-        ) : (
-          <span className="text-indigo-700 dark:text-indigo-300">
-            <DriverName employeeId={log.driver2EmployeeId} name={log.driver2Name} />
-          </span>
-        ),
+      render: (log) => (
+        <DriverCell
+          employeeId={log.driver2EmployeeId}
+          name={log.driver2Name}
+          nameClassName="text-indigo-700 dark:text-indigo-300"
+          look="person"
+        />
+      ),
     },
     {
       key: 'outReading',
       header: t('fleet.odometer.columns.outReading'),
       sortable: true,
-      align: 'end',
+      align: 'center',
       // A DAY RECORDED WITH NO READING says so, in words. A dash would read as "nothing here" in
       // a column where every other row carries a number, and the reader would take the day for a
       // gap in the log rather than for what it is: a day somebody recorded, with a counter nobody
@@ -396,43 +474,52 @@ export const OdometerPage = (): JSX.Element => {
         log.outReading === null ? (
           <Badge tone="neutral">{t('fleet.odometer.noReading')}</Badge>
         ) : (
-          formatNumber(log.outReading, locale)
+          figure(LATIN.format(log.outReading))
         ),
     },
     {
       key: 'inReading',
       header: t('fleet.odometer.columns.inReading'),
-      align: 'end',
+      align: 'center',
       // Such a row closes nothing, so it is NOT the open period either — the badge here means
       // "waiting for the next reading", and this row is not waiting for anything.
       render: (log) =>
         log.outReading === null ? (
-          <span className="text-slate-400">—</span>
+          DASH
         ) : log.inReading === null ? (
           <Badge tone="info">{t('fleet.odometer.openPeriod')}</Badge>
         ) : (
-          formatNumber(log.inReading, locale)
+          figure(LATIN.format(log.inReading))
         ),
     },
     {
       key: 'km',
       header: t('fleet.odometer.columns.km'),
-      align: 'end',
-      render: (log) => (log.km === null ? '—' : formatNumber(log.km, locale)),
+      align: 'center',
+      render: (log) => (log.km === null ? DASH : figure(LATIN.format(log.km))),
     },
     {
       key: 'notes',
+      align: 'center',
       // The one free-text column, and a table column is sized by its content: a note carrying an
       // unbroken run of characters — a pasted reference, a URL — has no break point to wrap at, so
       // the column grows to fit it and pushes the columns after it off the screen. A bounded box
       // that is allowed to break inside a word gives the run somewhere to wrap, and keeps the
       // maintenance figure and the row's actions where the reader left them.
       header: t('fleet.odometer.columns.notes'),
+      // `whitespace-normal`: the boards' table keeps its cells on one line, and a note that may
+      // not wrap would spill over the columns beside it however bounded its box. `mx-auto`: a
+      // block ignores the cell's centring, so the box itself is centred.
       render: (log) =>
-        log.notes === null ? '—' : <span className="block max-w-xs break-words">{log.notes}</span>,
+        log.notes === null ? (
+          DASH
+        ) : (
+          <span className="mx-auto block max-w-xs whitespace-normal break-words">{log.notes}</span>
+        ),
     },
     {
       key: 'maintenance',
+      align: 'center',
       header: t('fleet.odometer.columns.sinceService'),
       // Ordered by the CAR's figure, computed for the fleet and handed to the query — see
       // `alarm-sort.ts`. A car the projection has no answer for sorts with the other blanks.
@@ -447,16 +534,21 @@ export const OdometerPage = (): JSX.Element => {
         // of them reads as several problems instead of one. It is said once per car, on the
         // alarms board, where a row IS a vehicle.
         if (alarm === undefined || alarm.sinceServiceKm === null) {
-          return <span className="text-slate-400">—</span>;
+          return DASH;
         }
         return (
           // The tint is on this element, NOT on the row: a row here is one READING, and a car has
           // many — tinting them all would show five alarms for one car.
           <span
-            className={cn('inline-flex flex-wrap items-center gap-2', alarmCellTint(alarm.level))}
+            className={cn(
+              'inline-flex flex-wrap items-center justify-center gap-2',
+              alarmCellTint(alarm.level),
+            )}
           >
-            <span className="tabular-nums">
-              {t('fleet.odometer.kmValue', { km: formatNumber(alarm.sinceServiceKm, locale) })}
+            <span className="whitespace-nowrap">
+              {kmBefore}
+              {figure(LATIN.format(alarm.sinceServiceKm))}
+              {kmAfter}
             </span>
             <AlarmBadge level={alarm.level} />
           </span>
@@ -470,7 +562,8 @@ export const OdometerPage = (): JSX.Element => {
             header: t('fleet.vehicles.columns.actions'),
             align: 'end',
             render: (log: FleetOdometerLogDto) => (
-              <span className="inline-flex items-center gap-1">
+              // The boards' row actions: grey icons, the delete as grey as the rest.
+              <span className="flex items-center justify-end gap-1">
                 {can('fleetOdometer.correct') && (
                   <button
                     type="button"
@@ -501,169 +594,234 @@ export const OdometerPage = (): JSX.Element => {
       : []),
   ];
 
+  /**
+   * One date BOUND, in the boards' dark bar: the calendar icon inside the box, as every filter on
+   * the vehicles board carries its icon.
+   *
+   * A date input ignores `placeholder` in every browser and paints its own `yyyy/mm/dd` hint
+   * instead, and on this screen both bounds always hold a date (the defaulted month) — so the two
+   * are identical to look at and a caption is the only thing that can tell them apart. It goes
+   * BESIDE the control, inside the `<label>` that owns it, never stacked above it, which is what
+   * would put this bar out of step with the label-less filters around it and cost the row its
+   * height.
+   *
+   * `dir="ltr"` keeps the date reading left-to-right on an Arabic page. The width lives on the
+   * wrapper: `Input` is `w-full` at its base and `cn` does not merge Tailwind classes, so a `w-*`
+   * passed to it would only compete with that. A date needs about ten characters and no more —
+   * until the bar shares its row on a computer, where the box fills its share beside its caption.
+   */
+  const dateBound = (id: string, labelKey: string, value: string, param: string): JSX.Element => (
+    <label className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
+      <span className="whitespace-nowrap">{t(labelKey)}</span>
+      <span className="w-36 lg:flex-1">
+        <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+          <Input
+            id={id}
+            type="date"
+            dir="ltr"
+            density={TIGHT}
+            aria-label={t(labelKey)}
+            title={t(labelKey)}
+            value={value}
+            onChange={(e) => patch({ [param]: e.target.value || null })}
+            className="dark:[color-scheme:dark]"
+          />
+        </FilterWithIcon>
+      </span>
+    </label>
+  );
+
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('fleet.nav.odometer')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.odometer') },
-        ]}
-        actions={
-          <>
-            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
-                told the reader it has no data reads as a way out of the failure, and the
-                file behind it would be empty or short. Disabling is not enough — it still
-                draws. */}
-            {!isError && <ExportSheetButton name="odometer" onExport={exportSheet} />}
+    <PageContainer fullHeight>
+      <div className={BOARD_FRAME}>
+        {/* «زى شاشة السيارات و السواقيين»: no page title — the boards open on their toolbar. */}
+        <div className="flex items-center justify-between gap-2" data-odometer-toolbar="true">
+          {/* How many readings the filter matched, over the WHOLE set — `totalItems`, not the
+              page's length, so turning a page never moves it. Nothing is written while the answer
+              is in flight: a 0 there would be a claim. */}
+          <span
+            role="status"
+            data-filtered-count
+            title={t('fleet.filters.matchedRows')}
+            className="text-sm font-bold text-slate-600 dark:text-slate-300"
+          >
+            {data?.meta.totalItems === undefined
+              ? ''
+              : t('fleet.vehicle.count.odometer', {
+                  count: formatNumber(data.meta.totalItems, locale),
+                })}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 sm:gap-2">
+            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just told
+                the reader it has no data reads as a way out of the failure, and the file behind
+                it would be empty or short. Disabling is not enough — it still draws. */}
+            {!isError && (
+              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80">
+                <button
+                  type="button"
+                  data-export="odometer"
+                  title={t('fleet.export.excel')}
+                  disabled={exporting}
+                  onClick={() => void runExport()}
+                  className={cn(
+                    PILL_BUTTON,
+                    'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300',
+                  )}
+                >
+                  {exporting ? (
+                    <Spinner className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <BoardIcon
+                      d={PATH.excel}
+                      className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                    />
+                  )}
+                  <span className="sm:hidden">Excel</span>
+                  <span className="hidden sm:inline">{t('fleet.fuelCards.board.excel')}</span>
+                </button>
+              </div>
+            )}
             <Can permission="fleetOdometer.record">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
+              <button
+                type="button"
+                data-odometer-record="true"
                 onClick={() => setRecordOpen(true)}
+                className={ADD_BUTTON}
               >
+                <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
                 {t('fleet.odometer.record')}
-              </Button>
+              </button>
             </Can>
-          </>
-        }
-      />
+          </span>
+        </div>
 
+        {/* The vehicles board's dark bar: every filter's name written in its box, an icon at its
+            start, one row on a computer — the bar shares the row between its filters there. */}
+        <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
+          <FilterBar
+            hasActiveFilters={hasActiveFilters}
+            onClear={() =>
+              patch({
+                vehicleCodes: null,
+                from: null,
+                to: null,
+                drv: null,
+                alerts: null,
+                notes: null,
+              })
+            }
+          >
+            {/* In the order the question is asked: which cars, over which days, driven by whom,
+                in what state, saying what. Below a computer's width the bar wraps, each filter
+                holding its own width and only the note box taking the leftover. */}
 
-      <div className="space-y-4">
-        <FilterBar
-          singleRow
-          // 1400 was measured for this bar plus its reset; the count badge beside them is new
-          // width, and `singleRow` does not SHORTEN a row that will not fit — it pushes it off
-          // the page. So the threshold moves up with the row rather than staying where it was.
-          singleRowFrom={1440}
-          hasActiveFilters={hasActiveFilters}
-          onClear={() =>
-            patch({
-              vehicleCodes: null,
-              from: null,
-              to: null,
-              drv: null,
-              alerts: null,
-              notes: null,
-            })
-          }
-          // How many readings the filter matched, over the WHOLE set — `totalItems`, not the
-          // page's length, so turning a page never moves it.
-          trailing={<FilteredCount value={data?.meta.totalItems} />}
-        >
-          {/* One row on a desktop, in the order the question is asked: which cars, over which
-              days, driven by whom, in what state. Every filter is `shrink-0` and sized to what it
-              holds — none of them takes the leftover space, so the row reads as five controls
-              rather than one stretched one. Narrower than the row needs, the bar wraps. */}
-
-          {/* Several cars at once, picked by the code the registry calls them by — the same code
-              the URL carries, so a filtered view is a link somebody else can read. */}
-          <VehicleCodeFilter
-            className="shrink-0"
-            value={vehicleCodes}
-            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
-          />
-          {/* Either bound alone is a valid question ("from the 1st", "up to the 18th"), and the
-              same date in both is one day — the server's `to` covers the whole day it names.
-
-              A date input ignores `placeholder` in every browser and paints its own `yyyy/mm/dd`
-              hint instead, so the two bounds are identical to look at and a caption is the only
-              thing that can tell them apart. It goes BESIDE the control, inside the `<label>` that
-              owns it — the same inline shape the recruitment filter bars already use for their
-              date ranges — never stacked above it, which is what would put this bar out of step
-              with the label-less filters around it and cost the row its height.
-
-              `dir="ltr"` keeps the date reading left-to-right on an Arabic page, also as those
-              bars do. The width is fixed and narrow: a date needs about ten characters and no
-              more, and anything wider would eat the row. */}
-          <label className="flex shrink-0 items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-            <span className="whitespace-nowrap">{t('fleet.odometer.fromDate')}</span>
-            {/* The width lives on the wrapper: `Input` is `w-full` at its base and `cn` does not
-                merge Tailwind classes, so a `w-*` passed to it would only compete with that. */}
-            <span className="w-36">
-              <Input
-                id="odometer-from"
-                type="date"
-                dir="ltr"
-                aria-label={t('fleet.odometer.fromDate')}
-                title={t('fleet.odometer.fromDate')}
-                value={from}
-                onChange={(e) => patch({ from: e.target.value || null })}
-              />
-            </span>
-          </label>
-          <label className="flex shrink-0 items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-            <span className="whitespace-nowrap">{t('fleet.odometer.toDate')}</span>
-            <span className="w-36">
-              <Input
-                id="odometer-to"
-                type="date"
-                dir="ltr"
-                aria-label={t('fleet.odometer.toDate')}
-                title={t('fleet.odometer.toDate')}
-                value={to}
-                onChange={(e) => patch({ to: e.target.value || null })}
-              />
-            </span>
-          </label>
-          {/* WHO, picked off the drivers registry rather than typed. Several at once, because a
-              question about a shift is usually a question about more than one person — and the
-              same `multiple` the maintenance board's filter takes. The width is fixed like every
-              other control on this bar: the picker is `fullWidth` inside a box this row owns, so
-              a long Arabic name does not stretch the row the way an intrinsic width would. */}
-          {mayFilterByDriver && (
-            <div className="w-56 shrink-0">
-              <RegistryDriverPicker
-                multiple
+            {/* Several cars at once, picked by the code the registry calls them by — the same code
+                the URL carries, so a filtered view is a link somebody else can read. */}
+            <FilterWithIcon
+              icon={FILTER_ICON.car}
+              tone="text-emerald-600 dark:text-emerald-400"
+              className="shrink-0"
+            >
+              <VehicleCodeFilter
                 fullWidth
-                value={drivers}
-                onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
+                density={TIGHT}
+                value={vehicleCodes}
+                onChange={(next) =>
+                  patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+                }
               />
-            </div>
-          )}
-          <MultiSelect
-            clearable
-            className="shrink-0"
-            showSelectedValues
-            label={t('fleet.odometer.columns.alert')}
-            options={FLEET_ALARM_LEVELS.map((level) => ({
-              value: level,
-              label:
-                level === 'none'
-                  ? t('fleet.vehicle.alarmNone')
-                  : t(`fleet.dashboard.level.${level}`),
-            }))}
-            value={alerts}
-            onChange={(next) => patch({ alerts: next.length === 0 ? null : next.join(',') })}
-          />
-          {/* THE NOTE, SEARCHED — «خلى في انبوت يسمح ان ابحث بالملاحظات». The register already
-              SHOWS «ملاحظات» as a column, and a column a reader can see but not search is one
-              they scroll past; this log runs to thousands of rows. Unlike the controls before it
-              this one takes a SHARE of whatever the row has left rather than a fixed width, so
-              adding it cannot push the bar off the page. */}
-          <div className="min-w-[8rem] flex-1">
-            <Input
-              aria-label={t('fleet.odometer.columns.notes')}
-              placeholder={t('fleet.maintenance.notesFilter')}
-              value={notes}
-              onChange={(e) => patch({ notes: e.target.value || null })}
-              textScale="comfortable"
-            />
-          </div>
-        </FilterBar>
+            </FilterWithIcon>
+            {/* Either bound alone is a valid question ("from the 1st", "up to the 18th"), and the
+                same date in both is one day — the server's `to` covers the whole day it names. */}
+            {dateBound('odometer-from', 'fleet.odometer.fromDate', from, 'from')}
+            {dateBound('odometer-to', 'fleet.odometer.toDate', to, 'to')}
+            {/* WHO, picked off the drivers registry rather than typed. Several at once, because a
+                question about a shift is usually a question about more than one person — and the
+                same `multiple` the maintenance board's filter takes. The picker is `fullWidth`
+                inside a box this row owns, so a long Arabic name does not stretch the row. */}
+            {mayFilterByDriver && (
+              <FilterWithIcon
+                icon={FILTER_ICON.person}
+                tone="text-emerald-600 dark:text-emerald-400"
+                className="w-56 shrink-0"
+              >
+                <RegistryDriverPicker
+                  multiple
+                  fullWidth
+                  density={TIGHT}
+                  className="w-full"
+                  value={drivers}
+                  onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
+                />
+              </FilterWithIcon>
+            )}
+            <FilterWithIcon
+              icon={FILTER_ICON.status}
+              tone="text-amber-600 dark:text-amber-400"
+              className="shrink-0"
+            >
+              <MultiSelect
+                clearable
+                fullWidth
+                density={TIGHT}
+                showSelectedValues
+                label={t('fleet.odometer.columns.alert')}
+                options={FLEET_ALARM_LEVELS.map((level) => ({
+                  value: level,
+                  label:
+                    level === 'none'
+                      ? t('fleet.vehicle.alarmNone')
+                      : t(`fleet.dashboard.level.${level}`),
+                }))}
+                value={alerts}
+                onChange={(next) => patch({ alerts: next.length === 0 ? null : next.join(',') })}
+              />
+            </FilterWithIcon>
+            {/* THE NOTE, SEARCHED — «خلى في انبوت يسمح ان ابحث بالملاحظات». The register already
+                SHOWS «ملاحظات» as a column, and a column a reader can see but not search is one
+                they scroll past; this log runs to thousands of rows. Below a computer's width it
+                takes a SHARE of whatever the row has left rather than a fixed width. */}
+            <FilterWithIcon
+              icon={PATH.edit}
+              tone="text-slate-500 dark:text-slate-400"
+              className="min-w-[8rem] flex-1"
+            >
+              <Input
+                aria-label={t('fleet.odometer.columns.notes')}
+                placeholder={t('fleet.maintenance.notesFilter')}
+                density={TIGHT}
+                value={notes}
+                onChange={(e) => patch({ notes: e.target.value || null })}
+              />
+            </FilterWithIcon>
+          </FilterBar>
+        </div>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(log) => log.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-          {...(monthIsTheReason ? { empty: emptyMonth } : {})}
-        />
+        {/* The drivers board's table — «زى السيارات و السواقيين». */}
+        <div
+          className={cn(
+            DARK_TABLE,
+            BOARD_TABLE_FILL,
+            // «شيل الخطوط اللى بين العواميد»: no line between the columns, as on the drivers board.
+            '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
+            // «خلى الكلام bold»: every value heavy, the Arabic in Cairo's own bold.
+            "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+          )}
+        >
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(log) => log.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            {...(monthIsTheReason ? { empty: emptyMonth } : {})}
+            minColumnWidth={4}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <FleetPager
             meta={data.meta}

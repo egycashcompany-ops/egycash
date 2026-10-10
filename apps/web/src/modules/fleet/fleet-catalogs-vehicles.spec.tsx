@@ -788,13 +788,25 @@ describe('the Fleet form dialogs survive a click outside them', () => {
     expect(DIALOG).toContain("if (e.key === 'Escape') onClose()");
   });
 
-  it('the reading dialog turns it off', () => {
-    expect(read('components/RecordOdometerDialog.tsx')).toContain('dismissOnOutsideClick={false}');
+  // The reading and workshop forms are drawn in the vehicle form's design now: `DesignDialog`'s
+  // backdrop takes no click at all, so only the ✕, «إلغاء» and Escape close them.
+  const SHELL = read('components/DesignDialog.tsx');
+  it('the design shell has no click on its backdrop, and closes on Escape', () => {
+    expect(SHELL).not.toMatch(/aria-hidden="true"\s*onClick/u);
+    expect(SHELL).not.toContain('useOnClickOutside');
+    expect(SHELL).toContain("if (e.key === 'Escape') onClose()");
   });
 
-  it('so do all three workshop dialogs — in, out, and the edit', () => {
+  it('the reading dialog is drawn in it', () => {
+    const source = read('components/RecordOdometerDialog.tsx');
+    expect(source).toContain('<DesignDialog');
+    expect(source).not.toContain('<Dialog');
+  });
+
+  it('so are all three workshop dialogs — in, out, and the edit', () => {
     const source = read('components/MaintenanceDialogs.tsx');
-    expect(source.split('dismissOnOutsideClick={false}')).toHaveLength(4);
+    expect(source.split('<DesignDialog')).toHaveLength(4);
+    expect(source).not.toContain('dismissOnOutsideClick');
   });
 
   it('and so does the vehicle form — the longest form in the module', () => {
@@ -826,10 +838,14 @@ describe('the odometer and workshop driver slots ask the registry', () => {
   const HERE_DIR = dirname(fileURLToPath(import.meta.url));
   const read = (rel: string): string => readFileSync(join(HERE_DIR, rel), 'utf8');
 
-  it('the field reaches for the registry picker', () => {
+  it('the field reaches for the roster picker', () => {
     const field = read('components/OptionalDriverField.tsx');
-    expect(field).toContain('RegistryDriverPicker');
+    expect(field).toContain('<DriverPicker');
     expect(field, 'not the payroll search box').not.toContain('EmployeeSearchPicker');
+    // `DriverPicker` reads Fleet's own roster — the registry — and nothing of HR's.
+    const picker = read('components/DriverPerson.tsx');
+    expect(picker).toContain('useFleetPeopleMap');
+    expect(picker).not.toContain('employee.view');
   });
 
   it('the payroll-backed field is gone from the module', () => {
@@ -848,7 +864,7 @@ describe('the odometer and workshop driver slots ask the registry', () => {
   });
 
   it('the seat stays OPTIONAL — a reading with nobody named is a real state', () => {
-    const field = read('components/OptionalDriverField.tsx');
-    expect(field, 'clearing it is offered').toContain("onChange('')");
+    const picker = read('components/DriverPerson.tsx');
+    expect(picker, 'clearing it is offered').toContain("onChange('')");
   });
 });

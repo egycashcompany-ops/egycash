@@ -5,6 +5,9 @@
 // the fund. The driver is read off the daily roster for the date and the car — and can be cleared
 // and typed over («لو عاوز امسحه واكتب حد غيره عادى»). The litres are the amount priced by the
 // fleet settings, shown as the clerk types.
+//
+// «حسن الui … بالفورم بتاعت التسجيل والتعديل»: the vehicle form's design (`DesignDialog`) around the
+// same fields, rules, required marks and hooks as before.
 import { useEffect, useMemo, useState } from 'react';
 import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
 import {
@@ -20,9 +23,7 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useMySettings } from '../../../platform/settings/settings-api';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Button } from '../../../shared/ui/Button';
-import { Checkbox, Field, Input, Select } from '../../../shared/ui/form';
+import { Checkbox, Input, Select } from '../../../shared/ui/form';
 import {
   MissingFieldsBanner,
   useFieldMissing,
@@ -41,14 +42,27 @@ import {
   useVehicle,
 } from '../api/fleet-queries';
 import { useFleetPeopleMap } from './EmployeeName';
+import { DriverNameCombobox } from './DriverPerson';
 import { FuelCompanyLogo } from './FuelCardTiles';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
+import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
+import { DATE_ICON, DesignField, LOOK, MONO, Stroke, boxTone, carBoxClass } from './FuelCardDialog';
+import { PATH } from './FuelCardBoard';
 import { receiptCardsState, settleReceiptCardId } from '../lib/receipt-cards';
 import { groupCardNumber } from '../lib/fuel-card-number';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const round = (value: number): number => Math.round(value * 100) / 100;
+
+/** The header's drawing: a till receipt. */
+const RECEIPT_PATH = [
+  'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z',
+] as const;
+
+/** A note in the card's place — no car yet, loading, none: the design's quiet dashed box. */
+const CARD_NOTE =
+  'rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium dark:border-[#2b3b6b] dark:bg-[#0a1233]/60';
 
 /** «وقود / كاوتش / غسيل» across the top. */
 const KindSwitch = ({
@@ -62,7 +76,7 @@ const KindSwitch = ({
   return (
     <div
       role="radiogroup"
-      className="inline-flex rounded-lg border border-slate-300 p-0.5 dark:border-slate-700"
+      className="inline-flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 shadow-inner dark:border-[#2b3b6b] dark:bg-[#0a1233]"
     >
       {FLEET_RECEIPT_KINDS.map((kind) => (
         <button
@@ -73,10 +87,11 @@ const KindSwitch = ({
           data-receipt-kind={kind}
           onClick={() => onChange(kind)}
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium',
+            'rounded-lg px-5 py-2 text-[15px] font-bold transition-all active:scale-[0.98]',
+            // The picked kind in the site's purple — what is pressed, nothing else.
             value === kind
-              ? 'bg-brand-600 text-white'
-              : 'text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800',
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-700/30'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-white',
           )}
         >
           {t(`fleet.receipts.kind.${kind}`)}
@@ -114,22 +129,28 @@ export const CardPick = ({
           disabled={!enabled}
           onClick={() => onChange(card.id)}
           className={cn(
-            'flex flex-1 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-start text-sm',
-            value === card.id && 'bg-brand-50 dark:bg-brand-950/40',
+            'flex flex-1 flex-col items-start gap-1.5 rounded-xl border-2 px-4 py-3 text-start text-sm transition-all',
+            // The picked card in the site's purple; the others the form's boxes.
+            value === card.id
+              ? 'bg-brand-500/10 shadow-md shadow-brand-700/20'
+              : 'bg-slate-50 hover:bg-slate-100 dark:bg-[#0a1233] dark:hover:bg-slate-800/60',
             missing
               ? 'border-red-400'
               : value === card.id
                 ? 'border-brand-500'
-                : 'border-slate-300 dark:border-slate-700',
+                : 'border-slate-200 dark:border-[#2b3b6b]',
           )}
         >
           <FuelCompanyLogo company={card.company} size="sm" />
-          <span className="tabular-nums" dir="ltr">
+          <span
+            className={cn('text-[15px] font-bold text-slate-900 dark:text-white', MONO)}
+            dir="ltr"
+          >
             {groupCardNumber(card.number)}
           </span>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
+          <span className="text-[13px] font-medium text-slate-600 dark:text-slate-300">
             {t('fleet.fuelCards.fields.balance')}{' '}
-            <b className="text-slate-800 dark:text-slate-100">
+            <b className={cn('text-slate-900 dark:text-white', MONO)}>
               {formatMoney(card.balance, 'EGP', locale)}
             </b>
           </span>
@@ -217,7 +238,6 @@ export const ReceiptDialog = ({
   useEffect(() => {
     if (!driverTouched && rosterDriver !== null) setDriver(rosterDriver);
   }, [rosterDriver, driverTouched]);
-  const names = useMemo(() => [...people.values()].map((p) => p.fullNameAr), [people]);
   const driverEmployeeId = useMemo(() => {
     const typed = driver.trim();
     if (typed === '') return null;
@@ -311,31 +331,40 @@ export const ReceiptDialog = ({
     onClose();
   };
 
+  // The design's boxes: a date's text starts at the box's left, where a refused box draws its «!»;
+  // an amount reads left to right, held at the box's right edge, clear of that «!».
+  const box = boxTone(LOOK.add);
+  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+  const amountBox = cn(box, MONO, 'text-right');
+  // A `<select>` takes no tone of its own — the same box, forced over the control's base.
+  const selectBox = cn(
+    '!h-auto !rounded-xl !py-3 !ps-4 !text-[15px] !font-medium !text-slate-900 dark:!text-white focus:!border-indigo-500 focus:!ring-1 focus:!ring-indigo-500',
+    '!border-slate-200 !bg-slate-50 dark:!border-[#2b3b6b] dark:!bg-[#0a1233]',
+  );
+  const vehicleMissing = required.isMissing('vehicle');
+
   return (
-    <Dialog
+    // A form: the design's backdrop has no click of its own — the ✕, «إلغاء» and Escape close it.
+    <DesignDialog
       open={open}
       onClose={onClose}
-      dismissOnOutsideClick={false}
-      size="xl"
-      tall
       title={row === null ? t('fleet.receipts.new') : t('fleet.receipts.edit')}
-      description={t('fleet.receipts.newHint')}
+      subtitle={t('fleet.receipts.newHint')}
+      icon={RECEIPT_PATH}
+      width="3xl"
+      panelProps={{ 'data-receipt-form': row === null ? 'new' : 'edit' }}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button loading={pending} onClick={required.guard(submit)}>
-            {t('common.save')}
-          </Button>
+          <DesignSave data-receipt-save="true" busy={pending} onClick={required.guard(submit)} />
+          <DesignCancel onClick={onClose} />
         </>
       }
     >
-      <div className="space-y-4">
-        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+      <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+      <DesignSection title={t('fleet.receipts.form.sections.receipt')} icon={PATH.truck}>
         <KindSwitch value={kind} onChange={setKind} />
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
+          <DesignField
             label={t('fleet.receipts.columns.date')}
             required
             missing={required.isMissing('date')}
@@ -346,87 +375,126 @@ export const ReceiptDialog = ({
               value={date}
               onChange={(e) => setDate(e.target.value)}
               data-receipt-date="true"
+              tone={dateBox}
             />
-          </Field>
-          <Field
+          </DesignField>
+          <DesignField
             label={t('fleet.odometer.columns.vehicle')}
             required
-            missing={required.isMissing('vehicle')}
+            missing={vehicleMissing}
           >
-            <VehicleCodeCombobox
-              value={vehicleId}
-              onChange={setVehicleId}
-              anyStatus
-              testId="receipt-vehicle"
-            />
-          </Field>
-          <Field
+            <div
+              {...(vehicleMissing ? { 'data-car-missing': 'true' } : {})}
+              className={cn(
+                carBoxClass(false),
+                // Empty when Save was pressed: the design's rose frame and glow, and the box's
+                // ✕ and chevron step inward to leave the far end to the «!».
+                '[&[data-car-missing]_input]:!border-rose-500/70 [&[data-car-missing]_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
+                '[&[data-car-missing]_input]:!pe-28 [&[data-car-missing]_.end-2]:!end-10',
+              )}
+            >
+              <VehicleCodeCombobox
+                value={vehicleId}
+                onChange={setVehicleId}
+                anyStatus
+                testId="receipt-vehicle"
+              />
+            </div>
+          </DesignField>
+          <DesignField
             label={t('fleet.receipts.columns.driver')}
             hint={t('fleet.receipts.fields.driverHint')}
           >
-            <Input
-              list="receipt-drivers"
+            {/* «تحسين اختيار السواقيين»: still a NAME box — typed, or picked off Fleet's roster, which
+                opens under it narrowed by what is typed (name or code), each person with the
+                drivers board's badge and code. A pick writes the person's name in, as typing would;
+                the employee id is resolved from the name above, as before. */}
+            <DriverNameCombobox
               value={driver}
-              onChange={(e) => {
+              onChange={(name) => {
                 setDriverTouched(true);
-                setDriver(e.target.value);
+                setDriver(name);
               }}
-              placeholder={t('fleet.receipts.fields.driverPlaceholder')}
-              data-receipt-driver="true"
-              rule="arabic"
+              input={(props) => (
+                <Input
+                  {...props}
+                  value={driver}
+                  onChange={(e) => {
+                    setDriverTouched(true);
+                    setDriver(e.target.value);
+                  }}
+                  placeholder={t('fleet.receipts.fields.driverPlaceholder')}
+                  data-receipt-driver="true"
+                  rule="arabic"
+                  tone={box}
+                />
+              )}
             />
-            <datalist id="receipt-drivers">
-              {names.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </Field>
+          </DesignField>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field
-            label={t('fleet.receipts.fields.card')}
-            required={byCard}
-            missing={required.isMissing('card')}
-            className="sm:col-span-2"
-          >
-            {cardsState.kind === 'noCar' ? (
-              <p className="text-sm text-slate-400">{t('fleet.receipts.fields.pickCar')}</p>
-            ) : cardsState.kind === 'loading' ? (
-              <p data-receipt-cards="loading" className="text-sm text-slate-400">
-                {t('fleet.receipts.fields.loadingCards')}
-              </p>
-            ) : cardsState.kind === 'failed' ? (
-              <p data-receipt-cards="failed" className="text-sm text-red-600 dark:text-red-400">
-                {t('fleet.receipts.fields.cardsFailed')}
-              </p>
-            ) : noCards ? (
-              <p data-receipt-cards="none" className="text-sm text-slate-400">
-                {t('fleet.receipts.fields.noCards')}
-              </p>
-            ) : (
-              <CardPick cards={carCards} value={cardId} onChange={setCardId} enabled={byCard} />
-            )}
-            <div className="mt-2">
-              <Checkbox
-                data-receipt-use-card="true"
-                label={
-                  !isFuel
-                    ? t('fleet.receipts.fields.fundOnly')
-                    : noCards
-                      ? t('fleet.receipts.fields.noCardCustody')
-                      : useCard
-                        ? t('fleet.receipts.fields.useCard')
-                        : t('fleet.receipts.fields.noCardFund')
-                }
-                checked={byCard}
-                disabled={!isFuel || noCards}
-                onChange={(e) => setUseCard(e.target.checked)}
-              />
-            </div>
-          </Field>
-          <div className="space-y-4">
+      </DesignSection>
+
+      <DesignSection title={t('fleet.receipts.columns.source')} icon={PATH.card}>
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
+          <div className="md:col-span-2">
+            <DesignField
+              label={t('fleet.receipts.fields.card')}
+              required={byCard}
+              missing={required.isMissing('card')}
+              // The cards are tiles, not a box: no «!» laid over them — the line under says it.
+              endAdornment={null}
+            >
+              {cardsState.kind === 'noCar' ? (
+                <p className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}>
+                  {t('fleet.receipts.fields.pickCar')}
+                </p>
+              ) : cardsState.kind === 'loading' ? (
+                <p
+                  data-receipt-cards="loading"
+                  className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
+                >
+                  {t('fleet.receipts.fields.loadingCards')}
+                </p>
+              ) : cardsState.kind === 'failed' ? (
+                <p
+                  data-receipt-cards="failed"
+                  className={cn(CARD_NOTE, 'text-red-600 dark:text-red-400')}
+                >
+                  {t('fleet.receipts.fields.cardsFailed')}
+                </p>
+              ) : noCards ? (
+                <p
+                  data-receipt-cards="none"
+                  className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
+                >
+                  {t('fleet.receipts.fields.noCards')}
+                </p>
+              ) : (
+                <CardPick cards={carCards} value={cardId} onChange={setCardId} enabled={byCard} />
+              )}
+              <div className="mt-3">
+                <Checkbox
+                  className="font-semibold"
+                  data-receipt-use-card="true"
+                  label={
+                    !isFuel
+                      ? t('fleet.receipts.fields.fundOnly')
+                      : noCards
+                        ? t('fleet.receipts.fields.noCardCustody')
+                        : useCard
+                          ? t('fleet.receipts.fields.useCard')
+                          : t('fleet.receipts.fields.noCardFund')
+                  }
+                  checked={byCard}
+                  disabled={!isFuel || noCards}
+                  onChange={(e) => setUseCard(e.target.checked)}
+                />
+              </div>
+            </DesignField>
+          </div>
+          <div className="space-y-5">
             {isFuel && (
-              <Field
+              <DesignField
                 label={t('fleet.receipts.fields.fuelType')}
                 hint={t('fleet.receipts.fields.pricePerLitre', { price: money(price) })}
               >
@@ -434,6 +502,7 @@ export const ReceiptDialog = ({
                   value={fuelType}
                   onChange={(e) => setFuelType(e.target.value as FleetFuelType)}
                   data-receipt-fuel-type="true"
+                  className={selectBox}
                 >
                   {FLEET_FUEL_TYPES.map((type) => (
                     <option key={type} value={type}>
@@ -441,56 +510,85 @@ export const ReceiptDialog = ({
                     </option>
                   ))}
                 </Select>
-              </Field>
+              </DesignField>
             )}
-            <Field
+            <DesignField
               label={t('fleet.receipts.columns.amount')}
               required
               missing={required.isMissing('amount')}
-              {...(litres === null
-                ? {}
-                : {
-                    hint: t('fleet.receipts.fields.litres', {
-                      litres: litres.toFixed(2),
-                    }),
-                  })}
+              hint={
+                litres === null
+                  ? undefined
+                  : t('fleet.receipts.fields.litres', { litres: litres.toFixed(2) })
+              }
               // Typed, but more than the card holds: say so rather than «required».
-              {...(required.isMissing('amount') && amountOk && card !== null && !enough
-                ? { error: t('fleet.receipts.summary.notEnough', { balance: money(card.balance) }) }
-                : {})}
+              error={
+                required.isMissing('amount') && amountOk && card !== null && !enough
+                  ? t('fleet.receipts.summary.notEnough', { balance: money(card.balance) })
+                  : undefined
+              }
             >
-              <MoneyInput value={amount} onChange={setAmount} data-receipt-amount="true" />
-            </Field>
+              <MoneyInput
+                value={amount}
+                onChange={setAmount}
+                data-receipt-amount="true"
+                tone={amountBox}
+              />
+            </DesignField>
           </div>
         </div>
-        <Field label={t('fleet.receipts.fields.image')} hint={t('fleet.receipts.fields.imageHint')}>
-          <Input
+      </DesignSection>
+
+      <DesignSection title={t('fleet.receipts.fields.image')} icon={PATH.image}>
+        {/* The vehicle form's dashed box: the whole box is the file picker. */}
+        <div className="group relative cursor-pointer rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 transition-all hover:border-indigo-500/50 dark:border-[#2b3b6b] dark:bg-[#0a1233]/60 dark:hover:bg-[#0a1233]">
+          <input
             key={inputKey}
             type="file"
             accept={LICENSE_IMAGE_ACCEPT}
+            aria-label={t('fleet.receipts.fields.image')}
+            title={t('fleet.receipts.fields.image')}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             data-receipt-image="true"
+            className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
           />
-          <PhotoSourceButtons accept={LICENSE_IMAGE_ACCEPT} onFile={setFile} className="mt-2" />
-          {file !== null && (
-            <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{file.name}</p>
-          )}
-        </Field>
-        <p
-          data-receipt-source={byCard ? 'card' : 'custody'}
-          data-receipt-summary={summary.key}
-          className={cn(
-            'rounded-md px-3 py-2 text-sm',
-            summary.tone === 'bad' && 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200',
-            summary.tone === 'ask' &&
-              'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200',
-            summary.tone === 'plain' &&
-              'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-          )}
-        >
-          {summary.text}
-        </p>
-      </div>
-    </Dialog>
+          <div className="pointer-events-none flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-500 transition-transform group-hover:scale-105 dark:text-indigo-400">
+                <Stroke d={[...PATH.image]} className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-slate-900 dark:text-white">
+                  {file === null ? t('fleet.receipts.image.upload') : file.name}
+                </p>
+                <p className="text-[13px] font-medium text-slate-600 dark:text-slate-300">
+                  {t('fleet.receipts.fields.imageHint')}
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm font-bold text-indigo-700 transition group-hover:bg-indigo-500/20 dark:text-indigo-300">
+              {t('fleet.fuelCards.image.pick')}
+            </span>
+          </div>
+        </div>
+        <PhotoSourceButtons accept={LICENSE_IMAGE_ACCEPT} onFile={setFile} />
+      </DesignSection>
+
+      <p
+        data-receipt-source={byCard ? 'card' : 'custody'}
+        data-receipt-summary={summary.key}
+        className={cn(
+          'rounded-xl border px-4 py-3 text-sm font-semibold',
+          summary.tone === 'bad' &&
+            'border-red-500/30 bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200',
+          summary.tone === 'ask' &&
+            'border-amber-500/30 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200',
+          summary.tone === 'plain' &&
+            'border-slate-200 bg-slate-100 text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200',
+        )}
+      >
+        {summary.text}
+      </p>
+    </DesignDialog>
   );
 };

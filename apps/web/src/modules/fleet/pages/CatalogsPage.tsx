@@ -23,6 +23,7 @@ import { Select } from '../../../shared/ui/form';
 import { ChevronIcon, EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useFleetCatalog, useOrderCatalog } from '../api/fleet-queries';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
 import { MAKES_PERMISSION, VehicleTypesTable } from '../components/VehicleTypesTable';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -228,7 +229,7 @@ export const CatalogsPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.catalogs')}
         breadcrumbs={[
@@ -284,12 +285,12 @@ export const CatalogsPage = (): JSX.Element => {
       </div>
 
       {onMakes && (
-        <div data-catalog-makes="true">
+        <div data-catalog-makes="true" className={BOARD_TABLE_FILL}>
           <VehicleTypesTable creating={creatingMake} onCloseCreate={() => setCreatingMake(false)} />
         </div>
       )}
 
-      <div className={onMakes ? 'hidden' : 'space-y-4'}>
+      <div className={onMakes ? 'hidden' : BOARD_FRAME}>
         <FilterBar hasActiveFilters={active !== ''} onClear={() => patch({ active: null })}>
           <Select
             aria-label={t('fleet.vehicles.columns.status')}
@@ -303,48 +304,51 @@ export const CatalogsPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(r) => r.id}
-          rowClassName={(r) =>
-            dragging === r.id
-              ? 'opacity-40'
-              : over === r.id && dragging !== null
-                ? 'bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-400 dark:bg-brand-950/40'
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.id}
+            rowClassName={(r) =>
+              dragging === r.id
+                ? 'opacity-40'
+                : over === r.id && dragging !== null
+                  ? 'bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-400 dark:bg-brand-950/40'
+                  : undefined
+            }
+            rowProps={(r) =>
+              mayOrder
+                ? {
+                    draggable: true,
+                    onDragStart: (e) => {
+                      e.dataTransfer.setData('text/plain', r.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      setDragging(r.id);
+                    },
+                    onDragEnd: () => {
+                      setDragging(null);
+                      setOver(null);
+                    },
+                    onDragOver: (e) => {
+                      e.preventDefault();
+                      setOver(r.id);
+                    },
+                    onDrop: (e) => {
+                      e.preventDefault();
+                      const id = e.dataTransfer.getData('text/plain');
+                      setDragging(null);
+                      setOver(null);
+                      if (id !== '') move(id, r.id);
+                    },
+                  }
                 : undefined
-          }
-          rowProps={(r) =>
-            mayOrder
-              ? {
-                  draggable: true,
-                  onDragStart: (e) => {
-                    e.dataTransfer.setData('text/plain', r.id);
-                    e.dataTransfer.effectAllowed = 'move';
-                    setDragging(r.id);
-                  },
-                  onDragEnd: () => {
-                    setDragging(null);
-                    setOver(null);
-                  },
-                  onDragOver: (e) => {
-                    e.preventDefault();
-                    setOver(r.id);
-                  },
-                  onDrop: (e) => {
-                    e.preventDefault();
-                    const id = e.dataTransfer.getData('text/plain');
-                    setDragging(null);
-                    setOver(null);
-                    if (id !== '') move(id, r.id);
-                  },
-                }
-              : undefined
-          }
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-        />
+            }
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            stickyHead
+          />
+        </div>
       </div>
 
       <CatalogItemDialog

@@ -239,13 +239,15 @@ const rowTags = (markup: string): string[] =>
 
 /**
  * The class list of the ONE element that colours `name` — the nearest `<span class="…">` opened
- * before it. `EmployeeName` wraps the name in a bare `<span>`, so the nearest CLASSED span is the
- * tone the cell put on that line, and nothing from the line above can leak into the slice. That
- * is what lets a test assert a name is one colour AND not the other.
+ * before the name's TEXT. The shared driver cell puts the tone on the span that holds the name
+ * itself, so the nearest CLASSED span is the tone the cell put on that line, and nothing from the
+ * line above can leak into the slice. That is what lets a test assert a name is one colour AND
+ * not the other. The name is found as text (`>name<`), not as the badge's `title`, which carries
+ * it too.
  */
 const tone = (markup: string, name: string): string => {
-  const at = markup.indexOf(name);
-  expect(at, `${name} is named`).toBeGreaterThan(-1);
+  const at = markup.indexOf(`>${name}<`) + 1;
+  expect(at, `${name} is named`).toBeGreaterThan(0);
   return markup.slice(markup.lastIndexOf('<span class="', at), at);
 };
 
@@ -301,7 +303,9 @@ describe('the maintenance table', () => {
     const qc = client(rows, { page: 2 }, { page: 2, totalItems: 27, totalPages: 2 });
     const first = cells(render({ route: '/fleet/maintenance?page=2', qc }))[0] as string;
     expect(first, 'no serial survived the offset arithmetic').not.toBe('٢٦');
-    expect(first, 'the first cell is a date').toMatch(/[٠-٩]+/);
+    expect(first, 'no serial survived the offset arithmetic').not.toBe('26');
+    // «2026/09/01» — the date the drivers and vehicles boards write: year first, Latin digits.
+    expect(first, 'the first cell is a date').toBe('2026/09/01');
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
     expect(source, 'and the offset arithmetic went with the column').not.toContain(
       'firstRowNumber',
@@ -403,7 +407,8 @@ describe('the maintenance table', () => {
     expect(body, 'no custody name').not.toContain('أحمد');
     expect(body).not.toContain(t('fleet.maintenance.fields.takenInBy'));
     expect(body).not.toContain(t('fleet.maintenance.fields.takenOutBy'));
-    expect(body, 'no exit reading in the grid').not.toContain('١٢٠٬٨٥٠');
+    expect(body, 'no exit reading in the grid').not.toContain('120,850');
+    expect(body, 'in either digit set').not.toContain('١٢٠٬٨٥٠');
   });
 
   it('shows catalog spare parts by NAME, and still shows an old visit’s free text', () => {
@@ -425,6 +430,104 @@ describe('the maintenance table', () => {
     expect(cell, 'the note is bounded').toContain('max-w-');
     expect(cell, 'the note may break inside a word').toContain('break-words');
     expect(cell).toContain('block');
+  });
+});
+
+// ── 1b. How the row reads ───────────────────────────────────────────────────
+
+/**
+ * «تحسين شكل البيانات فى جداول العدادات والصيانه …» — the drivers board's table: dates year
+ * first in Latin digits, readings with a thousands comma, the car's code heavy and left to right,
+ * every value centred, and each driver drawn as the drivers board draws a person.
+ */
+describe('the maintenance table’s look', () => {
+  /** The `<td>` (opening tag and all) of column `index` in the first row. */
+  const cellTag = (markup: string, index: number): string =>
+    [...tbody(markup).matchAll(/<td\b[^>]*>[\s\S]*?<\/td>/g)].map((m) => m[0])[index] as string;
+  /** The `<th>` opening tags, in order. */
+  const headTags = (markup: string): string[] =>
+    [...thead(markup).matchAll(/<th\b[^>]*>/g)].map((m) => m[0]);
+
+  it('writes both dates year first, with slashes and Latin digits', () => {
+    const qc = client([visit({ outDate: '2026-09-03T00:00:00.000Z' })]);
+    const row = cells(render({ qc }));
+    expect(row[0], 'check-in').toBe('2026/09/01');
+    expect(row[1], 'check-out').toBe('2026/09/03');
+  });
+
+  it('writes the reading with Latin digits and a thousands comma, in the board’s figures', () => {
+    const markup = render();
+    expect(cells(markup)[9]).toBe('120,000');
+    expect(tbody(markup), 'no Arabic-Indic reading left').not.toContain('١٢٠٬٠٠٠');
+    expect(cellTag(markup, 9), 'tabular, monospace').toContain('tabular-nums');
+    expect(cellTag(markup, 9), 'read left to right').toContain('dir="ltr"');
+  });
+
+  it('dashes a visit with no reading on file', () => {
+    expect(cells(render({ qc: client([visit({ odometerAtService: null })]) }))[9]).toBe('—');
+  });
+
+  it('writes the car’s code heavy and left to right — and dashes a car the registry lost', () => {
+    const markup = render();
+    expect(cells(markup)[2]).toBe('150');
+    expect(cellTag(markup, 2)).toContain('dir="ltr"');
+    expect(cellTag(markup, 2)).toContain('font-bold');
+    expect(cellTag(markup, 2)).toContain('tabular-nums');
+    expect(cells(render({ qc: client([visit({ vehicleCode: null })]) }))[2]).toBe('—');
+  });
+
+  it('centres every value and header, and keeps the row’s controls at the end', () => {
+    const markup = render();
+    const heads = headTags(markup);
+    const actions = REQUIRED_COLUMNS.length - 1;
+    heads.forEach((tag, index) => {
+      expect(tag, `header ${index}`).toContain(index === actions ? 'text-end' : 'text-center');
+    });
+    REQUIRED_COLUMNS.forEach((_, index) => {
+      expect(cellTag(markup, index), `cell ${index}`).toContain(
+        index === actions ? 'text-end' : 'text-center',
+      );
+    });
+  });
+
+  it('draws each driver in look د — the name in the leg’s tone, the code under it, no badge', () => {
+    const qc = client([
+      visit({
+        outDate: '2026-09-03T00:00:00.000Z',
+        driverInEmployeeId: 'd1',
+        driverOutEmployeeId: 'd2',
+      }),
+    ]);
+    const markup = render({ qc });
+    expect(cells(markup)[4], 'the entry driver and code').toContain('سائق الصباح HR-D1');
+    expect(cells(markup)[5], 'the exit driver and code').toContain('سائق المساء HR-D2');
+    // «دى خليها للصيانه»: no badge beside the name; the whole name on hover.
+    expect(cellTag(markup, 4)).not.toContain('rounded-full');
+    expect(cellTag(markup, 5)).not.toContain('rounded-full');
+    expect(cellTag(markup, 4)).toContain('title="سائق الصباح"');
+    expect(tone(tbody(markup), 'سائق الصباح'), 'the entry leg’s tone').toContain('text-red-700');
+    expect(tone(tbody(markup), 'سائق المساء'), 'the exit leg’s tone').toContain('text-emerald-700');
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source, 'the one driver cell every Fleet board shares').toContain('<DriverCell');
+    expect(source, 'not the bare name it replaced').not.toContain('<DriverName');
+  });
+
+  it('writes a long name as its first and last words, the whole of it on hover', () => {
+    const qc = client([visit({ driverInName: 'ابراهيم محمد محفوظ اسماعيل صيام' })]);
+    const markup = render({ qc });
+    expect(cells(markup)[4]).toContain('ابراهيم صيام');
+    expect(cells(markup)[4]).not.toContain('محفوظ');
+    expect(cellTag(markup, 4)).toContain('title="ابراهيم محمد محفوظ اسماعيل صيام"');
+  });
+
+  it('keeps a name from the old books, grey, under the leg it was written for', () => {
+    const qc = client([visit({ driverInName: 'عم سيد' })]);
+    const markup = render({ qc });
+    expect(cells(markup)[4]).toContain('عم سيد');
+    expect(cellTag(markup, 4), 'marked as the book’s spelling').toContain('data-legacy-name');
+    expect(tone(tbody(markup), 'عم سيد'), 'grey, not a person the roster knows').toContain(
+      'text-slate-500',
+    );
   });
 });
 
@@ -519,7 +622,7 @@ describe('the filter bar', () => {
     it(`sends «${name}» to the server`, () => {
       const qc = client([visit()], params);
       const markup = render({ route: `/fleet/maintenance?${route}`, qc });
-      expect(tbody(markup), 'the narrowed query answered').toContain('١٢٠٬٠٠٠');
+      expect(tbody(markup), 'the narrowed query answered').toContain('120,000');
     });
   }
 
@@ -556,7 +659,7 @@ describe('the filter bar', () => {
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
     expect(source).toContain('drivers.length > 0 ? drivers : undefined');
     const unfiltered = render({ route: '/fleet/maintenance', qc: client([visit()]) });
-    expect(tbody(unfiltered), 'every visit, as before').toContain('١٢٠٬٠٠٠');
+    expect(tbody(unfiltered), 'every visit, as before').toContain('120,000');
   });
 
   it('builds a query the CONTRACT accepts', () => {
@@ -593,9 +696,24 @@ describe('the filter bar', () => {
     // not a third stored status.
     const bar = filterBar(render());
     expect(bar).toContain(t('fleet.maintenance.stateFilter'));
-    expect(bar).toContain(t('fleet.maintenance.stillIn'));
-    expect(bar).toContain(t('fleet.maintenance.leftWorkshop'));
+    expect(
+      bar.split(`aria-label="${t('fleet.maintenance.stateFilter')}"`).length - 1,
+      'one control asks it',
+    ).toBe(1);
     expect(t('fleet.maintenance.stateFilter')).toBe('حالة الصيانة');
+    // The board's list keeps its options closed until pressed, so each half is read where the
+    // control SAYS it: the chosen state, in the words the screen uses for it.
+    const stillIn = filterBar(
+      render({ route: '/fleet/maintenance?state=open', qc: client([visit()], { open: true }) }),
+    );
+    expect(stillIn).toContain(t('fleet.maintenance.stillIn'));
+    const left = filterBar(
+      render({ route: '/fleet/maintenance?state=closed', qc: client([visit()], { open: false }) }),
+    );
+    expect(left).toContain(t('fleet.maintenance.leftWorkshop'));
+    // ONE answer at a time — ticking the other replaces it — so both halves at once never travel.
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).toContain("patch({ state: pickOne(state === '' ? [] : [state], next) })");
   });
 
   it('never offers the derived ALARM level as a maintenance status', () => {
@@ -708,9 +826,10 @@ describe('the check-in dialog', () => {
     expect(code.slice(at, code.indexOf(';', at)), 'the gate says nothing about it').not.toContain(
       'driverIn',
     );
+    // The form wears the vehicle form's design now, so the field is a `DesignField`.
     const field = code.slice(
       code.indexOf("t('fleet.maintenance.fields.driverIn')"),
-      code.indexOf('</Field>', code.indexOf("t('fleet.maintenance.fields.driverIn')")),
+      code.indexOf('</DesignField>', code.indexOf("t('fleet.maintenance.fields.driverIn')")),
     );
     expect(field, 'no required star on the entry driver').not.toContain('required');
     // An empty box travels as null, because an empty string is not an id.
@@ -807,13 +926,19 @@ describe('the check-out dialog', () => {
       </Provider>,
     );
   /**
-   * The Save button's own attributes — the footer's last button. The class list is dropped first:
-   * Tailwind's `disabled:` variants live in it and would match the attribute being looked for.
+   * The Save button's own opening tag — found by its hook: the design's footer puts Save FIRST
+   * and «إلغاء» after it, so it is no longer the dialog's last button.
    */
-  const saveButtonAttributes = (markup: string): string => {
-    const at = markup.lastIndexOf('<button');
-    return markup.slice(at, markup.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
+  const saveButtonTag = (markup: string): string => {
+    const at = markup.lastIndexOf('<button', markup.indexOf('data-maintenance-save="checkOut"'));
+    return markup.slice(at, markup.indexOf('>', at) + 1);
   };
+  /**
+   * The Save button's own attributes. The class list is dropped first: Tailwind's `disabled:`
+   * variants live in it and would match the attribute being looked for.
+   */
+  const saveButtonAttributes = (markup: string): string =>
+    saveButtonTag(markup).replace(/class="[^"]*"/, '');
   /** The check-out dialog's own code, comments left out. */
   const checkOutSource = (): string => {
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
@@ -888,9 +1013,9 @@ describe('the check-out dialog', () => {
     // is what is still missing — and that is the point: the one field this door cannot infer is
     // the one that still gates it.
     const markup = open();
-    expect(markup.slice(markup.lastIndexOf('<button')), 'the last button is Save').toContain(
-      t('common.save'),
-    );
+    expect(markup, 'the dialog has its Save').toContain('data-maintenance-save="checkOut"');
+    const save = markup.slice(markup.indexOf(saveButtonTag(markup)));
+    expect(save.slice(0, save.indexOf('</button>')), 'and it says so').toContain(t('common.save'));
     expect(saveButtonAttributes(markup), 'Save is pressable').not.toContain('disabled');
     expect(markup, 'and nothing is red before the first press').not.toContain(
       'data-missing-fields',

@@ -222,6 +222,7 @@ export const VehicleTypesTable = ({
         loading={types.isLoading}
         error={types.isError ? types.error : undefined}
         onRetry={() => void types.refetch()}
+        stickyHead
       />
       <VehicleTypeDialog open={creating} onClose={onCloseCreate} type={null} />
       <VehicleTypeDialog open={editing !== null} onClose={() => setEditing(null)} type={editing} />

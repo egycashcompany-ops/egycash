@@ -33,7 +33,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { listKey } from '../../shared/lib/query-keys';
-import { alarmCellTint, alarmRowTint } from './components/AlarmBadge';
+import { ALARM_ROW_HOLD, alarmCellTint, alarmRowTint } from './components/AlarmBadge';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { OdometerPage } from './pages/OdometerPage';
@@ -271,6 +271,94 @@ describe('the alarms board tints the ROW — there, a row is a vehicle', () => {
   it('and yellow is drawn as yellow, not as a second red', () => {
     const markup = alarmsBoard([alarm({ level: 'yellow', remainingKm: 400 })]);
     expect(rows(markup)[0]).toContain(alarmRowTint('yellow') as string);
+  });
+
+  it('«الاحمر يكون الصف كله»: the dark theme gets a tint it can SEE', () => {
+    // The `-950/30` wash this replaced was all but invisible on the dark board.
+    expect(alarmRowTint('red')).not.toMatch(/dark:bg-red-950/);
+    expect(alarmRowTint('yellow')).not.toMatch(/dark:bg-amber-950/);
+  });
+
+  it('and the board table cannot take it away — at rest or under the pointer', () => {
+    // The board table paints every row's hover grey from its wrapper, which outranks any class on
+    // the row. Each row says its level as an attribute, and the wrapper holds the tint by it.
+    const markup = alarmsBoard([
+      alarm(),
+      alarm({
+        vehicleId: '650000000000000000000003',
+        code: '151',
+        level: 'yellow',
+        remainingKm: 400,
+      }),
+      QUIET_ALARM,
+    ]);
+    const [red, yellow, quiet] = rows(markup) as [string, string, string];
+    expect(red.slice(0, red.indexOf('>'))).toContain('data-alarm="red"');
+    expect(yellow.slice(0, yellow.indexOf('>'))).toContain('data-alarm="yellow"');
+    expect(quiet.slice(0, quiet.indexOf('>'))).toContain('data-alarm="none"');
+    for (const level of ['red', 'yellow'] as const) {
+      expect(ALARM_ROW_HOLD).toContain(`[&_tbody_tr[data-alarm=${level}]]:!bg-`);
+      expect(ALARM_ROW_HOLD).toContain(`dark:[&_tbody_tr[data-alarm=${level}]]:!bg-`);
+      expect(ALARM_ROW_HOLD).toContain(`[&_tbody_tr[data-alarm=${level}]:hover]:!bg-`);
+      expect(ALARM_ROW_HOLD).toContain(`dark:[&_tbody_tr[data-alarm=${level}]:hover]:!bg-`);
+    }
+    expect(ALARM_ROW_HOLD, 'a quiet row is held by nothing').not.toContain('data-alarm=none');
+    expect(read('pages/MaintenanceAlarmsPage.tsx'), 'the board wears it').toContain(
+      'ALARM_ROW_HOLD',
+    );
+  });
+
+  it('«حسن تشبع الالوان»: a DEEPER red and a clearly amber row, in both themes', () => {
+    // The wash this replaced (`red-100` / `red-500/[0.18]`, `amber-100/70` / `amber-500/[0.12]`)
+    // read as a faint pink and a faint cream. The row is the alarms board's alone, so it can be
+    // turned up without touching anything another screen draws.
+    expect(alarmRowTint('red')).toContain('dark:bg-red-600/[0.30]');
+    expect(alarmRowTint('red')).toContain('bg-red-200/80');
+    expect(alarmRowTint('yellow')).toContain('dark:bg-amber-500/[0.22]');
+    expect(alarmRowTint('yellow')).toContain('bg-amber-200/70');
+  });
+
+  it('and the hold paints the very same shades at rest, a step deeper under the pointer', () => {
+    // Two spellings of one colour — the row's class and the wrapper's hold — so they are held to
+    // each other: a row that changed colour the moment the board's rule took over would flicker.
+    for (const level of ['red', 'yellow'] as const) {
+      for (const tint of (alarmRowTint(level) as string).split(' ')) {
+        const held = tint.startsWith('dark:')
+          ? `dark:[&_tbody_tr[data-alarm=${level}]]:!${tint.slice('dark:'.length)}`
+          : `[&_tbody_tr[data-alarm=${level}]]:!${tint}`;
+        expect(ALARM_ROW_HOLD, `${level} at rest`).toContain(held);
+      }
+    }
+    expect(ALARM_ROW_HOLD).toContain('dark:[&_tbody_tr[data-alarm=red]:hover]:!bg-red-600/[0.40]');
+    expect(ALARM_ROW_HOLD).toContain(
+      'dark:[&_tbody_tr[data-alarm=yellow]:hover]:!bg-amber-500/[0.32]',
+    );
+  });
+
+  it('the board’s level is a SOLID pill — and the odometer keeps the shared one', () => {
+    // The saturated pill is a variant of the one component, asked for by the board alone; the
+    // odometer log's badge and its cell patch are exactly what they were.
+    const board = alarmsBoard([
+      alarm(),
+      alarm({
+        vehicleId: '650000000000000000000003',
+        code: '151',
+        level: 'yellow',
+        remainingKm: 400,
+      }),
+    ]);
+    const [red, yellow] = rows(board) as [string, string];
+    expect(red).toContain('bg-red-600 text-white');
+    expect(yellow).toContain('bg-amber-400 text-amber-950');
+    expect(read('pages/MaintenanceAlarmsPage.tsx')).toContain('variant="solid"');
+
+    const onOdometer = odometer([alarm()], [log()]);
+    expect(onOdometer, 'the odometer’s badge is the shared soft pill').toContain(
+      'bg-red-100 text-red-700',
+    );
+    expect(onOdometer, 'not the board’s').not.toContain('bg-red-600 text-white');
+    expect(alarmCellTint('red')).toContain('bg-red-100/80 dark:bg-red-950/50');
+    expect(alarmCellTint('yellow')).toContain('bg-amber-100/80 dark:bg-amber-950/50');
   });
 });
 

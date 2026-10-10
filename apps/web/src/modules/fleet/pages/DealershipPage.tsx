@@ -14,6 +14,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
@@ -76,8 +77,9 @@ const BOARD_TABLE = cn(
 /** The work's tag: a dot and a word, each kind its own colour. */
 const WORK_TAG: Record<'maintenance' | 'repair' | 'other', string> = {
   maintenance: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 [&>i]:bg-sky-400',
+  // «خلى لون الاصلاح مختلف عن لون انذار الفاتوره»: not the amber the awaiting-invoice tag wears.
   repair:
-    'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 [&>i]:bg-amber-400',
+    'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300 [&>i]:bg-fuchsia-400',
   other:
     'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300 [&>i]:bg-violet-400',
 };
@@ -439,8 +441,8 @@ export const DealershipPage = (): JSX.Element => {
   };
 
   return (
-    <PageContainer>
-      <div className="space-y-4">
+    <PageContainer fullHeight>
+      <div className={BOARD_FRAME}>
         <div className="flex items-center justify-between gap-2" data-dealership-toolbar="true">
           <span
             data-filtered-count
@@ -642,7 +644,7 @@ export const DealershipPage = (): JSX.Element => {
           </section>
         )}
 
-        <div className={BOARD_TABLE}>
+        <div className={cn(BOARD_TABLE, BOARD_TABLE_FILL)}>
           <DataTable
             columns={columns}
             rows={rows}
@@ -655,6 +657,7 @@ export const DealershipPage = (): JSX.Element => {
             // The yellow row: left the workshop, no invoice yet. A second signal only — the side
             // column is empty and the actions say «تسجيل الفاتورة».
             rowProps={(row) => ({ 'data-pending': row.pending ? 'true' : 'false' }) as never}
+            stickyHead
           />
         </div>
         {data !== undefined && data.meta.totalItems > 0 && (

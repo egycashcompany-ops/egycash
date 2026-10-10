@@ -91,9 +91,9 @@ const tbody = (markup: string): string =>
   markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
 const bar = (markup: string): string => markup.slice(0, markup.indexOf('<table'));
 
-/** The vehicle codes the table is showing, in row order. */
+/** The vehicle codes the table is showing, in row order — read off the code cell's own mark. */
 const shown = (markup: string): string[] =>
-  [...tbody(markup).matchAll(/<span class="font-mono text-xs" dir="ltr">([^<]*)<\/span>/g)].map(
+  [...tbody(markup).matchAll(/data-alarm-code="true"[^>]*>([^<]*)<\/span>/g)].map(
     (m) => m[1] as string,
   );
 
@@ -163,6 +163,108 @@ describe('the alarms filter bar', () => {
       (m) => m[1],
     );
     expect(options).toEqual(['red', 'yellow', 'none']);
+  });
+});
+
+// ── 1b. The drivers board's look ────────────────────────────────────────────
+
+describe('the board’s bar — «زى شاشة السيارات و السواقيين»', () => {
+  it('opens on the toolbar, not a page title: the count in cars, the Excel pill and «تحديث»', () => {
+    const markup = render();
+    expect(SOURCE, 'no page title').not.toContain('<PageHeader');
+    const toolbar = markup.slice(markup.indexOf('data-alarms-toolbar'), markup.indexOf('<table'));
+    // One row is one car, so the count is said in cars — of the FILTERED set.
+    expect(toolbar).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '٣' })}</span>`);
+    const red = render({ route: '/fleet/maintenance-alarms?level=red' });
+    expect(red).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '١' })}</span>`);
+    expect(toolbar, 'the Excel file is still offered').toContain(
+      'data-export="maintenance-alarms"',
+    );
+    expect(toolbar, 'and the board can still be refreshed').toContain(t('fleet.alarms.refresh'));
+    // Both filters sit in the dark bar, each with its icon.
+    expect(SOURCE).toContain('DARK_FILTER_BAR');
+    expect((SOURCE.match(/<FilterWithIcon /g) ?? []).length).toBe(2);
+  });
+});
+
+// ── 1c. «كبر الخط وحسن تشبع الالوان» — the table's own look ──────────────────
+
+describe('the table — «كبر الخط وحسن تشبع الالوان»', () => {
+  /** Every `<tr>` of the body, one string per row. */
+  const bodyRows = (markup: string): string[] => tbody(markup).split('<tr').slice(1);
+
+  it('writes every figure in Latin digits with a comma, and the date year first', () => {
+    const markup = render({
+      qc: client([
+        alarm('150', 'red', { remainingKm: -1250, sinceServiceKm: 11250, daysWithoutReading: 3 }),
+        alarm('151', 'yellow', { remainingKm: 500 }),
+      ]),
+    });
+    const body = tbody(markup);
+    expect(body, 'since the service').toContain('>11,250<');
+    expect(body, 'the days nobody read').toContain('>3<');
+    expect(body, 'the overdue figure').toContain('>1,250<');
+    expect(body, 'the distance left').toContain('>500<');
+    expect(body, 'the last service').toContain('>2026/08/01<');
+    expect(body, 'no Arabic-Indic digit anywhere in the table').not.toMatch(/[٠-٩]/);
+    // The overdue distance is still SAID as overdue, never as a bare minus.
+    const [overdue] = translate('ar', 'fleet.dashboard.overdueKm', { km: '|' }).split('|');
+    expect(body, 'the words keep their face, the figure takes the boards’').toContain(
+      `${overdue}<span dir="ltr"`,
+    );
+    expect(body.replace(/<[^>]*>/g, ' ')).not.toMatch(/[-−]\s*1,250/);
+  });
+
+  it('centres every value and every heading, as the drivers board does', () => {
+    const markup = render();
+    const heads = [
+      ...markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>')).matchAll(/<th [^>]*>/g),
+    ];
+    expect(heads.length).toBe(6);
+    for (const [th] of heads) expect(th).toContain('text-center');
+    for (const row of bodyRows(markup)) {
+      const cells = [...row.matchAll(/<td [^>]*>/g)];
+      expect(cells.length).toBe(6);
+      for (const [td] of cells) expect(td).toContain('text-center');
+    }
+  });
+
+  it('paints the level SOLID and the distance left in the car’s colour', () => {
+    const [red, yellow, quiet] = bodyRows(render()) as [string, string, string];
+    expect(red, 'a solid red pill').toContain('bg-red-600 text-white');
+    expect(yellow, 'a solid amber pill').toContain('bg-amber-400 text-amber-950');
+    expect(quiet, 'the quiet car stays grey').not.toMatch(/bg-(?:red|amber)-/);
+    expect(red, 'overdue in red').toContain('text-red-700 dark:text-red-400');
+    expect(yellow, 'nearly due in amber').toContain('text-amber-800 dark:text-amber-400');
+    expect(quiet, 'clear in green').toContain('text-emerald-700 dark:text-emerald-400');
+  });
+
+  it('draws an absent value as the boards’ grey dash', () => {
+    const markup = render({
+      qc: client([
+        alarm('150', 'none', {
+          remainingKm: null,
+          sinceServiceKm: null,
+          lastServiceAt: null,
+          lastServiceVisitId: null,
+          noAlarmReason: 'noService',
+        }),
+      ]),
+    });
+    // Since, days, remaining and the date: four dashes, each the same grey.
+    expect(tbody(markup).split('<span class="text-slate-400">—</span>').length - 1).toBe(4);
+  });
+
+  it('takes the type a size up on THIS page only, from its own wrapper', () => {
+    // One element more specific than the board table's own `td` / `th` sizes, so it wins at
+    // every screen width without touching the table every other board shares.
+    expect(SOURCE).toContain('[&_tbody_td]:!text-base');
+    expect(SOURCE).toContain('[&_thead_th]:!text-sm');
+    expect(SOURCE).toContain('BIG_TYPE,');
+    const shared = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');
+    expect(shared, 'the shared board table is not where it changed').not.toContain(
+      '[&_tbody_td]:!text-base',
+    );
   });
 });
 

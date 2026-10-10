@@ -214,7 +214,10 @@ export const DesignField = ({
   missing?: boolean;
   error?: string | undefined;
   hint?: string | undefined;
-  /** What sits inside the box at its far end (the password's eye). Takes the place of the «!». */
+  /**
+   * What sits inside the box at its far end (the password's eye). Takes the place of the «!»;
+   * `null` leaves the far end empty — a box that is not one (a row of card tiles).
+   */
   endAdornment?: ReactNode;
   children: ReactNode;
 }): JSX.Element => {
@@ -231,7 +234,9 @@ export const DesignField = ({
         <FieldFeedbackProvider value={setRefused}>
           <div className="relative">
             {children}
-            {endAdornment !== undefined ? (
+            {/* `null` asks for nothing at the far end — no «!» either — and so draws nothing that
+                could sit over the box and take its clicks. */}
+            {endAdornment === null ? null : endAdornment !== undefined ? (
               <div className="absolute inset-y-0 end-0 flex items-center pe-3.5">
                 {endAdornment}
               </div>

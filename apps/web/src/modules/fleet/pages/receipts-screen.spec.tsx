@@ -1,6 +1,7 @@
 // The receipts screen (خصم الإيصالات) and the custody ledger (العهدة), proven against what they
-// produce: the totals between the filters and the table, the card or the fund as the source of a
-// row, the modal that asks the kind first, and the ledger's per-car summary with its grand total.
+// produce: the totals between the filters and the table (behind «الإحصائيات»), the card or the
+// fund as the source of a row, the modal that asks the kind first, and the ledger's per-car
+// summary with its grand total.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,7 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
-import { ReceiptsPage } from './ReceiptsPage';
+import { ReceiptFigures, ReceiptsPage } from './ReceiptsPage';
 import { CustodyPage } from './CustodyPage';
 import { ReceiptDialog } from '../components/ReceiptDialog';
 
@@ -36,6 +37,7 @@ vi.mock('react-dom', async () => {
 });
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const PAGE = readFileSync(join(HERE, 'ReceiptsPage.tsx'), 'utf8');
 const FORM = readFileSync(join(HERE, '../components/ReceiptDialog.tsx'), 'utf8');
 const CELL = readFileSync(join(HERE, '../components/ReceiptImageCell.tsx'), 'utf8');
 const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -179,6 +181,19 @@ const mount = (qc: QueryClient, permissions: string[], path: string, page: JSX.E
     </Provider>,
   );
 
+/** One row of Fleet's people list — the shape `/fleet/people` answers with. */
+const person = (employeeId: string, code: string, fullNameAr: string) => ({
+  employeeId,
+  code,
+  fullNameAr,
+  status: 'active' as const,
+  branchId: null,
+  address: null,
+  governorate: null,
+  phone: null,
+  hiredAt: null,
+});
+
 const renderReceipts = ({
   permissions = [
     'fleetReceipt.view',
@@ -187,8 +202,14 @@ const renderReceipts = ({
     'fleetReceipt.delete',
   ],
   rows = [receipt()],
-}: { permissions?: string[]; rows?: FleetReceiptDto[] } = {}): string => {
+  people,
+}: {
+  permissions?: string[];
+  rows?: FleetReceiptDto[];
+  people?: ReturnType<typeof person>[];
+} = {}): string => {
   const qc = client();
+  if (people !== undefined) qc.setQueryData(['fleet', 'people'], people);
   qc.setQueryData(
     listKey('fleet', 'receipts', {
       ...RECEIPT_FILTERS,
@@ -263,24 +284,102 @@ describe('the receipts table', () => {
     expect(row).not.toContain('data-fuel-company=');
   });
 
-  it('puts the totals BETWEEN the filters and the table — the fund, the cards, fuel with its litres', () => {
+  it('puts the totals BETWEEN the filters and the table, behind «الإحصائيات» — the fund, the cards, fuel with its litres', () => {
     const html = renderReceipts();
-    const filters = html.indexOf('data-date-caption="from"');
-    const strip = html.indexOf('2,020.00');
-    const table = html.indexOf('<table');
+    // The figures open from the toolbar's toggle, as on the vehicles and drivers boards.
+    expect(html).toContain('data-receipt-stats-toggle="true"');
+    expect(html, 'closed on the way in').not.toContain('data-receipt-figures');
+    expect(html).toContain('data-date-caption="from"');
+    const filters = PAGE.indexOf('DARK_FILTER_BAR, ');
+    const strip = PAGE.indexOf('<ReceiptFigures totals={summary.data} />');
+    const table = PAGE.indexOf('<DataTable');
     expect(filters).toBeGreaterThan(-1);
-    expect(strip).toBeGreaterThan(filters);
-    expect(table).toBeGreaterThan(strip);
-    expect(html).toContain(ar('fleet.receipts.totals.custody'));
-    expect(html).toContain('1,440.00');
-    expect(html).toContain('115.74');
+    expect(strip, 'after the filters').toBeGreaterThan(filters);
+    expect(table, 'before the table').toBeGreaterThan(strip);
+    expect(PAGE).toContain('useReceiptSummary(filters)');
+    // Opened, they are the server's sums: the fund, the cards, fuel with its litres, tyres + wash.
+    const figures = mount(
+      client(),
+      ['fleetReceipt.view'],
+      '/fleet/receipts',
+      <ReceiptFigures totals={receiptTotals} />,
+    );
+    expect(figures).toContain('data-receipt-figures="true"');
+    expect(figures).toContain(ar('fleet.receipts.totals.custody'));
+    expect(figures).toContain('2,020.00');
+    expect(figures).toContain(ar('fleet.receipts.totals.card'));
+    expect(figures).toContain('1,440.00');
+    expect(figures).toContain(ar('fleet.receipts.totals.fuel'));
+    expect(figures).toContain('1,940.00');
+    expect(figures).toContain('115.74');
+    expect(figures).toContain(ar('fleet.receipts.totals.tyresWash'));
+    expect(figures).toContain('1,520.00');
   });
 
-  it('offers print and Excel as icons in the page header, and «إيصال جديد» to whoever may create', () => {
+  it('writes the row as the drivers board does — a year-first Latin date, the code bold, figures grouped, every value centred', () => {
+    const html = renderReceipts({
+      rows: [receipt({ litres: 1037.1, amount: 17890 })],
+    });
+    const row = rowWith(html, '17,890.00');
+    // «2026/10/01» — year first, slashes, Latin digits — never the Arabic-Indic «١ أكتوبر ٢٠٢٦».
+    expect(row).toContain('2026/10/01');
+    expect(row, 'no Arabic-Indic digit on the row').not.toMatch(/[٠-٩]/u);
+    // Litres grouped with a comma, two decimals; the money keeps its formatter («ج.م.»).
+    expect(row).toContain('1,037.10');
+    expect(row).toContain('ج.م');
+    // The car's code bold, left to right.
+    expect(row).toMatch(/<span dir="ltr" class="[^"]*font-bold[^"]*">204<\/span>/u);
+    // Every value and header centred, as on the drivers board; the actions at the row's end.
+    const cells = row.match(/<td[^>]*>/gu) ?? [];
+    expect(cells.length).toBe(9);
+    for (const cell of cells.slice(0, 8)) expect(cell).toContain('text-center');
+    expect(cells[8]).toContain('text-end');
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(8);
+    // An empty car is the boards' grey dash.
+    const none = rowWith(renderReceipts({ rows: [receipt({ vehicleCode: null })] }), '640.00');
+    expect(none).toContain('<span class="text-slate-400">—</span>');
+  });
+
+  it('draws the driver as the drivers board does — badge, name, code under it; a name the roster does not know, grey', () => {
+    const known = renderReceipts({
+      permissions: ['fleetReceipt.view', 'fleetDriver.view'],
+      rows: [receipt({ driverEmployeeId: 'e-7', driverName: 'ابراهيم السيد رزق' })],
+      people: [person('e-7', '0100765', 'ابراهيم السيد رزق')],
+    });
+    const row = rowWith(known, '640.00');
+    expect(row).toContain('ابراهيم السيد رزق');
+    // The code UNDER the name, never glued to its last letter.
+    expect(row).toContain('0100765</span>');
+    expect(row).not.toContain('رزق0100765');
+    expect(row, 'the badge with the first letters').toContain('>اس</span>');
+    expect(row).not.toContain('data-legacy-name');
+    // A receipt whose driver was typed by hand: the name as written, grey, saying so.
+    const typed = rowWith(renderReceipts(), '640.00');
+    expect(typed).toContain('data-legacy-name="true"');
+    expect(typed).toContain('أيمن حسن مصطفى');
+    // Nobody at all: a dash.
+    const nobody = rowWith(
+      renderReceipts({ rows: [receipt({ driverEmployeeId: null, driverName: null })] }),
+      '640.00',
+    );
+    expect(nobody).toContain('<span class="text-slate-400">—</span>');
+    expect(PAGE).toContain(
+      '<DriverCell employeeId={row.driverEmployeeId} name={row.driverName} />',
+    );
+    expect(PAGE).not.toContain('<DriverName ');
+  });
+
+  it('offers Excel and PDF in the toolbar above the filters, and «إيصال جديد» to whoever may create — no page title', () => {
     const html = renderReceipts();
     expect(html).toContain('data-print="receipts"');
     expect(html).toContain('data-export="receipts"');
     expect(html).toContain('data-receipt-new="true"');
+    expect(PAGE).not.toContain('<PageHeader');
+    expect(PAGE).not.toContain('<DocumentActions');
+    expect(html.indexOf('data-export="receipts"'), 'above the filters').toBeLessThan(
+      html.indexOf('data-date-caption="from"'),
+    );
     const viewer = renderReceipts({ permissions: ['fleetReceipt.view'] });
     expect(viewer).not.toContain('data-receipt-new=');
     expect(viewer).not.toContain('data-receipt-edit=');
@@ -318,7 +417,58 @@ describe('the receipt modal', () => {
     expect(FORM).toContain("useRosterDay(open && row === null && vehicleId !== '' ? date : '')");
     expect(FORM).toContain('line?.driver1EmployeeId');
     expect(FORM).toContain('if (!driverTouched && rosterDriver !== null) setDriver(rosterDriver);');
-    expect(FORM).toContain('list="receipt-drivers"');
+  });
+
+  it('offers Fleet’s roster under the driver box as it is typed into — still a NAME, the id resolved from it', () => {
+    // The browser's bare datalist is gone: the box is the roster combobox, drawn through the
+    // form's own ruled `Input`.
+    expect(FORM).not.toContain('<datalist');
+    expect(FORM).not.toContain('list="receipt-drivers"');
+    const at = FORM.indexOf('<DriverNameCombobox');
+    expect(at, 'the driver box is the roster combobox').toBeGreaterThan(-1);
+    const box = FORM.slice(at);
+    const start = box.indexOf('input={(props) => (');
+    expect(start, 'drawn through the combobox’s input render prop').toBeGreaterThan(-1);
+    const input = box.slice(start, box.indexOf('/>', start));
+    for (const prop of [
+      '{...props}',
+      'value={driver}',
+      'setDriverTouched(true);',
+      'setDriver(e.target.value);',
+      "placeholder={t('fleet.receipts.fields.driverPlaceholder')}",
+      'data-receipt-driver="true"',
+      'rule="arabic"',
+      'tone={box}',
+    ]) {
+      expect(input, `the driver box keeps ${prop}`).toContain(prop);
+    }
+    // A pick writes the NAME in and counts as the clerk's — the roster never overwrites it.
+    expect(box).toMatch(
+      /onChange=\{\(name\) => \{\s*setDriverTouched\(true\);\s*setDriver\(name\);/u,
+    );
+    // The value saved is the name; the employee id is the roster person of exactly that name.
+    expect(FORM).toContain(
+      '[...people.values()].find((p) => p.fullNameAr === typed)?.employeeId ?? null',
+    );
+    expect(FORM).toContain("driverName: driver.trim() === '' ? null : driver.trim(),");
+
+    // Rendered: the receipt's name in the box, a combobox over the roster, Arabic-only.
+    const qc = client();
+    const html = mount(
+      qc,
+      ['fleetReceipt.view', 'fleetReceipt.edit'],
+      '/fleet/receipts',
+      <ReceiptDialog open onClose={() => undefined} row={receipt()} />,
+    );
+    const boxAt = html.lastIndexOf('<input', html.indexOf('data-receipt-driver="true"'));
+    expect(boxAt, 'the form has its driver box').toBeGreaterThan(-1);
+    const driverBox = html.slice(boxAt, html.indexOf('>', boxAt) + 1);
+    expect(driverBox).toContain('role="combobox"');
+    expect(driverBox).toContain('aria-autocomplete="list"');
+    expect(driverBox).toContain('value="أيمن حسن مصطفى"');
+    expect(driverBox).toContain('data-input-rule="arabic"');
+    expect(driverBox).toContain(`placeholder="${ar('fleet.receipts.fields.driverPlaceholder')}"`);
+    expect(html).not.toContain('<datalist');
   });
 
   it('prices the litres from the fleet settings and shows what the card was and becomes', () => {
@@ -473,8 +623,11 @@ describe('the card after a car is picked — «هل فى كارت واحد عل�
     expect(html).toContain(ar('fleet.receipts.summary.pickCard'));
     expect(html).toContain('bg-amber-50');
     // Save is still pressable — the press names the card — and nothing is red before it.
-    const at = html.lastIndexOf('<button');
-    expect(html.slice(at), 'the last button is Save').toContain(ar('common.save'));
+    const at = html.lastIndexOf('<button', html.indexOf('data-receipt-save="true"'));
+    expect(at, 'the form has its Save').toBeGreaterThan(-1);
+    expect(html.slice(at, html.indexOf('</button>', at)), 'it is Save').toContain(
+      ar('common.save'),
+    );
     const save = html.slice(at, html.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
     expect(save, 'Save is pressable').not.toContain('disabled');
     expect(html).not.toContain('data-missing-fields');

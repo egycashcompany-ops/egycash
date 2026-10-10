@@ -62,6 +62,9 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/components/FuelCardDialog.tsx': { digits: 1 },
   'modules/fleet/components/FuelCardHistoryDialog.tsx': { money: 1 },
   'modules/fleet/components/FuelTransferDialog.tsx': { money: 1 },
+  // A licensing memo's group — each item's counter and each card's count; each card's amount.
+  // The memo editor and «إعداد النماذج» both write their lines through it.
+  'modules/fleet/components/LicenseExpensePaidGroup.tsx': { integer: 2, money: 1 },
   // The odometer on check-in, on check-out and on edit.
   'modules/fleet/components/MaintenanceDialogs.tsx': { integer: 3 },
   // The driver's name, and the receipt's amount.
@@ -81,8 +84,6 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/pages/FleetSettingsPage.tsx': { integer: 1, money: 1, arabic: 1 },
   'modules/fleet/pages/FuelCardsPage.tsx': { digits: 1 },
   'modules/fleet/pages/FuelChargingPage.tsx': { money: 1 },
-  // Each item's counter and each card's count; each card's amount.
-  'modules/fleet/pages/LicenseExpenseEditorPage.tsx': { integer: 2, money: 1 },
   // Plate and chassis filters.
   'modules/fleet/pages/LicensingPage.tsx': { plate: 1, english: 1 },
   // The form's mobiles, phones and national ids.

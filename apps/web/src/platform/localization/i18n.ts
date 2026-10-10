@@ -4031,6 +4031,26 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.stats.memos': 'Memos',
   'fleet.licenseExpenses.stats.memoUnit': 'memos',
   'fleet.licenseExpenses.stats.cars': 'Vehicles',
+  // «إعداد النماذج» — the templates, the names and «يظهر في», set up once for every new memo.
+  'fleet.licenseExpenses.setup.button': 'Set up the templates',
+  'fleet.licenseExpenses.setup.title': 'Licensing expenses — template set-up',
+  'fleet.licenseExpenses.setup.back': '→ Back to licensing expenses',
+  'fleet.licenseExpenses.setup.save': 'Save the set-up',
+  'fleet.licenseExpenses.setup.savedToast': 'The set-up was saved.',
+  'fleet.licenseExpenses.setup.staleToast':
+    'The set-up was saved elsewhere since this page opened — the latest one is shown now. Review it and save again.',
+  'fleet.licenseExpenses.setup.preview': 'The memo with the defaults — exactly as it prints',
+  'fleet.licenseExpenses.setup.templateTitle': '{{kind}} template',
+  'fleet.licenseExpenses.setup.templateHint':
+    'The lines every new {{kind}} memo starts with — card and cash, each in its own group.',
+  'fleet.licenseExpenses.setup.signaturesHint':
+    'Every new memo starts with these names; they can still be changed in the memo itself.',
+  'fleet.licenseExpenses.setup.itemsTitle': 'Items — shows in',
+  'fleet.licenseExpenses.setup.itemsHint':
+    'Which memo offers each item’s counter. The same choice as in Fleet catalogs: a change here shows there.',
+  'fleet.licenseExpenses.setup.itemsLocked': 'Changed by whoever manages the Fleet catalogs.',
+  'fleet.licenseExpenses.setup.itemsEmpty': 'No items on the list yet.',
+  'fleet.licenseExpenses.setup.itemSavedToast': 'Saved — Fleet catalogs show it too.',
   'fleet.pager.showing.before': 'Showing',
   'fleet.pager.showing.of': 'of',
   'fleet.pager.perPage': 'Rows per page',
@@ -11824,6 +11844,25 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.stats.memos': 'عدد المذكرات',
   'fleet.licenseExpenses.stats.memoUnit': 'مذكرة',
   'fleet.licenseExpenses.stats.cars': 'السيارات',
+  'fleet.licenseExpenses.setup.button': 'إعداد النماذج',
+  'fleet.licenseExpenses.setup.title': 'إعداد نماذج مصروفات التراخيص',
+  'fleet.licenseExpenses.setup.back': '→ رجوع إلى مصروفات التراخيص',
+  'fleet.licenseExpenses.setup.save': 'حفظ الإعداد',
+  'fleet.licenseExpenses.setup.savedToast': 'تم حفظ الإعداد.',
+  'fleet.licenseExpenses.setup.staleToast':
+    'حُفظ الإعداد من مكان آخر بعد فتح هذه الصفحة — المعروض الآن هو آخر إعداد محفوظ. راجعه ثم احفظ من جديد.',
+  'fleet.licenseExpenses.setup.preview': 'شكل المذكرة بالقيم الافتراضية — كما تُطبع بالضبط',
+  'fleet.licenseExpenses.setup.templateTitle': 'نموذج {{kind}}',
+  'fleet.licenseExpenses.setup.templateHint':
+    'البنود التي تبدأ بها كل مذكرة {{kind}} جديدة — ما يُصرف بالفيزا وما يُصرف نقدًا، كلٌّ في جزئه.',
+  'fleet.licenseExpenses.setup.signaturesHint':
+    'تبدأ كل مذكرة جديدة بهذه الأسماء، ويمكن تغييرها في المذكرة نفسها.',
+  'fleet.licenseExpenses.setup.itemsTitle': 'البنود — يظهر في',
+  'fleet.licenseExpenses.setup.itemsHint':
+    'في أي مذكرة يظهر عدّاد كل بند. هو نفس الاختيار الموجود في «قوائم الحركة»: ما يتغير هنا يظهر هناك.',
+  'fleet.licenseExpenses.setup.itemsLocked': 'يغيّره من يدير «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.itemsEmpty': 'لا توجد بنود في القائمة بعد.',
+  'fleet.licenseExpenses.setup.itemSavedToast': 'تم الحفظ — ويظهر كذلك في «قوائم الحركة».',
   'fleet.pager.showing.before': 'عرض',
   'fleet.pager.showing.of': 'من أصل',
   'fleet.pager.perPage': 'الصفوف بالصفحة',

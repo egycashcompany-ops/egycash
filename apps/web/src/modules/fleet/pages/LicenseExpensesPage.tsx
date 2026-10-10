@@ -12,6 +12,7 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
+import { CogIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -251,7 +252,8 @@ export const LicenseExpensesPage = (): JSX.Element => {
               ? ''
               : t('fleet.licenseExpenses.count', { count: String(data.meta.totalItems) })}
           </span>
-          <span className="flex items-center gap-2">
+          {/* Wraps: three buttons are wider than a phone. */}
+          <span className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               aria-expanded={statsOpen}
@@ -262,6 +264,17 @@ export const LicenseExpensesPage = (): JSX.Element => {
                 ? t('fleet.vehicles.board.breakdownHide')
                 : t('fleet.vehicles.board.breakdown')}
             </button>
+            {/* «زى شاشه الاخطارات»: the templates and names every new memo starts with. */}
+            {can('fleetLicenseExpense.edit') && (
+              <Link
+                to="/fleet/license-expenses/setup"
+                data-license-expense-setup="true"
+                className={BRAND_BUTTON}
+              >
+                <CogIcon className="h-3.5 w-3.5" />
+                {t('fleet.licenseExpenses.setup.button')}
+              </Link>
+            )}
             {can('fleetLicenseExpense.create') && (
               <Link
                 to="/fleet/license-expenses/new"

@@ -13,6 +13,7 @@ import { type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAppSelector } from '../../../../store';
 import { useT } from '../../../../platform/localization/useT';
+import { IdleSessionGuard } from '../../../../platform/auth/IdleSessionGuard';
 import { EmptyState } from '../../../../shared/ui/states/EmptyState';
 import { APPLICANT_PORTAL_SUBJECT } from './subject';
 
@@ -39,5 +40,10 @@ export const RequireApplicantPortal = ({ children }: { children: ReactNode }): R
       </div>
     );
   }
-  return children;
+  // The same inactivity guard as the staff app. Without it nothing here renewed the session while
+  // the candidate worked, so the server's idle rule read every portal session as abandoned once
+  // its 15-minute token ran out and closed it mid-upload.
+  return (
+    <IdleSessionGuard signedOutPath="/applicant-portal/login?reason=idle">{children}</IdleSessionGuard>
+  );
 };

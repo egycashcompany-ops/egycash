@@ -4,10 +4,8 @@
 import { Schema, model } from 'mongoose';
 import {
   FLEET_CATALOG_KINDS,
-  FLEET_LICENSE_EXPENSE_KINDS,
   FLEET_VIOLATION_SIDES,
   type FleetCatalogKind,
-  type FleetLicenseExpenseKind,
   type FleetViolationSide,
   type LocalizedString,
 } from '@ecms/contracts';
@@ -20,11 +18,6 @@ export interface FleetCatalogItemDoc extends BaseDocFields {
   countsForAlarm: boolean;
   /** `violationType` only: which half of the violations screen files it. Null for other kinds. */
   violationSide: FleetViolationSide | null;
-  /**
-   * `licenseExpenseItem` only: the memo that counts it — renewal or extension. Null (or absent, on
-   * an item older than the question) is both.
-   */
-  licenseExpenseKind?: FleetLicenseExpenseKind | null;
   isActive: boolean;
   /** Place in its list, as dragged on the catalogs screen. Absent/null until arranged once. */
   sortOrder?: number | null;
@@ -36,11 +29,6 @@ const catalogItemSchema = new Schema<FleetCatalogItemDoc>(
     name: { ar: { type: String, required: true }, en: { type: String, required: true } },
     countsForAlarm: { type: Boolean, required: true, default: false },
     violationSide: { type: String, enum: [...FLEET_VIOLATION_SIDES, null], default: null },
-    licenseExpenseKind: {
-      type: String,
-      enum: [...FLEET_LICENSE_EXPENSE_KINDS, null],
-      default: null,
-    },
     isActive: { type: Boolean, required: true, default: true },
     sortOrder: { type: Number, default: null },
     ...baseFields,

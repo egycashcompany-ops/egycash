@@ -13,7 +13,7 @@
 // The layout is the gold portal's login re-dressed, which is itself the platform login's skeleton.
 // Two numbers instead of a password is the only structural difference, and it is the point.
 import { useEffect, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { PORTAL_CHALLENGE_CODE_LENGTH, type MeDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../../../store';
 import { signedIn } from '../../../../store/authSlice';
@@ -36,6 +36,9 @@ export const ApplicantPortalLoginPage = (): JSX.Element => {
   const navigate = useNavigate();
   const status = useAppSelector((state) => state.auth.status);
   const external = useAppSelector((state) => state.auth.me?.external ?? null);
+  // `?reason=idle` is set by the portal's `IdleSessionGuard` when it closed the session.
+  const [searchParams] = useSearchParams();
+  const idleNotice = searchParams.get('reason') === 'idle';
 
   const [step, setStep] = useState<Step>('identify');
   const [nationalId, setNationalId] = useState('');
@@ -168,6 +171,16 @@ export const ApplicantPortalLoginPage = (): JSX.Element => {
                   : t('hr.applicantPortal.login.codeSubtitle')}
               </p>
             </header>
+
+            {error === null && idleNotice && (
+              <div
+                role="status"
+                className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{t('auth.idle.signedOutNotice')}</span>
+              </div>
+            )}
 
             {error !== null && (
               <div

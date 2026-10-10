@@ -124,50 +124,13 @@ export const DriverIdentity = ({
 );
 
 /**
- * How a board writes a driver — «غير شكل اسم السواق»: three looks to choose from, shown on one
- * board first.
- * - `identity`: the badge, the name, the code under it (the pickers' look).
- * - `badge`: the name, and the code in a small pill beside it — one line, no badge.
- * - `chip`: the name in a soft pill of the person's own colour, the code after a dot.
- * - `board`: the drivers board's own — the badge and the name; the code on hover.
+ * How a board writes a driver — «غير شكل اسم السواق»: each board's look, as the owner chose it.
+ * - `identity`: the badge, the name, the code under it (the pickers' look; receipts, attendance).
+ * - `person`: look ج — a person mark, the name, a rule, the code faint after it (odometer).
+ * - `short`: look د — the first and last names, the code under; the whole name on hover
+ *   (maintenance).
  */
-export type DriverLook =
-  | 'identity'
-  | 'badge'
-  | 'chip'
-  | 'board'
-  // The design board's six, tried on the workshop board:
-  | 'underPill' // أ: the name, the code under it in a small pill
-  | 'split' // ب: one split pill — the code | the name
-  | 'person' // ج: a person mark, the name, a rule, the code faint
-  | 'short' // د: the first and last names, the code under; the whole name on hover
-  | 'dot' // هـ: a coloured dot, the name, #code faint
-  | 'nameOnly'; // و: the name alone — its board writes the code in a column of its own
-
-/** The soft surface of a person's colour, for the `chip` look. */
-const CHIP_TONES = [
-  'bg-violet-500/15 text-violet-800 ring-violet-500/30 dark:text-violet-200',
-  'bg-emerald-500/15 text-emerald-800 ring-emerald-500/30 dark:text-emerald-200',
-  'bg-amber-500/15 text-amber-800 ring-amber-500/30 dark:text-amber-200',
-  'bg-rose-500/15 text-rose-800 ring-rose-500/30 dark:text-rose-200',
-  'bg-teal-500/15 text-teal-800 ring-teal-500/30 dark:text-teal-200',
-  'bg-indigo-500/15 text-indigo-800 ring-indigo-500/30 dark:text-indigo-200',
-  'bg-sky-500/15 text-sky-800 ring-sky-500/30 dark:text-sky-200',
-] as const;
-/** A person's dot and its halo, for the `dot` look. */
-const DOT_TONES = [
-  'bg-violet-400 ring-violet-400/25',
-  'bg-emerald-400 ring-emerald-400/25',
-  'bg-amber-400 ring-amber-400/25',
-  'bg-rose-400 ring-rose-400/25',
-  'bg-sky-400 ring-sky-400/25',
-  'bg-teal-400 ring-teal-400/25',
-] as const;
-const dotToneOf = (key: string): string =>
-  DOT_TONES[[...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % DOT_TONES.length]!;
-
-const chipToneOf = (key: string): string =>
-  CHIP_TONES[[...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % CHIP_TONES.length]!;
+export type DriverLook = 'identity' | 'person' | 'short';
 
 const DriverLookView = ({
   look,
@@ -182,111 +145,8 @@ const DriverLookView = ({
   nameClassName?: string;
   muted?: boolean;
 }): JSX.Element => {
-  if (look === 'badge') {
-    return (
-      <span className="inline-flex max-w-full items-center gap-2" title={name}>
-        <span
-          className={cn(
-            'truncate font-bold',
-            muted && 'text-slate-500 dark:text-slate-400',
-            nameClassName,
-          )}
-        >
-          {name}
-        </span>
-        {code !== null && code !== '' && (
-          <span
-            dir="ltr"
-            className="shrink-0 rounded-md border border-slate-300 bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] font-bold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-          >
-            {code}
-          </span>
-        )}
-      </span>
-    );
-  }
-  if (look === 'chip') {
-    return (
-      <span
-        title={name}
-        className={cn(
-          'inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 ring-1',
-          muted
-            ? 'bg-slate-500/15 text-slate-600 ring-slate-500/30 dark:text-slate-300'
-            : chipToneOf(code ?? name),
-        )}
-      >
-        <span className={cn('truncate font-bold', nameClassName)}>{name}</span>
-        {code !== null && code !== '' && (
-          <>
-            <span aria-hidden className="opacity-50">
-              •
-            </span>
-            <span dir="ltr" className="shrink-0 font-mono text-[11px] font-bold opacity-80">
-              {code}
-            </span>
-          </>
-        )}
-      </span>
-    );
-  }
   const codeShown = code !== null && code !== '';
   const mono = 'font-mono font-bold';
-  if (look === 'underPill') {
-    return (
-      <span className="inline-flex flex-col items-start gap-1 text-start" title={name}>
-        <span
-          className={cn(
-            'max-w-[14rem] truncate font-extrabold',
-            muted && 'text-slate-500',
-            nameClassName,
-          )}
-        >
-          {name}
-        </span>
-        {codeShown && (
-          <span
-            dir="ltr"
-            className={cn(
-              mono,
-              'rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 text-[11px] text-indigo-700 dark:text-indigo-300',
-            )}
-          >
-            {code}
-          </span>
-        )}
-      </span>
-    );
-  }
-  if (look === 'split') {
-    return (
-      <span
-        title={name}
-        className="inline-flex max-w-full items-stretch overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600"
-      >
-        {codeShown && (
-          <span
-            dir="ltr"
-            className={cn(
-              mono,
-              'flex items-center bg-slate-200 px-2 text-[12px] text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-            )}
-          >
-            {code}
-          </span>
-        )}
-        <span
-          className={cn(
-            'flex items-center truncate px-2.5 py-1 font-extrabold',
-            muted && 'text-slate-500',
-            nameClassName,
-          )}
-        >
-          {name}
-        </span>
-      </span>
-    );
-  }
   if (look === 'person') {
     return (
       <span className="inline-flex min-w-0 items-center gap-2" title={name}>
@@ -349,66 +209,6 @@ const DriverLookView = ({
       </span>
     );
   }
-  if (look === 'dot') {
-    return (
-      <span className="inline-flex min-w-0 items-center gap-2.5" title={name}>
-        <span
-          aria-hidden
-          className={cn(
-            'h-2.5 w-2.5 shrink-0 rounded-full ring-[3px]',
-            muted ? 'bg-slate-400 ring-slate-400/20' : dotToneOf(code ?? name),
-          )}
-        />
-        <span
-          className={cn(
-            'max-w-[13rem] truncate font-extrabold',
-            muted && 'text-slate-500',
-            nameClassName,
-          )}
-        >
-          {name}
-        </span>
-        {codeShown && (
-          <span dir="ltr" className={cn(mono, 'shrink-0 text-[12px] text-slate-500')}>
-            #{code}
-          </span>
-        )}
-      </span>
-    );
-  }
-  if (look === 'nameOnly') {
-    return (
-      <span
-        title={name}
-        className={cn(
-          'block max-w-[14rem] truncate text-start font-extrabold',
-          muted && 'text-slate-500',
-          nameClassName,
-        )}
-      >
-        {name}
-      </span>
-    );
-  }
-  if (look === 'board') {
-    return (
-      <span
-        className="inline-flex min-w-0 items-center gap-2.5"
-        title={code === null ? name : `${name} — ${code}`}
-      >
-        <DriverAvatar name={name} seed={code ?? name} muted={muted} />
-        <span
-          className={cn(
-            'max-w-[14rem] truncate font-bold',
-            muted && 'text-slate-500 dark:text-slate-400',
-            nameClassName,
-          )}
-        >
-          {name}
-        </span>
-      </span>
-    );
-  }
   return (
     <DriverIdentity
       name={name}
@@ -462,21 +262,6 @@ export const DriverCell = ({
     );
   }
   return <span className="text-slate-400">—</span>;
-};
-
-/** Look و's other half: the driver's employee code, in a column of its own; or a dash. */
-export const DriverCodeCell = ({ employeeId }: { employeeId: string | null }): JSX.Element => {
-  const person = useEmployeeRecord(employeeId ?? '');
-  return employeeId === null || person === undefined ? (
-    <span className="text-slate-400">—</span>
-  ) : (
-    <span
-      dir="ltr"
-      className="font-mono text-[13px] font-extrabold text-indigo-700 dark:text-indigo-300"
-    >
-      {person.code}
-    </span>
-  );
 };
 
 // ── The list both pickers open ──────────────────────────────────────────────────────────────

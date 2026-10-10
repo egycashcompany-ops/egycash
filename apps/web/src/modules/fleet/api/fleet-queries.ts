@@ -1118,26 +1118,13 @@ export const useUpdateLicenseExpense = () =>
 export const useDeleteLicenseExpense = () =>
   useLicenseExpenseMutation((id: string) => api.deleteLicenseExpense(id));
 
-export const licenseExpenseSettingsKey = [...fleetKeys.licenseExpenses, 'settings'] as const;
-
 /** The names every new memo starts with — «تتظبط مرة في الإعداد». */
 export const useLicenseExpenseSettings = () =>
   useQuery({
-    queryKey: licenseExpenseSettingsKey,
+    queryKey: [...fleetKeys.licenseExpenses, 'settings'],
     queryFn: () => api.getLicenseExpenseSettings(),
   });
-/**
- * The saved set-up goes straight into the cache, its new version with it: the next save — the
- * signatures right after a template — then carries the version the server now holds instead of
- * waiting for the refetch, and is not refused as stale.
- */
-export const useSaveLicenseExpenseSettings = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: SaveFleetLicenseExpenseSettings) => api.saveLicenseExpenseSettings(body),
-    onSuccess: (saved) => {
-      qc.setQueryData(licenseExpenseSettingsKey, saved);
-      void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses });
-    },
-  });
-};
+export const useSaveLicenseExpenseSettings = () =>
+  useLicenseExpenseMutation((body: SaveFleetLicenseExpenseSettings) =>
+    api.saveLicenseExpenseSettings(body),
+  );

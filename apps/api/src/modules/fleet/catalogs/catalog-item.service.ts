@@ -31,7 +31,6 @@ const snapshot = (doc: FleetCatalogItemDoc) => ({
   name: doc.name,
   countsForAlarm: doc.countsForAlarm,
   violationSide: doc.violationSide,
-  licenseExpenseKind: doc.licenseExpenseKind ?? null,
   isActive: doc.isActive,
 });
 
@@ -52,7 +51,6 @@ class FleetCatalogItemService {
         name: withEnglishName(input.name),
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
-        licenseExpenseKind: input.licenseExpenseKind ?? null,
         isActive: true,
         // A new item joins the END of a list somebody has arranged; an unarranged list stays by
         // name, so there is nothing to append to.
@@ -93,7 +91,6 @@ class FleetCatalogItemService {
         name: withEnglishName(input.name),
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
-        licenseExpenseKind: input.licenseExpenseKind ?? null,
         isActive: true,
         // A new item joins the END of a list somebody has arranged; an unarranged list stays by
         // name, so there is nothing to append to.
@@ -184,20 +181,10 @@ class FleetCatalogItemService {
     if (input.violationSide !== undefined && before.kind !== 'violationType') {
       throw new ConflictError('only a violationType has a side');
     }
-    // …and a memo on anything but a licensing-expenses item. Null is allowed anywhere: it is what
-    // every other item already holds.
-    if (
-      input.licenseExpenseKind !== undefined &&
-      input.licenseExpenseKind !== null &&
-      before.kind !== 'licenseExpenseItem'
-    ) {
-      throw new ConflictError('only a licenseExpenseItem belongs to a licensing-expenses memo');
-    }
     const set: Partial<FleetCatalogItemDoc> = {};
     if (input.name !== undefined) set.name = withEnglishName(input.name);
     if (input.countsForAlarm !== undefined) set.countsForAlarm = input.countsForAlarm;
     if (input.violationSide !== undefined) set.violationSide = input.violationSide;
-    if (input.licenseExpenseKind !== undefined) set.licenseExpenseKind = input.licenseExpenseKind;
     if (input.isActive !== undefined) set.isActive = input.isActive;
     const updated = await fleetCatalogItemRepository.updateById(id, set, {
       by,

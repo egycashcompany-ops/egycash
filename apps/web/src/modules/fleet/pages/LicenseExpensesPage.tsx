@@ -388,7 +388,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
                 <div
                   data-license-expense-view-sheet={memo.kind}
                   className="origin-top-right"
-                  style={{ zoom: 0.8, width: '210mm' }}
+                  style={{ transform: 'scale(0.8)', width: '210mm', marginBottom: '-20%' }}
                   dangerouslySetInnerHTML={{ __html: memoHtml(memo) }}
                 />
               </div>

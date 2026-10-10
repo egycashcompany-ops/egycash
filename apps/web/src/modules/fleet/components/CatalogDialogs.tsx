@@ -6,15 +6,12 @@
 // hint uses, because the ALARM engine reads exactly that.
 import { useEffect, useState } from 'react';
 import {
-  FLEET_LICENSE_EXPENSE_KINDS,
   type FleetCatalogItemDto,
-  type FleetLicenseExpenseKind,
   type FleetViolationSide,
   type FleetCatalogKind,
   type FleetVehicleTypeDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { cn } from '../../../shared/lib/cn';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Checkbox, Field, Input, Select } from '../../../shared/ui/form';
@@ -46,11 +43,6 @@ export const CatalogItemDialog = ({
   // A violation type belongs to one half of the violations screen; «company» is the default
   // because a fine the house pays is the commoner entry and the safer one to guess wrong.
   const [violationSide, setViolationSide] = useState<FleetViolationSide>('company');
-  // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده»: a licensing-expenses item's memo. `null`
-  // is both — what an item says until somebody says otherwise, so nothing here is required.
-  const [memo, setMemo] = useState<FleetLicenseExpenseKind | null>(
-    item?.licenseExpenseKind ?? null,
-  );
   const [isActive, setIsActive] = useState(true);
   useEffect(() => {
     if (!open) return;
@@ -58,7 +50,6 @@ export const CatalogItemDialog = ({
     setNameEn(item?.name.en ?? '');
     setCountsForAlarm(item?.countsForAlarm ?? false);
     setViolationSide(item?.violationSide ?? 'company');
-    setMemo(item?.licenseExpenseKind ?? null);
     setIsActive(item?.isActive ?? true);
   }, [open, item]);
 
@@ -85,7 +76,6 @@ export const CatalogItemDialog = ({
         // Required for a violation type and refused for every other kind — the server says so,
         // and sending it anywhere else would be a 422 the reader could do nothing about.
         ...(kind === 'violationType' ? { violationSide } : {}),
-        ...(kind === 'licenseExpenseItem' ? { licenseExpenseKind: memo } : {}),
       });
     } else {
       await update.mutateAsync({
@@ -98,9 +88,6 @@ export const CatalogItemDialog = ({
             : {}),
           ...(kind === 'violationType' && violationSide !== item.violationSide
             ? { violationSide }
-            : {}),
-          ...(kind === 'licenseExpenseItem' && memo !== (item.licenseExpenseKind ?? null)
-            ? { licenseExpenseKind: memo }
             : {}),
           ...(isActive !== item.isActive ? { isActive } : {}),
         },
@@ -168,32 +155,6 @@ export const CatalogItemDialog = ({
               <option value="company">{t('fleet.violations.side.company')}</option>
               <option value="driver">{t('fleet.violations.side.driver')}</option>
             </Select>
-          </Field>
-        )}
-        {/* Which memo's counters offer it — the renewal's, the extension's, or both. */}
-        {kind === 'licenseExpenseItem' && (
-          <Field label={t('fleet.catalogs.fields.licenseExpenseKind')}>
-            <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 text-sm font-bold dark:border-slate-600">
-              {[...FLEET_LICENSE_EXPENSE_KINDS, null].map((value) => (
-                <button
-                  key={value ?? 'both'}
-                  type="button"
-                  aria-pressed={memo === value}
-                  data-license-expense-kind-option={value ?? 'both'}
-                  onClick={() => setMemo(value)}
-                  className={cn(
-                    'px-4 py-2 transition',
-                    memo === value
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800',
-                  )}
-                >
-                  {value === null
-                    ? t('fleet.catalogs.licenseExpenseKind.both')
-                    : t(`fleet.licenseExpenses.kinds.${value}`)}
-                </button>
-              ))}
-            </div>
           </Field>
         )}
         {item !== null && (

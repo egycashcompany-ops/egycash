@@ -21,6 +21,8 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { LicenseExpensesPage } from './LicenseExpensesPage';
 import { LicenseExpenseEditorPage } from './LicenseExpenseEditorPage';
+import { CatalogsPage } from './CatalogsPage';
+import { CatalogItemDialog } from '../components/CatalogDialogs';
 import { carsPhrase, memoHtml, memosOf, memoTitle, sumOf } from '../lib/license-expense-memo';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -118,21 +120,28 @@ const renderList = (permissions = ALL, rows = [memo()]): string => {
   );
 };
 
-const catalogItem = (id: string, name: string): FleetCatalogItemDto =>
+const catalogItem = (
+  id: string,
+  name: string,
+  licenseExpenseKind: 'renewal' | 'extension' | null = null,
+): FleetCatalogItemDto =>
   ({
     id,
     kind: 'licenseExpenseItem',
     name: { ar: name, en: name },
+    licenseExpenseKind,
     isActive: true,
   }) as unknown as FleetCatalogItemDto;
 
-const renderEditor = (): string => {
+const renderEditor = (
+  items: FleetCatalogItemDto[] = [catalogItem('i-1', 'براءة ذمة'), catalogItem('i-2', 'ضرائب')],
+): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   qc.setQueryData(listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }), {
-    items: [catalogItem('i-1', 'براءة ذمة'), catalogItem('i-2', 'ضرائب')],
-    meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
+    items,
+    meta: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1 },
   });
   qc.setQueryData(listKey('fleet', 'vehicles', { whole: true, anyStatus: true }), {
     items: [],
@@ -140,6 +149,7 @@ const renderEditor = (): string => {
   });
   qc.setQueryData(['fleet', 'licenseExpenses', 'settings'], {
     signatures: SIGNATURES,
+    templates: { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } },
     version: 0,
   });
   return renderToStaticMarkup(
@@ -176,6 +186,33 @@ describe('the licensing-expenses memo', () => {
     expect(html).toContain('لا يوجد');
     expect(html).toContain('طلعت جابر بحيري');
     expect(html).toContain('لواء أ ح / جمال أحمد أبو إسماعيل<br/>المدير العام التنفيذي');
+  });
+
+  it('puts each table on its own page and signs once, after the last', () => {
+    const html = memoHtml(memosOf(memo())[0]!);
+    // «كل جدول فى صفحة … بس امضى واحده»: two tables, two sheets, one signature block.
+    expect(html.split('class="lx-sheet"').length - 1).toBe(2);
+    expect(html.split('مندوب التراخيص').length - 1).toBe(1);
+    const second = html.slice(html.lastIndexOf('class="lx-sheet"'));
+    expect(second, 'the cash table and the close on the last page').toContain('تم صرفه نقدًا');
+    expect(second).toContain('مندوب التراخيص');
+    expect(second, 'the title only on the first').not.toContain('مذكرة بمصروفات');
+  });
+
+  it('draws no table for a group with nothing in it', () => {
+    // «لو مفيش جدول للفيزا متعملش جدول ادام مفيش بيانات وكذلك نقدى».
+    const cashOnly = memo({
+      renewal: {
+        vehicles: [],
+        items: [
+          { itemId: null, label: 'دمغة', amount: 5, count: 1, paidBy: 'cash', receipt: false },
+        ],
+      },
+    });
+    const html = memoHtml(memosOf(cashOnly)[0]!);
+    expect(html).not.toContain('ما تم صرفه بفيزا');
+    expect(html).toContain('تم صرفه نقدًا');
+    expect(html.split('class="lx-sheet"').length - 1, 'one table, one page').toBe(1);
   });
 
   it('prints a record holding both as two memos, the renewal first', () => {
@@ -227,12 +264,100 @@ describe('a new licensing-expenses memo', () => {
     const html = renderEditor();
     expect(html).toMatch(/aria-pressed="true"[^>]*data-license-expense-kind="renewal"/u);
     expect(html).toMatch(/aria-pressed="false"[^>]*data-license-expense-kind="extension"/u);
-    expect(html).toContain('data-license-expense-count="renewal:i-1"');
-    expect(html).toContain('data-license-expense-count="renewal:i-2"');
+    // «يبقى فيه تجميع»: the card's group and the cash group, each with its own counters.
+    expect(html).toContain('data-license-expense-group="renewal:visa"');
+    expect(html).toContain('data-license-expense-group="renewal:cash"');
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(html).toContain('data-license-expense-count="renewal:cash:i-2"');
+    expect(html, 'no per-line visa / cash switch').not.toContain('data-segment="paid-');
     expect(html).toContain('data-license-expense-preview="renewal"');
     expect(html).not.toContain('data-license-expense-preview="extension"');
     expect(html).toContain('طلعت جابر بحيري');
     expect(html).toContain('data-license-expense-save="true"');
     expect(html).toContain('data-license-expense-save-defaults="true"');
+  });
+});
+
+describe("each memo's items, as «قوائم الحركة» sets them", () => {
+  // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده».
+  const ITEMS = [
+    catalogItem('i-1', 'براءة ذمة', 'renewal'),
+    catalogItem('i-2', 'استعلام أمني', 'extension'),
+    catalogItem('i-3', 'ضرائب'),
+  ];
+
+  it("counts the renewal's items and those in both, in the card's group and the cash group", () => {
+    const html = renderEditor(ITEMS);
+    for (const paid of ['visa', 'cash']) {
+      expect(html).toContain(`data-license-expense-count="renewal:${paid}:i-1"`);
+      expect(html).toContain(`data-license-expense-count="renewal:${paid}:i-3"`);
+      expect(html, 'an extension item').not.toContain(
+        `data-license-expense-count="renewal:${paid}:i-2"`,
+      );
+    }
+  });
+
+  it('offers every item while none says which memo it belongs to, as before', () => {
+    const html = renderEditor();
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-2"');
+  });
+});
+
+describe('«قوائم الحركة» says which memo each item belongs to', () => {
+  const ITEMS = [
+    catalogItem('i-1', 'براءة ذمة', 'renewal'),
+    catalogItem('i-2', 'استعلام أمني', 'extension'),
+    catalogItem('i-3', 'ضرائب'),
+  ];
+  const mount = (node: JSX.Element, route = '/fleet/catalogs'): string => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+    });
+    qc.setQueryData(listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }), {
+      items: ITEMS,
+      meta: { page: 1, pageSize: 100, totalItems: ITEMS.length, totalPages: 1 },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store([...ALL, 'fleetCatalog.manage'])}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={[route]}>{node}</MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+
+  it('shows the memo on the items tab — the renewal, the extension, or both', () => {
+    const html = mount(<CatalogsPage />, '/fleet/catalogs?kind=licenseExpenseItem');
+    expect(html).toContain(ar('fleet.catalogs.fields.licenseExpenseKind'));
+    expect(html).toMatch(/data-license-expense-kind="renewal"[^>]*>تجديد تراخيص</u);
+    expect(html).toMatch(/data-license-expense-kind="extension"[^>]*>مد مدة</u);
+    expect(html).toMatch(/data-license-expense-kind="both"[^>]*>كليهما</u);
+  });
+
+  it('asks it in the item form, the saved one pressed and both for a new item', () => {
+    const edit = mount(
+      <CatalogItemDialog
+        open
+        onClose={() => undefined}
+        kind="licenseExpenseItem"
+        item={ITEMS[1]!}
+      />,
+    );
+    expect(edit).toMatch(/aria-pressed="true"[^>]*data-license-expense-kind-option="extension"/u);
+    expect(edit).toMatch(/aria-pressed="false"[^>]*data-license-expense-kind-option="renewal"/u);
+    expect(edit).toMatch(/aria-pressed="false"[^>]*data-license-expense-kind-option="both"/u);
+    const fresh = mount(
+      <CatalogItemDialog open onClose={() => undefined} kind="licenseExpenseItem" item={null} />,
+    );
+    // Nothing is required: a new item is in both until somebody says otherwise.
+    expect(fresh).toMatch(/aria-pressed="true"[^>]*data-license-expense-kind-option="both"/u);
+  });
+
+  it('asks it of no other list', () => {
+    const html = mount(
+      <CatalogItemDialog open onClose={() => undefined} kind="workshop" item={null} />,
+    );
+    expect(html).not.toContain('data-license-expense-kind-option');
   });
 });

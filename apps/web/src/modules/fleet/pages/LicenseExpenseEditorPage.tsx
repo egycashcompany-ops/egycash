@@ -10,11 +10,14 @@
 // each in its own block with its own cars and expenses, and each its own memo on paper.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   type CreateFleetLicenseExpense,
   type FleetLicenseExpenseDto,
   type FleetLicenseExpensePartDto,
+  type FleetLicenseExpenseSettingsDto,
   type Locale,
+  type SaveFleetLicenseExpenseSettings,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -26,6 +29,7 @@ import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { localized } from '../../../shared/lib/format';
 import {
+  licenseExpenseSettingsKey,
   useAllVehicles,
   useCreateCatalogItem,
   useCreateLicenseExpense,
@@ -43,6 +47,7 @@ import {
   type LicenseExpenseItemLine,
   type LicenseExpenseKind,
   type LicenseExpenseMemoDoc,
+  type LicenseExpensePaidBy,
   type LicenseExpenseSignatures,
   memoHtml,
   memoTitle,
@@ -94,6 +99,8 @@ interface CatalogEntry {
   id: string;
   name: string;
   index: number;
+  /** The memo that counts it, as set on «قوائم الحركة» — `null` is both. */
+  memo: LicenseExpenseKind | null;
 }
 
 /** A two-way switch in the site's purple: the pressed side is the chosen one. */
@@ -129,43 +136,58 @@ const Segmented = <T extends string>({
   </div>
 );
 
-/** One memo's block: its cars, then its expenses counted in and named card by card. */
-const MemoBlock = ({
+/** One payment group of a memo: its counters, its cards, its total, and its template. */
+const PaidGroup = ({
   kind,
-  draft,
+  paid,
+  items,
   setDraft,
-  byCode,
   catalogItems,
+  template,
   onAddToCatalog,
+  onSaveTemplate,
 }: {
   kind: LicenseExpenseKind;
-  draft: Draft;
+  paid: LicenseExpensePaidBy;
+  items: LicenseExpenseItemLine[];
   setDraft: (update: (held: Draft) => Draft) => void;
-  byCode: ReadonlyMap<string, { id: string; plateNumber: string }>;
   catalogItems: readonly CatalogEntry[];
-  /** «البيان … قائمة + نص حر»: a hand-written item kept for next time; absent without the grant. */
+  template: LicenseExpenseItemLine[];
   onAddToCatalog?: (label: string) => Promise<string | null>;
+  onSaveTemplate?: (items: LicenseExpenseItemLine[]) => void;
 }): JSX.Element => {
   const t = useT();
-  // The renewal is paid by the card first; an extension in cash — as the department's sheets are.
-  const defaultPaidBy = kind === 'renewal' ? 'visa' : 'cash';
   const indexOf = new Map(catalogItems.map((item) => [item.id, item.index]));
-  const items = draft.items;
   const countOf = (itemId: string): number => items.filter((item) => item.itemId === itemId).length;
+  // The memo's own items — and any other this group has counted, so a line from an older memo or
+  // a template keeps the counter that changes it. KEPT once seen: a counter brought down to 0 stays
+  // where it was, or the item could not be counted back in.
+  const [kept, setKept] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const counted = items.flatMap((item) =>
+      item.itemId === null || kept.has(item.itemId) ? [] : [item.itemId],
+    );
+    if (counted.length > 0) setKept((held) => new Set([...held, ...counted]));
+  }, [items, kept]);
+  // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده»: this memo's items as «قوائم الحركة» sets
+  // them, and those in both.
+  const counters = catalogItems.filter(
+    (item) => item.memo === null || item.memo === kind || kept.has(item.id) || countOf(item.id) > 0,
+  );
   const newLine = (itemId: string | null, label: string): LicenseExpenseItemLine => ({
     key: newKey(),
     itemId,
     label,
     amount: null,
     count: 1,
-    paidBy: defaultPaidBy,
+    paidBy: paid,
     receipt: true,
   });
   /** «٣» typed under «براءة ذمة» is three cards of it; fewer removes the newest. */
   const setCount = (itemId: string, label: string, raw: string): void => {
     const want = Math.max(0, Math.min(50, Number(raw.replace(/\D/gu, '')) || 0));
     setDraft((held) => {
-      const mine = held.items.filter((item) => item.itemId === itemId);
+      const mine = held.items.filter((item) => item.paidBy === paid && item.itemId === itemId);
       if (want === mine.length) return held;
       if (want < mine.length) {
         const drop = new Set(mine.slice(want).map((item) => item.key));
@@ -182,6 +204,198 @@ const MemoBlock = ({
     }));
   const removeItem = (key: string): void =>
     setDraft((held) => ({ ...held, items: held.items.filter((item) => item.key !== key) }));
+  /** The group's lines become the template's — fresh cards, the other group left alone. */
+  const applyTemplate = (): void =>
+    setDraft((held) => ({
+      ...held,
+      items: [
+        ...held.items.filter((item) => item.paidBy !== paid),
+        ...template.map((line) => ({ ...line, key: newKey(), paidBy: paid })),
+      ],
+    }));
+
+  return (
+    <div
+      data-license-expense-group={`${kind}:${paid}`}
+      className={cn(
+        'rounded-lg border p-3',
+        paid === 'visa'
+          ? 'border-emerald-500/30 bg-emerald-500/[0.04]'
+          : 'border-amber-500/30 bg-amber-500/[0.04]',
+      )}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3
+          className={cn(
+            'text-sm font-black',
+            paid === 'visa'
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-amber-700 dark:text-amber-300',
+          )}
+        >
+          {t(`fleet.licenseExpenses.group.${paid}`)}
+        </h3>
+        <span className="flex items-center gap-1.5">
+          <button
+            type="button"
+            data-license-expense-apply-template={`${kind}:${paid}`}
+            disabled={template.length === 0}
+            onClick={applyTemplate}
+            title={t('fleet.licenseExpenses.template.applyHint')}
+            className="rounded-md border border-brand-500/50 bg-brand-500/10 px-2 py-1 text-[11px] font-bold text-brand-700 hover:bg-brand-500/20 disabled:opacity-40 dark:text-brand-200"
+          >
+            {t('fleet.licenseExpenses.template.apply')}
+          </button>
+          {onSaveTemplate !== undefined && (
+            <button
+              type="button"
+              data-license-expense-save-template={`${kind}:${paid}`}
+              disabled={items.length === 0}
+              onClick={() => onSaveTemplate(items)}
+              className="rounded-md border border-slate-300 px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {t('fleet.licenseExpenses.template.save')}
+            </button>
+          )}
+        </span>
+      </div>
+      {/* «عاوز اختار … زى مخالفات السواقين»: a counter for each item, in its own colour. */}
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {counters.map((item) => (
+          <Field key={item.id} label={item.name}>
+            <Input
+              data-license-expense-count={`${kind}:${paid}:${item.id}`}
+              aria-label={item.name}
+              value={String(countOf(item.id))}
+              onChange={(e) => setCount(item.id, item.name, e.target.value)}
+              tone={violationTypeColour(item.id, { index: item.index })}
+              rule="integer"
+            />
+          </Field>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => setDraft((held) => ({ ...held, items: [...held.items, newLine(null, '')] }))}
+        className="mt-2 text-xs font-bold text-brand-600 hover:underline dark:text-brand-300"
+      >
+        + {t('fleet.licenseExpenses.addFreeItem')}
+      </button>
+
+      {items.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {items.map((item) => (
+            <li
+              key={item.key}
+              data-license-expense-card={item.key}
+              className={cn(
+                'rounded-lg border p-2',
+                item.itemId === null
+                  ? 'border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'
+                  : violationTypeColour(item.itemId, { index: indexOf.get(item.itemId) }),
+              )}
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                {item.itemId === null ? (
+                  <Input
+                    aria-label={t('fleet.licenseExpenses.columns.label')}
+                    placeholder={t('fleet.licenseExpenses.columns.label')}
+                    value={item.label}
+                    onChange={(e) => patchItem(item.key, { label: e.target.value })}
+                  />
+                ) : (
+                  <span className="text-xs font-bold">{item.label}</span>
+                )}
+                {item.itemId === null && onAddToCatalog !== undefined && (
+                  <button
+                    type="button"
+                    data-license-expense-add-to-list={item.key}
+                    disabled={item.label.trim() === ''}
+                    onClick={() =>
+                      void onAddToCatalog(item.label.trim()).then((itemId) => {
+                        if (itemId !== null) patchItem(item.key, { itemId });
+                      })
+                    }
+                    className="shrink-0 whitespace-nowrap rounded-md border border-brand-500/50 bg-brand-500/10 px-2 py-1 text-[11px] font-bold text-brand-700 hover:bg-brand-500/20 disabled:opacity-40 dark:text-brand-200"
+                  >
+                    + {t('fleet.licenseExpenses.addToList')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={t('common.delete')}
+                  onClick={() => removeItem(item.key)}
+                  className="shrink-0 rounded-md p-1 text-slate-400 hover:text-red-500"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="w-28">
+                  <MoneyInput
+                    aria-label={t('fleet.licenseExpenses.columns.amount')}
+                    placeholder={t('fleet.licenseExpenses.columns.amount')}
+                    value={item.amount === null ? '' : String(item.amount)}
+                    onChange={(value) =>
+                      patchItem(item.key, { amount: value === '' ? null : Number(value) })
+                    }
+                  />
+                </div>
+                <div className="w-16">
+                  <Input
+                    aria-label={t('fleet.licenseExpenses.columns.count')}
+                    value={String(item.count)}
+                    onChange={(e) =>
+                      patchItem(item.key, {
+                        count: Math.max(1, Number(e.target.value.replace(/\D/gu, '')) || 1),
+                      })
+                    }
+                    rule="integer"
+                  />
+                </div>
+                <Segmented
+                  testId={`receipt-${item.key}`}
+                  value={item.receipt ? 'yes' : 'no'}
+                  onChange={(next) => patchItem(item.key, { receipt: next === 'yes' })}
+                  options={[
+                    { value: 'yes', label: t('fleet.licenseExpenses.receipt.yes') },
+                    { value: 'no', label: t('fleet.licenseExpenses.receipt.no') },
+                  ]}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+/** One memo's block: its cars, then its expenses counted in and named card by card. */
+const MemoBlock = ({
+  kind,
+  draft,
+  setDraft,
+  byCode,
+  catalogItems,
+  onAddToCatalog,
+  templateOf,
+  onSaveTemplate,
+}: {
+  kind: LicenseExpenseKind;
+  draft: Draft;
+  setDraft: (update: (held: Draft) => Draft) => void;
+  byCode: ReadonlyMap<string, { id: string; plateNumber: string }>;
+  catalogItems: readonly CatalogEntry[];
+  /** «البيان … قائمة + نص حر»: a hand-written item kept for next time; absent without the grant. */
+  onAddToCatalog?: (label: string) => Promise<string | null>;
+  /** The saved template's lines for one group, ready to drop in. */
+  templateOf: (paid: LicenseExpensePaidBy) => LicenseExpenseItemLine[];
+  /** Keep a group's lines as its template; absent without the grant. */
+  onSaveTemplate?: (paid: LicenseExpensePaidBy, items: LicenseExpenseItemLine[]) => void;
+}): JSX.Element => {
+  const t = useT();
+  const items = draft.items;
   const visaTotal = sumOf(items.filter((item) => item.paidBy === 'visa'));
   const cashTotal = sumOf(items.filter((item) => item.paidBy === 'cash'));
   const subTitle = (text: string): JSX.Element => (
@@ -288,127 +502,25 @@ const MemoBlock = ({
         </button>
       </div>
 
-      <div>
-        {subTitle(t('fleet.licenseExpenses.itemsSection'))}
-        {/* «عاوز اختار … زى مخالفات السواقين»: a counter for each item, in its own colour. */}
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {catalogItems.map((item) => (
-            <Field key={item.id} label={item.name}>
-              <Input
-                data-license-expense-count={`${kind}:${item.id}`}
-                aria-label={item.name}
-                value={String(countOf(item.id))}
-                onChange={(e) => setCount(item.id, item.name, e.target.value)}
-                tone={violationTypeColour(item.id, { index: item.index })}
-                rule="integer"
-              />
-            </Field>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() =>
-            setDraft((held) => ({ ...held, items: [...held.items, newLine(null, '')] }))
-          }
-          className="mt-2 text-xs font-bold text-brand-600 hover:underline dark:text-brand-300"
-        >
-          + {t('fleet.licenseExpenses.addFreeItem')}
-        </button>
+      {/* «مش كل خانه اقول عليها فيزا ولا نقدى يبقى فيه تجميع»: the card's lines and the cash
+          lines are two groups, each with its own counters — the group is how a line was paid. */}
+      {(['visa', 'cash'] as const).map((paid) => (
+        <PaidGroup
+          key={paid}
+          kind={kind}
+          paid={paid}
+          items={items.filter((item) => item.paidBy === paid)}
+          setDraft={setDraft}
+          catalogItems={catalogItems}
+          template={templateOf(paid)}
+          {...(onAddToCatalog === undefined ? {} : { onAddToCatalog })}
+          {...(onSaveTemplate === undefined
+            ? {}
+            : { onSaveTemplate: (lines) => onSaveTemplate(paid, lines) })}
+        />
+      ))}
 
-        {items.length > 0 && (
-          <ul className="mt-3 space-y-2">
-            {items.map((item) => (
-              <li
-                key={item.key}
-                data-license-expense-card={item.key}
-                className={cn(
-                  'rounded-lg border p-2',
-                  item.itemId === null
-                    ? 'border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'
-                    : violationTypeColour(item.itemId, { index: indexOf.get(item.itemId) }),
-                )}
-              >
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  {item.itemId === null ? (
-                    <Input
-                      aria-label={t('fleet.licenseExpenses.columns.label')}
-                      placeholder={t('fleet.licenseExpenses.columns.label')}
-                      value={item.label}
-                      onChange={(e) => patchItem(item.key, { label: e.target.value })}
-                    />
-                  ) : (
-                    <span className="text-xs font-bold">{item.label}</span>
-                  )}
-                  {item.itemId === null && onAddToCatalog !== undefined && (
-                    <button
-                      type="button"
-                      data-license-expense-add-to-list={item.key}
-                      disabled={item.label.trim() === ''}
-                      onClick={() =>
-                        void onAddToCatalog(item.label.trim()).then((itemId) => {
-                          if (itemId !== null) patchItem(item.key, { itemId });
-                        })
-                      }
-                      className="shrink-0 whitespace-nowrap rounded-md border border-brand-500/50 bg-brand-500/10 px-2 py-1 text-[11px] font-bold text-brand-700 hover:bg-brand-500/20 disabled:opacity-40 dark:text-brand-200"
-                    >
-                      + {t('fleet.licenseExpenses.addToList')}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    aria-label={t('common.delete')}
-                    onClick={() => removeItem(item.key)}
-                    className="shrink-0 rounded-md p-1 text-slate-400 hover:text-red-500"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="w-28">
-                    <MoneyInput
-                      aria-label={t('fleet.licenseExpenses.columns.amount')}
-                      placeholder={t('fleet.licenseExpenses.columns.amount')}
-                      value={item.amount === null ? '' : String(item.amount)}
-                      onChange={(value) =>
-                        patchItem(item.key, { amount: value === '' ? null : Number(value) })
-                      }
-                    />
-                  </div>
-                  <div className="w-16">
-                    <Input
-                      aria-label={t('fleet.licenseExpenses.columns.count')}
-                      value={String(item.count)}
-                      onChange={(e) =>
-                        patchItem(item.key, {
-                          count: Math.max(1, Number(e.target.value.replace(/\D/gu, '')) || 1),
-                        })
-                      }
-                      rule="integer"
-                    />
-                  </div>
-                  <Segmented
-                    testId={`paid-${item.key}`}
-                    value={item.paidBy}
-                    onChange={(paidBy) => patchItem(item.key, { paidBy })}
-                    options={[
-                      { value: 'visa', label: t('fleet.licenseExpenses.paidBy.visa') },
-                      { value: 'cash', label: t('fleet.licenseExpenses.paidBy.cash') },
-                    ]}
-                  />
-                  <Segmented
-                    testId={`receipt-${item.key}`}
-                    value={item.receipt ? 'yes' : 'no'}
-                    onChange={(next) => patchItem(item.key, { receipt: next === 'yes' })}
-                    options={[
-                      { value: 'yes', label: t('fleet.licenseExpenses.receipt.yes') },
-                      { value: 'no', label: t('fleet.licenseExpenses.receipt.no') },
-                    ]}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
           {(
             [
@@ -446,6 +558,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
   const update = useUpdateLicenseExpense();
   const saveSettings = useSaveLicenseExpenseSettings();
   const createCatalogItem = useCreateCatalogItem();
+  const qc = useQueryClient();
 
   // «ممكن اعمل مد مده لوحده او تجديد ترخيص لوحده او الاتنين» — one, the other, or both.
   const [kinds, setKinds] = useState<LicenseExpenseKind[]>(['renewal']);
@@ -473,6 +586,88 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
     if (editingId !== '' || signaturesTouched.current || settings.data === undefined) return;
     setSignatures(settings.data.signatures);
   }, [editingId, settings.data]);
+  // «عاوز اعمل نموذج … 4 حالات»: a new memo's renewal or extension starts from its two saved
+  // templates, once — a memo being edited keeps what it was saved with.
+  const templateOf = (
+    kind: LicenseExpenseKind,
+    paid: LicenseExpensePaidBy,
+  ): LicenseExpenseItemLine[] =>
+    (settings.data?.templates[kind][paid] ?? []).map((line) => ({
+      ...line,
+      key: newKey(),
+      paidBy: paid,
+    }));
+  const prefilled = useRef(new Set<LicenseExpenseKind>());
+  useEffect(() => {
+    if (editingId !== '' || settings.data === undefined) return;
+    const fresh = kinds.filter((kind) => !prefilled.current.has(kind));
+    if (fresh.length === 0) return;
+    for (const kind of fresh) prefilled.current.add(kind);
+    setDrafts((held) => {
+      const next = { ...held };
+      for (const kind of fresh) {
+        if (held[kind].items.length > 0) continue;
+        next[kind] = {
+          ...held[kind],
+          items: [...templateOf(kind, 'visa'), ...templateOf(kind, 'cash')],
+        };
+      }
+      return next;
+    });
+    // `templateOf` reads `settings.data`, which is a dependency.
+  }, [editingId, settings.data, kinds]);
+  // ONE SET-UP WRITE AT A TIME, each reading the set-up when its turn comes — from the cache the
+  // last save wrote into, not from the render it was clicked in. The signatures saved while a
+  // template is still on its way would otherwise carry the version the template is about to
+  // replace, and be refused as stale.
+  const latestSettings = (): FleetLicenseExpenseSettingsDto | undefined =>
+    qc.getQueryData<FleetLicenseExpenseSettingsDto>(licenseExpenseSettingsKey) ?? settings.data;
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+  /** Resolves `false` when there was nothing to write; rejects with the server's refusal. */
+  const writeSettings = (
+    change: (
+      held: FleetLicenseExpenseSettingsDto | undefined,
+    ) => Omit<SaveFleetLicenseExpenseSettings, 'version'> | null,
+  ): Promise<boolean> => {
+    const run = writes.current.then(async () => {
+      const held = latestSettings();
+      const body = change(held);
+      if (body === null) return false;
+      await saveSettings.mutateAsync({
+        ...body,
+        ...(held?.version == null ? {} : { version: held.version }),
+      });
+      return true;
+    });
+    writes.current = run.catch(() => undefined);
+    return run;
+  };
+  const onSaveTemplate = async (
+    kind: LicenseExpenseKind,
+    paid: LicenseExpensePaidBy,
+    items: LicenseExpenseItemLine[],
+  ): Promise<void> => {
+    const lines = items.map((item) => ({
+      itemId: item.itemId,
+      label: item.label.trim(),
+      amount: item.amount,
+      count: item.count,
+      receipt: item.receipt,
+    }));
+    try {
+      const saved = await writeSettings((held) =>
+        held === undefined
+          ? null
+          : {
+              signatures: held.signatures,
+              templates: { ...held.templates, [kind]: { ...held.templates[kind], [paid]: lines } },
+            },
+      );
+      if (saved) toast.success(t('fleet.licenseExpenses.template.savedToast'));
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    }
+  };
   const editSignatures = (patch: Partial<LicenseExpenseSignatures>): void => {
     signaturesTouched.current = true;
     setSignatures((held) => ({ ...held, ...patch }));
@@ -490,6 +685,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
         id: item.id,
         name: localized(item.name, locale),
         index,
+        memo: item.licenseExpenseKind ?? null,
       })),
     [catalog.data, locale],
   );
@@ -568,21 +764,28 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
   };
   const onSaveDefaults = async (): Promise<void> => {
     try {
-      await saveSettings.mutateAsync({
-        signatures,
-        ...(settings.data?.version == null ? {} : { version: settings.data.version }),
-      });
-      toast.success(t('fleet.licenseExpenses.defaultsSavedToast'));
+      const saved = await writeSettings(() => ({ signatures }));
+      if (saved) toast.success(t('fleet.licenseExpenses.defaultsSavedToast'));
     } catch (failure) {
       toast.error(errorMessage(failure, locale));
     }
   };
-  const addToCatalog = async (label: string): Promise<string | null> => {
+  const addToCatalog = async (kind: LicenseExpenseKind, label: string): Promise<string | null> => {
+    // ALREADY ON THE LIST — under the other memo, or archived: the line is linked to it instead of
+    // being refused as a duplicate and left a loose line. Which memo it belongs to stays as
+    // «قوائم الحركة» set it; the line keeps its counter here because it is counted.
+    const existing = (catalog.data?.items ?? []).find((item) => item.name.ar.trim() === label);
+    if (existing !== undefined) {
+      toast.success(t('fleet.licenseExpenses.linkedToListToast'));
+      return existing.id;
+    }
     try {
       const item = await createCatalogItem.mutateAsync({
         kind: 'licenseExpenseItem',
         name: { ar: label, en: label },
         countsForAlarm: false,
+        // Added from this memo, it is this memo's item — «قوائم الحركة» can put it in both.
+        licenseExpenseKind: kind,
       });
       toast.success(t('fleet.licenseExpenses.addedToListToast'));
       return item.id;
@@ -699,7 +902,16 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
               setDraft={(update) => setDrafts((held) => ({ ...held, [kind]: update(held[kind]) }))}
               byCode={byCode}
               catalogItems={catalogItems}
-              {...(can('fleetCatalog.manage') ? { onAddToCatalog: addToCatalog } : {})}
+              {...(can('fleetCatalog.manage')
+                ? { onAddToCatalog: (label: string) => addToCatalog(kind, label) }
+                : {})}
+              templateOf={(paid) => templateOf(kind, paid)}
+              {...(can('fleetLicenseExpense.edit')
+                ? {
+                    onSaveTemplate: (paid: LicenseExpensePaidBy, items: LicenseExpenseItemLine[]) =>
+                      void onSaveTemplate(kind, paid, items),
+                  }
+                : {})}
             />
           ))}
 
@@ -757,7 +969,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
               <div
                 data-license-expense-preview={doc.kind}
                 className="origin-top-right"
-                style={{ transform: 'scale(0.8)', width: '210mm', marginBottom: '-20%' }}
+                style={{ zoom: 0.8, width: '210mm' }}
                 dangerouslySetInnerHTML={{ __html: memoHtml(doc) }}
               />
             </div>

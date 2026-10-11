@@ -379,6 +379,8 @@ const en: Record<string, string> = {
   'common.close': 'Close',
   'common.photo.camera': 'Take a photo',
   'common.photo.device': 'Choose from device',
+  // The coloured calendar on a date box, which opens its picker — named with the box it opens.
+  'common.datePicker.open': 'Pick a date: {{label}}',
 
   // FIX-2 — the reveal control and the live requirement checklist. The rule labels are driven by
   // `PASSWORD_RULES` in the contracts, so a rule added there without a label fails a test here.
@@ -3992,6 +3994,7 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.columns.amount': 'Amount',
   'fleet.licenseExpenses.columns.count': 'Count',
   'fleet.licenseExpenses.columns.cars': 'Vehicles',
+  'fleet.licenseExpenses.columns.carsCount': 'Number of vehicles',
   'fleet.licenseExpenses.paidBy.visa': 'Card',
   'fleet.licenseExpenses.paidBy.cash': 'Cash',
   'fleet.licenseExpenses.receipt.yes': 'Receipt available',
@@ -4034,6 +4037,8 @@ const en: Record<string, string> = {
   // «إعداد النماذج» — the templates, the names and «يظهر في», set up once for every new memo.
   'fleet.licenseExpenses.setup.button': 'Set up the templates',
   'fleet.licenseExpenses.setup.title': 'Licensing expenses — template set-up',
+  'fleet.licenseExpenses.setup.subtitle':
+    'What every new memo starts with — the templates, the names, and which memo each item shows in',
   'fleet.licenseExpenses.setup.back': '→ Back to licensing expenses',
   'fleet.licenseExpenses.setup.save': 'Save the set-up',
   'fleet.licenseExpenses.setup.savedToast': 'The set-up was saved.',
@@ -4489,6 +4494,9 @@ const en: Record<string, string> = {
   'fleet.drivers.columns.licenseImage': 'License image',
   'fleet.drivers.columns.area': 'Area',
   'fleet.drivers.columns.status': 'Status',
+  // The driver card a hovered name opens. The code, phone and branch lines reuse the columns'
+  // words above; the car is today's roster, so the label says «today».
+  'fleet.drivers.card.vehicle': 'Assigned car today',
   'fleet.drivers.areaPlaceholder': 'Area',
   'fleet.drivers.phonePlaceholder': 'Mobile',
   'fleet.drivers.filters.employee': 'Driver name or employee code',
@@ -4631,6 +4639,9 @@ const en: Record<string, string> = {
   'fleet.odometer.columns.driver1': 'First driver (morning)',
   'fleet.odometer.columns.driver2': 'Second driver (evening)',
   'fleet.odometer.columns.driver': 'Driver',
+  // The two shifts stacked in one column, as the workshop's two legs are — the header says which
+  // line is which, since no word stands before a name.
+  'fleet.odometer.columns.shiftDrivers': 'Driver (morning / evening)',
   // The two seats, short enough to sit in front of a name inside one cell.
   'fleet.odometer.driverShift.morning': 'Morning',
   'fleet.odometer.driverShift.evening': 'Evening',
@@ -8230,6 +8241,8 @@ const ar: Record<string, string> = {
   'common.close': 'إغلاق',
   'common.photo.camera': 'تصوير بالكاميرا',
   'common.photo.device': 'اختيار من الجهاز',
+  // التقويم الملوّن في خانة التاريخ، يفتح منتقي التاريخ — ومعه اسم الخانة التي يفتحها.
+  'common.datePicker.open': 'اختيار التاريخ: {{label}}',
 
   // FIX-2 — زر الإظهار وقائمة المتطلبات الحيّة
   'common.password.show': 'إظهار كلمة المرور',
@@ -11806,6 +11819,7 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.columns.amount': 'القيمة',
   'fleet.licenseExpenses.columns.count': 'العدد',
   'fleet.licenseExpenses.columns.cars': 'السيارات',
+  'fleet.licenseExpenses.columns.carsCount': 'عدد السيارات',
   'fleet.licenseExpenses.paidBy.visa': 'فيزا',
   'fleet.licenseExpenses.paidBy.cash': 'نقدي',
   'fleet.licenseExpenses.receipt.yes': 'متوافر إيصال',
@@ -11847,6 +11861,8 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.stats.cars': 'السيارات',
   'fleet.licenseExpenses.setup.button': 'إعداد النماذج',
   'fleet.licenseExpenses.setup.title': 'إعداد نماذج مصروفات التراخيص',
+  'fleet.licenseExpenses.setup.subtitle':
+    'ما تبدأ به كل مذكرة جديدة — النماذج والأسماء والمذكرة التي يظهر فيها كل بند',
   'fleet.licenseExpenses.setup.back': '→ رجوع إلى مصروفات التراخيص',
   'fleet.licenseExpenses.setup.save': 'حفظ الإعداد',
   'fleet.licenseExpenses.setup.savedToast': 'تم حفظ الإعداد.',
@@ -12296,6 +12312,7 @@ const ar: Record<string, string> = {
   'fleet.drivers.columns.licenseImage': 'صورة الرخصة',
   'fleet.drivers.columns.area': 'المنطقة',
   'fleet.drivers.columns.status': 'الحالة',
+  'fleet.drivers.card.vehicle': 'السيارة المعيّنة اليوم',
   'fleet.drivers.areaPlaceholder': 'المنطقة',
   'fleet.drivers.phonePlaceholder': 'الموبايل',
   'fleet.drivers.filters.employee': 'اسم السائق أو كود الموظف',
@@ -12439,6 +12456,7 @@ const ar: Record<string, string> = {
   'fleet.odometer.columns.driver1': 'اسم السائق الأول (صباحي)',
   'fleet.odometer.columns.driver2': 'اسم السائق الثاني (مسائي)',
   'fleet.odometer.columns.driver': 'اسم السائق',
+  'fleet.odometer.columns.shiftDrivers': 'السائق (صباحي / مسائي)',
   'fleet.odometer.driverShift.morning': 'صباحي',
   'fleet.odometer.driverShift.evening': 'مسائي',
   'fleet.odometer.emptyMonth.title':

@@ -116,15 +116,16 @@ describe('the registers that REFERENCE a car order by its code', () => {
     arrowed('components/DriverViolationsPanel.tsx', ['date']);
   });
 
-  it('gives each SHIFT its own column, and its own arrow', () => {
-    // «تفصل الصباحى عن المسائى كل واحد فى عمود». The split is what makes the arrow possible: two
-    // people in one cell have no single value to order a register by. Each column joins against
-    // its OWN reference — a second column pointed at the first driver would order by the first
-    // driver and look perfectly plausible.
+  it('stacks the odometer’s two SHIFTS in one column, ordered by the MORNING driver', () => {
+    // «شاشه عدادات السيارات خلى الاسامى زى الصيانه»: the maintenance board's stacked column. One
+    // header holds one arrow, so it asks for the morning driver's joined name; the evening
+    // driver's arrow went with its column.
     const odometer = code('pages/OdometerPage.tsx');
-    expect(column(odometer, 'driver1')).toContain("sortKey: 'driver1Name'");
-    expect(column(odometer, 'driver2')).toContain("sortKey: 'driver2Name'");
-    expect(odometer, 'and the merged cell is gone').not.toContain(
+    expect(column(odometer, 'drivers')).toContain('sortable: true');
+    expect(column(odometer, 'drivers')).toContain("sortKey: 'driver1Name'");
+    expect(odometer, 'no second driver column').not.toContain("key: 'driver2',");
+    expect(odometer, 'and no arrow left on it').not.toContain("sortKey: 'driver2Name'");
+    expect(odometer, 'and the old merged cell is not back').not.toContain(
       "key: 'driver',\n      header: t('fleet.odometer.columns.driver')",
     );
   });
@@ -148,6 +149,19 @@ describe('the registers that REFERENCE a car order by its code', () => {
     const maintenance = code('pages/MaintenancePage.tsx');
     expect(maintenance).not.toContain("key: 'sinceServiceKm'");
     expect(maintenance).not.toContain("key: 'remainingKm'");
+  });
+});
+
+describe('the licensing-expenses table orders by every column, on the server', () => {
+  it('offers an arrow on each, and asks for the figures the memo never stores', () => {
+    // «ضيف كل حاجه كنا عملنها فى شاشه مصروفات التراخيص»: the date, the kind, the cars and the
+    // three sums — each computed by the server before the page is cut (`LICENSE_EXPENSE_SORTS`).
+    arrowed('pages/LicenseExpensesPage.tsx', ['date', 'kind', 'cars', 'visa', 'cash', 'total']);
+    const page = code('pages/LicenseExpensesPage.tsx');
+    expect(column(page, 'kind')).toContain("sortKey: 'kindOrder'");
+    expect(column(page, 'cars')).toContain("sortKey: 'carsCount'");
+    expect(column(page, 'visa')).toContain("sortKey: 'visaTotal'");
+    expect(column(page, 'cash')).toContain("sortKey: 'cashTotal'");
   });
 });
 

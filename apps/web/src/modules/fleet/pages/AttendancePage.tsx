@@ -250,6 +250,7 @@ export const AttendancePage = (): JSX.Element => {
                 icon={FILTER_ICON.calendar}
                 tone="text-cyan-600 dark:text-cyan-400"
                 className="w-44"
+                datePicker={{ label: t('fleet.attendance.coversDate') }}
               >
                 {/* A date box paints «yyyy-mm-dd» whatever placeholder it is given, so while it is
                     empty and not being typed in, that mask is hidden and the filter's name is

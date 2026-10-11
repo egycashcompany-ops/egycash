@@ -8,11 +8,14 @@ import {
   type FleetLicenseExpensePartDto,
   type FleetLicenseExpenseSettingsDto,
   type FleetLicenseExpenseSignatures,
+  type FleetLicenseExpenseSummaryQuery,
   type FleetLicenseExpenseTemplates,
+  type FleetLicenseExpenseTotalsDto,
   type ListFleetLicenseExpensesQuery,
   type Paginated,
   type SaveFleetLicenseExpenseSettings,
   type UpdateFleetLicenseExpense,
+  parseFleetSort,
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
@@ -109,9 +112,9 @@ const snapshot = (doc: FleetLicenseExpenseDoc) => ({
   signatures: signaturesOf(doc.signatures),
 });
 
-/** The table's filters, as one database filter. */
+/** The table's filters, as one database filter — the list's and its figures' alike. */
 const expenseFilter = async (
-  query: ListFleetLicenseExpensesQuery,
+  query: FleetLicenseExpenseSummaryQuery,
 ): Promise<FilterQuery<FleetLicenseExpenseDoc>> => {
   const filter: FilterQuery<FleetLicenseExpenseDoc> = {};
   if (query.vehicleCodes !== undefined) {
@@ -185,16 +188,22 @@ export const toLicenseExpenseDto = (
 
 class FleetLicenseExpenseService {
   async list(query: ListFleetLicenseExpensesQuery): Promise<Paginated<FleetLicenseExpenseDto>> {
-    const page = await fleetLicenseExpenseRepository.list({
+    const page = await fleetLicenseExpenseRepository.listExpenses({
       filter: await expenseFilter(query),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy ?? 'date',
       sortDir: query.sortDir ?? 'desc',
-      sortableFields: ['date', 'createdAt', 'updatedAt'],
+      // «انا عاوز اقدر اعمل الاتنين مع بعض»: the arrows' whole order, as on every Fleet board.
+      sorts: parseFleetSort(query.sort),
     });
     const codes = await codesFor(page.items);
     return { ...page, items: page.items.map((doc) => toLicenseExpenseDto(doc, codes)) };
+  }
+
+  /** «الإحصائيات» — over every memo the filters match, never the page on screen. */
+  async summary(query: FleetLicenseExpenseSummaryQuery): Promise<FleetLicenseExpenseTotalsDto> {
+    return fleetLicenseExpenseRepository.totals(await expenseFilter(query));
   }
 
   async get(id: string): Promise<FleetLicenseExpenseDto> {

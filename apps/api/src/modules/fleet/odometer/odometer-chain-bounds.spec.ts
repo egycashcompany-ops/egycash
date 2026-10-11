@@ -83,11 +83,19 @@ describe('every ordering query breaks ties, so the chain is a TOTAL order', () =
     for (const sort of sorts) expect(sort, sort).toContain('_id');
   });
 
-  it('neighbour lookups compare on (outReading, _id), not on outReading alone', () => {
-    // Strict `$lt`/`$gt` on the value alone leaves a tied pair with no relationship in either
-    // direction, so a correction would propagate to the wrong row.
+  it('neighbour lookups compare on (date, _id) — the order record() splices by', () => {
+    // C3: by DATE, as `findPriorByDate` orders the chain. By reading, a book typo (car 219's
+    // 118,722 in July) made the car's open period of September the «previous» row of a July day.
+    // Strict `$lt`/`$gt` on the day alone leaves two rows of one day with no relationship in
+    // either direction, so the comparison falls back to `_id`, as every other ordering here does.
     const body = methodBody('findNeighbors');
-    expect(body).toContain('outReading: entry.outReading, _id: { $lt: entry._id }');
-    expect(body).toContain('outReading: entry.outReading, _id: { $gt: entry._id }');
+    expect(body).toContain('date: entry.date, _id: { $lt: entry._id }');
+    expect(body).toContain('date: entry.date, _id: { $gt: entry._id }');
+    expect(body).toContain('.sort({ date: -1, _id: -1 })');
+    expect(body).toContain('.sort({ date: 1, _id: 1 })');
+    expect(body, 'no reading order left in it').not.toContain('outReading: entry.outReading');
+    // The very order a new reading is spliced in by, so a correction rewrites the row `record()`
+    // would have closed.
+    expect(methodBody('findPriorByDate')).toContain('.sort({ date: -1, _id: -1 })');
   });
 });

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   CreateFleetLicenseExpenseSchema,
+  FleetLicenseExpenseSummaryQuerySchema,
   ListFleetLicenseExpensesQuerySchema,
   SaveFleetLicenseExpenseSettingsSchema,
   UpdateFleetLicenseExpenseSchema,
@@ -15,6 +16,7 @@ import {
   deleteLicenseExpense,
   getLicenseExpense,
   getLicenseExpenseSettings,
+  licenseExpenseSummary,
   listLicenseExpenses,
   saveLicenseExpenseSettings,
   updateLicenseExpense,
@@ -38,6 +40,14 @@ export const buildFleetLicenseExpensesRouter = (): Router => {
     authorize('fleetLicenseExpense.edit'),
     validate({ body: SaveFleetLicenseExpenseSettingsSchema }),
     asyncHandler(saveLicenseExpenseSettings),
+  );
+  // «الإحصائيات» — over the whole filtered set, never a page. Before `/:id` too.
+  router.get(
+    '/summary',
+    authenticate,
+    authorize('fleetLicenseExpense.view'),
+    validate({ query: FleetLicenseExpenseSummaryQuerySchema }),
+    asyncHandler(licenseExpenseSummary),
   );
   router.get(
     '/',

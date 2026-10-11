@@ -65,8 +65,9 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   // A licensing memo's group — each item's counter and each card's count; each card's amount.
   // The memo editor and «إعداد النماذج» both write their lines through it.
   'modules/fleet/components/LicenseExpensePaidGroup.tsx': { integer: 2, money: 1 },
-  // The odometer on check-in, on check-out and on edit.
-  'modules/fleet/components/MaintenanceDialogs.tsx': { integer: 3 },
+  // The odometer on check-in, on check-out and on edit — and the exit counter on the edit of a
+  // closed visit.
+  'modules/fleet/components/MaintenanceDialogs.tsx': { integer: 4 },
   // The driver's name, and the receipt's amount.
   'modules/fleet/components/ReceiptDialog.tsx': { arabic: 1, money: 1 },
   'modules/fleet/components/RecordOdometerDialog.tsx': { integer: 1 },
@@ -84,6 +85,8 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/pages/FleetSettingsPage.tsx': { integer: 1, money: 1, arabic: 1 },
   'modules/fleet/pages/FuelCardsPage.tsx': { digits: 1 },
   'modules/fleet/pages/FuelChargingPage.tsx': { money: 1 },
+  // A memo's plates: a registry car's, and one typed by hand.
+  'modules/fleet/pages/LicenseExpenseEditorPage.tsx': { plate: 2 },
   // Plate and chassis filters.
   'modules/fleet/pages/LicensingPage.tsx': { plate: 1, english: 1 },
   // The form's mobiles, phones and national ids.

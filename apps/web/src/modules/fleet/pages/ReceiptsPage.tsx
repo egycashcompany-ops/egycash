@@ -28,7 +28,7 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
-import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
+import { formatDate, formatMoneyParts, formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
@@ -36,7 +36,7 @@ import * as fleetApi from '../api/fleet-api';
 import { useDeleteReceipt, useReceiptSummary, useReceipts } from '../api/fleet-queries';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { FigureChip } from '../components/FleetFigures';
+import { FigureChip, moneyChip } from '../components/FleetFigures';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -67,8 +67,8 @@ const one = (value: string): string[] => (value === '' ? [] : [value]);
 const litresText = (value: number): string => value.toFixed(2);
 /**
  * «تحسين شكل البيانات فى جداول … خصم الايصالات»: litres in the TABLE as the vehicles and drivers
- * boards write a figure — Latin digits, grouped with a comma, two decimals («1,037.10»). The
- * totals' note and the printed sheet keep `litresText`.
+ * boards write a figure — Latin digits, grouped with a comma, two decimals («1,037.10») — and in
+ * the totals' note too. The printed sheet keeps `litresText`.
  */
 const LITRES = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -126,7 +126,6 @@ export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Elemen
 export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const money = (value: number): string => formatMoney(value, 'EGP', locale);
   return (
     <section
       data-receipt-figures="true"
@@ -138,8 +137,7 @@ export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): J
           icon={PATH.box}
           iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
           label={t('fleet.receipts.totals.custody')}
-          value={money(totals.custodyTotal)}
-          unit=""
+          {...moneyChip(totals.custodyTotal, locale)}
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
@@ -147,8 +145,7 @@ export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): J
           icon={PATH.card}
           iconClass="bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
           label={t('fleet.receipts.totals.card')}
-          value={money(totals.cardTotal)}
-          unit=""
+          {...moneyChip(totals.cardTotal, locale)}
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
@@ -156,9 +153,8 @@ export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): J
           icon={FILTER_ICON.charge}
           iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-400"
           label={t('fleet.receipts.totals.fuel')}
-          value={money(totals.fuelTotal)}
-          unit=""
-          note={t('fleet.receipts.fields.litres', { litres: litresText(totals.fuelLitres) })}
+          {...moneyChip(totals.fuelTotal, locale)}
+          note={t('fleet.receipts.fields.litres', { litres: LITRES.format(totals.fuelLitres) })}
         />
       </div>
       <div className="col-span-2 sm:col-span-1">
@@ -166,8 +162,7 @@ export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): J
           icon={FILTER_ICON.motor}
           iconClass="bg-slate-500/10 text-slate-600 dark:text-slate-300"
           label={t('fleet.receipts.totals.tyresWash')}
-          value={money(totals.tyresTotal + totals.washTotal)}
-          unit=""
+          {...moneyChip(totals.tyresTotal + totals.washTotal, locale)}
         />
       </div>
     </section>
@@ -249,7 +244,6 @@ export const ReceiptsPage = (): JSX.Element => {
     setDeleting(null);
   };
 
-  const money = (value: number): string => formatMoney(value, 'EGP', locale);
   const kindLabel = (row: FleetReceiptDto): string => t(`fleet.receipts.kind.${row.kind}`);
   const fuelLabel = (row: FleetReceiptDto): string =>
     row.fuelType === null ? '' : t(`fleet.receipts.fuelType.${row.fuelType}`);
@@ -325,7 +319,17 @@ export const ReceiptsPage = (): JSX.Element => {
       align: 'center',
       // Money keeps the money formatter — Latin digits, grouped, «ج.م.» — in the boards' figure,
       // read in the page's own direction so «ج.م.» stays where the sentence puts it.
-      render: (row) => <span className={FIGURE}>{money(row.amount)}</span>,
+      // The figure in the boards' monospace, «ج.م.» beside it in the page's type — a monospace
+      // «ج.م.» sets its dots wide apart (see `formatMoneyParts`).
+      render: (row) => {
+        const { figure: amount, currency } = formatMoneyParts(row.amount, 'EGP', locale);
+        return (
+          <span className="inline-flex items-baseline gap-1">
+            <span className={FIGURE}>{amount}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{currency}</span>
+          </span>
+        );
+      },
     },
     {
       key: 'litres',
@@ -478,6 +482,7 @@ export const ReceiptsPage = (): JSX.Element => {
       icon={FILTER_ICON.calendar}
       tone="text-cyan-600 dark:text-cyan-400"
       className="w-36 shrink-0"
+      datePicker={{ label: t(labelKey) }}
     >
       <Input
         type="date"

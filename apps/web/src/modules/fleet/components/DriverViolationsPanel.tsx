@@ -59,6 +59,7 @@ import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { DriverName, useEmployeeRecords } from './EmployeeName';
 import { FromOldBookLegend, violationRowTone } from './ViolationRowTone';
+import { DateBox } from './DateBox';
 import {
   amountComplete,
   cardLabel,
@@ -963,14 +964,18 @@ export const DriverViolationsPanel = ({
                         className="w-36 shrink-0"
                         missing={required.isMissing(`${card.key}:date`)}
                       >
-                        <Input
-                          type="date"
-                          data-entry-date={card.key}
-                          aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.date')}`}
-                          value={card.date}
-                          onChange={(e) => patchCard(card.key, { date: e.target.value })}
-                          dir="ltr"
-                        />
+                        <DateBox
+                          label={`${cardLabel(card)} · ${t('fleet.violations.fields.date')}`}
+                        >
+                          <Input
+                            type="date"
+                            data-entry-date={card.key}
+                            aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.date')}`}
+                            value={card.date}
+                            onChange={(e) => patchCard(card.key, { date: e.target.value })}
+                            dir="ltr"
+                          />
+                        </DateBox>
                       </Field>
                       <Field
                         className="min-w-0 flex-1"

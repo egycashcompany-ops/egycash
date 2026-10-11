@@ -26,6 +26,7 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { openDatePicker } from '../../../shared/lib/open-date-picker';
 import { cn } from '../../../shared/lib/cn';
 import * as fleetApi from '../api/fleet-api';
 import {
@@ -35,7 +36,7 @@ import {
 } from '../api/fleet-queries';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { FigureChip } from '../components/FleetFigures';
+import { FigureChip, moneyChip } from '../components/FleetFigures';
 import { BoardIcon, PATH } from '../components/FuelCardBoard';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DealershipInvoiceDialog } from '../components/DealershipInvoiceDialog';
@@ -396,23 +397,21 @@ export const DealershipPage = (): JSX.Element => {
   };
 
   // «من» / «إلى» written in the box, as on the notices screen: empty, it is a text box showing the
-  // word; pressed (or Enter / Space / ↓), it turns into the date box and opens its calendar.
+  // word; pressed (or Enter / Space / ↓, or its coloured calendar), it turns into the date box and
+  // opens its calendar.
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const dateBound = (labelKey: string, value: string, param: string): JSX.Element => {
     const asDate = value !== '' || editingDate === param;
     const openCalendar = (box: HTMLInputElement): void => {
       setEditingDate(param);
-      requestAnimationFrame(() => {
-        try {
-          box.focus();
-          box.showPicker();
-        } catch {
-          // A browser without the picker call opens it on the next press.
-        }
-      });
+      requestAnimationFrame(() => openDatePicker(box));
     };
     return (
-      <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+      <FilterWithIcon
+        icon={FILTER_ICON.calendar}
+        tone="text-cyan-600 dark:text-cyan-400"
+        datePicker={{ label: t(labelKey), open: openCalendar }}
+      >
         <Input
           type={asDate ? 'date' : 'text'}
           {...(asDate ? { dir: 'ltr' } : {})}
@@ -604,8 +603,7 @@ export const DealershipPage = (): JSX.Element => {
                 icon={PATH.card}
                 iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
                 label={t('fleet.dealership.totals.dealership')}
-                value={money(summary.data.dealershipTotal)}
-                unit=""
+                {...moneyChip(summary.data.dealershipTotal, locale)}
               />
             </div>
             {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile. */}
@@ -614,8 +612,7 @@ export const DealershipPage = (): JSX.Element => {
                 icon={FILTER_ICON.company}
                 iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-300"
                 label={t('fleet.dealership.totals.custody')}
-                value={money(summary.data.custodyTotal)}
-                unit=""
+                {...moneyChip(summary.data.custodyTotal, locale)}
               />
             </div>
             <FigureChip

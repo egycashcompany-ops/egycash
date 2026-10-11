@@ -30,6 +30,7 @@ import { VehicleCodeCombobox } from '../components/VehicleCodeCombobox';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { useFleetPeopleMap } from '../components/EmployeeName';
 import { NoticeSheet } from '../components/NoticeSheet';
+import { DateBox } from '../components/DateBox';
 import {
   noticeTemplate,
   type NoticeCheck,
@@ -278,10 +279,20 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
         />
       );
     }
+    if (field.kind === 'date') {
+      return (
+        <DateBox label={field.label}>
+          <Input
+            {...common}
+            type="date"
+            onChange={(event) => setValue(field.key, event.target.value)}
+          />
+        </DateBox>
+      );
+    }
     return (
       <Input
         {...common}
-        type={field.kind === 'date' ? 'date' : 'text'}
         onChange={(event) => setValue(field.key, event.target.value)}
         {...(PHONE_FIELD.test(field.key) ? { rule: 'phone' as const } : {})}
       />

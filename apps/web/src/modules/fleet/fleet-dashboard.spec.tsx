@@ -120,9 +120,13 @@ const store = () =>
     },
   });
 
-const render = (data?: FleetDashboardDto | 'pending'): string => {
+const render = (
+  data?: FleetDashboardDto | 'pending',
+  seed: (qc: QueryClient) => void = () => undefined,
+): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (data !== 'pending' && data !== undefined) qc.setQueryData(['fleet', 'dashboard'], data);
+  seed(qc);
   return renderToStaticMarkup(
     <Provider store={store()}>
       <QueryClientProvider client={qc}>
@@ -276,6 +280,7 @@ describe('the day', () => {
             code: '213',
             occurredAt: '2026-09-15T08:00:00.000Z',
             culprit: 'طرف ثالث',
+            culpritEmployeeIds: [],
             status: 'open',
           },
         ],
@@ -284,6 +289,49 @@ describe('the day', () => {
     });
     expect(markup).toContain('data-accident-today="a1"');
     expect(markup).toContain('طرف ثالث');
+    // A third party: the name alone, no driver card on it.
+    expect(markup).not.toContain('data-driver-hover');
+  });
+
+  it('opens the driver card on a culprit who is one of ours — «فى اى شااشه»', () => {
+    const driver = '64b1f0dddddddddddddddd01';
+    const markup = render(
+      {
+        ...DASHBOARD,
+        accidents: {
+          today: [
+            {
+              accidentId: 'a1',
+              code: '213',
+              occurredAt: '2026-09-15T08:00:00.000Z',
+              culprit: 'ابراهيم السيد',
+              culpritEmployeeIds: [driver],
+              status: 'open',
+            },
+          ],
+          monthCount: 1,
+        },
+      },
+      (qc) =>
+        qc.setQueryData(
+          ['fleet', 'people'],
+          [
+            {
+              employeeId: driver,
+              code: 'HR-D1',
+              fullNameAr: 'ابراهيم السيد رزق',
+              status: 'active',
+              branchId: null,
+              address: null,
+              governorate: null,
+              phone: null,
+              hiredAt: null,
+            },
+          ],
+        ),
+    );
+    const at = markup.indexOf('>ابراهيم السيد<');
+    expect(markup.slice(markup.lastIndexOf('<span', at), at)).toContain('data-driver-hover="true"');
   });
 });
 

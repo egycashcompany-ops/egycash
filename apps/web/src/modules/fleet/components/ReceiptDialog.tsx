@@ -47,7 +47,7 @@ import { FuelCompanyLogo } from './FuelCardTiles';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
-import { DATE_ICON, DesignField, LOOK, MONO, Stroke, boxTone, carBoxClass } from './FuelCardDialog';
+import { DesignField, LOOK, MONO, Stroke, boxTone, carBoxClass } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
 import { receiptCardsState, settleReceiptCardId } from '../lib/receipt-cards';
 import { groupCardNumber } from '../lib/fuel-card-number';
@@ -331,10 +331,10 @@ export const ReceiptDialog = ({
     onClose();
   };
 
-  // The design's boxes: a date's text starts at the box's left, where a refused box draws its «!»;
-  // an amount reads left to right, held at the box's right edge, clear of that «!».
+  // The design's boxes: a date's ends are kept clear by `DesignField`'s `datePicker`; an amount
+  // reads left to right, held at the box's right edge, clear of the «!» a refused box draws.
   const box = boxTone(LOOK.add);
-  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+  const dateBox = cn(box, MONO);
   const amountBox = cn(box, MONO, 'text-right');
   // A `<select>` takes no tone of its own — the same box, forced over the control's base.
   const selectBox = cn(
@@ -368,6 +368,7 @@ export const ReceiptDialog = ({
             label={t('fleet.receipts.columns.date')}
             required
             missing={required.isMissing('date')}
+            datePicker
           >
             <Input
               type="date"

@@ -61,6 +61,7 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Input } from '../../../shared/ui/form';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { openDatePicker } from '../../../shared/lib/open-date-picker';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
@@ -372,21 +373,19 @@ export const NoticesPage = (): JSX.Element => {
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const dateBound = (labelKey: string, value: string, param: string): JSX.Element => {
     const asDate = value !== '' || editingDate === param;
-    // A press (or Enter / Space / ↓ from the keyboard) turns the box into the date box and opens
-    // its calendar. Focus alone changes nothing, so Tab and Shift+Tab pass through as usual.
+    // A press (or Enter / Space / ↓ from the keyboard), on the box or on its coloured calendar,
+    // turns the box into the date box and opens its calendar. Focus alone changes nothing, so Tab
+    // and Shift+Tab pass through as usual.
     const openCalendar = (box: HTMLInputElement): void => {
       setEditingDate(param);
-      requestAnimationFrame(() => {
-        try {
-          box.focus();
-          box.showPicker();
-        } catch {
-          // A browser without the picker call opens it on the next press.
-        }
-      });
+      requestAnimationFrame(() => openDatePicker(box));
     };
     return (
-      <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+      <FilterWithIcon
+        icon={FILTER_ICON.calendar}
+        tone="text-cyan-600 dark:text-cyan-400"
+        datePicker={{ label: t(labelKey), open: openCalendar }}
+      >
         <Input
           type={asDate ? 'date' : 'text'}
           {...(asDate ? { dir: 'ltr' } : {})}

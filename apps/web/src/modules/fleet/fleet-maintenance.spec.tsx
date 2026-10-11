@@ -35,6 +35,7 @@ import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { CheckOutDialog } from './components/MaintenanceDialogs';
+import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './pages/MaintenanceAlarmsPage';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
 // tree in place is enough to read what the dialog produces.
@@ -263,7 +264,8 @@ const REQUIRED_COLUMNS = [
   // A REVERSAL OF A REVERSAL, said out loud: the drivers shared a cell, then «تفصل الصباحى عن
   // المسائى كل واحد فى عمود» gave each leg a column of its own so each could take an arrow, and now
   // they stack again. The column keeps ONE arrow, on the entry driver; the exit driver's went with
-  // its column. The odometer grid keeps its two.
+  // its column. The odometer grid stacks its two shifts the same way since «شاشه عدادات السيارات
+  // خلى الاسامى زى الصيانه».
   'fleet.maintenance.fields.drivers',
   'fleet.maintenance.fields.workshop',
   'fleet.maintenance.fields.workType',
@@ -522,6 +524,8 @@ describe('the maintenance table’s look', () => {
     expect(cellTag(markup, 2)).toContain('dir="ltr"');
     expect(cellTag(markup, 2)).toContain('font-bold');
     expect(cellTag(markup, 2)).toContain('tabular-nums');
+    // A size over the row, as the alarms board writes the car's code.
+    expect(cellTag(markup, 2)).toContain(ALARMS_CODE_TYPE);
     expect(cells(render({ qc: client([visit({ vehicleCode: null })]) }))[2]).toBe('—');
   });
 
@@ -554,8 +558,15 @@ describe('the maintenance table’s look', () => {
     expect(cells(markup)[4], 'no code on the row').not.toContain('HR-D1');
     expect(cells(markup)[4], 'no code on the row').not.toContain('HR-D2');
     expect(cellTag(markup, 4)).not.toContain('rounded-full');
-    expect(cellTag(markup, 4)).toContain('title="سائق الصباح — HR-D1"');
-    expect(cellTag(markup, 4)).toContain('title="سائق المساء — HR-D2"');
+    // The code on hover is the driver card now — «اقف على اسم السواق يجيب الاسم كامل والكود …» —
+    // on each name, in place of a title that only said the name and the code.
+    expect(tone(tbody(markup), 'سائق الصباح'), 'the entry driver’s card').toContain(
+      'data-driver-hover="true"',
+    );
+    expect(tone(tbody(markup), 'سائق المساء'), 'the exit driver’s card').toContain(
+      'data-driver-hover="true"',
+    );
+    expect(cellTag(markup, 4), 'no title beside the card').not.toContain('title=');
     expect(tone(tbody(markup), 'سائق الصباح'), 'the entry leg’s tone').toContain('text-red-700');
     expect(tone(tbody(markup), 'سائق المساء'), 'the exit leg’s tone').toContain('text-emerald-700');
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
@@ -571,10 +582,58 @@ describe('the maintenance table’s look', () => {
     expect(cellTag(markup, 4)).not.toContain('truncate');
   });
 
-  it('writes the workshop and the work type a step bigger and bold', () => {
+  it('writes the workshop and the work type at the row’s size — no smaller 15px of their own', () => {
+    // «كبر الورشه ونوع العمل» made them 15px over a 12.5px row. The row is the alarms board's 16px
+    // now, so that size would make them the SMALLER words; they read at the row's, still bold.
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
-    expect(source).toContain("const BIG_WORDS = 'text-[15px] font-bold'");
-    expect(source.match(/className=\{BIG_WORDS\}/gu)?.length).toBe(2);
+    expect(source).not.toContain('BIG_WORDS');
+    const markup = render();
+    expect(cells(markup)[5]).toBe('ورشة النور');
+    expect(cells(markup)[6]).toBe('صيانة');
+    for (const index of [5, 6]) {
+      expect(cellTag(markup, index), `column ${index} in a span, for the row’s bold`).toMatch(
+        /<span>[^<]+<\/span>/u,
+      );
+      expect(cellTag(markup, index), `column ${index} sets no size`).not.toContain('text-[');
+    }
+  });
+
+  /**
+   * «عاوز الخط بتاع شاشه الصيانه والعدادات زى شاشة انذار الصيانه فى كل العواميد فى الشاشتين».
+   *
+   * The alarms board's sizes, put on this table's wrapper from the alarms board's own constant —
+   * so the two can never drift — and nothing in a cell sets a smaller one of its own.
+   */
+  it('wears the alarms board’s type on every column', () => {
+    const qc = client([
+      visit({
+        operationId: OPERATION_ID,
+        driverInEmployeeId: 'd1',
+        sparePartIds: [PART_ID],
+        spareParts: ['بوجيهات'],
+        notes: 'تغيير زيت',
+      }),
+    ]);
+    const markup = render({ qc });
+    expect(markup, 'the alarms board’s type on the wrapper').toContain(
+      ALARMS_TYPE.replace(/&/g, '&amp;'),
+    );
+    // …and the laptop's tighter room between the columns is still this board's.
+    expect(markup).toContain('max-[1749px]:[&amp;_tbody_td]:!px-[5px]');
+    const body = tbody(markup);
+    expect(body, 'no 12px pill or word left in a cell').not.toContain('text-xs');
+    expect(body, 'no size pinned below the row’s').not.toMatch(/text-\[1[1-4](?:\.5)?px\]/u);
+    // The operation is held in a span like every other value, so the row's bold reaches it.
+    expect(cellTag(markup, 3)).toMatch(/<span>نقل اموال<\/span>/u);
+    // The driver's name at the row's size, not a 15px of its own.
+    expect(tone(body, 'سائق الصباح'), 'the name at the row’s size').not.toContain('text-[');
+    // The open visit's state: the alarms board's pill size, not the shared 12px.
+    const open = body.indexOf(`>${t('fleet.maintenance.open')}<`);
+    expect(body.slice(body.lastIndexOf('<span', open), open)).toContain('text-[15px]');
+    // The words an older visit recorded as text: the row's size, told apart by their grey.
+    expect(tone(body, `${t('fleet.maintenance.legacyParts')}: بوجيهات`)).toContain(
+      'text-slate-500',
+    );
   });
 
   it('keeps a name from the old books, grey, under the leg it was written for', () => {

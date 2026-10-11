@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { formatAmount, formatMoney, formatNumber } from './format';
+import { formatAmount, formatMoney, formatMoneyParts, formatNumber } from './format';
 
 describe('money groups, in ASCII digits, in both locales', () => {
   it('renders the reported figure as 1,000 — not 1000, and not ١٬٠٠٠', () => {
@@ -90,5 +90,25 @@ describe('no money field reaches the counts formatter', () => {
       )
       .map((l) => `${l.file}:${l.line}  ${l.text}`);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('a sum of money split for a figure tile', () => {
+  // «شكلها بايظ الإحصائيات»: the tile sets the figure in a monospace and the currency in the
+  // page's own type. The two halves together must be exactly what `formatMoney` writes.
+  it('gives the grouped Latin figure and the currency apart, in both locales', () => {
+    expect(formatMoneyParts(245890, 'EGP', 'ar').figure).toBe('245,890.00');
+    expect(formatMoneyParts(245890, 'EGP', 'en').figure).toBe('245,890.00');
+    expect(formatMoneyParts(0, 'EGP', 'ar').figure).toBe('0.00');
+    for (const locale of ['ar', 'en'] as const) {
+      const { figure, currency } = formatMoneyParts(4200, 'EGP', locale);
+      expect(currency, locale).not.toBe('');
+      expect(figure, locale).not.toContain(currency);
+      expect(formatMoney(4200, 'EGP', locale), locale).toContain(currency);
+    }
+  });
+
+  it('keeps the minus sign of a negative sum on the figure', () => {
+    expect(formatMoneyParts(-1500, 'EGP', 'ar').figure).toBe('-1,500.00');
   });
 });

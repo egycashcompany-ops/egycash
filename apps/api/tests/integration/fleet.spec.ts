@@ -1362,6 +1362,137 @@ describe('deleting a reading — «عاوز اقدر امسح قراءه»', () 
   });
 });
 
+/**
+ * «تصحيح القراءة» and the delete pick their neighbours BY DATE, as `record()` splices (C3).
+ *
+ * The shapes are the old book's, written straight into the collection as the go-live import wrote
+ * them: car 219's 118,722 of 29–30 July (85,482 → 85,543 was meant), closed by the import on the
+ * next day's opening, and the car's open period of 29 September. By READING the September row was
+ * the «previous» row of the July typo, so a correction could close today's open period on a July
+ * figure and a delete re-linked nothing.
+ */
+describe('correcting and deleting a reading by DATE (C3)', () => {
+  const day = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
+  const patch = (id: string, body: Record<string, unknown>) =>
+    request(app)
+      .patch(`/api/v1/fleet/odometer/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(body);
+  const rowsOf = (vehicleId: string) =>
+    FleetOdometerLogModel.find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .sort({ date: 1, _id: 1 })
+      .lean()
+      .exec();
+
+  /** Car 219's July, as the book has it, ending in the open period of 29 September. */
+  const seed219 = async (vehicleId: string) => {
+    const vid = new Types.ObjectId(vehicleId);
+    const docs = await FleetOdometerLogModel.create([
+      { vehicleId: vid, date: day('2026-07-28'), outReading: 85_400, inReading: 85_482, km: 82 },
+      {
+        vehicleId: vid,
+        date: day('2026-07-29'),
+        outReading: 85_482,
+        inReading: 118_722,
+        km: 33_240,
+      },
+      {
+        vehicleId: vid,
+        date: day('2026-07-30'),
+        outReading: 118_722,
+        inReading: 85_543,
+        km: -33_179,
+      },
+      { vehicleId: vid, date: day('2026-07-31'), outReading: 85_543, inReading: 89_234, km: 3_691 },
+      { vehicleId: vid, date: day('2026-09-29'), outReading: 89_234, inReading: null, km: null },
+    ]);
+    return {
+      jul29: docs[1]!,
+      jul30: docs[2]!,
+      sep29: docs[4]!,
+    };
+  };
+
+  it('correcting the typo rewrites the day BEFORE it, and the open period is untouched', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const { jul30 } = await seed219(v.id);
+
+    const res = await patch(String(jul30._id), { outReading: 85_500, version: jul30.__v });
+    expect(res.status).toBe(200);
+
+    const rows = await rowsOf(v.id);
+    const at = (iso: string) => rows.find((row) => row.date.toISOString().startsWith(iso));
+    expect(at('2026-07-29')).toMatchObject({ outReading: 85_482, inReading: 85_500, km: 18 });
+    expect(at('2026-07-30')).toMatchObject({ outReading: 85_500, inReading: 85_543, km: 43 });
+    // The car's open period is still open on its own reading — the correction never reached it.
+    expect(at('2026-09-29')).toMatchObject({ outReading: 89_234, inReading: null, km: null });
+  });
+
+  it('deleting the typo row re-links the day before it to the day after', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const { jul30 } = await seed219(v.id);
+
+    const res = await request(app)
+      .delete(`/api/v1/fleet/odometer/${String(jul30._id)}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(204);
+
+    const rows = await rowsOf(v.id);
+    const at = (iso: string) => rows.find((row) => row.date.toISOString().startsWith(iso));
+    expect(at('2026-07-29')).toMatchObject({ outReading: 85_482, inReading: 85_543, km: 61 });
+    expect(at('2026-07-30'), 'gone from every screen').toBeUndefined();
+    expect(at('2026-09-29')).toMatchObject({ outReading: 89_234, inReading: null });
+    // Kept in the database, marked deleted.
+    expect(await FleetOdometerLogModel.findById(jul30._id).lean()).toMatchObject({
+      isDeleted: true,
+    });
+  });
+
+  it('a note on a row after a book rollback still saves — no reading was asked to change', async () => {
+    // 5 March reads 79,180 and the 6th 79,146: the book's own figures, below each other. Under
+    // by-date neighbours a check of every figure on every save would refuse the note.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const vid = new Types.ObjectId(v.id);
+    const [, mar06] = await FleetOdometerLogModel.create([
+      { vehicleId: vid, date: day('2026-03-05'), outReading: 79_180, inReading: 79_146, km: -34 },
+      { vehicleId: vid, date: day('2026-03-06'), outReading: 79_146, inReading: 79_300, km: 154 },
+      { vehicleId: vid, date: day('2026-03-07'), outReading: 79_300, inReading: null, km: null },
+    ]);
+    const res = await patch(String(mar06!._id), { notes: 'من الدفتر', version: mar06!.__v });
+    expect(res.status).toBe(200);
+    expect((await FleetOdometerLogModel.findById(mar06!._id).lean())?.notes).toBe('من الدفتر');
+  });
+
+  it('a date moved past the day before or after is refused — it would reorder the chain', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const { jul30 } = await seed219(v.id);
+    const res = await patch(String(jul30._id), { date: '2026-08-15', version: jul30.__v });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('reorders the chain');
+  });
+
+  it('a book row for a car the registry does not have cannot be corrected at all', async () => {
+    // Its neighbours would be every such row of every unknown car; refused before any look-up.
+    const [row] = await FleetOdometerLogModel.create([
+      {
+        vehicleId: null,
+        vehicleCode: 'كوستر تصحيح',
+        date: day('2026-05-01'),
+        outReading: 100,
+        inReading: 200,
+        km: 100,
+      },
+    ]);
+    const res = await patch(String(row!._id), { notes: 'ملاحظة', version: row!.__v });
+    expect(res.status).toBe(409);
+    expect(await FleetOdometerLogModel.findById(row!._id).lean()).toMatchObject({
+      notes: null,
+      outReading: 100,
+      inReading: 200,
+    });
+  });
+});
+
 describe('a vehicle records on as many days as it runs (legacy cars_log)', () => {
   const record = (vehicleId: string, reading: number, date: string) =>
     request(app)
@@ -2994,6 +3125,52 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(row?.sinceServiceKm).toBe(500);
   });
 
+  it('judges an ENTRY counter on the day the car went IN, not the day it came out', async () => {
+    // Car 219, as the owner reported it: in on 25 June at 84,080, out on the 28th with no exit
+    // counter, and 90,246 on the board on 11 October — «فارق» 6,166. The chain stood at 84,037 on
+    // the 24th and had reached 84,189 by the 27th, so asked on the check-out day the counter read
+    // as «below the chain» and the alarm refused it. Asked on the day it was taken, it is true.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const record = async (reading: number, date: string) =>
+      request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, reading, date });
+    expect((await record(84_037, '2026-06-24')).status).toBe(201);
+
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-06-25',
+      workshopId: await mkCatalog('workshop', 'ورشة يوم الدخول'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 84_080,
+    });
+    expect(opened.status).toBe(201);
+    const open = data<FleetMaintenanceVisitDto>(opened);
+    // Driven between the two days — the chain moves past the entry counter before check-out.
+    expect((await record(84_189, '2026-06-27')).status).toBe(201);
+    expect(
+      (
+        await checkOut(open.id, {
+          outDate: '2026-06-28',
+          exitOdometer: null,
+          version: open.version,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await record(90_246, '2026-10-11')).status).toBe(201);
+
+    const row = data<
+      { code: string; noAlarmReason: string | null; sinceServiceKm: number | null }[]
+    >(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).find((a) => a.code === v.code);
+    expect(row?.noAlarmReason).toBeNull();
+    expect(row?.sinceServiceKm).toBe(90_246 - 84_080);
+  });
+
   it('refuses to report a NEGATIVE distance since the service, end to end', async () => {
     // Nothing links the workshop counter to the odometer chain — different endpoints, different
     // collections, no shared transaction and no cross-check at write time — so a visit can close
@@ -3602,6 +3779,63 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
       .send({ notes: 'تعديل لا يمس التواريخ', version: visit.version });
     expect(noted.status).toBe(200);
     expect(data<FleetMaintenanceVisitDto>(noted).notes).toBe('تعديل لا يمس التواريخ');
+  });
+
+  it('the edit takes the EXIT counter of a closed visit, held to the day it was read on (C4)', async () => {
+    // The edit dialog offers the optional exit counter on a closed visit now; the endpoint already
+    // took it. Below the entry counter, or below the last reading on the check-out day, is refused.
+    const { vehicle, visit } = await closedVisit({
+      inDate: '2026-09-01',
+      outDate: '2026-09-03',
+      odometerAtService: 120_000,
+      exitOdometer: 120_850,
+    });
+    const send = (body: Record<string, unknown>) =>
+      request(app)
+        .patch(`/api/v1/fleet/maintenance/${visit.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(body);
+
+    expect((await send({ exitOdometer: 119_000, version: visit.version })).status).toBe(400);
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/fleet/odometer')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ vehicleId: vehicle.id, reading: 120_500, date: '2026-09-02' })
+      ).status,
+    ).toBe(201);
+    expect((await send({ exitOdometer: 120_400, version: visit.version })).status).toBe(400);
+
+    const fixed = await send({ exitOdometer: 120_600, version: visit.version });
+    expect(fixed.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(fixed).exitOdometer).toBe(120_600);
+    // «Optional»: emptied, it is cleared rather than refused.
+    const cleared = await send({
+      exitOdometer: null,
+      version: data<FleetMaintenanceVisitDto>(fixed).version,
+    });
+    expect(cleared.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(cleared).exitOdometer).toBeNull();
+  });
+
+  it('a visit kept from the old book for a car the registry lacks takes a counter edit', async () => {
+    // It is on no chain, so there is nothing to hold the counter against — and the check used to
+    // look the chain up by `String(null)`, which is no id at all, and answered with a 500.
+    const { visit } = await closedVisit({ inDate: '2026-09-01', outDate: '2026-09-03' });
+    await FleetMaintenanceVisitModel.collection.updateOne(
+      { _id: new Types.ObjectId(visit.id) },
+      { $set: { vehicleId: null, vehicleCode: 'كوستر الدفتر' } },
+    );
+    const res = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${visit.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ odometerAtService: 1_000, exitOdometer: 1_200, version: visit.version });
+    expect(res.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(res)).toMatchObject({
+      odometerAtService: 1_000,
+      exitOdometer: 1_200,
+    });
   });
 
   it('reopening a visit takes the exit DRIVER back with the rest of the exit', async () => {

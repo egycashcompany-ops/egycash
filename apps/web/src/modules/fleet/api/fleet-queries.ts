@@ -1,8 +1,10 @@
 // TanStack Query hooks for the Fleet app (ADR-013). Keys follow the platform factory —
 // ['fleet', feature, kind, params] — so each FW slice invalidates surgically: an odometer
 // mutation moves alarms and the vehicle's derived facts, so both invalidate together; a roster
-// save replaces the whole day. Read hooks land here in FW-1 as the module's data foundation;
-// each later slice adds its mutation hooks beside them.
+// save replaces the whole day. The alarms board has a key of its own outside the odometer
+// subtree, so every write that moves the projection names it too (`fleetKeys.alarms`). Read
+// hooks land here in FW-1 as the module's data foundation; each later slice adds its mutation
+// hooks beside them.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ChangeFleetVehicleStatus,
@@ -95,6 +97,11 @@ const fleetKeys = {
   violations: featureKey(MODULE, 'violations'),
   licensing: featureKey(MODULE, 'licensing'),
   people: featureKey(MODULE, 'people'),
+  // The alarm projection — ONE key whichever permission door fills it, written out here once and
+  // used by the query and by every write that moves it. Not under `odometer` or `maintenance`,
+  // so invalidating either of those subtrees never reached it: a reading recorded or a visit
+  // closed left the alarms board as it was until its 30 s ran out.
+  alarms: [MODULE, 'alarms'] as const,
 } as const;
 
 // ── Registry + rules ────────────────────────────────────────────────────────
@@ -143,6 +150,9 @@ const useVehicleMutation = <TInput, TResult extends { id: string } | void>(
     onSuccess: (doc) => {
       if (doc !== undefined) qc.setQueryData(detailKey(MODULE, 'vehicles', doc.id), doc);
       void qc.invalidateQueries({ queryKey: fleetKeys.vehicles });
+      // A car's status, type and code are inputs to the alarm projection (active cars only, the
+      // interval per type, the code it is shown under).
+      void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
     },
   });
 };
@@ -229,7 +239,8 @@ export const useCatalogItems = (params: FleetListParams) =>
 
 // Catalog + rules mutations (FW-10). The maintenance interval lives on the TYPE and a work
 // type's countsForAlarm resets the alarm baseline — both are inputs to the server's derived
-// alarm projection, so their writes invalidate the odometer subtree alongside their own lists.
+// alarm projection, so their writes invalidate the odometer subtree and the alarms board
+// alongside their own lists.
 const useVehicleTypeMutation = <TInput>(
   mutationFn: (input: TInput) => Promise<FleetVehicleTypeDto>,
 ) => {
@@ -239,6 +250,7 @@ const useVehicleTypeMutation = <TInput>(
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: fleetKeys.vehicleTypes });
       void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+      void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
     },
   });
 };
@@ -259,6 +271,7 @@ const useCatalogItemMutation = <TInput>(
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: fleetKeys.catalogs });
       void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+      void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
     },
   });
 };
@@ -299,6 +312,8 @@ export const useSetFleetSetting = () => {
   const qc = useQueryClient();
   return useSetSetting(() => {
     void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+    // The yellow and red thresholds re-colour the alarms board itself.
+    void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
     void qc.invalidateQueries({ queryKey: fleetKeys.roster });
   });
 };
@@ -471,7 +486,7 @@ export const useMaintenanceAlarms = (enabled = true) => {
   const viaMaintenance = can('fleetMaintenance.view');
   const viaOdometer = can('fleetOdometer.view');
   return useQuery({
-    queryKey: [MODULE, 'alarms'],
+    queryKey: fleetKeys.alarms,
     queryFn: viaMaintenance ? api.listMaintenanceAlarmsForMaintenance : api.listMaintenanceAlarms,
     // Derived on the server per request (FR-3); a short stale window keeps the board honest
     // without hammering the projection.
@@ -489,14 +504,21 @@ export const useMaintenanceVisits = (params: FleetListParams, enabled = true) =>
   });
 
 // ── Odometer + maintenance mutations (FW-6) ─────────────────────────────────
-// Odometer writes move every derived odometer surface (logs, expected reading, the alarm
-// projection) — one feature-key invalidation covers them all. Maintenance writes additionally
-// move the vehicles' derived inWorkshop flag and the alarm baseline.
+// Odometer writes move every derived odometer surface (logs, expected reading, bracket) — one
+// feature-key invalidation covers them — AND the alarms board, which lives under a key of its
+// own: the latest reading is what «فارق» is measured to. Maintenance writes additionally move the
+// vehicles' derived inWorkshop flag and the alarm baseline.
+/** The two caches every reading write moves: the odometer subtree and the alarms board. */
+const invalidateReadings = (qc: ReturnType<typeof useQueryClient>): void => {
+  void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+  void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
+};
+
 export const useRecordOdometer = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: RecordFleetOdometer) => api.recordOdometer(body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.odometer }),
+    onSuccess: () => invalidateReadings(qc),
   });
 };
 
@@ -505,7 +527,7 @@ export const useCorrectOdometer = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: CorrectFleetOdometer }) =>
       api.correctOdometer(id, body),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.odometer }),
+    onSuccess: () => invalidateReadings(qc),
   });
 };
 
@@ -513,7 +535,7 @@ export const useDeleteOdometer = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.deleteOdometer(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.odometer }),
+    onSuccess: () => invalidateReadings(qc),
   });
 };
 
@@ -527,6 +549,8 @@ const useMaintenanceMutation = <TInput, TResult>(
       void qc.invalidateQueries({ queryKey: fleetKeys.maintenance });
       void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
       void qc.invalidateQueries({ queryKey: fleetKeys.vehicles });
+      // A visit closed, reopened, edited or deleted moves the baseline the board measures from.
+      void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
     },
   });
 };
@@ -571,6 +595,22 @@ export const useRosterDay = (date: string) =>
     queryFn: () => api.getRosterDay(date),
     enabled: date !== '',
   });
+
+/**
+ * TODAY's board, for the driver card — «العربيه اللى متعين عليها». The roster board's own key, so
+ * the card shares its cache, its save and its realtime refresh; a longer `staleTime` on THIS
+ * observer only, so hovering name after name does not re-run the day's availability pass every
+ * 30 s. «Today» is the board's own UTC day (`RosterPage`), so the two never disagree.
+ */
+export const useRosterToday = (enabled: boolean) => {
+  const today = new Date().toISOString().slice(0, 10);
+  return useQuery({
+    queryKey: rosterDayKey(today),
+    queryFn: () => api.getRosterDay(today),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+};
 
 // A plan save answers with the refreshed board in the same round-trip (FL-5 point 7), so the
 // day's cache is replaced directly — no refetch between save and repaint. A failed save still
@@ -1088,6 +1128,14 @@ export const useLicenseExpenses = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'licenseExpenses', params),
     queryFn: () => api.listLicenseExpenses(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+/** «الإحصائيات» over the whole filtered set — under the list's key, so every write refreshes it. */
+export const useLicenseExpenseSummary = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'licenseExpenses', { summary: true, ...params }),
+    queryFn: () => api.licenseExpenseSummary(params),
     placeholderData: (prev) => prev,
     enabled,
   });

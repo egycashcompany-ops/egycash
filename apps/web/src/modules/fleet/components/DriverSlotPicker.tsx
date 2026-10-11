@@ -134,7 +134,8 @@ export const DriverSlotPicker = ({
                     }}
                     className="w-full rounded-md text-start hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800"
                   >
-                    <DriverChip employeeId={driver.employeeId} className="w-full" />
+                    {/* An option to pick, not a name to read: no card over the list. */}
+                    <DriverChip employeeId={driver.employeeId} className="w-full" card={false} />
                   </button>
                 </li>
               ))}

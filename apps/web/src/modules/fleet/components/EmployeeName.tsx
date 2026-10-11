@@ -20,6 +20,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { type FleetPersonDto } from '@ecms/contracts';
 import { useCan } from '../../../platform/rbac/Can';
 import { useFleetPeople } from '../api/fleet-queries';
+import { useDriverHoverCard } from './DriverHoverCard';
 
 /**
  * Fleet's people, by employee id — ONE query, however many cells ask.
@@ -63,9 +64,21 @@ export const useEmployeeName = (
   return { name: person?.fullNameAr ?? null, code: person?.code ?? null };
 };
 
-export const EmployeeName = ({ employeeId }: { employeeId: string }): JSX.Element => {
-  const { name, code } = useEmployeeName(employeeId);
-  if (name === null) {
+/**
+ * A person by name with the code after it — and, hovered or reached with Tab, the driver card
+ * (`DriverHoverCard`). `card={false}` inside a control that is itself the thing to press — an
+ * option button — where a card and a tab stop of its own would be in the way.
+ */
+export const EmployeeName = ({
+  employeeId,
+  card = true,
+}: {
+  employeeId: string;
+  card?: boolean;
+}): JSX.Element => {
+  const person = useEmployeeRecord(employeeId);
+  const hover = useDriverHoverCard(card && person !== undefined ? [person] : []);
+  if (person === undefined) {
     return (
       <span className="font-mono text-xs text-slate-400" dir="ltr">
         {employeeId.slice(-8)}
@@ -73,14 +86,15 @@ export const EmployeeName = ({ employeeId }: { employeeId: string }): JSX.Elemen
     );
   }
   return (
-    <span>
-      {name}
-      {code !== null && (
+    <>
+      <span {...hover.triggerProps}>
+        {person.fullNameAr}
         <span className="ms-2 font-mono text-xs text-slate-500" dir="ltr">
-          {code}
+          {person.code}
         </span>
-      )}
-    </span>
+      </span>
+      {hover.card}
+    </>
   );
 };
 

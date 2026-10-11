@@ -29,8 +29,15 @@ const ON_MULTISELECT: Record<string, string> = {
   CatalogMultiSelect: 'modules/fleet/components/CatalogMultiSelect.tsx',
   BranchFilterSelect: 'modules/hr/recruitment/shared/BranchFilterSelect.tsx',
 };
-/** The bar's frame — not drop-downs. */
-const FRAME = new Set(['FilterBar', 'FilterWithIcon', 'FilterField', 'FilteredCount', 'ResetIcon']);
+/** The bar's frame — not drop-downs. `DateBox` holds a date box and its calendar button. */
+const FRAME = new Set([
+  'FilterBar',
+  'FilterWithIcon',
+  'FilterField',
+  'FilteredCount',
+  'ResetIcon',
+  'DateBox',
+]);
 
 const barFiles = (): string[] =>
   execFileSync('grep', ['-rl', '<FilterBar', 'modules/fleet'], { cwd: SRC, encoding: 'utf8' })

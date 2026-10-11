@@ -149,10 +149,17 @@ const renderList = (permissions: string[]): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
-  qc.setQueryData(listKey('fleet', 'licenseExpenses', { page: 1, pageSize: 25 }), {
-    items: [],
-    meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 },
-  });
+  // The list's first request: page one, the newest memo first — the arrows' default order.
+  qc.setQueryData(
+    listKey('fleet', 'licenseExpenses', {
+      page: 1,
+      pageSize: 25,
+      sortBy: 'date',
+      sortDir: 'desc',
+      sort: 'date:desc',
+    }),
+    { items: [], meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 } },
+  );
   return renderToStaticMarkup(
     <Provider store={store(permissions)}>
       <QueryClientProvider client={qc}>
@@ -215,6 +222,30 @@ describe('«إعداد النماذج» of the licensing-expenses memo', () => {
     expect(preview).toContain('36.00');
     expect(preview).toContain('مندوب محفوظ');
     expect(html).toContain(ar('fleet.licenseExpenses.setup.preview'));
+  });
+
+  it('wears the forms’ design: its header with Save on it, sections with icons, the switch tray', () => {
+    const html = renderSetup();
+    expect(html).toContain('<header');
+    expect(html).toContain(ar('fleet.licenseExpenses.setup.subtitle'));
+    // `DesignSave`: the indigo button, told when it is busy.
+    expect(html).toMatch(/data-license-expense-setup-save="true"[^>]*aria-busy="false"/u);
+    for (const title of [
+      'fleet.licenseExpenses.setup.itemsTitle',
+      'fleet.licenseExpenses.signaturesSection',
+    ]) {
+      expect(html, title).toMatch(
+        new RegExp(
+          `<h3 class="flex items-center gap-2[^"]*"><svg[^]*?</svg>${ar(title)}</h3>`,
+          'u',
+        ),
+      );
+    }
+    // The kind and «يظهر في» in the forms' switch: a sunken tray, the pressed side purple.
+    expect(html).toMatch(
+      /aria-pressed="true" data-license-expense-setup-kind="renewal" class="[^"]*bg-brand-600/u,
+    );
+    expect(html, 'nothing on the set-up is required').not.toContain('text-rose-500">*');
   });
 
   it('starts from the names the server sends before anybody saved the set-up — as a new memo does', () => {

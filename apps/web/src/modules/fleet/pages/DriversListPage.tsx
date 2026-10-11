@@ -67,6 +67,7 @@ import {
   useDrivingJobTitles,
 } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
+import { useDriverHoverCard } from '../components/DriverHoverCard';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
@@ -201,6 +202,11 @@ const DriverNameCell = ({
   active: boolean;
 }): JSX.Element => {
   const person = useEmployeeRecord(employeeId);
+  // The driver card on the name, in place of the title that only repeated it — this board has
+  // the code, phone and branch in columns already, but not the car he is on today.
+  const hover = useDriverHoverCard(
+    person === undefined || person.fullNameAr === '' ? [] : [person],
+  );
   if (person === undefined || person.fullNameAr === '') {
     return <span className="text-slate-400">—</span>;
   }
@@ -227,10 +233,11 @@ const DriverNameCell = ({
       <span className="min-w-0 leading-tight">
         <span
           className="block max-w-[12rem] truncate font-bold min-[1750px]:max-w-[16rem]"
-          title={person.fullNameAr}
+          {...hover.triggerProps}
         >
           {person.fullNameAr}
         </span>
+        {hover.card}
       </span>
     </span>
   );

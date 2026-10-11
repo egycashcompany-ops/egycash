@@ -1,7 +1,8 @@
 // One payment group of a licensing-expenses memo — its counters, its cards and its template — and
 // what it needs around it. Shared by the memo editor and «إعداد النماذج»: a template is written with
 // the very controls a memo is, so what is set up is what a new memo starts with, card for card.
-import { useEffect, useState } from 'react';
+// Both pages wear the Fleet forms' design (`DesignDialog`) as pages, from the pieces below.
+import { useEffect, useState, type ReactNode } from 'react';
 import { type FleetCatalogItemDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -13,6 +14,8 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { localized } from '../../../shared/lib/format';
 import { useCreateCatalogItem, useFleetCatalog } from '../api/fleet-queries';
 import { violationTypeColour } from '../lib/violation-type-colour';
+import { PATH } from './FuelCardBoard';
+import { LOOK, MONO, SANS, Stroke } from './FuelCardDialog';
 import {
   type LicenseExpenseItemLine,
   type LicenseExpenseKind,
@@ -55,6 +58,96 @@ export const catalogEntriesOf = (
     memo: item.licenseExpenseKind ?? null,
   }));
 
+/**
+ * The forms' switch (the receipt form's «وقود / كاوتش / غسيل»): a sunken tray, the pressed side in
+ * the site's purple — what is pressed, nothing else. Compact, for the memo's narrow cards; the
+ * memo editor and «إعداد النماذج» draw their own switches with it too.
+ */
+export const SWITCH_TRAY =
+  'inline-flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 shadow-inner dark:border-[#2b3b6b] dark:bg-[#0a1233]';
+export const switchOption = (pressed: boolean): string =>
+  cn(
+    'rounded-lg px-3 py-1.5 text-xs font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed',
+    pressed
+      ? 'bg-brand-600 text-white shadow-md shadow-brand-700/30'
+      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60 disabled:hover:bg-transparent dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-white',
+  );
+
+/**
+ * The design's box (`boxTone`) a step in, for the cards' narrow boxes: `boxTone`'s own padding is
+ * `!important` and `cn` does not merge, so a smaller one passed beside it would be a coin toss.
+ * The control's `tight` density sets the padding instead; this brings the colours and the focus.
+ */
+export const CARD_BOX = cn(
+  '!rounded-xl border font-medium text-slate-900 shadow-inner dark:text-white',
+  'border-slate-200 bg-slate-50 dark:border-[#2b3b6b] dark:bg-[#0a1233]',
+  LOOK.add.placeholder,
+  'transition-all focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus-visible:ring-offset-0',
+  'aria-[invalid=true]:!border-rose-500/70 aria-[invalid=true]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
+);
+
+/** A `Textarea` in the design's box — it takes no `tone`, so the box is laid over its base. */
+export const NOTE_BOX = cn(
+  '!rounded-xl !px-4 !py-3 !text-[15px] !font-medium shadow-inner transition-all',
+  '!border-slate-200 !bg-slate-50 !text-slate-900 dark:!border-[#2b3b6b] dark:!bg-[#0a1233] dark:!text-white',
+  'placeholder:!text-slate-500 dark:placeholder:!text-slate-400',
+  'focus:!border-indigo-500 focus:!outline-none focus:!ring-1 focus:!ring-indigo-500',
+);
+/** The design's tile: a list, a figure — sunk into the panel. */
+export const DESIGN_TILE =
+  'rounded-xl border border-slate-200 bg-slate-50 dark:border-[#2b3b6b] dark:bg-[#0a1233]/80';
+/**
+ * The page's own header, in the forms' design (`DesignDialog`): the icon tile, the title, the grey
+ * line under it, and the buttons — outside the scrolling columns, so Save is never below the edge.
+ */
+export const DesignPageHeader = ({
+  icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: readonly string[];
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}): JSX.Element => (
+  <header
+    className={cn(
+      SANS,
+      'flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 sm:px-6',
+      LOOK.add.header,
+    )}
+  >
+    {/* A title wider than what the buttons leave on a phone takes a row of its own. */}
+    <div className="flex min-w-0 flex-1 basis-64 items-center gap-3">
+      <div
+        className={cn('flex shrink-0 items-center justify-center rounded-xl border', LOOK.add.icon)}
+      >
+        <Stroke d={[...icon]} className="h-5 w-5" />
+      </div>
+      <div className="min-w-0">
+        <h1 className="text-xl font-bold tracking-wide text-slate-900 dark:text-white">{title}</h1>
+        {subtitle !== undefined && subtitle !== '' && (
+          <p className="text-[13px] font-medium text-slate-600 dark:text-slate-300">{subtitle}</p>
+        )}
+      </div>
+    </div>
+    <div className="flex max-w-full flex-wrap items-center gap-2 sm:gap-3">{children}</div>
+  </header>
+);
+/** Back, as the design's Cancel — a link, since the page is one. */
+export const DESIGN_BACK =
+  'rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[15px] font-bold text-slate-900 transition-all hover:bg-slate-100 active:scale-[0.98] sm:px-7 dark:border-[#2b3b6b] dark:bg-[#1a2550] dark:text-slate-100 dark:hover:bg-slate-700/80';
+/** The form column: the design's panel colours, its Cairo and its padding, scrolling on its own. */
+export const DESIGN_COLUMN = cn(
+  SANS,
+  'min-h-0 space-y-7 overflow-auto rounded-2xl border text-slate-900 antialiased lg:w-[46%] dark:text-slate-100',
+  'border-slate-200 bg-white dark:border-[#2b3b6b] dark:bg-[#121c3f]/95',
+  LOOK.add.body,
+);
+/** A section's grey hint, as a design field writes one under its box. */
+export const DESIGN_HINT = 'text-[13px] font-medium text-slate-600 dark:text-slate-300';
+
 /** A two-way switch in the site's purple: the pressed side is the chosen one. */
 const Segmented = <T extends string>({
   value,
@@ -67,7 +160,7 @@ const Segmented = <T extends string>({
   onChange: (next: T) => void;
   testId: string;
 }): JSX.Element => (
-  <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 text-xs font-bold dark:border-slate-600">
+  <div className={SWITCH_TRAY}>
     {options.map((option) => (
       <button
         key={option.value}
@@ -75,12 +168,7 @@ const Segmented = <T extends string>({
         aria-pressed={value === option.value}
         data-segment={`${testId}:${option.value}`}
         onClick={() => onChange(option.value)}
-        className={cn(
-          'px-3 py-1.5 transition',
-          value === option.value
-            ? 'bg-brand-600 text-white'
-            : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800',
-        )}
+        className={switchOption(value === option.value)}
       >
         {option.label}
       </button>
@@ -176,24 +264,19 @@ export const PaidGroup = <H extends { items: LicenseExpenseItemLine[] }>({
     }));
 
   return (
+    // A way of paying, not a state: the boards keep green, amber and red for states, so the two
+    // groups share the design's neutral tile and the card and the cash tell them apart.
     <div
       data-license-expense-group={`${kind}:${paid}`}
-      className={cn(
-        'rounded-lg border p-3',
-        paid === 'visa'
-          ? 'border-emerald-500/30 bg-emerald-500/[0.04]'
-          : 'border-amber-500/30 bg-amber-500/[0.04]',
-      )}
+      className="rounded-xl border border-slate-200 bg-white p-3 dark:border-[#2b3b6b] dark:bg-[#0f1838]/40"
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3
-          className={cn(
-            'text-sm font-black',
-            paid === 'visa'
-              ? 'text-emerald-700 dark:text-emerald-300'
-              : 'text-amber-700 dark:text-amber-300',
-          )}
-        >
+      {/* The design's section heading (`DesignSection`), with the group's two buttons at its end. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2 dark:border-[#2b3b6b]/60">
+        <h3 className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
+          <Stroke
+            d={[...(paid === 'visa' ? PATH.card : PATH.box)]}
+            className="h-4 w-4 text-indigo-500 dark:text-indigo-400"
+          />
           {t(`fleet.licenseExpenses.group.${paid}`)}
         </h3>
         <span className="flex items-center gap-1.5">
@@ -254,7 +337,7 @@ export const PaidGroup = <H extends { items: LicenseExpenseItemLine[] }>({
               className={cn(
                 'rounded-lg border p-2',
                 item.itemId === null
-                  ? 'border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'
+                  ? 'border-slate-200 bg-slate-50 dark:border-[#2b3b6b] dark:bg-[#0a1233]/60'
                   : violationTypeColour(item.itemId, { index: indexOf.get(item.itemId) }),
               )}
             >
@@ -265,9 +348,11 @@ export const PaidGroup = <H extends { items: LicenseExpenseItemLine[] }>({
                     placeholder={t('fleet.licenseExpenses.columns.label')}
                     value={item.label}
                     onChange={(e) => patchItem(item.key, { label: e.target.value })}
+                    density="tight"
+                    tone={CARD_BOX}
                   />
                 ) : (
-                  <span className="text-xs font-bold">{item.label}</span>
+                  <span className="text-sm font-bold">{item.label}</span>
                 )}
                 {item.itemId === null && onAddToCatalog !== undefined && (
                   <button
@@ -295,6 +380,7 @@ export const PaidGroup = <H extends { items: LicenseExpenseItemLine[] }>({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="w-28">
+                  {/* The design's figures: monospace, held at the box's right edge. */}
                   <MoneyInput
                     aria-label={t('fleet.licenseExpenses.columns.amount')}
                     placeholder={t('fleet.licenseExpenses.columns.amount')}
@@ -302,6 +388,8 @@ export const PaidGroup = <H extends { items: LicenseExpenseItemLine[] }>({
                     onChange={(value) =>
                       patchItem(item.key, { amount: value === '' ? null : Number(value) })
                     }
+                    density="tight"
+                    tone={cn(CARD_BOX, MONO, 'text-right')}
                   />
                 </div>
                 <div className="w-16">
@@ -314,6 +402,8 @@ export const PaidGroup = <H extends { items: LicenseExpenseItemLine[] }>({
                       })
                     }
                     rule="integer"
+                    density="tight"
+                    tone={cn(CARD_BOX, MONO, 'text-center')}
                   />
                 </div>
                 <Segmented

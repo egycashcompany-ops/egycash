@@ -1053,12 +1053,12 @@ export type FleetNoAlarmReason =
    */
   | 'baselineAboveReading'
   /**
-   * The baseline sits BELOW a reading the odometer chain already held on the service date.
+   * The baseline sits BELOW a reading the odometer chain already held on the day that counter was
+   * taken — the check-in day for an entry counter, the check-out day for an exit one.
    *
-   * A counter measured when the car left the workshop cannot be lower than one recorded before it
-   * left — an odometer does not run backwards. So this pair is not two readings of one instrument,
-   * and the distance between them is not a distance. Reported ahead of `readingOlderThanService`
-   * deliberately: waiting for a newer reading is a state that heals itself, and this one does not
+   * A counter cannot be lower than one recorded before it was read — an odometer does not run
+   * backwards. So this pair is not two readings of one instrument, and the distance between them
+   * is not a distance. Reported ahead of `readingOlderThanService` deliberately: waiting for a newer reading is a state that heals itself, and this one does not
    * — a fresh reading would only be subtracted from the same unusable baseline.
    *
    * It says the two numbers do not line up. It does NOT say which of them is untrue: the workshop
@@ -2627,6 +2627,12 @@ export interface FleetDashboardAccidentDto {
   code: string;
   occurredAt: string;
   culprit: string | null;
+  /**
+   * The drivers of ours behind `culprit` — the accident's own `culpritEmployeeIds`, under the same
+   * accidents grant — so the name opens the driver card here as it does on the accidents board.
+   * Empty for a third party.
+   */
+  culpritEmployeeIds: string[];
   status: FleetAccidentStatus;
 }
 
@@ -3767,7 +3773,8 @@ export const UpdateFleetLicenseExpenseSchema = z
   .refine(eitherKind, { message: 'a renewal, an extension, or both', path: ['renewal'] });
 export type UpdateFleetLicenseExpense = z.infer<typeof UpdateFleetLicenseExpenseSchema>;
 
-export const ListFleetLicenseExpensesQuerySchema = PaginationQuerySchema.extend({
+/** The table's filters — shared by the list and its figures, so both read the same rows. */
+const licenseExpenseFilters = {
   /** Records carrying any of these cars, in either memo. */
   vehicleCodes: vehicleCodesQuery(),
   /** Records carrying this memo. */
@@ -3775,8 +3782,27 @@ export const ListFleetLicenseExpensesQuerySchema = PaginationQuerySchema.extend(
   /** The memo's date, from and to, both days included. */
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+};
+export const ListFleetLicenseExpensesQuerySchema = PaginationQuerySchema.extend({
+  ...licenseExpenseFilters,
+  /** The arrows, several columns at once — as on every Fleet board. */
+  sort: fleetSortQuery(),
 }).strict();
 export type ListFleetLicenseExpensesQuery = z.infer<typeof ListFleetLicenseExpensesQuerySchema>;
+export const FleetLicenseExpenseSummaryQuerySchema = z.object(licenseExpenseFilters).strict();
+export type FleetLicenseExpenseSummaryQuery = z.infer<typeof FleetLicenseExpenseSummaryQuerySchema>;
+
+/**
+ * «الإحصائيات» of the licensing-expenses board — over EVERY memo the filters match, never one
+ * page: how many, how many cars on them, and what was paid by the card and in cash.
+ */
+export interface FleetLicenseExpenseTotalsDto {
+  count: number;
+  cars: number;
+  /** To the piastre. */
+  visaTotal: number;
+  cashTotal: number;
+}
 
 export interface FleetLicenseExpenseVehicleDto {
   vehicleId: string | null;

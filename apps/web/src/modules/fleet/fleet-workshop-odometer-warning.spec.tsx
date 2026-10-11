@@ -320,6 +320,20 @@ describe('the warning reaches all three dialogs', () => {
     }
   });
 
+  it('the edit dialog asks a SECOND bracket for the exit counter — on the day the car left', () => {
+    // C4: a closed visit's exit counter is corrected in the edit dialog, and it was read on the
+    // check-out day, so that is the day its bracket is asked on — never the check-in day.
+    const edit = dialogSources().edit as string;
+    const calls = edit.split('useOdometerBracket(').slice(1);
+    expect(calls, 'two brackets: the entry counter and the exit counter').toHaveLength(2);
+    const exitArgs = (calls[1] as string).slice(0, (calls[1] as string).indexOf(');'));
+    expect(exitArgs).toMatch(/\boutDate\b/);
+    expect(exitArgs).not.toMatch(/\binDate\b/);
+    expect(exitArgs, 'and only for a closed visit').toContain('closed');
+    // Its warning is drawn on the exit field, and the blocking errors suppress it.
+    expect(edit).toContain('warning={exitBelowEntry || exitBelowLast ? undefined : exitWarning}');
+  });
+
   it('and each one actually RENDERS it — as a warning, on the counter field', () => {
     // Computing the suspicion and then not showing it is the same as not having the feature.
     for (const [name, body] of Object.entries(dialogSources())) {
@@ -332,7 +346,8 @@ describe('the warning reaches all three dialogs', () => {
   it('all three read the SAME rule — one helper, imported, not three copies', () => {
     const source = read('components/MaintenanceDialogs.tsx');
     expect((source.match(/const counterWarning =/g) ?? []).length, 'defined once').toBe(1);
-    expect((source.match(/= counterWarning\(/g) ?? []).length, 'used by all three').toBe(3);
+    // Four uses: one per dialog, and the edit dialog's exit counter on a closed visit (C4).
+    expect((source.match(/= counterWarning\(/g) ?? []).length, 'used by all three').toBe(4);
     expect(source).toContain("from '../lib/workshop-odometer-warning'");
     // No dialog re-derives the comparison itself.
     expect(source, 'no local comparison against a bound').not.toMatch(

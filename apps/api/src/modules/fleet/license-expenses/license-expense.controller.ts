@@ -2,6 +2,7 @@
 import { type Request, type Response } from 'express';
 import {
   type CreateFleetLicenseExpense,
+  type FleetLicenseExpenseSummaryQuery,
   type ListFleetLicenseExpensesQuery,
   type SaveFleetLicenseExpenseSettings,
   type UpdateFleetLicenseExpense,
@@ -15,6 +16,11 @@ type IdParam = { id: string };
 export const listLicenseExpenses = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetLicenseExpensesQuery>(req);
   okPage(res, await fleetLicenseExpenseService.list(query), (dto) => dto);
+};
+
+export const licenseExpenseSummary = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetLicenseExpenseSummaryQuery>(req);
+  ok(res, await fleetLicenseExpenseService.summary(query));
 };
 
 export const getLicenseExpense = async (req: Request, res: Response): Promise<void> => {

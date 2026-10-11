@@ -44,6 +44,7 @@ import { useQuery } from '@tanstack/react-query';
 import { detailKey } from '../../../shared/lib/query-keys';
 import { getEmployee } from '../../hr/employee-management/employees/api/employee-api';
 import { EmployeeName } from './EmployeeName';
+import { DateBox } from './DateBox';
 import {
   DRIVER_LICENSE_IMAGE_ACCEPT,
   DriverLicenseImageField,
@@ -313,11 +314,13 @@ export const DriverFormDialog = ({
             </Field>
           )}
           <Field label={t('fleet.drivers.fields.licenseExpiresAt')}>
-            <Input
-              type="date"
-              value={form.licenseExpiresAt}
-              onChange={(e) => setForm((prev) => ({ ...prev, licenseExpiresAt: e.target.value }))}
-            />
+            <DateBox label={t('fleet.drivers.fields.licenseExpiresAt')}>
+              <Input
+                type="date"
+                value={form.licenseExpiresAt}
+                onChange={(e) => setForm((prev) => ({ ...prev, licenseExpiresAt: e.target.value }))}
+              />
+            </DateBox>
           </Field>
           {/* The three fleet catalogs. Exactly the lists /fleet/drivers FILTERS by and the table
               DISPLAYS — one `useFleetCatalog` cache entry per kind, read by all three — so a value

@@ -508,6 +508,7 @@ export const FuelCardsPage = (): JSX.Element => {
                 icon={FILTER_ICON.calendar}
                 tone="text-cyan-600 dark:text-cyan-400"
                 className="w-36 shrink-0"
+                datePicker={{ label: t('fleet.fuelCards.filters.expiresBefore') }}
               >
                 <Input
                   type="date"

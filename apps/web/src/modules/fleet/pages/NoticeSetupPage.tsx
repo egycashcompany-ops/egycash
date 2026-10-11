@@ -7,7 +7,7 @@
 // every time, today's date, what the system brings, or typed by hand — and the groups of boxes
 // that are one answer. Beside it, the insurer's page with those defaults on it, drawn by the very
 // renderer the print uses.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   FLEET_NOTICE_TEMPLATES,
@@ -32,6 +32,7 @@ import { NOTICE_TEMPLATES, noticeTemplate, type NoticeField } from '../lib/notic
 import { metaFields, startingValues } from '../lib/notice-setup';
 import { pickOne } from '../components/dark-filter-bar';
 import { NoticeSheet } from '../components/NoticeSheet';
+import { DateBox } from '../components/DateBox';
 
 type Rule = { mode: FleetNoticeDefaultMode; value: string };
 type Group = { name: string; keys: string[] };
@@ -259,6 +260,17 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
                       (mode !== 'today' || holdsDay(field)) &&
                       (mode !== 'system' || field.source !== undefined),
                   );
+                  const valueBox = {
+                    'aria-label': field.label,
+                    disabled: !mayEdit || rule.mode !== 'fixed',
+                    value: rule.mode === 'fixed' ? rule.value : '',
+                    placeholder:
+                      rule.mode === 'fixed'
+                        ? ''
+                        : t(`fleet.notices.setup.placeholder.${rule.mode}`),
+                    onChange: (event: ChangeEvent<HTMLInputElement>) =>
+                      setRule(field, { value: event.target.value }),
+                  };
                   return (
                     <div
                       key={field.key}
@@ -271,18 +283,15 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
                       >
                         {field.label}
                       </span>
-                      <Input
-                        aria-label={field.label}
-                        disabled={!mayEdit || rule.mode !== 'fixed'}
-                        value={rule.mode === 'fixed' ? rule.value : ''}
-                        placeholder={
-                          rule.mode === 'fixed'
-                            ? ''
-                            : t(`fleet.notices.setup.placeholder.${rule.mode}`)
-                        }
-                        onChange={(event) => setRule(field, { value: event.target.value })}
-                        type={rule.mode === 'fixed' && field.kind === 'date' ? 'date' : 'text'}
-                      />
+                      {field.kind === 'date' ? (
+                        // A fixed day is picked on our calendar; a day given as «today» or by the
+                        // system is words in a box nobody types in, its calendar disabled with it.
+                        <DateBox label={field.label} disabled={valueBox.disabled}>
+                          <Input {...valueBox} type={rule.mode === 'fixed' ? 'date' : 'text'} />
+                        </DateBox>
+                      ) : (
+                        <Input {...valueBox} />
+                      )}
                       <Select
                         aria-label={t('fleet.notices.setup.mode')}
                         disabled={!mayEdit}

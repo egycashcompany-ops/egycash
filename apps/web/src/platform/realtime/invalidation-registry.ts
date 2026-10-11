@@ -265,16 +265,24 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'hr.hiringDocumentType': [['hr', 'hiringDocumentTypes']],
 
   // ── Fleet ──────────────────────────────────────────────────────────────────
+  // The alarms board (`['fleet', 'alarms']`) has a key of its own, outside the odometer and
+  // maintenance subtrees: every write that moves the alarm names it, here as in `fleet-queries.ts`,
+  // or a board left open never hears of a reading somebody else recorded.
   'fleet.vehicle': [
     ['fleet', 'vehicles'],
     ['fleet', 'roster'],
     ['fleet', 'availability'],
+    ['fleet', 'alarms'],
   ],
   'fleet.vehicleType': [
     ['fleet', 'vehicleTypes'],
     ['fleet', 'vehicles'],
+    ['fleet', 'alarms'],
   ],
-  'fleet.catalogItem': [['fleet', 'catalogs']],
+  'fleet.catalogItem': [
+    ['fleet', 'catalogs'],
+    ['fleet', 'alarms'],
+  ],
   'fleet.driverProfile': [
     ['fleet', 'drivers'],
     ['fleet', 'roster'],
@@ -293,10 +301,12 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['fleet', 'maintenance'],
     ['fleet', 'odometer'],
     ['fleet', 'vehicles'],
+    ['fleet', 'alarms'],
   ],
   'fleet.odometerLog': [
     ['fleet', 'odometer'],
     ['fleet', 'vehicles'],
+    ['fleet', 'alarms'],
   ],
   'fleet.accident': [
     ['fleet', 'accidents'],

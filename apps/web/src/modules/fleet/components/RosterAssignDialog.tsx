@@ -96,7 +96,8 @@ const DriverSlot = ({
                   setPicking(false);
                 }}
               >
-                <EmployeeName employeeId={driver.employeeId} />
+                {/* An option button: no card inside it — the badge beside says the car. */}
+                <EmployeeName employeeId={driver.employeeId} card={false} />
                 {driver.assignedVehicleId === null ? (
                   <Badge tone="success">{t('fleet.roster.free')}</Badge>
                 ) : (

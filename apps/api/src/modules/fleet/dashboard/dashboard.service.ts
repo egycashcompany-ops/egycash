@@ -27,6 +27,7 @@ import { branchRepository } from '../../../platform/organization/branches/branch
 import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { culpritIdsOf } from '../fleet.mappers';
 import { fleetDashboardRepository, type VehicleKm } from './dashboard.repository';
 
 /** How many rows each list section carries. The screen shows five; the strips show ten. */
@@ -315,6 +316,14 @@ class FleetDashboardService {
           code: codes.get(String(accident.vehicleId)) ?? '—',
           occurredAt: accident.occurredAt.toISOString(),
           culprit: accident.culprit,
+          // The same list the accidents board reads — its one driver on a file from before it. A
+          // lean read applies no defaults, so a file that never stored the single id reads null.
+          culpritEmployeeIds: culpritIdsOf({
+            culpritEmployeeId: accident.culpritEmployeeId ?? null,
+            ...(accident.culpritEmployeeIds === undefined
+              ? {}
+              : { culpritEmployeeIds: accident.culpritEmployeeIds }),
+          }),
           status: accident.status as FleetAccidentStatus,
         }),
       ),

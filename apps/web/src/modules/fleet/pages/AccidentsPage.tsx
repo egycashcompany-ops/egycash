@@ -63,6 +63,9 @@ import * as fleetApi from '../api/fleet-api';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { AccidentFormDialog } from '../components/AccidentFormDialog';
 import { AccidentTransferLogDialog } from '../components/AccidentTransferLogDialog';
+import { DriverHoverText } from '../components/DriverHoverCard';
+import { useEmployeeRecords } from '../components/EmployeeName';
+import { DateBox } from '../components/DateBox';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
@@ -87,6 +90,15 @@ const DEFAULT_PAGE_SIZE = 25;
  * first click REPLACES it rather than joining it — see `clickSort`.
  */
 const DEFAULT_SORT = 'occurredAt:desc';
+
+/**
+ * The culprit as the accident wrote it, and — when it was one or several of our drivers — their
+ * card on hover. A third party's name is the text alone.
+ */
+const CulpritCell = ({ accident }: { accident: FleetAccidentDto }): JSX.Element => {
+  const people = useEmployeeRecords(accident.culpritEmployeeIds);
+  return <DriverHoverText people={[...people.values()]}>{accident.culprit}</DriverHoverText>;
+};
 
 export const AccidentsPage = (): JSX.Element => {
   const t = useT();
@@ -374,7 +386,11 @@ export const AccidentsPage = (): JSX.Element => {
       sortable: true,
       render: (r) => <span className="tabular-nums">{formatDate(r.occurredAt, locale)}</span>,
     },
-    { key: 'culprit', header: t('fleet.accidents.fields.culprit'), render: (r) => r.culprit },
+    {
+      key: 'culprit',
+      header: t('fleet.accidents.fields.culprit'),
+      render: (r) => <CulpritCell accident={r} />,
+    },
     {
       key: 'statement',
       header: t('fleet.accidents.fields.statement'),
@@ -606,7 +622,7 @@ export const AccidentsPage = (): JSX.Element => {
             <label htmlFor="accidents-from" className={dateLabel}>
               {t('fleet.odometer.from')}
             </label>
-            <div className="w-44">
+            <DateBox label={t('fleet.odometer.from')} className="w-44">
               <Input
                 id="accidents-from"
                 type="date"
@@ -614,13 +630,13 @@ export const AccidentsPage = (): JSX.Element => {
                 onChange={(e) => patch({ from: e.target.value || null })}
                 textScale="comfortable"
               />
-            </div>
+            </DateBox>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <label htmlFor="accidents-to" className={dateLabel}>
               {t('fleet.odometer.to')}
             </label>
-            <div className="w-44">
+            <DateBox label={t('fleet.odometer.to')} className="w-44">
               <Input
                 id="accidents-to"
                 type="date"
@@ -628,7 +644,7 @@ export const AccidentsPage = (): JSX.Element => {
                 onChange={(e) => patch({ to: e.target.value || null })}
                 textScale="comfortable"
               />
-            </div>
+            </DateBox>
           </div>
           {/* THE NOTE, SEARCHED — «عاوز اقدر ابحث فى الملاحظات». A SHARED child, like the driver
               picker beside it: it takes a share of whatever the row has left rather than

@@ -5,6 +5,9 @@
 // by the card and in cash — written with the memo's own counters and cards; the names every memo
 // is signed with; and which memo each item of the list shows in. Beside them, the memo with those
 // defaults on it, drawn by the very renderer the print uses.
+//
+// «ضيف كل حاجه كنا عملنها»: the memo editor's design — the forms' header with Save kept on screen,
+// sections headed with their icons, the design's boxes and switches — around the same behaviour.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,8 +24,7 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
-import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { Input, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
@@ -39,12 +41,23 @@ import {
 } from '../api/fleet-queries';
 import {
   type CatalogEntry,
+  DESIGN_BACK,
+  DESIGN_COLUMN,
+  DESIGN_HINT,
+  DesignPageHeader,
+  NOTE_BOX,
   PaidGroup,
+  SWITCH_TRAY,
   catalogEntriesOf,
   newKey,
+  switchOption,
   today,
   useAddToCatalog,
 } from '../components/LicenseExpensePaidGroup';
+import { DesignSave, DesignSection } from '../components/DesignDialog';
+import { DesignField, LOOK, boxTone } from '../components/FuelCardDialog';
+import { PATH } from '../components/FuelCardBoard';
+import { FILTER_ICON } from '../components/FilterWithIcon';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import {
   type LicenseExpenseItemLine,
@@ -55,6 +68,8 @@ import {
 } from '../lib/license-expense-memo';
 
 const PAID: readonly LicenseExpensePaidBy[] = ['visa', 'cash'];
+/** The design's text box, from the forms' `add` look. */
+const BOX = boxTone(LOOK.add);
 
 /** Each memo's template as the cards hold it: both groups together, each line knowing its group. */
 export type SetupLines = Record<LicenseExpenseKind, { items: LicenseExpenseItemLine[] }>;
@@ -266,189 +281,169 @@ const LicenseExpenseSetup = ({
     signatures,
   });
 
-  const sectionTitle = (text: string): JSX.Element => (
-    <h2 className="mb-2 flex items-center gap-2 border-b border-brand-100 pb-1.5 text-sm font-bold text-brand-700 dark:border-brand-900 dark:text-brand-300">
-      <span className="h-3.5 w-1 rounded-full bg-brand-500" />
-      {text}
-    </h2>
-  );
-  const hint = (text: string): JSX.Element => (
-    <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">{text}</p>
-  );
+  const hint = (text: string): JSX.Element => <p className={DESIGN_HINT}>{text}</p>;
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-license-expense-setup-page="true">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-[#111827]">
-        <Link
-          to="/fleet/license-expenses"
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
+      <DesignPageHeader
+        icon={PATH.box}
+        title={t('fleet.licenseExpenses.setup.title')}
+        subtitle={t('fleet.licenseExpenses.setup.subtitle')}
+      >
+        <Link to="/fleet/license-expenses" className={DESIGN_BACK}>
           {t('fleet.licenseExpenses.setup.back')}
         </Link>
-        <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-          {t('fleet.licenseExpenses.setup.title')}
-        </h1>
-        <span className="flex-1" />
-        {FLEET_LICENSE_EXPENSE_KINDS.map((other) => (
-          <button
-            key={other}
-            type="button"
-            aria-pressed={other === kind}
-            data-license-expense-setup-kind={other}
-            onClick={() => setKind(other)}
-            className={cn(
-              'rounded-lg border px-3 py-1.5 text-xs font-bold transition',
-              other === kind
-                ? 'border-brand-500 bg-brand-500/15 text-brand-700 dark:text-brand-200'
-                : 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
-            )}
-          >
-            {t(`fleet.licenseExpenses.kinds.${other}`)}
-          </button>
-        ))}
-        <Button
+        {/* Which memo's template is on the form — the one pressed, in the site's purple. */}
+        <div className={SWITCH_TRAY}>
+          {FLEET_LICENSE_EXPENSE_KINDS.map((other) => (
+            <button
+              key={other}
+              type="button"
+              aria-pressed={other === kind}
+              data-license-expense-setup-kind={other}
+              onClick={() => setKind(other)}
+              className={switchOption(other === kind)}
+            >
+              {t(`fleet.licenseExpenses.kinds.${other}`)}
+            </button>
+          ))}
+        </div>
+        <DesignSave
           onClick={() => void onSave()}
-          loading={save.isPending}
+          busy={save.isPending}
+          label={t('fleet.licenseExpenses.setup.save')}
           data-license-expense-setup-save="true"
-        >
-          {t('fleet.licenseExpenses.setup.save')}
-        </Button>
-      </div>
+        />
+      </DesignPageHeader>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 lg:flex-row">
-        <section className="min-h-0 space-y-6 overflow-auto rounded-xl border border-slate-200 bg-white p-4 lg:w-[46%] dark:border-slate-800 dark:bg-[#111827]">
+        <section className={DESIGN_COLUMN}>
           {/* First, because it decides which counters the groups below offer. */}
           <div data-license-expense-setup-items="true">
-            {sectionTitle(t('fleet.licenseExpenses.setup.itemsTitle'))}
-            {hint(t('fleet.licenseExpenses.setup.itemsHint'))}
-            {!mayManageList && (
-              <p className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {t('fleet.licenseExpenses.setup.itemsLocked')}
-              </p>
-            )}
-            {catalog.data === undefined ? null : items.every((item) => !item.isActive) ? (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {t('fleet.licenseExpenses.setup.itemsEmpty')}
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
-                {items.map((item, index) =>
-                  item.isActive ? (
-                    <li
-                      key={item.id}
-                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
-                    >
-                      <span
-                        className={cn(
-                          'rounded-md border px-2 py-0.5 text-xs font-bold',
-                          violationTypeColour(item.id, { index }),
-                        )}
+            <DesignSection title={t('fleet.licenseExpenses.setup.itemsTitle')} icon={PATH.box}>
+              {hint(t('fleet.licenseExpenses.setup.itemsHint'))}
+              {!mayManageList && (
+                <p className="text-[13px] font-semibold text-slate-500 dark:text-slate-400">
+                  {t('fleet.licenseExpenses.setup.itemsLocked')}
+                </p>
+              )}
+              {catalog.data === undefined ? null : items.every((item) => !item.isActive) ? (
+                <p className={DESIGN_HINT}>{t('fleet.licenseExpenses.setup.itemsEmpty')}</p>
+              ) : (
+                <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-slate-50 dark:divide-[#2b3b6b] dark:border-[#2b3b6b] dark:bg-[#0a1233]/80">
+                  {items.map((item, index) =>
+                    item.isActive ? (
+                      <li
+                        key={item.id}
+                        className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
                       >
-                        {localized(item.name, locale)}
-                      </span>
-                      <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 text-xs font-bold dark:border-slate-600">
-                        {[...FLEET_LICENSE_EXPENSE_KINDS, null].map((memo) => {
-                          const picked = (item.licenseExpenseKind ?? null) === memo;
-                          return (
-                            <button
-                              key={memo ?? 'both'}
-                              type="button"
-                              aria-pressed={picked}
-                              data-license-expense-item-kind={`${item.id}:${memo ?? 'both'}`}
-                              disabled={!mayManageList || writing.has(item.id)}
-                              onClick={() => void showsIn(item, memo)}
-                              className={cn(
-                                'px-3 py-1.5 transition disabled:cursor-not-allowed',
-                                picked
-                                  ? 'bg-brand-600 text-white'
-                                  : 'bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-60 disabled:hover:bg-white dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:disabled:hover:bg-slate-900',
-                              )}
-                            >
-                              {memo === null
-                                ? t('fleet.catalogs.licenseExpenseKind.both')
-                                : t(`fleet.licenseExpenses.kinds.${memo}`)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </li>
-                  ) : null,
-                )}
-              </ul>
-            )}
+                        <span
+                          className={cn(
+                            'rounded-md border px-2 py-0.5 text-sm font-bold',
+                            violationTypeColour(item.id, { index }),
+                          )}
+                        >
+                          {localized(item.name, locale)}
+                        </span>
+                        <div className={SWITCH_TRAY}>
+                          {[...FLEET_LICENSE_EXPENSE_KINDS, null].map((memo) => {
+                            const picked = (item.licenseExpenseKind ?? null) === memo;
+                            return (
+                              <button
+                                key={memo ?? 'both'}
+                                type="button"
+                                aria-pressed={picked}
+                                data-license-expense-item-kind={`${item.id}:${memo ?? 'both'}`}
+                                disabled={!mayManageList || writing.has(item.id)}
+                                onClick={() => void showsIn(item, memo)}
+                                className={switchOption(picked)}
+                              >
+                                {memo === null
+                                  ? t('fleet.catalogs.licenseExpenseKind.both')
+                                  : t(`fleet.licenseExpenses.kinds.${memo}`)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </li>
+                    ) : null,
+                  )}
+                </ul>
+              )}
+            </DesignSection>
           </div>
 
-          {/* «عاوز اعمل نموذج … 4 حالات»: the picked memo's two, by the card and in cash. */}
-          <div
-            data-license-expense-setup-template={kind}
-            className={cn(
-              'space-y-4 rounded-xl border-2 p-3',
-              kind === 'renewal'
-                ? 'border-sky-500/40 bg-sky-500/[0.04]'
-                : 'border-violet-500/40 bg-violet-500/[0.04]',
-            )}
-          >
-            <div>
-              <span
+          {/* «عاوز اعمل نموذج … 4 حالات»: the picked memo's two, by the card and in cash — in the
+              memo's own tint, as its block on the memo editor. */}
+          <div data-license-expense-setup-template={kind}>
+            <DesignSection
+              title={t('fleet.licenseExpenses.setup.templateTitle', { kind: kindName })}
+              icon={PATH.card}
+            >
+              {hint(t('fleet.licenseExpenses.setup.templateHint', { kind: kindName }))}
+              <div
                 className={cn(
-                  'rounded-full px-3 py-1 text-sm font-black',
+                  'space-y-4 rounded-2xl border-2 p-3',
                   kind === 'renewal'
-                    ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                    : 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
+                    ? 'border-sky-500/40 bg-sky-500/[0.04]'
+                    : 'border-violet-500/40 bg-violet-500/[0.04]',
                 )}
               >
-                {t('fleet.licenseExpenses.setup.templateTitle', { kind: kindName })}
-              </span>
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                {t('fleet.licenseExpenses.setup.templateHint', { kind: kindName })}
-              </p>
-            </div>
-            {PAID.map((paid) => (
-              <PaidGroup
-                key={`${kind}:${paid}`}
-                kind={kind}
-                paid={paid}
-                items={lines[kind].items.filter((item) => item.paidBy === paid)}
-                setDraft={(update) => setLines((held) => withLines(held, kind, update))}
-                catalogItems={catalogItems}
-                {...(mayManageList
-                  ? { onAddToCatalog: (label: string) => addToCatalog(kind, label) }
-                  : {})}
-              />
-            ))}
+                {PAID.map((paid) => (
+                  <PaidGroup
+                    key={`${kind}:${paid}`}
+                    kind={kind}
+                    paid={paid}
+                    items={lines[kind].items.filter((item) => item.paidBy === paid)}
+                    setDraft={(update) => setLines((held) => withLines(held, kind, update))}
+                    catalogItems={catalogItems}
+                    {...(mayManageList
+                      ? { onAddToCatalog: (label: string) => addToCatalog(kind, label) }
+                      : {})}
+                  />
+                ))}
+              </div>
+            </DesignSection>
           </div>
 
-          <div>
-            {sectionTitle(t('fleet.licenseExpenses.signaturesSection'))}
+          <DesignSection
+            title={t('fleet.licenseExpenses.signaturesSection')}
+            icon={FILTER_ICON.person}
+          >
             {/* «تتظبط مرة في الإعداد وتتعدل في كل مذكرة». */}
             {hint(t('fleet.licenseExpenses.setup.signaturesHint'))}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t('fleet.licenseExpenses.signatures.agent')}>
+            <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
+              <DesignField label={t('fleet.licenseExpenses.signatures.agent')}>
                 <Input
+                  aria-label={t('fleet.licenseExpenses.signatures.agent')}
                   value={signatures.agent}
                   onChange={(e) => setSignatures((held) => ({ ...held, agent: e.target.value }))}
+                  tone={BOX}
                 />
-              </Field>
-              <Field label={t('fleet.licenseExpenses.signatures.director')}>
+              </DesignField>
+              <DesignField label={t('fleet.licenseExpenses.signatures.director')}>
                 <Input
+                  aria-label={t('fleet.licenseExpenses.signatures.director')}
                   value={signatures.director}
                   onChange={(e) => setSignatures((held) => ({ ...held, director: e.target.value }))}
+                  tone={BOX}
                 />
-              </Field>
-              <Field
-                label={t('fleet.licenseExpenses.signatures.generalManager')}
-                className="sm:col-span-2"
-              >
-                <Textarea
-                  rows={3}
-                  value={signatures.generalManager}
-                  onChange={(e) =>
-                    setSignatures((held) => ({ ...held, generalManager: e.target.value }))
-                  }
-                />
-              </Field>
+              </DesignField>
+              <div className="sm:col-span-2">
+                <DesignField label={t('fleet.licenseExpenses.signatures.generalManager')}>
+                  <Textarea
+                    rows={3}
+                    aria-label={t('fleet.licenseExpenses.signatures.generalManager')}
+                    value={signatures.generalManager}
+                    onChange={(e) =>
+                      setSignatures((held) => ({ ...held, generalManager: e.target.value }))
+                    }
+                    className={NOTE_BOX}
+                  />
+                </DesignField>
+              </div>
             </div>
-          </div>
+          </DesignSection>
         </section>
 
         <section className="min-h-0 flex-1 space-y-4 overflow-auto rounded-xl bg-slate-200 p-4 dark:bg-slate-800">

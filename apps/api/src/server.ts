@@ -31,6 +31,7 @@ import { startOdometerFixGoLive } from './modules/fleet/go-live/odometer-fix';
 import { startDriversExtraGoLive } from './modules/fleet/go-live/drivers-extra';
 import { startFuelCardsGoLive } from './modules/fleet/go-live/fuel-cards';
 import { startFuelCardPhotosGoLive } from './modules/fleet/go-live/fuel-card-photos';
+import { startReadingsFixGoLive } from './modules/fleet/go-live/readings-fix';
 import { startItAssetRestartGoLive } from './modules/it/go-live/asset-restart';
 import { startItInventoryGoLive } from './modules/it/go-live/inventory';
 import { buildApp } from './app';
@@ -87,6 +88,9 @@ const main = async (): Promise<void> => {
   // The owner's two fuel-card sheets, after the cars they go on.
   startFuelCardsGoLive();
   startFuelCardPhotosGoLive();
+  // «الرقم اللى بعد التاريخ دا بتاع الصيانه الرقم التانى بتاعت القراءة اللى النهارده» — cars 219,
+  // 295, 248 and 249 brought into line with the owner's readings of 11 October (see the file).
+  startReadingsFixGoLive();
   // «شيل كل الأصول معادا AST-00005 وخليه AST-00001» — confirmed by the owner on 4 October: the IT
   // asset register restarted, once, softly (see the file).
   startItAssetRestartGoLive();

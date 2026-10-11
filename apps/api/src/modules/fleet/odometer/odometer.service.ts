@@ -26,6 +26,7 @@ import { alarmSortsFor } from '../maintenance/alarm-sort';
 import { fleetOdometerRepository } from './odometer.repository';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
+import { planCorrection } from './correction-rules';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'odometerLog', entityId: id });
 
@@ -438,12 +439,28 @@ class FleetOdometerService {
    *   - correcting `outReading` also rewrites the previous entry's `inReading` (+ its km);
    *   - correcting `inReading` (a closed entry) also rewrites the next entry's `outReading`;
    * and the corrected values must keep the whole chain ordered, or the correction is refused.
+   *
+   * «Previous» and «next» are the rows dated just before and after — the order `record()` splices
+   * by — and what may change, and which neighbour moves with it, is `planCorrection`'s to say.
    */
   async correct(id: string, input: CorrectFleetOdometer, by: string): Promise<OdometerLogWithCode> {
     const changedFields: { field: string; old: string | null; new: string | null }[] = [];
 
     const { updated, vehicleId, bookCode } = await unitOfWork(async (session) => {
       const entry = await fleetOdometerRepository.getById(id);
+
+      /*
+       * A ROW KEPT FROM THE OLD BOOK FOR A CAR THE REGISTRY DOES NOT HAVE IS ON NO CAR'S CHAIN.
+       *
+       * Its neighbours would be looked up by `vehicleId: null` — which is every such row of every
+       * unknown car at once — so a correction here could rewrite another car's reading. Refused
+       * before anything is looked up; the row stays exactly as the book wrote it.
+       */
+      if (entry.vehicleId === null) {
+        throw new ConflictError(
+          'a reading kept from the old book for a car the registry does not have is on no car’s chain — it cannot be corrected here',
+        );
+      }
 
       /*
        * A DAY RECORDED WITH NO READING IS NOT CORRECTED HERE. It is on no chain — there are no
@@ -463,27 +480,11 @@ class FleetOdometerService {
           ? { prev: null, next: null }
           : await fleetOdometerRepository.findNeighbors(entry, session);
 
-      const newOut = input.outReading ?? entry.outReading;
-      const newIn = input.inReading === undefined ? entry.inReading : input.inReading;
-
-      if (newOut !== null && newIn !== null && newIn < newOut) {
-        throw invalid('inReading', 'a period cannot end below its own start');
-      }
-      if (prev !== null && newOut !== null && newOut <= (prev.outReading as number)) {
-        throw invalid('outReading', 'the corrected reading falls below the previous period');
-      }
-      if (next !== null && newIn === null) {
-        // The closing reading is shared with the next entry's opening — a middle period cannot
-        // be "reopened"; the correction rewrites both rows, it never deletes the shared fact.
-        throw invalid('inReading', 'a closed period between two others cannot be reopened');
-      }
-      if (
-        next !== null &&
-        newIn !== null &&
-        newIn >= (next.inReading ?? Number.POSITIVE_INFINITY)
-      ) {
-        throw invalid('inReading', 'the corrected reading overlaps the next period');
-      }
+      // Only what this request changes is checked, and only a neighbour that shares the reading
+      // is rewritten — see `correction-rules.ts` for the book shapes that makes necessary.
+      const verdict = planCorrection(entry, input, prev, next);
+      if ('refusal' in verdict) throw invalid(verdict.refusal.field, verdict.refusal.message);
+      const { newOut, newIn, prevIn, nextOut } = verdict.plan;
 
       const set: Partial<FleetOdometerLogDoc> = {
         outReading: newOut,
@@ -525,19 +526,19 @@ class FleetOdometerService {
       // Propagate the SHARED readings — the identity that makes the chain a chain.
       // `prev` is non-null only for a row that is itself on the chain, so both readings are
       // numbers here — a day with no reading has no neighbours at all.
-      if (prev !== null && newOut !== null && newOut !== entry.outReading) {
+      if (prev !== null && prevIn !== undefined) {
         await fleetOdometerRepository.updateById(
           String(prev._id),
-          { inReading: newOut, km: newOut - (prev.outReading as number) },
+          { inReading: prevIn, km: prevIn - (prev.outReading as number) },
           { by, version: prev.__v, session },
         );
       }
-      if (next !== null && newIn !== null && newIn !== entry.inReading) {
+      if (next !== null && nextOut !== undefined) {
         await fleetOdometerRepository.updateById(
           String(next._id),
           {
-            outReading: newIn,
-            km: next.inReading === null ? null : next.inReading - newIn,
+            outReading: nextOut,
+            km: next.inReading === null ? null : next.inReading - nextOut,
           },
           { by, version: next.__v, session },
         );
@@ -580,6 +581,10 @@ class FleetOdometerService {
    * The first row, a day recorded with no reading, and a row from the old book with no registry car
    * have nothing before them to re-link and are simply removed. A reading before it that does NOT
    * close on this row (an old book that never chained) is left exactly as it is.
+   *
+   * «Before» is the row dated before it, as `record()` orders the chain — not the next lower
+   * figure, which on a book typo is some other day entirely: deleting car 219's 118,722 of 30 July
+   * found the open period of 29 September as its «previous» row and re-linked nothing.
    */
   async softDelete(id: string, by: string): Promise<void> {
     const relinked = await unitOfWork(async (session) => {

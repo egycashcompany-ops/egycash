@@ -54,6 +54,7 @@ import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
+import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
 import {
   useDeleteMaintenance,
   useFleetCatalog,
@@ -120,9 +121,6 @@ const LATIN = new Intl.NumberFormat('en-US');
  * left to right — for every date and reading on the row.
  */
 const FIGURE = cn('whitespace-nowrap', NUM);
-
-/** «كبر الورشه ونوع العمل»: the workshop and the work type, a step bigger and bold. */
-const BIG_WORDS = 'text-[15px] font-bold';
 
 /**
  * The address bar, less an order by the EXIT driver. «ورينى سامبل الاتنين دول تحت بعض» took that
@@ -443,7 +441,10 @@ export const MaintenancePage = (): JSX.Element => {
       sortable: true,
       render: (visit) =>
         visit.outDate === null ? (
-          <Badge tone="info">{t('fleet.maintenance.open')}</Badge>
+          // The alarms board's pill size, so the state reads as large as the dates around it.
+          <Badge tone="info" size="lg">
+            {t('fleet.maintenance.open')}
+          </Badge>
         ) : (
           day(visit.outDate)
         ),
@@ -461,7 +462,8 @@ export const MaintenancePage = (): JSX.Element => {
         visit.vehicleCode === null ? (
           dash
         ) : (
-          <span dir="ltr" className={cn('font-bold', FIGURE)}>
+          // A size over the row, as the alarms board writes the car's code.
+          <span dir="ltr" className={cn('font-bold', FIGURE, ALARMS_CODE_TYPE)}>
             {visit.vehicleCode}
           </span>
         ),
@@ -473,8 +475,12 @@ export const MaintenancePage = (): JSX.Element => {
       key: 'operation',
       align: 'center',
       header: t('fleet.maintenance.fields.operation'),
-      render: (visit) =>
-        visit.operationId === null ? dash : (catalogName.get(visit.operationId) ?? dash),
+      // In a span, as every other value on the row is: the table's bold is put on what a cell
+      // HOLDS, so a bare word would read a weight lighter than its neighbours.
+      render: (visit) => {
+        const name = visit.operationId === null ? undefined : catalogName.get(visit.operationId);
+        return name === undefined ? dash : <span>{name}</span>;
+      },
     },
     // ONE COLUMN, THE TWO LEGS ONE UNDER THE OTHER — «ورينى سامبل الاتنين دول تحت بعض». A reversal
     // of «تفصل الصباحى عن المسائى كل واحد فى عمود», which gave each leg its own column so each
@@ -519,13 +525,16 @@ export const MaintenancePage = (): JSX.Element => {
         </span>
       ),
     },
+    // «كبر الورشه ونوع العمل» gave these two a 15px of their own; the whole row is the alarms
+    // board's 16px now (`ALARMS_TYPE`), so a size here would make them the SMALLER words. Bold
+    // like the rest of the row, from the table's wrapper.
     {
       key: 'workshop',
       align: 'center',
       header: t('fleet.maintenance.fields.workshop'),
       render: (visit) => {
         const name = catalogName.get(visit.workshopId);
-        return name === undefined ? dash : <span className={BIG_WORDS}>{name}</span>;
+        return name === undefined ? dash : <span>{name}</span>;
       },
     },
     {
@@ -534,7 +543,7 @@ export const MaintenancePage = (): JSX.Element => {
       header: t('fleet.maintenance.fields.workType'),
       render: (visit) => {
         const name = catalogName.get(visit.workTypeId);
-        return name === undefined ? dash : <span className={BIG_WORDS}>{name}</span>;
+        return name === undefined ? dash : <span>{name}</span>;
       },
     },
     {
@@ -556,7 +565,8 @@ export const MaintenancePage = (): JSX.Element => {
               </span>
             )}
             {legacy.length > 0 && (
-              <span className="block max-w-xs whitespace-normal break-words text-xs text-slate-500 dark:text-slate-400">
+              // At the row's size like every column; told apart by its grey and its label.
+              <span className="block max-w-xs whitespace-normal break-words text-slate-500 dark:text-slate-400">
                 {t('fleet.maintenance.legacyParts')}: {legacy.join('، ')}
               </span>
             )}
@@ -677,6 +687,7 @@ export const MaintenancePage = (): JSX.Element => {
       icon={FILTER_ICON.calendar}
       tone="text-cyan-600 dark:text-cyan-400"
       className="w-36"
+      datePicker={{ label: t(labelKey) }}
     >
       <Input
         type="date"
@@ -931,6 +942,10 @@ export const MaintenancePage = (): JSX.Element => {
             '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
             // Every value heavy, the Arabic in Cairo's own bold.
             "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+            // «عاوز الخط بتاع شاشه الصيانه والعدادات زى شاشة انذار الصيانه فى كل العواميد فى
+            // الشاشتين»: the alarms board's type on every column — see `ALARMS_TYPE`. Its sizes
+            // only: the laptop's tighter room between the columns above still holds.
+            ALARMS_TYPE,
             CLOSED_ROW,
           )}
         >

@@ -21,6 +21,17 @@ export interface AlarmBaseline {
   /** `null` — the service was recorded with no counter (it is optional). */
   odometerAtService: number | null;
   serviceDate: Date;
+  /**
+   * The day the counter the alarm measures from was TAKEN — the check-out day for an exit counter,
+   * the check-in day for an entry counter, and the check-out day when there is none (the stand-in
+   * is then the reading the car left on).
+   *
+   * The baseline is checked against the chain on THIS day, not on `serviceDate`. An entry counter
+   * was read when the car went in, so a car that drove between check-in and check-out had a
+   * higher reading on the chain by the day it left — and the check against that day refused a
+   * counter that was true when it was written (car 219: 84,080 on 25 June, 84,189 by the 28th).
+   */
+  counterDate: Date;
 }
 
 /** A visit as the list answers with it. The drivers are stored on the document itself now. */
@@ -149,6 +160,8 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       visitId: Types.ObjectId;
       odometerAtService: number | null;
       outDate: Date;
+      inDate: Date;
+      exitOdometer?: number | null;
     }>([
       {
         $match: {
@@ -185,6 +198,10 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           // the date were taken from — and the sort above is a TOTAL order, so which row that is
           // does not change between two identical requests.
           visitId: { $first: '$_id' },
+          // Which of the two counters won, and the day the other one was read on — so the check
+          // against the chain is asked on the day the counter was TAKEN (see `counterDate`).
+          inDate: { $first: '$inDate' },
+          exitOdometer: { $first: '$exitOdometer' },
         },
       },
     ]);
@@ -196,6 +213,13 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           visitId: String(row.visitId),
           odometerAtService: row.odometerAtService,
           serviceDate: row.outDate,
+          // `!= null`: a visit written before the exit counter existed carries no field at all.
+          counterDate:
+            row.exitOdometer != null
+              ? row.outDate
+              : row.odometerAtService != null
+                ? row.inDate
+                : row.outDate,
         },
       ]),
     );

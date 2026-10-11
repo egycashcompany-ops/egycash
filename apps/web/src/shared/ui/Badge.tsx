@@ -35,6 +35,9 @@ const SIZE = {
   // of what asking for a small badge means.
   sm: 'gap-1 px-2 py-0.5 text-[11px] leading-4',
   md: 'gap-1.5 px-2.5 py-0.5 text-xs',
+  // The big-type boards' pill: the alarms board's level pill in size, for a state that sits in a
+  // 16px table — «الخط … زى شاشة انذار الصيانه فى كل العواميد». `leading-5` for the reason above.
+  lg: 'gap-1.5 px-3 py-1 text-[15px] leading-5',
 } as const;
 
 export const Badge = ({

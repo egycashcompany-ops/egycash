@@ -14,7 +14,7 @@ import { cn } from '../../../shared/lib/cn';
 import { useCorrectOdometer } from '../api/fleet-queries';
 import { OptionalDriverField } from './OptionalDriverField';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
-import { DATE_ICON, DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
+import { DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
 import { FILTER_ICON } from './FilterWithIcon';
 import { ODOMETER_DRIVER_BOX, ODOMETER_NOTE_BOX, ODOMETER_SWAP_BUTTON } from './OdometerFormParts';
@@ -99,8 +99,8 @@ export const CorrectOdometerDialog = ({
   // A number reads left to right; held at the box's right edge, clear of the «!» a refused box
   // draws at its left. A box that cannot be corrected here reads as shut.
   const numberBox = cn(box, MONO, 'text-right disabled:cursor-not-allowed disabled:opacity-50');
-  // A date's text starts at the box's left, where a refused box draws its «!».
-  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+  // A date: `DesignField`'s `datePicker` draws its calendar and keeps both its ends clear.
+  const dateBox = cn(box, MONO);
 
   return (
     // A form: the design's backdrop has no click of its own — the ✕, «إلغاء» and Escape close it.
@@ -153,7 +153,7 @@ export const CorrectOdometerDialog = ({
               tone={numberBox}
             />
           </DesignField>
-          <DesignField label={t('fleet.odometer.fields.date')}>
+          <DesignField label={t('fleet.odometer.fields.date')} datePicker>
             <Input
               type="date"
               value={date}

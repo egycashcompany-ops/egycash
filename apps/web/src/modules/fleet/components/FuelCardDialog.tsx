@@ -38,6 +38,7 @@ import { CheckIcon, EyeIcon, EyeOffIcon } from '../../../shared/ui/icons';
 import { FuelCardPhotoPanel } from './FuelCardImage';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { groupCardNumber, ungroupCardNumber } from '../lib/fuel-card-number';
+import { CalendarButton, HIDE_NATIVE_PICKER, type DatePicker } from './DateBox';
 
 /** The design's type: Cairo for words, JetBrains Mono for codes and numbers. */
 export const SANS = "[font-family:'Cairo',sans-serif]";
@@ -116,11 +117,13 @@ export const carBoxClass = (editing: boolean): string =>
     '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-slate-200 dark:[&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-white dark:[&_[role=listbox]]:!bg-[#131d35]',
   );
 
-/** The design's calendar button, lightened for the dark box — each design its own filter. */
-export const DATE_ICON = {
-  add: '[&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 dark:[&::-webkit-calendar-picker-indicator]:[filter:invert(0.8)_brightness(1.2)] hover:[&::-webkit-calendar-picker-indicator]:opacity-100',
-  edit: '[&::-webkit-calendar-picker-indicator]:cursor-pointer dark:[&::-webkit-calendar-picker-indicator]:[filter:invert(0.8)_sepia(0.2)_saturate(2)_hue-rotate(185deg)]',
-} as const;
+/**
+ * A date box of the design (`DesignField`'s `datePicker`): the browser's calendar hidden, ours at
+ * the start edge, and 40px kept clear at BOTH ends — ours at the start, and at the far end the
+ * «!» a refused box draws (a date's digits sit at the box's left even on an Arabic page, so in
+ * Arabic that «!» lands on them otherwise). The button is 12 + 2 + 16 + 2 = 32px.
+ */
+const DESIGN_DATE = cn(HIDE_NATIVE_PICKER, '[&>input]:!px-10');
 
 /** The «!» circle, filled, inside a refused box. */
 const BangIcon = (): JSX.Element => (
@@ -207,6 +210,7 @@ export const DesignField = ({
   error,
   hint,
   endAdornment,
+  datePicker,
   children,
 }: {
   label: string;
@@ -219,12 +223,20 @@ export const DesignField = ({
    * `null` leaves the far end empty — a box that is not one (a row of card tiles).
    */
   endAdornment?: ReactNode;
+  /**
+   * The box is a date: our calendar, named by `label`, opens its picker and the browser's white
+   * one is hidden (`DESIGN_DATE`). `true`, or what a box needs besides — its own opening, or that
+   * it is disabled.
+   */
+  datePicker?: boolean | Omit<DatePicker, 'label'>;
   children: ReactNode;
 }): JSX.Element => {
   const t = useT();
   const [refused, setRefused] = useState<string | null>(null);
   const message =
     refused ?? error ?? (missing ? t('common.validation.required') : undefined) ?? null;
+  const date: Omit<DatePicker, 'label'> | undefined =
+    datePicker === true ? {} : datePicker === false ? undefined : datePicker;
   return (
     <div className="space-y-2" {...(missing ? { 'data-field-missing': 'true' } : {})}>
       <label className="block text-[15px] font-bold text-slate-900 dark:text-white">
@@ -232,8 +244,11 @@ export const DesignField = ({
       </label>
       <FieldMissingProvider missing={missing}>
         <FieldFeedbackProvider value={setRefused}>
-          <div className="relative">
+          <div className={cn('relative', date !== undefined && DESIGN_DATE)}>
             {children}
+            {date !== undefined && (
+              <CalendarButton label={label} {...date} className="inset-y-0 ps-3" />
+            )}
             {/* `null` asks for nothing at the far end — no «!» either — and so draws nothing that
                 could sit over the box and take its clicks. */}
             {endAdornment === null ? null : endAdornment !== undefined ? (
@@ -686,12 +701,13 @@ export const FuelCardDialog = ({
               label={t('fleet.fuelCards.fields.expiresAt')}
               required
               missing={required.isMissing('expiresAt')}
+              datePicker
             >
               <Input
                 type="date"
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
-                tone={cn(box, MONO, DATE_ICON[editing ? 'edit' : 'add'], 'cursor-pointer')}
+                tone={cn(box, MONO)}
               />
             </DesignField>
             <DesignField

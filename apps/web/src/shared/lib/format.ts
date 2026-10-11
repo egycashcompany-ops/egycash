@@ -102,6 +102,32 @@ export const formatMoney = (
     : new Intl.NumberFormat(moneyLocale(locale), { style: 'currency', currency }).format(amount);
 
 /**
+ * A sum of money as its two halves — the figure and the currency — for a surface that sets them in
+ * different type: «شكلها بايظ الإحصائيات», a monospace figure carrying «ج.م.» set the currency's
+ * dots wide apart and read as broken. Same digits and grouping as `formatMoney`.
+ */
+export const formatMoneyParts = (
+  amount: number,
+  currency: string,
+  locale: Locale,
+): { figure: string; currency: string } => {
+  const parts = new Intl.NumberFormat(moneyLocale(locale), {
+    style: 'currency',
+    currency,
+  }).formatToParts(amount);
+  return {
+    figure: parts
+      .filter((part) => part.type !== 'currency' && part.type !== 'literal')
+      .map((part) => part.value)
+      .join(''),
+    currency: parts
+      .filter((part) => part.type === 'currency')
+      .map((part) => part.value)
+      .join(''),
+  };
+};
+
+/**
  * A monetary figure with NO ISO currency code to hand — grouped, Latin digits, and nothing else.
  *
  * `formatMoney` needs a code like `EGP` to place a symbol. Two surfaces have none and cannot get

@@ -67,6 +67,7 @@ import {
   useDrivingJobTitles,
 } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
+import { useDriverHoverCard } from '../components/DriverHoverCard';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
@@ -201,6 +202,11 @@ const DriverNameCell = ({
   active: boolean;
 }): JSX.Element => {
   const person = useEmployeeRecord(employeeId);
+  // The driver card on the name, in place of the title that only repeated it — this board has
+  // the code, phone and branch in columns already, but not the car he is on today.
+  const hover = useDriverHoverCard(
+    person === undefined || person.fullNameAr === '' ? [] : [person],
+  );
   if (person === undefined || person.fullNameAr === '') {
     return <span className="text-slate-400">—</span>;
   }
@@ -227,10 +233,11 @@ const DriverNameCell = ({
       <span className="min-w-0 leading-tight">
         <span
           className="block max-w-[12rem] truncate font-bold min-[1750px]:max-w-[16rem]"
-          title={person.fullNameAr}
+          {...hover.triggerProps}
         >
           {person.fullNameAr}
         </span>
+        {hover.card}
       </span>
     </span>
   );
@@ -548,9 +555,10 @@ export const DriversListPage = (): JSX.Element => {
         t('fleet.drivers.columns.employeeCode'),
         t('fleet.drivers.columns.jobTitle'),
         t('fleet.drivers.columns.branch'),
+        // «حط الفون بين الفرع و المحافظه» — where the table has it, so the sheet reads the same.
+        t('fleet.drivers.columns.phone'),
         t('fleet.drivers.columns.address'),
         t('fleet.drivers.columns.governorate'),
-        t('fleet.drivers.columns.phone'),
         t('fleet.drivers.columns.hiredAt'),
         t('fleet.drivers.columns.specialization'),
         t('fleet.drivers.columns.licenseType'),
@@ -566,9 +574,9 @@ export const DriversListPage = (): JSX.Element => {
           person?.code ?? '',
           profile === null ? '' : catalogText(profile.jobId, jobName),
           person?.branchId == null ? '' : (branchName.get(person.branchId) ?? ''),
+          person?.phone ?? '',
           person?.address ?? '',
           person?.governorate ?? '',
-          person?.phone ?? '',
           person?.hiredAt == null ? '' : formatDate(person.hiredAt, locale),
           profile === null ? '' : catalogText(profile.specializationId, specializationName),
           profile === null ? '' : catalogText(profile.licenseTypeId, licenseTypeName),
@@ -674,13 +682,8 @@ export const DriversListPage = (): JSX.Element => {
         />
       ),
     },
-    {
-      key: 'governorate',
-      align: 'center',
-      header: t('fleet.drivers.columns.governorate'),
-      sortable: true,
-      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.governorate} />,
-    },
+    // «حط الفون بين الفرع و المحافظه»: the mobile sits between the branch and the governorate, the
+    // order the filter bar already asks them in.
     {
       key: 'phone',
       align: 'center',
@@ -693,6 +696,13 @@ export const DriversListPage = (): JSX.Element => {
           className="font-mono text-xs"
         />
       ),
+    },
+    {
+      key: 'governorate',
+      align: 'center',
+      header: t('fleet.drivers.columns.governorate'),
+      sortable: true,
+      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.governorate} />,
     },
     {
       key: 'hiredAt',

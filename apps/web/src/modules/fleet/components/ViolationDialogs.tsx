@@ -27,6 +27,7 @@ import {
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { CatalogSelect } from './CatalogSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
+import { DateBox } from './DateBox';
 import { pickedDriverId, UNKNOWN_DRIVER } from '../lib/driver-filter-selection';
 
 const currentYear = (): number => new Date().getFullYear();
@@ -418,7 +419,9 @@ export const DriverViolationDialog = ({
             required
             missing={required.isMissing('date')}
           >
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateBox label={t('fleet.violations.fields.date')}>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </DateBox>
           </Field>
           <Field
             label={t('fleet.violations.fields.type')}

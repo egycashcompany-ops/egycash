@@ -11,6 +11,7 @@
 // The repositories are stubbed: this is about the composition, and every pipeline they run is
 // exercised for real by the integration suite.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Types } from 'mongoose';
 
 const repo = {
   vehiclesByTypeAndBranch: vi.fn(),
@@ -388,6 +389,40 @@ describe('today and this month', () => {
     expect(dto.accidents?.monthCount).toBe(3);
     expect(dto.accidents?.today[0]?.code).toBe('150');
     expect(dto.accidents?.today[0]?.status).toBe('open');
+    // A third party: no driver of ours behind the name, so no card on it.
+    expect(dto.accidents?.today[0]?.culpritEmployeeIds).toEqual([]);
+  });
+
+  it('carries the drivers of ours behind a culprit, for the driver card on the strip', async () => {
+    const d1 = new Types.ObjectId('64b1f0dddddddddddddddd01');
+    const d2 = new Types.ObjectId('64b1f0dddddddddddddddd02');
+    repo.accidentsBetween.mockResolvedValue([
+      {
+        _id: 'a1',
+        vehicleId: V1,
+        occurredAt: new Date('2026-09-15T08:00:00.000Z'),
+        culprit: 'سائقان',
+        culpritEmployeeId: d1,
+        culpritEmployeeIds: [d1, d2],
+        status: 'open',
+      },
+      {
+        // A file from before several could be picked: its one driver.
+        _id: 'a2',
+        vehicleId: V1,
+        occurredAt: new Date('2026-09-15T07:00:00.000Z'),
+        culprit: 'سائق',
+        culpritEmployeeId: d2,
+        status: 'closed',
+      },
+    ]);
+    repo.countAccidentsBetween.mockResolvedValue(2);
+    vehicles.codesByIds.mockResolvedValue(new Map([[V1, '150']]));
+    const dto = await fleetDashboardService.build(ALL, NOW);
+    expect(dto.accidents?.today.map((a) => a.culpritEmployeeIds)).toEqual([
+      [String(d1), String(d2)],
+      [String(d2)],
+    ]);
   });
 });
 

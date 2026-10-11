@@ -29,6 +29,18 @@ import { foldIncludes } from '../../../shared/lib/fold';
 import { CloseIcon, SearchIcon } from '../../../shared/ui/icons';
 import { useFieldMissing } from '../../../shared/ui/required-fields';
 import { useEmployeeRecord, useFleetPeopleMap } from './EmployeeName';
+import { useDriverHoverCard, type DriverCardTriggerProps } from './DriverHoverCard';
+
+/**
+ * The name's own element takes the driver card's props when there is a card — «اقف على اسم
+ * السواق يجيب …» — and then no title of its own: the card says the name, and more. Without one
+ * (a name from the old books, a list option) the title stays as it was.
+ */
+const nameHover = (
+  trigger: DriverCardTriggerProps | undefined,
+  title: string,
+): DriverCardTriggerProps | { title: string } =>
+  trigger?.['data-driver-hover'] === undefined ? { title } : trigger;
 
 /** The drivers board's badge colours — one per person, the same person always the same colour. */
 const AVATAR_TONES = [
@@ -86,6 +98,7 @@ export const DriverIdentity = ({
   muted = false,
   size = 'md',
   title,
+  trigger,
 }: {
   name: string;
   code: string | null;
@@ -94,8 +107,13 @@ export const DriverIdentity = ({
   muted?: boolean;
   size?: 'sm' | 'md';
   title?: string;
+  /** The driver card's props, from `useDriverHoverCard` — the caller renders its `card`. */
+  trigger?: DriverCardTriggerProps;
 }): JSX.Element => (
-  <span className="inline-flex min-w-0 items-center gap-2.5 text-start" title={title ?? name}>
+  <span
+    className="inline-flex min-w-0 items-center gap-2.5 text-start"
+    {...nameHover(trigger, title ?? name)}
+  >
     <DriverAvatar name={name} seed={code ?? name} size={size} muted={muted} />
     <span className="min-w-0 leading-tight">
       <span
@@ -126,11 +144,14 @@ export const DriverIdentity = ({
 /**
  * How a board writes a driver — «غير شكل اسم السواق»: each board's look, as the owner chose it.
  * - `identity`: the badge, the name, the code under it (the pickers' look; receipts, attendance).
- * - `person`: look ج — a person mark, the name, a rule, the code faint after it (odometer).
- * - `short`: look د — the first and last names, the code under; the whole name on hover
- *   (maintenance).
+ * - `person`: look ج — a person mark, the name, a rule, the code faint after it. The odometer's
+ *   until «شاشه عدادات السيارات خلى الاسامى زى الصيانه»; no board draws it now.
+ * - `name`: the whole name alone, no code — «عاوز الاسم بتاع السواق كامل وشيل الكود»; the code
+ *   on hover (maintenance, odometer).
+ * Every look takes the driver card on the name — «اقف على اسم السواق يجيب الاسم كامل والكود ورقم
+ * الفون والعربيه اللى متعين عليها والفرع» — which is where «the code on hover» now lives.
  */
-export type DriverLook = 'identity' | 'person' | 'short';
+export type DriverLook = 'identity' | 'person' | 'name';
 
 const DriverLookView = ({
   look,
@@ -138,18 +159,20 @@ const DriverLookView = ({
   code,
   nameClassName,
   muted = false,
+  trigger,
 }: {
   look: DriverLook;
   name: string;
   code: string | null;
   nameClassName?: string;
   muted?: boolean;
+  trigger?: DriverCardTriggerProps;
 }): JSX.Element => {
   const codeShown = code !== null && code !== '';
   const mono = 'font-mono font-bold';
   if (look === 'person') {
     return (
-      <span className="inline-flex min-w-0 items-center gap-2" title={name}>
+      <span className="inline-flex min-w-0 items-center gap-2" {...nameHover(trigger, name)}>
         <span
           aria-hidden
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-700 dark:text-sky-300"
@@ -187,25 +210,20 @@ const DriverLookView = ({
       </span>
     );
   }
-  if (look === 'short') {
-    const words = name.trim().split(/\s+/u);
-    const short = words.length > 2 ? `${words[0]} ${words[words.length - 1]}` : name;
+  if (look === 'name') {
+    // The WHOLE name, wrapped onto a second line rather than cut — the reader asked for all of it.
+    // No size of its own: it reads at the table's, which on the two boards that draw it is the
+    // alarms board's — «الخط … زى شاشة انذار الصيانه فى كل العواميد».
     return (
-      <span className="inline-flex flex-col items-center gap-0.5" title={name}>
-        <span
-          className={cn(
-            'whitespace-nowrap text-[15px] font-extrabold',
-            muted && 'text-slate-500',
-            nameClassName,
-          )}
-        >
-          {short}
-        </span>
-        {codeShown && (
-          <span dir="ltr" className={cn(mono, 'text-[11px] tracking-wide text-slate-500')}>
-            {code}
-          </span>
+      <span
+        {...nameHover(trigger, codeShown ? `${name} — ${code}` : name)}
+        className={cn(
+          'inline-block max-w-[15rem] whitespace-normal text-center font-extrabold leading-snug',
+          muted && 'text-slate-500',
+          nameClassName,
         )}
+      >
+        {name}
       </span>
     );
   }
@@ -215,9 +233,13 @@ const DriverLookView = ({
       code={code}
       muted={muted}
       {...(nameClassName === undefined ? {} : { nameClassName })}
+      {...(trigger === undefined ? {} : { trigger })}
     />
   );
 };
+
+/** No card: a name Fleet does not know. */
+const NO_PEOPLE: readonly FleetPersonDto[] = [];
 
 /**
  * A DRIVER cell on a board's row. The person Fleet knows, by id; or — on a row from the old books
@@ -236,20 +258,30 @@ export const DriverCell = ({
   look?: DriverLook;
 }): JSX.Element => {
   const person = useEmployeeRecord(employeeId ?? '');
-  if (employeeId !== null && person !== undefined && person.fullNameAr !== '') {
+  const known =
+    employeeId !== null && person !== undefined && person.fullNameAr !== '' ? person : undefined;
+  // The card for the person Fleet knows; the old books' names and unknown ids get none.
+  const { triggerProps, card } = useDriverHoverCard(known === undefined ? NO_PEOPLE : [known]);
+  if (known !== undefined) {
     return (
-      <DriverLookView
-        look={look}
-        name={person.fullNameAr}
-        code={person.code}
-        {...(nameClassName === undefined ? {} : { nameClassName })}
-      />
+      <>
+        <DriverLookView
+          look={look}
+          name={known.fullNameAr}
+          code={known.code}
+          trigger={triggerProps}
+          {...(nameClassName === undefined ? {} : { nameClassName })}
+        />
+        {card}
+      </>
     );
   }
   if (employeeId !== null) {
-    // Somebody the roster does not carry (or not yet loaded): the id's tail, as before.
+    // Somebody the roster does not carry (or not yet loaded): the id's tail, as before. On the two
+    // boards that draw whole names it reads at the row's own type, as the names around it do — no
+    // size and no `font-mono` of its own, which the table's laptop rule would shrink to 12.5px.
     return (
-      <span className="font-mono text-xs text-slate-400" dir="ltr">
+      <span className={cn('text-slate-400', look !== 'name' && 'font-mono text-xs')} dir="ltr">
         {employeeId.slice(-8)}
       </span>
     );
@@ -532,6 +564,10 @@ export const DriverPicker = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const matches = useRosterMatches(term);
   const picked = useEmployeeRecord(value);
+  // The picked driver's card, on hover only: the box owns the focus and Enter opens the list.
+  const pickedCard = useDriverHoverCard(picked === undefined ? NO_PEOPLE : [picked], {
+    focusable: false,
+  });
   /** The list closed from inside it: the focus goes back to the box, not to the page. */
   const backToBox = (): void => comboRef.current?.focus();
   const listId = useListId();
@@ -588,7 +624,14 @@ export const DriverPicker = ({
         )}
       >
         {picked !== undefined ? (
-          <DriverIdentity name={picked.fullNameAr} code={picked.code} />
+          <>
+            <DriverIdentity
+              name={picked.fullNameAr}
+              code={picked.code}
+              trigger={pickedCard.triggerProps}
+            />
+            {pickedCard.card}
+          </>
         ) : value !== '' ? (
           <span className="font-mono text-xs text-slate-400" dir="ltr">
             {value.slice(-8)}

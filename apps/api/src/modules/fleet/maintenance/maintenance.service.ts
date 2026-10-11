@@ -415,21 +415,30 @@ class FleetMaintenanceService {
     // A counter this edit writes is held to the same «not below the last reading» rule.
     // Only a counter this edit CHANGES — a visit the old book left below the chain can still have
     // its other facts corrected.
-    if (input.odometerAtService != null && input.odometerAtService !== before.odometerAtService) {
+    //
+    // And only on a visit that HAS a car: one kept from the old book for a car the registry does
+    // not have is on no chain, and `String(null)` is no vehicle id — the look-up threw on it.
+    const vehicleId = before.vehicleId == null ? null : String(before.vehicleId);
+    if (
+      vehicleId !== null &&
+      input.odometerAtService != null &&
+      input.odometerAtService !== before.odometerAtService
+    ) {
       await this.assertNotBelowLast(
-        String(before.vehicleId),
+        vehicleId,
         inDate,
         input.odometerAtService,
         'body.odometerAtService',
       );
     }
     if (
+      vehicleId !== null &&
       input.exitOdometer != null &&
       input.exitOdometer !== before.exitOdometer &&
       before.outDate !== null
     ) {
       await this.assertNotBelowLast(
-        String(before.vehicleId),
+        vehicleId,
         before.outDate,
         input.exitOdometer,
         'body.exitOdometer',

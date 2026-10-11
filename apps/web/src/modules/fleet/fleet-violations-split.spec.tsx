@@ -74,6 +74,7 @@ const catalogItem = (
   countsForAlarm: false,
   sortOrder: null,
   violationSide,
+  licenseExpenseKind: null,
   isActive: true,
   version: 0,
   createdAt: '2026-01-01T00:00:00.000Z',

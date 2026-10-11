@@ -48,13 +48,14 @@ import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
+import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { odometerRange, widerRange } from '../lib/odometer-range';
 import { DriverCell } from '../components/DriverPerson';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
-import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -104,12 +105,31 @@ const FIGURE = cn('whitespace-nowrap', NUM);
 /** An empty cell, as the boards draw one. */
 const DASH = <span className="text-slate-400">—</span>;
 
+/**
+ * The address bar, less an order by the EVENING driver. «شاشه عدادات السيارات خلى الاسامى زى
+ * الصيانه» stacked the two shifts in one column, and that driver's arrow went with its own; the
+ * sort is one of the remembered filters, so kept, it would order the board by a column no header
+ * shows, with no arrow to turn it off. The rest of the order stands — the maintenance board's
+ * `withoutExitDriverOrder`, for this board's second seat.
+ */
+const withoutEveningDriverOrder = (sp: URLSearchParams): URLSearchParams => {
+  const sorts = chosenSorts(sp.get('sort'));
+  if (!sorts.some((entry) => entry.by === 'driver2Name')) return sp;
+  const next = new URLSearchParams(sp);
+  const kept = writeSorts(sorts.filter((entry) => entry.by !== 'driver2Name'));
+  if (kept === null) next.delete('sort');
+  else next.set('sort', kept);
+  return next;
+};
+
 export const OdometerPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [sp, setSp] = useSearchParams();
-  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const [urlSp, setSp] = useSearchParams();
+  useRememberedFilters([urlSp, setSp], REMEMBERED_FILTERS);
+  // Read through `withoutEveningDriverOrder`; the next change the reader makes writes it back clean.
+  const sp = useMemo(() => withoutEveningDriverOrder(urlSp), [urlSp]);
   // The shared query cache, for the export's driver names — see `driverNames` below.
   const queryClient = useQueryClient();
 
@@ -389,7 +409,7 @@ export const OdometerPage = (): JSX.Element => {
 
   // «تحسين شكل البيانات»: the drivers board's table — every value and header CENTRED, a date year
   // first with slashes, every figure in Latin digits with a comma, the car's code bold, an empty
-  // cell a grey dash, and each driver drawn as the drivers board draws one (badge, name, code).
+  // cell a grey dash, and the two shifts' drivers as the maintenance board draws its two legs.
   // The row's actions stay at its end.
   const columns: Column<FleetOdometerLogDto>[] = [
     {
@@ -414,50 +434,48 @@ export const OdometerPage = (): JSX.Element => {
         log.vehicleCode === null ? (
           DASH
         ) : (
-          <span dir="ltr" className={cn('text-sm font-bold', FIGURE)}>
+          // A size over the row, as the alarms board writes the car's code.
+          <span dir="ltr" className={cn('font-bold', FIGURE, ALARMS_CODE_TYPE)}>
             {log.vehicleCode}
           </span>
         ),
     },
-    // TWO COLUMNS, ONE PER SHIFT — «تفصل الصباحى عن المسائى كل واحد فى عمود».
+    // ONE COLUMN, THE TWO SHIFTS ONE UNDER THE OTHER — «شاشه عدادات السيارات خلى الاسامى زى
+    // الصيانه». A reversal of «تفصل الصباحى عن المسائى كل واحد فى عمود», which gave each shift its
+    // own column so each could take an arrow; the maintenance board stacked its two legs since,
+    // and this board now reads the same: the morning driver on top, the evening driver under it.
     //
-    // They were one cell with two captioned lines, which fitted the grid's eleven columns onto a
-    // screen and cost nothing a reader could name. What it did cost is an ORDER: a cell holding
-    // two people has no single value, so «رتب بإسم السائق» had no column to point at. Split, each
-    // shift is its own question and takes its own arrow — and the arrow orders the whole register,
-    // because the name is joined in by the server before the page is cut (`driverNameSorts`).
+    // ONE ARROW, ON THE MORNING DRIVER. The shared table puts one arrow on a header, so the column
+    // orders the whole register by `driver1Name` — the server's join, as before. The evening
+    // driver's arrow went with its column, and an order by it that was remembered or linked is
+    // let go (`withoutEveningDriverOrder`) rather than sorting the board by a column nobody sees.
     //
-    // The tones stay what they were, one per shift, so the two columns still read as the pair they
-    // were when they shared a cell. «اعتمد دى»: each shift in look ج — a person mark, the name in
-    // the shift's tone, a rule, the code faint after it. An empty shift is a dash, never a blank.
+    // As on the maintenance board: no word before a name — the header names the order, and each
+    // shift keeps its TONE (morning amber, evening indigo, as they always were); each driver by the
+    // WHOLE name, wrapped rather than cut, no code on the row (it is on hover). An empty shift is a
+    // dash; a name from the old books that the roster never had stays grey. The Excel file keeps
+    // the two columns: a sheet filters and sorts each shift on its own.
     {
-      key: 'driver1',
+      key: 'drivers',
       align: 'center',
-      header: t('fleet.odometer.columns.driver1'),
+      header: t('fleet.odometer.columns.shiftDrivers'),
       sortable: true,
       sortKey: 'driver1Name',
       render: (log) => (
-        <DriverCell
-          employeeId={log.driver1EmployeeId}
-          name={log.driver1Name}
-          nameClassName="text-amber-700 dark:text-amber-300"
-          look="person"
-        />
-      ),
-    },
-    {
-      key: 'driver2',
-      align: 'center',
-      header: t('fleet.odometer.columns.driver2'),
-      sortable: true,
-      sortKey: 'driver2Name',
-      render: (log) => (
-        <DriverCell
-          employeeId={log.driver2EmployeeId}
-          name={log.driver2Name}
-          nameClassName="text-indigo-700 dark:text-indigo-300"
-          look="person"
-        />
+        <span className="inline-flex flex-col items-center gap-1.5">
+          <DriverCell
+            employeeId={log.driver1EmployeeId}
+            name={log.driver1Name}
+            nameClassName="text-amber-700 dark:text-amber-300"
+            look="name"
+          />
+          <DriverCell
+            employeeId={log.driver2EmployeeId}
+            name={log.driver2Name}
+            nameClassName="text-indigo-700 dark:text-indigo-300"
+            look="name"
+          />
+        </span>
       ),
     },
     {
@@ -472,7 +490,10 @@ export const OdometerPage = (): JSX.Element => {
       // is the fact, and the alarm counts it.
       render: (log) =>
         log.outReading === null ? (
-          <Badge tone="neutral">{t('fleet.odometer.noReading')}</Badge>
+          // The alarms board's pill size, so the state reads as large as the figures around it.
+          <Badge tone="neutral" size="lg">
+            {t('fleet.odometer.noReading')}
+          </Badge>
         ) : (
           figure(LATIN.format(log.outReading))
         ),
@@ -487,7 +508,9 @@ export const OdometerPage = (): JSX.Element => {
         log.outReading === null ? (
           DASH
         ) : log.inReading === null ? (
-          <Badge tone="info">{t('fleet.odometer.openPeriod')}</Badge>
+          <Badge tone="info" size="lg">
+            {t('fleet.odometer.openPeriod')}
+          </Badge>
         ) : (
           figure(LATIN.format(log.inReading))
         ),
@@ -550,7 +573,7 @@ export const OdometerPage = (): JSX.Element => {
               {figure(LATIN.format(alarm.sinceServiceKm))}
               {kmAfter}
             </span>
-            <AlarmBadge level={alarm.level} />
+            <AlarmBadge level={alarm.level} size="lg" />
           </span>
         );
       },
@@ -564,7 +587,9 @@ export const OdometerPage = (): JSX.Element => {
             render: (log: FleetOdometerLogDto) => (
               // The boards' row actions: grey icons, the delete as grey as the rest.
               <span className="flex items-center justify-end gap-1">
-                {can('fleetOdometer.correct') && (
+                {/* A row the old book kept for a car the registry does not have is on no car's
+                    chain, and the server refuses to correct it — so it is not offered. */}
+                {can('fleetOdometer.correct') && log.vehicleId !== null && (
                   <button
                     type="button"
                     className={actionButton}
@@ -614,7 +639,11 @@ export const OdometerPage = (): JSX.Element => {
     <label className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
       <span className="whitespace-nowrap">{t(labelKey)}</span>
       <span className="w-36 lg:flex-1">
-        <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+        <FilterWithIcon
+          icon={FILTER_ICON.calendar}
+          tone="text-cyan-600 dark:text-cyan-400"
+          datePicker={{ label: t(labelKey) }}
+        >
           <Input
             id={id}
             type="date"
@@ -806,6 +835,9 @@ export const OdometerPage = (): JSX.Element => {
             '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
             // «خلى الكلام bold»: every value heavy, the Arabic in Cairo's own bold.
             "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+            // «عاوز الخط بتاع شاشه الصيانه والعدادات زى شاشة انذار الصيانه فى كل العواميد فى
+            // الشاشتين»: the alarms board's type on every column — see `ALARMS_TYPE`.
+            ALARMS_TYPE,
           )}
         >
           <DataTable

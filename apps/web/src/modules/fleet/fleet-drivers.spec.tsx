@@ -351,8 +351,12 @@ const thead = (markup: string): string => {
 /**
  * The thirteen columns the table carries, IN ORDER:
  *
- *   اسم السائق → كود الموظف → الوظيفة → الفرع → العنوان → المحافظة → رقم الموبايل →
+ *   اسم السائق → كود الموظف → الوظيفة → الفرع → رقم الموبايل → المحافظة →
  *   تاريخ التعيين → التخصص → الرخصة → تاريخ الرخصة → صورة الرخصة → إجراءات
+ *
+ * «حط الفون بين الفرع و المحافظه»: the mobile moved up to sit between the branch and the
+ * governorate — the order the filter bar already asks them in. The Excel and print sheet moved it
+ * the same way, after the branch, so the paper reads in the screen's order.
  *
  * «المنطقة» AND «الحالة» ARE DELIBERATELY GONE (owner request), from the table and from the bar
  * alike. Their URL keys and query fields went with them: a remembered filter with no control on
@@ -369,8 +373,8 @@ const REQUIRED_COLUMNS = [
   'fleet.drivers.columns.employeeCode',
   'fleet.drivers.columns.jobTitle',
   'fleet.drivers.columns.branch',
-  'fleet.drivers.columns.governorate',
   'fleet.drivers.columns.phone',
+  'fleet.drivers.columns.governorate',
   'fleet.drivers.columns.hiredAt',
   'fleet.drivers.columns.specialization',
   'fleet.drivers.table.licenseGrade',
@@ -408,6 +412,22 @@ describe('the drivers table shows the thirteen required columns', () => {
         expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
       }
     }
+  });
+
+  it('puts the mobile after the branch on the Excel and print sheet too, as on the screen', () => {
+    // «حط الفون بين الفرع و المحافظه». The sheet carries the address the table dropped; it sits
+    // with the governorate, after the mobile, so the two still read in the screen's order.
+    const source = readFileSync(join(HERE, 'pages/DriversListPage.tsx'), 'utf8');
+    const header = source.slice(
+      source.indexOf('const driverSheet'),
+      source.indexOf('rows: all.map', source.indexOf('const driverSheet')),
+    );
+    const at = (key: string): number => header.indexOf(`t('${key}')`);
+    expect(at('fleet.drivers.columns.branch')).toBeGreaterThan(-1);
+    expect(at('fleet.drivers.columns.phone')).toBeGreaterThan(at('fleet.drivers.columns.branch'));
+    expect(at('fleet.drivers.columns.governorate')).toBeGreaterThan(
+      at('fleet.drivers.columns.phone'),
+    );
   });
 });
 

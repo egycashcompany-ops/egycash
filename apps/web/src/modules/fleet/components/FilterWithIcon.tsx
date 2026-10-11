@@ -2,6 +2,7 @@
 // the charging screen's car filter did — the box itself keeps its text, the icon says what it is.
 import { type ReactNode } from 'react';
 import { cn } from '../../../shared/lib/cn';
+import { CalendarButton, HIDE_NATIVE_PICKER, type DatePicker } from './DateBox';
 import { BoardIcon, PATH } from './FuelCardBoard';
 
 export const FILTER_ICON = {
@@ -45,17 +46,23 @@ export const FILTER_ICON = {
 /**
  * A filter with its icon. The icon sits over the control's start edge and the control's text is
  * pushed past it — the box keeps its size, its value and its list.
+ *
+ * Given `datePicker`, the icon is a button (a date box's only calendar once the white one is
+ * hidden); without it the icon is a picture the clicks pass through to the control under it.
  */
 export const FilterWithIcon = ({
   icon,
   tone = 'text-slate-500 dark:text-slate-400',
   className,
+  datePicker,
   children,
 }: {
   icon: readonly string[];
   /** The icon's colour. */
   tone?: string;
   className?: string;
+  /** This filter is a date box: our calendar opens it, the browser's is hidden (`DateBox`). */
+  datePicker?: DatePicker;
   children: ReactNode;
 }): JSX.Element => (
   <div
@@ -64,14 +71,32 @@ export const FilterWithIcon = ({
       // The control's own text starts after the icon — the trigger of a list, or a typed box. On
       // the PAGE's start side: a code or a chassis box is written left to right inside an Arabic
       // page, so its own «start» is the wrong side for the icon.
-      'rtl:[&_button[aria-haspopup]]:!pr-6 ltr:[&_button[aria-haspopup]]:!pl-6',
-      'rtl:[&>input]:!pr-6 rtl:[&>input]:!pl-1.5 ltr:[&>input]:!pl-6 ltr:[&>input]:!pr-1.5',
+      //
+      // Doubled (`&&`) so the gutter outranks a bar's own padding for its boxes: the dark bar's
+      // 1024–1279 `[&_input]:!px-1.5` is just as specific as a single `&` and comes later, and
+      // took the gap away from every icon filter — the icon over the plate's text, over the
+      // notices' «من», over a date's first digit. Nowhere else does anything compete with it.
+      'rtl:[&&_button[aria-haspopup]]:!pr-6 ltr:[&&_button[aria-haspopup]]:!pl-6',
+      'rtl:[&&>input]:!pr-6 rtl:[&&>input]:!pl-1.5 ltr:[&&>input]:!pl-6 ltr:[&&>input]:!pr-1.5',
+      datePicker !== undefined && HIDE_NATIVE_PICKER,
       className,
     )}
   >
     {children}
-    <span className="pointer-events-none absolute start-0 top-0 z-[1] flex h-9 items-center ps-2">
-      <BoardIcon d={icon} className={cn('h-3.5 w-3.5', tone)} />
-    </span>
+    {datePicker === undefined ? (
+      <span className="pointer-events-none absolute start-0 top-0 z-[1] flex h-9 items-center ps-2">
+        <BoardIcon d={icon} className={cn('h-3.5 w-3.5', tone)} />
+      </span>
+    ) : (
+      // The button is exactly the box's 24px icon gutter (6 + 2 + 14 + 2), its icon where the
+      // picture had it (8px in), so it never covers the date's text.
+      <CalendarButton
+        {...datePicker}
+        icon={icon}
+        tone={tone}
+        className="top-0 h-9 ps-1.5"
+        iconClassName="h-3.5 w-3.5"
+      />
+    )}
   </div>
 );

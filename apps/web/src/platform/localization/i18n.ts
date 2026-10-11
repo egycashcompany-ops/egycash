@@ -379,6 +379,8 @@ const en: Record<string, string> = {
   'common.close': 'Close',
   'common.photo.camera': 'Take a photo',
   'common.photo.device': 'Choose from device',
+  // The coloured calendar on a date box, which opens its picker — named with the box it opens.
+  'common.datePicker.open': 'Pick a date: {{label}}',
 
   // FIX-2 — the reveal control and the live requirement checklist. The rule labels are driven by
   // `PASSWORD_RULES` in the contracts, so a rule added there without a label fails a test here.
@@ -3992,6 +3994,11 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.columns.amount': 'Amount',
   'fleet.licenseExpenses.columns.count': 'Count',
   'fleet.licenseExpenses.columns.cars': 'Vehicles',
+  'fleet.licenseExpenses.columns.carsCount': 'Number of vehicles',
+  // «مش عاوز رقم اللوحة يظهر الكود بس»: a car with no registry code is counted, never shown by plate.
+  'fleet.licenseExpenses.unregisteredMore': '+{{count}} unregistered',
+  'fleet.licenseExpenses.unregisteredCount': '{{count}} unregistered',
+  'fleet.licenseExpenses.unregistered': 'unregistered',
   'fleet.licenseExpenses.paidBy.visa': 'Card',
   'fleet.licenseExpenses.paidBy.cash': 'Cash',
   'fleet.licenseExpenses.receipt.yes': 'Receipt available',
@@ -4005,6 +4012,12 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.signatures.generalManager': 'Executive general manager',
   'fleet.licenseExpenses.preview': 'The memo as it will print',
   'fleet.licenseExpenses.count': '{{count}} memos',
+  'fleet.licenseExpenses.group.visa': 'Paid by the traffic department card',
+  'fleet.licenseExpenses.group.cash': 'Paid in cash',
+  'fleet.licenseExpenses.template.apply': 'Apply template',
+  'fleet.licenseExpenses.template.applyHint': 'Replace this group with its saved template',
+  'fleet.licenseExpenses.template.save': 'Save as template',
+  'fleet.licenseExpenses.template.savedToast': 'Template saved',
   'fleet.licenseExpenses.editTitle': 'Edit licensing expenses memo',
   'fleet.licenseExpenses.savedToast': 'Memo saved',
   'fleet.licenseExpenses.deletedToast': 'Memo deleted',
@@ -4021,9 +4034,42 @@ const en: Record<string, string> = {
   'fleet.attendance.form.sections.driverPeriod': 'Driver and period',
   'fleet.attendance.form.sections.details': 'Reason and notes',
   'fleet.receipts.form.sections.receipt': 'Receipt details',
+  'fleet.licenseExpenses.linkedToListToast': 'Already on the list — the line is linked to it',
   'fleet.licenseExpenses.stats.memos': 'Memos',
   'fleet.licenseExpenses.stats.memoUnit': 'memos',
   'fleet.licenseExpenses.stats.cars': 'Vehicles',
+  // «إعداد النماذج» — the templates, the names and «يظهر في», set up once for every new memo.
+  'fleet.licenseExpenses.setup.button': 'Set up the templates',
+  'fleet.licenseExpenses.setup.title': 'Licensing expenses — template set-up',
+  'fleet.licenseExpenses.setup.subtitle':
+    'What every new memo starts with — the templates, the names, and which memo each item shows in',
+  'fleet.licenseExpenses.setup.back': '→ Back to licensing expenses',
+  'fleet.licenseExpenses.setup.save': 'Save the set-up',
+  'fleet.licenseExpenses.setup.savedToast': 'The set-up was saved.',
+  'fleet.licenseExpenses.setup.staleToast':
+    'The set-up was saved elsewhere since this page opened — the latest one is shown now. Review it and save again.',
+  'fleet.licenseExpenses.setup.preview': 'The memo with the defaults — exactly as it prints',
+  'fleet.licenseExpenses.setup.templateTitle': '{{kind}} template',
+  'fleet.licenseExpenses.setup.templateHint':
+    'The lines every new {{kind}} memo starts with — card and cash, each in its own group.',
+  'fleet.licenseExpenses.setup.signaturesHint':
+    'Every new memo starts with these names; they can still be changed in the memo itself.',
+  'fleet.licenseExpenses.setup.itemsTitle': 'Items — shows in',
+  'fleet.licenseExpenses.setup.itemsHint':
+    'Which memo offers each item’s counter. The same choice as in Fleet catalogs: a change here shows there.',
+  'fleet.licenseExpenses.setup.itemsLocked': 'Changed by whoever manages the Fleet catalogs.',
+  'fleet.licenseExpenses.setup.itemsEmpty': 'No items on the list yet.',
+  'fleet.licenseExpenses.setup.itemSavedToast': 'Saved — Fleet catalogs show it too.',
+  // «عاوز اقدر اضيف بند فى اعدادات النماذج»: a new item, added on the set-up itself.
+  'fleet.licenseExpenses.setup.newItem': 'New item',
+  'fleet.licenseExpenses.setup.newItemShowsIn': 'Shows in',
+  'fleet.licenseExpenses.setup.newItemAdd': 'Add',
+  'fleet.licenseExpenses.setup.newItemEmpty': 'Write the item’s name first.',
+  'fleet.licenseExpenses.setup.newItemAddedToast': '“{{name}}” was added — Fleet catalogs show it too.',
+  'fleet.licenseExpenses.setup.newItemExistsToast':
+    '“{{name}}” is already on the list — it is highlighted; set where it shows on its own row.',
+  'fleet.licenseExpenses.setup.newItemArchivedToast':
+    '“{{name}}” is already on Fleet catalogs, archived — restore it there rather than adding it twice.',
   'fleet.pager.showing.before': 'Showing',
   'fleet.pager.showing.of': 'of',
   'fleet.pager.perPage': 'Rows per page',
@@ -4462,6 +4508,9 @@ const en: Record<string, string> = {
   'fleet.drivers.columns.licenseImage': 'License image',
   'fleet.drivers.columns.area': 'Area',
   'fleet.drivers.columns.status': 'Status',
+  // The driver card a hovered name opens. The code, phone and branch lines reuse the columns'
+  // words above; the car is today's roster, so the label says «today».
+  'fleet.drivers.card.vehicle': 'Assigned car today',
   'fleet.drivers.areaPlaceholder': 'Area',
   'fleet.drivers.phonePlaceholder': 'Mobile',
   'fleet.drivers.filters.employee': 'Driver name or employee code',
@@ -4604,6 +4653,9 @@ const en: Record<string, string> = {
   'fleet.odometer.columns.driver1': 'First driver (morning)',
   'fleet.odometer.columns.driver2': 'Second driver (evening)',
   'fleet.odometer.columns.driver': 'Driver',
+  // The two shifts stacked in one column, as the workshop's two legs are — the header says which
+  // line is which, since no word stands before a name.
+  'fleet.odometer.columns.shiftDrivers': 'Driver (morning / evening)',
   // The two seats, short enough to sit in front of a name inside one cell.
   'fleet.odometer.driverShift.morning': 'Morning',
   'fleet.odometer.driverShift.evening': 'Evening',
@@ -4661,6 +4713,7 @@ const en: Record<string, string> = {
   'fleet.maintenance.sparePartsHint': 'Chosen from the spare-parts catalog',
   'fleet.maintenance.fields.driverIn': 'Driver in',
   'fleet.maintenance.fields.driverOut': 'Driver out',
+  'fleet.maintenance.fields.drivers': 'Driver (in / out)',
   'fleet.maintenance.fields.takenInBy': 'Checked in by',
   'fleet.maintenance.fields.takenOutBy': 'Checked out by',
   'fleet.maintenance.fields.exitOdometer': 'Counter at check-out',
@@ -5168,6 +5221,8 @@ const en: Record<string, string> = {
   'fleet.odometer.sameAsPrevious':
     'Same as the last reading — this records a period of 0 km. Correct if the vehicle did not move.',
   'fleet.catalogs.fields.violationSide': 'Filed by',
+  'fleet.catalogs.fields.licenseExpenseKind': 'Shows in',
+  'fleet.catalogs.licenseExpenseKind.both': 'Both',
   'fleet.catalogs.fields.isActive': 'Active',
   'fleet.catalogs.countsBadge': 'Resets alarm baseline',
   'fleet.catalogs.active': 'Active',
@@ -8200,6 +8255,8 @@ const ar: Record<string, string> = {
   'common.close': 'إغلاق',
   'common.photo.camera': 'تصوير بالكاميرا',
   'common.photo.device': 'اختيار من الجهاز',
+  // التقويم الملوّن في خانة التاريخ، يفتح منتقي التاريخ — ومعه اسم الخانة التي يفتحها.
+  'common.datePicker.open': 'اختيار التاريخ: {{label}}',
 
   // FIX-2 — زر الإظهار وقائمة المتطلبات الحيّة
   'common.password.show': 'إظهار كلمة المرور',
@@ -11776,6 +11833,11 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.columns.amount': 'القيمة',
   'fleet.licenseExpenses.columns.count': 'العدد',
   'fleet.licenseExpenses.columns.cars': 'السيارات',
+  'fleet.licenseExpenses.columns.carsCount': 'عدد السيارات',
+  // «+٢» kept left-to-right in an Arabic line, or the plus lands after the figure («2+»).
+  'fleet.licenseExpenses.unregisteredMore': '\u2066+{{count}}\u2069 غير مسجلة',
+  'fleet.licenseExpenses.unregisteredCount': '{{count}} غير مسجلة',
+  'fleet.licenseExpenses.unregistered': 'غير مسجلة',
   'fleet.licenseExpenses.paidBy.visa': 'فيزا',
   'fleet.licenseExpenses.paidBy.cash': 'نقدي',
   'fleet.licenseExpenses.receipt.yes': 'متوافر إيصال',
@@ -11789,6 +11851,12 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.signatures.generalManager': 'المدير العام التنفيذي',
   'fleet.licenseExpenses.preview': 'المذكرة كما ستُطبع',
   'fleet.licenseExpenses.count': '{{count}} مذكرة',
+  'fleet.licenseExpenses.group.visa': 'ما تم صرفه بفيزا إدارة الحركة',
+  'fleet.licenseExpenses.group.cash': 'ما تم صرفه نقدًا',
+  'fleet.licenseExpenses.template.apply': 'تطبيق النموذج',
+  'fleet.licenseExpenses.template.applyHint': 'استبدال بنود هذا الجزء بالنموذج المحفوظ',
+  'fleet.licenseExpenses.template.save': 'حفظ كنموذج',
+  'fleet.licenseExpenses.template.savedToast': 'تم حفظ النموذج',
   'fleet.licenseExpenses.editTitle': 'تعديل مذكرة مصروفات التراخيص',
   'fleet.licenseExpenses.savedToast': 'تم حفظ المذكرة',
   'fleet.licenseExpenses.deletedToast': 'تم حذف المذكرة',
@@ -11805,9 +11873,40 @@ const ar: Record<string, string> = {
   'fleet.attendance.form.sections.driverPeriod': 'السائق والفترة',
   'fleet.attendance.form.sections.details': 'السبب والملاحظات',
   'fleet.receipts.form.sections.receipt': 'بيانات الإيصال',
+  'fleet.licenseExpenses.linkedToListToast': 'البند موجود في القائمة — تم ربط السطر به',
   'fleet.licenseExpenses.stats.memos': 'عدد المذكرات',
   'fleet.licenseExpenses.stats.memoUnit': 'مذكرة',
   'fleet.licenseExpenses.stats.cars': 'السيارات',
+  'fleet.licenseExpenses.setup.button': 'إعداد النماذج',
+  'fleet.licenseExpenses.setup.title': 'إعداد نماذج مصروفات التراخيص',
+  'fleet.licenseExpenses.setup.subtitle':
+    'ما تبدأ به كل مذكرة جديدة — النماذج والأسماء والمذكرة التي يظهر فيها كل بند',
+  'fleet.licenseExpenses.setup.back': '→ رجوع إلى مصروفات التراخيص',
+  'fleet.licenseExpenses.setup.save': 'حفظ الإعداد',
+  'fleet.licenseExpenses.setup.savedToast': 'تم حفظ الإعداد.',
+  'fleet.licenseExpenses.setup.staleToast':
+    'حُفظ الإعداد من مكان آخر بعد فتح هذه الصفحة — المعروض الآن هو آخر إعداد محفوظ. راجعه ثم احفظ من جديد.',
+  'fleet.licenseExpenses.setup.preview': 'شكل المذكرة بالقيم الافتراضية — كما تُطبع بالضبط',
+  'fleet.licenseExpenses.setup.templateTitle': 'نموذج {{kind}}',
+  'fleet.licenseExpenses.setup.templateHint':
+    'البنود التي تبدأ بها كل مذكرة {{kind}} جديدة — ما يُصرف بالفيزا وما يُصرف نقدًا، كلٌّ في جزئه.',
+  'fleet.licenseExpenses.setup.signaturesHint':
+    'تبدأ كل مذكرة جديدة بهذه الأسماء، ويمكن تغييرها في المذكرة نفسها.',
+  'fleet.licenseExpenses.setup.itemsTitle': 'البنود — يظهر في',
+  'fleet.licenseExpenses.setup.itemsHint':
+    'في أي مذكرة يظهر عدّاد كل بند. هو نفس الاختيار الموجود في «قوائم الحركة»: ما يتغير هنا يظهر هناك.',
+  'fleet.licenseExpenses.setup.itemsLocked': 'يغيّره من يدير «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.itemsEmpty': 'لا توجد بنود في القائمة بعد.',
+  'fleet.licenseExpenses.setup.itemSavedToast': 'تم الحفظ — ويظهر كذلك في «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.newItem': 'بند جديد',
+  'fleet.licenseExpenses.setup.newItemShowsIn': 'يظهر في',
+  'fleet.licenseExpenses.setup.newItemAdd': 'إضافة',
+  'fleet.licenseExpenses.setup.newItemEmpty': 'اكتب اسم البند أولًا.',
+  'fleet.licenseExpenses.setup.newItemAddedToast': 'تمت إضافة «{{name}}» — ويظهر كذلك في «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.newItemExistsToast':
+    '«{{name}}» موجود بالفعل في القائمة — تم تمييزه، واختر أين يظهر من صفّه.',
+  'fleet.licenseExpenses.setup.newItemArchivedToast':
+    '«{{name}}» موجود في «قوائم الحركة» لكنه مؤرشف — أعد تفعيله من هناك بدل إضافته مرة ثانية.',
   'fleet.pager.showing.before': 'عرض',
   'fleet.pager.showing.of': 'من أصل',
   'fleet.pager.perPage': 'الصفوف بالصفحة',
@@ -12240,6 +12339,7 @@ const ar: Record<string, string> = {
   'fleet.drivers.columns.licenseImage': 'صورة الرخصة',
   'fleet.drivers.columns.area': 'المنطقة',
   'fleet.drivers.columns.status': 'الحالة',
+  'fleet.drivers.card.vehicle': 'السيارة المعيّنة اليوم',
   'fleet.drivers.areaPlaceholder': 'المنطقة',
   'fleet.drivers.phonePlaceholder': 'الموبايل',
   'fleet.drivers.filters.employee': 'اسم السائق أو كود الموظف',
@@ -12383,6 +12483,7 @@ const ar: Record<string, string> = {
   'fleet.odometer.columns.driver1': 'اسم السائق الأول (صباحي)',
   'fleet.odometer.columns.driver2': 'اسم السائق الثاني (مسائي)',
   'fleet.odometer.columns.driver': 'اسم السائق',
+  'fleet.odometer.columns.shiftDrivers': 'السائق (صباحي / مسائي)',
   'fleet.odometer.driverShift.morning': 'صباحي',
   'fleet.odometer.driverShift.evening': 'مسائي',
   'fleet.odometer.emptyMonth.title':
@@ -12437,6 +12538,7 @@ const ar: Record<string, string> = {
   'fleet.maintenance.sparePartsHint': 'تُختار من كتالوج قطع الغيار',
   'fleet.maintenance.fields.driverIn': 'سائق الدخول',
   'fleet.maintenance.fields.driverOut': 'سائق الخروج',
+  'fleet.maintenance.fields.drivers': 'السائق (دخول / خروج)',
   'fleet.maintenance.fields.takenInBy': 'دخل بواسطة',
   'fleet.maintenance.fields.takenOutBy': 'خرج بواسطة',
   'fleet.maintenance.fields.exitOdometer': 'عداد الخروج من الصيانة',
@@ -12953,6 +13055,8 @@ const ar: Record<string, string> = {
   'fleet.odometer.sameAsPrevious':
     'مطابقة لآخر قراءة — ستُسجَّل فترة بـ ٠ كم. وهذا صحيح إذا لم تتحرك السيارة.',
   'fleet.catalogs.fields.violationSide': 'تُسجَّل على',
+  'fleet.catalogs.fields.licenseExpenseKind': 'يظهر في',
+  'fleet.catalogs.licenseExpenseKind.both': 'كليهما',
   'fleet.catalogs.fields.isActive': 'نشط',
   'fleet.catalogs.countsBadge': 'يصفّر أساس الإنذار',
   'fleet.catalogs.active': 'نشط',

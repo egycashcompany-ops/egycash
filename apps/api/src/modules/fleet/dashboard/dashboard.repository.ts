@@ -201,12 +201,22 @@ class FleetDashboardRepository {
       vehicleId: Types.ObjectId;
       occurredAt: Date;
       culprit: string | null;
+      culpritEmployeeId: Types.ObjectId | null;
+      culpritEmployeeIds?: Types.ObjectId[];
       status: string;
     }[]
   > {
     return FleetAccidentModel.find(
       { isDeleted: false, occurredAt: { $gte: from, $lt: to }, ...match },
-      { vehicleId: 1, occurredAt: 1, culprit: 1, status: 1 },
+      // The culprits' ids ride along for the driver card on the dashboard's strip.
+      {
+        vehicleId: 1,
+        occurredAt: 1,
+        culprit: 1,
+        culpritEmployeeId: 1,
+        culpritEmployeeIds: 1,
+        status: 1,
+      },
     )
       .sort({ occurredAt: -1, _id: -1 })
       .limit(limit)
@@ -216,6 +226,8 @@ class FleetDashboardRepository {
           vehicleId: Types.ObjectId;
           occurredAt: Date;
           culprit: string | null;
+          culpritEmployeeId: Types.ObjectId | null;
+          culpritEmployeeIds?: Types.ObjectId[];
           status: string;
         }[]
       >()

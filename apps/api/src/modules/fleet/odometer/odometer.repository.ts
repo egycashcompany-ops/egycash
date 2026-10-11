@@ -152,37 +152,42 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       .exec();
   }
 
-  /** Chain neighbors of an entry, by reading order (correction flow, §4.3). */
+  /**
+   * Chain neighbours of an entry — the row dated just before it and the row dated just after it
+   * (correction and delete flows, §4.3).
+   *
+   * BY DATE, in the same (date, _id) order `findPriorByDate` splices a new reading by, so the row a
+   * correction rewrites is the row `record()` would have closed. It used to be by READING, which is
+   * the same thing only while the book has no typo in it: car 219 carries 118,722 on 29–30 July
+   * where 85,482 → 85,543 was meant, and reading order made the car's OPEN period of 29 September
+   * the «previous» row of that July day — so correcting the typo could close today's open period
+   * on a figure from July. A day is the one thing about a row nobody mistypes into the next car.
+   *
+   * Several rows on one day keep the order they were written in (`_id`), as `findPriorByDate` does.
+   */
   async findNeighbors(
     entry: FleetOdometerLogDoc,
     session?: ClientSession,
   ): Promise<{ prev: FleetOdometerLogDoc | null; next: FleetOdometerLogDoc | null }> {
-    // Strictly-lower / strictly-higher WOULD skip a row that ties this one's value, leaving a
-    // tied pair with no relationship in either direction — so the comparison falls back to `_id`
-    // at equal readings, which is the same total order `NEWEST_FIRST` imposes.
     const base = { vehicleId: entry.vehicleId, isDeleted: false, ...ON_THE_CHAIN };
+    // Strictly-earlier / strictly-later WOULD skip a row on the same day, leaving two rows of one
+    // day with no relationship in either direction — so the comparison falls back to `_id`.
     const lower = {
-      $or: [
-        { outReading: { $lt: entry.outReading } },
-        { outReading: entry.outReading, _id: { $lt: entry._id } },
-      ],
+      $or: [{ date: { $lt: entry.date } }, { date: entry.date, _id: { $lt: entry._id } }],
     };
     const higher = {
-      $or: [
-        { outReading: { $gt: entry.outReading } },
-        { outReading: entry.outReading, _id: { $gt: entry._id } },
-      ],
+      $or: [{ date: { $gt: entry.date } }, { date: entry.date, _id: { $gt: entry._id } }],
     };
     const [prev, next] = await Promise.all([
       this.model
         .findOne({ ...base, ...lower })
-        .sort({ outReading: -1, _id: -1 })
+        .sort({ date: -1, _id: -1 })
         .session(session ?? null)
         .lean<FleetOdometerLogDoc>()
         .exec(),
       this.model
         .findOne({ ...base, ...higher })
-        .sort({ outReading: 1, _id: 1 })
+        .sort({ date: 1, _id: 1 })
         .session(session ?? null)
         .lean<FleetOdometerLogDoc>()
         .exec(),

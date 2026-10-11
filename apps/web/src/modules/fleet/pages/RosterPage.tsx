@@ -61,6 +61,7 @@ import { sortRows } from '../lib/sort-rows';
 import { readList, toggleValue, writeList } from '../../../shared/lib/list-param';
 import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
+import { DateBox } from '../components/DateBox';
 import {
   applyEdit,
   changedRows,
@@ -979,16 +980,19 @@ export const RosterPage = (): JSX.Element => {
               >
                 <ChevronStartIcon className="h-4 w-4" />
               </Button>
-              <Input
-                type="date"
-                aria-label={t('fleet.roster.date')}
-                value={date}
-                onChange={(e) => patch({ date: e.target.value || null })}
-                // `w-auto` alone let the native picker set its own width and sit a pixel or two
-                // off the arrows' baseline; a fixed width and no border of its own keep the three
-                // aligned inside the shell.
-                className="w-[10.5rem] border-0 bg-transparent text-center text-sm font-medium tabular-nums shadow-none focus:ring-0 dark:bg-transparent"
-              />
+              {/* The width is on the frame, which holds the calendar too; the box fills it. */}
+              <DateBox label={t('fleet.roster.date')} className="w-[10.5rem] shrink-0">
+                <Input
+                  type="date"
+                  aria-label={t('fleet.roster.date')}
+                  value={date}
+                  onChange={(e) => patch({ date: e.target.value || null })}
+                  // `w-auto` alone let the native picker set its own width and sit a pixel or two
+                  // off the arrows' baseline; a fixed width and no border of its own keep the three
+                  // aligned inside the shell.
+                  className="w-[10.5rem] border-0 bg-transparent text-center text-sm font-medium tabular-nums shadow-none focus:ring-0 dark:bg-transparent"
+                />
+              </DateBox>
               <Button
                 size="sm"
                 variant="ghost"

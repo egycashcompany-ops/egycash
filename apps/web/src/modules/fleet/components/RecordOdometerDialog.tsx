@@ -31,7 +31,7 @@ import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { OptionalDriverField } from './OptionalDriverField';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
-import { DATE_ICON, DesignField, LOOK, MONO, boxTone, carBoxClass } from './FuelCardDialog';
+import { DesignField, LOOK, MONO, boxTone, carBoxClass } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
 import { FILTER_ICON } from './FilterWithIcon';
 import { ODOMETER_DRIVER_BOX, ODOMETER_NOTE_BOX, ODOMETER_SWAP_BUTTON } from './OdometerFormParts';
@@ -247,8 +247,8 @@ export const RecordOdometerDialog = ({
   // A number reads left to right; held at the box's right edge, clear of the «!» a refused box
   // draws at its left — as the vehicle form's code box is.
   const numberBox = cn(box, MONO, 'text-right');
-  // A date's text starts at the box's left, where a refused box draws its «!».
-  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+  // A date: `DesignField`'s `datePicker` draws its calendar and keeps both its ends clear.
+  const dateBox = cn(box, MONO);
   const vehicleMissing = required.isMissing('vehicle');
 
   return (
@@ -353,6 +353,7 @@ export const RecordOdometerDialog = ({
             label={t('fleet.odometer.fields.date')}
             required
             missing={required.isMissing('date')}
+            datePicker
           >
             <Input
               type="date"

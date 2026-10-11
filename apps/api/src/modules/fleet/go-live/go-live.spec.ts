@@ -99,6 +99,7 @@ describe('the long-running processes are what import the vehicle registry', () =
     'startDriversExtraGoLive',
     'startFuelCardsGoLive',
     'startFuelCardPhotosGoLive',
+    'startReadingsFixGoLive',
   ];
   const cases = LONG_RUNNING.flatMap((path) => STARTERS.map((starter) => [path, starter]));
 
@@ -249,6 +250,29 @@ describe('the long-running processes are what import the vehicle registry', () =
         expect(records(source, mark as string, reason), `${step}: ${reason}`).toBe(true);
       }
     }
+  });
+
+  it('the readings fix for cars 219, 295, 248 and 249 refuses before its claim, writes why, and finishes only clean', () => {
+    const source = code('src/modules/fleet/go-live/readings-fix.ts');
+    const claim = source.indexOf('claimGoLiveRun(READINGS_FIX_GO_LIVE_MARK');
+    expect(claim).toBeGreaterThan(-1);
+    for (const refusal of ['waitForGoLiveRuns(', 'admin === null']) {
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
+    }
+    for (const reason of ['syncs-not-done', 'no-admin']) {
+      expect(source).toMatch(new RegExp(`recordGoLiveRefusal\\(READINGS_FIX_GO_LIVE_MARK,\\s*\\{\\s*reason: '${reason}'`));
+    }
+    // A car that failed leaves the run unfinished, written to the row first, for the next boot.
+    const partial = source.indexOf("'fleet go-live: partial readings fix'");
+    const finish = source.indexOf('finishGoLiveRun(READINGS_FIX_GO_LIVE_MARK');
+    expect(partial).toBeGreaterThan(-1);
+    expect(finish).toBeGreaterThan(partial);
+    expect(source.slice(partial, finish)).toContain('return;');
+    expect(source.slice(0, partial)).toContain('recordGoLiveFailure(READINGS_FIX_GO_LIVE_MARK');
+    expect(source).toMatch(/startReadingsFixGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
+    // Today's reading is the clerk's to record: nothing in the step creates a reading.
+    expect(source).not.toMatch(/FleetOdometerLogModel\.(create|insertMany)|fleetOdometerService\.record/);
   });
 
   it('is skipped under test, or every integration suite imports 209 cars', () => {

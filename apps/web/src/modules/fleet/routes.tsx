@@ -20,6 +20,7 @@
 //   /fleet/notices/setup/:tpl fleetNotice.view             إعداد النماذج
 //   /fleet/license-expenses   fleetLicenseExpense.view     مصروفات التراخيص
 //   /fleet/license-expenses/new fleetLicenseExpense.create (/:id .edit)
+//   /fleet/license-expenses/setup fleetLicenseExpense.edit إعداد النماذج
 //   /fleet/dealership         fleetDealership.view         التوكيل
 //   /fleet/fuel-cards         fleetFuelCard.view           بطاقات الوقود
 //   /fleet/fuel-cards/charging fleetFuelCharge.view        شحن الكروت
@@ -49,6 +50,7 @@ import { LicensingPage } from './pages/LicensingPage';
 import { NoticesPage } from './pages/NoticesPage';
 import { LicenseExpensesPage } from './pages/LicenseExpensesPage';
 import { LicenseExpenseEditorPage } from './pages/LicenseExpenseEditorPage';
+import { LicenseExpenseSetupPage } from './pages/LicenseExpenseSetupPage';
 import { NoticeEditorPage } from './pages/NoticeEditorPage';
 import { NoticeSetupPage } from './pages/NoticeSetupPage';
 import { DealershipPage } from './pages/DealershipPage';
@@ -186,6 +188,14 @@ export default function FleetRoutes(): JSX.Element {
             element={
               <RequirePermission permission="fleetLicenseExpense.view">
                 <LicenseExpensesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="license-expenses/setup"
+            element={
+              <RequirePermission permission="fleetLicenseExpense.edit">
+                <LicenseExpenseSetupPage />
               </RequirePermission>
             }
           />

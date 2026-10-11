@@ -154,6 +154,7 @@ export const AlarmBadge = ({
   noAlarmReason = null,
   reasonDisplay = 'text',
   variant = 'soft',
+  size = 'md',
 }: {
   level: FleetAlarmLevel;
   /** `null` = the alarm was computed, so `level` is the whole answer. */
@@ -176,6 +177,11 @@ export const AlarmBadge = ({
    * tint would have made, which is why the tint went on the cell there.
    */
   reasonDisplay?: 'text' | 'tooltip';
+  /**
+   * The soft pill's size — `Badge`'s. `'lg'` on a table in the alarms board's type (the odometer
+   * log), so the word reads at the size of the figure beside it. The solid pill has its own.
+   */
+  size?: 'md' | 'lg';
 }): JSX.Element => {
   const t = useT();
   if (variant === 'solid') {
@@ -189,20 +195,21 @@ export const AlarmBadge = ({
     return tooltip ? <span title={alarmText(t, level, noAlarmReason)}>{pill}</span> : pill;
   }
   if (level === 'none') {
+    const quiet = (words: string): JSX.Element => (
+      <Badge tone="neutral" size={size}>
+        {words}
+      </Badge>
+    );
     // A computed `none` is a healthy car: it keeps the word it has always had, and says no more.
-    if (noAlarmReason === null) return <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>;
+    if (noAlarmReason === null) return quiet(t('fleet.vehicle.alarmNone'));
     const reason = alarmText(t, level, noAlarmReason);
-    if (reasonDisplay === 'text') return <Badge tone="neutral">{reason}</Badge>;
+    if (reasonDisplay === 'text') return quiet(reason);
     // Wrapped rather than passed to `Badge`: a `title` prop on the design system's pill would
     // widen a component every feature shares, for one screen's layout problem.
-    return (
-      <span title={reason}>
-        <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>
-      </span>
-    );
+    return <span title={reason}>{quiet(t('fleet.vehicle.alarmNone'))}</span>;
   }
   return (
-    <Badge tone={level === 'red' ? 'danger' : 'warning'}>
+    <Badge tone={level === 'red' ? 'danger' : 'warning'} size={size}>
       {t(`fleet.dashboard.level.${level}`)}
     </Badge>
   );

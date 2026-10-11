@@ -30,6 +30,7 @@ import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverName } from '../components/EmployeeName';
+import { DateBox } from '../components/DateBox';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
@@ -264,7 +265,7 @@ export const CustodyPage = (): JSX.Element => {
   };
 
   const dateBound = (labelKey: string, value: string, param: string): JSX.Element => (
-    <span className="relative w-36">
+    <DateBox label={t(labelKey)} className="w-36">
       <Input
         type="date"
         dir="ltr"
@@ -285,7 +286,7 @@ export const CustodyPage = (): JSX.Element => {
           {t(labelKey)}
         </span>
       )}
-    </span>
+    </DateBox>
   );
 
   return (

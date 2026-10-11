@@ -14,6 +14,7 @@ import {
   type CreateFleetLicenseExpense,
   type FleetLicenseExpenseDto,
   type FleetLicenseExpenseSettingsDto,
+  type FleetLicenseExpenseTotalsDto,
   type SaveFleetLicenseExpenseSettings,
   type UpdateFleetLicenseExpense,
   type FleetDealershipInvoiceDto,
@@ -595,6 +596,10 @@ export const listLicenseExpenses = (
   params: FleetListParams,
 ): Promise<Paginated<FleetLicenseExpenseDto>> =>
   getPage<FleetLicenseExpenseDto>(`/fleet/license-expenses${buildQuery(params)}`);
+export const licenseExpenseSummary = (
+  params: FleetListParams,
+): Promise<FleetLicenseExpenseTotalsDto> =>
+  get<FleetLicenseExpenseTotalsDto>(`/fleet/license-expenses/summary${buildQuery(params)}`);
 export const getLicenseExpense = (id: string): Promise<FleetLicenseExpenseDto> =>
   get<FleetLicenseExpenseDto>(`/fleet/license-expenses/${id}`);
 export const createLicenseExpense = (

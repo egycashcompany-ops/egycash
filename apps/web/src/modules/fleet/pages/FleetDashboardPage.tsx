@@ -22,7 +22,9 @@ import { AlertIcon, WrenchIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useFleetDashboard } from '../api/fleet-queries';
-import { type FleetDashboardDto } from '@ecms/contracts';
+import { DriverHoverText } from '../components/DriverHoverCard';
+import { useEmployeeRecords } from '../components/EmployeeName';
+import { type FleetDashboardAccidentDto, type FleetDashboardDto } from '@ecms/contracts';
 
 /**
  * Which of the three faces the screen wears — as a function, not a chain of early returns only.
@@ -108,6 +110,22 @@ const RankRow = ({
     <span className="ms-auto tabular-nums">{formatNumber(km, locale)}</span>
   </li>
 );
+
+/**
+ * Today's accident's culprit as it was written — and, when it was a driver of ours, the driver
+ * card on it, as on the accidents board.
+ */
+const CulpritName = ({ accident }: { accident: FleetDashboardAccidentDto }): JSX.Element => {
+  const people = useEmployeeRecords(accident.culpritEmployeeIds);
+  return (
+    <DriverHoverText
+      people={[...people.values()]}
+      className="min-w-0 flex-1 truncate text-slate-600 dark:text-slate-300"
+    >
+      {accident.culprit ?? '—'}
+    </DriverHoverText>
+  );
+};
 
 export const FleetDashboardPage = (): JSX.Element => {
   const t = useT();
@@ -432,9 +450,7 @@ export const FleetDashboardPage = (): JSX.Element => {
                           <span className="font-mono text-xs" dir="ltr">
                             {a.code}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-slate-600 dark:text-slate-300">
-                            {a.culprit ?? '—'}
-                          </span>
+                          <CulpritName accident={a} />
                         </li>
                       ))}
                     </ul>

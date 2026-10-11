@@ -30,16 +30,7 @@ import {
 import { CatalogSelect } from './CatalogSelect';
 import { counterpartClass, letterFlipped } from '../lib/license-class-flip';
 import { LICENSE_IMAGE_ACCEPT, LicenseImagePreviewDialog } from './VehicleLicenseImage';
-import {
-  CLOSE_PATH,
-  DATE_ICON,
-  DesignField,
-  LOOK,
-  MONO,
-  SANS,
-  Stroke,
-  boxTone,
-} from './FuelCardDialog';
+import { CLOSE_PATH, DesignField, LOOK, MONO, SANS, Stroke, boxTone } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
 
 interface FormState {
@@ -261,8 +252,8 @@ export const VehicleFormDialog = ({
         ? '!border-rose-500/70 !bg-slate-50 shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] dark:!bg-[#0a1233]'
         : '!border-slate-200 !bg-slate-50 dark:!border-[#2b3b6b] dark:!bg-[#0a1233]',
     );
-  // A date's text starts at the box's left, where a refused box draws its «!».
-  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+  // A date: `DesignField`'s `datePicker` draws its calendar and keeps both its ends clear.
+  const dateBox = cn(box, MONO);
   const heading = (text: string, icon: readonly string[]): JSX.Element => (
     <h3 className="flex items-center gap-2 border-b border-slate-200 pb-2 text-[15px] font-bold text-slate-900 dark:border-[#2b3b6b]/60 dark:text-white">
       <Stroke d={[...icon]} className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
@@ -409,6 +400,7 @@ export const VehicleFormDialog = ({
                       label={t('fleet.vehicles.fields.joinedAt')}
                       required
                       missing={required.isMissing('joinedAt')}
+                      datePicker
                     >
                       <Input
                         type="date"
@@ -426,6 +418,7 @@ export const VehicleFormDialog = ({
                           ? t('fleet.vehicles.licenseClassNeedsDate')
                           : undefined
                       }
+                      datePicker
                     >
                       <Input
                         type="date"

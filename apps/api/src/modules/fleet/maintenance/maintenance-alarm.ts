@@ -26,7 +26,8 @@ export interface AlarmInput {
   baselineCounter: number | null;
   baselineDate: Date | null;
   /**
-   * The highest reading the chain already held ON the baseline's own date — the lower half of the
+   * The highest reading the chain already held on the day the baseline COUNTER was taken — the
+   * check-in day for an entry counter, the check-out day for an exit one — the lower half of the
    * odometer bracket, resolved by the caller. `null` when the chain has nothing that early, which
    * constrains nothing rather than meaning zero.
    */
@@ -78,8 +79,8 @@ export const computeAlarm = (input: AlarmInput): AlarmResult => {
   if (input.intervalKm <= 0) return none('noInterval');
   if (input.latestReading === null || input.latestReadingDate === null) return none('noReading');
   if (input.baselineCounter === null || input.baselineDate === null) return none('noService');
-  // The LOWER half of the odometer bracket, applied to the baseline itself: on the day the car
-  // left the workshop the chain already stood at `baselineLowerBound`, and an odometer does not
+  // The LOWER half of the odometer bracket, applied to the baseline itself: on the day that
+  // counter was read the chain already stood at `baselineLowerBound`, and an odometer does not
   // run backwards, so a baseline beneath it was never on this car's sequence. `null` means the
   // chain held nothing that early — no bound, nothing to contradict.
   //
@@ -154,9 +155,13 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
     fleetMaintenanceRepository.alarmBaselines(ids, countingIds),
   ]);
 
-  // Each baseline against the chain AS IT STOOD ON ITS OWN SERVICE DATE — one query for the whole
-  // fleet, not one per car. Only vehicles that actually have a baseline are asked about: a car
-  // with no counting visit has no date to ask on, and `noService` answers it first anyway.
+  // Each baseline against the chain AS IT STOOD ON THE DAY ITS COUNTER WAS TAKEN — one query for
+  // the whole fleet, not one per car. An entry counter is asked on the day the car went IN: it was
+  // read then, and readings taken between check-in and check-out do not make it untrue. It used to
+  // be asked on the check-out day for every counter, which refused 84,080 on car 219 because the
+  // chain had reached 84,189 by the time the visit closed. Only vehicles that actually have a
+  // baseline are asked about: a car with no counting visit has no date to ask on, and `noService`
+  // answers it first anyway.
   // How many days each car ran since its last service with nobody writing the counter — one
   // query for the whole fleet, counted from each car's own service date. See the DTO field.
   const unread = await fleetOdometerRepository.daysWithoutReadingSince(
@@ -169,7 +174,7 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
   const lowerBounds = await fleetOdometerRepository.lowerBoundsAt(
     [...baselines.values()].map((baseline) => ({
       vehicleId: baseline.vehicleId,
-      on: baseline.serviceDate,
+      on: baseline.counterDate,
     })),
   );
 
@@ -194,7 +199,8 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       latestReading: reading?.reading ?? null,
       latestReadingDate: reading?.date ?? null,
       // A service written with no counter (it is optional) is measured from the last odometer
-      // reading on or before its day — the counter the car stood at when it was serviced.
+      // reading on or before its day — the counter the car stood at when it was serviced. With no
+      // counter `counterDate` IS the check-out day, so the stand-in is the reading it left on.
       baselineCounter:
         baseline === null
           ? null

@@ -42,6 +42,7 @@ export const toCatalogItemDto = (doc: FleetCatalogItemDoc): FleetCatalogItemDto 
   name: doc.name,
   countsForAlarm: doc.countsForAlarm,
   violationSide: doc.violationSide,
+  licenseExpenseKind: doc.licenseExpenseKind ?? null,
   isActive: doc.isActive,
   sortOrder: doc.sortOrder ?? null,
   version: doc.__v,

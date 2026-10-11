@@ -36,7 +36,7 @@ import {
 import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
 import { CatalogSelect } from './CatalogSelect';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
-import { DATE_ICON, DesignField, LOOK, MONO, boxTone, carBoxClass } from './FuelCardDialog';
+import { DesignField, LOOK, MONO, boxTone, carBoxClass } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
 
 /** The vehicle form's boxes — text, figures, dates — from the design's `add` look. */
@@ -44,8 +44,8 @@ const box = boxTone(LOOK.add);
 // Right-aligned like the reading forms' boxes: the «!» of a refused or empty box sits at the far
 // (left) end, and a number written from there would run under it.
 const numberBox = cn(box, MONO, 'text-right');
-// A date's text starts at the box's left, where a refused box draws its «!».
-const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+// A date: `DesignField`'s `datePicker` draws its calendar and keeps both its ends clear.
+const dateBox = cn(box, MONO);
 
 /** The rose frame and glow of a required box Save found empty, laid over a control from outside. */
 const MISSING_GLOW =
@@ -462,6 +462,7 @@ export const CheckInDialog = ({
               label={t('fleet.maintenance.fields.inDate')}
               required
               missing={required.isMissing('inDate')}
+              datePicker
             >
               <Input
                 type="date"
@@ -691,6 +692,7 @@ export const CheckOutDialog = ({
             label={t('fleet.maintenance.fields.outDate')}
             required
             missing={required.isMissing('outDate')}
+            datePicker
           >
             <Input
               type="date"
@@ -761,6 +763,10 @@ export const MaintenanceEditDialog = ({
   const [workTypeId, setWorkTypeId] = useState('');
   const notCounting = useNotCountingWarning(workTypeId);
   const [odometer, setOdometer] = useState('');
+  // The counter the car LEFT on — offered once the visit is closed, optional as on check-out. It
+  // is the alarm's baseline, so a figure mistyped at check-out is corrected here, not left to
+  // move the next service.
+  const [exitOdometer, setExitOdometer] = useState('');
   const [driverIn, setDriverIn] = useState('');
   const [partIds, setPartIds] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
@@ -770,6 +776,7 @@ export const MaintenanceEditDialog = ({
       setWorkshopId(visit.workshopId);
       setWorkTypeId(visit.workTypeId);
       setOdometer(visit.odometerAtService === null ? '' : String(visit.odometerAtService));
+      setExitOdometer(visit.exitOdometer == null ? '' : String(visit.exitOdometer));
       // A legacy visit has no driver on file; the field opens empty and stays optional there.
       setDriverIn(visit.driverInEmployeeId ?? '');
       setPartIds(visit.sparePartIds);
@@ -800,6 +807,32 @@ export const MaintenanceEditDialog = ({
     odometer !== '' &&
     (!Number.isInteger(odometerNumber) ||
       (counterChanged && editLast !== null && odometerNumber < editLast));
+
+  // THE EXIT COUNTER, on a closed visit only — an open one has not left yet, and check-out is
+  // where its exit counter is first written. Held to the chain on the day the car LEFT, the day it
+  // was read, as check-out holds it; refused only when this edit CHANGES it, like the entry one.
+  const closed = visit !== null && visit.outDate !== null;
+  const exitBracket = useOdometerBracket(
+    visit?.vehicleId ?? '',
+    visit?.outDate?.slice(0, 10) ?? '',
+    open && closed,
+  );
+  const exitNumber = Number(exitOdometer);
+  const exitValid = exitOdometer !== '' && Number.isInteger(exitNumber) && exitNumber >= 0;
+  const exitChanged =
+    visit !== null &&
+    exitOdometer !== (visit.exitOdometer == null ? '' : String(visit.exitOdometer));
+  // Against the entry counter as THIS edit leaves it — the server checks the same pair.
+  const exitBelowEntry =
+    exitValid && odometer !== '' && Number.isInteger(odometerNumber) && exitNumber < odometerNumber;
+  const exitLast = exitBracket.data?.lowerBound ?? null;
+  const exitBelowLast = exitValid && exitChanged && exitLast !== null && exitNumber < exitLast;
+  const exitWarning = counterWarning(
+    exitOdometer === '' ? null : exitNumber,
+    exitBracket.data ?? null,
+    t,
+    locale,
+  );
   const required = useRequiredFields(
     [
       { key: 'inDate', label: t('fleet.maintenance.fields.inDate'), ok: inDate !== '' },
@@ -807,6 +840,12 @@ export const MaintenanceEditDialog = ({
         key: 'odometer',
         label: t('fleet.maintenance.fields.odometerAtService'),
         ok: !editBelowLast,
+      },
+      // Never required: empty is a valid answer. Only a figure that cannot be true holds Save.
+      {
+        key: 'exitOdometer',
+        label: t('fleet.maintenance.fields.exitOdometer'),
+        ok: !closed || exitOdometer === '' || (exitValid && !exitBelowEntry && !exitBelowLast),
       },
       { key: 'workshop', label: t('fleet.maintenance.fields.workshop'), ok: workshopId !== '' },
       { key: 'workType', label: t('fleet.maintenance.fields.workType'), ok: workTypeId !== '' },
@@ -824,6 +863,9 @@ export const MaintenanceEditDialog = ({
         workTypeId,
         sparePartIds: partIds,
         odometerAtService: odometer === '' ? null : odometerNumber,
+        // Only when this edit changed it, so an untouched visit is saved without re-asking the
+        // chain about a counter nobody touched. Emptied, it is cleared — it is optional.
+        ...(closed && exitChanged ? { exitOdometer: exitOdometer === '' ? null : exitNumber } : {}),
         // Only sent when it says something: the endpoint takes a correction, never a clear.
         ...(driverIn === '' ? {} : { driverInEmployeeId: driverIn }),
         notes: notes.trim() === '' ? null : notes.trim(),
@@ -873,6 +915,7 @@ export const MaintenanceEditDialog = ({
               label={t('fleet.maintenance.fields.inDate')}
               required
               missing={required.isMissing('inDate')}
+              datePicker
             >
               <Input
                 type="date"
@@ -903,6 +946,33 @@ export const MaintenanceEditDialog = ({
                 tone={numberBox}
               />
             </AdvisedField>
+            {closed && (
+              <AdvisedField
+                label={t('fleet.maintenance.fields.exitOdometer')}
+                missing={required.isMissing('exitOdometer')}
+                hint={t('fleet.maintenance.odometerOptional')}
+                error={
+                  exitBelowEntry
+                    ? t('fleet.maintenance.exitBelowEntry')
+                    : exitBelowLast && exitLast !== null
+                      ? t('fleet.maintenance.odometerBelowLast', {
+                          km: formatNumber(exitLast, locale),
+                          date: formatDate(exitBracket.data?.lowerBoundAt ?? null, locale),
+                        })
+                      : undefined
+                }
+                warning={exitBelowEntry || exitBelowLast ? undefined : exitWarning}
+              >
+                <Input
+                  rule="integer"
+                  value={exitOdometer}
+                  onChange={(e) => setExitOdometer(e.target.value)}
+                  error={exitBelowEntry || exitBelowLast}
+                  dir="ltr"
+                  tone={numberBox}
+                />
+              </AdvisedField>
+            )}
             <DesignField
               label={t('fleet.maintenance.fields.workshop')}
               required

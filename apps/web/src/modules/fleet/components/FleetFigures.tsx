@@ -1,7 +1,18 @@
 // The figures behind a board's «الإحصائيات» — a row of single numbers, then lists with how many
 // rows sit in each entry. The vehicles screen's, shared with the notices screen («زى شاشه السيارات»).
+import type { Locale } from '@ecms/contracts';
 import { cn } from '../../../shared/lib/cn';
+import { formatMoneyParts } from '../../../shared/lib/format';
 import { BoardIcon, NUM } from './FuelCardBoard';
+
+/**
+ * A sum of money for a `FigureChip`: the figure in the boards' monospace, «ج.م.» as its unit in the
+ * page's own type — spread straight onto the chip.
+ */
+export const moneyChip = (amount: number, locale: Locale): { value: string; unit: string } => {
+  const { figure, currency } = formatMoneyParts(amount, 'EGP', locale);
+  return { value: figure, unit: currency };
+};
 
 /** One figure across the top: small, one line of words over one number. */
 export const FigureChip = ({

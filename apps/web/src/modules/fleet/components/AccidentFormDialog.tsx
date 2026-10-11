@@ -30,6 +30,7 @@ import { coverDeficit } from '../lib/accident-transfer-plan';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { useFleetPeopleMap } from './EmployeeName';
+import { DateBox } from './DateBox';
 
 export const AccidentFormDialog = ({
   open,
@@ -305,7 +306,13 @@ export const AccidentFormDialog = ({
             required
             missing={required.isMissing('occurredAt')}
           >
-            <Input type="date" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
+            <DateBox label={t('fleet.accidents.fields.occurredAt')}>
+              <Input
+                type="date"
+                value={occurredAt}
+                onChange={(e) => setOccurredAt(e.target.value)}
+              />
+            </DateBox>
           </Field>
         </div>
         {/* ONE field: «المتسبب», and it is the drivers list. Picking somebody writes their NAME

@@ -546,6 +546,8 @@ describe('GET /fleet/dashboard — today strips', () => {
     const row = (after.accidents?.today ?? []).find((a) => a.code === armoredCashOne.code);
     expect(row).toBeDefined();
     expect(row?.culprit).toBe('طرف ثالث');
+    // A third party: no driver of ours behind the name, so the strip draws no driver card on it.
+    expect(row?.culpritEmployeeIds).toEqual([]);
     expect(row?.status).toBe('open');
     expect(after.accidents?.monthCount).toBe(beforeCount + 1);
   });

@@ -809,8 +809,12 @@ describe('the driver panel', () => {
     const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/[^\n]*/g, '');
-    expect(chip, 'the chip reads only the name half of the hook').toContain('const { name } =');
-    expect(chip, 'and never reads the code half').not.toMatch(/\bcode\b/);
+    // The chip reads the person's record — for the driver card it opens on hover — and prints
+    // only the name from it.
+    expect(chip, 'the chip prints only the name of the record').toContain(
+      'const name = person?.fullNameAr ?? null',
+    );
+    expect(chip, 'and never reads the code').not.toMatch(/\bcode\b/);
   });
 
   it('uses the same chip on the vehicle row, so a drag does not change what it looks like', () => {

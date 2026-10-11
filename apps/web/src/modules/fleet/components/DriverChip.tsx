@@ -21,42 +21,59 @@
 // A BLOCK, not an inline pill: in the reference a driver fills the width available to them, in
 // the list and in the cell alike, so the eye scans one column of equal shapes instead of a
 // ragged edge of name-length pills. `truncate` is what keeps that safe for a long name.
+//
+// HOVERED, the chip opens the driver card — «اقف على اسم السواق يجيب الاسم كامل والكود ورقم الفون
+// والعربيه اللى متعين عليها والفرع» — in place of its title. Hover only: the chip is a drag
+// handle, and two hundred of them would be two hundred tab stops; a press or a drag closes it.
 import { cn } from '../../../shared/lib/cn';
-import { useEmployeeName } from './EmployeeName';
+import { useDriverHoverCard } from './DriverHoverCard';
+import { useEmployeeRecord } from './EmployeeName';
 
 export const DriverChip = ({
   employeeId,
   className,
   title,
   size = 'md',
+  card = true,
 }: {
   employeeId: string;
   className?: string;
   title?: string;
   /** `lg` — a board whose job is the names reads them a step bigger. */
   size?: 'md' | 'lg';
+  /** `false` where the chip is an option to pick (the slot picker's list): no card there. */
+  card?: boolean;
 }): JSX.Element => {
-  const { name } = useEmployeeName(employeeId);
+  const person = useEmployeeRecord(employeeId);
+  const name = person?.fullNameAr ?? null;
+  const hover = useDriverHoverCard(card && person !== undefined ? [person] : [], {
+    focusable: false,
+  });
+  const carded = hover.triggerProps['data-driver-hover'] !== undefined;
   return (
-    <span
-      data-driver-chip={employeeId}
-      title={title ?? name ?? employeeId}
-      className={cn(
-        'flex max-w-full items-center justify-center rounded-md bg-green-700 px-2.5',
-        // `lg` WRAPS a long name onto a second line instead of cutting it — the board that asks
-        // for it is the one whose job is reading the names.
-        size === 'lg'
-          ? 'whitespace-normal break-words py-1.5 text-center text-sm leading-snug'
-          : 'truncate py-1 text-xs',
-        'font-medium text-white dark:bg-green-600',
-        className,
-      )}
-    >
-      {name ?? (
-        <span className="font-mono" dir="ltr">
-          {employeeId.slice(-8)}
-        </span>
-      )}
-    </span>
+    <>
+      <span
+        data-driver-chip={employeeId}
+        {...hover.triggerProps}
+        {...(carded && title === undefined ? {} : { title: title ?? name ?? employeeId })}
+        className={cn(
+          'flex max-w-full items-center justify-center rounded-md bg-green-700 px-2.5',
+          // `lg` WRAPS a long name onto a second line instead of cutting it — the board that asks
+          // for it is the one whose job is reading the names.
+          size === 'lg'
+            ? 'whitespace-normal break-words py-1.5 text-center text-sm leading-snug'
+            : 'truncate py-1 text-xs',
+          'font-medium text-white dark:bg-green-600',
+          className,
+        )}
+      >
+        {name ?? (
+          <span className="font-mono" dir="ltr">
+            {employeeId.slice(-8)}
+          </span>
+        )}
+      </span>
+      {hover.card}
+    </>
   );
 };

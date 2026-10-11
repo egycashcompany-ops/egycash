@@ -115,17 +115,31 @@ const FIGURE = cn('whitespace-nowrap', NUM);
 const DASH = <span className="text-slate-400">—</span>;
 
 /**
- * «شاشه انذارات الصيانه كبر الخط»: this board's type a clear size up from the shared board table —
- * values about 16px, headers 14px, a roomier row — on THIS page only, from its own wrapper.
+ * «شاشه انذارات الصيانه كبر الخط»: this board's TYPE a clear size up from the shared board table —
+ * values 16px (17px on a wide screen), headers 14px (15px) — from the table's own wrapper.
+ *
+ * Exported: «عاوز الخط بتاع شاشه الصيانه والعدادات زى شاشة انذار الصيانه فى كل العواميد فى
+ * الشاشتين» — the maintenance and odometer tables put the same sizes on their own wrappers. The
+ * TYPE only, the owner's «الخط»: this board's roomier row and darker headings stay in `BIG_TYPE`,
+ * and the shared board table every other screen draws is not touched.
  *
  * Each selector names `tbody td` / `thead th` rather than the board's bare `td` / `th`, which is
  * one element more specific: the board table's own sizes (and their laptop and wide-screen
  * variants) are `!important` too, so specificity is what decides, not stylesheet order.
  */
+export const ALARMS_TYPE = cn(
+  '[&_tbody_td]:!text-base [&_thead_th]:!text-sm',
+  'min-[1750px]:[&_tbody_td]:!text-[17px] min-[1750px]:[&_thead_th]:!text-[15px]',
+);
+
+/** The car's code on this board: the row's name, a size over the 16px around it. */
+export const ALARMS_CODE_TYPE = 'text-lg min-[1750px]:text-[19px]';
+
+/** This board's type (`ALARMS_TYPE`), and the room it gives a row and a heading. */
 const BIG_TYPE = cn(
-  '[&_tbody_td]:!px-3 [&_tbody_td]:!py-3.5 [&_tbody_td]:!text-base',
-  '[&_thead_th]:!px-3 [&_thead_th]:!py-3 [&_thead_th]:!text-sm',
-  'min-[1750px]:[&_tbody_td]:!py-4 min-[1750px]:[&_tbody_td]:!text-[17px] min-[1750px]:[&_thead_th]:!text-[15px]',
+  ALARMS_TYPE,
+  '[&_tbody_td]:!px-3 [&_tbody_td]:!py-3.5 [&_thead_th]:!px-3 [&_thead_th]:!py-3',
+  'min-[1750px]:[&_tbody_td]:!py-4',
   // The headings a step darker, so the bigger words over the saturated rows still read first.
   '[&_thead_tr_th]:!text-slate-600 dark:[&_thead_tr_th]:!text-slate-300',
 );
@@ -287,11 +301,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       sortable: true,
       header: t('fleet.odometer.columns.vehicle'),
       render: (alarm) => (
-        <span
-          dir="ltr"
-          data-alarm-code="true"
-          className={cn(FIGURE, 'text-lg min-[1750px]:text-[19px]')}
-        >
+        <span dir="ltr" data-alarm-code="true" className={cn(FIGURE, ALARMS_CODE_TYPE)}>
           {alarm.code}
         </span>
       ),

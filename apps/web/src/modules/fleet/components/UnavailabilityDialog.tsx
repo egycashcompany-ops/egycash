@@ -19,17 +19,18 @@ import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/requi
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useRecordUnavailability, useUpdateUnavailability } from '../api/fleet-queries';
 import { DriverIdentity, DriverPicker } from './DriverPerson';
+import { useDriverHoverCard } from './DriverHoverCard';
 import { DRIVER_BOX } from './OptionalDriverField';
 import { useEmployeeRecord } from './EmployeeName';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
-import { DATE_ICON, DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
+import { DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
 import { FILTER_ICON } from './FilterWithIcon';
 
 /** The design's text box, and a date in it — the vehicle form's. */
 const BOX = boxTone(LOOK.add);
-// A date's text starts at the box's left, where a refused box draws its «!».
-const DATE_BOX = cn(BOX, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+// A date: `DesignField`'s `datePicker` draws its calendar and keeps both its ends clear.
+const DATE_BOX = cn(BOX, MONO);
 
 /** A `Textarea` in the design's box — it takes no `tone`, so the box is laid over its base. */
 const NOTE_BOX = cn(
@@ -49,12 +50,17 @@ const FIXED_BOX =
 /** The decided driver: the person the roster knows, or — not (yet) in it — the id's tail. */
 const FixedDriver = ({ employeeId }: { employeeId: string }): JSX.Element => {
   const person = useEmployeeRecord(employeeId);
+  // The driver card on the decided driver, hovered or reached with Tab.
+  const hover = useDriverHoverCard(person === undefined ? [] : [person]);
   return person === undefined ? (
     <span className="font-mono text-xs text-slate-400" dir="ltr">
       {employeeId.slice(-8)}
     </span>
   ) : (
-    <DriverIdentity name={person.fullNameAr} code={person.code} />
+    <>
+      <DriverIdentity name={person.fullNameAr} code={person.code} trigger={hover.triggerProps} />
+      {hover.card}
+    </>
   );
 };
 
@@ -204,6 +210,7 @@ export const UnavailabilityDialog = ({
             label={t('fleet.attendance.fields.from')}
             required
             missing={required.isMissing('from')}
+            datePicker
           >
             <Input
               type="date"
@@ -222,6 +229,7 @@ export const UnavailabilityDialog = ({
                 ? t('fleet.attendance.toBeforeFrom')
                 : undefined
             }
+            datePicker
           >
             <Input
               type="date"

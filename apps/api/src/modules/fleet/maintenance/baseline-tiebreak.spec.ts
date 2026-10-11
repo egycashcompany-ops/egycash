@@ -45,6 +45,20 @@ describe('same-day services are ordered, not guessed', () => {
     );
     expect(body).toContain("outDate: { $first: '$outDate' }");
     expect(body).toContain("visitId: { $first: '$_id' }");
+    // …and so do the two that say which day the counter was read on.
+    expect(body).toContain("inDate: { $first: '$inDate' }");
+    expect(body).toContain("exitOdometer: { $first: '$exitOdometer' }");
+  });
+
+  it('the counter is checked on the day it was TAKEN — out for an exit counter, in for an entry one', () => {
+    // C1: an entry counter checked on the check-out day was refused whenever the car moved between
+    // the two days (car 219). The exit counter keeps the check-out day — that is when it was read —
+    // and a visit with no counter at all keeps it too, because its stand-in is the reading it left on.
+    const body = aggregation();
+    const mapping = body.slice(body.indexOf('counterDate:'));
+    expect(mapping).toMatch(
+      /row\.exitOdometer != null\s*\?\s*row\.outDate\s*:\s*row\.odometerAtService != null\s*\?\s*row\.inDate\s*:\s*row\.outDate/,
+    );
   });
 
   it('the filter still selects only closed, counting, live visits', () => {

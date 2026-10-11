@@ -1,9 +1,9 @@
 // The odometer log, proven against what the screen actually produces.
 //
 // Four claims, each a rule that a typecheck cannot see:
-//   • the ten columns render in the required order, with the two driver slots as separate
-//     columns and every derived number shown as the server gave it — including the open period,
-//     which is a state and not a zero;
+//   • the nine columns render in the required order, with the two shifts' drivers stacked in one
+//     column as the maintenance board stacks its two legs, and every derived number shown as the
+//     server gave it — including the open period, which is a state and not a zero;
 //   • the maintenance column reports the DERIVED distance since service with the design system's
 //     own alarm badge, and says nothing when the projection refused to compute one;
 //   • the filter bar takes several vehicles and several alert levels at once, syncs with the URL,
@@ -39,6 +39,7 @@ import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from './components/CorrectOdometerDialog';
 import { BOARD_TABLE_FILL } from './components/board-scroll';
+import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './pages/MaintenanceAlarmsPage';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
 // tree in place is enough to read what the dialog produces.
@@ -226,14 +227,13 @@ const REQUIRED_COLUMNS = [
   // date.
   'fleet.odometer.fields.date',
   'fleet.odometer.columns.vehicle',
-  // ONE COLUMN PER SHIFT — «تفصل الصباحى عن المسائى كل واحد فى عمود».
+  // ONE COLUMN, THE TWO SHIFTS ONE UNDER THE OTHER — «شاشه عدادات السيارات خلى الاسامى زى
+  // الصيانه».
   //
-  // A REVERSAL, and worth saying so: the two used to share a cell, on the owner's own earlier
-  // instruction that this grid read like the maintenance one. What the shared cell could not do
-  // is take an arrow — a cell holding two people has no single value to order a register by —
-  // and that is what the owner asked for next. Both screens are split now, both for that reason.
-  'fleet.odometer.columns.driver1',
-  'fleet.odometer.columns.driver2',
+  // A REVERSAL of a reversal, and worth saying so: the two shared a cell first, were split by
+  // «تفصل الصباحى عن المسائى كل واحد فى عمود» so each could take an arrow, and are stacked again
+  // now that the maintenance board stacks its two legs. One arrow stays, on the morning driver.
+  'fleet.odometer.columns.shiftDrivers',
   'fleet.odometer.columns.outReading',
   'fleet.odometer.columns.inReading',
   'fleet.odometer.columns.km',
@@ -308,31 +308,76 @@ describe('the odometer table', () => {
   });
 
   /**
-   * «اسم السائق في الجدول يكون زى شاشه الmaintanance» + «يفضل عمودين (صباحى/مسائى) زى دلوقتى».
-   *
-   * ONE column, the shape the maintenance grid already prints two drivers in — and both shifts
-   * still told apart, by a caption on each line rather than by a header. Two columns would give
-   * the eleventh column of an eleven-column grid to a fact that fits on one line.
+   * «شاشه عدادات السيارات خلى الاسامى زى الصيانه»: the maintenance board's driver column — both
+   * people in ONE cell, one under the other, with no word before either. The header is what says
+   * which line is which shift, so it names both, in the order the cell stacks them.
    */
-  it('gives each SHIFT its own column, named by the shift', () => {
-    // The two shared a cell until «تفصل الصباحى عن المسائى كل واحد فى عمود». The cell named each
-    // line's shift in a caption, because colour alone would have been a riddle; a column carries
-    // that name in its header instead, which is where a reader looks for it.
-    const head = thead(render());
-    expect(head, 'the morning column').toContain(t('fleet.odometer.columns.driver1'));
-    expect(head, 'the evening column').toContain(t('fleet.odometer.columns.driver2'));
-    expect(head, 'and no merged column left behind').not.toContain(
-      `>${t('fleet.odometer.columns.driver')}<`,
+  it('stacks both SHIFTS in one column — the morning driver above the evening one', () => {
+    const qc = client([log({ driver1EmployeeId: DRIVER_A, driver2EmployeeId: DRIVER_B })]);
+    qc.setQueryData(
+      ['fleet', 'people'],
+      [person(DRIVER_A, 'HR-1001', 'محمد السيد'), person(DRIVER_B, 'HR-1002', 'أحمد علي')],
     );
+    const html = render({ qc });
+    const head = headers(html);
+    expect(head[2], 'one header for both shifts').toBe(t('fleet.odometer.columns.shiftDrivers'));
+    expect(head, 'no morning column of its own').not.toContain(t('fleet.odometer.columns.driver1'));
+    expect(head, 'no evening column of its own').not.toContain(t('fleet.odometer.columns.driver2'));
+    expect(head, 'and not the old merged «اسم السائق»').not.toContain(
+      t('fleet.odometer.columns.driver'),
+    );
+    // The header names the shifts, in the cell's order.
+    const header = t('fleet.odometer.columns.shiftDrivers');
+    expect(header).toContain('صباحي');
+    expect(header.indexOf('صباحي'), 'morning named first').toBeLessThan(header.indexOf('مسائي'));
+    const cells = [...tbody(html).matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) =>
+      (m[1] as string)
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
+    expect(cells[2], 'both, morning on top').toBe('محمد السيد أحمد علي');
+    expect(cells[3], 'the next column is the out reading, not a second driver').toBe('150,000');
   });
 
-  it('orders the WHOLE register by either shift’s name — not the page in hand', () => {
-    // The point of the split. Each column asks the server for the name it is joined against, so
-    // the arrow orders every reading the filter matches; sorting the fetched page would order
-    // twenty-five readings out of thousands.
+  it('orders the WHOLE register by the MORNING driver’s name — not the page in hand', () => {
+    // One column, one arrow: it asks the server for the name it is joined against, so the arrow
+    // orders every reading the filter matches rather than the twenty-five in hand. The evening
+    // driver's arrow went with its column — pinned here so that is a decision, not an accident.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
     expect(source).toContain("sortKey: 'driver1Name'");
-    expect(source).toContain("sortKey: 'driver2Name'");
+    expect(source).not.toContain("sortKey: 'driver2Name'");
+  });
+
+  it('lets go of a remembered order by the EVENING driver — no header shows it any more', () => {
+    // The sort is a remembered filter. Seeded under the screen's own order, the row appears only
+    // if the page asked with that order instead of by a column nobody can see.
+    const markup = render({ route: '/fleet/odometer?sort=driver2Name:asc' });
+    expect(tbody(markup)).toContain('150,000');
+    // …and only that entry goes: the rest of a remembered order is still asked for.
+    const mixed = client([log()], [alarm()], {
+      sortBy: 'vehicleCode',
+      sortDir: 'desc',
+      sort: 'vehicleCode:desc',
+    });
+    const kept = render({
+      route: '/fleet/odometer?sort=driver2Name:asc,vehicleCode:desc',
+      qc: mixed,
+    });
+    expect(tbody(kept)).toContain('150,000');
+  });
+
+  it('keeps the two shifts as TWO columns in the Excel file — a sheet sorts each on its own', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    const sheet = source.slice(
+      source.indexOf('const exportSheet'),
+      source.indexOf('const runExport'),
+    );
+    expect(sheet).toContain("t('fleet.odometer.columns.driver1')");
+    expect(sheet).toContain("t('fleet.odometer.columns.driver2')");
+    expect(sheet, 'not the screen’s stacked header').not.toContain(
+      "t('fleet.odometer.columns.shiftDrivers')",
+    );
   });
 
   it('prints only the shifts the row actually recorded — never a cell saying «null»', () => {
@@ -360,31 +405,45 @@ describe('the odometer table', () => {
     expect(markup).toContain('data-legacy-name="true"');
   });
 
-  it('draws a roster driver in look ج — a person mark, the name in the shift’s tone, the code after a rule', () => {
-    // «اعتمد دى»: never the code glued to the last letter of the name. Each shift keeps its own
-    // colour, on the NAME, so the two columns still read as the pair they are.
+  it('draws each driver by the WHOLE name in the shift’s tone — no code, no mark, no words', () => {
+    // «… زى الصيانه»: the maintenance board's look — the name alone, wrapped rather than cut. Each
+    // shift keeps its own colour, on the NAME, so the two lines still read as the pair they are.
     const qc = client([log({ driver1EmployeeId: DRIVER_A, driver2EmployeeId: DRIVER_B })]);
     qc.setQueryData(
       ['fleet', 'people'],
-      [person(DRIVER_A, 'HR-1001', 'محمد السيد'), person(DRIVER_B, 'HR-1002', 'أحمد علي')],
+      [
+        person(DRIVER_A, 'HR-1001', 'ابراهيم محمد محفوظ اسماعيل صيام'),
+        person(DRIVER_B, 'HR-1002', 'أحمد علي'),
+      ],
     );
     const body = tbody(render({ qc }));
-    const cellOf = (name: string): string => {
-      const at = body.indexOf(`>${name}<`);
-      expect(at, `${name} is drawn`).toBeGreaterThan(-1);
-      return body.slice(body.lastIndexOf('<td', at), body.indexOf('</td>', at));
+    /** The class list of the span that holds `name` itself — where the shift's tone lands. */
+    const tone = (name: string): string => {
+      const at = body.indexOf(`>${name}<`) + 1;
+      expect(at, `${name} is drawn`).toBeGreaterThan(0);
+      return body.slice(body.lastIndexOf('<span', at), at);
     };
-    const morning = cellOf('محمد السيد');
-    expect(morning, 'the person mark, not the initials badge').toContain('<svg');
-    expect(morning, 'no initials').not.toContain('>مس<');
-    expect(morning, 'the rule between the name and the code').toContain('w-px');
-    expect(morning, 'the code after the name').toContain('>HR-1001<');
-    expect(morning, 'the whole name on hover').toContain('title="محمد السيد"');
+    const morning = tone('ابراهيم محمد محفوظ اسماعيل صيام');
     expect(morning, 'the morning tone').toContain('text-amber-700 dark:text-amber-300');
-    const evening = cellOf('أحمد علي');
-    expect(evening, 'the code after the name').toContain('>HR-1002<');
+    expect(morning, 'and not the evening one').not.toContain('text-indigo-700');
+    expect(morning, 'the whole name, wrapped').toContain('whitespace-normal');
+    expect(morning, 'never cut').not.toContain('truncate');
+    expect(morning, 'no size of its own — the row’s').not.toContain('text-[');
+    const evening = tone('أحمد علي');
     expect(evening, 'the evening tone').toContain('text-indigo-700 dark:text-indigo-300');
+    expect(evening, 'and not the morning one').not.toContain('text-amber-700');
+    const at = body.indexOf('>ابراهيم');
+    const cell = body.slice(body.lastIndexOf('<td', at), body.indexOf('</td>', at));
+    expect(cell, 'no code on the row').not.toContain('>HR-1001<');
+    expect(cell, 'no code on the row').not.toContain('>HR-1002<');
+    expect(cell, 'no person mark').not.toContain('<svg');
+    expect(cell, 'no rule before a code').not.toContain('w-px');
+    expect(cell, 'no word before a name').not.toContain(t('fleet.odometer.driverShift.morning'));
+    expect(cell, 'no word before a name').not.toContain(t('fleet.odometer.driverShift.evening'));
     expect(body, 'no raw id where the roster knows the person').not.toContain(DRIVER_A.slice(-8));
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source, 'the maintenance board’s look').toContain('look="name"');
+    expect(source, 'not look ج').not.toContain('look="person"');
   });
 
   it('keeps an unbreakable note inside its column instead of widening the table', () => {
@@ -456,12 +515,49 @@ describe('the odometer table', () => {
       expect(tag, `${value} reads left to right`).toContain('dir="ltr"');
       expect(tag, `${value} in tabular figures`).toContain('tabular-nums');
     }
-    // The car's code is the row's name: bold, as on the vehicles board.
+    // The car's code is the row's name: bold, as on the vehicles board — and a size over the
+    // row, as the alarms board writes it.
     const code = body.slice(
       body.lastIndexOf('<span', body.indexOf('>150<')),
       body.indexOf('>150<'),
     );
     expect(code).toContain('font-bold');
+    expect(code).toContain(ALARMS_CODE_TYPE);
+    expect(code, 'not the 14px it had').not.toContain('text-sm');
+  });
+
+  /**
+   * «عاوز الخط بتاع شاشه الصيانه والعدادات زى شاشة انذار الصيانه فى كل العواميد فى الشاشتين».
+   *
+   * The alarms board's sizes, put on this table's wrapper from the alarms board's own constant —
+   * so the two can never drift — and nothing in a cell sets a smaller one of its own: the three
+   * state pills take the alarms board's pill size rather than the shared 12px.
+   */
+  it('wears the alarms board’s type on every column', () => {
+    const html = render({
+      qc: client(
+        [
+          log({ id: 'a', outReading: null, inReading: null, km: null }),
+          log({ id: 'b', inReading: null, km: null }),
+        ],
+        [alarm({ level: 'yellow', sinceServiceKm: 4200 })],
+      ),
+    });
+    expect(html, 'the alarms board’s type on the wrapper').toContain(escaped(ALARMS_TYPE));
+    const body = tbody(html);
+    expect(body, 'no 12px pill or word left in a cell').not.toContain('text-xs');
+    expect(body, 'no size pinned below the row’s').not.toMatch(/text-\[1[1-4](?:\.5)?px\]/u);
+    for (const word of [
+      t('fleet.odometer.noReading'),
+      t('fleet.odometer.openPeriod'),
+      t('fleet.dashboard.level.yellow'),
+    ]) {
+      const at = body.indexOf(`>${word}<`);
+      expect(at, `${word} is drawn`).toBeGreaterThan(-1);
+      expect(body.slice(body.lastIndexOf('<span', at), at), `${word} at the pill size`).toContain(
+        'text-[15px]',
+      );
+    }
   });
 
   it('centres every column as the drivers board does — the row’s actions stay at its end', () => {

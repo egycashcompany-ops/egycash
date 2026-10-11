@@ -542,7 +542,7 @@ describe('the maintenance table’s look', () => {
     });
   });
 
-  it('draws each driver in look د — the name in the leg’s tone, the code under it, no badge', () => {
+  it('draws each driver by the whole name in the leg’s tone — no code, no badge', () => {
     const qc = client([
       visit({
         outDate: '2026-09-03T00:00:00.000Z',
@@ -551,12 +551,14 @@ describe('the maintenance table’s look', () => {
       }),
     ]);
     const markup = render({ qc });
-    expect(cells(markup)[4], 'the entry driver and code').toContain('سائق الصباح HR-D1');
-    expect(cells(markup)[4], 'the exit driver and code').toContain('سائق المساء HR-D2');
-    // «دى خليها للصيانه»: no badge beside the name; the whole name on hover.
+    expect(cells(markup)[4], 'the entry driver').toContain('سائق الصباح');
+    expect(cells(markup)[4], 'the exit driver').toContain('سائق المساء');
+    // «عاوز الاسم بتاع السواق كامل وشيل الكود»: no code on the row, no badge; the code on hover.
+    expect(cells(markup)[4], 'no code on the row').not.toContain('HR-D1');
+    expect(cells(markup)[4], 'no code on the row').not.toContain('HR-D2');
     expect(cellTag(markup, 4)).not.toContain('rounded-full');
-    expect(cellTag(markup, 4)).toContain('title="سائق الصباح"');
-    expect(cellTag(markup, 4)).toContain('title="سائق المساء"');
+    expect(cellTag(markup, 4)).toContain('title="سائق الصباح — HR-D1"');
+    expect(cellTag(markup, 4)).toContain('title="سائق المساء — HR-D2"');
     expect(tone(tbody(markup), 'سائق الصباح'), 'the entry leg’s tone').toContain('text-red-700');
     expect(tone(tbody(markup), 'سائق المساء'), 'the exit leg’s tone').toContain('text-emerald-700');
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
@@ -564,12 +566,18 @@ describe('the maintenance table’s look', () => {
     expect(source, 'not the bare name it replaced').not.toContain('<DriverName');
   });
 
-  it('writes a long name as its first and last words, the whole of it on hover', () => {
+  it('writes a long name whole, wrapping instead of cutting it', () => {
     const qc = client([visit({ driverInName: 'ابراهيم محمد محفوظ اسماعيل صيام' })]);
     const markup = render({ qc });
-    expect(cells(markup)[4]).toContain('ابراهيم صيام');
-    expect(cells(markup)[4]).not.toContain('محفوظ');
-    expect(cellTag(markup, 4)).toContain('title="ابراهيم محمد محفوظ اسماعيل صيام"');
+    expect(cells(markup)[4]).toContain('ابراهيم محمد محفوظ اسماعيل صيام');
+    expect(cellTag(markup, 4)).toContain('whitespace-normal');
+    expect(cellTag(markup, 4)).not.toContain('truncate');
+  });
+
+  it('writes the workshop and the work type a step bigger and bold', () => {
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).toContain("const BIG_WORDS = 'text-[15px] font-bold'");
+    expect(source.match(/className=\{BIG_WORDS\}/gu)?.length).toBe(2);
   });
 
   it('keeps a name from the old books, grey, under the leg it was written for', () => {

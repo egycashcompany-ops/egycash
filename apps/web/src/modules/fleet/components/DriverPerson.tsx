@@ -127,10 +127,10 @@ export const DriverIdentity = ({
  * How a board writes a driver — «غير شكل اسم السواق»: each board's look, as the owner chose it.
  * - `identity`: the badge, the name, the code under it (the pickers' look; receipts, attendance).
  * - `person`: look ج — a person mark, the name, a rule, the code faint after it (odometer).
- * - `short`: look د — the first and last names, the code under; the whole name on hover
- *   (maintenance).
+ * - `name`: the whole name alone, no code — «عاوز الاسم بتاع السواق كامل وشيل الكود»; the code
+ *   on hover (maintenance).
  */
-export type DriverLook = 'identity' | 'person' | 'short';
+export type DriverLook = 'identity' | 'person' | 'name';
 
 const DriverLookView = ({
   look,
@@ -187,25 +187,18 @@ const DriverLookView = ({
       </span>
     );
   }
-  if (look === 'short') {
-    const words = name.trim().split(/\s+/u);
-    const short = words.length > 2 ? `${words[0]} ${words[words.length - 1]}` : name;
+  if (look === 'name') {
+    // The WHOLE name, wrapped onto a second line rather than cut — the reader asked for all of it.
     return (
-      <span className="inline-flex flex-col items-center gap-0.5" title={name}>
-        <span
-          className={cn(
-            'whitespace-nowrap text-[15px] font-extrabold',
-            muted && 'text-slate-500',
-            nameClassName,
-          )}
-        >
-          {short}
-        </span>
-        {codeShown && (
-          <span dir="ltr" className={cn(mono, 'text-[11px] tracking-wide text-slate-500')}>
-            {code}
-          </span>
+      <span
+        title={codeShown ? `${name} — ${code}` : name}
+        className={cn(
+          'inline-block max-w-[15rem] whitespace-normal text-center text-[15px] font-extrabold leading-snug',
+          muted && 'text-slate-500',
+          nameClassName,
         )}
+      >
+        {name}
       </span>
     );
   }

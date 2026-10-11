@@ -127,6 +127,9 @@ const FIGURE = cn('whitespace-nowrap', NUM);
  */
 const LEG_LABEL = 'whitespace-nowrap text-[10px] leading-none text-slate-400 dark:text-slate-500';
 
+/** «كبر الورشه ونوع العمل»: the workshop and the work type, a step bigger and bold. */
+const BIG_WORDS = 'text-[15px] font-bold';
+
 /**
  * The address bar, less an order by the EXIT driver. «ورينى سامبل الاتنين دول تحت بعض» took that
  * driver's column and its arrow with it, and the sort is one of the remembered filters: kept, it
@@ -496,9 +499,9 @@ export const MaintenancePage = (): JSX.Element => {
     // to the audit trail, and this grid never showed them. An open visit has no exit driver yet, so
     // «خروج» is followed by a dash — the word stays, so the dash reads as "not yet", not as a gap.
     //
-    // «دى خليها للصيانه»: each leg in look د — the first and last names in the leg's tone, the
-    // employee code under them, the whole name on hover — through the one driver cell every Fleet
-    // board shares. A name from the old books that the roster never had stays grey, as it was.
+    // «عاوز الاسم بتاع السواق كامل وشيل الكود»: each leg's WHOLE name in the leg's tone, no code
+    // (it is on hover) — through the one driver cell every Fleet board shares. A name from the old
+    // books that the roster never had stays grey, as it was.
     {
       key: 'drivers',
       align: 'center',
@@ -513,14 +516,14 @@ export const MaintenancePage = (): JSX.Element => {
             employeeId={visit.driverInEmployeeId}
             name={visit.driverInName}
             nameClassName="text-red-700 dark:text-red-300"
-            look="short"
+            look="name"
           />
           <span className={LEG_LABEL}>{t('fleet.maintenance.legOut')}</span>
           <DriverCell
             employeeId={visit.driverOutEmployeeId}
             name={visit.driverOutName}
             nameClassName="text-emerald-700 dark:text-emerald-300"
-            look="short"
+            look="name"
           />
         </span>
       ),
@@ -529,13 +532,19 @@ export const MaintenancePage = (): JSX.Element => {
       key: 'workshop',
       align: 'center',
       header: t('fleet.maintenance.fields.workshop'),
-      render: (visit) => catalogName.get(visit.workshopId) ?? dash,
+      render: (visit) => {
+        const name = catalogName.get(visit.workshopId);
+        return name === undefined ? dash : <span className={BIG_WORDS}>{name}</span>;
+      },
     },
     {
       key: 'workType',
       align: 'center',
       header: t('fleet.maintenance.fields.workType'),
-      render: (visit) => catalogName.get(visit.workTypeId) ?? dash,
+      render: (visit) => {
+        const name = catalogName.get(visit.workTypeId);
+        return name === undefined ? dash : <span className={BIG_WORDS}>{name}</span>;
+      },
     },
     {
       key: 'spareParts',

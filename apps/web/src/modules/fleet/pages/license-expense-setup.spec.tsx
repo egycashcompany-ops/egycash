@@ -3,6 +3,10 @@
 // carrying the names and all four templates, the list's button by grant, and «يظهر في» for every
 // item — the same field «قوائم الحركة» writes. No DOM here: what the page does between clicks is
 // held in the pure steps it is built from, and those are run in the order a user's clicks run them.
+// «عاوز اقدر اضيف بند فى اعدادات النماذج»: and a new item added from the same card.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -10,6 +14,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, type QueryClientConfig } from '@tanstack/react-query';
 import {
+  CreateFleetCatalogItemSchema,
   type FleetCatalogItemDto,
   type FleetLicenseExpenseSettingsDto,
   type Locale,
@@ -23,11 +28,15 @@ import { translate } from '../../../platform/localization/i18n';
 import { LicenseExpensesPage } from './LicenseExpensesPage';
 import {
   LicenseExpenseSetupPage,
+  itemNameKey,
+  newItemBody,
+  sameNamedItem,
   savedElsewhere,
   setupBody,
   setupEntriesOf,
   setupLinesOf,
   showsInBody,
+  withCreated,
   withLines,
   withWritten,
 } from './LicenseExpenseSetupPage';
@@ -43,6 +52,7 @@ vi.mock('react-dom', async () => {
 });
 
 const ar = (key: string): string => translate('ar', key);
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 const me = (permissions: string[]): MeDto =>
   ({
@@ -442,5 +452,128 @@ describe('«يظهر في» on the set-up — the same field «قوائم الح
       receipt: true,
     };
     expect(counters([archived])).toContain('data-license-expense-count="renewal:visa:i-4"');
+  });
+});
+
+describe('«عاوز اقدر اضيف بند فى اعدادات النماذج» — a new item from the items card', () => {
+  it('ends the card with a name box, «يظهر في» on both, and «إضافة» — for whoever manages the lists', () => {
+    const html = renderSetup();
+    const card = between(
+      html,
+      'data-license-expense-setup-items="true"',
+      'data-license-expense-setup-template',
+    );
+    const row = between(card, 'data-license-expense-new-item="true"');
+    // At the card's end: after the last item's row.
+    expect(card.indexOf('data-license-expense-new-item="true"')).toBeGreaterThan(
+      card.lastIndexOf('data-license-expense-item-row='),
+    );
+    expect(row).toContain('data-license-expense-new-item-name="true"');
+    expect(row).toContain(`placeholder="${ar('fleet.licenseExpenses.setup.newItem')}"`);
+    // Both, as a new item on «قوائم الحركة» starts — the pressed side the site's purple.
+    expect(row).toMatch(
+      /aria-pressed="true" data-license-expense-new-item-kind="both" class="[^"]*bg-brand-600/u,
+    );
+    expect(row).toMatch(/aria-pressed="false" data-license-expense-new-item-kind="renewal"/u);
+    expect(row).toMatch(/aria-pressed="false" data-license-expense-new-item-kind="extension"/u);
+    expect(row).toMatch(/data-license-expense-new-item-kind="both"[^>]*>كليهما</u);
+    expect(row).toMatch(/data-license-expense-new-item-add="true"[^>]*>.*إضافة<\/button>/u);
+    expect(row, 'nothing about it is required').not.toContain('required');
+  });
+
+  it('is not offered without the grant — the note says who changes the list', () => {
+    const html = renderSetup(EDIT);
+    expect(html).not.toContain('data-license-expense-new-item');
+    expect(html).toContain(ar('fleet.licenseExpenses.setup.itemsLocked'));
+  });
+
+  it('writes the typed name as both halves, the memo it shows in, and no alarm', () => {
+    const body = newItemBody('  رسوم مرور  ', 'renewal');
+    expect(body).toEqual({
+      kind: 'licenseExpenseItem',
+      name: { ar: 'رسوم مرور', en: 'رسوم مرور' },
+      countsForAlarm: false,
+      licenseExpenseKind: 'renewal',
+    });
+    expect(CreateFleetCatalogItemSchema.safeParse(body).success).toBe(true);
+    expect(newItemBody('دمغة', null)?.licenseExpenseKind).toBeNull();
+    // An empty name adds nothing.
+    expect(newItemBody('', null)).toBeNull();
+    expect(newItemBody('   ', 'extension')).toBeNull();
+  });
+
+  it('finds a name already on the list — case, spaces, either language, archived too', () => {
+    const english = {
+      ...ITEMS[2]!,
+      id: 'i-5',
+      name: { ar: 'دمغة', en: 'Stamp Duty' },
+    } as FleetCatalogItemDto;
+    const list = [...ITEMS, english];
+    expect(itemNameKey('  Stamp   DUTY ')).toBe('stamp duty');
+    expect(sameNamedItem(list, ' براءة   ذمة ')?.id).toBe('i-1');
+    // Arabic as it is typed: «ه» for «ة», a bare alef for a hamza, a tatweel, Arabic-Indic digits.
+    expect(sameNamedItem(list, 'براءه ذمه')?.id).toBe('i-1');
+    expect(sameNamedItem(list, 'بـراءة ذمـة')?.id).toBe('i-1');
+    expect(itemNameKey('إصدار رخصة ٢')).toBe(itemNameKey('اصدار رخصه 2'));
+    expect(sameNamedItem(list, 'stamp duty')?.id).toBe('i-5');
+    expect(sameNamedItem(list, 'دمغة')?.id).toBe('i-5');
+    // Archived keeps its name: it is found, not made a second time.
+    expect(sameNamedItem(list, 'بند مؤرشف')?.id).toBe('i-4');
+    expect(sameNamedItem(list, 'رسوم مرور')).toBeUndefined();
+    expect(sameNamedItem(list, '   ')).toBeUndefined();
+  });
+
+  it('shows the new item at once — its row, and a counter in the memos it shows in', () => {
+    const added = catalogItem('i-9', 'رسوم مرور', 'renewal', 0);
+    const shown = withCreated(ITEMS, [added]);
+    expect(shown.map((item) => item.id)).toEqual(['i-1', 'i-2', 'i-3', 'i-4', 'i-9']);
+    // Once the list is read again with it, it is the list's copy — never twice.
+    const reread = [...ITEMS, { ...added, version: 1 } as FleetCatalogItemDto];
+    expect(withCreated(reread, [added])).toEqual(reread);
+
+    const counters = (kind: 'renewal' | 'extension'): string =>
+      renderToStaticMarkup(
+        <Provider store={store(MANAGE)}>
+          <PaidGroup
+            kind={kind}
+            paid="cash"
+            items={[]}
+            setDraft={() => undefined}
+            catalogItems={setupEntriesOf(shown, [], 'ar')}
+          />
+        </Provider>,
+      );
+    expect(counters('renewal')).toContain('data-license-expense-count="renewal:cash:i-9"');
+    expect(counters('extension')).not.toContain('i-9');
+    // Added for both: a counter in each.
+    const both = withCreated(ITEMS, [catalogItem('i-9', 'رسوم مرور', null, 0)]);
+    for (const kind of ['renewal', 'extension'] as const) {
+      expect(
+        renderToStaticMarkup(
+          <Provider store={store(MANAGE)}>
+            <PaidGroup
+              kind={kind}
+              paid="visa"
+              items={[]}
+              setDraft={() => undefined}
+              catalogItems={setupEntriesOf(both, [], 'ar')}
+            />
+          </Provider>,
+        ),
+      ).toContain(`data-license-expense-count="${kind}:visa:i-9"`);
+    }
+  });
+
+  it('adds on Enter, refuses an empty name, and makes nothing twice — told by a toast each time', () => {
+    const source = readFileSync(join(HERE, 'LicenseExpenseSetupPage.tsx'), 'utf8');
+    expect(source).toMatch(/onKeyDown=\{\(e\) => \{\s+if \(e\.key !== 'Enter'/u);
+    expect(source).toContain("toast.warning(t('fleet.licenseExpenses.setup.newItemEmpty'))");
+    expect(source).toContain('const existing = sameNamedItem(items, body.name.ar);');
+    expect(source).toContain('fleet.licenseExpenses.setup.newItemExistsToast');
+    expect(source).toContain('fleet.licenseExpenses.setup.newItemArchivedToast');
+    expect(source).toContain('fleet.licenseExpenses.setup.newItemAddedToast');
+    expect(source).toContain('toast.error(errorMessage(failure, locale));');
+    // The very hook the catalogs screen creates with — its write refreshes every list.
+    expect(source).toContain('await createItem.mutateAsync(body)');
   });
 });

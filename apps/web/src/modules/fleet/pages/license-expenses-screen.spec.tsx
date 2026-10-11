@@ -23,7 +23,7 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
-import { LicenseExpensesPage, moneyOf } from './LicenseExpensesPage';
+import { LicenseExpensesPage, carCodesOf, moneyOf } from './LicenseExpensesPage';
 import { LicenseExpenseEditorPage } from './LicenseExpenseEditorPage';
 import { CatalogsPage } from './CatalogsPage';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
@@ -254,7 +254,9 @@ describe('the licensing-expenses list', () => {
     const html = renderList();
     expect(html).toContain(ar('fleet.licenseExpenses.kinds.renewal'));
     expect(html).toContain('204');
-    expect(html).toContain('أ ق 1791');
+    // «مش عاوز رقم اللوحة يظهر الكود بس»: neither the registry car's plate nor a typed one.
+    expect(html).not.toContain('أ ق 1761');
+    expect(html).not.toContain('أ ق 1791');
     expect(html).toContain('600.00');
     expect(html).toContain('20.00');
     expect(html).toContain('620.00');
@@ -302,16 +304,86 @@ describe('«ضيف كل حاجه كنا عملنها» — the list wears what t
     expect(html.split('data-date-picker-button="true"').length - 1).toBe(2);
   });
 
-  it('writes the date year first, the money with «ج.م.» apart, a code bold and a typed plate grey', () => {
+  it('writes the date year first, the money with «ج.م.» apart, each code a bold chip', () => {
     const html = renderList();
     expect(html).toContain('>2026/10/04</span>');
     // The figure and the currency are two spans — the boards' monospace figure, the page's «ج.م.».
     expect(html).toMatch(/>600\.00<\/span><span class="text-sm[^"]*">ج\.م\.‏?<\/span>/u);
     expect(html).toContain('>620.00</span>');
     expect(html).toContain('data-license-expense-cars="lx-1"');
-    expect(html).toContain(`title="204، أ ق 1791"`);
-    expect(html).toMatch(/<span dir="ltr" class="text-slate-900[^"]*">204<\/span>/u);
-    expect(html).toMatch(/<span class="text-slate-500[^"]*">أ ق 1791<\/span>/u);
+  });
+
+  it('shows the cars by their registry codes only — a typed plate is counted, never written', () => {
+    const html = renderList();
+    const cell = html.slice(
+      html.indexOf('data-license-expense-cars="lx-1"'),
+      html.indexOf('data-license-expense-view="lx-1"'),
+    );
+    // How many — both cars, the hand-typed one too — as a Latin figure ahead of the chips.
+    expect(cell).toMatch(
+      /data-license-expense-cars-count="lx-1" class="[^"]*rounded-full[^"]*">2</u,
+    );
+    // The code: a chip in the boards' figure type, left to right.
+    expect(cell).toMatch(
+      /<span dir="ltr" data-license-expense-car-code="204" class="rounded-md border[^"]*">204<\/span>/u,
+    );
+    expect(cell.split('data-license-expense-car-code=').length - 1).toBe(1);
+    // The typed one: a muted count after the chips, so it does not silently disappear.
+    expect(cell).toMatch(
+      /data-license-expense-unregistered="lx-1" class="[^"]*text-slate-500[^"]*">\u2066\+1\u2069 غير مسجلة</u,
+    );
+    // The hover title says the same — codes and the count, no plate.
+    expect(html).toContain('title="204، 1 غير مسجلة"');
+    expect(cell).not.toContain('أ ق');
+  });
+
+  it('draws a memo of typed plates only as its count and «غير مسجلة» — no chip, no plate', () => {
+    const html = renderList(ALL, [
+      memo({
+        renewal: {
+          vehicles: [
+            { vehicleId: null, code: null, plate: 'ن ص 1' },
+            { vehicleId: null, code: null, plate: 'ن ص 2' },
+          ],
+          items: [],
+        },
+      }),
+    ]);
+    expect(html).toMatch(/data-license-expense-cars-count="lx-1" class="[^"]*">2</u);
+    expect(html).not.toContain('data-license-expense-car-code=');
+    expect(html).toMatch(/data-license-expense-unregistered="lx-1" class="[^"]*">غير مسجلة</u);
+    expect(html).toContain('title="2 غير مسجلة"');
+    expect(html).not.toContain('ن ص');
+  });
+
+  it('reads the codes from both halves in order, and counts a car without one', () => {
+    const both = memo({
+      renewal: {
+        vehicles: [
+          { vehicleId: 'v-1', code: '204', plate: 'أ ق 1761' },
+          { vehicleId: null, code: null, plate: 'أ ق 1791' },
+        ],
+        items: [],
+      },
+      extension: {
+        vehicles: [
+          { vehicleId: 'v-2', code: ' 318 ', plate: 'ب ج 22' },
+          { vehicleId: null, code: '', plate: 'د هـ 3' },
+        ],
+        items: [],
+      },
+    });
+    expect(carCodesOf(both)).toEqual({ codes: ['204', '318'], unregistered: 2 });
+    expect(carCodesOf(memo({ renewal: { vehicles: [], items: [] } }))).toEqual({
+      codes: [],
+      unregistered: 0,
+    });
+    // The cell never reaches for a plate; the arrow still orders by every car.
+    const source = code('LicenseExpensesPage.tsx');
+    const column = source.slice(source.indexOf("key: 'cars',"), source.indexOf("key: 'visa',"));
+    expect(column).toContain("sortKey: 'carsCount'");
+    expect(column).toContain('carCodesOf(row)');
+    expect(column, 'no plate on the screen').not.toMatch(/plate|carName/u);
   });
 
   it('draws an empty cell as a grey dash — a memo with no cars and nothing in cash', () => {

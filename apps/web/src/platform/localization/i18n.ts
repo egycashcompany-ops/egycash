@@ -3995,6 +3995,10 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.columns.count': 'Count',
   'fleet.licenseExpenses.columns.cars': 'Vehicles',
   'fleet.licenseExpenses.columns.carsCount': 'Number of vehicles',
+  // «مش عاوز رقم اللوحة يظهر الكود بس»: a car with no registry code is counted, never shown by plate.
+  'fleet.licenseExpenses.unregisteredMore': '+{{count}} unregistered',
+  'fleet.licenseExpenses.unregisteredCount': '{{count}} unregistered',
+  'fleet.licenseExpenses.unregistered': 'unregistered',
   'fleet.licenseExpenses.paidBy.visa': 'Card',
   'fleet.licenseExpenses.paidBy.cash': 'Cash',
   'fleet.licenseExpenses.receipt.yes': 'Receipt available',
@@ -4056,6 +4060,16 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.setup.itemsLocked': 'Changed by whoever manages the Fleet catalogs.',
   'fleet.licenseExpenses.setup.itemsEmpty': 'No items on the list yet.',
   'fleet.licenseExpenses.setup.itemSavedToast': 'Saved — Fleet catalogs show it too.',
+  // «عاوز اقدر اضيف بند فى اعدادات النماذج»: a new item, added on the set-up itself.
+  'fleet.licenseExpenses.setup.newItem': 'New item',
+  'fleet.licenseExpenses.setup.newItemShowsIn': 'Shows in',
+  'fleet.licenseExpenses.setup.newItemAdd': 'Add',
+  'fleet.licenseExpenses.setup.newItemEmpty': 'Write the item’s name first.',
+  'fleet.licenseExpenses.setup.newItemAddedToast': '“{{name}}” was added — Fleet catalogs show it too.',
+  'fleet.licenseExpenses.setup.newItemExistsToast':
+    '“{{name}}” is already on the list — it is highlighted; set where it shows on its own row.',
+  'fleet.licenseExpenses.setup.newItemArchivedToast':
+    '“{{name}}” is already on Fleet catalogs, archived — restore it there rather than adding it twice.',
   'fleet.pager.showing.before': 'Showing',
   'fleet.pager.showing.of': 'of',
   'fleet.pager.perPage': 'Rows per page',
@@ -11820,6 +11834,10 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.columns.count': 'العدد',
   'fleet.licenseExpenses.columns.cars': 'السيارات',
   'fleet.licenseExpenses.columns.carsCount': 'عدد السيارات',
+  // «+٢» kept left-to-right in an Arabic line, or the plus lands after the figure («2+»).
+  'fleet.licenseExpenses.unregisteredMore': '\u2066+{{count}}\u2069 غير مسجلة',
+  'fleet.licenseExpenses.unregisteredCount': '{{count}} غير مسجلة',
+  'fleet.licenseExpenses.unregistered': 'غير مسجلة',
   'fleet.licenseExpenses.paidBy.visa': 'فيزا',
   'fleet.licenseExpenses.paidBy.cash': 'نقدي',
   'fleet.licenseExpenses.receipt.yes': 'متوافر إيصال',
@@ -11880,6 +11898,15 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.setup.itemsLocked': 'يغيّره من يدير «قوائم الحركة».',
   'fleet.licenseExpenses.setup.itemsEmpty': 'لا توجد بنود في القائمة بعد.',
   'fleet.licenseExpenses.setup.itemSavedToast': 'تم الحفظ — ويظهر كذلك في «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.newItem': 'بند جديد',
+  'fleet.licenseExpenses.setup.newItemShowsIn': 'يظهر في',
+  'fleet.licenseExpenses.setup.newItemAdd': 'إضافة',
+  'fleet.licenseExpenses.setup.newItemEmpty': 'اكتب اسم البند أولًا.',
+  'fleet.licenseExpenses.setup.newItemAddedToast': 'تمت إضافة «{{name}}» — ويظهر كذلك في «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.newItemExistsToast':
+    '«{{name}}» موجود بالفعل في القائمة — تم تمييزه، واختر أين يظهر من صفّه.',
+  'fleet.licenseExpenses.setup.newItemArchivedToast':
+    '«{{name}}» موجود في «قوائم الحركة» لكنه مؤرشف — أعد تفعيله من هناك بدل إضافته مرة ثانية.',
   'fleet.pager.showing.before': 'عرض',
   'fleet.pager.showing.of': 'من أصل',
   'fleet.pager.perPage': 'الصفوف بالصفحة',

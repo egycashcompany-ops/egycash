@@ -6,7 +6,7 @@
 // board's table (no column lines, Cairo bold) in the alarms board's type, every value centred; an
 // arrow on every column, several at once, ordered by the server; and the figures over the whole
 // filtered set, between the filters and the table.
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { type FleetLicenseExpenseDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -45,7 +45,7 @@ import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { memoHtml, memoTitle, memosOf, printMemos, sumOf } from '../lib/license-expense-memo';
 import { DARK_TABLE } from './VehiclesListPage';
-import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
+import { ALARMS_TYPE } from './MaintenanceAlarmsPage';
 
 /** Remembered across visits: the filters, the page size and the order. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = ['from', 'to', 'vehicleCodes', 'kind', 'size', 'sort'] as const;
@@ -92,9 +92,30 @@ const KIND_PILL =
   'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[15px] leading-5';
 
 // A record is a renewal, an extension, or both: its figures are both halves together.
-const carsOf = (row: FleetLicenseExpenseDto): { code: string | null; plate: string }[] =>
+type MemoRow = Pick<FleetLicenseExpenseDto, 'date' | 'renewal' | 'extension' | 'signatures'>;
+const carsOf = (row: MemoRow): { code: string | null; plate: string }[] =>
   memosOf(row).flatMap((memo) => memo.vehicles.map((v) => ({ code: v.code, plate: v.plate })));
 const carName = (car: { code: string | null; plate: string }): string => car.code ?? car.plate;
+
+/**
+ * «مش عاوز رقم اللوحة يظهر الكود بس»: what the list shows of a memo's cars — the registry's codes,
+ * in the memo's order, and only HOW MANY were typed by hand with no code, never their plates. The
+ * two add up to every car the memo names, so none silently drops out of the cell.
+ */
+export const carCodesOf = (row: MemoRow): { codes: string[]; unregistered: number } => {
+  const cars = carsOf(row);
+  const codes = cars.flatMap((car) =>
+    car.code === null || car.code.trim() === '' ? [] : [car.code.trim()],
+  );
+  return { codes, unregistered: cars.length - codes.length };
+};
+
+/** A code as a chip: the boards' figure type, bold, Latin, in a neutral box — not a state. */
+const CODE_CHIP =
+  'rounded-md border border-slate-300 bg-slate-50 px-1.5 py-px text-[15px] leading-5 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
+/** How many cars, ahead of the chips: a round neutral figure, so it never reads as one more code. */
+const COUNT_BADGE =
+  'inline-flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-slate-200 px-1.5 text-[13px] leading-none text-slate-700 dark:bg-slate-700 dark:text-slate-100';
 
 /**
  * A memo's figure under one money column — `null` where no line was paid that way (no line at all,
@@ -259,44 +280,54 @@ export const LicenseExpensesPage = (): JSX.Element => {
       header: t('fleet.licenseExpenses.columns.cars'),
       sortable: true,
       sortKey: 'carsCount',
-      // How many, then the registry's codes bold and the plates typed by hand grey. The whole list
-      // in the cell's title, so a cut one still reads.
+      // «وحسن شكله»: how many, then each registry code as a chip in a wrapping row — no plate at
+      // all. A car typed by hand with no code is only counted, muted, after the chips. The cell's
+      // title says the same in words, for a reader who hovers.
       render: (row) => {
-        const cars = carsOf(row);
-        if (cars.length === 0) return DASH;
+        const { codes, unregistered } = carCodesOf(row);
+        const count = codes.length + unregistered;
+        if (count === 0) return DASH;
+        const typedCount = t('fleet.licenseExpenses.unregisteredCount', {
+          count: LATIN.format(unregistered),
+        });
         return (
           <span
-            className="inline-flex items-center gap-2"
-            title={cars.map(carName).join('، ')}
+            className="inline-flex items-start justify-center gap-2"
+            title={[...codes, ...(unregistered === 0 ? [] : [typedCount])].join('، ')}
             data-license-expense-cars={row.id}
           >
-            <span className="rounded-md border border-slate-300 px-1.5 dark:border-slate-600">
-              <span dir="ltr" className={FIGURE}>
-                {cars.length}
-              </span>
+            {/* Every car the memo names, the hand-typed ones too — what the arrow orders by. */}
+            <span
+              dir="ltr"
+              data-license-expense-cars-count={row.id}
+              className={cn(COUNT_BADGE, FIGURE)}
+            >
+              {LATIN.format(count)}
             </span>
-            <span className="inline-block max-w-[18rem] truncate align-middle">
-              {cars.map((car, index) => (
-                <Fragment key={`${index}:${carName(car)}`}>
-                  {index > 0 && <span className="text-slate-400">، </span>}
-                  {car.code === null ? (
-                    <span className="text-slate-500 dark:text-slate-400">{car.plate}</span>
-                  ) : (
-                    // One car: a size over the row, as the alarms board writes a code. Several:
-                    // the row's own size, so the list fits the column.
-                    <span
-                      dir="ltr"
-                      className={cn(
-                        'text-slate-900 dark:text-white',
-                        FIGURE,
-                        cars.length === 1 && ALARMS_CODE_TYPE,
-                      )}
-                    >
-                      {car.code}
-                    </span>
-                  )}
-                </Fragment>
+            {/* At least the badge's height, so a lone «غير مسجلة» sits level with the figure. */}
+            <span className="flex min-h-6 max-w-[17rem] flex-wrap items-center justify-center gap-1">
+              {codes.map((code, index) => (
+                <span
+                  key={`${index}:${code}`}
+                  dir="ltr"
+                  data-license-expense-car-code={code}
+                  className={cn(CODE_CHIP, FIGURE)}
+                >
+                  {code}
+                </span>
               ))}
+              {unregistered > 0 && (
+                <span
+                  data-license-expense-unregistered={row.id}
+                  className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"
+                >
+                  {codes.length === 0
+                    ? t('fleet.licenseExpenses.unregistered')
+                    : t('fleet.licenseExpenses.unregisteredMore', {
+                        count: LATIN.format(unregistered),
+                      })}
+                </span>
+              )}
             </span>
           </span>
         );

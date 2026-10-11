@@ -68,7 +68,7 @@ import {
   CheckOutDialog,
   MaintenanceEditDialog,
 } from '../components/MaintenanceDialogs';
-import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 
@@ -121,6 +121,28 @@ const LATIN = new Intl.NumberFormat('en-US');
  */
 const FIGURE = cn('whitespace-nowrap', NUM);
 
+/**
+ * «دخول» / «خروج» beside each driver in the one drivers cell — small and grey, so it says which
+ * leg a name belongs to without competing with the name. The leg's TONE stays on the name.
+ */
+const LEG_LABEL = 'whitespace-nowrap text-[10px] leading-none text-slate-400 dark:text-slate-500';
+
+/**
+ * The address bar, less an order by the EXIT driver. «ورينى سامبل الاتنين دول تحت بعض» took that
+ * driver's column and its arrow with it, and the sort is one of the remembered filters: kept, it
+ * would order the board by a column no header shows, with no arrow to turn it off. The rest of the
+ * order stands.
+ */
+const withoutExitDriverOrder = (sp: URLSearchParams): URLSearchParams => {
+  const sorts = chosenSorts(sp.get('sort'));
+  if (!sorts.some((entry) => entry.by === 'driverOutName')) return sp;
+  const next = new URLSearchParams(sp);
+  const kept = writeSorts(sorts.filter((entry) => entry.by !== 'driverOutName'));
+  if (kept === null) next.delete('sort');
+  else next.set('sort', kept);
+  return next;
+};
+
 /** A csv URL parameter as the list it stands for; an absent one is an empty list, never `['']`. */
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
@@ -136,8 +158,10 @@ export const MaintenancePage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [sp, setSp] = useSearchParams();
-  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const [urlSp, setSp] = useSearchParams();
+  useRememberedFilters([urlSp, setSp], REMEMBERED_FILTERS);
+  // Read through `withoutExitDriverOrder`; the next change the reader makes writes it back clean.
+  const sp = useMemo(() => withoutExitDriverOrder(urlSp), [urlSp]);
   // The shared query cache, for the export's driver names — see `driverNames` below.
   const queryClient = useQueryClient();
 
@@ -333,7 +357,9 @@ export const MaintenancePage = (): JSX.Element => {
    * THE PARTS CELL IS SPLIT, because a spreadsheet cell cannot stack two records of one thing.
    * On screen the catalog parts and the words an older visit recorded as free text sit one above
    * the other under one heading; here each takes a column, so «مسجلة كنص» stays readable as what
-   * it is instead of being run together with names the catalog knows.
+   * it is instead of being run together with names the catalog knows. The two DRIVERS stay two
+   * columns for the same reason, though the screen stacks them in one: a sheet filters and sorts
+   * by the entry driver and by the exit driver separately.
    *
    * The exit column keeps its WORD. An open visit has no exit date and the table says «في الورشة»
    * rather than leaving the cell blank — that is a fact about the visit, not a missing value, and
@@ -453,49 +479,50 @@ export const MaintenancePage = (): JSX.Element => {
       render: (visit) =>
         visit.operationId === null ? dash : (catalogName.get(visit.operationId) ?? dash),
     },
-    // TWO COLUMNS, ONE PER LEG — «تفصل الصباحى عن المسائى كل واحد فى عمود», the same split the
-    // odometer register just took. The grid printed both drivers in one cell, one above the other,
-    // which reads perfectly well and cannot be ORDERED: a cell holding two people has no single
-    // value for «رتب بإسم السائق» to point at. Each leg is now its own column with its own arrow,
-    // and the arrow orders the whole register — the name is joined in by the server before the
-    // page is cut.
+    // ONE COLUMN, THE TWO LEGS ONE UNDER THE OTHER — «ورينى سامبل الاتنين دول تحت بعض». A reversal
+    // of «تفصل الصباحى عن المسائى كل واحد فى عمود», which gave each leg its own column so each
+    // could take an arrow. Stacked, the pair reads as one visit again and the row gives a column
+    // back to a table that was already tight on a laptop.
     //
-    // The tones are the ones the shared cell used: the entry driver in the danger tone, the exit
-    // driver in the success tone. Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`:
-    // those are the custody employees, they belong to the audit trail, and this grid never showed
-    // them. An open visit has no exit driver yet, and that is a dash.
+    // ONE ARROW, ON THE ENTRY DRIVER. The shared table puts one arrow on a header, so the column
+    // orders the whole register by `driverInName` — the server's join, as before. The exit driver's
+    // arrow went with its column: nothing on the screen asks for `driverOutName` any more, and an
+    // order by it that was remembered or linked is let go (`withoutExitDriverOrder`) rather than
+    // sorting the board by a column nobody can see.
+    //
+    // Each leg keeps its word and its tone: a small grey «دخول» / «خروج» before it, the entry
+    // driver in the danger tone, the exit driver in the success tone. Deliberately NOT
+    // `takenInByEmployeeId` / `takenOutByEmployeeId`: those are the custody employees, they belong
+    // to the audit trail, and this grid never showed them. An open visit has no exit driver yet, so
+    // «خروج» is followed by a dash — the word stays, so the dash reads as "not yet", not as a gap.
     //
     // «دى خليها للصيانه»: each leg in look د — the first and last names in the leg's tone, the
     // employee code under them, the whole name on hover — through the one driver cell every Fleet
     // board shares. A name from the old books that the roster never had stays grey, as it was.
     {
-      key: 'driverIn',
+      key: 'drivers',
       align: 'center',
-      header: t('fleet.maintenance.fields.driverIn'),
+      header: t('fleet.maintenance.fields.drivers'),
       sortable: true,
       sortKey: 'driverInName',
       render: (visit) => (
-        <DriverCell
-          employeeId={visit.driverInEmployeeId}
-          name={visit.driverInName}
-          nameClassName="text-red-700 dark:text-red-300"
-          look="short"
-        />
-      ),
-    },
-    {
-      key: 'driverOut',
-      align: 'center',
-      header: t('fleet.maintenance.fields.driverOut'),
-      sortable: true,
-      sortKey: 'driverOutName',
-      render: (visit) => (
-        <DriverCell
-          employeeId={visit.driverOutEmployeeId}
-          name={visit.driverOutName}
-          nameClassName="text-emerald-700 dark:text-emerald-300"
-          look="short"
-        />
+        // A two-by-two grid, so the two words line up with each other and so do the two names.
+        <span className="inline-grid grid-cols-[auto_auto] items-center justify-items-center gap-x-2 gap-y-1.5">
+          <span className={LEG_LABEL}>{t('fleet.maintenance.legIn')}</span>
+          <DriverCell
+            employeeId={visit.driverInEmployeeId}
+            name={visit.driverInName}
+            nameClassName="text-red-700 dark:text-red-300"
+            look="short"
+          />
+          <span className={LEG_LABEL}>{t('fleet.maintenance.legOut')}</span>
+          <DriverCell
+            employeeId={visit.driverOutEmployeeId}
+            name={visit.driverOutName}
+            nameClassName="text-emerald-700 dark:text-emerald-300"
+            look="short"
+          />
+        </span>
       ),
     },
     {
@@ -897,7 +924,7 @@ export const MaintenancePage = (): JSX.Element => {
           className={cn(
             DARK_TABLE,
             BOARD_TABLE_FILL,
-            // Twelve columns on a laptop: the cells take less room between them so the whole row
+            // Eleven columns on a laptop: the cells take less room between them so the whole row
             // stays on the screen.
             'max-[1749px]:[&_tbody_td]:!px-[5px] max-[1749px]:[&_thead_th]:!px-[5px]',
             // No line between the columns, as on the drivers table.

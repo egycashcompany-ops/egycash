@@ -10,7 +10,7 @@
 //    A filter you have forgotten you set is worse than no filter.
 //  • The list is searchable and folds Arabic spelling, because a stage or branch list gets long and
 //    scrolling to find one entry is slower than typing three letters of it.
-import { useMemo, useRef, useState, useLayoutEffect } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { cn } from '../lib/cn';
 import { type ControlDensity } from './form';
 import { foldIncludes } from '../lib/fold';
@@ -78,6 +78,63 @@ export const selectionSummary = (
     .map(shown)
     .join(', ');
   return `${head} +${value.length - (max - 1)}`;
+};
+
+/**
+ * Where the keyboard's highlight goes next — «الموشر فى الفلاتر كلها لما اجى انزل بالسعم ل تحت
+ * مش بينول عشان اختار».
+ *
+ * The highlight is held as a VALUE, not a row number: a list that puts the picked values first
+ * (the car and driver filters do) reorders under it on every pick, and a row number would then
+ * point at a different option than the one the reader was on. A value that has left the list —
+ * typed away — is as good as none, so the next step starts again from the top (or the bottom).
+ * Wraps at both ends, as `Combobox` does.
+ */
+export const nextActiveOption = (
+  options: readonly MultiSelectOption[],
+  active: string | null,
+  key: 'ArrowDown' | 'ArrowUp' | 'Home' | 'End',
+): string | null => {
+  if (options.length === 0) return null;
+  const last = options.length - 1;
+  const at = active === null ? -1 : options.findIndex((o) => o.value === active);
+  let next: number;
+  if (key === 'Home') next = 0;
+  else if (key === 'End') next = last;
+  else if (key === 'ArrowDown') next = at === -1 || at === last ? 0 : at + 1;
+  else next = at <= 0 ? last : at - 1;
+  return options[next]?.value ?? null;
+};
+
+/**
+ * What a key pressed anywhere inside the control does. Apart from the DOM so the suite, which has
+ * none, can hold it to the request.
+ *
+ * Enter picks the highlighted option, and only when one IS highlighted: with nothing highlighted
+ * it keeps the meaning it always had — the car filter's search box takes the typed codes, the
+ * trigger opens and closes. Home/End move the caret while the search box has focus, so they move
+ * the highlight only from elsewhere.
+ *
+ * An arrow opens the list from the TRIGGER only. On the closed list's ✕ it would open a list too
+ * short for a search box with the focus still on the ✕ — and the Enter meant for the highlighted
+ * option would press the ✕ and clear every pick.
+ */
+export const multiSelectKey = (
+  key: string,
+  {
+    open,
+    highlighted,
+    from,
+  }: { open: boolean; highlighted: boolean; from: 'search' | 'trigger' | 'other' },
+): 'open' | 'move' | 'pick' | 'close' | null => {
+  if (key === 'ArrowDown' || key === 'ArrowUp') {
+    if (open) return 'move';
+    return from === 'trigger' ? 'open' : null;
+  }
+  if ((key === 'Home' || key === 'End') && open && from !== 'search') return 'move';
+  if (key === 'Enter' && open && highlighted && from !== 'other') return 'pick';
+  if (key === 'Escape' && open) return 'close';
+  return null;
 };
 
 export const MultiSelect = ({
@@ -213,6 +270,19 @@ export const MultiSelect = ({
     if (searchValue === undefined) setOwnQuery(next);
   };
   const boxRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const listId = useId();
+  // The option the KEYBOARD is on — by value, see `nextActiveOption`. A tint, never the purple of a
+  // pick: what is highlighted is where Enter will land, not something chosen.
+  const [active, setActive] = useState<string | null>(null);
+  // Opened from the keyboard: the highlight waits on the first (or last) row of the list as it is
+  // DRAWN, not as it was when the key landed — the car and driver filters search for themselves,
+  // and the list they still hold then is the last search's, not the fresh one opening asks for.
+  const [edge, setEdge] = useState<'ArrowDown' | 'ArrowUp' | null>(null);
+  // Counts what the KEYS do to the highlight; the list scrolls to it on a key and on nothing else.
+  const [steps, setSteps] = useState(0);
   useOnClickOutside(boxRef, () => setOpen(false), open);
   // «لما بفتح دى بتفتح برا الشاشه»: a list wider than its trigger opens toward the page's edge
   // when the trigger sits at that edge — the last filter of a bar. Measured once open, it is
@@ -254,46 +324,110 @@ export const MultiSelect = ({
     [options, query, searchable, remote],
   );
 
+  const current = active ?? (edge === null ? null : nextActiveOption(matches, null, edge));
+  const activeIndex = current === null ? -1 : matches.findIndex((o) => o.value === current);
+  const optionId = (index: number): string => `${listId}-option-${index}`;
+  // Keep the highlighted row inside the list's scroll port while arrowing through a long list.
+  // Keyed on the KEY, not the row: a pick by mouse in a list that puts the picked first moves the
+  // highlighted row as well, and following it would scroll the list out from under the pointer.
+  useEffect(() => {
+    if (steps === 0) return;
+    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [steps]);
+
+  /** A new search — typed, cleared, or asked afresh on opening — starts the highlight over. */
+  const searchFor = (next: string): void => {
+    setQuery(next);
+    onSearch?.(next);
+    setActive(null);
+    setEdge(null);
+  };
+
   const selected = value.length;
   // `null` = say the label, the way every bar that has not opted in still does.
   const summary =
     showSelectedValues && selected > 0 ? selectionSummary(options, value, SUMMARY_MAX) : null;
   const toggle = (option: string): void => {
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option]);
-    if (clearSearchOnPick && query !== '') {
-      setQuery('');
-      onSearch?.('');
-    }
+    if (clearSearchOnPick && query !== '') searchFor('');
+    // «لما بختار حاجه وتتمسح بحتاج ارجع المؤشر تانى عشان اكتب لا انا عاوز المؤسر يفضل موجود»: the
+    // caret stays in the search box after a pick, so the next one is typed straight away. The
+    // options keep it there by refusing focus on press; this covers a pick from anywhere else.
+    searchRef.current?.focus();
   };
 
   const clearAll = (): void => {
     onChange([]);
-    if (query !== '') {
-      setQuery('');
-      onSearch?.('');
+    if (query !== '') searchFor('');
+    searchRef.current?.focus();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.nativeEvent.isComposing) return;
+    const from =
+      e.target === searchRef.current
+        ? 'search'
+        : e.target === triggerRef.current
+          ? 'trigger'
+          : 'other';
+    const action = multiSelectKey(e.key, { open, highlighted: activeIndex !== -1, from });
+    if (action === null) return;
+    e.preventDefault();
+    if (action === 'open') {
+      // Opened from the keyboard, the arrow lands on the first (or last) option at once — of the
+      // fresh list, since opening asks again with nothing typed. See `edge`.
+      setOpen(true);
+      searchFor('');
+      setEdge(e.key === 'ArrowUp' ? 'ArrowUp' : 'ArrowDown');
+      setSteps((n) => n + 1);
+    } else if (action === 'move') {
+      setActive(
+        nextActiveOption(matches, current, e.key as 'ArrowDown' | 'ArrowUp' | 'Home' | 'End'),
+      );
+      setEdge(null);
+      setSteps((n) => n + 1);
+    } else if (action === 'pick') {
+      const option = matches[activeIndex];
+      if (option !== undefined) {
+        // The highlight stays on the option just picked, wherever the pick moves it — not on the
+        // row it stood in, which a list that puts the picked first hands to another option.
+        setActive(option.value);
+        setEdge(null);
+        setSteps((n) => n + 1);
+        toggle(option.value);
+      }
+    } else {
+      // The list closes and nothing else does: a dialog around this control waits for its own
+      // Escape. Focus goes back to the trigger rather than to a panel that is no longer there.
+      e.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
     }
   };
   const showClear = clearable && selected > 0;
 
   return (
-    <div ref={boxRef} className={cn('relative', className)}>
+    // Keys are read on the whole box, so the arrows work from wherever the focus is — the search
+    // box, or the trigger of a list too short to have one.
+    <div ref={boxRef} className={cn('relative', className)} onKeyDown={onKeyDown}>
       {/* The trigger and its ✕ share one box, so the ✕ sits on the trigger's own end however the
           bar sizes it. The ✕ comes AFTER the trigger in the markup: it is a second control, never
           a part of the button (a button cannot hold another). */}
       <div className={cn('relative max-w-full', fullWidth ? 'flex w-full' : 'inline-flex')}>
         <button
+          ref={triggerRef}
           type="button"
           aria-haspopup="listbox"
           aria-expanded={open}
+          {...(open ? { 'aria-controls': listId } : {})}
           aria-label={label}
           // The same question the screen reader gets, for a pointer — a trigger sized by its bar
           // can be narrower than the words on it, and then this is the only way to read them.
           title={label}
           onClick={() => {
             setOpen((o) => !o);
-            setQuery('');
             // The owner's results still hold the last query; ask for the opening answer again.
-            onSearch?.('');
+            searchFor('');
           }}
           className={cn(
             'inline-flex items-center rounded-lg border py-2 text-sm',
@@ -369,8 +503,10 @@ export const MultiSelect = ({
       {open && (
         <div
           ref={panelRef}
+          id={listId}
           role="listbox"
           aria-multiselectable
+          {...(activeIndex === -1 ? {} : { 'aria-activedescendant': optionId(activeIndex) })}
           style={
             pin === 'left'
               ? { left: 0, right: 'auto' }
@@ -394,19 +530,27 @@ export const MultiSelect = ({
               <div className="relative">
                 <SearchIcon className="pointer-events-none absolute inset-y-0 start-2 my-auto h-4 w-4 text-slate-400" />
                 <input
+                  ref={searchRef}
                   type="text"
                   autoFocus
+                  role="combobox"
+                  aria-expanded
+                  aria-controls={listId}
+                  aria-autocomplete="list"
+                  {...(activeIndex === -1
+                    ? {}
+                    : { 'aria-activedescendant': optionId(activeIndex) })}
                   value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    onSearch?.(e.target.value);
-                  }}
+                  onChange={(e) => searchFor(e.target.value)}
                   onKeyDown={(e) => {
-                    if (onCommitSearch === undefined || e.key !== 'Enter') return;
+                    // A highlighted option takes Enter (see `multiSelectKey`); the typed text only
+                    // when nothing is highlighted.
+                    if (onCommitSearch === undefined || e.key !== 'Enter' || activeIndex !== -1) {
+                      return;
+                    }
                     e.preventDefault();
                     onCommitSearch(query);
-                    setQuery('');
-                    onSearch?.('');
+                    searchFor('');
                   }}
                   placeholder={t('common.search')}
                   className="w-full rounded-md border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
@@ -451,22 +595,38 @@ export const MultiSelect = ({
             </div>
           )}
 
-          <ul className={cn('overflow-y-auto py-1', clearable ? 'min-h-0 flex-1' : 'max-h-52')}>
+          <ul
+            ref={listRef}
+            className={cn('overflow-y-auto py-1', clearable ? 'min-h-0 flex-1' : 'max-h-52')}
+          >
             {matches.length === 0 && (
               <li className="px-3 py-2 text-sm text-slate-400">
                 {searching ? t('common.loading') : t('common.noResults')}
               </li>
             )}
-            {matches.map((option) => {
+            {matches.map((option, index) => {
               const checked = value.includes(option.value);
+              const highlighted = index === activeIndex;
               return (
                 <li key={option.value}>
                   <button
                     type="button"
                     role="option"
+                    id={optionId(index)}
                     aria-selected={checked}
+                    {...(highlighted ? { 'data-active': 'true' } : {})}
+                    // Pressing an option does not take the focus from the search box — the caret
+                    // stays where the reader is typing. The click still lands as it always did.
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => toggle(option.value)}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
+                    className={cn(
+                      'flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700',
+                      // The keyboard's row: the hover's own grey, so it reads as "here", not "picked"
+                      // — and a grey outline, so it is told from the row the pointer rests on, the
+                      // one Enter does NOT pick.
+                      highlighted &&
+                        'bg-slate-100 ring-1 ring-inset ring-slate-300 dark:bg-slate-700 dark:ring-slate-500',
+                    )}
                   >
                     <span
                       aria-hidden

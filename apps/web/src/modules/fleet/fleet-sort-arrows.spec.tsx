@@ -116,7 +116,7 @@ describe('the registers that REFERENCE a car order by its code', () => {
     arrowed('components/DriverViolationsPanel.tsx', ['date']);
   });
 
-  it('gives each SHIFT and each LEG its own column, and its own arrow', () => {
+  it('gives each SHIFT its own column, and its own arrow', () => {
     // «تفصل الصباحى عن المسائى كل واحد فى عمود». The split is what makes the arrow possible: two
     // people in one cell have no single value to order a register by. Each column joins against
     // its OWN reference — a second column pointed at the first driver would order by the first
@@ -127,9 +127,15 @@ describe('the registers that REFERENCE a car order by its code', () => {
     expect(odometer, 'and the merged cell is gone').not.toContain(
       "key: 'driver',\n      header: t('fleet.odometer.columns.driver')",
     );
+  });
+
+  it('stacks the workshop’s two LEGS in one column, ordered by the ENTRY driver', () => {
+    // «ورينى سامبل الاتنين دول تحت بعض». One header holds one arrow, so the stacked column asks
+    // for the entry driver's joined name; the exit driver's arrow went with its column.
     const maintenance = code('pages/MaintenancePage.tsx');
-    expect(column(maintenance, 'driverIn')).toContain("sortKey: 'driverInName'");
-    expect(column(maintenance, 'driverOut')).toContain("sortKey: 'driverOutName'");
+    expect(column(maintenance, 'drivers')).toContain('sortable: true');
+    expect(column(maintenance, 'drivers')).toContain("sortKey: 'driverInName'");
+    expect(maintenance, 'no second driver column').not.toContain("key: 'driverOut',");
   });
 
   it('orders the odometer register by the CAR’s maintenance figure', () => {

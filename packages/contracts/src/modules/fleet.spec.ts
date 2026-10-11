@@ -6,6 +6,7 @@ import {
   ChangeFleetVehicleStatusSchema,
   fleetMonthWindow,
   FleetCustodySummaryQuerySchema,
+  ListFleetCustodyMovementsQuerySchema,
   ListFleetReceiptsQuerySchema,
   CreateFleetCatalogItemSchema,
   CreateFleetUnavailabilitySchema,
@@ -594,6 +595,13 @@ describe('receipt kinds and custody sources take several — «اختيار مت
     ]);
     expect(FleetCustodySummaryQuerySchema.parse({ source: 'wash' }).source).toEqual(['wash']);
     expect(FleetCustodySummaryQuerySchema.safeParse({ source: 'card' }).success).toBe(false);
+  });
+
+  it('the movements take the arrows’ whole order; the figures are never ordered', () => {
+    expect(ListFleetCustodyMovementsQuerySchema.parse({ sort: 'amount:desc,date:asc' }).sort).toBe(
+      'amount:desc,date:asc',
+    );
+    expect(FleetCustodySummaryQuerySchema.safeParse({ sort: 'amount:asc' }).success).toBe(false);
   });
 });
 

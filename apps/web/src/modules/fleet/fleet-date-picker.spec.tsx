@@ -192,6 +192,7 @@ describe('every Fleet date box opens through our calendar', () => {
     };
     expectAll('FilterWithIcon', [
       'pages/AttendancePage',
+      'pages/CustodyPage',
       'pages/DealershipPage',
       'pages/FuelCardsPage',
       'pages/LicenseExpensesPage',
@@ -216,7 +217,6 @@ describe('every Fleet date box opens through our calendar', () => {
       'components/DriverViolationsPanel',
       'components/ViolationDialogs',
       'pages/AccidentsPage',
-      'pages/CustodyPage',
       'pages/NoticeEditorPage',
       'pages/NoticeSetupPage',
       'pages/RosterPage',

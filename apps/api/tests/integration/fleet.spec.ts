@@ -9925,6 +9925,80 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(data<unknown[]>(byDriver)).toHaveLength(1);
   });
 
+  it('orders «كل الحركات» by the arrows over the whole filtered set, several columns at once', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const fuel = await post({
+      vehicleId: v.id,
+      kind: 'fuel',
+      fuelType: 'petrol80',
+      amount: 315,
+      driverName: 'محمد رأفت',
+    });
+    expect(fuel.status).toBe(201);
+    expect((await post({ vehicleId: v.id, kind: 'tyres', amount: 1400 })).status).toBe(201);
+    expect(
+      (
+        await post({
+          vehicleId: v.id,
+          kind: 'wash',
+          amount: 120,
+          driverName: 'أحمد',
+          date: '2026-10-02',
+        })
+      ).status,
+    ).toBe(201);
+
+    type Line = { amount: number; source: string; driverName: string | null };
+    const read = async (query: Record<string, string | number>) => {
+      const res = await request(app)
+        .get('/api/v1/fleet/custody/movements')
+        .query({ vehicleCodes: v.code, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return {
+        rows: data<Line[]>(res),
+        total: (res.body as { meta: PageMeta }).meta.totalItems,
+      };
+    };
+    const amounts = async (query: Record<string, string | number>) =>
+      (await read(query)).rows.map((row) => row.amount);
+
+    // No order chosen: newest first, as the ledger always opened — on one day, the later entry first.
+    expect(await amounts({})).toEqual([120, 1400, 315]);
+    // Turned round, the mirror of it — the day's two entries too, as `_id` closes a tie elsewhere.
+    expect(await amounts({ sort: 'date:asc' })).toEqual([315, 1400, 120]);
+    expect(await amounts({ sort: 'amount:asc' })).toEqual([120, 315, 1400]);
+    expect(await amounts({ sort: 'amount:desc' })).toEqual([1400, 315, 120]);
+    // The tyres name nobody: last whichever way the arrow points.
+    expect(await amounts({ sort: 'driverName:asc' })).toEqual([120, 315, 1400]);
+    expect(await amounts({ sort: 'driverName:desc' })).toEqual([315, 120, 1400]);
+    // The kind in the filter's order — fuel, tyres, wash — and a second column breaking no tie.
+    expect((await read({ sort: 'source:asc,amount:desc' })).rows.map((r) => r.source)).toEqual([
+      'fuel',
+      'tyres',
+      'wash',
+    ]);
+    // Over the WHOLE set, then cut: the second page of two holds the dearest.
+    expect(await amounts({ sort: 'amount:asc', pageSize: 2, page: 2 })).toEqual([1400]);
+    // The platform's single column, from a client that sends no `sort`.
+    expect(await amounts({ sortBy: 'amount', sortDir: 'asc' })).toEqual([120, 315, 1400]);
+    // A column the ledger does not know changes nothing — never a 400.
+    expect(await amounts({ sort: 'nope:asc' })).toEqual([120, 1400, 315]);
+    // The order never changes what is counted.
+    for (const sort of ['amount:asc', 'driverName:desc', 'nope:asc']) {
+      expect((await read({ sort })).total, sort).toBe(3);
+    }
+    // The figures are never ordered: their query refuses the parameter.
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/fleet/custody/summary')
+          .query({ vehicleCodes: v.code, sort: 'amount:asc' })
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(400);
+  });
+
   it('editing a receipt moves the money between cards, and the screens are their own grants', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const card = await chargedCard(v.id, 500);

@@ -8,6 +8,7 @@
 import { type FilterQuery } from 'mongoose';
 import {
   compareFleetVehicleCodes,
+  parseFleetSort,
   type FleetCustodyMovementDto,
   type FleetCustodySource,
   type FleetCustodySummaryDto,
@@ -23,6 +24,7 @@ import { fleetDealershipRepository } from '../dealership/dealership.repository';
 import { FleetDealershipInvoiceModel } from '../dealership/dealership.model';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
+import { sortCustodyMovements } from './custody-sort';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -176,12 +178,20 @@ class FleetCustodyService {
     };
   }
 
-  /** «كل الحركات» — one page of the merged, dated list. */
+  /**
+   * «كل الحركات» — one page of the merged list, in the arrows' order over the WHOLE filtered set
+   * (newest first when none is chosen). The order never changes which rows are counted.
+   */
   async movements(
     query: ListFleetCustodyMovementsQuery,
   ): Promise<Paginated<FleetCustodyMovementDto>> {
-    const { page, pageSize, ...filters } = query;
-    const rows = await this.movementsFor(filters);
+    const { page, pageSize, sortBy, sortDir, sort, ...filters } = query;
+    // The whole order when the request carries one; else the platform's single column, which an
+    // older client still sends.
+    const chosen = parseFleetSort(sort);
+    const sorts =
+      chosen.length > 0 ? chosen : sortBy !== undefined ? [{ by: sortBy, dir: sortDir }] : [];
+    const rows = sortCustodyMovements(await this.movementsFor(filters), sorts);
     const start = (page - 1) * pageSize;
     return {
       items: rows.slice(start, start + pageSize).map((row) => ({

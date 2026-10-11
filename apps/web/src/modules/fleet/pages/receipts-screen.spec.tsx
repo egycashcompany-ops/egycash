@@ -26,8 +26,10 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
+import { formatNumber } from '../../../shared/lib/format';
 import { ReceiptFigures, ReceiptsPage } from './ReceiptsPage';
-import { CustodyPage } from './CustodyPage';
+import { CustodyFigures, CustodyPage } from './CustodyPage';
+import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
 import { ReceiptDialog } from '../components/ReceiptDialog';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -38,6 +40,7 @@ vi.mock('react-dom', async () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(join(HERE, 'ReceiptsPage.tsx'), 'utf8');
+const CUSTODY = readFileSync(join(HERE, 'CustodyPage.tsx'), 'utf8');
 const FORM = readFileSync(join(HERE, '../components/ReceiptDialog.tsx'), 'utf8');
 const CELL = readFileSync(join(HERE, '../components/ReceiptImageCell.tsx'), 'utf8');
 const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -168,11 +171,17 @@ const client = () =>
   new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
-const mount = (qc: QueryClient, permissions: string[], path: string, page: JSX.Element): string =>
+const mount = (
+  qc: QueryClient,
+  permissions: string[],
+  path: string,
+  page: JSX.Element,
+  search = '',
+): string =>
   renderToStaticMarkup(
     <Provider store={store(permissions)}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[path]}>
+        <MemoryRouter initialEntries={[`${path}${search}`]}>
           <Routes>
             <Route path={path} element={page} />
           </Routes>
@@ -228,18 +237,39 @@ const renderReceipts = ({
   return mount(qc, permissions, '/fleet/receipts', <ReceiptsPage />);
 };
 
-const renderCustody = (rows: FleetCustodyMovementDto[] = [movement()]): string => {
+const renderCustody = (
+  rows: FleetCustodyMovementDto[] = [movement()],
+  {
+    permissions = ['fleetCustody.view'],
+    people,
+    search = '',
+  }: { permissions?: string[]; people?: ReturnType<typeof person>[]; search?: string } = {},
+): string => {
   const qc = client();
+  if (people !== undefined) qc.setQueryData(['fleet', 'people'], people);
   qc.setQueryData(
     listKey('fleet', 'custody', { summary: true, ...CUSTODY_FILTERS }),
     custodySummary,
   );
-  qc.setQueryData(listKey('fleet', 'custody', { ...CUSTODY_FILTERS, page: 1, pageSize: 25 }), {
-    items: rows,
-    meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 },
-  });
-  return mount(qc, ['fleetCustody.view'], '/fleet/custody', <CustodyPage />);
+  qc.setQueryData(
+    listKey('fleet', 'custody', {
+      ...CUSTODY_FILTERS,
+      page: 1,
+      pageSize: 25,
+      sortBy: 'date',
+      sortDir: 'desc',
+      sort: 'date:desc',
+    }),
+    {
+      items: rows,
+      meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 },
+    },
+  );
+  return mount(qc, permissions, '/fleet/custody', <CustodyPage />, search);
 };
+
+/** A class string as the markup writes it — `&` and `>` escaped. */
+const escapedClass = (cls: string): string => cls.replace(/&/g, '&amp;').replace(/>/g, '&gt;');
 
 /** The table row holding `text` — searched from the body, past the filter options and the totals. */
 const rowWith = (html: string, text: string, from = 0): string => {
@@ -506,16 +536,145 @@ describe('the receipt modal', () => {
 });
 
 describe('the custody ledger', () => {
-  it('sums the fund by source between the filters and the tables', () => {
+  it('keeps the figures behind «الإحصائيات», between the filters and the tables — figure and «ج.م.» apart', () => {
     const html = renderCustody();
-    const filters = html.indexOf('data-date-caption="from"');
-    const strip = html.indexOf('4,220.00');
-    const table = html.indexOf('<table');
-    expect(strip).toBeGreaterThan(filters);
-    expect(table).toBeGreaterThan(strip);
-    expect(html).toContain(ar('fleet.custody.totals.dealership'));
-    expect(html).toContain('1,850.00');
-    expect(html).toContain('1,520.00');
+    expect(html).toContain('data-custody-stats-toggle="true"');
+    expect(html, 'closed on the way in').not.toContain('data-custody-figures');
+    expect(html).toContain('data-date-caption="from"');
+    const filters = CUSTODY.indexOf('DARK_FILTER_BAR, ');
+    const figures = CUSTODY.indexOf('<CustodyFigures totals={summary.data} />');
+    const table = CUSTODY.indexOf('<DataTable');
+    expect(filters).toBeGreaterThan(-1);
+    expect(figures, 'after the filters').toBeGreaterThan(filters);
+    expect(table, 'before the tables').toBeGreaterThan(figures);
+    expect(CUSTODY).toContain('useCustodySummary(filters)');
+    // Opened, they are the server's sums over the whole filtered set.
+    const opened = mount(
+      client(),
+      ['fleetCustody.view'],
+      '/fleet/custody',
+      <CustodyFigures totals={custodySummary} />,
+    );
+    expect(opened).toContain('data-custody-figures="true"');
+    expect(opened).toContain(ar('fleet.custody.totals.total'));
+    expect(opened).toContain('4,220.00');
+    expect(opened).toContain(ar('fleet.custody.totals.dealership'));
+    expect(opened).toContain('850.00');
+    expect(opened).toContain(ar('fleet.custody.totals.fuel'));
+    expect(opened).toContain('1,850.00');
+    expect(opened).toContain(ar('fleet.custody.totals.tyresWash'));
+    expect(opened).toContain('1,520.00');
+    // The figure and «ج.م.» in spans of their own — never glued.
+    expect(opened).toMatch(/>4,220\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
+  });
+
+  it('opens on its toolbar — the count, «الإحصائيات», Excel / PDF — with no page title', () => {
+    const html = renderCustody();
+    for (const gone of ['<PageHeader', '<DocumentActions', '<StatStrip', '<FilteredCount']) {
+      expect(CUSTODY, gone).not.toContain(gone);
+    }
+    expect(html).toContain('data-custody-toolbar="true"');
+    const count = html.indexOf('data-filtered-count');
+    expect(count).toBeGreaterThan(-1);
+    expect(html.slice(count, html.indexOf('</span>', count))).toContain(
+      ar('common.list.count', { count: formatNumber(1, 'ar') }),
+    );
+    expect(html.indexOf('data-export="custody"'), 'above the filters').toBeLessThan(
+      html.indexOf('data-date-caption="from"'),
+    );
+    expect(html.indexOf('data-print="custody"'), 'above the filters').toBeLessThan(
+      html.indexOf('data-date-caption="from"'),
+    );
+    expect(html).toContain(ar('fleet.fuelCards.board.excel'));
+    expect(html).toContain(ar('fleet.fuelCards.board.pdf'));
+  });
+
+  it('writes both tables in the alarms board’s type — centred, a year-first Latin date, the code bold, money apart', () => {
+    const html = renderCustody([movement({ amount: 17890 })]);
+    const perVehicle = html.indexOf('data-custody-per-vehicle="true"');
+    const movements = html.indexOf('data-custody-movements="true"');
+    expect(html.slice(perVehicle, movements), 'the per-car table').toContain(
+      escapedClass(ALARMS_TYPE),
+    );
+    expect(html.slice(movements), 'the movements').toContain(escapedClass(ALARMS_TYPE));
+    const row = rowWith(html, '17,890.00', movements);
+    expect(row).toContain('2026/10/01');
+    expect(row, 'no Arabic-Indic digit on the row').not.toMatch(/[٠-٩]/u);
+    expect(row).toMatch(/>17,890\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
+    // The car's code a size over the row, bold, left to right.
+    const code = row.slice(row.lastIndexOf('<span', row.indexOf('>204<')), row.indexOf('>204<'));
+    expect(code).toContain('font-bold');
+    expect(code).toContain(ALARMS_CODE_TYPE);
+    expect(code).toContain('dir="ltr"');
+    // Every value and header centred, in both tables.
+    const cells = row.match(/<td[^>]*>/gu) ?? [];
+    expect(cells.length).toBe(6);
+    for (const cell of cells) expect(cell).toContain('text-center');
+    const heads = html.match(/<th\b[^>]*>/gu) ?? [];
+    expect(heads.length).toBe(12);
+    for (const head of heads) expect(head).toContain('text-center');
+    // An empty car is the boards' grey dash; a car with nothing of a source, too.
+    const none = rowWith(renderCustody([movement({ vehicleCode: null })]), '1,350.00', movements);
+    expect(none).toContain('<span class="text-slate-400">—</span>');
+    const car = rowWith(html, '>63<', perVehicle);
+    expect(car).toContain('<span class="text-slate-400">—</span>');
+  });
+
+  it('writes the driver’s WHOLE name, no code beside it — and a name from the old books grey', () => {
+    expect(CUSTODY).toContain(
+      '<DriverCell employeeId={row.driverEmployeeId} name={row.driverName} look="name" />',
+    );
+    expect(CUSTODY).not.toContain('<DriverName ');
+    const known = renderCustody(
+      [movement({ driverEmployeeId: 'e-7', driverName: 'ابراهيم السيد رزق جابر' })],
+      {
+        permissions: ['fleetCustody.view', 'fleetDriver.view'],
+        people: [person('e-7', '0100765', 'ابراهيم السيد رزق جابر')],
+      },
+    );
+    const row = rowWith(known, '1,350.00', known.indexOf('data-custody-movements="true"'));
+    expect(row).toContain('ابراهيم السيد رزق جابر');
+    expect(row, 'never the code glued to the name').not.toContain('جابر0100765');
+    expect(row, 'and not under it either').not.toContain('0100765</span>');
+    expect(row).not.toContain('data-legacy-name');
+    const typed = renderCustody();
+    const legacy = rowWith(typed, '1,350.00', typed.indexOf('data-custody-movements="true"'));
+    expect(legacy).toContain('data-legacy-name="true"');
+    expect(legacy).toContain('أيمن حسن مصطفى');
+  });
+
+  it('puts an arrow on every header of both tables', () => {
+    const html = renderCustody();
+    const perVehicle = html.indexOf('data-custody-per-vehicle="true"');
+    const movements = html.indexOf('data-custody-movements="true"');
+    const arrows = (part: string): number =>
+      (part.match(/<th\b[^>]*><button type="button"/gu) ?? []).length;
+    expect(arrows(html.slice(perVehicle, movements)), '«ملخص لكل سيارة»').toBe(6);
+    expect(arrows(html.slice(movements)), '«كل الحركات»').toBe(6);
+  });
+
+  it('orders «ملخص لكل سيارة» by its arrows, the grand total always last', () => {
+    const html = renderCustody([movement()], { search: '?carSort=total:asc' });
+    const table = html.slice(
+      html.indexOf('data-custody-per-vehicle="true"'),
+      html.indexOf('data-custody-movements="true"'),
+    );
+    const cheap = table.indexOf('>63<');
+    const dear = table.indexOf('>204<');
+    const total = table.indexOf('data-custody-grand-total="true"');
+    expect(cheap).toBeGreaterThan(-1);
+    expect(dear, 'the smaller total first').toBeGreaterThan(cheap);
+    expect(total, 'the grand total after every car').toBeGreaterThan(dear);
+    // Untouched, it opens by the car's code, as the server sends it — still the total last.
+    const plain = renderCustody();
+    const byCode = plain.slice(
+      plain.indexOf('data-custody-per-vehicle="true"'),
+      plain.indexOf('data-custody-movements="true"'),
+    );
+    expect(byCode.indexOf('>204<')).toBeLessThan(byCode.indexOf('>63<'));
+    expect(byCode.indexOf('data-custody-grand-total="true"')).toBeGreaterThan(
+      byCode.indexOf('>63<'),
+    );
   });
 
   it('shows «ملخص لكل سيارة» with a grand-total row, then every movement with where it came from', () => {

@@ -3656,8 +3656,11 @@ const custodyFilters = {
 };
 export const FleetCustodySummaryQuerySchema = z.object(custodyFilters).strict();
 export type FleetCustodySummaryQuery = z.infer<typeof FleetCustodySummaryQuerySchema>;
-export const ListFleetCustodyMovementsQuerySchema =
-  PaginationQuerySchema.extend(custodyFilters).strict();
+export const ListFleetCustodyMovementsQuerySchema = PaginationQuerySchema.extend({
+  ...custodyFilters,
+  /** The arrows on «كل الحركات», several columns at once — as on every Fleet board. */
+  sort: fleetSortQuery(),
+}).strict();
 export type ListFleetCustodyMovementsQuery = z.infer<typeof ListFleetCustodyMovementsQuerySchema>;
 
 /** One car's line in «ملخص لكل سيارة». */

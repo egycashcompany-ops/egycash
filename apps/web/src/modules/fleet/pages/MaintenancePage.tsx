@@ -121,12 +121,6 @@ const LATIN = new Intl.NumberFormat('en-US');
  */
 const FIGURE = cn('whitespace-nowrap', NUM);
 
-/**
- * «دخول» / «خروج» beside each driver in the one drivers cell — small and grey, so it says which
- * leg a name belongs to without competing with the name. The leg's TONE stays on the name.
- */
-const LEG_LABEL = 'whitespace-nowrap text-[10px] leading-none text-slate-400 dark:text-slate-500';
-
 /** «كبر الورشه ونوع العمل»: the workshop and the work type, a step bigger and bold. */
 const BIG_WORDS = 'text-[15px] font-bold';
 
@@ -493,11 +487,11 @@ export const MaintenancePage = (): JSX.Element => {
     // order by it that was remembered or linked is let go (`withoutExitDriverOrder`) rather than
     // sorting the board by a column nobody can see.
     //
-    // Each leg keeps its word and its tone: a small grey «دخول» / «خروج» before it, the entry
-    // driver in the danger tone, the exit driver in the success tone. Deliberately NOT
-    // `takenInByEmployeeId` / `takenOutByEmployeeId`: those are the custody employees, they belong
-    // to the audit trail, and this grid never showed them. An open visit has no exit driver yet, so
-    // «خروج» is followed by a dash — the word stays, so the dash reads as "not yet", not as a gap.
+    // «امسح كلمه دخول وخروج»: no word before a leg — its TONE and its place say which it is, the
+    // entry driver on top in the danger tone, the exit driver under it in the success tone.
+    // Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`: those are the custody
+    // employees, they belong to the audit trail, and this grid never showed them. An open visit has
+    // no exit driver yet, so the lower line is a dash.
     //
     // «عاوز الاسم بتاع السواق كامل وشيل الكود»: each leg's WHOLE name in the leg's tone, no code
     // (it is on hover) — through the one driver cell every Fleet board shares. A name from the old
@@ -509,16 +503,13 @@ export const MaintenancePage = (): JSX.Element => {
       sortable: true,
       sortKey: 'driverInName',
       render: (visit) => (
-        // A two-by-two grid, so the two words line up with each other and so do the two names.
-        <span className="inline-grid grid-cols-[auto_auto] items-center justify-items-center gap-x-2 gap-y-1.5">
-          <span className={LEG_LABEL}>{t('fleet.maintenance.legIn')}</span>
+        <span className="inline-flex flex-col items-center gap-1.5">
           <DriverCell
             employeeId={visit.driverInEmployeeId}
             name={visit.driverInName}
             nameClassName="text-red-700 dark:text-red-300"
             look="name"
           />
-          <span className={LEG_LABEL}>{t('fleet.maintenance.legOut')}</span>
           <DriverCell
             employeeId={visit.driverOutEmployeeId}
             name={visit.driverOutName}

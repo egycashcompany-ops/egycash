@@ -248,7 +248,7 @@ const rowTags = (markup: string): string[] =>
 const tone = (markup: string, name: string): string => {
   const at = markup.indexOf(`>${name}<`) + 1;
   expect(at, `${name} is named`).toBeGreaterThan(0);
-  return markup.slice(markup.lastIndexOf('<span class="', at), at);
+  return markup.slice(markup.lastIndexOf('<span', at), at);
 };
 
 const REQUIRED_COLUMNS = [
@@ -338,10 +338,10 @@ describe('the maintenance table', () => {
     expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
   });
 
-  it('names the DRIVER who brought the car in — in red, under the word «دخول»', () => {
+  it('names the DRIVER who brought the car in — in red, on top, with no word before it', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
     const markup = render({ qc });
-    expect(cells(markup)[4]).toContain(`${t('fleet.maintenance.legIn')} سائق الصباح`);
+    expect(cells(markup)[4]).toMatch(/^سائق الصباح/u);
     expect(tone(tbody(markup), 'سائق الصباح')).toContain('text-red-700');
   });
 
@@ -355,18 +355,17 @@ describe('the maintenance table', () => {
     ]);
     const markup = render({ qc });
     const both = cells(markup)[4] as string;
-    // Entry first, exit after it — each behind its own word, so the reader never has to guess
-    // which end of the visit a name belongs to.
-    expect(both, 'the entry leg').toContain(`${t('fleet.maintenance.legIn')} سائق الصباح`);
-    expect(both, 'the exit leg').toContain(`${t('fleet.maintenance.legOut')} سائق المساء`);
+    // «امسح كلمه دخول وخروج»: entry first, exit after it, no word before either — the place and
+    // the tone say which end of the visit a name belongs to.
+    expect(both).toBe('سائق الصباح سائق المساء');
     expect(both.indexOf('سائق الصباح'), 'entry above exit').toBeLessThan(
       both.indexOf('سائق المساء'),
     );
     expect(cells(markup)[5], 'the next column is the workshop, not a second driver').not.toContain(
       'سائق المساء',
     );
-    // The two legs are still told apart by TONE as well as by the word — a reader scanning down
-    // the column should not have to read the label to know which end of the visit it is.
+    // The two legs are told apart by TONE — with no word before them, the colour is what a
+    // reader scanning down the column goes by.
     // Asserting each is NOT the other's colour is what fails if one class ever paints both.
     const body = tbody(markup);
     expect(tone(body, 'سائق الصباح'), 'the entry driver is red').toContain('text-red-700');
@@ -403,29 +402,27 @@ describe('the maintenance table', () => {
     expect(tbody(kept)).toContain('120,000');
   });
 
-  it('shows no exit driver while the car is still in the workshop — the word, then a dash', () => {
+  it('shows no exit driver while the car is still in the workshop — a dash under the entry', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
     const both = cells(render({ qc }))[4] as string;
-    expect(both).toContain('سائق الصباح');
-    expect(both, 'nobody has driven it away yet').toMatch(
-      new RegExp(`${t('fleet.maintenance.legOut')} —$`),
-    );
+    expect(both, 'nobody has driven it away yet').toBe('سائق الصباح —');
   });
 
   it('dashes BOTH legs for a visit written before the driver fields existed', () => {
     const body = tbody(render());
-    expect(cells(render())[4]).toBe(
-      `${t('fleet.maintenance.legIn')} — ${t('fleet.maintenance.legOut')} —`,
-    );
+    expect(cells(render())[4]).toBe('— —');
     expect(body).not.toContain('null');
     expect(body).not.toContain('undefined');
   });
 
-  it('words each leg in BOTH locales — no «دخول» / «خروج» renders as a raw key', () => {
+  it('writes no «دخول» / «خروج» before the drivers — «امسح كلمه دخول وخروج»', () => {
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).not.toContain('fleet.maintenance.legIn');
+    expect(source).not.toContain('fleet.maintenance.legOut');
     for (const locale of ['ar', 'en'] as Locale[]) {
-      for (const key of ['fleet.maintenance.legIn', 'fleet.maintenance.legOut']) {
-        expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
-      }
+      expect(translate(locale, 'fleet.maintenance.legIn'), `gone in ${locale}`).toBe(
+        'fleet.maintenance.legIn',
+      );
     }
   });
 

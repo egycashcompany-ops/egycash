@@ -14,6 +14,8 @@ import {
   SettingKeys,
   platformPermissions,
   type FleetCatalogItemDto,
+  type FleetCustodyDashboardDto,
+  type FleetCustodySummaryDto,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
   type FleetDriverUnavailabilityDto,
@@ -48,6 +50,7 @@ import {
 } from '../../src/modules/fleet/sweeps/fleet-sweeps';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
+import { FleetDealershipInvoiceModel } from '../../src/modules/fleet/dealership/dealership.model';
 import { FleetFuelCardMovementModel } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
@@ -9997,6 +10000,170 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
           .set('Authorization', `Bearer ${adminToken}`)
       ).status,
     ).toBe(400);
+  });
+
+  it('«داش بورد» reads the board’s own set — its figures ARE the summary’s, every way it is filtered', async () => {
+    const v1 = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const v2 = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const made = async (body: Record<string, unknown>): Promise<Receipt> => {
+      const res = await post(body);
+      expect(res.status).toBe(201);
+      return data<Receipt>(res);
+    };
+    const petrol = await made({
+      vehicleId: v1.id,
+      kind: 'fuel',
+      fuelType: 'petrol80',
+      amount: 315,
+      driverName: 'سائق اللوحة',
+      date: '2026-08-10',
+    });
+    const diesel = await made({
+      vehicleId: v2.id,
+      kind: 'fuel',
+      fuelType: 'diesel',
+      amount: 500,
+      driverName: 'محمد رأفت',
+      date: '2026-10-03',
+    });
+    await made({
+      vehicleId: v1.id,
+      kind: 'tyres',
+      amount: 1400,
+      driverName: 'محمد رأفت',
+      date: '2026-10-05',
+    });
+    await made({ vehicleId: v2.id, kind: 'wash', amount: 120, date: '2026-10-06' });
+    // A receipt deleted on its own screen leaves the ledger and the dashboard alike.
+    const gone = await made({ vehicleId: v1.id, kind: 'wash', amount: 80, date: '2026-10-07' });
+    expect(
+      (
+        await request(app)
+          .delete(`/api/v1/fleet/receipts/${gone.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(204);
+    // A private car's bill paid by the fund; a deleted one, and one the dealership paid, are not.
+    const bill = (over: Record<string, unknown>) => ({
+      visitId: new Types.ObjectId(),
+      vehicleId: new Types.ObjectId(v1.id),
+      outDate: new Date('2026-10-04T00:00:00.000Z'),
+      workKind: 'repair',
+      workTypeLabel: 'إصلاح',
+      privateCar: true,
+      invoiceAmount: 850,
+      side: 'custody',
+      ...over,
+    });
+    await FleetDealershipInvoiceModel.create([
+      bill({}),
+      bill({ vehicleId: new Types.ObjectId(v2.id), invoiceAmount: 9999, isDeleted: true }),
+      bill({ invoiceNumber: '48213', invoiceAmount: 3250, privateCar: false, side: 'dealership' }),
+    ]);
+
+    const codes = `${v1.code},${v2.code}`;
+    const read = async (path: string, query: Record<string, string>) => {
+      const res = await request(app)
+        .get(`/api/v1/fleet/custody/${path}`)
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, `${path} ${JSON.stringify(query)}`).toBe(200);
+      return res;
+    };
+    type Dashboard = FleetCustodySummaryDto & Record<string, unknown>;
+    // The totals agree: for every filter the board offers, the dashboard's figures and per-car
+    // lines are the summary's, and its count is the movements' count.
+    for (const query of [
+      { vehicleCodes: codes },
+      { vehicleCodes: v1.code },
+      { vehicleCodes: codes, source: 'fuel,wash' },
+      { vehicleCodes: codes, source: 'dealership' },
+      { vehicleCodes: codes, driver: 'رأفت' },
+      { vehicleCodes: codes, from: '2026-10-01', to: '2026-10-31' },
+    ]) {
+      const summary = data<FleetCustodySummaryDto>(await read('summary', query));
+      const dashboard = data<Dashboard>(await read('dashboard', query));
+      const { count, total, dealership, fuel, tyres, wash, vehicles } = dashboard;
+      expect(
+        { count, total, dealership, fuel, tyres, wash, vehicles },
+        JSON.stringify(query),
+      ).toEqual(summary);
+      const movements = await read('movements', { ...query, pageSize: '1' });
+      expect(count, JSON.stringify(query)).toBe(
+        (movements.body as { meta: PageMeta }).meta.totalItems,
+      );
+    }
+
+    const whole = data<FleetCustodyDashboardDto>(await read('dashboard', { vehicleCodes: codes }));
+    const litres = (petrol.litres ?? 0) + (diesel.litres ?? 0);
+    expect(whole).toMatchObject({
+      count: 5,
+      total: 3185,
+      dealership: 850,
+      fuel: 815,
+      tyres: 1400,
+      wash: 120,
+      vehicleCount: 2,
+      counts: { dealership: 1, fuel: 2, tyres: 1, wash: 1 },
+      bySource: [
+        { ref: 'receipt', count: 4, amount: 2335 },
+        { ref: 'dealershipInvoice', count: 1, amount: 850 },
+      ],
+      noDriver: { count: 1, amount: 120 },
+      litresMissing: 0,
+    });
+    expect(whole.litres).toBeCloseTo(litres, 2);
+    expect(whole.fuelTypes.map((line) => [line.fuelType, line.count, line.amount])).toEqual([
+      ['petrol80', 1, 315],
+      ['diesel', 1, 500],
+    ]);
+    expect(whole.drivers).toEqual([
+      expect.objectContaining({ driverName: 'محمد رأفت', fuel: 500, tyres: 1400, total: 1900 }),
+      expect.objectContaining({ driverName: 'سائق اللوحة', fuel: 315, total: 315, count: 1 }),
+    ]);
+    // Month by month, September's nothing kept between August and October.
+    expect(whole.timeline.granularity).toBe('month');
+    expect(whole.timeline.buckets.map((b) => [b.key, b.total, b.count])).toEqual([
+      ['2026-08', 315, 1],
+      ['2026-09', 0, 0],
+      ['2026-10', 2870, 4],
+    ]);
+    expect(whole.timeline.buckets[2]).toMatchObject({
+      dealership: 850,
+      fuel: 500,
+      tyres: 1400,
+      wash: 120,
+    });
+
+    // Inside one month, day by day — every day of October, the bill on its exit date.
+    const october = data<FleetCustodyDashboardDto>(
+      await read('dashboard', { vehicleCodes: codes, from: '2026-10-01', to: '2026-10-31' }),
+    );
+    expect(october.timeline.granularity).toBe('day');
+    expect(october.timeline.buckets).toHaveLength(31);
+    expect(october.timeline.buckets[0]?.key).toBe('2026-10-01');
+    expect(october.timeline.buckets[30]?.key).toBe('2026-10-31');
+    expect(october.timeline.buckets.find((b) => b.key === '2026-10-04')).toMatchObject({
+      dealership: 850,
+      total: 850,
+      count: 1,
+    });
+    expect(october.timeline.buckets.find((b) => b.key === '2026-10-07')).toMatchObject({
+      total: 0,
+    });
+
+    // The figures' grant and the figures' parameters: never ordered, never paged.
+    const refused = async (query: Record<string, string>, token: string) =>
+      (
+        await request(app)
+          .get('/api/v1/fleet/custody/dashboard')
+          .query(query)
+          .set('Authorization', `Bearer ${token}`)
+      ).status;
+    expect(await refused({ vehicleCodes: codes, sort: 'amount:asc' }, adminToken)).toBe(400);
+    expect(await refused({ vehicleCodes: codes, page: '2' }, adminToken)).toBe(400);
+    expect(await refused({}, branchAToken)).toBe(403);
+    expect((await request(app).get('/api/v1/fleet/custody/dashboard')).status).toBe(401);
   });
 
   it('editing a receipt moves the money between cards, and the screens are their own grants', async () => {

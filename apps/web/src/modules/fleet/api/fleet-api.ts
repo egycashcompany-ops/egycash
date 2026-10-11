@@ -43,6 +43,7 @@ import {
   type FleetReceiptDto,
   type FleetReceiptTotalsDto,
   type FleetCustodySummaryDto,
+  type FleetCustodyDashboardDto,
   type FleetCustodyMovementDto,
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
@@ -586,6 +587,9 @@ export const deleteReceiptImage = (id: string): Promise<FleetReceiptDto> =>
   del<FleetReceiptDto>(`/fleet/receipts/${id}/image`);
 export const custodySummary = (params: FleetListParams): Promise<FleetCustodySummaryDto> =>
   get<FleetCustodySummaryDto>(`/fleet/custody/summary${buildQuery(params)}`);
+/** «داش بورد» — the figures' filters, everything about them. */
+export const custodyDashboard = (params: FleetListParams): Promise<FleetCustodyDashboardDto> =>
+  get<FleetCustodyDashboardDto>(`/fleet/custody/dashboard${buildQuery(params)}`);
 export const listCustodyMovements = (
   params: FleetListParams,
 ): Promise<Paginated<FleetCustodyMovementDto>> =>

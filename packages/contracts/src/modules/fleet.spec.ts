@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ChangeFleetVehicleStatusSchema,
   fleetMonthWindow,
+  FleetCustodyDashboardQuerySchema,
   FleetCustodySummaryQuerySchema,
   ListFleetCustodyMovementsQuerySchema,
   ListFleetReceiptsQuerySchema,
@@ -602,6 +603,28 @@ describe('receipt kinds and custody sources take several — «اختيار مت
       'amount:desc,date:asc',
     );
     expect(FleetCustodySummaryQuerySchema.safeParse({ sort: 'amount:asc' }).success).toBe(false);
+  });
+
+  it('«داش بورد» reads the figures’ own filters, a list of kinds included — and nothing more', () => {
+    const query = {
+      vehicleCodes: '160,204',
+      source: 'fuel,wash',
+      driver: 'محمد',
+      from: '2026-10-01',
+      to: '2026-10-31',
+    };
+    expect(FleetCustodyDashboardQuerySchema.parse(query)).toEqual(
+      FleetCustodySummaryQuerySchema.parse(query),
+    );
+    expect(FleetCustodyDashboardQuerySchema.parse(query).source).toEqual(['fuel', 'wash']);
+    expect(FleetCustodyDashboardQuerySchema.parse({})).toEqual({});
+    // Never ordered, never paged: a parameter the figures refuse, it refuses too.
+    for (const extra of [{ sort: 'amount:asc' }, { page: '2' }, { pageSize: '10' }]) {
+      expect(FleetCustodyDashboardQuerySchema.safeParse(extra).success, JSON.stringify(extra)).toBe(
+        false,
+      );
+    }
+    expect(FleetCustodyDashboardQuerySchema.safeParse({ source: 'card' }).success).toBe(false);
   });
 });
 

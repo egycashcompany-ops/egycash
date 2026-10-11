@@ -28,7 +28,9 @@ import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { formatNumber } from '../../../shared/lib/format';
 import { ReceiptFigures, ReceiptsPage } from './ReceiptsPage';
-import { CustodyFigures, CustodyPage } from './CustodyPage';
+import { CustodyPage } from './CustodyPage';
+import { CustodyFigures } from '../components/CustodyFigures';
+import { CUSTODY_KIND } from '../components/CustodyKinds';
 import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
 import { ReceiptDialog } from '../components/ReceiptDialog';
 
@@ -562,10 +564,82 @@ describe('the custody ledger', () => {
     expect(opened).toContain('850.00');
     expect(opened).toContain(ar('fleet.custody.totals.fuel'));
     expect(opened).toContain('1,850.00');
-    expect(opened).toContain(ar('fleet.custody.totals.tyresWash'));
-    expect(opened).toContain('1,520.00');
+    // «الكوتش لوحده والغسيل لوحده»: tyres and washing on figures of their own, never summed.
+    expect(opened).toContain(ar('fleet.custody.totals.tyres'));
+    expect(opened).toContain('1,400.00');
+    expect(opened).toContain(ar('fleet.custody.totals.wash'));
+    expect(opened).toContain('120.00');
+    expect(opened, 'no «كاوتش + غسيل» figure any more').not.toContain('1,520.00');
     // The figure and «ج.م.» in spans of their own — never glued.
     expect(opened).toMatch(/>4,220\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
+  });
+
+  it('shows five figures — the total, then each kind on its own tile in its own colour', () => {
+    const opened = mount(
+      client(),
+      ['fleetCustody.view'],
+      '/fleet/custody',
+      <CustodyFigures totals={custodySummary} />,
+    );
+    const order = [...opened.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1]);
+    expect(order).toEqual(['total', 'dealership', 'fuel', 'tyres', 'wash']);
+    for (const kind of ['dealership', 'fuel', 'tyres', 'wash'] as const) {
+      const at = opened.indexOf(`data-custody-figure="${kind}"`);
+      const tile = opened.slice(at, opened.indexOf('</div></div>', at));
+      expect(tile, `${kind} wears its kind's fill`).toContain(CUSTODY_KIND[kind].fill);
+    }
+    // Five across where five sums fit; a sum of money keeps the whole row on a phone, and «ج.م.»
+    // goes under a figure too long for its tile rather than off it.
+    expect(opened).toContain('xl:grid-cols-5');
+    expect(opened).toContain('[&amp;_.items-baseline]:flex-wrap');
+    // The amber icon fuel used to wear is gone: amber is a STATE on these boards.
+    expect(opened).not.toMatch(/amber-/u);
+  });
+
+  it('draws the kind in «كل الحركات» in its own colour — the dealership, fuel, tyres and washing apart', () => {
+    const html = renderCustody([
+      movement({ id: 'f', source: 'fuel', amount: 101 }),
+      movement({ id: 't', source: 'tyres', fuelType: null, amount: 102 }),
+      movement({ id: 'w', source: 'wash', fuelType: null, amount: 103 }),
+      movement({
+        id: 'd',
+        ref: 'dealershipInvoice',
+        source: 'dealership',
+        driverName: null,
+        fuelType: null,
+        detail: 'إصلاح',
+        amount: 104,
+      }),
+    ]);
+    const movements = html.indexOf('data-custody-movements="true"');
+    const fills = new Set<string>();
+    for (const [kind, amount] of [
+      ['fuel', '101.00'],
+      ['tyres', '102.00'],
+      ['wash', '103.00'],
+      ['dealership', '104.00'],
+    ] as const) {
+      const row = rowWith(html, amount, movements);
+      const at = row.indexOf(`data-custody-kind="${kind}"`);
+      expect(at, `${kind} has its badge`).toBeGreaterThan(-1);
+      const badge = row.slice(row.lastIndexOf('<span', at), row.indexOf('</span>', at));
+      expect(badge).toContain(CUSTODY_KIND[kind].fill);
+      expect(badge).toContain(ar(`fleet.custody.source.${kind}`));
+      fills.add(CUSTODY_KIND[kind].fill);
+    }
+    expect(fills.size, 'four kinds, four colours').toBe(4);
+    expect(CUSTODY).toContain('<CustodyKindBadge kind={row.source} />');
+    expect(CUSTODY).not.toContain("tone={row.source === 'dealership' ? 'info' : 'neutral'}");
+  });
+
+  it('prints tyres and washing on totals of their own', () => {
+    expect(CUSTODY).toContain(
+      "{ label: t('fleet.custody.totals.tyres'), value: reportMoney(summary.data.tyres) }",
+    );
+    expect(CUSTODY).toContain(
+      "{ label: t('fleet.custody.totals.wash'), value: reportMoney(summary.data.wash) }",
+    );
+    expect(CUSTODY).not.toContain('tyresWash');
   });
 
   it('opens on its toolbar — the count, «الإحصائيات», Excel / PDF — with no page title', () => {

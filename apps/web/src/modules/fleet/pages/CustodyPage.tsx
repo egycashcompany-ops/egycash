@@ -8,13 +8,16 @@
 // both tables in the receipts board's look (no column lines, Cairo bold) and the alarms board's
 // type, every value centred; the driver's whole name; and arrows — the movements ordered by the
 // server over the whole filtered set, the per-car summary (which holds every car) in the browser.
+//
+// «عاوز اغير لون النوع بين كاوتش وبنزين وغسيل»: each kind wears its own colour, defined once in
+// `CustodyKinds.tsx`; «عاوز الاحصائيات الكوتش لوحده والغسيل لوحده»: five figures, tyres and washing
+// apart; and «داش بورد» beside «الإحصائيات» opens everything in detail over the same filters.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_CUSTODY_SOURCES,
   fleetVehicleCodeOrderKey,
   type FleetCustodyMovementDto,
-  type FleetCustodySummaryDto,
   type FleetCustodyVehicleRowDto,
   type Locale,
 } from '@ecms/contracts';
@@ -25,7 +28,6 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
-import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
@@ -38,7 +40,9 @@ import * as fleetApi from '../api/fleet-api';
 import { useCustodyMovements, useCustodySummary } from '../api/fleet-queries';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { FigureChip, moneyChip } from '../components/FleetFigures';
+import { CustodyFigures } from '../components/CustodyFigures';
+import { CustodyKindBadge } from '../components/CustodyKinds';
+import { CustodyDashboard } from '../components/CustodyDashboard';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverCell } from '../components/DriverPerson';
@@ -107,55 +111,6 @@ const carSortValue = (row: FleetCustodyVehicleRowDto, key: string): SortValue =>
   return typeof value === 'number' ? value : null;
 };
 
-/**
- * The four sums behind «الإحصائيات» — the server's, over the whole filtered set, never the page:
- * everything the fund paid, the dealership, fuel, tyres and washing together.
- */
-export const CustodyFigures = ({ totals }: { totals: FleetCustodySummaryDto }): JSX.Element => {
-  const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  return (
-    <section
-      data-custody-figures="true"
-      className="grid shrink-0 animate-drop-in grid-cols-2 gap-3 lg:grid-cols-4"
-    >
-      {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile. */}
-      <div className="col-span-2 sm:col-span-1">
-        <FigureChip
-          icon={PATH.box}
-          iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
-          label={t('fleet.custody.totals.total')}
-          {...moneyChip(totals.total, locale)}
-        />
-      </div>
-      <div className="col-span-2 sm:col-span-1">
-        <FigureChip
-          icon={PATH.truck}
-          iconClass="bg-sky-500/10 text-sky-600 dark:text-sky-400"
-          label={t('fleet.custody.totals.dealership')}
-          {...moneyChip(totals.dealership, locale)}
-        />
-      </div>
-      <div className="col-span-2 sm:col-span-1">
-        <FigureChip
-          icon={FILTER_ICON.charge}
-          iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-400"
-          label={t('fleet.custody.totals.fuel')}
-          {...moneyChip(totals.fuel, locale)}
-        />
-      </div>
-      <div className="col-span-2 sm:col-span-1">
-        <FigureChip
-          icon={FILTER_ICON.motor}
-          iconClass="bg-slate-500/10 text-slate-600 dark:text-slate-300"
-          label={t('fleet.custody.totals.tyresWash')}
-          {...moneyChip(totals.tyres + totals.wash, locale)}
-        />
-      </div>
-    </section>
-  );
-};
-
 export const CustodyPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -220,6 +175,8 @@ export const CustodyPage = (): JSX.Element => {
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   // The figures open from the toolbar, closed on the way in.
   const [statsOpen, setStatsOpen] = useState(false);
+  // «داش بورد» — over the whole screen, read only while open.
+  const [dashOpen, setDashOpen] = useState(false);
 
   const sourceLabel = (row: FleetCustodyMovementDto): string =>
     t(`fleet.custody.source.${row.source}`);
@@ -327,9 +284,7 @@ export const CustodyPage = (): JSX.Element => {
       // of its own, so the table's bold reaches it.
       render: (row) => (
         <span className="inline-flex items-center gap-2">
-          <Badge size="lg" tone={row.source === 'dealership' ? 'info' : 'neutral'}>
-            {sourceLabel(row)}
-          </Badge>
+          <CustodyKindBadge kind={row.source} />
           {detailOf(row) !== '' && <span>{detailOf(row)}</span>}
         </span>
       ),
@@ -426,10 +381,8 @@ export const CustodyPage = (): JSX.Element => {
                   value: reportMoney(summary.data.dealership),
                 },
                 { label: t('fleet.custody.totals.fuel'), value: reportMoney(summary.data.fuel) },
-                {
-                  label: t('fleet.custody.totals.tyresWash'),
-                  value: reportMoney(summary.data.tyres + summary.data.wash),
-                },
+                { label: t('fleet.custody.totals.tyres'), value: reportMoney(summary.data.tyres) },
+                { label: t('fleet.custody.totals.wash'), value: reportMoney(summary.data.wash) },
               ],
         signatories,
         serialHeader: t('fleet.violations.report.serial'),
@@ -527,6 +480,18 @@ export const CustodyPage = (): JSX.Element => {
               >
                 <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
+            </button>
+            {/* «جمب الاحصائيات داش بورد تفتح ف الشاشه كلها» — right beside it, the same look. */}
+            <button
+              type="button"
+              data-custody-dashboard-open="true"
+              aria-haspopup="dialog"
+              aria-expanded={dashOpen}
+              onClick={() => setDashOpen(true)}
+              className={BRAND_BUTTON}
+            >
+              <BoardIcon d={PATH.trend} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              {t('fleet.custody.dashboard.open')}
             </button>
             {/* Not offered when the list failed: the file behind it would be empty or short. */}
             {!isError && (
@@ -640,6 +605,8 @@ export const CustodyPage = (): JSX.Element => {
 
         {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the money boards. */}
         {statsOpen && summary.data !== undefined && <CustodyFigures totals={summary.data} />}
+        {/* The board's own `filters`: the dashboard asks exactly what the figures ask. */}
+        <CustodyDashboard open={dashOpen} onClose={() => setDashOpen(false)} filters={filters} />
 
         {/* Two tables share the height: the per-car totals take what they need up to three tenths,
             and the movements take the rest — each scrolls its own rows. */}

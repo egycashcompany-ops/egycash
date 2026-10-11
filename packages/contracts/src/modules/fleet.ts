@@ -3656,6 +3656,12 @@ const custodyFilters = {
 };
 export const FleetCustodySummaryQuerySchema = z.object(custodyFilters).strict();
 export type FleetCustodySummaryQuery = z.infer<typeof FleetCustodySummaryQuerySchema>;
+/**
+ * «داش بورد» — the figures' own filters and nothing else: the dashboard reads the SAME set as
+ * «الإحصائيات», so its numbers can never disagree with the board's. Never ordered either.
+ */
+export const FleetCustodyDashboardQuerySchema = z.object(custodyFilters).strict();
+export type FleetCustodyDashboardQuery = z.infer<typeof FleetCustodyDashboardQuerySchema>;
 export const ListFleetCustodyMovementsQuerySchema = PaginationQuerySchema.extend({
   ...custodyFilters,
   /** The arrows on «كل الحركات», several columns at once — as on every Fleet board. */
@@ -3698,6 +3704,65 @@ export interface FleetCustodyMovementDto {
   fuelType: FleetFuelType | null;
   detail: string | null;
   amount: number;
+}
+
+/** One stretch of «المصروف عبر الزمن» — a month (`YYYY-MM`), or a day (`YYYY-MM-DD`). */
+export interface FleetCustodyTimeBucketDto {
+  key: string;
+  dealership: number;
+  fuel: number;
+  tyres: number;
+  wash: number;
+  total: number;
+  count: number;
+}
+
+/** One driver's receipts — a dealership bill names no driver, so it is never on one. */
+export interface FleetCustodyDriverRowDto {
+  driverEmployeeId: string | null;
+  driverName: string;
+  fuel: number;
+  tyres: number;
+  wash: number;
+  total: number;
+  count: number;
+}
+
+/** The fuel from the fund by its type — `null` for a receipt that names none. */
+export interface FleetCustodyFuelTypeRowDto {
+  fuelType: FleetFuelType | null;
+  count: number;
+  amount: number;
+  litres: number;
+}
+
+/**
+ * «داش بورد … كل حاجة بالتفصيل»: everything about the fund's spend over the board's filters, read
+ * by the server over the WHOLE filtered set. The summary's own fields come first and are the very
+ * numbers `/summary` answers with for the same filters.
+ */
+export interface FleetCustodyDashboardDto extends FleetCustodySummaryDto {
+  /** The cars the movements fall on (a bill typed with a book code counts as its car). */
+  vehicleCount: number;
+  /** How many movements of each kind. */
+  counts: Record<FleetCustodySource, number>;
+  /** «المصدر»: the receipts screen and the dealership, each with its count and sum. */
+  bySource: { ref: FleetCustodyMovementDto['ref']; count: number; amount: number }[];
+  /**
+   * By the day when the filter spans a month at most (both dates chosen), else by the month — the
+   * board's own UTC day. Every stretch in between is there, nothing spent included.
+   */
+  timeline: { granularity: 'day' | 'month'; buckets: FleetCustodyTimeBucketDto[] };
+  /** Every driver, dearest first. */
+  drivers: FleetCustodyDriverRowDto[];
+  /** Receipts that name no driver. */
+  noDriver: { count: number; amount: number };
+  /** In the fuel types' own order, the receipts with none last; only the types used. */
+  fuelTypes: FleetCustodyFuelTypeRowDto[];
+  /** The litres the fuel receipts were priced at. */
+  litres: number;
+  /** Fuel receipts with no litres (no fuel type, or no price on the day). */
+  litresMissing: number;
 }
 
 // ── Licensing expenses (مصروفات التراخيص) ──────────────────────────────────────

@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import {
+  FleetCustodyDashboardQuerySchema,
   FleetCustodySummaryQuerySchema,
   ListFleetCustodyMovementsQuerySchema,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
-import { custodySummary, listCustodyMovements } from './custody.controller';
+import { custodyDashboard, custodySummary, listCustodyMovements } from './custody.controller';
 
 export const buildFleetCustodyRouter = (): Router => {
   const router = Router();
@@ -17,6 +18,14 @@ export const buildFleetCustodyRouter = (): Router => {
     authorize('fleetCustody.view'),
     validate({ query: FleetCustodySummaryQuerySchema }),
     asyncHandler(custodySummary),
+  );
+  // «داش بورد» — the same filters and grant as the figures, everything about them in detail.
+  router.get(
+    '/dashboard',
+    authenticate,
+    authorize('fleetCustody.view'),
+    validate({ query: FleetCustodyDashboardQuerySchema }),
+    asyncHandler(custodyDashboard),
   );
   router.get(
     '/movements',

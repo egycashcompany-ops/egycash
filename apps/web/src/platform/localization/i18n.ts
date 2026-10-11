@@ -3904,6 +3904,8 @@ const en: Record<string, string> = {
   'fleet.custody.totals.fuel': 'Fuel from the fund',
   'fleet.custody.totals.tyres': 'Tyres',
   'fleet.custody.totals.wash': 'Washing',
+  // After a kind's share on its figure: «45% of total».
+  'fleet.custody.totals.ofTotal': 'of total',
   'fleet.custody.perVehicle': 'Summary per vehicle',
   'fleet.custody.movements': 'All movements',
   'fleet.custody.columns.source': 'Source',
@@ -3939,6 +3941,7 @@ const en: Record<string, string> = {
   'fleet.custody.dashboard.topCount': 'The highest {{count}}',
   'fleet.custody.dashboard.noDriver': 'Receipts with no driver',
   'fleet.custody.dashboard.noDrivers': 'No receipt here names a driver.',
+  'fleet.custody.dashboard.receiptsShare': 'Shares are of the custody receipts',
   'fleet.custody.dashboard.fuel': 'Fuel',
   'fleet.custody.dashboard.noFuelType': 'No type',
   'fleet.custody.dashboard.showTable': 'Table',
@@ -11784,6 +11787,8 @@ const ar: Record<string, string> = {
   'fleet.custody.totals.fuel': 'وقود من العهدة',
   'fleet.custody.totals.tyres': 'كاوتش',
   'fleet.custody.totals.wash': 'غسيل',
+  // After a kind's share on its figure, «45% من الإجمالي» — the share leads in both languages.
+  'fleet.custody.totals.ofTotal': 'من الإجمالي',
   'fleet.custody.perVehicle': 'ملخص لكل سيارة',
   'fleet.custody.movements': 'كل الحركات',
   'fleet.custody.columns.source': 'المصدر',
@@ -11819,6 +11824,7 @@ const ar: Record<string, string> = {
   'fleet.custody.dashboard.topCount': 'أعلى {{count}}',
   'fleet.custody.dashboard.noDriver': 'إيصالات بدون سائق',
   'fleet.custody.dashboard.noDrivers': 'لا يذكر أي إيصال هنا سائقًا.',
+  'fleet.custody.dashboard.receiptsShare': 'النسبة من خصم الإيصالات',
   'fleet.custody.dashboard.fuel': 'الوقود',
   'fleet.custody.dashboard.noFuelType': 'بلا نوع',
   'fleet.custody.dashboard.showTable': 'جدول',

@@ -2,7 +2,9 @@
 // بالتفصيل» — proven against what it produces: the button beside «الإحصائيات», the modal over the
 // whole screen asking the board's own filters, every section of the body drawn from the server's
 // numbers in Latin digits with «ج.م.» apart, the three faces of the query, and the kinds' colours
-// kept clear of the state and pressed colours.
+// kept clear of the state and pressed colours. «والنسب باينه»: every place the money is split writes
+// each part's share — on the figures, on the bar of the kinds (a sliver's above it), by each source,
+// car and driver, in the readout of a stretch and in the fuel table — Latin, left to right.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +27,7 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { CustodyPage } from './CustodyPage';
 import {
+  CUSTODY_SHARE_INSIDE_MIN,
   CustodyDashboard,
   CustodyDashboardBody,
   CustodyDashboardContent,
@@ -33,10 +36,13 @@ import {
   custodyFiltered,
   custodyTrapFocus,
   custodyPeriod,
-  custodyShare,
+  CustodyDriversTable,
+  custodyReceipts,
+  custodyShareFits,
   custodyTicks,
   type CustodyDashboardFilters,
 } from '../components/CustodyDashboard';
+import { CustodyFigures, custodyShare, custodySharePct } from '../components/CustodyFigures';
 import { CUSTODY_KIND, CUSTODY_KINDS } from '../components/CustodyKinds';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -541,12 +547,409 @@ describe('«لوحة تحكم» on the custody board', () => {
   });
 });
 
+describe('«والنسب باينه» — every split of the money writes each part’s share', () => {
+  /** A share as the board writes it: a span of its own, left to right, holding exactly `share`. */
+  const pct = (share: string): RegExp =>
+    new RegExp(`<span dir="ltr" data-custody-pct="true" class="[^"]*">${share}</span>`, 'u');
+  /** One figure tile of `CustodyFigures`, as the board and the dashboard draw it. */
+  const tile = (html: string, kind: string): string => {
+    const at = html.indexOf(`data-custody-figure="${kind}"`);
+    expect(at, kind).toBeGreaterThan(-1);
+    return html.slice(at, html.indexOf('</div></div>', at));
+  };
+  const nothing: FleetCustodySummaryDto = {
+    count: 0,
+    total: 0,
+    dealership: 0,
+    fuel: 0,
+    tyres: 0,
+    wash: 0,
+    vehicles: [],
+  };
+
+  it('(1) writes each kind’s share of the whole on its figure — none on the total, none of nothing', () => {
+    expect(ar('fleet.custody.totals.ofTotal')).toBe('من الإجمالي');
+    expect(translate('en', 'fleet.custody.totals.ofTotal')).toBe('of total');
+    // The board's «الإحصائيات» and the dashboard's top row are the same five tiles.
+    const board = mount(client(), <CustodyFigures totals={dashboard} />);
+    const figures = section(body(), 'figures');
+    for (const html of [board, figures]) {
+      expect(tile(html, 'total')).not.toContain('%');
+      expect(tile(html, 'total')).not.toContain(ar('fleet.custody.totals.ofTotal'));
+      for (const [kind, share] of [
+        ['dealership', '20%'],
+        ['fuel', '45%'],
+        ['tyres', '32%'],
+        ['wash', '3%'],
+      ] as const) {
+        // «45% من الإجمالي»: the share first, on its chip, then the words.
+        expect(tile(html, kind)).toMatch(
+          new RegExp(
+            `data-custody-figure-share="${kind}">${pct(share).source} ${ar('fleet.custody.totals.ofTotal')}</span>`,
+            'u',
+          ),
+        );
+      }
+    }
+    // Of nothing, no share at all — never «NaN%» nor «0%» under a zero.
+    const empty = mount(client(), <CustodyFigures totals={nothing} />);
+    // Every card fills its cell: five across, the total (no line under it) stops level with the
+    // kinds' cards rather than 14px short of them.
+    for (const html of [board, empty]) {
+      for (const kind of ['total', ...CUSTODY_KINDS]) {
+        const card = new RegExp(`data-custody-figure="${kind}"><div class="([^"]*)"`, 'u').exec(
+          html,
+        );
+        expect((card?.[1] ?? '').split(' '), `${kind} fills its cell`).toContain('h-full');
+      }
+    }
+    // «من الإجمالي» as bright as the label over it on a dark tile — slate-500 there is about 3.7:1.
+    for (const kind of CUSTODY_KINDS) {
+      const note = new RegExp(
+        `<span class="([^"]*)"><span data-custody-figure-share="${kind}">`,
+        'u',
+      ).exec(board);
+      expect((note?.[1] ?? '').split(' '), kind).toEqual(
+        expect.arrayContaining(['text-slate-500', 'dark:text-slate-400']),
+      );
+    }
+    expect(empty).not.toContain('data-custody-figure-share');
+    expect(empty).not.toContain('%');
+    expect(empty).not.toMatch(/NaN|Infinity/u);
+    // A kind with nothing beside others that have something says so: 0%.
+    const noWash = mount(
+      client(),
+      <CustodyFigures totals={{ ...dashboard, wash: 0, total: dashboard.total - 120 }} />,
+    );
+    expect(tile(noWash, 'wash')).toMatch(pct('0%'));
+  });
+
+  it('(2) writes each part’s share ON the 40px bar of the kinds, bold, in the kind’s own ink', () => {
+    const part = section(body(), 'byKind');
+    const bar = part.slice(part.indexOf('data-custody-kind-bar="true"'), part.indexOf('<table'));
+    expect(bar).toContain('flex h-10 gap-0.5');
+    // Still one picture read aloud, its shares in its label.
+    expect(part).toMatch(/role="img" aria-label="[^"]*وقود: 1,965\.50 ج\.م\. \(45%\)/u);
+    for (const [kind, share] of [
+      ['dealership', '20%'],
+      ['fuel', '45%'],
+      ['tyres', '32%'],
+    ] as const) {
+      const label = new RegExp(
+        `data-custody-mark="${kind}" class="[^"]*"[^>]*><span data-custody-share="${kind}" data-custody-share-at="inside" dir="ltr" class="([^"]*)">${share}</span>`,
+        'u',
+      ).exec(bar);
+      expect(label, kind).not.toBeNull();
+      expect(label?.[1], `${kind} in its ink`).toContain(CUSTODY_KIND[kind].ink);
+      expect(label?.[1]).toContain('font-bold');
+    }
+    // Washing is 3% of the whole — too narrow for «3%» on a phone: it is written just above its
+    // part, on the row of the bar's own parts, before the bar.
+    expect(bar).toMatch(
+      /data-custody-share="wash" data-custody-share-at="above"[^>]*><span[^>]*data-custody-swatch="wash"[^>]*><\/span><span dir="ltr" class="[^"]*">3%<\/span>/u,
+    );
+    expect(bar.indexOf('data-custody-kind-bar-above="true"')).toBeLessThan(
+      bar.indexOf('data-custody-mark="dealership"'),
+    );
+    // Every kind on the bar shows its share, once.
+    expect([...bar.matchAll(/data-custody-share="(\w+)"/gu)].map((m) => m[1]).sort()).toEqual(
+      ['dealership', 'fuel', 'tyres', 'wash'].sort(),
+    );
+    // Nothing needs to go above: no row above.
+    const wide = section(
+      body({ ...dashboard, total: 3000, dealership: 1000, fuel: 1000, tyres: 500, wash: 500 }),
+      'byKind',
+    );
+    expect(wide).not.toContain('data-custody-kind-bar-above');
+    expect(wide.match(/data-custody-share-at="inside"/gu)?.length).toBe(4);
+  });
+
+  it('(2) gives every sliver its share above the bar — side by side, never one over another', () => {
+    const narrow = { ...dashboard, total: 5100, dealership: 30, fuel: 5000, tyres: 40, wash: 30 };
+    const part = section(body(narrow), 'byKind');
+    const bar = part.slice(part.indexOf('data-custody-kind-bar="true"'), part.indexOf('<table'));
+    expect(bar).toMatch(/data-custody-share="fuel" data-custody-share-at="inside"[^>]*>98%</u);
+    for (const kind of ['dealership', 'tyres', 'wash']) {
+      expect(bar, kind).toMatch(
+        new RegExp(
+          `data-custody-share="${kind}" data-custody-share-at="above"[^>]*><span[^>]*></span><span dir="ltr" class="[^"]*">&lt;1%</span>`,
+          'u',
+        ),
+      );
+    }
+    // A sliver's cell is never narrower than its label, so neighbours cannot overlap.
+    const above = bar.slice(0, bar.indexOf('flex h-10'));
+    expect(above.match(/min-w-max/gu)?.length).toBe(3);
+    // Every part — on the bar or over it — still says its share aloud.
+    expect(part).toContain('التوكيل: 30.00 ج.م. (&lt;1%)');
+  });
+
+  it('never writes «100%» beside a «<1%» of the same whole — the top end is «>99%»', () => {
+    const top = {
+      ...dashboard,
+      total: 10000,
+      dealership: 9980,
+      fuel: 0,
+      tyres: 0,
+      wash: 20,
+    };
+    const figures = mount(client(), <CustodyFigures totals={top} />);
+    expect(tile(figures, 'dealership')).toMatch(pct('&gt;99%'));
+    expect(tile(figures, 'wash')).toMatch(pct('&lt;1%'));
+    const part = section(body(top), 'byKind');
+    const bar = part.slice(part.indexOf('data-custody-kind-bar="true"'), part.indexOf('<table'));
+    expect(bar).toMatch(
+      /data-custody-share="dealership" data-custody-share-at="inside"[^>]*>&gt;99%</u,
+    );
+    expect(bar).toMatch(/data-custody-share="wash" data-custody-share-at="above"/u);
+    expect(part).toContain('التوكيل: 9,980.00 ج.م. (&gt;99%)');
+    // Neither the tiles nor the bar nor its table claims all of it for one kind.
+    for (const html of [figures, section(body(top), 'figures'), part]) {
+      expect(html).not.toMatch(/>100%</u);
+    }
+  });
+
+  it('(3) writes each source’s share of the whole beside its sum', () => {
+    const part = section(body(), 'byKind');
+    for (const [ref, amount, share] of [
+      ['receipt', '3,485.50', '80%'],
+      ['dealershipInvoice', '850.00', '20%'],
+    ] as const) {
+      const at = part.indexOf(`data-custody-source-row="${ref}"`);
+      const row = part.slice(at, part.indexOf('</li>', at));
+      expect(row, ref).toMatch(pct(share));
+      expect(row.indexOf(amount), 'the sum, then its share').toBeLessThan(row.search(pct(share)));
+    }
+  });
+
+  it('(4) writes each car’s share of the whole, each driver’s of the receipts', () => {
+    const cars = section(body(), 'topCars');
+    for (const [code, share, next] of [
+      ['63', '52%', '>204<'],
+      ['204', '41%', '>160<'],
+      ['160', '7%', '</ol>'],
+    ] as const) {
+      const row = cars.slice(cars.indexOf(`>${code}<`), cars.indexOf(next));
+      expect(row, code).toMatch(pct(share));
+    }
+    expect(cars).toContain('aria-label="63: 2,250.00 ج.م. (52%)');
+    // Drivers: of the receipts (3,485.50), never of the whole fund (4,335.50) — a dealership bill
+    // names no driver. 1,900 is 55% of the receipts; of the whole it would read 44%.
+    const drivers = section(body(), 'topDrivers');
+    expect(drivers).toContain(ar('fleet.custody.dashboard.receiptsShare'));
+    const first = drivers.slice(
+      drivers.indexOf('محمد رأفت عبد الله'),
+      drivers.indexOf('سائق اللوحة'),
+    );
+    expect(first).toMatch(pct('55%'));
+    expect(first).not.toMatch(pct('44%'));
+    expect(drivers).toContain('aria-label="محمد رأفت عبد الله: 1,900.00 ج.م. (55%)');
+    const second = drivers.slice(
+      drivers.indexOf('سائق اللوحة'),
+      drivers.indexOf('data-custody-no-driver="true"'),
+    );
+    expect(second).toMatch(pct('42%'));
+    // «إيصالات بدون سائق» on the same base: 55% + 42% + 3% — the whole of the receipts.
+    const none = drivers.slice(drivers.indexOf('data-custody-no-driver="true"'));
+    expect(none).toMatch(pct('3%'));
+    expect(custodyReceipts(dashboard), 'fuel + tyres + washing').toBe(3485.5);
+    expect(MODAL).toContain('<CustodyShare part={data.noDriver.amount} whole={receipts} pill />');
+    // The table view («جدول») is the one `CustodyDriversTable`, drawn in (4) below.
+    expect(MODAL).toContain(') : table ? (\n        <CustodyDriversTable data={data} />');
+  });
+
+  it('(4) gives the drivers’ «جدول» «النسبة» after the total — each driver’s share of the receipts', () => {
+    const html = mount(client(), <CustodyDriversTable data={dashboard} />);
+    /** A cell's words, its tags taken off. */
+    const text = (cell: string): string => cell.replace(/<[^>]*>/gu, '').trim();
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    const heads = [...head.matchAll(/<th scope="col"[^>]*>(.*?)<\/th>/gu)].map((m) =>
+      text(m[1] ?? ''),
+    );
+    expect(heads).toEqual([
+      ar('fleet.custody.dashboard.columns.driver'),
+      ar('fleet.custody.source.fuel'),
+      ar('fleet.custody.source.tyres'),
+      ar('fleet.custody.source.wash'),
+      ar('fleet.custody.dashboard.columns.total'),
+      ar('fleet.custody.dashboard.columns.share'),
+      ar('fleet.custody.dashboard.columns.count'),
+    ]);
+    const share = heads.indexOf(ar('fleet.custody.dashboard.columns.share'));
+    const rows = [...html.matchAll(/<tr class="border-t[^"]*">(.*?)<\/tr>/gu)].map((m) =>
+      [...(m[1] ?? '').matchAll(/<td[^>]*>(.*?)<\/td>/gu)].map((c) => c[1] ?? ''),
+    );
+    expect(rows).toHaveLength(dashboard.drivers.length);
+    // 1,900 and 1,465.50 of the receipts' 3,485.50 — of the whole fund they would read 44% and 34%.
+    for (const [i, [name, total, pctText]] of [
+      ['محمد رأفت عبد الله', '1,900.00', '55%'],
+      ['سائق اللوحة', '1,465.50', '42%'],
+    ].entries()) {
+      const row = rows[i] ?? [];
+      expect(row, `${name}: a cell under every heading`).toHaveLength(heads.length);
+      expect(text(row[0] ?? '')).toBe(name);
+      expect(text(row[share - 1] ?? ''), `${name}: the total before the share`).toContain(total);
+      expect(row[share], `${name}: the share under «النسبة»`).toMatch(pct(pctText ?? ''));
+      expect(text(row[share + 1] ?? ''), `${name}: the movements after it`).toBe('2');
+    }
+  });
+
+  it('(5) follows each kind’s sum in a stretch with its share of that stretch', () => {
+    const part = section(body(), 'timeline');
+    const readout = part.slice(
+      part.indexOf('data-custody-readout="true"'),
+      part.indexOf('data-custody-column'),
+    );
+    for (const [kind, amount, share] of [
+      ['dealership', '850.00', '21%'],
+      ['fuel', '1,650.50', '41%'],
+      ['tyres', '1,400.00', '35%'],
+      ['wash', '120.00', '3%'],
+    ] as const) {
+      const at = readout.indexOf(`data-custody-tip-row="${kind}"`);
+      expect(at, kind).toBeGreaterThan(-1);
+      const row = readout.slice(at, readout.indexOf('data-custody-tip-row', at + 1));
+      expect(row, kind).toMatch(pct(share));
+      expect(row.indexOf(`>${amount}<`), `${kind}: the sum, then its share`).toBeLessThan(
+        row.search(pct(share)),
+      );
+    }
+    // The column says the same aloud, and a ranked line's tip splits its own total the same way.
+    expect(part).toContain('وقود 1,650.50 ج.م. (41%)');
+    const cars = section(body(), 'topCars');
+    const car63 = cars.slice(cars.indexOf('>63<'), cars.indexOf('>204<'));
+    expect(car63.slice(car63.indexOf('data-custody-tip-row="dealership"'))).toMatch(pct('38%'));
+    expect(car63.slice(car63.indexOf('data-custody-tip-row="tyres"'))).toMatch(pct('62%'));
+  });
+
+  it('(6) gives the fuel table «النسبة» — each type’s share of the fuel', () => {
+    const part = section(body(), 'fuel');
+    const head = part.slice(part.indexOf('<thead'), part.indexOf('</thead>'));
+    const heads = [...head.matchAll(/<th scope="col"[^>]*>([^<]+)</gu)].map((m) => m[1]);
+    expect(heads).toEqual([
+      ar('fleet.custody.dashboard.columns.fuelType'),
+      ar('fleet.custody.dashboard.columns.amount'),
+      ar('fleet.custody.dashboard.columns.share'),
+      ar('fleet.custody.dashboard.columns.litres'),
+      ar('fleet.custody.dashboard.columns.count'),
+    ]);
+    // 315 + 500 + 1,150.50 = 1,965.50, the fuel the fund paid.
+    for (const [type, share] of [
+      ['petrol80', '16%'],
+      ['diesel', '25%'],
+      ['none', '59%'],
+    ] as const) {
+      const at = part.indexOf(`data-custody-fuel-type="${type}"`);
+      expect(part.slice(at, part.indexOf('</tr>', at)), type).toMatch(pct(share));
+    }
+    const noTypes = section(body({ ...dashboard, fuelTypes: [] }), 'fuel');
+    expect(noTypes, 'the empty line spans the new column too').toContain('colSpan="5"');
+  });
+
+  it('(7) writes every share in Latin digits, left to right, so «%» keeps its side in Arabic', () => {
+    const html = body();
+    const shares = [...html.matchAll(/>([^<>]*%)</gu)];
+    expect(shares.length).toBeGreaterThan(30);
+    for (const m of shares) {
+      const text = m[1] ?? '';
+      expect(text, 'a whole number of per cent, «<1%» or «>99%»').toMatch(
+        /^(?:\d{1,3}%|&lt;1%|&gt;99%)$/u,
+      );
+      const tag = html.slice(html.lastIndexOf('<', m.index), (m.index ?? 0) + 1);
+      expect(tag, `«${text}» sits in a left-to-right span`).toMatch(/^<span [^>]*dir="ltr"/u);
+    }
+    // The same in a sliver's «<1%».
+    const narrow = body({
+      ...dashboard,
+      total: 5100,
+      dealership: 30,
+      fuel: 5000,
+      tyres: 40,
+      wash: 30,
+    });
+    expect(narrow).toMatch(/<span dir="ltr" class="[^"]*">&lt;1%<\/span>/u);
+  });
+
+  it('never writes «NaN%» when everything is zero — a dash, or nothing at all', () => {
+    const zero: FleetCustodyDashboardDto = {
+      ...dashboard,
+      total: 0,
+      dealership: 0,
+      fuel: 0,
+      tyres: 0,
+      wash: 0,
+      vehicles: dashboard.vehicles.map((car) => ({
+        ...car,
+        dealership: 0,
+        fuel: 0,
+        tyres: 0,
+        wash: 0,
+        total: 0,
+      })),
+      bySource: dashboard.bySource.map((line) => ({ ...line, amount: 0 })),
+      timeline: {
+        granularity: 'month',
+        buckets: dashboard.timeline.buckets.map((bucket) => ({
+          ...bucket,
+          dealership: 0,
+          fuel: 0,
+          tyres: 0,
+          wash: 0,
+          total: 0,
+        })),
+      },
+      drivers: dashboard.drivers.map((driver) => ({
+        ...driver,
+        fuel: 0,
+        tyres: 0,
+        wash: 0,
+        total: 0,
+      })),
+      noDriver: { count: 1, amount: 0 },
+      fuelTypes: dashboard.fuelTypes.map((line) => ({ ...line, amount: 0 })),
+    };
+    const html = body(zero);
+    expect(html).not.toMatch(/NaN|Infinity/u);
+    expect(html).not.toContain('data-custody-figure-share');
+    expect(html).not.toContain('data-custody-share=');
+    // Of nothing, a share is a dash.
+    expect(section(html, 'perVehicle')).toMatch(pct('—'));
+    expect(section(html, 'topDrivers')).toMatch(pct('—'));
+  });
+});
+
 describe('the dashboard’s arithmetic of drawing', () => {
   it('writes a share in whole per cent, «<1%» for a sliver, a dash of nothing', () => {
     expect(custodyShare(1965.5, 4335.5)).toBe('45%');
     expect(custodyShare(1, 1000)).toBe('<1%');
     expect(custodyShare(0, 1000)).toBe('0%');
     expect(custodyShare(5, 0)).toBe('—');
+    // The top end mirrors the bottom: 9,980 of 10,000 is «>99%» beside the other 20's «<1%» —
+    // never «100%» and «<1%» of one whole. All of it is 100%; 99% itself rounds as any other.
+    expect(custodyShare(9980, 10000)).toBe('>99%');
+    expect(custodyShare(20, 10000)).toBe('<1%');
+    expect(custodyShare(9901, 10000)).toBe('>99%');
+    expect(custodyShare(9900, 10000)).toBe('99%');
+    expect(custodyShare(9890, 10000)).toBe('99%');
+    expect(custodyShare(10000, 10000)).toBe('100%');
+    // The number behind it, for the drawing to decide by: of nothing, 0 — never NaN.
+    expect(custodySharePct(1965.5, 4335.5)).toBeCloseTo(45.335, 3);
+    expect(custodySharePct(5, 0)).toBe(0);
+    expect(custodySharePct(0, 0)).toBe(0);
+  });
+
+  it('writes a share on its part of the bar only where it fits — by the share and by the label', () => {
+    expect(CUSTODY_SHARE_INSIDE_MIN).toBe(7);
+    expect(custodyShareFits(45.33, '45%')).toBe(true);
+    expect(custodyShareFits(100, '100%')).toBe(true);
+    expect(custodyShareFits(99.8, '>99%')).toBe(true);
+    expect(custodyShareFits(7, '7%')).toBe(true);
+    // Under 7%, above the bar — however short its label.
+    expect(custodyShareFits(6.99, '7%')).toBe(false);
+    expect(custodyShareFits(2.77, '3%')).toBe(false);
+    expect(custodyShareFits(0.5, '<1%')).toBe(false);
+    // A label wider than its part goes above too, whatever the share.
+    expect(custodyShareFits(8, '100.0%')).toBe(false);
   });
 
   it('steps the value axis in round numbers, the top at or over the dearest stretch', () => {

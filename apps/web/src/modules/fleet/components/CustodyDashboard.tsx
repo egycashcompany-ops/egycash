@@ -10,6 +10,10 @@
 // with `dark:`, mirror nothing they should not, and the node specs can render them. Each kind wears
 // its colour from `CustodyKinds.tsx`, never its rank; every chart has a legend, a title, its values
 // written out (a readout, a label, a table) and a «جدول» view, so colour is never the only key.
+//
+// «والنسب باينه»: wherever the money is split, each part's share is written beside it — on the bar
+// of the kinds, by each source, car and driver, in the readout of a stretch and in the fuel table —
+// always by `CustodyShare`, so «45%» keeps its Latin digits and its sign's side in an Arabic line.
 import {
   useEffect,
   useId,
@@ -35,7 +39,7 @@ import { Skeleton } from '../../../shared/ui/Skeleton';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { useCustodyDashboard } from '../api/fleet-queries';
-import { CustodyFigures } from './CustodyFigures';
+import { CustodyFigures, CustodyShare, custodyShare, custodySharePct } from './CustodyFigures';
 import { CUSTODY_KIND, CUSTODY_KINDS, CUSTODY_TOTAL_TILE, CustodyKindSwatch } from './CustodyKinds';
 import { FILTER_ICON } from './FilterWithIcon';
 import { FigureChip } from './FleetFigures';
@@ -63,13 +67,18 @@ const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
 /** How many cars and drivers the bar charts rank; the tables below them hold every one. */
 const TOP = 10;
 
-/** «44%» — under one per cent but not nothing, «<1%»; of nothing, a dash. */
-export const custodyShare = (part: number, whole: number): string => {
-  if (whole <= 0) return '—';
-  const pct = (part / whole) * 100;
-  if (part > 0 && pct < 1) return '<1%';
-  return `${Math.round(pct)}%`;
-};
+/** Under this many per cent of the whole, a part of «حسب النوع» writes its share above the bar. */
+export const CUSTODY_SHARE_INSIDE_MIN = 7;
+
+/**
+ * Does a part of «حسب النوع» hold its own «45%»? At 375px (the narrowest screen the modal is drawn
+ * for) the bar is about 311px wide, and a character of its label — bold monospace, 12px there — about
+ * 7.2px: a part must be 7% of the whole or more AND wider than its label with a little air, or its
+ * share goes just above it. From `sm` up the bar is wider than the label grows (14px), so the
+ * phone decides.
+ */
+export const custodyShareFits = (pct: number, label: string): boolean =>
+  pct >= CUSTODY_SHARE_INSIDE_MIN && (pct / 100) * 311 >= label.length * 7.2 + 4;
 
 /** «2026/10» or «2026/10/04» — the board's own year-first writing of a period. */
 export const custodyPeriod = (key: string): string => key.replace(/-/gu, '/');
@@ -264,13 +273,25 @@ const ViewToggle = ({
   );
 };
 
-/** A tooltip row: a short stroke of the kind's colour, the value first, the name after it. */
-const TipRow = ({ kind, value }: { kind: FleetCustodySource; value: number }): JSX.Element => {
+/**
+ * A tooltip row: a short stroke of the kind's colour, the value first and its share of `whole` (the
+ * stretch's or the line's own total) right after it, the name last.
+ */
+const TipRow = ({
+  kind,
+  value,
+  whole,
+}: {
+  kind: FleetCustodySource;
+  value: number;
+  whole: number;
+}): JSX.Element => {
   const t = useT();
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex items-center gap-2" data-custody-tip-row={kind}>
       <span aria-hidden="true" className={cn('h-0.5 w-3 rounded-full', CUSTODY_KIND[kind].fill)} />
       <Money value={value} strong />
+      <CustodyShare part={value} whole={whole} pill />
       <span className="text-slate-500 dark:text-slate-400">
         {t(`fleet.custody.source.${kind}`)}
       </span>
@@ -394,36 +415,90 @@ const ByKind = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
   const sep = useSeparator();
-  const present = CUSTODY_KINDS.filter((kind) => data[kind] > 0);
+  const present = CUSTODY_KINDS.filter((kind) => data[kind] > 0).map((kind) => {
+    const share = custodyShare(data[kind], data.total);
+    return {
+      kind,
+      share,
+      inside: custodyShareFits(custodySharePct(data[kind], data.total), share),
+    };
+  });
   const receipts = data.bySource.find((line) => line.ref === 'receipt');
   const bills = data.bySource.find((line) => line.ref === 'dealershipInvoice');
   return (
     <Panel id="byKind" title={t('fleet.custody.dashboard.byKind')}>
-      {/* The whole as one bar, 24px tall, the kinds in their fixed order. */}
+      {/* «والنسب باينه»: the whole as one bar, 40px tall, the kinds in their fixed order, each part
+          with its share written on it in bold, in the kind's own ink — so it reads on whatever fill
+          the kind wears. A sliver too narrow for its label writes it just above itself instead:
+          every kind on the bar shows its share. */}
       <div
         role="img"
         aria-label={present
           .map(
-            (kind) =>
-              `${t(`fleet.custody.source.${kind}`)}: ${moneyText(data[kind])} (${custodyShare(data[kind], data.total)})`,
+            ({ kind, share }) =>
+              `${t(`fleet.custody.source.${kind}`)}: ${moneyText(data[kind])} (${share})`,
           )
           .join(sep)}
-        className="mb-3 flex h-6 gap-0.5"
+        className="mb-3"
         data-custody-kind-bar="true"
       >
-        {present.map((kind, i) => (
-          <span
-            key={kind}
-            data-custody-mark={kind}
-            className={cn(
-              'h-full min-w-[2px]',
-              CUSTODY_KIND[kind].fill,
-              i === 0 && 'rounded-s-[4px]',
-              i === present.length - 1 && 'rounded-e-[4px]',
-            )}
-            style={{ flexGrow: data[kind], flexBasis: 0 }}
-          />
-        ))}
+        {present.some(({ inside }) => !inside) && (
+          // The slivers' shares, on a row of the very parts of the bar so each sits over its own;
+          // a sliver's cell is never narrower than its label, so two slivers side by side never
+          // write over each other — the wide parts give up the room.
+          <div className="mb-1 flex gap-0.5" data-custody-kind-bar-above="true">
+            {present.map(({ kind, share, inside }) => (
+              <span
+                key={kind}
+                className={cn('flex justify-center', inside ? 'min-w-0' : 'min-w-max')}
+                style={{ flexGrow: data[kind], flexBasis: 0 }}
+              >
+                {!inside && (
+                  <span
+                    data-custody-share={kind}
+                    data-custody-share-at="above"
+                    className="inline-flex items-center gap-1 px-0.5 text-xs font-bold text-slate-700 sm:text-sm dark:text-slate-200"
+                  >
+                    <CustodyKindSwatch kind={kind} />
+                    <span dir="ltr" className={NUM}>
+                      {share}
+                    </span>
+                  </span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex h-10 gap-0.5">
+          {present.map(({ kind, share, inside }, i) => (
+            <span
+              key={kind}
+              data-custody-mark={kind}
+              className={cn(
+                'flex h-full min-w-[2px] items-center justify-center',
+                CUSTODY_KIND[kind].fill,
+                i === 0 && 'rounded-s-[4px]',
+                i === present.length - 1 && 'rounded-e-[4px]',
+              )}
+              style={{ flexGrow: data[kind], flexBasis: 0 }}
+            >
+              {inside && (
+                <span
+                  data-custody-share={kind}
+                  data-custody-share-at="inside"
+                  dir="ltr"
+                  className={cn(
+                    'whitespace-nowrap px-0.5 text-xs font-bold sm:text-sm',
+                    CUSTODY_KIND[kind].ink,
+                    NUM,
+                  )}
+                >
+                  {share}
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
       </div>
       <TableFrame label={t('fleet.custody.dashboard.byKind')}>
         <thead className="bg-slate-50 dark:bg-[#0c121e]">
@@ -456,7 +531,9 @@ const ByKind = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
                 </span>
               </td>
               <td className={tdClass}>{moneyOrDash(data[kind])}</td>
-              <td className={cn(tdClass, NUM)}>{custodyShare(data[kind], data.total)}</td>
+              <td className={tdClass}>
+                <CustodyShare part={data[kind]} whole={data.total} />
+              </td>
               <td className={cn(tdClass, NUM)}>{COUNT.format(data.counts[kind])}</td>
             </tr>
           ))}
@@ -496,7 +573,11 @@ const ByKind = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
                 </span>
               </span>
               <StackedBar parts={parts} total={line?.amount ?? 0} scale={data.total} />
-              <Money value={line?.amount ?? 0} strong />
+              {/* The source's share of the whole beside its sum. */}
+              <span className="inline-flex items-center gap-1.5">
+                <Money value={line?.amount ?? 0} strong />
+                <CustodyShare part={line?.amount ?? 0} whole={data.total} pill />
+              </span>
             </li>
           ))}
         </ul>
@@ -595,7 +676,8 @@ const Timeline = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => 
         </TableFrame>
       ) : (
         <>
-          {/* The readout: one stretch, every kind of it, the value before the name. */}
+          {/* The readout: one stretch, every kind of it, the value and its share of the stretch
+              before the name. */}
           {shown !== undefined && (
             <div
               aria-live="polite"
@@ -607,7 +689,7 @@ const Timeline = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => 
               </span>
               <Money value={shown.total} strong />
               {CUSTODY_KINDS.filter((kind) => shown[kind] > 0).map((kind) => (
-                <TipRow key={kind} kind={kind} value={shown[kind]} />
+                <TipRow key={kind} kind={kind} value={shown[kind]} whole={shown.total} />
               ))}
               <span className={cn('text-slate-500 dark:text-slate-400', NUM)}>
                 {COUNT.format(shown.count)} {t('fleet.custody.dashboard.kpi.movementsUnit')}
@@ -669,7 +751,7 @@ const Timeline = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => 
                           aria-label={`${custodyPeriod(bucket.key)}: ${moneyText(bucket.total)}${kinds
                             .map(
                               (kind) =>
-                                `${sep}${t(`fleet.custody.source.${kind}`)} ${moneyText(bucket[kind])}`,
+                                `${sep}${t(`fleet.custody.source.${kind}`)} ${moneyText(bucket[kind])} (${custodyShare(bucket[kind], bucket.total)})`,
                             )
                             .join('')}`}
                           onMouseEnter={() => setActive(i)}
@@ -746,12 +828,16 @@ const Timeline = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => 
   );
 };
 
-/** One ranked line — a car or a driver — with its bar stacked by kind and its total at the end. */
+/**
+ * One ranked line — a car or a driver — with its bar stacked by kind, and at the end its total and
+ * that total's share of `base`; its tip splits the line's own total by kind, each with its share.
+ */
 const RankRow = ({
   name,
   label,
   parts,
   total,
+  base,
   scale,
   count,
   wide,
@@ -761,6 +847,8 @@ const RankRow = ({
   label: string;
   parts: readonly { kind: FleetCustodySource; value: number }[];
   total: number;
+  /** The whole the line's share is of. */
+  base: number;
   scale: number;
   count?: number;
   wide: boolean;
@@ -772,8 +860,11 @@ const RankRow = ({
   return (
     <li
       tabIndex={0}
-      aria-label={`${label}: ${moneyText(total)}${present
-        .map((part) => `${sep}${t(`fleet.custody.source.${part.kind}`)} ${moneyText(part.value)}`)
+      aria-label={`${label}: ${moneyText(total)} (${custodyShare(total, base)})${present
+        .map(
+          (part) =>
+            `${sep}${t(`fleet.custody.source.${part.kind}`)} ${moneyText(part.value)} (${custodyShare(part.value, total)})`,
+        )
         .join('')}`}
       className={cn(
         'group relative grid items-center gap-x-3 gap-y-1 rounded-md px-1 py-1 text-xs outline-none hover:bg-slate-500/5 focus-visible:ring-2 focus-visible:ring-brand-500/60',
@@ -782,10 +873,13 @@ const RankRow = ({
     >
       <span className={cn('min-w-0', wide && 'col-span-2 sm:col-span-1')}>{name}</span>
       <StackedBar parts={parts} total={total} scale={scale} />
-      <Money value={total} strong />
+      <span className="inline-flex items-center gap-1.5">
+        <Money value={total} strong />
+        <CustodyShare part={total} whole={base} pill />
+      </span>
       <Tip>
         {present.map((part) => (
-          <TipRow key={part.kind} kind={part.kind} value={part.value} />
+          <TipRow key={part.kind} kind={part.kind} value={part.value} whole={total} />
         ))}
         {count !== undefined && (
           <span className={cn('text-slate-500 dark:text-slate-400', NUM)}>
@@ -807,7 +901,10 @@ const Code = ({ code }: { code: string | null }): JSX.Element =>
     </span>
   );
 
-/** (4) «أعلى السيارات صرفًا» — the ten dearest of the per-car lines, stacked by kind. */
+/**
+ * (4) «أعلى السيارات صرفًا» — the ten dearest of the per-car lines, stacked by kind, each with its
+ * share of everything the fund paid (a car carries all four kinds).
+ */
 const TopCars = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
   const ranked = [...data.vehicles].sort((a, b) => b.total - a.total).slice(0, TOP);
@@ -827,6 +924,7 @@ const TopCars = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
             label={car.vehicleCode ?? '—'}
             parts={CUSTODY_KINDS.map((kind) => ({ kind, value: car[kind] }))}
             total={car.total}
+            base={data.total}
             scale={scale}
             wide={false}
           />
@@ -836,22 +934,97 @@ const TopCars = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   );
 };
 
+/** The kinds a driver is named on — the receipts'; a dealership bill names no driver. */
+const DRIVER_KINDS = ['fuel', 'tyres', 'wash'] as const;
+
+/**
+ * What the receipts came to (fuel, tyres, washing) — the whole a driver's share is of, never the
+ * whole fund: a dealership bill names no driver, so against the whole every driver would look
+ * smaller by the dealership's part. «إيصالات بدون سائق» is measured against the very same base, so
+ * the drivers and it together are the whole of it — and the card says which whole it is.
+ */
+export const custodyReceipts = (data: FleetCustodyDashboardDto): number =>
+  DRIVER_KINDS.reduce((sum, kind) => sum + data[kind], 0);
+
+/** (5) «جدول» of the drivers — every one of them, each with its share of the receipts. */
+export const CustodyDriversTable = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+  const t = useT();
+  const receipts = custodyReceipts(data);
+  return (
+    <TableFrame label={t('fleet.custody.dashboard.topDrivers')}>
+      <thead className="bg-slate-50 dark:bg-[#0c121e]">
+        <tr>
+          <th scope="col" className={thClass}>
+            {t('fleet.custody.dashboard.columns.driver')}
+          </th>
+          {DRIVER_KINDS.map((kind) => (
+            <KindHead key={kind} kind={kind} />
+          ))}
+          <th scope="col" className={thClass}>
+            {t('fleet.custody.dashboard.columns.total')}
+          </th>
+          <th scope="col" className={thClass}>
+            {t('fleet.custody.dashboard.columns.share')}
+          </th>
+          <th scope="col" className={thClass}>
+            {t('fleet.custody.dashboard.columns.count')}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.drivers.map((driver) => (
+          <tr
+            key={driver.driverEmployeeId ?? `name:${driver.driverName}`}
+            className="border-t border-slate-100 dark:border-slate-800"
+          >
+            <td
+              className={cn(
+                tdClass,
+                'whitespace-normal font-semibold text-slate-800 dark:text-slate-100',
+              )}
+            >
+              {driver.driverName}
+            </td>
+            {DRIVER_KINDS.map((kind) => (
+              <td key={kind} className={tdClass}>
+                {moneyOrDash(driver[kind])}
+              </td>
+            ))}
+            <td className={tdClass}>
+              <Money value={driver.total} strong />
+            </td>
+            <td className={tdClass}>
+              <CustodyShare part={driver.total} whole={receipts} />
+            </td>
+            <td className={cn(tdClass, NUM)}>{COUNT.format(driver.count)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </TableFrame>
+  );
+};
+
 /** (5) «أعلى السائقين صرفًا» — the receipts' drivers (a bill names none), whole names. */
 const TopDrivers = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
   const [table, setTable] = useState(false);
-  const kinds = ['fuel', 'tyres', 'wash'] as const;
   const ranked = data.drivers.slice(0, TOP);
   const scale = ranked[0]?.total ?? 0;
+  // Every share on this card is of the receipts (`custodyReceipts`), the drivers' and «بدون سائق»'s.
+  const receipts = custodyReceipts(data);
+  const notes = [
+    ...(table || ranked.length === 0
+      ? []
+      : [t('fleet.custody.dashboard.topCount', { count: COUNT.format(ranked.length) })]),
+    ...(ranked.length > 0 || data.noDriver.count > 0
+      ? [t('fleet.custody.dashboard.receiptsShare')]
+      : []),
+  ];
   return (
     <Panel
       id="topDrivers"
       title={t('fleet.custody.dashboard.topDrivers')}
-      note={
-        table || ranked.length === 0
-          ? undefined
-          : t('fleet.custody.dashboard.topCount', { count: COUNT.format(ranked.length) })
-      }
+      note={notes.length === 0 ? undefined : notes.join(' · ')}
       action={
         data.drivers.length > 0 ? (
           <ViewToggle name="drivers" table={table} onToggle={() => setTable((on) => !on)} />
@@ -867,53 +1040,10 @@ const TopDrivers = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element =
           {t('fleet.custody.dashboard.noDrivers')}
         </p>
       ) : table ? (
-        <TableFrame label={t('fleet.custody.dashboard.topDrivers')}>
-          <thead className="bg-slate-50 dark:bg-[#0c121e]">
-            <tr>
-              <th scope="col" className={thClass}>
-                {t('fleet.custody.dashboard.columns.driver')}
-              </th>
-              {kinds.map((kind) => (
-                <KindHead key={kind} kind={kind} />
-              ))}
-              <th scope="col" className={thClass}>
-                {t('fleet.custody.dashboard.columns.total')}
-              </th>
-              <th scope="col" className={thClass}>
-                {t('fleet.custody.dashboard.columns.count')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.drivers.map((driver) => (
-              <tr
-                key={driver.driverEmployeeId ?? `name:${driver.driverName}`}
-                className="border-t border-slate-100 dark:border-slate-800"
-              >
-                <td
-                  className={cn(
-                    tdClass,
-                    'whitespace-normal font-semibold text-slate-800 dark:text-slate-100',
-                  )}
-                >
-                  {driver.driverName}
-                </td>
-                {kinds.map((kind) => (
-                  <td key={kind} className={tdClass}>
-                    {moneyOrDash(driver[kind])}
-                  </td>
-                ))}
-                <td className={tdClass}>
-                  <Money value={driver.total} strong />
-                </td>
-                <td className={cn(tdClass, NUM)}>{COUNT.format(driver.count)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </TableFrame>
+        <CustodyDriversTable data={data} />
       ) : (
         <>
-          <KindLegend kinds={kinds} />
+          <KindLegend kinds={DRIVER_KINDS} />
           <ol className="flex flex-col gap-1" data-custody-top-drivers="true">
             {ranked.map((driver) => (
               <RankRow
@@ -924,8 +1054,9 @@ const TopDrivers = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element =
                   </span>
                 }
                 label={driver.driverName}
-                parts={kinds.map((kind) => ({ kind, value: driver[kind] }))}
+                parts={DRIVER_KINDS.map((kind) => ({ kind, value: driver[kind] }))}
                 total={driver.total}
+                base={receipts}
                 scale={scale}
                 count={driver.count}
                 wide
@@ -945,14 +1076,20 @@ const TopDrivers = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element =
               ({COUNT.format(data.noDriver.count)})
             </span>
           </span>
-          <Money value={data.noDriver.amount} strong />
+          <span className="inline-flex items-center gap-1.5">
+            <Money value={data.noDriver.amount} strong />
+            <CustodyShare part={data.noDriver.amount} whole={receipts} pill />
+          </span>
         </div>
       )}
     </Panel>
   );
 };
 
-/** (6) «الوقود» — the litres, and each fuel type's receipts, sum and litres. */
+/**
+ * (6) «الوقود» — the litres, and each fuel type's receipts, sum, share and litres. The share is of
+ * the fuel the fund paid (`data.fuel`, which the types add up to), not of the whole fund.
+ */
 const Fuel = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
   const scale = data.fuelTypes.reduce((top, line) => Math.max(top, line.amount), 0);
@@ -982,6 +1119,9 @@ const Fuel = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
             </th>
             <th scope="col" className={thClass}>
               {t('fleet.custody.dashboard.columns.amount')}
+            </th>
+            <th scope="col" className={thClass}>
+              {t('fleet.custody.dashboard.columns.share')}
             </th>
             <th scope="col" className={thClass}>
               {t('fleet.custody.dashboard.columns.litres')}
@@ -1015,13 +1155,16 @@ const Fuel = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
                   <Money value={line.amount} />
                 </span>
               </td>
+              <td className={tdClass}>
+                <CustodyShare part={line.amount} whole={data.fuel} />
+              </td>
               <td className={cn(tdClass, NUM)}>{LITRES.format(line.litres)}</td>
               <td className={cn(tdClass, NUM)}>{COUNT.format(line.count)}</td>
             </tr>
           ))}
           {data.fuelTypes.length === 0 && (
             <tr>
-              <td colSpan={4} className={cn(tdClass, 'text-slate-400')}>
+              <td colSpan={5} className={cn(tdClass, 'text-slate-400')}>
                 —
               </td>
             </tr>
@@ -1072,7 +1215,9 @@ const PerCar = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
               <td className={tdClass}>
                 <Money value={car.total} strong />
               </td>
-              <td className={cn(tdClass, NUM)}>{custodyShare(car.total, data.total)}</td>
+              <td className={tdClass}>
+                <CustodyShare part={car.total} whole={data.total} />
+              </td>
             </tr>
           ))}
           <tr
@@ -1090,7 +1235,9 @@ const PerCar = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
             <td className={tdClass}>
               <Money value={data.total} strong />
             </td>
-            <td className={cn(tdClass, NUM)}>{custodyShare(data.total, data.total)}</td>
+            <td className={tdClass}>
+              <CustodyShare part={data.total} whole={data.total} />
+            </td>
           </tr>
         </tbody>
       </TableFrame>

@@ -605,7 +605,7 @@ describe('receipt kinds and custody sources take several — «اختيار مت
     expect(FleetCustodySummaryQuerySchema.safeParse({ sort: 'amount:asc' }).success).toBe(false);
   });
 
-  it('«داش بورد» reads the figures’ own filters, a list of kinds included — and nothing more', () => {
+  it('«لوحة تحكم» reads the figures’ own filters, a list of kinds included — and nothing more', () => {
     const query = {
       vehicleCodes: '160,204',
       source: 'fuel,wash',

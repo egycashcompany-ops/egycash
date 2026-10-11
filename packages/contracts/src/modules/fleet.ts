@@ -3657,7 +3657,7 @@ const custodyFilters = {
 export const FleetCustodySummaryQuerySchema = z.object(custodyFilters).strict();
 export type FleetCustodySummaryQuery = z.infer<typeof FleetCustodySummaryQuerySchema>;
 /**
- * «داش بورد» — the figures' own filters and nothing else: the dashboard reads the SAME set as
+ * «لوحة تحكم» — the figures' own filters and nothing else: the dashboard reads the SAME set as
  * «الإحصائيات», so its numbers can never disagree with the board's. Never ordered either.
  */
 export const FleetCustodyDashboardQuerySchema = z.object(custodyFilters).strict();

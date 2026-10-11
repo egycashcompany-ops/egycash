@@ -1,4 +1,4 @@
-// «داش بورد»: everything the dashboard adds to the figures, folded from the same movements — by
+// «لوحة تحكم»: everything the dashboard adds to the figures, folded from the same movements — by
 // the day inside a month and by the month past it, every stretch in between, each driver once,
 // the bills on no driver, the litres and the receipts that have none — and every part adding up
 // to the whole.

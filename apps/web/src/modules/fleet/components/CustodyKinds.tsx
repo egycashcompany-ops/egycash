@@ -1,6 +1,6 @@
 // «عاوز اغير لون النوع بين كاوتش وبنزين وغسيل» — one colour per kind of custody spend, written ONCE
 // and worn wherever the kinds are drawn: the badge in «كل الحركات», the figure's tile, every mark,
-// swatch and legend of «داش بورد».
+// swatch and legend of «لوحة تحكم».
 //
 // The house rules leave little room. Purple is the pressed/picked colour; green, amber and red are
 // STATES. Teal reads as green (ΔE 4.9 against emerald) and pink as red, so the only hues left are

@@ -11,7 +11,7 @@
 //
 // «عاوز اغير لون النوع بين كاوتش وبنزين وغسيل»: each kind wears its own colour, defined once in
 // `CustodyKinds.tsx`; «عاوز الاحصائيات الكوتش لوحده والغسيل لوحده»: five figures, tyres and washing
-// apart; and «داش بورد» beside «الإحصائيات» opens everything in detail over the same filters.
+// apart; and «لوحة تحكم» beside «الإحصائيات» opens everything in detail over the same filters.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -175,7 +175,7 @@ export const CustodyPage = (): JSX.Element => {
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   // The figures open from the toolbar, closed on the way in.
   const [statsOpen, setStatsOpen] = useState(false);
-  // «داش بورد» — over the whole screen, read only while open.
+  // «لوحة تحكم» — over the whole screen, read only while open.
   const [dashOpen, setDashOpen] = useState(false);
 
   const sourceLabel = (row: FleetCustodyMovementDto): string =>

@@ -1,4 +1,4 @@
-// The custody board's figures — behind «الإحصائيات» on the board, and leading «داش بورد».
+// The custody board's figures — behind «الإحصائيات» on the board, and leading «لوحة تحكم».
 //
 // «عاوز الاحصائيات الكوتش لوحده والغسيل لوحده»: five figures, not four — everything the fund paid,
 // then each kind on its own tile in its own colour and icon (`CustodyKinds.tsx`). The numbers are

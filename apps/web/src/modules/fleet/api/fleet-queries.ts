@@ -1116,7 +1116,7 @@ export const useCustodySummary = (params: FleetListParams, enabled = true) =>
     enabled,
   });
 /**
- * «داش بورد» — read only while it is open, under the ledger's key, so whatever refreshes the board
+ * «لوحة تحكم» — read only while it is open, under the ledger's key, so whatever refreshes the board
  * (a receipt saved, deleted, moved) refreshes it too. No placeholder from the last answer: reopened
  * over other filters, it would show the old filters' sums under the new filters' words.
  */

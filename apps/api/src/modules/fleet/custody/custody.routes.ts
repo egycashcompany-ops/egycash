@@ -19,7 +19,7 @@ export const buildFleetCustodyRouter = (): Router => {
     validate({ query: FleetCustodySummaryQuerySchema }),
     asyncHandler(custodySummary),
   );
-  // «داش بورد» — the same filters and grant as the figures, everything about them in detail.
+  // «لوحة تحكم» — the same filters and grant as the figures, everything about them in detail.
   router.get(
     '/dashboard',
     authenticate,

@@ -164,7 +164,7 @@ class FleetCustodyService {
   }
 
   /**
-   * «داش بورد» — the figures, then everything else about the same movements. One read, one fold:
+   * «لوحة تحكم» — the figures, then everything else about the same movements. One read, one fold:
    * its summary fields ARE `/summary`'s for the same filters, by construction.
    */
   async dashboard(query: FleetCustodyDashboardQuery): Promise<FleetCustodyDashboardDto> {

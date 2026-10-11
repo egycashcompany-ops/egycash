@@ -1,4 +1,4 @@
-// «داش بورد» on the custody board — «جمب الاحصائيات داش بورد تفتح ف الشاشه كلها زى موديل كل حاجة
+// «لوحة تحكم» on the custody board — «جمب الاحصائيات داش بورد تفتح ف الشاشه كلها زى موديل كل حاجة
 // بالتفصيل» — proven against what it produces: the button beside «الإحصائيات», the modal over the
 // whole screen asking the board's own filters, every section of the body drawn from the server's
 // numbers in Latin digits with «ج.م.» apart, the three faces of the query, and the kinds' colours
@@ -208,7 +208,7 @@ const section = (html: string, id: string): string => {
   return html.slice(at, next === -1 ? undefined : next);
 };
 
-describe('«داش بورد» on the custody board', () => {
+describe('«لوحة تحكم» on the custody board', () => {
   it('sits right beside «الإحصائيات», closed on the way in, and asks the board’s own filters', () => {
     const qc = client();
     qc.setQueryData(listKey('fleet', 'custody', { summary: true, ...FILTERS }), {
@@ -233,7 +233,7 @@ describe('«داش بورد» on the custody board', () => {
     expect(button).toContain('aria-haspopup="dialog"');
     expect(button).toContain('aria-expanded="false"');
     expect(button).toContain(ar('fleet.custody.dashboard.open'));
-    expect(ar('fleet.custody.dashboard.open')).toBe('داش بورد');
+    expect(ar('fleet.custody.dashboard.open')).toBe('لوحة تحكم');
     expect(html, 'closed on the way in').not.toContain('data-custody-dashboard="true"');
     // The very `filters` the figures read — never a second copy of them.
     expect(PAGE).toContain(

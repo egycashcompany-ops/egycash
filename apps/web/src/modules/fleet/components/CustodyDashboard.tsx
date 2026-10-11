@@ -1191,7 +1191,7 @@ export const custodyTrapFocus = <T,>(move: {
 
 /**
  * The modal itself: over the whole screen, in a portal; Escape or × closes it, Tab stays inside,
- * the page behind does not scroll, and the focus goes back to «داش بورد» on the way out. Read only
+ * the page behind does not scroll, and the focus goes back to «لوحة تحكم» on the way out. Read only
  * while open.
  */
 export const CustodyDashboard = ({

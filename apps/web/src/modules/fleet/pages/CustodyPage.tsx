@@ -848,13 +848,14 @@ export const CustodyPage = (): JSX.Element => {
             setDashOpen(false);
           }}
         />
-        {/* A car's «السجل»: its line as the summary holds it now, its share of the same fund total,
-            the board's own filters. Keyed by the car: another car's log starts on its first page. */}
+        {/* A car's «السجل»: its line as the summary holds it now, its share of what the fund paid
+            over the same filters (not of the fund itself, `fundTotal`), the board's own filters.
+            Keyed by the car: another car's log starts on its first page. */}
         {carLog !== null && (
           <CustodyCarLog
             key={carLog.key}
             car={custodyCurrentCar(summary.data?.vehicles, carLog)}
-            fundTotal={summary.data?.total ?? 0}
+            spendTotal={summary.data?.total ?? 0}
             filters={filters}
             opener={carLog.opener}
             onClose={() => setCarLog(null)}

@@ -6,7 +6,8 @@
 // platform settings through the platform's own endpoints: values from GET /settings/me
 // (resolved user → branch → organization → default), writes behind `setting.edit` at
 // organization scope; alarm thresholds re-colour the server's alarm projection and the
-// HR-leave switch changes availability verdicts, so saving invalidates those subtrees.
+// HR-leave switch changes availability verdicts, so saving invalidates those subtrees — and
+// «مبلغ العهدة» is the custody screen's «إجمالي العهدة», so it re-reads the custody figures too.
 import { useEffect, useState } from 'react';
 import { FleetSettingKeys, type ResolvedSettingDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -44,6 +45,20 @@ const MONEY_KEYS = [
   FleetSettingKeys.FuelCardBalanceYellow,
   FleetSettingKeys.FuelCardBalanceRed,
 ] as const;
+
+/**
+ * «مبلغ العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund the custody
+ * screen shows first («إجمالي العهدة»), on its board and its dashboard. An amount like the fuel's,
+ * but not required: it is unknown until the department writes it, so an empty box is «not set» and
+ * is saved as 0 — which the custody screen reads as no fund yet, never as a fund of nothing. The
+ * box shows 0 empty for the same reason.
+ */
+const FUND_KEY = FleetSettingKeys.CustodyFundTotal;
+/** The stored fund as the box writes it: empty while it is 0 («not set»). */
+const fundText = (value: unknown): string =>
+  typeof value === 'number' && value > 0 ? String(value) : '';
+/** The box as the setting stores it: empty is 0; anything that is not an amount, `NaN`. */
+const fundAmount = (text: string): number => (text.trim() === '' ? 0 : Number(text));
 
 /**
  * Free-text settings: the branch NAME the new-vehicle form preselects (§2.1), and the six lines of
@@ -85,6 +100,7 @@ const SETTING_LABELS: Record<string, string> = {
   [FleetSettingKeys.FuelCardExpiryWarnDays]: 'fleet.settings.keys.fuelCardExpiryWarnDays',
   [FleetSettingKeys.FuelCardBalanceYellow]: 'fleet.settings.keys.fuelCardBalanceYellow',
   [FleetSettingKeys.FuelCardBalanceRed]: 'fleet.settings.keys.fuelCardBalanceRed',
+  [FUND_KEY]: 'fleet.settings.keys.custodyFundTotal',
 };
 
 const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JSX.Element => {
@@ -98,17 +114,21 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
   const [moneys, setMoneys] = useState<Record<string, string>>({});
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [useHrLeave, setUseHrLeave] = useState(false);
+  const [fund, setFund] = useState(() => fundText(valueOf(FUND_KEY)));
   useEffect(() => {
     setNumbers(Object.fromEntries(NUMBER_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setTexts(Object.fromEntries(TEXT_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setMoneys(Object.fromEntries(MONEY_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setUseHrLeave(valueOf(FleetSettingKeys.UseHrLeave) === true);
+    setFund(fundText(valueOf(FUND_KEY)));
   }, [resolved]);
 
   const isText = (key: string): boolean => (TEXT_KEYS as readonly string[]).includes(key);
   const isMoney = (key: string): boolean => (MONEY_KEYS as readonly string[]).includes(key);
   const dirty = (key: string): boolean => {
     if (key === FleetSettingKeys.UseHrLeave) return useHrLeave !== (valueOf(key) === true);
+    // By amount: «250000» and «250000.00» are the same fund, and an emptied box is 0 again.
+    if (key === FUND_KEY) return fundAmount(fund) !== fundAmount(fundText(valueOf(key)));
     if (isText(key)) return texts[key] !== String(valueOf(key) ?? '');
     if (isMoney(key)) return moneys[key] !== String(valueOf(key) ?? '');
     return numbers[key] !== String(valueOf(key) ?? '');
@@ -141,6 +161,12 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
         label: t(SETTING_LABELS[key] ?? key),
         ok: (texts[key] ?? '').trim() !== '',
       })),
+      // The fund may stay empty («not set»); what is written must be an amount.
+      {
+        key: FUND_KEY,
+        label: t(SETTING_LABELS[FUND_KEY] ?? FUND_KEY),
+        ok: Number.isFinite(fundAmount(fund)),
+      },
     ],
     resolved,
   );
@@ -168,6 +194,12 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
         key: FleetSettingKeys.UseHrLeave,
         scope: 'organization',
         value: useHrLeave,
+      });
+    if (dirty(FUND_KEY))
+      await setSetting.mutateAsync({
+        key: FUND_KEY,
+        scope: 'organization',
+        value: fundAmount(fund),
       });
     toast.success(t('fleet.settings.saved'));
   };
@@ -214,6 +246,20 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
                 />
               </Field>
             ))}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2" data-fleet-custody-settings="true">
+            <Field
+              label={t(SETTING_LABELS[FUND_KEY] ?? FUND_KEY)}
+              hint={t('fleet.settings.keys.custodyFundTotalHint')}
+              missing={required.isMissing(FUND_KEY)}
+            >
+              <MoneyInput
+                value={fund}
+                onChange={setFund}
+                placeholder={t('fleet.settings.keys.custodyFundTotalUnset')}
+                disabled={!canEdit}
+              />
+            </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {TEXT_KEYS.map((key) => (

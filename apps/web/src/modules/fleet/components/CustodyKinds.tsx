@@ -140,6 +140,35 @@ export const CUSTODY_TOTAL_TILE =
 export const CUSTODY_TOTAL_ACCENT =
   'border-l-4 border-l-emerald-500 hover:border-l-emerald-500 dark:border-l-emerald-500 dark:hover:border-l-emerald-500';
 
+/** A wallet: its body, the flap folded over it and the clasp. */
+const WALLET = [
+  'M19 7V4a1 1 0 00-1-1H5a2 2 0 000 4h15a1 1 0 011 1v4h-3a2 2 0 000 4h3a1 1 0 001-1v-2a1 1 0 00-1-1',
+  'M3 5v14a2 2 0 002 2h15a1 1 0 001-1v-4',
+];
+
+/**
+ * «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد» — is not a spend:
+ * it is what every spend is drawn from. So it wears no kind's colour and not the spend total's
+ * emerald, but slate — calm, the ink of the screen's neutral chips. Sky was the other calm choice;
+ * it sits between التوكيل's blue and الغسيل's cyan and would read as a fifth kind beside them. The
+ * light theme draws it at slate 600–800 on a slate-100 tile, the dark one at 300–400 on a
+ * slate-400/15 tile — each light surface with its dark one, as every card here.
+ */
+export const CUSTODY_FUND = {
+  /** The card's own border and wash, over the card's surface (`CARD_SURFACE`). */
+  card: 'border-slate-300 bg-gradient-to-br from-slate-100/80 via-white to-white dark:border-slate-500/40',
+  /** Its edge, as the total and each kind has one. */
+  accent:
+    'border-l-4 border-l-slate-600 hover:border-l-slate-600 dark:border-l-slate-400 dark:hover:border-l-slate-400',
+  label: 'font-bold text-slate-800 dark:font-semibold dark:text-slate-300',
+  /** «ج.م.» beside the figure. */
+  unit: 'font-bold text-slate-600 dark:font-semibold dark:text-slate-400',
+  tile: 'border border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-400/30 dark:bg-slate-400/15 dark:text-slate-300 dark:shadow-[0_0_12px_rgba(148,163,184,0.2)]',
+  /** The bar of what was spent of it, on the board's figure. */
+  fill: 'bg-slate-600 dark:bg-slate-400',
+  icon: WALLET,
+} as const;
+
 /**
  * The kind in «كل الحركات» — the alarms board's `lg` pill (`Badge`'s own size), in the design's
  * pale badge with its dot. Not `Badge` with a class handed in: `cn` only joins, so a tone's own

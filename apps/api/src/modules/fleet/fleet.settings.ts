@@ -2,7 +2,7 @@
 // boot resolves any value. Consumers arrive with FL-3/FL-4; declaring them here makes them
 // admin-manageable from day one and keeps every threshold out of code.
 import { z } from 'zod';
-import { FleetSettingKeys } from '@ecms/contracts';
+import { FleetCustodyFundTotalSchema, FleetSettingKeys } from '@ecms/contracts';
 import { declareSetting } from '../../platform/settings';
 
 export const registerFleetSettings = (): void => {
@@ -137,6 +137,21 @@ export const registerFleetSettings = (): void => {
     description: 'A fuel card balance below this reads red on the charging screen',
     schema: z.number().nonnegative(),
     defaultValue: 100,
+    allowedScopes: ['organization'],
+  });
+  // ── The custody fund ─────────────────────────────────────────────────────
+  //
+  // «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund the department was
+  // handed, beside what it spent. Nothing in the system held it, so it is a value the department
+  // sets — one for the organization, written like every other «إعدادات الحركة» value (and audited
+  // by the same write). 0 is "not set yet", and the custody screen says so rather than dividing by
+  // it. The replenishments («استعاضة العهدة») that will add to it are not modelled yet.
+  declareSetting({
+    key: FleetSettingKeys.CustodyFundTotal,
+    description:
+      'The custody fund handed to the Fleet department, in EGP — 0 means not set; replenishments will add to it later',
+    schema: FleetCustodyFundTotalSchema,
+    defaultValue: 0,
     allowedScopes: ['organization'],
   });
 };

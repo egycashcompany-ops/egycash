@@ -6,7 +6,10 @@ import {
   ChangeFleetVehicleStatusSchema,
   fleetMonthWindow,
   FleetCustodyDashboardQuerySchema,
+  FleetCustodyFundTotalSchema,
   FleetCustodySummaryQuerySchema,
+  FleetSettingKeys,
+  fleetCustodyFundTotal,
   ListFleetCustodyMovementsQuerySchema,
   ListFleetReceiptsQuerySchema,
   CreateFleetReceiptSchema,
@@ -766,6 +769,48 @@ describe('receipt kinds and custody sources take several — «اختيار مت
       );
     }
     expect(FleetCustodyDashboardQuerySchema.safeParse({ source: 'card' }).success).toBe(false);
+  });
+});
+
+describe('«مبلغ العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»', () => {
+  it('is a fleet setting of its own, under the custody', () => {
+    expect(FleetSettingKeys.CustodyFundTotal).toBe('fleet.custody.fundTotal');
+    expect(new Set(Object.values(FleetSettingKeys)).size).toBe(
+      Object.values(FleetSettingKeys).length,
+    );
+  });
+
+  it('stores an amount to the piastre, never below zero — a third decimal refused, not rounded', () => {
+    for (const ok of [0, 0.01, 0.1, 0.29, 1500.25, 250_000, 250_000.07, 1_000_000_000]) {
+      expect(FleetCustodyFundTotalSchema.safeParse(ok).success, String(ok)).toBe(true);
+    }
+    for (const bad of [-0.01, -1, 1.005, 0.001, 1_000_000_000.01, Number.NaN, Infinity, '250000']) {
+      expect(FleetCustodyFundTotalSchema.safeParse(bad).success, String(bad)).toBe(false);
+    }
+  });
+
+  it('refuses a sliver JavaScript prints in exponent form — «1e-7» has no decimals to count', () => {
+    // `multipleOf(0.01)` counts decimals from `String(value)`: 1e-7 has none, so it passed alone,
+    // and a fund of 0.0000001 against a spend of 4,335.50 read «صُرف منها 4335500000000%».
+    expect(String(1e-7)).toBe('1e-7');
+    for (const bad of [1e-7, 5e-7, 1e-10, 9.99e-7, Number.MIN_VALUE, 0.000001, 0.0000015]) {
+      expect(FleetCustodyFundTotalSchema.safeParse(bad).success, String(bad)).toBe(false);
+      expect(fleetCustodyFundTotal(bad), String(bad)).toBeNull();
+    }
+    // Typed into the settings screen's box, it is still a number — and still refused.
+    expect(FleetCustodyFundTotalSchema.safeParse(Number('0.0000001')).success).toBe(false);
+    // The ends that ARE amounts keep passing.
+    expect(FleetCustodyFundTotalSchema.safeParse(0.01).success).toBe(true);
+    expect(FleetCustodyFundTotalSchema.safeParse(999_999_999.99).success).toBe(true);
+  });
+
+  it('carries 0 as «not set» — `null`, never a fund of nothing — and only an amount as itself', () => {
+    expect(fleetCustodyFundTotal(0)).toBeNull();
+    expect(fleetCustodyFundTotal(250_000.5)).toBe(250_000.5);
+    expect(fleetCustodyFundTotal(0.01)).toBe(0.01);
+    for (const bad of [undefined, null, -5, 1.005, '250000', Number.NaN, Infinity, {}, 1e-7]) {
+      expect(fleetCustodyFundTotal(bad), String(bad)).toBeNull();
+    }
   });
 });
 

@@ -28,6 +28,20 @@ import {
 } from './settings.registry';
 import { SettingValueModel } from './setting-value.model';
 
+/**
+ * The type the settings screen picks its editor by. Zod keeps the type name in `_def`; the public
+ * API has no accessor for it. A refined schema (`.refine`) is a `ZodEffects` around the type it
+ * refines — `z.number().refine(…)` is still a number to type into the box — so it reports the
+ * inner one: an exact check on a value must not cost the value its editor.
+ */
+const settingTypeOf = (schema: unknown): string => {
+  const def = (schema as { _def?: { typeName?: string; schema?: unknown } })._def;
+  if (def?.typeName === 'ZodEffects' && def.schema !== undefined) {
+    return settingTypeOf(def.schema);
+  }
+  return (def?.typeName ?? 'unknown').replace(/^Zod/, '').toLowerCase();
+};
+
 const CACHE_TTL_SECONDS = 60;
 
 export interface SettingSubject {
@@ -203,10 +217,7 @@ class SettingsService {
     return listSettingDeclarations().map((declaration) => ({
       key: declaration.key,
       description: declaration.description,
-      // Zod keeps the type name in _def; the public API has no accessor for it.
-      type: ((declaration.schema._def as { typeName?: string }).typeName ?? 'unknown')
-        .replace(/^Zod/, '')
-        .toLowerCase(),
+      type: settingTypeOf(declaration.schema),
       defaultValue: declaration.defaultValue,
       allowedScopes: declaration.allowedScopes,
     }));

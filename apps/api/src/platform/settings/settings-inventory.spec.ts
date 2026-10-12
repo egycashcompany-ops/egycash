@@ -85,18 +85,18 @@ afterEach(() => {
 });
 
 describe('the settings inventory the screen renders', () => {
-  it('declares forty-eight settings, and no key twice', () => {
+  it('declares forty-nine settings, and no key twice', () => {
     registerAll();
     const keys = listSettingDeclarations().map((declaration) => declaration.key);
-    expect(keys).toHaveLength(48);
-    expect(new Set(keys).size).toBe(48);
+    expect(keys).toHaveLength(49);
+    expect(new Set(keys).size).toBe(49);
   });
 
   it('declares exactly the keys the contracts name — no more, no fewer', () => {
     registerAll();
     const declared = listSettingDeclarations().map((d) => d.key).sort();
     const expected = Object.values(EXPECTED).flat().sort();
-    expect(expected).toHaveLength(48);
+    expect(expected).toHaveLength(49);
     expect(declared).toEqual(expected);
   });
 
@@ -145,6 +145,32 @@ describe('the settings inventory the screen renders', () => {
     declareFeatureFlagSettings(z.boolean());
     expect(listSettingDeclarations().length - before).toBe(featureFlags.length);
     expect(featureFlags).toHaveLength(0);
+  });
+
+  // A refinement (`.refine`) wraps a schema in a ZodEffects; reported by that wrapper, an exact
+  // check on a number would leave it «effects» — read-only on the screen. It is reported by the
+  // type it refines.
+  it('reports a refined schema by the type it refines, so it keeps its editor', () => {
+    declareSetting({
+      key: 'test.refinedNumber',
+      description: 'a number with an exact check',
+      schema: z.number().refine((v) => v !== 7),
+      defaultValue: 0,
+      allowedScopes: ['organization'],
+    });
+    declareSetting({
+      key: 'test.twiceRefinedString',
+      description: 'a string refined twice',
+      schema: z
+        .string()
+        .refine((v) => v !== 'a')
+        .refine((v) => v !== 'b'),
+      defaultValue: '',
+      allowedScopes: ['organization'],
+    });
+    const byKey = new Map(settingsService.listDefinitions().map((d) => [d.key, d.type]));
+    expect(byKey.get('test.refinedNumber')).toBe('number');
+    expect(byKey.get('test.twiceRefinedString')).toBe('string');
   });
 
   it('refuses a duplicate declaration rather than letting the later one win silently', () => {

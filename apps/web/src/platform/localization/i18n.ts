@@ -3922,6 +3922,10 @@ const en: Record<string, string> = {
   'fleet.custody.totals.wash': 'Washing',
   // After a kind's share on its figure: «45% of total».
   'fleet.custody.totals.ofTotal': 'of total',
+  // «إجمالي العهدة» — the fund itself, before what it paid for; its share is «Spent 12%».
+  'fleet.custody.fund.title': 'Custody fund total',
+  'fleet.custody.fund.spent': 'Spent',
+  'fleet.custody.fund.unset': 'Set in Fleet settings',
   'fleet.custody.perVehicle': 'Summary per vehicle',
   'fleet.custody.movements': 'All movements',
   'fleet.custody.columns.source': 'Source',
@@ -3957,6 +3961,8 @@ const en: Record<string, string> = {
   'fleet.custody.dashboard.topCount': 'The highest {{count}}',
   'fleet.custody.dashboard.noDriver': 'Receipts with no driver',
   'fleet.custody.dashboard.noDrivers': 'No receipt here names a driver.',
+  'fleet.custody.dashboard.noMovements': 'No movements yet.',
+  'fleet.custody.dashboard.noMatch': 'No movements match the filters.',
   'fleet.custody.dashboard.receiptsShare': 'Shares are of the custody receipts',
   'fleet.custody.dashboard.fuel': 'Fuel',
   'fleet.custody.dashboard.noFuelType': 'No fuel type',
@@ -4050,7 +4056,7 @@ const en: Record<string, string> = {
     'Everything this car drew on the custody fund, under the board’s filters',
   'fleet.custody.dashboard.carLog.totals': 'The car’s totals',
   'fleet.custody.dashboard.carLog.ofCar': 'of the car',
-  'fleet.custody.dashboard.carLog.ofFund': 'of all custody spend',
+  'fleet.custody.dashboard.carLog.ofSpend': 'of all custody spend',
   'fleet.custody.dashboard.carLog.movements': 'The car’s movements',
   'fleet.custody.dashboard.carLog.empty': 'This car has no movement under these filters.',
   'fleet.nav.dealership': 'Dealership',
@@ -5411,6 +5417,10 @@ const en: Record<string, string> = {
   'fleet.settings.keys.fuelCardExpiryWarnDays': 'Fuel-card expiry warning (days before expiry)',
   'fleet.settings.keys.fuelCardBalanceYellow': 'Fuel-card balance — yellow below (EGP)',
   'fleet.settings.keys.fuelCardBalanceRed': 'Fuel-card balance — red below (EGP)',
+  'fleet.settings.keys.custodyFundTotal': 'Custody fund amount (EGP)',
+  'fleet.settings.keys.custodyFundTotalHint':
+    'The total custody fund handed to the Fleet department — replenishments will be added to it later.',
+  'fleet.settings.keys.custodyFundTotalUnset': 'Not set',
   'fleet.settings.keys.defaultBranchNameHint':
     'Matched against live branch names (Arabic or English). The create form preselects it; a branch is still required.',
 
@@ -6823,6 +6833,7 @@ const en: Record<string, string> = {
     'Vehicle licence expiry warning (days)',
   'systemAdmin.settings.keys.fleet.license.driverWarnDays': 'Driver licence expiry warning (days)',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'Default branch for new vehicles',
+  'systemAdmin.settings.keys.fleet.custody.fundTotal': 'Custody fund amount (EGP)',
 
   // P9-A — the setup link an administrator delivers by hand.
   'systemAdmin.users.actions.setupLink': 'Copy setup link',
@@ -11907,6 +11918,10 @@ const ar: Record<string, string> = {
   'fleet.custody.totals.wash': 'غسيل',
   // After a kind's share on its figure, «45% من الإجمالي» — the share leads in both languages.
   'fleet.custody.totals.ofTotal': 'من الإجمالي',
+  // «إجمالي العهدة» — the fund itself, before what it paid for; its share is «صُرف منها 12%».
+  'fleet.custody.fund.title': 'إجمالي العهدة',
+  'fleet.custody.fund.spent': 'صُرف منها',
+  'fleet.custody.fund.unset': 'يتحدد من إعدادات الحركة',
   'fleet.custody.perVehicle': 'ملخص لكل سيارة',
   'fleet.custody.movements': 'كل الحركات',
   'fleet.custody.columns.source': 'المصدر',
@@ -11942,6 +11957,8 @@ const ar: Record<string, string> = {
   'fleet.custody.dashboard.topCount': 'أعلى {{count}}',
   'fleet.custody.dashboard.noDriver': 'إيصالات بدون سائق محدد',
   'fleet.custody.dashboard.noDrivers': 'لا يذكر أي إيصال هنا سائقًا.',
+  'fleet.custody.dashboard.noMovements': 'لا توجد حركات بعد.',
+  'fleet.custody.dashboard.noMatch': 'لا توجد حركات مطابقة للفلاتر.',
   'fleet.custody.dashboard.receiptsShare': 'النسبة من خصم الإيصالات',
   'fleet.custody.dashboard.fuel': 'الوقود',
   'fleet.custody.dashboard.noFuelType': 'بلا نوع محدد',
@@ -12031,7 +12048,9 @@ const ar: Record<string, string> = {
   'fleet.custody.dashboard.carLog.note': 'كل ما صرفته السيارة من العهدة حسب فلاتر الشاشة',
   'fleet.custody.dashboard.carLog.totals': 'إجماليات السيارة',
   'fleet.custody.dashboard.carLog.ofCar': 'من إجمالي السيارة',
-  'fleet.custody.dashboard.carLog.ofFund': 'من إجمالي العهدة',
+  // A car's share of what the fund paid over the same filters — «إجمالي مصروفات العهدة», as the
+  // board's figure names it; «إجمالي العهدة» is the fund itself («مبلغ العهدة»).
+  'fleet.custody.dashboard.carLog.ofSpend': 'من إجمالي مصروفات العهدة',
   'fleet.custody.dashboard.carLog.movements': 'حركات السيارة',
   'fleet.custody.dashboard.carLog.empty': 'لا حركات لهذه السيارة حسب الفلاتر.',
   'fleet.nav.dealership': 'التوكيل',
@@ -13384,6 +13403,10 @@ const ar: Record<string, string> = {
   'fleet.settings.keys.fuelCardExpiryWarnDays': 'إنذار انتهاء بطاقة الوقود (أيام قبل الانتهاء)',
   'fleet.settings.keys.fuelCardBalanceYellow': 'الحد الأصفر لرصيد بطاقة الوقود (ج.م.)',
   'fleet.settings.keys.fuelCardBalanceRed': 'الحد الأحمر لرصيد بطاقة الوقود (ج.م.)',
+  'fleet.settings.keys.custodyFundTotal': 'مبلغ العهدة (ج.م.)',
+  'fleet.settings.keys.custodyFundTotalHint':
+    'إجمالي العهدة المسلَّمة لإدارة الحركة — الاستعاضات تُضاف عليه لاحقًا',
+  'fleet.settings.keys.custodyFundTotalUnset': 'غير محدد',
   'fleet.settings.keys.defaultBranchNameHint':
     'يُطابق أسماء الفروع الفعلية (عربي أو إنجليزي). نموذج الإضافة يختاره تلقائياً، والفرع مطلوب في كل الأحوال.',
 
@@ -14775,6 +14798,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.keys.fleet.license.driverWarnDays':
     'التنبيه قبل انتهاء رخصة السائق (بالأيام)',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'الفرع الافتراضي للسيارات الجديدة',
+  'systemAdmin.settings.keys.fleet.custody.fundTotal': 'مبلغ العهدة (ج.م.)',
 
   // P9-A — رابط الإعداد الذي يسلّمه المشرف يدويًا
   'systemAdmin.users.actions.setupLink': 'نسخ رابط الإعداد',

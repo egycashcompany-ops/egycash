@@ -16,6 +16,7 @@ import {
   type FleetCustodySummaryDto,
   type FleetCustodySummaryQuery,
   type FleetCustodyVehicleRowDto,
+  type FleetFuelCardCompany,
   type FleetFuelType,
   type ListFleetCustodyMovementsQuery,
   type Paginated,
@@ -27,7 +28,7 @@ import { FleetDealershipInvoiceModel } from '../dealership/dealership.model';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { sortCustodyMovements } from './custody-sort';
-import { custodyDashboard } from './custody-dashboard';
+import { custodyDashboard, type CustodyPendingPrivateBills } from './custody-dashboard';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -42,9 +43,13 @@ interface Movement {
   driverEmployeeId: string | null;
   driverName: string | null;
   fuelType: FleetFuelType | null;
+  /** A fuel receipt's «الشركة» — the company badge on «كل الحركات» and the dashboard's split. */
+  company: FleetFuelCardCompany | null;
   detail: string | null;
   /** A fuel receipt's litres — the dashboard's, never on «كل الحركات». */
   litres: number | null;
+  /** Whether a receipt has its photo — the dashboard's alert, never on «كل الحركات». */
+  hasImage: boolean;
   amount: number;
 }
 
@@ -59,19 +64,32 @@ const toMovementDto = (row: Movement): FleetCustodyMovementDto => ({
   driverEmployeeId: row.driverEmployeeId,
   driverName: row.driverName,
   fuelType: row.fuelType,
+  company: row.company,
   detail: row.detail,
   amount: row.amount,
 });
 
 const RECEIPT_SOURCES: readonly FleetCustodySource[] = ['fuel', 'tyres', 'wash'];
 
+/** A dealership bill names no driver, so a driver filter leaves the bills out — as a source does. */
+const wantsDealership = (query: FleetCustodySummaryQuery): boolean =>
+  (query.source === undefined || query.source.includes('dealership')) && query.driver === undefined;
+
 class FleetCustodyService {
+  /** The typed car codes as ids — `undefined` when no car is chosen, `[]` when none matches. */
+  private async vehicleIdsFor(
+    query: FleetCustodySummaryQuery,
+  ): Promise<readonly string[] | undefined> {
+    return query.vehicleCodes === undefined
+      ? undefined
+      : fleetVehicleRepository.idsByCodes(query.vehicleCodes);
+  }
+
   /** Every movement the filters match, newest first — the set both the figures and the page cut. */
-  private async movementsFor(query: FleetCustodySummaryQuery): Promise<Movement[]> {
-    const vehicleIds =
-      query.vehicleCodes === undefined
-        ? undefined
-        : await fleetVehicleRepository.idsByCodes(query.vehicleCodes);
+  private async movementsFor(
+    query: FleetCustodySummaryQuery,
+    vehicleIds: readonly string[] | undefined,
+  ): Promise<Movement[]> {
     // The receipt kinds among the chosen sources — or every kind when no source is chosen.
     const receiptKinds =
       query.source === undefined
@@ -80,10 +98,6 @@ class FleetCustodyService {
             'fuel' | 'tyres' | 'wash'
           )[]);
     const wantsReceipts = receiptKinds === undefined || receiptKinds.length > 0;
-    // A dealership bill names no driver, so a driver filter leaves the bills out.
-    const wantsDealership =
-      (query.source === undefined || query.source.includes('dealership')) &&
-      query.driver === undefined;
 
     const receipts: Movement[] = [];
     if (wantsReceipts) {
@@ -110,15 +124,17 @@ class FleetCustodyService {
           driverEmployeeId: doc.driverEmployeeId == null ? null : String(doc.driverEmployeeId),
           driverName: doc.driverName ?? null,
           fuelType: doc.fuelType ?? null,
+          company: doc.company ?? null,
           detail: null,
           litres: doc.litres ?? null,
+          hasImage: doc.image != null,
           amount: doc.amount,
         });
       }
     }
 
     const bills: Movement[] = [];
-    if (wantsDealership) {
+    if (wantsDealership(query)) {
       const filter: FilterQuery<unknown> = fleetDealershipRepository.dealershipFilter({
         vehicleIds,
         vehicleCodes: query.vehicleCodes,
@@ -141,8 +157,10 @@ class FleetCustodyService {
           driverEmployeeId: null,
           driverName: null,
           fuelType: null,
+          company: null,
           detail: doc.workTypeLabel,
           litres: null,
+          hasImage: doc.image != null,
           amount: doc.invoiceAmount ?? 0,
         });
       }
@@ -160,7 +178,7 @@ class FleetCustodyService {
 
   /** The figures and «ملخص لكل سيارة» — over the whole filtered set. */
   async summary(query: FleetCustodySummaryQuery): Promise<FleetCustodySummaryDto> {
-    return this.fold(await this.movementsFor(query));
+    return this.fold(await this.movementsFor(query, await this.vehicleIdsFor(query)));
   }
 
   /**
@@ -168,8 +186,38 @@ class FleetCustodyService {
    * its summary fields ARE `/summary`'s for the same filters, by construction.
    */
   async dashboard(query: FleetCustodyDashboardQuery): Promise<FleetCustodyDashboardDto> {
-    const rows = await this.movementsFor(query);
-    return { ...this.fold(rows), ...custodyDashboard(rows, query) };
+    const vehicleIds = await this.vehicleIdsFor(query);
+    const [rows, pending] = await Promise.all([
+      this.movementsFor(query, vehicleIds),
+      this.pendingPrivateBills(query, vehicleIds),
+    ]);
+    return { ...this.fold(rows), ...custodyDashboard(rows, query, pending) };
+  }
+
+  /**
+   * «2 فواتير ملاكي بانتظار الفاتورة — أقدمها من 4 أيام»: a private car's («ملاكي») dealership bill
+   * whose invoice has not come yet — no amount, so no side, and so not a movement of the fund. Only
+   * how many and the oldest exit: «تكلفة معلقة» has no amount to show until the invoice is written.
+   * Read by exit date over the board's dates and cars, the deleted ones never; a driver filter, or
+   * a source filter without the dealership, leaves them out exactly as it leaves the bills out.
+   */
+  private async pendingPrivateBills(
+    query: FleetCustodySummaryQuery,
+    vehicleIds: readonly string[] | undefined,
+  ): Promise<CustodyPendingPrivateBills> {
+    if (!wantsDealership(query)) return { count: 0, oldestOutDate: null };
+    const filter: FilterQuery<unknown> = fleetDealershipRepository.dealershipFilter({
+      vehicleIds,
+      vehicleCodes: query.vehicleCodes,
+      pending: true,
+      from: query.from,
+      to: query.to,
+    });
+    const [row] = await FleetDealershipInvoiceModel.aggregate<{ count: number; oldest: Date }>([
+      { $match: { isDeleted: false, privateCar: true, ...filter } },
+      { $group: { _id: null, count: { $sum: 1 }, oldest: { $min: '$outDate' } } },
+    ]).exec();
+    return { count: row?.count ?? 0, oldestOutDate: row?.oldest ?? null };
   }
 
   /** The figures and the per-car lines of a set of movements. */
@@ -226,7 +274,10 @@ class FleetCustodyService {
     const chosen = parseFleetSort(sort);
     const sorts =
       chosen.length > 0 ? chosen : sortBy !== undefined ? [{ by: sortBy, dir: sortDir }] : [];
-    const rows = sortCustodyMovements(await this.movementsFor(filters), sorts);
+    const rows = sortCustodyMovements(
+      await this.movementsFor(filters, await this.vehicleIdsFor(filters)),
+      sorts,
+    );
     const start = (page - 1) * pageSize;
     return {
       items: rows.slice(start, start + pageSize).map(toMovementDto),

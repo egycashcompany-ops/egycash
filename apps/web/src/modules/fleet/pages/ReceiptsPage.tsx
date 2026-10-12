@@ -107,8 +107,23 @@ const RECEIPTS_TABLE = cn(
 );
 
 /**
- * «الكارت وطنية •••• 2231» or «العهدة». A card that is not on the receipt's own car — «كارت اخر» —
- * says where it sits: «(كارت 160)», or its name on no car «(سفر 1)».
+ * «العهدة», or — a fuel receipt the fund paid that names «الشركة» — «العهدة (شل أوت)»: the same
+ * words on the table and on both sheets. A receipt with no company stays plain «العهدة».
+ */
+export const custodySourceLabel = (
+  row: Pick<FleetReceiptDto, 'company'>,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string =>
+  row.company === null
+    ? t('fleet.receipts.source.custody')
+    : t('fleet.receipts.source.custodyCompany', {
+        company: t(`fleet.fuelCards.company.${row.company}`),
+      });
+
+/**
+ * «الكارت وطنية •••• 2231» or «العهدة» («العهدة (شل أوت)» with its company). A card that is not on
+ * the receipt's own car — «كارت اخر» — says where it sits: «(كارت 160)», or its name on no car
+ * «(سفر 1)».
  */
 export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Element => {
   const t = useT();
@@ -132,7 +147,7 @@ export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Elemen
     );
   }
   // A source, not a state: the boards keep green, amber and red for states.
-  return <Badge tone="neutral">{t('fleet.receipts.source.custody')}</Badge>;
+  return <Badge tone="neutral">{custodySourceLabel(row, t)}</Badge>;
 };
 
 /**
@@ -264,9 +279,9 @@ export const ReceiptsPage = (): JSX.Element => {
   const fuelLabel = (row: FleetReceiptDto): string =>
     row.fuelType === null ? '' : t(`fleet.receipts.fuelType.${row.fuelType}`);
   // The sheets' «الخصم من»: the card as the table names it, its owner too when it is another car's
-  // or on no car — «وطنية 7045… (كارت 160)».
+  // or on no car — «وطنية 7045… (كارت 160)»; the fund with its company — «العهدة (شل أوت)».
   const sourceLabel = (row: FleetReceiptDto): string => {
-    if (row.source !== 'card') return t('fleet.receipts.source.custody');
+    if (row.source !== 'card') return custodySourceLabel(row, t);
     const owner = receiptCardOwner(row, (code) => t('fleet.receipts.cardOf', { code }));
     const card = `${t(`fleet.fuelCards.company.${row.cardCompany ?? 'wataniya'}`)} ${row.cardNumber ?? ''}`;
     return owner === null ? card : `${card} (${owner})`;

@@ -640,6 +640,61 @@ describe('a receipt — «ادخال كم (اختيارى عند كتابه مب
   });
 });
 
+describe('a custody fuel receipt’s «الشركة» — «ومش عاوز اى داتا اجبارى»', () => {
+  const fund = {
+    date: '2026-10-01',
+    vehicleId: oid('1'),
+    kind: 'fuel',
+    fuelType: 'diesel',
+    amount: 500,
+  } as const;
+
+  it('takes one of the fuel cards’ two companies on fuel from the fund — or none at all', () => {
+    expect(CreateFleetReceiptSchema.parse({ ...fund, company: 'chillout' }).company).toBe(
+      'chillout',
+    );
+    expect(CreateFleetReceiptSchema.parse({ ...fund, company: 'wataniya' }).company).toBe(
+      'wataniya',
+    );
+    expect(CreateFleetReceiptSchema.parse({ ...fund, company: null }).company).toBeNull();
+    // Never required: a receipt with no company is a whole receipt («بدون شركة»).
+    expect(CreateFleetReceiptSchema.parse(fund).company).toBeUndefined();
+    expect(CreateFleetReceiptSchema.safeParse({ ...fund, company: 'shell' }).success).toBe(false);
+  });
+
+  it('refuses it off a card — the card has its own — and on tyres and washing', () => {
+    expect(
+      CreateFleetReceiptSchema.safeParse({ ...fund, cardId: oid('2'), company: 'chillout' })
+        .success,
+    ).toBe(false);
+    expect(
+      CreateFleetReceiptSchema.safeParse({ ...fund, cardId: oid('2'), company: null }).success,
+    ).toBe(true);
+    for (const kind of ['tyres', 'wash'] as const) {
+      const paper = { date: '2026-10-01', vehicleId: oid('1'), kind, amount: 120 };
+      expect(CreateFleetReceiptSchema.safeParse({ ...paper, company: 'wataniya' }).success).toBe(
+        false,
+      );
+      expect(CreateFleetReceiptSchema.safeParse({ ...paper, company: null }).success).toBe(true);
+      expect(
+        UpdateFleetReceiptSchema.safeParse({ kind, company: 'wataniya', version: 0 }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('an edit keeps it when absent and clears it with null', () => {
+    const keep = UpdateFleetReceiptSchema.parse({ kind: 'fuel', fuelType: 'diesel', version: 3 });
+    expect('company' in keep).toBe(false);
+    const clear = UpdateFleetReceiptSchema.parse({
+      kind: 'fuel',
+      fuelType: 'diesel',
+      company: null,
+      version: 3,
+    });
+    expect(clear.company).toBeNull();
+  });
+});
+
 describe('receipt kinds and custody sources take several — «اختيار متعدد»', () => {
   it('a receipts filter reads one kind or several, and a saved one-kind link still reads', () => {
     expect(ListFleetReceiptsQuerySchema.parse({ kind: 'tyres,wash' }).kind).toEqual([

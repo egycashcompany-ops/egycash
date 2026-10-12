@@ -1133,6 +1133,25 @@ export const useCustodyMovements = (params: FleetListParams, enabled = true) =>
     placeholderData: (prev) => prev,
     enabled,
   });
+/**
+ * «سجل كل الحركات» inside «لوحة تحكم»: the same movements over the board's filters, with the log's
+ * OWN page and size — turning its pages never moves the board's. Under the ledger's key, so a
+ * receipt saved or deleted refreshes it too. The last page stays on screen while the next one
+ * comes; the log is drawn keyed by its filters, so other filters start it afresh rather than show
+ * the old filters' rows under the new filters' words.
+ */
+export const useCustodyLog = (
+  filters: FleetListParams,
+  page: number,
+  pageSize: number,
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'custody', { log: true, ...filters, page, pageSize }),
+    queryFn: () => api.listCustodyMovements({ ...filters, page, pageSize }),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
 
 // ── Licensing expenses (مصروفات التراخيص) ─────────────────────────────────────
 export const useLicenseExpenses = (params: FleetListParams, enabled = true) =>

@@ -111,6 +111,18 @@ describe('a receipt row names the card that paid, wherever it sits', () => {
     delete (older as { odometer?: unknown }).odometer;
     expect(toReceiptDto(joins({ doc: older })).odometer).toBeNull();
   });
+
+  it('carries a fund-paid fuel receipt’s «الشركة», and «بدون شركة» on a row written before it was asked', () => {
+    const fund = { source: 'custody' as const, cardId: null };
+    const dto = (doc: FleetReceiptDoc) => toReceiptDto(joins({ doc, card: null }));
+    expect(dto(receiptDoc({ ...fund, company: 'chillout' })).company).toBe('chillout');
+    expect(dto(receiptDoc({ ...fund, company: null })).company).toBeNull();
+    const older = receiptDoc(fund);
+    delete (older as { company?: unknown }).company;
+    expect(dto(older).company).toBeNull();
+    // A card receipt's company is its card's — the receipt's own stays empty.
+    expect(toReceiptDto(joins())).toMatchObject({ company: null, cardCompany: 'wataniya' });
+  });
 });
 
 describe('a card’s log names the car a receipt line paid for', () => {
@@ -171,5 +183,21 @@ describe('the checks a receipt’s card goes through', () => {
 
   it('keeps «كم» on fuel only', () => {
     expect(prepare).toContain("odometer: facts.kind === 'fuel' ? facts.odometer : null");
+  });
+
+  it('keeps «الشركة» on fuel from the fund only — refused on a card or off fuel, never invented', () => {
+    expect(prepare).toContain(
+      "if (facts.company !== null && (facts.kind !== 'fuel' || facts.cardId !== null)) {",
+    );
+    expect(prepare).toContain(
+      "company: facts.kind === 'fuel' && facts.cardId === null ? facts.company : null,",
+    );
+    // An edit that leaves it out keeps it only while the receipt stays fuel from the fund.
+    const update = source.slice(
+      source.indexOf('  async update('),
+      source.indexOf('  private async giveBack('),
+    );
+    expect(update).toContain("kind === 'fuel' && cardId === null");
+    expect(update).toContain('(before.company ?? null)');
   });
 });

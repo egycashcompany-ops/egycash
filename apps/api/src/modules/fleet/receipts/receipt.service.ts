@@ -12,6 +12,7 @@ import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   FLEET_FUEL_PRICE_KEY,
   type CreateFleetReceipt,
+  type FleetFuelCardCompany,
   type FleetFuelType,
   type FleetReceiptDto,
   type FleetReceiptSummaryQuery,
@@ -77,6 +78,7 @@ export const toReceiptDto = ({
   litres: doc.litres ?? null,
   amount: doc.amount,
   odometer: doc.odometer ?? null,
+  company: doc.company ?? null,
   image:
     doc.image == null
       ? null
@@ -104,6 +106,7 @@ const snapshot = (doc: FleetReceiptDoc) => ({
   litres: doc.litres ?? null,
   amount: doc.amount,
   odometer: doc.odometer ?? null,
+  company: doc.company ?? null,
 });
 
 /** The facts a receipt is written from — a create's whole body, or an edit merged over the row. */
@@ -117,6 +120,7 @@ interface ReceiptFacts {
   fuelType: FleetFuelType | null;
   amount: number;
   odometer: number | null;
+  company: FleetFuelCardCompany | null;
 }
 
 class FleetReceiptService {
@@ -204,6 +208,10 @@ class FleetReceiptService {
    * the filter never need HR).
    */
   private async prepare(facts: ReceiptFacts): Promise<Partial<FleetReceiptDoc>> {
+    // «الشركة» is a fund-paid fuel paper's: a card already names its company.
+    if (facts.company !== null && (facts.kind !== 'fuel' || facts.cardId !== null)) {
+      throw invalid('company', 'only a fuel receipt paid from the custody fund names its company');
+    }
     await fleetVehicleRepository.getById(facts.vehicleId);
     if (facts.cardId !== null) {
       const card = await fleetFuelCardRepository.findById(facts.cardId);
@@ -242,6 +250,7 @@ class FleetReceiptService {
       amount: facts.amount,
       // «كم» belongs to a fuel paper; a receipt that is not fuel carries none.
       odometer: facts.kind === 'fuel' ? facts.odometer : null,
+      company: facts.kind === 'fuel' && facts.cardId === null ? facts.company : null,
     };
   }
 
@@ -256,6 +265,7 @@ class FleetReceiptService {
       fuelType: input.fuelType ?? null,
       amount: input.amount,
       odometer: input.kind === 'fuel' ? (input.odometer ?? null) : null,
+      company: input.company ?? null,
     });
     const doc = await unitOfWork(async (session) => {
       const created = await fleetReceiptRepository.create({ ...set, image: null }, { by, session });
@@ -282,6 +292,12 @@ class FleetReceiptService {
   async update(id: string, input: UpdateFleetReceipt, by: string): Promise<ReceiptWithJoins> {
     const before = await fleetReceiptRepository.getById(id);
     const kind = input.kind;
+    const cardId =
+      kind !== 'fuel'
+        ? null
+        : input.cardId === undefined
+          ? stringOrNull(before.cardId)
+          : input.cardId;
     const set = await this.prepare({
       date: input.date ?? before.date,
       vehicleId: input.vehicleId ?? String(before.vehicleId),
@@ -291,12 +307,7 @@ class FleetReceiptService {
           : input.driverEmployeeId,
       driverName: input.driverName === undefined ? (before.driverName ?? null) : input.driverName,
       kind,
-      cardId:
-        kind !== 'fuel'
-          ? null
-          : input.cardId === undefined
-            ? stringOrNull(before.cardId)
-            : input.cardId,
+      cardId,
       fuelType:
         kind !== 'fuel'
           ? null
@@ -310,6 +321,14 @@ class FleetReceiptService {
           : input.odometer === undefined
             ? (before.odometer ?? null)
             : input.odometer,
+      // Kept while the receipt stays fuel from the fund; one that moves onto a card or off fuel
+      // drops it — a company the clerk names on a card receipt is refused in `prepare`.
+      company:
+        input.company !== undefined
+          ? input.company
+          : kind === 'fuel' && cardId === null
+            ? (before.company ?? null)
+            : null,
     });
     const moneyMoved =
       stringOrNull(before.cardId) !== stringOrNull(set.cardId ?? null) ||

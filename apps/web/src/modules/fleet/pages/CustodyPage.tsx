@@ -12,7 +12,11 @@
 // «عاوز اغير لون النوع بين كاوتش وبنزين وغسيل»: each kind wears its own colour, defined once in
 // `CustodyKinds.tsx`; «عاوز الاحصائيات الكوتش لوحده والغسيل لوحده»: five figures, tyres and washing
 // apart; and «لوحة تحكم» beside «الإحصائيات» opens everything in detail over the same filters.
-import { useMemo, useState } from 'react';
+//
+// «عاوز دى تكون فى شاشه العهد … فى اللايت سيم والدارك سيم»: the owner's dashboard design sets the
+// colours of this WHOLE screen — the kinds blue, amber, rose and cyan, and what is pressed (the two
+// buttons, the current page) emerald rather than the site's purple. The other Fleet boards keep it.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_CUSTODY_SOURCES,
@@ -81,9 +85,12 @@ const FIGURE = cn('whitespace-nowrap', NUM);
 /** An empty cell, as the boards draw one. */
 const DASH = <span className="text-slate-400">—</span>;
 
-/** The board's toolbar buttons, from the vehicles screen — a size down on a phone. */
-const BRAND_BUTTON =
-  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
+/**
+ * The board's toolbar buttons, from the vehicles screen — a size down on a phone — in the emerald
+ * of the owner's custody design rather than the site's purple.
+ */
+const PRESS_BUTTON =
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-2 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-emerald-300';
 const PILL_BUTTON =
   'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
 
@@ -177,6 +184,20 @@ export const CustodyPage = (): JSX.Element => {
   const [statsOpen, setStatsOpen] = useState(false);
   // «لوحة تحكم» — over the whole screen, read only while open.
   const [dashOpen, setDashOpen] = useState(false);
+  // «تصفية متقدمة» in the dashboard closes it and sends the focus to the filter bar — after the
+  // dashboard, on its way out, has handed it back to «لوحة تحكم» (its effect is torn down first).
+  const filterBar = useRef<HTMLDivElement>(null);
+  const focusFilters = useRef(false);
+  useEffect(() => {
+    if (dashOpen || !focusFilters.current) return;
+    focusFilters.current = false;
+    filterBar.current?.scrollIntoView({ block: 'nearest' });
+    filterBar.current
+      ?.querySelector<HTMLElement>('input, button, select, [tabindex]:not([tabindex="-1"])')
+      ?.focus();
+  }, [dashOpen]);
+  const clearFilters = (): void =>
+    patch({ from: null, to: null, vehicleCodes: null, source: null, driver: null });
 
   const sourceLabel = (row: FleetCustodyMovementDto): string =>
     t(`fleet.custody.source.${row.source}`);
@@ -462,7 +483,7 @@ export const CustodyPage = (): JSX.Element => {
               data-custody-stats-toggle="true"
               aria-expanded={statsOpen}
               onClick={() => setStatsOpen((open) => !open)}
-              className={BRAND_BUTTON}
+              className={PRESS_BUTTON}
             >
               {statsOpen
                 ? t('fleet.vehicles.board.breakdownHide')
@@ -488,7 +509,7 @@ export const CustodyPage = (): JSX.Element => {
               aria-haspopup="dialog"
               aria-expanded={dashOpen}
               onClick={() => setDashOpen(true)}
-              className={BRAND_BUTTON}
+              className={PRESS_BUTTON}
             >
               <BoardIcon d={PATH.trend} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               {t('fleet.custody.dashboard.open')}
@@ -548,13 +569,12 @@ export const CustodyPage = (): JSX.Element => {
 
         {/* The vehicles board's dark bar: every filter's name written in its box, an icon at its
             start, one row on a computer. */}
-        <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
-          <FilterBar
-            hasActiveFilters={hasActiveFilters}
-            onClear={() =>
-              patch({ from: null, to: null, vehicleCodes: null, source: null, driver: null })
-            }
-          >
+        <div
+          ref={filterBar}
+          data-custody-filter-bar="true"
+          className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}
+        >
+          <FilterBar hasActiveFilters={hasActiveFilters} onClear={clearFilters}>
             {dateBound('fleet.receipts.filters.from', from, 'from')}
             {dateBound('fleet.receipts.filters.to', to, 'to')}
             <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-600 dark:text-emerald-400">
@@ -605,8 +625,22 @@ export const CustodyPage = (): JSX.Element => {
 
         {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the money boards. */}
         {statsOpen && summary.data !== undefined && <CustodyFigures totals={summary.data} />}
-        {/* The board's own `filters`: the dashboard asks exactly what the figures ask. */}
-        <CustodyDashboard open={dashOpen} onClose={() => setDashOpen(false)} filters={filters} />
+        {/* The board's own `filters`: the dashboard asks exactly what the figures ask, and what it
+            changes it changes HERE — clearing them, «المصدر» = التوكيل, the focus on the bar. */}
+        <CustodyDashboard
+          open={dashOpen}
+          onClose={() => setDashOpen(false)}
+          filters={filters}
+          onClearFilters={clearFilters}
+          onShowDealership={() => {
+            patch({ source: 'dealership' });
+            setDashOpen(false);
+          }}
+          onAdvancedFilter={() => {
+            focusFilters.current = true;
+            setDashOpen(false);
+          }}
+        />
 
         {/* Two tables share the height: the per-car totals take what they need up to three tenths,
             and the movements take the rest — each scrolls its own rows. */}
@@ -667,6 +701,7 @@ export const CustodyPage = (): JSX.Element => {
           </div>
           {data !== undefined && data.meta.totalItems > 0 && (
             <FleetPager
+              tone="emerald"
               meta={data.meta}
               onPageChange={(p) => patch({ page: String(p) }, false)}
               onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

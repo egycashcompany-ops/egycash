@@ -1,17 +1,24 @@
-// The custody board's figures — behind «الإحصائيات» on the board, and leading «لوحة تحكم».
+// The custody board's figures — behind «الإحصائيات» on the board.
 //
 // «عاوز الاحصائيات الكوتش لوحده والغسيل لوحده»: five figures, not four — everything the fund paid,
 // then each kind on its own tile in its own colour and icon (`CustodyKinds.tsx`). The numbers are
-// the server's, over the whole filtered set, never the page.
+// the server's, over the whole filtered set, never the page. Since the owner's dashboard design
+// («فى شاشه العهد … فى اللايت سيم والدارك سيم») each tile also wears the design's coloured edge,
+// the total the emerald one.
 //
 // «والنسب باينه»: each kind's tile also says what part of the whole it is. A share is written here
 // once — `custodyShare` and `CustodyShare` — and «لوحة تحكم» writes every one of its shares with
-// them, so «45%» reads the same on a tile, a bar, a ranked line and a table.
+// them, so «45%» reads the same on a tile, a card, a ranked line and a table.
 import { type FleetCustodySummaryDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
-import { CUSTODY_KIND, CUSTODY_KINDS, CUSTODY_TOTAL_TILE } from './CustodyKinds';
+import {
+  CUSTODY_KIND,
+  CUSTODY_KINDS,
+  CUSTODY_TOTAL_ACCENT,
+  CUSTODY_TOTAL_TILE,
+} from './CustodyKinds';
 import { FigureChip, moneyChip } from './FleetFigures';
 import { NUM, PATH } from './FuelCardBoard';
 
@@ -35,8 +42,8 @@ export const custodySharePct = (part: number, whole: number): number =>
 /**
  * A share as the boards write a figure: Latin digits in their monospace, and `dir="ltr"` so that
  * inside an Arabic line «%» stays after the figure and «<1%» is not mirrored into «1%>». Beside a
- * sum of money it sits on a neutral chip of its own (`pill`), so «850.00 ج.م. 20%» never reads as
- * one number — neutral, because purple is what is pressed and green, amber and red are states.
+ * sum of money it may sit on a neutral chip of its own (`pill`), so «850.00 ج.م. 20%» never reads
+ * as one number.
  */
 export const CustodyShare = ({
   part,
@@ -65,7 +72,7 @@ export const CustodyShare = ({
 );
 
 /** Each figure's words, the kind's own key under `fleet.custody.totals`. */
-const KIND_LABEL = {
+export const CUSTODY_KIND_LABEL = {
   dealership: 'fleet.custody.totals.dealership',
   fuel: 'fleet.custody.totals.fuel',
   tyres: 'fleet.custody.totals.tyres',
@@ -89,7 +96,7 @@ export const CustodyFigures = ({ totals }: { totals: FleetCustodySummaryDto }): 
           four neighbours. */}
       <div className="col-span-2 xl:col-span-1" data-custody-figure="total">
         <FigureChip
-          className="h-full"
+          className={cn('h-full', CUSTODY_TOTAL_ACCENT)}
           icon={PATH.box}
           iconClass={CUSTODY_TOTAL_TILE}
           label={t('fleet.custody.totals.total')}
@@ -99,10 +106,10 @@ export const CustodyFigures = ({ totals }: { totals: FleetCustodySummaryDto }): 
       {CUSTODY_KINDS.map((kind) => (
         <div key={kind} className="col-span-2 sm:col-span-1" data-custody-figure={kind}>
           <FigureChip
-            className="h-full"
+            className={cn('h-full', CUSTODY_KIND[kind].accent)}
             icon={CUSTODY_KIND[kind].icon}
-            iconClass={cn(CUSTODY_KIND[kind].fill, CUSTODY_KIND[kind].ink)}
-            label={t(KIND_LABEL[kind])}
+            iconClass={CUSTODY_KIND[kind].tile}
+            label={t(CUSTODY_KIND_LABEL[kind])}
             {...moneyChip(totals[kind], locale)}
             // «45% من الإجمالي» — «45% of total»: both languages put the share first. Of nothing
             // the tile says nothing, rather than «—» or «NaN%» under a zero.

@@ -5,16 +5,27 @@
 // (the book-code fallback, the driver rule, `isDeleted`) and merged in memory. A pipeline would
 // copy those rules a second time and could drift from the board's figures; one pass over the rows
 // the board already counts cannot.
+//
+// The owner's design (the custody «لوحة تحكم») reads more off the same pass: the period's days,
+// the fund's fuel by «الشركة» («شل أوت / وطنية» — «ومش عاوز اى داتا اجبارى», so a receipt that
+// names none stays «بدون شركة», never folded into a company), and the alerts banner. Every one of
+// them is counted from these rows — nothing estimated, nothing shown that the rows do not hold.
 import {
   FLEET_CUSTODY_SOURCES,
+  FLEET_FUEL_CARD_COMPANIES,
   FLEET_FUEL_TYPES,
+  compareFleetVehicleCodes,
+  type FleetCustodyAlertsDto,
   type FleetCustodyDashboardDto,
+  type FleetCustodyDoubleFuelDto,
   type FleetCustodyDriverRowDto,
+  type FleetCustodyFuelShareDto,
   type FleetCustodyFuelTypeRowDto,
   type FleetCustodyMovementDto,
   type FleetCustodySource,
   type FleetCustodySummaryDto,
   type FleetCustodyTimeBucketDto,
+  type FleetFuelCardCompany,
   type FleetFuelType,
 } from '@ecms/contracts';
 
@@ -28,9 +39,19 @@ export interface CustodyDashboardRow {
   driverEmployeeId: string | null;
   driverName: string | null;
   fuelType: FleetFuelType | null;
+  /** A fuel receipt's «الشركة», when the clerk picked one; `null` on everything else. */
+  company: FleetFuelCardCompany | null;
   /** A fuel receipt's litres, when it was priced; `null` on everything else. */
   litres: number | null;
+  /** Whether a receipt has its photo — a dealership bill is never counted as a receipt. */
+  hasImage: boolean;
   amount: number;
+}
+
+/** The private cars' bills still waiting for their invoice — read beside the rows, not in them. */
+export interface CustodyPendingPrivateBills {
+  count: number;
+  oldestOutDate: Date | null;
 }
 
 /** The dashboard's own fields — the summary's are folded by the service, once, for both. */
@@ -45,6 +66,40 @@ const MAX_DAY_SPAN = 31;
 /** The board's own day and month — the UTC slice the table prints. */
 const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
 const monthKey = (date: Date): string => date.toISOString().slice(0, 7);
+
+/** The start of a date's UTC day. */
+const dayStart = (date: Date): number =>
+  Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+
+/** How many days from `from`'s day to `to`'s, both kept — 0 when turned round. */
+const inclusiveDays = (from: Date, to: Date): number => {
+  const span = Math.round((dayStart(to) - dayStart(from)) / DAY_MS);
+  return span < 0 ? 0 : span + 1;
+};
+
+/**
+ * «10 أيام»: the filter's own days when both dates are chosen — the days asked about, the quiet
+ * ones too — else the first movement's day to the last's; nothing at all is no period.
+ */
+export const custodyPeriodDays = (
+  rows: readonly Pick<CustodyDashboardRow, 'date'>[],
+  filter: { from?: Date | undefined; to?: Date | undefined },
+): number => {
+  if (filter.from !== undefined && filter.to !== undefined) {
+    return inclusiveDays(filter.from, filter.to);
+  }
+  if (rows.length === 0) return 0;
+  let first = Infinity;
+  let last = -Infinity;
+  for (const row of rows) {
+    first = Math.min(first, row.date.getTime());
+    last = Math.max(last, row.date.getTime());
+  }
+  return inclusiveDays(new Date(first), new Date(last));
+};
+
+/** Money compared to the piastre — `0.1 + 0.2` is the same amount as `0.3`. */
+const cents = (amount: number): number => Math.round(amount * 100);
 
 /** Every day from `from` to `to`, both kept. */
 const daysBetween = (from: Date, to: Date): string[] => {
@@ -98,13 +153,75 @@ const driverKey = (row: CustodyDashboardRow): string | null => {
   return name === '' ? null : `name:${name}`;
 };
 
+const emptyShare = (): FleetCustodyFuelShareDto => ({ amount: 0, count: 0, litres: 0 });
+const roundShare = <T extends FleetCustodyFuelShareDto>(share: T): T => ({
+  ...share,
+  amount: round(share.amount),
+  litres: round(share.litres),
+});
+
+/**
+ * «تنبيهات وتدقيق العهدة» off the receipts in the set: a car fuelled from the fund more than once on
+ * one day, receipts with no photo, and receipts that repeat another (the same car, day, kind and
+ * amount — the extra copies only). The bills awaiting an invoice are read by the service.
+ */
+const custodyAlerts = (
+  rows: readonly CustodyDashboardRow[],
+  pendingPrivateBills: CustodyPendingPrivateBills,
+): FleetCustodyAlertsDto => {
+  const fuelDays = new Map<string, FleetCustodyDoubleFuelDto>();
+  const copies = new Map<string, number>();
+  let receiptsWithoutPhoto = 0;
+  for (const row of rows) {
+    if (row.ref !== 'receipt') continue;
+    if (!row.hasImage) receiptsWithoutPhoto += 1;
+    // A receipt is always on a car; the code stands in only should the id ever be missing.
+    const car = row.vehicleId ?? `code:${row.vehicleCode ?? ''}`;
+    const day = dayKey(row.date);
+    const same = `${car}|${day}|${row.source}|${cents(row.amount)}`;
+    copies.set(same, (copies.get(same) ?? 0) + 1);
+    if (row.source !== 'fuel') continue;
+    const key = `${car}|${day}`;
+    const line = fuelDays.get(key) ?? {
+      vehicleId: row.vehicleId,
+      vehicleCode: row.vehicleCode,
+      date: day,
+      count: 0,
+    };
+    line.count += 1;
+    fuelDays.set(key, line);
+  }
+  return {
+    doubleFuel: [...fuelDays.values()]
+      .filter((line) => line.count >= 2)
+      // Newest day first; on one day, the fleet's own order of codes.
+      .sort(
+        (a, b) =>
+          (a.date < b.date ? 1 : a.date > b.date ? -1 : 0) ||
+          compareFleetVehicleCodes(a.vehicleCode ?? '', b.vehicleCode ?? ''),
+      ),
+    pendingPrivateBills: {
+      count: pendingPrivateBills.count,
+      oldestOutDate:
+        pendingPrivateBills.oldestOutDate === null
+          ? null
+          : pendingPrivateBills.oldestOutDate.toISOString(),
+    },
+    receiptsWithoutPhoto,
+    duplicateReceipts: [...copies.values()].reduce((extra, n) => extra + n - 1, 0),
+  };
+};
+
 /**
  * Everything the dashboard shows beyond the figures, in one pass over the filtered movements.
  * `rows` arrive newest first (the ledger's own order), so a driver's name is the latest one typed.
+ * `pendingPrivateBills` is the service's own read: those bills have no amount yet, so they are not
+ * movements of the fund and never in `rows`.
  */
 export const custodyDashboard = (
   rows: readonly CustodyDashboardRow[],
   filter: { from?: Date | undefined; to?: Date | undefined },
+  pendingPrivateBills: CustodyPendingPrivateBills = { count: 0, oldestOutDate: null },
 ): CustodyDashboardExtras => {
   const counts = Object.fromEntries(FLEET_CUSTODY_SOURCES.map((kind) => [kind, 0])) as Record<
     FleetCustodySource,
@@ -118,6 +235,11 @@ export const custodyDashboard = (
   const drivers = new Map<string, FleetCustodyDriverRowDto>();
   const noDriver = { count: 0, amount: 0 };
   const fuelTypes = new Map<FleetFuelType | null, FleetCustodyFuelTypeRowDto>();
+  const typeCompanies = new Map<FleetFuelType | null, Set<FleetFuelCardCompany>>();
+  const byCompany = new Map<FleetFuelCardCompany, FleetCustodyFuelShareDto>(
+    FLEET_FUEL_CARD_COMPANIES.map((company) => [company, emptyShare()]),
+  );
+  const noCompany = emptyShare();
   let litres = 0;
   let litresMissing = 0;
 
@@ -177,6 +299,7 @@ export const custodyDashboard = (
         count: 0,
         amount: 0,
         litres: 0,
+        companies: [],
       };
       type.count += 1;
       type.amount += row.amount;
@@ -184,6 +307,18 @@ export const custodyDashboard = (
       fuelTypes.set(row.fuelType, type);
       if (row.litres === null) litresMissing += 1;
       else litres += row.litres;
+      // «شل أوت / وطنية» by the receipt's own pick; none picked is «بدون شركة», never a guess.
+      const share = row.company === null ? noCompany : byCompany.get(row.company);
+      if (share !== undefined) {
+        share.amount += row.amount;
+        share.count += 1;
+        share.litres += row.litres ?? 0;
+      }
+      if (row.company !== null) {
+        const present = typeCompanies.get(row.fuelType) ?? new Set<FleetFuelCardCompany>();
+        present.add(row.company);
+        typeCompanies.set(row.fuelType, present);
+      }
     }
   }
 
@@ -232,8 +367,25 @@ export const custodyDashboard = (
     noDriver: { count: noDriver.count, amount: round(noDriver.amount) },
     fuelTypes: [...fuelTypes.values()]
       .sort((a, b) => fuelOrder(a.fuelType) - fuelOrder(b.fuelType))
-      .map((line) => ({ ...line, amount: round(line.amount), litres: round(line.litres) })),
+      .map((line) => ({
+        ...line,
+        amount: round(line.amount),
+        litres: round(line.litres),
+        // «شل أوت + وطنية»: the companies this type's receipts name, in the companies' order.
+        companies: FLEET_FUEL_CARD_COMPANIES.filter(
+          (company) => typeCompanies.get(line.fuelType)?.has(company) ?? false,
+        ),
+      })),
     litres: round(litres),
     litresMissing,
+    periodDays: custodyPeriodDays(rows, filter),
+    fuelByCompany: {
+      companies: FLEET_FUEL_CARD_COMPANIES.map((company) => ({
+        company,
+        ...roundShare(byCompany.get(company) ?? emptyShare()),
+      })),
+      none: roundShare(noCompany),
+    },
+    alerts: custodyAlerts(rows, pendingPrivateBills),
   };
 };

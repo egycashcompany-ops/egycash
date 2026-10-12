@@ -2,7 +2,8 @@
 //
 // «العربيه اللى بتخرج من الصيانه بتظهر فى الشاشه دى بس الصف بيكون باللون الاصفر»: a row waiting
 // for its invoice is yellow and offers «تسجيل الفاتورة»; a recorded one says who paid; the totals
-// sit between the filters and the table; print and Excel are icons on the page's side.
+// sit between the filters and the table; print and Excel are icons on the page's side. The bill's
+// form opens its insurer on «لا يوجد», offers the car's own under the arrow, and takes a photo.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { DealershipPage } from './DealershipPage';
+import { DealershipInvoiceDialog } from '../components/DealershipInvoiceDialog';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -68,8 +70,12 @@ const row = (over: Partial<FleetDealershipInvoiceDto> = {}): FleetDealershipInvo
   workKind: 'maintenance',
   workTypeLabel: 'صيانة',
   privateCar: false,
-  insuranceCompanyId: 'i-1',
-  insuranceCompanyName: 'مصر للتأمين',
+  // «الافتراضى … لا يوجد حتى لو العربيه فيها تامين»: the bill names none, the car carries one.
+  insuranceCompanyId: null,
+  insuranceCompanyName: null,
+  vehicleInsuranceCompanyId: 'i-1',
+  vehicleInsuranceCompanyName: { ar: 'مصر للتأمين', en: 'Misr Insurance' },
+  vehicleInsuranceCompanyActive: true,
   invoiceNumber: null,
   invoiceAmount: null,
   image: null,
@@ -98,8 +104,20 @@ const FILTERS = {
   workKind: undefined,
 };
 
+const EDITOR = ['fleetDealership.view', 'fleetDealership.edit', 'fleetDealership.delete'];
+
+const makeStore = (permissions: string[], locale: Locale = 'ar') =>
+  configureStore({
+    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+    preloadedState: {
+      locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
+      auth: { me: me(permissions), status: 'signedIn' as const },
+      ui: { theme: 'light' as const, sidebarOpen: false },
+    },
+  });
+
 const render = ({
-  permissions = ['fleetDealership.view', 'fleetDealership.edit', 'fleetDealership.delete'],
+  permissions = EDITOR,
   rows = [row()],
   figures = totals(),
 }: {
@@ -107,14 +125,7 @@ const render = ({
   rows?: FleetDealershipInvoiceDto[];
   figures?: FleetDealershipTotalsDto;
 } = {}): string => {
-  const store = configureStore({
-    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
-    preloadedState: {
-      locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
-      auth: { me: me(permissions), status: 'signedIn' as const },
-      ui: { theme: 'light' as const, sidebarOpen: false },
-    },
-  });
+  const store = makeStore(permissions);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
@@ -161,7 +172,9 @@ describe('the dealership table', () => {
     expect(pending).toContain(ar('fleet.dealership.pending'));
     expect(pending).toContain('data-dealership-record="d-1"');
     expect(pending).toContain(ar('fleet.dealership.record'));
-    expect(pending, 'the insurer came off the car').toContain('مصر للتأمين');
+    // A new bill names no insurer, even on a car that carries one.
+    expect(pending).toContain(ar('fleet.dealership.noInsurer'));
+    expect(pending).not.toContain('مصر للتأمين');
   });
 
   it('says who paid a recorded row, and turns it green', () => {
@@ -271,20 +284,167 @@ describe('recording the invoice', () => {
     expect(FORM).not.toContain('disabled={!complete}');
     const rules = FORM.slice(FORM.indexOf('useRequiredFields('));
     const list = rules.slice(0, rules.indexOf(');'));
-    // A typed insurer that is new and not being added to the catalogs has nowhere to go either.
-    for (const rule of ['ok: amountOk', 'ok: numberOk', 'ok: insurerOk']) {
+    for (const rule of ['ok: amountOk', 'ok: numberOk']) {
       expect(list, `the save requires ${rule}`).toContain(rule);
     }
+    // «ومش عاوز اى داتا اجبارى»: the insurer and the photo are never required — the arrow holds
+    // nothing that could be wrong, and a bill without a photo saves.
+    expect(list).not.toContain('insurer');
+    expect(list).not.toContain('photo');
     expect(FORM).toContain("missing={required.isMissing('invoiceNumber')}");
     expect(FORM).toContain('required={!privateCar}');
   });
+});
 
-  it('lets a typed insurer be added to the catalogs and written onto the car — through those screens’ own calls', () => {
-    expect(FORM).toContain('list="dealership-insurers"');
-    expect(FORM).toContain("kind: 'insuranceCompany'");
-    expect(FORM).toContain('updateVehicle.mutateAsync({');
-    expect(FORM).toContain("can('fleetCatalog.manage')");
-    expect(FORM).toContain("can('fleetVehicle.edit')");
-    expect(ar('fleet.dealership.insurerAddToCatalog')).toContain('قوائم الحركة');
+/** The bill's form, open on `bill`, as the clerk sees it. */
+const dialog = (bill: FleetDealershipInvoiceDto, locale: Locale = 'ar'): string =>
+  renderToStaticMarkup(
+    <Provider store={makeStore(EDITOR, locale)}>
+      <QueryClientProvider client={new QueryClient()}>
+        <DealershipInvoiceDialog open onClose={() => undefined} row={bill} />
+      </QueryClientProvider>
+    </Provider>,
+  );
+
+/** The `<select>` of «شركة التأمين» and its options, each `[value, label, picked]`. */
+const insurerBox = (html: string): [string, string, boolean][] => {
+  const at = html.indexOf('data-dealership-insurer="true"');
+  expect(at, 'the form has its insurer box').toBeGreaterThan(-1);
+  const box = html.slice(html.lastIndexOf('<select', at), html.indexOf('</select>', at));
+  return [...box.matchAll(/<option value="([^"]*)"( selected="")?>([^<]*)<\/option>/gu)].map(
+    (match) => [match[1] ?? '', match[3] ?? '', match[2] !== undefined],
+  );
+};
+
+describe('«شركة التأمين» on the bill — «لا يوجد» first, the car’s own under the arrow', () => {
+  it('opens on «لا يوجد» even when the car is insured, and offers the car’s insurer', () => {
+    expect(insurerBox(dialog(row()))).toEqual([
+      ['', ar('fleet.dealership.noInsurer'), true],
+      ['i-1', 'مصر للتأمين', false],
+    ]);
+  });
+
+  it('names the car’s insurer in English on the English screen, beside «None»', () => {
+    expect(insurerBox(dialog(row(), 'en'))).toEqual([
+      ['', translate('en', 'fleet.dealership.noInsurer'), true],
+      ['i-1', 'Misr Insurance', false],
+    ]);
+  });
+
+  it('offers «لا يوجد» alone for a car with no insurer on the vehicles screen, and says why', () => {
+    const html = dialog(
+      row({
+        vehicleInsuranceCompanyId: null,
+        vehicleInsuranceCompanyName: null,
+        vehicleInsuranceCompanyActive: false,
+      }),
+    );
+    expect(insurerBox(html)).toEqual([['', ar('fleet.dealership.noInsurer'), true]]);
+    expect(html).toContain(ar('fleet.dealership.insurerCarNone'));
+  });
+
+  it('offers «لا يوجد» alone for an insurer archived in قوائم الحركة — and says so, not «no insurer»', () => {
+    const html = dialog(row({ vehicleInsuranceCompanyActive: false }));
+    expect(insurerBox(html)).toEqual([['', ar('fleet.dealership.noInsurer'), true]]);
+    expect(html).toContain(ar('fleet.dealership.insurerCarInactive', { name: 'مصر للتأمين' }));
+    expect(html).not.toContain(ar('fleet.dealership.insurerCarNone'));
+  });
+
+  it('keeps a saved insurer picked when the bill is edited — and offered, though the car’s changed', () => {
+    const saved = row({
+      pending: false,
+      invoiceNumber: '48213',
+      invoiceAmount: 3250,
+      side: 'dealership',
+      insuranceCompanyId: 'i-9',
+      insuranceCompanyName: 'شركة سابقة',
+    });
+    expect(insurerBox(dialog(saved))).toEqual([
+      ['', ar('fleet.dealership.noInsurer'), false],
+      ['i-1', 'مصر للتأمين', false],
+      ['i-9', 'شركة سابقة', true],
+    ]);
+    expect(insurerBox(dialog({ ...saved, insuranceCompanyId: 'i-1' }))).toEqual([
+      ['', ar('fleet.dealership.noInsurer'), false],
+      ['i-1', 'مصر للتأمين', true],
+    ]);
+  });
+
+  it('types no new insurer — nothing is added to قوائم الحركة or written onto the car from here', () => {
+    const html = dialog(row());
+    expect(html).not.toContain('<datalist');
+    expect(html).not.toContain('data-dealership-new-insurer');
+    for (const gone of ['useCreateCatalogItem', 'useUpdateVehicle', "kind: 'insuranceCompany'"]) {
+      expect(FORM, `the form no longer reaches ${gone}`).not.toContain(gone);
+    }
+    // A saved bill keeps its insurer unless the clerk changed the box.
+    expect(FORM).toContain('...(insurerId === storedInsurer');
+  });
+});
+
+describe('«صورة الفاتورة» on the bill — «لو تليفون يبقى كاميرا او اختار من الملفات»', () => {
+  it('offers an optional photo box on a computer — a file, the receipt form’s dashed box', () => {
+    const html = dialog(row());
+    const section = html.slice(html.indexOf('data-dealership-photo="true"'));
+    expect(section).toContain(ar('fleet.dealership.image.title'));
+    expect(section).toContain('data-dealership-photo-state="none"');
+    expect(section).toContain(ar('fleet.dealership.image.pickTitle'));
+    const input = section.slice(
+      section.indexOf('<input'),
+      section.indexOf('>', section.indexOf('<input')),
+    );
+    expect(input).toContain('type="file"');
+    expect(input).toContain('accept="image/jpeg,image/png,image/webp"');
+    expect(input).toContain('data-dealership-image="true"');
+    // A computer has no camera choice: its file box is the way in.
+    expect(html).not.toContain('data-photo-sources');
+    expect(html).not.toContain('data-dealership-photo-remove');
+  });
+
+  it('on a phone, offers the camera and the device’s files as two clear choices', () => {
+    const scope = globalThis as Record<string, unknown>;
+    const before = scope.window;
+    scope.window = { matchMedia: () => ({ matches: true }) };
+    try {
+      const html = dialog(row());
+      expect(html).toContain('data-photo-sources="true"');
+      expect(html).toContain('data-photo-source="camera"');
+      expect(html).toContain('data-photo-source="device"');
+      expect(html).toContain('capture="environment"');
+      expect(html).toContain(ar('common.photo.camera'));
+      expect(html).toContain(ar('common.photo.device'));
+    } finally {
+      scope.window = before;
+    }
+    // The shared picker the receipt and fuel-card forms use — not a new one.
+    expect(FORM).toContain('<PhotoSourceButtons accept={LICENSE_IMAGE_ACCEPT} onFile={take}');
+  });
+
+  it('says a photo is already saved when the bill is edited, and that a new pick replaces it', () => {
+    const html = dialog(
+      row({
+        pending: false,
+        invoiceNumber: '48213',
+        invoiceAmount: 3250,
+        side: 'dealership',
+        image: { fileId: 'f-1', fileName: 'bill.jpg', mime: 'image/jpeg', size: 1, uploadedAt: '' },
+      }),
+    );
+    expect(html).toContain('data-dealership-photo-state="stored"');
+    expect(html).toContain(ar('fleet.dealership.image.stored', { name: 'bill.jpg' }));
+    expect(html).toContain(ar('fleet.dealership.image.replaceHint'));
+  });
+
+  it('uploads the photo after the invoice saves, through the table’s own endpoint', () => {
+    const saved = FORM.indexOf('await update.mutateAsync({');
+    const uploaded = FORM.indexOf('await upload.mutateAsync({ id: row.id, file });');
+    expect(saved).toBeGreaterThan(-1);
+    expect(uploaded, 'the photo goes up once the bill exists').toBeGreaterThan(saved);
+    expect(FORM).toContain('useUploadDealershipImage()');
+    // A refused photo does not lose the saved invoice: the clerk is told, and the column uploads.
+    expect(FORM).toContain("toast.warning(t('fleet.dealership.image.notUploaded'));");
+    // Picked, it can be dropped before saving; a refused pick is said at once.
+    expect(FORM).toContain('onClick={dropPhoto}');
+    expect(FORM).toContain('dealershipPhotoProblem(picked)');
   });
 });

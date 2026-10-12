@@ -32,6 +32,7 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
+import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { fleetFuelCardMovementRepository, fleetFuelCardRepository } from './fuel-card.repository';
 import {
   FleetFuelCardMovementModel,
@@ -78,9 +79,16 @@ export const toFuelCardDto = ({ doc, vehicleCode }: FuelCardWithCode): FleetFuel
   updatedAt: doc.updatedAt.toISOString(),
 });
 
+/** The car a receipt line paid for — the receipt's own car, which need not be the card's. */
+export interface ReceiptCar {
+  vehicleId: string;
+  vehicleCode: string | null;
+}
+
 export const toFuelMovementDto = (
   doc: FleetFuelCardMovementDoc,
   counterpartNumber: string | null,
+  receiptCar: ReceiptCar | null = null,
 ): FleetFuelCardMovementDto => ({
   id: String(doc._id),
   cardId: String(doc.cardId),
@@ -89,6 +97,8 @@ export const toFuelMovementDto = (
   balanceAfter: doc.balanceAfter,
   counterpartCardId: doc.counterpartCardId == null ? null : String(doc.counterpartCardId),
   counterpartNumber,
+  receiptVehicleId: doc.kind === 'receipt' ? (receiptCar?.vehicleId ?? null) : null,
+  receiptVehicleCode: doc.kind === 'receipt' ? (receiptCar?.vehicleCode ?? null) : null,
   at: doc.at.toISOString(),
   createdAt: doc.createdAt.toISOString(),
 });
@@ -715,9 +725,17 @@ class FleetFuelCardService {
     return result.line;
   }
 
-  async movements(
-    query: ListFleetFuelCardMovementsQuery,
-  ): Promise<Paginated<FleetFuelCardMovementDoc> & { numbers: Map<string, string> }> {
+  /**
+   * One card's log, with the other card of every transfer and the car of every receipt line —
+   * «كارت اخر»: a card may pay for another car's fuel, and its log names that car. A receipt
+   * deleted since still names its car: its two lines stay on the log.
+   */
+  async movements(query: ListFleetFuelCardMovementsQuery): Promise<
+    Paginated<FleetFuelCardMovementDoc> & {
+      numbers: Map<string, string>;
+      receiptCars: Map<string, ReceiptCar>;
+    }
+  > {
     const page = await fleetFuelCardMovementRepository.list({
       filter: { cardId: new Types.ObjectId(query.cardId) },
       page: query.page,
@@ -733,8 +751,33 @@ class FleetFuelCardService {
         ),
       ),
     ];
-    const cards = await fleetFuelCardRepository.findByIdsSystem(counterparts);
-    return { ...page, numbers: new Map(cards.map((card) => [String(card._id), card.number])) };
+    const receiptIds = [
+      ...new Set(
+        page.items.flatMap((doc) =>
+          doc.kind === 'receipt' && doc.receiptId != null ? [String(doc.receiptId)] : [],
+        ),
+      ),
+    ];
+    const [cards, receipts] = await Promise.all([
+      fleetFuelCardRepository.findByIdsSystem(counterparts),
+      fleetReceiptRepository.findByIdsSystem(receiptIds),
+    ]);
+    const codes = await fleetVehicleRepository.codesByIds([
+      ...new Set(receipts.map((receipt) => String(receipt.vehicleId))),
+    ]);
+    return {
+      ...page,
+      numbers: new Map(cards.map((card) => [String(card._id), card.number])),
+      receiptCars: new Map(
+        receipts.map((receipt) => [
+          String(receipt._id),
+          {
+            vehicleId: String(receipt.vehicleId),
+            vehicleCode: codes.get(String(receipt.vehicleId)) ?? null,
+          },
+        ]),
+      ),
+    };
   }
 
   // ── The photo (Files owns the bytes, the card owns the link) ──────────────

@@ -27,9 +27,11 @@ describe('the dealership bill', () => {
   const source = read('components/DealershipInvoiceDialog.tsx');
 
   it('starts with «لا يوجد», which is the absence of an insurer, not a company of that name', () => {
-    expect(source).toContain('setInsurer(row.insuranceCompanyName ?? noInsurer);');
-    expect(source).toContain("const typedInsurer = typedRaw === noInsurer ? '' : typedRaw;");
-    expect(source).toContain('<option value={noInsurer} />');
+    // The box holds the insurer's id; «لا يوجد» is the empty one (since 2026-10-12, a pick under
+    // the arrow rather than a typed name).
+    expect(source).toContain("setInsurerId(row.insuranceCompanyId ?? '');");
+    expect(source).toContain('<option value="">{t(\'fleet.dealership.noInsurer\')}</option>');
+    expect(source).toContain("insuranceCompanyId: insurerId === '' ? null : insurerId");
     expect(translate('ar', 'fleet.dealership.noInsurer')).toBe('لا يوجد');
     expect(read('pages/DealershipPage.tsx')).toContain(
       "row.insuranceCompanyName ?? t('fleet.dealership.noInsurer')",

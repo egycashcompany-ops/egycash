@@ -94,12 +94,20 @@ export const FuelCardHistoryDialog = ({
       : line.kind === 'receipt'
         ? false
         : can('fleetFuelCharge.transfer');
+  // «كارت اخر»: a receipt of ANOTHER car taken off this card — or off a card on no car — says whose
+  // fuel it paid for; this car's own receipt reads as it always did.
+  const forAnotherCar = (line: FleetFuelCardMovementDto): boolean =>
+    line.kind === 'receipt' &&
+    line.receiptVehicleId !== null &&
+    line.receiptVehicleId !== card.vehicleId;
   const what = (line: FleetFuelCardMovementDto): string =>
     line.kind === 'transferIn'
       ? t('fleet.fuelCards.history.kind.transferIn', { place: placeOf(line.counterpartCardId) })
       : line.kind === 'transferOut'
         ? t('fleet.fuelCards.history.kind.transferOut', { place: placeOf(line.counterpartCardId) })
-        : t(`fleet.fuelCards.history.kind.${line.kind}`);
+        : forAnotherCar(line)
+          ? t('fleet.fuelCards.history.kind.receiptFor', { place: line.receiptVehicleCode ?? '—' })
+          : t(`fleet.fuelCards.history.kind.${line.kind}`);
 
   const cents = (n: number): number => Math.round(n * 100) / 100;
   // What a change does to the balances before it is made — this card's, and for a transfer the

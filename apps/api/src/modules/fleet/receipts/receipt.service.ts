@@ -3,6 +3,11 @@
 // A fuel receipt taken off a card is a `receipt` movement on that card, written WITH the receipt
 // in one transaction, so the card's balance and the receipts never disagree. Changing a receipt
 // gives the old card its money back and takes the new amount off the new card, the same way.
+//
+// «لما اختار عربيه اعملى ان هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: the card is any
+// live card in the system — the car's own, another car's, or one on no car («سفر 1», «اسبير»).
+// The money goes to and comes back from whichever card the receipt names; nothing here reads the
+// card as «this car's».
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   FLEET_FUEL_PRICE_KEY,
@@ -42,10 +47,17 @@ const round = (value: number): number => Math.round(value * 100) / 100;
 export interface ReceiptWithJoins {
   doc: FleetReceiptDoc;
   vehicleCode: string | null;
-  card: Pick<FleetFuelCardDoc, 'company' | 'number'> | null;
+  card: Pick<FleetFuelCardDoc, 'company' | 'number' | 'vehicleId' | 'label'> | null;
+  /** The code of the car the card is on — which may be another car than the receipt's. */
+  cardVehicleCode: string | null;
 }
 
-export const toReceiptDto = ({ doc, vehicleCode, card }: ReceiptWithJoins): FleetReceiptDto => ({
+export const toReceiptDto = ({
+  doc,
+  vehicleCode,
+  card,
+  cardVehicleCode,
+}: ReceiptWithJoins): FleetReceiptDto => ({
   id: String(doc._id),
   date: doc.date.toISOString(),
   vehicleId: String(doc.vehicleId),
@@ -57,10 +69,14 @@ export const toReceiptDto = ({ doc, vehicleCode, card }: ReceiptWithJoins): Flee
   cardId: stringOrNull(doc.cardId),
   cardCompany: card?.company ?? null,
   cardNumber: card?.number ?? null,
+  cardVehicleId: stringOrNull(card?.vehicleId),
+  cardVehicleCode: card?.vehicleId == null ? null : cardVehicleCode,
+  cardLabel: card == null || card.vehicleId != null ? null : (card.label ?? null),
   fuelType: doc.fuelType ?? null,
   pricePerLitre: doc.pricePerLitre ?? null,
   litres: doc.litres ?? null,
   amount: doc.amount,
+  odometer: doc.odometer ?? null,
   image:
     doc.image == null
       ? null
@@ -87,6 +103,7 @@ const snapshot = (doc: FleetReceiptDoc) => ({
   fuelType: doc.fuelType ?? null,
   litres: doc.litres ?? null,
   amount: doc.amount,
+  odometer: doc.odometer ?? null,
 });
 
 /** The facts a receipt is written from — a create's whole body, or an edit merged over the row. */
@@ -99,6 +116,7 @@ interface ReceiptFacts {
   cardId: string | null;
   fuelType: FleetFuelType | null;
   amount: number;
+  odometer: number | null;
 }
 
 class FleetReceiptService {
@@ -136,26 +154,37 @@ class FleetReceiptService {
     return fleetReceiptRepository.totals(await this.filterFor(query));
   }
 
-  /** The codes and the cards for exactly the rows on the page — one lookup each. */
+  /**
+   * The codes and the cards for exactly the rows on the page — the cards first, then ONE lookup of
+   * codes for the receipts' cars and the cards' cars together: a card may sit on another car.
+   */
   async joinsFor(docs: readonly FleetReceiptDoc[]): Promise<Map<string, ReceiptWithJoins>> {
-    const vehicleIds = [...new Set(docs.map((doc) => String(doc.vehicleId)))];
     const cardIds = [
       ...new Set(docs.flatMap((doc) => (doc.cardId == null ? [] : [String(doc.cardId)]))),
     ];
-    const [codes, cards] = await Promise.all([
-      fleetVehicleRepository.codesByIds(vehicleIds),
-      fleetFuelCardRepository.findByIdsSystem(cardIds),
-    ]);
+    const cards = await fleetFuelCardRepository.findByIdsSystem(cardIds);
     const byCard = new Map(cards.map((card) => [String(card._id), card]));
-    return new Map(
-      docs.map((doc) => [
-        String(doc._id),
-        {
-          doc,
-          vehicleCode: codes.get(String(doc.vehicleId)) ?? null,
-          card: doc.cardId == null ? null : (byCard.get(String(doc.cardId)) ?? null),
-        },
+    const vehicleIds = [
+      ...new Set([
+        ...docs.map((doc) => String(doc.vehicleId)),
+        ...cards.flatMap((card) => (card.vehicleId == null ? [] : [String(card.vehicleId)])),
       ]),
+    ];
+    const codes = await fleetVehicleRepository.codesByIds(vehicleIds);
+    return new Map(
+      docs.map((doc) => {
+        const card = doc.cardId == null ? null : (byCard.get(String(doc.cardId)) ?? null);
+        return [
+          String(doc._id),
+          {
+            doc,
+            vehicleCode: codes.get(String(doc.vehicleId)) ?? null,
+            card,
+            cardVehicleCode:
+              card?.vehicleId == null ? null : (codes.get(String(card.vehicleId)) ?? null),
+          },
+        ];
+      }),
     );
   }
 
@@ -168,18 +197,17 @@ class FleetReceiptService {
   // ── Writing ───────────────────────────────────────────────────────────────
 
   /**
-   * The checks a receipt's facts have to pass, and the litres they price to. The card must be one
-   * of THIS car's; the driver, when an employee, one of Fleet's people (a snapshot of their name
-   * is kept so the list and the filter never need HR).
+   * The checks a receipt's facts have to pass, and the litres they price to. The card must be a
+   * live card — ANY card, «حتى لو العربيه عليها كروت»: another car's or one on no car pays as well
+   * as the car's own; whether it holds enough is `debit`'s, inside the transaction. The driver,
+   * when an employee, is one of Fleet's people (a snapshot of their name is kept so the list and
+   * the filter never need HR).
    */
   private async prepare(facts: ReceiptFacts): Promise<Partial<FleetReceiptDoc>> {
     await fleetVehicleRepository.getById(facts.vehicleId);
     if (facts.cardId !== null) {
       const card = await fleetFuelCardRepository.findById(facts.cardId);
       if (card === null) throw invalid('cardId', 'unknown fuel card');
-      if (String(card.vehicleId) !== facts.vehicleId) {
-        throw invalid('cardId', 'this card belongs to another car');
-      }
     }
     let driverName = facts.driverName;
     if (facts.driverEmployeeId !== null) {
@@ -212,6 +240,8 @@ class FleetReceiptService {
       pricePerLitre,
       litres,
       amount: facts.amount,
+      // «كم» belongs to a fuel paper; a receipt that is not fuel carries none.
+      odometer: facts.kind === 'fuel' ? facts.odometer : null,
     };
   }
 
@@ -225,6 +255,7 @@ class FleetReceiptService {
       cardId: input.kind === 'fuel' ? (input.cardId ?? null) : null,
       fuelType: input.fuelType ?? null,
       amount: input.amount,
+      odometer: input.kind === 'fuel' ? (input.odometer ?? null) : null,
     });
     const doc = await unitOfWork(async (session) => {
       const created = await fleetReceiptRepository.create({ ...set, image: null }, { by, session });
@@ -273,6 +304,12 @@ class FleetReceiptService {
             ? (before.fuelType ?? null)
             : input.fuelType,
       amount: input.amount ?? before.amount,
+      odometer:
+        kind !== 'fuel'
+          ? null
+          : input.odometer === undefined
+            ? (before.odometer ?? null)
+            : input.odometer,
     });
     const moneyMoved =
       stringOrNull(before.cardId) !== stringOrNull(set.cardId ?? null) ||

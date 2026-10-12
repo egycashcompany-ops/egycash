@@ -2,31 +2,35 @@
 //
 // The grey facts (exit date, car, work) came with the row and are not edited here. What the clerk
 // writes: the invoice number and amount, whether the car is «ملاكي» (preset from its operation,
-// theirs to change), and the insurer — which the car usually already has. When it has none the
-// clerk may type one; a name the catalog does not carry is offered for adding to قوائم الحركة and
-// for writing onto the car in شاشة السيارات, both through the endpoints those screens use.
+// theirs to change), the insurer, and the photo of the bill.
+//
+// «الافتراضى بتاع الربي فى التامين لا يوجد حتى لو العربيه فيها تامين بس لو فيها تامين اقدر ادوس على
+// السهم واختار»: the insurer opens on «لا يوجد» for every bill; the arrow offers the car's own
+// insurer as شاشة السيارات records it, nothing typed. «وانا بسجل الفاتوره اعملى اوبشن ان اضيف صوره
+// ولو تليفون يبقى كاميرا او اختار من الملفات»: the receipt form's photo box, the camera on a phone.
 import { useEffect, useMemo, useState } from 'react';
 import { type FleetDealershipInvoiceDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
-import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Checkbox, Field, Input } from '../../../shared/ui/form';
+import { Field, Input, Select } from '../../../shared/ui/form';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
+import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
+import { CloseIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatDate, localized } from '../../../shared/lib/format';
+import { formatDate } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BoardIcon, NUM, PATH } from './FuelCardBoard';
 import { FILTER_ICON } from './FilterWithIcon';
+import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
+import { useUpdateDealershipInvoice, useUploadDealershipImage } from '../api/fleet-queries';
 import {
-  useCreateCatalogItem,
-  useFleetCatalog,
-  useUpdateDealershipInvoice,
-  useUpdateVehicle,
-  useVehicle,
-} from '../api/fleet-queries';
+  dealershipCarInsurer,
+  dealershipInsurerOptions,
+  dealershipPhotoProblem,
+} from '../lib/dealership-invoice';
 
 /** «حسن الفورم»: a section's name over its boxes. */
 const SectionTitle = ({ children }: { children: string }): JSX.Element => (
@@ -73,6 +77,23 @@ const Fact = ({
   </div>
 );
 
+/** The picked photo as an object URL for its thumbnail, revoked when it changes or goes. */
+const usePreviewUrl = (file: File | null): string | null => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (file === null) {
+      setUrl(null);
+      return undefined;
+    }
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  return url;
+};
+
+const megabytes = (bytes: number): string => (bytes / (1024 * 1024)).toFixed(1);
+
 export const DealershipInvoiceDialog = ({
   open,
   onClose,
@@ -83,88 +104,60 @@ export const DealershipInvoiceDialog = ({
   row: FleetDealershipInvoiceDto | null;
 }): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [invoiceAmount, setInvoiceAmount] = useState('');
-  const [privateCar, setPrivateCar] = useState(false);
-  // The insurer as TYPED — a name, matched against the catalog on save.
-  const [insurer, setInsurer] = useState('');
-  // Typed or picked by the clerk — the car's insurer no longer fills the box after that.
-  const [insurerTouched, setInsurerTouched] = useState(false);
-  const [addToCatalog, setAddToCatalog] = useState(true);
-  const [writeOnVehicle, setWriteOnVehicle] = useState(true);
-  const noInsurer = t('fleet.dealership.noInsurer');
-
-  const insurers = useFleetCatalog('insuranceCompany');
-  const byName = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const item of insurers.data?.items ?? []) {
-      map.set(item.name.ar.trim(), item.id);
-      map.set(item.name.en.trim(), item.id);
-    }
-    return map;
-  }, [insurers.data]);
-  const names = useMemo(
-    () => (insurers.data?.items ?? []).map((item) => localized(item.name, locale)),
-    [insurers.data, locale],
+  const [invoiceNumber, setInvoiceNumber] = useState(row?.invoiceNumber ?? '');
+  const [invoiceAmount, setInvoiceAmount] = useState(
+    row === null || row.invoiceAmount === null ? '' : String(row.invoiceAmount),
   );
+  const [privateCar, setPrivateCar] = useState(row?.privateCar ?? false);
+  // The insurer the bill names, by id — '' is «لا يوجد».
+  const [insurerId, setInsurerId] = useState(row?.insuranceCompanyId ?? '');
+  // The bill's photo, held until the invoice is saved; the key empties the box after a refusal.
+  const [file, setFile] = useState<File | null>(null);
+  const [inputKey, setInputKey] = useState(0);
+  const preview = usePreviewUrl(file);
 
   useEffect(() => {
     if (!open || row === null) return;
     setInvoiceNumber(row.invoiceNumber ?? '');
     setInvoiceAmount(row.invoiceAmount === null ? '' : String(row.invoiceAmount));
     setPrivateCar(row.privateCar);
-    // «تبقى شركة التامين لا يوجد»: a workshop bill starts with no insurer — the clerk types one,
-    // or picks it from the insurers the cars carry.
-    setInsurer(row.insuranceCompanyName ?? noInsurer);
-    setInsurerTouched(false);
-    setAddToCatalog(true);
-    setWriteOnVehicle(true);
+    // «دلوقتى اخترت عربيه وعليها تامين يكون لا يوجد»: what the bill itself carries — «لا يوجد»
+    // on every new one (the server opens them so), the stored insurer on one saved with it.
+    setInsurerId(row.insuranceCompanyId ?? '');
+    setFile(null);
+    setInputKey((k) => k + 1);
   }, [open, row]);
 
-  const update = useUpdateDealershipInvoice();
-  const createInsurer = useCreateCatalogItem();
-  const updateVehicle = useUpdateVehicle();
-  const pending = update.isPending || createInsurer.isPending || updateVehicle.isPending;
+  // «لما ادوس على السهم اقدر اختار التامين اللى فى شاشه السيارات»: the car's insurer under the
+  // arrow, beside «لا يوجد», named in the reader's language — and a stored one that is not the
+  // car's, so an edit still shows it.
+  const insurerOptions = useMemo(
+    () => (row === null ? [] : dealershipInsurerOptions(row, locale)),
+    [row, locale],
+  );
+  // The hint says which it is: no insurer on the car, one archived in قوائم الحركة, or one offered.
+  const carInsurer = row === null ? null : dealershipCarInsurer(row, locale);
+  const insurerHint =
+    carInsurer?.kind === 'none'
+      ? t('fleet.dealership.insurerCarNone')
+      : carInsurer?.kind === 'archived'
+        ? t('fleet.dealership.insurerCarInactive', { name: carInsurer.name })
+        : t('fleet.dealership.insurerHint');
 
-  const typedRaw = insurer.trim();
-  // «لا يوجد» is the absence of an insurer, not a company of that name.
-  const typedInsurer = typedRaw === noInsurer ? '' : typedRaw;
-  const knownInsurerId = typedInsurer === '' ? null : (byName.get(typedInsurer) ?? null);
-  const isNewInsurer = typedInsurer !== '' && knownInsurerId === null;
-  const mayAddInsurer = can('fleetCatalog.manage');
-  // Writing the insurer onto the car is an edit of the VEHICLE record, which is versioned — so
-  // the car is read first, and the offer is only made once its version is in hand.
-  const vehicle = useVehicle(open && row?.vehicleId != null ? row.vehicleId : '');
-  const mayWriteVehicle =
-    can('fleetVehicle.edit') && row?.vehicleId != null && vehicle.data !== undefined;
-  // «لو ليها فى شاشه السيارات تامين يجى زى شاشه السيارات بس اقدر اغيرها ل لايوجد»: a bill with
-  // no insurer of its own opens on the car's insurer from the registry — still a box the clerk
-  // can change, «لا يوجد» included. A car with none keeps «لا يوجد».
-  const carInsurerId = vehicle.data?.insuranceCompanyId ?? null;
-  const carInsurerName = useMemo(() => {
-    const item = (insurers.data?.items ?? []).find((entry) => entry.id === carInsurerId);
-    return item === undefined ? null : localized(item.name, locale);
-  }, [insurers.data, carInsurerId, locale]);
-  useEffect(() => {
-    if (!open || row === null || insurerTouched) return;
-    if (row.insuranceCompanyName !== null || carInsurerName === null) return;
-    setInsurer(carInsurerName);
-  }, [open, row, insurerTouched, carInsurerName]);
+  const update = useUpdateDealershipInvoice();
+  const upload = useUploadDealershipImage();
+  const pending = update.isPending || upload.isPending;
 
   const amount = Number(invoiceAmount);
   const amountOk = invoiceAmount !== '' && Number.isFinite(amount) && amount >= 0;
   const numberOk = privateCar || invoiceNumber.trim() !== '';
-  // A new insurer the clerk may not add has nowhere to go — the row cannot point at a name.
-  const insurerOk = !isNewInsurer || (mayAddInsurer && addToCatalog);
   // Save stays pressable: pressing it short of these names them and turns their boxes red
   // (`useRequiredFields`). Without a row there is nothing to save — `submit` returns on its own.
   const required = useRequiredFields(
     [
       { key: 'invoiceAmount', label: t('fleet.dealership.columns.invoiceAmount'), ok: amountOk },
       { key: 'invoiceNumber', label: t('fleet.dealership.columns.invoiceNumber'), ok: numberOk },
-      { key: 'insurer', label: t('fleet.vehicles.fields.insuranceCompany'), ok: insurerOk },
     ],
     open,
   );
@@ -174,43 +167,51 @@ export const DealershipInvoiceDialog = ({
       ? 'custody'
       : 'dealership';
 
+  /** A pick from the box, the camera or the device — refused here when the upload would be. */
+  const take = (picked: File | undefined): void => {
+    if (picked === undefined) return;
+    const problem = dealershipPhotoProblem(picked);
+    if (problem !== null) {
+      toast.error(t(`fleet.dealership.image.${problem}`));
+      setInputKey((k) => k + 1);
+      return;
+    }
+    setFile(picked);
+  };
+  const dropPhoto = (): void => {
+    setFile(null);
+    setInputKey((k) => k + 1);
+  };
+
   const submit = async (): Promise<void> => {
     if (row === null) return;
-    let insuranceCompanyId: string | null = knownInsurerId;
-    if (isNewInsurer && addToCatalog) {
-      const created = await createInsurer.mutateAsync({
-        kind: 'insuranceCompany',
-        name: { ar: typedInsurer, en: typedInsurer },
-        countsForAlarm: false,
-      });
-      insuranceCompanyId = created.id;
-    }
-    // Write the insurer onto the car too — only when it changed, and only where the clerk may.
-    if (
-      insuranceCompanyId !== null &&
-      insuranceCompanyId !== row.insuranceCompanyId &&
-      // The car already carries it — the box was filled from the car.
-      insuranceCompanyId !== carInsurerId &&
-      mayWriteVehicle &&
-      writeOnVehicle &&
-      row.vehicleId !== null &&
-      vehicle.data !== undefined
-    ) {
-      await updateVehicle.mutateAsync({
-        id: row.vehicleId,
-        body: { insuranceCompanyId, version: vehicle.data.version },
-      });
-    }
+    const storedInsurer = row.insuranceCompanyId ?? '';
     await update.mutateAsync({
       id: row.id,
       body: {
         invoiceNumber: invoiceNumber.trim() === '' ? null : invoiceNumber.trim(),
         invoiceAmount: amount,
         privateCar,
-        insuranceCompanyId: typedInsurer === '' ? null : insuranceCompanyId,
+        // Sent only when the clerk changed it — a saved bill keeps what it was saved with.
+        ...(insurerId === storedInsurer
+          ? {}
+          : { insuranceCompanyId: insurerId === '' ? null : insurerId }),
         version: row.version,
       },
     });
+    // The photo goes up once the bill is saved, through the table's own endpoint — a bill holds
+    // one photo, so a new one replaces the stored one.
+    if (file !== null) {
+      try {
+        await upload.mutateAsync({ id: row.id, file });
+      } catch {
+        // The invoice IS saved (its version moved, so a second Save here would be refused): say
+        // so and close — the reason itself was already toasted, and the column still uploads.
+        toast.warning(t('fleet.dealership.image.notUploaded'));
+        onClose();
+        return;
+      }
+    }
     toast.success(t('fleet.dealership.saved'));
     onClose();
   };
@@ -298,36 +299,19 @@ export const DealershipInvoiceDialog = ({
           <section className="space-y-2">
             <SectionTitle>{t('fleet.dealership.form.invoice')}</SectionTitle>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field
-                label={t('fleet.vehicles.fields.insuranceCompany')}
-                missing={required.isMissing('insurer')}
-                // Only ever missing as a NEW name that is not being added to the catalog: say what to
-                // do about it — tick «add», or (without the grant to add one) pick from the list.
-                {...(required.isMissing('insurer')
-                  ? {
-                      error: mayAddInsurer
-                        ? t('fleet.dealership.insurerAddOrClear')
-                        : t('fleet.dealership.insurerCannotAdd'),
-                    }
-                  : {})}
-                hint={t('fleet.dealership.insurerPick')}
-              >
-                <Input
-                  list="dealership-insurers"
-                  value={insurer}
-                  onChange={(e) => {
-                    setInsurerTouched(true);
-                    setInsurer(e.target.value);
-                  }}
-                  placeholder={t('fleet.dealership.insurerPlaceholder')}
+              <Field label={t('fleet.vehicles.fields.insuranceCompany')} hint={insurerHint}>
+                <Select
+                  value={insurerId}
+                  onChange={(e) => setInsurerId(e.target.value)}
                   data-dealership-insurer="true"
-                />
-                <datalist id="dealership-insurers">
-                  <option value={noInsurer} />
-                  {names.map((name) => (
-                    <option key={name} value={name} />
+                >
+                  <option value="">{t('fleet.dealership.noInsurer')}</option>
+                  {insurerOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
                   ))}
-                </datalist>
+                </Select>
               </Field>
               <Field
                 label={t('fleet.dealership.columns.invoiceAmount')}
@@ -351,47 +335,91 @@ export const DealershipInvoiceDialog = ({
               </Field>
             </div>
           </section>
-          {isNewInsurer && (
+          {/* «اضيف صوره»: optional, as on the receipt form — the whole dashed box is the file
+              picker; on a phone the camera and the device's pictures sit under it. */}
+          <section className="space-y-2" data-dealership-photo="true">
+            <SectionTitle>{t('fleet.dealership.image.title')}</SectionTitle>
             <div
-              data-dealership-new-insurer="true"
-              className="space-y-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
-            >
-              <p className="font-medium">
-                {t('fleet.dealership.insurerNew', { name: typedInsurer })}
-              </p>
-              {mayAddInsurer ? (
-                <Checkbox
-                  label={t('fleet.dealership.insurerAddToCatalog')}
-                  checked={addToCatalog}
-                  onChange={(e) => setAddToCatalog(e.target.checked)}
-                />
-              ) : (
-                <p className="text-red-700 dark:text-red-300">
-                  {t('fleet.dealership.insurerCannotAdd')}
-                </p>
+              className={cn(
+                'group relative cursor-pointer rounded-xl border-2 border-dashed p-3 transition-all',
+                file === null
+                  ? 'border-slate-200 bg-slate-50 hover:border-brand-500/50 dark:border-slate-700 dark:bg-[#0c121e]'
+                  : 'border-brand-500/60 bg-brand-500/5 dark:bg-brand-500/10',
               )}
-              {mayWriteVehicle && (
-                <Checkbox
-                  label={t('fleet.dealership.insurerWriteOnCar', { code: row.vehicleCode ?? '—' })}
-                  checked={writeOnVehicle}
-                  onChange={(e) => setWriteOnVehicle(e.target.checked)}
-                />
+            >
+              <input
+                key={inputKey}
+                type="file"
+                accept={LICENSE_IMAGE_ACCEPT}
+                aria-label={t('fleet.dealership.image.title')}
+                title={t('fleet.dealership.image.title')}
+                disabled={pending}
+                onChange={(e) => take(e.target.files?.[0])}
+                data-dealership-image="true"
+                className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+              />
+              <div
+                className={cn(
+                  'pointer-events-none flex items-center gap-3',
+                  // Room for the remove button drawn over the box's end.
+                  file !== null && 'pe-9',
+                )}
+              >
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-brand-500/20 bg-brand-500/10 text-brand-600 dark:text-brand-300">
+                  {preview === null ? (
+                    <BoardIcon d={PATH.image} className="h-6 w-6" />
+                  ) : (
+                    <img
+                      src={preview}
+                      alt={t('fleet.dealership.image.title')}
+                      className="h-full w-full object-cover"
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-sm font-bold text-slate-900 dark:text-white"
+                    data-dealership-photo-state={
+                      file !== null ? 'picked' : row.image !== null ? 'stored' : 'none'
+                    }
+                  >
+                    {file !== null
+                      ? file.name
+                      : row.image !== null
+                        ? t('fleet.dealership.image.stored', { name: row.image.fileName })
+                        : t('fleet.dealership.image.pickTitle')}
+                  </p>
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    {file !== null
+                      ? t('fleet.dealership.image.picked', { size: megabytes(file.size) })
+                      : row.image !== null
+                        ? t('fleet.dealership.image.replaceHint')
+                        : t('fleet.dealership.image.pickHint')}
+                  </p>
+                </div>
+                {file === null && (
+                  <span className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition group-hover:border-brand-500/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+                    {t('fleet.fuelCards.image.pick')}
+                  </span>
+                )}
+              </div>
+              {/* Above the box's own picker, so a press removes the photo instead of re-picking. */}
+              {file !== null && (
+                <button
+                  type="button"
+                  data-dealership-photo-remove="true"
+                  aria-label={t('fleet.dealership.image.remove')}
+                  title={t('fleet.dealership.image.remove')}
+                  disabled={pending}
+                  onClick={dropPhoto}
+                  className="absolute end-2 top-1/2 z-20 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                >
+                  <CloseIcon className="h-4 w-4" />
+                </button>
               )}
             </div>
-          )}
-          {/* A known insurer the car does not carry yet — the same offer, without the catalog half. */}
-          {!isNewInsurer &&
-            knownInsurerId !== null &&
-            knownInsurerId !== row.insuranceCompanyId &&
-            knownInsurerId !== carInsurerId &&
-            mayWriteVehicle && (
-              <Checkbox
-                data-dealership-write-insurer="true"
-                label={t('fleet.dealership.insurerWriteOnCar', { code: row.vehicleCode ?? '—' })}
-                checked={writeOnVehicle}
-                onChange={(e) => setWriteOnVehicle(e.target.checked)}
-              />
-            )}
+            <PhotoSourceButtons accept={LICENSE_IMAGE_ACCEPT} onFile={take} disabled={pending} />
+          </section>
           {/* Who pays, in its state's colour: the dealership green, the custody fund amber. */}
           <p
             data-dealership-side={side ?? 'none'}

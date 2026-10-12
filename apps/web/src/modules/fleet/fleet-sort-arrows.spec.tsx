@@ -165,6 +165,18 @@ describe('the licensing-expenses table orders by every column, on the server', (
   });
 });
 
+describe('the custody ledger orders its movements on the server', () => {
+  it('offers an arrow on every column of «كل الحركات», each asking for its own key', () => {
+    // «كود السيارة» is declared first on the per-car table, so `column()` would find that one; the
+    // movements' code column is checked by its arrow on the server side (`CUSTODY_SORTABLE`).
+    arrowed('pages/CustodyPage.tsx', ['date', 'source', 'driverName', 'ref', 'amount']);
+    const page = code('pages/CustodyPage.tsx');
+    expect(page, 'no column renamed on its way to the server').not.toContain('sortKey:');
+    expect(page).toContain('...sortQuery(sorts)');
+    expect(page).toContain("const DEFAULT_SORT = 'date:desc';");
+  });
+});
+
 describe('the three WHOLE boards order what they already hold', () => {
   it('offers the alarms board an arrow on each of its five columns', () => {
     arrowed('pages/MaintenanceAlarmsPage.tsx', [
@@ -174,6 +186,25 @@ describe('the three WHOLE boards order what they already hold', () => {
       'remainingKm',
       'lastServiceAt',
     ]);
+  });
+
+  it('orders the custody ledger’s per-car summary — every car, already whole — in the browser', () => {
+    // The summary holds every car the filters match, so its arrows sort what is on the screen;
+    // the grand total is appended AFTER the sort, so it stays the last line.
+    const page = code('pages/CustodyPage.tsx');
+    expect(column(page, 'vehicleCode'), 'the code, the per-car table’s first column').toContain(
+      'sortable: true',
+    );
+    const money = page.slice(
+      page.indexOf('const moneyCol = '),
+      page.indexOf('const vehicleColumns'),
+    );
+    expect(money, 'and each of its five sums').toContain('sortable: true');
+    expect(page).toContain('...sortRows(summary.data.vehicles, carSorts, carSortValue),');
+    expect(page).toContain("const DEFAULT_CAR_SORT = 'vehicleCode:asc';");
+    expect(page).toContain(
+      "if (key === 'vehicleCode') return fleetVehicleCodeOrderKey(row.vehicleCode);",
+    );
   });
 
   it('ranks «المستوى» by TRIAGE rather than by the word', () => {

@@ -2,9 +2,13 @@
 //
 // A fuel receipt may be taken off one of the car's two cards («جمبها علامه صح معناها يسمح انى
 // استخدم فيزا») or, with the tick off, from the custody fund; tyres and washing always come from
-// the fund. The driver is read off the daily roster for the date and the car — and can be cleared
-// and typed over («لو عاوز امسحه واكتب حد غيره عادى»). The litres are the amount priced by the
-// fleet settings, shown as the clerk types.
+// the fund. «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: once a car is picked, ANY other
+// card may pay instead — another car's, or one on no car («سفر 1») — searched and picked under the
+// car's own, and offered on a car with no card too. The driver is read off the daily roster for
+// the date and the car — and can be cleared and typed over («لو عاوز امسحه واكتب حد غيره عادى»).
+// The litres are the amount priced by the fleet settings, shown as the clerk types; «نوع الوقود»
+// opens on «سولار» («سولار افتراضى»), and «كم» — the odometer at the pump — is the paper's own,
+// optional («اختيارى عند كتابه مبلغ التفويل»).
 //
 // «حسن الui … بالفورم بتاعت التسجيل والتعديل»: the vehicle form's design (`DesignDialog`) around the
 // same fields, rules, required marks and hooks as before.
@@ -49,11 +53,20 @@ import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
 import { DesignField, LOOK, MONO, Stroke, boxTone, carBoxClass } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
-import { receiptCardsState, settleReceiptCardId } from '../lib/receipt-cards';
-import { groupCardNumber } from '../lib/fuel-card-number';
+import {
+  cardPlace,
+  otherReceiptCards,
+  paidByOtherCard,
+  receiptCardsState,
+  settleReceiptCard,
+} from '../lib/receipt-cards';
+import { groupCardNumber, maskCardNumber } from '../lib/fuel-card-number';
+import { saveThenAttachPhoto } from '../lib/save-with-photo';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const round = (value: number): number => Math.round(value * 100) / 100;
+/** «نوع الوقود (سولار افتراضى)»: what a NEW receipt opens on; an edit keeps the type it has. */
+export const DEFAULT_FUEL_TYPE: FleetFuelType = 'diesel';
 
 /** The header's drawing: a till receipt. */
 const RECEIPT_PATH = [
@@ -160,6 +173,120 @@ export const CardPick = ({
   );
 };
 
+/** The «تسجيل كارت آخر؟» press, and «رجوع لكروت السيارة» — an action, in the dialog's indigo. */
+const OTHER_BUTTON =
+  'inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-500/20 active:scale-[0.98] dark:text-indigo-300';
+
+/**
+ * «كارت آخر» — every card that is not on the receipt's car, searched by the car's code, the card's
+ * name, its number or the company; each row its company, its number's end, where it sits (its car
+ * «كارت 160» or its name on no car «سفر 1») and its balance. The picked one in the site's purple.
+ */
+export const OtherCardPick = ({
+  cards,
+  status,
+  value,
+  onChange,
+  search,
+  onSearch,
+  enabled,
+  tone,
+}: {
+  /** The candidates, already narrowed by `search`. */
+  cards: readonly FleetFuelCardDto[];
+  status: 'loading' | 'failed' | 'ready';
+  value: string;
+  onChange: (id: string) => void;
+  search: string;
+  onSearch: (text: string) => void;
+  enabled: boolean;
+  /** The form's box, for the search. */
+  tone: string;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const missing = useFieldMissing();
+  return (
+    <div className={cn('space-y-3', !enabled && 'opacity-50')} data-receipt-other-cards={status}>
+      <Input
+        value={search}
+        onChange={(e) => onSearch(e.target.value)}
+        placeholder={t('fleet.receipts.otherCard.search')}
+        aria-label={t('fleet.receipts.otherCard.search')}
+        data-receipt-other-search="true"
+        disabled={!enabled}
+        tone={tone}
+      />
+      {status === 'loading' ? (
+        <p className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}>
+          {t('fleet.receipts.otherCard.loading')}
+        </p>
+      ) : status === 'failed' ? (
+        <p className={cn(CARD_NOTE, 'text-red-600 dark:text-red-400')}>
+          {t('fleet.receipts.otherCard.failed')}
+        </p>
+      ) : cards.length === 0 ? (
+        <p className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}>
+          {t('fleet.receipts.otherCard.none')}
+        </p>
+      ) : (
+        <div role="listbox" className="max-h-64 space-y-2 overflow-y-auto pe-1">
+          {cards.map((card) => {
+            const chosen = value === card.id;
+            return (
+              <button
+                key={card.id}
+                type="button"
+                role="option"
+                aria-selected={chosen}
+                data-receipt-other-card={card.id}
+                disabled={!enabled}
+                onClick={() => onChange(card.id)}
+                className={cn(
+                  'flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border-2 px-3 py-2.5 text-start text-sm transition-all',
+                  // The picked card in the site's purple; the others the form's boxes.
+                  chosen
+                    ? 'bg-brand-500/10 shadow-md shadow-brand-700/20'
+                    : 'bg-slate-50 hover:bg-slate-100 dark:bg-[#0a1233] dark:hover:bg-slate-800/60',
+                  missing
+                    ? 'border-red-400'
+                    : chosen
+                      ? 'border-brand-500'
+                      : 'border-slate-200 dark:border-[#2b3b6b]',
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <FuelCompanyLogo company={card.company} size="sm" />
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    {t(`fleet.fuelCards.company.${card.company}`)}
+                  </span>
+                  <span className={cn('text-slate-700 dark:text-slate-300', MONO)} dir="ltr">
+                    {maskCardNumber(card.number)}
+                  </span>
+                </span>
+                <span
+                  data-receipt-other-place="true"
+                  className="whitespace-nowrap rounded-md bg-slate-200/70 px-2 py-0.5 text-[13px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  {card.vehicleId === null
+                    ? cardPlace(card)
+                    : t('fleet.receipts.cardOf', { code: cardPlace(card) })}
+                </span>
+                <span className="whitespace-nowrap text-[13px] font-medium text-slate-600 dark:text-slate-300">
+                  {t('fleet.fuelCards.fields.balance')}{' '}
+                  <b className={cn('text-slate-900 dark:text-white', MONO)}>
+                    {formatMoney(card.balance, 'EGP', locale)}
+                  </b>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const ReceiptDialog = ({
   open,
   onClose,
@@ -182,8 +309,12 @@ export const ReceiptDialog = ({
   const [driverTouched, setDriverTouched] = useState(row !== null);
   const [useCard, setUseCard] = useState(row === null ? true : row.source === 'card');
   const [cardId, setCardId] = useState(row?.cardId ?? '');
-  const [fuelType, setFuelType] = useState<FleetFuelType>(row?.fuelType ?? 'petrol92');
+  // «كارت آخر»: the card pays from outside the car's own — an edit of such a receipt opens on it.
+  const [other, setOther] = useState(row !== null && paidByOtherCard(row));
+  const [search, setSearch] = useState('');
+  const [fuelType, setFuelType] = useState<FleetFuelType>(row?.fuelType ?? DEFAULT_FUEL_TYPE);
   const [amount, setAmount] = useState(row === null ? '' : String(row.amount));
+  const [odometer, setOdometer] = useState(row?.odometer == null ? '' : String(row.odometer));
   const [file, setFile] = useState<File | null>(null);
   const [inputKey, setInputKey] = useState(0);
 
@@ -196,8 +327,11 @@ export const ReceiptDialog = ({
     setDriverTouched(row !== null);
     setUseCard(row === null ? true : row.source === 'card');
     setCardId(row?.cardId ?? '');
-    setFuelType(row?.fuelType ?? 'petrol92');
+    setOther(row !== null && paidByOtherCard(row));
+    setSearch('');
+    setFuelType(row?.fuelType ?? DEFAULT_FUEL_TYPE);
     setAmount(row === null ? '' : String(row.amount));
+    setOdometer(row?.odometer == null ? '' : String(row.odometer));
     setFile(null);
     setInputKey((k) => k + 1);
   }, [open, row]);
@@ -219,13 +353,41 @@ export const ReceiptDialog = ({
     [vehicleId, code, cards.data, cards.isPlaceholderData, cards.isError, vehicle.isError],
   );
   const carCards = cardsState.kind === 'ready' ? cardsState.cards : [];
-  // «مفيش» — a car with no card: the receipt can only come from the custody fund.
+  // «مفيش» — a car with no card of its own: the custody fund pays, unless «كارت آخر» does.
   const noCards = cardsState.kind === 'ready' && carCards.length === 0;
   useEffect(() => {
-    // The only card is picked on its own; another car's card is dropped.
-    const next = settleReceiptCardId(cardsState, cardId);
-    if (next !== cardId) setCardId(next);
-  }, [cardsState, cardId]);
+    // The only card is picked on its own; a card left from another car is dropped — but never the
+    // one picked under «كارت آخر» (`settleReceiptCard`).
+    const next = settleReceiptCard(cardsState, { other, cardId });
+    if (next.cardId !== cardId) setCardId(next.cardId);
+    if (next.other !== other) setOther(next.other);
+  }, [cardsState, cardId, other]);
+
+  // «كارت آخر» — every card in the system, read only once the clerk asks for one.
+  const isFuel = kind === 'fuel';
+  const allCards = useAllFuelCards({}, open && isFuel && other);
+  const otherStatus: 'loading' | 'failed' | 'ready' = allCards.isError
+    ? 'failed'
+    : allCards.data === undefined
+      ? 'loading'
+      : 'ready';
+  const otherCards = useMemo(
+    () =>
+      otherReceiptCards(allCards.data?.items ?? [], vehicleId, search, (company) =>
+        t(`fleet.fuelCards.company.${company}`),
+      ),
+    [allCards.data, vehicleId, search, t],
+  );
+  const openOther = (): void => {
+    setOther(true);
+    setUseCard(true);
+    setCardId('');
+    setSearch('');
+  };
+  const backToOwn = (): void => {
+    setOther(false);
+    setCardId('');
+  };
 
   // «اسم السائق — لو موجود فى اليوم دا»: the roster's first seat for the car on the date.
   const people = useFleetPeopleMap();
@@ -253,9 +415,12 @@ export const ReceiptDialog = ({
   const amountOk = amount !== '' && Number.isFinite(value) && value > 0;
   const litres = kind === 'fuel' && amountOk && price > 0 ? round(value / price) : null;
 
-  const isFuel = kind === 'fuel';
-  const byCard = isFuel && useCard && !noCards;
-  const card = byCard ? (carCards.find((c) => c.id === cardId) ?? null) : null;
+  const byCard = isFuel && useCard && (other || !noCards);
+  const card = !byCard
+    ? null
+    : other
+      ? (allCards.data?.items.find((c) => c.id === cardId) ?? null)
+      : (carCards.find((c) => c.id === cardId) ?? null);
   // On an edit, the card already holds this receipt's money back once the edit lands.
   const before = card === null ? 0 : card.balance + (row?.cardId === card.id ? row.amount : 0);
   const after = card === null ? 0 : round(before - value);
@@ -279,37 +444,63 @@ export const ReceiptDialog = ({
   const pending = create.isPending || update.isPending || upload.isPending;
   const money = (n: number): string => formatMoney(n, 'EGP', locale);
 
-  // The line under the form: where the money comes from, or what is still missing to know.
-  const summary: { key: string; tone: 'plain' | 'ask' | 'bad'; text: string } = !byCard
-    ? {
+  // The line under the form: where the money comes from, or what is still missing to know. A card
+  // is named by where it sits — this car's code, another car's, or a card's name on no car.
+  type Summary = { key: string; tone: 'plain' | 'ask' | 'bad'; text: string };
+  const summaryLine = (): Summary => {
+    if (!byCard) {
+      return {
         key: 'custody',
         tone: 'plain',
         text: t('fleet.receipts.summary.custody', { amount: money(amountOk ? value : 0) }),
-      }
-    : cardsState.kind === 'noCar'
-      ? { key: 'noCar', tone: 'plain', text: t('fleet.receipts.fields.pickCar') }
-      : cardsState.kind === 'loading'
-        ? { key: 'loading', tone: 'plain', text: t('fleet.receipts.fields.loadingCards') }
-        : cardsState.kind === 'failed'
-          ? { key: 'failed', tone: 'bad', text: t('fleet.receipts.fields.cardsFailed') }
-          : card === null
-            ? { key: 'pickCard', tone: 'ask', text: t('fleet.receipts.summary.pickCard') }
-            : !enough
-              ? {
-                  key: 'notEnough',
-                  tone: 'bad',
-                  text: t('fleet.receipts.summary.notEnough', { balance: money(card.balance) }),
-                }
-              : {
-                  key: 'card',
-                  tone: 'plain',
-                  text: t('fleet.receipts.summary.card', {
-                    company: t(`fleet.fuelCards.company.${card.company}`),
-                    code,
-                    before: money(before),
-                    after: money(amountOk ? after : before),
-                  }),
-                };
+      };
+    }
+    // «كارت آخر» waits on every card in the system; the car's own on the car's.
+    if (other && otherStatus === 'loading') {
+      return { key: 'loadingOther', tone: 'plain', text: t('fleet.receipts.otherCard.loading') };
+    }
+    if (other && otherStatus === 'failed') {
+      return { key: 'failedOther', tone: 'bad', text: t('fleet.receipts.otherCard.failed') };
+    }
+    if (!other && cardsState.kind === 'noCar') {
+      return { key: 'noCar', tone: 'plain', text: t('fleet.receipts.fields.pickCar') };
+    }
+    if (!other && cardsState.kind === 'loading') {
+      return { key: 'loading', tone: 'plain', text: t('fleet.receipts.fields.loadingCards') };
+    }
+    if (!other && cardsState.kind === 'failed') {
+      return { key: 'failed', tone: 'bad', text: t('fleet.receipts.fields.cardsFailed') };
+    }
+    if (card === null) {
+      return other
+        ? { key: 'pickOther', tone: 'ask', text: t('fleet.receipts.otherCard.pick') }
+        : { key: 'pickCard', tone: 'ask', text: t('fleet.receipts.summary.pickCard') };
+    }
+    if (!enough) {
+      return {
+        key: 'notEnough',
+        tone: 'bad',
+        text: t('fleet.receipts.summary.notEnough', { balance: money(card.balance) }),
+      };
+    }
+    return {
+      key: 'card',
+      tone: 'plain',
+      text: t('fleet.receipts.summary.card', {
+        company: t(`fleet.fuelCards.company.${card.company}`),
+        code: cardPlace(card),
+        before: money(before),
+        after: money(amountOk ? after : before),
+      }),
+    };
+  };
+  const summary = summaryLine();
+
+  // «كم» belongs to a fuel paper: a receipt that turns into tyres or washing drops it.
+  const changeKind = (next: FleetReceiptKind): void => {
+    setKind(next);
+    if (next !== 'fuel') setOdometer('');
+  };
 
   const submit = async (): Promise<void> => {
     const body = {
@@ -321,13 +512,22 @@ export const ReceiptDialog = ({
       cardId: byCard ? cardId : null,
       fuelType: isFuel ? fuelType : null,
       amount: value,
+      // «كم» is a fuel paper's, and optional — empty sends none (an edit clears it).
+      odometer: isFuel && odometer !== '' ? Number(odometer) : null,
     };
-    const saved =
-      row === null
-        ? await create.mutateAsync(body)
-        : await update.mutateAsync({ id: row.id, body: { ...body, version: row.version } });
-    if (file !== null) await upload.mutateAsync({ id: saved.id, file });
-    toast.success(t('fleet.receipts.saved'));
+    // The photo goes up once the receipt exists. The receipt has already taken its money off the
+    // card by then, so a refused photo must not leave the form open for a second Save — that would
+    // record the receipt twice (`saveThenAttachPhoto`): say it is saved without its photo, close.
+    const { photo } = await saveThenAttachPhoto(
+      () =>
+        row === null
+          ? create.mutateAsync(body)
+          : update.mutateAsync({ id: row.id, body: { ...body, version: row.version } }),
+      file,
+      (id, picked) => upload.mutateAsync({ id, file: picked }),
+    );
+    if (photo === 'failed') toast.warning(t('fleet.receipts.image.notUploaded'));
+    else toast.success(t('fleet.receipts.saved'));
     onClose();
   };
 
@@ -336,6 +536,8 @@ export const ReceiptDialog = ({
   const box = boxTone(LOOK.add);
   const dateBox = cn(box, MONO);
   const amountBox = cn(box, MONO, 'text-right');
+  // «كم» reads as the amount does: Latin digits, left to right, at the box's right edge.
+  const numberBox = cn(box, MONO, 'text-right');
   // A `<select>` takes no tone of its own — the same box, forced over the control's base.
   const selectBox = cn(
     '!h-auto !rounded-xl !py-3 !ps-4 !text-[15px] !font-medium !text-slate-900 dark:!text-white focus:!border-indigo-500 focus:!ring-1 focus:!ring-indigo-500',
@@ -362,7 +564,7 @@ export const ReceiptDialog = ({
     >
       <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
       <DesignSection title={t('fleet.receipts.form.sections.receipt')} icon={PATH.truck}>
-        <KindSwitch value={kind} onChange={setKind} />
+        <KindSwitch value={kind} onChange={changeKind} />
         <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
           <DesignField
             label={t('fleet.receipts.columns.date')}
@@ -436,107 +638,161 @@ export const ReceiptDialog = ({
       </DesignSection>
 
       <DesignSection title={t('fleet.receipts.columns.source')} icon={PATH.card}>
-        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
-          <div className="md:col-span-2">
-            <DesignField
-              label={t('fleet.receipts.fields.card')}
-              required={byCard}
-              missing={required.isMissing('card')}
-              // The cards are tiles, not a box: no «!» laid over them — the line under says it.
-              endAdornment={null}
-            >
-              {cardsState.kind === 'noCar' ? (
-                <p className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}>
-                  {t('fleet.receipts.fields.pickCar')}
-                </p>
-              ) : cardsState.kind === 'loading' ? (
-                <p
-                  data-receipt-cards="loading"
-                  className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
+        <DesignField
+          label={t('fleet.receipts.fields.card')}
+          required={byCard}
+          missing={required.isMissing('card')}
+          // The cards are tiles, not a box: no «!» laid over them — the line under says it.
+          endAdornment={null}
+        >
+          {other && isFuel ? (
+            <div className="space-y-3" data-receipt-other="true">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                  {t('fleet.receipts.otherCard.title')}
+                </span>
+                <button
+                  type="button"
+                  data-receipt-other-back="true"
+                  onClick={backToOwn}
+                  className={OTHER_BUTTON}
                 >
-                  {t('fleet.receipts.fields.loadingCards')}
-                </p>
-              ) : cardsState.kind === 'failed' ? (
-                <p
-                  data-receipt-cards="failed"
-                  className={cn(CARD_NOTE, 'text-red-600 dark:text-red-400')}
-                >
-                  {t('fleet.receipts.fields.cardsFailed')}
-                </p>
-              ) : noCards ? (
-                <p
-                  data-receipt-cards="none"
-                  className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
-                >
-                  {t('fleet.receipts.fields.noCards')}
-                </p>
-              ) : (
-                <CardPick cards={carCards} value={cardId} onChange={setCardId} enabled={byCard} />
-              )}
-              <div className="mt-3">
-                <Checkbox
-                  className="font-semibold"
-                  data-receipt-use-card="true"
-                  label={
-                    !isFuel
-                      ? t('fleet.receipts.fields.fundOnly')
-                      : noCards
-                        ? t('fleet.receipts.fields.noCardCustody')
-                        : useCard
-                          ? t('fleet.receipts.fields.useCard')
-                          : t('fleet.receipts.fields.noCardFund')
-                  }
-                  checked={byCard}
-                  disabled={!isFuel || noCards}
-                  onChange={(e) => setUseCard(e.target.checked)}
-                />
+                  {t('fleet.receipts.otherCard.back')}
+                </button>
               </div>
-            </DesignField>
-          </div>
-          <div className="space-y-5">
-            {isFuel && (
-              <DesignField
-                label={t('fleet.receipts.fields.fuelType')}
-                hint={t('fleet.receipts.fields.pricePerLitre', { price: money(price) })}
-              >
-                <Select
-                  value={fuelType}
-                  onChange={(e) => setFuelType(e.target.value as FleetFuelType)}
-                  data-receipt-fuel-type="true"
-                  className={selectBox}
-                >
-                  {FLEET_FUEL_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {t(`fleet.receipts.fuelType.${type}`)}
-                    </option>
-                  ))}
-                </Select>
-              </DesignField>
-            )}
-            <DesignField
-              label={t('fleet.receipts.columns.amount')}
-              required
-              missing={required.isMissing('amount')}
-              hint={
-                litres === null
-                  ? undefined
-                  : t('fleet.receipts.fields.litres', { litres: litres.toFixed(2) })
-              }
-              // Typed, but more than the card holds: say so rather than «required».
-              error={
-                required.isMissing('amount') && amountOk && card !== null && !enough
-                  ? t('fleet.receipts.summary.notEnough', { balance: money(card.balance) })
-                  : undefined
-              }
+              <OtherCardPick
+                cards={otherCards}
+                status={otherStatus}
+                value={cardId}
+                onChange={setCardId}
+                search={search}
+                onSearch={setSearch}
+                enabled={byCard}
+                tone={box}
+              />
+            </div>
+          ) : cardsState.kind === 'noCar' ? (
+            <p className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}>
+              {t('fleet.receipts.fields.pickCar')}
+            </p>
+          ) : cardsState.kind === 'loading' ? (
+            <p
+              data-receipt-cards="loading"
+              className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
             >
-              <MoneyInput
-                value={amount}
-                onChange={setAmount}
-                data-receipt-amount="true"
-                tone={amountBox}
+              {t('fleet.receipts.fields.loadingCards')}
+            </p>
+          ) : cardsState.kind === 'failed' ? (
+            <p
+              data-receipt-cards="failed"
+              className={cn(CARD_NOTE, 'text-red-600 dark:text-red-400')}
+            >
+              {t('fleet.receipts.fields.cardsFailed')}
+            </p>
+          ) : noCards ? (
+            <p
+              data-receipt-cards="none"
+              className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
+            >
+              {t('fleet.receipts.fields.noCards')}
+            </p>
+          ) : (
+            <CardPick cards={carCards} value={cardId} onChange={setCardId} enabled={byCard} />
+          )}
+          {/* «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: once the car's cards are known,
+              any other card is on offer — with cards on the car and without. */}
+          {!other && isFuel && cardsState.kind === 'ready' && (
+            <div className="mt-3">
+              <button
+                type="button"
+                data-receipt-other-open="true"
+                onClick={openOther}
+                className={OTHER_BUTTON}
+              >
+                <Stroke d={[...PATH.card]} className="h-4 w-4" />
+                {t('fleet.receipts.otherCard.open')}
+              </button>
+            </div>
+          )}
+          <div className="mt-3">
+            <Checkbox
+              className="font-semibold"
+              data-receipt-use-card="true"
+              label={
+                !isFuel
+                  ? t('fleet.receipts.fields.fundOnly')
+                  : noCards && !other
+                    ? t('fleet.receipts.fields.noCardCustody')
+                    : useCard
+                      ? t('fleet.receipts.fields.useCard')
+                      : t('fleet.receipts.fields.noCardFund')
+              }
+              checked={byCard}
+              disabled={!isFuel || (noCards && !other)}
+              onChange={(e) => setUseCard(e.target.checked)}
+            />
+          </div>
+        </DesignField>
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
+          {isFuel && (
+            <DesignField
+              label={t('fleet.receipts.fields.fuelType')}
+              hint={t('fleet.receipts.fields.pricePerLitre', { price: money(price) })}
+            >
+              <Select
+                value={fuelType}
+                onChange={(e) => setFuelType(e.target.value as FleetFuelType)}
+                data-receipt-fuel-type="true"
+                className={selectBox}
+              >
+                {FLEET_FUEL_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {t(`fleet.receipts.fuelType.${type}`)}
+                  </option>
+                ))}
+              </Select>
+            </DesignField>
+          )}
+          <DesignField
+            label={t('fleet.receipts.columns.amount')}
+            required
+            missing={required.isMissing('amount')}
+            hint={
+              litres === null
+                ? undefined
+                : t('fleet.receipts.fields.litres', { litres: litres.toFixed(2) })
+            }
+            // Typed, but more than the card holds: say so rather than «required».
+            error={
+              required.isMissing('amount') && amountOk && card !== null && !enough
+                ? t('fleet.receipts.summary.notEnough', { balance: money(card.balance) })
+                : undefined
+            }
+          >
+            <MoneyInput
+              value={amount}
+              onChange={setAmount}
+              data-receipt-amount="true"
+              tone={amountBox}
+            />
+          </DesignField>
+          {/* «ادخال كم (اختيارى عند كتابه مبلغ التفويل)»: beside the amount, fuel only, never
+              required — the receipt's own, not a reading on the odometer screen. */}
+          {isFuel && (
+            <DesignField
+              label={t('fleet.receipts.fields.odometer')}
+              hint={t('fleet.receipts.fields.odometerHint')}
+            >
+              <Input
+                rule="integer"
+                value={odometer}
+                onChange={(e) => setOdometer(e.target.value)}
+                dir="ltr"
+                data-receipt-odometer="true"
+                tone={numberBox}
               />
             </DesignField>
-          </div>
+          )}
         </div>
       </DesignSection>
 

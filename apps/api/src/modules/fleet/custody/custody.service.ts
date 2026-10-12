@@ -8,6 +8,9 @@
 import { type FilterQuery } from 'mongoose';
 import {
   compareFleetVehicleCodes,
+  parseFleetSort,
+  type FleetCustodyDashboardDto,
+  type FleetCustodyDashboardQuery,
   type FleetCustodyMovementDto,
   type FleetCustodySource,
   type FleetCustodySummaryDto,
@@ -23,6 +26,8 @@ import { fleetDealershipRepository } from '../dealership/dealership.repository';
 import { FleetDealershipInvoiceModel } from '../dealership/dealership.model';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
+import { sortCustodyMovements } from './custody-sort';
+import { custodyDashboard } from './custody-dashboard';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -38,8 +43,25 @@ interface Movement {
   driverName: string | null;
   fuelType: FleetFuelType | null;
   detail: string | null;
+  /** A fuel receipt's litres — the dashboard's, never on «كل الحركات». */
+  litres: number | null;
   amount: number;
 }
+
+/** A movement as «كل الحركات» lists it — field by field, so nothing the dashboard reads leaks out. */
+const toMovementDto = (row: Movement): FleetCustodyMovementDto => ({
+  id: row.id,
+  ref: row.ref,
+  source: row.source,
+  date: row.date.toISOString(),
+  vehicleId: row.vehicleId,
+  vehicleCode: row.vehicleCode,
+  driverEmployeeId: row.driverEmployeeId,
+  driverName: row.driverName,
+  fuelType: row.fuelType,
+  detail: row.detail,
+  amount: row.amount,
+});
 
 const RECEIPT_SOURCES: readonly FleetCustodySource[] = ['fuel', 'tyres', 'wash'];
 
@@ -89,6 +111,7 @@ class FleetCustodyService {
           driverName: doc.driverName ?? null,
           fuelType: doc.fuelType ?? null,
           detail: null,
+          litres: doc.litres ?? null,
           amount: doc.amount,
         });
       }
@@ -119,6 +142,7 @@ class FleetCustodyService {
           driverName: null,
           fuelType: null,
           detail: doc.workTypeLabel,
+          litres: null,
           amount: doc.invoiceAmount ?? 0,
         });
       }
@@ -136,7 +160,20 @@ class FleetCustodyService {
 
   /** The figures and «ملخص لكل سيارة» — over the whole filtered set. */
   async summary(query: FleetCustodySummaryQuery): Promise<FleetCustodySummaryDto> {
+    return this.fold(await this.movementsFor(query));
+  }
+
+  /**
+   * «لوحة تحكم» — the figures, then everything else about the same movements. One read, one fold:
+   * its summary fields ARE `/summary`'s for the same filters, by construction.
+   */
+  async dashboard(query: FleetCustodyDashboardQuery): Promise<FleetCustodyDashboardDto> {
     const rows = await this.movementsFor(query);
+    return { ...this.fold(rows), ...custodyDashboard(rows, query) };
+  }
+
+  /** The figures and the per-car lines of a set of movements. */
+  private fold(rows: readonly Movement[]): FleetCustodySummaryDto {
     const perVehicle = new Map<string, FleetCustodyVehicleRowDto>();
     const totals = { dealership: 0, fuel: 0, tyres: 0, wash: 0 };
     for (const row of rows) {
@@ -176,18 +213,23 @@ class FleetCustodyService {
     };
   }
 
-  /** «كل الحركات» — one page of the merged, dated list. */
+  /**
+   * «كل الحركات» — one page of the merged list, in the arrows' order over the WHOLE filtered set
+   * (newest first when none is chosen). The order never changes which rows are counted.
+   */
   async movements(
     query: ListFleetCustodyMovementsQuery,
   ): Promise<Paginated<FleetCustodyMovementDto>> {
-    const { page, pageSize, ...filters } = query;
-    const rows = await this.movementsFor(filters);
+    const { page, pageSize, sortBy, sortDir, sort, ...filters } = query;
+    // The whole order when the request carries one; else the platform's single column, which an
+    // older client still sends.
+    const chosen = parseFleetSort(sort);
+    const sorts =
+      chosen.length > 0 ? chosen : sortBy !== undefined ? [{ by: sortBy, dir: sortDir }] : [];
+    const rows = sortCustodyMovements(await this.movementsFor(filters), sorts);
     const start = (page - 1) * pageSize;
     return {
-      items: rows.slice(start, start + pageSize).map((row) => ({
-        ...row,
-        date: row.date.toISOString(),
-      })),
+      items: rows.slice(start, start + pageSize).map(toMovementDto),
       meta: {
         page,
         pageSize,

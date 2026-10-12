@@ -1,6 +1,7 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type FleetCustodyDashboardQuery,
   type FleetCustodySummaryQuery,
   type ListFleetCustodyMovementsQuery,
 } from '@ecms/contracts';
@@ -10,6 +11,11 @@ import { fleetCustodyService } from './custody.service';
 export const custodySummary = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, FleetCustodySummaryQuery>(req);
   ok(res, await fleetCustodyService.summary(query));
+};
+
+export const custodyDashboard = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetCustodyDashboardQuery>(req);
+  ok(res, await fleetCustodyService.dashboard(query));
 };
 
 export const listCustodyMovements = async (req: Request, res: Response): Promise<void> => {

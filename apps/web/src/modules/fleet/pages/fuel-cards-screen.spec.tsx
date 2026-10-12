@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   FleetSettingKeys,
   type FleetFuelCardDto,
+  type FleetFuelCardMovementDto,
   type FleetFuelCardTotalsDto,
   type Locale,
   type MeDto,
@@ -25,6 +26,7 @@ import { translate } from '../../../platform/localization/i18n';
 import { FuelCardsPage } from './FuelCardsPage';
 import { FuelChargingPage } from './FuelChargingPage';
 import { fuelCardPlace, groupByVehicle, noCarPlaces } from '../components/FuelCardTiles';
+import { FuelCardHistoryDialog } from '../components/FuelCardHistoryDialog';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -471,5 +473,68 @@ describe('the card form', () => {
     expect(DIALOG).toContain("label: vehicleId === '' ? (card?.label ?? name.trim()) : null");
     // The browser's saved logins stay out of the card's boxes.
     expect(DIALOG).toContain('autoComplete="new-password"');
+  });
+});
+
+describe('the card log — «كارت اخر»: a card that paid for another car’s fuel says whose', () => {
+  const line = (over: Partial<FleetFuelCardMovementDto>): FleetFuelCardMovementDto => ({
+    id: 'm-1',
+    cardId: 'c-1',
+    kind: 'receipt',
+    amount: -100,
+    balanceAfter: 540,
+    counterpartCardId: null,
+    counterpartNumber: null,
+    receiptVehicleId: 'v-204',
+    receiptVehicleCode: '204',
+    at: '2026-10-01T00:00:00.000Z',
+    createdAt: '2026-10-01T00:00:00.000Z',
+    ...over,
+  });
+  const logOf = (logged: FleetFuelCardDto, lines: FleetFuelCardMovementDto[]): string => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: { me: me(ALL), status: 'signedIn' as const },
+        ui: { theme: 'light' as const, sidebarOpen: false },
+      },
+    });
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+    });
+    qc.setQueryData(listKey('fleet', 'fuelCards', { movements: logged.id }), {
+      items: lines,
+      meta: { page: 1, pageSize: 100, totalItems: lines.length, totalPages: 1 },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store}>
+        <QueryClientProvider client={qc}>
+          <FuelCardHistoryDialog card={logged} cards={[logged]} onClose={() => undefined} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+
+  it('the car’s own receipt reads «خصم إيصال» as it always did', () => {
+    const html = logOf(card(), [line({})]);
+    expect(html).toContain(`>${ar('fleet.fuelCards.history.kind.receipt')}<`);
+    expect(html).not.toContain('سيارة 204');
+  });
+
+  it('another car’s receipt, or one paid by a card on no car, names the car it was for', () => {
+    const forOther = logOf(card(), [
+      line({ receiptVehicleId: 'v-160', receiptVehicleCode: '160' }),
+    ]);
+    expect(forOther).toContain(
+      translate('ar', 'fleet.fuelCards.history.kind.receiptFor', { place: '160' }),
+    );
+    expect(translate('ar', 'fleet.fuelCards.history.kind.receiptFor', { place: '160' })).toBe(
+      'خصم إيصال (سيارة 160)',
+    );
+    const stock = logOf(card({ vehicleId: null, vehicleCode: null, label: 'سفر 1' }), [line({})]);
+    expect(stock).toContain(
+      translate('ar', 'fleet.fuelCards.history.kind.receiptFor', { place: '204' }),
+    );
   });
 });

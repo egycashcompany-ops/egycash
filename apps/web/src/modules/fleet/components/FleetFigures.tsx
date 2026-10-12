@@ -1,5 +1,6 @@
 // The figures behind a board's «الإحصائيات» — a row of single numbers, then lists with how many
 // rows sit in each entry. The vehicles screen's, shared with the notices screen («زى شاشه السيارات»).
+import type { ReactNode } from 'react';
 import type { Locale } from '@ecms/contracts';
 import { cn } from '../../../shared/lib/cn';
 import { formatMoneyParts } from '../../../shared/lib/format';
@@ -23,6 +24,7 @@ export const FigureChip = ({
   valueClass,
   unit,
   note,
+  className,
 }: {
   icon: readonly string[];
   iconClass: string;
@@ -30,9 +32,17 @@ export const FigureChip = ({
   value: number | string;
   valueClass?: string;
   unit: string;
-  note?: string;
+  /** A small line under the number — words, or words with a figure of their own in them. */
+  note?: ReactNode;
+  /** For the card itself — `h-full`, where it sits in a cell of a row it must match. */
+  className?: string;
 }): JSX.Element => (
-  <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-2.5 py-3 sm:gap-3 sm:px-4">
+  <div
+    className={cn(
+      'flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-2.5 py-3 sm:gap-3 sm:px-4',
+      className,
+    )}
+  >
     <span className={cn('shrink-0 rounded-lg p-2 sm:p-2.5', iconClass)}>
       <BoardIcon d={icon} className="h-5 w-5" />
     </span>
@@ -44,7 +54,10 @@ export const FigureChip = ({
         </span>
         <span className="text-xs text-slate-500 dark:text-slate-400">{unit}</span>
       </span>
-      {note !== undefined && <span className="block text-[11px] text-slate-500">{note}</span>}
+      {/* The note as bright as the label over it on a dark tile: slate-500 there is about 3.7:1. */}
+      {note !== undefined && (
+        <span className="block text-[11px] text-slate-500 dark:text-slate-400">{note}</span>
+      )}
     </span>
   </div>
 );

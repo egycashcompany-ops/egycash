@@ -26,9 +26,13 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
+import { formatNumber } from '../../../shared/lib/format';
 import { ReceiptFigures, ReceiptsPage } from './ReceiptsPage';
 import { CustodyPage } from './CustodyPage';
-import { ReceiptDialog } from '../components/ReceiptDialog';
+import { CustodyFigures } from '../components/CustodyFigures';
+import { CUSTODY_KIND } from '../components/CustodyKinds';
+import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
+import { DEFAULT_FUEL_TYPE, ReceiptDialog } from '../components/ReceiptDialog';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -38,6 +42,7 @@ vi.mock('react-dom', async () => {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(join(HERE, 'ReceiptsPage.tsx'), 'utf8');
+const CUSTODY = readFileSync(join(HERE, 'CustodyPage.tsx'), 'utf8');
 const FORM = readFileSync(join(HERE, '../components/ReceiptDialog.tsx'), 'utf8');
 const CELL = readFileSync(join(HERE, '../components/ReceiptImageCell.tsx'), 'utf8');
 const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -75,10 +80,15 @@ const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
   cardId: 'c-1',
   cardCompany: 'wataniya',
   cardNumber: '7045 1120 0098 2231',
+  // The car's own card unless a test says otherwise.
+  cardVehicleId: over.vehicleId ?? 'v-204',
+  cardVehicleCode: over.vehicleCode ?? '204',
+  cardLabel: null,
   fuelType: 'petrol92',
   pricePerLitre: 17.25,
   litres: 37.1,
   amount: 640,
+  odometer: null,
   image: null,
   version: 0,
   createdAt: '2026-10-01T00:00:00.000Z',
@@ -168,11 +178,17 @@ const client = () =>
   new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
-const mount = (qc: QueryClient, permissions: string[], path: string, page: JSX.Element): string =>
+const mount = (
+  qc: QueryClient,
+  permissions: string[],
+  path: string,
+  page: JSX.Element,
+  search = '',
+): string =>
   renderToStaticMarkup(
     <Provider store={store(permissions)}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[path]}>
+        <MemoryRouter initialEntries={[`${path}${search}`]}>
           <Routes>
             <Route path={path} element={page} />
           </Routes>
@@ -228,18 +244,39 @@ const renderReceipts = ({
   return mount(qc, permissions, '/fleet/receipts', <ReceiptsPage />);
 };
 
-const renderCustody = (rows: FleetCustodyMovementDto[] = [movement()]): string => {
+const renderCustody = (
+  rows: FleetCustodyMovementDto[] = [movement()],
+  {
+    permissions = ['fleetCustody.view'],
+    people,
+    search = '',
+  }: { permissions?: string[]; people?: ReturnType<typeof person>[]; search?: string } = {},
+): string => {
   const qc = client();
+  if (people !== undefined) qc.setQueryData(['fleet', 'people'], people);
   qc.setQueryData(
     listKey('fleet', 'custody', { summary: true, ...CUSTODY_FILTERS }),
     custodySummary,
   );
-  qc.setQueryData(listKey('fleet', 'custody', { ...CUSTODY_FILTERS, page: 1, pageSize: 25 }), {
-    items: rows,
-    meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 },
-  });
-  return mount(qc, ['fleetCustody.view'], '/fleet/custody', <CustodyPage />);
+  qc.setQueryData(
+    listKey('fleet', 'custody', {
+      ...CUSTODY_FILTERS,
+      page: 1,
+      pageSize: 25,
+      sortBy: 'date',
+      sortDir: 'desc',
+      sort: 'date:desc',
+    }),
+    {
+      items: rows,
+      meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 },
+    },
+  );
+  return mount(qc, permissions, '/fleet/custody', <CustodyPage />, search);
 };
+
+/** A class string as the markup writes it — `&` and `>` escaped. */
+const escapedClass = (cls: string): string => cls.replace(/&/g, '&amp;').replace(/>/g, '&gt;');
 
 /** The table row holding `text` — searched from the body, past the filter options and the totals. */
 const rowWith = (html: string, text: string, from = 0): string => {
@@ -331,11 +368,11 @@ describe('the receipts table', () => {
     expect(row).toMatch(/<span dir="ltr" class="[^"]*font-bold[^"]*">204<\/span>/u);
     // Every value and header centred, as on the drivers board; the actions at the row's end.
     const cells = row.match(/<td[^>]*>/gu) ?? [];
-    expect(cells.length).toBe(9);
-    for (const cell of cells.slice(0, 8)) expect(cell).toContain('text-center');
-    expect(cells[8]).toContain('text-end');
+    expect(cells.length).toBe(10);
+    for (const cell of cells.slice(0, 9)) expect(cell).toContain('text-center');
+    expect(cells[9]).toContain('text-end');
     const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(8);
+    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(9);
     // An empty car is the boards' grey dash.
     const none = rowWith(renderReceipts({ rows: [receipt({ vehicleCode: null })] }), '640.00');
     expect(none).toContain('<span class="text-slate-400">—</span>');
@@ -404,13 +441,94 @@ describe('the receipts table', () => {
   });
 });
 
+describe('«كارت اخر» and «كم» on the table and the sheets', () => {
+  it('a card that is not on the receipt’s car says where it sits — «(كارت 160)», or its name on no car', () => {
+    const html = renderReceipts({
+      rows: [
+        receipt({ id: 'own', amount: 101 }),
+        receipt({
+          id: 'other',
+          amount: 102,
+          cardId: 'c-160',
+          cardNumber: '7045 1120 0098 7700',
+          cardVehicleId: 'v-160',
+          cardVehicleCode: '160',
+        }),
+        receipt({
+          id: 'stock',
+          amount: 103,
+          cardId: 'c-s',
+          cardNumber: '7045 1120 0098 5511',
+          cardVehicleId: null,
+          cardVehicleCode: null,
+          cardLabel: 'سفر 1',
+        }),
+      ],
+    });
+    const own = rowWith(html, '101.00');
+    expect(own).toContain('•••• 2231');
+    expect(own, 'the car’s own card names no owner').not.toContain('data-receipt-card-owner');
+    const other = rowWith(html, '102.00');
+    expect(other).toContain('•••• 7700');
+    expect(other).toContain(`(${ar('fleet.receipts.cardOf', { code: '160' })})`);
+    expect(ar('fleet.receipts.cardOf', { code: '160' })).toBe('كارت 160');
+    const stock = rowWith(html, '103.00');
+    expect(stock).toContain('•••• 5511');
+    expect(stock).toContain('(سفر 1)');
+  });
+
+  it('writes «كم» in a column of its own — grouped Latin digits, a dash when none was written', () => {
+    const html = renderReceipts({
+      rows: [
+        receipt({ id: 'km', amount: 111, odometer: 154320 }),
+        receipt({ id: 'no', amount: 112 }),
+      ],
+    });
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    expect(head).toContain(ar('fleet.receipts.columns.odometer'));
+    expect(ar('fleet.receipts.columns.odometer')).toBe('كم');
+    // After the litres, before the image.
+    expect(head.indexOf(ar('fleet.receipts.columns.litres'))).toBeLessThan(
+      head.indexOf(ar('fleet.receipts.columns.odometer')),
+    );
+    expect(head.indexOf(ar('fleet.receipts.columns.odometer'))).toBeLessThan(
+      head.indexOf(ar('fleet.receipts.columns.image')),
+    );
+    const written = rowWith(html, '111.00');
+    expect(written).toContain('154,320');
+    const cells = (rowWith(html, '112.00').match(/<td[^>]*>[\s\S]*?<\/td>/gu) ?? []).map((cell) =>
+      cell.replace(/<[^>]+>/gu, ''),
+    );
+    expect(cells[7], 'no «كم»: the boards’ dash').toBe('—');
+  });
+
+  it('puts «كم» and the card’s owner in the Excel and the PDF too', () => {
+    // The header both sheets share ends on «كم», and each row carries the receipt's own.
+    const header = PAGE.slice(
+      PAGE.indexOf('const header = ['),
+      PAGE.indexOf('];', PAGE.indexOf('const header = [')),
+    );
+    expect(header).toContain("t('fleet.receipts.columns.odometer')");
+    expect(PAGE).toContain("row.odometer ?? '',");
+    expect(PAGE).toContain("row.odometer === null ? '—' : String(row.odometer),");
+    // «الخصم من» on both sheets is `sourceLabel`, which names the card's owner as the table does.
+    const label = PAGE.slice(PAGE.indexOf('const sourceLabel ='), PAGE.indexOf('/** «2026/10/01»'));
+    expect(label).toContain(
+      "receiptCardOwner(row, (code) => t('fleet.receipts.cardOf', { code }))",
+    );
+    expect(label).toContain('`${card} (${owner})`');
+    expect(PAGE.match(/sourceLabel\(row\)/gu)?.length, 'the Excel and the PDF').toBe(2);
+  });
+});
+
 describe('the receipt modal', () => {
   it('asks the kind first — «وقود / كاوتش / غسيل» — and takes a card only for fuel', () => {
-    expect(FORM).toContain('<KindSwitch value={kind} onChange={setKind} />');
-    expect(FORM).toContain('const byCard = isFuel && useCard && !noCards;');
+    expect(FORM).toContain('<KindSwitch value={kind} onChange={changeKind} />');
+    // A car with no card of its own pays from the fund — unless «كارت آخر» pays.
+    expect(FORM).toContain('const byCard = isFuel && useCard && (other || !noCards);');
     expect(FORM).toContain('cardId: byCard ? cardId : null,');
     expect(FORM).toContain('fuelType: isFuel ? fuelType : null,');
-    expect(FORM).toContain('disabled={!isFuel || noCards}');
+    expect(FORM).toContain('disabled={!isFuel || (noCards && !other)}');
   });
 
   it('reads the driver off the daily roster for the date and the car, and lets the clerk type over it', () => {
@@ -483,7 +601,22 @@ describe('the receipt modal', () => {
   it('offers every car — the whole registry — and uploads the photo with the receipt', () => {
     // Every car-code box in Fleet offers the whole registry now; the receipt asks for every status.
     expect(FORM).toMatch(/<VehicleCodeCombobox(?:(?!\/>)[\s\S])*?\banyStatus\b/u);
-    expect(FORM).toContain('if (file !== null) await upload.mutateAsync({ id: saved.id, file });');
+    expect(FORM).toContain('const { photo } = await saveThenAttachPhoto(');
+    expect(FORM).toContain('(id, picked) => upload.mutateAsync({ id, file: picked }),');
+  });
+
+  it('closes on a refused photo once the receipt is saved — a second Save would record it twice', () => {
+    // The receipt has already taken its money off the card when the photo goes up: the form says
+    // it is saved without its photo and closes, rather than stay open on the upload's error.
+    const submit = FORM.slice(FORM.indexOf('const submit = async'));
+    const body = submit.slice(0, submit.indexOf('\n  };'));
+    expect(body).toContain('saveThenAttachPhoto(');
+    expect(body).not.toContain('await upload.mutateAsync');
+    expect(body).toContain(
+      "if (photo === 'failed') toast.warning(t('fleet.receipts.image.notUploaded'));",
+    );
+    expect(body.indexOf('onClose();')).toBeGreaterThan(body.indexOf("photo === 'failed'"));
+    expect(ar('fleet.receipts.image.notUploaded')).toContain('تم حفظ الإيصال');
   });
 
   it('keeps Save pressable and names what is missing — the card only when it pays', () => {
@@ -503,19 +636,278 @@ describe('the receipt modal', () => {
     expect(FORM).toContain('required={byCard}');
     expect(FORM).toContain("missing={required.isMissing('card')}");
   });
+
+  const dialog = (row: FleetReceiptDto | null): string =>
+    mount(
+      client(),
+      ['fleetReceipt.view', 'fleetReceipt.create', 'fleetReceipt.edit'],
+      '/fleet/receipts',
+      <ReceiptDialog open onClose={() => undefined} row={row} />,
+    );
+  /** The `<option>` the fuel-type select shows picked. */
+  const pickedFuel = (html: string): string | undefined => {
+    const at = html.indexOf('data-receipt-fuel-type="true"');
+    const select = html.slice(at, html.indexOf('</select>', at));
+    return /<option value="(\w+)" selected=""/u.exec(select)?.[1];
+  };
+
+  it('«نوع الوقود (سولار افتراضى)»: a new receipt opens on diesel, an edit keeps the type it has', () => {
+    expect(DEFAULT_FUEL_TYPE).toBe('diesel');
+    expect(ar('fleet.receipts.fuelType.diesel')).toBe('سولار');
+    expect(pickedFuel(dialog(null))).toBe('diesel');
+    expect(pickedFuel(dialog(receipt({ fuelType: 'petrol92' })))).toBe('petrol92');
+    expect(pickedFuel(dialog(receipt({ fuelType: 'petrol80' })))).toBe('petrol80');
+  });
+
+  it('«كم» sits beside the amount on fuel only — optional, whole Latin digits, the paste rules of every number box', () => {
+    const fuel = dialog(receipt({ odometer: 154320 }));
+    const at = fuel.lastIndexOf('<input', fuel.indexOf('data-receipt-odometer="true"'));
+    expect(at, 'the fuel form has its «كم» box').toBeGreaterThan(-1);
+    const box = fuel.slice(at, fuel.indexOf('>', at) + 1);
+    expect(box).toContain('value="154320"');
+    expect(box).toContain('data-input-rule="integer"');
+    expect(box).toContain('dir="ltr"');
+    // A ruled text box — a bare number input would empty itself on a letter, not refuse it.
+    expect(box).not.toMatch(/\btype="(?:number)"/u);
+    // Labelled «كم», never starred, right after the amount.
+    expect(fuel).toContain(ar('fleet.receipts.fields.odometerHint'));
+    expect(fuel.indexOf('data-receipt-amount="true"')).toBeLessThan(
+      fuel.indexOf('data-receipt-odometer="true"'),
+    );
+    const field = FORM.slice(
+      FORM.lastIndexOf('<DesignField', FORM.indexOf('data-receipt-odometer')),
+    );
+    expect(field.slice(0, field.indexOf('>'))).not.toContain('required');
+    // A new receipt opens with it empty; tyres and washing have none at all.
+    const fresh = dialog(null);
+    const freshBox = fresh.slice(
+      fresh.lastIndexOf('<input', fresh.indexOf('data-receipt-odometer="true"')),
+    );
+    expect(freshBox.slice(0, freshBox.indexOf('>'))).toContain('value=""');
+    for (const kind of ['tyres', 'wash'] as const) {
+      const html = dialog(
+        receipt({ kind, source: 'custody', cardId: null, fuelType: null, litres: null }),
+      );
+      expect(html, kind).not.toContain('data-receipt-odometer');
+    }
+    // Leaving fuel clears it, and the save sends none off fuel or when empty.
+    expect(FORM).toContain("if (next !== 'fuel') setOdometer('');");
+    expect(FORM).toContain("odometer: isFuel && odometer !== '' ? Number(odometer) : null,");
+  });
 });
 
 describe('the custody ledger', () => {
-  it('sums the fund by source between the filters and the tables', () => {
+  it('keeps the figures behind «الإحصائيات», between the filters and the tables — figure and «ج.م.» apart', () => {
     const html = renderCustody();
-    const filters = html.indexOf('data-date-caption="from"');
-    const strip = html.indexOf('4,220.00');
-    const table = html.indexOf('<table');
-    expect(strip).toBeGreaterThan(filters);
-    expect(table).toBeGreaterThan(strip);
-    expect(html).toContain(ar('fleet.custody.totals.dealership'));
-    expect(html).toContain('1,850.00');
-    expect(html).toContain('1,520.00');
+    expect(html).toContain('data-custody-stats-toggle="true"');
+    expect(html, 'closed on the way in').not.toContain('data-custody-figures');
+    expect(html).toContain('data-date-caption="from"');
+    const filters = CUSTODY.indexOf('DARK_FILTER_BAR, ');
+    const figures = CUSTODY.indexOf('<CustodyFigures totals={summary.data} />');
+    const table = CUSTODY.indexOf('<DataTable');
+    expect(filters).toBeGreaterThan(-1);
+    expect(figures, 'after the filters').toBeGreaterThan(filters);
+    expect(table, 'before the tables').toBeGreaterThan(figures);
+    expect(CUSTODY).toContain('useCustodySummary(filters)');
+    // Opened, they are the server's sums over the whole filtered set.
+    const opened = mount(
+      client(),
+      ['fleetCustody.view'],
+      '/fleet/custody',
+      <CustodyFigures totals={custodySummary} />,
+    );
+    expect(opened).toContain('data-custody-figures="true"');
+    expect(opened).toContain(ar('fleet.custody.totals.total'));
+    expect(opened).toContain('4,220.00');
+    expect(opened).toContain(ar('fleet.custody.totals.dealership'));
+    expect(opened).toContain('850.00');
+    expect(opened).toContain(ar('fleet.custody.totals.fuel'));
+    expect(opened).toContain('1,850.00');
+    // «الكوتش لوحده والغسيل لوحده»: tyres and washing on figures of their own, never summed.
+    expect(opened).toContain(ar('fleet.custody.totals.tyres'));
+    expect(opened).toContain('1,400.00');
+    expect(opened).toContain(ar('fleet.custody.totals.wash'));
+    expect(opened).toContain('120.00');
+    expect(opened, 'no «كاوتش + غسيل» figure any more').not.toContain('1,520.00');
+    // The figure and «ج.م.» in spans of their own — never glued.
+    expect(opened).toMatch(/>4,220\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
+  });
+
+  it('shows five figures — the total, then each kind on its own tile in its own colour', () => {
+    const opened = mount(
+      client(),
+      ['fleetCustody.view'],
+      '/fleet/custody',
+      <CustodyFigures totals={custodySummary} />,
+    );
+    const order = [...opened.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1]);
+    expect(order).toEqual(['total', 'dealership', 'fuel', 'tyres', 'wash']);
+    for (const kind of ['dealership', 'fuel', 'tyres', 'wash'] as const) {
+      const at = opened.indexOf(`data-custody-figure="${kind}"`);
+      const tile = opened.slice(at, opened.indexOf('</div></div>', at));
+      expect(tile, `${kind} wears its kind's fill`).toContain(CUSTODY_KIND[kind].fill);
+    }
+    // Five across where five sums fit; a sum of money keeps the whole row on a phone, and «ج.م.»
+    // goes under a figure too long for its tile rather than off it.
+    expect(opened).toContain('xl:grid-cols-5');
+    expect(opened).toContain('[&amp;_.items-baseline]:flex-wrap');
+    // The amber icon fuel used to wear is gone: amber is a STATE on these boards.
+    expect(opened).not.toMatch(/amber-/u);
+  });
+
+  it('draws the kind in «كل الحركات» in its own colour — the dealership, fuel, tyres and washing apart', () => {
+    const html = renderCustody([
+      movement({ id: 'f', source: 'fuel', amount: 101 }),
+      movement({ id: 't', source: 'tyres', fuelType: null, amount: 102 }),
+      movement({ id: 'w', source: 'wash', fuelType: null, amount: 103 }),
+      movement({
+        id: 'd',
+        ref: 'dealershipInvoice',
+        source: 'dealership',
+        driverName: null,
+        fuelType: null,
+        detail: 'إصلاح',
+        amount: 104,
+      }),
+    ]);
+    const movements = html.indexOf('data-custody-movements="true"');
+    const fills = new Set<string>();
+    for (const [kind, amount] of [
+      ['fuel', '101.00'],
+      ['tyres', '102.00'],
+      ['wash', '103.00'],
+      ['dealership', '104.00'],
+    ] as const) {
+      const row = rowWith(html, amount, movements);
+      const at = row.indexOf(`data-custody-kind="${kind}"`);
+      expect(at, `${kind} has its badge`).toBeGreaterThan(-1);
+      const badge = row.slice(row.lastIndexOf('<span', at), row.indexOf('</span>', at));
+      expect(badge).toContain(CUSTODY_KIND[kind].fill);
+      expect(badge).toContain(ar(`fleet.custody.source.${kind}`));
+      fills.add(CUSTODY_KIND[kind].fill);
+    }
+    expect(fills.size, 'four kinds, four colours').toBe(4);
+    expect(CUSTODY).toContain('<CustodyKindBadge kind={row.source} />');
+    expect(CUSTODY).not.toContain("tone={row.source === 'dealership' ? 'info' : 'neutral'}");
+  });
+
+  it('prints tyres and washing on totals of their own', () => {
+    expect(CUSTODY).toContain(
+      "{ label: t('fleet.custody.totals.tyres'), value: reportMoney(summary.data.tyres) }",
+    );
+    expect(CUSTODY).toContain(
+      "{ label: t('fleet.custody.totals.wash'), value: reportMoney(summary.data.wash) }",
+    );
+    expect(CUSTODY).not.toContain('tyresWash');
+  });
+
+  it('opens on its toolbar — the count, «الإحصائيات», Excel / PDF — with no page title', () => {
+    const html = renderCustody();
+    for (const gone of ['<PageHeader', '<DocumentActions', '<StatStrip', '<FilteredCount']) {
+      expect(CUSTODY, gone).not.toContain(gone);
+    }
+    expect(html).toContain('data-custody-toolbar="true"');
+    const count = html.indexOf('data-filtered-count');
+    expect(count).toBeGreaterThan(-1);
+    expect(html.slice(count, html.indexOf('</span>', count))).toContain(
+      ar('common.list.count', { count: formatNumber(1, 'ar') }),
+    );
+    expect(html.indexOf('data-export="custody"'), 'above the filters').toBeLessThan(
+      html.indexOf('data-date-caption="from"'),
+    );
+    expect(html.indexOf('data-print="custody"'), 'above the filters').toBeLessThan(
+      html.indexOf('data-date-caption="from"'),
+    );
+    expect(html).toContain(ar('fleet.fuelCards.board.excel'));
+    expect(html).toContain(ar('fleet.fuelCards.board.pdf'));
+  });
+
+  it('writes both tables in the alarms board’s type — centred, a year-first Latin date, the code bold, money apart', () => {
+    const html = renderCustody([movement({ amount: 17890 })]);
+    const perVehicle = html.indexOf('data-custody-per-vehicle="true"');
+    const movements = html.indexOf('data-custody-movements="true"');
+    expect(html.slice(perVehicle, movements), 'the per-car table').toContain(
+      escapedClass(ALARMS_TYPE),
+    );
+    expect(html.slice(movements), 'the movements').toContain(escapedClass(ALARMS_TYPE));
+    const row = rowWith(html, '17,890.00', movements);
+    expect(row).toContain('2026/10/01');
+    expect(row, 'no Arabic-Indic digit on the row').not.toMatch(/[٠-٩]/u);
+    expect(row).toMatch(/>17,890\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
+    // The car's code a size over the row, bold, left to right.
+    const code = row.slice(row.lastIndexOf('<span', row.indexOf('>204<')), row.indexOf('>204<'));
+    expect(code).toContain('font-bold');
+    expect(code).toContain(ALARMS_CODE_TYPE);
+    expect(code).toContain('dir="ltr"');
+    // Every value and header centred, in both tables.
+    const cells = row.match(/<td[^>]*>/gu) ?? [];
+    expect(cells.length).toBe(6);
+    for (const cell of cells) expect(cell).toContain('text-center');
+    const heads = html.match(/<th\b[^>]*>/gu) ?? [];
+    expect(heads.length).toBe(12);
+    for (const head of heads) expect(head).toContain('text-center');
+    // An empty car is the boards' grey dash; a car with nothing of a source, too.
+    const none = rowWith(renderCustody([movement({ vehicleCode: null })]), '1,350.00', movements);
+    expect(none).toContain('<span class="text-slate-400">—</span>');
+    const car = rowWith(html, '>63<', perVehicle);
+    expect(car).toContain('<span class="text-slate-400">—</span>');
+  });
+
+  it('writes the driver’s WHOLE name, no code beside it — and a name from the old books grey', () => {
+    expect(CUSTODY).toContain(
+      '<DriverCell employeeId={row.driverEmployeeId} name={row.driverName} look="name" />',
+    );
+    expect(CUSTODY).not.toContain('<DriverName ');
+    const known = renderCustody(
+      [movement({ driverEmployeeId: 'e-7', driverName: 'ابراهيم السيد رزق جابر' })],
+      {
+        permissions: ['fleetCustody.view', 'fleetDriver.view'],
+        people: [person('e-7', '0100765', 'ابراهيم السيد رزق جابر')],
+      },
+    );
+    const row = rowWith(known, '1,350.00', known.indexOf('data-custody-movements="true"'));
+    expect(row).toContain('ابراهيم السيد رزق جابر');
+    expect(row, 'never the code glued to the name').not.toContain('جابر0100765');
+    expect(row, 'and not under it either').not.toContain('0100765</span>');
+    expect(row).not.toContain('data-legacy-name');
+    const typed = renderCustody();
+    const legacy = rowWith(typed, '1,350.00', typed.indexOf('data-custody-movements="true"'));
+    expect(legacy).toContain('data-legacy-name="true"');
+    expect(legacy).toContain('أيمن حسن مصطفى');
+  });
+
+  it('puts an arrow on every header of both tables', () => {
+    const html = renderCustody();
+    const perVehicle = html.indexOf('data-custody-per-vehicle="true"');
+    const movements = html.indexOf('data-custody-movements="true"');
+    const arrows = (part: string): number =>
+      (part.match(/<th\b[^>]*><button type="button"/gu) ?? []).length;
+    expect(arrows(html.slice(perVehicle, movements)), '«ملخص لكل سيارة»').toBe(6);
+    expect(arrows(html.slice(movements)), '«كل الحركات»').toBe(6);
+  });
+
+  it('orders «ملخص لكل سيارة» by its arrows, the grand total always last', () => {
+    const html = renderCustody([movement()], { search: '?carSort=total:asc' });
+    const table = html.slice(
+      html.indexOf('data-custody-per-vehicle="true"'),
+      html.indexOf('data-custody-movements="true"'),
+    );
+    const cheap = table.indexOf('>63<');
+    const dear = table.indexOf('>204<');
+    const total = table.indexOf('data-custody-grand-total="true"');
+    expect(cheap).toBeGreaterThan(-1);
+    expect(dear, 'the smaller total first').toBeGreaterThan(cheap);
+    expect(total, 'the grand total after every car').toBeGreaterThan(dear);
+    // Untouched, it opens by the car's code, as the server sends it — still the total last.
+    const plain = renderCustody();
+    const byCode = plain.slice(
+      plain.indexOf('data-custody-per-vehicle="true"'),
+      plain.indexOf('data-custody-movements="true"'),
+    );
+    expect(byCode.indexOf('>204<')).toBeLessThan(byCode.indexOf('>63<'));
+    expect(byCode.indexOf('data-custody-grand-total="true"')).toBeGreaterThan(
+      byCode.indexOf('>63<'),
+    );
   });
 
   it('shows «ملخص لكل سيارة» with a grand-total row, then every movement with where it came from', () => {
@@ -572,9 +964,22 @@ describe('the card after a car is picked — «هل فى كارت واحد عل�
       ...over,
     }) as FleetFuelCardDto;
 
-  /** The modal open on a fuel receipt of car 160, the car's cards already read. */
-  const openOn = (cards: FleetFuelCardDto[], over: Partial<FleetReceiptDto> = {}): string => {
+  /**
+   * The modal open on a fuel receipt of car 160, the car's cards already read — and, when given,
+   * every card in the system (what «كارت آخر» lists).
+   */
+  const openOn = (
+    cards: FleetFuelCardDto[],
+    over: Partial<FleetReceiptDto> = {},
+    everyCard?: FleetFuelCardDto[],
+  ): string => {
     const qc = client();
+    if (everyCard !== undefined) {
+      qc.setQueryData(listKey('fleet', 'fuelCards', { whole: true }), {
+        items: everyCard,
+        meta: { page: 1, pageSize: 100, totalItems: everyCard.length, totalPages: 1 },
+      });
+    }
     qc.setQueryData(detailKey('fleet', 'vehicles', 'v-160'), {
       id: 'v-160',
       code: '160',
@@ -667,5 +1072,139 @@ describe('the card after a car is picked — «هل فى كارت واحد عل�
     expect(html).toContain('data-receipt-cards="loading"');
     expect(html).toContain('data-receipt-summary="loading"');
     expect(html).not.toContain(ar('fleet.receipts.fields.noCards'));
+  });
+
+  // ── «لما اختار عربيه اعملى ان هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت» ────────────
+  const otherCar = fuelCard({
+    id: 'c-204',
+    vehicleId: 'v-204',
+    vehicleCode: '204',
+    company: 'chillout',
+    name: 'كارت شيل اوت 204',
+    number: '5522 8810 3340 7700',
+    balance: 900,
+  });
+  const travel = fuelCard({
+    id: 'c-travel',
+    vehicleId: null,
+    vehicleCode: null,
+    label: 'سفر 1',
+    name: 'كارت سفر',
+    number: '7045 1120 0098 5511',
+    balance: 300,
+  });
+
+  it('offers «تسجيل كارت آخر؟» under the car’s own cards — with cards on the car', () => {
+    const html = openOn([fuelCard({})], { cardId: 'c-1' });
+    expect(html).toContain('data-receipt-card="c-1"');
+    expect(html).toContain('data-receipt-other-open="true"');
+    expect(html).toContain(ar('fleet.receipts.otherCard.open'));
+    expect(ar('fleet.receipts.otherCard.open')).toBe('تسجيل كارت آخر؟');
+    // Under the tiles, above the tick.
+    expect(html.indexOf('data-receipt-card="c-1"')).toBeLessThan(
+      html.indexOf('data-receipt-other-open="true"'),
+    );
+    expect(html.indexOf('data-receipt-other-open="true"')).toBeLessThan(
+      html.indexOf('data-receipt-use-card'),
+    );
+    // Not open yet: no list of every card read.
+    expect(html).not.toContain('data-receipt-other="true"');
+  });
+
+  it('…and on a car with no card — the fund still pays until another card is picked', () => {
+    const html = openOn([]);
+    expect(html).toContain('data-receipt-cards="none"');
+    expect(html).toContain('data-receipt-other-open="true"');
+    expect(html).toContain('data-receipt-source="custody"');
+  });
+
+  it('is not offered before a car is picked, while its cards load, or on tyres and washing', () => {
+    const fresh = mount(
+      client(),
+      ['fleetReceipt.view', 'fleetReceipt.create'],
+      '/fleet/receipts',
+      <ReceiptDialog open onClose={() => undefined} row={null} />,
+    );
+    expect(fresh).not.toContain('data-receipt-other-open');
+    const loading = mount(
+      client(),
+      ['fleetReceipt.view', 'fleetReceipt.edit'],
+      '/fleet/receipts',
+      <ReceiptDialog
+        open
+        onClose={() => undefined}
+        row={receipt({ vehicleId: 'v-160', vehicleCode: '160', cardId: 'c-1' })}
+      />,
+    );
+    expect(loading).not.toContain('data-receipt-other-open');
+    const tyres = openOn([fuelCard({})], {
+      kind: 'tyres',
+      source: 'custody',
+      cardId: null,
+      fuelType: null,
+    });
+    expect(tyres).not.toContain('data-receipt-other-open');
+  });
+
+  it('an edit paid by another car’s card opens on «كارت آخر», that card picked and the line naming its car', () => {
+    const html = openOn(
+      [fuelCard({})],
+      {
+        cardId: 'c-204',
+        cardCompany: 'chillout',
+        cardNumber: '5522 8810 3340 7700',
+        cardVehicleId: 'v-204',
+        cardVehicleCode: '204',
+        amount: 100,
+      },
+      [fuelCard({}), otherCar, travel],
+    );
+    expect(html).toContain('data-receipt-other="true"');
+    expect(html).toContain('data-receipt-other-cards="ready"');
+    expect(html).not.toContain('data-receipt-other-open');
+    expect(html).toContain('data-receipt-other-back="true"');
+    expect(html).toContain(ar('fleet.receipts.otherCard.back'));
+    // Every OTHER card is listed — never the car's own — the picked one pressed.
+    expect(html).not.toContain('data-receipt-other-card="c-1"');
+    const picked = html.slice(
+      html.lastIndexOf('<button', html.indexOf('data-receipt-other-card="c-204"')),
+      html.indexOf('</button>', html.indexOf('data-receipt-other-card="c-204"')),
+    );
+    expect(picked).toContain('aria-selected="true"');
+    expect(picked).toContain('border-brand-500');
+    expect(picked, 'its company').toContain(ar('fleet.fuelCards.company.chillout'));
+    expect(picked, 'its number, masked as the table writes it').toContain('•••• 7700');
+    expect(picked, 'its car').toContain(ar('fleet.receipts.cardOf', { code: '204' }));
+    expect(picked, 'its balance').toContain('900.00');
+    const stock = html.slice(
+      html.lastIndexOf('<button', html.indexOf('data-receipt-other-card="c-travel"')),
+      html.indexOf('</button>', html.indexOf('data-receipt-other-card="c-travel"')),
+    );
+    expect(stock).toContain('aria-selected="false"');
+    expect(stock, 'a card on no car is named by its label').toContain('سفر 1');
+    expect(stock).toContain('•••• 5511');
+    // The search box, and the line under the form: the picked card pays — and gets this
+    // receipt's 100 back before it is taken again (900 + 100 → 900).
+    expect(html).toContain('data-receipt-other-search="true"');
+    expect(html).toContain('data-receipt-source="card"');
+    const at = html.indexOf('data-receipt-summary="card"');
+    expect(at, 'the line names the card that pays').toBeGreaterThan(-1);
+    const line = html.slice(at, html.indexOf('</p>', at));
+    expect(line).toContain(ar('fleet.fuelCards.company.chillout'));
+    expect(line).toContain('204');
+    expect(line).toContain('1,000.00');
+    expect(line).toContain('900.00');
+  });
+
+  it('a card on no car opens on «كارت آخر» too, and says so while every card is still loading', () => {
+    const html = openOn([fuelCard({})], {
+      cardId: 'c-travel',
+      cardVehicleId: null,
+      cardVehicleCode: null,
+      cardLabel: 'سفر 1',
+    });
+    expect(html).toContain('data-receipt-other="true"');
+    expect(html).toContain('data-receipt-other-cards="loading"');
+    expect(html).toContain('data-receipt-summary="loadingOther"');
   });
 });

@@ -44,6 +44,8 @@ import { DriverCell } from '../components/DriverPerson';
 import { FuelCompanyLogo } from '../components/FuelCardTiles';
 import { ReceiptDialog } from '../components/ReceiptDialog';
 import { ReceiptImageCell, ReceiptImagePreviewDialog } from '../components/ReceiptImageCell';
+import { receiptCardOwner } from '../lib/receipt-cards';
+import { maskCardNumber } from '../lib/fuel-card-number';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
@@ -74,6 +76,8 @@ const LITRES = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+/** «كم» — a whole number, grouped like every figure on the board («154,320»). */
+const KM = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 /** The boards' figure: monospace, tabular, never broken over two lines. */
 const FIGURE = cn('whitespace-nowrap', NUM);
 /** An empty cell, as the boards draw one. */
@@ -102,16 +106,28 @@ const RECEIPTS_TABLE = cn(
   "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
 );
 
-/** «الكارت وطنية •••• 2231» or «العهدة». */
+/**
+ * «الكارت وطنية •••• 2231» or «العهدة». A card that is not on the receipt's own car — «كارت اخر» —
+ * says where it sits: «(كارت 160)», or its name on no car «(سفر 1)».
+ */
 export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Element => {
   const t = useT();
   if (row.source === 'card' && row.cardCompany !== null) {
+    const owner = receiptCardOwner(row, (code) => t('fleet.receipts.cardOf', { code }));
     return (
       <span className="inline-flex items-center gap-2">
         <FuelCompanyLogo company={row.cardCompany} size="sm" />
         <span className={FIGURE} dir="ltr">
-          •••• {(row.cardNumber ?? '').replace(/\s+/g, '').slice(-4)}
+          {maskCardNumber(row.cardNumber ?? '')}
         </span>
+        {owner !== null && (
+          <span
+            data-receipt-card-owner="true"
+            className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"
+          >
+            ({owner})
+          </span>
+        )}
       </span>
     );
   }
@@ -247,10 +263,14 @@ export const ReceiptsPage = (): JSX.Element => {
   const kindLabel = (row: FleetReceiptDto): string => t(`fleet.receipts.kind.${row.kind}`);
   const fuelLabel = (row: FleetReceiptDto): string =>
     row.fuelType === null ? '' : t(`fleet.receipts.fuelType.${row.fuelType}`);
-  const sourceLabel = (row: FleetReceiptDto): string =>
-    row.source === 'card'
-      ? `${t(`fleet.fuelCards.company.${row.cardCompany ?? 'wataniya'}`)} ${row.cardNumber ?? ''}`
-      : t('fleet.receipts.source.custody');
+  // The sheets' «الخصم من»: the card as the table names it, its owner too when it is another car's
+  // or on no car — «وطنية 7045… (كارت 160)».
+  const sourceLabel = (row: FleetReceiptDto): string => {
+    if (row.source !== 'card') return t('fleet.receipts.source.custody');
+    const owner = receiptCardOwner(row, (code) => t('fleet.receipts.cardOf', { code }));
+    const card = `${t(`fleet.fuelCards.company.${row.cardCompany ?? 'wataniya'}`)} ${row.cardNumber ?? ''}`;
+    return owner === null ? card : `${card} (${owner})`;
+  };
   /** «2026/10/01», «1,037.10»: one figure on the row, in the boards' figure — see `FIGURE`. */
   const figure = (text: string): JSX.Element => (
     <span dir="ltr" className={FIGURE}>
@@ -339,6 +359,14 @@ export const ReceiptsPage = (): JSX.Element => {
       render: (row) => (row.litres === null ? DASH : figure(LITRES.format(row.litres))),
     },
     {
+      // «كم» — the odometer the paper wrote at the pump, a whole number in Latin digits.
+      key: 'odometer',
+      header: t('fleet.receipts.columns.odometer'),
+      sortable: true,
+      align: 'center',
+      render: (row) => (row.odometer === null ? DASH : figure(KM.format(row.odometer))),
+    },
+    {
       key: 'image',
       align: 'center',
       header: t('fleet.receipts.columns.image'),
@@ -392,6 +420,7 @@ export const ReceiptsPage = (): JSX.Element => {
     t('fleet.receipts.columns.source'),
     t('fleet.receipts.columns.amount'),
     t('fleet.receipts.columns.litres'),
+    t('fleet.receipts.columns.odometer'),
   ];
   const allRows = () =>
     fetchFilteredRows((pageNo, size) =>
@@ -411,6 +440,7 @@ export const ReceiptsPage = (): JSX.Element => {
         sourceLabel(row),
         row.amount,
         row.litres ?? '',
+        row.odometer ?? '',
       ]),
       moneyColumns: [5],
     });
@@ -443,6 +473,7 @@ export const ReceiptsPage = (): JSX.Element => {
           sourceLabel(row),
           reportMoney(row.amount),
           row.litres === null ? '—' : litresText(row.litres),
+          row.odometer === null ? '—' : String(row.odometer),
         ]),
         totals:
           summary.data === undefined

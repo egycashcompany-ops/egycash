@@ -68,8 +68,8 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   // The odometer on check-in, on check-out and on edit — and the exit counter on the edit of a
   // closed visit.
   'modules/fleet/components/MaintenanceDialogs.tsx': { integer: 4 },
-  // The driver's name, and the receipt's amount.
-  'modules/fleet/components/ReceiptDialog.tsx': { arabic: 1, money: 1 },
+  // The driver's name, the receipt's amount, and «كم» — the odometer at the pump.
+  'modules/fleet/components/ReceiptDialog.tsx': { arabic: 1, money: 1, integer: 1 },
   'modules/fleet/components/RecordOdometerDialog.tsx': { integer: 1 },
   // The reason.
   'modules/fleet/components/UnavailabilityDialog.tsx': { arabic: 1 },

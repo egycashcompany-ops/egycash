@@ -1115,6 +1115,17 @@ export const useCustodySummary = (params: FleetListParams, enabled = true) =>
     placeholderData: (prev) => prev,
     enabled,
   });
+/**
+ * «لوحة تحكم» — read only while it is open, under the ledger's key, so whatever refreshes the board
+ * (a receipt saved, deleted, moved) refreshes it too. No placeholder from the last answer: reopened
+ * over other filters, it would show the old filters' sums under the new filters' words.
+ */
+export const useCustodyDashboard = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'custody', { dashboard: true, ...params }),
+    queryFn: () => api.custodyDashboard(params),
+    enabled,
+  });
 export const useCustodyMovements = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'custody', params),

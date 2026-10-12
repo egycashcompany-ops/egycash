@@ -9,7 +9,12 @@
 // share left to right. «عاوزك تشيل من الداش بورد الجدول اللى فى العربيات والسجل يكون برا زى ما هو»:
 // the dashboard no longer draws «ملخص لكل سيارة» nor «سجل كل الحركات» — the board holds both, a
 // car's «السجل» opens from the board, and «وخلى الالوان زى ما انت عامل فى الداش بورد» — the board's
-// two tables wear the colours the dashboard's tables wore.
+// two tables wear the colours the dashboard's tables wore. Since «هادية», the board's look calmer:
+// its figures the dashboard's KPI cards with the share's bar, each table on a table card under a
+// strip with its count, the pager in the card's foot, a car's sums in plain ink — and, as the owner
+// asked, «انت مش كنت خليت الارقام بتاعت التوكيل و الوقود وكدا بيكون جمبهم نقط الوان غيرتها ليه»,
+// a dot of the kind's colour beside every sum that is not zero and on each kind's heading. The
+// toolbar's «الإحصائيات» and «لوحة تحكم» stay the site's purple.
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,9 +74,13 @@ import {
   LOG_ICON,
 } from '../components/CustodyCarLog';
 import {
+  CAIRO,
   CARD,
+  CARD_BORDER,
+  CARD_SURFACE,
   COMPANY,
   TABLE_CARD,
+  TITLE,
   custodyArcs,
   custodyCountForm,
   custodyDaysSince,
@@ -80,8 +89,14 @@ import {
   custodyTicks,
 } from '../components/custody-dashboard-parts';
 import { CustodyFigures, custodyShare, custodySharePct } from '../components/CustodyFigures';
-import { CUSTODY_KIND, CUSTODY_KINDS } from '../components/CustodyKinds';
+import {
+  CUSTODY_KIND,
+  CUSTODY_KINDS,
+  CUSTODY_TOTAL_ACCENT,
+  CUSTODY_TOTAL_TILE,
+} from '../components/CustodyKinds';
 import { FleetPager } from '../components/FleetPager';
+import { NUM } from '../components/FuelCardBoard';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -97,6 +112,7 @@ const CHARTS = read('../components/CustodyDashboardCharts.tsx');
 const PARTS = read('../components/custody-dashboard-parts.tsx');
 const KINDS = read('../components/CustodyKinds.tsx');
 const FIGURES = read('../components/CustodyFigures.tsx');
+const PAGER = read('../components/FleetPager.tsx');
 const QUERIES = read('../api/fleet-queries.ts');
 const CAR_LOG = read('../components/CustodyCarLog.tsx');
 const DASHBOARD = [MODAL, CHARTS, PARTS, CAR_LOG].join('\n');
@@ -324,6 +340,13 @@ const text = (part: string): string =>
     .replace(/\s+\)/gu, ')')
     .replace(/\s+([:.،])(?=\s|$)/gu, '$1')
     .trim();
+/** A class list as React writes it into the markup — `&`, `>`, `'` and `"` escaped. */
+const esc = (classes: string): string =>
+  classes
+    .replace(/&/gu, '&amp;')
+    .replace(/>/gu, '&gt;')
+    .replace(/'/gu, '&#x27;')
+    .replace(/"/gu, '&quot;');
 /** A share as the board writes it: a span of its own, left to right, holding exactly `share`. */
 const pct = (share: string): RegExp =>
   new RegExp(`<span dir="ltr" data-custody-pct="true" class="[^"]*">${share}</span>`, 'u');
@@ -365,9 +388,13 @@ const logRows: FleetCustodyMovementDto[] = [
 
 /**
  * The custody board itself, over no filter: «ملخص لكل سيارة» the dashboard's three cars (and the
- * fund's totals), «كل الحركات» the `rows` given, newest first.
+ * fund's totals) — or what `over` puts in their place — «كل الحركات» the `rows` given, newest first.
  */
-const board = (rows: FleetCustodyMovementDto[] = [movement({})], search = ''): string => {
+const board = (
+  rows: FleetCustodyMovementDto[] = [movement({})],
+  search = '',
+  over: Partial<FleetCustodySummaryDto> = {},
+): string => {
   const qc = client();
   qc.setQueryData(listKey('fleet', 'custody', { summary: true, ...FILTERS }), {
     count: dashboard.count,
@@ -377,6 +404,7 @@ const board = (rows: FleetCustodyMovementDto[] = [movement({})], search = ''): s
     tyres: dashboard.tyres,
     wash: dashboard.wash,
     vehicles: dashboard.vehicles,
+    ...over,
   } satisfies FleetCustodySummaryDto);
   qc.setQueryData(
     listKey('fleet', 'custody', {
@@ -1582,58 +1610,69 @@ describe('«عاوزك تشيل من الداش بورد الجدول اللى �
   });
 });
 
-describe('«وخلى الالوان زى ما انت عامل فى الداش بورد» — the board’s tables in the dashboard’s colours', () => {
-  /** The board's per-car table, from its section to the movements. */
-  const perCar = (html: string): string =>
-    html.slice(
-      html.indexOf('data-custody-per-vehicle="true"'),
-      html.indexOf('data-custody-movements="true"'),
-    );
-  /** The row of a table holding `needle`. */
-  const rowOf = (html: string, needle: string): string => {
-    const at = html.indexOf(needle, html.indexOf('<tbody'));
-    expect(at, needle).toBeGreaterThan(-1);
-    return html.slice(html.lastIndexOf('<tr', at), html.indexOf('</tr>', at));
-  };
-  /** The `<td>`s of a row: each one's class list and its inner markup. */
-  const cells = (row: string): { cls: string[]; inner: string }[] =>
-    [...row.matchAll(/<td [^>]*class="([^"]*)"[^>]*>(.*?)<\/td>/gu)].map((m) => ({
-      cls: (m[1] ?? '').split(' '),
-      inner: m[2] ?? '',
-    }));
-  const NONE = '<span class="text-slate-400 dark:text-slate-500">—</span>';
+/** The board's per-car table, from its section to the movements. */
+const perCar = (html: string): string =>
+  html.slice(
+    html.indexOf('data-custody-per-vehicle="true"'),
+    html.indexOf('data-custody-movements="true"'),
+  );
+/** The row of a table holding `needle`. */
+const rowOf = (html: string, needle: string): string => {
+  const at = html.indexOf(needle, html.indexOf('<tbody'));
+  expect(at, needle).toBeGreaterThan(-1);
+  return html.slice(html.lastIndexOf('<tr', at), html.indexOf('</tr>', at));
+};
+/** The `<td>`s of a row: each one's class list and its inner markup. */
+const cells = (row: string): { cls: string[]; inner: string }[] =>
+  [...row.matchAll(/<td [^>]*class="([^"]*)"[^>]*>(.*?)<\/td>/gu)].map((m) => ({
+    cls: (m[1] ?? '').split(' '),
+    inner: m[2] ?? '',
+  }));
+/** «—» where a car paid nothing that way. */
+const NONE = '<span class="text-slate-400 dark:text-slate-500">—</span>';
+/** The lines of the per-car table's body — every car's, then «الإجمالي». */
+const carRows = (table: string): string[] =>
+  [...table.slice(table.indexOf('<tbody')).matchAll(/<tr\b[\s\S]*?<\/tr>/gu)].map((m) => m[0]);
 
-  it('writes each kind’s sums in its colour, a muted «—» where a car paid nothing that way', () => {
+describe('«وخلى الالوان زى ما انت عامل فى الداش بورد» — the board’s tables in the dashboard’s colours', () => {
+  it('writes a car’s sums in plain ink, a dot of the kind’s colour before each — a muted «—» where a car paid nothing that way', () => {
     const table = perCar(board());
     const car63 = rowOf(table, '>63<');
     expect(text(car63)).toBe('63 السجل 850.00 ج.م. — 1,400.00 ج.م. — 2,250.00 ج.م.');
     const [, dealership, fuel, tyres, wash] = cells(car63);
-    expect(dealership?.inner).toContain(
-      `class="inline-flex items-baseline gap-1 ${CUSTODY_KIND.dealership.text}"`,
-    );
-    expect(tyres?.inner).toContain(
-      `class="inline-flex items-baseline gap-1 ${CUSTODY_KIND.tyres.text}"`,
-    );
-    // The figure and «ج.م.» both in the kind's ink, as the dashboard wrote a coloured sum.
-    expect(dealership?.inner).toMatch(
-      new RegExp(
-        `>850\\.00</span><span class="text-sm ${CUSTODY_KIND.dealership.text}">ج\\.م\\.</span>`,
-        'u',
-      ),
-    );
+    // «هادية»: the figure slate-800 / slate-200, «ج.م.» muted, the kind's colour only in its dot.
+    for (const [kind, cell, figure] of [
+      ['dealership', dealership, '850\\.00'],
+      ['tyres', tyres, '1,400\\.00'],
+    ] as const) {
+      expect(cell?.inner, kind).toMatch(
+        new RegExp(
+          `^<span class="inline-flex items-center gap-1\\.5" data-custody-kind-sum="${kind}"><span aria-hidden="true" class="h-2 w-2 shrink-0 rounded-full ${CUSTODY_KIND[kind].dot}"></span><span class="inline-flex items-baseline gap-1 text-slate-800 dark:text-slate-200"><span class="[^"]*">${figure}</span><span class="text-sm text-slate-500 dark:text-slate-400">ج\\.م\\.</span></span></span>$`,
+          'u',
+        ),
+      );
+    }
     expect(fuel?.inner).toBe(NONE);
     expect(wash?.inner).toBe(NONE);
     const car204 = rowOf(table, '>204<');
     const [, d204, f204, t204, w204] = cells(car204);
     expect(d204?.inner).toBe(NONE);
-    expect(f204?.inner).toContain(CUSTODY_KIND.fuel.text);
+    expect(f204?.inner).toContain(CUSTODY_KIND.fuel.dot);
     expect(t204?.inner).toBe(NONE);
-    expect(w204?.inner).toContain(CUSTODY_KIND.wash.text);
-    // Four kinds, four inks — blue, amber, rose, cyan.
-    expect(CUSTODY_KIND.dealership.text).toBe('text-blue-700 dark:text-blue-400');
-    expect(CUSTODY_KIND.fuel.text).toBe('text-amber-700 dark:text-amber-400');
-    expect(CUSTODY_KIND.tyres.text).toBe('text-rose-700 dark:text-rose-400');
-    expect(CUSTODY_KIND.wash.text).toBe('text-cyan-700 dark:text-cyan-400');
+    expect(w204?.inner).toContain(CUSTODY_KIND.wash.dot);
+    // No sum of any car, nor of the foot, in a kind's ink any more: the dot carries the colour.
+    const rows = carRows(table);
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      for (const cell of cells(row).slice(1, 5)) {
+        expect(cell.inner).not.toMatch(/\btext-(?:blue|amber|rose|cyan)-/u);
+      }
+    }
+    // The four dots — blue, amber, rose, cyan — the kinds' badge dots, one shade per theme.
+    expect(CUSTODY_KIND.dealership.dot).toBe('bg-blue-600 dark:bg-blue-400');
+    expect(CUSTODY_KIND.fuel.dot).toBe('bg-amber-500 dark:bg-amber-400');
+    expect(CUSTODY_KIND.tyres.dot).toBe('bg-rose-500 dark:bg-rose-400');
+    expect(CUSTODY_KIND.wash.dot).toBe('bg-cyan-600 dark:bg-cyan-400');
   });
 
   it('puts the car’s code in the dashboard’s blue chip, and sets the «الإجمالي» column apart', () => {
@@ -1683,7 +1722,7 @@ describe('«وخلى الالوان زى ما انت عامل فى الداش ب
     expect(table).toContain('h-full overflow-auto');
   });
 
-  it('draws «الإجمالي» as the dashboard’s foot — the emerald rule and word, each kind’s total in its ink, the fund’s total boxed', () => {
+  it('draws «الإجمالي» as the dashboard’s foot — the emerald rule and word, each kind’s total beside its dot, the fund’s total boxed', () => {
     const table = perCar(board());
     const at = table.indexOf('data-custody-grand-total="true"');
     expect(at).toBeGreaterThan(-1);
@@ -1710,8 +1749,13 @@ describe('«وخلى الالوان زى ما انت عامل فى الداش ب
     expect(word?.inner).toBe(
       `<span class="text-emerald-800 dark:text-emerald-400">${ar('fleet.custody.grandTotal')}</span>`,
     );
+    // Each kind's total in the foot's slate-900 / white, its dot before it; the fund's in emerald.
     CUSTODY_KINDS.forEach((kind, i) => {
-      expect(sums[i]?.inner, kind).toContain(`gap-1 ${CUSTODY_KIND[kind].text}"`);
+      expect(sums[i]?.inner, kind).toContain(
+        `<span aria-hidden="true" class="h-2 w-2 shrink-0 rounded-full ${CUSTODY_KIND[kind].dot}"></span>`,
+      );
+      expect(sums[i]?.inner, kind).toContain('gap-1 text-slate-900 dark:text-white"');
+      expect(sums[i]?.inner, kind).not.toContain(CUSTODY_KIND[kind].text);
     });
     expect(sums[4]?.inner).toContain('gap-1 text-emerald-800 dark:text-emerald-300"');
     // It stays the last line whichever way the arrows point.
@@ -1761,15 +1805,17 @@ describe('«وخلى الالوان زى ما انت عامل فى الداش ب
     // A fuel receipt that names no company: none drawn. Nor on any kind but fuel.
     expect(row('152.00')).not.toContain('data-custody-company-badge');
     expect(row('750.00')).not.toContain('data-custody-company-badge');
-    // The dealership's bills in the dashboard log's blue; a receipt in its muted grey.
-    expect(classesOf(row('1,470.00'), 'data-custody-from="dealershipInvoice"')).toEqual([
-      'text-blue-700',
-      'dark:text-blue-300',
-    ]);
-    expect(classesOf(row('150.00'), 'data-custody-from="receipt"')).toEqual([
-      'text-slate-500',
-      'dark:text-slate-400',
-    ]);
+    // «هادية»: «من» in the row's plain ink, a bill's and a receipt's alike — the kind's pill says
+    // which. No blue for the dealership's bills any more.
+    for (const [amount, ref] of [
+      ['1,470.00', 'dealershipInvoice'],
+      ['150.00', 'receipt'],
+    ] as const) {
+      expect(classesOf(row(amount), `data-custody-from="${ref}"`), ref).toEqual([
+        'text-slate-600',
+        'dark:text-slate-300',
+      ]);
+    }
   });
 
   it('writes «كل الحركات» in the dashboard log’s inks — the date muted, the code in its chip, the amount slate-900 / white', () => {
@@ -1832,6 +1878,274 @@ describe('«وخلى الالوان زى ما انت عامل فى الداش ب
     expect(line).toContain('`${sourceLabel(row)} ${detailOf(row)}`.trim(),');
     expect(line).not.toContain('company');
     expect(PAGE).toContain('moneyColumns: [5],');
+  });
+});
+
+describe('«انت مش كنت خليت الارقام بتاعت التوكيل و الوقود وكدا بيكون جمبهم نقط الوان غيرتها ليه» — the dots beside the kinds’ numbers', () => {
+  /** A dot of `kind`'s colour, as the per-car table draws it before a sum. */
+  const dot = (kind: (typeof CUSTODY_KINDS)[number]): string =>
+    `<span aria-hidden="true" class="h-2 w-2 shrink-0 rounded-full ${CUSTODY_KIND[kind].dot}"></span>`;
+
+  it('puts a dot of the kind’s colour before every sum that is not zero — every car’s and the foot’s', () => {
+    // Remove the dots and this fails: the colour beside the numbers is what the owner asked back.
+    const rows = carRows(perCar(board()));
+    expect(rows).toHaveLength(4);
+    const dotted: string[] = [];
+    for (const row of rows) {
+      cells(row)
+        .slice(1, 5)
+        .forEach((cell, i) => {
+          const kind = CUSTODY_KINDS[i]!;
+          if (cell.inner === NONE) return;
+          expect(cell.inner, `${kind} in ${text(row)}`).toMatch(
+            new RegExp(
+              `^<span class="inline-flex items-center gap-1\\.5" data-custody-kind-sum="${kind}">${dot(kind)}<span class="inline-flex items-baseline gap-1 `,
+              'u',
+            ),
+          );
+          dotted.push(kind);
+        });
+    }
+    // 63: التوكيل and كاوتش; 160: وقود; 204: وقود and غسيل; «الإجمالي»: all four.
+    expect(dotted.sort()).toEqual(
+      ['dealership', 'tyres', 'fuel', 'fuel', 'wash', 'dealership', 'fuel', 'tyres', 'wash'].sort(),
+    );
+    // The dot is the kinds' own — written once, in `CustodyKinds.tsx` — never a copy of it.
+    const kindCol = PAGE.slice(
+      PAGE.indexOf('const kindCol = '),
+      PAGE.indexOf('const vehicleColumns'),
+    );
+    expect(kindCol).toContain('CUSTODY_KIND[kind].dot');
+  });
+
+  it('draws no dot before a zero — the foot’s «0.00 ج.م.» stands alone, a car’s nothing is «—»', () => {
+    const noWash = board([movement({})], '', {
+      total: dashboard.total - dashboard.wash,
+      wash: 0,
+      vehicles: dashboard.vehicles.map((car) => ({ ...car, wash: 0, total: car.total - car.wash })),
+    });
+    const rows = carRows(perCar(noWash));
+    const grand = rows.find((row) => row.includes('data-custody-grand-total="true"')) ?? '';
+    const wash = cells(grand)[4];
+    expect(text(wash?.inner ?? '')).toBe('0.00 ج.م.');
+    expect(wash?.inner).toContain('data-custody-kind-sum="wash"');
+    expect(wash?.inner).not.toContain('rounded-full');
+    for (const row of rows.filter((line) => line !== grand)) {
+      expect(cells(row)[4]?.inner).toBe(NONE);
+    }
+  });
+
+  it('puts the same dot before each kind’s heading — and none on the car’s nor the total’s', () => {
+    const table = perCar(board());
+    const thead = table.slice(table.indexOf('<thead'), table.indexOf('</thead>'));
+    const heads = [...thead.matchAll(/<th [^>]*class="([^"]*)"[^>]*>(<button type="button")?/gu)];
+    expect(heads).toHaveLength(6);
+    // The dot rides on the heading's arrow button: it must be the `<th>`'s own child.
+    expect(heads.every((m) => m[2] !== undefined)).toBe(true);
+    const ring = [
+      '[&>button]:before:inline-block',
+      '[&>button]:before:h-2',
+      '[&>button]:before:w-2',
+      '[&>button]:before:shrink-0',
+      '[&>button]:before:rounded-full',
+      "[&>button]:before:content-['']",
+    ].map(esc);
+    CUSTODY_KINDS.forEach((kind, i) => {
+      const cls = (heads[i + 1]?.[1] ?? '').split(' ');
+      expect(
+        text(thead.slice(heads[i + 1]?.index ?? 0)).startsWith(ar(`fleet.custody.source.${kind}`)),
+        kind,
+      ).toBe(true);
+      expect(cls, kind).toEqual(expect.arrayContaining(ring));
+      // The cells' dot, shade for shade: `bg-blue-600 dark:bg-blue-400` on the button's `::before`.
+      const ink = CUSTODY_KIND[kind].dot
+        .split(' ')
+        .map((c) =>
+          c.startsWith('dark:')
+            ? `dark:[&>button]:before:${c.slice('dark:'.length)}`
+            : `[&>button]:before:${c}`,
+        )
+        .map(esc);
+      expect(cls, kind).toEqual(expect.arrayContaining(ink));
+    });
+    for (const i of [0, 5]) {
+      expect(heads[i]?.[1], `heading ${i}`).not.toContain('before:');
+    }
+  });
+});
+
+describe('«هادية» — the board in the dashboard’s cards, the dashboard itself untouched', () => {
+  it('puts each table on the dashboard’s table card, under a strip with its title and count', () => {
+    const html = board(logRows);
+    const perVehicle = html.slice(
+      html.lastIndexOf('<section', html.indexOf('data-custody-per-vehicle="true"')),
+      html.indexOf('data-custody-movements="true"'),
+    );
+    const movements = html.slice(
+      html.lastIndexOf('<section', html.indexOf('data-custody-movements="true"')),
+    );
+    for (const [name, part] of [
+      ['perVehicle', perVehicle],
+      ['movements', movements],
+    ] as const) {
+      expect(classesOf(part, '<section'), name).toEqual(
+        expect.arrayContaining([...TABLE_CARD.split(' '), 'overflow-hidden', 'flex', 'flex-col']),
+      );
+      // The strip: the dashboard's slate-50 / #0a101b over a rule, the title in Cairo.
+      const strip = part.slice(part.indexOf('<div'));
+      expect(classesOf(strip, '<div'), name).toEqual(
+        expect.arrayContaining([
+          'border-b',
+          'border-slate-200',
+          'bg-slate-50/80',
+          'dark:border-[#1c293f]',
+          'dark:bg-[#0a101b]',
+        ]),
+      );
+      // The table inside loses its own frame: the card is the frame.
+      expect(part, name).toContain('[&amp;&amp;&gt;div]:!rounded-none');
+      expect(part, name).toContain('[&amp;&amp;&gt;div]:!border-0');
+    }
+    expect(perVehicle).toContain(
+      `<h2 class="${esc(TITLE)}">${ar('fleet.custody.perVehicle')}</h2>`,
+    );
+    expect(movements).toContain(`<h2 class="${esc(TITLE)}">${ar('fleet.custody.movements')}</h2>`);
+    // The counts: the cars on the design's emerald chip, the movements on its slate one.
+    const cars = perVehicle.slice(perVehicle.indexOf('data-custody-car-count="true"'));
+    expect(text(cars.slice(0, cars.indexOf('</span>')))).toBe('3 سيارات');
+    expect(classesOf(perVehicle, 'data-custody-car-count="true"')).toEqual(
+      expect.arrayContaining([
+        'rounded-full',
+        'bg-emerald-100',
+        'text-emerald-800',
+        'dark:bg-emerald-500/10',
+      ]),
+    );
+    const moves = movements.slice(movements.indexOf('data-custody-movement-count="true"'));
+    expect(text(moves.slice(0, moves.indexOf('</span>')))).toBe('6 حركات');
+    expect(classesOf(movements, 'data-custody-movement-count="true"')).toEqual(
+      expect.arrayContaining(['bg-slate-200/80', 'text-slate-700', 'dark:bg-[#142135]']),
+    );
+    // Nothing to count, no chip — and no pager.
+    const empty = board([], '', {
+      count: 0,
+      total: 0,
+      dealership: 0,
+      fuel: 0,
+      tyres: 0,
+      wash: 0,
+      vehicles: [],
+    });
+    for (const gone of [
+      'data-custody-car-count',
+      'data-custody-movement-count',
+      'data-fleet-pager',
+    ]) {
+      expect(empty, gone).not.toContain(gone);
+    }
+  });
+
+  it('puts the pager in the movements card’s foot — under the rows, on the strip’s colours, still emerald', () => {
+    const html = board(logRows);
+    const movements = html.slice(html.indexOf('data-custody-movements="true"'));
+    const pager = movements.indexOf('data-fleet-pager="true"');
+    expect(pager, 'inside the movements’ card').toBeGreaterThan(-1);
+    expect(pager, 'under the rows').toBeGreaterThan(movements.indexOf('</table>'));
+    const foot = movements.slice(
+      movements.lastIndexOf('<div', movements.lastIndexOf('<div', pager) - 1),
+    );
+    expect(classesOf(foot, '<div')).toEqual(
+      expect.arrayContaining([
+        'border-t',
+        'border-slate-200',
+        'bg-slate-50/80',
+        'dark:border-slate-800',
+        'dark:bg-[#0a101b]',
+      ]),
+    );
+    expect(classesOf(movements, 'aria-current="page"')).toEqual(
+      expect.arrayContaining(['bg-emerald-600', 'text-white']),
+    );
+    // …and the per-car card has none: its rows are every car.
+    expect(perCar(html)).not.toContain('data-fleet-pager');
+  });
+
+  it('keeps «الإحصائيات» and «لوحة تحكم» the site’s purple — and no comment says otherwise', () => {
+    // «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات».
+    const html = board();
+    for (const attr of ['data-custody-stats-toggle="true"', 'data-custody-dashboard-open="true"']) {
+      const cls = classesOf(html, attr);
+      expect(cls, attr).toEqual(
+        expect.arrayContaining([
+          'border-brand-500/50',
+          'bg-brand-500/15',
+          'text-brand-700',
+          'hover:bg-brand-500/25',
+          'dark:text-brand-200',
+        ]),
+      );
+      expect(cls.join(' '), attr).not.toMatch(/emerald|blue-|amber-|rose-|cyan-/u);
+    }
+    // No sentence of a comment on the board, its figures, its kinds' colours or the pager puts the
+    // toolbar — or what is pressed — in emerald, or says the screen's design overrides its purple.
+    const comments = (source: string): string[] =>
+      [...source.matchAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//gu)]
+        .map((m) => m[0].replace(/^\/\/|^\/\*+|\*+\/$|\n\s*(?:\/\/|\*)?/gu, ' '))
+        .join(' ')
+        .replace(/\s+/gu, ' ')
+        .split(/(?<=[.;])\s/u);
+    for (const [name, source] of [
+      ['CustodyPage.tsx', PAGE],
+      ['CustodyFigures.tsx', FIGURES],
+      ['CustodyKinds.tsx', KINDS],
+      ['FleetPager.tsx', PAGER],
+    ] as const) {
+      for (const sentence of comments(source)) {
+        if (/toolbar|two buttons|PRESS_BUTTON|pressed/iu.test(sentence)) {
+          expect(sentence, name).not.toMatch(/emerald|overrid/iu);
+        }
+      }
+    }
+    // Both say what IS emerald there, and that the toolbar stays purple.
+    for (const [name, source] of [
+      ['CustodyKinds.tsx', KINDS],
+      ['FleetPager.tsx', PAGER],
+    ] as const) {
+      const said = comments(source).join(' ');
+      expect(said, name).toMatch(/current page[^.;]*emerald|emerald[^.;]*current page/iu);
+      expect(said, name).toMatch(/toolbar[^.;]*purple/iu);
+    }
+  });
+
+  it('paints every light surface of the board’s figures and strips with its dark one too', () => {
+    // A light-only background would leave a white box on the dark theme.
+    const html = board(logRows);
+    const parts = [
+      draw(<CustodyFigures totals={dashboard} />),
+      ...['data-custody-per-vehicle="true"', 'data-custody-movements="true"'].map((attr) => {
+        const at = html.indexOf(attr);
+        // The card, its strip and chip — up to the table — and the foot under the rows.
+        const section = html.slice(at, html.indexOf('</section>', at));
+        return (
+          section.slice(0, section.indexOf('<table')) + section.slice(section.indexOf('</table>'))
+        );
+      }),
+    ];
+    const lightSurfaces =
+      /^(?:bg-white|bg-slate-50|bg-slate-100|bg-slate-50\/80|bg-slate-200\/80|bg-emerald-100)$/u;
+    let checked = 0;
+    for (const part of parts) {
+      for (const m of part.matchAll(/class="([^"]*)"/gu)) {
+        const cls = (m[1] ?? '').split(' ');
+        if (!cls.some((c) => lightSurfaces.test(c))) continue;
+        checked += 1;
+        expect(
+          cls.some((c) => c.startsWith('dark:bg-')),
+          cls.join(' '),
+        ).toBe(true);
+      }
+    }
+    expect(checked).toBeGreaterThan(8);
   });
 });
 
@@ -2585,18 +2899,103 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
     expect(CUSTODY_KIND.fuel.badge).toContain('dark:border-amber-500/25');
   });
 
-  it('wears them on the board’s figures too — each kind’s edge and tile, the total emerald', () => {
+  it('wears them on the board’s figures too — the dashboard’s KPI cards, each kind’s edge, tile and share bar, the total emerald', () => {
     const html = draw(<CustodyFigures totals={dashboard} />);
+    /** One figure's markup, up to the next figure. */
+    const figure = (id: string): string => {
+      const at = html.indexOf(`data-custody-figure="${id}"`);
+      expect(at, id).toBeGreaterThan(-1);
+      const next = html.indexOf('data-custody-figure="', at + 10);
+      return html.slice(at, next === -1 ? undefined : next);
+    };
+    /** The card inside a figure's cell — its first `<div>`. */
+    const cardOf = (part: string): string[] => {
+      const at = part.indexOf('<div');
+      return (/class="([^"]*)"/u.exec(part.slice(at, part.indexOf('>', at)))?.[1] ?? '').split(' ');
+    };
+    expect([...html.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'total',
+      ...CUSTODY_KINDS,
+    ]);
     for (const kind of CUSTODY_KINDS) {
-      const at = html.indexOf(`data-custody-figure="${kind}"`);
-      const tile = html.slice(at, html.indexOf('</div></div>', at));
-      expect(tile, kind).toContain(CUSTODY_KIND[kind].tile);
-      expect(tile, kind).toContain(CUSTODY_KIND[kind].accent);
+      const part = figure(kind);
+      const look = CUSTODY_KIND[kind];
+      // The dashboard's card — its surface and border in both themes, rounded-2xl — with the
+      // kind's edge; the kind's words over the figure, its icon on its tile.
+      expect(cardOf(part), kind).toEqual(
+        expect.arrayContaining([
+          ...CARD_SURFACE.split(' '),
+          ...CARD_BORDER.split(' '),
+          ...look.accent.split(' '),
+          'rounded-2xl',
+          'p-4',
+          'h-full',
+        ]),
+      );
+      expect(part, kind).toContain(`<span class="block text-xs ${look.label}">`);
+      expect(text(part), kind).toContain(ar(`fleet.custody.totals.${kind}`));
+      expect(part, kind).toContain(look.tile);
+      // The figure black in the boards' monospace, as the board's tiles always wrote it — and in
+      // that one font only: a second font-family class (Cairo) would lose to it unseen.
+      expect(part, kind).toContain(
+        `<span class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">`,
+      );
+      expect(part, kind).not.toContain(esc(CAIRO));
+      // «20% من الإجمالي» over a thin bar of the kind's fill, as long as the share.
+      const share = part.slice(part.indexOf(`data-custody-figure-share="${kind}"`));
+      expect(text(share.slice(0, share.indexOf('<span aria-hidden="true"'))), kind).toBe(
+        `${custodyShare(dashboard[kind], dashboard.total)} ${ar('fleet.custody.totals.ofTotal')}`,
+      );
+      expect(part, kind).toContain(
+        '<span aria-hidden="true" class="block h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]">',
+      );
+      expect(part, kind).toContain(
+        `<span class="block h-full rounded-full ${look.fill}" style="width:${custodySharePct(dashboard[kind], dashboard.total)}%"></span>`,
+      );
     }
-    const total = html.slice(html.indexOf('data-custody-figure="total"'));
-    expect(total).toContain('border-l-emerald-500');
-    expect(total).toContain('bg-emerald-100 text-emerald-700');
-    expect(html).not.toMatch(/NaN/u);
+    // The bars add up to the whole: four shares of one total.
+    const widths = [...html.matchAll(/style="width:([\d.]+)%"/gu)].map((m) => Number(m[1]));
+    expect(widths).toHaveLength(4);
+    expect(widths.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
+    // The total: the dashboard's emerald card, its edge and tile, the movements counted under it.
+    const total = figure('total');
+    expect(cardOf(total)).toEqual(
+      expect.arrayContaining([
+        ...CARD_SURFACE.split(' '),
+        ...CUSTODY_TOTAL_ACCENT.split(' '),
+        'border-emerald-300',
+        'bg-gradient-to-br',
+        'from-emerald-50/70',
+        'dark:border-emerald-500/40',
+        'rounded-2xl',
+      ]),
+    );
+    expect(total).toContain(CUSTODY_TOTAL_TILE);
+    expect(total).toContain(
+      `<span class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">`,
+    );
+    expect(total).not.toContain(esc(CAIRO));
+    // No element of the figures carries two fonts: `cn` merges nothing, so of two font-family
+    // classes the stylesheet's order would pick, whatever the markup or a comment says.
+    for (const m of html.matchAll(/class="([^"]*)"/gu)) {
+      expect((m[1] ?? '').match(/\[font-family:/gu)?.length ?? 0, m[1]).toBeLessThanOrEqual(1);
+    }
+    expect(text(total)).toContain(
+      `${ar('fleet.custody.totals.total')} 4,335.50 ج.م. ${ar('fleet.custody.dashboard.kpi.movements')} 6 حركات`,
+    );
+    expect(total).not.toContain('style="width:');
+    // Not the boards' small `FigureChip` any more.
+    expect(FIGURES).not.toContain('FigureChip');
+    expect(html).not.toContain('dark:bg-[#111827]');
+    // Of nothing, no share and no bar — never «NaN%» nor a bar of «NaN%» width.
+    const none = draw(
+      <CustodyFigures
+        totals={{ count: 0, total: 0, dealership: 0, fuel: 0, tyres: 0, wash: 0, vehicles: [] }}
+      />,
+    );
+    expect(none).not.toContain('data-custody-figure-share');
+    expect(none).not.toContain('style="width:');
+    expect(html + none).not.toMatch(/NaN/u);
   });
 
   it('keeps the site’s purple to the two toolbar buttons — and the colours to the custody files', () => {
@@ -2619,6 +3018,9 @@ describe('the owner’s words, quoted as he wrote them', () => {
   const FUEL_ASK = 'تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها';
   const LOG_ASK =
     'عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه';
+  const DOTS_ASK =
+    'انت مش كنت خليت الارقام بتاعت التوكيل و الوقود وكدا بيكون جمبهم نقط الوان غيرتها ليه';
+  const PURPLE_ASK = 'لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات';
   const API = '../../../../../api/';
   const CONTRACTS = '../../../../../../packages/contracts/src/modules/';
   const SOURCES: Record<string, string> = {
@@ -2627,6 +3029,7 @@ describe('the owner’s words, quoted as he wrote them', () => {
     'custody-dashboard-parts.tsx': PARTS,
     'CustodyCarLog.tsx': CAR_LOG,
     'CustodyPage.tsx': PAGE,
+    'CustodyFigures.tsx': FIGURES,
     'custody-dashboard.spec.tsx': read('custody-dashboard.spec.tsx'),
     'custody-dashboard.ts': read(`${API}src/modules/fleet/custody/custody-dashboard.ts`),
     'custody-dashboard.spec.ts': read(`${API}src/modules/fleet/custody/custody-dashboard.spec.ts`),
@@ -2643,7 +3046,7 @@ describe('the owner’s words, quoted as he wrote them', () => {
         .matchAll(/«([^«»]{1,200})»/gu),
     ].map((m) => m[1] ?? '');
 
-  it('quotes the two requests word for word, wherever a piece of them is quoted', () => {
+  it('quotes the requests word for word, wherever a piece of them is quoted', () => {
     for (const [name, source] of Object.entries(SOURCES)) {
       for (const quote of quotes(source)) {
         // The split's own words — not the card's title, nor the owner's other asks about the two
@@ -2652,6 +3055,9 @@ describe('the owner’s words, quoted as he wrote them', () => {
           expect(FUEL_ASK, `${name}: «${quote}»`).toContain(quote);
         }
         if (/علامه السجل/u.test(quote)) expect(LOG_ASK, `${name}: «${quote}»`).toContain(quote);
+        if (/نقط الوان|جمبهم/u.test(quote))
+          expect(DOTS_ASK, `${name}: «${quote}»`).toContain(quote);
+        if (/لونهم موف/u.test(quote)) expect(PURPLE_ASK, `${name}: «${quote}»`).toContain(quote);
       }
     }
     // The whole request, as written, where the split is made: the contract, the server, the card.
@@ -2664,6 +3070,11 @@ describe('the owner’s words, quoted as he wrote them', () => {
     }
     for (const name of ['CustodyCarLog.tsx', 'CustodyPage.tsx', 'contracts fleet.ts']) {
       expect(quotes(SOURCES[name] ?? ''), name).toContain(LOG_ASK);
+    }
+    // The dots, where they are drawn and where they are proven; the purple, where it is worn.
+    for (const name of ['CustodyPage.tsx', 'custody-dashboard.spec.tsx']) {
+      expect(quotes(SOURCES[name] ?? ''), name).toContain(DOTS_ASK);
+      expect(quotes(SOURCES[name] ?? ''), name).toContain(PURPLE_ASK);
     }
   });
 });

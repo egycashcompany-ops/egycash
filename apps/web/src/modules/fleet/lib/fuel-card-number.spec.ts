@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupCardNumber, ungroupCardNumber } from './fuel-card-number';
+import { groupCardNumber, maskCardNumber, ungroupCardNumber } from './fuel-card-number';
 
 describe('a card number in groups of four', () => {
   it('groups the digits by four from the start, and ungroups back to the bare digits', () => {
@@ -9,5 +9,13 @@ describe('a card number in groups of four', () => {
     expect(groupCardNumber('1234')).toBe('1234');
     expect(groupCardNumber('')).toBe('');
     expect(ungroupCardNumber('5485 6400 0643 6766')).toBe('5485640006436766');
+  });
+});
+
+describe('a card number by its end', () => {
+  it('keeps the last four digits, whatever spacing it came with', () => {
+    expect(maskCardNumber('7045 1120 0098 2231')).toBe('•••• 2231');
+    expect(maskCardNumber('7045112000982231')).toBe('•••• 2231');
+    expect(maskCardNumber('')).toBe('•••• ');
   });
 });

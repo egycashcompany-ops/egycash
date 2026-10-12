@@ -5,6 +5,7 @@ import {
   type FleetDealershipSummaryQuery,
   type FleetDealershipTotalsDto,
   type ListFleetDealershipInvoicesQuery,
+  type LocalizedString,
   type Paginated,
   type UpdateFleetDealershipInvoice,
   parseFleetSort,
@@ -44,16 +45,45 @@ export const sideOf = (doc: {
     : 'dealership';
 };
 
+/**
+ * The car's insurer as the bill's arrow sees it: its id, its name in both languages (the form shows
+ * the reader's), and whether a bill may still be saved with it.
+ */
+export interface DealershipInsurerOption {
+  id: string;
+  name: LocalizedString;
+  active: boolean;
+}
+
 export interface DealershipInvoiceWithJoins {
   doc: FleetDealershipInvoiceDoc;
   vehicleCode: string | null;
   insuranceCompanyName: string | null;
+  /** The car's own insurer today — offered beside «لا يوجد», never written onto the bill. */
+  vehicleInsurer: DealershipInsurerOption | null;
 }
+
+/**
+ * «الافتراضى بتاع الربي فى التامين لا يوجد حتى لو العربيه فيها تامين بس لو فيها تامين اقدر ادوس على
+ * السهم واختار»: the car's insurer from شاشة السيارات, as the arrow sees it. It is offered only
+ * while قوائم الحركة holds it active — the bill could not be saved with any other — but an archived
+ * one is still named, so the form can say why it is missing rather than claim the car has none.
+ * `null` for a car with no insurer, or one the catalog does not know at all.
+ */
+export const vehicleInsurerOf = (
+  insurerId: string | null | undefined,
+  catalog: ReadonlyMap<string, { name: LocalizedString; active: boolean }>,
+): DealershipInsurerOption | null => {
+  if (insurerId == null) return null;
+  const item = catalog.get(insurerId);
+  return item === undefined ? null : { id: insurerId, name: item.name, active: item.active };
+};
 
 export const toDealershipInvoiceDto = ({
   doc,
   vehicleCode,
   insuranceCompanyName,
+  vehicleInsurer,
 }: DealershipInvoiceWithJoins): FleetDealershipInvoiceDto => ({
   id: String(doc._id),
   visitId: String(doc.visitId),
@@ -63,8 +93,12 @@ export const toDealershipInvoiceDto = ({
   workKind: doc.workKind,
   workTypeLabel: doc.workTypeLabel,
   privateCar: doc.privateCar,
+  // The bill's own — «لا يوجد» until the clerk picks; the car's insurer is the offer below.
   insuranceCompanyId: stringOrNull(doc.insuranceCompanyId),
   insuranceCompanyName,
+  vehicleInsuranceCompanyId: vehicleInsurer?.id ?? null,
+  vehicleInsuranceCompanyName: vehicleInsurer?.name ?? null,
+  vehicleInsuranceCompanyActive: vehicleInsurer?.active ?? false,
   invoiceNumber: doc.invoiceNumber ?? null,
   invoiceAmount: doc.invoiceAmount ?? null,
   image:
@@ -106,8 +140,9 @@ class FleetDealershipService {
     const rows = splitWorkType(workType?.name.ar ?? '');
     const vehicleId = vehicleIdOf(visit);
     let privateCar = false;
-    // «تبقى شركة التامين لا يوجد»: a workshop bill starts with no insurer — the clerk types one
-    // or picks it when recording the invoice. The car's own insurer is not copied onto it.
+    // «الافتراضى بتاع الربي فى التامين لا يوجد حتى لو العربيه فيها تامين»: a workshop bill starts
+    // with no insurer. The car's own is not copied onto it — the list offers it (`vehicleInsurerOf`)
+    // and the clerk picks it under the arrow when recording the invoice.
     const insuranceCompanyId: Types.ObjectId | null = null;
     if (vehicleId !== null) {
       const vehicle = await fleetVehicleRepository.findById(vehicleId);
@@ -188,7 +223,11 @@ class FleetDealershipService {
     return fleetDealershipRepository.totals(await this.filterFor(query));
   }
 
-  /** The codes and the insurers' names for exactly the rows on the page — one lookup each. */
+  /**
+   * The codes, the insurers' names, and each car's own insurer for exactly the rows on the page —
+   * one lookup each. The car's insurer is read TODAY, off the vehicles screen, so the arrow offers
+   * what the car carries now; the bill keeps whatever was saved on it.
+   */
   async joinsFor(
     docs: readonly FleetDealershipInvoiceDoc[],
   ): Promise<Map<string, DealershipInvoiceWithJoins>> {
@@ -202,10 +241,15 @@ class FleetDealershipService {
         ),
       ),
     ];
-    const [codes, insurers] = await Promise.all([
+    const [codes, carInsurers, insurers] = await Promise.all([
       fleetVehicleRepository.codesByIds(vehicleIds),
+      fleetVehicleRepository.insuranceCompanyIdsByIds(vehicleIds),
       fleetCatalogItemRepository.namesByIds(insurerIds),
     ]);
+    const carInsurerItems = await fleetCatalogItemRepository.namesWithStateOfKind(
+      [...new Set([...carInsurers.values()].flatMap((id) => (id === null ? [] : [id])))],
+      'insuranceCompany',
+    );
     return new Map(
       docs.map((doc) => [
         String(doc._id),
@@ -219,6 +263,10 @@ class FleetDealershipService {
             doc.insuranceCompanyId == null
               ? null
               : (insurers.get(String(doc.insuranceCompanyId))?.ar ?? null),
+          vehicleInsurer:
+            doc.vehicleId == null
+              ? null
+              : vehicleInsurerOf(carInsurers.get(String(doc.vehicleId)), carInsurerItems),
         },
       ]),
     );

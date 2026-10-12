@@ -249,6 +249,25 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * «التامين اللى فى شاشه السيارات» — the cars' insurers, for the dealership bills on one page: the
+   * same one-lookup shape as `operationIdsByIds`. A car with no insurer maps to `null`.
+   */
+  async insuranceCompanyIdsByIds(ids: readonly string[]): Promise<Map<string, string | null>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ insuranceCompanyId: 1 })
+      .lean<{ _id: Types.ObjectId; insuranceCompanyId?: Types.ObjectId | null }[]>()
+      .exec();
+    return new Map(
+      rows.map((row) => [
+        String(row._id),
+        row.insuranceCompanyId == null ? null : String(row.insuranceCompanyId),
+      ]),
+    );
+  }
+
+  /**
    * «انا اقدر اعمل فلتر ب نوع التشغيل» — every car, deleted ones included, whose operation is one
    * of these.
    *

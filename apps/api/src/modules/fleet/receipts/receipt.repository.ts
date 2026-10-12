@@ -60,6 +60,7 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
         'createdAt',
         'amount',
         'litres',
+        'odometer',
         'kind',
         'source',
         'driverName',

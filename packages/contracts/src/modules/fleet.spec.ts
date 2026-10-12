@@ -9,6 +9,8 @@ import {
   FleetCustodySummaryQuerySchema,
   ListFleetCustodyMovementsQuerySchema,
   ListFleetReceiptsQuerySchema,
+  CreateFleetReceiptSchema,
+  UpdateFleetReceiptSchema,
   CreateFleetCatalogItemSchema,
   CreateFleetUnavailabilitySchema,
   FleetAccidentTransferInputSchema,
@@ -575,6 +577,66 @@ describe('taking from another car’s remaining — the transfer input', () => {
     expect(
       fleetAccidentRemaining({ amountCollected: 1500, companyCost: 500, paidAmount: 1300 }),
     ).toBe(700);
+  });
+});
+
+describe('a receipt — «ادخال كم (اختيارى عند كتابه مبلغ التفويل)»', () => {
+  const fuel = {
+    date: '2026-10-01',
+    vehicleId: oid('1'),
+    kind: 'fuel',
+    cardId: oid('2'),
+    fuelType: 'diesel',
+    amount: 500,
+  } as const;
+
+  it('takes the odometer on fuel — a whole number from zero up, or none at all', () => {
+    expect(CreateFleetReceiptSchema.parse({ ...fuel, odometer: 154320 }).odometer).toBe(154320);
+    expect(CreateFleetReceiptSchema.parse({ ...fuel, odometer: 0 }).odometer).toBe(0);
+    expect(CreateFleetReceiptSchema.parse({ ...fuel, odometer: null }).odometer).toBeNull();
+    // Optional: a receipt with no «كم» is a whole receipt.
+    expect(CreateFleetReceiptSchema.parse(fuel).odometer).toBeUndefined();
+    for (const bad of [-1, 12.5, '154320', Number.NaN]) {
+      expect(
+        CreateFleetReceiptSchema.safeParse({ ...fuel, odometer: bad }).success,
+        String(bad),
+      ).toBe(false);
+    }
+  });
+
+  it('refuses the odometer on tyres and washing — they never reach a pump', () => {
+    for (const kind of ['tyres', 'wash'] as const) {
+      const paper = { date: '2026-10-01', vehicleId: oid('1'), kind, amount: 120 };
+      expect(CreateFleetReceiptSchema.safeParse({ ...paper, odometer: 1000 }).success).toBe(false);
+      expect(CreateFleetReceiptSchema.safeParse({ ...paper, odometer: null }).success).toBe(true);
+      expect(UpdateFleetReceiptSchema.safeParse({ kind, odometer: 1000, version: 0 }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it('an edit keeps the odometer when absent and clears it with null', () => {
+    const keep = UpdateFleetReceiptSchema.parse({ kind: 'fuel', fuelType: 'diesel', version: 3 });
+    expect('odometer' in keep).toBe(false);
+    const clear = UpdateFleetReceiptSchema.parse({
+      kind: 'fuel',
+      fuelType: 'diesel',
+      odometer: null,
+      version: 3,
+    });
+    expect(clear.odometer).toBeNull();
+  });
+
+  it('defaults no fuel type — «سولار» is the form’s first choice, the API still asks for one', () => {
+    expect(CreateFleetReceiptSchema.safeParse({ ...fuel, fuelType: undefined }).success).toBe(
+      false,
+    );
+    expect(CreateFleetReceiptSchema.parse(fuel).fuelType).toBe('diesel');
+  });
+
+  it('takes any card id — whose car the card is on is the server’s to check, not the shape’s', () => {
+    expect(CreateFleetReceiptSchema.safeParse({ ...fuel, cardId: oid('99') }).success).toBe(true);
+    expect(CreateFleetReceiptSchema.safeParse({ ...fuel, cardId: 'c-1' }).success).toBe(false);
   });
 });
 

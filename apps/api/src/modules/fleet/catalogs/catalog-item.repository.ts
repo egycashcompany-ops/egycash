@@ -88,6 +88,42 @@ class FleetCatalogItemRepository extends BaseRepository<FleetCatalogItemDoc> {
     return new Map(rows.map((row) => [String(row._id), row.name]));
   }
 
+  /**
+   * `namesByIds` — archived and deleted items named too — each with whether a row may still be
+   * SAVED with it: of this kind, active, not deleted, the ones `findActiveOfKind` accepts. A screen
+   * offers only the active ones, and can still say what the others are.
+   */
+  async namesWithStateOfKind(
+    ids: readonly string[],
+    kind: FleetCatalogKind,
+  ): Promise<Map<string, { name: LocalizedString; active: boolean }>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find(
+        { _id: { $in: ids.map((id) => new Types.ObjectId(id)) } },
+        { name: 1, kind: 1, isActive: 1, isDeleted: 1 },
+      )
+      .lean<
+        {
+          _id: Types.ObjectId;
+          name: LocalizedString;
+          kind: FleetCatalogKind;
+          isActive?: boolean;
+          isDeleted?: boolean;
+        }[]
+      >()
+      .exec();
+    return new Map(
+      rows.map((row) => [
+        String(row._id),
+        {
+          name: row.name,
+          active: row.kind === kind && row.isActive === true && row.isDeleted !== true,
+        },
+      ]),
+    );
+  }
+
   async findActiveOfKind(id: string, kind: FleetCatalogKind): Promise<FleetCatalogItemDoc | null> {
     const doc = await this.findById(id);
     return doc !== null && doc.kind === kind && doc.isActive ? doc : null;

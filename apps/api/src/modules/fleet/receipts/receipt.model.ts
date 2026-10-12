@@ -3,7 +3,8 @@
 // «في حاله الوقود تبع الفيزا ... بيخصم من الفيز / في حاله الوقود تبع العهدة ... بيخصم من العهده /
 // كاوتش او غسيل ... بيخصم من العهدة». The SOURCE is stored, not derived, so the custody screen can
 // sum the fund's side in the database; for a card it is also the card's own `receipt` movement,
-// written with this row in one transaction (see `receipt.service.ts`).
+// written with this row in one transaction (see `receipt.service.ts`). The card may be any card —
+// «هل تريد تسجيل كارت اخر» — so `cardId` is never read as «this car's card».
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_FUEL_TYPES,
@@ -37,6 +38,11 @@ export interface FleetReceiptDoc extends BaseDocFields {
   pricePerLitre: number | null;
   litres: number | null;
   amount: number;
+  /**
+   * «كم» — the odometer the paper wrote at the pump, fuel only. The receipt's own: never a reading
+   * on the odometer screen. Absent on rows written before it was asked.
+   */
+  odometer?: number | null;
   image: FleetReceiptImage | null;
 }
 
@@ -64,6 +70,7 @@ const receiptSchema = new Schema<FleetReceiptDoc>(
     pricePerLitre: { type: Number, default: null, min: 0 },
     litres: { type: Number, default: null, min: 0 },
     amount: { type: Number, required: true, min: 0 },
+    odometer: { type: Number, default: null, min: 0 },
     image: { type: imageSchema, default: null },
     ...baseFields,
   },

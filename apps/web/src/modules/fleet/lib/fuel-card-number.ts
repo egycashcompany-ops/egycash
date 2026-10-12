@@ -7,3 +7,10 @@ export const groupCardNumber = (number: string): string =>
 
 /** The bare digits a grouped number stands for. */
 export const ungroupCardNumber = (shown: string): string => shown.replace(/\s+/gu, '');
+
+/**
+ * A card number where only its end is needed to tell it apart — «•••• 2231», as the receipts table
+ * and the receipt's «كارت آخر» list write it.
+ */
+export const maskCardNumber = (number: string): string =>
+  `•••• ${number.replace(/\s+/gu, '').slice(-4)}`;

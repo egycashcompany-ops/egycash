@@ -3171,7 +3171,7 @@ export const UpdateFleetDealershipInvoiceSchema = z
     invoiceAmount: egp().nullish(),
     /** «ملاكي» — preset from the car's operation, and the clerk's to change. */
     privateCar: z.boolean().optional(),
-    /** The insurer, when the car has one or the clerk names one. `null` clears it. */
+    /** The insurer the clerk picks under the arrow — the car's own. `null` is «لا يوجد». */
     insuranceCompanyId: objectId().nullish(),
     version: z.number().int().min(0),
   })
@@ -3215,9 +3215,23 @@ export interface FleetDealershipInvoiceDto {
   /** «صيانة», «إصلاح», or «إصلاح (كهرباء)» — what the row says in the work-type column. */
   workTypeLabel: string;
   privateCar: boolean;
+  /** The insurer the bill names — `null` is «لا يوجد», what every bill opens with. */
   insuranceCompanyId: string | null;
-  /** The insurer's name, resolved server-side — `null` when the car has none. */
+  /** The insurer's name, resolved server-side — `null` for «لا يوجد». */
   insuranceCompanyName: string | null;
+  /**
+   * «التامين اللى فى شاشه السيارات»: the car's own insurer as the vehicles screen records it today
+   * — what the bill's arrow offers beside «لا يوجد». Read, never copied onto the bill; `null` when
+   * the car has none.
+   */
+  vehicleInsuranceCompanyId: string | null;
+  /** Its name in both languages — the arrow shows the reader's, as قوائم الحركة does. */
+  vehicleInsuranceCompanyName: LocalizedString | null;
+  /**
+   * Whether a bill may be saved with it — still active in قوائم الحركة. An archived one stays on
+   * the car but is not offered, and the form says so rather than «the car has no insurer».
+   */
+  vehicleInsuranceCompanyActive: boolean;
   invoiceNumber: string | null;
   invoiceAmount: number | null;
   image: FleetLicenseImageDto | null;
@@ -3484,6 +3498,12 @@ export interface FleetFuelCardMovementDto {
   /** The other card of a transfer. */
   counterpartCardId: string | null;
   counterpartNumber: string | null;
+  /**
+   * The car whose receipt a `receipt` line paid for — a card may pay for another car's fuel
+   * («كارت اخر»), and its log says which. `null` on every other line.
+   */
+  receiptVehicleId: string | null;
+  receiptVehicleCode: string | null;
   at: string;
   createdAt: string;
 }
@@ -3508,10 +3528,13 @@ export type UpdateFleetFuelCardMovement = z.infer<typeof UpdateFleetFuelCardMove
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ───────────────────
 //
 // «وفى شاشه خصم الايصالات بيكون فوق اختار وقود او كاوتش او غسيل». A receipt is one paper the
-// driver brought back: fuel paid with the car's card OR from the custody fund, tyres and washing
+// driver brought back: fuel paid with a fuel card OR from the custody fund, tyres and washing
 // always from the fund. A fuel receipt taken off a card is a `receipt` movement on that card,
 // written with the receipt in one transaction. What the fund paid — these receipts and the
 // dealership rows on the custody side — is the ledger the custody screen sums.
+//
+// «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: the card is usually one of the car's own,
+// but may be ANY card in the system — another car's, or one on no car («سفر 1», «اسبير»).
 
 export const FLEET_RECEIPT_FILE_CATEGORY = 'fleet-receipts';
 
@@ -3519,7 +3542,7 @@ export const FLEET_RECEIPT_KINDS = ['fuel', 'tyres', 'wash'] as const;
 export const FleetReceiptKindSchema = z.enum(FLEET_RECEIPT_KINDS);
 export type FleetReceiptKind = z.infer<typeof FleetReceiptKindSchema>;
 
-/** Where the money came from: the car's fuel card, or the custody fund. */
+/** Where the money came from: a fuel card (the car's own or another), or the custody fund. */
 export const FLEET_RECEIPT_SOURCES = ['card', 'custody'] as const;
 export const FleetReceiptSourceSchema = z.enum(FLEET_RECEIPT_SOURCES);
 export type FleetReceiptSource = z.infer<typeof FleetReceiptSourceSchema>;
@@ -3532,11 +3555,20 @@ const receiptCore = {
   /** The driver's name as shown — a snapshot for a known driver, the typed text otherwise. */
   driverName: z.string().trim().min(1).max(200).nullish(),
   kind: FleetReceiptKindSchema,
-  /** The fuel card charged — fuel only; `null` means the custody fund paid. */
+  /**
+   * The fuel card charged — fuel only; `null` means the custody fund paid. Any live card: the
+   * car's own, another car's, or one on no car.
+   */
   cardId: objectId().nullish(),
   /** Fuel only — prices the litres from the fleet settings. */
   fuelType: FleetFuelTypeSchema.nullish(),
   amount: egp().positive(),
+  /**
+   * «ادخال كم (اختيارى عند كتابه مبلغ التفويل)»: the odometer as the paper wrote it at the pump —
+   * fuel only, never required. Kept on the receipt alone: it is not a reading on the odometer
+   * screen and moves no chain or alarm.
+   */
+  odometer: z.number().int().min(0).nullish(),
 };
 
 const receiptRules = (
@@ -3544,6 +3576,7 @@ const receiptRules = (
     kind: FleetReceiptKind;
     cardId?: string | null | undefined;
     fuelType?: FleetFuelType | null | undefined;
+    odometer?: number | null | undefined;
   },
   ctx: z.RefinementCtx,
 ): void => {
@@ -3568,6 +3601,13 @@ const receiptRules = (
       message: 'a fuel receipt needs its fuel type to price the litres',
     });
   }
+  if (value.kind !== 'fuel' && value.odometer != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['odometer'],
+      message: 'only a fuel receipt carries the odometer at the pump',
+    });
+  }
 };
 
 export const CreateFleetReceiptSchema = z.object(receiptCore).strict().superRefine(receiptRules);
@@ -3583,6 +3623,8 @@ export const UpdateFleetReceiptSchema = z
     cardId: receiptCore.cardId,
     fuelType: receiptCore.fuelType,
     amount: receiptCore.amount.optional(),
+    /** Absent keeps it; `null` clears it. A receipt that stops being fuel loses it either way. */
+    odometer: receiptCore.odometer,
     version: z.number().int().min(0),
   })
   .strict()
@@ -3619,11 +3661,21 @@ export interface FleetReceiptDto {
   cardId: string | null;
   cardCompany: FleetFuelCardCompany | null;
   cardNumber: string | null;
+  /**
+   * Where the card sits NOW — its car, or `null` for a card on no car — so a card that is not the
+   * receipt's own car's is named by its car («كارت 160») or its label («سفر 1»).
+   */
+  cardVehicleId: string | null;
+  cardVehicleCode: string | null;
+  /** What a card on no car is called; `null` on a card that is on a car. */
+  cardLabel: string | null;
   fuelType: FleetFuelType | null;
   /** The price the litres were computed with — the setting's value on the day. */
   pricePerLitre: number | null;
   litres: number | null;
   amount: number;
+  /** «كم» — the odometer the paper wrote at the pump; `null` when none was written. */
+  odometer: number | null;
   image: FleetLicenseImageDto | null;
   version: number;
   createdAt: string;

@@ -100,6 +100,7 @@ describe('the long-running processes are what import the vehicle registry', () =
     'startFuelCardsGoLive',
     'startFuelCardPhotosGoLive',
     'startReadingsFixGoLive',
+    'startDealershipBackfillGoLive',
   ];
   const cases = LONG_RUNNING.flatMap((path) => STARTERS.map((starter) => [path, starter]));
 
@@ -273,6 +274,33 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(source).toMatch(/startReadingsFixGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
     // Today's reading is the clerk's to record: nothing in the step creates a reading.
     expect(source).not.toMatch(/FleetOdometerLogModel\.(create|insertMany)|fleetOdometerService\.record/);
+  });
+
+  it('the dealership backfill waits for both workshop books, refuses before its claim, writes why, and finishes only clean', () => {
+    const source = code('src/modules/fleet/go-live/dealership-backfill.ts');
+    const claim = source.indexOf('claimGoLiveRun(DEALERSHIP_BACKFILL_GO_LIVE_MARK');
+    expect(claim).toBeGreaterThan(-1);
+    for (const refusal of ['waitForGoLiveRuns(', 'admin === null']) {
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
+    }
+    // The visits are the workshop import's and its second export's: decided before both are DONE,
+    // a visit not yet written or not yet closed would be passed over for good.
+    expect(source).toContain('waitForGoLiveRuns([MAINTENANCE_GO_LIVE_MARK, MAINTENANCE_SYNC_GO_LIVE_MARK])');
+    for (const reason of ['maintenance-not-done', 'no-admin']) {
+      expect(source).toMatch(new RegExp(`recordGoLiveRefusal\\(DEALERSHIP_BACKFILL_GO_LIVE_MARK,\\s*\\{\\s*reason: '${reason}'`));
+    }
+    const partial = source.indexOf("'fleet go-live: partial dealership backfill'");
+    const finish = source.indexOf('finishGoLiveRun(DEALERSHIP_BACKFILL_GO_LIVE_MARK');
+    expect(partial).toBeGreaterThan(-1);
+    expect(finish).toBeGreaterThan(partial);
+    expect(source.slice(partial, finish)).toContain('return;');
+    expect(source.slice(0, partial)).toContain('recordGoLiveFailure(DEALERSHIP_BACKFILL_GO_LIVE_MARK');
+    expect(source).toMatch(/startDealershipBackfillGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
+    // The check-out's own rules, not a copy: the rows are opened by the function the check-out
+    // calls, and nothing here writes a dealership row of its own or touches one that exists.
+    expect(source).toContain('fleetDealershipService.openRowsOfVisit(');
+    expect(source).not.toMatch(/FleetDealershipInvoiceModel|splitWorkType|isPrivateOperation|fleetDealershipRepository\.(create|update|softDelete)/);
   });
 
   it('is skipped under test, or every integration suite imports 209 cars', () => {

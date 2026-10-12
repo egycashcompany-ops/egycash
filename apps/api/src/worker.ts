@@ -27,6 +27,7 @@ import { startDriversExtraGoLive } from './modules/fleet/go-live/drivers-extra';
 import { startFuelCardsGoLive } from './modules/fleet/go-live/fuel-cards';
 import { startFuelCardPhotosGoLive } from './modules/fleet/go-live/fuel-card-photos';
 import { startReadingsFixGoLive } from './modules/fleet/go-live/readings-fix';
+import { startDealershipBackfillGoLive } from './modules/fleet/go-live/dealership-backfill';
 import { startItAssetRestartGoLive } from './modules/it/go-live/asset-restart';
 import { startItInventoryGoLive } from './modules/it/go-live/inventory';
 
@@ -64,6 +65,9 @@ const main = async (): Promise<void> => {
   // «الرقم اللى بعد التاريخ دا بتاع الصيانه الرقم التانى بتاعت القراءة اللى النهارده» — cars 219,
   // 295, 248 and 249 brought into line with the owner's readings of 11 October (see the file).
   startReadingsFixGoLive();
+  // «دول مظهروش فى شاشه التوكيل» — the dealership rows the check-out never opened for the visits
+  // out since 1 September, before the screen went live; after both workshop books (see the file).
+  startDealershipBackfillGoLive();
   // «شيل كل الأصول معادا AST-00005 وخليه AST-00001» — confirmed by the owner on 4 October: the IT
   // asset register restarted, once, softly (see the file).
   startItAssetRestartGoLive();

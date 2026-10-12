@@ -102,6 +102,19 @@ class FleetDealershipRepository extends BaseRepository<FleetDealershipInvoiceDoc
       .exec();
     return count > 0;
   }
+
+  /**
+   * Of these visits, the ones that EVER had a row — deleted or not. The go-live backfill's question,
+   * not the check-out's: a row the clerk deleted, or a reopen withdrew, is somebody's decision
+   * about that visit, and a backfill that opened it again would be undoing it.
+   */
+  async visitIdsWithAnyRows(visitIds: readonly string[]): Promise<Set<string>> {
+    if (visitIds.length === 0) return new Set();
+    const ids = await this.model
+      .distinct('visitId', { visitId: { $in: visitIds.map((id) => new Types.ObjectId(id)) } })
+      .exec();
+    return new Set(ids.map(String));
+  }
 }
 
 export const fleetDealershipRepository = new FleetDealershipRepository();

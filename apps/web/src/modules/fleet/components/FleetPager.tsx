@@ -37,17 +37,28 @@ const SQUARE =
   'inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-xs font-bold tabular-nums transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40';
 const IDLE =
   'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700/80 dark:bg-[#0c121e] dark:text-slate-300 dark:hover:bg-slate-800';
+/**
+ * The current page: the site's purple — or, on the custody screen only, the emerald of the owner's
+ * design for it («فى شاشه العهد … فى اللايت سيم والدارك سيم»), as are that screen's filter focus
+ * and selection. Its toolbar («الإحصائيات», «لوحة تحكم») stays the site's purple.
+ */
+const CURRENT = {
+  brand: 'border-brand-500 bg-brand-600 text-white shadow-md shadow-brand-700/40',
+  emerald: 'border-emerald-500 bg-emerald-600 text-white shadow-md shadow-emerald-700/40',
+} as const;
 
 export const FleetPager = ({
   meta,
   onPageChange,
   onPageSizeChange,
   pageSizeOptions = DEFAULT_PAGE_SIZES,
+  tone = 'brand',
 }: {
   meta: PageMeta;
   onPageChange: (page: number) => void;
   onPageSizeChange?: (pageSize: number) => void;
   pageSizeOptions?: number[];
+  tone?: keyof typeof CURRENT;
 }): JSX.Element => {
   const t = useT();
   const { page, pageSize, totalItems, totalPages } = meta;
@@ -90,12 +101,7 @@ export const FleetPager = ({
               type="button"
               aria-current={p === page ? 'page' : undefined}
               data-pager-page={p}
-              className={cn(
-                SQUARE,
-                p === page
-                  ? 'border-brand-500 bg-brand-600 text-white shadow-md shadow-brand-700/40'
-                  : IDLE,
-              )}
+              className={cn(SQUARE, p === page ? CURRENT[tone] : IDLE)}
               onClick={() => {
                 if (p !== page) onPageChange(p);
               }}

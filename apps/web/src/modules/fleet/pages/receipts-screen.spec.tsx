@@ -89,6 +89,7 @@ const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
   litres: 37.1,
   amount: 640,
   odometer: null,
+  company: null,
   image: null,
   version: 0,
   createdAt: '2026-10-01T00:00:00.000Z',
@@ -160,6 +161,7 @@ const movement = (over: Partial<FleetCustodyMovementDto> = {}): FleetCustodyMove
   driverEmployeeId: null,
   driverName: 'أيمن حسن مصطفى',
   fuelType: 'petrol92',
+  company: null,
   detail: null,
   amount: 1350,
   ...over,
@@ -696,6 +698,85 @@ describe('the receipt modal', () => {
   });
 });
 
+describe('«الشركة» on a fuel receipt the fund pays — «ومش عاوز اى داتا اجبارى»', () => {
+  const fund = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto =>
+    receipt({
+      source: 'custody',
+      cardId: null,
+      cardCompany: null,
+      cardNumber: null,
+      cardVehicleId: null,
+      cardVehicleCode: null,
+      ...over,
+    });
+  const dialog = (row: FleetReceiptDto | null): string =>
+    mount(
+      client(),
+      ['fleetReceipt.view', 'fleetReceipt.create', 'fleetReceipt.edit'],
+      '/fleet/receipts',
+      <ReceiptDialog open onClose={() => undefined} row={row} />,
+    );
+  /** The company choice the form shows picked, or `undefined` when it shows none. */
+  const pickedCompany = (html: string): string | undefined =>
+    /aria-checked="true" data-receipt-company="(\w+)"/u.exec(html)?.[1];
+
+  it('reads «العهدة (شل أوت)» in «الخصم من» when the fund’s fuel names its company — plain «العهدة» when not', () => {
+    expect(ar('fleet.receipts.source.custodyCompany', { company: 'شل أوت' })).toBe(
+      'العهدة (شل أوت)',
+    );
+    const html = renderReceipts({
+      rows: [
+        fund({ id: 'chill', amount: 201, company: 'chillout' }),
+        fund({ id: 'wat', amount: 202, company: 'wataniya' }),
+        fund({ id: 'none', amount: 203, company: null }),
+      ],
+    });
+    const named = (company: 'chillout' | 'wataniya'): string =>
+      ar('fleet.receipts.source.custodyCompany', {
+        company: ar(`fleet.fuelCards.company.${company}`),
+      });
+    expect(rowWith(html, '201.00')).toContain(named('chillout'));
+    expect(rowWith(html, '202.00')).toContain(named('wataniya'));
+    const plain = rowWith(html, '203.00');
+    expect(plain).toContain(ar('fleet.receipts.source.custody'));
+    expect(plain).not.toContain(`${ar('fleet.receipts.source.custody')} (`);
+    // Both sheets write «الخصم من» through the same words as the table.
+    const label = PAGE.slice(PAGE.indexOf('const sourceLabel ='), PAGE.indexOf('/** «2026/10/01»'));
+    expect(label).toContain("if (row.source !== 'card') return custodySourceLabel(row, t);");
+    expect(PAGE).toContain('<Badge tone="neutral">{custodySourceLabel(row, t)}</Badge>');
+  });
+
+  it('offers it on fuel the fund pays only — the two companies and «بدون شركة», never starred', () => {
+    // A fund-paid fuel receipt opens on the company it names, or on «بدون شركة».
+    const named = dialog(fund({ company: 'chillout' }));
+    for (const choice of ['none', 'wataniya', 'chillout']) {
+      expect(named, choice).toContain(`data-receipt-company="${choice}"`);
+    }
+    expect(pickedCompany(named)).toBe('chillout');
+    expect(named).toContain(ar('fleet.receipts.fields.company'));
+    expect(named).toContain(ar('fleet.receipts.fields.companyNone'));
+    expect(pickedCompany(dialog(fund()))).toBe('none');
+    // Off a card (the card names its company), on a new receipt that a card pays by default, and
+    // on tyres and washing: no choice at all.
+    expect(dialog(receipt())).not.toContain('data-receipt-company');
+    expect(dialog(null)).not.toContain('data-receipt-company');
+    for (const kind of ['tyres', 'wash'] as const) {
+      expect(dialog(fund({ kind, fuelType: null, litres: null })), kind).not.toContain(
+        'data-receipt-company',
+      );
+    }
+    // Never required: not in the save's rules, not starred.
+    const rules = FORM.slice(FORM.indexOf('useRequiredFields('));
+    expect(rules.slice(0, rules.indexOf(');'))).not.toContain('company');
+    const field = FORM.slice(FORM.lastIndexOf('<DesignField', FORM.indexOf('<CompanyPick')));
+    expect(field.slice(0, field.indexOf('>'))).not.toContain('required');
+    // Shown and sent only while the fund pays for fuel.
+    expect(FORM).toContain('const fundFuel = isFuel && !byCard;');
+    expect(FORM).toContain('{fundFuel && (');
+    expect(FORM).toContain('company: fundFuel ? company : null,');
+  });
+});
+
 describe('the custody ledger', () => {
   it('keeps the figures behind «الإحصائيات», between the filters and the tables — figure and «ج.م.» apart', () => {
     const html = renderCustody();
@@ -745,14 +826,18 @@ describe('the custody ledger', () => {
     for (const kind of ['dealership', 'fuel', 'tyres', 'wash'] as const) {
       const at = opened.indexOf(`data-custody-figure="${kind}"`);
       const tile = opened.slice(at, opened.indexOf('</div></div>', at));
-      expect(tile, `${kind} wears its kind's fill`).toContain(CUSTODY_KIND[kind].fill);
+      // The owner's dashboard design, on the whole custody screen: the kind's tile and edge.
+      expect(tile, `${kind} wears its kind's tile`).toContain(CUSTODY_KIND[kind].tile);
+      expect(tile, `${kind} wears its kind's edge`).toContain(CUSTODY_KIND[kind].accent);
     }
     // Five across where five sums fit; a sum of money keeps the whole row on a phone, and «ج.م.»
     // goes under a figure too long for its tile rather than off it.
     expect(opened).toContain('xl:grid-cols-5');
     expect(opened).toContain('[&amp;_.items-baseline]:flex-wrap');
-    // The amber icon fuel used to wear is gone: amber is a STATE on these boards.
-    expect(opened).not.toMatch(/amber-/u);
+    // «فى شاشه العهد … فى اللايت سيم والدارك سيم»: on this screen fuel is the design's amber,
+    // the total its emerald — the house rule keeping amber for states holds on the other boards.
+    expect(CUSTODY_KIND.fuel.tile).toContain('text-amber-600');
+    expect(opened).toContain('border-l-emerald-500');
   });
 
   it('draws the kind in «كل الحركات» in its own colour — the dealership, fuel, tyres and washing apart', () => {
@@ -781,10 +866,15 @@ describe('the custody ledger', () => {
       const row = rowWith(html, amount, movements);
       const at = row.indexOf(`data-custody-kind="${kind}"`);
       expect(at, `${kind} has its badge`).toBeGreaterThan(-1);
-      const badge = row.slice(row.lastIndexOf('<span', at), row.indexOf('</span>', at));
-      expect(badge).toContain(CUSTODY_KIND[kind].fill);
+      // The badge holds its dot, then the kind's name: up to its own closing tag.
+      const badge = row.slice(
+        row.lastIndexOf('<span', at),
+        row.indexOf('</span>', row.indexOf('</span>', at) + 1),
+      );
+      expect(badge).toContain(CUSTODY_KIND[kind].badge);
+      expect(badge).toContain(CUSTODY_KIND[kind].dot);
       expect(badge).toContain(ar(`fleet.custody.source.${kind}`));
-      fills.add(CUSTODY_KIND[kind].fill);
+      fills.add(CUSTODY_KIND[kind].badge);
     }
     expect(fills.size, 'four kinds, four colours').toBe(4);
     expect(CUSTODY).toContain('<CustodyKindBadge kind={row.source} />');
@@ -846,11 +936,12 @@ describe('the custody ledger', () => {
     const heads = html.match(/<th\b[^>]*>/gu) ?? [];
     expect(heads.length).toBe(12);
     for (const head of heads) expect(head).toContain('text-center');
-    // An empty car is the boards' grey dash; a car with nothing of a source, too.
+    // An empty car is the boards' grey dash; a car with nothing of a source the dashboard's muted
+    // one, in both themes («وخلى الالوان زى ما انت عامل فى الداش بورد»).
     const none = rowWith(renderCustody([movement({ vehicleCode: null })]), '1,350.00', movements);
     expect(none).toContain('<span class="text-slate-400">—</span>');
     const car = rowWith(html, '>63<', perVehicle);
-    expect(car).toContain('<span class="text-slate-400">—</span>');
+    expect(car).toContain('<span class="text-slate-400 dark:text-slate-500">—</span>');
   });
 
   it('writes the driver’s WHOLE name, no code beside it — and a name from the old books grey', () => {

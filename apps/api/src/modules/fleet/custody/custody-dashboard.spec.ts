@@ -1,11 +1,14 @@
 // «لوحة تحكم»: everything the dashboard adds to the figures, folded from the same movements — by
 // the day inside a month and by the month past it, every stretch in between, each driver once,
 // the bills on no driver, the litres and the receipts that have none — and every part adding up
-// to the whole.
+// to the whole. Then what the owner's design reads off the same pass: the period's days, the
+// fund's fuel by «الشركة» with «بدون شركة» kept apart, and the alerts banner — all counted, none
+// guessed.
 import { describe, expect, it } from 'vitest';
 import {
   custodyDashboard,
   custodyGranularity,
+  custodyPeriodDays,
   type CustodyDashboardRow,
 } from './custody-dashboard';
 
@@ -18,7 +21,9 @@ const row = (over: Partial<CustodyDashboardRow> = {}): CustodyDashboardRow => ({
   driverEmployeeId: null,
   driverName: 'محمد رأفت',
   fuelType: 'petrol92',
+  company: null,
   litres: 20,
+  hasImage: true,
   amount: 315,
   ...over,
 });
@@ -67,6 +72,20 @@ describe('custodyDashboard', () => {
       fuelTypes: [],
       litres: 0,
       litresMissing: 0,
+      periodDays: 0,
+      fuelByCompany: {
+        companies: [
+          { company: 'wataniya', amount: 0, count: 0, litres: 0, types: [] },
+          { company: 'chillout', amount: 0, count: 0, litres: 0, types: [] },
+        ],
+        none: { amount: 0, count: 0, litres: 0, types: [] },
+      },
+      alerts: {
+        doubleFuel: [],
+        pendingPrivateBills: { count: 0, oldestOutDate: null },
+        receiptsWithoutPhoto: 0,
+        duplicateReceipts: 0,
+      },
     });
   });
 
@@ -192,9 +211,9 @@ describe('custodyDashboard', () => {
     expect(out.litres).toBe(80.75);
     expect(out.litresMissing).toBe(1);
     expect(out.fuelTypes).toEqual([
-      { fuelType: 'petrol80', count: 2, amount: 475, litres: 30.25 },
-      { fuelType: 'diesel', count: 1, amount: 400, litres: 50.5 },
-      { fuelType: null, count: 1, amount: 70, litres: 0 },
+      { fuelType: 'petrol80', count: 2, amount: 475, litres: 30.25, companies: [] },
+      { fuelType: 'diesel', count: 1, amount: 400, litres: 50.5, companies: [] },
+      { fuelType: null, count: 1, amount: 70, litres: 0, companies: [] },
     ]);
   });
 
@@ -233,5 +252,228 @@ describe('custodyDashboard', () => {
         bucket.total,
       );
     }
+  });
+
+  it('splits the fund’s fuel by «الشركة» — «بدون شركة» kept apart, never folded into a company', () => {
+    const rows = [
+      row({ company: 'chillout', fuelType: 'petrol92', litres: 20, amount: 345 }),
+      row({ company: 'chillout', fuelType: 'petrol95', litres: 10.5, amount: 200.1 }),
+      row({ company: 'wataniya', fuelType: 'diesel', litres: 30, amount: 465 }),
+      row({ company: 'wataniya', fuelType: 'petrol92', litres: 5, amount: 86.25 }),
+      // An old receipt, and one priced at no litres: «بدون شركة», its money still shown.
+      row({ company: null, fuelType: 'petrol92', litres: 8, amount: 138 }),
+      row({ company: null, fuelType: null, litres: null, amount: 70 }),
+      // Not fuel: never in the split.
+      row({ source: 'tyres', fuelType: null, litres: null, amount: 900 }),
+      bill({ amount: 850 }),
+    ];
+    const out = custodyDashboard(rows, {});
+    expect(out.fuelByCompany).toMatchObject({
+      companies: [
+        { company: 'wataniya', amount: 551.25, count: 2, litres: 35 },
+        { company: 'chillout', amount: 545.1, count: 2, litres: 30.5 },
+      ],
+      none: { amount: 208, count: 2, litres: 8 },
+    });
+    // The companies and the receipts with none are the fund's whole fuel, to the piastre.
+    const parts = [...out.fuelByCompany.companies, out.fuelByCompany.none];
+    expect(sum(parts.map((part) => part.amount))).toBe(
+      sum(rows.filter((r) => r.source === 'fuel').map((r) => r.amount)),
+    );
+    expect(sum(parts.map((part) => part.count))).toBe(
+      rows.filter((r) => r.source === 'fuel').length,
+    );
+    expect(sum(parts.map((part) => part.litres))).toBe(out.litres);
+    // Each type's badges are the companies its receipts name — none when none does.
+    expect(out.fuelTypes.map((line) => [line.fuelType, line.companies])).toEqual([
+      ['petrol92', ['wataniya', 'chillout']],
+      ['petrol95', ['chillout']],
+      ['diesel', ['wataniya']],
+      [null, []],
+    ]);
+  });
+
+  it('cuts each company’s fuel by its type — «وطنيه لوخدها وشيل اوت لوحدها», «بدون شركة» on its own', () => {
+    const rows = [
+      row({ company: 'wataniya', fuelType: 'diesel', litres: 30, amount: 465 }),
+      row({ company: 'wataniya', fuelType: 'diesel', litres: 10.25, amount: 158.88 }),
+      row({ company: 'wataniya', fuelType: 'petrol92', litres: 5, amount: 86.25 }),
+      row({ company: 'chillout', fuelType: 'petrol95', litres: 10.5, amount: 200.1 }),
+      row({ company: 'chillout', fuelType: 'petrol80', litres: 7, amount: 110.25 }),
+      row({ company: 'chillout', fuelType: 'petrol92', litres: 20, amount: 345 }),
+      // A receipt priced at no type: under its company, last, its litres none.
+      row({ company: 'chillout', fuelType: null, litres: null, amount: 50 }),
+      // «بدون شركة»: its own types, never folded into a company's.
+      row({ company: null, fuelType: 'diesel', litres: 8, amount: 124 }),
+      row({ company: null, fuelType: null, litres: null, amount: 70 }),
+      // Not fuel: in no company and no type.
+      row({ source: 'tyres', company: null, fuelType: null, litres: null, amount: 900 }),
+      bill({ amount: 850 }),
+    ];
+    const { fuelByCompany, fuelTypes } = custodyDashboard(rows, {});
+    const fuel = sum(rows.filter((r) => r.source === 'fuel').map((r) => r.amount));
+    expect(fuelByCompany).toEqual({
+      companies: [
+        {
+          company: 'wataniya',
+          amount: 710.13,
+          count: 3,
+          litres: 45.25,
+          // The fuel types' own order — 80, 92, 95, diesel — and only the types it bought.
+          types: [
+            { fuelType: 'petrol92', amount: 86.25, count: 1, litres: 5 },
+            { fuelType: 'diesel', amount: 623.88, count: 2, litres: 40.25 },
+          ],
+        },
+        {
+          company: 'chillout',
+          amount: 705.35,
+          count: 4,
+          litres: 37.5,
+          types: [
+            { fuelType: 'petrol80', amount: 110.25, count: 1, litres: 7 },
+            { fuelType: 'petrol92', amount: 345, count: 1, litres: 20 },
+            { fuelType: 'petrol95', amount: 200.1, count: 1, litres: 10.5 },
+            { fuelType: null, amount: 50, count: 1, litres: 0 },
+          ],
+        },
+      ],
+      none: {
+        amount: 194,
+        count: 2,
+        litres: 8,
+        types: [
+          { fuelType: 'diesel', amount: 124, count: 1, litres: 8 },
+          { fuelType: null, amount: 70, count: 1, litres: 0 },
+        ],
+      },
+    });
+    // Each company's types are that company, to the piastre; all of them are the fund's fuel.
+    const groups = [...fuelByCompany.companies, fuelByCompany.none];
+    for (const group of groups) {
+      expect(sum(group.types.map((line) => line.amount))).toBe(group.amount);
+      expect(sum(group.types.map((line) => line.count))).toBe(group.count);
+      expect(sum(group.types.map((line) => line.litres))).toBe(group.litres);
+    }
+    expect(sum(groups.flatMap((group) => group.types.map((line) => line.amount)))).toBe(fuel);
+    // And each type, summed over the companies and «بدون شركة», is the type's own line.
+    for (const line of fuelTypes) {
+      const cut = groups.flatMap((group) =>
+        group.types.filter((typed) => typed.fuelType === line.fuelType),
+      );
+      expect(sum(cut.map((typed) => typed.amount)), String(line.fuelType)).toBe(line.amount);
+      expect(sum(cut.map((typed) => typed.count)), String(line.fuelType)).toBe(line.count);
+    }
+  });
+
+  it('leaves a company that bought nothing with no types — never a type it did not buy', () => {
+    const out = custodyDashboard(
+      [row({ company: 'wataniya', fuelType: 'diesel', amount: 100 })],
+      {},
+    );
+    expect(out.fuelByCompany.companies[1]).toEqual({
+      company: 'chillout',
+      amount: 0,
+      count: 0,
+      litres: 0,
+      types: [],
+    });
+    expect(out.fuelByCompany.none).toEqual({ amount: 0, count: 0, litres: 0, types: [] });
+  });
+
+  it('counts «10 أيام» as the filter’s days when both are chosen, else the first movement’s to the last’s', () => {
+    const d = (iso: string): Date => new Date(iso);
+    const rows = [
+      row({ date: d('2026-10-09T21:30:00.000Z') }),
+      row({ date: d('2026-10-04T00:00:00.000Z') }),
+      bill({ date: d('2026-10-01T00:00:00.000Z') }),
+    ];
+    // Both ends kept: the 1st to the 9th is nine days — the hour of the last one does not matter.
+    expect(custodyPeriodDays(rows, {})).toBe(9);
+    expect(custodyDashboard(rows, {}).periodDays).toBe(9);
+    // One movement is one day; nothing at all is no period.
+    expect(custodyPeriodDays([row()], {})).toBe(1);
+    expect(custodyPeriodDays([], {})).toBe(0);
+    // Both dates chosen: every day asked about, the quiet ones too, movements or none.
+    const october = { from: d('2026-10-01T00:00:00.000Z'), to: d('2026-10-31T00:00:00.000Z') };
+    expect(custodyPeriodDays(rows, october)).toBe(31);
+    expect(custodyPeriodDays([], october)).toBe(31);
+    expect(custodyPeriodDays([], { from: october.from, to: d('2026-10-01T23:59:59.999Z') })).toBe(
+      1,
+    );
+    // Turned round, the filter matches nothing: no period.
+    expect(custodyPeriodDays([], { from: october.to, to: october.from })).toBe(0);
+    // One date alone is not a period of its own: the movements' days.
+    expect(custodyPeriodDays(rows, { from: october.from })).toBe(9);
+    expect(custodyPeriodDays(rows, { to: october.to })).toBe(9);
+    // Day by day, the period IS the chart's columns.
+    const out = custodyDashboard(rows, october);
+    expect(out.periodDays).toBe(out.timeline.buckets.length);
+  });
+
+  it('raises a car fuelled from the fund twice on one day — per car, per UTC day, newest first', () => {
+    const at = (iso: string): Date => new Date(iso);
+    const rows = [
+      row({ vehicleId: 'v-150', vehicleCode: '150', date: at('2026-10-04T08:00:00.000Z') }),
+      row({ vehicleId: 'v-150', vehicleCode: '150', date: at('2026-10-04T21:00:00.000Z') }),
+      row({ vehicleId: 'v-150', vehicleCode: '150', date: at('2026-10-04T23:59:00.000Z') }),
+      // The next UTC day is another day.
+      row({ vehicleId: 'v-150', vehicleCode: '150', date: at('2026-10-05T00:00:00.000Z') }),
+      row({ vehicleId: 'v-9', vehicleCode: '9', date: at('2026-10-06T00:00:00.000Z') }),
+      row({ vehicleId: 'v-9', vehicleCode: '9', date: at('2026-10-06T10:00:00.000Z') }),
+      row({ vehicleId: 'v-12', vehicleCode: '12', date: at('2026-10-06T10:00:00.000Z') }),
+      row({ vehicleId: 'v-12', vehicleCode: '12', date: at('2026-10-06T11:00:00.000Z') }),
+      // Tyres and washing the same day are not a second fuelling; another car is another car.
+      row({ vehicleId: 'v-160', vehicleCode: '160', source: 'tyres', fuelType: null }),
+      row({ vehicleId: 'v-160', vehicleCode: '160' }),
+      row({ vehicleId: 'v-160', vehicleCode: '160', source: 'wash', fuelType: null }),
+      bill({ vehicleId: 'v-160', vehicleCode: '160' }),
+    ];
+    expect(custodyDashboard(rows, {}).alerts.doubleFuel).toEqual([
+      { vehicleId: 'v-9', vehicleCode: '9', date: '2026-10-06', count: 2 },
+      { vehicleId: 'v-12', vehicleCode: '12', date: '2026-10-06', count: 2 },
+      { vehicleId: 'v-150', vehicleCode: '150', date: '2026-10-04', count: 3 },
+    ]);
+  });
+
+  it('counts the receipts with no photo — a dealership bill is no receipt', () => {
+    const rows = [
+      row({ hasImage: false }),
+      row({ source: 'wash', fuelType: null, hasImage: false }),
+      row({ hasImage: true }),
+      bill({ hasImage: false }),
+    ];
+    expect(custodyDashboard(rows, {}).alerts.receiptsWithoutPhoto).toBe(2);
+  });
+
+  it('counts the extra copies of a receipt — the same car, day, kind and amount', () => {
+    const rows = [
+      // Three alike: two extra copies.
+      row({ amount: 150 }),
+      row({ amount: 150, date: new Date('2026-10-01T18:00:00.000Z'), driverName: 'آخر' }),
+      row({ amount: 150 }),
+      // Not copies: another amount, kind, car or day.
+      row({ amount: 151 }),
+      row({ source: 'wash', fuelType: null, amount: 150 }),
+      row({ vehicleId: 'v-204', vehicleCode: '204', amount: 150 }),
+      row({ amount: 150, date: new Date('2026-10-02T00:00:00.000Z') }),
+      // Two alike washes: one extra copy.
+      row({ source: 'wash', fuelType: null, amount: 40 }),
+      row({ source: 'wash', fuelType: null, amount: 40 }),
+      // Compared to the piastre: a sum that lands a hair off is the same amount.
+      row({ source: 'tyres', fuelType: null, amount: 0.1 + 0.2 }),
+      row({ source: 'tyres', fuelType: null, amount: 0.3 }),
+      // Two bills of one amount are two bills, not two receipts.
+      bill({ amount: 850 }),
+      bill({ amount: 850 }),
+    ];
+    expect(custodyDashboard(rows, {}).alerts.duplicateReceipts).toBe(4);
+  });
+
+  it('hands on the private bills awaiting their invoice as the service read them — no amount', () => {
+    const oldest = new Date('2026-10-02T00:00:00.000Z');
+    expect(
+      custodyDashboard([], {}, { count: 2, oldestOutDate: oldest }).alerts.pendingPrivateBills,
+    ).toEqual({ count: 2, oldestOutDate: '2026-10-02T00:00:00.000Z' });
   });
 });

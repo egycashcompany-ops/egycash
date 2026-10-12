@@ -8,16 +8,20 @@
 // the date and the car — and can be cleared and typed over («لو عاوز امسحه واكتب حد غيره عادى»).
 // The litres are the amount priced by the fleet settings, shown as the clerk types; «نوع الوقود»
 // opens on «سولار» («سولار افتراضى»), and «كم» — the odometer at the pump — is the paper's own,
-// optional («اختيارى عند كتابه مبلغ التفويل»).
+// optional («اختيارى عند كتابه مبلغ التفويل»). A fuel receipt the fund pays may name «الشركة» —
+// «شل أوت» or «وطنية» — so the custody dashboard can split the fund's fuel by company; never
+// required («ومش عاوز اى داتا اجبارى»), and a card receipt has its card's.
 //
 // «حسن الui … بالفورم بتاعت التسجيل والتعديل»: the vehicle form's design (`DesignDialog`) around the
 // same fields, rules, required marks and hooks as before.
 import { useEffect, useMemo, useState } from 'react';
 import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
 import {
+  FLEET_FUEL_CARD_COMPANIES,
   FLEET_FUEL_PRICE_KEY,
   FLEET_FUEL_TYPES,
   FLEET_RECEIPT_KINDS,
+  type FleetFuelCardCompany,
   type FleetFuelCardDto,
   type FleetFuelType,
   type FleetReceiptDto,
@@ -108,6 +112,50 @@ const KindSwitch = ({
           )}
         >
           {t(`fleet.receipts.kind.${kind}`)}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * «الشركة» of a fuel receipt the fund pays — «بدون شركة», «وطنية» or «شل أوت». A small choice, not
+ * a required field: «بدون شركة» is a whole answer, and the one an old receipt opens on.
+ */
+export const CompanyPick = ({
+  value,
+  onChange,
+}: {
+  value: FleetFuelCardCompany | null;
+  onChange: (company: FleetFuelCardCompany | null) => void;
+}): JSX.Element => {
+  const t = useT();
+  const choices: readonly (FleetFuelCardCompany | null)[] = [null, ...FLEET_FUEL_CARD_COMPANIES];
+  return (
+    <div
+      role="radiogroup"
+      aria-label={t('fleet.receipts.fields.company')}
+      className="inline-flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 shadow-inner dark:border-[#2b3b6b] dark:bg-[#0a1233]"
+    >
+      {choices.map((company) => (
+        <button
+          key={company ?? 'none'}
+          type="button"
+          role="radio"
+          aria-checked={value === company}
+          data-receipt-company={company ?? 'none'}
+          onClick={() => onChange(company)}
+          className={cn(
+            'rounded-lg px-4 py-1.5 text-sm font-bold transition-all active:scale-[0.98]',
+            // The picked one in the site's purple — what is pressed, as the kind above.
+            value === company
+              ? 'bg-brand-600 text-white shadow-md shadow-brand-700/30'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-white',
+          )}
+        >
+          {company === null
+            ? t('fleet.receipts.fields.companyNone')
+            : t(`fleet.fuelCards.company.${company}`)}
         </button>
       ))}
     </div>
@@ -315,6 +363,7 @@ export const ReceiptDialog = ({
   const [fuelType, setFuelType] = useState<FleetFuelType>(row?.fuelType ?? DEFAULT_FUEL_TYPE);
   const [amount, setAmount] = useState(row === null ? '' : String(row.amount));
   const [odometer, setOdometer] = useState(row?.odometer == null ? '' : String(row.odometer));
+  const [company, setCompany] = useState<FleetFuelCardCompany | null>(row?.company ?? null);
   const [file, setFile] = useState<File | null>(null);
   const [inputKey, setInputKey] = useState(0);
 
@@ -332,6 +381,7 @@ export const ReceiptDialog = ({
     setFuelType(row?.fuelType ?? DEFAULT_FUEL_TYPE);
     setAmount(row === null ? '' : String(row.amount));
     setOdometer(row?.odometer == null ? '' : String(row.odometer));
+    setCompany(row?.company ?? null);
     setFile(null);
     setInputKey((k) => k + 1);
   }, [open, row]);
@@ -416,6 +466,8 @@ export const ReceiptDialog = ({
   const litres = kind === 'fuel' && amountOk && price > 0 ? round(value / price) : null;
 
   const byCard = isFuel && useCard && (other || !noCards);
+  // Fuel the custody fund pays — the only receipt that names «الشركة».
+  const fundFuel = isFuel && !byCard;
   const card = !byCard
     ? null
     : other
@@ -514,6 +566,8 @@ export const ReceiptDialog = ({
       amount: value,
       // «كم» is a fuel paper's, and optional — empty sends none (an edit clears it).
       odometer: isFuel && odometer !== '' ? Number(odometer) : null,
+      // «الشركة» only on fuel the fund pays; a card names its own, so none is sent with one.
+      company: fundFuel ? company : null,
     };
     // The photo goes up once the receipt exists. The receipt has already taken its money off the
     // card by then, so a refused photo must not leave the form open for a second Save — that would
@@ -733,6 +787,16 @@ export const ReceiptDialog = ({
             />
           </div>
         </DesignField>
+        {/* «الشركة»: shown only while the fund pays for fuel — optional, never starred. */}
+        {fundFuel && (
+          <DesignField
+            label={t('fleet.receipts.fields.company')}
+            hint={t('fleet.receipts.fields.companyHint')}
+            endAdornment={null}
+          >
+            <CompanyPick value={company} onChange={setCompany} />
+          </DesignField>
+        )}
         <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
           {isFuel && (
             <DesignField

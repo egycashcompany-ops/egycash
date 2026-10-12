@@ -7,9 +7,11 @@
 // «هل تريد تسجيل كارت اخر» — so `cardId` is never read as «this car's card».
 import { Schema, model, type Types } from 'mongoose';
 import {
+  FLEET_FUEL_CARD_COMPANIES,
   FLEET_FUEL_TYPES,
   FLEET_RECEIPT_KINDS,
   FLEET_RECEIPT_SOURCES,
+  type FleetFuelCardCompany,
   type FleetFuelType,
   type FleetReceiptKind,
   type FleetReceiptSource,
@@ -43,6 +45,12 @@ export interface FleetReceiptDoc extends BaseDocFields {
    * on the odometer screen. Absent on rows written before it was asked.
    */
   odometer?: number | null;
+  /**
+   * «الشركة» — the fuel company a fuel receipt paid from the custody fund was bought from, the
+   * clerk's optional pick; never on a card receipt (the card names its company) or off fuel.
+   * Absent on rows written before it was asked, which read as «بدون شركة».
+   */
+  company?: FleetFuelCardCompany | null;
   image: FleetReceiptImage | null;
 }
 
@@ -71,6 +79,7 @@ const receiptSchema = new Schema<FleetReceiptDoc>(
     litres: { type: Number, default: null, min: 0 },
     amount: { type: Number, required: true, min: 0 },
     odometer: { type: Number, default: null, min: 0 },
+    company: { type: String, enum: [...FLEET_FUEL_CARD_COMPANIES, null], default: null },
     image: { type: imageSchema, default: null },
     ...baseFields,
   },

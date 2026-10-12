@@ -60,6 +60,9 @@ describe('the Arabic the product speaks is formal Arabic', () => {
       'بيانات الاتصال بينما تتم المراجعة',
       'هذه الإدارة مسجَّلة بالفعل',
       'حفاظ الشخص الحريص على ماله الخاص',
+      // The custody dashboard's «رسم بياني / جدول» and «فاتورة ملاكي».
+      'رسم بياني',
+      'فاتورة ملاكي واحدة',
     ]) {
       expect(offendersIn(formal), formal).toEqual([]);
     }

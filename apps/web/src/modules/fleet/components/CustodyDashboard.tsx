@@ -2,104 +2,83 @@
 // board's dashboard: a modal over the whole screen with everything about the fund's spend, over
 // the board's OWN filters (the same `filters` object the figures read).
 //
+// «عاوز دى تكون فى شاشه العهد لما ادوس على لوحة التحكم فى اللايت سيم والدارك سيم»: it is the
+// owner's design, section by section and in its order — the board's filters (read only), the
+// alerts, five figures and three tiles, the time chart beside the rings of kind and source, the
+// cars, the drivers and the fuel — in its dark theme and in the light map that came with it, as
+// `dark:` variants over the `dark` class the app stamps on <html>.
+//
+// «عاوزك تشيل من الداش بورد الجدول اللى فى العربيات والسجل يكون برا زى ما هو … وسجل كل الحركات
+// برضو»: the design's last two tables — «ملخص لكل سيارة» and «سجل كل الحركات» — are not drawn here.
+// The board under the dashboard already holds both («هما اساسا كدا كدا برا»), and a car's «السجل»
+// opens from the board's own «ملخص لكل سيارة».
+//
 // Every number is the server's (`GET /fleet/custody/dashboard`), folded from the very movements
-// `/summary` folds, so the dashboard and «الإحصائيات» never disagree. The browser only sorts, cuts
-// to the ten highest and draws; a share is a ratio of two server numbers, a bar's length too.
-//
-// The charts are drawn the way Fleet draws its bars — Tailwind boxes, no chart library: they theme
-// with `dark:`, mirror nothing they should not, and the node specs can render them. Each kind wears
-// its colour from `CustodyKinds.tsx`, never its rank; every chart has a legend, a title, its values
-// written out (a readout, a label, a table) and a «جدول» view, so colour is never the only key.
-//
-// «والنسب باينه»: wherever the money is split, each part's share is written beside it — on the bar
-// of the kinds, by each source, car and driver, in the readout of a stretch and in the fuel table —
-// always by `CustodyShare`, so «45%» keeps its Latin digits and its sign's side in an Arabic line.
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-} from 'react';
+// `/summary` folds, so the dashboard and «الإحصائيات» never disagree. What the design shows and
+// the data does not hold is not drawn («شيلهم»): no
+// station panel, no kind of wash, no «تكلفة معلقة» amount (a waiting bill has none yet) — only its
+// count and how long the oldest has waited. The owner's choices on it are in `CustodyKinds.tsx`
+// (the colours) and in `custody-dashboard-parts.tsx` (the surfaces, the type, the counted words).
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  type FleetCustodyAlertsDto,
   type FleetCustodyDashboardDto,
-  type FleetCustodySource,
-  type FleetCustodyTimeBucketDto,
-  type FleetCustodyVehicleRowDto,
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
-import { formatMoneyParts } from '../../../shared/lib/format';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { useCustodyDashboard } from '../api/fleet-queries';
-import { CustodyFigures, CustodyShare, custodyShare, custodySharePct } from './CustodyFigures';
-import { CUSTODY_KIND, CUSTODY_KINDS, CUSTODY_TOTAL_TILE, CustodyKindSwatch } from './CustodyKinds';
-import { FILTER_ICON } from './FilterWithIcon';
-import { FigureChip } from './FleetFigures';
-import { NUM, PATH, ymd } from './FuelCardBoard';
+import { CustodyShare, CUSTODY_KIND_LABEL } from './CustodyFigures';
+import { CUSTODY_KIND, CUSTODY_KINDS, CUSTODY_TOTAL_TILE, FLASK } from './CustodyKinds';
+import {
+  CustodyByKindSource,
+  custodyCompanies,
+  CustodyFuelBreakdown,
+  CustodyTimeline,
+  CustodyTopCars,
+  CustodyTopDrivers,
+} from './CustodyDashboardCharts';
+import { BoardIcon, NUM, PATH, ymd } from './FuelCardBoard';
+import {
+  CAIRO,
+  CARD,
+  CARD_BORDER,
+  CARD_SURFACE,
+  COMPANY,
+  COUNT,
+  custodyDaysSince,
+  custodyFilterChips,
+  custodyFiltered,
+  custodyTrapFocus,
+  LITRES,
+  RATE,
+  SCROLLBAR,
+  useCount,
+  useMoney,
+  WHOLE,
+  type CustodyDashboardFilters,
+} from './custody-dashboard-parts';
 
-/** The board's filters, as `CustodyPage` builds them — the dashboard asks the same question. */
-export interface CustodyDashboardFilters {
-  from?: string | undefined;
-  to?: string | undefined;
-  vehicleCodes?: readonly string[] | undefined;
-  source?: readonly string[] | undefined;
-  driver?: string | undefined;
+export {
+  custodyFilterChips,
+  custodyFiltered,
+  custodyTrapFocus,
+  type CustodyDashboardFilters,
+} from './custody-dashboard-parts';
+
+/** What the dashboard can ask of the board behind it — each optional, the dashboard draws without. */
+export interface CustodyDashboardActions {
+  /** «إعادة ضبط الفلاتر»: clears the board's own filters; the dashboard follows them. */
+  onClearFilters?: (() => void) | undefined;
+  /** «عرض حركات التوكيل»: the board's «المصدر» set to التوكيل, the dashboard closed. */
+  onShowDealership?: (() => void) | undefined;
 }
-
-// Latin digits grouped with a comma, as the boards write a figure — `formatNumber` would give
-// Arabic-Indic in Arabic, and «١٬٢٣٤» beside «1,234.00» reads as two different numbers.
-const COUNT = new Intl.NumberFormat('en-US');
-const LITRES = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-const WHOLE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
-const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
-
-/** How many cars and drivers the bar charts rank; the tables below them hold every one. */
-const TOP = 10;
-
-/** Under this many per cent of the whole, a part of «حسب النوع» writes its share above the bar. */
-export const CUSTODY_SHARE_INSIDE_MIN = 7;
-
-/**
- * Does a part of «حسب النوع» hold its own «45%»? At 375px (the narrowest screen the modal is drawn
- * for) the bar is about 311px wide, and a character of its label — bold monospace, 12px there — about
- * 7.2px: a part must be 7% of the whole or more AND wider than its label with a little air, or its
- * share goes just above it. From `sm` up the bar is wider than the label grows (14px), so the
- * phone decides.
- */
-export const custodyShareFits = (pct: number, label: string): boolean =>
-  pct >= CUSTODY_SHARE_INSIDE_MIN && (pct / 100) * 311 >= label.length * 7.2 + 4;
-
-/** «2026/10» or «2026/10/04» — the board's own year-first writing of a period. */
-export const custodyPeriod = (key: string): string => key.replace(/-/gu, '/');
-
-/**
- * The value axis of «المصروف عبر الزمن»: round steps (1, 2, 2.5 or 5 of a power of ten), four or
- * so of them, the top one at or over the dearest stretch.
- */
-export const custodyTicks = (max: number): number[] => {
-  if (max <= 0) return [0];
-  const raw = max / 4;
-  const power = 10 ** Math.floor(Math.log10(raw));
-  const step =
-    [1, 2, 2.5, 5, 10].map((nice) => nice * power).find((nice) => nice >= raw) ?? 10 * power;
-  const ticks: number[] = [];
-  for (let at = 0; at < max + step; at += step) {
-    ticks.push(Math.round(at * 100) / 100);
-    if (at >= max) break;
-  }
-  return ticks;
-};
 
 /** Which face the modal wears — a function, so the node specs can reach every branch. */
 export type CustodyDashboardView = 'loading' | 'error' | 'empty' | 'ready';
@@ -113,1175 +92,586 @@ export const custodyDashboardView = (query: {
   return 'loading';
 };
 
-/** Is any of the board's filters set? */
-export const custodyFiltered = (filters: CustodyDashboardFilters): boolean =>
-  [filters.from, filters.to, filters.driver].some((value) => value !== undefined && value !== '') ||
-  (filters.vehicleCodes ?? []).length > 0 ||
-  (filters.source ?? []).length > 0;
+// ── (0) The board's filters, read only ───────────────────────────────────────────────────────
 
-/** The filters the dashboard was opened over, written as words for its header. */
-export const custodyFilterChips = (
-  filters: CustodyDashboardFilters,
-  t: (key: string, params?: Record<string, string | number>) => string,
-  locale: Locale,
-): string[] => {
-  const join = (parts: readonly string[]): string => parts.join(locale === 'ar' ? '، ' : ', ');
-  const chips: string[] = [];
-  if (filters.from !== undefined && filters.from !== '') {
-    chips.push(t('fleet.custody.dashboard.filters.from', { date: ymd(filters.from) }));
-  }
-  if (filters.to !== undefined && filters.to !== '') {
-    chips.push(t('fleet.custody.dashboard.filters.to', { date: ymd(filters.to) }));
-  }
-  const codes = filters.vehicleCodes ?? [];
-  if (codes.length > 0) {
-    chips.push(
-      codes.length <= 6
-        ? t('fleet.custody.dashboard.filters.cars', { codes: join(codes) })
-        : t('fleet.custody.dashboard.filters.carCount', { count: COUNT.format(codes.length) }),
-    );
-  }
-  const kinds = filters.source ?? [];
-  if (kinds.length > 0) {
-    chips.push(
-      t('fleet.custody.dashboard.filters.kinds', {
-        kinds: join(kinds.map((kind) => t(`fleet.custody.source.${kind}`))),
-      }),
-    );
-  }
-  if (filters.driver !== undefined && filters.driver !== '') {
-    chips.push(t('fleet.custody.dashboard.filters.driver', { name: filters.driver }));
-  }
-  return chips.length === 0 ? [t('fleet.custody.dashboard.filters.none')] : chips;
-};
-
-// ── Small pieces ─────────────────────────────────────────────────────────────────────────────
-
-/** «1,037.10» and «ج.م.» apart, as the board writes money. */
-const Money = ({ value, strong = false }: { value: number; strong?: boolean }): JSX.Element => {
+/**
+ * The owner chose the board's filters only: the design's filter inputs are not built here. The
+ * chips say what the dashboard was opened over; the design's note on the driver filter shows when
+ * one is set (a bill names no driver, so the server leaves the bills out), and «إعادة ضبط الفلاتر»
+ * clears the board's own filters.
+ */
+export const CustodyDashboardFilterBar = ({
+  filters,
+  onClearFilters,
+}: {
+  filters: CustodyDashboardFilters;
+  onClearFilters?: (() => void) | undefined;
+}): JSX.Element => {
+  const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { figure, currency } = formatMoneyParts(value, 'EGP', locale);
+  const chips = custodyFilterChips(filters, t, locale);
+  const driver = filters.driver !== undefined && filters.driver !== '';
+  const reset = custodyFiltered(filters) && onClearFilters !== undefined;
   return (
-    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
-      <span
-        className={cn(
-          NUM,
-          strong
-            ? 'font-bold text-slate-900 dark:text-white'
-            : 'text-slate-700 dark:text-slate-200',
-        )}
-      >
-        {figure}
-      </span>
-      <span className="text-xs text-slate-500 dark:text-slate-400">{currency}</span>
-    </span>
-  );
-};
-
-/** The same, as words — for a label read aloud. */
-const useMoneyText = (): ((value: number) => string) => {
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  return (value) => {
-    const { figure, currency } = formatMoneyParts(value, 'EGP', locale);
-    return `${figure} ${currency}`;
-  };
-};
-
-/** The list separator a label read aloud uses — «، » in Arabic. */
-const useSeparator = (): string =>
-  useAppSelector((state): Locale => state.locale.locale) === 'ar' ? '، ' : ', ';
-
-/** A chart's card: the title is the figure's caption; a control may sit beside it. */
-const Panel = ({
-  id,
-  title,
-  note,
-  action,
-  className,
-  children,
-}: {
-  id: string;
-  title: string;
-  note?: string | undefined;
-  action?: ReactNode;
-  className?: string;
-  children: ReactNode;
-}): JSX.Element => (
-  <figure
-    data-custody-dashboard-section={id}
-    className={cn(
-      'm-0 min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 dark:border-slate-800 dark:bg-[#111827]',
-      className,
-    )}
-  >
-    <figcaption className="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <span className="min-w-0">
-        <span className="block text-sm font-bold text-slate-800 dark:text-slate-100">{title}</span>
-        {note !== undefined && (
-          <span className="block text-xs text-slate-500 dark:text-slate-400">{note}</span>
-        )}
-      </span>
-      {action}
-    </figcaption>
-    {children}
-  </figure>
-);
-
-/** The legend every chart with more than one kind carries — swatch, then the name in text ink. */
-const KindLegend = ({ kinds }: { kinds: readonly FleetCustodySource[] }): JSX.Element => {
-  const t = useT();
-  return (
-    <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs" data-custody-legend="true">
-      {kinds.map((kind) => (
-        <li key={kind} className="inline-flex items-center gap-1.5">
-          <CustodyKindSwatch kind={kind} />
-          <span className="text-slate-600 dark:text-slate-300">
-            {t(`fleet.custody.source.${kind}`)}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-};
-
-/** «جدول» / «رسم» — pressed, it wears the brand, as every picked control does. */
-const ViewToggle = ({
-  table,
-  onToggle,
-  name,
-}: {
-  table: boolean;
-  onToggle: () => void;
-  name: string;
-}): JSX.Element => {
-  const t = useT();
-  return (
-    <button
-      type="button"
-      aria-pressed={table}
-      data-custody-view-toggle={name}
-      onClick={onToggle}
-      className={cn(
-        'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-bold transition active:scale-95',
-        table
-          ? 'border-brand-500/50 bg-brand-500/15 text-brand-700 dark:text-brand-200'
-          : 'border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
-      )}
+    <section
+      data-custody-dashboard-section="filters"
+      aria-label={t('fleet.custody.dashboard.filters.label')}
+      className={cn(CARD, 'rounded-2xl p-4')}
     >
-      {table ? t('fleet.custody.dashboard.showChart') : t('fleet.custody.dashboard.showTable')}
-    </button>
-  );
-};
-
-/**
- * A tooltip row: a short stroke of the kind's colour, the value first and its share of `whole` (the
- * stretch's or the line's own total) right after it, the name last.
- */
-const TipRow = ({
-  kind,
-  value,
-  whole,
-}: {
-  kind: FleetCustodySource;
-  value: number;
-  whole: number;
-}): JSX.Element => {
-  const t = useT();
-  return (
-    <span className="flex items-center gap-2" data-custody-tip-row={kind}>
-      <span aria-hidden="true" className={cn('h-0.5 w-3 rounded-full', CUSTODY_KIND[kind].fill)} />
-      <Money value={value} strong />
-      <CustodyShare part={value} whole={whole} pill />
-      <span className="text-slate-500 dark:text-slate-400">
-        {t(`fleet.custody.source.${kind}`)}
-      </span>
-    </span>
-  );
-};
-
-/** The hover / focus card of a bar — every kind of it, never the only place a value is written. */
-const Tip = ({ children }: { children: ReactNode }): JSX.Element => (
-  <span
-    aria-hidden="true"
-    className="pointer-events-none absolute start-0 top-full z-20 mt-1 hidden min-w-max flex-col gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg group-hover:flex group-focus-visible:flex dark:border-slate-700 dark:bg-slate-900"
-  >
-    {children}
-  </span>
-);
-
-/**
- * One horizontal bar stacked by kind: 2px of surface between the parts, the far end rounded, the
- * start square on the baseline. `scale` is the longest bar's total, so bars compare.
- */
-const StackedBar = ({
-  parts,
-  total,
-  scale,
-}: {
-  parts: readonly { kind: FleetCustodySource; value: number }[];
-  total: number;
-  scale: number;
-}): JSX.Element => (
-  <span className="flex h-4 min-w-0 flex-1 items-center">
-    <span
-      className="flex h-full gap-0.5 overflow-hidden rounded-e-[4px]"
-      style={{ width: `${scale <= 0 ? 0 : (total / scale) * 100}%` }}
-    >
-      {parts
-        .filter((part) => part.value > 0)
-        .map((part) => (
-          <span
-            key={part.kind}
-            data-custody-mark={part.kind}
-            className={cn('h-full min-w-[2px]', CUSTODY_KIND[part.kind].fill)}
-            style={{ flexGrow: part.value, flexBasis: 0 }}
-          />
-        ))}
-    </span>
-  </span>
-);
-
-const thClass =
-  'whitespace-nowrap px-2 py-2 text-center text-xs font-bold text-slate-600 dark:text-slate-300';
-const tdClass = 'whitespace-nowrap px-2 py-1.5 text-center';
-const DASH = <span className="text-slate-400">—</span>;
-const moneyOrDash = (value: number): JSX.Element => (value === 0 ? DASH : <Money value={value} />);
-
-/** A kind's column head: its swatch beside its name. */
-const KindHead = ({ kind }: { kind: FleetCustodySource }): JSX.Element => {
-  const t = useT();
-  return (
-    <th scope="col" className={thClass}>
-      <span className="inline-flex items-center gap-1.5">
-        <CustodyKindSwatch kind={kind} />
-        {t(`fleet.custody.source.${kind}`)}
-      </span>
-    </th>
-  );
-};
-
-const TableFrame = ({ children, label }: { children: ReactNode; label: string }): JSX.Element => (
-  <div className="max-w-full overflow-x-auto rounded-lg border border-slate-100 dark:border-slate-800">
-    <table aria-label={label} className="w-full border-collapse text-sm">
-      {children}
-    </table>
-  </div>
-);
-
-// ── The sections ────────────────────────────────────────────────────────────────────────────
-
-/** (1) The figures — the board's five, then how many movements, cars and litres. */
-const Headline = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
-  const t = useT();
-  return (
-    <div className="flex flex-col gap-3" data-custody-dashboard-section="figures">
-      <CustodyFigures totals={data} />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <FigureChip
-          icon={PATH.trend}
-          iconClass={CUSTODY_TOTAL_TILE}
-          label={t('fleet.custody.dashboard.kpi.movements')}
-          value={COUNT.format(data.count)}
-          unit={t('fleet.custody.dashboard.kpi.movementsUnit')}
-        />
-        <FigureChip
-          icon={FILTER_ICON.plate}
-          iconClass={CUSTODY_TOTAL_TILE}
-          label={t('fleet.custody.dashboard.kpi.cars')}
-          value={COUNT.format(data.vehicleCount)}
-          unit={t('fleet.custody.dashboard.kpi.carsUnit')}
-        />
-        <FigureChip
-          icon={CUSTODY_KIND.fuel.icon}
-          iconClass={CUSTODY_TOTAL_TILE}
-          label={t('fleet.custody.dashboard.kpi.litres')}
-          value={LITRES.format(data.litres)}
-          unit={t('fleet.custody.dashboard.litresUnit')}
-          {...(data.litresMissing > 0
-            ? {
-                note: t('fleet.custody.dashboard.litresMissing', {
-                  count: COUNT.format(data.litresMissing),
-                }),
-              }
-            : {})}
-        />
-      </div>
-    </div>
-  );
-};
-
-/** (2) «حسب النوع» — one bar of the whole, its legend as a table; then «حسب المصدر». */
-const ByKind = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
-  const t = useT();
-  const moneyText = useMoneyText();
-  const sep = useSeparator();
-  const present = CUSTODY_KINDS.filter((kind) => data[kind] > 0).map((kind) => {
-    const share = custodyShare(data[kind], data.total);
-    return {
-      kind,
-      share,
-      inside: custodyShareFits(custodySharePct(data[kind], data.total), share),
-    };
-  });
-  const receipts = data.bySource.find((line) => line.ref === 'receipt');
-  const bills = data.bySource.find((line) => line.ref === 'dealershipInvoice');
-  return (
-    <Panel id="byKind" title={t('fleet.custody.dashboard.byKind')}>
-      {/* «والنسب باينه»: the whole as one bar, 40px tall, the kinds in their fixed order, each part
-          with its share written on it in bold, in the kind's own ink — so it reads on whatever fill
-          the kind wears. A sliver too narrow for its label writes it just above itself instead:
-          every kind on the bar shows its share. */}
-      <div
-        role="img"
-        aria-label={present
-          .map(
-            ({ kind, share }) =>
-              `${t(`fleet.custody.source.${kind}`)}: ${moneyText(data[kind])} (${share})`,
-          )
-          .join(sep)}
-        className="mb-3"
-        data-custody-kind-bar="true"
-      >
-        {present.some(({ inside }) => !inside) && (
-          // The slivers' shares, on a row of the very parts of the bar so each sits over its own;
-          // a sliver's cell is never narrower than its label, so two slivers side by side never
-          // write over each other — the wide parts give up the room.
-          <div className="mb-1 flex gap-0.5" data-custody-kind-bar-above="true">
-            {present.map(({ kind, share, inside }) => (
-              <span
-                key={kind}
-                className={cn('flex justify-center', inside ? 'min-w-0' : 'min-w-max')}
-                style={{ flexGrow: data[kind], flexBasis: 0 }}
-              >
-                {!inside && (
-                  <span
-                    data-custody-share={kind}
-                    data-custody-share-at="above"
-                    className="inline-flex items-center gap-1 px-0.5 text-xs font-bold text-slate-700 sm:text-sm dark:text-slate-200"
-                  >
-                    <CustodyKindSwatch kind={kind} />
-                    <span dir="ltr" className={NUM}>
-                      {share}
-                    </span>
-                  </span>
-                )}
-              </span>
-            ))}
-          </div>
-        )}
-        <div className="flex h-10 gap-0.5">
-          {present.map(({ kind, share, inside }, i) => (
-            <span
-              key={kind}
-              data-custody-mark={kind}
-              className={cn(
-                'flex h-full min-w-[2px] items-center justify-center',
-                CUSTODY_KIND[kind].fill,
-                i === 0 && 'rounded-s-[4px]',
-                i === present.length - 1 && 'rounded-e-[4px]',
-              )}
-              style={{ flexGrow: data[kind], flexBasis: 0 }}
-            >
-              {inside && (
-                <span
-                  data-custody-share={kind}
-                  data-custody-share-at="inside"
-                  dir="ltr"
-                  className={cn(
-                    'whitespace-nowrap px-0.5 text-xs font-bold sm:text-sm',
-                    CUSTODY_KIND[kind].ink,
-                    NUM,
-                  )}
-                >
-                  {share}
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      </div>
-      <TableFrame label={t('fleet.custody.dashboard.byKind')}>
-        <thead className="bg-slate-50 dark:bg-[#0c121e]">
-          <tr>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.kind')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.amount')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.share')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.count')}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {CUSTODY_KINDS.map((kind) => (
-            <tr
-              key={kind}
-              data-custody-kind-row={kind}
-              className="border-t border-slate-100 dark:border-slate-800"
-            >
-              <td className={tdClass}>
-                <span className="inline-flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200">
-                  <CustodyKindSwatch kind={kind} />
-                  {t(`fleet.custody.source.${kind}`)}
-                </span>
-              </td>
-              <td className={tdClass}>{moneyOrDash(data[kind])}</td>
-              <td className={tdClass}>
-                <CustodyShare part={data[kind]} whole={data.total} />
-              </td>
-              <td className={cn(tdClass, NUM)}>{COUNT.format(data.counts[kind])}</td>
-            </tr>
-          ))}
-        </tbody>
-      </TableFrame>
-
-      {/* «حسب المصدر»: the receipts screen (its three kinds) beside the dealership's bills. */}
-      <div className="mt-4" data-custody-by-source="true">
-        <div className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-          {t('fleet.custody.dashboard.bySource')}
-        </div>
-        <ul className="flex flex-col gap-2">
-          {[
-            {
-              ref: 'receipt' as const,
-              line: receipts,
-              parts: (['fuel', 'tyres', 'wash'] as const).map((kind) => ({
-                kind,
-                value: data[kind],
-              })),
-            },
-            {
-              ref: 'dealershipInvoice' as const,
-              line: bills,
-              parts: [{ kind: 'dealership' as const, value: data.dealership }],
-            },
-          ].map(({ ref, line, parts }) => (
-            <li
-              key={ref}
-              data-custody-source-row={ref}
-              className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 text-xs sm:grid-cols-[14rem_1fr_auto]"
-            >
-              <span className="col-span-2 font-semibold text-slate-700 sm:col-span-1 dark:text-slate-200">
-                {t(`fleet.custody.from.${ref}`)}
-                <span className={cn('ms-1 font-normal text-slate-500 dark:text-slate-400', NUM)}>
-                  ({COUNT.format(line?.count ?? 0)})
-                </span>
-              </span>
-              <StackedBar parts={parts} total={line?.amount ?? 0} scale={data.total} />
-              {/* The source's share of the whole beside its sum. */}
-              <span className="inline-flex items-center gap-1.5">
-                <Money value={line?.amount ?? 0} strong />
-                <CustodyShare part={line?.amount ?? 0} whole={data.total} pill />
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </Panel>
-  );
-};
-
-/** (3) «المصروف عبر الزمن» — a column a stretch, stacked by kind, oldest on the left. */
-const Timeline = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
-  const t = useT();
-  const moneyText = useMoneyText();
-  const sep = useSeparator();
-  const { buckets, granularity } = data.timeline;
-  const [table, setTable] = useState(false);
-  // The readout shows the column under the pointer or the focus — the latest one until then.
-  const [picked, setActive] = useState(Number.POSITIVE_INFINITY);
-  // A new answer may hold fewer stretches: the pick never points past the last one.
-  const active = Math.max(0, Math.min(picked, buckets.length - 1));
-  const plotRef = useRef<HTMLDivElement>(null);
-  // On a phone the plot is wider than its card: it opens on the latest stretch, the right end.
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el !== null) el.scrollLeft = el.scrollWidth;
-  }, [buckets.length, table]);
-  const shown: FleetCustodyTimeBucketDto | undefined = buckets[active];
-  const max = buckets.reduce((top, bucket) => Math.max(top, bucket.total), 0);
-  const ticks = custodyTicks(max);
-  const top = ticks[ticks.length - 1] ?? 0;
-  const peak = buckets.findIndex((bucket) => bucket.total === max && max > 0);
-  const day = granularity === 'day';
-  // Under the columns: the day or the month, and the month or the year where it turns.
-  const firstLine = (key: string): string => (day ? key.slice(8, 10) : key.slice(5, 7));
-  const secondLine = (key: string, i: number): string | null => {
-    if (day) return i === 0 || key.slice(8, 10) === '01' ? custodyPeriod(key.slice(0, 7)) : null;
-    return i === 0 || key.slice(5, 7) === '01' ? key.slice(0, 4) : null;
-  };
-  const every = Math.max(1, Math.ceil(buckets.length / (day ? 16 : 24)));
-
-  // Arrow keys walk the columns — one stop on the Tab path, as a chart is one thing.
-  const onPlotKey = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
-    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-    const to = e.key === 'Home' ? 0 : e.key === 'End' ? buckets.length - 1 : active + step;
-    if ((step === 0 && e.key !== 'Home' && e.key !== 'End') || to < 0 || to >= buckets.length)
-      return;
-    e.preventDefault();
-    setActive(to);
-    plotRef.current?.querySelector<HTMLElement>(`[data-custody-column="${to}"]`)?.focus();
-  };
-
-  return (
-    <Panel
-      id="timeline"
-      title={t('fleet.custody.dashboard.timeline')}
-      note={day ? t('fleet.custody.dashboard.byDay') : t('fleet.custody.dashboard.byMonth')}
-      action={<ViewToggle name="timeline" table={table} onToggle={() => setTable((on) => !on)} />}
-    >
-      <KindLegend kinds={CUSTODY_KINDS} />
-      {table ? (
-        <TableFrame label={t('fleet.custody.dashboard.timeline')}>
-          <thead className="bg-slate-50 dark:bg-[#0c121e]">
-            <tr>
-              <th scope="col" className={thClass}>
-                {t('fleet.custody.dashboard.columns.period')}
-              </th>
-              {CUSTODY_KINDS.map((kind) => (
-                <KindHead key={kind} kind={kind} />
-              ))}
-              <th scope="col" className={thClass}>
-                {t('fleet.custody.dashboard.columns.total')}
-              </th>
-              <th scope="col" className={thClass}>
-                {t('fleet.custody.dashboard.columns.count')}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {buckets.map((bucket) => (
-              <tr key={bucket.key} className="border-t border-slate-100 dark:border-slate-800">
-                <td className={cn(tdClass, NUM)} dir="ltr">
-                  {custodyPeriod(bucket.key)}
-                </td>
-                {CUSTODY_KINDS.map((kind) => (
-                  <td key={kind} className={tdClass}>
-                    {moneyOrDash(bucket[kind])}
-                  </td>
-                ))}
-                <td className={tdClass}>
-                  {bucket.total === 0 ? DASH : <Money value={bucket.total} strong />}
-                </td>
-                <td className={cn(tdClass, NUM)}>{COUNT.format(bucket.count)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </TableFrame>
-      ) : (
-        <>
-          {/* The readout: one stretch, every kind of it, the value and its share of the stretch
-              before the name. */}
-          {shown !== undefined && (
-            <div
-              aria-live="polite"
-              data-custody-readout="true"
-              className="mb-2 flex min-h-[2.5rem] flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs dark:bg-[#0c121e]"
-            >
-              <span className={cn('font-bold text-slate-800 dark:text-slate-100', NUM)} dir="ltr">
-                {custodyPeriod(shown.key)}
-              </span>
-              <Money value={shown.total} strong />
-              {CUSTODY_KINDS.filter((kind) => shown[kind] > 0).map((kind) => (
-                <TipRow key={kind} kind={kind} value={shown[kind]} whole={shown.total} />
-              ))}
-              <span className={cn('text-slate-500 dark:text-slate-400', NUM)}>
-                {COUNT.format(shown.count)} {t('fleet.custody.dashboard.kpi.movementsUnit')}
-              </span>
-            </div>
-          )}
-          {/* Time runs left to right whatever the page's direction; the plot scrolls inside its
-              card on a phone rather than squeezing a month of days into it. */}
-          <div ref={scrollRef} className="overflow-x-auto pb-1" dir="ltr">
-            <div
-              className="flex"
-              style={{ minWidth: `${buckets.length * (day ? 18 : 30) + 40}px` }}
-            >
-              {/* The value axis: round, compact, recessive. */}
-              <div className="relative me-1 h-[200px] w-9 shrink-0 mt-5" aria-hidden="true">
-                {ticks.map((tick) => (
-                  <span
-                    key={tick}
-                    className={cn(
-                      'absolute end-0 translate-y-1/2 text-[10px] text-slate-400 dark:text-slate-500',
-                      NUM,
-                    )}
-                    style={{ bottom: `${top === 0 ? 0 : (tick / top) * 100}%` }}
-                  >
-                    {COMPACT.format(tick)}
-                  </span>
-                ))}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="relative mt-5 h-[200px]">
-                  {/* Hairline grid, solid, one step off the surface. */}
-                  {ticks.map((tick) => (
-                    <span
-                      key={tick}
-                      aria-hidden="true"
-                      className={cn(
-                        'absolute inset-x-0 h-px',
-                        tick === 0
-                          ? 'bg-slate-300 dark:bg-slate-600'
-                          : 'bg-slate-100 dark:bg-slate-800',
-                      )}
-                      style={{ bottom: `${top === 0 ? 0 : (tick / top) * 100}%` }}
-                    />
-                  ))}
-                  <div
-                    ref={plotRef}
-                    role="group"
-                    aria-label={t('fleet.custody.dashboard.timeline')}
-                    onKeyDown={onPlotKey}
-                    className="absolute inset-0 flex items-end"
-                  >
-                    {buckets.map((bucket, i) => {
-                      const kinds = CUSTODY_KINDS.filter((kind) => bucket[kind] > 0);
-                      return (
-                        <div
-                          key={bucket.key}
-                          data-custody-column={i}
-                          tabIndex={i === active ? 0 : -1}
-                          aria-label={`${custodyPeriod(bucket.key)}: ${moneyText(bucket.total)}${kinds
-                            .map(
-                              (kind) =>
-                                `${sep}${t(`fleet.custody.source.${kind}`)} ${moneyText(bucket[kind])} (${custodyShare(bucket[kind], bucket.total)})`,
-                            )
-                            .join('')}`}
-                          onMouseEnter={() => setActive(i)}
-                          onFocus={() => setActive(i)}
-                          className={cn(
-                            'group relative flex h-full flex-1 cursor-default flex-col items-center justify-end rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60',
-                            i === active && 'bg-slate-500/5',
-                          )}
-                        >
-                          {/* The dearest stretch carries its total on its cap. */}
-                          {i === peak && (
-                            <span
-                              className={cn(
-                                'absolute whitespace-nowrap text-[10px] font-bold text-slate-700 dark:text-slate-200',
-                                NUM,
-                              )}
-                              style={{ bottom: `calc(${(bucket.total / top) * 100}% + 2px)` }}
-                              data-custody-peak="true"
-                            >
-                              {WHOLE.format(bucket.total)}
-                            </span>
-                          )}
-                          <div
-                            className="flex w-full max-w-[24px] flex-col-reverse gap-0.5 transition-opacity group-hover:opacity-90"
-                            style={{ height: `${top === 0 ? 0 : (bucket.total / top) * 100}%` }}
-                          >
-                            {kinds.map((kind, k) => (
-                              <span
-                                key={kind}
-                                data-custody-mark={kind}
-                                className={cn(
-                                  'w-full',
-                                  CUSTODY_KIND[kind].fill,
-                                  k === kinds.length - 1 && 'rounded-t-[4px]',
-                                )}
-                                style={{ flexGrow: bucket[kind], flexBasis: 0 }}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                {/* The period under each column, sparing on a long run. */}
-                <div className="flex" aria-hidden="true">
-                  {buckets.map((bucket, i) => {
-                    const label = i % every === 0 || i === buckets.length - 1;
-                    const second = secondLine(bucket.key, i);
-                    return (
-                      <span
-                        key={bucket.key}
-                        className={cn(
-                          'flex-1 pt-1 text-center text-[10px] leading-tight text-slate-500 dark:text-slate-400',
-                          NUM,
-                        )}
-                      >
-                        {label ? firstLine(bucket.key) : ''}
-                        {second !== null && (
-                          <span className="block whitespace-nowrap text-slate-400 dark:text-slate-500">
-                            {second}
-                          </span>
-                        )}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </Panel>
-  );
-};
-
-/**
- * One ranked line — a car or a driver — with its bar stacked by kind, and at the end its total and
- * that total's share of `base`; its tip splits the line's own total by kind, each with its share.
- */
-const RankRow = ({
-  name,
-  label,
-  parts,
-  total,
-  base,
-  scale,
-  count,
-  wide,
-}: {
-  name: ReactNode;
-  /** Whose line it is, as words — the row is read aloud by its label, so the name leads it. */
-  label: string;
-  parts: readonly { kind: FleetCustodySource; value: number }[];
-  total: number;
-  /** The whole the line's share is of. */
-  base: number;
-  scale: number;
-  count?: number;
-  wide: boolean;
-}): JSX.Element => {
-  const moneyText = useMoneyText();
-  const sep = useSeparator();
-  const t = useT();
-  const present = parts.filter((part) => part.value > 0);
-  return (
-    <li
-      tabIndex={0}
-      aria-label={`${label}: ${moneyText(total)} (${custodyShare(total, base)})${present
-        .map(
-          (part) =>
-            `${sep}${t(`fleet.custody.source.${part.kind}`)} ${moneyText(part.value)} (${custodyShare(part.value, total)})`,
-        )
-        .join('')}`}
-      className={cn(
-        'group relative grid items-center gap-x-3 gap-y-1 rounded-md px-1 py-1 text-xs outline-none hover:bg-slate-500/5 focus-visible:ring-2 focus-visible:ring-brand-500/60',
-        wide ? 'grid-cols-[1fr_auto] sm:grid-cols-[12rem_1fr_auto]' : 'grid-cols-[4.5rem_1fr_auto]',
-      )}
-    >
-      <span className={cn('min-w-0', wide && 'col-span-2 sm:col-span-1')}>{name}</span>
-      <StackedBar parts={parts} total={total} scale={scale} />
-      <span className="inline-flex items-center gap-1.5">
-        <Money value={total} strong />
-        <CustodyShare part={total} whole={base} pill />
-      </span>
-      <Tip>
-        {present.map((part) => (
-          <TipRow key={part.kind} kind={part.kind} value={part.value} whole={total} />
-        ))}
-        {count !== undefined && (
-          <span className={cn('text-slate-500 dark:text-slate-400', NUM)}>
-            {COUNT.format(count)} {t('fleet.custody.dashboard.kpi.movementsUnit')}
-          </span>
-        )}
-      </Tip>
-    </li>
-  );
-};
-
-/** The car's code as the board writes it — bold, left to right. */
-const Code = ({ code }: { code: string | null }): JSX.Element =>
-  code === null ? (
-    DASH
-  ) : (
-    <span dir="ltr" className={cn('text-sm font-bold text-slate-900 dark:text-white', NUM)}>
-      {code}
-    </span>
-  );
-
-/**
- * (4) «أعلى السيارات صرفًا» — the ten dearest of the per-car lines, stacked by kind, each with its
- * share of everything the fund paid (a car carries all four kinds).
- */
-const TopCars = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
-  const t = useT();
-  const ranked = [...data.vehicles].sort((a, b) => b.total - a.total).slice(0, TOP);
-  const scale = ranked[0]?.total ?? 0;
-  return (
-    <Panel
-      id="topCars"
-      title={t('fleet.custody.dashboard.topCars')}
-      note={t('fleet.custody.dashboard.topCount', { count: COUNT.format(ranked.length) })}
-    >
-      <KindLegend kinds={CUSTODY_KINDS} />
-      <ol className="flex flex-col gap-1" data-custody-top-cars="true">
-        {ranked.map((car) => (
-          <RankRow
-            key={car.vehicleId ?? `code:${car.vehicleCode ?? ''}`}
-            name={<Code code={car.vehicleCode} />}
-            label={car.vehicleCode ?? '—'}
-            parts={CUSTODY_KINDS.map((kind) => ({ kind, value: car[kind] }))}
-            total={car.total}
-            base={data.total}
-            scale={scale}
-            wide={false}
-          />
-        ))}
-      </ol>
-    </Panel>
-  );
-};
-
-/** The kinds a driver is named on — the receipts'; a dealership bill names no driver. */
-const DRIVER_KINDS = ['fuel', 'tyres', 'wash'] as const;
-
-/**
- * What the receipts came to (fuel, tyres, washing) — the whole a driver's share is of, never the
- * whole fund: a dealership bill names no driver, so against the whole every driver would look
- * smaller by the dealership's part. «إيصالات بدون سائق» is measured against the very same base, so
- * the drivers and it together are the whole of it — and the card says which whole it is.
- */
-export const custodyReceipts = (data: FleetCustodyDashboardDto): number =>
-  DRIVER_KINDS.reduce((sum, kind) => sum + data[kind], 0);
-
-/** (5) «جدول» of the drivers — every one of them, each with its share of the receipts. */
-export const CustodyDriversTable = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
-  const t = useT();
-  const receipts = custodyReceipts(data);
-  return (
-    <TableFrame label={t('fleet.custody.dashboard.topDrivers')}>
-      <thead className="bg-slate-50 dark:bg-[#0c121e]">
-        <tr>
-          <th scope="col" className={thClass}>
-            {t('fleet.custody.dashboard.columns.driver')}
-          </th>
-          {DRIVER_KINDS.map((kind) => (
-            <KindHead key={kind} kind={kind} />
-          ))}
-          <th scope="col" className={thClass}>
-            {t('fleet.custody.dashboard.columns.total')}
-          </th>
-          <th scope="col" className={thClass}>
-            {t('fleet.custody.dashboard.columns.share')}
-          </th>
-          <th scope="col" className={thClass}>
-            {t('fleet.custody.dashboard.columns.count')}
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {data.drivers.map((driver) => (
-          <tr
-            key={driver.driverEmployeeId ?? `name:${driver.driverName}`}
-            className="border-t border-slate-100 dark:border-slate-800"
+      <ul className="flex flex-wrap gap-2" data-custody-dashboard-filters="true">
+        {chips.map((chip) => (
+          <li
+            key={chip}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 dark:border-[#223048] dark:bg-[#0a0e17] dark:text-white"
           >
-            <td
-              className={cn(
-                tdClass,
-                'whitespace-normal font-semibold text-slate-800 dark:text-slate-100',
-              )}
-            >
-              {driver.driverName}
-            </td>
-            {DRIVER_KINDS.map((kind) => (
-              <td key={kind} className={tdClass}>
-                {moneyOrDash(driver[kind])}
-              </td>
-            ))}
-            <td className={tdClass}>
-              <Money value={driver.total} strong />
-            </td>
-            <td className={tdClass}>
-              <CustodyShare part={driver.total} whole={receipts} />
-            </td>
-            <td className={cn(tdClass, NUM)}>{COUNT.format(driver.count)}</td>
-          </tr>
+            {chip}
+          </li>
         ))}
-      </tbody>
-    </TableFrame>
+      </ul>
+      {(driver || reset) && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-[11px] text-slate-500 dark:border-[#1a2538] dark:text-slate-400">
+          {driver ? (
+            <div data-custody-driver-note="true" className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
+              />
+              <span>{t('fleet.custody.dashboard.filters.driverNote')}</span>
+            </div>
+          ) : (
+            <span />
+          )}
+          {reset && (
+            <button
+              type="button"
+              data-custody-reset-filters="true"
+              onClick={onClearFilters}
+              className="font-bold text-emerald-700 transition hover:underline dark:font-medium dark:text-emerald-400 dark:hover:text-emerald-300"
+            >
+              {t('fleet.custody.dashboard.filters.reset')}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   );
 };
 
-/** (5) «أعلى السائقين صرفًا» — the receipts' drivers (a bill names none), whole names. */
-const TopDrivers = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+// ── (1) The alerts ────────────────────────────────────────────────────────────────────────────
+
+/** Is there anything to warn about? With nothing, the banner is not drawn at all. */
+export const custodyHasAlerts = (alerts: FleetCustodyAlertsDto): boolean =>
+  alerts.doubleFuel.length > 0 ||
+  alerts.pendingPrivateBills.count > 0 ||
+  alerts.receiptsWithoutPhoto > 0 ||
+  alerts.duplicateReceipts > 0;
+
+/** How many of the double fuellings the banner names before «+N». */
+const DOUBLE_FUEL_SHOWN = 3;
+
+/** «سيارة 150 …» with the code in bold — a sentence with one part set apart. */
+const Emphasised = ({
+  text,
+  token,
+  strong,
+}: {
+  text: string;
+  token: string;
+  strong: string;
+}): JSX.Element => {
+  const at = text.indexOf(token);
+  if (at === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <strong className={cn('font-bold text-slate-900 dark:text-white', NUM)}>{strong}</strong>
+      {text.slice(at + token.length)}
+    </>
+  );
+};
+
+/**
+ * The amber banner — every line a count read from the rows, nothing estimated: a car fuelled from
+ * the fund twice in a day (up to three named, then «+N»); the private cars' bills waiting for their
+ * invoice, how many and how long the oldest has waited («3»: no amount, there is none yet); the
+ * receipts with no photo and the duplicated ones.
+ */
+export const CustodyAlerts = ({
+  alerts,
+  now = Date.now(),
+}: {
+  alerts: FleetCustodyAlertsDto;
+  /** Today, for the age of the oldest waiting bill — fixed by the specs. */
+  now?: number;
+}): JSX.Element | null => {
   const t = useT();
-  const [table, setTable] = useState(false);
-  const ranked = data.drivers.slice(0, TOP);
-  const scale = ranked[0]?.total ?? 0;
-  // Every share on this card is of the receipts (`custodyReceipts`), the drivers' and «بدون سائق»'s.
-  const receipts = custodyReceipts(data);
-  const notes = [
-    ...(table || ranked.length === 0
-      ? []
-      : [t('fleet.custody.dashboard.topCount', { count: COUNT.format(ranked.length) })]),
-    ...(ranked.length > 0 || data.noDriver.count > 0
-      ? [t('fleet.custody.dashboard.receiptsShare')]
+  const { count, phrase } = useCount();
+  const titleId = useId();
+  if (!custodyHasAlerts(alerts)) return null;
+  const doubles = alerts.doubleFuel.slice(0, DOUBLE_FUEL_SHOWN);
+  const more = alerts.doubleFuel.length - doubles.length;
+  const pending = alerts.pendingPrivateBills;
+  const age = pending.oldestOutDate === null ? null : custodyDaysSince(pending.oldestOutDate, now);
+  const TOKEN = '⁣';
+  const items: ReactNode[] = [
+    ...doubles.map((line) => (
+      <span
+        key={`${line.vehicleId ?? line.vehicleCode ?? ''}:${line.date}`}
+        data-custody-alert="doubleFuel"
+        className="flex items-center gap-1"
+      >
+        <span aria-hidden="true" className="text-amber-600 dark:text-amber-400">
+          ⚠️
+        </span>
+        <span>
+          <Emphasised
+            text={t(
+              line.count > 2
+                ? 'fleet.custody.dashboard.alerts.multiFuel'
+                : 'fleet.custody.dashboard.alerts.doubleFuel',
+              { code: TOKEN, date: ymd(line.date), count: COUNT.format(line.count) },
+            )}
+            token={TOKEN}
+            strong={line.vehicleCode ?? '—'}
+          />
+        </span>
+      </span>
+    )),
+    ...(more > 0
+      ? [
+          <span
+            key="more"
+            data-custody-alert="doubleFuelMore"
+            className={cn('font-bold text-amber-700 dark:text-amber-300', NUM)}
+          >
+            {t('fleet.custody.dashboard.alerts.more', { count: COUNT.format(more) })}
+          </span>,
+        ]
+      : []),
+    ...(pending.count > 0
+      ? [
+          <span key="pending" data-custody-alert="pendingBills" className="flex items-center gap-1">
+            <span aria-hidden="true" className="text-blue-600 dark:text-sky-400">
+              ⏳
+            </span>
+            <span>
+              {/* Bold in the line's own ink on the dark — only a car's code is set in white. */}
+              <strong
+                data-custody-pending-count="true"
+                className="font-bold text-slate-900 dark:text-inherit"
+              >
+                {count('privateBill', pending.count)}
+              </strong>{' '}
+              {age === null
+                ? t('fleet.custody.dashboard.alerts.pendingNoDate')
+                : age === 0
+                  ? t('fleet.custody.dashboard.alerts.pendingToday')
+                  : t('fleet.custody.dashboard.alerts.pending', { days: count('day', age) })}
+            </span>
+          </span>,
+        ]
       : []),
   ];
   return (
-    <Panel
-      id="topDrivers"
-      title={t('fleet.custody.dashboard.topDrivers')}
-      note={notes.length === 0 ? undefined : notes.join(' · ')}
-      action={
-        data.drivers.length > 0 ? (
-          <ViewToggle name="drivers" table={table} onToggle={() => setTable((on) => !on)} />
-        ) : undefined
-      }
+    <section
+      data-custody-dashboard-section="alerts"
+      aria-labelledby={titleId}
+      className="rounded-2xl border border-amber-200/90 bg-amber-50/80 p-3.5 shadow-sm dark:border-amber-500/40 dark:bg-amber-950/20 dark:bg-[linear-gradient(180deg,rgba(19,26,43,.82)_0%,rgba(13,18,30,.92)_100%)] dark:shadow-[0_8px_24px_-4px_rgba(0,0,0,.5),inset_0_1px_0_0_rgba(255,255,255,.04)] dark:backdrop-blur-[12px]"
     >
-      {ranked.length === 0 ? (
-        // A dealership bill names no driver, and a receipt may name none: nothing to rank.
-        <p
-          data-custody-no-drivers="true"
-          className="py-4 text-center text-xs text-slate-500 dark:text-slate-400"
-        >
-          {t('fleet.custody.dashboard.noDrivers')}
-        </p>
-      ) : table ? (
-        <CustodyDriversTable data={data} />
-      ) : (
-        <>
-          <KindLegend kinds={DRIVER_KINDS} />
-          <ol className="flex flex-col gap-1" data-custody-top-drivers="true">
-            {ranked.map((driver) => (
-              <RankRow
-                key={driver.driverEmployeeId ?? `name:${driver.driverName}`}
-                name={
-                  <span className="font-semibold text-slate-800 dark:text-slate-100">
-                    {driver.driverName}
-                  </span>
-                }
-                label={driver.driverName}
-                parts={DRIVER_KINDS.map((kind) => ({ kind, value: driver[kind] }))}
-                total={driver.total}
-                base={receipts}
-                scale={scale}
-                count={driver.count}
-                wide
-              />
-            ))}
-          </ol>
-        </>
-      )}
-      {data.noDriver.count > 0 && (
-        <div
-          data-custody-no-driver="true"
-          className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs dark:border-slate-800"
-        >
-          <span className="text-slate-600 dark:text-slate-300">
-            {t('fleet.custody.dashboard.noDriver')}
-            <span className={cn('ms-1 text-slate-500 dark:text-slate-400', NUM)}>
-              ({COUNT.format(data.noDriver.count)})
-            </span>
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Money value={data.noDriver.amount} strong />
-            <CustodyShare part={data.noDriver.amount} whole={receipts} pill />
-          </span>
+      <div className="flex items-start gap-2.5">
+        <div className="mt-0.5 shrink-0 rounded-lg bg-amber-100 p-1.5 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
+          <BoardIcon d={PATH.warn} className="h-4 w-4" />
         </div>
-      )}
-    </Panel>
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-300">
+            <span
+              id={titleId}
+              className="font-bold text-amber-900 dark:font-semibold dark:text-amber-200"
+            >
+              {t('fleet.custody.dashboard.alerts.title')}
+            </span>
+            {items.map((item, i) => (
+              <span key={i} className="flex items-center gap-x-4">
+                {i > 0 && (
+                  <span aria-hidden="true" className="text-slate-400">
+                    •
+                  </span>
+                )}
+                {item}
+              </span>
+            ))}
+          </div>
+          <p
+            data-custody-alert="audit"
+            className="text-[11px] font-medium text-slate-500 dark:font-normal dark:text-slate-400"
+          >
+            <span aria-hidden="true">🔍 </span>
+            {phrase('fleet.custody.dashboard.alerts.noPhoto', alerts.receiptsWithoutPhoto)} |{' '}
+            {phrase('fleet.custody.dashboard.alerts.duplicates', alerts.duplicateReceipts)}
+          </p>
+        </div>
+      </div>
+    </section>
   );
 };
+
+// ── (2) The figures ───────────────────────────────────────────────────────────────────────────
+
+/** A figure's sum: Cairo, black, tight — a size down on a 1,024px screen where five share a row. */
+const FIGURE = cn(
+  'text-2xl font-black tracking-tight text-slate-900 [overflow-wrap:anywhere] lg:text-xl xl:text-2xl dark:text-white',
+  CAIRO,
+);
+const FOOT =
+  'flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs dark:border-[#1c273b]';
+const TILE = cn(CARD, 'flex flex-wrap items-center justify-between gap-2 rounded-xl p-3.5');
+const TILE_ICON = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border';
 
 /**
- * (6) «الوقود» — the litres, and each fuel type's receipts, sum, share and litres. The share is of
- * the fuel the fund paid (`data.fuel`, which the types add up to), not of the whole fund.
+ * Five figures — the total in emerald, then each kind with its share of the total and its count;
+ * fuel splits into «شل أوت» and «وطنية» by the company each receipt names, and the receipts that
+ * name none are a small line of their own under the two. Then the movements, the cars and the
+ * litres.
  */
-const Fuel = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
-  const scale = data.fuelTypes.reduce((top, line) => Math.max(top, line.amount), 0);
+  const money = useMoney();
+  const { count, noun } = useCount();
+  const total = money(data.total);
+  const none = data.fuelByCompany.none;
   return (
-    <Panel
-      id="fuel"
-      title={t('fleet.custody.dashboard.fuel')}
-      note={
-        data.litresMissing > 0
-          ? t('fleet.custody.dashboard.litresMissing', { count: COUNT.format(data.litresMissing) })
-          : undefined
-      }
-    >
-      <div className="mb-3 flex items-baseline gap-1.5">
-        <span className={cn('text-2xl font-black text-slate-900 dark:text-white', NUM)}>
-          {LITRES.format(data.litres)}
-        </span>
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          {t('fleet.custody.dashboard.litresUnit')}
-        </span>
-      </div>
-      <TableFrame label={t('fleet.custody.dashboard.fuel')}>
-        <thead className="bg-slate-50 dark:bg-[#0c121e]">
-          <tr>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.fuelType')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.amount')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.share')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.litres')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.count')}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.fuelTypes.map((line) => (
-            <tr
-              key={line.fuelType ?? 'none'}
-              data-custody-fuel-type={line.fuelType ?? 'none'}
-              className="border-t border-slate-100 dark:border-slate-800"
-            >
-              <td className={cn(tdClass, 'font-semibold text-slate-700 dark:text-slate-200')}>
-                {line.fuelType === null
-                  ? t('fleet.custody.dashboard.noFuelType')
-                  : t(`fleet.receipts.fuelType.${line.fuelType}`)}
-              </td>
-              <td className={tdClass}>
-                {/* One kind, one colour: the fuel's own, as a meter of the dearest type. */}
-                <span className="flex items-center justify-center gap-2">
-                  <span className="hidden h-2 w-16 sm:inline-flex" aria-hidden="true">
-                    <span
-                      className={cn('h-full rounded-e-[4px]', CUSTODY_KIND.fuel.fill)}
-                      style={{ width: `${scale <= 0 ? 0 : (line.amount / scale) * 100}%` }}
-                    />
-                  </span>
-                  <Money value={line.amount} />
-                </span>
-              </td>
-              <td className={tdClass}>
-                <CustodyShare part={line.amount} whole={data.fuel} />
-              </td>
-              <td className={cn(tdClass, NUM)}>{LITRES.format(line.litres)}</td>
-              <td className={cn(tdClass, NUM)}>{COUNT.format(line.count)}</td>
-            </tr>
-          ))}
-          {data.fuelTypes.length === 0 && (
-            <tr>
-              <td colSpan={5} className={cn(tdClass, 'text-slate-400')}>
-                —
-              </td>
-            </tr>
+    <section data-custody-dashboard-section="kpis" className="space-y-3.5">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-5">
+        <div
+          data-custody-kpi="total"
+          className={cn(
+            CARD_SURFACE,
+            'group relative flex min-w-0 flex-col justify-between overflow-hidden rounded-2xl border-emerald-300 bg-gradient-to-br from-emerald-50/70 via-white to-white p-4 dark:border-emerald-500/40',
           )}
-        </tbody>
-      </TableFrame>
-    </Panel>
-  );
-};
-
-/** (7) «ملخص لكل سيارة» — every car, every kind, its total and its share; the grand total last. */
-const PerCar = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
-  const t = useT();
-  const rows: FleetCustodyVehicleRowDto[] = [...data.vehicles].sort((a, b) => b.total - a.total);
-  return (
-    <Panel id="perVehicle" title={t('fleet.custody.perVehicle')}>
-      <TableFrame label={t('fleet.custody.perVehicle')}>
-        <thead className="sticky top-0 bg-slate-50 dark:bg-[#0c121e]">
-          <tr>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.car')}
-            </th>
-            {CUSTODY_KINDS.map((kind) => (
-              <KindHead key={kind} kind={kind} />
-            ))}
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.total')}
-            </th>
-            <th scope="col" className={thClass}>
-              {t('fleet.custody.dashboard.columns.share')}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((car) => (
-            <tr
-              key={car.vehicleId ?? `code:${car.vehicleCode ?? ''}`}
-              className="border-t border-slate-100 dark:border-slate-800"
+        >
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -left-12 -top-12 hidden h-28 w-28 rounded-full bg-emerald-500/10 blur-2xl dark:block"
+          />
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-emerald-800 dark:font-semibold dark:text-emerald-300">
+                {t('fleet.custody.totals.total')}
+              </span>
+              <div className="mt-1 flex flex-wrap items-baseline gap-1">
+                <span className={FIGURE}>{total.figure}</span>
+                <span className="text-xs font-bold text-emerald-700 dark:font-semibold dark:text-emerald-400">
+                  {total.currency}
+                </span>
+              </div>
+            </div>
+            <div
+              className={cn(
+                'shrink-0 rounded-xl p-2.5 transition group-hover:scale-105',
+                CUSTODY_TOTAL_TILE,
+              )}
             >
-              <td className={tdClass}>
-                <Code code={car.vehicleCode} />
-              </td>
-              {CUSTODY_KINDS.map((kind) => (
-                <td key={kind} className={tdClass}>
-                  {moneyOrDash(car[kind])}
-                </td>
-              ))}
-              <td className={tdClass}>
-                <Money value={car.total} strong />
-              </td>
-              <td className={tdClass}>
-                <CustodyShare part={car.total} whole={data.total} />
-              </td>
-            </tr>
-          ))}
-          <tr
-            data-custody-dashboard-grand-total="true"
-            className="border-t border-slate-200 bg-slate-100 font-bold dark:border-slate-700 dark:bg-[#0c121e]"
-          >
-            <td className={cn(tdClass, 'text-slate-800 dark:text-slate-100')}>
-              {t('fleet.custody.grandTotal')}
-            </td>
-            {CUSTODY_KINDS.map((kind) => (
-              <td key={kind} className={tdClass}>
-                <Money value={data[kind]} strong />
-              </td>
-            ))}
-            <td className={tdClass}>
-              <Money value={data.total} strong />
-            </td>
-            <td className={tdClass}>
-              <CustodyShare part={data.total} whole={data.total} />
-            </td>
-          </tr>
-        </tbody>
-      </TableFrame>
-    </Panel>
+              <BoardIcon d={PATH.box} className="h-5 w-5" />
+            </div>
+          </div>
+          <div className={cn(FOOT, 'mt-3 text-slate-600 dark:text-slate-400')}>
+            <span className="text-slate-600 dark:text-slate-300">
+              <CustodyShare part={data.total} whole={data.total} />{' '}
+              {t('fleet.custody.dashboard.kpi.ofAll')}
+            </span>
+            {data.periodDays > 0 && (
+              <span
+                data-custody-period-days="true"
+                className={cn(
+                  'shrink-0 whitespace-nowrap rounded border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:border-emerald-700/30 dark:bg-emerald-950/40 dark:text-xs dark:text-emerald-400',
+                  NUM,
+                )}
+              >
+                {count('day', data.periodDays)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {CUSTODY_KINDS.map((kind) => {
+          const look = CUSTODY_KIND[kind];
+          const sum = money(data[kind]);
+          return (
+            <div
+              key={kind}
+              data-custody-kpi={kind}
+              className={cn(
+                CARD_SURFACE,
+                CARD_BORDER,
+                'group flex min-w-0 flex-col justify-between rounded-2xl p-4',
+                look.accent,
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <span className={cn('text-xs', look.label)}>{t(CUSTODY_KIND_LABEL[kind])}</span>
+                  <div className="mt-1 flex flex-wrap items-baseline gap-1">
+                    <span className={FIGURE}>{sum.figure}</span>
+                    <span className="text-xs font-semibold text-slate-500 dark:font-medium dark:text-slate-400">
+                      {sum.currency}
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    'shrink-0 rounded-xl p-2.5 transition group-hover:scale-105',
+                    look.tile,
+                  )}
+                >
+                  <BoardIcon d={look.icon} className="h-5 w-5" />
+                </div>
+              </div>
+              {kind === 'fuel' && (
+                <>
+                  <div
+                    data-custody-fuel-companies-kpi="true"
+                    className="mt-2.5 grid grid-cols-2 gap-1.5 border-t border-slate-100 pt-2 dark:border-[#1c273b]"
+                  >
+                    {custodyCompanies(data).map((row) => (
+                      <div
+                        key={row.company}
+                        data-custody-company={row.company}
+                        className={cn(
+                          'rounded-lg border p-1.5 text-center',
+                          COMPANY[row.company].box,
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            'flex items-center justify-center gap-1 text-[10px] font-semibold',
+                            COMPANY[row.company].title,
+                          )}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={cn('h-1.5 w-1.5 rounded-full', COMPANY[row.company].dot)}
+                          />
+                          {t(`fleet.fuelCards.company.${row.company}`)}
+                        </div>
+                        <div
+                          className={cn(
+                            'text-xs font-black text-slate-900 dark:font-bold dark:text-white',
+                            NUM,
+                          )}
+                        >
+                          {WHOLE.format(row.amount)}{' '}
+                          <span className="text-[9px] font-normal text-slate-500 dark:text-slate-400">
+                            {sum.currency}
+                          </span>
+                        </div>
+                        <div className={cn('text-[10px] text-slate-600 dark:text-slate-400', NUM)}>
+                          <CustodyShare part={row.amount} whole={data.fuel} /> •{' '}
+                          {count('movement', row.count)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* «ومش عاوز اى داتا اجبارى»: the company is optional, so a receipt may name
+                      none — its money is shown here, never put on either company. */}
+                  {none.amount > 0 && (
+                    <div
+                      data-custody-company="none"
+                      className={cn(
+                        'mt-1.5 text-center text-[10px] text-slate-600 dark:text-slate-400',
+                        NUM,
+                      )}
+                    >
+                      {t('fleet.receipts.fields.companyNone')}: {WHOLE.format(none.amount)}{' '}
+                      {sum.currency} ({COUNT.format(none.count)})
+                    </div>
+                  )}
+                </>
+              )}
+              <div className={cn(FOOT, kind === 'fuel' ? 'mt-2' : 'mt-3')}>
+                <span className="text-slate-600 dark:text-slate-400">
+                  <CustodyShare part={data[kind]} whole={data.total} />{' '}
+                  {t('fleet.custody.totals.ofTotal')}
+                </span>
+                <span
+                  data-custody-kpi-count={kind}
+                  className={cn('shrink-0 whitespace-nowrap', look.chip, NUM)}
+                >
+                  {kind === 'fuel'
+                    ? t('fleet.custody.dashboard.kpi.fuelCount', {
+                        movements: count('movement', data.counts.fuel),
+                      })
+                    : count('movement', data.counts[kind])}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+        <div data-custody-tile="movements" className={TILE}>
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                TILE_ICON,
+                'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-400',
+              )}
+            >
+              <BoardIcon d={PATH.trend} className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {t('fleet.custody.dashboard.kpi.movements')}
+              </div>
+              <div className={cn('text-lg font-bold text-slate-900 dark:text-white', NUM)}>
+                {COUNT.format(data.count)}{' '}
+                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                  {noun('movement', data.count)}
+                </span>
+              </div>
+            </div>
+          </div>
+          {data.periodDays > 0 && (
+            <span
+              data-custody-rate="true"
+              className={cn(
+                'whitespace-nowrap rounded border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300',
+                NUM,
+              )}
+            >
+              {t('fleet.custody.dashboard.kpi.rate', {
+                rate: RATE.format(data.count / data.periodDays),
+              })}
+            </span>
+          )}
+        </div>
+        <div data-custody-tile="cars" className={TILE}>
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                TILE_ICON,
+                'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-400',
+              )}
+            >
+              <BoardIcon d={PATH.truck} className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {t('fleet.custody.dashboard.kpi.carsServed')}
+              </div>
+              <div className={cn('text-lg font-bold text-slate-900 dark:text-white', NUM)}>
+                {COUNT.format(data.vehicleCount)}{' '}
+                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                  {noun('car', data.vehicleCount)}
+                </span>
+              </div>
+            </div>
+          </div>
+          {data.vehicleCount > 0 && (
+            <span
+              data-custody-per-car="true"
+              className={cn(
+                'whitespace-nowrap rounded border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700 dark:border-slate-700/50 dark:bg-slate-800/90 dark:text-slate-300',
+                NUM,
+              )}
+            >
+              {t('fleet.custody.dashboard.kpi.perCar', {
+                amount: WHOLE.format(data.total / data.vehicleCount),
+              })}
+            </span>
+          )}
+        </div>
+        <div data-custody-tile="litres" className={TILE}>
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                TILE_ICON,
+                'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-400',
+              )}
+            >
+              <BoardIcon d={FLASK} className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                {t('fleet.custody.dashboard.kpi.litresTotal')}
+              </div>
+              <div className={cn('text-lg font-bold text-amber-800 dark:text-amber-300', NUM)}>
+                {LITRES.format(data.litres)}{' '}
+                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                  {t('fleet.custody.dashboard.litresUnit')}
+                </span>
+              </div>
+            </div>
+          </div>
+          {data.litresMissing > 0 && (
+            <span
+              data-custody-litres-missing="true"
+              className={cn(
+                'whitespace-nowrap rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300',
+                NUM,
+              )}
+            >
+              {t('fleet.custody.dashboard.litresMissing', {
+                count: COUNT.format(data.litresMissing),
+              })}
+            </span>
+          )}
+        </div>
+      </div>
+    </section>
   );
 };
 
-/** Everything the dashboard shows of a READY answer — pure, so the node specs can render it. */
-export const CustodyDashboardBody = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => (
-  <div className="flex flex-col gap-3 sm:gap-4" data-custody-dashboard-body="true">
-    <Headline data={data} />
-    <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      <ByKind data={data} />
-      <Timeline data={data} />
+// ── The body ──────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Everything the dashboard shows of a READY answer, in the design's order — up to the fuel: the
+ * cars' table and the log are the board's own.
+ */
+export const CustodyDashboardBody = ({
+  data,
+  onShowDealership,
+  now,
+}: {
+  data: FleetCustodyDashboardDto;
+  now?: number;
+} & CustodyDashboardActions): JSX.Element => (
+  <div className="space-y-6" data-custody-dashboard-body="true">
+    <CustodyAlerts alerts={data.alerts} {...(now === undefined ? {} : { now })} />
+    <CustodyKpis data={data} />
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+      <CustodyTimeline data={data} />
+      <CustodyByKindSource data={data} onShowDealership={onShowDealership} />
     </div>
-    <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">
-      <TopCars data={data} />
-      <TopDrivers data={data} />
-    </div>
-    <div className="grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-      <Fuel data={data} />
-      <PerCar data={data} />
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <CustodyTopCars data={data} />
+      <CustodyTopDrivers data={data} />
+      <CustodyFuelBreakdown data={data} />
     </div>
   </div>
 );
 
 /** Loading: the frame of the body, shimmering — no layout jump when the answer lands. */
 const BodySkeleton = (): JSX.Element => (
-  <div className="flex flex-col gap-4" data-custody-dashboard-loading="true">
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+  <div className="space-y-6" data-custody-dashboard-loading="true">
+    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-5">
       {[0, 1, 2, 3, 4].map((i) => (
-        <Skeleton
-          key={i}
-          className={cn('h-[68px] rounded-xl', i === 0 && 'col-span-2 lg:col-span-1')}
-        />
+        <Skeleton key={i} className="h-[120px] rounded-2xl" />
       ))}
     </div>
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_3fr]">
-      <Skeleton className="h-72 rounded-xl" />
-      <Skeleton className="h-72 rounded-xl" />
+    <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+      {[0, 1, 2].map((i) => (
+        <Skeleton key={i} className="h-[68px] rounded-xl" />
+      ))}
     </div>
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Skeleton className="h-64 rounded-xl" />
-      <Skeleton className="h-64 rounded-xl" />
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+      <Skeleton className="h-[420px] rounded-2xl lg:col-span-7" />
+      <Skeleton className="h-[420px] rounded-2xl lg:col-span-5" />
+    </div>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      {[0, 1, 2].map((i) => (
+        <Skeleton key={i} className="h-80 rounded-2xl" />
+      ))}
     </div>
   </div>
 );
@@ -1293,6 +683,8 @@ export const CustodyDashboardContent = ({
   error,
   onRetry,
   filtered = false,
+  onShowDealership,
+  now,
 }: {
   view: CustodyDashboardView;
   data: FleetCustodyDashboardDto | undefined;
@@ -1300,41 +692,40 @@ export const CustodyDashboardContent = ({
   onRetry: () => void;
   /** Opened over a filter: nothing matching it is not «nothing taken from the fund yet». */
   filtered?: boolean;
-}): JSX.Element => {
+  /** Today, for the age of the oldest waiting bill — fixed by the specs. */
+  now?: number;
+} & CustodyDashboardActions): JSX.Element => {
   const t = useT();
   if (view === 'loading') return <BodySkeleton />;
   if (view === 'empty') {
+    // «تكلفة معلقة» is a count with no amount: a private car's bill waiting for its invoice is not
+    // a movement yet, so the board can hold none and still have bills waiting — the banner stays
+    // over the empty ledger whenever it has something to say.
     return (
-      <EmptyState
-        title={filtered ? t('fleet.violations.report.empty') : t('fleet.custody.empty')}
-      />
+      <div className="space-y-6">
+        {data !== undefined && (
+          <CustodyAlerts alerts={data.alerts} {...(now === undefined ? {} : { now })} />
+        )}
+        <div className={cn(CARD, 'rounded-2xl')}>
+          <EmptyState
+            title={filtered ? t('fleet.violations.report.empty') : t('fleet.custody.empty')}
+          />
+        </div>
+      </div>
     );
   }
-  if (view === 'error' || data === undefined) return <ErrorState error={error} onRetry={onRetry} />;
-  return <CustodyDashboardBody data={data} />;
+  if (view === 'error' || data === undefined) {
+    return (
+      <div className={cn(CARD, 'rounded-2xl')}>
+        <ErrorState error={error} onRetry={onRetry} />
+      </div>
+    );
+  }
+  return <CustodyDashboardBody data={data} onShowDealership={onShowDealership} />;
 };
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/**
- * Where the focus goes so it never leaves the modal — `null` lets Tab move it as usual. On the
- * first stop Shift+Tab rounds to the last, on the last Tab rounds to the first; and focus that
- * reached the page behind anyway (a click on plain text sets Tab's starting point there, past the
- * last stop or before the first) comes back in at the end Tab was heading for.
- */
-export const custodyTrapFocus = <T,>(move: {
-  back: boolean;
-  active: T | null;
-  first: T;
-  last: T;
-  inside: boolean;
-}): T | null => {
-  if (!move.inside) return move.back ? move.last : move.first;
-  if (move.back && move.active === move.first) return move.last;
-  if (!move.back && move.active === move.last) return move.first;
-  return null;
-};
 
 /**
  * The modal itself: over the whole screen, in a portal; Escape or × closes it, Tab stays inside,
@@ -1345,13 +736,14 @@ export const CustodyDashboard = ({
   open,
   onClose,
   filters,
+  onClearFilters,
+  onShowDealership,
 }: {
   open: boolean;
   onClose: () => void;
   filters: CustodyDashboardFilters;
-}): JSX.Element | null => {
+} & CustodyDashboardActions): JSX.Element | null => {
   const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -1385,7 +777,8 @@ export const CustodyDashboard = ({
     // On the document, not the panel: after a click on plain text the focus sits on <body>, and a
     // key pressed there never reaches the panel's own handler.
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
+      // A control inside that takes its own Escape first (and says so) keeps the dashboard open.
+      if (e.key === 'Escape' && !e.defaultPrevented) {
         e.preventDefault();
         close.current();
         return;
@@ -1416,7 +809,6 @@ export const CustodyDashboard = ({
 
   if (!open) return null;
   const view = custodyDashboardView(query);
-  const chips = custodyFilterChips(filters, t, locale);
   return createPortal(
     <div className="fixed inset-0 z-[90]" data-custody-dashboard="true">
       <div className="absolute inset-0 animate-fade-in bg-slate-900/50" aria-hidden="true" />
@@ -1425,28 +817,22 @@ export const CustodyDashboard = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative flex h-full w-full animate-pop-in flex-col bg-slate-50 dark:bg-[#0b1120]"
+        className="relative flex h-full w-full animate-pop-in flex-col bg-[#f8fafc] text-slate-800 antialiased selection:bg-emerald-600 selection:text-white dark:bg-[#0b0f19] dark:text-slate-200"
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-slate-800 dark:bg-[#111827]">
-          <div className="min-w-0">
-            <h2
-              id={titleId}
-              className="text-base font-bold text-slate-900 sm:text-lg dark:text-white"
-            >
-              {t('fleet.custody.dashboard.title')}
-            </h2>
-            {/* The board's filters, read-only — change them on the board, the dashboard follows. */}
-            <ul className="mt-1.5 flex flex-wrap gap-1.5" data-custody-dashboard-filters="true">
-              {chips.map((chip) => (
-                <li
-                  key={chip}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
-                >
-                  {chip}
-                </li>
-              ))}
-            </ul>
-          </div>
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3.5 backdrop-blur-md lg:px-8 dark:border-[#1c263b] dark:bg-[#0c111e]/95">
+          <h2
+            id={titleId}
+            className={cn(
+              'flex items-center gap-2 text-base font-bold text-slate-900 sm:text-lg dark:text-white',
+              CAIRO,
+            )}
+          >
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400"
+            />
+            {t('fleet.custody.dashboard.title')}
+          </h2>
           <button
             ref={closeButton}
             type="button"
@@ -1454,7 +840,7 @@ export const CustodyDashboard = ({
             aria-label={t('common.close')}
             title={t('common.close')}
             data-custody-dashboard-close="true"
-            className="-me-1 shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:text-slate-400 dark:hover:bg-slate-800"
+            className="-me-1 shrink-0 rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             <CloseIcon />
           </button>
@@ -1462,17 +848,22 @@ export const CustodyDashboard = ({
         {/* The modal scrolls inside itself; a refetch holds the last answer, dimmed. */}
         <div
           className={cn(
-            'min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6',
+            'min-h-0 flex-1 overflow-y-auto overscroll-contain',
+            SCROLLBAR,
             query.isFetching && view === 'ready' && 'opacity-60 transition-opacity',
           )}
         >
-          <CustodyDashboardContent
-            view={view}
-            data={query.data}
-            error={query.error}
-            onRetry={() => void query.refetch()}
-            filtered={custodyFiltered(filters)}
-          />
+          <div className="mx-auto mt-6 max-w-[1600px] space-y-6 px-4 pb-12 lg:px-8">
+            <CustodyDashboardFilterBar filters={filters} onClearFilters={onClearFilters} />
+            <CustodyDashboardContent
+              view={view}
+              data={query.data}
+              error={query.error}
+              onRetry={() => void query.refetch()}
+              filtered={custodyFiltered(filters)}
+              onShowDealership={onShowDealership}
+            />
+          </div>
         </div>
       </div>
     </div>,

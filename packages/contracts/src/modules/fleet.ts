@@ -3569,6 +3569,13 @@ const receiptCore = {
    * screen and moves no chain or alarm.
    */
   odometer: z.number().int().min(0).nullish(),
+  /**
+   * «الشركة» — which of the two fuel companies («وطنية» / «شل أوت») a fuel receipt paid from the
+   * custody fund was bought from, so «لوحة تحكم» can split the fund's fuel by company. Optional
+   * («ومش عاوز اى داتا اجبارى»): none is «بدون شركة», never guessed. A card receipt's company is
+   * its card's (`cardCompany`), so only a fuel receipt with no card names one.
+   */
+  company: FleetFuelCardCompanySchema.nullish(),
 };
 
 const receiptRules = (
@@ -3577,9 +3584,18 @@ const receiptRules = (
     cardId?: string | null | undefined;
     fuelType?: FleetFuelType | null | undefined;
     odometer?: number | null | undefined;
+    company?: FleetFuelCardCompany | null | undefined;
   },
   ctx: z.RefinementCtx,
 ): void => {
+  if (value.company != null && (value.kind !== 'fuel' || value.cardId != null)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['company'],
+      message:
+        'only a fuel receipt paid from the custody fund names its company — a card has its own',
+    });
+  }
   if (value.kind !== 'fuel' && value.cardId != null) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -3625,6 +3641,8 @@ export const UpdateFleetReceiptSchema = z
     amount: receiptCore.amount.optional(),
     /** Absent keeps it; `null` clears it. A receipt that stops being fuel loses it either way. */
     odometer: receiptCore.odometer,
+    /** Absent keeps it; `null` clears it. A receipt that stops being custody fuel loses it. */
+    company: receiptCore.company,
     version: z.number().int().min(0),
   })
   .strict()
@@ -3676,6 +3694,11 @@ export interface FleetReceiptDto {
   amount: number;
   /** «كم» — the odometer the paper wrote at the pump; `null` when none was written. */
   odometer: number | null;
+  /**
+   * «الشركة» of a fuel receipt the custody fund paid — `null` when none was picked («بدون شركة»),
+   * and always on a card receipt (its company is `cardCompany`), tyres and washing.
+   */
+  company: FleetFuelCardCompany | null;
   image: FleetLicenseImageDto | null;
   version: number;
   createdAt: string;
@@ -3718,6 +3741,15 @@ export const ListFleetCustodyMovementsQuerySchema = PaginationQuerySchema.extend
   ...custodyFilters,
   /** The arrows on «كل الحركات», several columns at once — as on every Fleet board. */
   sort: fleetSortQuery(),
+  /**
+   * «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»:
+   * one line of «ملخص لكل سيارة» exactly, over (never instead of) the filters above. `vehicleId` is
+   * the registry's car; `bookCode` a line kept from the old book on a car the registry never had —
+   * matched whole, spaces and all, where `vehicleCodes` would split it, and never a registry car
+   * that happens to carry the same code. Both given, both must hold.
+   */
+  vehicleId: objectId().optional(),
+  bookCode: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListFleetCustodyMovementsQuery = z.infer<typeof ListFleetCustodyMovementsQuerySchema>;
 
@@ -3754,6 +3786,8 @@ export interface FleetCustodyMovementDto {
   driverName: string | null;
   /** The fuel type of a fuel receipt, the work of a dealership bill. */
   fuelType: FleetFuelType | null;
+  /** A fuel receipt's «الشركة» (`FleetReceiptDto.company`); `null` when none was picked, and on the rest. */
+  company: FleetFuelCardCompany | null;
   detail: string | null;
   amount: number;
 }
@@ -3769,7 +3803,10 @@ export interface FleetCustodyTimeBucketDto {
   count: number;
 }
 
-/** One driver's receipts — a dealership bill names no driver, so it is never on one. */
+/**
+ * One driver's receipts — a dealership bill names no driver, so it is never on one. Each kind's
+ * amount is kept so the line under the name («وقود 65% • كاوتش 25%») is the driver's own split.
+ */
 export interface FleetCustodyDriverRowDto {
   driverEmployeeId: string | null;
   driverName: string;
@@ -3786,6 +3823,68 @@ export interface FleetCustodyFuelTypeRowDto {
   count: number;
   amount: number;
   litres: number;
+  /**
+   * The companies its receipts name, in `FLEET_FUEL_CARD_COMPANIES` order — the badges «وطنية»,
+   * «شل أوت + وطنية». Only the companies actually picked; empty when none of them names one.
+   */
+  companies: FleetFuelCardCompany[];
+}
+
+/** A share of the fund's fuel — its money, its receipts and their litres. */
+export interface FleetCustodyFuelShareDto {
+  amount: number;
+  count: number;
+  litres: number;
+}
+
+/** One fuel type's part of a company's fuel — `null` for the receipts that name no type. */
+export interface FleetCustodyFuelTypeShareDto extends FleetCustodyFuelShareDto {
+  fuelType: FleetFuelType | null;
+}
+
+/**
+ * A share of the fund's fuel with its fuel types under it —
+ * «تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها». The types are in their own
+ * order (`FLEET_FUEL_TYPES`), the receipts with no type last; only the types its receipts name, so
+ * an empty share has none. Their amounts and counts add up to the share's.
+ */
+export interface FleetCustodyFuelGroupDto extends FleetCustodyFuelShareDto {
+  types: FleetCustodyFuelTypeShareDto[];
+}
+
+/** One company's share of the fund's fuel, and its fuel types. */
+export interface FleetCustodyFuelCompanyRowDto extends FleetCustodyFuelGroupDto {
+  company: FleetFuelCardCompany;
+}
+
+/** «سيارة 150 قامت بتفويلتين من العهدة في نفس اليوم»: one car, one day, fuelled more than once. */
+export interface FleetCustodyDoubleFuelDto {
+  vehicleId: string | null;
+  vehicleCode: string | null;
+  /** The board's UTC day, `YYYY-MM-DD`. */
+  date: string;
+  /** How many fuel receipts from the fund that car has that day — two or more. */
+  count: number;
+}
+
+/** «تنبيهات وتدقيق العهدة» — every figure counted from the rows, nothing estimated. */
+export interface FleetCustodyAlertsDto {
+  /** Newest day first, then the car's code. */
+  doubleFuel: FleetCustodyDoubleFuelDto[];
+  /**
+   * Private cars' («ملاكي») dealership bills still waiting for their invoice (no amount yet), by
+   * exit date within the board's dates and cars — how many, and the oldest exit. No amount: there
+   * is none until the invoice comes. A driver filter, or a source filter without the dealership,
+   * leaves them out as it leaves the bills out.
+   */
+  pendingPrivateBills: { count: number; oldestOutDate: string | null };
+  /** Receipts from the fund in the set with no photo attached. */
+  receiptsWithoutPhoto: number;
+  /**
+   * Receipts that repeat another one — the same car, day, kind and amount; the extra copies only
+   * (three alike are two).
+   */
+  duplicateReceipts: number;
 }
 
 /**
@@ -3815,6 +3914,20 @@ export interface FleetCustodyDashboardDto extends FleetCustodySummaryDto {
   litres: number;
   /** Fuel receipts with no litres (no fuel type, or no price on the day). */
   litresMissing: number;
+  /**
+   * «10 أيام» — the period's days, both ends kept: from the filter's first day to its last when
+   * both dates are chosen, else from the first movement's day to the last's; 0 when nothing moved
+   * and no period was chosen (or the chosen one is turned round). «معدل N حركات/يوم» is `count`
+   * over it, «متوسط X ج.م/سيارة» is `total` over `vehicleCount`.
+   */
+  periodDays: number;
+  /**
+   * «شل أوت / وطنية»: the fund's fuel by the company its receipt names — both companies, in their
+   * order, zeros kept — and the receipts that name none («بدون شركة»), never folded into either.
+   * Each with its fuel types under it (`types`): the same receipts as `fuelTypes`, cut by company.
+   */
+  fuelByCompany: { companies: FleetCustodyFuelCompanyRowDto[]; none: FleetCustodyFuelGroupDto };
+  alerts: FleetCustodyAlertsDto;
 }
 
 // ── Licensing expenses (مصروفات التراخيص) ──────────────────────────────────────

@@ -112,11 +112,11 @@ const DASH = <span className="text-slate-400">—</span>;
 const NONE = <span className="text-slate-400 dark:text-slate-500">—</span>;
 
 /**
- * The board's toolbar buttons, from the vehicles screen — a size down on a phone — in the emerald
- * of the owner's custody design rather than the site's purple.
+ * The board's toolbar buttons, from the vehicles screen — a size down on a phone — in the site's
+ * purple: «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات».
  */
 const PRESS_BUTTON =
-  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-2 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-emerald-300';
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
 const PILL_BUTTON =
   'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
 

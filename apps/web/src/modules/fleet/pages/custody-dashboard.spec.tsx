@@ -515,16 +515,16 @@ describe('«لوحة تحكم» on the custody board', () => {
     expect(html).toContain('data-custody-filter-bar="true"');
   });
 
-  it('wears the design’s emerald for what is pressed on the custody screen — the other boards keep purple', () => {
+  it('wears the site’s purple on «الإحصائيات» and «لوحة تحكم», as every other board does — the pager keeps the design’s emerald', () => {
+    // «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات».
     const html = mount(client(), <CustodyPage />);
     for (const attr of ['data-custody-stats-toggle="true"', 'data-custody-dashboard-open="true"']) {
       const cls = classesOf(html, attr);
       expect(cls, attr).toEqual(
-        expect.arrayContaining(['border-emerald-500/50', 'bg-emerald-500/15', 'text-emerald-700']),
+        expect.arrayContaining(['border-brand-500/50', 'bg-brand-500/15', 'text-brand-700']),
       );
-      expect(cls.join(' '), attr).not.toMatch(/brand-/u);
+      expect(cls.join(' '), attr).not.toMatch(/emerald-/u);
     }
-    expect(PAGE).not.toMatch(/brand-/u);
     expect(PAGE).toContain('tone="emerald"');
     const meta = { page: 2, pageSize: 25, totalItems: 60, totalPages: 3 };
     const emerald = draw(<FleetPager tone="emerald" meta={meta} onPageChange={() => undefined} />);
@@ -2599,17 +2599,19 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
     expect(html).not.toMatch(/NaN/u);
   });
 
-  it('keeps the site’s purple out of the custody screen — and the colours to the custody files', () => {
+  it('keeps the site’s purple to the two toolbar buttons — and the colours to the custody files', () => {
+    const purple = /\b(?:[a-z]+:)?(?:bg|text|border|ring)-(?:brand|purple|violet|indigo)-/u;
     for (const [name, source] of [
       ['kinds', KINDS],
       ['figures', FIGURES],
       ['dashboard', DASHBOARD],
-      ['page', PAGE],
     ] as const) {
-      expect(source, name).not.toMatch(
-        /\b(?:[a-z]+:)?(?:bg|text|border|ring)-(?:brand|purple|violet|indigo)-/u,
-      );
+      expect(source, name).not.toMatch(purple);
     }
+    // «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات» — the toolbar's pressed
+    // buttons, and nothing else on the screen.
+    const page = PAGE.replace(/const PRESS_BUTTON =\s*'[^']*';/u, '');
+    expect(page, 'page').not.toMatch(purple);
   });
 });
 

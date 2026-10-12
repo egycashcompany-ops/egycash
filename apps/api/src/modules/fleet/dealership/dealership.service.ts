@@ -11,8 +11,9 @@ import {
   parseFleetSort,
 } from '@ecms/contracts';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
-import { auditService } from '../../../platform/audit';
+import { auditService, type AuditEntry } from '../../../platform/audit';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
+import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { type AuthContext } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
@@ -21,7 +22,7 @@ import { vehicleIdOf } from '../fleet.mappers';
 import { type FleetMaintenanceVisitDoc } from '../maintenance/maintenance.model';
 import { fleetDealershipRepository } from './dealership.repository';
 import { resolveDealershipDocsCategoryId } from './dealership-files';
-import { isPrivateOperation, splitWorkType } from './work-type-split';
+import { isPrivateOperation, splitWorkType, type DealershipWorkRow } from './work-type-split';
 import { type FleetDealershipInvoiceDoc } from './dealership.model';
 
 const entityRef = (id: string) => ({
@@ -128,14 +129,37 @@ const snapshot = (doc: FleetDealershipInvoiceDoc) => ({
 
 class FleetDealershipService {
   /**
-   * The rows a workshop exit opens — called by the maintenance check-out. One per half of the
-   * work type (see `splitWorkType`), each carrying what the registry knows about the car today:
-   * its insurer, and whether it is «ملاكي» (from its operation). Idempotent per visit.
+   * The rows a workshop exit opens — called by the maintenance check-out. Idempotent per visit: a
+   * visit that still has rows opens none, and a reopen withdraws the pending ones, so the next
+   * check-out of it opens them again.
    */
   async openForVisit(visit: FleetMaintenanceVisitDoc, by: string): Promise<void> {
     if (visit.outDate === null) return;
+    if (await fleetDealershipRepository.hasRowsForVisit(String(visit._id))) return;
+    await this.openRowsOfVisit(visit, by);
+  }
+
+  /**
+   * The rows themselves: one per half of the work type (see `splitWorkType`), each carrying what
+   * the registry knows about the car today — its insurer, and whether it is «ملاكي» (from its
+   * operation). It asks no «already has rows» question; each caller asks its own: the check-out
+   * above, and the go-live backfill (`go-live/dealership-backfill.ts`), which opens what the
+   * check-out never did for visits that left the workshop before the screen went live — «دول
+   * مظهروش فى شاشه التوكيل» — by these very rules, not a copy of them.
+   *
+   * One visit's rows go in ONE transaction: «صيانة + إصلاح» is two invoices, and a visit left
+   * holding only the first would read as «already has rows» to whoever asked next, forever.
+   * `audit` names the actor where no request does (the go-live system user) and the step that
+   * opened the rows. Returns the rows it opened — none for a visit still in the workshop.
+   */
+  async openRowsOfVisit(
+    visit: FleetMaintenanceVisitDoc,
+    by: string,
+    audit: { actor?: NonNullable<AuditEntry['actor']>; source?: string } = {},
+  ): Promise<DealershipWorkRow[]> {
+    const outDate = visit.outDate;
+    if (outDate === null) return [];
     const visitId = String(visit._id);
-    if (await fleetDealershipRepository.hasRowsForVisit(visitId)) return;
     const workType = await fleetCatalogItemRepository.findById(String(visit.workTypeId));
     const rows = splitWorkType(workType?.name.ar ?? '');
     const vehicleId = vehicleIdOf(visit);
@@ -152,30 +176,45 @@ class FleetDealershipService {
         privateCar = isPrivateOperation(operation?.name.ar);
       }
     }
-    for (const row of rows) {
-      const doc = await fleetDealershipRepository.create(
-        {
-          visitId: visit._id,
-          vehicleId: visit.vehicleId ?? null,
-          vehicleCode: visit.vehicleId == null ? (visit.vehicleCode ?? null) : null,
-          outDate: visit.outDate,
-          workKind: row.workKind,
-          workTypeLabel: row.workTypeLabel,
-          privateCar,
-          insuranceCompanyId,
-          invoiceNumber: null,
-          invoiceAmount: null,
-          image: null,
-          side: null,
-        },
-        { by },
-      );
+    const created = await unitOfWork(async (session) => {
+      const ids: string[] = [];
+      for (const row of rows) {
+        const doc = await fleetDealershipRepository.create(
+          {
+            visitId: visit._id,
+            vehicleId: visit.vehicleId ?? null,
+            vehicleCode: visit.vehicleId == null ? (visit.vehicleCode ?? null) : null,
+            outDate,
+            workKind: row.workKind,
+            workTypeLabel: row.workTypeLabel,
+            privateCar,
+            insuranceCompanyId,
+            invoiceNumber: null,
+            invoiceAmount: null,
+            image: null,
+            side: null,
+          },
+          { by, session },
+        );
+        ids.push(String(doc._id));
+      }
+      return ids;
+    });
+    // After the commit: an audit entry for a row a retried transaction never kept would be a lie.
+    for (const id of created) {
       await auditService.record({
-        entityRef: entityRef(String(doc._id)),
+        entityRef: entityRef(id),
         action: 'create',
-        changes: [{ field: 'visitId', old: null, new: visitId }],
+        changes: [
+          { field: 'visitId', old: null, new: visitId },
+          ...(audit.source === undefined
+            ? []
+            : [{ field: 'source', old: null, new: audit.source }]),
+        ],
+        ...(audit.actor === undefined ? {} : { actor: audit.actor }),
       });
     }
+    return rows;
   }
 
   /** A reopened visit has not left the workshop: its rows that have no invoice yet are withdrawn. */

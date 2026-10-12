@@ -5,7 +5,7 @@
 // custody, tyres, washing) and the dealership rows on the custody side (a private car's bill with
 // no invoice number). Both are read with the same filters, merged, and summed here — the ledger is
 // a VIEW over the two screens that write it, so it can never disagree with either.
-import { type FilterQuery } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import {
   compareFleetVehicleCodes,
   parseFleetSort,
@@ -71,6 +71,28 @@ const toMovementDto = (row: Movement): FleetCustodyMovementDto => ({
 
 const RECEIPT_SOURCES: readonly FleetCustodySource[] = ['fuel', 'tyres', 'wash'];
 
+/**
+ * «السجل» of one line of «ملخص لكل سيارة»: the registry's car by its id, or a line kept from the
+ * old book on a car the registry never had by its code — whole, as the line was keyed.
+ */
+interface CustodyCar {
+  vehicleId?: string | undefined;
+  bookCode?: string | undefined;
+}
+
+/**
+ * The car as one more clause over the board's filters — over, never instead of: the board's cars,
+ * dates, kinds and driver still hold. A book code is a bill's alone (a receipt is always on a
+ * registry car), so it matches no receipt; both given, both must hold, which nothing does.
+ */
+const carClause = (car: CustodyCar | undefined): FilterQuery<unknown> => {
+  if (car === undefined) return {};
+  const clauses: FilterQuery<unknown>[] = [];
+  if (car.vehicleId !== undefined) clauses.push({ vehicleId: new Types.ObjectId(car.vehicleId) });
+  if (car.bookCode !== undefined) clauses.push({ vehicleId: null, vehicleCode: car.bookCode });
+  return clauses.length === 0 ? {} : { $and: clauses };
+};
+
 /** A dealership bill names no driver, so a driver filter leaves the bills out — as a source does. */
 const wantsDealership = (query: FleetCustodySummaryQuery): boolean =>
   (query.source === undefined || query.source.includes('dealership')) && query.driver === undefined;
@@ -85,11 +107,16 @@ class FleetCustodyService {
       : fleetVehicleRepository.idsByCodes(query.vehicleCodes);
   }
 
-  /** Every movement the filters match, newest first — the set both the figures and the page cut. */
+  /**
+   * Every movement the filters match, newest first — the set both the figures and the page cut.
+   * `car` narrows it to one line of «ملخص لكل سيارة» («السجل»); the figures never pass one.
+   */
   private async movementsFor(
     query: FleetCustodySummaryQuery,
     vehicleIds: readonly string[] | undefined,
+    car?: CustodyCar,
   ): Promise<Movement[]> {
+    const onCar = carClause(car);
     // The receipt kinds among the chosen sources — or every kind when no source is chosen.
     const receiptKinds =
       query.source === undefined
@@ -109,7 +136,7 @@ class FleetCustodyService {
         from: query.from,
         to: query.to,
       });
-      const docs = await FleetReceiptModel.find({ isDeleted: false, ...filter })
+      const docs = await FleetReceiptModel.find({ isDeleted: false, $and: [filter, onCar] })
         .sort({ date: -1, createdAt: -1 })
         .lean()
         .exec();
@@ -142,7 +169,10 @@ class FleetCustodyService {
         from: query.from,
         to: query.to,
       });
-      const docs = await FleetDealershipInvoiceModel.find({ isDeleted: false, ...filter })
+      const docs = await FleetDealershipInvoiceModel.find({
+        isDeleted: false,
+        $and: [filter, onCar],
+      })
         .sort({ outDate: -1, createdAt: -1 })
         .lean()
         .exec();
@@ -268,14 +298,14 @@ class FleetCustodyService {
   async movements(
     query: ListFleetCustodyMovementsQuery,
   ): Promise<Paginated<FleetCustodyMovementDto>> {
-    const { page, pageSize, sortBy, sortDir, sort, ...filters } = query;
+    const { page, pageSize, sortBy, sortDir, sort, vehicleId, bookCode, ...filters } = query;
     // The whole order when the request carries one; else the platform's single column, which an
     // older client still sends.
     const chosen = parseFleetSort(sort);
     const sorts =
       chosen.length > 0 ? chosen : sortBy !== undefined ? [{ by: sortBy, dir: sortDir }] : [];
     const rows = sortCustodyMovements(
-      await this.movementsFor(filters, await this.vehicleIdsFor(filters)),
+      await this.movementsFor(filters, await this.vehicleIdsFor(filters), { vehicleId, bookCode }),
       sorts,
     );
     const start = (page - 1) * pageSize;

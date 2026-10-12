@@ -7,7 +7,7 @@
 // `font-cairo`, served from `@fontsource/cairo` (imported by `FuelCardBoard`); the design's body
 // font, IBM Plex Sans Arabic, is not installed, so the body keeps the app's own and nothing is
 // fetched from Google at run time.
-import { type ReactNode } from 'react';
+import { createContext, type ReactNode } from 'react';
 import { type FleetFuelCardCompany, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -82,7 +82,22 @@ export const SCROLLBAR =
 export const COMPANY_ORDER: readonly FleetFuelCardCompany[] = ['chillout', 'wataniya'];
 export const COMPANY: Record<
   FleetFuelCardCompany,
-  { box: string; title: string; dot: string; badge: string; line: string; chip: string }
+  {
+    box: string;
+    title: string;
+    dot: string;
+    badge: string;
+    line: string;
+    /**
+     * «تفصيل استهلاك الوقود» split by company — the company's own box over its fuel types, as the
+     * design drew a company («وطنية (سولار / 92)»): white with the company's 300 edge and the light
+     * map's `shadow-xs` (Tailwind 3's `shadow-sm`), `#0e1626` with its 500/30 edge on the dark.
+     */
+    head: string;
+    heading: string;
+    pct: string;
+    bar: string;
+  }
 > = {
   chillout: {
     box: 'border-amber-200 bg-amber-50/70 dark:border-amber-500/20 dark:bg-[#090e18]',
@@ -91,7 +106,10 @@ export const COMPANY: Record<
     badge:
       'border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300',
     line: 'text-amber-800 dark:text-amber-300',
-    chip: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400',
+    head: 'border-amber-300 bg-white shadow-sm dark:border-amber-500/30 dark:bg-[#0e1626] dark:shadow-none',
+    heading: 'text-amber-900 dark:text-amber-300',
+    pct: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300',
+    bar: 'bg-amber-500 dark:bg-amber-400',
   },
   wataniya: {
     box: 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/20 dark:bg-[#090e18]',
@@ -100,9 +118,19 @@ export const COMPANY: Record<
     badge:
       'border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300',
     line: 'text-emerald-800 dark:text-emerald-400',
-    chip: 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400',
+    head: 'border-emerald-300 bg-white shadow-sm dark:border-emerald-500/30 dark:bg-[#0e1626] dark:shadow-none',
+    heading: 'text-emerald-800 dark:text-emerald-300',
+    pct: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300',
+    bar: 'bg-emerald-600 dark:bg-emerald-400',
   },
 };
+
+/**
+ * Where a layer over the dashboard is drawn — the dashboard's own dialog, so its focus trap counts
+ * the layer as inside it and its scroll lock already holds. `null` outside the dashboard: the
+ * layer goes to `document.body`.
+ */
+export const CustodyDashboardLayer = createContext<HTMLElement | null>(null);
 
 /** The board's filters, as `CustodyPage` builds them — the dashboard asks the same question. */
 export interface CustodyDashboardFilters {
@@ -153,6 +181,26 @@ export const custodyFilterChips = (
     chips.push(t('fleet.custody.dashboard.filters.driver', { name: filters.driver }));
   }
   return chips.length === 0 ? [t('fleet.custody.dashboard.filters.none')] : chips;
+};
+
+/**
+ * Where the focus goes so it never leaves the modal (the dashboard, or a car's log over it) —
+ * `null` lets Tab move it as usual. On the first stop Shift+Tab rounds to the last, on the last
+ * Tab rounds to the first; and focus that reached the page behind anyway (a click on plain text
+ * sets Tab's starting point there, past the last stop or before the first) comes back in at the
+ * end Tab was heading for.
+ */
+export const custodyTrapFocus = <T,>(move: {
+  back: boolean;
+  active: T | null;
+  first: T;
+  last: T;
+  inside: boolean;
+}): T | null => {
+  if (!move.inside) return move.back ? move.last : move.first;
+  if (move.back && move.active === move.first) return move.last;
+  if (!move.back && move.active === move.last) return move.first;
+  return null;
 };
 
 /** «2026/10» or «2026/10/04» — the board's own year-first writing of a period. */

@@ -15,6 +15,7 @@ import {
   platformPermissions,
   type FleetCatalogItemDto,
   type FleetCustodyDashboardDto,
+  type FleetCustodyMovementDto,
   type FleetCustodySummaryDto,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
@@ -10734,15 +10735,26 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     });
     const wash = await made({ vehicleId: v2.id, kind: 'wash', amount: 120, date: '2026-10-06' });
     await made({ vehicleId: v2.id, kind: 'wash', amount: 120, date: '2026-10-06' });
-    // A deleted copy is no copy, and no receipt without a photo either.
+    // A deleted copy is no copy, and no receipt without a photo either; a deleted fuelling is in
+    // no company and no fuel type.
     const gone = await made({ vehicleId: v2.id, kind: 'wash', amount: 120, date: '2026-10-06' });
-    expect(
-      (
-        await request(app)
-          .delete(`/api/v1/fleet/receipts/${gone.id}`)
-          .set('Authorization', `Bearer ${adminToken}`)
-      ).status,
-    ).toBe(204);
+    const goneFuel = await made({
+      vehicleId: v2.id,
+      kind: 'fuel',
+      fuelType: 'petrol95',
+      amount: 200,
+      company: 'chillout',
+      date: '2026-10-06',
+    });
+    for (const deleted of [gone, goneFuel]) {
+      expect(
+        (
+          await request(app)
+            .delete(`/api/v1/fleet/receipts/${deleted.id}`)
+            .set('Authorization', `Bearer ${adminToken}`)
+        ).status,
+      ).toBe(204);
+    }
     // One paper has its photo.
     expect(
       (
@@ -10788,12 +10800,30 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     // 6th is six days, both ends kept.
     expect(whole.count).toBe(6);
     expect(whole.periodDays).toBe(6);
+    // «وطنيه لوخدها وشيل اوت لوحدها»: each company with its own fuel types under it.
     expect(whole.fuelByCompany).toEqual({
       companies: [
-        { company: 'wataniya', amount: 465, count: 1, litres: wat.litres },
-        { company: 'chillout', amount: 345, count: 1, litres: chill.litres },
+        {
+          company: 'wataniya',
+          amount: 465,
+          count: 1,
+          litres: wat.litres,
+          types: [{ fuelType: 'diesel', amount: 465, count: 1, litres: wat.litres }],
+        },
+        {
+          company: 'chillout',
+          amount: 345,
+          count: 1,
+          litres: chill.litres,
+          types: [{ fuelType: 'petrol92', amount: 345, count: 1, litres: chill.litres }],
+        },
       ],
-      none: { amount: 315, count: 1, litres: plain.litres },
+      none: {
+        amount: 315,
+        count: 1,
+        litres: plain.litres,
+        types: [{ fuelType: 'petrol80', amount: 315, count: 1, litres: plain.litres }],
+      },
     });
     expect(
       whole.fuelByCompany.companies.reduce((total, line) => total + line.amount, 0) +
@@ -10851,7 +10881,10 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(empty).toMatchObject({
       count: 0,
       periodDays: 0,
-      fuelByCompany: { none: { amount: 0, count: 0, litres: 0 } },
+      fuelByCompany: {
+        companies: [{ types: [] }, { types: [] }],
+        none: { amount: 0, count: 0, litres: 0, types: [] },
+      },
       alerts: {
         doubleFuel: [],
         pendingPrivateBills: { count: 0, oldestOutDate: null },
@@ -10859,6 +10892,159 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
         duplicateReceipts: 0,
       },
     });
+  });
+
+  it('«السجل» of one car is `/movements` over the board’s filters and that car — an old-book line too', async () => {
+    const v1 = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const v2 = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const made = async (body: Record<string, unknown>): Promise<Receipt> => {
+      const res = await post(body);
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      return data<Receipt>(res);
+    };
+    const fuel = await made({
+      vehicleId: v1.id,
+      kind: 'fuel',
+      fuelType: 'diesel',
+      amount: 465,
+      company: 'wataniya',
+      date: '2026-10-04',
+    });
+    const tyres = await made({ vehicleId: v1.id, kind: 'tyres', amount: 1400, date: '2026-10-06' });
+    const wash = await made({ vehicleId: v1.id, kind: 'wash', amount: 120, date: '2026-09-20' });
+    // Another car, and a receipt off a card: in no log of car 1's.
+    await made({
+      vehicleId: v2.id,
+      kind: 'fuel',
+      fuelType: 'petrol92',
+      amount: 345,
+      date: '2026-10-05',
+    });
+    const card = await chargedCard(v1.id, 1000);
+    await made({
+      vehicleId: v1.id,
+      kind: 'fuel',
+      fuelType: 'petrol92',
+      amount: 100,
+      cardId: card.id,
+      date: '2026-10-05',
+    });
+    // A deleted receipt is in no log.
+    const gone = await made({ vehicleId: v1.id, kind: 'wash', amount: 99, date: '2026-10-07' });
+    expect(
+      (
+        await request(app)
+          .delete(`/api/v1/fleet/receipts/${gone.id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(204);
+    // The dealership: car 1's bill the fund paid; one still waiting (no amount — not a movement);
+    // one the dealership side paid; and a line kept from the old book on a car the registry never
+    // had, its code with a space in it — the very code `vehicleCodes` would cut in two.
+    const BOOK = `كوستر ${v1.code}`;
+    const bill = (over: Record<string, unknown>) => ({
+      visitId: new Types.ObjectId(),
+      vehicleId: new Types.ObjectId(v1.id),
+      outDate: new Date('2026-10-01T00:00:00.000Z'),
+      workKind: 'maintenance',
+      workTypeLabel: 'صيانة',
+      privateCar: true,
+      invoiceAmount: 850,
+      side: 'custody',
+      ...over,
+    });
+    const [paid, , , book] = await FleetDealershipInvoiceModel.create([
+      bill({}),
+      bill({ invoiceAmount: null, side: null }),
+      bill({ side: 'dealership' }),
+      bill({
+        vehicleId: null,
+        vehicleCode: BOOK,
+        invoiceAmount: 300,
+        outDate: new Date('2026-10-03'),
+      }),
+      bill({ vehicleId: null, vehicleCode: BOOK, invoiceAmount: 77, isDeleted: true }),
+    ]);
+
+    type Line = FleetCustodyMovementDto;
+    const log = async (query: Record<string, string | number>) => {
+      const res = await request(app)
+        .get('/api/v1/fleet/custody/movements')
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(query)).toBe(200);
+      return { rows: data<Line[]>(res), total: (res.body as { meta: PageMeta }).meta.totalItems };
+    };
+    const ids = (rows: readonly Line[]) => rows.map((row) => row.id);
+
+    // Everything car 1 drew on the fund, newest first — its receipts and its paid bill.
+    const car1 = await log({ vehicleId: v1.id });
+    expect(ids(car1.rows)).toEqual([tyres.id, fuel.id, String(paid?._id), wash.id]);
+    expect(car1.total).toBe(4);
+    expect(car1.rows.find((row) => row.id === fuel.id)).toMatchObject({
+      source: 'fuel',
+      fuelType: 'diesel',
+      company: 'wataniya',
+      vehicleCode: v1.code,
+    });
+    // Its sum is car 1's line of «ملخص لكل سيارة», to the piastre.
+    const summary = data<FleetCustodySummaryDto>(
+      await request(app)
+        .get('/api/v1/fleet/custody/summary')
+        .query({ vehicleCodes: `${v1.code},${v2.code}` })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(car1.rows.reduce((total, row) => total + row.amount, 0)).toBe(
+      summary.vehicles.find((line) => line.vehicleId === v1.id)?.total,
+    );
+
+    // Over the board's filters, never instead of them: the dates, the kinds, the cars.
+    expect(
+      ids((await log({ vehicleId: v1.id, from: '2026-10-02', to: '2026-10-31' })).rows),
+    ).toEqual([tyres.id, fuel.id]);
+    expect(ids((await log({ vehicleId: v1.id, source: 'fuel,dealership' })).rows)).toEqual([
+      fuel.id,
+      String(paid?._id),
+    ]);
+    expect(
+      ids((await log({ vehicleId: v1.id, vehicleCodes: `${v1.code},${v2.code}` })).rows),
+    ).toHaveLength(4);
+    // A car the board's cars leave out has nothing in its log.
+    expect((await log({ vehicleId: v1.id, vehicleCodes: v2.code })).total).toBe(0);
+    // Paged as the dashboard's log is.
+    const second = await log({ vehicleId: v1.id, pageSize: 3, page: 2 });
+    expect(ids(second.rows)).toEqual([wash.id]);
+    expect(second.total).toBe(4);
+
+    // The old book's line, whole, spaces and all — its live bill only, no receipt.
+    const fromBook = await log({ bookCode: BOOK });
+    expect(fromBook.rows).toEqual([
+      expect.objectContaining({
+        id: String(book?._id),
+        ref: 'dealershipInvoice',
+        vehicleId: null,
+        vehicleCode: BOOK,
+        amount: 300,
+      }),
+    ]);
+    // `vehicleCodes` cuts the same words into two codes — «كوستر» and car 1's — and finds car 1,
+    // never the book's line.
+    const cut = await log({ vehicleCodes: BOOK });
+    expect(ids(cut.rows)).toEqual(ids(car1.rows));
+    expect(ids(cut.rows)).not.toContain(String(book?._id));
+    // The book's line stays apart from the registry's car whose code it holds, both ways.
+    expect(ids((await log({ vehicleId: v1.id })).rows)).not.toContain(String(book?._id));
+    expect((await log({ bookCode: v1.code })).total).toBe(0);
+    // Both given, both must hold — and no line is both.
+    expect((await log({ vehicleId: v1.id, bookCode: BOOK })).total).toBe(0);
+    // Not a car: refused, never read as «every car».
+    for (const query of [{ vehicleId: '160' }, { bookCode: '' }]) {
+      const res = await request(app)
+        .get('/api/v1/fleet/custody/movements')
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(query)).toBe(400);
+    }
   });
 
   it('editing a receipt moves the money between cards, and the screens are their own grants', async () => {

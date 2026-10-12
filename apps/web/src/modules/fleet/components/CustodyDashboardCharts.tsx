@@ -20,18 +20,22 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import {
+  FLEET_FUEL_CARD_COMPANIES,
   type FleetCustodyDashboardDto,
   type FleetCustodyDriverRowDto,
-  type FleetCustodyFuelTypeRowDto,
+  type FleetCustodyFuelCompanyRowDto,
+  type FleetCustodyFuelTypeShareDto,
   type FleetCustodySource,
   type FleetCustodyTimeBucketDto,
   type FleetCustodyVehicleRowDto,
   type FleetFuelCardCompany,
+  type FleetFuelType,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { CustodyShare, custodyShare, custodySharePct } from './CustodyFigures';
 import { BOLT, CUSTODY_KIND, CUSTODY_KINDS } from './CustodyKinds';
+import { CustodyCarLogButton, custodyCarKey, type CustodyOpenLog } from './CustodyDashboardTables';
 import { BoardIcon, NUM } from './FuelCardBoard';
 import {
   CAIRO,
@@ -74,28 +78,24 @@ const kindName = (t: ReturnType<typeof useT>, kind: FleetCustodySource): string 
 const companyName = (t: ReturnType<typeof useT>, company: FleetFuelCardCompany): string =>
   t(`fleet.fuelCards.company.${company}`);
 
-/** The fund's fuel by company — both companies in the design's order, a missing one as zeros. */
+/**
+ * The fund's fuel by company — both companies, in the design's order unless told another (the fuel
+ * card's split names وطنية first), a missing one as zeros with no types.
+ */
 export const custodyCompanies = (
   data: FleetCustodyDashboardDto,
-): { company: FleetFuelCardCompany; amount: number; count: number; litres: number }[] =>
-  COMPANY_ORDER.map(
+  order: readonly FleetFuelCardCompany[] = COMPANY_ORDER,
+): FleetCustodyFuelCompanyRowDto[] =>
+  order.map(
     (company) =>
       data.fuelByCompany.companies.find((row) => row.company === company) ?? {
         company,
         amount: 0,
         count: 0,
         litres: 0,
+        types: [],
       },
   );
-
-/** «شل أوت + وطنية» — the companies a fuel type's receipts name, in the design's order. */
-export const custodyCompanyList = (
-  t: ReturnType<typeof useT>,
-  companies: readonly FleetFuelCardCompany[],
-): string =>
-  COMPANY_ORDER.filter((company) => companies.includes(company))
-    .map((company) => companyName(t, company))
-    .join(' + ');
 
 // ── «المصروف عبر الزمن» ──────────────────────────────────────────────────────────────────────
 
@@ -900,9 +900,16 @@ const shortName = (t: ReturnType<typeof useT>, kind: FleetCustodySource): string
 
 /**
  * (5) The ten dearest cars: each bar the FULL width, split by that car's own kinds; beside the
- * code its total and its share of everything the fund paid.
+ * code its total and its share of everything the fund paid — and, as on «ملخص لكل سيارة», the
+ * car's «السجل» (its icon alone: the line has no room for the word).
  */
-export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+export const CustodyTopCars = ({
+  data,
+  onOpenLog,
+}: {
+  data: FleetCustodyDashboardDto;
+  onOpenLog?: CustodyOpenLog | undefined;
+}): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
   const sep = useSeparator();
@@ -943,7 +950,7 @@ export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JS
           const present = CUSTODY_KINDS.filter((kind) => car[kind] > 0);
           return (
             <li
-              key={car.vehicleId ?? `code:${car.vehicleCode ?? ''}`}
+              key={custodyCarKey(car)}
               tabIndex={0}
               data-custody-car={car.vehicleCode ?? ''}
               aria-label={`${car.vehicleCode ?? '—'}: ${moneyText(car.total)} (${custodyShare(car.total, data.total)})${present
@@ -955,15 +962,20 @@ export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JS
               className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-slate-800/60 dark:bg-[#0c1322]/80 dark:p-2 dark:hover:border-emerald-500/40 dark:hover:bg-slate-800/40"
             >
               <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                <span
-                  dir="ltr"
-                  className={cn(
-                    'rounded border border-blue-200 bg-blue-100 px-2 py-0.5 font-bold text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/60 dark:text-white',
-                    NUM,
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span
+                    dir="ltr"
+                    className={cn(
+                      'rounded border border-blue-200 bg-blue-100 px-2 py-0.5 font-bold text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/60 dark:text-white',
+                      NUM,
+                    )}
+                  >
+                    {car.vehicleCode ?? '—'}
+                  </span>
+                  {onOpenLog !== undefined && (
+                    <CustodyCarLogButton car={car} onOpen={onOpenLog} compact />
                   )}
-                >
-                  {car.vehicleCode ?? '—'}
-                </span>
+                </div>
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
@@ -1188,34 +1200,49 @@ export const CustodyTopDrivers = ({ data }: { data: FleetCustodyDashboardDto }):
 
 // ── «تفصيل استهلاك الوقود» ─────────────────────────────────────────────────────────────────────
 
-/** A type's company chip: Wataniya's emerald when it is the only one, Chill Out's amber else. */
-const companyChip = (companies: readonly FleetFuelCardCompany[]): string =>
-  companies.length === 1 && companies[0] === 'wataniya'
-    ? COMPANY.wataniya.chip
-    : COMPANY.chillout.chip;
+/**
+ * «تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها»: the card's two companies in the
+ * order the owner named them — وطنية, then شل أوت, as the design's own company boxes stood — and
+ * both ALWAYS drawn, a company that sold nothing with its zeros.
+ */
+export const CUSTODY_FUEL_SPLIT: readonly FleetFuelCardCompany[] = FLEET_FUEL_CARD_COMPANIES;
+
+/** Under a company: diesel first and lifted out, then بنزين 92, 95 and 80, no type last. */
+const TYPE_ORDER: readonly (FleetFuelType | null)[] = [
+  'diesel',
+  'petrol92',
+  'petrol95',
+  'petrol80',
+  null,
+];
+export const custodyFuelRows = <T extends { fuelType: FleetFuelType | null }>(
+  types: readonly T[],
+): T[] =>
+  [...types].sort((a, b) => TYPE_ORDER.indexOf(a.fuelType) - TYPE_ORDER.indexOf(b.fuelType));
 
 /**
- * (7) The fund's fuel by type — diesel first and lifted out («⭐ سولار (الأولوية الأولى)»), each
- * with the companies its receipts name, its litres, its receipts and its share of the fuel; the
- * receipts with no type, and those that name no company, on lines of their own.
+ * (7) The fund's fuel split by «الشركة» — «وطنية» on its own and «شل أوت» on its own, each with its
+ * money, litres, receipts and share of the fuel, and under it the types that company sold: diesel
+ * first and lifted out («⭐ سولار (الأولوية الأولى)»), each with its share of THAT company. The
+ * receipts that name no company («ومش عاوز اى داتا اجبارى») are a small box of their own, only
+ * when they hold money — never folded into either company.
  */
 export const CustodyFuelBreakdown = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
   const { count } = useCount();
   const titleId = useId();
-  const diesel = data.fuelTypes.find((line) => line.fuelType === 'diesel');
-  const others = data.fuelTypes.filter(
-    (line) => line.fuelType !== null && line.fuelType !== 'diesel',
-  );
-  const untyped = data.fuelTypes.find((line) => line.fuelType === null);
   const none = data.fuelByCompany.none;
+  const anyFuel = data.fuelTypes.length > 0;
   const litres = (value: number): string =>
     value > 0 ? `${LITRES.format(value)} ${t('fleet.custody.dashboard.litresUnit')}` : '—';
+  const typeName = (type: FleetFuelType | null): string =>
+    type === null ? t('fleet.custody.dashboard.noFuelType') : t(`fleet.receipts.fuelType.${type}`);
 
-  const typeRow = (line: FleetCustodyFuelTypeRowDto, first: boolean): JSX.Element => {
+  /** A fuel type's row under its company — the card's own row, its share of that company. */
+  const typeRow = (line: FleetCustodyFuelTypeShareDto, whole: number): JSX.Element => {
+    const first = line.fuelType === 'diesel';
     const ninetyFive = line.fuelType === 'petrol95';
-    const companies = custodyCompanyList(t, line.companies);
     return (
       <div
         key={line.fuelType ?? 'none'}
@@ -1228,45 +1255,29 @@ export const CustodyFuelBreakdown = ({ data }: { data: FleetCustodyDashboardDto 
         )}
       >
         <div className="mb-1 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <span
-              className={cn(
-                'flex items-center gap-1 text-xs',
-                first
-                  ? 'font-black text-amber-950 dark:font-bold dark:text-yellow-400'
-                  : cn(
-                      'font-bold text-slate-900',
-                      ninetyFive ? 'dark:text-orange-400' : 'dark:text-amber-300',
-                    ),
-              )}
-            >
-              {first ? (
-                <>
-                  <span aria-hidden="true">⭐</span>
-                  <span>
-                    {t('fleet.receipts.fuelType.diesel')} (
-                    {t('fleet.custody.dashboard.firstPriority')}
-                    {/* The light map writes the companies in the title too; the dark one only on
-                        the chip beside it. */}
-                    {companies !== '' && <span className="dark:hidden"> - {companies}</span>})
-                  </span>
-                </>
-              ) : (
-                t(`fleet.receipts.fuelType.${line.fuelType ?? 'diesel'}`)
-              )}
-            </span>
-            {companies !== '' && (
-              <span
-                data-custody-fuel-companies="true"
-                className={cn(
-                  'rounded border px-1.5 py-0.5 text-[9px] font-semibold',
-                  companyChip(line.companies),
-                )}
-              >
-                {companies}
-              </span>
+          <span
+            className={cn(
+              'flex min-w-0 items-center gap-1 text-xs',
+              first
+                ? 'font-black text-amber-950 dark:font-bold dark:text-yellow-400'
+                : cn(
+                    'font-bold text-slate-900',
+                    ninetyFive ? 'dark:text-orange-400' : 'dark:text-amber-300',
+                  ),
             )}
-          </div>
+          >
+            {first ? (
+              <>
+                <span aria-hidden="true">⭐</span>
+                <span>
+                  {t('fleet.receipts.fuelType.diesel')} (
+                  {t('fleet.custody.dashboard.firstPriority')})
+                </span>
+              </>
+            ) : (
+              typeName(line.fuelType)
+            )}
+          </span>
           <span
             className={cn(
               'whitespace-nowrap text-xs font-bold text-slate-900 dark:text-white',
@@ -1292,7 +1303,7 @@ export const CustodyFuelBreakdown = ({ data }: { data: FleetCustodyDashboardDto 
                 : cn('text-amber-800', ninetyFive ? 'dark:text-orange-400' : 'dark:text-amber-400'),
             )}
           >
-            {count('movement', line.count)} (<CustodyShare part={line.amount} whole={data.fuel} />)
+            {count('movement', line.count)} (<CustodyShare part={line.amount} whole={whole} />)
           </span>
         </div>
         <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-800">
@@ -1305,12 +1316,26 @@ export const CustodyFuelBreakdown = ({ data }: { data: FleetCustodyDashboardDto 
                   ? 'bg-amber-600 dark:bg-orange-400'
                   : 'bg-amber-500 dark:bg-amber-400',
             )}
-            style={{ width: `${Math.min(100, custodySharePct(line.amount, data.fuel))}%` }}
+            style={{ width: `${Math.min(100, custodySharePct(line.amount, whole))}%` }}
           />
         </div>
       </div>
     );
   };
+
+  /** «بلا نوع محدد» under a company — a line of its own, as the card has always written it. */
+  const untypedLine = (line: FleetCustodyFuelTypeShareDto): JSX.Element => (
+    <div
+      key="untyped"
+      data-custody-fuel-type="none"
+      className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2 text-[11px] dark:border-slate-800/80 dark:bg-[#0c1322]"
+    >
+      <span className="text-slate-600 dark:text-slate-400">{typeName(null)}</span>
+      <span className={cn('whitespace-nowrap text-slate-800 dark:text-slate-300', NUM)}>
+        {moneyText(line.amount)} ({count('movement', line.count)})
+      </span>
+    </div>
+  );
 
   return (
     <section
@@ -1328,55 +1353,141 @@ export const CustodyFuelBreakdown = ({ data }: { data: FleetCustodyDashboardDto 
           </div>
         }
       />
-      {data.fuelTypes.length === 0 ? (
-        <p
-          data-custody-no-fuel="true"
-          className="py-4 text-center text-xs text-slate-500 dark:text-slate-400"
-        >
-          {t('fleet.custody.dashboard.noFuel')}
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {diesel !== undefined && typeRow(diesel, true)}
-          {others.map((line) => typeRow(line, false))}
-          {[
-            ...(untyped !== undefined
-              ? [
-                  {
-                    key: 'untyped',
-                    attr: { 'data-custody-fuel-type': 'none' },
-                    label: t('fleet.custody.dashboard.noFuelType'),
-                    amount: untyped.amount,
-                    n: untyped.count,
-                  },
-                ]
-              : []),
-            // «بدون شركة»: the receipts that name no company — never put on either company.
-            ...(none.amount > 0
-              ? [
-                  {
-                    key: 'noCompany',
-                    attr: { 'data-custody-fuel-company': 'none' },
-                    label: t('fleet.receipts.fields.companyNone'),
-                    amount: none.amount,
-                    n: none.count,
-                  },
-                ]
-              : []),
-          ].map((line) => (
+      <div className="space-y-3">
+        {custodyCompanies(data, CUSTODY_FUEL_SPLIT).map((group) => {
+          const look = COMPANY[group.company];
+          const headId = `${titleId}-${group.company}`;
+          const rows = custodyFuelRows(group.types);
+          return (
             <div
-              key={line.key}
-              {...line.attr}
-              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 text-[11px] dark:border-slate-800/80 dark:bg-[#0c1322]"
+              key={group.company}
+              role="group"
+              aria-labelledby={headId}
+              data-custody-fuel-company={group.company}
+              className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-[#233552] dark:bg-[#090e18]"
             >
-              <span className="text-slate-600 dark:text-slate-400">{line.label}</span>
-              <span className={cn('whitespace-nowrap text-slate-800 dark:text-slate-300', NUM)}>
-                {moneyText(line.amount)} ({count('movement', line.n)})
+              <div
+                data-custody-fuel-company-head={group.company}
+                className={cn('rounded-lg border p-2.5', look.head)}
+              >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <h4
+                    id={headId}
+                    className={cn('flex items-center gap-1.5 text-xs font-bold', look.heading)}
+                  >
+                    <span aria-hidden="true" className={cn('h-2 w-2 rounded-full', look.dot)} />
+                    {companyName(t, group.company)}
+                  </h4>
+                  <span
+                    data-custody-fuel-company-share={group.company}
+                    className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold', look.pct)}
+                  >
+                    <CustodyShare part={group.amount} whole={data.fuel} />
+                  </span>
+                </div>
+                <div
+                  className={cn(
+                    'text-sm font-black text-slate-900 dark:font-bold dark:text-white',
+                    NUM,
+                  )}
+                >
+                  {moneyText(group.amount)}
+                </div>
+                <div className="mt-1 flex flex-wrap justify-between gap-x-2 text-[11px] text-slate-600 dark:text-slate-400">
+                  <span>
+                    {t('fleet.custody.dashboard.quantity')}{' '}
+                    <strong className={cn('text-slate-900 dark:text-slate-200', NUM)}>
+                      {litres(group.litres)}
+                    </strong>
+                  </span>
+                  <span className={NUM}>{count('movement', group.count)}</span>
+                </div>
+                <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div
+                    className={cn('h-full rounded-full', look.bar)}
+                    style={{ width: `${Math.min(100, custodySharePct(group.amount, data.fuel))}%` }}
+                  />
+                </div>
+              </div>
+              {rows.length > 0 ? (
+                <div className="mt-2.5 space-y-2">
+                  {rows.map((line) =>
+                    line.fuelType === null ? untypedLine(line) : typeRow(line, group.amount),
+                  )}
+                </div>
+              ) : (
+                // Nothing from this company — said, not hidden: the owner wants both in view.
+                anyFuel && (
+                  <p
+                    data-custody-fuel-company-empty={group.company}
+                    className="pt-2.5 text-center text-[11px] text-slate-500 dark:text-slate-400"
+                  >
+                    {t('fleet.custody.dashboard.fuelCompanyEmpty')}
+                  </p>
+                )
+              )}
+            </div>
+          );
+        })}
+        {/* «بدون شركة»: the receipts that name no company — only when they hold money, and
+            never put on either company. */}
+        {none.amount > 0 && (
+          <div
+            data-custody-fuel-company="none"
+            className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-2.5 text-[11px] dark:border-slate-700 dark:bg-[#0c1322]"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-slate-700 dark:text-slate-300">
+                {t('fleet.receipts.fields.companyNone')}
+              </span>
+              <span
+                className={cn(
+                  'whitespace-nowrap font-bold text-slate-800 dark:text-slate-200',
+                  NUM,
+                )}
+              >
+                {moneyText(none.amount)}
               </span>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="mt-0.5 flex flex-wrap justify-between gap-x-2 text-slate-600 dark:text-slate-400">
+              <span>
+                {t('fleet.custody.dashboard.quantity')}{' '}
+                <strong className={cn('text-slate-800 dark:text-slate-300', NUM)}>
+                  {litres(none.litres)}
+                </strong>
+              </span>
+              <span className={NUM}>
+                {count('movement', none.count)} (
+                <CustodyShare part={none.amount} whole={data.fuel} />)
+              </span>
+            </div>
+            {none.types.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 border-t border-slate-200 pt-1.5 dark:border-slate-800">
+                {custodyFuelRows(none.types).map((line) => (
+                  <li
+                    key={line.fuelType ?? 'none'}
+                    data-custody-fuel-none-type={line.fuelType ?? 'none'}
+                    className="flex justify-between gap-2 text-slate-600 dark:text-slate-400"
+                  >
+                    <span>{typeName(line.fuelType)}</span>
+                    <span className={cn('whitespace-nowrap', NUM)}>
+                      {moneyText(line.amount)} ({count('movement', line.count)})
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {!anyFuel && (
+          <p
+            data-custody-no-fuel="true"
+            className="py-2 text-center text-xs text-slate-500 dark:text-slate-400"
+          >
+            {t('fleet.custody.dashboard.noFuel')}
+          </p>
+        )}
+      </div>
     </section>
   );
 };

@@ -16,6 +16,10 @@
 // «عاوز دى تكون فى شاشه العهد … فى اللايت سيم والدارك سيم»: the owner's dashboard design sets the
 // colours of this WHOLE screen — the kinds blue, amber, rose and cyan, and what is pressed (the two
 // buttons, the current page) emerald rather than the site's purple. The other Fleet boards keep it.
+//
+// «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»: every
+// car of «ملخص لكل سيارة» carries «السجل» here too, as in the dashboard — its log over the board,
+// under the board's own filters. «الإجمالي الختامي» is the whole fund's, and has none.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -47,6 +51,12 @@ import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { CustodyFigures } from '../components/CustodyFigures';
 import { CustodyKindBadge } from '../components/CustodyKinds';
 import { CustodyDashboard } from '../components/CustodyDashboard';
+import {
+  CustodyCarLog,
+  custodyCurrentCar,
+  type CustodyOpenCarLog,
+} from '../components/CustodyCarLog';
+import { custodyCarKey, CustodyCarLogButton } from '../components/CustodyDashboardTables';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverCell } from '../components/DriverPerson';
@@ -184,6 +194,8 @@ export const CustodyPage = (): JSX.Element => {
   const [statsOpen, setStatsOpen] = useState(false);
   // «لوحة تحكم» — over the whole screen, read only while open.
   const [dashOpen, setDashOpen] = useState(false);
+  // A car's «السجل» from «ملخص لكل سيارة», and the button that opened it.
+  const [carLog, setCarLog] = useState<CustodyOpenCarLog | null>(null);
   // «تصفية متقدمة» in the dashboard closes it and sends the focus to the filter bar — after the
   // dashboard, on its way out, has handed it back to «لوحة تحكم» (its effect is torn down first).
   const filterBar = useRef<HTMLDivElement>(null);
@@ -262,9 +274,20 @@ export const CustodyPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.odometer.columns.vehicle'),
       sortable: true,
-      // «الإجمالي» on the last row is a word, not a code.
+      // «الإجمالي» on the last row is a word, not a code — and the whole fund's, so it has no log.
+      // A car's code with its «السجل» beside it.
       render: (row) =>
-        row.vehicleId === GRAND_TOTAL ? <span>{row.vehicleCode}</span> : codeCell(row.vehicleCode),
+        row.vehicleId === GRAND_TOTAL ? (
+          <span>{row.vehicleCode}</span>
+        ) : (
+          <span className="inline-flex items-center justify-center gap-2">
+            {codeCell(row.vehicleCode)}
+            <CustodyCarLogButton
+              car={row}
+              onOpen={(car, opener) => setCarLog({ key: custodyCarKey(car), car, opener })}
+            />
+          </span>
+        ),
     },
     moneyCol('dealership', t('fleet.custody.source.dealership')),
     moneyCol('fuel', t('fleet.custody.source.fuel')),
@@ -641,6 +664,18 @@ export const CustodyPage = (): JSX.Element => {
             setDashOpen(false);
           }}
         />
+        {/* A car's «السجل»: its line as the summary holds it now, its share of the same fund total,
+            the board's own filters. Keyed by the car: another car's log starts on its first page. */}
+        {carLog !== null && (
+          <CustodyCarLog
+            key={carLog.key}
+            car={custodyCurrentCar(summary.data?.vehicles, carLog)}
+            fundTotal={summary.data?.total ?? 0}
+            filters={filters}
+            opener={carLog.opener}
+            onClose={() => setCarLog(null)}
+          />
+        )}
 
         {/* Two tables share the height: the per-car totals take what they need up to three tenths,
             and the movements take the rest — each scrolls its own rows. */}

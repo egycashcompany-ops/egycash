@@ -56,13 +56,22 @@ import {
   CustodyTopDrivers,
 } from '../components/CustodyDashboardCharts';
 import {
+  custodyCarOf,
   custodyCarRows,
   custodyKindText,
   CustodyLog,
   CustodyPerCar,
+  LOG_ICON,
 } from '../components/CustodyDashboardTables';
 import {
+  custodyCarLogQuery,
+  CustodyCarLog,
+  CustodyCarLogBody,
+  custodyCurrentCar,
+} from '../components/CustodyCarLog';
+import {
   CARD,
+  COMPANY,
   TABLE_CARD,
   custodyArcs,
   custodyCountForm,
@@ -91,7 +100,8 @@ const PARTS = read('../components/custody-dashboard-parts.tsx');
 const KINDS = read('../components/CustodyKinds.tsx');
 const FIGURES = read('../components/CustodyFigures.tsx');
 const QUERIES = read('../api/fleet-queries.ts');
-const DASHBOARD = [MODAL, CHARTS, TABLES, PARTS].join('\n');
+const CAR_LOG = read('../components/CustodyCarLog.tsx');
+const DASHBOARD = [MODAL, CHARTS, TABLES, PARTS, CAR_LOG].join('\n');
 const ar = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
 
@@ -236,10 +246,24 @@ const dashboard: FleetCustodyDashboardDto = {
   periodDays: 59,
   fuelByCompany: {
     companies: [
-      { company: 'wataniya', amount: 500, count: 1, litres: 43.48 },
-      { company: 'chillout', amount: 0, count: 0, litres: 0 },
+      {
+        company: 'wataniya',
+        amount: 500,
+        count: 1,
+        litres: 43.48,
+        types: [{ fuelType: 'diesel', amount: 500, count: 1, litres: 43.48 }],
+      },
+      { company: 'chillout', amount: 0, count: 0, litres: 0, types: [] },
     ],
-    none: { amount: 1465.5, count: 2, litres: 20 },
+    none: {
+      amount: 1465.5,
+      count: 2,
+      litres: 20,
+      types: [
+        { fuelType: 'petrol80', amount: 315, count: 1, litres: 20 },
+        { fuelType: null, amount: 1150.5, count: 1, litres: 0 },
+      ],
+    },
   },
   alerts: {
     doubleFuel: [],
@@ -350,6 +374,76 @@ const logPage = (
 });
 const logKey = (filters: CustodyDashboardFilters, page: number, pageSize = 25) =>
   listKey('fleet', 'custody', { log: true, ...filters, page, pageSize });
+
+/**
+ * «وطنيه لوخدها وشيل اوت لوحدها»: the fund's fuel by company with each company's own types —
+ * Wataniya diesel and 92, Chill Out 80/92/95 and a receipt with no type, two with no company.
+ */
+const split: FleetCustodyDashboardDto = {
+  ...dashboard,
+  fuel: 2400,
+  fuelByCompany: {
+    companies: [
+      {
+        company: 'wataniya',
+        amount: 1200,
+        count: 4,
+        litres: 70,
+        types: [
+          { fuelType: 'petrol92', amount: 300, count: 1, litres: 20 },
+          { fuelType: 'diesel', amount: 900, count: 3, litres: 50 },
+        ],
+      },
+      {
+        company: 'chillout',
+        amount: 800,
+        count: 4,
+        litres: 40,
+        types: [
+          { fuelType: 'petrol80', amount: 200, count: 1, litres: 10 },
+          { fuelType: 'petrol92', amount: 250, count: 1, litres: 15 },
+          { fuelType: 'petrol95', amount: 300, count: 1, litres: 15 },
+          { fuelType: null, amount: 50, count: 1, litres: 0 },
+        ],
+      },
+    ],
+    none: {
+      amount: 400,
+      count: 2,
+      litres: 12,
+      types: [
+        { fuelType: 'diesel', amount: 350, count: 1, litres: 12 },
+        { fuelType: null, amount: 50, count: 1, litres: 0 },
+      ],
+    },
+  },
+};
+/** One company's part of «تفصيل استهلاك الوقود», up to the next company. */
+const company = (html: string, name: string): string => {
+  const at = html.indexOf(`data-custody-fuel-company="${name}"`);
+  expect(at, name).toBeGreaterThan(-1);
+  const next = html.indexOf('data-custody-fuel-company="', at + 10);
+  return html.slice(
+    html.lastIndexOf('<', at),
+    next === -1 ? undefined : html.lastIndexOf('<', next),
+  );
+};
+/** A company's header — everything before its first fuel type. */
+const headOf = (part: string): string =>
+  part.slice(0, part.lastIndexOf('<', part.indexOf('data-custody-fuel-type=')));
+/** The fuel types a company lists, in order. */
+const types = (part: string): string[] =>
+  [...part.matchAll(/data-custody-fuel-type="(\w+)"/gu)].map((m) => m[1] ?? '');
+/** One fuel type's row under a company. */
+const fuelRow = (part: string, type: string): string => {
+  const at = part.indexOf(`data-custody-fuel-type="${type}"`);
+  expect(at, type).toBeGreaterThan(-1);
+  const next = part.indexOf('data-custody-fuel-type="', at + 10);
+  return part.slice(
+    part.lastIndexOf('<', at),
+    next === -1 ? undefined : part.lastIndexOf('<', next),
+  );
+};
 
 describe('«لوحة تحكم» on the custody board', () => {
   it('sits right beside «الإحصائيات», closed on the way in, and asks the board’s own filters', () => {
@@ -877,7 +971,10 @@ describe('(2) the five figures and the three tiles', () => {
     const named = card(
       kpis({
         ...dashboard,
-        fuelByCompany: { ...dashboard.fuelByCompany, none: { amount: 0, count: 0, litres: 0 } },
+        fuelByCompany: {
+          ...dashboard.fuelByCompany,
+          none: { amount: 0, count: 0, litres: 0, types: [] },
+        },
       }),
       'fuel',
     );
@@ -1264,25 +1361,31 @@ describe('(5) the cars, (6) the drivers, (7) the fuel', () => {
     expect(unnamed).toContain('160.00');
   });
 
-  it('puts diesel first and lifts it out — «⭐ سولار (الأولوية الأولى)» with the companies it names', () => {
-    const html = draw(<CustodyFuelBreakdown data={dashboard} />);
+  it('splits the fuel in two — «وطنية» on its own, «شل أوت» on its own, each with its own types', () => {
+    const html = draw(<CustodyFuelBreakdown data={split} />);
     expect(text(html)).toContain('تفصيل استهلاك الوقود');
     expect(text(html)).toContain(ar('fleet.custody.dashboard.fuelNote'));
-    const types = [...html.matchAll(/data-custody-fuel-type="(\w+)"/gu)].map((m) => m[1]);
-    expect(types).toEqual(['diesel', 'petrol80', 'none']);
-    const diesel = html.slice(
-      html.indexOf('data-custody-fuel-type="diesel"'),
-      html.indexOf('data-custody-fuel-type="petrol80"'),
+    // The owner's order: وطنية, then شل أوت — then «بدون شركة», never folded into either.
+    expect([...html.matchAll(/data-custody-fuel-company="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'wataniya',
+      'chillout',
+      'none',
+    ]);
+    const wataniya = company(html, 'wataniya');
+    const head = headOf(wataniya);
+    // The company's header: its name, money, litres, receipts and share of the fund's fuel.
+    expect(text(head)).toBe('وطنية 50% 1,200.00 ج.م. الكمية: 70.00 لتر 4 حركات');
+    expect(head).toMatch(pct('50%'));
+    // A labelled group a reader can find by the company's name.
+    const group =
+      /role="group" aria-labelledby="([^"]+)" data-custody-fuel-company="wataniya"/u.exec(html);
+    expect(html).toContain(`<h4 id="${group?.[1] ?? '?'}"`);
+    // Under it, diesel first and lifted out, then بنزين 92 — each a share of THIS company.
+    expect(types(wataniya)).toEqual(['diesel', 'petrol92']);
+    const diesel = fuelRow(wataniya, 'diesel');
+    expect(text(diesel)).toBe(
+      '⭐ سولار (الأولوية الأولى) 900.00 ج.م. الكمية: 50.00 لتر 3 حركات (75%)',
     );
-    expect(text(diesel)).toContain('⭐ سولار (الأولوية الأولى - وطنية)');
-    // The light map writes the companies in the title; the dark design only on the chip.
-    expect(diesel).toContain('<span class="dark:hidden"> - وطنية</span>');
-    expect(diesel).toMatch(
-      /data-custody-fuel-companies="true" class="[^"]*border-emerald-300 bg-emerald-100 text-emerald-800/u,
-    );
-    expect(text(diesel)).toContain('الكمية: 43.48 لتر');
-    // 500 of the fuel's 1,965.50.
-    expect(text(diesel)).toContain('1 حركة (25%)');
     expect(classesOf(diesel, 'data-custody-fuel-type="diesel"')).toEqual(
       expect.arrayContaining([
         'border-2',
@@ -1294,33 +1397,111 @@ describe('(5) the cars, (6) the drivers, (7) the fuel', () => {
         'dark:bg-[#0c1322]',
       ]),
     );
-    // A type no receipt named a company for: no chip, nothing guessed.
-    const petrol = html.slice(
-      html.indexOf('data-custody-fuel-type="petrol80"'),
-      html.indexOf('data-custody-fuel-type="none"'),
+    expect(diesel).toContain('width:75%');
+    expect(text(fuelRow(wataniya, 'petrol92'))).toBe(
+      'بنزين 92 300.00 ج.م. الكمية: 20.00 لتر 1 حركة (25%)',
     );
-    expect(petrol).not.toContain('data-custody-fuel-companies');
-    // «بلا نوع محدد» and «بدون شركة» on lines of their own.
-    expect(text(html)).toContain('بلا نوع محدد 1,150.50 ج.م. (1 حركة)');
-    expect(text(html)).toContain('بدون شركة 1,465.50 ج.م. (2 حركات)');
-    // «شل أوت + وطنية» where both companies fuelled a type.
-    const both = draw(
+    // The company is the section: no company chip on its rows.
+    expect(html).not.toContain('data-custody-fuel-companies');
+    // شل أوت: 92, 95, 80 after the diesel it did not sell — and its receipt with no type last.
+    const chillout = company(html, 'chillout');
+    expect(text(headOf(chillout))).toBe('شل أوت 33% 800.00 ج.م. الكمية: 40.00 لتر 4 حركات');
+    expect(types(chillout)).toEqual(['petrol92', 'petrol95', 'petrol80', 'none']);
+    expect(text(fuelRow(chillout, 'petrol92'))).toContain('1 حركة (31%)');
+    expect(fuelRow(chillout, 'petrol95')).toContain('bg-amber-600 dark:bg-orange-400');
+    expect(text(fuelRow(chillout, 'none'))).toBe('بلا نوع محدد 50.00 ج.م. (1 حركة)');
+    // «بدون شركة»: its money, litres, receipts and share — and its own types.
+    const none = company(html, 'none');
+    expect(text(none)).toBe(
+      'بدون شركة 400.00 ج.م. الكمية: 12.00 لتر 2 حركات (17%) سولار 350.00 ج.م. (1 حركة) بلا نوع محدد 50.00 ج.م. (1 حركة)',
+    );
+    expect([...none.matchAll(/data-custody-fuel-none-type="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'diesel',
+      'none',
+    ]);
+  });
+
+  it('wears each company’s colour — وطنية emerald, شل أوت amber — in the light map and the dark design', () => {
+    const html = draw(<CustodyFuelBreakdown data={split} />);
+    for (const [name, ink] of [
+      ['wataniya', 'emerald'],
+      ['chillout', 'amber'],
+    ] as const) {
+      const box = company(html, name);
+      expect(classesOf(box, `data-custody-fuel-company="${name}"`)).toEqual(
+        expect.arrayContaining([
+          'bg-slate-50',
+          'border-slate-200',
+          'dark:bg-[#090e18]',
+          'dark:border-[#233552]',
+        ]),
+      );
+      expect(classesOf(box, `data-custody-fuel-company-head="${name}"`)).toEqual(
+        expect.arrayContaining([
+          `border-${ink}-300`,
+          'bg-white',
+          `dark:border-${ink}-500/30`,
+          'dark:bg-[#0e1626]',
+        ]),
+      );
+      expect(box).toContain(COMPANY[name].dot);
+      expect(box).toContain(COMPANY[name].heading);
+      expect(classesOf(box, `data-custody-fuel-company-share="${name}"`)).toEqual(
+        expect.arrayContaining(COMPANY[name].pct.split(' ')),
+      );
+      expect(box).toContain(`h-full rounded-full ${COMPANY[name].bar}`);
+    }
+    expect(COMPANY.wataniya.bar).toBe('bg-emerald-600 dark:bg-emerald-400');
+    expect(COMPANY.chillout.bar).toBe('bg-amber-500 dark:bg-amber-400');
+    expect(company(html, 'wataniya')).toContain('width:50%');
+  });
+
+  it('keeps both companies in view — one that sold nothing shows its zeros; «بدون شركة» only with money', () => {
+    // The board's fixture: Wataniya sold the diesel, Chill Out nothing.
+    const html = draw(<CustodyFuelBreakdown data={dashboard} />);
+    const chillout = company(html, 'chillout');
+    expect(text(chillout)).toBe(
+      `شل أوت 0% 0.00 ج.م. الكمية: — 0 حركات ${ar('fleet.custody.dashboard.fuelCompanyEmpty')}`,
+    );
+    expect(chillout).toContain('data-custody-fuel-company-empty="chillout"');
+    expect(types(company(html, 'wataniya'))).toEqual(['diesel']);
+    // «بدون شركة» holds the 80 and the receipt with no type: shown, never put on a company.
+    expect(text(company(html, 'none'))).toContain('بدون شركة 1,465.50 ج.م.');
+    // No money without a company: no box for it.
+    const named = draw(
       <CustodyFuelBreakdown
         data={{
           ...dashboard,
-          fuelTypes: [
-            {
-              fuelType: 'petrol92',
-              count: 2,
-              amount: 600,
-              litres: 30,
-              companies: ['wataniya', 'chillout'],
-            },
-          ],
+          fuelByCompany: {
+            ...dashboard.fuelByCompany,
+            none: { amount: 0, count: 0, litres: 0, types: [] },
+          },
         }}
       />,
     );
-    expect(text(both)).toContain('شل أوت + وطنية');
+    expect(named).not.toContain('data-custody-fuel-company="none"');
+    // No fuel at all: both companies still there, at zero, and one line saying so.
+    const dry = draw(
+      <CustodyFuelBreakdown
+        data={{
+          ...dashboard,
+          fuel: 0,
+          fuelTypes: [],
+          fuelByCompany: {
+            companies: [],
+            none: { amount: 0, count: 0, litres: 0, types: [] },
+          },
+        }}
+      />,
+    );
+    expect([...dry.matchAll(/data-custody-fuel-company="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'wataniya',
+      'chillout',
+    ]);
+    expect(dry).not.toContain('data-custody-fuel-company-empty');
+    expect(dry).toContain('data-custody-no-fuel="true"');
+    expect(text(company(dry, 'wataniya'))).toBe('وطنية — 0.00 ج.م. الكمية: — 0 حركات');
+    expect(dry).not.toMatch(/NaN|Infinity/u);
   });
 
   it('«شيلهم» — the station panel is gone, and so are the station words', () => {
@@ -1601,6 +1782,607 @@ describe('(9) «سجل كل الحركات» — the board’s movements, its ow
   });
 });
 
+describe('(10) «السجل» — every car’s own log, over the dashboard', () => {
+  // «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»
+  const ON: CustodyDashboardFilters = {
+    from: '2026-10-01',
+    source: ['dealership', 'fuel', 'tyres'],
+  };
+  const car63 = dashboard.vehicles.find((car) => car.vehicleCode === '63')!;
+  const car204 = dashboard.vehicles.find((car) => car.vehicleCode === '204')!;
+  const on = (id: string, code: string) => (over: Partial<FleetCustodyMovementDto>) =>
+    movement({ vehicleId: id, vehicleCode: code, ...over });
+  // Car 63's line: the bill the fund paid and its tyres — 850 + 1,400.
+  const rows63 = [
+    on(
+      'v-63',
+      '63',
+    )({
+      id: 'c63t',
+      source: 'tyres',
+      fuelType: null,
+      company: null,
+      amount: 1400,
+      date: '2026-10-06T08:00:00.000Z',
+    }),
+    on(
+      'v-63',
+      '63',
+    )({
+      id: 'c63d',
+      ref: 'dealershipInvoice',
+      source: 'dealership',
+      driverEmployeeId: null,
+      driverName: null,
+      fuelType: null,
+      company: null,
+      detail: 'صيانة',
+      amount: 850,
+      date: '2026-10-01T00:00:00.000Z',
+    }),
+  ];
+  // Car 204's line: diesel at Wataniya, a 92 that names no company, a wash — 1,770.50.
+  const rows204 = [
+    on('v-204', '204')({ id: 'c204f', fuelType: 'diesel', company: 'wataniya', amount: 500 }),
+    on('v-204', '204')({ id: 'c204n', fuelType: 'petrol92', company: null, amount: 1150.5 }),
+    on(
+      'v-204',
+      '204',
+    )({
+      id: 'c204w',
+      source: 'wash',
+      fuelType: null,
+      company: null,
+      amount: 120,
+      date: '2026-10-02T08:00:00.000Z',
+    }),
+  ];
+  const carKey = (
+    filters: CustodyDashboardFilters,
+    car: { vehicleId: string } | { bookCode: string },
+    page = 1,
+    pageSize = 25,
+  ) => listKey('fleet', 'custody', { log: true, ...filters, ...car, page, pageSize });
+  const pageOf = (
+    items: FleetCustodyMovementDto[],
+    page = 1,
+    pageSize = 25,
+    totalItems = items.length,
+  ): Paginated<FleetCustodyMovementDto> => ({
+    items,
+    meta: { page, pageSize, totalItems, totalPages: Math.max(1, Math.ceil(totalItems / pageSize)) },
+  });
+  const opened = (filters: CustodyDashboardFilters = ON): string => {
+    const qc = client();
+    qc.setQueryData(carKey(filters, { vehicleId: 'v-63' }), pageOf(rows63));
+    return mount(
+      qc,
+      <CustodyDashboardBody data={dashboard} filters={filters} now={NOW} initialLogCar="v-63" />,
+    );
+  };
+  const carLog = (
+    car = car204,
+    items = rows204,
+    {
+      page = 1,
+      pageSize = 25,
+      totalItems = items.length,
+      filters = {} as CustodyDashboardFilters,
+    } = {},
+  ): string => {
+    const qc = client();
+    const ref = custodyCarOf(car);
+    if (ref !== null)
+      qc.setQueryData(
+        carKey(filters, ref, page, pageSize),
+        pageOf(items, page, pageSize, totalItems),
+      );
+    return mount(
+      qc,
+      <CustodyCarLogBody
+        car={car}
+        fundTotal={dashboard.total}
+        filters={filters}
+        initialPage={page}
+        initialPageSize={pageSize}
+      />,
+    );
+  };
+  const button = (html: string, code: string): string => {
+    const at = html.indexOf(`data-custody-car-log-open="${code}"`);
+    expect(at, code).toBeGreaterThan(-1);
+    const from = html.lastIndexOf('<button', at);
+    return html.slice(from, html.indexOf('</button>', at) + '</button>'.length);
+  };
+  const logRow = (html: string, id: string): string => {
+    const at = html.indexOf(`data-custody-car-log-row="${id}"`);
+    expect(at, id).toBeGreaterThan(-1);
+    return html.slice(html.lastIndexOf('<tr', at), html.indexOf('</tr>', at));
+  };
+
+  it('puts «السجل» on every car of «ملخص لكل سيارة» — named for its car, never on «الإجمالي الختامي»', () => {
+    const html = draw(<CustodyPerCar data={dashboard} onOpenLog={() => undefined} />);
+    expect([...html.matchAll(/data-custody-car-log-open="(\d+)"/gu)].map((m) => m[1])).toEqual([
+      '63',
+      '204',
+      '160',
+    ]);
+    const b63 = button(html, '63');
+    expect(ar('fleet.custody.dashboard.carLog.open', { code: '63' })).toBe('السجل — السيارة 63');
+    // Its name starts with the word it shows, and names the car.
+    expect(b63).toContain('aria-label="السجل — السيارة 63"');
+    expect(text(b63)).toBe('السجل');
+    expect(b63).toContain(`d="${LOG_ICON[0] ?? '?'}"`);
+    expect(b63).toContain('type="button"');
+    // Beside the car's code, in its own cell.
+    const line = html.slice(html.indexOf('data-custody-car-row="63"'));
+    expect(text(line.slice(0, line.indexOf('</tr>')))).toBe(
+      '63 السجل 850.00 ج.م. — 1,400.00 ج.م. — 2,250.00 ج.م. 51.9%',
+    );
+    // «الإجمالي الختامي» is the whole fund's — it has no log.
+    expect(html.slice(html.indexOf('data-custody-dashboard-grand-total'))).not.toContain(
+      'data-custody-car-log-open',
+    );
+    // An old book's line has its log, by its code; a line that names no car has none.
+    const odd = draw(
+      <CustodyPerCar
+        data={{
+          ...dashboard,
+          vehicles: [
+            ...dashboard.vehicles,
+            {
+              vehicleId: null,
+              vehicleCode: 'كوستر الدفتر',
+              dealership: 300,
+              fuel: 0,
+              tyres: 0,
+              wash: 0,
+              total: 300,
+            },
+            {
+              vehicleId: null,
+              vehicleCode: null,
+              dealership: 0,
+              fuel: 10,
+              tyres: 0,
+              wash: 0,
+              total: 10,
+            },
+          ],
+        }}
+        onOpenLog={() => undefined}
+      />,
+    );
+    expect(odd).toContain('data-custody-car-log-open="كوستر الدفتر"');
+    expect(odd.match(/data-custody-car-log-open=/gu)).toHaveLength(4);
+    expect(custodyCarOf({ vehicleId: 'v-63', vehicleCode: '63' })).toEqual({ vehicleId: 'v-63' });
+    expect(custodyCarOf({ vehicleId: null, vehicleCode: 'كوستر الدفتر' })).toEqual({
+      bookCode: 'كوستر الدفتر',
+    });
+    expect(custodyCarOf({ vehicleId: null, vehicleCode: null })).toBeNull();
+    expect(custodyCarOf({ vehicleId: null, vehicleCode: ' ' })).toBeNull();
+    // On «أعلى السيارات صرفًا» too — the icon alone, its name as its tooltip.
+    const top = draw(<CustodyTopCars data={dashboard} onOpenLog={() => undefined} />);
+    const t63 = button(top, '63');
+    expect(t63).toContain('title="السجل — السيارة 63"');
+    expect(text(t63)).toBe('');
+    // In the dashboard both lists carry it.
+    const html2 = body();
+    for (const id of ['topCars', 'perVehicle']) {
+      expect(section(html2, id), id).toContain('data-custody-car-log-open="63"');
+    }
+  });
+
+  it('opens over the dashboard, which stays beneath — titled for its car, the board’s filters read only', () => {
+    expect(body()).not.toContain('data-custody-car-log=');
+    const html = opened();
+    // The dashboard is all still there under it.
+    for (const id of ['kpis', 'fuel', 'perVehicle', 'log']) {
+      expect(html, id).toContain(`data-custody-dashboard-section="${id}"`);
+    }
+    const log = html.slice(html.indexOf('data-custody-car-log="true"'));
+    expect(html.indexOf('data-custody-car-log="true"')).toBeGreaterThan(
+      html.indexOf('data-custody-dashboard-section="log"'),
+    );
+    const dialog = /role="dialog" aria-modal="true" aria-labelledby="([^"]+)"/u.exec(log);
+    expect(dialog).not.toBeNull();
+    const title = log.slice(log.indexOf(`id="${dialog?.[1] ?? '?'}"`));
+    expect(text(title.slice(0, title.indexOf('</h2>')))).toBe('سجل السيارة 63');
+    expect(log).toMatch(/data-custody-car-log-close="true"/u);
+    expect(log).toContain(`aria-label="${ar('common.close')}"`);
+    expect(log).toContain('data-custody-car-log-backdrop="true"');
+    // The board's filters, as chips — read only, nothing to type in.
+    const chips = log.slice(log.indexOf('data-custody-car-log-filters'));
+    expect(text(chips.slice(0, chips.indexOf('</ul>')))).toBe(
+      'من 2026/10/01 النوع: التوكيل، وقود، كاوتش',
+    );
+    expect(chips.slice(0, chips.indexOf('</ul>'))).not.toMatch(/<input|<select|<button/u);
+    expect(text(log)).toContain(ar('fleet.custody.dashboard.carLog.note'));
+    // No filter: the board's own «no filter» chip.
+    const bare = opened({});
+    const none = bare.slice(bare.indexOf('data-custody-car-log-filters'));
+    expect(text(none.slice(0, none.indexOf('</ul>')))).toBe(
+      ar('fleet.custody.dashboard.filters.none'),
+    );
+  });
+
+  it('heads the log with the car’s totals — each kind and its share of the car, the total and its share of all', () => {
+    const html = opened();
+    const totals = html.slice(html.indexOf('data-custody-car-log-totals'));
+    expect(text(totals.slice(0, totals.indexOf('</section>')))).toBe(
+      'التوكيل 850.00 ج.م. 38% من إجمالي السيارة وقود — كاوتش 1,400.00 ج.م. 62% من إجمالي السيارة غسيل — الإجمالي 2,250.00 ج.م. 51.9% من إجمالي العهدة',
+    );
+    expect([...totals.matchAll(/data-custody-car-log-kind="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      ...CUSTODY_KINDS,
+      'total',
+    ]);
+    // Each kind in its own colour, the total emerald.
+    for (const kind of CUSTODY_KINDS) {
+      expect(classesOf(totals, `data-custody-car-log-kind="${kind}"`)).toEqual(
+        expect.arrayContaining(CUSTODY_KIND[kind].accent.split(' ')),
+      );
+    }
+    expect(classesOf(totals, 'data-custody-car-log-kind="total"')).toEqual(
+      expect.arrayContaining(['border-emerald-300', 'dark:border-emerald-500/40']),
+    );
+    // The same figures as the car's line of «ملخص لكل سيارة» — never a sum of one page.
+    expect(car63.total).toBe(2250);
+    expect(custodyShare1(car63.total, dashboard.total)).toBe('51.9%');
+  });
+
+  it('lists every movement of the car — date, kind and its type or work, company, driver, source, amount', () => {
+    const html = carLog();
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    expect(text(head)).toBe('التاريخ النوع الشركة السائق المصدر المبلغ');
+    // It is one car's log: no car column.
+    expect(head).not.toContain(ar('fleet.custody.dashboard.columns.carCode'));
+    // The server's order — newest first — kept.
+    expect([...html.matchAll(/data-custody-car-log-row="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'c204f',
+      'c204n',
+      'c204w',
+    ]);
+    expect(text(logRow(html, 'c204f'))).toBe(
+      '2026/10/05 وقود (سولار) وطنية (Wataniya) إبراهيم جميل رمضان داود خصم الإيصالات 500.00 ج.م.',
+    );
+    expect(logRow(html, 'c204f')).toContain('data-custody-company-badge="wataniya"');
+    expect(logRow(html, 'c204f')).toContain(COMPANY.wataniya.badge);
+    expect(logRow(html, 'c204f')).toContain(CUSTODY_KIND.fuel.badge);
+    // A fuel receipt that names no company says so — never a company guessed.
+    expect(text(logRow(html, 'c204n'))).toContain('وقود (بنزين 92) بدون شركة');
+    expect(logRow(html, 'c204n')).toContain('data-custody-car-log-company="none"');
+    expect(logRow(html, 'c204n')).not.toContain('data-custody-company-badge');
+    // Not fuel: no company at all.
+    expect(text(logRow(html, 'c204w'))).toBe(
+      '2026/10/02 غسيل — إبراهيم جميل رمضان داود خصم الإيصالات 120.00 ج.م.',
+    );
+    // A dealership bill: its work, no driver, the dealership as its source.
+    const bills = carLog(car63, rows63);
+    expect(text(logRow(bills, 'c63d'))).toBe(
+      '2026/10/01 التوكيل (صيانة) — — التوكيل (ملاكي بلا رقم الفاتورة) 850.00 ج.م.',
+    );
+    expect(logRow(bills, 'c63d')).toContain(
+      'font-bold text-blue-700 dark:font-medium dark:text-blue-300',
+    );
+  });
+
+  it('asks `/movements` over the board’s filters and that one car — its registry id, or the old book’s code whole', () => {
+    expect(custodyCarLogQuery(ON, car63)).toEqual({ ...ON, vehicleId: 'v-63' });
+    expect(custodyCarLogQuery(ON, { vehicleId: null, vehicleCode: 'كوستر الدفتر' })).toEqual({
+      ...ON,
+      bookCode: 'كوستر الدفتر',
+    });
+    expect(custodyCarLogQuery(ON, { vehicleId: null, vehicleCode: null })).toBeNull();
+    // The board's own cars stay as they are: the car narrows them, never replaces them.
+    expect(custodyCarLogQuery({ vehicleCodes: ['63', '204'] }, car63)).toEqual({
+      vehicleCodes: ['63', '204'],
+      vehicleId: 'v-63',
+    });
+    expect(CAR_LOG).toContain(
+      'useCustodyLog({ ...(ask ?? filters) }, page, pageSize, ask !== null)',
+    );
+    // The board's log hook, its own page and size — under the ledger's key, so a receipt saved
+    // or deleted refreshes it too.
+    expect(QUERIES).toContain(
+      "listKey(MODULE, 'custody', { log: true, ...filters, page, pageSize })",
+    );
+    // An old book's line asks by its code, spaces and all.
+    const book = {
+      vehicleId: null,
+      vehicleCode: 'كوستر الدفتر',
+      dealership: 300,
+      fuel: 0,
+      tyres: 0,
+      wash: 0,
+      total: 300,
+    };
+    const bill = movement({
+      id: 'b1',
+      ref: 'dealershipInvoice',
+      source: 'dealership',
+      vehicleId: null,
+      vehicleCode: 'كوستر الدفتر',
+      driverEmployeeId: null,
+      driverName: null,
+      fuelType: null,
+      company: null,
+      detail: 'صيانة',
+      amount: 300,
+    });
+    expect(carLog(book, [bill], { filters: ON })).toContain('data-custody-car-log-row="b1"');
+    // Over other filters it is another question — drawn only from its own answer.
+    expect(carLog(car204, rows204, { filters: ON })).toContain('data-custody-car-log-row="c204f"');
+  });
+
+  it('pages on its own — 25, 50 or 100 a page, «عرض X - Y من أصل N»', () => {
+    const many = carLog(car204, rows204, { totalItems: 60 });
+    expect(text(many.slice(many.indexOf('data-custody-car-log-count')))).toMatch(/^60 حركة/u);
+    expect(text(many.slice(many.indexOf('data-custody-log-range')))).toContain(
+      'عرض 1 - 25 من أصل 60 حركة',
+    );
+    const sizes = many.slice(many.indexOf('data-custody-log-size'), many.indexOf('</select>'));
+    expect([...sizes.matchAll(/<option value="(\d+)"/gu)].map((m) => m[1])).toEqual([
+      '25',
+      '50',
+      '100',
+    ]);
+    expect([...many.matchAll(/data-custody-log-page="(\d+)"/gu)].map((m) => m[1])).toEqual([
+      '1',
+      '2',
+      '3',
+    ]);
+    expect(classesOf(many, 'aria-current="page"')).toEqual(
+      expect.arrayContaining(['bg-emerald-600', 'text-white']),
+    );
+    const second = carLog(car204, rows204, { page: 2, totalItems: 60 });
+    expect(text(second.slice(second.indexOf('data-custody-log-range')))).toContain(
+      'عرض 26 - 50 من أصل 60 حركة',
+    );
+    expect(second).toMatch(/aria-current="page" data-custody-log-page="2"/u);
+    const fifty = carLog(car204, rows204, { pageSize: 50, totalItems: 60 });
+    expect(text(fifty.slice(fifty.indexOf('data-custody-log-range')))).toContain(
+      'عرض 1 - 50 من أصل 60 حركة',
+    );
+  });
+
+  it('wears its faces — shimmering while its page comes, the error with a retry, «لا حركات» when none', () => {
+    const waiting = draw(
+      <CustodyCarLogBody car={car63} fundTotal={dashboard.total} filters={{}} />,
+    );
+    expect(waiting).toContain('data-custody-car-log-loading="true"');
+    // The totals are the dashboard's own — on screen at once.
+    expect(waiting).toContain('data-custody-car-log-totals="true"');
+    const empty = carLog(car63, []);
+    expect(empty).toContain('data-custody-car-log-empty="true"');
+    expect(empty).toContain(ar('fleet.custody.dashboard.carLog.empty'));
+    expect(empty).not.toContain('<table');
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, retryOnMount: false, staleTime: Infinity, refetchOnMount: false },
+      },
+    });
+    qc.getQueryCache()
+      .build(qc, { queryKey: carKey({}, { vehicleId: 'v-63' }) })
+      .setState({
+        data: undefined,
+        dataUpdateCount: 0,
+        dataUpdatedAt: 0,
+        error: new Error('boom'),
+        errorUpdateCount: 1,
+        errorUpdatedAt: NOW,
+        fetchFailureCount: 1,
+        fetchFailureReason: null,
+        fetchMeta: null,
+        isInvalidated: false,
+        status: 'error',
+        fetchStatus: 'idle',
+      });
+    const failed = mount(
+      qc,
+      <CustodyCarLogBody car={car63} fundTotal={dashboard.total} filters={{}} />,
+    );
+    expect(failed).toContain(ar('common.retry'));
+    expect(failed).not.toContain('data-custody-car-log-loading');
+  });
+
+  it('closes on Escape before the dashboard hears it, keeps Tab inside, mutes the dashboard and gives the focus back', () => {
+    // Escape is taken on its way down (the capture phase) and stopped: the dashboard's own Escape
+    // never hears it, so the log closes first and the dashboard stays open.
+    expect(CAR_LOG).toContain("document.addEventListener('keydown', onKey, true)");
+    expect(CAR_LOG).toContain("document.removeEventListener('keydown', onKey, true)");
+    expect(CAR_LOG).toMatch(
+      /if \(e\.key === 'Escape'\) \{\s*e\.preventDefault\(\);\s*e\.stopPropagation\(\);\s*close\.current\(\);/u,
+    );
+    expect(MODAL).toContain("if (e.key === 'Escape' && !e.defaultPrevented)");
+    // Tab rounds inside the log, by the dashboard's own rule.
+    expect(CAR_LOG).toContain('custodyTrapFocus<Element>({ back, active, first, last, inside })');
+    expect(CAR_LOG).toContain("document.addEventListener('focusin', onFocusIn, true)");
+    expect(CAR_LOG).toContain("document.removeEventListener('focusin', onFocusIn, true)");
+    // The dashboard beneath is out of reach while the log is up, and back after.
+    expect(CAR_LOG).toContain('for (const el of muted) el.inert = true;');
+    expect(CAR_LOG).toContain('for (const el of muted) el.inert = false;');
+    expect(CAR_LOG).toContain('closeButton.current?.focus()');
+    // The focus goes back to the «السجل» pressed — handed in by the click, not read off the page.
+    expect(CAR_LOG).toContain('returnTo.current?.focus()');
+    expect(TABLES).toContain('onClick={(e) => onOpen(car, e.currentTarget)}');
+    // Drawn inside the dashboard's dialog, so its trap and scroll lock hold the log too.
+    expect(MODAL).toContain('<CustodyDashboardLayer.Provider value={panel}>');
+    expect(MODAL).toContain('ref={holdPanel}');
+    expect(CAR_LOG).toContain('layer ?? document.body');
+    // Another car's log starts afresh, on its first page.
+    expect(MODAL).toContain('key={log.key}');
+    // Away from the dashboard (no layer) it still draws, as its own modal.
+    const alone = draw(
+      <CustodyCarLog
+        car={car63}
+        fundTotal={dashboard.total}
+        filters={{}}
+        opener={null}
+        onClose={() => undefined}
+      />,
+    );
+    expect(alone).toContain('role="dialog" aria-modal="true"');
+  });
+
+  it('closes on × and on a click outside it, and its body scrolls on its own under a fixed header', () => {
+    const html = opened();
+    const log = html.slice(html.indexOf('data-custody-car-log="true"'));
+    // The JSX element carrying `attr`, as written: its whole opening tag (and, for a button, all
+    // of it) — so what a click on it does is read off the very element.
+    const element = (attr: string, open: string, end: string): string => {
+      const at = CAR_LOG.indexOf(attr);
+      expect(at, attr).toBeGreaterThan(-1);
+      return CAR_LOG.slice(CAR_LOG.lastIndexOf(open, at), CAR_LOG.indexOf(end, at) + end.length);
+    };
+    // A click outside the panel lands on the backdrop — the screen around it, beneath the panel —
+    // and closes the log; so does ×. Both call the latest `onClose`.
+    const backdrop = element('data-custody-car-log-backdrop="true"', '<div', '/>');
+    expect(backdrop).toContain('onClick={() => close.current()}');
+    const cross = element('data-custody-car-log-close="true"', '<button', '</button>');
+    expect(cross).toContain('onClick={() => close.current()}');
+    expect(cross).toContain('type="button"');
+    expect(CAR_LOG).toContain('close.current = onClose;');
+    expect(classesOf(html, 'data-custody-car-log="true"')).toEqual(
+      expect.arrayContaining(['fixed', 'inset-0']),
+    );
+    expect(classesOf(log, 'data-custody-car-log-backdrop="true"')).toEqual(
+      expect.arrayContaining(['absolute', 'inset-0']),
+    );
+    expect(log.indexOf('data-custody-car-log-backdrop="true"')).toBeLessThan(
+      log.indexOf('role="dialog"'),
+    );
+    expect(classesOf(log, 'role="dialog"')).toEqual(
+      expect.arrayContaining(['relative', 'flex', 'h-full', 'flex-col']),
+    );
+    // The header keeps its place; the body under it — the totals and the movements — scrolls on
+    // its own, and its scroll never runs on into the dashboard beneath.
+    const bodyAt = log.indexOf('data-custody-car-log-scroll="true"');
+    expect(bodyAt).toBeGreaterThan(log.indexOf('data-custody-car-log-close="true"'));
+    expect(classesOf(log, 'data-custody-car-log-scroll="true"')).toEqual(
+      expect.arrayContaining(['min-h-0', 'flex-1', 'overflow-y-auto', 'overscroll-contain']),
+    );
+    expect(log.indexOf('data-custody-car-log-body="true"')).toBeGreaterThan(bodyAt);
+    expect(log.indexOf('data-custody-car-log-totals="true"')).toBeGreaterThan(bodyAt);
+    expect(log.indexOf('data-custody-car-log-row=')).toBeGreaterThan(bodyAt);
+    expect(classesOf(log, '<header')).toContain('shrink-0');
+    // Drawn alone, over the board (no dashboard to hold the page), it holds the page still itself
+    // and gives it back as it was.
+    expect(CAR_LOG).toContain('const ownLock = root?.parentElement === document.body;');
+    expect(CAR_LOG).toContain("if (ownLock) document.body.style.overflow = 'hidden';");
+    expect(CAR_LOG).toContain('if (ownLock) document.body.style.overflow = overflow;');
+  });
+
+  it('puts «السجل» on every car of the board’s own «ملخص لكل سيارة» too — never on «الإجمالي الختامي»', () => {
+    const qc = client();
+    const book = {
+      vehicleId: null,
+      vehicleCode: 'كوستر الدفتر',
+      dealership: 300,
+      fuel: 0,
+      tyres: 0,
+      wash: 0,
+      total: 300,
+    };
+    const nameless = { ...book, vehicleCode: null, dealership: 0, fuel: 10, total: 10 };
+    qc.setQueryData(listKey('fleet', 'custody', { summary: true, ...FILTERS }), {
+      count: dashboard.count + 2,
+      total: dashboard.total + 310,
+      dealership: dashboard.dealership + 300,
+      fuel: dashboard.fuel + 10,
+      tyres: dashboard.tyres,
+      wash: dashboard.wash,
+      vehicles: [...dashboard.vehicles, book, nameless],
+    } satisfies FleetCustodySummaryDto);
+    const html = mount(qc, <CustodyPage />);
+    const table = html.slice(
+      html.indexOf('data-custody-per-vehicle="true"'),
+      html.indexOf('data-custody-movements="true"'),
+    );
+    // Every car, the old book's line by its code; the line that names no car has none.
+    expect(
+      [...table.matchAll(/data-custody-car-log-open="([^"]*)"/gu)].map((m) => m[1]).sort(),
+    ).toEqual(['160', '204', '63', 'كوستر الدفتر']);
+    // Beside the car's code, in its cell — the word on it, its name saying which car.
+    const at = table.indexOf('data-custody-car-log-open="63"');
+    const cell = table.slice(table.lastIndexOf('<td', at), table.indexOf('</td>', at));
+    expect(text(cell)).toBe('63 السجل');
+    expect(cell).toContain('aria-label="السجل — السيارة 63"');
+    expect(cell).toContain('type="button"');
+    // «الإجمالي الختامي» is the whole fund's — it has no log.
+    const grand = table.slice(table.indexOf('data-custody-grand-total="true"'));
+    expect(text(grand.slice(0, grand.indexOf('</tr>')))).toMatch(/^الإجمالي/u);
+    expect(grand.slice(0, grand.indexOf('</tr>'))).not.toContain('data-custody-car-log-open');
+    expect(PAGE).toMatch(
+      /row\.vehicleId === GRAND_TOTAL \? \(\s*<span>\{row\.vehicleCode\}<\/span>/u,
+    );
+    // Closed on the way in; pressed, the car's log over the board — its line as the summary holds
+    // it, its share of the same fund total, the board's own filters, the focus back on «السجل».
+    expect(html).not.toContain('data-custody-car-log="true"');
+    expect(PAGE).toContain(
+      'onOpen={(car, opener) => setCarLog({ key: custodyCarKey(car), car, opener })}',
+    );
+    expect(PAGE).toMatch(
+      /<CustodyCarLog\s+key=\{carLog\.key\}\s+car=\{custodyCurrentCar\(summary\.data\?\.vehicles, carLog\)\}\s+fundTotal=\{summary\.data\?\.total \?\? 0\}\s+filters=\{filters\}\s+opener=\{carLog\.opener\}\s+onClose=\{\(\) => setCarLog\(null\)\}/u,
+    );
+  });
+
+  it('keeps an open log’s totals the server’s — the line now, nothing once it is gone', () => {
+    const open = { key: 'v-63', car: car63, opener: null };
+    const moved = { ...car63, tyres: 1500, total: 2350 };
+    expect(custodyCurrentCar([car204, moved], open)).toBe(moved);
+    // The filters no longer reach it: its kinds are nothing, never the old sums.
+    expect(custodyCurrentCar([car204], open)).toEqual({
+      ...car63,
+      dealership: 0,
+      fuel: 0,
+      tyres: 0,
+      wash: 0,
+      total: 0,
+    });
+    // No answer at all yet: the line as it was opened.
+    expect(custodyCurrentCar(undefined, open)).toBe(car63);
+    expect(MODAL).toContain('car={custodyCurrentCar(data.vehicles, log)}');
+  });
+
+  it('wears the dashboard’s look in both themes, and fits a 375px phone without a side-scroll', () => {
+    const html = opened();
+    const log = html.slice(html.indexOf('data-custody-car-log="true"'));
+    expect(classesOf(log, 'role="dialog"')).toEqual(
+      expect.arrayContaining([
+        'h-full',
+        'w-full',
+        'max-w-4xl',
+        'bg-[#f8fafc]',
+        'dark:bg-[#0b0f19]',
+      ]),
+    );
+    // Two figures a row on a phone, the total across; five in one row from `sm`.
+    expect(classesOf(log, 'data-custody-car-log-totals')).toEqual(
+      expect.arrayContaining(['grid-cols-2', 'sm:grid-cols-5']),
+    );
+    expect(classesOf(log, 'data-custody-car-log-kind="total"')).toEqual(
+      expect.arrayContaining(['col-span-2', 'sm:col-span-1']),
+    );
+    // The table scrolls inside its card; the chips and the title wrap.
+    expect(log).toMatch(/class="overflow-x-auto[^"]*"><table[^>]*class="w-full min-w-\[40rem\]/u);
+    expect(classesOf(log, 'data-custody-car-log-filters')).toContain('flex-wrap');
+    // Every light surface says what it paints in the dark.
+    const tags = [...log.matchAll(/class="([^"]*)"/gu)].map((m) => (m[1] ?? '').split(' '));
+    for (const cls of tags) {
+      if (
+        !cls.some((c) =>
+          /^(?:bg-white|bg-slate-50|bg-slate-100|bg-slate-50\/80|bg-\[#f8fafc\])$/u.test(c),
+        )
+      )
+        continue;
+      expect(
+        cls.some((c) => c.startsWith('dark:bg-')),
+        cls.join(' '),
+      ).toBe(true);
+    }
+  });
+});
+
 describe('both themes — the dark design and the light map', () => {
   it('draws every card on the design’s surface: white with #e2e8f0 light, the obsidian gradient dark', () => {
     for (const cls of [
@@ -1725,8 +2507,12 @@ describe('«والنسب باينه» — every share in Latin digits, left to r
       noDriver: { count: 1, amount: 0 },
       fuelTypes: dashboard.fuelTypes.map((line) => ({ ...line, amount: 0 })),
       fuelByCompany: {
-        companies: dashboard.fuelByCompany.companies.map((row) => ({ ...row, amount: 0 })),
-        none: { amount: 0, count: 0, litres: 0 },
+        companies: dashboard.fuelByCompany.companies.map((row) => ({
+          ...row,
+          amount: 0,
+          types: row.types.map((line) => ({ ...line, amount: 0 })),
+        })),
+        none: { amount: 0, count: 0, litres: 0, types: [] },
       },
     };
     const html = body(zero);
@@ -1824,6 +2610,60 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
       expect(source, name).not.toMatch(
         /\b(?:[a-z]+:)?(?:bg|text|border|ring)-(?:brand|purple|violet|indigo)-/u,
       );
+    }
+  });
+});
+
+describe('the owner’s words, quoted as he wrote them', () => {
+  const FUEL_ASK = 'تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها';
+  const LOG_ASK =
+    'عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه';
+  const API = '../../../../../api/';
+  const CONTRACTS = '../../../../../../packages/contracts/src/modules/';
+  const SOURCES: Record<string, string> = {
+    'CustodyDashboard.tsx': MODAL,
+    'CustodyDashboardCharts.tsx': CHARTS,
+    'CustodyDashboardTables.tsx': TABLES,
+    'custody-dashboard-parts.tsx': PARTS,
+    'CustodyCarLog.tsx': CAR_LOG,
+    'CustodyPage.tsx': PAGE,
+    'custody-dashboard.spec.tsx': read('custody-dashboard.spec.tsx'),
+    'custody-dashboard.ts': read(`${API}src/modules/fleet/custody/custody-dashboard.ts`),
+    'custody-dashboard.spec.ts': read(`${API}src/modules/fleet/custody/custody-dashboard.spec.ts`),
+    'custody.service.ts': read(`${API}src/modules/fleet/custody/custody.service.ts`),
+    'tests/integration/fleet.spec.ts': read(`${API}tests/integration/fleet.spec.ts`),
+    'contracts fleet.ts': read(`${CONTRACTS}fleet.ts`),
+    'contracts fleet.spec.ts': read(`${CONTRACTS}fleet.spec.ts`),
+  };
+  /** Every «…» in a source, a comment's line breaks (and its `//` or ` * `) read as one space. */
+  const quotes = (source: string): string[] =>
+    [
+      ...source
+        .replace(/[ \t]*\r?\n[ \t]*(?:\/\/|\*(?!\/))?[ \t]*/gu, ' ')
+        .matchAll(/«([^«»]{1,200})»/gu),
+    ].map((m) => m[1] ?? '');
+
+  it('quotes the two requests word for word, wherever a piece of them is quoted', () => {
+    for (const [name, source] of Object.entries(SOURCES)) {
+      for (const quote of quotes(source)) {
+        // The split's own words — not the card's title, nor the owner's other asks about the two
+        // companies (a car's two cards, a transfer between them).
+        if (/استهلاك الوقود يتقسم|اوت لوحدها|وطني[هة] لو[خح]?دها/u.test(quote)) {
+          expect(FUEL_ASK, `${name}: «${quote}»`).toContain(quote);
+        }
+        if (/علامه السجل/u.test(quote)) expect(LOG_ASK, `${name}: «${quote}»`).toContain(quote);
+      }
+    }
+    // The whole request, as written, where the split is made: the contract, the server, the card.
+    for (const name of [
+      'contracts fleet.ts',
+      'custody-dashboard.ts',
+      'CustodyDashboardCharts.tsx',
+    ]) {
+      expect(quotes(SOURCES[name] ?? ''), name).toContain(FUEL_ASK);
+    }
+    for (const name of ['CustodyCarLog.tsx', 'CustodyPage.tsx', 'contracts fleet.ts']) {
+      expect(quotes(SOURCES[name] ?? ''), name).toContain(LOG_ASK);
     }
   });
 });

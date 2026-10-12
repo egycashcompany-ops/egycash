@@ -14,7 +14,7 @@
 // station panel, no kind of wash, no «تكلفة معلقة» amount (a waiting bill has none yet) — only its
 // count and how long the oldest has waited. The owner's choices on it are in `CustodyKinds.tsx`
 // (the colours) and in `custody-dashboard-parts.tsx` (the surfaces, the type, the counted words).
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   type FleetCustodyAlertsDto,
@@ -39,7 +39,13 @@ import {
   CustodyTopCars,
   CustodyTopDrivers,
 } from './CustodyDashboardCharts';
-import { CustodyLog, CustodyPerCar } from './CustodyDashboardTables';
+import { CustodyCarLog, custodyCurrentCar, type CustodyOpenCarLog } from './CustodyCarLog';
+import {
+  custodyCarKey,
+  CustodyLog,
+  CustodyPerCar,
+  type CustodyOpenLog,
+} from './CustodyDashboardTables';
 import { BoardIcon, NUM, PATH, ymd } from './FuelCardBoard';
 import {
   CAIRO,
@@ -48,9 +54,11 @@ import {
   CARD_SURFACE,
   COMPANY,
   COUNT,
+  CustodyDashboardLayer,
   custodyDaysSince,
   custodyFilterChips,
   custodyFiltered,
+  custodyTrapFocus,
   LITRES,
   RATE,
   SCROLLBAR,
@@ -63,6 +71,7 @@ import {
 export {
   custodyFilterChips,
   custodyFiltered,
+  custodyTrapFocus,
   type CustodyDashboardFilters,
 } from './custody-dashboard-parts';
 
@@ -627,32 +636,54 @@ export const CustodyDashboardBody = ({
   onShowDealership,
   onAdvancedFilter,
   now,
+  initialLogCar,
 }: {
   data: FleetCustodyDashboardDto;
   filters?: CustodyDashboardFilters;
   now?: number;
-} & CustodyDashboardActions): JSX.Element => (
-  <div className="space-y-6" data-custody-dashboard-body="true">
-    <CustodyAlerts alerts={data.alerts} {...(now === undefined ? {} : { now })} />
-    <CustodyKpis data={data} />
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-      <CustodyTimeline data={data} />
-      <CustodyByKindSource data={data} onShowDealership={onShowDealership} />
+  /** A car's «السجل» open from the start, by its line's key — for the node specs. */
+  initialLogCar?: string;
+} & CustodyDashboardActions): JSX.Element => {
+  const [log, setLog] = useState<CustodyOpenCarLog | null>(() => {
+    const car = data.vehicles.find((line) => custodyCarKey(line) === initialLogCar);
+    return car === undefined ? null : { key: custodyCarKey(car), car, opener: null };
+  });
+  // «عاوز اضيف علامه السجل لكل عربيه»: «السجل» on a car opens its log over the dashboard.
+  const openLog: CustodyOpenLog = (car, opener) => setLog({ key: custodyCarKey(car), car, opener });
+  return (
+    <div className="space-y-6" data-custody-dashboard-body="true">
+      <CustodyAlerts alerts={data.alerts} {...(now === undefined ? {} : { now })} />
+      <CustodyKpis data={data} />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+        <CustodyTimeline data={data} />
+        <CustodyByKindSource data={data} onShowDealership={onShowDealership} />
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <CustodyTopCars data={data} onOpenLog={openLog} />
+        <CustodyTopDrivers data={data} />
+        <CustodyFuelBreakdown data={data} />
+      </div>
+      <CustodyPerCar data={data} onOpenLog={openLog} />
+      {/* Keyed by the filters: other filters start the log afresh, on its first page. */}
+      <CustodyLog
+        key={JSON.stringify(filters)}
+        filters={filters}
+        onAdvancedFilter={onAdvancedFilter}
+      />
+      {/* Keyed by the car: another car's log starts afresh, on its first page. */}
+      {log !== null && (
+        <CustodyCarLog
+          key={log.key}
+          car={custodyCurrentCar(data.vehicles, log)}
+          fundTotal={data.total}
+          filters={filters}
+          opener={log.opener}
+          onClose={() => setLog(null)}
+        />
+      )}
     </div>
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <CustodyTopCars data={data} />
-      <CustodyTopDrivers data={data} />
-      <CustodyFuelBreakdown data={data} />
-    </div>
-    <CustodyPerCar data={data} />
-    {/* Keyed by the filters: other filters start the log afresh, on its first page. */}
-    <CustodyLog
-      key={JSON.stringify(filters)}
-      filters={filters}
-      onAdvancedFilter={onAdvancedFilter}
-    />
-  </div>
-);
+  );
+};
 
 /** Loading: the frame of the body, shimmering — no layout jump when the answer lands. */
 const BodySkeleton = (): JSX.Element => (
@@ -741,25 +772,6 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * Where the focus goes so it never leaves the modal — `null` lets Tab move it as usual. On the
- * first stop Shift+Tab rounds to the last, on the last Tab rounds to the first; and focus that
- * reached the page behind anyway (a click on plain text sets Tab's starting point there, past the
- * last stop or before the first) comes back in at the end Tab was heading for.
- */
-export const custodyTrapFocus = <T,>(move: {
-  back: boolean;
-  active: T | null;
-  first: T;
-  last: T;
-  inside: boolean;
-}): T | null => {
-  if (!move.inside) return move.back ? move.last : move.first;
-  if (move.back && move.active === move.first) return move.last;
-  if (!move.back && move.active === move.last) return move.first;
-  return null;
-};
-
-/**
  * The modal itself: over the whole screen, in a portal; Escape or × closes it, Tab stays inside,
  * the page behind does not scroll, and the focus goes back to «لوحة تحكم» on the way out. Read only
  * while open.
@@ -778,7 +790,13 @@ export const CustodyDashboard = ({
 } & CustodyDashboardActions): JSX.Element | null => {
   const t = useT();
   const titleId = useId();
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // The dialog, for the layers drawn over the dashboard inside it (a car's «السجل»).
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
+  const holdPanel = useCallback((node: HTMLDivElement | null) => {
+    panelRef.current = node;
+    setPanel(node);
+  }, []);
   const closeButton = useRef<HTMLButtonElement>(null);
   // The latest `onClose` without re-running the effect: a new arrow each render must not re-take
   // the focus or forget who opened the modal.
@@ -810,7 +828,8 @@ export const CustodyDashboard = ({
     // On the document, not the panel: after a click on plain text the focus sits on <body>, and a
     // key pressed there never reaches the panel's own handler.
     const onKey = (e: KeyboardEvent): void => {
-      // An open menu inside (the cars' funnel) takes its own Escape first.
+      // An open menu inside (the cars' funnel) takes its own Escape first; a car's «السجل» over
+      // the dashboard takes it before it ever gets here.
       if (e.key === 'Escape' && !e.defaultPrevented) {
         e.preventDefault();
         close.current();
@@ -846,7 +865,7 @@ export const CustodyDashboard = ({
     <div className="fixed inset-0 z-[90]" data-custody-dashboard="true">
       <div className="absolute inset-0 animate-fade-in bg-slate-900/50" aria-hidden="true" />
       <div
-        ref={panelRef}
+        ref={holdPanel}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -888,16 +907,18 @@ export const CustodyDashboard = ({
         >
           <div className="mx-auto mt-6 max-w-[1600px] space-y-6 px-4 pb-12 lg:px-8">
             <CustodyDashboardFilterBar filters={filters} onClearFilters={onClearFilters} />
-            <CustodyDashboardContent
-              view={view}
-              data={query.data}
-              error={query.error}
-              onRetry={() => void query.refetch()}
-              filtered={custodyFiltered(filters)}
-              filters={filters}
-              onShowDealership={onShowDealership}
-              onAdvancedFilter={onAdvancedFilter}
-            />
+            <CustodyDashboardLayer.Provider value={panel}>
+              <CustodyDashboardContent
+                view={view}
+                data={query.data}
+                error={query.error}
+                onRetry={() => void query.refetch()}
+                filtered={custodyFiltered(filters)}
+                filters={filters}
+                onShowDealership={onShowDealership}
+                onAdvancedFilter={onAdvancedFilter}
+              />
+            </CustodyDashboardLayer.Provider>
           </div>
         </div>
       </div>

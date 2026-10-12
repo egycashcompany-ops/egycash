@@ -3,7 +3,9 @@
 // «ملخص لكل سيارة»: every car, each kind, its total and its share with one decimal; a search by
 // the car's code and a funnel that keeps only the cars with a chosen kind — both in the browser,
 // over the server's whole list — and the head and «الإجمالي الختامي» held at the top and the foot
-// of its own scroller.
+// of its own scroller. «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته
+// ك سجل للعربيه»: every car's line carries «السجل», which opens that car's own log over the
+// dashboard (`CustodyCarLog.tsx`).
 //
 // «سجل كل الحركات»: the board's movements (`/fleet/custody/movements`) over the board's filters,
 // with a page and a page size of its own (25 / 50 / 100). Each kind wears its badge, a fuel
@@ -47,6 +49,68 @@ import {
 const FUNNEL = [
   'M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z',
 ];
+/** «السجل» — a page with its lines, the design's stroke. */
+export const LOG_ICON = [
+  'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+];
+
+/**
+ * The car one line of «ملخص لكل سيارة» names, as `/fleet/custody/movements` asks for it: the
+ * registry's car by its id; a line kept from the old book (no registry car) by its code, whole —
+ * `vehicleCodes` would split a code with a space in it, and would also find a registry car that
+ * carries the same code. A line with neither is no car, and has no log.
+ */
+export type CustodyCarRef = { vehicleId: string } | { bookCode: string };
+export const custodyCarOf = (
+  car: Pick<FleetCustodyVehicleRowDto, 'vehicleId' | 'vehicleCode'>,
+): CustodyCarRef | null => {
+  if (car.vehicleId !== null) return { vehicleId: car.vehicleId };
+  if (car.vehicleCode !== null && car.vehicleCode.trim() !== '') {
+    return { bookCode: car.vehicleCode };
+  }
+  return null;
+};
+/** The key «ملخص لكل سيارة» keys its lines by — the same car on every read of the dashboard. */
+export const custodyCarKey = (
+  car: Pick<FleetCustodyVehicleRowDto, 'vehicleId' | 'vehicleCode'>,
+): string => car.vehicleId ?? `code:${car.vehicleCode ?? ''}`;
+
+/** Opens a car's log — the button handed in, so the focus goes back to it when the log closes. */
+export type CustodyOpenLog = (car: FleetCustodyVehicleRowDto, opener: HTMLElement) => void;
+
+/**
+ * «السجل» on a car's line: the page icon and the word, or the icon alone where a row has no room
+ * (`compact`, with the word as its tooltip). Its name says which car, starting with the word on it.
+ */
+export const CustodyCarLogButton = ({
+  car,
+  onOpen,
+  compact = false,
+}: {
+  car: FleetCustodyVehicleRowDto;
+  onOpen: CustodyOpenLog;
+  compact?: boolean;
+}): JSX.Element | null => {
+  const t = useT();
+  if (custodyCarOf(car) === null) return null;
+  const label = t('fleet.custody.dashboard.carLog.open', { code: car.vehicleCode ?? '—' });
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={compact ? label : undefined}
+      data-custody-car-log-open={car.vehicleCode ?? ''}
+      onClick={(e) => onOpen(car, e.currentTarget)}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white font-sans text-[11px] font-semibold text-slate-700 transition hover:border-emerald-500 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-[#243552] dark:bg-[#142135] dark:font-medium dark:text-slate-300 dark:hover:border-emerald-500/50 dark:hover:text-white',
+        compact ? 'p-1' : 'px-2 py-1',
+      )}
+    >
+      <BoardIcon d={LOG_ICON} className="h-3.5 w-3.5" />
+      {!compact && <span>{t('fleet.custody.dashboard.carLog.button')}</span>}
+    </button>
+  );
+};
 
 /**
  * The rules that set the head and «الإجمالي الختامي» apart from the cars scrolling between them,
@@ -93,11 +157,14 @@ export const custodyCarRows = (
 /** (8) «ملخص لكل سيارة». */
 export const CustodyPerCar = ({
   data,
+  onOpenLog,
   initialSearch = '',
   initialKinds = [],
   initialMenu = false,
 }: {
   data: FleetCustodyDashboardDto;
+  /** «السجل» on every car's line — none without it (the line alone, as before). */
+  onOpenLog?: CustodyOpenLog | undefined;
   /** For the node specs, which cannot type or click. */
   initialSearch?: string;
   initialKinds?: FleetCustodySource[];
@@ -279,17 +346,22 @@ export const CustodyPerCar = ({
           >
             {rows.map((car) => (
               <tr
-                key={car.vehicleId ?? `code:${car.vehicleCode ?? ''}`}
+                key={custodyCarKey(car)}
                 data-custody-car-row={car.vehicleCode ?? ''}
                 className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
               >
                 <td className="p-3.5 ps-5 font-bold">
-                  <span
-                    dir="ltr"
-                    className="inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded border border-blue-200 bg-blue-50 px-1 font-bold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400"
-                  >
-                    {car.vehicleCode ?? '—'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      dir="ltr"
+                      className="inline-flex h-7 min-w-[1.75rem] items-center justify-center whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1 font-bold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400"
+                    >
+                      {car.vehicleCode ?? '—'}
+                    </span>
+                    {onOpenLog !== undefined && (
+                      <CustodyCarLogButton car={car} onOpen={onOpenLog} />
+                    )}
+                  </div>
                 </td>
                 {CUSTODY_KINDS.map((kind) => (
                   <td
@@ -396,7 +468,7 @@ export const custodyKindText = (
   return spec === null || spec === '' ? name : `${name} (${spec})`;
 };
 
-const PAGE_SIZES = [25, 50, 100] as const;
+export const PAGE_SIZES = [25, 50, 100] as const;
 const PAGE_IDLE =
   'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-transparent dark:bg-[#142135] dark:text-slate-300 dark:hover:bg-slate-700';
 
@@ -415,7 +487,6 @@ export const CustodyLog = ({
 }): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
-  const { count } = useCount();
   const titleId = useId();
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState<number>(initialPageSize);
@@ -424,8 +495,6 @@ export const CustodyLog = ({
   const meta = query.data?.meta;
   const total = meta?.totalItems ?? 0;
   const pages = Math.max(1, meta?.totalPages ?? 1);
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
 
   return (
     <section data-custody-dashboard-section="log" aria-labelledby={titleId} className={TABLE_CARD}>
@@ -590,81 +659,121 @@ export const CustodyLog = ({
         </div>
       )}
 
-      <div className="flex flex-col items-center justify-between gap-3 rounded-b-2xl border-t border-slate-200 bg-slate-50/80 p-3.5 text-xs text-slate-600 sm:flex-row dark:border-slate-800 dark:bg-[#0a101b] dark:text-slate-400">
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2">
-            {t('fleet.custody.dashboard.log.perPage')}
-            <select
-              data-custody-log-size="true"
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(1);
-              }}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 dark:border-slate-700 dark:bg-[#10192a] dark:text-white"
-            >
-              {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          {meta !== undefined && (
-            <span data-custody-log-range="true" className={cn('ms-2', NUM)}>
-              {t('fleet.custody.dashboard.log.range', {
-                from: COUNT.format(from),
-                to: COUNT.format(to),
-                movements: count('movement', total),
-              })}
-            </span>
-          )}
-        </div>
-        <nav aria-label={t('fleet.pager.label')} className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label={t('common.pagination.prev')}
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className={cn('rounded-lg p-1.5 disabled:opacity-40', PAGE_IDLE)}
-          >
-            <ChevronStartIcon className="h-3.5 w-3.5 rtl:-scale-x-100" />
-          </button>
-          {pagerPages(page, pages).map((p, i) =>
-            p === null ? (
-              <span key={`gap-${i}`} className="px-1 text-slate-400">
-                …
-              </span>
-            ) : (
-              <button
-                key={p}
-                type="button"
-                aria-current={p === page ? 'page' : undefined}
-                data-custody-log-page={p}
-                onClick={() => setPage(p)}
-                className={cn(
-                  'rounded-lg px-2.5 py-1',
-                  NUM,
-                  p === page
-                    ? 'border border-emerald-600 bg-emerald-600 font-bold text-white'
-                    : PAGE_IDLE,
-                )}
-              >
-                {p}
-              </button>
-            ),
-          )}
-          <button
-            type="button"
-            aria-label={t('common.pagination.next')}
-            disabled={page >= pages}
-            onClick={() => setPage((p) => Math.min(pages, p + 1))}
-            className={cn('rounded-lg p-1.5 disabled:opacity-40', PAGE_IDLE)}
-          >
-            <ChevronEndIcon className="h-3.5 w-3.5 rtl:-scale-x-100" />
-          </button>
-        </nav>
-      </div>
+      <CustodyLogFooter
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        pages={pages}
+        counted={meta !== undefined}
+        onPage={setPage}
+        onPageSize={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
+      />
     </section>
+  );
+};
+
+/**
+ * The foot of a log — the dashboard's «سجل كل الحركات» and a car's «السجل»: its rows a page (25,
+ * 50 or 100), «عرض X - Y من أصل N حركة» once the count is known, and its pages, the current one
+ * emerald.
+ */
+export const CustodyLogFooter = ({
+  page,
+  pageSize,
+  total,
+  pages,
+  counted,
+  onPage,
+  onPageSize,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+  /** Whether the server has answered with its count yet. */
+  counted: boolean;
+  onPage: (page: number) => void;
+  onPageSize: (size: number) => void;
+}): JSX.Element => {
+  const t = useT();
+  const { count } = useCount();
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  return (
+    <div className="flex flex-col items-center justify-between gap-3 rounded-b-2xl border-t border-slate-200 bg-slate-50/80 p-3.5 text-xs text-slate-600 sm:flex-row dark:border-slate-800 dark:bg-[#0a101b] dark:text-slate-400">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2">
+          {t('fleet.custody.dashboard.log.perPage')}
+          <select
+            data-custody-log-size="true"
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 dark:border-slate-700 dark:bg-[#10192a] dark:text-white"
+          >
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        {counted && (
+          <span data-custody-log-range="true" className={cn('ms-2', NUM)}>
+            {t('fleet.custody.dashboard.log.range', {
+              from: COUNT.format(from),
+              to: COUNT.format(to),
+              movements: count('movement', total),
+            })}
+          </span>
+        )}
+      </div>
+      <nav aria-label={t('fleet.pager.label')} className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label={t('common.pagination.prev')}
+          disabled={page <= 1}
+          onClick={() => onPage(Math.max(1, page - 1))}
+          className={cn('rounded-lg p-1.5 disabled:opacity-40', PAGE_IDLE)}
+        >
+          <ChevronStartIcon className="h-3.5 w-3.5 rtl:-scale-x-100" />
+        </button>
+        {pagerPages(page, pages).map((p, i) =>
+          p === null ? (
+            <span key={`gap-${i}`} className="px-1 text-slate-400">
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              aria-current={p === page ? 'page' : undefined}
+              data-custody-log-page={p}
+              onClick={() => onPage(p)}
+              className={cn(
+                'rounded-lg px-2.5 py-1',
+                NUM,
+                p === page
+                  ? 'border border-emerald-600 bg-emerald-600 font-bold text-white'
+                  : PAGE_IDLE,
+              )}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          aria-label={t('common.pagination.next')}
+          disabled={page >= pages}
+          onClick={() => onPage(Math.min(pages, page + 1))}
+          className={cn('rounded-lg p-1.5 disabled:opacity-40', PAGE_IDLE)}
+        >
+          <ChevronEndIcon className="h-3.5 w-3.5 rtl:-scale-x-100" />
+        </button>
+      </nav>
+    </div>
   );
 };

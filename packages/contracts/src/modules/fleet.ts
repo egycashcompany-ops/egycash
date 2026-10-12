@@ -3741,6 +3741,15 @@ export const ListFleetCustodyMovementsQuerySchema = PaginationQuerySchema.extend
   ...custodyFilters,
   /** The arrows on «كل الحركات», several columns at once — as on every Fleet board. */
   sort: fleetSortQuery(),
+  /**
+   * «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»:
+   * one line of «ملخص لكل سيارة» exactly, over (never instead of) the filters above. `vehicleId` is
+   * the registry's car; `bookCode` a line kept from the old book on a car the registry never had —
+   * matched whole, spaces and all, where `vehicleCodes` would split it, and never a registry car
+   * that happens to carry the same code. Both given, both must hold.
+   */
+  vehicleId: objectId().optional(),
+  bookCode: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListFleetCustodyMovementsQuery = z.infer<typeof ListFleetCustodyMovementsQuerySchema>;
 
@@ -3828,8 +3837,23 @@ export interface FleetCustodyFuelShareDto {
   litres: number;
 }
 
-/** One company's share of the fund's fuel. */
-export interface FleetCustodyFuelCompanyRowDto extends FleetCustodyFuelShareDto {
+/** One fuel type's part of a company's fuel — `null` for the receipts that name no type. */
+export interface FleetCustodyFuelTypeShareDto extends FleetCustodyFuelShareDto {
+  fuelType: FleetFuelType | null;
+}
+
+/**
+ * A share of the fund's fuel with its fuel types under it —
+ * «تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها». The types are in their own
+ * order (`FLEET_FUEL_TYPES`), the receipts with no type last; only the types its receipts name, so
+ * an empty share has none. Their amounts and counts add up to the share's.
+ */
+export interface FleetCustodyFuelGroupDto extends FleetCustodyFuelShareDto {
+  types: FleetCustodyFuelTypeShareDto[];
+}
+
+/** One company's share of the fund's fuel, and its fuel types. */
+export interface FleetCustodyFuelCompanyRowDto extends FleetCustodyFuelGroupDto {
   company: FleetFuelCardCompany;
 }
 
@@ -3900,8 +3924,9 @@ export interface FleetCustodyDashboardDto extends FleetCustodySummaryDto {
   /**
    * «شل أوت / وطنية»: the fund's fuel by the company its receipt names — both companies, in their
    * order, zeros kept — and the receipts that name none («بدون شركة»), never folded into either.
+   * Each with its fuel types under it (`types`): the same receipts as `fuelTypes`, cut by company.
    */
-  fuelByCompany: { companies: FleetCustodyFuelCompanyRowDto[]; none: FleetCustodyFuelShareDto };
+  fuelByCompany: { companies: FleetCustodyFuelCompanyRowDto[]; none: FleetCustodyFuelGroupDto };
   alerts: FleetCustodyAlertsDto;
 }
 

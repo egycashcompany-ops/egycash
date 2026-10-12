@@ -10,6 +10,8 @@
 // the fund's fuel by «الشركة» («شل أوت / وطنية» — «ومش عاوز اى داتا اجبارى», so a receipt that
 // names none stays «بدون شركة», never folded into a company), and the alerts banner. Every one of
 // them is counted from these rows — nothing estimated, nothing shown that the rows do not hold.
+// «تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها»: each company's fuel (and the
+// receipts with none) also carries its fuel types, cut in the same pass over the same receipts.
 import {
   FLEET_CUSTODY_SOURCES,
   FLEET_FUEL_CARD_COMPANIES,
@@ -19,8 +21,10 @@ import {
   type FleetCustodyDashboardDto,
   type FleetCustodyDoubleFuelDto,
   type FleetCustodyDriverRowDto,
+  type FleetCustodyFuelGroupDto,
   type FleetCustodyFuelShareDto,
   type FleetCustodyFuelTypeRowDto,
+  type FleetCustodyFuelTypeShareDto,
   type FleetCustodyMovementDto,
   type FleetCustodySource,
   type FleetCustodySummaryDto,
@@ -160,6 +164,24 @@ const roundShare = <T extends FleetCustodyFuelShareDto>(share: T): T => ({
   litres: round(share.litres),
 });
 
+/** Where a fuel type stands: the types' own order, the receipts that name none last. */
+const fuelOrder = (type: FleetFuelType | null): number =>
+  type === null ? FLEET_FUEL_TYPES.length : FLEET_FUEL_TYPES.indexOf(type);
+
+/**
+ * «وطنيه لوخدها وشيل اوت لوحدها»: one company's fuel (or the receipts that name none) with its fuel
+ * types under it — only the types its receipts name, in their own order, each rounded on its own.
+ */
+const fuelGroup = (
+  share: FleetCustodyFuelShareDto,
+  types: ReadonlyMap<FleetFuelType | null, FleetCustodyFuelShareDto> | undefined,
+): FleetCustodyFuelGroupDto => ({
+  ...roundShare(share),
+  types: [...(types ?? new Map<FleetFuelType | null, FleetCustodyFuelShareDto>()).entries()]
+    .sort(([a], [b]) => fuelOrder(a) - fuelOrder(b))
+    .map(([fuelType, line]): FleetCustodyFuelTypeShareDto => ({ fuelType, ...roundShare(line) })),
+});
+
 /**
  * «تنبيهات وتدقيق العهدة» off the receipts in the set: a car fuelled from the fund more than once on
  * one day, receipts with no photo, and receipts that repeat another (the same car, day, kind and
@@ -240,6 +262,11 @@ export const custodyDashboard = (
     FLEET_FUEL_CARD_COMPANIES.map((company) => [company, emptyShare()]),
   );
   const noCompany = emptyShare();
+  // The same receipts cut both ways at once: by «الشركة» (`null` for none), then by the fuel type.
+  const companyTypes = new Map<
+    FleetFuelCardCompany | null,
+    Map<FleetFuelType | null, FleetCustodyFuelShareDto>
+  >();
   let litres = 0;
   let litresMissing = 0;
 
@@ -314,6 +341,14 @@ export const custodyDashboard = (
         share.count += 1;
         share.litres += row.litres ?? 0;
       }
+      const ofCompany =
+        companyTypes.get(row.company) ?? new Map<FleetFuelType | null, FleetCustodyFuelShareDto>();
+      const typed = ofCompany.get(row.fuelType) ?? emptyShare();
+      typed.amount += row.amount;
+      typed.count += 1;
+      typed.litres += row.litres ?? 0;
+      ofCompany.set(row.fuelType, typed);
+      companyTypes.set(row.company, ofCompany);
       if (row.company !== null) {
         const present = typeCompanies.get(row.fuelType) ?? new Set<FleetFuelCardCompany>();
         present.add(row.company);
@@ -330,8 +365,6 @@ export const custodyDashboard = (
     }
   }
 
-  const fuelOrder = (type: FleetFuelType | null): number =>
-    type === null ? FLEET_FUEL_TYPES.length : FLEET_FUEL_TYPES.indexOf(type);
   return {
     vehicleCount: cars.size,
     counts,
@@ -382,9 +415,9 @@ export const custodyDashboard = (
     fuelByCompany: {
       companies: FLEET_FUEL_CARD_COMPANIES.map((company) => ({
         company,
-        ...roundShare(byCompany.get(company) ?? emptyShare()),
+        ...fuelGroup(byCompany.get(company) ?? emptyShare(), companyTypes.get(company)),
       })),
-      none: roundShare(noCompany),
+      none: fuelGroup(noCompany, companyTypes.get(null)),
     },
     alerts: custodyAlerts(rows, pendingPrivateBills),
   };

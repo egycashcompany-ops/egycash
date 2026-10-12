@@ -722,6 +722,30 @@ describe('receipt kinds and custody sources take several — «اختيار مت
     expect(FleetCustodySummaryQuerySchema.safeParse({ sort: 'amount:asc' }).success).toBe(false);
   });
 
+  it('«السجل» narrows the movements to one car — a registry id, or an old-book code kept whole', () => {
+    const id = '64b7f0c2a1b2c3d4e5f60718';
+    expect(
+      ListFleetCustodyMovementsQuerySchema.parse({ vehicleCodes: '160,204', vehicleId: id }),
+    ).toMatchObject({ vehicleCodes: ['160', '204'], vehicleId: id });
+    // A book code is one car, spaces and all — `vehicleCodes` would have made it two.
+    expect(
+      ListFleetCustodyMovementsQuerySchema.parse({ bookCode: ' كوستر الدفتر ' }).bookCode,
+    ).toBe('كوستر الدفتر');
+    expect(
+      ListFleetCustodyMovementsQuerySchema.parse({ vehicleCodes: 'كوستر الدفتر' }).vehicleCodes,
+    ).toEqual(['كوستر', 'الدفتر']);
+    for (const bad of [{ vehicleId: '160' }, { bookCode: '' }, { bookCode: 'x'.repeat(101) }]) {
+      expect(ListFleetCustodyMovementsQuerySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(
+        false,
+      );
+    }
+    // The figures and the dashboard never take a car of their own — only the board's filters.
+    for (const schema of [FleetCustodySummaryQuerySchema, FleetCustodyDashboardQuerySchema]) {
+      expect(schema.safeParse({ vehicleId: id }).success).toBe(false);
+      expect(schema.safeParse({ bookCode: 'كوستر الدفتر' }).success).toBe(false);
+    }
+  });
+
   it('«لوحة تحكم» reads the figures’ own filters, a list of kinds included — and nothing more', () => {
     const query = {
       vehicleCodes: '160,204',

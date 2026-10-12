@@ -18,14 +18,26 @@
 // buttons, the current page) emerald rather than the site's purple. The other Fleet boards keep it.
 //
 // «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»: every
-// car of «ملخص لكل سيارة» carries «السجل» here too, as in the dashboard — its log over the board,
-// under the board's own filters. «الإجمالي الختامي» is the whole fund's, and has none.
-import { useEffect, useMemo, useRef, useState } from 'react';
+// car of «ملخص لكل سيارة» carries «السجل» — its log over the board, under the board's own filters.
+// «الإجمالي» is the whole fund's, and has none. «عاوزك تشيل من الداش بورد الجدول اللى فى العربيات
+// والسجل يكون برا زى ما هو»: this board is where both tables and «السجل» live — «لوحة تحكم» draws
+// neither table now.
+//
+// «وخلى الالوان زى ما انت عامل فى الداش بورد»: both tables wear the colours the dashboard's own two
+// tables wore, in both themes. «ملخص لكل سيارة»: each kind's sums in its colour and «—» muted where
+// a car paid nothing that way, the car's code in its blue chip, the «الإجمالي» column set apart, and
+// the «الإجمالي» line as the dashboard's foot — the emerald rule, the emerald word, each kind's total
+// in its colour, the fund's total in its emerald box. «كل الحركات»: the date muted, the car's code
+// in its slate chip, each kind's pale badge with its dot, a fuel receipt's company («وطنية» emerald,
+// «شل أوت» amber), the dealership's bills in blue and a receipt's muted, the amount slate-900 /
+// white. Both heads in the dashboard's darker ink. The files (Excel / PDF) are as they were.
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_CUSTODY_SOURCES,
   fleetVehicleCodeOrderKey,
   type FleetCustodyMovementDto,
+  type FleetCustodySource,
   type FleetCustodyVehicleRowDto,
   type Locale,
 } from '@ecms/contracts';
@@ -49,14 +61,16 @@ import { useCustodyMovements, useCustodySummary } from '../api/fleet-queries';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { CustodyFigures } from '../components/CustodyFigures';
-import { CustodyKindBadge } from '../components/CustodyKinds';
+import { CUSTODY_KIND, CustodyKindBadge } from '../components/CustodyKinds';
 import { CustodyDashboard } from '../components/CustodyDashboard';
 import {
   CustodyCarLog,
+  custodyCarKey,
+  CustodyCarLogButton,
   custodyCurrentCar,
   type CustodyOpenCarLog,
 } from '../components/CustodyCarLog';
-import { custodyCarKey, CustodyCarLogButton } from '../components/CustodyDashboardTables';
+import { COMPANY } from '../components/custody-dashboard-parts';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverCell } from '../components/DriverPerson';
@@ -94,6 +108,8 @@ const TIGHT = 'tight' as const;
 const FIGURE = cn('whitespace-nowrap', NUM);
 /** An empty cell, as the boards draw one. */
 const DASH = <span className="text-slate-400">—</span>;
+/** «—» where a car paid nothing that way — the dashboard's muted dash, in both themes. */
+const NONE = <span className="text-slate-400 dark:text-slate-500">—</span>;
 
 /**
  * The board's toolbar buttons, from the vehicles screen — a size down on a phone — in the emerald
@@ -116,10 +132,64 @@ const CUSTODY_TABLE = cn(
   ALARMS_TYPE,
 );
 
-type CarMoneyKey = keyof Pick<
-  FleetCustodyVehicleRowDto,
-  'dealership' | 'fuel' | 'tyres' | 'wash' | 'total'
->;
+/**
+ * «ملخص لكل سيارة» in the dashboard's colours. What the board's table forces on every cell with
+ * `!important` is reached here one selector deeper:
+ * - the head: the dashboard's slate-700 on the light map, the design's slate-300 dark (the board's
+ *   are slate-500 / slate-400);
+ * - «الإجمالي»'s heading (the last): slate-900 extra bold on the light map, emerald-300 on the dark
+ *   design — its arrow in the heading's ink;
+ * - «السجل» keeps its own size: the board's table squeezes a cell's buttons into 28px squares (its
+ *   rows' icons), and the word would spill out of one.
+ */
+const PER_CAR_TABLE = cn(
+  '[&_thead_tr_th]:!text-slate-700 dark:[&_thead_tr_th]:!text-slate-300',
+  '[&_thead_th:last-child]:!font-extrabold [&_thead_th:last-child]:!text-slate-900 dark:[&_thead_th:last-child]:!font-bold dark:[&_thead_th:last-child]:!text-emerald-300 [&_thead_th:last-child_button]:!text-inherit',
+  '[&_td_button[data-custody-car-log-open]]:!h-auto [&_td_button[data-custody-car-log-open]]:!w-auto',
+);
+/** The «الإجمالي» column set apart, as on the dashboard: slate light, the design's #131f35 dark. */
+const TOTAL_HEAD = 'bg-slate-200/80 dark:bg-[#131f35]';
+const TOTAL_CELL = 'bg-slate-50 dark:bg-[#131f35]/50';
+/** A car's total — the dashboard's slate-900 / white. */
+const TOTAL_INK = 'text-slate-900 dark:text-white';
+/** The car's code in «ملخص لكل سيارة» — the dashboard's blue chip, at the board's code size. */
+const CAR_CHIP =
+  'inline-flex h-8 min-w-[2rem] items-center justify-center whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1.5 font-bold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400';
+/**
+ * «الإجمالي» as the dashboard's foot: slate-100 light, #090e18 dark; the design's 2px emerald-500
+ * rule over every cell (an inset shadow — the table's own row borders are `!important`); and the
+ * fund's total in its emerald box — the light map's emerald-50 with emerald-200 sides, the design's
+ * #122238 with its faint line under the rule. Black type on the light map, as the foot's.
+ */
+const GRAND_ROW = cn(
+  'bg-slate-100 dark:bg-[#090e18]',
+  '[&>td]:shadow-[inset_0_2px_0_#10b981]',
+  '[&>td:last-child]:bg-emerald-50 dark:[&>td:last-child]:bg-[#122238]',
+  '[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_1px_0_0_#a7f3d0,inset_-1px_0_0_#a7f3d0] dark:[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_0_3px_0_rgba(16,185,129,0.3)]',
+  '[&>td_span]:!font-black dark:[&>td_span]:!font-bold',
+);
+/** «الإجمالي» itself, and the fund's total — the foot's emerald. */
+const GRAND_WORD = 'text-emerald-800 dark:text-emerald-400';
+const GRAND_INK = 'text-emerald-800 dark:text-emerald-300';
+/** A fuel receipt's company in «كل الحركات» — the dashboard log's badge, a size under the kind's. */
+const COMPANY_BADGE =
+  'inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-0.5 text-[13px] leading-5';
+/** A dealership bill's «من» — the dashboard log's blue. */
+const DEALERSHIP_FROM = 'text-blue-700 dark:text-blue-300';
+/**
+ * «كل الحركات» in the dashboard log's inks, on a span of each cell's own (the board's table sets
+ * its ink on the `<td>` with `!important`; a span's own colour still wins):
+ * - the head slate-700 on the light map (the board's is slate-500), one selector deeper as on
+ *   «ملخص لكل سيارة»; the design's dark head is the board's own slate-400, which still wins dark;
+ * - the date, and a receipt's «من», muted;
+ * - the car's code in a slate chip on the light map, white on the dark design;
+ * - the amount, figure and «ج.م.», slate-900 / white.
+ */
+const MOVEMENTS_TABLE = '[&_thead_tr_th]:!text-slate-700';
+const MUTED_INK = 'text-slate-500 dark:text-slate-400';
+const LOG_CODE_CHIP =
+  'rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-slate-900 dark:border-transparent dark:bg-transparent dark:px-0 dark:text-white';
+const AMOUNT_INK = 'text-slate-900 dark:text-white';
 
 /** What a per-car column is worth to its arrow: the code in the fleet's order, a sum as a number. */
 const carSortValue = (row: FleetCustodyVehicleRowDto, key: string): SortValue => {
@@ -196,18 +266,6 @@ export const CustodyPage = (): JSX.Element => {
   const [dashOpen, setDashOpen] = useState(false);
   // A car's «السجل» from «ملخص لكل سيارة», and the button that opened it.
   const [carLog, setCarLog] = useState<CustodyOpenCarLog | null>(null);
-  // «تصفية متقدمة» in the dashboard closes it and sends the focus to the filter bar — after the
-  // dashboard, on its way out, has handed it back to «لوحة تحكم» (its effect is torn down first).
-  const filterBar = useRef<HTMLDivElement>(null);
-  const focusFilters = useRef(false);
-  useEffect(() => {
-    if (dashOpen || !focusFilters.current) return;
-    focusFilters.current = false;
-    filterBar.current?.scrollIntoView({ block: 'nearest' });
-    filterBar.current
-      ?.querySelector<HTMLElement>('input, button, select, [tabindex]:not([tabindex="-1"])')
-      ?.focus();
-  }, [dashOpen]);
   const clearFilters = (): void =>
     patch({ from: null, to: null, vehicleCodes: null, source: null, driver: null });
 
@@ -215,22 +273,32 @@ export const CustodyPage = (): JSX.Element => {
     t(`fleet.custody.source.${row.source}`);
   const detailOf = (row: FleetCustodyMovementDto): string =>
     row.fuelType !== null ? t(`fleet.receipts.fuelType.${row.fuelType}`) : (row.detail ?? '');
-  /** «1,037.10» and «ج.م.» apart — the figure in the boards' monospace, the currency beside it. */
-  const moneyCell = (value: number): JSX.Element => {
+  /**
+   * «1,037.10» and «ج.م.» apart — the figure in the boards' monospace, the currency beside it; with
+   * an `ink`, both in it (a kind's colour, a total's), as the dashboard writes a coloured sum.
+   */
+  const moneyCell = (value: number, ink?: string): JSX.Element => {
     const { figure, currency } = formatMoneyParts(value, 'EGP', locale);
     return (
-      <span className="inline-flex items-baseline gap-1">
+      <span className={cn('inline-flex items-baseline gap-1', ink)}>
         <span className={FIGURE}>{figure}</span>
-        <span className="text-sm text-slate-500 dark:text-slate-400">{currency}</span>
+        <span className={cn('text-sm', ink ?? MUTED_INK)}>{currency}</span>
       </span>
     );
   };
-  /** The car's code as the alarms board writes it — bold, a size over the row; none, a dash. */
+  /**
+   * A movement's car code as the alarms board writes it — bold, a size over the row — in the
+   * dashboard log's chip (`LOG_CODE_CHIP`); none, a dash.
+   */
   const codeCell = (code: string | null): JSX.Element =>
     code === null ? (
       DASH
     ) : (
-      <span dir="ltr" className={cn('font-bold', FIGURE, ALARMS_CODE_TYPE)}>
+      <span
+        dir="ltr"
+        data-custody-movement-code="true"
+        className={cn(LOG_CODE_CHIP, 'font-bold', FIGURE, ALARMS_CODE_TYPE)}
+      >
         {code}
       </span>
     );
@@ -252,21 +320,17 @@ export const CustodyPage = (): JSX.Element => {
       },
     ];
   }, [summary.data, carSorts, t]);
-  const moneyCol = (key: CarMoneyKey, header: string): Column<FleetCustodyVehicleRowDto> => ({
-    key,
-    header,
+  // Nothing paid that way on a car is the muted dash; «الإجمالي» always says its figure. The table
+  // is bold throughout — the colours tell the kinds and the totals apart.
+  const kindCol = (kind: FleetCustodySource): Column<FleetCustodyVehicleRowDto> => ({
+    key: kind,
+    header: t(`fleet.custody.source.${kind}`),
     align: 'center',
     sortable: true,
-    render: (row) => {
-      // Nothing paid that way on a car is the grey dash; the grand total always says its figure.
-      if (row[key] === 0 && row.vehicleId !== GRAND_TOTAL) return DASH;
-      // The table is bold throughout; the car's total stands out by its colour alone.
-      return key === 'total' ? (
-        <span className="text-slate-900 dark:text-white">{moneyCell(row[key])}</span>
-      ) : (
-        moneyCell(row[key])
-      );
-    },
+    render: (row) =>
+      row[kind] === 0 && row.vehicleId !== GRAND_TOTAL
+        ? NONE
+        : moneyCell(row[kind], CUSTODY_KIND[kind].text),
   });
   const vehicleColumns: Column<FleetCustodyVehicleRowDto>[] = [
     {
@@ -275,13 +339,19 @@ export const CustodyPage = (): JSX.Element => {
       header: t('fleet.odometer.columns.vehicle'),
       sortable: true,
       // «الإجمالي» on the last row is a word, not a code — and the whole fund's, so it has no log.
-      // A car's code with its «السجل» beside it.
+      // A car's code in its blue chip, with its «السجل» beside it.
       render: (row) =>
         row.vehicleId === GRAND_TOTAL ? (
-          <span>{row.vehicleCode}</span>
+          <span className={GRAND_WORD}>{row.vehicleCode}</span>
         ) : (
           <span className="inline-flex items-center justify-center gap-2">
-            {codeCell(row.vehicleCode)}
+            {row.vehicleCode === null ? (
+              NONE
+            ) : (
+              <span dir="ltr" className={cn(CAR_CHIP, FIGURE, ALARMS_CODE_TYPE)}>
+                {row.vehicleCode}
+              </span>
+            )}
             <CustodyCarLogButton
               car={row}
               onOpen={(car, opener) => setCarLog({ key: custodyCarKey(car), car, opener })}
@@ -289,16 +359,29 @@ export const CustodyPage = (): JSX.Element => {
           </span>
         ),
     },
-    moneyCol('dealership', t('fleet.custody.source.dealership')),
-    moneyCol('fuel', t('fleet.custody.source.fuel')),
-    moneyCol('tyres', t('fleet.custody.source.tyres')),
-    moneyCol('wash', t('fleet.custody.source.wash')),
-    moneyCol('total', t('fleet.custody.columns.total')),
+    kindCol('dealership'),
+    kindCol('fuel'),
+    kindCol('tyres'),
+    kindCol('wash'),
+    {
+      key: 'total',
+      header: t('fleet.custody.columns.total'),
+      align: 'center',
+      sortable: true,
+      className: TOTAL_CELL,
+      headerClassName: TOTAL_HEAD,
+      render: (row) =>
+        row.vehicleId === GRAND_TOTAL
+          ? moneyCell(row.total, GRAND_INK)
+          : row.total === 0
+            ? NONE
+            : moneyCell(row.total, TOTAL_INK),
+    },
   ];
 
   // «كل الحركات»: every value and header centred, the date year first in Latin digits, the code
-  // bold, money with «ج.م.» beside it, an empty cell a grey dash. Each column's key IS the
-  // server's sort key (`CUSTODY_SORTABLE`).
+  // bold, money with «ج.م.» beside it, an empty cell a grey dash — in the dashboard log's inks
+  // (`MOVEMENTS_TABLE`). Each column's key IS the server's sort key (`CUSTODY_SORTABLE`).
   const columns: Column<FleetCustodyMovementDto>[] = [
     {
       key: 'date',
@@ -306,7 +389,7 @@ export const CustodyPage = (): JSX.Element => {
       header: t('fleet.receipts.columns.date'),
       sortable: true,
       render: (row) => (
-        <span dir="ltr" className={FIGURE}>
+        <span dir="ltr" data-custody-movement-date="true" className={cn(FIGURE, MUTED_INK)}>
           {ymd(row.date)}
         </span>
       ),
@@ -325,11 +408,20 @@ export const CustodyPage = (): JSX.Element => {
       // In the filter's order — dealership, fuel, tyres, wash — not the word's alphabet.
       sortable: true,
       // The alarms board's pill size, so the kind reads at the row's 16px; the detail in a span
-      // of its own, so the table's bold reaches it.
+      // of its own, so the table's bold reaches it. A fuel receipt that names its company wears
+      // the dashboard log's badge for it; one that names none, nothing.
       render: (row) => (
         <span className="inline-flex items-center gap-2">
           <CustodyKindBadge kind={row.source} />
           {detailOf(row) !== '' && <span>{detailOf(row)}</span>}
+          {row.source === 'fuel' && row.company !== null && (
+            <span
+              data-custody-company-badge={row.company}
+              className={cn(COMPANY_BADGE, COMPANY[row.company].badge)}
+            >
+              {t(`fleet.custody.dashboard.company.${row.company}`)}
+            </span>
+          )}
         </span>
       ),
     },
@@ -350,14 +442,23 @@ export const CustodyPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.custody.columns.from'),
       sortable: true,
-      render: (row) => <span>{t(`fleet.custody.from.${row.ref}`)}</span>,
+      // A dealership bill in the dashboard log's blue; a receipt in its muted grey.
+      render: (row) => (
+        <span
+          data-custody-from={row.ref}
+          className={row.ref === 'dealershipInvoice' ? DEALERSHIP_FROM : MUTED_INK}
+        >
+          {t(`fleet.custody.from.${row.ref}`)}
+        </span>
+      ),
     },
     {
       key: 'amount',
       align: 'center',
       header: t('fleet.receipts.columns.amount'),
       sortable: true,
-      render: (row) => moneyCell(row.amount),
+      // The whole sum in the dashboard log's ink, «ج.م.» with it.
+      render: (row) => moneyCell(row.amount, AMOUNT_INK),
     },
   ];
 
@@ -593,7 +694,6 @@ export const CustodyPage = (): JSX.Element => {
         {/* The vehicles board's dark bar: every filter's name written in its box, an icon at its
             start, one row on a computer. */}
         <div
-          ref={filterBar}
           data-custody-filter-bar="true"
           className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}
         >
@@ -649,7 +749,7 @@ export const CustodyPage = (): JSX.Element => {
         {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the money boards. */}
         {statsOpen && summary.data !== undefined && <CustodyFigures totals={summary.data} />}
         {/* The board's own `filters`: the dashboard asks exactly what the figures ask, and what it
-            changes it changes HERE — clearing them, «المصدر» = التوكيل, the focus on the bar. */}
+            changes it changes HERE — clearing them, «المصدر» = التوكيل. */}
         <CustodyDashboard
           open={dashOpen}
           onClose={() => setDashOpen(false)}
@@ -657,10 +757,6 @@ export const CustodyPage = (): JSX.Element => {
           onClearFilters={clearFilters}
           onShowDealership={() => {
             patch({ source: 'dealership' });
-            setDashOpen(false);
-          }}
-          onAdvancedFilter={() => {
-            focusFilters.current = true;
             setDashOpen(false);
           }}
         />
@@ -686,7 +782,13 @@ export const CustodyPage = (): JSX.Element => {
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
             {t('fleet.custody.perVehicle')}
           </h2>
-          <div className={cn(CUSTODY_TABLE, 'lg:flex lg:min-h-0 lg:flex-col [&>div]:min-h-0')}>
+          <div
+            className={cn(
+              CUSTODY_TABLE,
+              PER_CAR_TABLE,
+              'lg:flex lg:min-h-0 lg:flex-col [&>div]:min-h-0',
+            )}
+          >
             <DataTable
               columns={vehicleColumns}
               rows={perVehicle}
@@ -695,10 +797,8 @@ export const CustodyPage = (): JSX.Element => {
               error={summary.isError ? summary.error : undefined}
               onRetry={() => void summary.refetch()}
               empty={t('fleet.custody.empty')}
-              // The grand total in the table head's tone, so it reads as the table's own line.
-              rowClassName={(row) =>
-                row.vehicleId === GRAND_TOTAL ? 'bg-slate-100 dark:bg-[#0c121e]' : undefined
-              }
+              // «الإجمالي» as the dashboard's foot — see `GRAND_ROW`.
+              rowClassName={(row) => (row.vehicleId === GRAND_TOTAL ? GRAND_ROW : undefined)}
               rowProps={(row) =>
                 (row.vehicleId === GRAND_TOTAL
                   ? { 'data-custody-grand-total': 'true' }
@@ -719,7 +819,7 @@ export const CustodyPage = (): JSX.Element => {
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
             {t('fleet.custody.movements')}
           </h2>
-          <div className={cn(CUSTODY_TABLE, BOARD_TABLE_FILL)}>
+          <div className={cn(CUSTODY_TABLE, MOVEMENTS_TABLE, BOARD_TABLE_FILL)}>
             <DataTable
               columns={columns}
               rows={rows}

@@ -37,7 +37,7 @@ export interface CustodyKindLook {
   accent: string;
   /** The count chip at the foot of a figure card. */
   chip: string;
-  /** The pale badge of «كل الحركات» and «سجل كل الحركات», and the dot inside it. */
+  /** The pale badge of «كل الحركات» and of a car's «السجل», and the dot inside it. */
   badge: string;
   dot: string;
   /** The donut's stroke, the light theme's hex and the dark one's. */

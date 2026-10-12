@@ -11011,7 +11011,7 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     ).toHaveLength(4);
     // A car the board's cars leave out has nothing in its log.
     expect((await log({ vehicleId: v1.id, vehicleCodes: v2.code })).total).toBe(0);
-    // Paged as the dashboard's log is.
+    // Paged as a car's «السجل» on the board is (25 / 50 / 100).
     const second = await log({ vehicleId: v1.id, pageSize: 3, page: 2 });
     expect(ids(second.rows)).toEqual([wash.id]);
     expect(second.total).toBe(4);

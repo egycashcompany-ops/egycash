@@ -35,7 +35,6 @@ import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { CustodyShare, custodyShare, custodySharePct } from './CustodyFigures';
 import { BOLT, CUSTODY_KIND, CUSTODY_KINDS } from './CustodyKinds';
-import { CustodyCarLogButton, custodyCarKey, type CustodyOpenLog } from './CustodyDashboardTables';
 import { BoardIcon, NUM } from './FuelCardBoard';
 import {
   CAIRO,
@@ -900,16 +899,10 @@ const shortName = (t: ReturnType<typeof useT>, kind: FleetCustodySource): string
 
 /**
  * (5) The ten dearest cars: each bar the FULL width, split by that car's own kinds; beside the
- * code its total and its share of everything the fund paid — and, as on «ملخص لكل سيارة», the
- * car's «السجل» (its icon alone: the line has no room for the word).
+ * code its total and its share of everything the fund paid. «والسجل يكون برا»: a car's «السجل» is
+ * on the board's «ملخص لكل سيارة», not here.
  */
-export const CustodyTopCars = ({
-  data,
-  onOpenLog,
-}: {
-  data: FleetCustodyDashboardDto;
-  onOpenLog?: CustodyOpenLog | undefined;
-}): JSX.Element => {
+export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
   const sep = useSeparator();
@@ -950,7 +943,7 @@ export const CustodyTopCars = ({
           const present = CUSTODY_KINDS.filter((kind) => car[kind] > 0);
           return (
             <li
-              key={custodyCarKey(car)}
+              key={car.vehicleId ?? `code:${car.vehicleCode ?? ''}`}
               tabIndex={0}
               data-custody-car={car.vehicleCode ?? ''}
               aria-label={`${car.vehicleCode ?? '—'}: ${moneyText(car.total)} (${custodyShare(car.total, data.total)})${present
@@ -962,20 +955,15 @@ export const CustodyTopCars = ({
               className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-slate-800/60 dark:bg-[#0c1322]/80 dark:p-2 dark:hover:border-emerald-500/40 dark:hover:bg-slate-800/40"
             >
               <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span
-                    dir="ltr"
-                    className={cn(
-                      'rounded border border-blue-200 bg-blue-100 px-2 py-0.5 font-bold text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/60 dark:text-white',
-                      NUM,
-                    )}
-                  >
-                    {car.vehicleCode ?? '—'}
-                  </span>
-                  {onOpenLog !== undefined && (
-                    <CustodyCarLogButton car={car} onOpen={onOpenLog} compact />
+                <span
+                  dir="ltr"
+                  className={cn(
+                    'rounded border border-blue-200 bg-blue-100 px-2 py-0.5 font-bold text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/60 dark:text-white',
+                    NUM,
                   )}
-                </div>
+                >
+                  {car.vehicleCode ?? '—'}
+                </span>
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(

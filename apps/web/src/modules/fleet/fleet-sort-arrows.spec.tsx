@@ -195,11 +195,16 @@ describe('the three WHOLE boards order what they already hold', () => {
     expect(column(page, 'vehicleCode'), 'the code, the per-car table’s first column').toContain(
       'sortable: true',
     );
-    const money = page.slice(
-      page.indexOf('const moneyCol = '),
+    // Each kind's column is built by `kindCol` — four of them — and «الإجمالي» is the fifth sum.
+    const kinds = page.slice(
+      page.indexOf('const kindCol = '),
       page.indexOf('const vehicleColumns'),
     );
-    expect(money, 'and each of its five sums').toContain('sortable: true');
+    expect(kinds, 'each of its four kinds').toContain('sortable: true');
+    for (const kind of ['dealership', 'fuel', 'tyres', 'wash']) {
+      expect(page, kind).toContain(`kindCol('${kind}'),`);
+    }
+    expect(column(page, 'total'), 'and «الإجمالي»').toContain('sortable: true');
     expect(page).toContain('...sortRows(summary.data.vehicles, carSorts, carSortValue),');
     expect(page).toContain("const DEFAULT_CAR_SORT = 'vehicleCode:asc';");
     expect(page).toContain(

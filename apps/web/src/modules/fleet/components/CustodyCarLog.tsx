@@ -1,44 +1,42 @@
 // «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه» — one
-// car's log, opened from «السجل» on its line of «ملخص لكل سيارة» (and on «أعلى السيارات صرفًا»):
-// the dashboard's, and the custody board's own «ملخص لكل سيارة» under its filters.
+// car's log, opened from «السجل» on its line of the custody board's «ملخص لكل سيارة», under the
+// board's own filters.
 //
-// A drawer OVER «لوحة تحكم», which stays open beneath it: drawn inside the dashboard's own dialog
-// (`CustodyDashboardLayer`), so the dashboard's focus trap and scroll lock hold it too. Escape and
-// × close the log alone, first; the focus goes back to the «السجل» that opened it.
+// «عاوزك تشيل من الداش بورد الجدول اللى فى العربيات والسجل يكون برا زى ما هو»: the log lives on
+// the board. «لوحة تحكم» draws neither the cars' table nor any «السجل»; this drawer opens over the
+// board alone, its own modal — the page beneath `inert` and held still. Escape and × close it; the
+// focus goes back to the «السجل» that opened it.
 //
 // Everything in it is the server's and over the board's OWN filters: the car's totals are its line
-// of «ملخص لكل سيارة» — the very figures the dashboard folded — and its movements are the board's
-// `/fleet/custody/movements` with the same filters and that one car (its registry id, or the old
-// book's code kept whole), so the rows below add up to the totals above. Newest first, paged
-// 25 / 50 / 100 like the dashboard's own log. Nothing estimated: a kind the car has none of is «—».
-import { useContext, useEffect, useId, useRef, useState } from 'react';
+// of «ملخص لكل سيارة» — the very figures `/fleet/custody/summary` folded — and its movements are the
+// board's `/fleet/custody/movements` with the same filters and that one car (its registry id, or the
+// old book's code kept whole), so the rows below add up to the totals above. Newest first, paged
+// 25 / 50 / 100. Nothing estimated: a kind the car has none of is «—».
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type FleetCustodyVehicleRowDto, type Locale } from '@ecms/contracts';
+import {
+  type FleetCustodyMovementDto,
+  type FleetCustodyVehicleRowDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
-import { CloseIcon } from '../../../shared/ui/icons';
+import { ChevronEndIcon, ChevronStartIcon, CloseIcon } from '../../../shared/ui/icons';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { useCustodyLog } from '../api/fleet-queries';
 import { CustodyShare } from './CustodyFigures';
 import { CUSTODY_KIND, CUSTODY_KINDS } from './CustodyKinds';
-import {
-  custodyCarKey,
-  custodyCarOf,
-  CustodyLogFooter,
-  custodyKindText,
-  LOG_ICON,
-  PAGE_SIZES,
-} from './CustodyDashboardTables';
+import { pagerPages } from './FleetPager';
 import { BoardIcon, NUM, ymd } from './FuelCardBoard';
 import {
   CAIRO,
   CARD_BORDER,
   CARD_SURFACE,
   COMPANY,
-  CustodyDashboardLayer,
+  COUNT,
   custodyFilterChips,
   custodyShare1,
   custodyTrapFocus,
@@ -50,6 +48,185 @@ import {
   useMoneyText,
   type CustodyDashboardFilters,
 } from './custody-dashboard-parts';
+
+/** «السجل» — a page with its lines, the design's stroke. */
+export const LOG_ICON = [
+  'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+];
+
+/**
+ * The car one line of «ملخص لكل سيارة» names, as `/fleet/custody/movements` asks for it: the
+ * registry's car by its id; a line kept from the old book (no registry car) by its code, whole —
+ * `vehicleCodes` would split a code with a space in it, and would also find a registry car that
+ * carries the same code. A line with neither is no car, and has no log.
+ */
+export type CustodyCarRef = { vehicleId: string } | { bookCode: string };
+export const custodyCarOf = (
+  car: Pick<FleetCustodyVehicleRowDto, 'vehicleId' | 'vehicleCode'>,
+): CustodyCarRef | null => {
+  if (car.vehicleId !== null) return { vehicleId: car.vehicleId };
+  if (car.vehicleCode !== null && car.vehicleCode.trim() !== '') {
+    return { bookCode: car.vehicleCode };
+  }
+  return null;
+};
+/** The key a car's line is known by — the same car on every read of the summary. */
+export const custodyCarKey = (
+  car: Pick<FleetCustodyVehicleRowDto, 'vehicleId' | 'vehicleCode'>,
+): string => car.vehicleId ?? `code:${car.vehicleCode ?? ''}`;
+
+/** Opens a car's log — the button handed in, so the focus goes back to it when the log closes. */
+export type CustodyOpenLog = (car: FleetCustodyVehicleRowDto, opener: HTMLElement) => void;
+
+/**
+ * «السجل» on a car's line: the page icon and the word. Its name says which car, starting with the
+ * word on it.
+ */
+export const CustodyCarLogButton = ({
+  car,
+  onOpen,
+}: {
+  car: FleetCustodyVehicleRowDto;
+  onOpen: CustodyOpenLog;
+}): JSX.Element | null => {
+  const t = useT();
+  if (custodyCarOf(car) === null) return null;
+  return (
+    <button
+      type="button"
+      aria-label={t('fleet.custody.dashboard.carLog.open', { code: car.vehicleCode ?? '—' })}
+      data-custody-car-log-open={car.vehicleCode ?? ''}
+      onClick={(e) => onOpen(car, e.currentTarget)}
+      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1 font-sans text-[11px] font-semibold text-slate-700 transition hover:border-emerald-500 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-[#243552] dark:bg-[#142135] dark:font-medium dark:text-slate-300 dark:hover:border-emerald-500/50 dark:hover:text-white"
+    >
+      <BoardIcon d={LOG_ICON} className="h-3.5 w-3.5" />
+      <span>{t('fleet.custody.dashboard.carLog.button')}</span>
+    </button>
+  );
+};
+
+/** «وقود (بنزين 92)», «التوكيل (صيانة)», «غسيل» — the kind and what the row itself recorded. */
+export const custodyKindText = (
+  t: ReturnType<typeof useT>,
+  row: FleetCustodyMovementDto,
+): string => {
+  const name = t(`fleet.custody.source.${row.source}`);
+  // «شيلهم»: a wash is only «غسيل» — the receipt records no kind of wash.
+  if (row.source === 'wash') return name;
+  const spec =
+    row.source === 'fuel'
+      ? row.fuelType === null
+        ? null
+        : t(`fleet.receipts.fuelType.${row.fuelType}`)
+      : row.detail;
+  return spec === null || spec === '' ? name : `${name} (${spec})`;
+};
+
+const PAGE_SIZES = [25, 50, 100] as const;
+const PAGE_IDLE =
+  'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-transparent dark:bg-[#142135] dark:text-slate-300 dark:hover:bg-slate-700';
+
+/**
+ * The foot of a car's log: its rows a page (25, 50 or 100), «عرض X - Y من أصل N حركة» once the count
+ * is known, and its pages, the current one emerald.
+ */
+const CustodyLogFooter = ({
+  page,
+  pageSize,
+  total,
+  pages,
+  counted,
+  onPage,
+  onPageSize,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+  /** Whether the server has answered with its count yet. */
+  counted: boolean;
+  onPage: (page: number) => void;
+  onPageSize: (size: number) => void;
+}): JSX.Element => {
+  const t = useT();
+  const { count } = useCount();
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  return (
+    <div className="flex flex-col items-center justify-between gap-3 rounded-b-2xl border-t border-slate-200 bg-slate-50/80 p-3.5 text-xs text-slate-600 sm:flex-row dark:border-slate-800 dark:bg-[#0a101b] dark:text-slate-400">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2">
+          {t('fleet.custody.dashboard.log.perPage')}
+          <select
+            data-custody-log-size="true"
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 dark:border-slate-700 dark:bg-[#10192a] dark:text-white"
+          >
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        {counted && (
+          <span data-custody-log-range="true" className={cn('ms-2', NUM)}>
+            {t('fleet.custody.dashboard.log.range', {
+              from: COUNT.format(from),
+              to: COUNT.format(to),
+              movements: count('movement', total),
+            })}
+          </span>
+        )}
+      </div>
+      <nav aria-label={t('fleet.pager.label')} className="flex items-center gap-1">
+        <button
+          type="button"
+          aria-label={t('common.pagination.prev')}
+          disabled={page <= 1}
+          onClick={() => onPage(Math.max(1, page - 1))}
+          className={cn('rounded-lg p-1.5 disabled:opacity-40', PAGE_IDLE)}
+        >
+          <ChevronStartIcon className="h-3.5 w-3.5 rtl:-scale-x-100" />
+        </button>
+        {pagerPages(page, pages).map((p, i) =>
+          p === null ? (
+            <span key={`gap-${i}`} className="px-1 text-slate-400">
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              aria-current={p === page ? 'page' : undefined}
+              data-custody-log-page={p}
+              onClick={() => onPage(p)}
+              className={cn(
+                'rounded-lg px-2.5 py-1',
+                NUM,
+                p === page
+                  ? 'border border-emerald-600 bg-emerald-600 font-bold text-white'
+                  : PAGE_IDLE,
+              )}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          aria-label={t('common.pagination.next')}
+          disabled={page >= pages}
+          onClick={() => onPage(Math.min(pages, page + 1))}
+          className={cn('rounded-lg p-1.5 disabled:opacity-40', PAGE_IDLE)}
+        >
+          <ChevronEndIcon className="h-3.5 w-3.5 rtl:-scale-x-100" />
+        </button>
+      </nav>
+    </div>
+  );
+};
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -167,7 +344,7 @@ const CarTotals = ({
           {moneyText(car.total)}
         </div>
         <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
-          {/* «8.7%» — one decimal, as «ملخص لكل سيارة» writes the car's share. */}
+          {/* «8.7%» — a car's share of the fund with one decimal, as the owner's design writes it. */}
           <span
             dir="ltr"
             data-custody-pct1="true"
@@ -413,11 +590,10 @@ export const CustodyCarLogBody = ({
 };
 
 /**
- * The drawer: over the dashboard, inside its dialog. Escape and × close the log only — the key is
- * taken on its way DOWN to the page (the capture phase), before the dashboard's own Escape hears
- * it; Tab stays in the log; the dashboard beneath is `inert` while it is up; the focus goes back
- * to the button that opened it. Opened from the board's own «ملخص لكل سيارة» (no dashboard, so no
- * layer) it is its own modal over the page: the page beneath `inert` and held still the same way.
+ * The drawer, over the board: its own modal. Escape and × close it — the key is taken on its way
+ * DOWN to the page (the capture phase), so nothing on the board beneath hears it; Tab stays in the
+ * log; the page beneath is `inert` and held still while it is up; the focus goes back to the
+ * button that opened it.
  */
 export const CustodyCarLog = ({
   car,
@@ -434,7 +610,6 @@ export const CustodyCarLog = ({
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
-  const layer = useContext(CustodyDashboardLayer);
   const titleId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -447,17 +622,15 @@ export const CustodyCarLog = ({
 
   useEffect(() => {
     closeButton.current?.focus();
-    // The dashboard stays open beneath, out of reach: neither Tab nor a screen reader lands there.
+    // The board stays beneath, out of reach: neither Tab nor a screen reader lands there.
     const root = rootRef.current;
     const muted = Array.from(root?.parentElement?.children ?? []).filter(
       (el): el is HTMLElement => el !== root && el instanceof HTMLElement && !el.inert,
     );
     for (const el of muted) el.inert = true;
-    // Over the board itself (drawn on <body>, no dashboard beneath to hold it), the page under the
-    // log stays still; inside the dashboard, the dashboard's own lock already holds it.
-    const ownLock = root?.parentElement === document.body;
+    // …and the page under the log stays still.
     const overflow = document.body.style.overflow;
-    if (ownLock) document.body.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
     const stops = (): HTMLElement[] =>
       Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
         (el) => el.offsetParent !== null || el === document.activeElement,
@@ -475,7 +648,7 @@ export const CustodyCarLog = ({
       target.focus();
     };
     const onKey = (e: KeyboardEvent): void => {
-      // Escape closes the log, and the log alone: stopped here, the dashboard never hears it.
+      // Escape closes the log, and the log alone: stopped here, nothing beneath hears it.
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -483,7 +656,7 @@ export const CustodyCarLog = ({
         return;
       }
       if (e.key !== 'Tab') return;
-      // The log keeps its own Tab — the dashboard's trap, over a wider list, must not move it too.
+      // The log keeps its own Tab — nothing beneath may move it too.
       e.stopPropagation();
       back = e.shiftKey;
       if (document.activeElement === document.body) return;
@@ -501,7 +674,7 @@ export const CustodyCarLog = ({
       document.removeEventListener('keydown', onKey, true);
       document.removeEventListener('focusin', onFocusIn, true);
       for (const el of muted) el.inert = false;
-      if (ownLock) document.body.style.overflow = overflow;
+      document.body.style.overflow = overflow;
       returnTo.current?.focus();
     };
   }, []);
@@ -564,6 +737,6 @@ export const CustodyCarLog = ({
         </div>
       </div>
     </div>,
-    layer ?? document.body,
+    document.body,
   );
 };

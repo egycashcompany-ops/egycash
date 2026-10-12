@@ -936,11 +936,12 @@ describe('the custody ledger', () => {
     const heads = html.match(/<th\b[^>]*>/gu) ?? [];
     expect(heads.length).toBe(12);
     for (const head of heads) expect(head).toContain('text-center');
-    // An empty car is the boards' grey dash; a car with nothing of a source, too.
+    // An empty car is the boards' grey dash; a car with nothing of a source the dashboard's muted
+    // one, in both themes («وخلى الالوان زى ما انت عامل فى الداش بورد»).
     const none = rowWith(renderCustody([movement({ vehicleCode: null })]), '1,350.00', movements);
     expect(none).toContain('<span class="text-slate-400">—</span>');
     const car = rowWith(html, '>63<', perVehicle);
-    expect(car).toContain('<span class="text-slate-400">—</span>');
+    expect(car).toContain('<span class="text-slate-400 dark:text-slate-500">—</span>');
   });
 
   it('writes the driver’s WHOLE name, no code beside it — and a name from the old books grey', () => {

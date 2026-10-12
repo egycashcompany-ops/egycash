@@ -1134,11 +1134,11 @@ export const useCustodyMovements = (params: FleetListParams, enabled = true) =>
     enabled,
   });
 /**
- * «سجل كل الحركات» inside «لوحة تحكم»: the same movements over the board's filters, with the log's
- * OWN page and size — turning its pages never moves the board's. Under the ledger's key, so a
- * receipt saved or deleted refreshes it too. The last page stays on screen while the next one
- * comes; the log is drawn keyed by its filters, so other filters start it afresh rather than show
- * the old filters' rows under the new filters' words.
+ * A car's «السجل» over the custody board: the same movements over the board's filters and that one
+ * car, with the log's OWN page and size — turning its pages never moves the board's. Under the
+ * ledger's key, so a receipt saved or deleted refreshes it too. The last page stays on screen while
+ * the next one comes; the log is drawn keyed by its car, so another car starts it afresh rather
+ * than show the last car's rows under the new car's name.
  */
 export const useCustodyLog = (
   filters: FleetListParams,

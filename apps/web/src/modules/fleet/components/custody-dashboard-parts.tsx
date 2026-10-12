@@ -7,7 +7,7 @@
 // `font-cairo`, served from `@fontsource/cairo` (imported by `FuelCardBoard`); the design's body
 // font, IBM Plex Sans Arabic, is not installed, so the body keeps the app's own and nothing is
 // fetched from Google at run time.
-import { createContext, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { type FleetFuelCardCompany, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -53,8 +53,8 @@ export const CARD_BORDER =
   'border-[#e2e8f0] hover:border-[#cbd5e1] dark:border-[rgba(42,58,84,.65)] dark:hover:border-[rgba(59,130,246,.45)]';
 export const CARD = cn(CARD_SURFACE, CARD_BORDER);
 /**
- * The two table cards («ملخص لكل سيارة», «سجل كل الحركات») — the design's `obsidian-card …
- * shadow-2xl`: the deeper shadow INSTEAD of the card's own, not after it. The classes do not merge
+ * A table card — a car's movements in its «السجل» — the design's `obsidian-card … shadow-2xl`: the
+ * deeper shadow INSTEAD of the card's own, not after it. The classes do not merge
  * (`cn` only joins), and Tailwind writes an arbitrary shadow after `shadow-2xl`, so a card that
  * carried both would keep the shallow one.
  */
@@ -67,7 +67,7 @@ export const NOTE = 'text-xs text-slate-500 dark:text-slate-400';
 /** The small chip beside a title — «10 سيارات», «أعلى 7». */
 export const TITLE_CHIP =
   'shrink-0 whitespace-nowrap rounded border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-bold text-emerald-800 dark:border-emerald-900/40 dark:bg-[#162135] dark:font-normal dark:text-emerald-300';
-/** The strip over a table card — «ملخص لكل سيارة», «سجل كل الحركات». */
+/** The strip over a table card — the title and its count. */
 export const STRIP =
   'flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/80 p-4 dark:border-[#1c293f] dark:bg-[#0a101b]';
 /** The design's thin scrollbars, on the dark theme where the browser's would glare. */
@@ -125,13 +125,6 @@ export const COMPANY: Record<
   },
 };
 
-/**
- * Where a layer over the dashboard is drawn — the dashboard's own dialog, so its focus trap counts
- * the layer as inside it and its scroll lock already holds. `null` outside the dashboard: the
- * layer goes to `document.body`.
- */
-export const CustodyDashboardLayer = createContext<HTMLElement | null>(null);
-
 /** The board's filters, as `CustodyPage` builds them — the dashboard asks the same question. */
 export interface CustodyDashboardFilters {
   from?: string | undefined;
@@ -184,7 +177,7 @@ export const custodyFilterChips = (
 };
 
 /**
- * Where the focus goes so it never leaves the modal (the dashboard, or a car's log over it) —
+ * Where the focus goes so it never leaves the modal (the dashboard, or a car's log) —
  * `null` lets Tab move it as usual. On the first stop Shift+Tab rounds to the last, on the last
  * Tab rounds to the first; and focus that reached the page behind anyway (a click on plain text
  * sets Tab's starting point there, past the last stop or before the first) comes back in at the
@@ -225,8 +218,8 @@ export const custodyTicks = (max: number): number[] => {
 };
 
 /**
- * «8.7%» — «ملخص لكل سيارة» writes its shares with ONE decimal, as the design does; the same two
- * ends as `custodyShare`, so a sliver is never «0.0%» and all-but-all never «100.0%».
+ * «8.7%» — a car's share of the fund, in its «السجل», with ONE decimal as the design writes it; the
+ * same two ends as `custodyShare`, so a sliver is never «0.0%» and all-but-all never «100.0%».
  */
 export const custodyShare1 = (part: number, whole: number): string => {
   if (whole <= 0) return '—';

@@ -1,7 +1,9 @@
 // «المفروض هيكون فى زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين حط
 // الزراير وانا هبقى اقولك هنعمل فى كل واحد ايه»: the fund's three actions on the custody board's
-// toolbar — «تسوية العهدة», «استعاضة العهدة», «شحن العهدة», in that order, one framed group right
-// before the Excel/PDF pair. What each one does is the owner's to say, so for now a press only
+// toolbar — «تسوية العهدة», «استعاضة العهدة», «شحن العهدة», in that order, one framed group at the
+// row's far left with the Excel/PDF pair beside it («عاوز دول قبل الاكسيل والبى دى اف»: read left to
+// right they come first, so in the right-to-left markup they come last). What each one does is the
+// owner's to say, so for now a press only
 // says «سيُفعَّل هذا الإجراء قريبًا.».
 //
 // The suite has no DOM, so nothing here clicks: the page is rendered to markup, and each button's
@@ -192,7 +194,7 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
     ]);
   });
 
-  it('sits in the toolbar as one framed group, right before the Excel/PDF pair', () => {
+  it('sits at the row’s far left as one framed group, the Excel/PDF pair beside it', () => {
     const html = board();
     const stats = html.indexOf('data-custody-stats-toggle="true"');
     const dashboard = html.indexOf('data-custody-dashboard-open="true"');
@@ -201,9 +203,10 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
     const pdf = html.indexOf('data-print="custody"');
     expect(stats).toBeGreaterThan(-1);
     expect(dashboard).toBeGreaterThan(stats);
-    expect(group, 'after «لوحة تحكم»').toBeGreaterThan(dashboard);
-    expect(excel, 'and before the files').toBeGreaterThan(group);
+    // Right to left: «الإحصائيات», «لوحة تحكم», Excel/PDF, then the three — the leftmost.
+    expect(excel, 'the files after «لوحة تحكم»').toBeGreaterThan(dashboard);
     expect(pdf).toBeGreaterThan(excel);
+    expect(group, 'the three after the files').toBeGreaterThan(pdf);
     // All three inside the group…
     const start = html.lastIndexOf('<div', group);
     const end = html.indexOf('</div>', group);
@@ -211,13 +214,22 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
     expect([...inside.matchAll(/data-custody-fund-action="(\w+)"/gu)].map((m) => m[1])).toEqual([
       ...ORDER,
     ]);
-    // …and the group the export pair's own sibling, nothing between them: the next tag after it
-    // opens the Excel/PDF frame, whose first button is «Excel».
-    const next = html.slice(end + '</div>'.length, excel);
-    expect(next).toMatch(/^<div class="[^"]*"><button type="button" $/u);
-    // Framed as the export pair is.
+    // …the group the last thing in the row, right after the export pair's frame closes…
+    const toolbar = html.slice(html.indexOf('data-custody-toolbar="true"'));
+    const pairEnd = toolbar.indexOf('</div>', toolbar.indexOf('data-print="custody"'));
+    const between = toolbar.slice(
+      pairEnd + '</div>'.length,
+      toolbar.indexOf('data-custody-fund-actions="true"'),
+    );
+    expect(between).toMatch(/^<div $/u);
+    const groupEnd = toolbar.indexOf('</div>', toolbar.indexOf('data-custody-fund-actions="true"'));
+    expect(toolbar.slice(groupEnd + '</div>'.length), 'nothing after it in the row').toMatch(
+      /^<\/span><\/div>/u,
+    );
+    // …and framed as the export pair is.
+    const pairStart = toolbar.lastIndexOf('<div', toolbar.indexOf('data-export="custody"'));
     expect(classesOf(html, 'data-custody-fund-actions="true"')).toBe(
-      /class="([^"]*)"/u.exec(next)?.[1],
+      /class="([^"]*)"/u.exec(toolbar.slice(pairStart))?.[1],
     );
   });
 

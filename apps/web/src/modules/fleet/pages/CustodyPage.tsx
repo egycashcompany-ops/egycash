@@ -199,7 +199,8 @@ const PILL_BUTTON =
 
 /**
  * «زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين»: the fund's three
- * actions, right before the export pair and drawn like it — one framed group, each with its own
+ * actions at the row's far left, the export pair right beside them («عاوز دول قبل الاكسيل والبى
+ * دى اف»: read left to right, they come first), and drawn like it — one framed group, each with its own
  * coloured icon. What each one does is still to be decided by the owner, so for now a press only
  * says so; the buttons are here so the board already has its final shape. On a phone each says its
  * one word (`short`), as the export pair says «Excel» and «PDF»: the three whole names are wider
@@ -773,27 +774,6 @@ export const CustodyPage = (): JSX.Element => {
               <BoardIcon d={PATH.trend} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               {t('fleet.custody.dashboard.open')}
             </button>
-            <div
-              data-custody-fund-actions="true"
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80"
-            >
-              {FUND_ACTIONS.map((action, index) => (
-                <Fragment key={action.key}>
-                  {index > 0 && <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />}
-                  <button
-                    type="button"
-                    data-custody-fund-action={action.key}
-                    title={t(action.label)}
-                    onClick={() => toast.info(t('fleet.custody.actions.soon'))}
-                    className={cn(PILL_BUTTON, action.hover)}
-                  >
-                    <BoardIcon d={action.icon} className={cn('h-3.5 w-3.5', action.tone)} />
-                    <span className="sm:hidden">{t(action.short)}</span>
-                    <span className="hidden sm:inline">{t(action.label)}</span>
-                  </button>
-                </Fragment>
-              ))}
-            </div>
             {/* Not offered when the list failed: the file behind it would be empty or short. */}
             {!isError && (
               <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80">
@@ -844,6 +824,28 @@ export const CustodyPage = (): JSX.Element => {
                 </button>
               </div>
             )}
+            {/* «عاوز دول قبل الاكسيل والبى دى اف» — the leftmost of the row, the files beside it. */}
+            <div
+              data-custody-fund-actions="true"
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80"
+            >
+              {FUND_ACTIONS.map((action, index) => (
+                <Fragment key={action.key}>
+                  {index > 0 && <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />}
+                  <button
+                    type="button"
+                    data-custody-fund-action={action.key}
+                    title={t(action.label)}
+                    onClick={() => toast.info(t('fleet.custody.actions.soon'))}
+                    className={cn(PILL_BUTTON, action.hover)}
+                  >
+                    <BoardIcon d={action.icon} className={cn('h-3.5 w-3.5', action.tone)} />
+                    <span className="sm:hidden">{t(action.short)}</span>
+                    <span className="hidden sm:inline">{t(action.label)}</span>
+                  </button>
+                </Fragment>
+              ))}
+            </div>
           </span>
         </div>
 

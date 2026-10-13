@@ -330,6 +330,14 @@ export type OpenAtmReplenishments = z.infer<typeof OpenAtmReplenishmentsSchema>;
 export interface OpenAtmReplenishmentsResultDto {
   opened: AtmReplenishmentDto[];
   unknownCodes: string[];
+  /**
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»): one entry per submitted line that
+   * was NOT opened because its machine already has an open replenishment — anywhere in the
+   * company — or because the same code appeared earlier in this batch (that earlier line opened).
+   * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
+   * where the open operation is.
+   */
+  alreadyOpenCodes: string[];
 }
 
 export const UpdateAtmReplenishmentSchema = z
@@ -420,6 +428,8 @@ export type OpenAtmMaintenances = z.infer<typeof OpenAtmMaintenancesSchema>;
 export interface OpenAtmMaintenancesResultDto {
   opened: AtmMaintenanceDto[];
   unknownCodes: string[];
+  /** The owner's rule, as on `OpenAtmReplenishmentsResultDto.alreadyOpenCodes` — per kind. */
+  alreadyOpenCodes: string[];
 }
 
 /** Close: single or checked set, always with the assigned employee (contad_app.js:1963-1983). */
@@ -482,9 +492,12 @@ export interface AtmMailTicketDto {
   /** Legacy `found` — machine existed in the master at ingest. Stored, never rendered (GAP G2). */
   foundInMaster: boolean;
   /**
-   * Legacy `duplication` — an open maintenance existed for this machine TODAY. Recomputed at
-   * every pending-list read exactly as the legacy GET did (contad_app.js:2674-2698); the ingest-
-   * time value is kept on the row for parity but the list serves the live answer (decision D5).
+   * Legacy `duplication` — "this machine already has an OPEN maintenance", on ANY day and in any
+   * branch. The legacy asked "opened TODAY" (contad_app.js:2674); the owner's rule (2026-10-13,
+   * «مينفعش أضيف ماكينة مرتين») made it exactly the condition under which accept REFUSES the
+   * ticket, so what the screen flags is what accept will refuse (port doc OD-1). Recomputed at
+   * every pending-list read as the legacy GET did; the ingest-time value is kept on the row for
+   * the log page (decision D5).
    */
   duplication: boolean;
   /** Legacy `action_by` + NEW `actionAt` — the legacy log never recorded WHEN (GAP G1). */
@@ -502,6 +515,30 @@ export const DecideAtmMailTicketsSchema = z
   .object({ ids: z.array(objectId()).min(1).max(200) })
   .strict();
 export type DecideAtmMailTickets = z.infer<typeof DecideAtmMailTicketsSchema>;
+
+/**
+ * Why a selected ticket was NOT accepted and stays pending. One reason today: the owner's rule —
+ * the ticket's machine already has an open maintenance (the row the screen flags `duplication`).
+ * A ticket already decided, or outside the caller's scope, is skipped silently as before.
+ */
+export const ATM_MAIL_ACCEPT_REFUSAL_REASONS = ['maintenanceAlreadyOpen'] as const;
+export const AtmMailAcceptRefusalReasonSchema = z.enum(ATM_MAIL_ACCEPT_REFUSAL_REASONS);
+export type AtmMailAcceptRefusalReason = z.infer<typeof AtmMailAcceptRefusalReasonSchema>;
+
+export interface AtmMailAcceptRefusalDto {
+  ticketId: string;
+  /** The ticket's own machine code — never where the blocking maintenance is. */
+  machineCode: string;
+  reason: AtmMailAcceptRefusalReason;
+}
+
+/**
+ * The accept answer's `meta`. The `data` stays the array of tickets ACCEPTED, exactly as before,
+ * so a client that reads only `data` keeps working; the refusals ride beside it.
+ */
+export interface AtmMailAcceptMetaDto {
+  refused: AtmMailAcceptRefusalDto[];
+}
 
 /** The log page range — legacy filters `open_time`, default today (contad_app.js:2909-2928). */
 export const ListAtmMailLogQuerySchema = PaginationQuerySchema.extend({

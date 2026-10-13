@@ -112,6 +112,14 @@ export const ErrorCodes = {
   /** Someone else moved this stop first; the transition's precondition no longer holds. */
   OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',
 
+  // ── ATM operations (docs/12-planning/atm-operations-port.md) ──────────────────────────────────
+  /**
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»): the machine code already has an
+   * OPEN operation of this kind — at most one open replenishment and one open maintenance per
+   * machine, company-wide. Answered by a reopen; the batch opens report such codes instead.
+   */
+  ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
+
   // ── ATM efficiency register (docs/12-planning/atm-efficiency-register.md) ─────────────────────
   /** D6: the machine code already has an OPEN custody period somewhere in the company. */
   ATM_REGISTER_OPEN_PERIOD_EXISTS: 'ATM_REGISTER_OPEN_PERIOD_EXISTS',

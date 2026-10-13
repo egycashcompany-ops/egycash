@@ -64,6 +64,34 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   }
 
   /**
+   * The owner's rule (shared/open-operation.ts): which of these machine codes already have an
+   * OPEN operation of this kind. COMPANY-WIDE and therefore unscoped on purpose — a code open in
+   * a branch the caller cannot read still blocks — so it answers with codes only, never a row:
+   * nothing about the other branch can leave through it.
+   */
+  async openMachineCodes(machineCodes: readonly string[]): Promise<Set<string>> {
+    const wanted = [...new Set(machineCodes)].filter((code) => code !== '');
+    if (wanted.length === 0) return new Set();
+    const open = (await this.model
+      .distinct('machineCode', {
+        isDeleted: false,
+        closedAt: null,
+        machineCode: { $in: wanted },
+      } as FilterQuery<T>)
+      .exec()) as string[];
+    return new Set(open);
+  }
+
+  /** The same question for one code, not counting `exceptId` — a reopen never blocks itself. */
+  async hasOpenOperation(machineCode: string, exceptId?: string): Promise<boolean> {
+    const filter: Record<string, unknown> = { isDeleted: false, closedAt: null, machineCode };
+    if (exceptId !== undefined && Types.ObjectId.isValid(exceptId)) {
+      filter._id = { $ne: new Types.ObjectId(exceptId) };
+    }
+    return (await this.model.exists(filter as FilterQuery<T>).exec()) !== null;
+  }
+
+  /**
    * The filter dropdown sources (contad_app.js:261-262): banks = distinct over ALL open rows;
    * areas = distinct over open rows OF THE SELECTED BANKS — with none selected the legacy passed
    * `$in: []` and got an empty area list, and that shape is preserved.

@@ -275,8 +275,8 @@ export const custodyCurrentCar = (
 /**
  * The figures at the top of a car's log — each kind with its share of the car, the total with its
  * share of everything the fund paid over the same filters («إجمالي مصروفات العهدة», `spendTotal`).
- * Not of the fund itself: «إجمالي العهدة» is now the amount set in «مبلغ العهدة» (`fundTotal` of
- * the summary), and a share of it here would say something else under the same words.
+ * Not of the fund itself: «إجمالي العهدة» is what «شحن العهدة» charges into it (`fundTotal` of the
+ * summary), and a share of it here would say something else under the same words.
  */
 const CarTotals = ({
   car,

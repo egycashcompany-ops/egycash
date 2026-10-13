@@ -429,7 +429,8 @@ const en: Record<string, string> = {
   'nav.branchSwitcher.all': 'The whole company',
   'nav.branchSwitcher.mine': 'All my sites',
   // Delegated grants (ADR-032): the «Permissions» tab a manager sees on a colleague.
-  'delegation.treeIntro': 'Open a branch, choose the departments this person works in, then the screens he sees in each.',
+  'delegation.treeIntro':
+    'Open a branch, choose the departments this person works in, then the screens he sees in each.',
   'delegation.clearBranch': 'Clear this branch',
   'delegation.noLogin': 'This person has no login account yet, so there is nothing to grant.',
   'delegation.noReach': 'You do not delegate in any unit.',
@@ -448,10 +449,13 @@ const en: Record<string, string> = {
   'delegation.departmentsOn': '{{on}} of {{total}} departments',
   'delegation.noDepartments': 'No departments are declared in this branch yet.',
   'delegation.wholeTitle': 'The branch as one unit',
-  'delegation.wholeHint': 'Every department in the branch — the ones that exist now and the ones opened later. A grant of its own, not a «tick them all» button.',
-  'delegation.wholeLockedHint': 'This is given by an account whose authority covers the whole branch. Yours covers a department.',
+  'delegation.wholeHint':
+    'Every department in the branch — the ones that exist now and the ones opened later. A grant of its own, not a «tick them all» button.',
+  'delegation.wholeLockedHint':
+    'This is given by an account whose authority covers the whole branch. Yours covers a department.',
   'delegation.covered': 'carried by the branch',
-  'delegation.coveredHint': 'Included in the branch grant. What it holds separately is untouched, and comes back if the branch grant is cleared.',
+  'delegation.coveredHint':
+    'Included in the branch grant. What it holds separately is untouched, and comes back if the branch grant is cleared.',
   'delegation.screens': '{{count}} screens',
   'delegation.screensOn': '{{on}} of {{total}} screens',
   'delegation.actionsAll': 'every action',
@@ -466,7 +470,8 @@ const en: Record<string, string> = {
   'delegation.willSee': 'This person will see',
   'delegation.willSeeNamed': '{{name}} will see',
   'delegation.noneYet': 'Nothing is ticked yet.',
-  'delegation.lineWholeBranch': 'All of {{branch}} — every department, the current ones and the ones opened later',
+  'delegation.lineWholeBranch':
+    'All of {{branch}} — every department, the current ones and the ones opened later',
   'delegation.lineAll': '{{department}} in {{branch}} — {{screens}} screens, every action',
   'delegation.lineView': '{{department}} in {{branch}} — {{screens}} screens, view only',
   'delegation.lineSome': '{{department}} in {{branch}} — {{screens}} screens, {{actions}} actions',
@@ -529,7 +534,8 @@ const en: Record<string, string> = {
   'common.validation.enterRequired': 'Enter the required data: {{fields}}.',
   'common.validation.separator': ', ',
   'fleet.fuelCards.errors.numberShort': 'The card number is at least 4 digits.',
-  'fleet.fuelCards.transfer.sameCard': 'The card to transfer to must differ from the card to transfer from.',
+  'fleet.fuelCards.transfer.sameCard':
+    'The card to transfer to must differ from the card to transfer from.',
   'fleet.attendance.toBeforeFrom': 'The end date comes before the start date.',
   'fleet.violations.yearRange': 'The year is between 2000 and 2100.',
   'fleet.violations.countMin': 'The count is at least 1.',
@@ -1446,14 +1452,16 @@ const en: Record<string, string> = {
   'approvals.waitingHere': 'Waiting here now',
   'approvals.yourStep': 'This step is yours',
   'approvals.willCancel': 'Approving here cancels {{n}} step(s) below it',
-  'approvals.overrideNotice': 'You are not on this chain. Deciding uses your override permission and is recorded.',
+  'approvals.overrideNotice':
+    'You are not on this chain. Deciding uses your override permission and is recorded.',
   'approvals.decidedBy': 'by {{name}}',
   'approvals.noChain': 'No approval chain is configured for this request.',
   'approvals.page.title': 'Approval chains',
   'approvals.page.description':
     'A step names a permission and how far its holder’s authority must reach — never a job title. The same key held at three distances is the branch manager, the general manager and HR, so a promotion changes who answers and nothing here is edited.',
   'approvals.page.add': 'New chain',
-  'approvals.page.empty': 'No chain has been configured yet — every request follows its module’s own default.',
+  'approvals.page.empty':
+    'No chain has been configured yet — every request follows its module’s own default.',
   'approvals.place.default': 'Company-wide default',
   'approvals.place.defaultHint': 'Applies wherever nothing more specific is written',
   'approvals.inactive': 'Inactive',
@@ -2488,7 +2496,8 @@ const en: Record<string, string> = {
   'employees.roster.additionsTitle': 'New employees',
   'employees.roster.addedServing': 'on the job',
   'employees.roster.addedExited': 'added as a leaver',
-  'employees.roster.addedExitedHint': 'These come from the Resignation sheet, so they join the registry already exited. The employees list hides exited people unless the view filter is set to All.',
+  'employees.roster.addedExitedHint':
+    'These come from the Resignation sheet, so they join the registry already exited. The employees list hides exited people unless the view filter is set to All.',
   'employees.roster.refusedTitle': 'Asked for, but not done',
   'employees.roster.rejectedTitle': 'Rows that could not be read',
   'employees.roster.copiesTitle': 'Repeated rows that did not match — one was used',
@@ -3757,7 +3766,8 @@ const en: Record<string, string> = {
   'fleet.fuelCards.updated': 'Card saved.',
   'fleet.fuelCards.deleted': 'Card deleted.',
   'fleet.fuelCards.deleteTitle': 'Delete this card?',
-  'fleet.fuelCards.deleteBody': 'A card that still holds a balance cannot be deleted — transfer it first.',
+  'fleet.fuelCards.deleteBody':
+    'A card that still holds a balance cannot be deleted — transfer it first.',
   'fleet.fuelCards.filters.anyCompany': 'All companies',
   'fleet.fuelCards.filters.number': 'Search by card number…',
   'fleet.fuelCards.filters.expiresBefore': 'Expires before',
@@ -3794,7 +3804,8 @@ const en: Record<string, string> = {
   'fleet.fuelCards.history.cardOf': 'Card {{place}} ({{company}})',
   'fleet.fuelCards.history.saveEdit': 'Save change',
   'fleet.fuelCards.history.removeTitle': 'Remove this line?',
-  'fleet.fuelCards.history.removeHint': 'It leaves the log but stays on file, and the balances go back to what they were without it.',
+  'fleet.fuelCards.history.removeHint':
+    'It leaves the log but stays on file, and the balances go back to what they were without it.',
   'fleet.fuelCards.history.confirmRemove': 'Confirm removal',
   'fleet.fuelCards.history.back': 'Back',
   'fleet.fuelCards.history.negative': 'Not enough balance — a card would go below zero.',
@@ -3817,8 +3828,10 @@ const en: Record<string, string> = {
   'fleet.fuelCards.transfer.action': 'Transfer',
   'fleet.fuelCards.transfer.pickCar': 'Pick a car to see its cards.',
   'fleet.fuelCards.transfer.notEnough': 'The card holds only {{balance}}.',
-  'fleet.fuelCards.transfer.fromLine': 'Taken from — {{company}} {{code}}: was {{before}}, becomes {{after}}',
-  'fleet.fuelCards.transfer.toLine': 'Given to — {{company}} {{code}}: was {{before}}, becomes {{after}}',
+  'fleet.fuelCards.transfer.fromLine':
+    'Taken from — {{company}} {{code}}: was {{before}}, becomes {{after}}',
+  'fleet.fuelCards.transfer.toLine':
+    'Given to — {{company}} {{code}}: was {{before}}, becomes {{after}}',
   'fleet.fuelCards.transfer.done': 'Balance transferred.',
   'fleet.fuelCards.transfer.doneDetail': '{{amount}} transferred from {{from}} to {{to}}.',
   'fleet.fuelCards.transfer.fromCard': 'Transferred from — {{company}} {{code}}',
@@ -3829,7 +3842,8 @@ const en: Record<string, string> = {
   'fleet.fuelCards.transfer.becomes': 'Becomes',
   'fleet.nav.receipts': 'Custody receipts',
   'fleet.nav.custody': 'Custody ledger',
-  'fleet.receipts.subtitle': 'Fuel from the card or the custody fund; tyres and washing from the fund.',
+  'fleet.receipts.subtitle':
+    'Fuel from the card or the custody fund; tyres and washing from the fund.',
   'fleet.receipts.new': 'New receipt',
   'fleet.receipts.edit': 'Edit receipt',
   'fleet.receipts.newHint': 'Pick the kind first, then fill in the paper.',
@@ -3865,7 +3879,8 @@ const en: Record<string, string> = {
   'fleet.receipts.otherCard.loading': 'Loading the cards…',
   'fleet.receipts.otherCard.failed': 'The cards could not be loaded.',
   'fleet.receipts.otherCard.pick': 'Pick the card to take it off.',
-  'fleet.receipts.fields.driverHint': 'From the daily roster for that day — clear it and type another name.',
+  'fleet.receipts.fields.driverHint':
+    'From the daily roster for that day — clear it and type another name.',
   'fleet.receipts.fields.driverPlaceholder': 'Type the driver’s name or pick one…',
   'fleet.receipts.fields.card': 'Card',
   'fleet.receipts.fields.useCard': 'Take it off the card',
@@ -3881,14 +3896,16 @@ const en: Record<string, string> = {
   'fleet.receipts.fields.litres': '= {{litres}} litres',
   'fleet.receipts.fields.image': 'Receipt image',
   'fleet.receipts.fields.imageHint': 'Optional — JPG / PNG / WEBP, uploaded with the receipt.',
-  'fleet.receipts.summary.card': 'Taken off {{company}} {{code}}: was {{before}}, becomes {{after}}',
+  'fleet.receipts.summary.card':
+    'Taken off {{company}} {{code}}: was {{before}}, becomes {{after}}',
   'fleet.receipts.summary.notEnough': 'The card holds only {{balance}}.',
   'fleet.receipts.summary.pickCard': 'This car has two cards — pick the one to take it off.',
   'fleet.receipts.summary.custody': 'Taken from the custody fund: {{amount}}',
   'fleet.receipts.saved': 'Receipt saved.',
   'fleet.receipts.deleted': 'Receipt deleted.',
   'fleet.receipts.deleteTitle': 'Delete this receipt?',
-  'fleet.receipts.deleteBody': 'A receipt taken off a card gives the card its money back. The row is kept in the database.',
+  'fleet.receipts.deleteBody':
+    'A receipt taken off a card gives the card its money back. The row is kept in the database.',
   'fleet.receipts.filters.anyKind': 'All kinds',
   'fleet.receipts.filters.anySource': 'Taken from: all',
   'fleet.receipts.filters.driver': 'Driver…',
@@ -3908,8 +3925,10 @@ const en: Record<string, string> = {
   'fleet.receipts.image.deleted': 'Receipt image deleted.',
   'fleet.receipts.image.deleteTitle': 'Delete the receipt image?',
   'fleet.receipts.image.deleteBody': 'The image leaves the row; the receipt itself stays.',
-  'fleet.receipts.image.notUploaded': 'The receipt was saved but its photo was not uploaded — add it from the image column.',
-  'fleet.custody.subtitle': 'Everything the custody fund paid: private cars’ dealership bills, fuel from the fund, tyres and washing.',
+  'fleet.receipts.image.notUploaded':
+    'The receipt was saved but its photo was not uploaded — add it from the image column.',
+  'fleet.custody.subtitle':
+    'Everything the custody fund paid: private cars’ dealership bills, fuel from the fund, tyres and washing.',
   'fleet.custody.source.dealership': 'Dealership',
   'fleet.custody.source.fuel': 'Fuel',
   'fleet.custody.source.tyres': 'Tyres',
@@ -3925,7 +3944,6 @@ const en: Record<string, string> = {
   // «إجمالي العهدة» — the fund itself, before what it paid for; its share is «Spent 12%».
   'fleet.custody.fund.title': 'Custody fund total',
   'fleet.custody.fund.spent': 'Spent',
-  'fleet.custody.fund.unset': 'Set in Fleet settings',
   'fleet.custody.perVehicle': 'Summary per vehicle',
   'fleet.custody.movements': 'All movements',
   'fleet.custody.columns.source': 'Source',
@@ -3936,6 +3954,14 @@ const en: Record<string, string> = {
   'fleet.custody.grandTotal': 'Total',
   'fleet.custody.empty': 'Nothing has been taken from the custody fund yet.',
   'fleet.custody.dashboard.open': 'Dashboard',
+  'fleet.custody.actions.settle': 'Settle custody',
+  'fleet.custody.actions.replenish': 'Replenish custody',
+  'fleet.custody.actions.charge': 'Top up custody',
+  // On a phone, one word each — as the export pair says «Excel» and «PDF».
+  'fleet.custody.actions.settleShort': 'Settle',
+  'fleet.custody.actions.replenishShort': 'Replenish',
+  'fleet.custody.actions.chargeShort': 'Top up',
+  'fleet.custody.actions.soon': 'This action is coming soon.',
   'fleet.custody.dashboard.title': 'Custody dashboard',
   'fleet.custody.dashboard.filters.none': 'Every movement — no filter',
   'fleet.custody.dashboard.filters.from': 'From {{date}}',
@@ -4060,7 +4086,8 @@ const en: Record<string, string> = {
   'fleet.custody.dashboard.carLog.movements': 'The car’s movements',
   'fleet.custody.dashboard.carLog.empty': 'This car has no movement under these filters.',
   'fleet.nav.dealership': 'Dealership',
-  'fleet.dealership.subtitle': 'Every car leaving the workshop appears here in yellow until its invoice is recorded.',
+  'fleet.dealership.subtitle':
+    'Every car leaving the workshop appears here in yellow until its invoice is recorded.',
   'fleet.dealership.columns.outDate': 'Date',
   'fleet.dealership.columns.workType': 'Work type',
   'fleet.dealership.columns.invoiceNumber': 'Invoice number',
@@ -4076,21 +4103,28 @@ const en: Record<string, string> = {
   'fleet.dealership.record': 'Record invoice',
   'fleet.dealership.edit': 'Edit invoice',
   'fleet.dealership.recordTitle': 'Dealership invoice — vehicle {{code}}',
-  'fleet.dealership.recordHint': 'The workshop details come from the workshop and the vehicle record and are not typed here.',
+  'fleet.dealership.recordHint':
+    'The workshop details come from the workshop and the vehicle record and are not typed here.',
   'fleet.dealership.privateCar': 'Private car',
-  'fleet.dealership.privateCarHint': 'From the operation type on the vehicles screen — you may change it.',
-  'fleet.dealership.invoiceNumberOptional': 'Optional for a private car — without it the amount comes from the custody fund.',
+  'fleet.dealership.privateCarHint':
+    'From the operation type on the vehicles screen — you may change it.',
+  'fleet.dealership.invoiceNumberOptional':
+    'Optional for a private car — without it the amount comes from the custody fund.',
   'fleet.dealership.invoiceNumberPrivate': 'Optional for a private car',
-  'fleet.dealership.insurerHint': 'None unless you pick, from the list, the vehicle’s insurer as recorded on the vehicles screen.',
+  'fleet.dealership.insurerHint':
+    'None unless you pick, from the list, the vehicle’s insurer as recorded on the vehicles screen.',
   'fleet.dealership.insurerCarNone': 'The vehicle has no insurer on the vehicles screen.',
-  'fleet.dealership.insurerCarInactive': 'The vehicle’s insurer, {{name}}, is archived in Fleet catalogs, so it cannot be picked.',
+  'fleet.dealership.insurerCarInactive':
+    'The vehicle’s insurer, {{name}}, is archived in Fleet catalogs, so it cannot be picked.',
   'fleet.dealership.sideUnknown': 'Enter the invoice amount.',
   'fleet.dealership.sideDealershipHint': 'Paid by: the dealership — it has an invoice number.',
-  'fleet.dealership.sideCustodyHint': 'Paid by: the custody fund — a private car with no invoice number.',
+  'fleet.dealership.sideCustodyHint':
+    'Paid by: the custody fund — a private car with no invoice number.',
   'fleet.dealership.saved': 'Invoice saved.',
   'fleet.dealership.deleted': 'Row deleted.',
   'fleet.dealership.deleteTitle': 'Delete this row?',
-  'fleet.dealership.deleteBody': 'The row leaves the screen and its totals; it is kept in the database.',
+  'fleet.dealership.deleteBody':
+    'The row leaves the screen and its totals; it is kept in the database.',
   'fleet.dealership.totals.dealership': 'Dealership total',
   'fleet.dealership.totals.custody': 'Custody fund total',
   'fleet.dealership.totals.pending': 'Awaiting invoice',
@@ -4113,14 +4147,16 @@ const en: Record<string, string> = {
   'fleet.dealership.image.deleteTitle': 'Delete the invoice image?',
   'fleet.dealership.image.deleteBody': 'The image leaves the row; the invoice itself stays.',
   'fleet.dealership.image.pickTitle': 'Click to add the invoice photo',
-  'fleet.dealership.image.pickHint': 'Optional — JPG / PNG / WEBP up to 10MB, uploaded when the invoice is saved.',
+  'fleet.dealership.image.pickHint':
+    'Optional — JPG / PNG / WEBP up to 10MB, uploaded when the invoice is saved.',
   'fleet.dealership.image.stored': 'A photo is saved: {{name}}',
   'fleet.dealership.image.replaceHint': 'Picking a new photo replaces the saved one when you save.',
   'fleet.dealership.image.picked': '{{size}} MB — uploaded when the invoice is saved.',
   'fleet.dealership.image.remove': 'Remove the photo',
   'fleet.dealership.image.tooBig': 'The photo is larger than 10MB.',
   'fleet.dealership.image.badType': 'The photo must be JPG, PNG or WEBP.',
-  'fleet.dealership.image.notUploaded': 'The invoice was saved but its photo was not uploaded — add it from the image column.',
+  'fleet.dealership.image.notUploaded':
+    'The invoice was saved but its photo was not uploaded — add it from the image column.',
   'fleet.notices.choose': 'Choose the form',
   'fleet.notices.count': '{{count}} notices',
   'fleet.licenseExpenses.title': 'Licensing expenses',
@@ -4174,7 +4210,8 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.savedToast': 'Memo saved',
   'fleet.licenseExpenses.deletedToast': 'Memo deleted',
   'fleet.licenseExpenses.deleteTitle': 'Delete this memo?',
-  'fleet.licenseExpenses.deleteBody': 'The memo leaves the list; its record stays in the audit trail.',
+  'fleet.licenseExpenses.deleteBody':
+    'The memo leaves the list; its record stays in the audit trail.',
   'fleet.licenseExpenses.saveDefaults': 'Use these names for every new memo',
   'fleet.licenseExpenses.defaultsSavedToast': 'Names saved for new memos',
   'fleet.licenseExpenses.addToList': 'Add to list',
@@ -4217,7 +4254,8 @@ const en: Record<string, string> = {
   'fleet.licenseExpenses.setup.newItemShowsIn': 'Shows in',
   'fleet.licenseExpenses.setup.newItemAdd': 'Add',
   'fleet.licenseExpenses.setup.newItemEmpty': 'Write the item’s name first.',
-  'fleet.licenseExpenses.setup.newItemAddedToast': '“{{name}}” was added — Fleet catalogs show it too.',
+  'fleet.licenseExpenses.setup.newItemAddedToast':
+    '“{{name}}” was added — Fleet catalogs show it too.',
   'fleet.licenseExpenses.setup.newItemExistsToast':
     '“{{name}}” is already on the list — it is highlighted; set where it shows on its own row.',
   'fleet.licenseExpenses.setup.newItemArchivedToast':
@@ -4601,7 +4639,8 @@ const en: Record<string, string> = {
   'fleet.drivers.profile.createdAt': 'Created on',
   'fleet.drivers.profile.mainBranch': 'Main branch',
   'fleet.drivers.profile.verified': 'Official documents and security checks verified',
-  'fleet.drivers.profile.attendanceHint': 'This driver’s operating attendance and readiness records',
+  'fleet.drivers.profile.attendanceHint':
+    'This driver’s operating attendance and readiness records',
   'fleet.drivers.profile.newAttendance': 'Record attendance',
   'fleet.drivers.profile.recordUnavailability': 'Record unavailability +',
   'fleet.drivers.profile.metric.workingDays': 'Total working days',
@@ -4612,17 +4651,21 @@ const en: Record<string, string> = {
   'fleet.drivers.profile.metric.compliance': 'Compliance rate',
   'fleet.drivers.profile.attendanceTab': 'Attendance and operating log',
   'fleet.drivers.profile.notesTab': 'Notes and alerts',
-  'fleet.drivers.profile.emptyHint': 'No unavailability is recorded for this driver. The driver is fully available for routes and missions.',
+  'fleet.drivers.profile.emptyHint':
+    'No unavailability is recorded for this driver. The driver is fully available for routes and missions.',
   'fleet.drivers.profile.addLeave': 'Add leave or a day off now',
   'fleet.drivers.profile.attendanceEmpty': 'No attendance log',
-  'fleet.drivers.profile.attendanceEmptyHint': 'No odometer readings are recorded under this driver.',
+  'fleet.drivers.profile.attendanceEmptyHint':
+    'No odometer readings are recorded under this driver.',
   'fleet.drivers.profile.readingCar': 'Vehicle {{code}}',
   'fleet.drivers.profile.notesEmpty': 'No notes or alerts',
-  'fleet.drivers.profile.notesEmptyHint': 'No violations or accidents are recorded against this driver.',
+  'fleet.drivers.profile.notesEmptyHint':
+    'No violations or accidents are recorded against this driver.',
   'fleet.drivers.profile.note.licenceExpired': 'The driving licence has expired',
   'fleet.drivers.profile.note.violation': 'Violation on vehicle {{code}} for {{amount}}',
   'fleet.drivers.profile.note.accident': 'Accident on vehicle {{code}}',
-  'fleet.drivers.profile.footer.copyright': 'Cash-in-transit fleet and logistics management system © 2026 All rights reserved',
+  'fleet.drivers.profile.footer.copyright':
+    'Cash-in-transit fleet and logistics management system © 2026 All rights reserved',
   'fleet.drivers.profile.footer.server': 'Server',
   'fleet.drivers.profile.footer.version': 'Version',
   'fleet.drivers.profile.licenseGrade': 'Licence grade',
@@ -4783,10 +4826,13 @@ const en: Record<string, string> = {
   'fleet.odometer.corrected': 'Reading corrected.',
   'fleet.odometer.noReading': 'No reading',
   'fleet.filters.matchedRows': 'Rows matching these filters',
-  'fleet.odometer.readingOptionalHint': 'This day has already passed — the counter is optional. Leave it empty if nobody wrote it down, and record it for this same day later if it turns up.',
-  'fleet.odometer.recordingWithoutReading': 'Saving with no counter. The maintenance alarm will count this day as unmeasured — record the reading for this same day later and it will fill this row rather than adding another.',
+  'fleet.odometer.readingOptionalHint':
+    'This day has already passed — the counter is optional. Leave it empty if nobody wrote it down, and record it for this same day later if it turns up.',
+  'fleet.odometer.recordingWithoutReading':
+    'Saving with no counter. The maintenance alarm will count this day as unmeasured — record the reading for this same day later and it will fill this row rather than adding another.',
   'fleet.alarms.columns.daysWithoutReading': 'Days with no reading',
-  'fleet.alarms.daysWithoutReadingHint': 'Days since the last service that were recorded with no counter — the real distance is at least what is shown.',
+  'fleet.alarms.daysWithoutReadingHint':
+    'Days since the last service that were recorded with no counter — the real distance is at least what is shown.',
   'fleet.odometer.openPeriod': 'Open period',
   'fleet.odometer.openPeriodHint': 'The open period is closed by the next recorded reading.',
   'fleet.odometer.expectedHint': 'The server expects {{km}} km or more',
@@ -4974,93 +5020,140 @@ const en: Record<string, string> = {
   'fleet.goLive.field.enrolled': 'Drivers enrolled',
   'fleet.goLive.field.unmatched': 'Scans with no driver of that code',
   'fleet.goLive.field.unknownCodes': 'Scans whose code is no employee at all — add them in HR',
-  'fleet.goLive.field.notDrivers': 'Employees whose job title does not require a driving test — not on the drivers registry',
+  'fleet.goLive.field.notDrivers':
+    'Employees whose job title does not require a driving test — not on the drivers registry',
   'fleet.goLive.field.exited': 'Scans of drivers who have left',
   'fleet.goLive.field.notImages': 'Files that are not images',
   'fleet.goLive.field.duplicates': 'Codes under two file names',
   'fleet.goLive.panel.title': 'What the go-live import did',
-  'fleet.goLive.panel.hint': 'The four old books, the vehicle registry and the licence scans, as the server recorded each run. Kept here rather than on the screens themselves.',
+  'fleet.goLive.panel.hint':
+    'The four old books, the vehicle registry and the licence scans, as the server recorded each run. Kept here rather than on the screens themselves.',
   'fleet.goLive.step.odometer': 'Odometer book import',
-  'fleet.goLive.reason.vehicles-not-done': 'the vehicle registry has not finished importing — the book waits for the next boot',
+  'fleet.goLive.reason.vehicles-not-done':
+    'the vehicle registry has not finished importing — the book waits for the next boot',
   'fleet.goLive.field.vehicles': 'Vehicles',
   'fleet.goLive.field.imported': 'Rows imported',
   'fleet.goLive.field.alreadyThere': 'Already there',
-  'fleet.goLive.field.keptDeleted': 'Rows the old system had deleted — imported already deleted: in the database, on no screen',
-  'fleet.goLive.field.deletedRows': 'Rows written deleted in all — the old system’s own, and the ones the model cannot hold alive yet',
-  'fleet.goLive.field.unreadable': 'Rows the book did not say readably — imported deleted, with the book’s own words in their notes',
-  'fleet.goLive.field.relinked': 'Rows already there whose import-filled closing reading now meets the row after it',
-  'fleet.goLive.field.restored': 'Readings an earlier run had buried over a contested open period — brought back',
-  'fleet.goLive.field.openedByPrevious': 'Rows the book left with no opening reading — opened at the car’s last known reading',
+  'fleet.goLive.field.keptDeleted':
+    'Rows the old system had deleted — imported already deleted: in the database, on no screen',
+  'fleet.goLive.field.deletedRows':
+    'Rows written deleted in all — the old system’s own, and the ones the model cannot hold alive yet',
+  'fleet.goLive.field.unreadable':
+    'Rows the book did not say readably — imported deleted, with the book’s own words in their notes',
+  'fleet.goLive.field.relinked':
+    'Rows already there whose import-filled closing reading now meets the row after it',
+  'fleet.goLive.field.restored':
+    'Readings an earlier run had buried over a contested open period — brought back',
+  'fleet.goLive.field.openedByPrevious':
+    'Rows the book left with no opening reading — opened at the car’s last known reading',
   'fleet.goLive.field.typesCreated': 'Violation types added for rows whose type nobody wrote',
   'fleet.goLive.field.rejected': 'Files that are not a list of rows at all',
-  'fleet.goLive.field.unknownCars': 'Car codes the registry does not have — their rows were kept with the code as text',
-    'fleet.goLive.field.closedByNext': 'Rows closed with the next row’s reading',
-  'fleet.goLive.field.badInReading': 'Rows whose closing reading was below the opening one — closed with the next row’s',
-  'fleet.goLive.field.closedByExisting': 'Last rows closed against a reading recorded on the new screen',
-  'fleet.goLive.field.openConflicts': 'Rows that would have contested a car’s one open period — written deleted, not dropped',
-  'fleet.goLive.field.unmatchedDrivers': 'Driver names HR does not have — kept as text on their rows; add them in HR if they are still here',
-  'fleet.goLive.field.ambiguousDrivers': 'Driver names that fit several employees — kept as text on their rows',
+  'fleet.goLive.field.unknownCars':
+    'Car codes the registry does not have — their rows were kept with the code as text',
+  'fleet.goLive.field.closedByNext': 'Rows closed with the next row’s reading',
+  'fleet.goLive.field.badInReading':
+    'Rows whose closing reading was below the opening one — closed with the next row’s',
+  'fleet.goLive.field.closedByExisting':
+    'Last rows closed against a reading recorded on the new screen',
+  'fleet.goLive.field.openConflicts':
+    'Rows that would have contested a car’s one open period — written deleted, not dropped',
+  'fleet.goLive.field.unmatchedDrivers':
+    'Driver names HR does not have — kept as text on their rows; add them in HR if they are still here',
+  'fleet.goLive.field.ambiguousDrivers':
+    'Driver names that fit several employees — kept as text on their rows',
   'fleet.goLive.field.placeholders': 'Names read as «no driver»',
   'fleet.goLive.step.maintenance': 'Workshop book import',
-  'fleet.goLive.reason.prior-steps-not-done': 'the vehicle registry or the odometer book has not finished importing — the book waits for the next boot',
-  'fleet.goLive.field.outBeforeIn': 'Visits that left before they arrived — kept with both of the book’s dates; correct them on the screen',
+  'fleet.goLive.reason.prior-steps-not-done':
+    'the vehicle registry or the odometer book has not finished importing — the book waits for the next boot',
+  'fleet.goLive.field.outBeforeIn':
+    'Visits that left before they arrived — kept with both of the book’s dates; correct them on the screen',
   'fleet.goLive.field.counterFromOdometer': 'Visits whose counter was taken from the odometer book',
-  'fleet.goLive.field.noCounter': 'Visits with no counter anywhere — written as 0; put the real reading in on the screen',
+  'fleet.goLive.field.noCounter':
+    'Visits with no counter anywhere — written as 0; put the real reading in on the screen',
   'fleet.goLive.field.catalogCreated': 'Catalog rows added from the book’s own words',
   'fleet.goLive.step.violations': 'Violations book import',
   'fleet.goLive.step.accidents': 'Accidents book import',
   'fleet.goLive.field.grievancesWritten': 'Grievance figures written',
-  'fleet.goLive.field.grievancesKept': 'Grievance figures already on the new screen, with a different value — kept',
-  'fleet.goLive.field.grievanceConflicts': 'Years the book stamped with two grievance figures — the first was kept',
-  'fleet.goLive.field.zeroCount': 'Statement rows the book counted zero — written as the book had them',
-  'fleet.goLive.field.unknownTypes': 'Rows whose type is blank or not in the catalog on that side — filed under «غير محدد»',
+  'fleet.goLive.field.grievancesKept':
+    'Grievance figures already on the new screen, with a different value — kept',
+  'fleet.goLive.field.grievanceConflicts':
+    'Years the book stamped with two grievance figures — the first was kept',
+  'fleet.goLive.field.zeroCount':
+    'Statement rows the book counted zero — written as the book had them',
+  'fleet.goLive.field.unknownTypes':
+    'Rows whose type is blank or not in the catalog on that side — filed under «غير محدد»',
   'fleet.goLive.field.noDate': 'Files with no date — kept, with no date',
-  'fleet.goLive.field.namesFilled': 'Rows already there whose driver was empty and now carries the book’s name',
-  'fleet.goLive.field.counterUnknown': 'Visits on cars the registry does not have, with no counter in the book — written as 0',
-  'fleet.goLive.field.grievancesUnplaced': 'Grievance figures on cars the registry does not have — not written',
+  'fleet.goLive.field.namesFilled':
+    'Rows already there whose driver was empty and now carries the book’s name',
+  'fleet.goLive.field.counterUnknown':
+    'Visits on cars the registry does not have, with no counter in the book — written as 0',
+  'fleet.goLive.field.grievancesUnplaced':
+    'Grievance figures on cars the registry does not have — not written',
   'fleet.goLive.field.statementFilled': 'Files written with «غير مذكور» for a blank statement',
   'fleet.goLive.field.blankAmounts': 'Blank amounts written as 0',
   'fleet.goLive.field.amountNotes': 'Words the book wrote after an amount',
-  'fleet.goLive.field.unmatchedCulprits': 'Culprit names HR does not have — the name was kept as written, without an employee',
-  'fleet.goLive.field.ambiguousCulprits': 'Culprit names that fit several employees — kept as written, without an employee',
+  'fleet.goLive.field.unmatchedCulprits':
+    'Culprit names HR does not have — the name was kept as written, without an employee',
+  'fleet.goLive.field.ambiguousCulprits':
+    'Culprit names that fit several employees — kept as written, without an employee',
   'fleet.goLive.field.cars': 'Cars in the new export',
   'fleet.goLive.field.carsWithChanges': 'Cars the new export changes',
   'fleet.goLive.field.inExport': 'What the new export changes, by field',
   'fleet.goLive.field.changed': 'Changes applied, by field',
   'fleet.goLive.field.alreadyNew': 'Values ECMS already had at the new value',
   'fleet.goLive.field.keptEcmsEditsCount': 'How many edits were kept',
-  'fleet.goLive.field.keptEcmsEdits': 'Values edited on ECMS since the import — the edit was kept (ECMS, old and new values)',
-  'fleet.goLive.field.notInRegistry': 'Codes with no live car in the registry — nothing was applied',
-  'fleet.goLive.field.disposedCars': 'Disposed cars left unchanged — return them to service, then edit them by hand',
-  'fleet.goLive.field.newCars': 'Cars only in the new export — not added; add them on the vehicles screen',
+  'fleet.goLive.field.keptEcmsEdits':
+    'Values edited on ECMS since the import — the edit was kept (ECMS, old and new values)',
+  'fleet.goLive.field.notInRegistry':
+    'Codes with no live car in the registry — nothing was applied',
+  'fleet.goLive.field.disposedCars':
+    'Disposed cars left unchanged — return them to service, then edit them by hand',
+  'fleet.goLive.field.newCars':
+    'Cars only in the new export — not added; add them on the vehicles screen',
   'fleet.goLive.field.goneFromExport': 'Rows missing from the new export — nothing was deleted',
-  'fleet.goLive.field.photosNotInBuild': 'Licence scans the new export names whose files were not supplied — send them or upload them on the car\'s screen',
-  'fleet.goLive.field.photoAlreadyThere': 'Cars that already have a licence scan on ECMS — the existing scan was kept',
-  'fleet.goLive.field.photoDropped': 'Cars whose licence scan the new export no longer names — the scan on ECMS stays',
+  'fleet.goLive.field.photosNotInBuild':
+    "Licence scans the new export names whose files were not supplied — send them or upload them on the car's screen",
+  'fleet.goLive.field.photoAlreadyThere':
+    'Cars that already have a licence scan on ECMS — the existing scan was kept',
+  'fleet.goLive.field.photoDropped':
+    'Cars whose licence scan the new export no longer names — the scan on ECMS stays',
   'fleet.goLive.field.vehicleTypesCreated': 'Vehicle types added for a new value',
-  'fleet.goLive.field.cutoff': 'Recorded before this instant (midnight at the start of 24 September, Cairo time) — deleted',
-  'fleet.goLive.field.deletedViolations': 'Violations recorded on the system up to 23 September — deleted (kept in the database only)',
-  'fleet.goLive.field.deletedGrievances': 'Grievance figures recorded up to 23 September — deleted so the book\'s figures could be written again',
-  'fleet.goLive.field.keptRecordedSince': 'Violations recorded from 24 September on — kept exactly as they are',
-  'fleet.goLive.field.changedSinceCutoff': 'Deleted violations that somebody had changed from 24 September on (a tick, a move, an amount) — the book\'s copy came back without that change; redo it on the screen',
+  'fleet.goLive.field.cutoff':
+    'Recorded before this instant (midnight at the start of 24 September, Cairo time) — deleted',
+  'fleet.goLive.field.deletedViolations':
+    'Violations recorded on the system up to 23 September — deleted (kept in the database only)',
+  'fleet.goLive.field.deletedGrievances':
+    "Grievance figures recorded up to 23 September — deleted so the book's figures could be written again",
+  'fleet.goLive.field.keptRecordedSince':
+    'Violations recorded from 24 September on — kept exactly as they are',
+  'fleet.goLive.field.changedSinceCutoff':
+    "Deleted violations that somebody had changed from 24 September on (a tick, a move, an amount) — the book's copy came back without that change; redo it on the screen",
   'fleet.goLive.field.changedSinceCutoffCount': 'How many such violations in all',
-  'fleet.goLive.field.grievancesKeptSinceCutoff': 'Grievance figures recorded before 24 September but set again since — kept as they are',
+  'fleet.goLive.field.grievancesKeptSinceCutoff':
+    'Grievance figures recorded before 24 September but set again since — kept as they are',
   'fleet.goLive.field.exportRows': 'Rows in the new export',
   'fleet.goLive.field.added': 'Rows added from the new export',
-  'fleet.goLive.field.changesAlreadyThere': 'Changed fields that already held the new value, by field',
-  'fleet.goLive.field.deletedByBook': 'Rows the old system has deleted since — deleted here too, kept in the database only',
+  'fleet.goLive.field.changesAlreadyThere':
+    'Changed fields that already held the new value, by field',
+  'fleet.goLive.field.deletedByBook':
+    'Rows the old system has deleted since — deleted here too, kept in the database only',
   'fleet.goLive.field.restoredByBook': 'Rows the old system has restored — restored here',
   'fleet.goLive.field.unappliedCount': 'Changes that could not be applied',
-  'fleet.goLive.field.unapplied': 'Changes not applied, with the reason — review them on the screen',
-  'fleet.goLive.field.parkedChanged': 'Visits the import had written deleted as a car\'s second open visit — updated and still deleted; restore them if they are not the same visit',
+  'fleet.goLive.field.unapplied':
+    'Changes not applied, with the reason — review them on the screen',
+  'fleet.goLive.field.parkedChanged':
+    "Visits the import had written deleted as a car's second open visit — updated and still deleted; restore them if they are not the same visit",
   'fleet.goLive.field.columnsChanged': 'Columns the old system changed, by column',
   'fleet.goLive.field.drivers': 'Drivers in the two books',
   'fleet.goLive.field.filled': 'Empty fields filled, by field',
   'fleet.goLive.field.keptOnScreen': 'Fields a person had already set to another value — kept',
-  'fleet.goLive.field.enrolledExited': 'Drivers who have left — their facts kept on a switched-off profile',
-  'fleet.goLive.field.unmatchedLegacy': 'Old drivers-book rows whose person HR does not have — add them there to link',
+  'fleet.goLive.field.enrolledExited':
+    'Drivers who have left — their facts kept on a switched-off profile',
+  'fleet.goLive.field.unmatchedLegacy':
+    'Old drivers-book rows whose person HR does not have — add them there to link',
   'fleet.goLive.field.ambiguousLegacy': 'Old drivers-book rows that fit several employees',
-  'fleet.goLive.field.duplicateCodes': 'Codes the old register lists twice — the first row was read',
+  'fleet.goLive.field.duplicateCodes':
+    'Codes the old register lists twice — the first row was read',
   'fleet.goLive.field.deleted': 'Accident files deleted (kept in the database only)',
   'fleet.goLive.field.notOnRegistry': 'Drivers not on the registry',
   'fleet.goLive.step.vehicle-changes': 'Vehicle changes from the new cars export',
@@ -5069,25 +5162,34 @@ const en: Record<string, string> = {
   'fleet.goLive.step.maintenance-sync': 'Workshop book — new export',
   'fleet.goLive.step.violations-reload': 'Violations book reloaded',
   'fleet.goLive.step.accidents-clear': 'Accident files cleared',
-  'fleet.goLive.reason.violations-not-done': 'The vehicle registry or the first violations import has not finished — the reload waits for the next boot',
-  'fleet.goLive.reason.maintenance-not-done': 'The vehicles, odometer or workshop import has not finished — the new workshop export waits for the next boot',
-  'fleet.goLive.reason.accidents-not-done': 'The accidents import has not finished — the clearing waits for the next boot',
+  'fleet.goLive.reason.violations-not-done':
+    'The vehicle registry or the first violations import has not finished — the reload waits for the next boot',
+  'fleet.goLive.reason.maintenance-not-done':
+    'The vehicles, odometer or workshop import has not finished — the new workshop export waits for the next boot',
+  'fleet.goLive.reason.accidents-not-done':
+    'The accidents import has not finished — the clearing waits for the next boot',
   'fleet.goLive.step.violations-restore': 'Violation changes made from 24 September, put back',
   'fleet.goLive.step.odometer-fix': 'Readings of cars 150 and 153',
-  'fleet.goLive.reason.reload-not-done': 'The violations reload has not finished — the restore waits for the next boot',
-  'fleet.goLive.reason.odometer-sync-not-done': 'The new odometer book has not finished — the fix waits for the next boot',
-  'fleet.goLive.field.restoredFields': 'Fields put back on the book’s rows as people had set them, by field',
+  'fleet.goLive.reason.reload-not-done':
+    'The violations reload has not finished — the restore waits for the next boot',
+  'fleet.goLive.reason.odometer-sync-not-done':
+    'The new odometer book has not finished — the fix waits for the next boot',
+  'fleet.goLive.field.restoredFields':
+    'Fields put back on the book’s rows as people had set them, by field',
   'fleet.goLive.field.yearTicksRestored': 'Fines marked collected again from a car-year tick',
   'fleet.goLive.field.deletedAgain': 'Rows a person had deleted from 24 September, deleted again',
   'fleet.goLive.field.auditEntries': 'Audit entries read',
   'fleet.goLive.field.noTwin': 'Changed fines with no counterpart in the book',
-  'fleet.goLive.field.keptSinceReload': 'Rows changed after the reload — the latest change was kept',
+  'fleet.goLive.field.keptSinceReload':
+    'Rows changed after the reload — the latest change was kept',
   'fleet.goLive.field.laterTicks': 'Years ticked again after the reload — the latest tick stands',
   'fleet.goLive.field.corrected': 'Readings set to the old system’s figure',
-  'fleet.goLive.field.correctedAlready': 'Readings that no longer hold the typed figure — left as they are',
+  'fleet.goLive.field.correctedAlready':
+    'Readings that no longer hold the typed figure — left as they are',
   'fleet.goLive.field.reopened': 'Readings brought back open',
   'fleet.goLive.field.closedAgainstOpen': 'Readings brought back, closed against the open reading',
-  'fleet.goLive.field.stillParked': 'Readings not brought back because another is open — the car’s readings from 16 September',
+  'fleet.goLive.field.stillParked':
+    'Readings not brought back because another is open — the car’s readings from 16 September',
   'fleet.roster.unsaved': 'Unsaved changes',
   'fleet.roster.clearSlot': 'Remove from this slot',
   'fleet.roster.inWorkshopNoDrop': 'In workshop — unassignable',
@@ -5168,7 +5270,8 @@ const en: Record<string, string> = {
   'fleet.accidents.transfer.amountAuto': 'Worked out automatically — not typed',
   'fleet.accidents.transfer.before': 'This accident’s remaining before taking:',
   'fleet.accidents.transfer.after': 'This accident’s remaining after taking:',
-  'fleet.accidents.transfer.noDeficit': 'This accident has no negative remaining for another car to cover',
+  'fleet.accidents.transfer.noDeficit':
+    'This accident has no negative remaining for another car to cover',
   'fleet.accidents.transfer.columns.car': 'Car',
   'fleet.accidents.transfer.columns.available': 'Its remaining',
   'fleet.accidents.transfer.columns.take': 'Taken from it',
@@ -5192,7 +5295,8 @@ const en: Record<string, string> = {
   'fleet.accidents.log.totalPaidTo': 'Total paid to other cars',
   'fleet.accidents.log.remove': 'Remove transfer',
   'fleet.accidents.log.removeTitle': 'Remove this transfer?',
-  'fleet.accidents.log.removeBody': 'The {{amount}} returns to where it was taken from (car {{code}}), and the transfer leaves the log.',
+  'fleet.accidents.log.removeBody':
+    'The {{amount}} returns to where it was taken from (car {{code}}), and the transfer leaves the log.',
   'fleet.accidents.log.removed': 'Transfer removed',
   'fleet.accidents.fields.notes': 'Notes',
   'fleet.accidents.searchCode': 'Code',
@@ -5216,7 +5320,8 @@ const en: Record<string, string> = {
   'fleet.violations.driverTitle': 'Violations the drivers bear',
   'fleet.violations.unknownDriver': 'Unknown',
   'fleet.violations.useCompanyCars': 'Company ({{count}})',
-  'fleet.violations.useCompanyCarsHint': 'Filter this board by the cars chosen on the company board',
+  'fleet.violations.useCompanyCarsHint':
+    'Filter this board by the cars chosen on the company board',
   'fleet.violations.allYears': 'All years',
   'fleet.violations.allTypes': 'All types',
   'fleet.violations.allVehicles': 'All vehicles',
@@ -5417,10 +5522,6 @@ const en: Record<string, string> = {
   'fleet.settings.keys.fuelCardExpiryWarnDays': 'Fuel-card expiry warning (days before expiry)',
   'fleet.settings.keys.fuelCardBalanceYellow': 'Fuel-card balance — yellow below (EGP)',
   'fleet.settings.keys.fuelCardBalanceRed': 'Fuel-card balance — red below (EGP)',
-  'fleet.settings.keys.custodyFundTotal': 'Custody fund amount (EGP)',
-  'fleet.settings.keys.custodyFundTotalHint':
-    'The total custody fund handed to the Fleet department — replenishments will be added to it later.',
-  'fleet.settings.keys.custodyFundTotalUnset': 'Not set',
   'fleet.settings.keys.defaultBranchNameHint':
     'Matched against live branch names (Arabic or English). The create form preselects it; a branch is still required.',
 
@@ -5662,8 +5763,7 @@ const en: Record<string, string> = {
   'it.custody.receipt.accessories': 'Accessories handed over — one per line',
   'it.custody.receipt.nationalIdWithheld':
     'The national ID was left blank on the paper: showing it on custody receipts needs its own permission.',
-  'it.custody.receipt.handedOver':
-    'Handed over. Upload the receipt once the employee signs it.',
+  'it.custody.receipt.handedOver': 'Handed over. Upload the receipt once the employee signs it.',
   'it.custody.receipt.preparing': 'Preparing the receipt…',
   'it.custody.receipt.popupBlocked':
     'The browser blocked the print window. Allow pop-ups for this site and try again.',
@@ -6559,7 +6659,8 @@ const en: Record<string, string> = {
   'systemAdmin.roles.noDepartment': 'General',
   'systemAdmin.roles.groupCount': '{{count}} roles',
   'systemAdmin.roles.department': 'Department',
-  'systemAdmin.roles.departmentHint': 'Groups the role in the list. It grants nothing — leave it empty for a role that belongs to no department.',
+  'systemAdmin.roles.departmentHint':
+    'Groups the role in the list. It grants nothing — leave it empty for a role that belongs to no department.',
   'systemAdmin.roles.module.platform': 'Platform',
   'systemAdmin.roles.module.hr': 'HR',
   'systemAdmin.roles.module.fleet': 'Fleet',
@@ -6656,17 +6757,20 @@ const en: Record<string, string> = {
   'systemAdmin.assignments.empty': 'This account holds no roles.',
   'systemAdmin.assignments.noAccess': 'You are not allowed to read role assignments.',
   'systemAdmin.assignments.department': 'Department',
-  'systemAdmin.assignments.departmentHint': 'The company-wide department — «Movement», not one site\'s copy of it.',
-  'systemAdmin.assignments.departmentHome': 'The account\'s own department',
+  'systemAdmin.assignments.departmentHint':
+    "The company-wide department — «Movement», not one site's copy of it.",
+  'systemAdmin.assignments.departmentHome': "The account's own department",
   'systemAdmin.assignments.reach': 'Reach',
-  'systemAdmin.assignments.reachHint': 'How far this grant goes beyond the account\'s own site.',
+  'systemAdmin.assignments.reachHint': "How far this grant goes beyond the account's own site.",
   'systemAdmin.assignments.reaches.home': 'Own site only',
   'systemAdmin.assignments.reaches.some': 'Chosen sites',
   'systemAdmin.assignments.reaches.all': 'Every site',
   'systemAdmin.assignments.branches': 'Sites',
-  'systemAdmin.assignments.branchesHint': 'The account\'s own site is always included. Tick the sites added to it.',
+  'systemAdmin.assignments.branchesHint':
+    "The account's own site is always included. Tick the sites added to it.",
   'systemAdmin.assignments.homeBranch': 'own site',
-  'systemAdmin.assignments.noBranches': 'Choose at least one site — this account has none of its own.',
+  'systemAdmin.assignments.noBranches':
+    'Choose at least one site — this account has none of its own.',
   'systemAdmin.assignments.role': 'Role',
   'systemAdmin.assignments.scope': 'Reach',
   'systemAdmin.assignments.scopeHint':
@@ -6833,7 +6937,6 @@ const en: Record<string, string> = {
     'Vehicle licence expiry warning (days)',
   'systemAdmin.settings.keys.fleet.license.driverWarnDays': 'Driver licence expiry warning (days)',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'Default branch for new vehicles',
-  'systemAdmin.settings.keys.fleet.custody.fundTotal': 'Custody fund amount (EGP)',
 
   // P9-A — the setup link an administrator delivers by hand.
   'systemAdmin.users.actions.setupLink': 'Copy setup link',
@@ -8046,18 +8149,13 @@ const en: Record<string, string> = {
 
 const ar: Record<string, string> = {
   // مهلة عدم النشاط. الصياغة لواحد قام من مكتبه، مش لواحد عمل غلط.
-  'auth.idle.warningTitle':
-    'هل ما زلت متواجدًا؟',
-  'auth.idle.warningBody':
-    'تُغلق الجلسة خلال {{seconds}} ثانية.',
+  'auth.idle.warningTitle': 'هل ما زلت متواجدًا؟',
+  'auth.idle.warningBody': 'تُغلق الجلسة خلال {{seconds}} ثانية.',
   'auth.idle.warningHint':
     'تُغلق الجلسة بعد فترة من عدم النشاط. أي بيانات أدخلتها ولم تحفظها ستُفقد، لذا اضغط «متابعة العمل» للبقاء داخل النظام.',
-  'auth.idle.staySignedIn':
-    'متابعة العمل',
-  'auth.idle.signOutNow':
-    'تسجيل الخروج الآن',
-  'auth.idle.signedOutNotice':
-    'أُغلقت الجلسة بعد فترة من عدم النشاط. يُرجى تسجيل الدخول للمتابعة.',
+  'auth.idle.staySignedIn': 'متابعة العمل',
+  'auth.idle.signOutNow': 'تسجيل الخروج الآن',
+  'auth.idle.signedOutNotice': 'أُغلقت الجلسة بعد فترة من عدم النشاط. يُرجى تسجيل الدخول للمتابعة.',
   // Auth / shell (platform)
   'platform.auth.login.title': 'تسجيل الدخول إلى ECMS',
   'platform.auth.login.email': 'البريد الإلكتروني',
@@ -8463,16 +8561,13 @@ const ar: Record<string, string> = {
   // توزيع الصلاحيات (ADR-032): تبويب «الصلاحيات» اللي المدير بيشوفه على زميله.
   'delegation.treeIntro':
     'افتح الفرع، ثم اختر الإدارات التي يعمل بها هذا الشخص، ثم حدّد الشاشات التي يطّلع عليها في كل إدارة.',
-  'delegation.clearBranch':
-    'إزالة صلاحيات الفرع',
-  'delegation.noLogin':
-    'لا يملك هذا الشخص حساب دخول بعد، لذا لا توجد صلاحيات يمكن توزيعها.',
+  'delegation.clearBranch': 'إزالة صلاحيات الفرع',
+  'delegation.noLogin': 'لا يملك هذا الشخص حساب دخول بعد، لذا لا توجد صلاحيات يمكن توزيعها.',
   'delegation.noReach': 'أنت لا توزّع صلاحيات في أي وحدة.',
   'delegation.homeTag': 'وحدته',
   'delegation.wholeBranch': 'الفرع كله',
   'delegation.other': 'أخرى',
-  'delegation.readOnly':
-    'أنت لا توزّع الصلاحيات في هذه الوحدة؛ وهي معروضة للاطلاع فقط.',
+  'delegation.readOnly': 'أنت لا توزّع الصلاحيات في هذه الوحدة؛ وهي معروضة للاطلاع فقط.',
   'delegation.save': 'حفظ',
   'delegation.saved': 'تم حفظ الصلاحيات.',
   'delegation.failed': 'تعذّر حفظ الصلاحيات.',
@@ -8482,8 +8577,7 @@ const ar: Record<string, string> = {
   'delegation.summary': '{{screens}} شاشة · {{actions}} أكشن',
   'delegation.departments': '{{count}} إدارة',
   'delegation.departmentsOn': '{{on}} من {{total}} إدارة',
-  'delegation.noDepartments':
-    'لا توجد إدارات مسجَّلة في هذا الفرع حتى الآن.',
+  'delegation.noDepartments': 'لا توجد إدارات مسجَّلة في هذا الفرع حتى الآن.',
   'delegation.wholeTitle': 'الفرع كله كوحدة واحدة',
   'delegation.wholeHint':
     'جميع الإدارات في الفرع — الحالية وما يُضاف لاحقًا. هذا منح مستقل، وليس زر «تحديد الكل».',
@@ -8497,24 +8591,16 @@ const ar: Record<string, string> = {
   'delegation.actionsAll': 'كل الأكشنز',
   'delegation.actionsOn': '{{on}} من {{total}} أكشن',
   'delegation.tickAll': 'علّم الكل',
-  'delegation.clearAll':
-    'إزالة الكل',
-  'delegation.unticked':
-    '{{count}} غير محدَّدة',
-  'delegation.lockedScreens':
-    '{{count}} مُنحت من مستوى أعلى — للاطلاع فقط دون تعديل',
-  'delegation.grantedElsewhere':
-    'مُنحت من حساب صلاحيته أوسع من صلاحيتك.',
+  'delegation.clearAll': 'إزالة الكل',
+  'delegation.unticked': '{{count}} غير محدَّدة',
+  'delegation.lockedScreens': '{{count}} مُنحت من مستوى أعلى — للاطلاع فقط دون تعديل',
+  'delegation.grantedElsewhere': 'مُنحت من حساب صلاحيته أوسع من صلاحيتك.',
   'delegation.expand': 'فتح',
   'delegation.collapse': 'قفل',
-  'delegation.willSee':
-    'ما سيطّلع عليه هذا الشخص',
-  'delegation.willSeeNamed':
-    'ما سيطّلع عليه {{name}}',
-  'delegation.noneYet':
-    'لم يُحدَّد شيء بعد.',
-  'delegation.lineWholeBranch':
-    '{{branch}} بالكامل — جميع الإدارات، الحالية وما يُضاف لاحقًا',
+  'delegation.willSee': 'ما سيطّلع عليه هذا الشخص',
+  'delegation.willSeeNamed': 'ما سيطّلع عليه {{name}}',
+  'delegation.noneYet': 'لم يُحدَّد شيء بعد.',
+  'delegation.lineWholeBranch': '{{branch}} بالكامل — جميع الإدارات، الحالية وما يُضاف لاحقًا',
   'delegation.lineAll': '{{department}} في {{branch}} — {{screens}} شاشة، كل الأكشنز',
   'delegation.lineView': '{{department}} في {{branch}} — {{screens}} شاشة، عرض بس',
   'delegation.lineSome': '{{department}} في {{branch}} — {{screens}} شاشة، {{actions}} أكشن',
@@ -9473,23 +9559,16 @@ const ar: Record<string, string> = {
   'approvals.outcome.approved': 'تمت الموافقة',
   'approvals.outcome.rejected': 'مرفوضة',
   'approvals.outcome.pending': 'في الانتظار',
-  'approvals.outcome.skipped':
-    'لا يوجد أحد على هذه الخطوة',
-  'approvals.outcome.covered':
-    'أُلغيت بقرار أعلى منها',
-  'approvals.outcome.unreached':
-    'لم يصل إليها الطلب',
-  'approvals.waitingHere':
-    'الطلب متوقف عند هذه الخطوة حاليًا',
-  'approvals.yourStep':
-    'هذه الخطوة من مسؤوليتك',
-  'approvals.willCancel':
-    'موافقتك هنا تُلغي {{n}} خطوة تحتها',
+  'approvals.outcome.skipped': 'لا يوجد أحد على هذه الخطوة',
+  'approvals.outcome.covered': 'أُلغيت بقرار أعلى منها',
+  'approvals.outcome.unreached': 'لم يصل إليها الطلب',
+  'approvals.waitingHere': 'الطلب متوقف عند هذه الخطوة حاليًا',
+  'approvals.yourStep': 'هذه الخطوة من مسؤوليتك',
+  'approvals.willCancel': 'موافقتك هنا تُلغي {{n}} خطوة تحتها',
   'approvals.overrideNotice':
     'أنت لست ضمن هذا المسار. سيُسجَّل القرار باسم صلاحية التجاوز الممنوحة لك.',
   'approvals.decidedBy': 'بواسطة {{name}}',
-  'approvals.noChain':
-    'لا يوجد مسار موافقة مُعرَّف لهذا الطلب.',
+  'approvals.noChain': 'لا يوجد مسار موافقة مُعرَّف لهذا الطلب.',
   'approvals.page.title': 'مسارات الموافقة',
   'approvals.page.description':
     'تحدّد الخطوة صلاحيةً، ومدى السلطة المطلوبة لصاحبها، لا مسمى وظيفيًا. فالصلاحية الواحدة على ثلاثة مستويات مختلفة هي مدير الفرع والمدير العام والموارد البشرية، وعند ترقية أي موظف يتغيّر صاحب الموافقة دون تعديل أي شيء هنا.',
@@ -9497,8 +9576,7 @@ const ar: Record<string, string> = {
   'approvals.page.empty':
     'لا يوجد مسار مُعرَّف بعد — ويسير كل طلب على المسار الافتراضي للوحدة التابع لها.',
   'approvals.place.default': 'الافتراضي على مستوى الشركة',
-  'approvals.place.defaultHint':
-    'يُطبَّق في كل موضع لم يُعرَّف له مسار أكثر تحديدًا',
+  'approvals.place.defaultHint': 'يُطبَّق في كل موضع لم يُعرَّف له مسار أكثر تحديدًا',
   'approvals.inactive': 'موقوف',
   'approvals.editor.title': 'مسار الموافقة',
   'approvals.editor.requestType': 'نوع الطلب',
@@ -10493,26 +10571,19 @@ const ar: Record<string, string> = {
     'يضيف الموظفين الجدد ويعدّل ما تغيّر. والحقل الفارغ في الملف لا يمسح بيانات قائمة في النظام.',
   'employees.roster.reading': 'جارٍ قراءة الملف ومقارنته بما في النظام…',
   'employees.roster.applying': 'جارٍ تطبيق التعديلات…',
-  'employees.roster.previewNotice':
-    'لم يُكتب شيء بعد. هذا ما سينفّذه الملف.',
-  'employees.roster.appliedNotice':
-    'تم تطبيق الملف.',
+  'employees.roster.previewNotice': 'لم يُكتب شيء بعد. هذا ما سينفّذه الملف.',
+  'employees.roster.appliedNotice': 'تم تطبيق الملف.',
   'employees.roster.apply': 'طبّق التعديلات',
-  'employees.roster.nothingToDo':
-    'الملف مطابق لما في النظام. لا يوجد ما يُطبَّق.',
+  'employees.roster.nothingToDo': 'الملف مطابق لما في النظام. لا يوجد ما يُطبَّق.',
   'employees.roster.sampled': 'معروض أول ٢٠٠. الأرقام فوق شاملة كل الصفوف.',
-  'employees.roster.changesTitle':
-    'ما سيتغيّر',
-  'employees.roster.additionsTitle':
-    'موظفون جدد',
+  'employees.roster.changesTitle': 'ما سيتغيّر',
+  'employees.roster.additionsTitle': 'موظفون جدد',
   'employees.roster.addedServing': 'على رأس العمل',
   'employees.roster.addedExited': 'يُضاف منتهي الخدمة',
   'employees.roster.addedExitedHint':
     'هؤلاء واردون من ورقة Resignation، فيُضافون بحالة «منتهي الخدمة». وتُخفي شاشة الموظفين منتهي الخدمة ما لم يُضبط فلتر العرض على «الكل».',
-  'employees.roster.refusedTitle':
-    'مطلوب في الملف ولن يُنفَّذ',
-  'employees.roster.rejectedTitle':
-    'صفوف تعذّرت قراءتها',
+  'employees.roster.refusedTitle': 'مطلوب في الملف ولن يُنفَّذ',
+  'employees.roster.rejectedTitle': 'صفوف تعذّرت قراءتها',
   'employees.roster.copiesTitle': 'صفوف مكرّرة غير متطابقة — اعتُمد صف واحد منها',
   'employees.roster.copiesHint':
     'لم يُستبعد الموظف. إذا كان الصف المعتمد غير صحيح، فصحّح الملف ثم أعد رفعه.',
@@ -10553,17 +10624,14 @@ const ar: Record<string, string> = {
   'employees.roster.counts.addedExitedDone': 'أُضيفوا منتهية خدمتهم',
   'employees.roster.leaversLine':
     'منتهية خدمتهم في الملف: {{total}}. منهم {{exits}} سيُسجَّل انتهاء خدمتهم الآن، و{{added}} يُضافون منتهية خدمتهم، و{{already}} انتهاء خدمتهم مسجَّل من قبل.',
-  'employees.roster.exitsTitle':
-    'من سيُسجَّل انتهاء خدمتهم',
+  'employees.roster.exitsTitle': 'من سيُسجَّل انتهاء خدمتهم',
   'employees.roster.pickHint':
     'اضغط على أي رقم لتحديده أو إلغاء تحديده. كل الأرقام محدَّدة تلقائيًا عدا «ستُعدَّل بياناتهم».',
   'employees.roster.counts.added': 'جُدد على رأس العمل',
   'employees.roster.counts.updated': 'ستُعدَّل بياناتهم',
   'employees.roster.counts.updatedDone': 'عُدِّلت بياناتهم',
-  'employees.roster.counts.unchanged':
-    'دون تغيير',
-  'employees.roster.counts.failed':
-    'تعذّرت قراءتهم',
+  'employees.roster.counts.unchanged': 'دون تغيير',
+  'employees.roster.counts.failed': 'تعذّرت قراءتهم',
   'employees.roster.field.educationLevel': 'الدرجة العلمية',
   'employees.roster.field.educationInstitution': 'جهة الحصول',
   'employees.roster.field.educationSpecialization': 'التخصص',
@@ -11790,7 +11858,8 @@ const ar: Record<string, string> = {
   'fleet.fuelCards.history.cardOf': 'كارت {{place}} ({{company}})',
   'fleet.fuelCards.history.saveEdit': 'حفظ التعديل',
   'fleet.fuelCards.history.removeTitle': 'حذف هذه الحركة؟',
-  'fleet.fuelCards.history.removeHint': 'ستختفي من السجل وتبقى محفوظة في قاعدة البيانات، وتعود الأرصدة كما كانت بدونها.',
+  'fleet.fuelCards.history.removeHint':
+    'ستختفي من السجل وتبقى محفوظة في قاعدة البيانات، وتعود الأرصدة كما كانت بدونها.',
   'fleet.fuelCards.history.confirmRemove': 'تأكيد الحذف',
   'fleet.fuelCards.history.back': 'رجوع',
   'fleet.fuelCards.history.negative': 'الرصيد لا يكفي — سيصبح أحد الكروت بالسالب.',
@@ -11813,8 +11882,10 @@ const ar: Record<string, string> = {
   'fleet.fuelCards.transfer.action': 'تحويل',
   'fleet.fuelCards.transfer.pickCar': 'اختر سيارة لتظهر كروتها.',
   'fleet.fuelCards.transfer.notEnough': 'الكارت عليه {{balance}} فقط.',
-  'fleet.fuelCards.transfer.fromLine': 'الكارت المأخوذ منه — {{company}} {{code}}: كان {{before}} ويصبح {{after}}',
-  'fleet.fuelCards.transfer.toLine': 'الكارت المُحوَّل إليه — {{company}} {{code}}: كان {{before}} ويصبح {{after}}',
+  'fleet.fuelCards.transfer.fromLine':
+    'الكارت المأخوذ منه — {{company}} {{code}}: كان {{before}} ويصبح {{after}}',
+  'fleet.fuelCards.transfer.toLine':
+    'الكارت المُحوَّل إليه — {{company}} {{code}}: كان {{before}} ويصبح {{after}}',
   'fleet.fuelCards.transfer.done': 'تم تحويل الرصيد.',
   'fleet.fuelCards.transfer.doneDetail': 'تم تحويل {{amount}} من {{from}} إلى {{to}}.',
   'fleet.fuelCards.transfer.fromCard': 'المحوَّل منه — {{company}} {{code}}',
@@ -11877,14 +11948,16 @@ const ar: Record<string, string> = {
   'fleet.receipts.fields.litres': '= {{litres}} لتر',
   'fleet.receipts.fields.image': 'صورة الإيصال',
   'fleet.receipts.fields.imageHint': 'اختياري — JPG / PNG / WEBP، تُرفع مع الإيصال.',
-  'fleet.receipts.summary.card': 'يُخصم من كارت {{company}} {{code}}: كان {{before}} ويصبح {{after}}',
+  'fleet.receipts.summary.card':
+    'يُخصم من كارت {{company}} {{code}}: كان {{before}} ويصبح {{after}}',
   'fleet.receipts.summary.notEnough': 'رصيد الكارت {{balance}} فقط.',
   'fleet.receipts.summary.pickCard': 'على السيارة كارتان — اختر الكارت الذي سيُخصم منه.',
   'fleet.receipts.summary.custody': 'يُخصم من العهدة: {{amount}}',
   'fleet.receipts.saved': 'تم حفظ الإيصال.',
   'fleet.receipts.deleted': 'تم حذف الإيصال.',
   'fleet.receipts.deleteTitle': 'حذف هذا الإيصال؟',
-  'fleet.receipts.deleteBody': 'الإيصال المخصوم من كارت يُعيد المبلغ إلى الكارت. يبقى الصف في قاعدة البيانات.',
+  'fleet.receipts.deleteBody':
+    'الإيصال المخصوم من كارت يُعيد المبلغ إلى الكارت. يبقى الصف في قاعدة البيانات.',
   'fleet.receipts.filters.anyKind': 'كل الأنواع',
   'fleet.receipts.filters.anySource': 'الخصم من: الكل',
   'fleet.receipts.filters.driver': 'السائق…',
@@ -11904,8 +11977,10 @@ const ar: Record<string, string> = {
   'fleet.receipts.image.deleted': 'تم حذف صورة الإيصال.',
   'fleet.receipts.image.deleteTitle': 'حذف صورة الإيصال؟',
   'fleet.receipts.image.deleteBody': 'تُحذف الصورة من الصف ويبقى الإيصال نفسه.',
-  'fleet.receipts.image.notUploaded': 'تم حفظ الإيصال ولم تُرفع صورته — أضفها من عمود الصورة في الجدول.',
-  'fleet.custody.subtitle': 'تجميعة كل ما خُصم من العهدة: فواتير التوكيل لسيارات الملاكي، والوقود من العهدة، والكاوتش والغسيل.',
+  'fleet.receipts.image.notUploaded':
+    'تم حفظ الإيصال ولم تُرفع صورته — أضفها من عمود الصورة في الجدول.',
+  'fleet.custody.subtitle':
+    'تجميعة كل ما خُصم من العهدة: فواتير التوكيل لسيارات الملاكي، والوقود من العهدة، والكاوتش والغسيل.',
   'fleet.custody.source.dealership': 'التوكيل',
   'fleet.custody.source.fuel': 'وقود',
   'fleet.custody.source.tyres': 'كاوتش',
@@ -11921,7 +11996,6 @@ const ar: Record<string, string> = {
   // «إجمالي العهدة» — the fund itself, before what it paid for; its share is «صُرف منها 12%».
   'fleet.custody.fund.title': 'إجمالي العهدة',
   'fleet.custody.fund.spent': 'صُرف منها',
-  'fleet.custody.fund.unset': 'يتحدد من إعدادات الحركة',
   'fleet.custody.perVehicle': 'ملخص لكل سيارة',
   'fleet.custody.movements': 'كل الحركات',
   'fleet.custody.columns.source': 'المصدر',
@@ -11932,6 +12006,14 @@ const ar: Record<string, string> = {
   'fleet.custody.grandTotal': 'الإجمالي',
   'fleet.custody.empty': 'لم يُخصم شيء من العهدة بعد.',
   'fleet.custody.dashboard.open': 'لوحة تحكم',
+  'fleet.custody.actions.settle': 'تسوية العهدة',
+  'fleet.custody.actions.replenish': 'استعاضة العهدة',
+  'fleet.custody.actions.charge': 'شحن العهدة',
+  // On a phone, one word each — as the export pair says «Excel» and «PDF».
+  'fleet.custody.actions.settleShort': 'تسوية',
+  'fleet.custody.actions.replenishShort': 'استعاضة',
+  'fleet.custody.actions.chargeShort': 'شحن',
+  'fleet.custody.actions.soon': 'سيُفعَّل هذا الإجراء قريبًا.',
   'fleet.custody.dashboard.title': 'لوحة تحكم العهدة',
   'fleet.custody.dashboard.filters.none': 'كل الحركات — بلا فلاتر',
   'fleet.custody.dashboard.filters.from': 'من {{date}}',
@@ -12049,7 +12131,7 @@ const ar: Record<string, string> = {
   'fleet.custody.dashboard.carLog.totals': 'إجماليات السيارة',
   'fleet.custody.dashboard.carLog.ofCar': 'من إجمالي السيارة',
   // A car's share of what the fund paid over the same filters — «إجمالي مصروفات العهدة», as the
-  // board's figure names it; «إجمالي العهدة» is the fund itself («مبلغ العهدة»).
+  // board's figure names it; «إجمالي العهدة» is the fund itself (what «شحن العهدة» charges into it).
   'fleet.custody.dashboard.carLog.ofSpend': 'من إجمالي مصروفات العهدة',
   'fleet.custody.dashboard.carLog.movements': 'حركات السيارة',
   'fleet.custody.dashboard.carLog.empty': 'لا حركات لهذه السيارة حسب الفلاتر.',
@@ -12075,16 +12157,19 @@ const ar: Record<string, string> = {
   'fleet.dealership.privateCarHint': 'من نوع التشغيل في شاشة السيارات، ويمكن تغييره.',
   'fleet.dealership.invoiceNumberOptional': 'اختياري لسيارة ملاكي — بدونه تُخصم القيمة من العهدة.',
   'fleet.dealership.invoiceNumberPrivate': 'اختياري لسيارة ملاكي',
-  'fleet.dealership.insurerHint': 'لا يوجد ما لم تختر من القائمة شركة تأمين السيارة المسجلة في شاشة السيارات.',
+  'fleet.dealership.insurerHint':
+    'لا يوجد ما لم تختر من القائمة شركة تأمين السيارة المسجلة في شاشة السيارات.',
   'fleet.dealership.insurerCarNone': 'السيارة ليس عليها تأمين في شاشة السيارات.',
-  'fleet.dealership.insurerCarInactive': 'شركة تأمين السيارة «{{name}}» غير مفعّلة في قوائم الحركة، فلا يمكن اختيارها.',
+  'fleet.dealership.insurerCarInactive':
+    'شركة تأمين السيارة «{{name}}» غير مفعّلة في قوائم الحركة، فلا يمكن اختيارها.',
   'fleet.dealership.sideUnknown': 'أدخل قيمة الفاتورة.',
   'fleet.dealership.sideDealershipHint': 'الجهة بعد الحفظ: التوكيل — لها رقم الفاتورة.',
   'fleet.dealership.sideCustodyHint': 'الجهة بعد الحفظ: العهدة — سيارة ملاكي بلا رقم الفاتورة.',
   'fleet.dealership.saved': 'تم حفظ الفاتورة.',
   'fleet.dealership.deleted': 'تم حذف الصف.',
   'fleet.dealership.deleteTitle': 'حذف هذا الصف؟',
-  'fleet.dealership.deleteBody': 'يُزال الصف من الشاشة ومن الإجماليات ويبقى محفوظاً في قاعدة البيانات.',
+  'fleet.dealership.deleteBody':
+    'يُزال الصف من الشاشة ومن الإجماليات ويبقى محفوظاً في قاعدة البيانات.',
   'fleet.dealership.totals.dealership': 'إجمالي التوكيل',
   'fleet.dealership.totals.custody': 'إجمالي العهدة',
   'fleet.dealership.totals.pending': 'بانتظار الفاتورة',
@@ -12114,7 +12199,8 @@ const ar: Record<string, string> = {
   'fleet.dealership.image.remove': 'إزالة الصورة',
   'fleet.dealership.image.tooBig': 'الصورة أكبر من 10MB.',
   'fleet.dealership.image.badType': 'يجب أن تكون الصورة JPG أو PNG أو WEBP.',
-  'fleet.dealership.image.notUploaded': 'تم حفظ الفاتورة ولم تُرفع صورتها — أضفها من عمود الصورة في الجدول.',
+  'fleet.dealership.image.notUploaded':
+    'تم حفظ الفاتورة ولم تُرفع صورتها — أضفها من عمود الصورة في الجدول.',
   'fleet.notices.choose': 'اختر النموذج',
   'fleet.notices.count': '{{count}} إخطار',
   'fleet.licenseExpenses.title': 'مصروفات التراخيص',
@@ -12209,7 +12295,8 @@ const ar: Record<string, string> = {
   'fleet.licenseExpenses.setup.newItemShowsIn': 'يظهر في',
   'fleet.licenseExpenses.setup.newItemAdd': 'إضافة',
   'fleet.licenseExpenses.setup.newItemEmpty': 'اكتب اسم البند أولًا.',
-  'fleet.licenseExpenses.setup.newItemAddedToast': 'تمت إضافة «{{name}}» — ويظهر كذلك في «قوائم الحركة».',
+  'fleet.licenseExpenses.setup.newItemAddedToast':
+    'تمت إضافة «{{name}}» — ويظهر كذلك في «قوائم الحركة».',
   'fleet.licenseExpenses.setup.newItemExistsToast':
     '«{{name}}» موجود بالفعل في القائمة — تم تمييزه، واختر أين يظهر من صفّه.',
   'fleet.licenseExpenses.setup.newItemArchivedToast':
@@ -12364,8 +12451,7 @@ const ar: Record<string, string> = {
   'fleet.licensing.empty': 'لا توجد سيارات في لوحة التراخيص.',
   'fleet.licensing.emptyHint':
     'تظهر السيارة هنا عندما ينتهي رقم ترخيصها بحرف «ت» — مثل «برقاش ت» و«العجوزة ت».',
-  'fleet.licensing.noMatches':
-    'لا توجد سيارة مطابقة لعوامل التصفية.',
+  'fleet.licensing.noMatches': 'لا توجد سيارة مطابقة لعوامل التصفية.',
   'fleet.licensing.count': '{{count}} سيارة',
   'fleet.licensing.stats.cars': 'السيارات',
   'fleet.licensing.stats.thisMonth': 'تنتهي هذا الشهر',
@@ -12528,8 +12614,7 @@ const ar: Record<string, string> = {
     'تم إنشاء السيارة، لكن تعذّر رفع صورة الرخصة. أعد المحاولة من صف السيارة.',
   'fleet.vehicles.licenseImage.loadFailed': 'تعذّر تحميل الصورة.',
   'fleet.vehicles.licenseImage.previewTitle': 'صورة رخصة السيارة',
-  'fleet.vehicles.licenseImage.previewSubtitle':
-    'كود السيارة: {{code}} | الماركة: {{make}}',
+  'fleet.vehicles.licenseImage.previewSubtitle': 'كود السيارة: {{code}} | الماركة: {{make}}',
   'fleet.vehicles.licenseImage.deleteTitle': 'حذف صورة الرخصة؟',
   'fleet.vehicles.licenseImage.deleteBody':
     'ستُحذف الصورة من هذه السيارة. السيارة نفسها لن تُحذف، والتغيير مسجّل في سجل التدقيق.',
@@ -12598,7 +12683,8 @@ const ar: Record<string, string> = {
   'fleet.drivers.profile.metric.compliance': 'معدل الالتزام',
   'fleet.drivers.profile.attendanceTab': 'سجل الحضور والتمامات التشغيلية',
   'fleet.drivers.profile.notesTab': 'الملاحظات والتنبيهات',
-  'fleet.drivers.profile.emptyHint': 'لا توجد تمامات تشغيلية مسجلة لهذا السائق. السائق متاح بالكامل ومستعد لتلقي خطوط السير والمأموريات.',
+  'fleet.drivers.profile.emptyHint':
+    'لا توجد تمامات تشغيلية مسجلة لهذا السائق. السائق متاح بالكامل ومستعد لتلقي خطوط السير والمأموريات.',
   'fleet.drivers.profile.addLeave': 'إضافة إجازة أو عطلة الآن',
   'fleet.drivers.profile.attendanceEmpty': 'لا يوجد سجل حضور',
   'fleet.drivers.profile.attendanceEmptyHint': 'لا توجد قراءات عداد مسجلة باسم هذا السائق.',
@@ -12608,7 +12694,8 @@ const ar: Record<string, string> = {
   'fleet.drivers.profile.note.licenceExpired': 'رخصة القيادة منتهية',
   'fleet.drivers.profile.note.violation': 'مخالفة على السيارة {{code}} بقيمة {{amount}}',
   'fleet.drivers.profile.note.accident': 'حادث على السيارة {{code}}',
-  'fleet.drivers.profile.footer.copyright': 'نظام إدارة أسطول نقل الأموال والتشغيل اللوجستي © 2026 جميع الحقوق محفوظة',
+  'fleet.drivers.profile.footer.copyright':
+    'نظام إدارة أسطول نقل الأموال والتشغيل اللوجستي © 2026 جميع الحقوق محفوظة',
   'fleet.drivers.profile.footer.server': 'رقم الخادم',
   'fleet.drivers.profile.footer.version': 'النسخة',
   'fleet.drivers.profile.licenseGrade': 'درجة الرخصة',
@@ -12679,8 +12766,7 @@ const ar: Record<string, string> = {
   'fleet.drivers.licenseImage.print': 'طباعة الرخصة',
   'fleet.drivers.licenseImage.addViaProfile':
     'إضافة صورة الرخصة — سيُطلب بعدها رقم الرخصة وتاريخ انتهائها',
-  'fleet.drivers.licenseImage.stagedHint':
-    'تُرفع الصورة فور تسجيل السائق.',
+  'fleet.drivers.licenseImage.stagedHint': 'تُرفع الصورة فور تسجيل السائق.',
   'fleet.drivers.licenseImage.staged': 'تم اختيار: {{name}}',
   'fleet.drivers.licenseImage.printTitle': 'رخصة القيادة',
   'fleet.drivers.licenseImage.popupBlocked':
@@ -12689,8 +12775,7 @@ const ar: Record<string, string> = {
   'fleet.drivers.licenseImage.deleted': 'تم حذف صورة الرخصة.',
   'fleet.drivers.licenseImage.loadFailed': 'تعذّر تحميل الصورة.',
   'fleet.drivers.licenseImage.previewTitle': 'صورة رخصة القيادة',
-  'fleet.drivers.licenseImage.vehicleToday':
-    'سيارة اليوم: كود {{code}} | الماركة: {{make}}',
+  'fleet.drivers.licenseImage.vehicleToday': 'سيارة اليوم: كود {{code}} | الماركة: {{make}}',
   'fleet.drivers.licenseImage.previewSubtitle':
     'السائق: {{driver}} | كود الموظف: {{code}} | رقم الرخصة: {{license}}',
   'fleet.drivers.licenseImage.deleteTitle': 'حذف صورة الرخصة؟',
@@ -12793,8 +12878,7 @@ const ar: Record<string, string> = {
   'fleet.odometer.columns.shiftDrivers': 'السائق (صباحي / مسائي)',
   'fleet.odometer.driverShift.morning': 'صباحي',
   'fleet.odometer.driverShift.evening': 'مسائي',
-  'fleet.odometer.emptyMonth.title':
-    'لا توجد قراءات في هذا الشهر',
+  'fleet.odometer.emptyMonth.title': 'لا توجد قراءات في هذا الشهر',
   'fleet.odometer.emptyMonth.description':
     'يفتح الجدول على الشهر الحالي. والقراءات الأقدم من ذلك ليست ناقصة، وإنما خارج المدى المعروض.',
   'fleet.odometer.emptyMonth.action': 'اعرض آخر ١٢ شهر',
@@ -12952,11 +13036,12 @@ const ar: Record<string, string> = {
   'fleet.goLive.field.exited': 'صور سائقين تركوا العمل',
   'fleet.goLive.field.notImages': 'ملفات ليست صورًا',
   'fleet.goLive.field.duplicates': 'أكواد مكرّرة باسمين',
-  'fleet.goLive.panel.title':
-    'ما نفّذه استيراد البيانات القديمة',
-  'fleet.goLive.panel.hint': 'الدفاتر الأربعة وسجل السيارات وصور الرخص، زى ما الخادم سجّل كل تشغيل. محفوظة هنا بدل ما تكون فوق كل شاشة.',
+  'fleet.goLive.panel.title': 'ما نفّذه استيراد البيانات القديمة',
+  'fleet.goLive.panel.hint':
+    'الدفاتر الأربعة وسجل السيارات وصور الرخص، زى ما الخادم سجّل كل تشغيل. محفوظة هنا بدل ما تكون فوق كل شاشة.',
   'fleet.goLive.step.odometer': 'استيراد دفتر العداد',
-  'fleet.goLive.reason.vehicles-not-done': 'استيراد السيارات لم ينتهِ بعد — الدفتر ينتظر التشغيل التالي',
+  'fleet.goLive.reason.vehicles-not-done':
+    'استيراد السيارات لم ينتهِ بعد — الدفتر ينتظر التشغيل التالي',
   'fleet.goLive.field.vehicles': 'سيارات',
   'fleet.goLive.field.imported': 'صفوف أُضيفت',
   'fleet.goLive.field.alreadyThere': 'موجودة مسبقًا',
@@ -12968,25 +13053,24 @@ const ar: Record<string, string> = {
     'صفوف لم يكتبها الدفتر بشكل مقروء — أُضيفت محذوفة، ونصّ الدفتر نفسه محفوظ في ملاحظاتها',
   'fleet.goLive.field.relinked':
     'صفوف قائمة كانت قراءة إقفالها من الاستيراد، وأصبحت الآن مطابقة للصف الذي يليها',
-  'fleet.goLive.field.restored':
-    'قراءات أخفاها تشغيل سابق بسبب تعارض على الفترة المفتوحة — أُعيدت',
+  'fleet.goLive.field.restored': 'قراءات أخفاها تشغيل سابق بسبب تعارض على الفترة المفتوحة — أُعيدت',
   'fleet.goLive.field.openedByPrevious':
     'صفوف ترك الدفتر قراءة خروجها فارغة — فُتحت على آخر قراءة معروفة للسيارة',
-  'fleet.goLive.field.typesCreated':
-    'أنواع مخالفات أُضيفت للصفوف التي لم يُدوَّن نوعها',
-  'fleet.goLive.field.rejected':
-    'ملفات ليست قوائم صفوف من الأساس',
+  'fleet.goLive.field.typesCreated': 'أنواع مخالفات أُضيفت للصفوف التي لم يُدوَّن نوعها',
+  'fleet.goLive.field.rejected': 'ملفات ليست قوائم صفوف من الأساس',
   'fleet.goLive.field.unknownCars': 'أكواد سيارات غير موجودة في السجل — أُضيفت صفوفها بالكود نصًا',
-    'fleet.goLive.field.closedByNext': 'صفوف أُغلقت بقراءة الصف التالي',
+  'fleet.goLive.field.closedByNext': 'صفوف أُغلقت بقراءة الصف التالي',
   'fleet.goLive.field.badInReading': 'صفوف قراءة دخولها أقل من الخروج — أُغلقت بقراءة الصف التالي',
   'fleet.goLive.field.closedByExisting': 'صفوف أخيرة أُغلقت على قراءة سُجّلت في الشاشة الجديدة',
   'fleet.goLive.field.openConflicts':
     'صفوف كانت ستتعارض مع الفترة المفتوحة الوحيدة للسيارة — كُتبت محذوفة، ولم تُهمل',
-  'fleet.goLive.field.unmatchedDrivers': 'أسماء سائقين غير موجودة في الموارد البشرية — حُفظت نصًا على صفوفها؛ أضفهم هناك لو ما زالوا موجودين',
+  'fleet.goLive.field.unmatchedDrivers':
+    'أسماء سائقين غير موجودة في الموارد البشرية — حُفظت نصًا على صفوفها؛ أضفهم هناك لو ما زالوا موجودين',
   'fleet.goLive.field.ambiguousDrivers': 'أسماء تنطبق على أكثر من موظف — حُفظت نصًا على صفوفها',
   'fleet.goLive.field.placeholders': 'أسماء قُرئت على أنها «بلا سائق»',
   'fleet.goLive.step.maintenance': 'استيراد دفتر الورشة',
-  'fleet.goLive.reason.prior-steps-not-done': 'استيراد السيارات أو دفتر العداد لم ينتهِ بعد — الدفتر ينتظر التشغيل التالي',
+  'fleet.goLive.reason.prior-steps-not-done':
+    'استيراد السيارات أو دفتر العداد لم ينتهِ بعد — الدفتر ينتظر التشغيل التالي',
   'fleet.goLive.field.outBeforeIn':
     'زيارات سبق خروجها دخولها — حُفظت بتاريخَي الدفتر كليهما؛ يُرجى تصحيحها من الشاشة',
   'fleet.goLive.field.counterFromOdometer': 'زيارات أُخذ عدادها من دفتر العداد',
@@ -12996,57 +13080,74 @@ const ar: Record<string, string> = {
   'fleet.goLive.step.violations': 'استيراد دفتر المخالفات',
   'fleet.goLive.step.accidents': 'استيراد دفتر الحوادث',
   'fleet.goLive.field.grievancesWritten': 'أرقام تظلّم كُتبت',
-  'fleet.goLive.field.grievancesKept': 'أرقام تظلّم موجودة في الشاشة الجديدة بقيمة مختلفة — تُركت كما هي',
+  'fleet.goLive.field.grievancesKept':
+    'أرقام تظلّم موجودة في الشاشة الجديدة بقيمة مختلفة — تُركت كما هي',
   'fleet.goLive.field.grievanceConflicts': 'سنوات كتب لها الدفتر رقمي تظلّم مختلفين — أُخذ الأول',
-  'fleet.goLive.field.zeroCount':
-    'صفوف كشف عددها صفر — كُتبت كما دوّنها الدفتر',
+  'fleet.goLive.field.zeroCount': 'صفوف كشف عددها صفر — كُتبت كما دوّنها الدفتر',
   'fleet.goLive.field.unknownTypes':
     'صفوف نوعها فارغ أو غير موجود في الكتالوج على هذا الجانب — صُنّفت تحت «غير محدد»',
   'fleet.goLive.field.noDate': 'ملفات بلا تاريخ — أُضيفت بلا تاريخ',
   'fleet.goLive.field.namesFilled': 'صفوف كانت موجودة بلا سائق وكُتب عليها اسم الدفتر',
-  'fleet.goLive.field.counterUnknown': 'زيارات على سيارات غير موجودة في السجل وبلا عداد في الدفتر — كُتب العداد صفرًا',
+  'fleet.goLive.field.counterUnknown':
+    'زيارات على سيارات غير موجودة في السجل وبلا عداد في الدفتر — كُتب العداد صفرًا',
   'fleet.goLive.field.grievancesUnplaced': 'أرقام تظلّم على سيارات غير موجودة في السجل — لم تُكتب',
   'fleet.goLive.field.statementFilled': 'ملفات كُتب فيها «غير مذكور» مكان بيان فارغ',
   'fleet.goLive.field.blankAmounts': 'مبالغ فارغة كُتبت صفرًا',
   'fleet.goLive.field.amountNotes': 'كلمات كتبها الدفتر بعد مبلغ',
-  'fleet.goLive.field.unmatchedCulprits': 'أسماء متسبّبين غير موجودة في الموارد البشرية — الاسم بقي كما كُتب بلا موظف',
-  'fleet.goLive.field.ambiguousCulprits': 'أسماء متسبّبين تنطبق على أكثر من موظف — بقيت كما كُتبت بلا موظف',
+  'fleet.goLive.field.unmatchedCulprits':
+    'أسماء متسبّبين غير موجودة في الموارد البشرية — الاسم بقي كما كُتب بلا موظف',
+  'fleet.goLive.field.ambiguousCulprits':
+    'أسماء متسبّبين تنطبق على أكثر من موظف — بقيت كما كُتبت بلا موظف',
   'fleet.goLive.field.cars': 'السيارات في التصدير الجديد',
   'fleet.goLive.field.carsWithChanges': 'سيارات غيّر التصدير الجديد شيئًا فيها',
   'fleet.goLive.field.inExport': 'ما يغيّره التصدير الجديد، حسب الحقل',
   'fleet.goLive.field.changed': 'تعديلات طُبّقت، حسب الحقل',
   'fleet.goLive.field.alreadyNew': 'قيم كانت على النظام بقيمتها الجديدة مسبقًا',
   'fleet.goLive.field.keptEcmsEditsCount': 'عدد القيم التي أُبقي تعديلها',
-  'fleet.goLive.field.keptEcmsEdits': 'قيم عُدّلت على النظام بعد الاستيراد — أُبقي التعديل (قيمة النظام، والقيمة القديمة، والقيمة الجديدة)',
-  'fleet.goLive.field.notInRegistry': 'أكواد لا توجد لها سيارة قائمة في السجل — لم يُطبَّق عليها شيء',
+  'fleet.goLive.field.keptEcmsEdits':
+    'قيم عُدّلت على النظام بعد الاستيراد — أُبقي التعديل (قيمة النظام، والقيمة القديمة، والقيمة الجديدة)',
+  'fleet.goLive.field.notInRegistry':
+    'أكواد لا توجد لها سيارة قائمة في السجل — لم يُطبَّق عليها شيء',
   'fleet.goLive.field.disposedCars': 'سيارات مكهنة لم تُعدَّل — أعِدها إلى الخدمة ثم عدّلها يدويًا',
   'fleet.goLive.field.newCars': 'سيارات في التصدير الجديد فقط — لم تُضَف؛ أضفها من شاشة السيارات',
   'fleet.goLive.field.goneFromExport': 'صفوف غابت عن التصدير الجديد — لم يُحذف شيء',
-  'fleet.goLive.field.photosNotInBuild': 'صور رخص يذكرها التصدير الجديد ولم تُرسَل ملفاتها — أرسلها أو ارفعها من شاشة السيارة',
-  'fleet.goLive.field.photoAlreadyThere': 'سيارات لها صورة رخصة على النظام بالفعل — أُبقيت الصورة الموجودة',
-  'fleet.goLive.field.photoDropped': 'سيارات لم يعد التصدير الجديد يذكر صورة رخصتها — الصورة على النظام باقية',
+  'fleet.goLive.field.photosNotInBuild':
+    'صور رخص يذكرها التصدير الجديد ولم تُرسَل ملفاتها — أرسلها أو ارفعها من شاشة السيارة',
+  'fleet.goLive.field.photoAlreadyThere':
+    'سيارات لها صورة رخصة على النظام بالفعل — أُبقيت الصورة الموجودة',
+  'fleet.goLive.field.photoDropped':
+    'سيارات لم يعد التصدير الجديد يذكر صورة رخصتها — الصورة على النظام باقية',
   'fleet.goLive.field.vehicleTypesCreated': 'أنواع سيارات أُضيفت لقيمة جديدة',
-  'fleet.goLive.field.cutoff': 'ما سُجّل قبل هذه اللحظة (منتصف ليل بداية ٢٤ سبتمبر بتوقيت القاهرة) — حُذف',
-  'fleet.goLive.field.deletedViolations': 'مخالفات سُجّلت على النظام حتى ٢٣ سبتمبر — حُذفت (باقية في قاعدة البيانات فقط)',
-  'fleet.goLive.field.deletedGrievances': 'أرقام تظلّم سُجّلت حتى ٢٣ سبتمبر — حُذفت لتُكتب أرقام الدفتر من جديد',
+  'fleet.goLive.field.cutoff':
+    'ما سُجّل قبل هذه اللحظة (منتصف ليل بداية ٢٤ سبتمبر بتوقيت القاهرة) — حُذف',
+  'fleet.goLive.field.deletedViolations':
+    'مخالفات سُجّلت على النظام حتى ٢٣ سبتمبر — حُذفت (باقية في قاعدة البيانات فقط)',
+  'fleet.goLive.field.deletedGrievances':
+    'أرقام تظلّم سُجّلت حتى ٢٣ سبتمبر — حُذفت لتُكتب أرقام الدفتر من جديد',
   'fleet.goLive.field.keptRecordedSince': 'مخالفات سُجّلت من ٢٤ سبتمبر فصاعدًا — بقيت كما هي',
-  'fleet.goLive.field.changedSinceCutoff': 'مخالفات حُذفت وكان أحدٌ قد عدّلها من ٢٤ سبتمبر فصاعدًا (تحصيل أو نقل أو مبلغ) — عادت نسخة الدفتر بدون هذا التعديل؛ أعِد تطبيقه من الشاشة',
+  'fleet.goLive.field.changedSinceCutoff':
+    'مخالفات حُذفت وكان أحدٌ قد عدّلها من ٢٤ سبتمبر فصاعدًا (تحصيل أو نقل أو مبلغ) — عادت نسخة الدفتر بدون هذا التعديل؛ أعِد تطبيقه من الشاشة',
   'fleet.goLive.field.changedSinceCutoffCount': 'عدد هذه المخالفات إجمالًا',
-  'fleet.goLive.field.grievancesKeptSinceCutoff': 'أرقام تظلّم سُجّلت قبل ٢٤ سبتمبر وعُدّلت بعده — تُركت كما هي',
+  'fleet.goLive.field.grievancesKeptSinceCutoff':
+    'أرقام تظلّم سُجّلت قبل ٢٤ سبتمبر وعُدّلت بعده — تُركت كما هي',
   'fleet.goLive.field.exportRows': 'صفوف التصدير الجديد',
   'fleet.goLive.field.added': 'صفوف أُضيفت من التصدير الجديد',
-  'fleet.goLive.field.changesAlreadyThere': 'حقول معدّلة كانت تحمل القيمة الجديدة مسبقًا، حسب الحقل',
-  'fleet.goLive.field.deletedByBook': 'صفوف حذفها النظام القديم لاحقًا — حُذفت هنا أيضًا، وبقيت في قاعدة البيانات فقط',
+  'fleet.goLive.field.changesAlreadyThere':
+    'حقول معدّلة كانت تحمل القيمة الجديدة مسبقًا، حسب الحقل',
+  'fleet.goLive.field.deletedByBook':
+    'صفوف حذفها النظام القديم لاحقًا — حُذفت هنا أيضًا، وبقيت في قاعدة البيانات فقط',
   'fleet.goLive.field.restoredByBook': 'صفوف استعادها النظام القديم — استُعيدت هنا',
   'fleet.goLive.field.unappliedCount': 'تعديلات تعذّر تطبيقها',
   'fleet.goLive.field.unapplied': 'تعديلات لم تُطبَّق مع سببها — راجعها من الشاشة',
-  'fleet.goLive.field.parkedChanged': 'زيارات كتبها الاستيراد محذوفة لأنها زيارة مفتوحة ثانية للسيارة — عُدّلت وبقيت محذوفة؛ استعدها إن لم تكن الزيارة نفسها',
+  'fleet.goLive.field.parkedChanged':
+    'زيارات كتبها الاستيراد محذوفة لأنها زيارة مفتوحة ثانية للسيارة — عُدّلت وبقيت محذوفة؛ استعدها إن لم تكن الزيارة نفسها',
   'fleet.goLive.field.columnsChanged': 'أعمدة غيّرها النظام القديم، حسب العمود',
   'fleet.goLive.field.drivers': 'سائقون في الدفترين',
   'fleet.goLive.field.filled': 'حقول فارغة كُتبت، حسب الحقل',
   'fleet.goLive.field.keptOnScreen': 'حقول كان أحدٌ قد أدخلها في الشاشة بقيمة أخرى — أُبقيت كما هي',
   'fleet.goLive.field.enrolledExited': 'سائقون تركوا العمل — حُفظت معلوماتهم على سجل موقوف',
-  'fleet.goLive.field.unmatchedLegacy': 'صفوف في دفتر السائقين القديم لا يوجد صاحبها في الموارد البشرية — أضفه هناك لتُربط',
+  'fleet.goLive.field.unmatchedLegacy':
+    'صفوف في دفتر السائقين القديم لا يوجد صاحبها في الموارد البشرية — أضفه هناك لتُربط',
   'fleet.goLive.field.ambiguousLegacy': 'صفوف في دفتر السائقين القديم تنطبق على أكثر من موظف',
   'fleet.goLive.field.duplicateCodes': 'أكواد مكرّرة في سجل الموظفين القديم — أُخذ الصف الأول',
   'fleet.goLive.field.deleted': 'ملفات حوادث حُذفت (باقية في قاعدة البيانات فقط)',
@@ -13057,15 +13158,22 @@ const ar: Record<string, string> = {
   'fleet.goLive.step.maintenance-sync': 'دفتر الورشة — التصدير الجديد',
   'fleet.goLive.step.violations-reload': 'إعادة تحميل دفتر المخالفات',
   'fleet.goLive.step.accidents-clear': 'حذف ملفات الحوادث',
-  'fleet.goLive.reason.violations-not-done': 'استيراد السيارات أو الاستيراد الأول للمخالفات لم ينتهِ بعد — إعادة التحميل تنتظر التشغيل التالي',
-  'fleet.goLive.reason.maintenance-not-done': 'لم ينتهِ استيراد السيارات أو دفتر العداد أو دفتر الورشة بعد — ينتظر التصدير الجديد للورشة التشغيل التالي',
-  'fleet.goLive.reason.accidents-not-done': 'استيراد دفتر الحوادث لم ينتهِ بعد — يُنفَّذ الحذف في التشغيل التالي',
+  'fleet.goLive.reason.violations-not-done':
+    'استيراد السيارات أو الاستيراد الأول للمخالفات لم ينتهِ بعد — إعادة التحميل تنتظر التشغيل التالي',
+  'fleet.goLive.reason.maintenance-not-done':
+    'لم ينتهِ استيراد السيارات أو دفتر العداد أو دفتر الورشة بعد — ينتظر التصدير الجديد للورشة التشغيل التالي',
+  'fleet.goLive.reason.accidents-not-done':
+    'استيراد دفتر الحوادث لم ينتهِ بعد — يُنفَّذ الحذف في التشغيل التالي',
   'fleet.goLive.step.violations-restore': 'استرجاع ما عُدّل في المخالفات من ٢٤ سبتمبر',
   'fleet.goLive.step.odometer-fix': 'قراءات السيارتين ١٥٠ و١٥٣',
-  'fleet.goLive.reason.reload-not-done': 'إعادة تحميل دفتر المخالفات لم تنتهِ بعد — ينتظر الاسترجاع التشغيل التالي',
-  'fleet.goLive.reason.odometer-sync-not-done': 'دفتر العداد الجديد لم ينتهِ بعد — ينتظر الإصلاح التشغيل التالي',
-  'fleet.goLive.field.restoredFields': 'حقول أُعيدت إلى صفوف الدفتر كما عدّلها المستخدمون، حسب الحقل',
-  'fleet.goLive.field.yearTicksRestored': 'مخالفات أُعيد تحصيلها من علامة «تم التحصيل» على سنة السيارة',
+  'fleet.goLive.reason.reload-not-done':
+    'إعادة تحميل دفتر المخالفات لم تنتهِ بعد — ينتظر الاسترجاع التشغيل التالي',
+  'fleet.goLive.reason.odometer-sync-not-done':
+    'دفتر العداد الجديد لم ينتهِ بعد — ينتظر الإصلاح التشغيل التالي',
+  'fleet.goLive.field.restoredFields':
+    'حقول أُعيدت إلى صفوف الدفتر كما عدّلها المستخدمون، حسب الحقل',
+  'fleet.goLive.field.yearTicksRestored':
+    'مخالفات أُعيد تحصيلها من علامة «تم التحصيل» على سنة السيارة',
   'fleet.goLive.field.deletedAgain': 'صفوف حذفها مستخدم من ٢٤ سبتمبر فحُذفت مرة أخرى',
   'fleet.goLive.field.auditEntries': 'ما قُرئ من سجل التعديلات',
   'fleet.goLive.field.noTwin': 'مخالفات عُدّلت ولم يوجد مقابلها في الدفتر',
@@ -13075,7 +13183,8 @@ const ar: Record<string, string> = {
   'fleet.goLive.field.correctedAlready': 'قراءات لم تعد بالقيمة المكتوبة — تُركت كما هي',
   'fleet.goLive.field.reopened': 'قراءات أُعيدت مفتوحة',
   'fleet.goLive.field.closedAgainstOpen': 'قراءات أُعيدت وأُغلقت على القراءة المفتوحة',
-  'fleet.goLive.field.stillParked': 'قراءات لم تُعد لوجود قراءة مفتوحة أخرى — قراءات السيارة من ١٦ سبتمبر',
+  'fleet.goLive.field.stillParked':
+    'قراءات لم تُعد لوجود قراءة مفتوحة أخرى — قراءات السيارة من ١٦ سبتمبر',
   'fleet.roster.unsaved': 'تغييرات غير محفوظة',
   'fleet.roster.clearSlot': 'إزالة من هذه الخانة',
   'fleet.roster.inWorkshopNoDrop': 'في الورشة — غير قابلة للتعيين',
@@ -13181,7 +13290,8 @@ const ar: Record<string, string> = {
   'fleet.accidents.log.totalPaidTo': 'إجمالي ما تم الدفع له',
   'fleet.accidents.log.remove': 'حذف التحويل',
   'fleet.accidents.log.removeTitle': 'حذف هذا التحويل؟',
-  'fleet.accidents.log.removeBody': 'يعود مبلغ {{amount}} إلى المكان الذي أُخذ منه (السيارة {{code}})، ويُحذف التحويل من السجل.',
+  'fleet.accidents.log.removeBody':
+    'يعود مبلغ {{amount}} إلى المكان الذي أُخذ منه (السيارة {{code}})، ويُحذف التحويل من السجل.',
   'fleet.accidents.log.removed': 'تم حذف التحويل',
   'fleet.accidents.fields.notes': 'ملاحظات',
   'fleet.accidents.searchCode': 'كود',
@@ -13205,7 +13315,8 @@ const ar: Record<string, string> = {
   'fleet.violations.driverTitle': 'مخالفات يتحملها السائقين',
   'fleet.violations.unknownDriver': 'مجهول',
   'fleet.violations.useCompanyCars': 'الشركة ({{count}})',
-  'fleet.violations.useCompanyCarsHint': 'تصفية هذا الجدول بالسيارات المختارة في مخالفات تتحملها الشركة',
+  'fleet.violations.useCompanyCarsHint':
+    'تصفية هذا الجدول بالسيارات المختارة في مخالفات تتحملها الشركة',
   'fleet.violations.allYears': 'كل السنوات',
   'fleet.violations.allTypes': 'كل الأنواع',
   'fleet.violations.allVehicles': 'كل السيارات',
@@ -13257,15 +13368,11 @@ const ar: Record<string, string> = {
   'fleet.violations.report.driverSummarySheet': 'ملخص السائقين',
   'fleet.violations.report.allLine': 'إجمالي المخالفات',
   'fleet.violations.report.signLine': 'التوقيع / ',
-  'fleet.export.excel':
-    'تحميل ملف إكسيل (كل ما أظهره الفلتر)',
-  'fleet.violations.returnToOwnYear':
-    'أعِد المخالفة إلى سنتها',
-  'fleet.violations.returnToCar':
-    'أعِد المخالفة إلى السيارة {{code}} وإلى سنتها',
+  'fleet.export.excel': 'تحميل ملف إكسيل (كل ما أظهره الفلتر)',
+  'fleet.violations.returnToOwnYear': 'أعِد المخالفة إلى سنتها',
+  'fleet.violations.returnToCar': 'أعِد المخالفة إلى السيارة {{code}} وإلى سنتها',
   'fleet.violations.returnedToOwnYear': 'رجعت لسنتها',
-  'fleet.violations.movedToYear':
-    'نُقلت {{count}} مخالفة إلى {{code}} — {{year}}',
+  'fleet.violations.movedToYear': 'نُقلت {{count}} مخالفة إلى {{code}} — {{year}}',
   'fleet.violations.collectYear': 'تحصيل مخالفات {{code}} لسنة {{year}}',
   'fleet.violations.collectedOf': 'تم تحصيل {{collected}} من {{total}}',
   'fleet.violations.collect': 'تحصيل المخالفة',
@@ -13281,8 +13388,7 @@ const ar: Record<string, string> = {
   'fleet.violations.pickVehicleFirst': 'اختر كود السيارة أولاً — الدفعة تُسجَّل على سيارة واحدة.',
   'fleet.violations.columns.settledState': 'الحالة',
   'fleet.violations.settled': 'محصَّلة',
-  'fleet.violations.outstanding':
-    'قائمة',
+  'fleet.violations.outstanding': 'قائمة',
   'fleet.violations.enteredEmpty': 'اكتب عدد المخالفات فوق ويفتح كارت لكل واحدة.',
   'fleet.violations.enteredCount': '{{count}} للتسجيل',
   'common.print': 'طباعة',
@@ -13355,8 +13461,7 @@ const ar: Record<string, string> = {
   'fleet.catalogs.fields.nameAr': 'الاسم (عربي)',
   'fleet.catalogs.fields.nameEn': 'الاسم (إنجليزي)',
   'fleet.catalogs.fields.countsForAlarm': 'تُحتسب لإنذار الصيانة',
-  'fleet.maintenance.sparePartAdded':
-    'أُضيفت «{{name}}» إلى قطع الغيار واختيرت.',
+  'fleet.maintenance.sparePartAdded': 'أُضيفت «{{name}}» إلى قطع الغيار واختيرت.',
   'fleet.maintenance.workTypeNotCounting':
     'لا يصفّر هذا النوع من العمل عدّاد الصيانة — وسيظل الإنذار يحتسب من الصيانة السابقة له.',
   'fleet.odometer.sameAsPrevious':
@@ -13403,10 +13508,6 @@ const ar: Record<string, string> = {
   'fleet.settings.keys.fuelCardExpiryWarnDays': 'إنذار انتهاء بطاقة الوقود (أيام قبل الانتهاء)',
   'fleet.settings.keys.fuelCardBalanceYellow': 'الحد الأصفر لرصيد بطاقة الوقود (ج.م.)',
   'fleet.settings.keys.fuelCardBalanceRed': 'الحد الأحمر لرصيد بطاقة الوقود (ج.م.)',
-  'fleet.settings.keys.custodyFundTotal': 'مبلغ العهدة (ج.م.)',
-  'fleet.settings.keys.custodyFundTotalHint':
-    'إجمالي العهدة المسلَّمة لإدارة الحركة — الاستعاضات تُضاف عليه لاحقًا',
-  'fleet.settings.keys.custodyFundTotalUnset': 'غير محدد',
   'fleet.settings.keys.defaultBranchNameHint':
     'يُطابق أسماء الفروع الفعلية (عربي أو إنجليزي). نموذج الإضافة يختاره تلقائياً، والفرع مطلوب في كل الأحوال.',
 
@@ -13663,7 +13764,8 @@ const ar: Record<string, string> = {
   'it.custody.receipt.loadFailed': 'تعذّر تحميل النسخة الموقّعة.',
   'it.custody.receipt.openNewTab': 'فتح في نافذة جديدة',
   'it.custody.receipt.issue': 'إصدار إيصال',
-  'it.custody.receipt.issueHint': 'سُلّمت هذه العهدة قبل العمل بالإيصالات؛ أصدر لها إيصالًا واطبعه.',
+  'it.custody.receipt.issueHint':
+    'سُلّمت هذه العهدة قبل العمل بالإيصالات؛ أصدر لها إيصالًا واطبعه.',
   'it.custody.transferHint':
     'النقل حركة واحدة تُسجَّل كواقعة واحدة: غيّر المستلِم أو الفرع أو كليهما.',
   'it.custody.disposalMethod': 'الطريقة',
@@ -14620,8 +14722,7 @@ const ar: Record<string, string> = {
     'الإدارة على مستوى الشركة — «الحركة» مثلًا، لا نسخة فرع واحد منها.',
   'systemAdmin.assignments.departmentHome': 'إدارة الحساب نفسه',
   'systemAdmin.assignments.reach': 'المدى',
-  'systemAdmin.assignments.reachHint':
-    'إلى أي مدى تصل هذه الصلاحية بعد فرع الحساب نفسه.',
+  'systemAdmin.assignments.reachHint': 'إلى أي مدى تصل هذه الصلاحية بعد فرع الحساب نفسه.',
   'systemAdmin.assignments.reaches.home': 'فرعه بس',
   'systemAdmin.assignments.reaches.some': 'فروع محددة',
   'systemAdmin.assignments.reaches.all': 'كل الفروع',
@@ -14798,7 +14899,6 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.keys.fleet.license.driverWarnDays':
     'التنبيه قبل انتهاء رخصة السائق (بالأيام)',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'الفرع الافتراضي للسيارات الجديدة',
-  'systemAdmin.settings.keys.fleet.custody.fundTotal': 'مبلغ العهدة (ج.م.)',
 
   // P9-A — رابط الإعداد الذي يسلّمه المشرف يدويًا
   'systemAdmin.users.actions.setupLink': 'نسخ رابط الإعداد',
@@ -15951,8 +16051,7 @@ const ar: Record<string, string> = {
     'ستختفي الماكينة {{code}} من جميع القوائم، ويتحرر كودها للتسجيل من جديد، ويبقى تاريخها كما هو. وإذا أردت إبقاء الكود محجوزًا، فأرشِفها بدلًا من حذفها.',
   'atm.dataEdit.machineAdded': 'تمت إضافة الماكينة.',
   'atm.dataEdit.machineSaved': 'تم حفظ الماكينة.',
-  'atm.dataEdit.codeTaken':
-    'هذا الكود مسجَّل من قبل.',
+  'atm.dataEdit.codeTaken': 'هذا الكود مسجَّل من قبل.',
   'atm.dataEdit.codeIsIdentity': 'الكود هو هوية الماكينة في كل السجلات ولا يمكن تعديله.',
   'atm.dataEdit.isActive': 'نشطة',
   'atm.dataEdit.isActiveHint':
@@ -15965,8 +16064,7 @@ const ar: Record<string, string> = {
   'atm.dataEdit.editArea': 'تعديل المنطقة',
   'atm.dataEdit.labelSaved': 'تم الحفظ.',
   'atm.dataEdit.bulkTitle': 'إضافة / حذف بالجملة',
-  'atm.dataEdit.lineAlignHint':
-    'اسم في كل سطر، مقابل الكود الذي بجواره.',
+  'atm.dataEdit.lineAlignHint': 'اسم في كل سطر، مقابل الكود الذي بجواره.',
 
   'atm.nav.dailyReport': 'تقرير اليوم',
   'atm.cards.dailyReport': 'المفتوح والإجمالي لكل بنك اليوم.',

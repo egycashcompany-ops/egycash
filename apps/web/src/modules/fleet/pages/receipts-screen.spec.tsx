@@ -130,7 +130,7 @@ const custodySummary: FleetCustodySummaryDto = {
   fuel: 1850,
   tyres: 1400,
   wash: 120,
-  fundTotal: null,
+  fundTotal: 0,
   vehicles: [
     {
       vehicleId: 'v-204',
@@ -831,10 +831,13 @@ describe('the custody ledger', () => {
       expect(tile, `${kind} wears its kind's tile`).toContain(CUSTODY_KIND[kind].tile);
       expect(tile, `${kind} wears its kind's edge`).toContain(CUSTODY_KIND[kind].accent);
     }
-    // One to a row on a phone, two from `sm`, three from `xl` — never six across, where «ج.م.»
-    // would not fit — and «ج.م.» goes under a figure too long for its tile rather than off it.
-    expect(opened).toContain('grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3');
-    expect(opened).not.toMatch(/grid-cols-[56]/u);
+    // One to a row on a phone, two from `sm`, three from `xl`, the six in one row only from
+    // 1,680px — never `2xl`, where «ج.م.» would not fit — and «ج.م.» goes under a figure too long
+    // for its tile rather than off it.
+    expect(opened).toContain(
+      'grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1680px]:grid-cols-6',
+    );
+    expect(opened).not.toMatch(/(?:^|[\s"])(?:lg|2xl):grid-cols-[56]/u);
     expect(opened).toContain('[&amp;_.items-baseline]:flex-wrap');
     // «فى شاشه العهد … فى اللايت سيم والدارك سيم»: on this screen fuel is the design's amber,
     // the total its emerald — the house rule keeping amber for states holds on the other boards.

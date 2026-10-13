@@ -12,7 +12,6 @@ import {
   listQuery,
   objectId,
 } from '../common/index.js';
-import { isMoneyAmount } from './hr-payroll-money.js';
 
 /** Money in EGP. A plain nonnegative number — multi-currency is not a fleet fact. */
 const egp = () => z.number().nonnegative();
@@ -2708,43 +2707,8 @@ export const FleetSettingKeys = {
   /** A card balance below this reads yellow on the charging screen; below `BalanceRed`, red. */
   FuelCardBalanceYellow: 'fleet.fuelCard.balanceYellow',
   FuelCardBalanceRed: 'fleet.fuelCard.balanceRed',
-  /**
-   * «مبلغ العهدة» — the custody fund handed to the Fleet department, in EGP to the piastre:
-   * «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد». 0 is "not set yet" — the custody
-   * board and its dashboard read it as `fundTotal: null` and say so, never as a fund of nothing.
-   * The replenishments («استعاضة العهدة») that will add to it are not modelled yet.
-   */
-  CustodyFundTotal: 'fleet.custody.fundTotal',
 } as const;
 export type FleetSettingKey = (typeof FleetSettingKeys)[keyof typeof FleetSettingKeys];
-
-/**
- * «مبلغ العهدة» as the setting stores it: EGP to the piastre, never below zero — a third decimal
- * is refused, not rounded behind the person who typed it. 0, its default, is "not set yet".
- *
- * `multipleOf(0.01)` alone is not exact: Zod counts a value's decimals from how JavaScript prints
- * it, and a sliver below 0.000001 prints as «1e-7» — no decimals at all — so it passed, and a fund
- * of 0.0000001 would have divided the spend into trillions of per cent. `isMoneyAmount` (the
- * system's own "recorded exactly to the piastre" check) closes that. The refinement wraps the
- * number, and the settings registry reports a refined schema by the type it refines, so the
- * settings screen still edits it as a `number`.
- */
-export const FleetCustodyFundTotalSchema = z
-  .number()
-  .nonnegative()
-  .multipleOf(0.01)
-  .max(1_000_000_000)
-  .refine(isMoneyAmount, { message: 'an amount is recorded to the piastre' });
-
-/**
- * The fund as the custody DTOs carry it (`fundTotal`): the amount when one is set, `null` for 0 —
- * "not set yet", never a fund of nothing to divide the spend by — and for anything that is not an
- * amount at all.
- */
-export const fleetCustodyFundTotal = (value: unknown): number | null =>
-  FleetCustodyFundTotalSchema.safeParse(value).success && (value as number) > 0
-    ? (value as number)
-    : null;
 
 // ── Notification template keys (seeded at boot by the module) ───────────────
 
@@ -3809,12 +3773,11 @@ export interface FleetCustodySummaryDto {
   wash: number;
   vehicles: FleetCustodyVehicleRowDto[];
   /**
-   * «إجمالي العهدة» — the fund itself (`FleetSettingKeys.CustodyFundTotal`), read by the server
-   * under the custody screen's own grant, so a viewer of the figures needs no settings permission
-   * to see it. `null` while it is not set (the setting is 0). It is the fund, not a sum of the
-   * movements: no filter changes it.
+   * «إجمالي العهدة» — the fund itself, in EGP, never below zero: the sum of what «شحن العهدة»
+   * charges into it. That action does not exist yet, so it is 0 for now. It is the fund, not a sum
+   * of the movements: no filter changes it.
    */
-  fundTotal: number | null;
+  fundTotal: number;
 }
 
 /** One line of «كل الحركات» — a receipt from the fund, or a private car's dealership bill. */

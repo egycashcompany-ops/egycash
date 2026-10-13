@@ -11104,8 +11104,8 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     ).toBe(403);
   });
 
-  it('«إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund on the figures and the dashboard, set in «إعدادات الحركة»', async () => {
-    type Fund = { fundTotal: number | null; total: number; count: number };
+  it('«إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund on the figures and the dashboard, 0 until «شحن العهدة» charges it', async () => {
+    type Fund = { fundTotal: number; total: number; count: number };
     const custodyViewer = await rbacService.createRole(
       { name: { en: 'Custody reader', ar: 'قارئ العهدة' }, permissionKeys: ['fleetCustody.view'] },
       adminUserId,
@@ -11125,71 +11125,19 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       expect(res.status, `${path} ${JSON.stringify(query)}`).toBe(200);
       return data<Fund>(res);
     };
-    const setFund = (value: unknown, token = adminToken) =>
-      request(app)
-        .patch('/api/v1/platform/settings/values')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ key: FleetSettingKeys.CustodyFundTotal, scope: 'organization', value });
 
-    // Never set: the fund is «not set» on both — `null`, never a 0 to divide the spend by.
-    expect((await read('summary')).fundTotal).toBeNull();
-    expect((await read('dashboard')).fundTotal).toBeNull();
-
-    // Set like every other «إعدادات الحركة» value, under `setting.edit`.
-    expect((await setFund(250_000.5)).status).toBe(204);
-    expect((await read('summary')).fundTotal).toBe(250_000.5);
-    expect((await read('dashboard')).fundTotal).toBe(250_000.5);
-    // It is the fund, not a sum of the movements: a filter that matches nothing leaves it whole.
+    // Nothing has been charged into the fund — the action does not exist yet — so it is 0 on both,
+    // a number and never `null`, whatever the movements spent.
+    expect((await read('summary')).fundTotal).toBe(0);
+    expect((await read('dashboard')).fundTotal).toBe(0);
+    // It is the fund, not a sum of the movements: a filter that matches nothing leaves it as it is.
     const nothing = await read('summary', adminToken, { vehicleCodes: 'لا-سيارة-بهذا-الرقم' });
-    expect(nothing).toMatchObject({ count: 0, total: 0, fundTotal: 250_000.5 });
+    expect(nothing).toMatchObject({ count: 0, total: 0, fundTotal: 0 });
     expect(
       (await read('dashboard', adminToken, { from: '2001-01-01', to: '2001-01-31' })).fundTotal,
-    ).toBe(250_000.5);
-
-    // A custody viewer sees it with no settings permission — and cannot change it.
-    expect((await read('summary', viewerToken)).fundTotal).toBe(250_000.5);
-    expect((await read('dashboard', viewerToken)).fundTotal).toBe(250_000.5);
-    expect((await setFund(1, viewerToken)).status).toBe(403);
-
-    // An amount to the piastre, never below zero: refused, never rounded — and the fund unchanged.
-    // «1e-7» too: a sliver JavaScript writes in exponent form, with no decimals to count.
-    for (const bad of [-1, 1.005, '250000', 1e-7, 5e-7]) {
-      const res = await setFund(bad);
-      expect(res.status, JSON.stringify(bad)).toBeGreaterThanOrEqual(400);
-      expect(res.status, JSON.stringify(bad)).toBeLessThan(500);
-    }
-    expect((await read('summary')).fundTotal).toBe(250_000.5);
-    // The exact check refines the number, and the settings screen still edits it as one.
-    const definitions = await request(app)
-      .get('/api/v1/platform/settings/definitions')
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(definitions.status).toBe(200);
-    expect(
-      data<{ key: string; type: string }[]>(definitions).find(
-        (d) => d.key === FleetSettingKeys.CustodyFundTotal,
-      )?.type,
-    ).toBe('number');
-
-    // Audited like every other settings change: who, and the old value beside the new.
-    expect((await setFund(300_000)).status).toBe(204);
-    const audit = await request(app)
-      .get('/api/v1/platform/audit-logs')
-      .query({ entityType: 'setting', entityId: FleetSettingKeys.CustodyFundTotal })
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(audit.status).toBe(200);
-    const rows = data<
-      { action: string; changes: { field: string; old: unknown; new: unknown }[] }[]
-    >(audit).filter((row) => row.action === 'settingChanged');
-    expect(rows.flatMap((row) => row.changes)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ field: 'organization', old: null, new: 250_000.5 }),
-        expect.objectContaining({ field: 'organization', old: 250_000.5, new: 300_000 }),
-      ]),
-    );
-
-    // Back to 0: «not set» again — and so the suites' order cannot matter.
-    expect((await setFund(0)).status).toBe(204);
-    expect((await read('summary')).fundTotal).toBeNull();
-    expect((await read('dashboard', viewerToken)).fundTotal).toBeNull();
+    ).toBe(0);
+    // A custody viewer reads it under the custody grant alone.
+    expect((await read('summary', viewerToken)).fundTotal).toBe(0);
+    expect((await read('dashboard', viewerToken)).fundTotal).toBe(0);
   });
 });

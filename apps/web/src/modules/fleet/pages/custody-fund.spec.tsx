@@ -1,9 +1,8 @@
-// «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد». The fund the
-// department was handed, first among the board's figures («الإحصائيات») and first in the KPI row of
-// «لوحة تحكم», in its own calm slate, a wallet on its tile; under it «صُرف منها X%» — the spend over
-// the fund. Not set yet, it says so («—», «يتحدد من إعدادات الحركة»), linking to «إعدادات الحركة»
-// only for whoever may open that screen. And the box it is set in: «مبلغ العهدة» on that screen,
-// optional, empty while it is 0. Proven against what the components produce.
+// «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد». The fund, first
+// among the board's figures («الإحصائيات») and first in the KPI row of «لوحة تحكم», in its own calm
+// slate, a wallet on its tile; under it «صُرف منها X%» — the spend over the fund. The fund is what
+// «شحن العهدة» charges into it, so until that action exists it is «0.00 ج.م.» — a sum, never «—» —
+// and its share «—», the board's bar empty. Proven against what the components produce.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,12 +13,10 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
-  FleetSettingKeys,
   type FleetCustodyDashboardDto,
   type FleetCustodySummaryDto,
   type Locale,
   type MeDto,
-  type ResolvedSettingDto,
 } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
@@ -35,7 +32,6 @@ import { CustodyDashboardContent, CustodyKpis } from '../components/CustodyDashb
 import { CUSTODY_FUND, CUSTODY_KIND, CUSTODY_KINDS } from '../components/CustodyKinds';
 import { CAIRO, CARD_SURFACE } from '../components/custody-dashboard-parts';
 import { NUM } from '../components/FuelCardBoard';
-import { FleetSettingsPage } from './FleetSettingsPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -47,8 +43,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string): string => readFileSync(join(HERE, rel), 'utf8');
 const ar = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
-const en = (key: string, params?: Record<string, string | number>): string =>
-  translate('en', key, params);
 
 const me = (permissions: string[]): MeDto =>
   ({
@@ -70,28 +64,21 @@ const me = (permissions: string[]): MeDto =>
     external: null,
   }) as unknown as MeDto;
 
-/** A custody viewer, by default — the figures' own grant and nothing else. */
+/** A custody viewer — the figures' own grant and nothing else. */
 const VIEWER = ['fleetCustody.view'];
-/** …who may also open «إعدادات الحركة» (its route's grant). */
-const SETTER = ['fleetCustody.view', 'fleetMaintenanceRule.manage'];
 
-const mount = (
-  node: JSX.Element,
-  permissions: string[] = VIEWER,
-  seed: (qc: QueryClient) => void = () => undefined,
-): string => {
+const mount = (node: JSX.Element): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
       locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
-      auth: { me: me(permissions), status: 'signedIn' as const },
+      auth: { me: me(VIEWER), status: 'signedIn' as const },
       ui: { theme: 'light' as const, sidebarOpen: false },
     },
   });
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
-  seed(qc);
   return renderToStaticMarkup(
     <Provider store={store}>
       <QueryClientProvider client={qc}>
@@ -123,7 +110,10 @@ const esc = (classes: string): string =>
     .replace(/'/gu, '&#x27;')
     .replace(/"/gu, '&quot;');
 
-/** The board's figures: 4,335.50 spent of a fund of 50,000.00 — «8.7%». */
+/**
+ * The board's figures: 4,335.50 spent of a fund of 50,000.00 — «8.7%» — as they will read once
+ * «شحن العهدة» has charged the fund.
+ */
 const summary: FleetCustodySummaryDto = {
   count: 6,
   total: 4335.5,
@@ -134,7 +124,8 @@ const summary: FleetCustodySummaryDto = {
   vehicles: [],
   fundTotal: 50_000,
 };
-const unset: FleetCustodySummaryDto = { ...summary, fundTotal: null };
+/** As the server answers today: the same spend, and nothing charged into the fund yet. */
+const empty: FleetCustodySummaryDto = { ...summary, fundTotal: 0 };
 
 /** One figure's markup on the board, up to the next figure. */
 const figure = (html: string, id: string): string => {
@@ -198,23 +189,25 @@ describe('«صُرف منها X%» — what was spent of the fund', () => {
     // All but a sliver is not «100%»; a sliver past it is not «100%» either.
     expect(custodySpentOfFund(49_900, 50_000)).toBe('>99%');
     expect(custodySpentOfFund(50_100, 50_000)).toBe('>100%');
-    // The replenishments are not recorded yet, so the spend can outrun the fund — and says so.
+    // The spend can outrun what was charged into the fund — and says so.
     expect(custodySpentOfFund(60_000, 50_000)).toBe('120%');
-    // No fund set: nothing to divide by.
-    expect(custodySpentOfFund(4335.5, null)).toBe('—');
+    // Nothing in the fund (0, as today): nothing to divide by.
     expect(custodySpentOfFund(4335.5, 0)).toBe('—');
+    expect(custodySpentOfFund(0, 0)).toBe('—');
   });
 
-  it('draws the same share as a bar: no fund, none; past the fund, all of it', () => {
+  it('draws the same share as a bar: nothing in the fund, none; past the fund, all of it', () => {
     expect(custodySpentOfFundPct(25_000, 50_000)).toBe(50);
     expect(custodySpentOfFundPct(60_000, 50_000)).toBe(100);
-    expect(custodySpentOfFundPct(4335.5, null)).toBe(0);
+    expect(custodySpentOfFundPct(4335.5, 0)).toBe(0);
+    expect(custodySpentOfFundPct(0, 0)).toBe(0);
     expect(custodySpentOfFundPct(0, 50_000)).toBe(0);
   });
 
-  it('reads an answer with no fund in it — an older server — as «not set», never «NaN%»', () => {
-    // The web can reach the screen before the API that carries `fundTotal` (a staggered deploy).
-    for (const fund of [undefined, Number.NaN, Infinity, -5]) {
+  it('reads an answer with no fund in it — an older server — as 0, never «NaN%»', () => {
+    // The web can reach the screen before the API that carries `fundTotal` as a number (a
+    // staggered deploy): an older server's `null`, or no field at all.
+    for (const fund of [null, undefined, Number.NaN, Infinity, -5]) {
       expect(custodySpentOfFund(4335.5, fund), String(fund)).toBe('—');
       expect(custodySpentOfFundPct(4335.5, fund), String(fund)).toBe(0);
     }
@@ -248,7 +241,6 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     expect(fund).toContain(
       `<span class="block h-full rounded-full ${CUSTODY_FUND.fill}" style="width:8.671%"></span>`,
     );
-    expect(fund).not.toContain('data-custody-fund-unset');
   });
 
   it('wears its own calm slate — the dashboard’s card, no kind’s colour and not the total’s emerald', () => {
@@ -285,61 +277,62 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     }
   });
 
-  it('says so when no fund is set — «—», never «0.00 ج.م.», and where it is set', () => {
-    const fund = figure(mount(<CustodyFigures totals={unset} />), 'fund');
-    expect(fund).toContain('<span data-custody-fund-value="true"');
-    expect(text(fund)).toBe(
-      `${ar('fleet.custody.fund.title')} — ${ar('fleet.custody.fund.spent')} — ${ar('fleet.custody.fund.unset')}`,
+  it('shows «0.00 ج.م.» while nothing is charged into the fund — its share «—», its bar empty', () => {
+    const fund = figure(mount(<CustodyFigures totals={empty} />), 'fund');
+    expect(fund).toContain(
+      `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">0.00</span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,
     );
-    expect(ar('fleet.custody.fund.unset')).toBe('يتحدد من إعدادات الحركة');
-    expect(fund).not.toContain('ج.م.');
-    expect(fund).not.toContain('style="width:');
+    expect(text(fund)).toBe(
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+    );
+    expect(fund).toMatch(/<span dir="ltr" data-custody-fund-pct="true" class="[^"]*">—<\/span>/u);
+    // The bar is drawn, and empty.
+    expect(fund).toContain('data-custody-fund-bar="true"');
+    expect(fund).toContain(
+      `<span class="block h-full rounded-full ${CUSTODY_FUND.fill}" style="width:0%"></span>`,
+    );
     expect(fund).not.toMatch(/NaN|Infinity/u);
-    // A custody viewer is told where it is set — in words, not a link to a screen they cannot open.
-    expect(fund).toContain('data-custody-fund-unset="text"');
+    // Nothing points anywhere: «شحن العهدة» fills the fund, no settings screen does.
     expect(fund).not.toContain('href=');
+    expect(fund).not.toContain('<a ');
+    expect(text(fund)).not.toContain('إعدادات الحركة');
   });
 
-  it('says «not set» when the answer carries no fund at all — no «ليس رقمًا», no «NaN%»', () => {
-    // An older server's summary, without the field: the board's tile reads as for a fund not set.
+  it('reads an answer with no fund at all as 0 — no «ليس رقمًا», no «NaN%»', () => {
+    // An older server's summary, without the field: the board's tile reads «0.00 ج.م.».
     const older: Partial<FleetCustodySummaryDto> = { ...summary };
     delete older.fundTotal;
     expect('fundTotal' in older).toBe(false);
-    const fund = figure(
-      mount(<CustodyFigures totals={older as FleetCustodySummaryDto} />, SETTER),
-      'fund',
-    );
+    const fund = figure(mount(<CustodyFigures totals={older as FleetCustodySummaryDto} />), 'fund');
     expect(text(fund)).toBe(
-      `${ar('fleet.custody.fund.title')} — ${ar('fleet.custody.fund.spent')} — ${ar('fleet.custody.fund.unset')}`,
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
     );
     expect(fund).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
-    expect(fund).not.toContain('ج.م.');
-    expect(fund).not.toContain('style="width:');
-    expect(fund).toContain('data-custody-fund-unset="link"');
+    expect(fund).toContain('style="width:0%"');
+    // …and so does an older server's `null`, and a value that is no amount at all.
+    for (const odd of [null, Number.NaN, Infinity, -5]) {
+      const tile = figure(
+        mount(<CustodyFigures totals={{ ...summary, fundTotal: odd as unknown as number }} />),
+        'fund',
+      );
+      expect(text(tile), String(odd)).toBe(
+        `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+      );
+      expect(tile, String(odd)).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
+      expect(tile, String(odd)).toContain('style="width:0%"');
+    }
     // …and the dashboard's card, the same component.
     const card = kpi(
-      mount(<CustodyKpis data={dashboard({ fundTotal: undefined as unknown as null })} />),
+      mount(<CustodyKpis data={dashboard({ fundTotal: undefined as unknown as number })} />),
       'fund',
     );
     expect(text(card)).toBe(
-      `${ar('fleet.custody.fund.title')} — ${ar('fleet.custody.fund.spent')} — ${ar('fleet.custody.fund.unset')}`,
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
     );
     expect(card).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
   });
 
-  it('links to «إعدادات الحركة» for whoever may open it', () => {
-    const fund = figure(mount(<CustodyFigures totals={unset} />, SETTER), 'fund');
-    const link = fund.slice(fund.indexOf('<a '), fund.indexOf('</a>') + 4);
-    expect(link).toContain('href="/fleet/settings"');
-    expect(link).toContain('data-custody-fund-unset="link"');
-    expect(text(link)).toBe(ar('fleet.custody.fund.unset'));
-    // Set, there is nothing to point at.
-    expect(figure(mount(<CustodyFigures totals={summary} />, SETTER), 'fund')).not.toContain(
-      'href=',
-    );
-  });
-
-  it('lays the six out one to a row on a phone, two from `sm`, three from `xl` — «ج.م.» never cut off', () => {
+  it('lays the six out one to a row on a phone, two from `sm`, three from `xl`, all six in one row from 1,680px — «ج.م.» never cut off', () => {
     const html = mount(<CustodyFigures totals={summary} />);
     const grid = classesOf(html, 'data-custody-figures="true"');
     expect(grid).toEqual(
@@ -351,14 +344,26 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
         '[&amp;_.items-baseline]:flex-wrap',
       ]),
     );
-    expect(grid.join(' ')).not.toMatch(/grid-cols-[4-6]|col-span/u);
+    expect(grid.join(' ')).not.toMatch(/col-span/u);
     // Not three from `lg`: the side bar opens there, and a third of a 1,024px board is about 232px
     // — a sum in the millions ran under its icon («2,500,000.00» lost its «2»). Two until `xl`.
     expect(grid).not.toContain('lg:grid-cols-3');
-    expect(grid.filter((c) => /^(?:sm|md|lg|xl|2xl):grid-cols-/u.test(c))).toEqual([
+    // «هتضيف بس فى الاول قبل إجمالي مصروفات العهدة»: one row of six from 1,680px, as the five
+    // were — not from `2xl`, where a sixth beside the side bar is 195px and a sum in the millions
+    // ran under its icon; the sums a size down there and back up as the room grows.
+    expect(grid.filter((c) => /grid-cols-/u.test(c))).toEqual([
+      'grid-cols-1',
       'sm:grid-cols-2',
       'xl:grid-cols-3',
+      'min-[1680px]:grid-cols-6',
     ]);
+    expect(grid).toEqual(
+      expect.arrayContaining([
+        'min-[1680px]:[&amp;_.text-2xl]:text-lg',
+        'min-[1800px]:[&amp;_.text-2xl]:text-xl',
+        'min-[2100px]:[&amp;_.text-2xl]:text-2xl',
+      ]),
+    );
   });
 
   it('reads past the fund as it is — «120%», the bar full', () => {
@@ -418,17 +423,15 @@ describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
     }
   });
 
-  it('says «—» and where it is set while no fund is', () => {
-    const viewer = kpi(mount(<CustodyKpis data={dashboard({ fundTotal: null })} />), 'fund');
-    expect(text(viewer)).toBe(
-      `${ar('fleet.custody.fund.title')} — ${ar('fleet.custody.fund.spent')} — ${ar('fleet.custody.fund.unset')}`,
+  it('shows «0.00 ج.م.» while nothing is charged into the fund, its share «—», with no bar', () => {
+    const card = kpi(mount(<CustodyKpis data={dashboard({ fundTotal: 0 })} />), 'fund');
+    expect(text(card)).toBe(
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
     );
-    expect(viewer).not.toContain('href=');
-    const setter = kpi(
-      mount(<CustodyKpis data={dashboard({ fundTotal: null })} />, SETTER),
-      'fund',
-    );
-    expect(setter).toContain('href="/fleet/settings"');
+    expect(card).toMatch(/data-custody-fund-value="true"[^>]*>0\.00</u);
+    expect(card).not.toContain('style="width:');
+    expect(card).not.toContain('href=');
+    expect(card).not.toMatch(/NaN|Infinity/u);
   });
 
   it('is one component, drawn by both', () => {
@@ -443,67 +446,5 @@ describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
     // A spent total of nothing over a fund: «0%», not a dash.
     const zero = mount(<CustodyFundCard fundTotal={50_000} spent={0} />);
     expect(text(zero)).toContain(`${ar('fleet.custody.fund.spent')} 0%`);
-  });
-});
-
-describe('«مبلغ العهدة» on «إعدادات الحركة»', () => {
-  const resolved = (value: unknown): ResolvedSettingDto[] => [
-    { key: FleetSettingKeys.CustodyFundTotal, value, resolvedFrom: 'organization' },
-  ];
-  const page = (value: unknown, permissions: string[]): string =>
-    mount(<FleetSettingsPage />, permissions, (qc) =>
-      qc.setQueryData(['platform', 'settings', 'me'], resolved(value)),
-    );
-  /** The fund's box and its field, up to the next block. */
-  const field = (html: string): string => {
-    const at = html.indexOf('data-fleet-custody-settings="true"');
-    expect(at).toBeGreaterThan(-1);
-    return html.slice(at, html.indexOf('</div></div>', at));
-  };
-  const EDITOR = ['fleetMaintenanceRule.manage', 'setting.edit'];
-
-  it('offers the box with its label and its hint, in both languages', () => {
-    const part = field(page(250_000.5, EDITOR));
-    expect(text(part)).toContain(ar('fleet.settings.keys.custodyFundTotal'));
-    expect(text(part)).toContain(ar('fleet.settings.keys.custodyFundTotalHint'));
-    expect(ar('fleet.settings.keys.custodyFundTotal')).toBe('مبلغ العهدة (ج.م.)');
-    expect(ar('fleet.settings.keys.custodyFundTotalHint')).toBe(
-      'إجمالي العهدة المسلَّمة لإدارة الحركة — الاستعاضات تُضاف عليه لاحقًا',
-    );
-    expect(en('fleet.settings.keys.custodyFundTotal')).toBe('Custody fund amount (EGP)');
-    expect(en('fleet.custody.fund.title')).toBe('Custody fund total');
-  });
-
-  it('shows the fund grouped, left to right — and 0 («not set») as an empty box saying so', () => {
-    const set = field(page(250_000.5, EDITOR));
-    expect(set).toMatch(/<input [^>]*value="250,000\.5"/u);
-    expect(set).toContain('dir="ltr"');
-    expect(set).toContain('inputMode="decimal"');
-    const empty = field(page(0, EDITOR));
-    expect(empty).toMatch(/<input [^>]*value=""/u);
-    expect(empty).toContain(`placeholder="${ar('fleet.settings.keys.custodyFundTotalUnset')}"`);
-    // Optional: no «required» mark on it, where the fuel prices beside it carry one.
-    expect(empty).not.toContain('text-red-500');
-    expect(page(0, EDITOR)).toContain('<span class="text-red-500"> *</span>');
-  });
-
-  it('is edited under the same grant as every other value of the screen', () => {
-    expect(field(page(250_000, EDITOR))).not.toContain('disabled=""');
-    expect(field(page(250_000, ['fleetMaintenanceRule.manage']))).toContain('disabled=""');
-  });
-
-  it('writes an emptied box as 0 — «not set» — and re-reads the custody figures after a save', () => {
-    const source = read('FleetSettingsPage.tsx');
-    expect(source).toContain(
-      "const fundAmount = (text: string): number => (text.trim() === '' ? 0 : Number(text));",
-    );
-    expect(source).toMatch(
-      /await setSetting\.mutateAsync\(\{\s*key: FUND_KEY,\s*scope: 'organization',\s*value: fundAmount\(fund\),?\s*\}\)/u,
-    );
-    const queries = read('../api/fleet-queries.ts');
-    const hook = queries.slice(queries.indexOf('export const useSetFleetSetting'));
-    expect(hook.slice(0, hook.indexOf('};'))).toContain(
-      'void qc.invalidateQueries({ queryKey: fleetKeys.custody });',
-    );
   });
 });

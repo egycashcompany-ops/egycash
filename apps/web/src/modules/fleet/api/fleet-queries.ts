@@ -315,8 +315,6 @@ export const useSetFleetSetting = () => {
     // The yellow and red thresholds re-colour the alarms board itself.
     void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
     void qc.invalidateQueries({ queryKey: fleetKeys.roster });
-    // «مبلغ العهدة» is the custody figures' and dashboard's «إجمالي العهدة».
-    void qc.invalidateQueries({ queryKey: fleetKeys.custody });
   });
 };
 

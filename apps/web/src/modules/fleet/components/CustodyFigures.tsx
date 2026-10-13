@@ -15,10 +15,8 @@
 // «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: six figures now — the fund itself
 // first («إجمالي العهدة», `CustodyFundCard`), then everything it paid for. The board and «لوحة تحكم»
 // draw the same card, the board's with the bar of what was spent of it.
-import { Link } from 'react-router-dom';
 import { type FleetCustodySummaryDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
 import {
@@ -82,22 +80,23 @@ export const CustodyShare = ({
 );
 
 /**
- * Whether a fund is set — an amount above zero. `null` is «not set» as the server says it; an
- * answer with no `fundTotal` at all (an older server, while a deploy rolls the web out first) is
- * read the same, never as a sum: `undefined` would print «ليس رقمًا» and «NaN%».
+ * The fund as a sum — what «شحن العهدة» charged into it, 0 until that action exists. Anything that
+ * is not an amount reads as 0 too: an older server's `null`, or an answer with no `fundTotal` at
+ * all (while a deploy rolls the web out first), must never print «ليس رقمًا» or «NaN%».
  */
-export const custodyFundSet = (fund: number | null | undefined): fund is number =>
-  typeof fund === 'number' && Number.isFinite(fund) && fund > 0;
+export const custodyFundAmount = (fund: number | null | undefined): number =>
+  typeof fund === 'number' && Number.isFinite(fund) && fund > 0 ? fund : 0;
 
 /**
  * «صُرف منها 4.3%» — what the movements spent of the fund: one decimal under ten per cent, whole
- * from there; a sliver «<0.1%», never «0.0%». Past the fund it says so — replenishments are not
- * recorded yet, so the spend can outrun it — and the two ends never claim what is not true: all
- * but a sliver is «>99%», never «100%», and a sliver over is «>100%», never «100%». With no fund
- * set, a dash: there is nothing to divide by.
+ * from there; a sliver «<0.1%», never «0.0%». Past the fund it says so — the spend can outrun what
+ * was charged into it — and the two ends never claim what is not true: all but a sliver is «>99%»,
+ * never «100%», and a sliver over is «>100%», never «100%». With nothing in the fund (0), a dash:
+ * there is nothing to divide by.
  */
-export const custodySpentOfFund = (spent: number, fund: number | null | undefined): string => {
-  if (!custodyFundSet(fund)) return '—';
+export const custodySpentOfFund = (spent: number, fundTotal: number | null | undefined): string => {
+  const fund = custodyFundAmount(fundTotal);
+  if (fund <= 0) return '—';
   if (spent <= 0) return '0%';
   const pct = (spent / fund) * 100;
   if (pct < 0.1) return '<0.1%';
@@ -108,9 +107,14 @@ export const custodySpentOfFund = (spent: number, fund: number | null | undefine
   return `${whole}%`;
 };
 
-/** The same, as the width of a bar: no fund, none; past the fund, the whole bar. */
-export const custodySpentOfFundPct = (spent: number, fund: number | null | undefined): number =>
-  custodyFundSet(fund) ? Math.min(100, Math.max(0, (spent / fund) * 100)) : 0;
+/** The same, as the width of a bar: with nothing in the fund, none; past the fund, the whole bar. */
+export const custodySpentOfFundPct = (
+  spent: number,
+  fundTotal: number | null | undefined,
+): number => {
+  const fund = custodyFundAmount(fundTotal);
+  return fund > 0 ? Math.min(100, Math.max(0, (spent / fund) * 100)) : 0;
+};
 
 /** The fund's words, under `fleet.custody.fund`. */
 export const CUSTODY_FUND_LABEL = 'fleet.custody.fund.title';
@@ -138,15 +142,13 @@ const TILE_RULE = 'mt-3 border-t border-slate-100 pt-2 text-xs dark:border-[#1c2
 const TILE_FOOT = cn(TILE_RULE, 'flex items-center justify-between gap-2');
 
 /**
- * «إجمالي العهدة» — the fund the department was handed («مبلغ العهدة» in «إعدادات الحركة»), the
- * spend's own card in the fund's slate (`CUSTODY_FUND`), a wallet on its tile. Under it, «صُرف منها
- * X%»: the movements' total over the fund — the board's own filters hold for the spend, the fund is
- * the fund. On the board (`board`) a bar draws that share, as each kind's tile draws its own, and
- * the figure is in the boards' monospace, as its tiles write theirs; on «لوحة تحكم» it takes the
- * dashboard's own figure (`figure`, Cairo), with no bar, as its other cards.
- *
- * Not set yet, it says so: «—» in place of a sum, never «0.00 ج.م.», and «يتحدد من إعدادات الحركة»
- * — a link to that screen for whoever may open it, words for everyone else.
+ * «إجمالي العهدة» — the fund: what «شحن العهدة» charged into it, «0.00 ج.م.» until that action
+ * exists — always a sum, never «—». The spend's own card in the fund's slate (`CUSTODY_FUND`), a
+ * wallet on its tile. Under it, «صُرف منها X%»: the movements' total over the fund — the board's
+ * own filters hold for the spend, the fund is the fund — and «—» while the fund is 0. On the board
+ * (`board`) a bar draws that share, as each kind's tile draws its own (empty while the fund is 0),
+ * and the figure is in the boards' monospace, as its tiles write theirs; on «لوحة تحكم» it takes
+ * the dashboard's own figure (`figure`, Cairo), with no bar, as its other cards.
  */
 export const CustodyFundCard = ({
   fundTotal,
@@ -154,7 +156,7 @@ export const CustodyFundCard = ({
   board = false,
   figure = TILE_FIGURE,
 }: {
-  /** `null` while no fund is set; a missing one (`undefined`, an older server) reads the same. */
+  /** The fund in EGP; an older server's `null` or a missing one (`undefined`) reads as 0. */
   fundTotal: number | null | undefined;
   /** The movements' total over the same filters — `total` of the summary. */
   spent: number;
@@ -164,10 +166,8 @@ export const CustodyFundCard = ({
   figure?: string;
 }): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const set = custodyFundSet(fundTotal);
-  const fund = set ? moneyChip(fundTotal, locale) : null;
+  const fund = moneyChip(custodyFundAmount(fundTotal), locale);
   return (
     <div
       data-custody-fund="true"
@@ -183,9 +183,9 @@ export const CustodyFundCard = ({
           <span className={cn('block text-xs', CUSTODY_FUND.label)}>{t(CUSTODY_FUND_LABEL)}</span>
           <span className="mt-1 flex flex-wrap items-baseline gap-1">
             <span data-custody-fund-value="true" className={figure}>
-              {fund?.value ?? '—'}
+              {fund.value}
             </span>
-            {fund !== null && <span className={cn('text-xs', CUSTODY_FUND.unit)}>{fund.unit}</span>}
+            <span className={cn('text-xs', CUSTODY_FUND.unit)}>{fund.unit}</span>
           </span>
         </span>
         <span
@@ -211,32 +211,17 @@ export const CustodyFundCard = ({
             {custodySpentOfFund(spent, fundTotal)}
           </span>
         </span>
-        {!set ? (
-          can('fleetMaintenanceRule.manage') ? (
-            <Link
-              to="/fleet/settings"
-              data-custody-fund-unset="link"
-              className="w-fit font-bold text-emerald-700 hover:underline dark:font-medium dark:text-emerald-400"
-            >
-              {t('fleet.custody.fund.unset')}
-            </Link>
-          ) : (
-            <span data-custody-fund-unset="text" className="text-slate-500 dark:text-slate-400">
-              {t('fleet.custody.fund.unset')}
-            </span>
-          )
-        ) : (
-          board && (
+        {board && (
+          <span
+            aria-hidden="true"
+            data-custody-fund-bar="true"
+            className="block h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]"
+          >
             <span
-              aria-hidden="true"
-              className="block h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]"
-            >
-              <span
-                className={cn('block h-full rounded-full', CUSTODY_FUND.fill)}
-                style={{ width: `${custodySpentOfFundPct(spent, fundTotal)}%` }}
-              />
-            </span>
-          )
+              className={cn('block h-full rounded-full', CUSTODY_FUND.fill)}
+              style={{ width: `${custodySpentOfFundPct(spent, fundTotal)}%` }}
+            />
+          </span>
         )}
       </span>
     </div>
@@ -251,15 +236,15 @@ export const CustodyFigures = ({ totals }: { totals: FleetCustodySummaryDto }): 
   return (
     <section
       data-custody-figures="true"
-      // Six figures: one to a row on a phone, two from `sm`, and from `xl` two rows of three —
-      // the fund, the spend and the dealership, then fuel, tyres and washing. Not three from `lg`:
-      // the side bar (240px) opens at `lg`, and a third of a 1,024px board left a tile about 232px
-      // wide, where a sum in the millions ran under its icon (measured: «2,500,000.00» lost its
-      // «2»); two there are 354px or more. At 1,280 three are about 317px, where nine digits fit.
-      // Never six across: a sixth of a 1,280px board leaves a sum about 100px beside its icon —
-      // «250,000.00» alone is wider. Should a sum still not fit, «ج.م.» goes under it rather than
-      // off the tile.
-      className="grid shrink-0 animate-drop-in grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 [&_.items-baseline]:flex-wrap"
+      // «هتضيف بس فى الاول قبل إجمالي مصروفات العهدة»: the fund joins the front of the row the board
+      // already had — all six in ONE row from 1,680px, as the five were, the sums a size down there
+      // (`text-lg`, back to `text-xl` from 1,800px and `text-2xl` from 2,100px) so a sum in the
+      // millions still clears its icon beside the side bar (measured: at 1,536px a sixth is 195px and
+      // «2,345,678.90» ran under its icon). Narrower: one to a row on a phone,
+      // two from `sm`, and from `xl` two rows of three — not three from `lg`, where the side bar
+      // (240px) opens and a third of a 1,024px board left a tile about 232px wide. Should a sum still
+      // not fit, «ج.م.» goes under it rather than off the tile.
+      className="grid shrink-0 animate-drop-in grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1680px]:grid-cols-6 min-[1680px]:[&_.text-2xl]:text-lg min-[1800px]:[&_.text-2xl]:text-xl min-[2100px]:[&_.text-2xl]:text-2xl [&_.items-baseline]:flex-wrap"
     >
       {/* Each card fills its cell (`h-full`). Spans inside the card, so the card is one box to
           whatever reads its markup. */}

@@ -178,7 +178,7 @@ const dashboard: FleetCustodyDashboardDto = {
   fuel: 1965.5,
   tyres: 1400,
   wash: 120,
-  // «مبلغ العهدة» — 4,335.50 of it spent: «8.7%».
+  // The fund — what «شحن العهدة» charged into it — 4,335.50 of it spent: «8.7%».
   fundTotal: 50_000,
   vehicles: [
     {
@@ -292,7 +292,8 @@ const dashboard: FleetCustodyDashboardDto = {
 
 /**
  * The server's answer when nothing moved (`custodyDashboard([], {})`): every sum and count zero,
- * both sources and both companies at zero, no month on the time chart — and a fund that is set.
+ * both sources and both companies at zero, no month on the time chart — and a fund with money in
+ * it.
  */
 const nothing: FleetCustodyDashboardDto = {
   count: 0,
@@ -546,7 +547,7 @@ describe('«لوحة تحكم» on the custody board', () => {
       tyres: 0,
       wash: 0,
       vehicles: [],
-      fundTotal: null,
+      fundTotal: 0,
     } satisfies FleetCustodySummaryDto);
     const html = mount(qc, <CustodyPage />);
     const stats = html.indexOf('data-custody-stats-toggle="true"');
@@ -599,14 +600,13 @@ describe('«لوحة تحكم» on the custody board', () => {
       );
       expect(cls.join(' '), attr).not.toMatch(/emerald-/u);
     }
-    expect(PAGE).toContain('tone="emerald"');
+    // «لا بنفسجى»: the custody pager's current page is the site's purple, like every other board.
+    expect(PAGE).not.toContain('tone="emerald"');
     const meta = { page: 2, pageSize: 25, totalItems: 60, totalPages: 3 };
-    const emerald = draw(<FleetPager tone="emerald" meta={meta} onPageChange={() => undefined} />);
-    expect(classesOf(emerald, 'aria-current="page"')).toEqual(
-      expect.arrayContaining(['bg-emerald-600', 'text-white']),
-    );
     const plain = draw(<FleetPager meta={meta} onPageChange={() => undefined} />);
-    expect(classesOf(plain, 'aria-current="page"'), 'every other board').toContain('bg-brand-600');
+    expect(classesOf(plain, 'aria-current="page"')).toEqual(
+      expect.arrayContaining(['bg-brand-600', 'text-white']),
+    );
   });
 
   it('opens over the whole screen — a labelled modal with ×, the design’s page in both themes', () => {
@@ -1648,14 +1648,15 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
       'tyres',
       'wash',
     ]);
-    // The fund is the fund: set, it is written whole, and nothing of it spent yet is «0%».
+    // The fund is the fund: with money in it, it is written whole, and nothing of it spent yet is
+    // «0%».
     const fund = card(html, 'fund');
     expect(fund).toContain('50,000.00');
     expect(fund).toMatch(/data-custody-fund-pct="true"[^>]*>0%</u);
-    // Not set: «—» and where it is set, never «0.00 ج.م.».
-    const unset = card(draw(<CustodyKpis data={{ ...nothing, fundTotal: null }} />), 'fund');
-    expect(unset).toMatch(/data-custody-fund-value="true"[^>]*>—</u);
-    expect(text(unset)).toContain(ar('fleet.custody.fund.unset'));
+    // Nothing charged into it yet («شحن العهدة»): «0.00 ج.م.», never «—» — and its share «—».
+    const empty = card(draw(<CustodyKpis data={{ ...nothing, fundTotal: 0 }} />), 'fund');
+    expect(empty).toMatch(/data-custody-fund-value="true"[^>]*>0\.00</u);
+    expect(empty).toMatch(/data-custody-fund-pct="true"[^>]*>—</u);
     // The total and each kind: «0.00», their share of nothing «—», their count «0 حركات».
     expect(card(html, 'total')).toContain('0.00');
     expect(card(html, 'total')).toMatch(pct('—'));
@@ -2389,7 +2390,7 @@ describe('«هادية» — the board in the dashboard’s cards, the dashboard
     }
   });
 
-  it('puts the pager in the movements card’s foot — under the rows, on the strip’s colours, still emerald', () => {
+  it('puts the pager in the movements card’s foot — under the rows, on the strip’s colours, its current page purple', () => {
     const html = board(logRows);
     const movements = html.slice(html.indexOf('data-custody-movements="true"'));
     const pager = movements.indexOf('data-fleet-pager="true"');
@@ -2407,8 +2408,9 @@ describe('«هادية» — the board in the dashboard’s cards, the dashboard
         'dark:bg-[#0a101b]',
       ]),
     );
+    // «لا بنفسجى»: the current page in the site's purple, as on every other board.
     expect(classesOf(movements, 'aria-current="page"')).toEqual(
-      expect.arrayContaining(['bg-emerald-600', 'text-white']),
+      expect.arrayContaining(['bg-brand-600', 'text-white']),
     );
     // …and the per-car card has none: its rows are every car.
     expect(perCar(html)).not.toContain('data-fleet-pager');
@@ -2450,15 +2452,13 @@ describe('«هادية» — the board in the dashboard’s cards, the dashboard
         }
       }
     }
-    // Both say what IS emerald there, and that the toolbar stays purple.
-    for (const [name, source] of [
-      ['CustodyKinds.tsx', KINDS],
-      ['FleetPager.tsx', PAGER],
-    ] as const) {
-      const said = comments(source).join(' ');
-      expect(said, name).toMatch(/current page[^.;]*emerald|emerald[^.;]*current page/iu);
-      expect(said, name).toMatch(/toolbar[^.;]*purple/iu);
-    }
+    // The kinds say the toolbar and the pager's current page stay purple («لا بنفسجى»); the pager
+    // says the custody screen's current page is purple.
+    const kinds = comments(KINDS).join(' ');
+    expect(kinds).toMatch(/toolbar[^.;]*purple/iu);
+    expect(kinds).toMatch(/current page[^.;]*purple/iu);
+    expect(kinds).not.toMatch(/current page[^.;]*emerald|emerald[^.;]*current page/iu);
+    expect(comments(PAGER).join(' ')).toMatch(/custody[^.;]*purple|purple[^.;]*custody/iu);
   });
 
   it('paints every light surface of the board’s figures and strips with its dark one too', () => {
@@ -2694,9 +2694,9 @@ describe('«السجل» — every car’s own log, over the board', () => {
   });
 
   it('names the total’s share for what it is — of all the custody spent, never of the fund («إجمالي العهدة»)', () => {
-    // «إجمالي العهدة» is the fund itself now («مبلغ العهدة», no filter changes it); the car's
-    // 51.9% is of what the fund paid over the same filters, so it says «من إجمالي مصروفات العهدة»
-    // — the board's own name for that figure — in Arabic as in English.
+    // «إجمالي العهدة» is the fund itself now (what «شحن العهدة» charges into it, no filter changes
+    // it); the car's 51.9% is of what the fund paid over the same filters, so it says «من إجمالي
+    // مصروفات العهدة» — the board's own name for that figure — in Arabic as in English.
     expect(ar('fleet.custody.dashboard.carLog.ofSpend')).toBe(
       `من ${ar('fleet.custody.totals.total')}`,
     );
@@ -3373,7 +3373,8 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
     // Not the boards' small `FigureChip` any more.
     expect(FIGURES).not.toContain('FigureChip');
     expect(html).not.toContain('dark:bg-[#111827]');
-    // Of nothing, no share and no bar — never «NaN%» nor a bar of «NaN%» width.
+    // Of nothing, no share and no bar — never «NaN%» nor a bar of «NaN%» width. The fund's bar is
+    // drawn, empty: nothing in it yet to spend.
     const none = draw(
       <CustodyFigures
         totals={{
@@ -3384,12 +3385,12 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
           tyres: 0,
           wash: 0,
           vehicles: [],
-          fundTotal: null,
+          fundTotal: 0,
         }}
       />,
     );
     expect(none).not.toContain('data-custody-figure-share');
-    expect(none).not.toContain('style="width:');
+    expect([...none.matchAll(/style="width:([^"]*)"/gu)].map((m) => m[1])).toEqual(['0%']);
     expect(html + none).not.toMatch(/NaN/u);
   });
 

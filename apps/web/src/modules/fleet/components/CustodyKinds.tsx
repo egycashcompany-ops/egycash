@@ -5,10 +5,10 @@
 // «عاوز دى تكون فى شاشه العهد لما ادوس على لوحة التحكم فى اللايت سيم والدارك سيم»: the owner sent
 // the dashboard's design and chose its colours for the WHOLE custody screen — التوكيل blue, وقود
 // amber, كاوتش rose, غسيل cyan, the total emerald. That sets aside, on this screen only, the house
-// rule that kept amber and red for states and purple for what is picked: the pager's current page
-// and the filter's focus and selection are the design's emerald here. Not the toolbar —
-// «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات»: «الإحصائيات» and «لوحة تحكم»
-// stay the site's purple, as on every board, and the other Fleet boards keep the whole rule. The
+// rule that kept amber and red for states and purple for what is picked: the filter's focus and
+// selection are the design's emerald here. Not the toolbar — «لوحة التحكم والاحصائيات الاتنين يكون
+// لونهم موف زى باقى الشاشات»: «الإحصائيات» and «لوحة تحكم» stay the site's purple, as on every
+// board; nor the pager — «لا بنفسجى»: its current page is the site's purple too. The
 // shades are the design's: the dark theme draws a kind at 500 (its words at 300/400 on a 500/15
 // tile), the light theme at the 600 (blue, cyan) or 500 (amber, rose) the light map gives, its
 // words at 700–900 on a 50 tile. The kind's NAME still rides beside its colour — badge text,

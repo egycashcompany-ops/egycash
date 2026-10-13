@@ -104,7 +104,7 @@ const RankRow = ({
     >
       {formatNumber(place, locale)}
     </span>
-    <span className="font-mono text-xs" dir="ltr">
+    <span className="font-figures text-xs" dir="ltr">
       {code}
     </span>
     <span className="ms-auto tabular-nums">{formatNumber(km, locale)}</span>
@@ -395,7 +395,7 @@ export const FleetDashboardPage = (): JSX.Element => {
                             <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
                               {branchName(row.branchId)}
                             </td>
-                            <td className="px-3 py-2 font-mono text-xs" dir="ltr">
+                            <td className="px-3 py-2 font-figures text-xs" dir="ltr">
                               {row.code}
                             </td>
                             <td className="px-3 py-2 tabular-nums text-red-600 dark:text-red-400">
@@ -447,7 +447,7 @@ export const FleetDashboardPage = (): JSX.Element => {
                           data-accident-today={a.accidentId}
                           className="flex items-center gap-2 px-4 py-2 text-sm"
                         >
-                          <span className="font-mono text-xs" dir="ltr">
+                          <span className="font-figures text-xs" dir="ltr">
                             {a.code}
                           </span>
                           <CulpritName accident={a} />
@@ -512,7 +512,7 @@ export const FleetDashboardPage = (): JSX.Element => {
                               data-visit-today={visit.visitId}
                               className="border-t border-slate-100 dark:border-slate-800"
                             >
-                              <td className="px-3 py-2 font-mono text-xs" dir="ltr">
+                              <td className="px-3 py-2 font-figures text-xs" dir="ltr">
                                 {visit.code}
                               </td>
                               <td className="px-3 py-2 text-slate-600 dark:text-slate-300">

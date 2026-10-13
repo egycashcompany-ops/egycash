@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@ecms/contracts": "*",
+    "@fontsource/azeret-mono": "^5.3.0",
     "@fontsource/cairo": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@reduxjs/toolkit": "^2.5.0",

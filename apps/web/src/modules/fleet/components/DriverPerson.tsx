@@ -131,7 +131,7 @@ export const DriverIdentity = ({
         <span className="mt-0.5 block">
           <span
             dir="ltr"
-            className="inline-block font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+            className="inline-block font-figures text-[11px] font-semibold text-slate-500 dark:text-slate-400"
           >
             {code}
           </span>
@@ -169,7 +169,7 @@ const DriverLookView = ({
   trigger?: DriverCardTriggerProps;
 }): JSX.Element => {
   const codeShown = code !== null && code !== '';
-  const mono = 'font-mono font-bold';
+  const mono = 'font-figures font-bold';
   if (look === 'person') {
     return (
       <span className="inline-flex min-w-0 items-center gap-2" {...nameHover(trigger, name)}>
@@ -279,9 +279,9 @@ export const DriverCell = ({
   if (employeeId !== null) {
     // Somebody the roster does not carry (or not yet loaded): the id's tail, as before. On the two
     // boards that draw whole names it reads at the row's own type, as the names around it do — no
-    // size and no `font-mono` of its own, which the table's laptop rule would shrink to 12.5px.
+    // size and no `font-figures` of its own, which the table's laptop rule would shrink to 12.5px.
     return (
-      <span className={cn('text-slate-400', look !== 'name' && 'font-mono text-xs')} dir="ltr">
+      <span className={cn('text-slate-400', look !== 'name' && 'font-figures text-xs')} dir="ltr">
         {employeeId.slice(-8)}
       </span>
     );
@@ -633,7 +633,7 @@ export const DriverPicker = ({
             {pickedCard.card}
           </>
         ) : value !== '' ? (
-          <span className="font-mono text-xs text-slate-400" dir="ltr">
+          <span className="font-figures text-xs text-slate-400" dir="ltr">
             {value.slice(-8)}
           </span>
         ) : (

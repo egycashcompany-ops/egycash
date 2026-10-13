@@ -35,7 +35,8 @@ import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
 import { formatNumber } from '../../shared/lib/format';
 import { OdometerPage } from './pages/OdometerPage';
-import { currentMonthRange } from './lib/odometer-range';
+import { currentMonthRange, WHOLE_HISTORY } from './lib/odometer-range';
+import { rememberedOnly } from '../../shared/lib/useRememberedFilters';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from './components/CorrectOdometerDialog';
 import { BOARD_TABLE_FILL } from './components/board-scroll';
@@ -296,7 +297,6 @@ describe('the odometer table', () => {
     // …and it is the first CELL of every row, not merely the first header.
     // Written as the vehicles and drivers boards write a day: «2026/08/18».
     expect(firstCells(html), 'the first cell of page 1 is a date').toEqual(['2026/08/18']);
-
   });
 
   it('labels every column in BOTH locales — no header renders as a raw key', () => {
@@ -399,7 +399,16 @@ describe('the odometer table', () => {
     // «عاوز يتحفظ كداتا زى ما يكون سواق كان موجود ومشى»: a row from the old odometer book whose
     // driver HR does not know carries the spelling, and the column shows it in the employee's place.
     const markup = tbody(
-      render({ qc: client([log({ driver1EmployeeId: null, driver1Name: 'سائق غير موجود', driver2EmployeeId: null, driver2Name: null })]) }),
+      render({
+        qc: client([
+          log({
+            driver1EmployeeId: null,
+            driver1Name: 'سائق غير موجود',
+            driver2EmployeeId: null,
+            driver2Name: null,
+          }),
+        ]),
+      }),
     );
     expect(markup).toContain('سائق غير موجود');
     expect(markup).toContain('data-legacy-name="true"');
@@ -560,7 +569,7 @@ describe('the odometer table', () => {
     }
   });
 
-  it('centres every column as the drivers board does — the row’s actions stay at its end', () => {
+  it('centres every column as the drivers board does — the row’s actions too («تكون متوسطانه»)', () => {
     const html = render();
     const heads = [...thead(html).matchAll(/<th\b[^>]*class="([^"]*)"/g)].map(
       (m) => m[1] as string,
@@ -569,7 +578,7 @@ describe('the odometer table', () => {
     heads.slice(0, -1).forEach((cls, i) => {
       expect(cls, `${REQUIRED_COLUMNS[i]} header`).toContain('text-center');
     });
-    expect(heads.at(-1), 'the actions header').toContain('text-end');
+    expect(heads.at(-1), 'the actions header').toContain('text-center');
     const cells = [...tbody(html).matchAll(/<td\b[^>]*class="([^"]*)"/g)].map(
       (m) => m[1] as string,
     );
@@ -577,7 +586,7 @@ describe('the odometer table', () => {
     cells.slice(0, -1).forEach((cls, i) => {
       expect(cls, `${REQUIRED_COLUMNS[i]} cell`).toContain('text-center');
     });
-    expect(cells.at(-1), 'the actions cell').toContain('text-end');
+    expect(cells.at(-1), 'the actions cell').toContain('text-center');
   });
 
   it('shows the OPEN period as a state, never as a zero', () => {
@@ -652,7 +661,10 @@ describe('the distance since the last service', () => {
     ] as const) {
       const body = tbody(
         render({
-          qc: client([log()], [alarm({ level: 'none', sinceServiceKm: null, noAlarmReason: reason })]),
+          qc: client(
+            [log()],
+            [alarm({ level: 'none', sinceServiceKm: null, noAlarmReason: reason })],
+          ),
         }),
       );
       expect(body, reason).not.toContain(t(`fleet.alarms.noAlarmReason.${reason}`));
@@ -1072,7 +1084,7 @@ describe('the filter bar', () => {
       source.indexOf('<VehicleCodeFilter', source.indexOf('onClear={')),
     );
     expect(clear, 'the reset was found').toContain('patch({');
-    for (const key of ['vehicleCodes', 'from', 'to', 'drv', 'alerts', 'notes']) {
+    for (const key of ['vehicleCodes', 'from', 'to', 'period', 'drv', 'alerts', 'notes']) {
       expect(clear, `${key} cleared`).toContain(`${key}: null`);
     }
   });
@@ -1170,7 +1182,10 @@ describe('the filter bar', () => {
     // Clearing both bounds would put the page back on the defaulted month, which is the state the
     // reader is pressing the button to LEAVE: the request would be identical and nothing changes.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
-    const empty = source.slice(source.indexOf('const emptyMonth ='), source.indexOf('const columns'));
+    const empty = source.slice(
+      source.indexOf('const emptyMonth ='),
+      source.indexOf('const columns'),
+    );
     expect(empty, 'it sets both bounds').toContain('patch({ from: wider.from, to: wider.to })');
     expect(empty, 'it does not clear them').not.toContain('from: null');
   });
@@ -1184,10 +1199,11 @@ describe('the filter bar', () => {
       `/fleet/odometer?drv=${DRIVER_A}`,
       '/fleet/odometer?alerts=red',
     ]) {
-      const key =
-        route.includes('vehicleCodes') ? { vehicleCodes: ['150'] }
-        : route.includes('drv') ? { driverEmployeeIds: [DRIVER_A] }
-        : { alerts: ['red'] };
+      const key = route.includes('vehicleCodes')
+        ? { vehicleCodes: ['150'] }
+        : route.includes('drv')
+          ? { driverEmployeeIds: [DRIVER_A] }
+          : { alerts: ['red'] };
       const html = render({ route, qc: client([], [alarm()], key) });
       expect(html, `${route} gets the generic empty state`).not.toContain(
         t('fleet.odometer.emptyMonth.action'),
@@ -1214,6 +1230,109 @@ describe('the filter bar', () => {
     expect(without).not.toContain(`aria-label="${t('fleet.drivers.filters.employee')}"`);
     const with_ = render({ permissions: ['fleetOdometer.view', 'fleetDriver.view'] });
     expect(with_).toContain(`aria-label="${t('fleet.drivers.filters.employee')}"`);
+  });
+});
+
+/**
+ * THE CAR'S WHOLE HISTORY — «تاريخ العربيه كله».
+ *
+ * The vehicle profile's «العدادات» row counts every reading the car has, and opens this screen on
+ * `?vehicleCodes=<code>&period=all`. Without `period` the screen narrowed itself to the current
+ * month and listed fewer readings than the number the reader clicked.
+ */
+describe('`period=all` — the whole history the vehicle profile opens', () => {
+  const WHOLE = { vehicleCodes: ['150'], from: undefined, to: undefined };
+  const FROM_PROFILE = '/fleet/odometer?vehicleCodes=150&period=all';
+  /** The `<input>` a date bound draws, by its id. */
+  const dateBox = (html: string, id: string): string =>
+    new RegExp(`<input\\b[^>]*\\bid="${id}"[^>]*>`).exec(filterBar(html))?.[0] ?? '';
+
+  it('asks the server for NO date bound — the rows sit on a key with neither', () => {
+    // Seeded ONLY under the boundless key: the rows appear iff the request carried no dates.
+    const html = render({ route: FROM_PROFILE, qc: client([log()], [alarm()], WHOLE) });
+    expect(tbody(html)).toContain('150,000');
+  });
+
+  it('leaves BOTH date boxes empty — no month, no made-up first day', () => {
+    const html = render({ route: FROM_PROFILE, qc: client([log()], [alarm()], WHOLE) });
+    for (const id of ['odometer-from', 'odometer-to']) {
+      const box = dateBox(html, id);
+      expect(box, `${id} drawn`).not.toBe('');
+      expect(box, `${id} is empty`).toContain('value=""');
+    }
+    expect(filterBar(html), 'the month is not shown').not.toContain(`value="${MONTH.from}"`);
+  });
+
+  it('counts the whole history over the table — the number the profile showed', () => {
+    const qc = client([log()], [alarm()], WHOLE);
+    qc.setQueryData(ODOMETER_KEY(WHOLE), {
+      items: [log()],
+      meta: { page: 1, pageSize: 25, totalItems: 412, totalPages: 17 },
+    });
+    const html = render({ route: FROM_PROFILE, qc });
+    expect(html).toContain(
+      translate('ar', 'fleet.vehicle.count.odometer', { count: formatNumber(412, 'ar') }),
+    );
+  });
+
+  it('never offers to «widen» it — twelve months would NARROW the whole history', () => {
+    // Not even with no car picked, where the month hint would otherwise be the empty answer.
+    for (const [route, key] of [
+      [FROM_PROFILE, WHOLE],
+      ['/fleet/odometer?period=all', { from: undefined, to: undefined }],
+    ] as const) {
+      const html = render({ route, qc: client([], [alarm()], key) });
+      expect(html, route).not.toContain(t('fleet.odometer.emptyMonth.title'));
+      expect(html, route).not.toContain(t('fleet.odometer.emptyMonth.action'));
+      expect(html, `${route} still says the table is empty`).toContain(t('common.empty.title'));
+    }
+  });
+
+  it('is a choice the reset undoes — offered even with nothing else picked', () => {
+    const html = render({
+      route: '/fleet/odometer?period=all',
+      qc: client([log()], [alarm()], { from: undefined, to: undefined }),
+    });
+    expect(filterBar(html)).toContain(`aria-label="${t('common.filters.clear')}"`);
+  });
+
+  it('gives way to a date — in the URL, and when one is picked', () => {
+    const html = render({
+      route: `${FROM_PROFILE}&from=2026-01-01`,
+      qc: client([log()], [alarm()], { ...WHOLE, from: '2026-01-01' }),
+    });
+    expect(tbody(html), 'the request carried the picked start').toContain('150,000');
+    expect(dateBox(html, 'odometer-from')).toContain('value="2026-01-01"');
+    // Picking a date drops `period`, so clearing that date again goes back to the month — the
+    // rule itself is `dateBoundPatch`, run in lib/odometer-range.spec.ts. Guarded here: every
+    // date box on this screen writes through it, and no other date path is left.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    const dateBound = source.slice(
+      source.indexOf('const dateBound = ('),
+      source.indexOf('return (', source.indexOf('const dateBound = (') + 1),
+    );
+    expect(dateBound, 'the date box was found').toContain('type="date"');
+    expect(dateBound).toContain('onChange={(e) => patch(dateBoundPatch(param, e.target.value))}');
+    expect(source.match(/type="date"/g), 'one date input, drawn twice by `dateBound`').toHaveLength(
+      1,
+    );
+    expect(source.match(/\bdateBound\(/g), 'both bounds go through it').toHaveLength(2);
+  });
+
+  it('is NOT remembered — the next bare visit opens on the month again', () => {
+    // Following the link stores only the declared filters; `period` is not one, so the sidebar's
+    // bare `/fleet/odometer` later restores the car alone, which opens on the month.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    const declared = [
+      ...(/const REMEMBERED_FILTERS = \[([^\]]*)\] as const;/.exec(source)?.[1] ?? '').matchAll(
+        /'([^']+)'/g,
+      ),
+    ].map((m) => m[1] as string);
+    expect(declared, 'the declaration was found').toContain('vehicleCodes');
+    expect(declared).not.toContain('period');
+    expect(
+      rememberedOnly(new URLSearchParams(`vehicleCodes=150&period=${WHOLE_HISTORY}`), declared),
+    ).toBe('vehicleCodes=150');
   });
 });
 

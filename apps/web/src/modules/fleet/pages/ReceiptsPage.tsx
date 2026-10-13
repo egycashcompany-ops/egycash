@@ -27,7 +27,8 @@ import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatDate, formatMoneyParts, formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -82,8 +83,6 @@ const KM = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 const FIGURE = cn('whitespace-nowrap', NUM);
 /** An empty cell, as the boards draw one. */
 const DASH = <span className="text-slate-400">—</span>;
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 /** Every filter is `density="tight"`, as on the vehicles board. */
 const TIGHT = 'tight' as const;
@@ -395,31 +394,32 @@ export const ReceiptsPage = (): JSX.Element => {
     {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
-      align: 'end',
+      align: 'center',
+      // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`).
       render: (row) => (
-        <span className="flex items-center justify-end gap-1">
+        <span className={ACTION_GROUP} data-row-actions="receipt">
           {can('fleetReceipt.edit') && (
             <button
               type="button"
               data-receipt-edit={row.id}
-              className={actionButton}
+              className={actionTone('edit')}
               aria-label={t('fleet.receipts.edit')}
               title={t('fleet.receipts.edit')}
               onClick={() => setEditing(row)}
             >
-              <EditIcon className="h-4 w-4" />
+              <SquarePenIcon className="h-4 w-4" />
             </button>
           )}
           {can('fleetReceipt.delete') && (
             <button
               type="button"
               data-receipt-delete={row.id}
-              className={actionButton}
+              className={actionTone('delete')}
               aria-label={t('common.delete')}
               title={t('common.delete')}
               onClick={() => setDeleting(row)}
             >
-              <TrashIcon className="h-4 w-4" />
+              <Trash2Icon className="h-4 w-4" />
             </button>
           )}
         </span>

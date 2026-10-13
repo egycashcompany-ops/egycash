@@ -25,7 +25,8 @@ import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { useCancelUnavailability, useUnavailability } from '../api/fleet-queries';
@@ -135,9 +136,6 @@ export const AttendancePage = (): JSX.Element => {
     setCancelling(null);
   };
 
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
   const columns: Column<FleetDriverUnavailabilityDto>[] = [
     // «اعتمد دى»: the person as the drivers board draws one — the badge, the name, the code under it.
     {
@@ -179,26 +177,27 @@ export const AttendancePage = (): JSX.Element => {
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
-            align: 'end',
+            align: 'center',
+            // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`).
             render: (r: FleetDriverUnavailabilityDto) => (
-              <span className="flex items-center justify-end gap-1">
+              <span className={ACTION_GROUP} data-row-actions="attendance">
                 <button
                   type="button"
-                  className={actionButton}
+                  className={actionTone('edit')}
                   aria-label={t('fleet.attendance.edit')}
                   title={t('fleet.attendance.edit')}
                   onClick={() => setEditing(r)}
                 >
-                  <EditIcon className="h-4 w-4" />
+                  <SquarePenIcon className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
-                  className={actionButton}
+                  className={actionTone('delete')}
                   aria-label={t('fleet.attendance.cancel')}
                   title={t('fleet.attendance.cancel')}
                   onClick={() => setCancelling(r)}
                 >
-                  <TrashIcon className="h-4 w-4" />
+                  <Trash2Icon className="h-4 w-4" />
                 </button>
               </span>
             ),

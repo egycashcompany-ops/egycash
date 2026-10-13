@@ -46,7 +46,9 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Field, Select, Textarea } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, ResetIcon, TrashIcon } from '../../../shared/ui/icons';
+import { ResetIcon, TrashIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage, validationDetails } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
@@ -908,7 +910,7 @@ export const FixedRosterPage = (): JSX.Element => {
         <span
           data-vehicle-colour={row.vehicleId}
           className={cn(
-            'inline-block rounded-md px-2 py-0.5 font-mono text-xs',
+            'inline-block rounded-md px-2 py-0.5 font-figures text-xs',
             vehicleColour(row.vehicleId),
           )}
           dir="ltr"
@@ -1001,26 +1003,27 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
-      align: 'end',
+      align: 'center',
       render: (row) =>
         mayPlan ? (
-          <span className="flex items-center justify-end gap-1">
+          // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`).
+          <span className={ACTION_GROUP} data-row-actions="fixed-roster">
             {/* Edit is offered on EVERY row, crewed or not: a car with no crew is exactly the
                 one that needs a work type or a note set on it. */}
             <button
               type="button"
-              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              className={actionTone('edit')}
               aria-label={t('common.edit')}
               title={t('common.edit')}
               data-edit-row={row.vehicleId}
               onClick={() => setEditing(row.vehicleId)}
             >
-              <EditIcon className="h-4 w-4" />
+              <SquarePenIcon className="h-4 w-4" />
             </button>
             {row.driver1EmployeeId !== null || row.driver2EmployeeId !== null ? (
               <button
                 type="button"
-                className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                className={actionTone('delete')}
                 aria-label={t('fleet.fixedRoster.clearCrew')}
                 title={t('fleet.fixedRoster.clearCrew')}
                 // BOTH SEATS, IN ONE WRITE. Folding `clearSlot` over the slots promoted seat 2
@@ -1028,7 +1031,7 @@ export const FixedRosterPage = (): JSX.Element => {
                 // the pencil is «امسح الطاقم», not «امسح واحد».
                 onClick={() => setDraft((c) => clearCrew(c, row.vehicleId))}
               >
-                <TrashIcon className="h-4 w-4" />
+                <Trash2Icon className="h-4 w-4" />
               </button>
             ) : null}
           </span>

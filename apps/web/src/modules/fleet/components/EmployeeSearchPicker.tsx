@@ -87,7 +87,7 @@ export const EmployeeSearchPicker = ({
                       }`}
                     >
                       <span>{person.fullNameAr}</span>
-                      <span className="font-mono text-xs text-slate-500" dir="ltr">
+                      <span className="font-figures text-xs text-slate-500" dir="ltr">
                         {person.code}
                       </span>
                     </button>

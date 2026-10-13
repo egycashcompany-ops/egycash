@@ -10,13 +10,12 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EyeIcon, ImageIcon, UploadIcon } from '../../../shared/ui/icons';
+import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
+import { CloudUploadIcon } from './row-action-icons';
 import { ZoomableImage } from './ZoomableImage';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { fetchFuelCardImage } from '../api/fleet-api';
 import { useDeleteFuelCardImage, useUploadFuelCardImage } from '../api/fleet-queries';
-
-const iconButton =
-  'inline-flex cursor-pointer rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200';
 
 const useFuelCardImageUrl = (
   cardId: string,
@@ -75,7 +74,7 @@ export const FuelCardImageUpload = ({
     <PhotoPickButton
       data-fuel-image-upload={card.id}
       accept={LICENSE_IMAGE_ACCEPT}
-      className={className ?? iconButton}
+      className={className ?? IMAGE_EMPTY_BOX}
       disabled={upload.isPending}
       label={label}
       onFile={(file) => void pick(file)}
@@ -188,8 +187,8 @@ export const FuelCardImageDialog = ({
 };
 
 /**
- * The card's photo on its line: the eye opens it; a card with none offers the upload to a reader
- * who may edit, and «—» to anyone else.
+ * The card's photo on its line: the eye, in the owner's image box, opens it; a card with none
+ * offers the dashed box with the cloud upload to a reader who may edit, and «—» to anyone else.
  */
 export const FuelCardImageControl = ({
   card,
@@ -204,21 +203,23 @@ export const FuelCardImageControl = ({
     if (!can('fleetFuelCard.edit')) return <span>—</span>;
     return (
       <FuelCardImageUpload card={card} label={t('fleet.fuelCards.image.upload')}>
-        <UploadIcon className="h-4 w-4" />
+        <CloudUploadIcon className="h-4 w-4" />
       </FuelCardImageUpload>
     );
   }
   return (
-    <button
-      type="button"
-      data-fuel-image={card.id}
-      aria-label={t('fleet.fuelCards.image.view')}
-      title={t('fleet.fuelCards.image.view')}
-      onClick={() => onOpen(card)}
-      className={iconButton}
-    >
-      <EyeIcon className="h-4 w-4" />
-    </button>
+    <span className={IMAGE_GROUP}>
+      <button
+        type="button"
+        data-fuel-image={card.id}
+        aria-label={t('fleet.fuelCards.image.view')}
+        title={t('fleet.fuelCards.image.view')}
+        onClick={() => onOpen(card)}
+        className={actionTone('view')}
+      >
+        <EyeIcon className="h-4 w-4" />
+      </button>
+    </span>
   );
 };
 

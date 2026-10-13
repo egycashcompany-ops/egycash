@@ -13,7 +13,9 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, EyeIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, UploadIcon } from '../../../shared/ui/icons';
+import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
+import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
 import { useAppSelector } from '../../../store';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { fetchDriverLicenseImage } from '../api/fleet-api';
@@ -245,9 +247,6 @@ export const DriverLicenseImagePreviewDialog = ({
   );
 };
 
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
 /**
  * Print a driver's licence — the same document the vehicle registry prints, composed from what the
  * screen already knows about the profile. Offered from the row's actions.
@@ -288,8 +287,9 @@ export const usePrintDriverLicence = (driver: FleetDriverProfileDto): (() => Pro
 };
 
 /**
- * The table's licence cell: «رفع رخصة السائق» when there is no scan; when there is, a small box
- * with the eye, edit (replace) and delete.
+ * The table's licence cell: «رفع رخصة السائق» — the dashed box with the cloud upload — when there
+ * is no scan; when there is, the owner's image box with the eye, the replace arrow and the bin
+ * (`row-actions-look`).
  */
 export const DriverLicenseImageCell = ({
   driver,
@@ -332,49 +332,48 @@ export const DriverLicenseImageCell = ({
     return (
       <label
         data-driver-license-upload={driver.id}
-        className="relative inline-flex cursor-pointer rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+        className={`${IMAGE_EMPTY_BOX} relative`}
         title={t('fleet.drivers.licenseImage.upload')}
       >
-        <UploadIcon className="h-4 w-4" />
+        <CloudUploadIcon className="h-4 w-4" />
         {fileInput('fleet.drivers.licenseImage.upload')}
       </label>
     );
   }
 
-  const boxButton = 'rounded p-1 transition';
   return (
-    <span data-driver-license-box={driver.id} className="inline-flex items-center gap-0.5">
+    <span data-driver-license-box={driver.id} className={IMAGE_GROUP}>
       {/* «عاوز لما ارفعها يبقى فيه حذف وتعديل و عين عشان المعاينه»: the eye, edit (replace) and
           delete. */}
       <button
         type="button"
         data-driver-license-view={driver.id}
-        className={`${boxButton} text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800`}
+        className={actionTone('view')}
         aria-label={t('fleet.drivers.licenseImage.view')}
         title={t('fleet.drivers.licenseImage.view')}
         onClick={() => onPreview(driver)}
       >
-        <EyeIcon className="h-3.5 w-3.5" />
+        <EyeIcon className="h-4 w-4" />
       </button>
       {mayManage && (
         <label
           data-driver-license-replace={driver.id}
-          className={`${boxButton} relative cursor-pointer text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800`}
+          className={`${actionTone('upload')} relative cursor-pointer`}
           title={t('fleet.drivers.licenseImage.replace')}
         >
-          <EditIcon className="h-3.5 w-3.5" />
+          <ArrowUpFromLineIcon className="h-4 w-4" />
           {fileInput('fleet.drivers.licenseImage.replace')}
         </label>
       )}
       {mayManage && (
         <button
           type="button"
-          className="rounded p-1 text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          className={actionTone('delete')}
           aria-label={t('fleet.drivers.licenseImage.delete')}
           title={t('fleet.drivers.licenseImage.delete')}
           onClick={() => setConfirming(true)}
         >
-          <TrashIcon className="h-3.5 w-3.5" />
+          <Trash2Icon className="h-4 w-4" />
         </button>
       )}
       <DriverLicenseImageDeleteDialog
@@ -465,7 +464,7 @@ export const DriverLicenseImageField = ({
       )}
       <button
         type="button"
-        className={actionButton}
+        className={actionTone('view')}
         aria-label={t('fleet.drivers.licenseImage.view')}
         title={t('fleet.drivers.licenseImage.view')}
         onClick={() => setPreviewing(true)}
@@ -477,12 +476,12 @@ export const DriverLicenseImageField = ({
           {picker('fleet.drivers.licenseImage.replace')}
           <button
             type="button"
-            className={actionButton}
+            className={actionTone('delete')}
             aria-label={t('fleet.drivers.licenseImage.delete')}
             title={t('fleet.drivers.licenseImage.delete')}
             onClick={() => setConfirming(true)}
           >
-            <TrashIcon className="h-4 w-4" />
+            <Trash2Icon className="h-4 w-4" />
           </button>
         </>
       )}
@@ -559,7 +558,7 @@ export const StagedDriverLicenseImage = ({
       )}
       <button
         type="button"
-        className={actionButton}
+        className={actionTone('view')}
         aria-label={t('fleet.drivers.licenseImage.view')}
         title={t('fleet.drivers.licenseImage.view')}
         onClick={() => setPreviewing(true)}
@@ -572,12 +571,12 @@ export const StagedDriverLicenseImage = ({
       <button
         type="button"
         data-driver-license-unstage
-        className={actionButton}
+        className={actionTone('delete')}
         aria-label={t('fleet.drivers.licenseImage.delete')}
         title={t('fleet.drivers.licenseImage.delete')}
         onClick={onClear}
       >
-        <TrashIcon className="h-4 w-4" />
+        <Trash2Icon className="h-4 w-4" />
       </button>
 
       <Dialog

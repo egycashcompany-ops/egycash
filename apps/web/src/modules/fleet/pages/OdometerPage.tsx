@@ -36,7 +36,8 @@ import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
-import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -51,14 +52,22 @@ import { DARK_TABLE } from './VehiclesListPage';
 import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
-import { odometerRange, widerRange } from '../lib/odometer-range';
+import { dateBoundPatch, odometerRange, widerRange } from '../lib/odometer-range';
 import { DriverCell } from '../components/DriverPerson';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
-/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+/**
+ * Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept.
+ *
+ * `period` is NOT kept, on purpose. It arrives on the vehicle profile's link (the car's whole
+ * history, see `WHOLE_HISTORY`), and the link itself carries it every time it is followed. Kept, it
+ * would reopen the next bare visit from the sidebar on the whole history — of the remembered car,
+ * or of every car if the reader had cleared it — instead of this month: the profile's question
+ * answered again on a screen nobody opened for it.
+ */
 const REMEMBERED_FILTERS = [
   'alerts',
   'drv',
@@ -137,9 +146,14 @@ export const OdometerPage = (): JSX.Element => {
   // What the URL asks for, and what is actually sent. They differ only on arrival: with neither
   // bound given the request is narrowed to the CURRENT MONTH rather than the whole history, and
   // the two date boxes show that month so the reader can see which days they are looking at.
+  // The exception is `period=all` — the vehicle profile's «العدادات» row, «تاريخ العربيه كله»: no
+  // bound is sent and both boxes stay EMPTY, because no date was chosen.
   // `now` is read once per mount — a value that changed every render would rebuild the request.
   const now = useMemo(() => new Date(), []);
-  const range = odometerRange({ from: sp.get('from') ?? '', to: sp.get('to') ?? '' }, now);
+  const range = odometerRange(
+    { from: sp.get('from') ?? '', to: sp.get('to') ?? '', period: sp.get('period') ?? '' },
+    now,
+  );
   const from = range.from;
   const to = range.to;
   // WHO, as ids picked off the drivers registry — not as a string HR has to search for.
@@ -173,7 +187,8 @@ export const OdometerPage = (): JSX.Element => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
   // The defaulted month is not an "active filter": it is where the page starts, so the reset
-  // affordance stays off until the reader has actually narrowed something.
+  // affordance stays off until the reader has actually narrowed something. The whole history
+  // (`period=all`) IS one — not the default — and the reset takes the page back to the month.
   const hasActiveFilters =
     vehicleCodes.length > 0 ||
     !range.defaulted ||
@@ -227,7 +242,9 @@ export const OdometerPage = (): JSX.Element => {
    * Only when the month is ACTUALLY the reason: the range must be the defaulted one, and no other
    * filter may be narrowing the question. With a car or a driver or an alarm level picked, the
    * honest answer is the generic «no results» — widening the dates would not necessarily find
-   * anything, and a button promising it would be a guess.
+   * anything, and a button promising it would be a guess. On the whole history (`period=all`) the
+   * range is never the defaulted one: there is nothing wider to offer, and the button's twelve
+   * months would NARROW the question.
    */
   const monthIsTheReason =
     range.defaulted && vehicleCodes.length === 0 && drivers.length === 0 && alerts.length === 0;
@@ -274,9 +291,6 @@ export const OdometerPage = (): JSX.Element => {
     toast.success(t('fleet.odometer.deleted'));
     setDeleting(null);
   };
-
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   /**
    * THE DRIVERS' NAMES FOR A WHOLE EXPORT, through the very cache the table's cells fill.
@@ -583,33 +597,33 @@ export const OdometerPage = (): JSX.Element => {
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
-            align: 'end',
+            align: 'center',
             render: (log: FleetOdometerLogDto) => (
-              // The boards' row actions: grey icons, the delete as grey as the rest.
-              <span className="flex items-center justify-end gap-1">
+              // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`).
+              <span className={ACTION_GROUP} data-row-actions="odometer">
                 {/* A row the old book kept for a car the registry does not have is on no car's
                     chain, and the server refuses to correct it — so it is not offered. */}
                 {can('fleetOdometer.correct') && log.vehicleId !== null && (
                   <button
                     type="button"
-                    className={actionButton}
+                    className={actionTone('edit')}
                     aria-label={t('fleet.odometer.correct')}
                     title={t('fleet.odometer.correct')}
                     onClick={() => setCorrecting(log)}
                   >
-                    <EditIcon className="h-4 w-4" />
+                    <SquarePenIcon className="h-4 w-4" />
                   </button>
                 )}
                 {can('fleetOdometer.delete') && (
                   <button
                     type="button"
                     data-odometer-delete={log.id}
-                    className={actionButton}
+                    className={actionTone('delete')}
                     aria-label={t('common.delete')}
                     title={t('common.delete')}
                     onClick={() => setDeleting(log)}
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    <Trash2Icon className="h-4 w-4" />
                   </button>
                 )}
               </span>
@@ -624,18 +638,27 @@ export const OdometerPage = (): JSX.Element => {
    * the vehicles board carries its icon.
    *
    * A date input ignores `placeholder` in every browser and paints its own `yyyy/mm/dd` hint
-   * instead, and on this screen both bounds always hold a date (the defaulted month) — so the two
-   * are identical to look at and a caption is the only thing that can tell them apart. It goes
-   * BESIDE the control, inside the `<label>` that owns it, never stacked above it, which is what
-   * would put this bar out of step with the label-less filters around it and cost the row its
-   * height.
+   * instead, and on this screen both bounds hold a date (the defaulted month) or, on the whole
+   * history, are both empty — so the two are identical to look at and a caption is the only thing
+   * that can tell them apart. It goes BESIDE the control, inside the `<label>` that owns it, never
+   * stacked above it, which is what would put this bar out of step with the label-less filters
+   * around it and cost the row its height.
+   *
+   * Picking a date lets go of `period=all` (`dateBoundPatch`): the reader has chosen days, and the
+   * chosen days are the question now — clearing that date again goes back to the month, not to
+   * the whole history.
    *
    * `dir="ltr"` keeps the date reading left-to-right on an Arabic page. The width lives on the
    * wrapper: `Input` is `w-full` at its base and `cn` does not merge Tailwind classes, so a `w-*`
    * passed to it would only compete with that. A date needs about ten characters and no more —
    * until the bar shares its row on a computer, where the box fills its share beside its caption.
    */
-  const dateBound = (id: string, labelKey: string, value: string, param: string): JSX.Element => (
+  const dateBound = (
+    id: string,
+    labelKey: string,
+    value: string,
+    param: 'from' | 'to',
+  ): JSX.Element => (
     <label className="flex shrink-0 items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400">
       <span className="whitespace-nowrap">{t(labelKey)}</span>
       <span className="w-36 lg:flex-1">
@@ -652,7 +675,7 @@ export const OdometerPage = (): JSX.Element => {
             aria-label={t(labelKey)}
             title={t(labelKey)}
             value={value}
-            onChange={(e) => patch({ [param]: e.target.value || null })}
+            onChange={(e) => patch(dateBoundPatch(param, e.target.value))}
             className="dark:[color-scheme:dark]"
           />
         </FilterWithIcon>
@@ -734,6 +757,7 @@ export const OdometerPage = (): JSX.Element => {
                 vehicleCodes: null,
                 from: null,
                 to: null,
+                period: null,
                 drv: null,
                 alerts: null,
                 notes: null,

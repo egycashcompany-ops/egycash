@@ -29,7 +29,10 @@ import { SideLayer } from '../../../shared/ui/SideLayer';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { CheckIcon, EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { CheckIcon } from '../../../shared/ui/icons';
+import { cn } from '../../../shared/lib/cn';
+import { ACTION_GROUP, PRESSED, actionTone } from './row-actions-look';
+import { SquarePenIcon, Trash2Icon } from './row-action-icons';
 import { DriverName } from './EmployeeName';
 import { FromOldBookLegend, violationRowTone } from './ViolationRowTone';
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
@@ -115,7 +118,20 @@ export const CompanyViolationsDetailLayer = ({
    * `DriverViolationDialog` and the company rows open `VehicleViolationDialog` from this one cell.
    */
   const rowActions = (v: FleetViolationDto): JSX.Element => (
-    <span className="flex items-center justify-center gap-1">
+    // «اعملى الالوان دى»: the pen, the tick (violet — a status), the bin, in the owner's box.
+    <span className={ACTION_GROUP} data-row-actions="violation-detail">
+      {can('fleetViolation.edit') && (
+        <button
+          type="button"
+          data-detail-edit={v.id}
+          aria-label={t('fleet.violations.edit')}
+          title={t('fleet.violations.edit')}
+          onClick={() => onEdit(v)}
+          className={actionTone('edit')}
+        >
+          <SquarePenIcon className="h-4 w-4" />
+        </button>
+      )}
       {can('fleetViolation.collect') && (
         <button
           type="button"
@@ -124,12 +140,7 @@ export const CompanyViolationsDetailLayer = ({
           aria-label={t(v.collected ? 'fleet.violations.uncollect' : 'fleet.violations.collect')}
           title={t(v.collected ? 'fleet.violations.uncollect' : 'fleet.violations.collect')}
           onClick={() => void toggle(v)}
-          className={[
-            'rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
-            v.collected
-              ? 'text-emerald-600 hover:bg-emerald-100 dark:text-emerald-400'
-              : 'text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800',
-          ].join(' ')}
+          className={cn(actionTone('status'), v.collected && PRESSED)}
         >
           <CheckIcon className="h-4 w-4" />
         </button>
@@ -141,21 +152,9 @@ export const CompanyViolationsDetailLayer = ({
           aria-label={t('fleet.violations.delete')}
           title={t('fleet.violations.delete')}
           onClick={() => onDelete(v)}
-          className="rounded-md p-1.5 text-rose-500 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 dark:hover:bg-rose-950"
+          className={actionTone('delete')}
         >
-          <TrashIcon className="h-4 w-4" />
-        </button>
-      )}
-      {can('fleetViolation.edit') && (
-        <button
-          type="button"
-          data-detail-edit={v.id}
-          aria-label={t('fleet.violations.edit')}
-          title={t('fleet.violations.edit')}
-          onClick={() => onEdit(v)}
-          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
-        >
-          <EditIcon className="h-4 w-4" />
+          <Trash2Icon className="h-4 w-4" />
         </button>
       )}
     </span>
@@ -266,9 +265,9 @@ export const CompanyViolationsDetailLayer = ({
                   aria-label={t('fleet.violations.grievance')}
                   title={t('fleet.violations.grievance')}
                   onClick={() => onGrievance(row)}
-                  className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
+                  className={actionTone('edit')}
                 >
-                  <EditIcon className="h-4 w-4" />
+                  <SquarePenIcon className="h-4 w-4" />
                 </button>
               )}
             </span>

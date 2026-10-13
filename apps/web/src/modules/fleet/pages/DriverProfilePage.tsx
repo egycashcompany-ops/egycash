@@ -27,7 +27,9 @@ import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatAmount, formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { listKey } from '../../../shared/lib/query-keys';
 import { cn } from '../../../shared/lib/cn';
@@ -184,8 +186,6 @@ export const DriverProfilePage = (): JSX.Element => {
     setCancelling(null);
   };
 
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
   const displayName = name ?? profile.licenseNumber ?? t('fleet.nav.drivers');
   const branchName = (() => {
     const branch = branches.find((b) => b.id === person?.branchId);
@@ -292,7 +292,7 @@ export const DriverProfilePage = (): JSX.Element => {
     <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-[#0b0f19]/50">
       <div>
         <span className="block text-[11px] text-slate-500 dark:text-slate-400">{label}</span>
-        <span className={cn('font-mono text-base font-bold', tone)}>{value ?? '—'}</span>
+        <span className={cn('font-figures text-base font-bold', tone)}>{value ?? '—'}</span>
       </div>
       <BoardIcon d={icon} className={cn('h-5 w-5', iconTone)} />
     </div>
@@ -396,7 +396,7 @@ export const DriverProfilePage = (): JSX.Element => {
                 </h1>
                 {person !== undefined && (
                   <span
-                    className="inline-flex items-center rounded-md border border-slate-300 bg-slate-100 px-2.5 py-0.5 font-mono text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    className="inline-flex items-center rounded-md border border-slate-300 bg-slate-100 px-2.5 py-0.5 font-figures text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     title={t('fleet.drivers.columns.employeeCode')}
                   >
                     <BoardIcon
@@ -504,7 +504,7 @@ export const DriverProfilePage = (): JSX.Element => {
                     ? undefined
                     : tag(
                         person.code,
-                        'border border-brand-300 bg-brand-50 font-mono text-brand-700 dark:border-brand-800/40 dark:bg-brand-950/60 dark:text-brand-300',
+                        'border border-brand-300 bg-brand-50 font-figures text-brand-700 dark:border-brand-800/40 dark:bg-brand-950/60 dark:text-brand-300',
                       )
                 }
               />
@@ -588,7 +588,7 @@ export const DriverProfilePage = (): JSX.Element => {
                   profile.licenseExpiresAt === null ? (
                     dash
                   ) : (
-                    <span className={cn('font-mono', licenseExpired && 'text-red-500')}>
+                    <span className={cn('font-figures', licenseExpired && 'text-red-500')}>
                       {dayAndTime(profile.licenseExpiresAt).day}
                     </span>
                   )
@@ -609,14 +609,18 @@ export const DriverProfilePage = (): JSX.Element => {
               <GlassTile
                 icon={PROFILE_ICON.calendar}
                 label={t('fleet.drivers.profile.createdAt')}
-                value={<span className="font-mono text-xs font-semibold">{created.day}</span>}
-                aside={<span className="font-mono text-[11px] text-slate-400">{created.time}</span>}
+                value={<span className="font-figures text-xs font-semibold">{created.day}</span>}
+                aside={
+                  <span className="font-figures text-[11px] text-slate-400">{created.time}</span>
+                }
               />
               <GlassTile
                 icon={PROFILE_ICON.clock}
                 label={t('fleet.vehicle.updatedAt')}
-                value={<span className="font-mono text-xs font-semibold">{updated.day}</span>}
-                aside={<span className="font-mono text-[11px] text-slate-400">{updated.time}</span>}
+                value={<span className="font-figures text-xs font-semibold">{updated.day}</span>}
+                aside={
+                  <span className="font-figures text-[11px] text-slate-400">{updated.time}</span>
+                }
               />
             </div>
 
@@ -625,7 +629,7 @@ export const DriverProfilePage = (): JSX.Element => {
                 <span className="flex items-center gap-2">
                   <BoardIcon d={PROFILE_ICON.phone} className="h-3.5 w-3.5 text-slate-500" />
                   {t('fleet.drivers.profile.phone')}:{' '}
-                  <strong className="font-mono text-slate-800 dark:text-slate-200" dir="ltr">
+                  <strong className="font-figures text-slate-800 dark:text-slate-200" dir="ltr">
                     {person?.phone ?? '—'}
                   </strong>
                 </span>
@@ -790,24 +794,27 @@ export const DriverProfilePage = (): JSX.Element => {
                           )}
                         </span>
                         <Can permission="fleetAvailability.edit">
-                          <button
-                            type="button"
-                            className={actionButton}
-                            aria-label={t('fleet.attendance.edit')}
-                            title={t('fleet.attendance.edit')}
-                            onClick={() => setEditingRecord(record)}
-                          >
-                            <EditIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            className={actionButton}
-                            aria-label={t('fleet.attendance.cancel')}
-                            title={t('fleet.attendance.cancel')}
-                            onClick={() => setCancelling(record)}
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
+                          {/* «اعملى الالوان دى»: the pen and the bin in the owner's box. */}
+                          <span className={ACTION_GROUP} data-row-actions="driver-leave">
+                            <button
+                              type="button"
+                              className={actionTone('edit')}
+                              aria-label={t('fleet.attendance.edit')}
+                              title={t('fleet.attendance.edit')}
+                              onClick={() => setEditingRecord(record)}
+                            >
+                              <SquarePenIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className={actionTone('delete')}
+                              aria-label={t('fleet.attendance.cancel')}
+                              title={t('fleet.attendance.cancel')}
+                              onClick={() => setCancelling(record)}
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                            </button>
+                          </span>
                         </Can>
                       </li>
                     ))}
@@ -827,7 +834,7 @@ export const DriverProfilePage = (): JSX.Element => {
                         key={reading.id}
                         className="flex flex-wrap items-center gap-4 py-3 text-sm"
                       >
-                        <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                        <span className="font-figures font-bold text-slate-800 dark:text-slate-100">
                           {dayAndTime(reading.date).day}
                         </span>
                         <span className="text-slate-600 dark:text-slate-300">
@@ -835,7 +842,7 @@ export const DriverProfilePage = (): JSX.Element => {
                             code: reading.vehicleCode ?? '—',
                           })}
                         </span>
-                        <span className="font-mono text-slate-500 dark:text-slate-400">
+                        <span className="font-figures text-slate-500 dark:text-slate-400">
                           {reading.km === null
                             ? '—'
                             : `${formatNumber(reading.km, locale)} ${t('fleet.vehicle.km')}`}
@@ -863,7 +870,7 @@ export const DriverProfilePage = (): JSX.Element => {
                           {note.text}
                         </span>
                         {note.when !== null && (
-                          <span className="font-mono text-xs text-slate-500">
+                          <span className="font-figures text-xs text-slate-500">
                             {dayAndTime(note.when).day}
                           </span>
                         )}

@@ -23,7 +23,8 @@ import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { openDatePicker } from '../../../shared/lib/open-date-picker';
@@ -166,9 +167,6 @@ export const DealershipPage = (): JSX.Element => {
     row.side === null ? '' : t(`fleet.dealership.side.${row.side}`);
   const dash = <span className="text-slate-400">—</span>;
 
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
   const columns: Column<FleetDealershipInvoiceDto>[] = [
     {
       key: 'outDate',
@@ -258,15 +256,18 @@ export const DealershipPage = (): JSX.Element => {
     },
     {
       key: 'image',
+      align: 'center',
       header: t('fleet.dealership.columns.image'),
       render: (row) => <DealershipImageCell row={row} onPreview={setPreviewing} />,
     },
     {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
-      align: 'end',
+      align: 'center',
+      // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`). A row
+      // still waiting for its invoice keeps «تسجيل الفاتورة» — a labelled button — beside the box.
       render: (row) => (
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex items-center gap-1.5">
           {can('fleetDealership.edit') && row.pending && (
             <button
               type="button"
@@ -278,29 +279,33 @@ export const DealershipPage = (): JSX.Element => {
               {t('fleet.dealership.record')}
             </button>
           )}
-          {can('fleetDealership.edit') && !row.pending && (
-            <button
-              type="button"
-              className={actionButton}
-              aria-label={t('fleet.dealership.edit')}
-              title={t('fleet.dealership.edit')}
-              onClick={() => setRecording(row)}
-            >
-              <EditIcon className="h-4 w-4" />
-            </button>
-          )}
-          {can('fleetDealership.delete') && (
-            <button
-              type="button"
-              data-dealership-delete={row.id}
-              className={actionButton}
-              aria-label={t('common.delete')}
-              title={t('common.delete')}
-              onClick={() => setDeleting(row)}
-            >
-              <TrashIcon className="h-4 w-4" />
-            </button>
-          )}
+          {(can('fleetDealership.edit') && !row.pending) || can('fleetDealership.delete') ? (
+            <span className={ACTION_GROUP} data-row-actions="dealership">
+              {can('fleetDealership.edit') && !row.pending && (
+                <button
+                  type="button"
+                  className={actionTone('edit')}
+                  aria-label={t('fleet.dealership.edit')}
+                  title={t('fleet.dealership.edit')}
+                  onClick={() => setRecording(row)}
+                >
+                  <SquarePenIcon className="h-4 w-4" />
+                </button>
+              )}
+              {can('fleetDealership.delete') && (
+                <button
+                  type="button"
+                  data-dealership-delete={row.id}
+                  className={actionTone('delete')}
+                  aria-label={t('common.delete')}
+                  title={t('common.delete')}
+                  onClick={() => setDeleting(row)}
+                >
+                  <Trash2Icon className="h-4 w-4" />
+                </button>
+              )}
+            </span>
+          ) : null}
         </span>
       ),
     },

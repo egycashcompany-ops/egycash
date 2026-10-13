@@ -80,7 +80,7 @@ export const EmployeeName = ({
   const hover = useDriverHoverCard(card && person !== undefined ? [person] : []);
   if (person === undefined) {
     return (
-      <span className="font-mono text-xs text-slate-400" dir="ltr">
+      <span className="font-figures text-xs text-slate-400" dir="ltr">
         {employeeId.slice(-8)}
       </span>
     );
@@ -89,7 +89,7 @@ export const EmployeeName = ({
     <>
       <span {...hover.triggerProps}>
         {person.fullNameAr}
-        <span className="ms-2 font-mono text-xs text-slate-500" dir="ltr">
+        <span className="ms-2 font-figures text-xs text-slate-500" dir="ltr">
           {person.code}
         </span>
       </span>

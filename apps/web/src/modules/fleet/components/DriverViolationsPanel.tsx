@@ -22,14 +22,9 @@ import { Field, Input, Select } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import {
-  CheckIcon,
-  EditIcon,
-  TrashIcon,
-  PrinterIcon,
-  ResetIcon,
-  DownloadIcon,
-} from '../../../shared/ui/icons';
+import { CheckIcon, PrinterIcon, ResetIcon, DownloadIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, PRESSED, actionTone } from './row-actions-look';
+import { SquarePenIcon, Trash2Icon } from './row-action-icons';
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
 import { violationsLoadState } from '../lib/violations-paging';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -406,7 +401,7 @@ export const DriverViolationsPanel = ({
       className: 'w-px whitespace-nowrap',
       headerClassName: 'w-px',
       render: (row) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span className="font-figures text-xs" dir="ltr">
           {row.vehicleCode ?? (row.vehicleId === null ? '—' : (codeOf.get(row.vehicleId) ?? '—'))}
         </span>
       ),
@@ -512,8 +507,22 @@ export const DriverViolationsPanel = ({
             align: 'center' as const,
             className: 'w-px whitespace-nowrap',
             headerClassName: 'w-px',
+            // «اعملى الالوان دى»: the pen, the tick (violet — a status), the bin, in the owner's
+            // box (`row-actions-look`).
             render: (row: FleetViolationDto) => (
-              <span className="flex items-center justify-center gap-1">
+              <span className={ACTION_GROUP} data-row-actions="driver-violation">
+                {mayEdit && (
+                  <button
+                    type="button"
+                    data-edit={row.id}
+                    aria-label={t('fleet.violations.edit')}
+                    title={t('fleet.violations.edit')}
+                    onClick={() => onEdit(row)}
+                    className={actionTone('edit')}
+                  >
+                    <SquarePenIcon className="h-4 w-4" />
+                  </button>
+                )}
                 {mayCollect && (
                   <button
                     type="button"
@@ -526,12 +535,7 @@ export const DriverViolationsPanel = ({
                       row.collected ? 'fleet.violations.uncollect' : 'fleet.violations.collect',
                     )}
                     onClick={() => void toggleCollected(row)}
-                    className={[
-                      'rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
-                      row.collected
-                        ? 'text-emerald-600 hover:bg-emerald-100 dark:text-emerald-400 dark:hover:bg-emerald-900'
-                        : 'text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800',
-                    ].join(' ')}
+                    className={cn(actionTone('status'), row.collected && PRESSED)}
                   >
                     <CheckIcon className="h-4 w-4" />
                   </button>
@@ -543,21 +547,9 @@ export const DriverViolationsPanel = ({
                     aria-label={t('fleet.violations.delete')}
                     title={t('fleet.violations.delete')}
                     onClick={() => onDelete(row)}
-                    className="rounded-md p-1.5 text-rose-500 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 dark:hover:bg-rose-950"
+                    className={actionTone('delete')}
                   >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
-                )}
-                {mayEdit && (
-                  <button
-                    type="button"
-                    data-edit={row.id}
-                    aria-label={t('fleet.violations.edit')}
-                    title={t('fleet.violations.edit')}
-                    onClick={() => onEdit(row)}
-                    className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
-                  >
-                    <EditIcon className="h-4 w-4" />
+                    <Trash2Icon className="h-4 w-4" />
                   </button>
                 )}
               </span>

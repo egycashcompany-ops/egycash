@@ -47,10 +47,17 @@ import {
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { LicenseImagePreviewDialog } from '../components/VehicleLicenseImage';
+import { WHOLE_HISTORY } from '../lib/odometer-range';
 
 /**
  * The profile's history links, lit per slice as each page ships (owner navigation rule). Each
- * target is a URL-synced list, so the link pre-filters it to this vehicle.
+ * target is a URL-synced list, so the link pre-filters it to this vehicle — in the param that
+ * target's OWN car filter reads, holding the car's CODE (none of them reads an id from the URL):
+ * odometer, maintenance and accidents `vehicleCodes`; violations `codes` (company half) AND
+ * `dcodes` (drivers half), since the row's count spans both kinds; roster `q`. The car then shows
+ * in the target's filter, where the reader can clear it. A param the target does not read opens
+ * the whole fleet unfiltered — `?vehicle=<id>` did on four of the five — so
+ * fleet-vehicle-history-links.spec.tsx pins each link to a param its target reads.
  */
 const HISTORY_LINKS: {
   key: 'odometer' | 'maintenance' | 'accidents' | 'violations' | 'roster';
@@ -62,35 +69,43 @@ const HISTORY_LINKS: {
   {
     key: 'odometer',
     icon: PROFILE_ICON.bolt,
-    to: (v) => `/fleet/odometer?vehicle=${v.id}`,
+    // «تاريخ العربيه كله»: this row's count spans the car's WHOLE history, so the link asks for
+    // it — `period=all`. With no date in the URL the odometer would open on the CURRENT MONTH
+    // (`odometerRange`) and list fewer readings than the count promised. No date is sent: the
+    // screen's date boxes stay empty rather than showing a made-up first day.
+    to: (v) => `/fleet/odometer?vehicleCodes=${encodeURIComponent(v.code)}&period=${WHOLE_HISTORY}`,
     permission: 'fleetOdometer.view',
     shipped: true, // FW-6
   },
   {
     key: 'maintenance',
     icon: PROFILE_ICON.gear,
-    to: (v) => `/fleet/maintenance?vehicle=${v.id}`,
+    to: (v) => `/fleet/maintenance?vehicleCodes=${encodeURIComponent(v.code)}`,
     permission: 'fleetMaintenance.view',
     shipped: true, // FW-6
   },
   {
     key: 'accidents',
     icon: PROFILE_ICON.warn,
-    to: (v) => `/fleet/accidents?vehicle=${v.id}`,
+    to: (v) => `/fleet/accidents?vehicleCodes=${encodeURIComponent(v.code)}`,
     permission: 'fleetAccident.view',
     shipped: true, // FW-8
   },
   {
     key: 'violations',
     icon: PROFILE_ICON.doc,
-    to: (v) => `/fleet/violations?vehicle=${v.id}`,
+    to: (v) =>
+      `/fleet/violations?codes=${encodeURIComponent(v.code)}&dcodes=${encodeURIComponent(v.code)}`,
     permission: 'fleetViolation.view',
     shipped: true, // FW-9
   },
   {
     key: 'roster',
     icon: PROFILE_ICON.person,
-    // The roster board is day-keyed, so the pre-filter is the vehicle's code in the search.
+    // The roster board is day-keyed and filtered in the browser, so the pre-filter is the car's
+    // code in the board's own car filter (`q`). Known difference, left as the board has it: that
+    // filter matches a code CONTAINING the one picked (`matchesVehicleCode`, the same as picking
+    // the car on the board itself), so a short code also shows longer ones — 21 shows 121 and 210.
     to: (v) => `/fleet/roster?q=${encodeURIComponent(v.code)}`,
     permission: 'fleetRoster.view',
     shipped: true, // FW-7
@@ -251,13 +266,23 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
 /**
  * How many records each history row leads to — the list's own total for this car, asked with a
  * one-row page so nothing but the count travels. Each is asked only under its own permission.
+ *
+ * The odometer's count asks with the very car filter its link sends — the CODE
+ * (`vehicleCodes`), not the id. The screen matches a code against the registry car AND against
+ * readings kept from the old book under that code with no car attached (`byVehicleOrBookCode`);
+ * counted by id, a car that joined the registry after the book import would promise fewer
+ * readings than «العدادات» then lists.
  */
 const useHistoryCounts = (
   vehicleId: string,
+  vehicleCode: string,
   can: (permission: string) => boolean,
 ): Partial<Record<(typeof HISTORY_LINKS)[number]['key'], number>> => {
   const one = { vehicleId, page: 1, pageSize: 1 };
-  const odometer = useOdometerLogs(one, can('fleetOdometer.view') && vehicleId !== '');
+  const odometer = useOdometerLogs(
+    { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
+    can('fleetOdometer.view') && vehicleCode !== '',
+  );
   const maintenance = useMaintenanceVisits(one, can('fleetMaintenance.view') && vehicleId !== '');
   const accidents = useAccidents(one, can('fleetAccident.view') && vehicleId !== '');
   const violations = useViolations(one, can('fleetViolation.view') && vehicleId !== '');
@@ -276,7 +301,7 @@ export const VehicleDetailPage = (): JSX.Element => {
   const { id = '' } = useParams();
 
   const { data: vehicle, isPending, isError, error, refetch } = useVehicle(id);
-  const counts = useHistoryCounts(vehicle?.id ?? '', can);
+  const counts = useHistoryCounts(vehicle?.id ?? '', vehicle?.code ?? '', can);
   // «تعيين السيارات — سائق نشط»: today's roster, when the reader may read it.
   const today = (() => {
     const now = new Date();
@@ -661,10 +686,12 @@ export const VehicleDetailPage = (): JSX.Element => {
               </span>
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.chassis')}>
-              <span className="font-mono font-medium tracking-wider">{vehicle.chassisNumber}</span>
+              <span className="font-figures font-medium tracking-wider">
+                {vehicle.chassisNumber}
+              </span>
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.motor')}>
-              <span className="font-mono font-medium tracking-wider">{vehicle.motorNumber}</span>
+              <span className="font-figures font-medium tracking-wider">{vehicle.motorNumber}</span>
             </VehicleItem>
             {(
               [
@@ -679,7 +706,7 @@ export const VehicleDetailPage = (): JSX.Element => {
                 <span className="text-xs font-medium text-indigo-500 dark:text-indigo-300">
                   {t(label)}
                 </span>
-                <p className="font-mono text-sm font-bold tracking-wider text-slate-900 dark:text-white">
+                <p className="font-figures text-sm font-bold tracking-wider text-slate-900 dark:text-white">
                   {value ?? '—'}
                 </p>
               </div>

@@ -162,11 +162,11 @@ describe('the shared name renderers carry the card on a name Fleet knows', () =>
     expect(unknown).not.toContain('data-driver-hover');
     expect(unknown, 'the id’s tail, as before').toContain('eeeeee09');
     // «الخط … زى شاشة انذار الصيانه فى كل العواميد»: on the two boards' name look the tail reads
-    // at the row's type — no size or `font-mono` of its own for the table's laptop rule to shrink.
-    expect(tagOf(unknown, 'eeeeee09')).not.toMatch(/font-mono|text-xs/u);
+    // at the row's type — no size or `font-figures` of its own for the table's laptop rule to shrink.
+    expect(tagOf(unknown, 'eeeeee09')).not.toMatch(/font-figures|font-mono|text-xs/u);
     const elsewhere = render(<DriverCell employeeId="64b1f0eeeeeeeeeeeeeeee09" look="identity" />);
     expect(tagOf(elsewhere, 'eeeeee09'), 'the other boards as before').toContain(
-      'font-mono text-xs',
+      'font-figures text-xs',
     );
     const legacyName = render(<DriverName employeeId={null} name="حسن القديم" />);
     expect(legacyName).not.toContain('data-driver-hover');

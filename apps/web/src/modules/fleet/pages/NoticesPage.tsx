@@ -29,13 +29,13 @@ import { cn } from '../../../shared/lib/cn';
 import {
   CheckIcon,
   CogIcon,
-  EditIcon,
   EyeIcon,
   PlusIcon,
   PrinterIcon,
-  TrashIcon,
   UploadIcon,
 } from '../../../shared/ui/icons';
+import { ACTION_GROUP, PRESSED, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import {
   useDeleteNotice,
   useDeleteNoticeImage,
@@ -48,7 +48,6 @@ import { NOTICE_TEMPLATES, noticeTemplate } from '../lib/notice-templates';
 import { printNoticePages } from '../lib/notice-render';
 import { NoticeSheet } from '../components/NoticeSheet';
 import {
-  NOTICE_ACTION_BUTTON,
   NoticeImageCell,
   NoticeImagePreviewDialog,
   type NoticeImageTarget,
@@ -66,7 +65,7 @@ import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
-import { PATH } from '../components/FuelCardBoard';
+import { FIGURES_FONT, PATH } from '../components/FuelCardBoard';
 import { monthCountOptions } from '../lib/licence-months';
 
 /**
@@ -92,8 +91,8 @@ const NOTICE_TABLE = cn(
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
 );
 
-const NUMBER_FONT =
-  "[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace]";
+/** The figures' face — Azeret Mono, a plain zero; Arabic falls through to Cairo. */
+const NUMBER_FONT = FIGURES_FONT;
 
 /** `2026-10-05…` → `2026/10/05`, the way every Fleet table writes a day. */
 const day = (iso: string | null): string =>
@@ -293,55 +292,35 @@ export const NoticesPage = (): JSX.Element => {
     {
       key: 'actions',
       header: t('fleet.notices.columns.actions'),
-      align: 'end',
+      align: 'center',
       render: (row) => {
         const done = row.completedAt !== null;
+        // «اعملى الالوان دى»: the owner's picture — the eye, the pen, then the licences and the
+        // closing tick in their own calm colours, the printer and the bin (`row-actions-look`).
         return (
-          <span className="flex items-center justify-end gap-1">
+          <span className={ACTION_GROUP} data-row-actions="notice">
             <button
               type="button"
-              className={NOTICE_ACTION_BUTTON}
+              className={actionTone('view')}
               aria-label={t('fleet.notices.view')}
               title={t('fleet.notices.view')}
               onClick={() => setSheet({ row, print: false })}
             >
               <EyeIcon className="h-4 w-4" />
             </button>
-            <NoticeLicencesButton row={row} onPreview={setImage} />
-            <button
-              type="button"
-              data-notice-row-print={row.id}
-              className={NOTICE_ACTION_BUTTON}
-              aria-label={t('fleet.notices.print')}
-              title={t('fleet.notices.print')}
-              onClick={() => setSheet({ row, print: true })}
-            >
-              <PrinterIcon className="h-4 w-4" />
-            </button>
             {mayEdit && (
               <button
                 type="button"
                 data-notice-edit={row.id}
-                className={NOTICE_ACTION_BUTTON}
+                className={actionTone('edit')}
                 aria-label={t('fleet.notices.edit')}
                 title={t('fleet.notices.edit')}
                 onClick={() => edit(row)}
               >
-                <EditIcon className="h-4 w-4" />
+                <SquarePenIcon className="h-4 w-4" />
               </button>
             )}
-            {can('fleetNotice.delete') && (
-              <button
-                type="button"
-                data-notice-delete={row.id}
-                className={NOTICE_ACTION_BUTTON}
-                aria-label={t('fleet.notices.delete')}
-                title={t('fleet.notices.delete')}
-                onClick={() => setDeleting(row)}
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
-            )}
+            <NoticeLicencesButton row={row} onPreview={setImage} />
             {mayEdit && (
               <button
                 type="button"
@@ -351,14 +330,32 @@ export const NoticesPage = (): JSX.Element => {
                 aria-label={done ? t('fleet.notices.completed') : t('fleet.notices.close')}
                 title={done ? t('fleet.notices.completed') : t('fleet.notices.close')}
                 onClick={() => tick(row)}
-                className={cn(
-                  'inline-flex items-center justify-center rounded-md border transition disabled:opacity-50',
-                  done
-                    ? 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'border-emerald-600/50 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400',
-                )}
+                // Closing a notice is its status: violet, and filled once it is closed.
+                className={cn(actionTone('status'), done && PRESSED)}
               >
                 <CheckIcon className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              data-notice-row-print={row.id}
+              className={actionTone('print')}
+              aria-label={t('fleet.notices.print')}
+              title={t('fleet.notices.print')}
+              onClick={() => setSheet({ row, print: true })}
+            >
+              <PrinterIcon className="h-4 w-4" />
+            </button>
+            {can('fleetNotice.delete') && (
+              <button
+                type="button"
+                data-notice-delete={row.id}
+                className={actionTone('delete')}
+                aria-label={t('fleet.notices.delete')}
+                title={t('fleet.notices.delete')}
+                onClick={() => setDeleting(row)}
+              >
+                <Trash2Icon className="h-4 w-4" />
               </button>
             )}
           </span>
@@ -895,7 +892,7 @@ const NoticeSheetDialog = ({
 /**
  * «صوره الرخصه بتاعت العربيه وصوره الرخصه بتاعت السائق … لو مش موجوده اسمح انه يرفعهم»: the
  * arrow beside the eye opens the two licences that print with the form — each the registry's own
- * when it has one, else one uploaded here with the notice. Amber while either is missing.
+ * when it has one, else one uploaded here with the notice. Ringed while either is missing.
  */
 const NoticeLicencesButton = ({
   row,
@@ -999,7 +996,7 @@ const NoticeLicencesButton = ({
           <span className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className={NOTICE_ACTION_BUTTON}
+              className={actionTone('view')}
               aria-label={t(`fleet.notices.image.${kind}.view`)}
               title={t(`fleet.notices.image.${kind}.view`)}
               onClick={() => {
@@ -1052,9 +1049,11 @@ const NoticeLicencesButton = ({
         aria-label={t('fleet.notices.licences.title')}
         title={t('fleet.notices.licences.title')}
         onClick={() => (at === null ? open() : setAt(null))}
+        // An upload, so cyan; a licence still missing rings it in its own cyan — no amber among
+        // the actions.
         className={cn(
-          NOTICE_ACTION_BUTTON,
-          missing && '!text-amber-500 ring-1 ring-amber-500/60 dark:!text-amber-400',
+          actionTone('upload'),
+          missing && 'ring-1 ring-inset ring-cyan-500/70 dark:ring-cyan-400/70',
         )}
       >
         <UploadIcon className="h-4 w-4" />

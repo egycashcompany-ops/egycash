@@ -20,7 +20,9 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Input } from '../../../shared/ui/form';
 import { Spinner } from '../../../shared/ui/Spinner';
-import { CogIcon } from '../../../shared/ui/icons';
+import { CogIcon, EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -63,8 +65,6 @@ const FIGURE = cn('whitespace-nowrap', NUM);
 const LATIN = new Intl.NumberFormat('en-US');
 /** An empty cell, as the boards draw one. */
 const DASH = <span className="text-slate-400">—</span>;
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 /** The board's toolbar buttons, from the vehicles screen — a size down on a phone. */
 const BRAND_BUTTON =
@@ -362,18 +362,20 @@ export const LicenseExpensesPage = (): JSX.Element => {
     {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
-      align: 'end',
+      align: 'center',
+      // «اعملى الالوان دى»: the owner's picture — the eye, the pen, the printer and the bin in
+      // one box (`row-actions-look`).
       render: (row) => (
-        <span className="flex items-center justify-end gap-1">
+        <span className={ACTION_GROUP} data-row-actions="license-expense">
           <button
             type="button"
             data-license-expense-view={row.id}
             title={t('fleet.licenseExpenses.view')}
             aria-label={t('fleet.licenseExpenses.view')}
             onClick={() => setViewing(row)}
-            className={actionButton}
+            className={actionTone('view')}
           >
-            <BoardIcon d={PATH.eye} className="h-4 w-4" />
+            <EyeIcon className="h-4 w-4" />
           </button>
           {can('fleetLicenseExpense.edit') && (
             <Link
@@ -381,9 +383,9 @@ export const LicenseExpensesPage = (): JSX.Element => {
               data-license-expense-edit={row.id}
               title={t('common.edit')}
               aria-label={t('common.edit')}
-              className={actionButton}
+              className={actionTone('edit')}
             >
-              <BoardIcon d={PATH.edit} className="h-4 w-4" />
+              <SquarePenIcon className="h-4 w-4" />
             </Link>
           )}
           <button
@@ -392,9 +394,9 @@ export const LicenseExpensesPage = (): JSX.Element => {
             title={t('fleet.licenseExpenses.print')}
             aria-label={t('fleet.licenseExpenses.print')}
             onClick={() => print(row)}
-            className={actionButton}
+            className={actionTone('print')}
           >
-            <BoardIcon d={PATH.pdf} className="h-4 w-4" />
+            <PrinterIcon className="h-4 w-4" />
           </button>
           {can('fleetLicenseExpense.delete') && (
             <button
@@ -403,9 +405,9 @@ export const LicenseExpensesPage = (): JSX.Element => {
               title={t('common.delete')}
               aria-label={t('common.delete')}
               onClick={() => setDeleting(row)}
-              className={cn(actionButton, 'hover:text-red-600 dark:hover:text-red-400')}
+              className={actionTone('delete')}
             >
-              <BoardIcon d={PATH.trash} className="h-4 w-4" />
+              <Trash2Icon className="h-4 w-4" />
             </button>
           )}
         </span>

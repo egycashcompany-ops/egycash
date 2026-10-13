@@ -1,6 +1,13 @@
 // What "this month" means, pinned against fixed dates rather than against today.
 import { describe, expect, it } from 'vitest';
-import { currentMonthRange, odometerRange, WIDER_RANGE_MONTHS, widerRange } from './odometer-range';
+import {
+  currentMonthRange,
+  dateBoundPatch,
+  odometerRange,
+  WHOLE_HISTORY,
+  WIDER_RANGE_MONTHS,
+  widerRange,
+} from './odometer-range';
 
 const at = (iso: string): Date => new Date(iso);
 
@@ -83,6 +90,87 @@ describe('odometerRange', () => {
       to: '2026-08-18',
       defaulted: false,
     });
+  });
+});
+
+describe('odometerRange — `period=all`, the car’s whole history («تاريخ العربيه كله»)', () => {
+  const now = at('2026-08-19T11:00:00.000Z');
+
+  it('is spelled `all` — the word the vehicle profile’s link puts in the URL', () => {
+    expect(WHOLE_HISTORY).toBe('all');
+  });
+
+  it('sends NO bound at all — not the month, and not a made-up first day', () => {
+    expect(odometerRange({ from: '', to: '', period: WHOLE_HISTORY }, now)).toEqual({
+      from: '',
+      to: '',
+      // Asked for, not the page's own default: the reset is offered, the «widen» hint is not.
+      defaulted: false,
+    });
+  });
+
+  it('gives way to a date in the URL — a picked day is the more specific question', () => {
+    expect(odometerRange({ from: '2026-07-01', to: '', period: WHOLE_HISTORY }, now)).toEqual({
+      from: '2026-07-01',
+      to: '',
+      defaulted: false,
+    });
+    expect(
+      odometerRange({ from: '2026-01-01', to: '2026-03-31', period: WHOLE_HISTORY }, now),
+    ).toEqual({ from: '2026-01-01', to: '2026-03-31', defaulted: false });
+  });
+
+  it('ignores any other value — the month fills in as before', () => {
+    for (const period of ['', 'ALL', 'month', 'yes']) {
+      expect(odometerRange({ from: '', to: '', period }, now), period).toEqual({
+        from: '2026-08-01',
+        to: '2026-08-31',
+        defaulted: true,
+      });
+    }
+  });
+});
+
+describe('dateBoundPatch — picking a date lets go of `period=all`', () => {
+  const now = at('2026-08-19T11:00:00.000Z');
+
+  /** The URL after a patch, written the way the screen's `patch` writes it: null deletes. */
+  const applied = (query: string, updates: Record<string, string | null>): URLSearchParams => {
+    const next = new URLSearchParams(query);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(key);
+      else next.set(key, value);
+    }
+    return next;
+  };
+  const rangeOf = (sp: URLSearchParams) =>
+    odometerRange(
+      { from: sp.get('from') ?? '', to: sp.get('to') ?? '', period: sp.get('period') ?? '' },
+      now,
+    );
+
+  it('writes the picked bound and drops `period`', () => {
+    expect(dateBoundPatch('from', '2026-01-01')).toEqual({ from: '2026-01-01', period: null });
+    expect(dateBoundPatch('to', '2026-03-31')).toEqual({ to: '2026-03-31', period: null });
+  });
+
+  it('a cleared box deletes its bound — and still drops `period`', () => {
+    expect(dateBoundPatch('from', '')).toEqual({ from: null, period: null });
+    expect(dateBoundPatch('to', '')).toEqual({ to: null, period: null });
+  });
+
+  it('from the profile’s whole history: pick a day, clear it — the month, not the whole log', () => {
+    const fromProfile = `vehicleCodes=150&period=${WHOLE_HISTORY}`;
+    expect(rangeOf(new URLSearchParams(fromProfile)).defaulted).toBe(false);
+
+    const picked = applied(fromProfile, dateBoundPatch('from', '2026-01-01'));
+    expect(picked.has('period'), 'the picked day replaced the whole history').toBe(false);
+    expect(picked.get('vehicleCodes'), 'the car stays').toBe('150');
+    expect(rangeOf(picked)).toEqual({ from: '2026-01-01', to: '', defaulted: false });
+
+    const cleared = applied(picked.toString(), dateBoundPatch('from', ''));
+    expect(cleared.toString()).toBe('vehicleCodes=150');
+    expect(rangeOf(cleared)).toEqual({ from: '2026-08-01', to: '2026-08-31', defaulted: true });
   });
 });
 

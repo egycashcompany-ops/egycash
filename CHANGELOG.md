@@ -53,6 +53,21 @@ its entry here in the same PR.
 
 ### Changed
 
+- **An ATM machine is never added twice — to replenishment or to maintenance.** «مينفعش أضيف
+  ماكينة مرتين سواء فى عملية التغذية أو الصيانة». A machine now has at most one open replenishment
+  and one open maintenance, company-wide (port doc OD-1, overriding the legacy, which had no such
+  guard). The open forms leave a machine that is already open — or a code pasted twice — unopened
+  and name it in red beside the unknown codes, while the other lines still open; reopening from a
+  done page is refused while another operation of the machine is open; a maintenance mail whose
+  machine already has an open maintenance is not accepted, stays pending and is named on the
+  screen. The mail «Duplicate» flag now means exactly that — an open maintenance on any day, not
+  only today, and the accept confirm says beforehand how many of the selected mails will stay
+  pending for that reason. Because an open operation of ANY day now blocks its machine, the grey
+  carried-over rows on both live boards (opened on an earlier day, or still open after midnight)
+  gain the close button and the checkbox they never had, so they can be closed where they are
+  shown. A unique index per collection holds the rule under concurrent submits; the legacy
+  importer reports the historical open duplicates the index refuses instead of failing — and says
+  so when that index is absent and nothing could refuse them.
 - **The acknowledgment prints the employee's code.** «عايز بردو أضيف كود الموظف هنا»: the
   statement reads «… بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي …», the code filled from
   the system in the form's red and digits, or left for the pen when the employee cannot be named.

@@ -24,6 +24,11 @@ import { type AuthContext, scopeSelector } from '../../../shared/types';
 import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
+import {
+  alreadyOpenError,
+  decideOpenLines,
+  isOpenOperationDuplicate,
+} from '../shared/open-operation';
 import { cairoDateString } from '../shared/cairo-time';
 import { atmMachineRepository } from '../machines/machine.repository';
 import { atmMaintenanceRepository } from './maintenance.repository';
@@ -114,42 +119,116 @@ class AtmMaintenanceService {
   /**
    * The multi-row open (contad_app.js:1896-1957): per-line service type + reference number; the
    * form's datetime applies to every line (null → now); unknown codes reported per request.
+   *
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين», port doc OD-1) — overriding the
+   * legacy, which had no duplicate guard here either: a machine that already has an open
+   * maintenance, anywhere in the company, is not opened again, and a code pasted twice opens once;
+   * both are reported in `alreadyOpenCodes` while the other lines still open. Independent of
+   * replenishment — a machine may have one open of each.
    */
   async open(
     input: OpenAtmMaintenances,
     ctx: AuthContext,
-  ): Promise<{ opened: AtmMaintenanceDoc[]; unknownCodes: string[] }> {
+  ): Promise<{ opened: AtmMaintenanceDoc[]; unknownCodes: string[]; alreadyOpenCodes: string[] }> {
     const branchId = await resolveAtmBranchId(ctx);
     const openedAt = input.openedAt ?? new Date();
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));
     const machines = await atmMachineRepository.findActiveByCodes(branchId, codes);
+    const decisions = decideOpenLines(
+      codes,
+      (code) => machines.has(code),
+      await atmMaintenanceRepository.openMachineCodes(codes),
+    );
 
     const opened: AtmMaintenanceDoc[] = [];
     const unknownCodes: string[] = [];
+    const alreadyOpenCodes: string[] = [];
     for (const [index, row] of input.rows.entries()) {
       const code = codes[index] as string;
-      if (code === '') continue;
+      const decision = decisions[index];
+      if (decision === 'unknown') unknownCodes.push(code);
+      if (decision === 'alreadyOpen') alreadyOpenCodes.push(code);
       const machine = machines.get(code);
-      if (machine === undefined) {
-        unknownCodes.push(code);
-        continue;
+      if (decision !== 'open' || machine === undefined) continue;
+      let doc: AtmMaintenanceDoc;
+      try {
+        doc = await atmMaintenanceRepository.create(
+          {
+            branchId: new Types.ObjectId(branchId),
+            machineId: machine._id,
+            machineCode: machine.machineCode,
+            bankName: machine.bankName,
+            machineName: machine.name,
+            zone: machine.zone,
+            area: machine.area,
+            openedAt,
+            closedAt: null,
+            serviceType: row.serviceType,
+            notes: null,
+            referenceNumber: row.referenceNumber,
+            source: 'manual',
+            mailTicketId: null,
+            leaderEmployeeId: null,
+            leaderName: null,
+            openedById: new Types.ObjectId(ctx.userId),
+            openedByName: actorName(ctx),
+            closedById: null,
+            closedByName: null,
+          },
+          { by: ctx.userId },
+        );
+      } catch (error) {
+        // Lost the race to a concurrent open of the same machine — reported, nothing written.
+        if (isOpenOperationDuplicate(error)) {
+          alreadyOpenCodes.push(code);
+          continue;
+        }
+        throw error;
       }
-      const doc = await atmMaintenanceRepository.create(
+      await auditService.record({
+        entityRef: entityRef(String(doc._id)),
+        action: 'create',
+        changes: diffChanges({}, { machineCode: code, openedAt: openedAt.toISOString() }),
+      });
+      opened.push(doc);
+    }
+    return { opened, unknownCodes, alreadyOpenCodes };
+  }
+
+  /**
+   * Acceptance of a mail ticket — the legacy insertMany rows (contad_app.js:2806-2823): zone '',
+   * reference '', open time = the ticket's received time (decision D6), service = the issue text.
+   * Called BY the mail-ticket service inside one accept; audited there as the accept.
+   *
+   * Refused with `ATM_OPERATION_ALREADY_OPEN` when the machine already has an open maintenance
+   * anywhere (the owner's rule, port doc OD-1) — before writing, and again by the unique index if
+   * a concurrent open wins the race. Either way nothing is written, so the caller can leave the
+   * ticket pending and say why.
+   */
+  async openFromMail(row: MaintenanceFromMail, ctx: AuthContext): Promise<AtmMaintenanceDoc> {
+    if (row.machineId === null) {
+      throw new BusinessRuleError('الماكينة المرتبطة بالرسالة لم تعد موجودة.');
+    }
+    if (await atmMaintenanceRepository.hasOpenOperation(row.machineCode)) {
+      throw alreadyOpenError('maintenance', row.machineCode);
+    }
+    try {
+      return await atmMaintenanceRepository.create(
         {
-          branchId: new Types.ObjectId(branchId),
-          machineId: machine._id,
-          machineCode: machine.machineCode,
-          bankName: machine.bankName,
-          machineName: machine.name,
-          zone: machine.zone,
-          area: machine.area,
-          openedAt,
+          branchId: row.branchId,
+          machineId: row.machineId,
+          machineCode: row.machineCode,
+          bankName: row.bankName,
+          machineName: row.machineName,
+          zone: '',
+          area: row.area,
+          openedAt: row.openedAt,
           closedAt: null,
           serviceType: row.serviceType,
           notes: null,
-          referenceNumber: row.referenceNumber,
-          source: 'manual',
-          mailTicketId: null,
+          referenceNumber: null,
+          source: 'mail',
+          mailTicketId: row.mailTicketId,
           leaderEmployeeId: null,
           leaderName: null,
           openedById: new Types.ObjectId(ctx.userId),
@@ -159,50 +238,10 @@ class AtmMaintenanceService {
         },
         { by: ctx.userId },
       );
-      await auditService.record({
-        entityRef: entityRef(String(doc._id)),
-        action: 'create',
-        changes: diffChanges({}, { machineCode: code, openedAt: openedAt.toISOString() }),
-      });
-      opened.push(doc);
+    } catch (error) {
+      if (isOpenOperationDuplicate(error)) throw alreadyOpenError('maintenance', row.machineCode);
+      throw error;
     }
-    return { opened, unknownCodes };
-  }
-
-  /**
-   * Acceptance of a mail ticket — the legacy insertMany rows (contad_app.js:2806-2823): zone '',
-   * reference '', open time = the ticket's received time (decision D6), service = the issue text.
-   * Called BY the mail-ticket service inside one accept; audited there as the accept.
-   */
-  async openFromMail(row: MaintenanceFromMail, ctx: AuthContext): Promise<AtmMaintenanceDoc> {
-    if (row.machineId === null) {
-      throw new BusinessRuleError('الماكينة المرتبطة بالرسالة لم تعد موجودة.');
-    }
-    return atmMaintenanceRepository.create(
-      {
-        branchId: row.branchId,
-        machineId: row.machineId,
-        machineCode: row.machineCode,
-        bankName: row.bankName,
-        machineName: row.machineName,
-        zone: '',
-        area: row.area,
-        openedAt: row.openedAt,
-        closedAt: null,
-        serviceType: row.serviceType,
-        notes: null,
-        referenceNumber: null,
-        source: 'mail',
-        mailTicketId: row.mailTicketId,
-        leaderEmployeeId: null,
-        leaderName: null,
-        openedById: new Types.ObjectId(ctx.userId),
-        openedByName: actorName(ctx),
-        closedById: null,
-        closedByName: null,
-      },
-      { by: ctx.userId },
-    );
   }
 
   /**
@@ -239,13 +278,28 @@ class AtmMaintenanceService {
     return rows;
   }
 
-  /** Reopen from the done page (contad_app.js:2195-2197): `closedAt` cleared, the rest kept. */
+  /**
+   * Reopen from the done page (contad_app.js:2195-2197): `closedAt` cleared, the rest kept.
+   * Refused with 409 `ATM_OPERATION_ALREADY_OPEN` when the machine already has ANOTHER open
+   * maintenance (the owner's rule, port doc OD-1) — checked first, held by the unique index.
+   */
   async reopen(id: string, version: number, ctx: AuthContext): Promise<AtmMaintenanceDoc> {
-    const updated = await atmMaintenanceRepository.updateById(
-      id,
-      { closedAt: null },
-      { by: ctx.userId, version, scope: scopeSelector(ctx, 'atmMaintenance.complete') },
-    );
+    const scope = scopeSelector(ctx, 'atmMaintenance.complete');
+    const row = await atmMaintenanceRepository.getById(id, scope);
+    if (await atmMaintenanceRepository.hasOpenOperation(row.machineCode, id)) {
+      throw alreadyOpenError('maintenance', row.machineCode);
+    }
+    let updated: AtmMaintenanceDoc;
+    try {
+      updated = await atmMaintenanceRepository.updateById(
+        id,
+        { closedAt: null },
+        { by: ctx.userId, version, scope },
+      );
+    } catch (error) {
+      if (isOpenOperationDuplicate(error)) throw alreadyOpenError('maintenance', row.machineCode);
+      throw error;
+    }
     await auditService.record({ entityRef: entityRef(id), action: 'reopen', changes: [] });
     return updated;
   }

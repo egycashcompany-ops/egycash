@@ -229,6 +229,54 @@ export const maintenanceFromLegacy = (
   };
 };
 
+// ── The owner's rule vs. history (port doc OD-1) ────────────────────────────────────────────────
+//
+// Since 2026-10-13 a machine has at most ONE open replenishment and ONE open maintenance, held by
+// a partial unique index per collection. The legacy had no such guard, so a deployment's history
+// can hold two open rows for one machine. The importer is EXEMPT from the rule's service check —
+// it writes history as it was and decides nothing — but it cannot make the index accept a second
+// open row. These two helpers are how it reports that instead of crashing.
+
+/**
+ * Pure: the rows the open-operation index would refuse WITHIN one deployment's list — every open,
+ * live row whose code an earlier open, live row already holds. A dry run's prediction; the real
+ * run reports what the index actually refused (which also counts rows already in ECMS).
+ */
+export const openDuplicateRowIds = (
+  rows: readonly Pick<ImportedOperation, '_id' | 'machineCode' | 'closedAt' | 'isDeleted'>[],
+): string[] => {
+  const held = new Set<string>();
+  const refused: string[] = [];
+  for (const row of rows) {
+    if (row.closedAt !== null || row.isDeleted || row.machineCode === '') continue;
+    if (held.has(row.machineCode)) refused.push(String(row._id));
+    else held.add(row.machineCode);
+  }
+  return refused;
+};
+
+/**
+ * Pure: the bulk-operation positions a failed `bulkWrite` refused with E11000 — or null when the
+ * failure is anything else (another code among the write errors, a write-concern error, not a
+ * bulk error at all), which the caller must rethrow. Positions only: a write error's message
+ * quotes the duplicate key, and nothing here needs to read it.
+ */
+export const duplicateKeyWriteIndexes = (error: unknown): number[] | null => {
+  if (typeof error !== 'object' || error === null) return null;
+  const { writeErrors, err } = error as { writeErrors?: unknown; err?: unknown };
+  if (err !== undefined && err !== null) return null;
+  if (writeErrors === undefined || writeErrors === null) return null;
+  const list: unknown[] = Array.isArray(writeErrors) ? writeErrors : [writeErrors];
+  if (list.length === 0) return null;
+  const indexes: number[] = [];
+  for (const item of list) {
+    const { code, index } = (item ?? {}) as { code?: unknown; index?: unknown };
+    if (code !== 11000 || typeof index !== 'number') return null;
+    indexes.push(index);
+  }
+  return indexes;
+};
+
 export interface LegacyMail {
   _id: Types.ObjectId;
   bank?: unknown;

@@ -46,7 +46,11 @@ export const maintenanceLeaderOptions = async (_req: Request, res: Response): Pr
 export const openMaintenances = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<OpenAtmMaintenances>(req);
   const result = await atmMaintenanceService.open(body, authContext(req));
-  ok(res, { opened: result.opened.map(toAtmMaintenanceDto), unknownCodes: result.unknownCodes });
+  ok(res, {
+    opened: result.opened.map(toAtmMaintenanceDto),
+    unknownCodes: result.unknownCodes,
+    alreadyOpenCodes: result.alreadyOpenCodes,
+  });
 };
 
 export const closeMaintenances = async (req: Request, res: Response): Promise<void> => {

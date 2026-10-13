@@ -21,6 +21,10 @@ import {
   type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
+import { errorMessage } from '../../../shared/lib/errors';
+import { store } from '../../../store';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { isAlreadyOpenRefusal } from '../lib/operation-view';
 import * as api from './atm-api';
 import { type AtmListParams } from './atm-api';
 
@@ -175,12 +179,25 @@ export const useCloseAtmReplenishments = () => {
   });
 };
 
+/**
+ * A reopen the owner's rule refused (port doc OD-1: the machine already has another open
+ * operation of that kind) is worded by its done page, in the reader's language. Every OTHER
+ * failure still gets the global toast exactly as before — declaring `onError` is what opts a hook
+ * out of it (`shared/lib/query-client.ts`), so the hook raises that same toast for the rest.
+ */
+const toastUnlessAlreadyOpen = (error: unknown): void => {
+  if (!isAlreadyOpenRefusal(error)) {
+    toast.error(errorMessage(error, store.getState().locale.locale));
+  }
+};
+
 export const useReopenAtmReplenishment = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.reopenReplenishment(id, version),
     onSuccess: () => invalidateReplenishments(client),
+    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -274,6 +291,7 @@ export const useReopenAtmMaintenance = () => {
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.reopenMaintenance(id, version),
     onSuccess: () => invalidateMaintenances(client),
+    onError: toastUnlessAlreadyOpen,
   });
 };
 

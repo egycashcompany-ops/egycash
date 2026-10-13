@@ -1,18 +1,22 @@
 // The maintenance open form — legacy atm_maintenance.ejs:707-735 by parity: machine codes,
 // service types and reference numbers aligned BY LINE, plus one free datetime for the batch
 // (datetime-local, empty → now). The two extra line columns and the free time are exactly what
-// distinguishes it from the replenishment form.
+// distinguishes it from the replenishment form. Unknown codes and the codes the owner's rule left
+// unopened (an open maintenance already, or pasted twice — port doc OD-1) are shown in red.
 //
 // The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
 // in one bordered row so entry and narrowing read as a single band (MaintenancePage.tsx).
 import { useState, type FormEvent } from 'react';
 import { normalizeAtmMachineCode, splitAtmFormLines } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
+import { alreadyOpenCodesKey, joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
+import { OpenRefusalNotice } from './OpenRefusalNotice';
 
 export const buildMaintenanceRows = (
   codesRaw: string,
@@ -35,12 +39,14 @@ export const buildMaintenanceRows = (
 
 export const OpenMaintenancesForm = (): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
   const open = useOpenAtmMaintenances();
   const [codes, setCodes] = useState('');
   const [services, setServices] = useState('');
   const [references, setReferences] = useState('');
   const [openedAt, setOpenedAt] = useState('');
   const [unknownCodes, setUnknownCodes] = useState<string[]>([]);
+  const [alreadyOpenCodes, setAlreadyOpenCodes] = useState<string[]>([]);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -52,6 +58,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         openedAt: openedAt === '' ? null : new Date(openedAt).toISOString(),
       });
       setUnknownCodes(result.unknownCodes);
+      setAlreadyOpenCodes(result.alreadyOpenCodes);
       if (result.opened.length > 0) {
         toast.success(t('atm.maintenance.openedCount', { count: result.opened.length }));
         setCodes('');
@@ -59,7 +66,17 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         setReferences('');
       }
       if (result.unknownCodes.length > 0) {
-        toast.error(t('atm.common.unknownCodes', { codes: result.unknownCodes.join('، ') }));
+        toast.error(
+          t('atm.common.unknownCodes', { codes: joinCodes(result.unknownCodes, locale) }),
+        );
+      }
+      // The owner's rule (OD-1): a machine already open — or pasted twice — was not opened again.
+      if (result.alreadyOpenCodes.length > 0) {
+        toast.error(
+          t(alreadyOpenCodesKey('maintenance'), {
+            codes: joinCodes(result.alreadyOpenCodes, locale),
+          }),
+        );
       }
     } catch {
       toast.error(t('atm.common.actionFailed'));
@@ -100,11 +117,11 @@ export const OpenMaintenancesForm = (): JSX.Element => {
       <Button type="submit" loading={open.isPending}>
         {t('atm.maintenance.openAction')}
       </Button>
-      {unknownCodes.length > 0 && (
-        <p className="w-full text-sm text-red-600 dark:text-red-400">
-          {t('atm.common.unknownCodes', { codes: unknownCodes.join('، ') })}
-        </p>
-      )}
+      <OpenRefusalNotice
+        kind="maintenance"
+        unknownCodes={unknownCodes}
+        alreadyOpenCodes={alreadyOpenCodes}
+      />
     </form>
   );
 };

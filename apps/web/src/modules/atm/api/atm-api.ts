@@ -5,6 +5,8 @@
 import {
   type AtmLeaderOptionDto,
   type AtmMachineDto,
+  type AtmMailAcceptMetaDto,
+  type AtmMailAcceptRefusalDto,
   type AtmMailTicketDto,
   type AtmDailyReportDto,
   type AtmMailUnreadCountDto,
@@ -35,6 +37,7 @@ import {
   getPage,
   patch,
   post,
+  postWithMeta,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -168,8 +171,19 @@ export const listMailLog = (params: AtmListParams): Promise<Paginated<AtmMailTic
   getPage<AtmMailTicketDto>(`/atm/mail-tickets/log${buildQuery(params)}`);
 export const mailUnreadCount = (): Promise<AtmMailUnreadCountDto> =>
   get<AtmMailUnreadCountDto>('/atm/mail-tickets/unread-count');
-export const acceptMailTickets = (ids: string[]): Promise<AtmMailTicketDto[]> =>
-  post<AtmMailTicketDto[]>('/atm/mail-tickets/accept', { ids });
+/**
+ * Accept: `data` is the tickets ACCEPTED; the tickets the owner's rule refused — their machine
+ * already has an open maintenance — come back in `meta.refused` and stay pending (port doc OD-1).
+ */
+export const acceptMailTickets = async (
+  ids: string[],
+): Promise<{ accepted: AtmMailTicketDto[]; refused: AtmMailAcceptRefusalDto[] }> => {
+  const { data, meta } = await postWithMeta<AtmMailTicketDto[], AtmMailAcceptMetaDto>(
+    '/atm/mail-tickets/accept',
+    { ids },
+  );
+  return { accepted: data, refused: meta?.refused ?? [] };
+};
 export const rejectMailTickets = (ids: string[]): Promise<AtmMailTicketDto[]> =>
   post<AtmMailTicketDto[]>('/atm/mail-tickets/reject', { ids });
 

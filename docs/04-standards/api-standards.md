@@ -45,6 +45,11 @@ Uniform across all endpoints:
 
 Clients branch on `error.code`, never on message text.
 
+An **action** may carry its own typed `meta` beside an unchanged `data` — how an answer grows
+without breaking a client that reads only `data` (`ApiSuccess<T, M>`; the web reads it with
+`postWithMeta`). Example: `POST /atm/mail-tickets/accept` answers `data` = the tickets accepted, as
+it always did, and `meta.refused` = the tickets the one-open-maintenance rule left pending.
+
 ## 3. Methods & status codes
 
 | Operation | Method & path | Success |

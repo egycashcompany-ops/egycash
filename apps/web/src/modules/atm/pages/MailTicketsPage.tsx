@@ -1,9 +1,18 @@
 // /atm/mail-tickets — the legacy /mail_maintenance page (mail_maintenance.ejs) by parity:
-// pending tickets only, the DUPLICATE rows painted (yellow row = an open maintenance already
-// exists for that machine today, recomputed at read — :770-773), and two decisions over the
-// checked set: accept (opens maintenance operations) or reject. Both terminal.
+// pending tickets only, the DUPLICATE rows painted (yellow row, recomputed at read — :770-773),
+// and two decisions over the checked set: accept (opens maintenance operations) or reject. Both
+// terminal.
+//
+// The owner's rule (2026-10-13, port doc OD-1): a machine is never in maintenance twice. A row is
+// painted DUPLICATE exactly when its machine already has an open maintenance — any day, any
+// branch, no longer only "today" — and accept REFUSES those tickets: they stay pending, and the
+// answer names them, which this page prints in red beside the accepted count.
 import { useState } from 'react';
-import { MAX_PAGE_SIZE, type AtmMailTicketDto } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  type AtmMailAcceptRefusalDto,
+  type AtmMailTicketDto,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -21,6 +30,26 @@ import {
   useRejectAtmMailTickets,
 } from '../api/atm-queries';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
+import { acceptConfirmBody, joinCodes, refusedMachineCodes } from '../lib/operation-view';
+
+/** The tickets accept refused (OD-1) and why — the machine already has an open maintenance. */
+export const AcceptRefusalNotice = ({
+  refused,
+}: {
+  refused: readonly AtmMailAcceptRefusalDto[];
+}): JSX.Element | null => {
+  const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  if (refused.length === 0) return null;
+  return (
+    <p className="mb-3 text-sm text-red-600 dark:text-red-400" data-refusal="maintenance-open">
+      {t('atm.mail.refusedOpenMaintenance', {
+        count: refused.length,
+        codes: joinCodes(refusedMachineCodes(refused), locale),
+      })}
+    </p>
+  );
+};
 
 export const MailTicketsPage = (): JSX.Element => {
   const t = useT();
@@ -35,17 +64,32 @@ export const MailTicketsPage = (): JSX.Element => {
   const reject = useRejectAtmMailTickets();
   const [accepting, setAccepting] = useState<string[] | null>(null);
   const [rejecting, setRejecting] = useState<string[] | null>(null);
+  const [refused, setRefused] = useState<AtmMailAcceptRefusalDto[]>([]);
 
   const decide = async (kind: 'accept' | 'reject'): Promise<void> => {
     const ids = kind === 'accept' ? accepting : rejecting;
     if (ids === null || ids.length === 0) return;
     try {
-      const decided = await (kind === 'accept' ? accept.mutateAsync(ids) : reject.mutateAsync(ids));
-      toast.success(
-        t(kind === 'accept' ? 'atm.mail.acceptedCount' : 'atm.mail.rejectedCount', {
-          count: decided.length,
-        }),
-      );
+      if (kind === 'accept') {
+        const result = await accept.mutateAsync(ids);
+        setRefused(result.refused);
+        // Nothing accepted only because every ticket was refused: the red line says it all.
+        if (result.accepted.length > 0 || result.refused.length === 0) {
+          toast.success(t('atm.mail.acceptedCount', { count: result.accepted.length }));
+        }
+        if (result.refused.length > 0) {
+          toast.error(
+            t('atm.mail.refusedOpenMaintenance', {
+              count: result.refused.length,
+              codes: joinCodes(refusedMachineCodes(result.refused), locale),
+            }),
+          );
+        }
+      } else {
+        const decided = await reject.mutateAsync(ids);
+        setRefused([]);
+        toast.success(t('atm.mail.rejectedCount', { count: decided.length }));
+      }
       selection.clear();
     } catch {
       toast.error(t('atm.common.actionFailed'));
@@ -95,6 +139,8 @@ export const MailTicketsPage = (): JSX.Element => {
         )}
       </BulkActionBar>
 
+      <AcceptRefusalNotice refused={refused} />
+
       <DataTable
         columns={columns}
         rows={rows}
@@ -111,7 +157,7 @@ export const MailTicketsPage = (): JSX.Element => {
       <ConfirmActionDialog
         open={accepting !== null}
         title={t('atm.mail.acceptTitle')}
-        body={t('atm.mail.acceptBody', { count: accepting?.length ?? 0 })}
+        body={acceptConfirmBody(t, rows, accepting ?? [])}
         confirmLabel={t('atm.mail.accept')}
         busy={accept.isPending}
         onConfirm={() => void decide('accept')}

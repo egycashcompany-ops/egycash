@@ -1,7 +1,9 @@
 // /atm/maintenance — the legacy /atm_maintenance page (atm_maintenance.ejs) by parity. The same
 // two-group grid as replenishments, with the maintenance-only facts: service type, notes,
 // reference number, and a CLOSE that requires assigning an employee (the modal). Rows can also
-// arrive from an accepted mail ticket — the badge names that source.
+// arrive from an accepted mail ticket — the badge names that source. As on replenishments, the
+// grey carried-over group can be closed and checked too: an open row of ANY day blocks its machine
+// under the owner's rule (port doc OD-1, D4).
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MAX_PAGE_SIZE, type AtmMaintenanceDto } from '@ecms/contracts';
@@ -24,7 +26,7 @@ import {
   useDeleteAtmMaintenances,
   useOpenAtmMaintenancesList,
 } from '../api/atm-queries';
-import { isOpenedToday } from '../lib/operation-view';
+import { groupSelection, isOpenedToday } from '../lib/operation-view';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenMaintenancesForm } from '../components/OpenMaintenancesForm';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
@@ -70,7 +72,10 @@ export const MaintenancePage = (): JSX.Element => {
   const todayRows = rows.filter((row) => isOpenedToday(row.openedAt, now));
   const otherRows = rows.filter((row) => !isOpenedToday(row.openedAt, now));
 
-  const selection = useTableSelection(todayRows.map((row) => row.id));
+  // Selection spans BOTH groups: a carried-over row blocks its machine like any open row (OD-1).
+  const todayIds = todayRows.map((row) => row.id);
+  const otherIds = otherRows.map((row) => row.id);
+  const selection = useTableSelection([...todayIds, ...otherIds]);
   const remove = useDeleteAtmMaintenances();
 
   const [closing, setClosing] = useState<AtmMaintenanceDto[] | null>(null);
@@ -129,13 +134,14 @@ export const MaintenancePage = (): JSX.Element => {
     { key: 'addedBy', header: t('atm.common.addedBy'), render: (row) => row.openedByName ?? '—' },
   ];
 
-  const actionsColumn = (withClose: boolean): Column<AtmMaintenanceDto> => ({
+  // Both groups: close, edit, delete.
+  const actionsColumn: Column<AtmMaintenanceDto> = {
     key: 'actions',
     header: '',
     align: 'end',
     render: (row) => (
       <RowActions>
-        {withClose && can('atmMaintenance.complete') && (
+        {can('atmMaintenance.complete') && (
           <Button
             size="icon"
             variant="ghost-brand"
@@ -167,7 +173,7 @@ export const MaintenancePage = (): JSX.Element => {
         )}
       </RowActions>
     ),
-  });
+  };
 
   const todayColumns: Column<AtmMaintenanceDto>[] = [
     ...baseColumns,
@@ -177,12 +183,12 @@ export const MaintenancePage = (): JSX.Element => {
       render: (row) => <LiveTimerCell openedAt={row.openedAt} now={now} />,
     },
     ...tailColumns,
-    actionsColumn(true),
+    actionsColumn,
   ];
   const carriedColumns: Column<AtmMaintenanceDto>[] = [
     ...baseColumns,
     ...tailColumns,
-    actionsColumn(false),
+    actionsColumn,
   ];
 
   return (
@@ -240,7 +246,7 @@ export const MaintenancePage = (): JSX.Element => {
         error={list.error}
         onRetry={() => void list.refetch()}
         empty={t('atm.maintenance.emptyToday')}
-        selection={selection}
+        selection={groupSelection(selection, todayIds)}
       />
 
       {otherRows.length > 0 && (
@@ -254,6 +260,7 @@ export const MaintenancePage = (): JSX.Element => {
               rows={otherRows}
               rowKey={(row) => row.id}
               empty={t('atm.maintenance.emptyToday')}
+              selection={groupSelection(selection, otherIds)}
             />
           </div>
         </>

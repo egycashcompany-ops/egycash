@@ -52,6 +52,7 @@ export const openReplenishments = async (req: Request, res: Response): Promise<v
   ok(res, {
     opened: result.opened.map(toAtmReplenishmentDto),
     unknownCodes: result.unknownCodes,
+    alreadyOpenCodes: result.alreadyOpenCodes,
   });
 };
 

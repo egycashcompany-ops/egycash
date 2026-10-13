@@ -18,7 +18,12 @@ import { RowActions } from '../../../shared/ui/RowActions';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../shared/lib/format';
 import { useDoneAtmReplenishments, useReopenAtmReplenishment } from '../api/atm-queries';
-import { cairoToday, formatDuration } from '../lib/operation-view';
+import {
+  cairoToday,
+  formatDuration,
+  isAlreadyOpenRefusal,
+  reopenRefusalKey,
+} from '../lib/operation-view';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { DoneRangeBar } from '../components/DoneRangeBar';
 
@@ -48,7 +53,14 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
       await reopen.mutateAsync({ id: reopening.id, version: reopening.version });
       toast.success(t('atm.done.reopened'));
       setReopening(null);
-    } catch {
+    } catch (error) {
+      // The owner's rule (port doc OD-1): the machine already has another open replenishment.
+      // Say so and close the dialog — trying again cannot succeed until that one is closed.
+      if (isAlreadyOpenRefusal(error)) {
+        toast.error(t(reopenRefusalKey('replenishment'), { code: reopening.machineCode }));
+        setReopening(null);
+        return;
+      }
       toast.error(t('atm.common.actionFailed'));
     }
   };

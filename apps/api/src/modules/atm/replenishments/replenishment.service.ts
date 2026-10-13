@@ -16,6 +16,11 @@ import { type AuthContext, scopeSelector } from '../../../shared/types';
 import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
+import {
+  alreadyOpenError,
+  decideOpenLines,
+  isOpenOperationDuplicate,
+} from '../shared/open-operation';
 import { cairoDateString, cairoWallClockUtc } from '../shared/cairo-time';
 import { atmMachineRepository } from '../machines/machine.repository';
 import { atmReplenishmentRepository } from './replenishment.repository';
@@ -84,48 +89,74 @@ class AtmReplenishmentService {
    * (decision T7), open one operation per known code with the machine snapshot, report unknown
    * codes back in the response — the per-request replacement for the legacy's shared
    * `mach_arr_not_found` global (quirk G-race).
+   *
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين», port doc OD-1) — overriding the
+   * legacy, which opened one operation per submitted line with NO duplicate guard: a machine that
+   * already has an open replenishment, anywhere in the company, is not opened again, and a code
+   * pasted twice opens once. Both come back in `alreadyOpenCodes`, one entry per refused line,
+   * while the other lines still open — the partial semantics `unknownCodes` already has. A
+   * concurrent open that wins the race past the check is caught by the unique index and reported
+   * the same way: never a 500, never a half-written line.
    */
   async open(
     input: OpenAtmReplenishments,
     ctx: AuthContext,
-  ): Promise<{ opened: AtmReplenishmentDoc[]; unknownCodes: string[] }> {
+  ): Promise<{
+    opened: AtmReplenishmentDoc[];
+    unknownCodes: string[];
+    alreadyOpenCodes: string[];
+  }> {
     const branchId = await resolveAtmBranchId(ctx);
     const openedAt = resolveReplenishmentOpenTime(input.forceDate, new Date());
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));
     const machines = await atmMachineRepository.findActiveByCodes(branchId, codes);
+    const decisions = decideOpenLines(
+      codes,
+      (code) => machines.has(code),
+      await atmReplenishmentRepository.openMachineCodes(codes),
+    );
 
     const opened: AtmReplenishmentDoc[] = [];
     const unknownCodes: string[] = [];
+    const alreadyOpenCodes: string[] = [];
     for (const [index, row] of input.rows.entries()) {
       const code = codes[index] as string;
-      if (code === '') continue;
+      const decision = decisions[index];
+      if (decision === 'unknown') unknownCodes.push(code);
+      if (decision === 'alreadyOpen') alreadyOpenCodes.push(code);
       const machine = machines.get(code);
-      if (machine === undefined) {
-        unknownCodes.push(code);
-        continue;
+      if (decision !== 'open' || machine === undefined) continue;
+      let doc: AtmReplenishmentDoc;
+      try {
+        doc = await atmReplenishmentRepository.create(
+          {
+            branchId: new Types.ObjectId(branchId),
+            machineId: machine._id,
+            machineCode: machine.machineCode,
+            bankName: machine.bankName,
+            machineName: machine.name,
+            zone: machine.zone,
+            area: machine.area,
+            openedAt,
+            closedAt: null,
+            scheduleTime: row.scheduleTime,
+            leaderName: null,
+            openedById: new Types.ObjectId(ctx.userId),
+            openedByName: actorName(ctx),
+            closedById: null,
+            closedByName: null,
+          },
+          { by: ctx.userId },
+        );
+      } catch (error) {
+        // Lost the race to a concurrent open of the same machine: the index refused the insert,
+        // so nothing was written — the line is reported, not failed.
+        if (isOpenOperationDuplicate(error)) {
+          alreadyOpenCodes.push(code);
+          continue;
+        }
+        throw error;
       }
-      // The legacy opened one operation per submitted line with NO duplicate guard — pasting a
-      // code twice opened it twice. Preserved: the paste is the operator's statement.
-      const doc = await atmReplenishmentRepository.create(
-        {
-          branchId: new Types.ObjectId(branchId),
-          machineId: machine._id,
-          machineCode: machine.machineCode,
-          bankName: machine.bankName,
-          machineName: machine.name,
-          zone: machine.zone,
-          area: machine.area,
-          openedAt,
-          closedAt: null,
-          scheduleTime: row.scheduleTime,
-          leaderName: null,
-          openedById: new Types.ObjectId(ctx.userId),
-          openedByName: actorName(ctx),
-          closedById: null,
-          closedByName: null,
-        },
-        { by: ctx.userId },
-      );
       await auditService.record({
         entityRef: entityRef(String(doc._id)),
         action: 'create',
@@ -133,7 +164,7 @@ class AtmReplenishmentService {
       });
       opened.push(doc);
     }
-    return { opened, unknownCodes };
+    return { opened, unknownCodes, alreadyOpenCodes };
   }
 
   /** Close checked rows (contad_app.js:770-801): close time now, closer recorded, leader untouched. */
@@ -160,13 +191,29 @@ class AtmReplenishmentService {
     return rows;
   }
 
-  /** Reopen from the done page (contad_app.js:1031-1033): `closedAt` cleared, closer left as-is. */
+  /**
+   * Reopen from the done page (contad_app.js:1031-1033): `closedAt` cleared, closer left as-is.
+   * Refused with 409 `ATM_OPERATION_ALREADY_OPEN` when the machine already has ANOTHER open
+   * replenishment (the owner's rule, port doc OD-1) — checked first, and held by the unique index
+   * when two reopens race.
+   */
   async reopen(id: string, version: number, ctx: AuthContext): Promise<AtmReplenishmentDoc> {
-    const updated = await atmReplenishmentRepository.updateById(
-      id,
-      { closedAt: null },
-      { by: ctx.userId, version, scope: scopeSelector(ctx, 'atmReplenishment.complete') },
-    );
+    const scope = scopeSelector(ctx, 'atmReplenishment.complete');
+    const row = await atmReplenishmentRepository.getById(id, scope);
+    if (await atmReplenishmentRepository.hasOpenOperation(row.machineCode, id)) {
+      throw alreadyOpenError('replenishment', row.machineCode);
+    }
+    let updated: AtmReplenishmentDoc;
+    try {
+      updated = await atmReplenishmentRepository.updateById(
+        id,
+        { closedAt: null },
+        { by: ctx.userId, version, scope },
+      );
+    } catch (error) {
+      if (isOpenOperationDuplicate(error)) throw alreadyOpenError('replenishment', row.machineCode);
+      throw error;
+    }
     await auditService.record({ entityRef: entityRef(id), action: 'reopen', changes: [] });
     return updated;
   }

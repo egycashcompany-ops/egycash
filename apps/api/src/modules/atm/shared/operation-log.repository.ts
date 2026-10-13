@@ -42,7 +42,8 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
    * One deliberate deviation, decision D4: the legacy floor `open_time >= today 00:00` made any
    * open row with a PAST open date invisible on every screen forever — it could never be closed
    * again. Open is open here; the client still renders non-today rows as the grey carried-over
-   * group with no close control, which is the visible legacy behaviour.
+   * group (no timer, the visible legacy behaviour) — and, since the owner's rule made an open row
+   * of any day block its machine (OD-1), with the close control the legacy group lacked (D4).
    */
   async listOpen(params: OpenListParams): Promise<Paginated<T>> {
     const filter: FilterQuery<T> = { closedAt: null } as FilterQuery<T>;
@@ -82,8 +83,13 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     return new Set(open);
   }
 
-  /** The same question for one code, not counting `exceptId` — a reopen never blocks itself. */
+  /**
+   * The same question for one code, not counting `exceptId` — a reopen never blocks itself. An
+   * empty code identifies no machine, so it never blocks: the same exclusion `openMachineCodes`
+   * makes and the index's partial filter (`machineCode: { $gt: '' }`) encodes.
+   */
   async hasOpenOperation(machineCode: string, exceptId?: string): Promise<boolean> {
+    if (machineCode === '') return false;
     const filter: Record<string, unknown> = { isDeleted: false, closedAt: null, machineCode };
     if (exceptId !== undefined && Types.ObjectId.isValid(exceptId)) {
       filter._id = { $ne: new Types.ObjectId(exceptId) };

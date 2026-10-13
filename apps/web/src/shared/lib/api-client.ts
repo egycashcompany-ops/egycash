@@ -84,7 +84,16 @@ export class ApiError extends Error {
   }
 }
 
-const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+/** The success half of the envelope, `data` and `meta` both — what `postWithMeta` hands back. */
+export interface DataWithMeta<T, M> {
+  data: T;
+  meta: M | undefined;
+}
+
+const rawEnvelope = async <T, M>(
+  path: string,
+  init: RequestInit = {},
+): Promise<DataWithMeta<T, M>> => {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
@@ -95,10 +104,10 @@ const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =
     headers,
     credentials: 'include', // the refresh cookie rides only on /auth paths
   });
-  if (response.status === 204) return undefined as T;
+  if (response.status === 204) return { data: undefined as T, meta: undefined };
 
-  const body = (await response.json()) as ApiEnvelope<T>;
-  if (body.success) return body.data;
+  const body = (await response.json()) as ApiEnvelope<T, M>;
+  if (body.success) return { data: body.data, meta: body.meta };
   throw new ApiError(
       body.error.code,
       body.error.message,
@@ -107,6 +116,9 @@ const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =
       body.error.requestId,
     );
 };
+
+const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =>
+  (await rawEnvelope<T, unknown>(path, init)).data;
 
 /**
  * The inactivity window the SERVER enforces, in minutes; `0` means it is switched off.
@@ -174,24 +186,38 @@ const tryRefresh = (): Promise<boolean> => {
  */
 export const renewSession = (): Promise<boolean> => tryRefresh();
 
-/** Request with one silent-refresh retry on an expired/invalid access token. */
-export const api = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+/** Run a request with one silent-refresh retry on an expired/invalid access token. */
+const withSilentRefresh = async <R>(path: string, run: () => Promise<R>): Promise<R> => {
   try {
-    return await rawRequest<T>(path, init);
+    return await run();
   } catch (error) {
     if (
       error instanceof ApiError &&
       (error.code === 'AUTH_TOKEN_EXPIRED' || error.code === 'AUTH_TOKEN_INVALID') &&
       !path.startsWith('/auth/refresh')
     ) {
-      if (await tryRefresh()) return rawRequest<T>(path, init);
+      if (await tryRefresh()) return run();
     }
     throw error;
   }
 };
 
+/** Request with one silent-refresh retry on an expired/invalid access token. */
+export const api = <T>(path: string, init: RequestInit = {}): Promise<T> =>
+  withSilentRefresh(path, () => rawRequest<T>(path, init));
+
 export const post = <T>(path: string, body: unknown): Promise<T> =>
   api<T>(path, { method: 'POST', body: JSON.stringify(body) });
+
+/**
+ * A POST whose answer carries its own `meta` beside `data` — an action that grew without changing
+ * `data` for the clients that read only that (API Standards §2; the ATM mail accept's refusals).
+ * Same silent refresh as `post`.
+ */
+export const postWithMeta = <T, M>(path: string, body: unknown): Promise<DataWithMeta<T, M>> => {
+  const init: RequestInit = { method: 'POST', body: JSON.stringify(body) };
+  return withSilentRefresh(path, () => rawEnvelope<T, M>(path, init));
+};
 
 export const get = <T>(path: string): Promise<T> => api<T>(path);
 

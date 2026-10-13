@@ -39,7 +39,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, EyeIcon, PrinterIcon, TrashIcon, WrenchIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon, WrenchIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
@@ -52,7 +52,15 @@ import {
   useVehicles,
 } from '../api/fleet-queries';
 import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
-import { BOARD_FONT, BoardIcon, NUM, PATH, expiryState, ymd } from '../components/FuelCardBoard';
+import {
+  BOARD_FONT,
+  BoardIcon,
+  FIGURES_FONT,
+  NUM,
+  PATH,
+  expiryState,
+  ymd,
+} from '../components/FuelCardBoard';
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
@@ -68,6 +76,8 @@ import { chosenSorts, clickChosenSort, readSorts, sortQuery, writeSorts } from '
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { licenceMonthOptions } from '../lib/licence-months';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -437,9 +447,6 @@ export const VehiclesListPage = (): JSX.Element => {
     }
   };
 
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
   /**
    * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
    *
@@ -551,7 +558,7 @@ export const VehiclesListPage = (): JSX.Element => {
       sortable: true,
       render: (v) => (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-          <span className="font-mono text-sm font-bold" dir="ltr">
+          <span className="font-figures text-sm" dir="ltr">
             {v.code}
           </span>
           {/* «الجدول … مش ظاهر كله»: a laptop has no room for two pills beside every code, so
@@ -588,7 +595,7 @@ export const VehiclesListPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.vehicles.columns.chassis'),
       render: (v) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span className="font-figures text-xs" dir="ltr">
           {v.chassisNumber}
         </span>
       ),
@@ -598,7 +605,7 @@ export const VehiclesListPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.vehicles.columns.motor'),
       render: (v) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span className="font-figures text-xs" dir="ltr">
           {v.motorNumber}
         </span>
       ),
@@ -694,31 +701,24 @@ export const VehiclesListPage = (): JSX.Element => {
     {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
-      align: 'end',
+      align: 'center',
+      // «اعملى الالوان دى»: the owner's picture — the eye, the pen, the wrench, the printer and
+      // the bin in one box, each in its own colour (`row-actions-look`).
       render: (v) => (
-        <span className="flex items-center justify-end gap-1">
+        <span className={ACTION_GROUP} data-row-actions="vehicle">
           <button
             type="button"
-            className={actionButton}
+            className={actionTone('view')}
             aria-label={t('fleet.vehicles.view')}
             title={t('fleet.vehicles.view')}
             onClick={() => navigate(v.id)}
           >
             <EyeIcon className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            className={actionButton}
-            aria-label={t('fleet.vehicles.print.action')}
-            title={t('fleet.vehicles.print.action')}
-            onClick={() => void print(v)}
-          >
-            <PrinterIcon className="h-4 w-4" />
-          </button>
           {can('fleetVehicle.edit') && v.status !== 'disposed' && (
             <button
               type="button"
-              className={actionButton}
+              className={actionTone('edit')}
               aria-label={t('fleet.vehicles.edit')}
               title={t('fleet.vehicles.edit')}
               onClick={() => {
@@ -726,7 +726,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 setFormOpen(true);
               }}
             >
-              <EditIcon className="h-4 w-4" />
+              <SquarePenIcon className="h-4 w-4" />
             </button>
           )}
           {/* OFFERED ON A DISPOSED CAR TOO — it is the only way back, and hiding it was what made
@@ -735,7 +735,7 @@ export const VehiclesListPage = (): JSX.Element => {
           {can('fleetVehicle.changeStatus') && (
             <button
               type="button"
-              className={actionButton}
+              className={actionTone('status')}
               aria-label={t('fleet.vehicles.changeStatus')}
               title={t('fleet.vehicles.changeStatus')}
               onClick={() => setStatusFor(v)}
@@ -743,15 +743,24 @@ export const VehiclesListPage = (): JSX.Element => {
               <WrenchIcon className="h-4 w-4" />
             </button>
           )}
+          <button
+            type="button"
+            className={actionTone('print')}
+            aria-label={t('fleet.vehicles.print.action')}
+            title={t('fleet.vehicles.print.action')}
+            onClick={() => void print(v)}
+          >
+            <PrinterIcon className="h-4 w-4" />
+          </button>
           {can('fleetVehicle.delete') && (
             <button
               type="button"
-              className={actionButton}
+              className={actionTone('delete')}
               aria-label={t('common.delete')}
               title={t('common.delete')}
               onClick={() => setDeleting(v)}
             >
-              <TrashIcon className="h-4 w-4" />
+              <Trash2Icon className="h-4 w-4" />
             </button>
           )}
         </span>
@@ -1152,6 +1161,7 @@ export const VehiclesListPage = (): JSX.Element => {
           className={cn(
             'hidden animate-fade-in lg:flex lg:min-h-[14rem] lg:flex-1 lg:flex-col [&>div]:min-h-0 [&>div]:flex-1',
             DARK_TABLE,
+            PLAIN_CELLS,
           )}
         >
           <DataTable
@@ -1274,6 +1284,16 @@ export const VehiclesListPage = (): JSX.Element => {
 /** The fuel screens' dark bar, laid over `FilterBar` and the controls inside it. */
 const DARK_BAR = DARK_FILTER_BAR;
 
+/**
+ * The one monospace these tables still meet: the shared error panel's request id (`ErrorState`
+ * writes it `font-mono` — Consolas on Windows, a struck zero), drawn in a cell across the row when
+ * a board's list fails. Set here in the figures' face («الارقام ال0 … ميكونش جوا شرطه») and at the
+ * sizes it had when these tables sized `.font-mono` with their figures. The shared panel itself is
+ * left as the other modules have it.
+ */
+export const ERROR_ID_AS_FIGURES =
+  "[&_td_.font-mono]:[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif] min-[1750px]:[&_td_.font-mono]:!text-base max-[1749px]:[&_td_.font-mono]:!text-[12.5px]";
+
 /** The fuel screens' dark table, laid over `DataTable` — the drivers screen's too. */
 export const DARK_TABLE = cn(
   '[&>div]:!rounded-2xl [&>div]:!border-slate-200 dark:[&>div]:!border-slate-800 [&>div]:!bg-white dark:[&>div]:!bg-[#111827]',
@@ -1286,16 +1306,27 @@ export const DARK_TABLE = cn(
   '[&_td[colspan]_button]:!h-auto [&_td[colspan]_button]:!w-auto [&_td[colspan]]:!whitespace-normal',
   // «لما عملت المتصفح على 110 ف الميه الداتا ظاهره احسن»: a wide screen takes the type a size up,
   // from where the whole table still fits beside the menu.
-  // «خط شاشه السيارات زى خط رقم الفيزا»: the card number's type — the system monospace, heavy —
-  // for every figure in the table; Arabic words fall through to Cairo.
-  "[&_td]:[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace] [&_td]:!font-bold",
-  'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-mono]:!text-base',
+  // «خط شاشه السيارات زى خط رقم الفيزا»: the card number's type for every figure in the table —
+  // Azeret Mono, whose zero is plain («الارقام ال0 … ميكونش جوا شرطه»; `FIGURES_FONT`), heavy on
+  // the boards that share this table; Arabic words fall through to Cairo. The vehicles, drivers
+  // and maintenance tables set their own cells in the normal weight — see `PLAIN_CELLS`.
+  "[&_td]:[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif] [&_td]:!font-bold",
+  'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-figures]:!text-base',
   // «على اللاب … المسافات قربت»: below that, the heavy figures take a size down and the columns
   // more room between them, so nothing sits against its neighbour.
   // «الداتا … داخله فى بعض»: a faint line between columns, so every value reads as its own.
   '[&_td+td]:border-s [&_th+th]:border-s [&_td+td]:border-slate-200/70 [&_th+th]:border-slate-200/70 dark:[&_td+td]:border-slate-700/40 dark:[&_th+th]:border-slate-700/40',
-  'max-[1749px]:[&_td]:!px-[9px] max-[1749px]:[&_th]:!px-[9px] max-[1749px]:[&_td]:!text-[12.5px] max-[1749px]:[&_td_.font-mono]:!text-[12.5px] max-[1749px]:[&_td_button]:!h-6 max-[1749px]:[&_td_button]:!w-[22px]',
+  'max-[1749px]:[&_td]:!px-[9px] max-[1749px]:[&_th]:!px-[9px] max-[1749px]:[&_td]:!text-[12.5px] max-[1749px]:[&_td_.font-figures]:!text-[12.5px] max-[1749px]:[&_td_button]:!h-6 max-[1749px]:[&_td_button]:!w-[22px]',
+  ERROR_ID_AS_FIGURES,
 );
+
+/**
+ * «عاوز اشيل الخط الbold يكون عادى بس حجم الخط ميقلش» / «كود العربية يفضل عادي»: the vehicles,
+ * drivers and maintenance tables write every value — the car's code too — in the normal weight, at
+ * the sizes they had. `tbody td` is more specific than `DARK_TABLE`'s heavy cells and than any
+ * weight a cell sets for itself, so it outweighs both; the headings keep their own weight.
+ */
+export const PLAIN_CELLS = '[&_tbody_td]:!font-normal [&_tbody_td_*]:!font-normal';
 
 /**
  * «الداتا … داخله فى بعض»: on a laptop a NAME may take two lines — a make, an insurer — so the
@@ -1366,9 +1397,8 @@ const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.E
 };
 
 /** One car on a tablet or a phone: the code and its state on top, the facts, then the actions. */
-/** «خط شاشه السيارات زى خط رقم الفيزا»: the card's figures in the card number's type. */
-const CARD_FONT =
-  "[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace]";
+/** «خط شاشه السيارات زى خط رقم الفيزا»: the card's figures in the card number's type (a plain zero). */
+const CARD_FONT = FIGURES_FONT;
 
 const VehicleCard = ({
   vehicle,
@@ -1433,7 +1463,7 @@ const VehicleCard = ({
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-800 px-3 py-2 [&_button]:!text-slate-600 dark:[&_button]:!text-slate-300 [&_label]:!text-slate-600 dark:[&_label]:!text-slate-300">
+      <div className="flex items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-800 px-3 py-2">
         <span className="flex items-center gap-1 text-[11px] text-slate-500">
           {t('fleet.vehicles.columns.licenseImage')} {image}
         </span>

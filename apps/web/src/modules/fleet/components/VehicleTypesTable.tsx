@@ -11,15 +11,14 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { StatusBadge } from '../../../shared/ui/Badge';
-import { ChevronIcon, EditIcon, GripIcon } from '../../../shared/ui/icons';
+import { ChevronIcon, GripIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from './row-actions-look';
+import { SquarePenIcon } from './row-action-icons';
 import { formatNumber } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useOrderVehicleTypes, useVehicleTypes } from '../api/fleet-queries';
 import { VehicleTypeDialog } from './CatalogDialogs';
-
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 /** Who may add, change or arrange a make — the maintenance rule rides on it. */
 export const MAKES_PERMISSION = 'fleetMaintenanceRule.manage';
@@ -134,15 +133,27 @@ export const VehicleTypesTable = ({
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
-            align: 'end',
+            align: 'center',
             render: (r: FleetVehicleTypeDto) => {
               const at = rows.indexOf(r);
               return (
-                <div className="inline-flex items-center gap-0.5">
+                // «اعملى الالوان دى»: the pen first, then the two arrows that move the row, in
+                // the owner's box (`row-actions-look`).
+                <div className={ACTION_GROUP}>
+                  <button
+                    type="button"
+                    data-vehicle-type-edit={r.id}
+                    className={actionTone('edit')}
+                    aria-label={t('fleet.settings.editType')}
+                    title={t('fleet.settings.editType')}
+                    onClick={() => setEditing(r)}
+                  >
+                    <SquarePenIcon className="h-4 w-4" />
+                  </button>
                   <button
                     type="button"
                     data-vehicle-type-up={r.id}
-                    className={`${actionButton} disabled:pointer-events-none disabled:opacity-30`}
+                    className={actionTone('move')}
                     aria-label={t('fleet.catalogs.moveUp')}
                     title={t('fleet.catalogs.moveUp')}
                     disabled={at <= 0}
@@ -153,23 +164,13 @@ export const VehicleTypesTable = ({
                   <button
                     type="button"
                     data-vehicle-type-down={r.id}
-                    className={`${actionButton} disabled:pointer-events-none disabled:opacity-30`}
+                    className={actionTone('move')}
                     aria-label={t('fleet.catalogs.moveDown')}
                     title={t('fleet.catalogs.moveDown')}
                     disabled={at === rows.length - 1}
                     onClick={() => step(r.id, 1)}
                   >
                     <ChevronIcon className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    data-vehicle-type-edit={r.id}
-                    className={actionButton}
-                    aria-label={t('fleet.settings.editType')}
-                    title={t('fleet.settings.editType')}
-                    onClick={() => setEditing(r)}
-                  >
-                    <EditIcon className="h-4 w-4" />
                   </button>
                 </div>
               );

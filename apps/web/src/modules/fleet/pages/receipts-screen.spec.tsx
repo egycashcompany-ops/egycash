@@ -130,6 +130,7 @@ const custodySummary: FleetCustodySummaryDto = {
   fuel: 1850,
   tyres: 1400,
   wash: 120,
+  fundTotal: 0,
   vehicles: [
     {
       vehicleId: 'v-204',
@@ -368,13 +369,14 @@ describe('the receipts table', () => {
     expect(row).toContain('ج.م');
     // The car's code bold, left to right.
     expect(row).toMatch(/<span dir="ltr" class="[^"]*font-bold[^"]*">204<\/span>/u);
-    // Every value and header centred, as on the drivers board; the actions at the row's end.
+    // Every value and header centred, as on the drivers board — the actions too.
     const cells = row.match(/<td[^>]*>/gu) ?? [];
     expect(cells.length).toBe(10);
     for (const cell of cells.slice(0, 9)) expect(cell).toContain('text-center');
-    expect(cells[9]).toContain('text-end');
+    // «الداتا او الايقونات تكون متوسطانه»: the actions centred like every other cell.
+    expect(cells[9]).toContain('text-center');
     const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(9);
+    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(10);
     // An empty car is the boards' grey dash.
     const none = rowWith(renderReceipts({ rows: [receipt({ vehicleCode: null })] }), '640.00');
     expect(none).toContain('<span class="text-slate-400">—</span>');
@@ -814,7 +816,7 @@ describe('the custody ledger', () => {
     expect(opened).toMatch(/>4,220\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
   });
 
-  it('shows five figures — the total, then each kind on its own tile in its own colour', () => {
+  it('shows six figures — the fund, the total, then each kind on its own tile in its own colour', () => {
     const opened = mount(
       client(),
       ['fleetCustody.view'],
@@ -822,7 +824,7 @@ describe('the custody ledger', () => {
       <CustodyFigures totals={custodySummary} />,
     );
     const order = [...opened.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1]);
-    expect(order).toEqual(['total', 'dealership', 'fuel', 'tyres', 'wash']);
+    expect(order).toEqual(['fund', 'total', 'dealership', 'fuel', 'tyres', 'wash']);
     for (const kind of ['dealership', 'fuel', 'tyres', 'wash'] as const) {
       const at = opened.indexOf(`data-custody-figure="${kind}"`);
       const tile = opened.slice(at, opened.indexOf('</div></div>', at));
@@ -830,9 +832,13 @@ describe('the custody ledger', () => {
       expect(tile, `${kind} wears its kind's tile`).toContain(CUSTODY_KIND[kind].tile);
       expect(tile, `${kind} wears its kind's edge`).toContain(CUSTODY_KIND[kind].accent);
     }
-    // Five across where five sums fit; a sum of money keeps the whole row on a phone, and «ج.م.»
-    // goes under a figure too long for its tile rather than off it.
-    expect(opened).toContain('xl:grid-cols-5');
+    // One to a row on a phone, two from `sm`, three from `xl`, the six in one row only from
+    // 1,680px — never `2xl`, where «ج.م.» would not fit — and «ج.م.» goes under a figure too long
+    // for its tile rather than off it.
+    expect(opened).toContain(
+      'grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1680px]:grid-cols-6',
+    );
+    expect(opened).not.toMatch(/(?:^|[\s"])(?:lg|2xl):grid-cols-[56]/u);
     expect(opened).toContain('[&amp;_.items-baseline]:flex-wrap');
     // «فى شاشه العهد … فى اللايت سيم والدارك سيم»: on this screen fuel is the design's amber,
     // the total its emerald — the house rule keeping amber for states holds on the other boards.

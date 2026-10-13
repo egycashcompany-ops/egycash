@@ -56,7 +56,9 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { listKey } from '../../../shared/lib/query-keys';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
-import { EditIcon, EyeIcon, PrinterIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, IMAGE_EMPTY_BOX, actionTone } from '../components/row-actions-look';
+import { CloudUploadIcon, SquarePenIcon } from '../components/row-action-icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
@@ -75,7 +77,7 @@ import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
 import { BoardIcon, PATH, expiryState } from '../components/FuelCardBoard';
-import { DARK_TABLE } from './VehiclesListPage';
+import { DARK_TABLE, PLAIN_CELLS } from './VehiclesListPage';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DriverPickerFilter } from '../components/DriverPickerFilter';
@@ -254,7 +256,7 @@ const PrintLicenceButton = ({ driver }: { driver: FleetDriverProfileDto }): JSX.
     <button
       type="button"
       data-driver-license-print={driver.id}
-      className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+      className={actionTone('print')}
       aria-label={t('fleet.drivers.licenseImage.print')}
       title={t('fleet.drivers.licenseImage.print')}
       onClick={() => void print()}
@@ -495,10 +497,6 @@ export const DriversListPage = (): JSX.Element => {
   const [stagedScan, setStagedScan] = useState<File | null>(null);
   const [pickerKey, setPickerKey] = useState(0);
 
-  const actionButton =
-    // The colour comes with each button, grey as on the vehicles table.
-    'rounded-md p-1.5 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800';
-
   /**
    * The people this file names — FLEET's own roster, in one request.
    *
@@ -652,7 +650,7 @@ export const DriversListPage = (): JSX.Element => {
         <EmployeeFact
           employeeId={d.employeeId}
           pick={(e) => e.code}
-          className="font-mono text-xs"
+          className="font-figures text-xs"
         />
       ),
     },
@@ -693,7 +691,7 @@ export const DriversListPage = (): JSX.Element => {
         <EmployeeFact
           employeeId={d.employeeId}
           pick={(e) => e.phone}
-          className="font-mono text-xs"
+          className="font-figures text-xs"
         />
       ),
     },
@@ -802,13 +800,10 @@ export const DriversListPage = (): JSX.Element => {
           can('fleetDriver.manage') ? (
             <label
               data-driver-enrol={d.employeeId}
-              className={cn(
-                actionButton,
-                'relative inline-flex cursor-pointer text-slate-500 dark:text-slate-400',
-              )}
+              className={cn(IMAGE_EMPTY_BOX, 'relative')}
               title={t('fleet.drivers.licenseImage.addViaProfile')}
             >
-              <UploadIcon className="h-4 w-4" />
+              <CloudUploadIcon className="h-4 w-4" />
               <input
                 key={pickerKey}
                 type="file"
@@ -837,17 +832,15 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'actions',
       header: t('fleet.drivers.table.actions'),
-      align: 'end',
+      align: 'center',
+      // «اعملى الالوان دى»: the owner's picture — the eye, the pen, the printer, in one box.
       render: (d) => (
-        <span className="flex items-center justify-end gap-1">
-          {d.profile !== null && d.profile.licenseImage !== null && (
-            <PrintLicenceButton driver={d.profile} />
-          )}
+        <span className={ACTION_GROUP} data-row-actions="driver">
           {/* The detail screen is ABOUT a profile, so it is offered only once one exists. */}
           {d.profile !== null && (
             <button
               type="button"
-              className={cn(actionButton, 'text-slate-500 dark:text-slate-400')}
+              className={actionTone('view')}
               aria-label={t('fleet.drivers.view')}
               title={t('fleet.drivers.view')}
               onClick={() => navigate(d.profile === null ? '' : d.profile.id)}
@@ -858,7 +851,7 @@ export const DriversListPage = (): JSX.Element => {
           {can('fleetDriver.manage') && (
             <button
               type="button"
-              className={cn(actionButton, 'text-slate-500 dark:text-slate-400')}
+              className={actionTone('edit')}
               aria-label={d.profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
               title={d.profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
               onClick={() => {
@@ -866,8 +859,11 @@ export const DriversListPage = (): JSX.Element => {
                 setFormOpen(true);
               }}
             >
-              <EditIcon className="h-4 w-4" />
+              <SquarePenIcon className="h-4 w-4" />
             </button>
+          )}
+          {d.profile !== null && d.profile.licenseImage !== null && (
+            <PrintLicenceButton driver={d.profile} />
           )}
         </span>
       ),
@@ -1204,10 +1200,12 @@ export const DriversListPage = (): JSX.Element => {
             // Thirteen columns on a laptop: the cells take less room between them so the whole row
             // stays on the screen.
             'max-[1749px]:[&_tbody_td]:!px-[5px] max-[1749px]:[&_thead_th]:!px-[5px]',
-            // «شيل الخطوط اللى بين العواميد»: no line between the columns on this table.
-            '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
-            // «خلى الكلام bold»: every value heavy, the Arabic in Cairo's own bold.
-            "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+            // «زى السيارات ما بين العواميد خط»: the vehicles table's faint line between the columns,
+            // drawn by `DARK_TABLE` — nothing here takes it off any more.
+            // «عاوز اشيل الخط الbold يكون عادى بس حجم الخط ميقلش»: every value in the normal
+            // weight, at the size it had — see `PLAIN_CELLS`.
+            "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif]",
+            PLAIN_CELLS,
           )}
         >
           <DataTable

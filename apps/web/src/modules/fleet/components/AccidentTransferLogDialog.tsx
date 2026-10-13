@@ -10,7 +10,8 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { TrashIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from './row-actions-look';
+import { Trash2Icon } from './row-action-icons';
 import { formatDate, formatMoney } from '../../../shared/lib/format';
 import { useAccidentCarTransfers, useVoidAccidentTransfer } from '../api/fleet-queries';
 
@@ -119,7 +120,7 @@ export const AccidentTransferLogDialog = ({
                           {label(entry)}
                         </Badge>
                       </td>
-                      <td className="px-3 py-2 font-mono text-xs" dir="ltr">
+                      <td className="px-3 py-2 font-figures text-xs" dir="ltr">
                         {entry.otherVehicleCode ?? '—'}
                       </td>
                       <td
@@ -137,16 +138,19 @@ export const AccidentTransferLogDialog = ({
                       </td>
                       {mayRemove && (
                         <td className="px-3 py-2 text-end">
-                          <button
-                            type="button"
-                            data-transfer-remove={entry.transferId}
-                            aria-label={t('fleet.accidents.log.remove')}
-                            title={t('fleet.accidents.log.remove')}
-                            onClick={() => setRemoving(entry)}
-                            className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-red-300"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
+                          {/* «اعملى الالوان دى»: the bin in the owner's box. */}
+                          <span className={ACTION_GROUP}>
+                            <button
+                              type="button"
+                              data-transfer-remove={entry.transferId}
+                              aria-label={t('fleet.accidents.log.remove')}
+                              title={t('fleet.accidents.log.remove')}
+                              onClick={() => setRemoving(entry)}
+                              className={actionTone('delete')}
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                            </button>
+                          </span>
                         </td>
                       )}
                     </tr>

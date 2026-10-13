@@ -1,7 +1,8 @@
 // The scan of a dealership invoice — «الصوره اللى فى الجدول تكون زى شاشة السيارات زى صوره
-// الرخصه بالظبط»: the same cell the vehicle licence has. No scan → an upload control; a scan →
-// view, print, delete. The bytes are guarded, so they are fetched with the session and shown as
-// an object URL, exactly as the licence image is.
+// الرخصه بالظبط»: the same cell the vehicle licence has. No scan → the dashed box with the cloud
+// upload; a scan → view, replace, print, delete in the owner's image box (`row-actions-look`). The
+// bytes are guarded, so they are fetched with the session and shown as an object URL, exactly as
+// the licence image is.
 import { useEffect, useState } from 'react';
 import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { type FleetDealershipInvoiceDto, type Locale } from '@ecms/contracts';
@@ -11,16 +12,15 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EyeIcon, PrinterIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
 import { formatDate } from '../../../shared/lib/format';
 import { ZoomableImage } from './ZoomableImage';
+import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
+import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { printLicenceRecord } from './vehicle-print';
 import { fetchDealershipImage } from '../api/fleet-api';
 import { useDeleteDealershipImage, useUploadDealershipImage } from '../api/fleet-queries';
-
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 /** The row's scan as an object URL, revoked on every change — keyed on the file, not the row. */
 const useInvoiceImageUrl = (
@@ -220,31 +220,45 @@ export const DealershipImageCell = ({
     return (
       <PhotoPickButton
         accept={LICENSE_IMAGE_ACCEPT}
-        className={`${actionButton} inline-flex`}
+        className={IMAGE_EMPTY_BOX}
         disabled={upload.isPending}
         label={t('fleet.dealership.image.upload')}
+        data-dealership-image-upload={row.id}
         onFile={(file) => void pick(file)}
       >
-        <UploadIcon className="h-4 w-4" />
+        <CloudUploadIcon className="h-4 w-4" />
       </PhotoPickButton>
     );
   }
 
+  // «اعملى الالوان دى»: the owner's image box — the eye, the replace arrow, the printer, the bin.
   return (
-    <span className="flex items-center gap-1">
+    <span className={IMAGE_GROUP} data-image-actions="dealership">
       <button
         type="button"
-        className={actionButton}
+        className={actionTone('view')}
         aria-label={t('fleet.dealership.image.view')}
         title={t('fleet.dealership.image.view')}
         onClick={() => onPreview(row)}
       >
         <EyeIcon className="h-4 w-4" />
       </button>
+      {mayEdit && (
+        <PhotoPickButton
+          accept={LICENSE_IMAGE_ACCEPT}
+          className={actionTone('upload')}
+          disabled={upload.isPending}
+          label={t('fleet.vehicles.licenseImage.replace')}
+          data-dealership-image-replace={row.id}
+          onFile={(file) => void pick(file)}
+        >
+          <ArrowUpFromLineIcon className="h-4 w-4" />
+        </PhotoPickButton>
+      )}
       <button
         type="button"
         data-dealership-print={row.id}
-        className={actionButton}
+        className={actionTone('print')}
         aria-label={t('common.print')}
         title={t('common.print')}
         onClick={() => void printDealershipInvoice(row, locale, t)}
@@ -255,12 +269,12 @@ export const DealershipImageCell = ({
         <button
           type="button"
           data-dealership-image-delete={row.id}
-          className={actionButton}
+          className={actionTone('delete')}
           aria-label={t('fleet.dealership.image.delete')}
           title={t('fleet.dealership.image.delete')}
           onClick={() => setConfirming(true)}
         >
-          <TrashIcon className="h-4 w-4" />
+          <Trash2Icon className="h-4 w-4" />
         </button>
       )}
       <DealershipImageDeleteDialog

@@ -6,7 +6,8 @@
 // owner's design, section by section and in its order — the board's filters (read only), the
 // alerts, five figures and three tiles, the time chart beside the rings of kind and source, the
 // cars, the drivers and the fuel — in its dark theme and in the light map that came with it, as
-// `dark:` variants over the `dark` class the app stamps on <html>.
+// `dark:` variants over the `dark` class the app stamps on <html>. Since «عاوز ازود اجمالى العهده
+// فى الاحصايات و تكون فى الداس بورد», the fund («إجمالي العهدة») leads the figures: six of them.
 //
 // «عاوزك تشيل من الداش بورد الجدول اللى فى العربيات والسجل يكون برا زى ما هو … وسجل كل الحركات
 // برضو»: the design's last two tables — «ملخص لكل سيارة» and «سجل كل الحركات» — are not drawn here.
@@ -19,6 +20,11 @@
 // station panel, no kind of wash, no «تكلفة معلقة» amount (a waiting bill has none yet) — only its
 // count and how long the oldest has waited. The owner's choices on it are in `CustodyKinds.tsx`
 // (the colours) and in `custody-dashboard-parts.tsx` (the surfaces, the type, the counted words).
+//
+// «عاوز الداش بورد بكل حاجة تكون ظاهره حتى لو لسه مفيش اى اكشن او حركه او خصم او زياده فاهم يعنى
+// على الاقل الاشكال موجودة»: there is no empty face. With no movement in the set, every section is
+// still drawn — the figures and tiles at zero, the time chart's frame, the grey rings, the table at
+// zero, the cars, the drivers and both companies of the fuel — each card saying why in one line.
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -31,10 +37,9 @@ import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { Skeleton } from '../../../shared/ui/Skeleton';
-import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { useCustodyDashboard } from '../api/fleet-queries';
-import { CustodyShare, CUSTODY_KIND_LABEL } from './CustodyFigures';
+import { CustodyFundCard, CustodyShare, CUSTODY_KIND_LABEL } from './CustodyFigures';
 import { CUSTODY_KIND, CUSTODY_KINDS, CUSTODY_TOTAL_TILE, FLASK } from './CustodyKinds';
 import {
   CustodyByKindSource,
@@ -80,14 +85,17 @@ export interface CustodyDashboardActions {
   onShowDealership?: (() => void) | undefined;
 }
 
-/** Which face the modal wears — a function, so the node specs can reach every branch. */
-export type CustodyDashboardView = 'loading' | 'error' | 'empty' | 'ready';
+/**
+ * Which face the modal wears — a function, so the node specs can reach every branch. An answer of
+ * no movement is still an answer: the whole dashboard, at zero («على الاقل الاشكال موجودة»).
+ */
+export type CustodyDashboardView = 'loading' | 'error' | 'ready';
 export const custodyDashboardView = (query: {
   isPending: boolean;
   isError: boolean;
   data: FleetCustodyDashboardDto | undefined;
 }): CustodyDashboardView => {
-  if (query.data !== undefined) return query.data.count === 0 ? 'empty' : 'ready';
+  if (query.data !== undefined) return 'ready';
   if (query.isError) return 'error';
   return 'loading';
 };
@@ -317,21 +325,31 @@ export const CustodyAlerts = ({
 
 // ── (2) The figures ───────────────────────────────────────────────────────────────────────────
 
-/** A figure's sum: Cairo, black, tight — a size down on a 1,024px screen where five share a row. */
+/**
+ * A figure's sum: Cairo, black, tight — a size down from 1,536px, where the six share one row (a
+ * sixth of the modal's 1,600px at most); below that they are three to a row and need no shrinking.
+ */
 const FIGURE = cn(
-  'text-2xl font-black tracking-tight text-slate-900 [overflow-wrap:anywhere] lg:text-xl xl:text-2xl dark:text-white',
+  'text-2xl font-black tracking-tight text-slate-900 [overflow-wrap:anywhere] 2xl:text-xl dark:text-white',
   CAIRO,
 );
+/**
+ * «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد» — six figures: one to a row on a
+ * phone, two from `sm`, three from `lg` (the fund, the spend and the dealership over fuel, tyres
+ * and washing), all six in one row of the design from `2xl`, where a sixth of the row still holds
+ * a sum and its «ج.م.».
+ */
+const KPI_GRID = 'grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6';
 const FOOT =
   'flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs dark:border-[#1c273b]';
 const TILE = cn(CARD, 'flex flex-wrap items-center justify-between gap-2 rounded-xl p-3.5');
 const TILE_ICON = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border';
 
 /**
- * Five figures — the total in emerald, then each kind with its share of the total and its count;
- * fuel splits into «شل أوت» and «وطنية» by the company each receipt names, and the receipts that
- * name none are a small line of their own under the two. Then the movements, the cars and the
- * litres.
+ * Six figures — the fund first («إجمالي العهدة», the board's own card: what was spent of it), the
+ * total in emerald, then each kind with its share of the total and its count; fuel splits into
+ * «شل أوت» and «وطنية» by the company each receipt names, and the receipts that name none are a
+ * small line of their own under the two. Then the movements, the cars and the litres.
  */
 export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
@@ -341,7 +359,10 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
   const none = data.fuelByCompany.none;
   return (
     <section data-custody-dashboard-section="kpis" className="space-y-3.5">
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-5">
+      <div className={KPI_GRID}>
+        <div data-custody-kpi="fund" className="flex min-w-0 flex-col">
+          <CustodyFundCard fundTotal={data.fundTotal} spent={data.total} figure={FIGURE} />
+        </div>
         <div
           data-custody-kpi="total"
           className={cn(
@@ -625,37 +646,46 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
 // ── The body ──────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Everything the dashboard shows of a READY answer, in the design's order — up to the fuel: the
- * cars' table and the log are the board's own.
+ * Everything the dashboard shows of an answer, in the design's order — up to the fuel: the cars'
+ * table and the log are the board's own. Every section, whatever the answer holds: with no
+ * movement, each at zero with its line (`CustodyNoMovements`), the banner by its own rules — a
+ * private car's bill waiting for its invoice is not a movement, so it may still have one to say.
  */
 export const CustodyDashboardBody = ({
   data,
+  filters = {},
   onShowDealership,
   now,
 }: {
   data: FleetCustodyDashboardDto;
+  /** The board's filters — the time chart's frame and the words of the line, with no movement. */
+  filters?: CustodyDashboardFilters;
+  /** Today, for the age of the oldest waiting bill and the time chart's frame — fixed by the specs. */
   now?: number;
-} & CustodyDashboardActions): JSX.Element => (
-  <div className="space-y-6" data-custody-dashboard-body="true">
-    <CustodyAlerts alerts={data.alerts} {...(now === undefined ? {} : { now })} />
-    <CustodyKpis data={data} />
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
-      <CustodyTimeline data={data} />
-      <CustodyByKindSource data={data} onShowDealership={onShowDealership} />
+} & CustodyDashboardActions): JSX.Element => {
+  const today = now === undefined ? {} : { now };
+  return (
+    <div className="space-y-6" data-custody-dashboard-body="true">
+      <CustodyAlerts alerts={data.alerts} {...today} />
+      <CustodyKpis data={data} />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+        <CustodyTimeline data={data} filters={filters} {...today} />
+        <CustodyByKindSource data={data} onShowDealership={onShowDealership} filters={filters} />
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <CustodyTopCars data={data} filters={filters} />
+        <CustodyTopDrivers data={data} filters={filters} />
+        <CustodyFuelBreakdown data={data} filters={filters} />
+      </div>
     </div>
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <CustodyTopCars data={data} />
-      <CustodyTopDrivers data={data} />
-      <CustodyFuelBreakdown data={data} />
-    </div>
-  </div>
-);
+  );
+};
 
 /** Loading: the frame of the body, shimmering — no layout jump when the answer lands. */
 const BodySkeleton = (): JSX.Element => (
   <div className="space-y-6" data-custody-dashboard-loading="true">
-    <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-5">
-      {[0, 1, 2, 3, 4].map((i) => (
+    <div className={KPI_GRID}>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
         <Skeleton key={i} className="h-[120px] rounded-2xl" />
       ))}
     </div>
@@ -682,7 +712,7 @@ export const CustodyDashboardContent = ({
   data,
   error,
   onRetry,
-  filtered = false,
+  filters = {},
   onShowDealership,
   now,
 }: {
@@ -690,30 +720,15 @@ export const CustodyDashboardContent = ({
   data: FleetCustodyDashboardDto | undefined;
   error: unknown;
   onRetry: () => void;
-  /** Opened over a filter: nothing matching it is not «nothing taken from the fund yet». */
-  filtered?: boolean;
-  /** Today, for the age of the oldest waiting bill — fixed by the specs. */
+  /**
+   * The board's filters: over one, no movement is «لا توجد حركات مطابقة للفلاتر.», never «لا توجد
+   * حركات بعد.» — and the time chart frames the months they name.
+   */
+  filters?: CustodyDashboardFilters;
+  /** Today, for the age of the oldest waiting bill and the time chart's frame — fixed by the specs. */
   now?: number;
 } & CustodyDashboardActions): JSX.Element => {
-  const t = useT();
   if (view === 'loading') return <BodySkeleton />;
-  if (view === 'empty') {
-    // «تكلفة معلقة» is a count with no amount: a private car's bill waiting for its invoice is not
-    // a movement yet, so the board can hold none and still have bills waiting — the banner stays
-    // over the empty ledger whenever it has something to say.
-    return (
-      <div className="space-y-6">
-        {data !== undefined && (
-          <CustodyAlerts alerts={data.alerts} {...(now === undefined ? {} : { now })} />
-        )}
-        <div className={cn(CARD, 'rounded-2xl')}>
-          <EmptyState
-            title={filtered ? t('fleet.violations.report.empty') : t('fleet.custody.empty')}
-          />
-        </div>
-      </div>
-    );
-  }
   if (view === 'error' || data === undefined) {
     return (
       <div className={cn(CARD, 'rounded-2xl')}>
@@ -721,7 +736,14 @@ export const CustodyDashboardContent = ({
       </div>
     );
   }
-  return <CustodyDashboardBody data={data} onShowDealership={onShowDealership} />;
+  return (
+    <CustodyDashboardBody
+      data={data}
+      filters={filters}
+      onShowDealership={onShowDealership}
+      {...(now === undefined ? {} : { now })}
+    />
+  );
 };
 
 const FOCUSABLE =
@@ -860,7 +882,7 @@ export const CustodyDashboard = ({
               data={query.data}
               error={query.error}
               onRetry={() => void query.refetch()}
-              filtered={custodyFiltered(filters)}
+              filters={filters}
               onShowDealership={onShowDealership}
             />
           </div>

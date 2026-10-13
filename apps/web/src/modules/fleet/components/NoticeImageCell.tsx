@@ -1,7 +1,8 @@
 // A notice's two scans on the notices table — «الصور والاجراءات تكون نفس شاشه السيارات»: the same
-// cell the vehicle licence and the dealership invoice have. No scan → an upload control (on a
-// phone: the camera, or a picture already on it); a scan → view, print, delete. The bytes are
-// guarded, so they are fetched with the session and shown as an object URL.
+// cell the vehicle licence and the dealership invoice have. No scan → the dashed box with the
+// cloud upload (on a phone: the camera, or a picture already on it); a scan → view, replace,
+// print, delete in the owner's image box (`row-actions-look`). The bytes are guarded, so they are
+// fetched with the session and shown as an object URL.
 import { useEffect, useState } from 'react';
 import { type FleetNoticeDto, type FleetNoticeImageKind, type Locale } from '@ecms/contracts';
 import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
@@ -12,16 +13,15 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
-import { EyeIcon, PrinterIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
 import { ZoomableImage } from './ZoomableImage';
+import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
+import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { printLicenceRecord } from './vehicle-print';
 import { fetchNoticeImage } from '../api/fleet-api';
 import { useDeleteNoticeImage, useUploadNoticeImage } from '../api/fleet-queries';
 import { noticeTemplate } from '../lib/notice-templates';
-
-export const NOTICE_ACTION_BUTTON =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 /**
  * What identifies the image a row shows for a kind — the file, or for a licence where it comes
@@ -258,31 +258,44 @@ export const NoticeImageCell = ({
     return (
       <PhotoPickButton
         accept={LICENSE_IMAGE_ACCEPT}
-        className={`${NOTICE_ACTION_BUTTON} inline-flex`}
+        className={IMAGE_EMPTY_BOX}
         disabled={upload.isPending}
         label={t(`fleet.notices.image.${kind}.upload`)}
         data-notice-image-upload={`${kind}:${row.id}`}
         onFile={(file) => void pick(file)}
       >
-        <UploadIcon className="h-4 w-4" />
+        <CloudUploadIcon className="h-4 w-4" />
       </PhotoPickButton>
     );
   }
 
+  // «اعملى الالوان دى»: the owner's image box — the eye, the replace arrow, the printer, the bin.
   return (
-    <span className="flex items-center justify-center gap-1">
+    <span className={IMAGE_GROUP} data-image-actions={`notice-${kind}`}>
       <button
         type="button"
-        className={NOTICE_ACTION_BUTTON}
+        className={actionTone('view')}
         aria-label={t(`fleet.notices.image.${kind}.view`)}
         title={t(`fleet.notices.image.${kind}.view`)}
         onClick={() => onPreview({ row, kind })}
       >
         <EyeIcon className="h-4 w-4" />
       </button>
+      {mayEdit && (
+        <PhotoPickButton
+          accept={LICENSE_IMAGE_ACCEPT}
+          className={actionTone('upload')}
+          disabled={upload.isPending}
+          label={t('fleet.vehicles.licenseImage.replace')}
+          data-notice-image-replace={`${kind}:${row.id}`}
+          onFile={(file) => void pick(file)}
+        >
+          <ArrowUpFromLineIcon className="h-4 w-4" />
+        </PhotoPickButton>
+      )}
       <button
         type="button"
-        className={NOTICE_ACTION_BUTTON}
+        className={actionTone('print')}
         aria-label={t('common.print')}
         title={t('common.print')}
         onClick={() => void printNoticeImage(row, kind, locale, t)}
@@ -293,12 +306,12 @@ export const NoticeImageCell = ({
         <button
           type="button"
           data-notice-image-delete={`${kind}:${row.id}`}
-          className={NOTICE_ACTION_BUTTON}
+          className={actionTone('delete')}
           aria-label={t(`fleet.notices.image.${kind}.delete`)}
           title={t(`fleet.notices.image.${kind}.delete`)}
           onClick={() => setConfirming({ row, kind })}
         >
-          <TrashIcon className="h-4 w-4" />
+          <Trash2Icon className="h-4 w-4" />
         </button>
       )}
       <NoticeImageDeleteDialog target={confirming} onClose={() => setConfirming(null)} />

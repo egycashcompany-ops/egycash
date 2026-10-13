@@ -25,13 +25,9 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import {
-  CheckIcon,
-  EditIcon,
-  PrinterIcon,
-  ResetIcon,
-  DownloadIcon,
-} from '../../../shared/ui/icons';
+import { CheckIcon, PrinterIcon, ResetIcon, DownloadIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, PARTLY_PRESSED, PRESSED, actionTone } from './row-actions-look';
+import { SquarePenIcon } from './row-action-icons';
 import { formatMoney, formatNumber } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
@@ -908,7 +904,7 @@ export const CompanyViolationsPanel = ({
                           <td rowSpan={4} className={`${cell} text-center tabular-nums`}>
                             {row.year}
                           </td>
-                          <td rowSpan={4} className={`${cell} text-center font-mono`} dir="ltr">
+                          <td rowSpan={4} className={`${cell} text-center font-figures`} dir="ltr">
                             {row.code}
                           </td>
                         </>
@@ -928,8 +924,20 @@ export const CompanyViolationsPanel = ({
                         {formatMoney(row[total.amount] as number, 'EGP', locale)}
                       </td>
                       {line === 0 && (
-                        <td rowSpan={4} className={`${cell}`}>
-                          <span className="flex items-center justify-center gap-1">
+                        <td rowSpan={4} className={`${cell} text-center`}>
+                          {/* «اعملى الالوان دى»: the pen, then the tick, in the owner's box
+                              (`row-actions-look`). */}
+                          <span className={ACTION_GROUP} data-row-actions="violations-year">
+                            <button
+                              type="button"
+                              data-inspect={`${row.code}:${row.year}`}
+                              aria-label={t('fleet.violations.inspect', { code: row.code })}
+                              title={t('fleet.violations.inspect', { code: row.code })}
+                              onClick={() => onInspect(row)}
+                              className={actionTone('edit')}
+                            >
+                              <SquarePenIcon className="h-4 w-4" />
+                            </button>
                             {/* THE TICK IS OUT HERE, beside the edit, because settling a year is a
                                 decision about the GROUP the reader is looking at — it used to be
                                 reachable only after opening the group, which put the commonest act
@@ -960,28 +968,18 @@ export const CompanyViolationsPanel = ({
                                   total: formatNumber(row.rowCount, locale),
                                 })}
                                 onClick={() => void toggleYear(row)}
-                                className={[
-                                  'rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+                                // A status, so violet: filled when the whole year is collected,
+                                // washed and ringed when only some of it is, plain when none.
+                                className={cn(
+                                  actionTone('status'),
                                   row.collectedCount === row.rowCount
-                                    ? 'text-emerald-600 hover:bg-emerald-100 dark:text-emerald-400'
-                                    : row.collectedCount > 0
-                                      ? 'text-amber-500 hover:bg-amber-100 dark:text-amber-400'
-                                      : 'text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800',
-                                ].join(' ')}
+                                    ? PRESSED
+                                    : row.collectedCount > 0 && PARTLY_PRESSED,
+                                )}
                               >
                                 <CheckIcon className="h-4 w-4" />
                               </button>
                             )}
-                            <button
-                              type="button"
-                              data-inspect={`${row.code}:${row.year}`}
-                              aria-label={t('fleet.violations.inspect', { code: row.code })}
-                              title={t('fleet.violations.inspect', { code: row.code })}
-                              onClick={() => onInspect(row)}
-                              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
-                            >
-                              <EditIcon className="h-4 w-4" />
-                            </button>
                           </span>
                         </td>
                       )}

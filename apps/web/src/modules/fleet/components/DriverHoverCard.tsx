@@ -356,7 +356,7 @@ const PersonFacts = ({ facts }: { facts: DriverCardFacts }): JSX.Element => {
           {facts.code === '' ? (
             <Missing />
           ) : (
-            <span dir="ltr" className="font-mono">
+            <span dir="ltr" className="font-figures">
               {facts.code}
             </span>
           )}
@@ -365,7 +365,7 @@ const PersonFacts = ({ facts }: { facts: DriverCardFacts }): JSX.Element => {
           {facts.phone === null ? (
             <Missing />
           ) : (
-            <span dir="ltr" className="font-mono">
+            <span dir="ltr" className="font-figures">
               {facts.phone}
             </span>
           )}
@@ -374,7 +374,7 @@ const PersonFacts = ({ facts }: { facts: DriverCardFacts }): JSX.Element => {
         {vehicle.kind !== 'hidden' && (
           <Fact label={t('fleet.drivers.card.vehicle')}>
             {vehicle.kind === 'car' ? (
-              <span dir="ltr" className="font-mono">
+              <span dir="ltr" className="font-figures">
                 {vehicle.code}
               </span>
             ) : vehicle.kind === 'elsewhere' ? (

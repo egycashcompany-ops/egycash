@@ -11,7 +11,9 @@ import { useCan } from '../../../platform/rbac/Can';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
-import { EditIcon, HistoryIcon, TrashIcon } from '../../../shared/ui/icons';
+import { HistoryIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from './row-actions-look';
+import { SquarePenIcon, Trash2Icon } from './row-action-icons';
 import {
   useDeleteFuelCardMovement,
   useFuelCardMovements,
@@ -275,7 +277,8 @@ export const FuelCardHistoryDialog = ({
                           </span>
                         )}
                         {!active && mayChange(line) && (
-                          <span className="flex items-center gap-1">
+                          // «اعملى الالوان دى»: the pen and the bin in the owner's box.
+                          <span className={ACTION_GROUP} data-row-actions="fuel-history">
                             <button
                               type="button"
                               data-fuel-history-edit={line.id}
@@ -285,9 +288,9 @@ export const FuelCardHistoryDialog = ({
                                 setRemoving(null);
                                 setEditing({ id: line.id, amount: String(Math.abs(line.amount)) });
                               }}
-                              className="rounded-md p-1.5 text-slate-600 dark:text-slate-300 hover:bg-brand-500/15 hover:text-brand-700 dark:hover:text-brand-200"
+                              className={actionTone('edit')}
                             >
-                              <EditIcon className="h-4 w-4" />
+                              <SquarePenIcon className="h-4 w-4" />
                             </button>
                             <button
                               type="button"
@@ -298,9 +301,9 @@ export const FuelCardHistoryDialog = ({
                                 setEditing(null);
                                 setRemoving(line.id);
                               }}
-                              className="rounded-md p-1.5 text-slate-600 dark:text-slate-300 hover:bg-red-500/15 hover:text-red-700 dark:hover:text-red-300"
+                              className={actionTone('delete')}
                             >
-                              <TrashIcon className="h-4 w-4" />
+                              <Trash2Icon className="h-4 w-4" />
                             </button>
                           </span>
                         )}
@@ -357,7 +360,7 @@ export const FuelCardHistoryDialog = ({
                         ) : (
                           <div className="flex items-start gap-2.5">
                             <span className="mt-0.5 rounded-lg bg-red-500/15 p-1.5 text-red-700 dark:text-red-300">
-                              <TrashIcon className="h-4 w-4" />
+                              <Trash2Icon className="h-4 w-4" />
                             </span>
                             <div>
                               <p className="text-sm font-bold text-red-700 dark:text-red-200">

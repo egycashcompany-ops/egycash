@@ -44,6 +44,12 @@ export default {
           'Arial',
           'sans-serif',
         ],
+        // The Fleet screens' figures — codes, plates, phones, dates, sums. «الارقام ال0 … ميكونش جوا
+        // شرطه»: Azeret Mono draws a plain zero, with no slash or dot inside it, where Tailwind's
+        // `mono` (Consolas on Windows) draws one. Served from `@fontsource/azeret-mono`; Arabic
+        // letters, which it has none of, fall through to Cairo. `mono` itself is left as it is for
+        // the other modules.
+        figures: ['"Azeret Mono"', 'Cairo', 'ui-sans-serif', 'sans-serif'],
       },
       // Signature elevation language. Two tokens only, both tinted with slate-900 (cooler and more
       // intentional than pure-black defaults): `card` for resting surfaces, `elevated` for anything

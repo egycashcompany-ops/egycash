@@ -218,8 +218,9 @@ export const custodyTicks = (max: number): number[] => {
 };
 
 /**
- * «8.7%» — a car's share of the fund, in its «السجل», with ONE decimal as the design writes it; the
- * same two ends as `custodyShare`, so a sliver is never «0.0%» and all-but-all never «100.0%».
+ * «8.7%» — a car's share of all the custody spent, in its «السجل», with ONE decimal as the design
+ * writes it; the same two ends as `custodyShare`, so a sliver is never «0.0%» and all-but-all never
+ * «100.0%».
  */
 export const custodyShare1 = (part: number, whole: number): string => {
   if (whole <= 0) return '—';
@@ -311,6 +312,30 @@ export const custodyArcs = (
     at += span;
     return arc;
   });
+};
+
+/**
+ * «عاوز الداش بورد بكل حاجة تكون ظاهره حتى لو لسه مفيش اى اكشن او حركه او خصم او زياده فاهم يعنى
+ * على الاقل الاشكال موجودة»: with no movement in the set, every card keeps its frame and its zeros,
+ * and says why in one small line inside it — «لا توجد حركات بعد.», or over a filter «لا توجد حركات
+ * مطابقة للفلاتر.», as the filter may be what hides them.
+ */
+export const CustodyNoMovements = ({
+  filtered,
+  className,
+}: {
+  filtered: boolean;
+  className?: string;
+}): JSX.Element => {
+  const t = useT();
+  return (
+    <p
+      data-custody-no-movements={filtered ? 'filtered' : 'all'}
+      className={cn('text-xs text-slate-500 dark:text-slate-400', className)}
+    >
+      {t(filtered ? 'fleet.custody.dashboard.noMatch' : 'fleet.custody.dashboard.noMovements')}
+    </p>
+  );
 };
 
 /** A card's head: the title (Cairo), the line under it, and whatever sits at its end. */

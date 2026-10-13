@@ -68,7 +68,7 @@ export const DriverChip = ({
         )}
       >
         {name ?? (
-          <span className="font-mono" dir="ltr">
+          <span className="font-figures" dir="ltr">
             {employeeId.slice(-8)}
           </span>
         )}

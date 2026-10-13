@@ -14,9 +14,10 @@
 // apart; and «لوحة تحكم» beside «الإحصائيات» opens everything in detail over the same filters.
 //
 // «عاوز دى تكون فى شاشه العهد … فى اللايت سيم والدارك سيم»: the owner's dashboard design sets the
-// colours of this WHOLE screen — the kinds blue, amber, rose and cyan, the pager's current page
-// emerald. Not the toolbar: «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات» —
-// «الإحصائيات» and «لوحة تحكم» wear the site's purple, as on every other board (`PRESS_BUTTON`).
+// colours of this WHOLE screen — the kinds blue, amber, rose and cyan. Not the toolbar: «لوحة
+// التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات» — «الإحصائيات» and «لوحة تحكم» wear
+// the site's purple, as on every other board (`PRESS_BUTTON`); nor the pager's current page, purple
+// too («لا بنفسجى»).
 //
 // «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»: every
 // car of «ملخص لكل سيارة» carries «السجل» — its log over the board, under the board's own filters.
@@ -44,7 +45,7 @@
 // «انت مش كنت خليت الارقام بتاعت التوكيل و الوقود وكدا بيكون جمبهم نقط الوان غيرتها ليه»: the
 // kind's colour stays beside its numbers — a small dot of it before every sum that is not zero (a
 // car's and the foot's) and before each kind's heading (`KIND_HEAD_DOT`). A spec fails without them.
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_CUSTODY_SOURCES,
@@ -127,7 +128,7 @@ const NONE = <span className="text-slate-400 dark:text-slate-500">—</span>;
 /**
  * The filter bar on the dashboard's card (`CARD`, rounded-2xl) with the design's boxes — white on
  * slate-300 light, #0a0e17 on #223048 dark, rounded-xl — the open list on the card's surface and
- * what is picked emerald, as the pager's current page. Laid OVER `DARK_FILTER_BAR` (its one-row
+ * what is picked emerald. Laid OVER `DARK_FILTER_BAR` (its one-row
  * layout stays), each selector doubled (`&&`) so it outranks the bar's own.
  */
 const CUSTODY_FILTER_LOOK = cn(
@@ -195,6 +196,53 @@ const PRESS_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
 const PILL_BUTTON =
   'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
+
+/**
+ * «زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين»: the fund's three
+ * actions at the row's far left, the export pair right beside them («عاوز دول قبل الاكسيل والبى
+ * دى اف»: read left to right, they come first), and drawn like it — one framed group, each with its own
+ * coloured icon. What each one does is still to be decided by the owner, so for now a press only
+ * says so; the buttons are here so the board already has its final shape. On a phone each says its
+ * one word (`short`), as the export pair says «Excel» and «PDF»: the three whole names are wider
+ * than a phone's toolbar, and what overflows it there is cut off with no scroll to reach it.
+ */
+const FUND_ACTIONS = [
+  {
+    key: 'settle',
+    label: 'fleet.custody.actions.settle',
+    short: 'fleet.custody.actions.settleShort',
+    // A balance — the fund squared against what was spent.
+    icon: [
+      'M12 3v18',
+      'M7 21h10',
+      'M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2',
+      'm16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z',
+      'm2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z',
+    ],
+    tone: 'text-emerald-600 dark:text-emerald-400',
+    hover:
+      'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300',
+  },
+  {
+    key: 'replenish',
+    label: 'fleet.custody.actions.replenish',
+    short: 'fleet.custody.actions.replenishShort',
+    // Turning back round — what was spent comes back into the fund.
+    icon: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
+    tone: 'text-sky-600 dark:text-sky-400',
+    hover: 'hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-sky-950/60 dark:hover:text-sky-300',
+  },
+  {
+    key: 'charge',
+    label: 'fleet.custody.actions.charge',
+    short: 'fleet.custody.actions.chargeShort',
+    // A plus in a circle — money added to the fund.
+    icon: ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8v8', 'M8 12h8'],
+    tone: 'text-teal-600 dark:text-teal-400',
+    hover:
+      'hover:bg-teal-50 hover:text-teal-700 dark:hover:bg-teal-950/60 dark:hover:text-teal-300',
+  },
+] as const;
 
 /**
  * Both tables: the receipts board's (the vehicles table with no line between the columns, every
@@ -776,6 +824,28 @@ export const CustodyPage = (): JSX.Element => {
                 </button>
               </div>
             )}
+            {/* «عاوز دول قبل الاكسيل والبى دى اف» — the leftmost of the row, the files beside it. */}
+            <div
+              data-custody-fund-actions="true"
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80"
+            >
+              {FUND_ACTIONS.map((action, index) => (
+                <Fragment key={action.key}>
+                  {index > 0 && <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />}
+                  <button
+                    type="button"
+                    data-custody-fund-action={action.key}
+                    title={t(action.label)}
+                    onClick={() => toast.info(t('fleet.custody.actions.soon'))}
+                    className={cn(PILL_BUTTON, action.hover)}
+                  >
+                    <BoardIcon d={action.icon} className={cn('h-3.5 w-3.5', action.tone)} />
+                    <span className="sm:hidden">{t(action.short)}</span>
+                    <span className="hidden sm:inline">{t(action.label)}</span>
+                  </button>
+                </Fragment>
+              ))}
+            </div>
           </span>
         </div>
 
@@ -848,13 +918,14 @@ export const CustodyPage = (): JSX.Element => {
             setDashOpen(false);
           }}
         />
-        {/* A car's «السجل»: its line as the summary holds it now, its share of the same fund total,
-            the board's own filters. Keyed by the car: another car's log starts on its first page. */}
+        {/* A car's «السجل»: its line as the summary holds it now, its share of what the fund paid
+            over the same filters (not of the fund itself, `fundTotal`), the board's own filters.
+            Keyed by the car: another car's log starts on its first page. */}
         {carLog !== null && (
           <CustodyCarLog
             key={carLog.key}
             car={custodyCurrentCar(summary.data?.vehicles, carLog)}
-            fundTotal={summary.data?.total ?? 0}
+            spendTotal={summary.data?.total ?? 0}
             filters={filters}
             opener={carLog.opener}
             onClose={() => setCarLog(null)}
@@ -936,8 +1007,8 @@ export const CustodyPage = (): JSX.Element => {
           </div>
           {data !== undefined && data.meta.totalItems > 0 && (
             <div className={SECTION_FOOT}>
+              {/* «لا بنفسجى»: the current page in the site's purple, as on every other board. */}
               <FleetPager
-                tone="emerald"
                 meta={data.meta}
                 onPageChange={(p) => patch({ page: String(p) }, false)}
                 onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

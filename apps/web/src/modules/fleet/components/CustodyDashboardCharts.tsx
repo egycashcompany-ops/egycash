@@ -45,6 +45,8 @@ import {
   COMPANY_ORDER,
   COUNT,
   custodyArcs,
+  custodyFiltered,
+  CustodyNoMovements,
   custodyPeriod,
   custodyTicks,
   LITRES,
@@ -57,6 +59,7 @@ import {
   useMoneyText,
   useSeparator,
   WHOLE,
+  type CustodyDashboardFilters,
 } from './custody-dashboard-parts';
 
 /** The design ranks ten cars and seven drivers. */
@@ -118,6 +121,70 @@ const PLOT_EDGES = 48;
 export const custodyPlotMinWidth = (periods: number, day: boolean): number =>
   periods * (day ? DAY_MIN : MONTH_MIN) + PLOT_EDGES;
 
+/** With no movement and no date to frame it, the chart's frame: the last six months. */
+const FRAME_MONTHS = 6;
+/** The most months a frame draws — a slip of the year in a filter never draws a thousand columns. */
+const FRAME_MAX = 120;
+
+/** A filter's date as the server keys its month — the UTC slice of the date it parses. */
+const monthOf = (value: string | undefined): string | null => {
+  if (value === undefined || value === '') return null;
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) return null;
+  const key = new Date(at).toISOString().slice(0, 7);
+  return /^\d{4}-\d{2}$/u.test(key) ? key : null;
+};
+
+/** `YYYY-MM` moved by `by` months. */
+const shiftMonth = (key: string, by: number): string => {
+  const at = Number(key.slice(0, 4)) * 12 + Number(key.slice(5, 7)) - 1 + by;
+  const month = ((at % 12) + 12) % 12;
+  return `${String((at - month) / 12).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}`;
+};
+
+const zeroBucket = (key: string): FleetCustodyTimeBucketDto => ({
+  key,
+  dealership: 0,
+  fuel: 0,
+  tyres: 0,
+  wash: 0,
+  total: 0,
+  count: 0,
+});
+
+/**
+ * «على الاقل الاشكال موجودة»: the stretch «المصروف عبر الزمن» draws. With movements, the server's
+ * own. With none, the server sends no month at all (it frames a month by its movements), so the
+ * chart frames the months the filter names, every one zero — nothing moved in any of them: from
+ * «من» to «إلى»; from «من» to this month; the six months up to «إلى»; and with no date at all, the
+ * last six months to this one. By the month, as the server draws a set with no two dates, so the
+ * first movement lands in a chart of the same kind. (Two dates a month apart at most are framed
+ * day by day by the server itself.)
+ */
+export const custodyTimelineFrame = (
+  timeline: FleetCustodyDashboardDto['timeline'],
+  filters: Pick<CustodyDashboardFilters, 'from' | 'to'> = {},
+  now: number = Date.now(),
+): FleetCustodyDashboardDto['timeline'] => {
+  if (timeline.buckets.length > 0) return timeline;
+  const current = new Date(now).toISOString().slice(0, 7);
+  const from = monthOf(filters.from);
+  const to = monthOf(filters.to);
+  let last = to ?? (from !== null && from > current ? from : current);
+  let first = from ?? shiftMonth(last, 1 - FRAME_MONTHS);
+  // «من» after «إلى» matches nothing either — the same months, in time's order.
+  if (first > last) [first, last] = [last, first];
+  const keys: string[] = [];
+  for (let key = last; keys.length < FRAME_MAX; key = shiftMonth(key, -1)) {
+    keys.unshift(key);
+    if (key <= first) break;
+  }
+  return { granularity: 'month', buckets: keys.map(zeroBucket) };
+};
+
+/** Where the hairlines of an axis with no value stand — a quarter apart, as four round steps. */
+const BLANK_GRID = [25, 50, 75, 100] as const;
+
 /** The tallest single bar of a period — the clustered columns' axis runs to the tallest of all. */
 const tallestBar = (bucket: FleetCustodyTimeBucketDto): number =>
   CUSTODY_KINDS.reduce((top, kind) => Math.max(top, bucket[kind]), 0);
@@ -127,14 +194,22 @@ const tallestBar = (bucket: FleetCustodyTimeBucketDto): number =>
  * a kind with nothing that period is a 2px stub. The dearest period carries its total over its
  * bars in amber; the period read out (under the pointer or the focus, the latest until then) in
  * emerald. Time runs left to right whatever the page's direction; ←/→/Home/End walk the columns.
+ * With no movement, its frame (`custodyTimelineFrame`): the stubs of every period, the hairlines
+ * of an axis with no values on it but its «0», and the line saying why, over the plot.
  */
 export const CustodyTimeline = ({
   data,
   initialTable = false,
+  filters = {},
+  now,
 }: {
   data: FleetCustodyDashboardDto;
   /** For the node specs, which cannot click «جدول». */
   initialTable?: boolean;
+  /** The board's filters — the stretch a chart of no movement frames, and the line's words. */
+  filters?: CustodyDashboardFilters;
+  /** Today, for that frame — fixed by the specs. */
+  now?: number;
 }): JSX.Element => {
   const t = useT();
   const money = useMoney();
@@ -142,7 +217,7 @@ export const CustodyTimeline = ({
   const sep = useSeparator();
   const { count } = useCount();
   const titleId = useId();
-  const { buckets, granularity } = data.timeline;
+  const { buckets, granularity } = custodyTimelineFrame(data.timeline, filters, now);
   const [table, setTable] = useState(initialTable);
   // The readout shows the column under the pointer or the focus — the latest one until then.
   const [picked, setActive] = useState(Number.POSITIVE_INFINITY);
@@ -351,144 +426,166 @@ export const CustodyTimeline = ({
           {/* Time runs left to right; on a phone the plot scrolls inside its card rather than
               squeezing a month of days into it. */}
           {/* The design's 16rem plot, grown to fill the card when the rings beside it are taller. */}
-          <div
-            ref={scrollRef}
-            className={cn('flex min-h-[16rem] flex-1 flex-col overflow-x-auto', SCROLLBAR)}
-            dir="ltr"
-          >
+          <div className="relative flex min-h-[16rem] flex-1 flex-col">
             <div
-              className="relative min-h-[16rem] flex-1 border-b border-l border-slate-200 pb-3 pl-10 pr-2 pt-6 dark:border-slate-800/80"
-              style={{ minWidth: `${custodyPlotMinWidth(buckets.length, day)}px` }}
+              ref={scrollRef}
+              className={cn('flex min-h-[16rem] flex-1 flex-col overflow-x-auto', SCROLLBAR)}
+              dir="ltr"
             >
-              {/* The value axis: hairlines with their round, compact values, over exactly the
+              <div
+                className="relative min-h-[16rem] flex-1 border-b border-l border-slate-200 pb-3 pl-10 pr-2 pt-6 dark:border-slate-800/80"
+                style={{ minWidth: `${custodyPlotMinWidth(buckets.length, day)}px` }}
+              >
+                {/* The value axis: hairlines with their round, compact values, over exactly the
                   height the bars are measured in. */}
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 bottom-9 top-6"
-              >
-                {ticks.map((tick) => (
-                  <div
-                    key={tick}
-                    className={cn(
-                      'absolute inset-x-0 pl-1.5 text-[10px] leading-3 text-slate-400 dark:text-slate-500',
-                      NUM,
-                      tick > 0 && 'border-b border-slate-100 dark:border-slate-800/50',
-                    )}
-                    style={{ bottom: `${height(tick)}%` }}
-                  >
-                    {COMPACT.format(tick)}
-                  </div>
-                ))}
-              </div>
-              <div
-                ref={plotRef}
-                role="group"
-                aria-label={t('fleet.custody.dashboard.timeline')}
-                onKeyDown={onPlotKey}
-                className={cn('relative z-10 flex h-full items-end', day ? 'gap-0.5' : 'gap-2')}
-              >
-                {buckets.map((bucket, i) => {
-                  const current = i === active;
-                  const isPeak = i === peak && !current;
-                  const kinds = CUSTODY_KINDS.filter((kind) => bucket[kind] > 0);
-                  const labelled = i % every === 0 || i === buckets.length - 1 || current;
-                  const second = secondLine(bucket.key, i);
-                  return (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-9 top-6"
+                >
+                  {ticks.map((tick) => (
                     <div
-                      key={bucket.key}
-                      data-custody-column={i}
-                      tabIndex={current ? 0 : -1}
-                      aria-label={`${custodyPeriod(bucket.key)}: ${moneyText(bucket.total)}${kinds
-                        .map(
-                          (kind) =>
-                            `${sep}${kindName(t, kind)} ${moneyText(bucket[kind])} (${custodyShare(bucket[kind], bucket.total)})`,
-                        )
-                        .join('')}`}
-                      onMouseEnter={() => setActive(i)}
-                      onFocus={() => setActive(i)}
+                      key={tick}
                       className={cn(
-                        'group flex h-full min-w-0 flex-1 cursor-default flex-col items-center justify-end outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
-                        !day && 'px-0.5',
+                        'absolute inset-x-0 pl-1.5 text-[10px] leading-3 text-slate-400 dark:text-slate-500',
+                        NUM,
+                        tick > 0 && 'border-b border-slate-100 dark:border-slate-800/50',
                       )}
+                      style={{ bottom: `${height(tick)}%` }}
                     >
-                      <div
-                        className={cn(
-                          'relative flex w-full flex-1 items-end justify-center rounded-t',
-                          day ? 'gap-px' : 'gap-0.5 sm:gap-1',
-                          current &&
-                            'bg-emerald-50 ring-1 ring-emerald-400 dark:bg-emerald-950/30 dark:ring-emerald-400/50',
-                          isPeak &&
-                            'bg-amber-50/60 ring-1 ring-amber-300 dark:bg-emerald-950/20 dark:ring-emerald-500/30',
-                        )}
-                      >
-                        {(current || isPeak) && bucket.total > 0 && (
-                          <span
-                            {...(current
-                              ? { 'data-custody-current': 'true' }
-                              : { 'data-custody-peak': 'true' })}
-                            // A day's column is narrower than its figure: the figure stays over
-                            // the next column's box, never under it.
-                            className={cn(
-                              'absolute z-10 whitespace-nowrap text-[10px] font-bold',
-                              NUM,
-                              current
-                                ? 'text-emerald-700 dark:text-emerald-300'
-                                : 'text-amber-700 dark:text-amber-300',
-                            )}
-                            style={{ bottom: `calc(${height(tallestBar(bucket))}% + 4px)` }}
-                          >
-                            {WHOLE.format(bucket.total)}
-                          </span>
-                        )}
-                        {CUSTODY_KINDS.map((kind) =>
-                          bucket[kind] > 0 ? (
-                            <span
-                              key={kind}
-                              data-custody-mark={kind}
-                              title={`${kindName(t, kind)}: ${moneyText(bucket[kind])}`}
-                              className={cn(
-                                'min-h-[2px] min-w-0 max-w-[0.625rem] flex-1 rounded-t shadow-[0_1px_2px_0_rgba(0,0,0,.05)] transition-all hover:opacity-80 sm:max-w-[0.75rem] dark:shadow-none dark:hover:opacity-100 dark:hover:brightness-125',
-                                CUSTODY_KIND[kind].fill,
-                              )}
-                              style={{ height: `${height(bucket[kind])}%` }}
-                            />
-                          ) : (
-                            <span
-                              key={kind}
-                              aria-hidden="true"
-                              data-custody-stub={kind}
-                              className={cn(
-                                'h-0.5 min-w-0 max-w-[0.625rem] flex-1 rounded-t sm:max-w-[0.75rem]',
-                                CUSTODY_KIND[kind].stub,
-                              )}
-                            />
-                          ),
-                        )}
-                      </div>
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          'relative mt-2 block h-4 text-center text-[11px] leading-4',
-                          NUM,
-                          current
-                            ? 'font-bold text-emerald-800 dark:text-emerald-400'
-                            : i === peak
-                              ? 'font-bold text-slate-900 dark:text-emerald-400'
-                              : 'font-medium text-slate-500 group-hover:text-emerald-700 dark:font-normal dark:text-slate-400 dark:group-hover:text-emerald-400',
-                        )}
-                      >
-                        {labelled ? firstLine(bucket.key) : ''}
-                        {second !== null && (
-                          <span className="absolute inset-x-0 top-full whitespace-nowrap text-[9px] font-normal leading-3 text-slate-400 dark:text-slate-500">
-                            {second}
-                          </span>
-                        )}
-                      </span>
+                      {COMPACT.format(tick)}
                     </div>
-                  );
-                })}
+                  ))}
+                  {/* Nothing to scale by: the grid's hairlines alone — no value is made up for
+                    them, only the «0» under them is written. */}
+                  {top === 0 &&
+                    BLANK_GRID.map((at) => (
+                      <div
+                        key={at}
+                        data-custody-blank-grid="true"
+                        className="absolute inset-x-0 border-b border-slate-100 dark:border-slate-800/50"
+                        style={{ bottom: `${at}%` }}
+                      />
+                    ))}
+                </div>
+                <div
+                  ref={plotRef}
+                  role="group"
+                  aria-label={t('fleet.custody.dashboard.timeline')}
+                  onKeyDown={onPlotKey}
+                  className={cn('relative z-10 flex h-full items-end', day ? 'gap-0.5' : 'gap-2')}
+                >
+                  {buckets.map((bucket, i) => {
+                    const current = i === active;
+                    const isPeak = i === peak && !current;
+                    const kinds = CUSTODY_KINDS.filter((kind) => bucket[kind] > 0);
+                    const labelled = i % every === 0 || i === buckets.length - 1 || current;
+                    const second = secondLine(bucket.key, i);
+                    return (
+                      <div
+                        key={bucket.key}
+                        data-custody-column={i}
+                        tabIndex={current ? 0 : -1}
+                        aria-label={`${custodyPeriod(bucket.key)}: ${moneyText(bucket.total)}${kinds
+                          .map(
+                            (kind) =>
+                              `${sep}${kindName(t, kind)} ${moneyText(bucket[kind])} (${custodyShare(bucket[kind], bucket.total)})`,
+                          )
+                          .join('')}`}
+                        onMouseEnter={() => setActive(i)}
+                        onFocus={() => setActive(i)}
+                        className={cn(
+                          'group flex h-full min-w-0 flex-1 cursor-default flex-col items-center justify-end outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
+                          !day && 'px-0.5',
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            'relative flex w-full flex-1 items-end justify-center rounded-t',
+                            day ? 'gap-px' : 'gap-0.5 sm:gap-1',
+                            current &&
+                              'bg-emerald-50 ring-1 ring-emerald-400 dark:bg-emerald-950/30 dark:ring-emerald-400/50',
+                            isPeak &&
+                              'bg-amber-50/60 ring-1 ring-amber-300 dark:bg-emerald-950/20 dark:ring-emerald-500/30',
+                          )}
+                        >
+                          {(current || isPeak) && bucket.total > 0 && (
+                            <span
+                              {...(current
+                                ? { 'data-custody-current': 'true' }
+                                : { 'data-custody-peak': 'true' })}
+                              // A day's column is narrower than its figure: the figure stays over
+                              // the next column's box, never under it.
+                              className={cn(
+                                'absolute z-10 whitespace-nowrap text-[10px] font-bold',
+                                NUM,
+                                current
+                                  ? 'text-emerald-700 dark:text-emerald-300'
+                                  : 'text-amber-700 dark:text-amber-300',
+                              )}
+                              style={{ bottom: `calc(${height(tallestBar(bucket))}% + 4px)` }}
+                            >
+                              {WHOLE.format(bucket.total)}
+                            </span>
+                          )}
+                          {CUSTODY_KINDS.map((kind) =>
+                            bucket[kind] > 0 ? (
+                              <span
+                                key={kind}
+                                data-custody-mark={kind}
+                                title={`${kindName(t, kind)}: ${moneyText(bucket[kind])}`}
+                                className={cn(
+                                  'min-h-[2px] min-w-0 max-w-[0.625rem] flex-1 rounded-t shadow-[0_1px_2px_0_rgba(0,0,0,.05)] transition-all hover:opacity-80 sm:max-w-[0.75rem] dark:shadow-none dark:hover:opacity-100 dark:hover:brightness-125',
+                                  CUSTODY_KIND[kind].fill,
+                                )}
+                                style={{ height: `${height(bucket[kind])}%` }}
+                              />
+                            ) : (
+                              <span
+                                key={kind}
+                                aria-hidden="true"
+                                data-custody-stub={kind}
+                                className={cn(
+                                  'h-0.5 min-w-0 max-w-[0.625rem] flex-1 rounded-t sm:max-w-[0.75rem]',
+                                  CUSTODY_KIND[kind].stub,
+                                )}
+                              />
+                            ),
+                          )}
+                        </div>
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'relative mt-2 block h-4 text-center text-[11px] leading-4',
+                            NUM,
+                            current
+                              ? 'font-bold text-emerald-800 dark:text-emerald-400'
+                              : i === peak
+                                ? 'font-bold text-slate-900 dark:text-emerald-400'
+                                : 'font-medium text-slate-500 group-hover:text-emerald-700 dark:font-normal dark:text-slate-400 dark:group-hover:text-emerald-400',
+                          )}
+                        >
+                          {labelled ? firstLine(bucket.key) : ''}
+                          {second !== null && (
+                            <span className="absolute inset-x-0 top-full whitespace-nowrap text-[9px] font-normal leading-3 text-slate-400 dark:text-slate-500">
+                              {second}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
+            {/* Over the part of the plot in view, not the middle of a plot wider than the card. */}
+            {data.count === 0 && (
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-3 pb-6">
+                <CustodyNoMovements
+                  filtered={custodyFiltered(filters)}
+                  className="rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-center shadow-sm dark:border-slate-800 dark:bg-[#0c1322]/90 dark:shadow-none"
+                />
+              </div>
+            )}
           </div>
 
           <div
@@ -544,9 +641,12 @@ const SOURCE_LOOK = {
 export const CustodyByKindSource = ({
   data,
   onShowDealership,
+  filters = {},
 }: {
   data: FleetCustodyDashboardDto;
   onShowDealership?: (() => void) | undefined;
+  /** The board's filters — only the words of the line a card of no movement carries. */
+  filters?: CustodyDashboardFilters;
 }): JSX.Element => {
   const t = useT();
   const money = useMoney();
@@ -857,25 +957,30 @@ export const CustodyByKindSource = ({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-[11px] text-slate-500 dark:border-slate-800/80 dark:text-slate-400">
-        <span data-custody-suppliers="true">
-          {data.fuel > 0 && (
-            <>
-              {t('fleet.custody.dashboard.donut.suppliers')}{' '}
-              {[
-                ...companies.map((row) => ({ key: row.company, amount: row.amount })),
-                ...(none.amount > 0 ? [{ key: 'none' as const, amount: none.amount }] : []),
-              ].map((part, i) => (
-                <Fragment key={part.key}>
-                  {i > 0 && ' • '}
-                  {part.key === 'none'
-                    ? t('fleet.receipts.fields.companyNone')
-                    : companyName(t, part.key)}{' '}
-                  (<CustodyShare part={part.amount} whole={data.fuel} />)
-                </Fragment>
-              ))}
-            </>
-          )}
-        </span>
+        {/* No movement: grey rings round a «0», the legend and the table at zero, and this line. */}
+        {data.count === 0 ? (
+          <CustodyNoMovements filtered={custodyFiltered(filters)} />
+        ) : (
+          <span data-custody-suppliers="true">
+            {data.fuel > 0 && (
+              <>
+                {t('fleet.custody.dashboard.donut.suppliers')}{' '}
+                {[
+                  ...companies.map((row) => ({ key: row.company, amount: row.amount })),
+                  ...(none.amount > 0 ? [{ key: 'none' as const, amount: none.amount }] : []),
+                ].map((part, i) => (
+                  <Fragment key={part.key}>
+                    {i > 0 && ' • '}
+                    {part.key === 'none'
+                      ? t('fleet.receipts.fields.companyNone')
+                      : companyName(t, part.key)}{' '}
+                    (<CustodyShare part={part.amount} whole={data.fuel} />)
+                  </Fragment>
+                ))}
+              </>
+            )}
+          </span>
+        )}
         {onShowDealership !== undefined && (
           <button
             type="button"
@@ -902,7 +1007,14 @@ const shortName = (t: ReturnType<typeof useT>, kind: FleetCustodySource): string
  * code its total and its share of everything the fund paid. «والسجل يكون برا»: a car's «السجل» is
  * on the board's «ملخص لكل سيارة», not here.
  */
-export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+export const CustodyTopCars = ({
+  data,
+  filters = {},
+}: {
+  data: FleetCustodyDashboardDto;
+  /** The board's filters — only the words of the line a card of no movement carries. */
+  filters?: CustodyDashboardFilters;
+}): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
   const sep = useSeparator();
@@ -911,6 +1023,8 @@ export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JS
   const ranked: FleetCustodyVehicleRowDto[] = [...data.vehicles]
     .sort((a, b) => b.total - a.total)
     .slice(0, TOP_CARS);
+  // No movement, no car to rank: the title, the legend and the line — never «أعلى 0 سيارات».
+  const none = data.count === 0 && ranked.length === 0;
   return (
     <section
       data-custody-dashboard-section="topCars"
@@ -920,8 +1034,12 @@ export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JS
       <CardHead
         id={titleId}
         title={t('fleet.custody.dashboard.topCars')}
-        note={t('fleet.custody.dashboard.topCarsNote', { cars: count('car', ranked.length) })}
-        end={<span className={cn(TITLE_CHIP, NUM)}>{count('car', ranked.length)}</span>}
+        {...(none
+          ? {}
+          : {
+              note: t('fleet.custody.dashboard.topCarsNote', { cars: count('car', ranked.length) }),
+              end: <span className={cn(TITLE_CHIP, NUM)}>{count('car', ranked.length)}</span>,
+            })}
       />
       <div
         data-custody-legend="true"
@@ -938,63 +1056,67 @@ export const CustodyTopCars = ({ data }: { data: FleetCustodyDashboardDto }): JS
           </span>
         ))}
       </div>
-      <ol className="space-y-3" data-custody-top-cars="true">
-        {ranked.map((car) => {
-          const present = CUSTODY_KINDS.filter((kind) => car[kind] > 0);
-          return (
-            <li
-              key={car.vehicleId ?? `code:${car.vehicleCode ?? ''}`}
-              tabIndex={0}
-              data-custody-car={car.vehicleCode ?? ''}
-              aria-label={`${car.vehicleCode ?? '—'}: ${moneyText(car.total)} (${custodyShare(car.total, data.total)})${present
-                .map(
-                  (kind) =>
-                    `${sep}${kindName(t, kind)} ${moneyText(car[kind])} (${custodyShare(car[kind], car.total)})`,
-                )
-                .join('')}`}
-              className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-slate-800/60 dark:bg-[#0c1322]/80 dark:p-2 dark:hover:border-emerald-500/40 dark:hover:bg-slate-800/40"
-            >
-              <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                <span
-                  dir="ltr"
-                  className={cn(
-                    'rounded border border-blue-200 bg-blue-100 px-2 py-0.5 font-bold text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/60 dark:text-white',
-                    NUM,
-                  )}
-                >
-                  {car.vehicleCode ?? '—'}
-                </span>
-                <div className="flex items-center gap-2">
+      {none ? (
+        <CustodyNoMovements filtered={custodyFiltered(filters)} className="py-6 text-center" />
+      ) : (
+        <ol className="space-y-3" data-custody-top-cars="true">
+          {ranked.map((car) => {
+            const present = CUSTODY_KINDS.filter((kind) => car[kind] > 0);
+            return (
+              <li
+                key={car.vehicleId ?? `code:${car.vehicleCode ?? ''}`}
+                tabIndex={0}
+                data-custody-car={car.vehicleCode ?? ''}
+                aria-label={`${car.vehicleCode ?? '—'}: ${moneyText(car.total)} (${custodyShare(car.total, data.total)})${present
+                  .map(
+                    (kind) =>
+                      `${sep}${kindName(t, kind)} ${moneyText(car[kind])} (${custodyShare(car[kind], car.total)})`,
+                  )
+                  .join('')}`}
+                className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-slate-800/60 dark:bg-[#0c1322]/80 dark:p-2 dark:hover:border-emerald-500/40 dark:hover:bg-slate-800/40"
+              >
+                <div className="mb-1 flex items-center justify-between gap-2 text-xs">
                   <span
+                    dir="ltr"
                     className={cn(
-                      'whitespace-nowrap font-bold text-slate-800 dark:font-normal dark:text-slate-300',
+                      'rounded border border-blue-200 bg-blue-100 px-2 py-0.5 font-bold text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/60 dark:text-white',
                       NUM,
                     )}
                   >
-                    {moneyText(car.total)}
+                    {car.vehicleCode ?? '—'}
                   </span>
-                  <CustodyShare
-                    part={car.total}
-                    whole={data.total}
-                    className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400"
-                  />
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'whitespace-nowrap font-bold text-slate-800 dark:font-normal dark:text-slate-300',
+                        NUM,
+                      )}
+                    >
+                      {moneyText(car.total)}
+                    </span>
+                    <CustodyShare
+                      part={car.total}
+                      whole={data.total}
+                      className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="flex h-3 w-full overflow-hidden rounded-md bg-slate-200 shadow-inner dark:rounded dark:bg-slate-800 dark:shadow-none">
-                {present.map((kind) => (
-                  <div
-                    key={kind}
-                    data-custody-mark={kind}
-                    title={`${kindName(t, kind)}: ${moneyText(car[kind])}`}
-                    className={CUSTODY_KIND[kind].fill}
-                    style={{ width: `${custodySharePct(car[kind], car.total)}%` }}
-                  />
-                ))}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+                <div className="flex h-3 w-full overflow-hidden rounded-md bg-slate-200 shadow-inner dark:rounded dark:bg-slate-800 dark:shadow-none">
+                  {present.map((kind) => (
+                    <div
+                      key={kind}
+                      data-custody-mark={kind}
+                      title={`${kindName(t, kind)}: ${moneyText(car[kind])}`}
+                      className={CUSTODY_KIND[kind].fill}
+                      style={{ width: `${custodySharePct(car[kind], car.total)}%` }}
+                    />
+                  ))}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </section>
   );
 };
@@ -1036,7 +1158,14 @@ const RING_PATH = 'M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155
  * (6) The receipts' drivers (a bill names none) — each a ring of his share of the receipts, his
  * two biggest kinds under his name, his total at the end; then the receipts that name no driver.
  */
-export const CustodyTopDrivers = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+export const CustodyTopDrivers = ({
+  data,
+  filters = {},
+}: {
+  data: FleetCustodyDashboardDto;
+  /** The board's filters — only the words of the line a card of no movement carries. */
+  filters?: CustodyDashboardFilters;
+}): JSX.Element => {
   const t = useT();
   const money = useMoney();
   const moneyText = useMoneyText();
@@ -1063,7 +1192,9 @@ export const CustodyTopDrivers = ({ data }: { data: FleetCustodyDashboardDto }):
         }
       />
       <div className="space-y-3">
-        {ranked.length === 0 ? (
+        {ranked.length === 0 && data.count === 0 ? (
+          <CustodyNoMovements filtered={custodyFiltered(filters)} className="py-4 text-center" />
+        ) : ranked.length === 0 ? (
           // A dealership bill names no driver, and a receipt may name none: nothing to rank.
           <p
             data-custody-no-drivers="true"
@@ -1215,7 +1346,14 @@ export const custodyFuelRows = <T extends { fuelType: FleetFuelType | null }>(
  * receipts that name no company («ومش عاوز اى داتا اجبارى») are a small box of their own, only
  * when they hold money — never folded into either company.
  */
-export const CustodyFuelBreakdown = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+export const CustodyFuelBreakdown = ({
+  data,
+  filters = {},
+}: {
+  data: FleetCustodyDashboardDto;
+  /** The board's filters — only the words of the line a card of no movement carries. */
+  filters?: CustodyDashboardFilters;
+}): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
   const { count } = useCount();
@@ -1467,14 +1605,18 @@ export const CustodyFuelBreakdown = ({ data }: { data: FleetCustodyDashboardDto 
             )}
           </div>
         )}
-        {!anyFuel && (
-          <p
-            data-custody-no-fuel="true"
-            className="py-2 text-center text-xs text-slate-500 dark:text-slate-400"
-          >
-            {t('fleet.custody.dashboard.noFuel')}
-          </p>
-        )}
+        {/* Both companies at zero above; then why — no movement at all, or none of it fuel. */}
+        {!anyFuel &&
+          (data.count === 0 ? (
+            <CustodyNoMovements filtered={custodyFiltered(filters)} className="py-2 text-center" />
+          ) : (
+            <p
+              data-custody-no-fuel="true"
+              className="py-2 text-center text-xs text-slate-500 dark:text-slate-400"
+            >
+              {t('fleet.custody.dashboard.noFuel')}
+            </p>
+          ))}
       </div>
     </section>
   );

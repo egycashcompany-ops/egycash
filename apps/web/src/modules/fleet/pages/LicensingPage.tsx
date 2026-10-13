@@ -635,7 +635,8 @@ export const LicensingPage = (): JSX.Element => {
                     <td className={`${cell} text-center`} dir="ltr">
                       {row.plateNumber}
                     </td>
-                    <td className={`${cell} text-center font-mono text-xs`} dir="ltr">
+                    {/* «الشاسيه»: bold, at the plate's size and in the plate's type. */}
+                    <td className={`${cell} text-center`} dir="ltr">
                       {row.chassisNumber}
                     </td>
                     <td className={`${cell} whitespace-nowrap text-center`}>

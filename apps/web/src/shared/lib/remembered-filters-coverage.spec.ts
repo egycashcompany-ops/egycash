@@ -64,7 +64,9 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/MaintenanceAlarmsPage.tsx', []],
   ['modules/fleet/pages/NoticesPage.tsx', []],
   ['modules/fleet/pages/MaintenancePage.tsx', []],
-  ['modules/fleet/pages/OdometerPage.tsx', []],
+  // `period`: `all` is the vehicle profile's link to a car's whole history, never kept — a later
+  // bare visit opens on the month again.
+  ['modules/fleet/pages/OdometerPage.tsx', ['period']],
   ['modules/fleet/pages/RosterPage.tsx', ['date']],
   // `licenseMonth`: the one-month link from before `licenseMonths`, read once and never kept.
   ['modules/fleet/pages/VehiclesListPage.tsx', ['code', 'licenseMonth']],

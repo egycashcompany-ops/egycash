@@ -12,8 +12,10 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EyeIcon, PrinterIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
 import { ZoomableImage } from './ZoomableImage';
+import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
+import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
 import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import {
   useDeleteVehicleLicenseImage,
@@ -189,13 +191,11 @@ export const LicenseImagePreviewDialog = ({
   );
 };
 
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
 /**
- * The registry table's license-image cell (§8): one upload action when there is no scan, view +
- * delete when there is. Upload posts straight from the cell and the row repaints from the
- * invalidated subtree — no page reload, and no dialog for a one-step action.
+ * The registry table's license-image cell (§8): the dashed box with the cloud upload when there is
+ * no scan; when there is, the owner's image box — the eye, the replace arrow, the printer and the
+ * bin (`row-actions-look`). Upload and replace post straight from the cell and the row repaints
+ * from the invalidated subtree — no page reload, and no dialog for a one-step action.
  */
 export const VehicleLicenseImageCell = ({
   vehicle,
@@ -242,44 +242,65 @@ export const VehicleLicenseImageCell = ({
     // Remount the input so picking the SAME file again still fires a change event.
     setInputKey((k) => k + 1);
   };
+  // The hidden picker behind the upload and the replace — `relative` on their labels keeps it
+  // inside the cell, so a wide table gains no scrollbar nothing on screen explains.
+  const fileInput = (labelKey: string): JSX.Element => (
+    <input
+      key={inputKey}
+      type="file"
+      accept={LICENSE_IMAGE_ACCEPT}
+      className="hidden"
+      disabled={upload.isPending}
+      aria-label={t(labelKey)}
+      title={t(labelKey)}
+      onChange={(e) => void pick(e.target.files?.[0])}
+    />
+  );
 
   if (vehicle.licenseImage === null) {
     // Nothing to delete and nothing allowed to be added — a disposed car with no scan shows a dash.
     if (!mayUpload) return <span className="text-slate-400">—</span>;
     return (
-      <label className={`${actionButton} inline-flex cursor-pointer`}>
-        <UploadIcon className="h-4 w-4" />
+      <label
+        className={`${IMAGE_EMPTY_BOX} relative`}
+        data-vehicle-license-upload={vehicle.id}
+        title={t('fleet.vehicles.licenseImage.upload')}
+      >
+        <CloudUploadIcon className="h-4 w-4" />
         <span className="sr-only">{t('fleet.vehicles.licenseImage.upload')}</span>
-        <input
-          key={inputKey}
-          type="file"
-          accept={LICENSE_IMAGE_ACCEPT}
-          className="hidden"
-          disabled={upload.isPending}
-          aria-label={t('fleet.vehicles.licenseImage.upload')}
-          title={t('fleet.vehicles.licenseImage.upload')}
-          onChange={(e) => void pick(e.target.files?.[0])}
-        />
+        {fileInput('fleet.vehicles.licenseImage.upload')}
       </label>
     );
   }
 
   return (
-    <span className="flex items-center gap-1">
+    <span className={IMAGE_GROUP} data-image-actions="vehicle-license">
       <button
         type="button"
-        className={actionButton}
+        className={actionTone('view')}
         aria-label={t('fleet.vehicles.licenseImage.view')}
         title={t('fleet.vehicles.licenseImage.view')}
         onClick={() => onPreview(vehicle)}
       >
         <EyeIcon className="h-4 w-4" />
       </button>
+      {/* A new scan in place of this one — the server keeps the old file as history. */}
+      {mayUpload && (
+        <label
+          data-vehicle-license-replace={vehicle.id}
+          className={`${actionTone('upload')} relative cursor-pointer`}
+          title={t('fleet.vehicles.licenseImage.replace')}
+        >
+          <ArrowUpFromLineIcon className="h-4 w-4" />
+          <span className="sr-only">{t('fleet.vehicles.licenseImage.replace')}</span>
+          {fileInput('fleet.vehicles.licenseImage.replace')}
+        </label>
+      )}
       {onPrint !== undefined && (
         <button
           type="button"
           data-vehicle-license-print={vehicle.id}
-          className={actionButton}
+          className={actionTone('print')}
           aria-label={t('fleet.vehicles.print.action')}
           title={t('fleet.vehicles.print.action')}
           onClick={() => onPrint(vehicle)}
@@ -291,12 +312,12 @@ export const VehicleLicenseImageCell = ({
         <button
           type="button"
           data-vehicle-license-delete={vehicle.id}
-          className={actionButton}
+          className={actionTone('delete')}
           aria-label={t('fleet.vehicles.licenseImage.delete')}
           title={t('fleet.vehicles.licenseImage.delete')}
           onClick={() => setConfirming(true)}
         >
-          <TrashIcon className="h-4 w-4" />
+          <Trash2Icon className="h-4 w-4" />
         </button>
       )}
       <LicenseImageDeleteDialog

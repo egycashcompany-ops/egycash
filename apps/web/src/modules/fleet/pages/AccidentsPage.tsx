@@ -40,15 +40,11 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import {
-  CheckIcon,
-  CornerDownIcon,
-  EditIcon,
-  HistoryIcon,
-  PlusIcon,
-  TrashIcon,
-} from '../../../shared/ui/icons';
+import { CheckIcon, CornerDownIcon, HistoryIcon, PlusIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
+import { cn } from '../../../shared/lib/cn';
 import {
   useAccidentSummary,
   useAccidents,
@@ -230,9 +226,6 @@ export const AccidentsPage = (): JSX.Element => {
   // the control's own `text-sm` wins whichever order they are written in — measured, not assumed.
   const dateLabel = 'shrink-0 text-base font-medium text-slate-600 dark:text-slate-300';
 
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
   const money = (amount: number): JSX.Element => (
     <span className="tabular-nums" dir="ltr">
       {formatMoney(amount, 'EGP', locale)}
@@ -367,7 +360,7 @@ export const AccidentsPage = (): JSX.Element => {
       sortable: true,
       sortKey: 'vehicleCode',
       render: (r) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span className="font-figures text-xs" dir="ltr">
           {codeOf(r)}
           {/*
             The row's state, for anyone the colour does not reach. With the Status column gone the
@@ -439,23 +432,26 @@ export const AccidentsPage = (): JSX.Element => {
         r.vehicleId === null ? (
           <span className="text-slate-400 dark:text-slate-600">—</span>
         ) : (
-          <button
-            type="button"
-            data-transfer-log-open={r.id}
-            data-has-transfers={r.carHasTransfers ? 'true' : undefined}
-            // «لو السجل فى عمليه واحده على الاقل يخليه باللون الاصفر» — yellow once the car has
-            // paid from or to another car at least once; the plain button otherwise.
-            className={
-              r.carHasTransfers
-                ? 'rounded-md bg-amber-100 p-1.5 text-amber-800 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:bg-amber-900/60 dark:text-amber-200 dark:hover:bg-amber-900'
-                : actionButton
-            }
-            aria-label={t('fleet.accidents.log.open', { code: codeOf(r) })}
-            title={t('fleet.accidents.log.open', { code: codeOf(r) })}
-            onClick={() => setLogOf(r)}
-          >
-            <HistoryIcon className="h-4 w-4" />
-          </button>
+          <span className={ACTION_GROUP}>
+            <button
+              type="button"
+              data-transfer-log-open={r.id}
+              data-has-transfers={r.carHasTransfers ? 'true' : undefined}
+              // A log, so slate among the actions. «لو السجل فى عمليه واحده على الاقل يخليه باللون
+              // الاصفر» — the owner's own yellow once the car has paid from or to another car at
+              // least once is a fact about the car, not the colour of an action, and stays.
+              className={cn(
+                actionTone('history'),
+                r.carHasTransfers &&
+                  '!bg-amber-100 !text-amber-800 hover:!bg-amber-200 dark:!bg-amber-900/60 dark:!text-amber-200 dark:hover:!bg-amber-900',
+              )}
+              aria-label={t('fleet.accidents.log.open', { code: codeOf(r) })}
+              title={t('fleet.accidents.log.open', { code: codeOf(r) })}
+              onClick={() => setLogOf(r)}
+            >
+              <HistoryIcon className="h-4 w-4" />
+            </button>
+          </span>
         ),
     },
     {
@@ -473,25 +469,27 @@ export const AccidentsPage = (): JSX.Element => {
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
-            align: 'end',
+            align: 'center',
+            // «اعملى الالوان دى»: the owner's picture — the pen, the close or reopen in its own
+            // calm colour, the bin (`row-actions-look`).
             render: (r: FleetAccidentDto) => (
-              <span className="flex items-center justify-end gap-1">
+              <span className={ACTION_GROUP} data-row-actions="accident">
                 {can('fleetAccident.edit') && (
                   <button
                     type="button"
-                    className={actionButton}
+                    className={actionTone('edit')}
                     aria-label={t('fleet.accidents.edit')}
                     title={t('fleet.accidents.edit')}
                     onClick={() => setEditing(r)}
                   >
-                    <EditIcon className="h-4 w-4" />
+                    <SquarePenIcon className="h-4 w-4" />
                   </button>
                 )}
                 {can('fleetAccident.close') &&
                   (r.status === 'open' ? (
                     <button
                       type="button"
-                      className={actionButton}
+                      className={actionTone('status')}
                       aria-label={t('fleet.accidents.close')}
                       title={t('fleet.accidents.close')}
                       onClick={() => setFlipping(r)}
@@ -501,7 +499,7 @@ export const AccidentsPage = (): JSX.Element => {
                   ) : (
                     <button
                       type="button"
-                      className={actionButton}
+                      className={actionTone('reopen')}
                       aria-label={t('fleet.accidents.reopen')}
                       title={t('fleet.accidents.reopen')}
                       onClick={() => setFlipping(r)}
@@ -512,12 +510,12 @@ export const AccidentsPage = (): JSX.Element => {
                 {can('fleetAccident.delete') && (
                   <button
                     type="button"
-                    className={actionButton}
+                    className={actionTone('delete')}
                     aria-label={t('fleet.accidents.delete')}
                     title={t('fleet.accidents.delete')}
                     onClick={() => setDeleting(r)}
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    <Trash2Icon className="h-4 w-4" />
                   </button>
                 )}
               </span>

@@ -2106,8 +2106,12 @@ describe('the licence column is icons, on every row', () => {
 
   it('the way in for an unenrolled driver is an icon control', () => {
     const control = wayIn();
-    expect(control, 'wearing the upload icon a car with no scan wears').toContain('<UploadIcon');
-    expect(control, 'and the column’s own button styling').toContain('actionButton');
+    expect(control, 'wearing the upload icon a car with no scan wears').toContain(
+      '<CloudUploadIcon',
+    );
+    expect(control, 'in the dashed box an empty image cell is drawn as').toContain(
+      'IMAGE_EMPTY_BOX',
+    );
   });
 
   it('what it does is still said, in the accessible name rather than in prose', () => {
@@ -2188,7 +2192,7 @@ describe('the licence column is icons, on every row', () => {
     const component = source.slice(source.indexOf('const useLocalFileUrl'));
     expect(component, 'the picture itself').toContain('data-driver-license-staged-preview');
     expect(component, 'an eye').toContain('<EyeIcon');
-    expect(component, 'and a bin').toContain('<TrashIcon');
+    expect(component, 'and a bin').toContain('<Trash2Icon');
     expect(component, 'no upload button left in this branch').not.toContain('<UploadIcon');
     // The bytes are already in the browser: there is no id to fetch from and nothing on the
     // server to delete, so the thumbnail is an object URL and the bin is a local `onClear`.

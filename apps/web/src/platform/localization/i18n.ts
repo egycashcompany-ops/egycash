@@ -8270,6 +8270,9 @@ const en: Record<string, string> = {
   'atm.registerImport.intro':
     'Preview first; nothing is written until you approve categories and apply.',
   'atm.registerImport.upload': 'Choose the workbook (.xlsx)',
+  'atm.registerImport.error.missingSheet': 'The workbook has no sheet named ATMs.',
+  'atm.registerImport.error.unreadable': 'This file is not a readable Excel workbook (xlsx).',
+  'atm.registerImport.error.tooLarge': 'The workbook is larger than the import reads.',
   'atm.registerImport.preview': 'Preview',
   'atm.registerImport.apply': 'Apply the approved categories',
   'atm.registerImport.applyConfirmTitle': 'Apply the import',
@@ -16561,7 +16564,11 @@ const ar: Record<string, string> = {
 
   'atm.registerImport.title': 'استيراد ملف سجل الماكينات',
   'atm.registerImport.intro': 'عاين أولًا؛ لا يُكتب شيء حتى تعتمد الفئات وتطبّقها.',
-  'atm.registerImport.upload': 'اختر الملف (.xlsx)',
+  // «(.xlsx)» isolated left-to-right, or the RTL line puts the dot after the extension (WEB-4).
+  'atm.registerImport.upload': 'اختر الملف \u2066(.xlsx)\u2069',
+  'atm.registerImport.error.missingSheet': 'لا يحتوي الملف على ورقة باسم ATMs.',
+  'atm.registerImport.error.unreadable': 'تعذّرت قراءة الملف؛ يجب أن يكون مصنّف Excel بصيغة xlsx.',
+  'atm.registerImport.error.tooLarge': 'الملف أكبر مما يقرؤه الاستيراد.',
   'atm.registerImport.preview': 'معاينة',
   'atm.registerImport.apply': 'تطبيق الفئات المعتمدة',
   'atm.registerImport.applyConfirmTitle': 'تطبيق الاستيراد',
@@ -16636,7 +16643,9 @@ const ar: Record<string, string> = {
     'الماكينة مؤرشفة في قائمة التشغيل؛ يُعاد تفعيلها باسم هذا الصف ومنطقته وبنكه.',
   'atm.registerImport.category.create.title': 'إضافة',
   'atm.registerImport.category.create.body': 'الماكينة غير موجودة في قائمة التشغيل؛ تُضاف.',
-  'atm.registerImport.category.nbeForex.title': 'البنك الأهلي + منطقة FX ← NBE FOREX',
+  // RLM after «FX»: without it «FX ← NBE FOREX» joins into one left-to-right run and the arrow
+  // reads backwards in the RTL line, as if NBE FOREX became FX (review finding WEB-4).
+  'atm.registerImport.category.nbeForex.title': 'البنك الأهلي + منطقة FX\u200F ← NBE FOREX',
   'atm.registerImport.category.nbeForex.body':
     'ماكينات البنك الأهلي التي تنتهي منطقتها بـ FX تأخذ اسم البنك NBE FOREX في قائمة التشغيل.',
   'atm.registerImport.category.cannotCouple.title': 'تعذّر الربط',

@@ -5,6 +5,7 @@ import { useAppSelector } from '../../../../store';
 import { useT } from '../../../../platform/localization/useT';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { StatusBadge, type Tone } from '../../../../shared/ui/Badge';
+import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { formatDateTime, formatNumber } from '../../../../shared/lib/format';
 import { useRegisterImportRuns } from '../../api/register-queries';
 import { listSeparator, outcomeEntries } from '../../lib/register-import-view';
@@ -31,6 +32,10 @@ export const ImportRunsCard = (): JSX.Element => {
       <CardBody>
         {runs.isLoading ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
+        ) : runs.isError ? (
+          // Before the empty check: a failed request is not "no import has run yet" — the owner
+          // could take it as leave to run the cut-over again (review finding WEB-6).
+          <ErrorState error={runs.error} onRetry={() => void runs.refetch()} />
         ) : list.length === 0 ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {t('atm.registerImport.runs.empty')}
@@ -63,8 +68,8 @@ export const ImportRunsCard = (): JSX.Element => {
                         label={t(`atm.registerImport.runs.state.${run.state}`)}
                       />
                     </td>
-                    <td className={TD} dir="auto">
-                      {run.actorName ?? '—'}
+                    <td className={TD}>
+                      <span dir="auto">{run.actorName ?? '—'}</span>
                     </td>
                     <td className={TD}>
                       {run.categories

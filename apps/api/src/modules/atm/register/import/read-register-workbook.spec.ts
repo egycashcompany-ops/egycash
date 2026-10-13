@@ -232,6 +232,36 @@ describe('refusals', () => {
     expect(data.details?.[0]).toMatchObject({ code: 'TOO_LARGE', message: 'rows' });
   });
 
+  // SEC-2: a workbook part that never closes its tags. A backtracking `<sheet\b[^>]*>` over it took
+  // 45 s for 400 KB (quadratic, and no deadline can stop a running regex); a linear scan answers
+  // in milliseconds whatever the size up to the 2 MB cap.
+  it('a workbook.xml of unclosed tags is answered at once, not scanned quadratically', async () => {
+    const zip = new JSZip();
+    const padding = '<sheet'.repeat(Math.floor(REGISTER_WORKBOOK_LIMITS.workbookBytes / 6) - 64);
+    zip.file('xl/workbook.xml', `<workbook><workbookPr${padding}`);
+    zip.file('xl/_rels/workbook.xml.rels', `<Relationships>${'<Relationship'.repeat(100_000)}`);
+    const upload = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    expect(upload.length).toBeLessThan(64 * 1024);
+    const started = Date.now();
+    const error = await caught(reduceRegisterWorkbook(upload));
+    expect(error.details?.[0]?.code).toBe('MISSING_SHEET');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('attributes and tags are still read in both quote styles, any prefix, tags split by `<`', async () => {
+    const { attributes, startTags } = await import('./read-register-workbook');
+    expect([...attributes(`<x:sheet name='ATMs' sheetId = "1" r:id="rId9"/>`)]).toEqual([
+      ['name', 'ATMs'],
+      ['sheetId', '1'],
+      ['r:id', 'rId9'],
+    ]);
+    expect(attributes('<sheet name="A &amp; B" broken= novalue x="1">').get('x')).toBe('1');
+    expect(startTags('<a><sheets><x:sheet a="1"/><sheet<sheet b="2">', 'sheet')).toEqual([
+      '<x:sheet a="1"/>',
+      '<sheet b="2">',
+    ]);
+  });
+
   it('the time limit → TOO_LARGE', async () => {
     const upload = await buildRegisterWorkbook({ rows });
     const error = await caught(

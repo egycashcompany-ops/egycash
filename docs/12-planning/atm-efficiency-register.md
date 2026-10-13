@@ -76,7 +76,7 @@ in this document or was printed while writing it.**
 | DEC-8 | LINK never writes the master. It adopts `master.bankName` into `entry.opsBankLabel` (D5); if the request named a different override → warning `opsBankLabelIgnored`; if master name/area differ from the entry → warning `masterDiffers` (manual) / listed difference (import). | D5 fixes the bank half; extending "keep" to name/area is the narrowest reading and avoids rewriting up to 2,607 Operations names at cut-over. Later edits of the open entry sync (D2). |
 | DEC-9 | A receipt is refused (409 `ATM_REGISTER_CODE_ACTIVE_ELSEWHERE`) when an ACTIVE master with the same code exists in ANOTHER branch, even without an open entry there. The refusal names the other branch only to a caller whose `atmRegister.view` reaches it. The import shows these rows as their own report category `activeElsewhere` with from-branch → to-branch counts; how to resolve them is an owner question (EG-19), not a designer default. | D6's stated reason is the mail matcher, which needs exactly one active master per code company-wide (`mail-ingestion.service.ts:59-81`). Archiving the other branch's master silently would be an invented hand-over. How often this fires depends on how production `atm_machines` were loaded (EG-19). |
 | DEC-10 | A receipt's branch must be mapped in `atm.register.branchCodes` (422 `ATM_REGISTER_BRANCH_UNMAPPED`). | The register's Branch column shows the EGYCASH code and the report's categories are the mapped codes; an unmapped branch would make Section 1 and Section 2 totals disagree (D7 "one definition"). |
-| DEC-11 | `openPeriodExempt: boolean` on entries; the import sets it on BOTH rows of a duplicate-open pair (rows 456/2314 = 2013, 457/2315 = 2015). The partial unique index excludes exempt rows; the service check does not, so no new receipt of 2013/2015 is possible while either is open. | D8 imports all rows; D6's index would otherwise refuse the second row of each pair. Which row is right is EG-8. |
+| DEC-11 | `openPeriodExempt: boolean` on entries; the import sets it on BOTH rows of a duplicate-open pair (rows 456/2314 = 2013, 457/2315 = 2015), and on every OPEN row whose code is a placeholder (`#`, `********` — such a code names no machine and is never coupled, but two of them would collide on the index and abort their apply batch with a bare E11000: review finding DATA-2; the snapshot has none). The partial unique index excludes exempt rows; the service check does not, so no new receipt of 2013/2015 is possible while either is open. An edit that changes an open entry's code re-derives the flag (true only for a placeholder), so a new real code is held to the index. | D8 imports all rows; D6's index would otherwise refuse the second row of each pair. Which row is right is EG-8. |
 | DEC-12 | Pending entries can be created manually (`startDate` optional) and become open through `POST …/receive`. A branch-less pending entry (5 imported rows) cannot be received — delete it and receive anew. | The Excel lets a row exist without a start date (23 rows); its meaning is EG-9, so the register neither forbids nor interprets it. Branch is immutable (D4). |
 | DEC-13 | No "reopen a handover" action in v1. | Not in the owner's action list (Receive, Edit, Handover, Delete, Reveal, Export). EG-15. |
 | DEC-14 | Handover with `endDate < startDate` or a future date is accepted with a warning. | D6 lists the only blocks; the Excel has 2 such rows (1062, 2508) and planned future ends (EG-10). |
@@ -831,6 +831,9 @@ Algorithm (exact order):
 /** HANDOVER / DELETE: archive the master when no OTHER open entry still holds it. */
 export const archiveIfLastOpen = async (entry: AtmRegisterEntryDoc, actorId, session): Promise<PendingAudit[]>;
 //   if entry.machineId === null → []
+//   touch the ACTIVE master in the session first ($set updatedAt) — so two transactions ending
+//   the two DEC-11 twins at once write-conflict and withTransaction re-runs the loser, whose
+//   count then sees the other twin ended (review finding COUPLING-2; without it neither archives)
 //   if countOtherOpenForMachine(machineId, entry._id) > 0 → []        (2013/2015 pairs, DEC-11)
 //   master = live (isDeleted:false) row by id; null or already inactive → []
 //   ensureMachineVersioned; updateById {isActive:false}; audit machine 'update'.
@@ -972,7 +975,8 @@ index ONE AT A TIME with the forwarded options (`name, unique, partialFilterExpr
 duplicate groups reported and the index skipped, never resolved (DEC-26).
 
 `atm.seed.ts` (`:9-18`) becomes, in order: `addSystemRoleGrants` (unchanged) → `migrateAtmIndexes()`
-→ `migrateAtmLegacyTimestamps()` → `widenDataEditRoles()` (§7.3).
+→ `migrateAtmLegacyTimestamps()`. No role or delegated grant is widened (lead override O-1:
+`widenDataEditRoles()` is DROPPED — granting the new keys is the administrator's step, §12.2).
 
 ---
 
@@ -1093,7 +1097,7 @@ File-level issues added after all rows are read:
 
 | Issue | Rule |
 |---|---|
-| `duplicateOpen` | ≥ 2 open rows with the same non-placeholder code → on each, detail = the other row numbers (2013: 456/2314, 2015: 457/2315). These rows get `openPeriodExempt:true` (DEC-11). |
+| `duplicateOpen` | ≥ 2 open rows with the same non-placeholder code → on each, detail = the other row numbers (2013: 456/2314, 2015: 457/2315). These rows get `openPeriodExempt:true` (DEC-11). Every detail that lists other rows or spellings (`duplicateOpen`, `openNotNewest`, `hdbSpelling`, `exactDuplicate`, `serialDuplicate`) names at most 20 and counts the rest — `…, … (+n)` — and every file-level check is linear in the group, never quadratic (review finding SEC-3: 8,000 identical rows built 750 MB of detail text; `hdbSpelling`'s trailing digits are scanned by hand, not with a backtracking regex). |
 | `openNotNewest` | an open row whose startDate is earlier than another row of the same code (4670083, 27740059). |
 | `hdbSpelling` | HDB rows whose trailing digits occur under a different HDB spelling (detail = the other spelling) — EG-7. |
 | `exactDuplicate` | rows whose 49 converted values hash identically (sha-256 in memory; detail = other row numbers, NEVER values) — 3365/3542, 3540/3541. |
@@ -1109,7 +1113,7 @@ organization-wide `atmRegister.import`.
 
 1. **Branches**: for every code present: mapped branchId (setting), branch exists ∧ `status==='active'`, `inReach`. Rows whose column A is blank or unknown count as one more "branch" that is in reach only for an organization-wide importer. Blockers: `branchUnmapped`, `branchInactive`, `branchOutOfReach`.
 2. **Secrets reach** (DEC-7 per branch): for every branch (and the no-branch group) whose rows carry ANY J..Q, AN, AO or AU value, the importer must hold `atmRegister.viewSecrets` there — `keyReachesBranch(ctx,'atmRegister.viewSecrets', b)`, organization scope for the no-branch group. Otherwise blocker `secretsOutOfReach` (apply also answers 403 when the key is absent altogether, §5.7).
-3. **alreadyImported**: `importRow`s that already exist in `atm_register_entries` (`ux_import_row`) — skipped by `entries` — **only when nothing changed** (DEC-31): each already-imported row's converted P and K values (A..AN, AP..AW; AO is not compared — comparing would mean opening 3,000 sealed values) are compared with the stored entry; any difference → item in report category `changedSinceImport` (`importRow`, `entryId`, `columns` = the differing Excel letters, NEVER values) and blocker `changedSinceImport`. Re-applying the SAME unchanged file stays idempotent; a changed row is resolved by the owner (bring the entry in line through the register — edit/handover — or correct the file), then the file is previewed again.
+3. **alreadyImported**: `importRow`s that already exist in `atm_register_entries` (`ux_import_row`) — skipped by `entries` — **only when nothing changed** (DEC-31): each already-imported row's converted P and K values (A..AN, AP..AW; AO is not compared — comparing would mean opening 3,000 sealed values) are compared with the stored entry; any difference → item in report category `changedSinceImport` (`importRow`, `entryId`, `columns` = the differing Excel letters, NEVER values) and blocker `changedSinceImport`. **The letters are an equality test per column, so they are computed only over what the importer may read** (review finding SEC-1): a stored entry whose branch `atmRegister.import` does not reach is never compared — the row is reported as differing in column A only (true: the file puts it in a branch in reach), with `entryId: null` — and the K columns (J..Q, AN, AU) are compared only where `atmRegister.viewSecrets` covers the stored entry's branch (the DTO's `secretsVisible` rule); otherwise a K difference is not looked at. All stored row numbers are still read, whatever their branch, because `ux_import_row` is company-wide. Re-applying the SAME unchanged file stays idempotent; a changed row is resolved by the owner (bring the entry in line through the register — edit/handover — or correct the file), then the file is previewed again.
 4. **Report check** (§6.5) → blocker `reportMismatch` when `!allMatch`.
 5. **Unreadable dates**: any row with `dateInvalid` on AQ or AR → blocker `dateUnreadable` (the rows are in the issues list) — DEC-31.
 6. **Open in the register**: every OPEN row (not already imported, non-placeholder code) whose code has a non-deleted open entry in the register (`findOpenByCodes`, any branch) OTHER than an entry imported from a row of this same file (an in-file pair is `duplicateOpen`, handled by DEC-11 — so a re-run after a crash between the two rows of a pair is not blocked) → item in report category `openInRegister` (`entryId`; other branch named only when `inReach`) and blocker `openInRegister`. Inserting it would hit `ux_open_period_per_code` and abort its whole batch (`base.repository.ts:394-405`); which record is right is the owner's call (hand over / delete the register entry, or correct the file).
@@ -1241,12 +1245,19 @@ Service changes:
   is found under today's `scopeSelector(ctx,'atmMachine.manage')` (`:74`); else 404; the write then
   runs unscoped by id with the version.
   `create()` keeps `resolveAtmBranchId` (`:52`) to choose the branch, then asserts
-  `keyReachesBranch(ctx,'atmRefLabel.create', branchId) || keyReachesBranch(ctx,'atmMachine.manage', branchId)`
+  `keyReachesBranch(ctx,'atmRefLabel.create', branchId) || keyReachesBranch(ctx,'atmMachine.manage', branchId)
+  || (hasPermission(ctx,'atmMachine.manage') && branchId === ctx.branchId)`
   else `ForbiddenError` — `currentBranchId` accepts any active branch in the UNION reach of all the
   caller's grants (`shared/types/index.ts:295-303`, `shared/atm-context.ts:19-29`), so without this an
   Operations user holding `atmRefLabel.create` in Alex and any unrelated key reaching Tanta could file
   labels (e.g. `NBE FOREX`, which drives D5/DEC-16) in Tanta. A `manage` holder at organization or
-  branch scope is unaffected (`atm.spec.ts` operator bundle: branch scope, placed in Alex).
+  branch scope is unaffected (`atm.spec.ts` operator bundle: branch scope, placed in Alex). A `manage`
+  holder at department, section or own scope (no whole-branch reach) keeps today's add in the branch
+  they are PLACED in — the third clause; nothing legacy is removed, and the placement is the one
+  branch no other key can stretch (review finding F1, `atm-data-edit-permissions.spec.ts`).
+  The fallback applies only to those three scopes AND only when the `manage` grant lists no units
+  elsewhere: an ADR-032 deputy holding `manage` delegated over Alex while placed in Tanta answers
+  through `keyReachesBranch` alone, so it cannot file a label into Tanta (review REG-2, test 9c).
   `remove()` keeps `manage` (`:96-106`).
 - Route-file header comments (`machine.routes.ts:1-4`) restate the split.
 
@@ -1314,6 +1325,7 @@ const registerReportPermissions = declarePermissions('atm', 'atmRegisterReport',
    Update the block comment: the data-edit row key is the Operations key; route guard is any-of.
 4. The import page has NO nav row (reached from the register page header).
 
+**DROPPED by O-1 — not implemented; kept below only as the record of what was decided against.**
 `atm.seed.ts` `widenDataEditRoles()` (runs before the nav sync — `server.ts:42-44`):
 ```ts
 const row = await applicationRepository.findOne({ route: '/atm/data-edit' });
@@ -1403,7 +1415,10 @@ the register through its own nav row (documented, not changed).
 `useRegisterImportRuns(enabled)`; mutations `useReceiveRegisterEntry`, `useUpdateRegisterEntry`,
 `useReceivePendingRegisterEntry`, `useHandoverRegisterEntry`, `useLinkRegisterEntry`,
 `useDeleteRegisterEntry` — each invalidates `registerEntries`, `registerReport`,
-`registerBranchOptions` and `featureKey('atm','machines')`;
+`registerBranchOptions` and `featureKey('atm','machines')`, and EVERY register mutation (these six,
+the reveal and the import) declares `onError` so the global toast stays silent: each dialog already
+reports the refusal in the reader's language, and the global one added the server's English sentence
+(review findings WEB-1, LIVE-1; `FormError` scrolls itself into view, as it is then the only report);
 `useRevealRegisterCombination` (mutation with `gcTime: 0`, so TanStack's MutationCache does not keep
 the value for its default 5 minutes; the dialog calls the mutation's `reset()` when it clears or
 closes; the value is never put in the query cache); `useImportRegisterWorkbook` (on
@@ -1425,7 +1440,9 @@ is server-excluded and gets no entry (`realtime.spec.ts:180-214` checks both dir
 `lib/register-labels.ts` (NEW, WP-A — shared by C and D): `bankName(code, locale)`,
 `branchLabel(code, locale)` (contracts names), `statusLabelKey(status)`, `formatRegisterDate(iso)`,
 `formatAsOf(generatedAt, locale)` → `dd / MMMM / yyyy` in `Africa/Cairo` (the Excel's U2 format,
-D7), `columnHeaderKey(field)` → `atm.register.col.<field>`.
+D7) with Latin digits in both languages (`ar-EG-u-nu-latn`: the sheet's U2 format names no numeral
+system, and every count on the report is Latin — review finding WEB-5), `columnHeaderKey(field)` →
+`atm.register.col.<field>`.
 
 ### 8.3 Register page `/atm/register` (WP-C)
 
@@ -1462,7 +1479,9 @@ grouped header (`shared/ui/DataTable.tsx:13-36, 312-333`); the grouped sticky he
   frozen cells `z-10`, every frozen cell has the row's opaque background; the last frozen cell carries
   an inline-end border. Actions column sticky at `inset-inline-end:0`. Freezing applies at `lg` and
   up; below `lg` only the header is sticky.
-- Width per column: `max(72, round(excelWidth × 7 + 5))` px (Name → 303 px).
+- Width per column: `max(72, round(excelWidth × 7 + 5))` px (Name → 303 px); Branch (A) at least
+  96 px — its nine-character `EGYCASH-n` codes measure up to 70.3 px at the grid's 12 px, more than
+  the 70 px the sheet's 87 px leave inside the cell padding, so `EGYCASH-4` was clipped (review LIVE-3).
 - Cells: `text-xs`, one line, `truncate` with `title` (full text); `dir="ltr"` for ATM ID, serial,
   model, times, dates, URL, combination; `locationUrl` rendered as an `<a target="_blank" rel="noopener noreferrer">`
   only when it starts with `http://` or `https://`.
@@ -1492,7 +1511,7 @@ Visibility by `can(key)` is a convenience; the server's `keyCoversEntry` (DEC-29
 | Dialog | Fields / behaviour |
 |---|---|
 | `ReceiveEntryDialog` | Sections in display-group order. Identity: Branch (select of `meta.branches` with `canCreate`; default = the top-bar active branch when it is one of them), Area (combobox: `areaLabels` ∪ `areas`; required when Start date set), Bank (6), Ops bank label (select "automatic (label)" + `bankLabels` of the branch), ATM ID (`dir=ltr`, live `idFormat` hint via `atmRegisterIdFormatOk`), Name*, Operation type / ATM type / Model / Serial (comboboxes from branch options). Keys (8 fields; rendered only when `can('atmRegister.viewSecrets')`). Cassettes (19 fields, grid of 5). Hours & notes (open time, end time, time-limit notes; receipt notes only with viewSecrets). Secret (combination, `type=password` with show toggle; only with viewSecrets). Location (plus code, URL). Lifecycle (Start date — empty = pending, hint; Received by). HUB. Submit → toast `atm.register.received` + `masterAction.<action>` + each warning. |
-| `EditEntryDialog` | Same sections pre-filled; Branch read-only; ATM ID editable only when pending or open-and-unlinked; Start date editable when open/ended; End date, Delivered name, Notes delivered editable only when ended (shown read-only when an open imported entry carries them); combination field empty = keep, plus a "clear" checkbox; on an unlinked open entry the Area field carries hint `atm.register.form.linkOnAreaHint` (setting it couples the entry, DEC-30). |
+| `EditEntryDialog` | Same sections pre-filled (a value stored on several lines — 1,531 imported cells — is edited in a text area: a single-line input strips the breaks when touched, review finding DATA-1; the handover dialog's delivered name likewise); Branch read-only; ATM ID editable only when pending or open-and-unlinked; Start date editable when open/ended; End date, Delivered name, Notes delivered editable only when ended (shown read-only when an open imported entry carries them); combination field empty = keep, plus a "clear" checkbox; on an unlinked open entry the Area field carries hint `atm.register.form.linkOnAreaHint` (setting it couples the entry, DEC-30). |
 | `ReceivePendingDialog` | Start date* (default Cairo today), and Area / Bank / ATM ID / Ops label / Received by when missing on the entry. |
 | `HandoverDialog` | End date* (default Cairo today), Delivered name and Notes delivered PRE-FILLED from the entry (Notes only when `secretsVisible`; otherwise the field is not rendered and not sent, so the stored value is kept — review finding F-18); hint `atm.register.form.handoverHint`. Only fields the user changed are sent. |
 | `LinkEntryDialog` | `ConfirmActionDialog`; body `atm.register.form.linkBody`; on success toast `atm.register.masterAction.<action>`; error codes mapped as above. |
@@ -1570,7 +1589,13 @@ the title only (no subtitle — `page-header-has-no-subtitle.spec.ts`); work in
    only with `can('setting.edit')`; read-only otherwise (values from `useRegisterMeta`).
 2. **Upload** (`ImportUploadPanel`, a card — its first line is the body text
    `atm.registerImport.intro`, NOT a PageHeader child): `FileUpload` (`shared/ui/FileUpload.tsx`,
-   `accept=".xlsx"`, `maxSizeMb=20`) → Preview (`apply: []`).
+   `accept=".xlsx"`, `maxSizeMb=20`) → Preview (`apply: []`). Preview is offered only while no run is
+   in flight — the preview and the apply share one mutation, and a preview pressed mid-apply took
+   the apply's summary and toast (review WEB-3). A refusal names the FILE's problem when the server
+   gave one (`MISSING_SHEET`, `UNREADABLE`, `TOO_LARGE` → `atm.registerImport.error.*`, LIVE-2).
+   Table cells never carry `dir="auto"` themselves: the text inside does, so a Latin value keeps
+   the RTL column's alignment (LIVE-4). The runs card shows `ErrorState` with a retry when its
+   request fails — never the "no import has run yet" text (WEB-6).
 3. **Preview panel**: counts by status; blockers (`atm.registerImport.blocker.<code>`); the Data
    Report check table (57 rows: section, label, Excel cell, expected, from-file, ✓/✗; `allMatch`
    banner); issues summary by code + expandable rows (`importRow`, codes, column); branches table
@@ -1809,7 +1834,8 @@ provisional spelling — DEC-28 / EG-21.)
 |---|---|---|
 | `atm.registerImport.title` | Import the register workbook | استيراد ملف سجل الماكينات |
 | `atm.registerImport.intro` (upload-card body text, §8.6) | Preview first; nothing is written until you approve categories and apply. | عاين أولًا؛ لا يُكتب شيء حتى تعتمد الفئات وتطبّقها. |
-| `atm.registerImport.upload` | Choose the workbook (.xlsx) | اختر الملف (.xlsx) |
+| `atm.registerImport.upload` | Choose the workbook (.xlsx) | اختر الملف (.xlsx) — `(.xlsx)` wrapped in LRI…PDI (`\u2066…\u2069`), or the RTL line shows «(xlsx.)» (review WEB-4) |
+| `atm.registerImport.error.missingSheet` / `.unreadable` / `.tooLarge` | The workbook has no sheet named ATMs. / This file is not a readable Excel workbook (xlsx). / The workbook is larger than the import reads. | لا يحتوي الملف على ورقة باسم ATMs. / تعذّرت قراءة الملف؛ يجب أن يكون مصنّف Excel بصيغة xlsx. / الملف أكبر مما يقرؤه الاستيراد. — chosen by the refusal's `file` detail (`MISSING_SHEET`, `UNREADABLE`, `TOO_LARGE`) before the error code (review LIVE-2) |
 | `atm.registerImport.preview` | Preview | معاينة |
 | `atm.registerImport.apply` | Apply the approved categories | تطبيق الفئات المعتمدة |
 | `atm.registerImport.applyConfirmTitle` | Apply the import | تطبيق الاستيراد |
@@ -1839,7 +1865,7 @@ provisional spelling — DEC-28 / EG-21.)
 | `atm.registerImport.category.link.title` / `.body` | Link / The machine already exists and is active in the Operations list; it is linked and left unchanged. | ربط / الماكينة موجودة ونشطة في قائمة التشغيل؛ تُربط دون تعديل. |
 | `atm.registerImport.category.reactivate.title` / `.body` | Reactivate / The machine exists archived in the Operations list; it is reactivated with this row's name, area and bank. | إعادة تفعيل / الماكينة مؤرشفة في قائمة التشغيل؛ يُعاد تفعيلها باسم هذا الصف ومنطقته وبنكه. |
 | `atm.registerImport.category.create.title` / `.body` | Create / The machine is not in the Operations list; it is added. | إضافة / الماكينة غير موجودة في قائمة التشغيل؛ تُضاف. |
-| `atm.registerImport.category.nbeForex.title` / `.body` | NBE + FX area → NBE FOREX / NBE machines whose area ends with FX get the bank name NBE FOREX in the Operations list. | البنك الأهلي + منطقة FX ← NBE FOREX / ماكينات البنك الأهلي التي تنتهي منطقتها بـ FX تأخذ اسم البنك NBE FOREX في قائمة التشغيل. |
+| `atm.registerImport.category.nbeForex.title` / `.body` | NBE + FX area → NBE FOREX / NBE machines whose area ends with FX get the bank name NBE FOREX in the Operations list. | البنك الأهلي + منطقة FX ← NBE FOREX (an RLM `\u200F` after «FX», or the arrow reads backwards — review WEB-4) / ماكينات البنك الأهلي التي تنتهي منطقتها بـ FX تأخذ اسم البنك NBE FOREX في قائمة التشغيل. |
 | `atm.registerImport.category.cannotCouple.title` / `.body` | Cannot be linked / These rows stay in the register without a machine in the Operations list. | تعذّر الربط / تبقى هذه الصفوف في السجل دون ماكينة في قائمة التشغيل. |
 | `atm.registerImport.category.activeMasterWithoutOpenEntry.title` / `.body` | Active without an open period / Active in the Operations list with no open period in the register. Shown for review only. | نشطة دون فترة مفتوحة / نشطة في قائمة التشغيل دون فترة مفتوحة في السجل. للمراجعة فقط. |
 | `atm.registerImport.reason.{ATM_REGISTER_IMPORT_REASONS}` | blankArea: No area · activeElsewhere: Active in another branch · noCode: No ATM ID · placeholderCode: Placeholder ATM ID · noBank: No bank · noName: No machine name · labelMissing: The branch has no NBE FOREX bank name · keepsMasterLabel: Keeps the bank name in the Operations list · notImported: The row is not imported yet | blankArea: بدون منطقة · activeElsewhere: نشطة في فرع آخر · noCode: بدون رقم ماكينة · placeholderCode: رقم ماكينة مؤقت · noBank: بدون بنك · noName: بدون اسم ماكينة · labelMissing: لا يوجد اسم بنك NBE FOREX في الفرع · keepsMasterLabel: يُبقي على اسم البنك في قائمة التشغيل · notImported: لم يُستورد الصف بعد |
@@ -1967,8 +1993,8 @@ department), at **section** scope and at **own** scope (DEC-29); report-only rol
 | 4 | a role without moveArea/manage → `/:id/area` | 403; Tanta Operations on an Alex machine → 404 (scope) |
 | 5 | manage holder → every route above | still 2xx (regression) |
 | 6 | nav correction: insert application `/atm/data-edit` with `permissionKey 'atmMachine.manage'` → `syncNavigationCatalog()` | key `atmRefLabel.create`; a row an admin set to another key is untouched |
-| 7 | role widening: custom role with `atmMachine.manage`, nav row at the old key → `seedAtm()` | role gains the 3 keys; then (row corrected) remove one key and run `seedAtm()` again → not re-added |
-| 8 | delegated widening (DEC-5): a live delegated grant holding `atmMachine.manage` in Alex, nav row at the old key → `seedAtm()` | the grant gains the 3 keys and the deputy's `/auth/me` permissions include `atmRefLabel.create` without re-login (cache invalidated) |
+| 7 | ~~role widening~~ — **dropped by O-1** (no widening exists, so nothing is asserted about roles gaining keys) | — |
+| 8 | ~~delegated widening~~ — **dropped by O-1** | — |
 | 9 | ref-label create branch check (§7.1): an Operations user holding `atmRefLabel.create` at branch scope in Alex plus an unrelated key reaching Tanta, top-bar header naming Tanta → `POST /atm/ref-labels/bank` | **403**; without the header (home Alex) → 201 in Alex |
 | 10 | department-scoped `atmMachine.moveArea` / `atmRefLabel.edit` on an Alex machine / label from a Tanta department | 404 each; a branch-scoped Alex holder → 200 |
 
@@ -2107,8 +2133,11 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
 
 ### 12.1 Deploy (automatic at boot)
 1. `seedAtm`: super-admin grants; ATM indexes built (DEC-26); legacy timestamps backfilled
-   (DEC-23); roles AND delegated grants holding `atmMachine.manage` widened once (DEC-5).
+   (DEC-23). **No role or delegated grant is widened** (O-1).
 2. `syncNavigationCatalog`: two new rows; `/atm/data-edit` key corrected to `atmRefLabel.create`.
+   From this boot on, a role or ADR-032 delegated grant holding only `atmMachine.manage` no longer
+   shows the Machine Data sidebar row or the ATM overview card (both now need `atmRefLabel.create`);
+   its holders still open `/atm/data-edit` by URL (any-of route guard) until §12.2 step 4 is done.
 3. The scheduler picks up `atm.rotateRegisterCombinationKeys` (nightly 02:45, DEC-33). An operator
    rotating `PLATFORM_ENCRYPTION_KEYS` follows `docs/02-architecture/platform-crypto.md`; the old key
    may be dropped only after BOTH nightly sweeps (automation and ATM) report 0 left on it.
@@ -2118,10 +2147,14 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
    EGYCASH-7 وصال); review the Operations bank labels (BM → MISR by default).
 2. Operations (data-edit) add an `NBE FOREX` bank label in the branches whose FX machines should
    carry it (DEC-16).
-3. Roles (§12.3). Remove `atmMachine.manage` from the Operations role(s) — until then they keep
-   delete (risk R-2).
-4. Any role or delegation given `atmMachine.manage` AFTER the first boot also needs
-   `atmRefLabel.create` to see the data-edit row (the one-time widening has already run — DEC-5).
+3. Roles (§12.3). Grant the Operations role(s) `atmRefLabel.create`, `atmRefLabel.edit` and
+   `atmMachine.moveArea`, then remove `atmMachine.manage` from them — until then they keep add,
+   archive and delete (risk R-2).
+4. **Every** role and every live ADR-032 delegated grant that holds `atmMachine.manage` (the ATM
+   administrator's included, and any given it later) must also be granted `atmRefLabel.create`
+   (plus `atmRefLabel.edit` and `atmMachine.moveArea` where wanted), or its holders lose the
+   Machine Data sidebar row and the ATM overview card at the first boot — nothing grants these keys
+   automatically (lead override O-1; review finding F2).
 5. Owner questions to settle before the cut-over preview (they change what the preview shows,
    not the code): EG-19 (production masters vs the seven codes — how `activeElsewhere` rows are
    resolved), EG-20 (time cells ≥ 1 day), EG-21 (total label spelling).
@@ -2161,7 +2194,7 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
 | # | Risk | Mitigation in this spec |
 |---|---|---|
 | R-1 | Secret concentration: one combination value is shared by 1,719 machines (50.5%); key codes also sit in count columns and notes; the workbook and its `Sheet1` VLOOKUPs keep existing outside ECMS. | Sealing, per-entry visibility, write-implies-read, redaction in audit/logs/exports, audited reveal. Recommend changing the shared default combination at the banks and retiring the workbook (owner). |
-| R-2 | Existing roles holding `atmMachine.manage` keep add/delete until an administrator removes it. | Rollout step 12.2.3; the widening means only `manage` has to be removed. |
+| R-2 | Existing roles holding `atmMachine.manage` keep add/delete until an administrator removes it; and, with no widening (O-1), a manage-only role or delegation loses the Machine Data sidebar row and overview card until it is granted `atmRefLabel.create`. | Rollout steps 12.2.3 and 12.2.4: the administrator grants the Operations keys and then removes `manage`. |
 | R-3 | A future end date (mobile ATMs) archives the master immediately; a future start date activates it before the receipt (EG-10). | Warnings `futureDate`; owner rule pending. |
 | R-4 | Pending mail tickets for archived machines can still be accepted (EG-17). | Pre-existing; flagged. |
 | R-5 | `/atm/machines` shows at most 100 rows (EG-16); after cut-over every branch exceeds it. | Flagged; out of scope. |
@@ -2172,7 +2205,7 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
 | R-10 | The `ATMs` sheet layout changes before cut-over (a column inserted). | Exact header binding refuses with the missing column named (§6.2). |
 | R-11 | Error tracking (Sentry) attaches request bodies to error events by default, which would carry combinations and key codes off the server. | DEC-34: bodies of register routes are never captured, K/S names scrubbed in `beforeSend`, unit-tested. Other modules' bodies are outside this spec (flagged). |
 | R-12 | Production masters were loaded per legacy deployment (4) while the register has 7 codes; many open rows may land in `activeElsewhere` (EG-19). | Shown as its own category with from → to counts before anything is applied; the owner decides; `Link` (DEC-30) completes each row afterwards. |
-| R-13 | A crafted upload exhausts memory or CPU. | 20 MB upload cap, per-entry inflate caps, row and time caps, only five zip entries ever inflated (§6.2). |
+| R-13 | A crafted upload exhausts memory or CPU. | 20 MB upload cap, per-entry inflate caps, row and time caps, only five zip entries ever inflated (§6.2). Every scan of an inflated part is linear (the workbook/rels tags and attributes are walked by hand — a backtracking `<sheet\b[^>]*>` over a 2 MB part of unclosed tags held the event loop for minutes, review finding SEC-2) and the deadline is re-checked between the steps no chunk counter sees; the parse phase is linear too (capped detail lists, a hand-scanned trailing-digit check — SEC-3). |
 
 ---
 
@@ -2206,7 +2239,7 @@ AO or J..Q printed). F-n = the order the findings were received in.
 | F-20 | feasibility · blocker | ExcelJS `WorkbookReader` writes earlier worksheets (incl. `Sheet1` with AO/J) to temp files | **Accepted** — verified in the library (`workbook-reader.js:107-129, 140-148`) and by a probe (2 temp files left after `break`; 0 with the reduced zip). §6.2 rewritten: JSZip in memory, five entries, re-zipped in the order the reader needs; jszip dependency (WP-B); tmp-dir assertions in unit and integration tests. |
 | F-21 | feasibility · major | An open row whose code is already open in the register aborts its batch forever | **Accepted** — DEC-31 blocker `openInRegister` (in-file pairs excluded) + an in-transaction race guard that skips with outcome `openInRegister`; import test 16. |
 | F-22 | feasibility · major | `atm.registerImport` exclusion fails WP-A's realtime spec until WP-B merges | **Accepted** — verified (`realtime-registry.spec.ts:90-94`). `importAuditRef` with the literal pair lives in the WP-A run model; WP-B calls it (§5.10, §6.6). |
-| F-23 | feasibility · minor | One-time widening misses ADR-032 delegated grants and later grants | **Accepted** — verified (`delegation.model.ts:12-41`). Widening covers delegated grants (§7.3, `delegation.repository.ts`); later grants documented as an admin step (§12.2 step 4); data-edit test 8. |
+| F-23 | feasibility · minor | One-time widening misses ADR-032 delegated grants and later grants | **Superseded by O-1** — there is no widening at all; every role and delegated grant holding `manage` is an administrator step (§12.2 step 4, review finding F2). |
 | F-24 | feasibility · minor | PageHeader has no subtitle (guard spec) | **Accepted** — verified (`page-header-has-no-subtitle.spec.ts`). Subtitle removed; `atm.register.subtitle` dropped; import text moved to `atm.registerImport.intro`, upload-card body. |
 | F-25 | feasibility · minor | §9.4 lacks keys WP-B's tables need | **Accepted** — every visible string of §8.3–§8.6 listed (runs/branches/items/pairs/report-check columns, outcomes, new categories, blockers, hints, settings columns) and the WP-A follow-up rule stated in §9. |
 | F-26 | feasibility · minor | No rewrap job for sealed combinations | **Accepted** — duplicate of F-5. |

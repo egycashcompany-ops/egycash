@@ -39,6 +39,7 @@ import {
 import { EditEntryDialog } from './components/register/EditEntryDialog';
 import { ReceiveEntryDialog, defaultReceiptBranch } from './components/register/ReceiveEntryDialog';
 import { REGISTER_ENDED_ROW } from './lib/register-grid';
+import { searchParamOf } from './components/register/RegisterFilters';
 import { listKey } from '../../shared/lib/query-keys';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -276,10 +277,10 @@ describe('the grid', () => {
     const open = row(render(), OPEN.id);
     for (const [field, offset] of [
       ['branchCode', 0],
-      ['area', 87],
-      ['bankCode', 208],
-      ['machineCode', 280],
-      ['name', 377],
+      ['area', 96],
+      ['bankCode', 217],
+      ['machineCode', 289],
+      ['name', 386],
     ] as const) {
       const at = cell(open, field);
       expect(at, field).toContain('lg:sticky');
@@ -421,6 +422,19 @@ describe('the page around the grid', () => {
   });
 });
 
+// Review finding WEB-2. `SearchInput` re-emits while its text differs from the value it is handed
+// back; the page hands back `sp.get('q') ?? ''`. Whatever is typed must therefore come back as
+// itself — a box of spaces written as "no q" came back as '' and was pushed onto the history
+// every 300 ms, for ever.
+describe('the search box', () => {
+  it('writes what was typed, so the value handed back equals the text and nothing re-emits', () => {
+    for (const text of ['', ' ', '   ', 'ab', ' ab ', 'x ']) {
+      expect(searchParamOf(text) ?? '', JSON.stringify(text)).toBe(text);
+    }
+    expect(searchParamOf('')).toBeNull();
+  });
+});
+
 describe('the handover dialog', () => {
   const dialog = (target: AtmRegisterEntryDto): string => {
     const qc = new QueryClient();
@@ -448,6 +462,14 @@ describe('the handover dialog', () => {
     const markup = dialog({ ...VISIBLE, handoverNotes: 'Synthetic note' });
     expect(markup).toContain(t('atm.register.col.handoverNotes'));
     expect(markup).toContain('Synthetic note');
+  });
+
+  it('keeps a delivered name the sheet holds on two lines in a text area (DATA-1)', () => {
+    const markup = dialog({ ...OPEN, handoverName: 'Courier one\nCourier two' });
+    expect(markup).toMatch(
+      /<textarea[^>]*data-handover-name="true"[^>]*>Courier one\nCourier two</,
+    );
+    expect(dialog({ ...OPEN, handoverName: 'Courier' })).toMatch(/<input[^>]*data-handover-name/);
   });
 
   it('sends only what the reader changed, so an untouched field keeps its stored value', () => {
@@ -620,6 +642,43 @@ describe('the entry form', () => {
       ),
       'a linked ATM ID and an open entry’s end date are not the edit’s to change',
     ).toEqual({ version: 3 });
+  });
+
+  // Review finding DATA-1: 1,531 imported cells hold several lines. A single-line <input> strips
+  // the breaks as soon as it is touched, so an edit saved '2\n3' as '23'. Such a value is edited in
+  // a text area, which keeps them; a one-line value keeps its input.
+  it('edits a value the sheet holds on several lines in a text area, line breaks intact', () => {
+    const lines = entry('650000000000000000000a07', {
+      ...VISIBLE,
+      id: '650000000000000000000a07',
+      model: 'Model A\nModel B',
+      receivedByName: 'Receiver one\nReceiver two',
+      cassettes: { ...NO_CASSETTES, withdrawalType: 'Type 1\nType 2' },
+      keys: {
+        ...(VISIBLE.keys as NonNullable<AtmRegisterEntryDto['keys']>),
+        alanki: 'LINE-ONE\nLINE-TWO',
+      },
+    });
+    const markup = withDialog(
+      <EditEntryDialog entry={lines} meta={META} onClose={() => undefined} />,
+    );
+    const box = (field: string): string =>
+      new RegExp(`<(textarea|input)[^>]*id="[^"]*-${field.replace('.', '-')}"`).exec(markup)?.[1] ??
+      'missing';
+    expect(box('keys.alanki')).toBe('textarea');
+    expect(box('model')).toBe('textarea');
+    expect(box('receivedByName')).toBe('textarea');
+    expect(box('cassettes.withdrawalType')).toBe('textarea');
+    expect(markup).toContain('LINE-ONE\nLINE-TWO');
+    // One-line values keep their single-line box.
+    expect(box('keys.supervisorCode')).toBe('input');
+    expect(box('serial')).toBe('input');
+    // An untouched multi-line value is not sent; a changed one is sent with its lines.
+    const initial = entryFormValues(lines);
+    expect(updateBody(lines, initial, initial, false)).toEqual({ version: 3 });
+    expect(
+      updateBody(lines, initial, { ...initial, 'keys.alanki': 'LINE-ONE\nLINE-3' }, false),
+    ).toEqual({ version: 3, keys: { alanki: 'LINE-ONE\nLINE-3' } });
   });
 
   it('draws the edit with the branch fixed, the ID locked once linked, and the link hint when not', () => {

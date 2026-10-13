@@ -49,8 +49,8 @@ export const ReportCheckTable = ({
                   className={cn(!cell.matches && 'bg-rose-50 dark:bg-rose-950/40')}
                 >
                   <td className={TD}>{t(`atm.registerReport.section${String(cell.section)}`)}</td>
-                  <td className={TD} dir="auto">
-                    {reportCellLabel(cell, t, locale)}
+                  <td className={TD}>
+                    <span dir="auto">{reportCellLabel(cell, t, locale)}</span>
                   </td>
                   <td className={`${TD} font-mono`} dir="ltr">
                     {cell.cell}

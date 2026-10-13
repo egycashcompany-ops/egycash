@@ -34,7 +34,9 @@ import {
   MachineDialog,
   RefLabelDialog,
   machineAreaBody,
+  refLabelErrorText,
 } from './components/DataEditDialogs';
+import { ApiError } from '../../shared/lib/api-client';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -320,5 +322,18 @@ describe('the label edit Operations now reach', () => {
     expect(markup).toContain('type="checkbox"');
     expect(markup).toContain(t('atm.dataEdit.labelActiveHint'));
     expect(markup).not.toContain(t('atm.common.delete'));
+  });
+});
+
+// Review finding F1: every refused label save used to read "already exists".
+describe('a refused label save says why', () => {
+  const tr = (key: string): string => translate('ar', key);
+  it('"already exists" only for the duplicate; a refusal of reach says it is not allowed', () => {
+    expect(refLabelErrorText(new ApiError('CONFLICT', 'duplicate', 409), tr, 'ar')).toBe(
+      tr('atm.dataEdit.labelExists'),
+    );
+    const forbidden = refLabelErrorText(new ApiError('FORBIDDEN', 'Forbidden', 403), tr, 'ar');
+    expect(forbidden).not.toBe(tr('atm.dataEdit.labelExists'));
+    expect(forbidden).toBe('ليس لديك صلاحية للقيام بذلك.');
   });
 });

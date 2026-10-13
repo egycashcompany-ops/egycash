@@ -20,9 +20,13 @@ import {
   splitAtmFormLines,
   type AtmMachineDto,
   type AtmRefLabelDto,
+  type Locale,
   type UpdateAtmMachineArea,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
+import { ApiError } from '../../../shared/lib/api-client';
+import { errorMessage } from '../../../shared/lib/errors';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Checkbox, Field, Input, Select, Textarea } from '../../../shared/ui/form';
@@ -36,6 +40,20 @@ import {
   useUpdateAtmMachineArea,
   useUpdateAtmRefLabel,
 } from '../api/atm-queries';
+
+/**
+ * A refused label save in the reader's words. Only the 409 is "already exists" — the legacy's
+ * «موجود قبل كدا» (:2474); a 403 (no reach over the branch) or anything else says what it is
+ * (review finding F1: every failure used to read "already exists").
+ */
+export const refLabelErrorText = (
+  error: unknown,
+  t: (key: string) => string,
+  locale: Locale,
+): string =>
+  error instanceof ApiError && error.status === 409
+    ? t('atm.dataEdit.labelExists')
+    : errorMessage(error, locale);
 
 /** Code/name line pairs → machine rows; blank lines dropped, as the legacy loop did. */
 export const buildMachineRows = (
@@ -294,6 +312,7 @@ export const RefLabelDialog = ({
   label: AtmRefLabelDto | null;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [name, setName] = useState('');
   const [isActive, setIsActive] = useState(true);
 
@@ -322,9 +341,8 @@ export const RefLabelDialog = ({
         toast.success(t('atm.dataEdit.labelSaved'));
       }
       onClose();
-    } catch {
-      // The legacy said "موجود قبل كدا" for a duplicate (:2474) — the 409 lands here.
-      toast.error(t('atm.dataEdit.labelExists'));
+    } catch (error) {
+      toast.error(refLabelErrorText(error, t, locale));
     }
   };
 

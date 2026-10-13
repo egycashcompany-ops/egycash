@@ -18,9 +18,11 @@ import { Card, CardBody } from '../../../../shared/ui/Card';
 import { Button } from '../../../../shared/ui/Button';
 import { FileUpload } from '../../../../shared/ui/FileUpload';
 import { toast } from '../../../../shared/ui/toast/toast-store';
+import { formatNumber } from '../../../../shared/lib/format';
 import { useImportRegisterWorkbook } from '../../api/register-queries';
 import {
   approvedCategories,
+  canPreview,
   importErrorDetails,
   importErrorText,
   listSeparator,
@@ -73,11 +75,19 @@ export const ImportUploadPanel = (): JSX.Element => {
           toast.success(
             t('atm.registerImport.applied', {
               summary: outcomeEntries(applied.applied?.counts ?? {})
-                .map(([key, n]) => `${t(`atm.registerImport.outcome.${key}`)}: ${String(n)}`)
+                .map(
+                  ([key, n]) =>
+                    `${t(`atm.registerImport.outcome.${key}`)}: ${formatNumber(n, locale)}`,
+                )
                 .join(listSeparator(locale)),
             }),
           );
         },
+        // The hook reports nothing itself (no English global toast), and the error box sits in the
+        // upload card far above the Apply button the user just pressed — so a refused or failed
+        // apply also says so where they are looking (review REG-1). Preview needs no toast: its
+        // button is right under the box.
+        onError: (error) => toast.error(importErrorText(error, t, locale)),
       },
     );
   };
@@ -120,7 +130,9 @@ export const ImportUploadPanel = (): JSX.Element => {
           <div className="flex justify-end">
             <Button
               variant="secondary"
-              disabled={file === null}
+              // Not while ANY run is in flight: a preview pressed during an apply replaced the
+              // apply's own callbacks, so its summary and toast never came (review WEB-3).
+              disabled={!canPreview(file !== null, run.isPending)}
               loading={run.isPending && result === null}
               onClick={preview}
             >

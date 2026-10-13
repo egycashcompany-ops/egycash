@@ -117,14 +117,27 @@ export const HandoverDialog = ({
             />
           </Field>
           <Field label={t('atm.register.col.handoverName')} htmlFor={`${id}-name`}>
-            <Input
-              id={`${id}-name`}
-              data-handover-name="true"
-              value={deliveredName}
-              maxLength={300}
-              autoComplete="off"
-              onChange={(e) => setDeliveredName(e.target.value)}
-            />
+            {/* A delivered name the sheet holds on several lines keeps them (review DATA-1): a
+                single-line input would strip the breaks as soon as it is touched. */}
+            {(entry.handoverName ?? '').includes('\n') ? (
+              <Textarea
+                id={`${id}-name`}
+                data-handover-name="true"
+                rows={2}
+                value={deliveredName}
+                maxLength={300}
+                onChange={(e) => setDeliveredName(e.target.value)}
+              />
+            ) : (
+              <Input
+                id={`${id}-name`}
+                data-handover-name="true"
+                value={deliveredName}
+                maxLength={300}
+                autoComplete="off"
+                onChange={(e) => setDeliveredName(e.target.value)}
+              />
+            )}
           </Field>
           {entry.secretsVisible && (
             <Field

@@ -10,7 +10,13 @@ import {
   type SyntheticRow,
 } from '../../../../../tests/integration/helpers/atm-register-workbook';
 import { readRegisterWorkbook } from './read-register-workbook';
-import { comparableColumns, parseRegisterRows, type ParsedRow } from './parse-rows';
+import {
+  DETAIL_LIST_LIMIT,
+  comparableColumns,
+  parseRegisterRows,
+  trailingDigits,
+  type ParsedRow,
+} from './parse-rows';
 
 const TODAY = '2026-10-13';
 const FAKE_COMBO = '24 - 68 - 13';
@@ -214,6 +220,75 @@ describe('file-level notes', () => {
     expect(codes(byRow(rows, 5))).toContain('futureStart');
     expect(codes(byRow(rows, 6))).toContain('futureEnd');
     expect(codes(byRow(rows, 7))).toEqual(expect.arrayContaining(['openNoArea', 'noBank']));
+  });
+});
+
+describe('a crafted file costs linear time and memory (review finding SEC-3)', () => {
+  it('large duplicate groups name at most the limit of other rows, and count the rest', async () => {
+    // Three template rows read once, then repeated: 4,000 open rows of one code and serial, 2,000
+    // open rows of another code with that serial, 2,000 later ended periods of the first code.
+    const read = await readRegisterWorkbook(
+      await buildRegisterWorkbook({
+        rows: [
+          open({ machineCode: 99990090, serial: 'SN-90', startDate: excelDate('2025-01-01') }),
+          open({ machineCode: 99990091, serial: 'SN-90' }),
+          open({
+            machineCode: 99990090,
+            startDate: excelDate('2025-03-01'),
+            endDate: excelDate('2025-04-01'),
+          }),
+        ],
+      }),
+    );
+    const [a, b, c] = read.rows;
+    if (a === undefined || b === undefined || c === undefined) throw new Error('template rows');
+    const template = [...Array<typeof a>(4_000).fill(a), ...Array<typeof b>(2_000).fill(b)];
+    template.push(...Array<typeof c>(2_000).fill(c));
+    const big = {
+      ...read,
+      rows: template.map((row, i) => ({ rowNumber: i + 3, cells: row.cells })),
+    };
+    const started = Date.now();
+    const { rows } = parseRegisterRows(big, { today: TODAY });
+    expect(Date.now() - started).toBeLessThan(10_000);
+
+    const first = byRow(rows, 3);
+    const detail = (code: string): string | null | undefined =>
+      first.issues.find((i) => i.code === code)?.detail;
+    const twenty = (from: number): string =>
+      Array.from({ length: DETAIL_LIST_LIMIT }, (_, i) => String(from + i)).join(', ');
+    expect(detail('duplicateOpen')).toBe(`${twenty(4)}, … (+${String(3_999 - 20)})`);
+    expect(detail('exactDuplicate')).toBe(`${twenty(4)}, … (+${String(3_999 - 20)})`);
+    expect(detail('serialDuplicate')).toBe(`${twenty(4_003)}, … (+${String(2_000 - 20)})`);
+    expect(detail('openNotNewest')).toBe(`${twenty(6_003)}, … (+${String(2_000 - 20)})`);
+    expect(byRow(rows, 4_003).issues.find((i) => i.code === 'serialDuplicate')?.detail).toBe(
+      `${twenty(3)}, … (+${String(4_000 - 20)})`,
+    );
+    const longest = Math.max(...rows.flatMap((r) => r.issues.map((i) => i.detail?.length ?? 0)));
+    expect(longest).toBeLessThan(200);
+  });
+
+  it('a long digit run ending in a letter is scanned once, not retried from every digit', () => {
+    expect(trailingDigits('HDB - 0042')).toBe('0042');
+    expect(trailingDigits('HDB-ATM')).toBeNull();
+    const started = Date.now();
+    expect(trailingDigits(`${'1'.repeat(200_000)}X`)).toBeNull();
+    expect(trailingDigits(`X${'1'.repeat(200_000)}`)).toHaveLength(200_000);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+describe('placeholder codes (review finding DATA-2)', () => {
+  it('an OPEN row with `#` or `********` is exempt from the one-open-period index; an ended one is not', async () => {
+    const { rows } = await parse([
+      open({ machineCode: '#' }),
+      open({ machineCode: '#', name: 'Another unknown machine' }),
+      open({ machineCode: '********' }),
+      open({ machineCode: '#', endDate: excelDate('2025-06-01') }),
+    ]);
+    expect(rows.map((r) => r.openPeriodExempt)).toEqual([true, true, true, false]);
+    // Still not a duplicate-open pair: a placeholder names no machine.
+    expect(rows.flatMap(codes)).not.toContain('duplicateOpen');
   });
 });
 

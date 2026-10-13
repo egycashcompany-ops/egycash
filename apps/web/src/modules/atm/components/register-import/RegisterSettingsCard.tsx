@@ -30,7 +30,6 @@ import { Button } from '../../../../shared/ui/Button';
 import { Input, Select } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
-import { errorMessage } from '../../../../shared/lib/errors';
 import { registerKeys, useRegisterMeta } from '../../api/register-queries';
 import { bankName, branchLabel } from '../../lib/register-labels';
 
@@ -103,8 +102,9 @@ export const RegisterSettingsCard = (): JSX.Element => {
       });
       await qc.invalidateQueries({ queryKey: registerKeys.meta });
       toast.success(t('atm.registerSettings.saved'));
-    } catch (error) {
-      toast.error(errorMessage(error, locale));
+    } catch {
+      // Already said: `useSetSetting` declares no `onError`, so the global handler toasts this
+      // failure in the reader's language — a second toast here repeated it (review WEB-1).
     }
   };
 
@@ -146,8 +146,8 @@ export const RegisterSettingsCard = (): JSX.Element => {
                     <td className={`${TD} whitespace-nowrap font-mono text-xs`} dir="ltr">
                       {code}
                     </td>
-                    <td className={TD} dir="auto">
-                      {branchLabel(code, 'ar')}
+                    <td className={TD}>
+                      <span dir="auto">{branchLabel(code, 'ar')}</span>
                     </td>
                     <td className={TD}>
                       {canEdit ? (
@@ -200,8 +200,8 @@ export const RegisterSettingsCard = (): JSX.Element => {
                     <td className={`${TD} font-mono text-xs`} dir="ltr">
                       {code}
                     </td>
-                    <td className={TD} dir="auto">
-                      {bankName(code, 'ar')}
+                    <td className={TD}>
+                      <span dir="auto">{bankName(code, 'ar')}</span>
                     </td>
                     <td className={TD}>
                       {canEdit ? (

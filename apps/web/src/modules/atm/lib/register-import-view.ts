@@ -101,6 +101,13 @@ export const outcomeEntries = (counts: Record<string, number>): [string, number]
     return n > 0 ? [[key, n]] : [];
   });
 
+/**
+ * Preview is offered with a file chosen and NO run in flight. The preview and the apply share one
+ * mutation, and TanStack runs only the latest call's own callbacks — a preview pressed during an
+ * apply swallowed the apply's summary and toast (review finding WEB-3).
+ */
+export const canPreview = (hasFile: boolean, running: boolean): boolean => hasFile && !running;
+
 /** How a short list of labels is joined in the reader's language. */
 export const listSeparator = (locale: Locale): string => (locale === 'ar' ? '، ' : ', ');
 
@@ -112,11 +119,26 @@ const IMPORT_ERROR_CODES = new Set<string>(
   Object.values(ErrorCodes).filter((code) => code.startsWith('ATM_REGISTER_')),
 );
 
-/** A refused upload in the reader's words: the register's own codes by name, the rest generically. */
-export const importErrorText = (error: unknown, t: Translate, locale: Locale): string =>
-  error instanceof ApiError && IMPORT_ERROR_CODES.has(error.code)
+/** The file-level reason a refused upload gave, when it gave one (`details[].code` on `file`). */
+const fileReason = (error: ApiError): string | undefined =>
+  error.details?.find((d) => d.field === 'file')?.code;
+
+/**
+ * A refused upload in the reader's words: the register's own codes by name, the rest generically
+ * — except the three file-level reasons, which say what is wrong with the FILE: no `ATMs` sheet,
+ * not a workbook at all, or past a cap (review finding LIVE-2: they read "the expected columns"
+ * and "some fields need attention" on a page with no fields).
+ */
+export const importErrorText = (error: unknown, t: Translate, locale: Locale): string => {
+  if (!(error instanceof ApiError)) return errorMessage(error, locale);
+  const reason = fileReason(error);
+  if (reason === 'MISSING_SHEET') return t('atm.registerImport.error.missingSheet');
+  if (reason === 'UNREADABLE') return t('atm.registerImport.error.unreadable');
+  if (reason === 'TOO_LARGE') return t('atm.registerImport.error.tooLarge');
+  return IMPORT_ERROR_CODES.has(error.code)
     ? t(`atm.register.error.${error.code}`)
     : errorMessage(error, locale);
+};
 
 /**
  * What a refusal pointed at, when it named something: the missing header's column letter, or a
@@ -128,11 +150,14 @@ export const importErrorDetails = (error: unknown, t: Translate): string[] => {
     return error.details.map((d) => t(`atm.registerImport.blocker.${d.code}`));
   }
   if (error.code === ErrorCodes.ATM_REGISTER_IMPORT_LAYOUT) {
-    return error.details.map((d) =>
-      d.code === 'MISSING_HEADER'
-        ? `${d.field ?? ''}: ${d.message.replace(/\n/g, ' ')}`
-        : d.message,
-    );
+    // A missing sheet is named in the text itself; a bare «ATMs» line said nothing more.
+    return error.details
+      .filter((d) => d.code !== 'MISSING_SHEET')
+      .map((d) =>
+        d.code === 'MISSING_HEADER'
+          ? `${d.field ?? ''}: ${d.message.replace(/\n/g, ' ')}`
+          : d.message,
+      );
   }
   return [];
 };

@@ -161,8 +161,43 @@ const fileIssue = (
   detail: string | null,
 ): ImportIssue => ({ code, column, detail });
 
-const rowList = (rows: readonly ParsedRow[]): string =>
-  rows.map((r) => String(r.importRow)).join(', ');
+/**
+ * At most this many other rows (or spellings) are named in one issue's detail; the rest are
+ * counted (review finding SEC-3). Every row of a group names the others, so an uncapped list is
+ * quadratic: 8,000 identical rows built 750 MB of detail text from a 191 KB upload.
+ */
+export const DETAIL_LIST_LIMIT = 20;
+
+/** The first `DETAIL_LIST_LIMIT` of `shown`, then `… (+n)` for the `total` not shown. */
+const listDetail = (shown: readonly string[], total: number): string => {
+  const head = shown.slice(0, DETAIL_LIST_LIMIT).join(', ');
+  return total > DETAIL_LIST_LIMIT ? `${head}, … (+${String(total - DETAIL_LIST_LIMIT)})` : head;
+};
+
+/** The row numbers of `group` other than `row` — linear in the limit, not in the group. */
+const othersDetail = (group: readonly ParsedRow[], row: ParsedRow): string => {
+  const shown: string[] = [];
+  for (const other of group) {
+    if (other === row) continue;
+    shown.push(String(other.importRow));
+    if (shown.length > DETAIL_LIST_LIMIT) break;
+  }
+  return listDetail(shown, group.length - 1);
+};
+
+/**
+ * The digits a code ends with — scanned back by hand: `/(\d+)$/` retries from every digit of a long
+ * run that ends in a letter, and a code's length is whatever the cell held (SEC-3).
+ */
+export const trailingDigits = (code: string): string | null => {
+  let start = code.length;
+  while (start > 0) {
+    const c = code.charCodeAt(start - 1);
+    if (c < 48 || c > 57) break;
+    start -= 1;
+  }
+  return start === code.length ? null : code.slice(start);
+};
 
 const realCode = (code: string | null): code is string =>
   code !== null && !isPlaceholderMachineCode(code);
@@ -322,38 +357,70 @@ export const parseRegisterRows = (
     if (group.length < 2) continue;
     for (const row of group) {
       row.openPeriodExempt = true;
-      add(row, fileIssue('duplicateOpen', 'D', rowList(group.filter((o) => o !== row))));
+      add(row, fileIssue('duplicateOpen', 'D', othersDetail(group, row)));
+    }
+  }
+  // An OPEN row whose code is a placeholder (`#`, `********`) names no machine: it is never coupled
+  // and no receipt can open one (§5.6), but two of them would still collide on
+  // `ux_open_period_per_code` and abort their apply batch with a bare E11000 (review finding
+  // DATA-2). The index is about one machine per code, so they are exempt from it.
+  for (const row of rows) {
+    const code = row.values.machineCode;
+    if (row.status === 'open' && code !== null && isPlaceholderMachineCode(code)) {
+      row.openPeriodExempt = true;
     }
   }
 
-  // openNotNewest: an open row with a later period of the same code elsewhere in the file.
+  // openNotNewest: an open row with a later period of the same code elsewhere in the file. Walked
+  // from the latest start down, carrying the lowest row numbers seen so far, so a large group
+  // costs n log n, not n² (SEC-3).
   const byCode = groupBy(rows, (r) =>
     realCode(r.values.machineCode) ? r.values.machineCode : null,
   );
   for (const group of byCode.values()) {
-    for (const row of group) {
-      const start = row.values.startDate;
-      if (row.status !== 'open' || start === null) continue;
-      const newer = group.filter(
-        (other) =>
-          other !== row && other.values.startDate !== null && other.values.startDate > start,
-      );
-      if (newer.length > 0) add(row, fileIssue('openNotNewest', 'AQ', rowList(newer)));
+    if (group.length < 2) continue;
+    const dated = group
+      .filter((r) => r.values.startDate !== null)
+      .sort((a, b) => {
+        const [x, y] = [a.values.startDate ?? '', b.values.startDate ?? ''];
+        return x < y ? 1 : x > y ? -1 : a.importRow - b.importRow;
+      });
+    const newer: number[] = []; // ascending row numbers, at most DETAIL_LIST_LIMIT + 1
+    let newerCount = 0;
+    for (let i = 0; i < dated.length;) {
+      const start = dated[i]?.values.startDate;
+      let end = i;
+      while (end < dated.length && dated[end]?.values.startDate === start) end += 1;
+      const level = dated.slice(i, end);
+      if (newerCount > 0) {
+        for (const row of level) {
+          if (row.status !== 'open') continue;
+          add(row, fileIssue('openNotNewest', 'AQ', listDetail(newer.map(String), newerCount)));
+        }
+      }
+      for (const row of level) {
+        newerCount += 1;
+        const at = newer.findIndex((n) => n > row.importRow);
+        newer.splice(at === -1 ? newer.length : at, 0, row.importRow);
+        if (newer.length > DETAIL_LIST_LIMIT + 1) newer.pop();
+      }
+      i = end;
     }
   }
 
   // hdbSpelling (EG-7): one HDB machine number written more than one way.
   const hdbRows = rows.filter((r) => r.values.bankCode === 'HDB' && realCode(r.values.machineCode));
   const byDigits = groupBy(hdbRows, (r) => {
-    const digits = /(\d+)$/.exec(r.values.machineCode ?? '')?.[1];
-    return digits === undefined ? null : digits.replace(/^0+(?=\d)/, '');
+    const digits = trailingDigits(r.values.machineCode ?? '');
+    return digits === null ? null : digits.replace(/^0+(?=\d)/, '');
   });
   for (const group of byDigits.values()) {
     const spellings = [...new Set(group.map((r) => r.values.machineCode ?? ''))];
     if (spellings.length < 2) continue;
+    const head = spellings.slice(0, DETAIL_LIST_LIMIT + 1);
     for (const row of group) {
-      const others = spellings.filter((s) => s !== row.values.machineCode);
-      add(row, fileIssue('hdbSpelling', 'D', others.join(', ')));
+      const others = head.filter((s) => s !== row.values.machineCode);
+      add(row, fileIssue('hdbSpelling', 'D', listDetail(others, spellings.length - 1)));
     }
   }
 
@@ -368,19 +435,37 @@ export const parseRegisterRows = (
   for (const group of groupBy(rows, (r) => fingerprints.get(r) ?? null).values()) {
     if (group.length < 2) continue;
     for (const row of group) {
-      add(row, fileIssue('exactDuplicate', null, rowList(group.filter((o) => o !== row))));
+      add(row, fileIssue('exactDuplicate', null, othersDetail(group, row)));
     }
   }
 
   // serialDuplicate: open rows sharing a serial (trim, case-insensitive) under different codes.
+  // The first rows under another code are found once per CODE of the group, each search stopping
+  // after the limit — linear in the group, not quadratic (SEC-3).
   const openBySerial = groupBy(
     rows.filter((r) => r.status === 'open'),
     (r) => (r.values.serial === null ? null : r.values.serial.trim().toLowerCase()),
   );
   for (const group of openBySerial.values()) {
+    if (group.length < 2) continue;
+    const perCode = new Map<string | null, number>();
     for (const row of group) {
-      const others = group.filter((o) => o.values.machineCode !== row.values.machineCode);
-      if (others.length > 0) add(row, fileIssue('serialDuplicate', 'I', rowList(others)));
+      perCode.set(row.values.machineCode, (perCode.get(row.values.machineCode) ?? 0) + 1);
+    }
+    if (perCode.size < 2) continue;
+    const detailByCode = new Map<string | null, string>();
+    for (const [code, count] of perCode) {
+      const shown: string[] = [];
+      for (const other of group) {
+        if (other.values.machineCode === code) continue;
+        shown.push(String(other.importRow));
+        if (shown.length > DETAIL_LIST_LIMIT) break;
+      }
+      detailByCode.set(code, listDetail(shown, group.length - count));
+    }
+    for (const row of group) {
+      const detail = detailByCode.get(row.values.machineCode);
+      if (detail !== undefined) add(row, fileIssue('serialDuplicate', 'I', detail));
     }
   }
 

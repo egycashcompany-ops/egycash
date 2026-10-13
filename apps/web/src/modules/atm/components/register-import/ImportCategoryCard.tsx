@@ -115,13 +115,15 @@ export const ImportCategoryCard = ({
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {category.pairs.map((pair) => (
                     <tr key={`${pair.fromBranchCode ?? ''}>${pair.toBranchCode}`}>
-                      <td className={TD} dir="auto">
-                        {pair.fromBranchCode === null
-                          ? DASH
-                          : branchLabel(pair.fromBranchCode, locale)}
+                      <td className={TD}>
+                        <span dir="auto">
+                          {pair.fromBranchCode === null
+                            ? DASH
+                            : branchLabel(pair.fromBranchCode, locale)}
+                        </span>
                       </td>
-                      <td className={TD} dir="auto">
-                        {branchLabel(pair.toBranchCode, locale)}
+                      <td className={TD}>
+                        <span dir="auto">{branchLabel(pair.toBranchCode, locale)}</span>
                       </td>
                       <td className={`${TD} tabular-nums`}>{formatNumber(pair.count, locale)}</td>
                     </tr>
@@ -157,22 +159,24 @@ export const ImportCategoryCard = ({
                       <td className={`${TD} tabular-nums`} dir="ltr">
                         {item.importRow > 0 ? item.importRow : DASH}
                       </td>
-                      <td className={TD} dir="auto">
-                        {branchOf(item)}
+                      <td className={TD}>
+                        <span dir="auto">{branchOf(item)}</span>
                       </td>
                       <td className={`${TD} font-mono`} dir="ltr">
                         {item.machineCode ?? DASH}
                       </td>
-                      <td className={TD} dir="auto">
-                        {item.name ?? DASH}
+                      <td className={TD}>
+                        <span dir="auto">{item.name ?? DASH}</span>
                       </td>
-                      <td className={TD} dir="auto">
-                        {item.area ?? DASH}
+                      <td className={TD}>
+                        <span dir="auto">{item.area ?? DASH}</span>
                       </td>
-                      <td className={TD} dir="auto">
-                        {item.bankCode === null
-                          ? (item.masterBankLabel ?? DASH)
-                          : bankName(item.bankCode, locale)}
+                      <td className={TD}>
+                        <span dir="auto">
+                          {item.bankCode === null
+                            ? (item.masterBankLabel ?? DASH)
+                            : bankName(item.bankCode, locale)}
+                        </span>
                       </td>
                       {hasReason && (
                         <td className={TD}>
@@ -191,10 +195,12 @@ export const ImportCategoryCard = ({
                         </td>
                       )}
                       {showOtherBranch && (
-                        <td className={TD} dir="auto">
-                          {item.otherBranchCode === null
-                            ? DASH
-                            : branchLabel(item.otherBranchCode, locale)}
+                        <td className={TD}>
+                          <span dir="auto">
+                            {item.otherBranchCode === null
+                              ? DASH
+                              : branchLabel(item.otherBranchCode, locale)}
+                          </span>
                         </td>
                       )}
                       {showColumns && (

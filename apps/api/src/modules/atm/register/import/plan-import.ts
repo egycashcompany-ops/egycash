@@ -9,6 +9,14 @@
 // and no master data. An active master in an out-of-reach branch is still CONSIDERED (a receipt
 // would be refused because of it, DEC-9), but it is named only to an importer who reaches it.
 //
+// THE SAME RULE FOR WHAT IS ALREADY STORED (review finding SEC-1). `changedSinceImport` names the
+// columns where a stored entry differs from the file — an equality test per column, so for a value
+// the importer may not read it is an oracle (vary the cell, watch the letter). A stored entry is
+// therefore compared only when `atmRegister.import` reaches ITS branch (one imported into a branch
+// out of reach is reported as differing in column A — true, since the row's own branch is in reach
+// — and nothing else about it is looked at or shown), and its K columns (J..Q, AN, AU) only when
+// `atmRegister.viewSecrets` covers that branch: the DTO's `secretsVisible` rule (DEC-7, DEC-29).
+//
 // The pure half (`planRegisterImport`) takes the world as a value so its spec can hold the masters
 // in memory; `loadPlanWorld` is the one place that reads the database for it.
 import {
@@ -63,6 +71,8 @@ export interface PlanMaster {
 export interface PlanStoredEntry {
   id: string;
   importRow: number;
+  /** The stored entry's own branch — what reach and secrets are judged against (SEC-1). */
+  branchId: string | null;
   isDeleted: boolean;
   status: AtmRegisterStatus;
   machineId: string | null;
@@ -146,6 +156,11 @@ const reachOf = (ctx: AuthContext, branchIdOf: (row: ParsedRow) => string | null
 
 const realCode = (code: string | null): code is string =>
   code !== null && !isPlaceholderMachineCode(code);
+
+/** The K columns (J..Q, AN, AU): compared only where the importer may read them (SEC-1). */
+const SECRET_LETTERS: ReadonlySet<string> = new Set(
+  ATM_REGISTER_COLUMNS.filter((c) => c.sensitivity === 'K').map((c) => c.excel),
+);
 
 /** D5 / §6.4: an NBE machine whose area ends with ` FX` is an `NBE FOREX` candidate. */
 export const isNbeForexCandidate = (bankCode: AtmBankCode | null, area: string | null): boolean =>
@@ -236,14 +251,28 @@ export const planRegisterImport = (
     blockers.add('secretsOutOfReach');
   }
 
-  // 3. Already imported — skipped by `entries`, but only while nothing changed (DEC-31).
+  // 3. Already imported — skipped by `entries`, but only while nothing changed (DEC-31). Compared
+  //    only as far as the importer may read the stored entry (SEC-1, header).
   const rowsToImport = parsed.rows.filter((r) => !world.imported.has(r.importRow));
+  const storedInReach = (stored: PlanStoredEntry): boolean =>
+    reach.importOrg || (stored.branchId !== null && reach.importReaches(stored.branchId));
   const changed: AtmRegisterImportItemDto[] = [];
   for (const row of inReachRows) {
     const stored = world.imported.get(row.importRow);
+    // A deleted entry was removed from the register on purpose and the import never brings it
+    // back, wherever it sat — so it is skipped before reach is asked. That reveals only that some
+    // entry with this row number was deleted, never what it held (REG-3).
     if (stored === undefined || stored.isDeleted) continue;
+    if (!storedInReach(stored)) {
+      // Imported into a branch out of reach while the file puts the row in one in reach: column A
+      // differs, whatever else is true of that entry — which is neither compared nor named.
+      changed.push(itemOf(row, { columns: ['A'] }));
+      continue;
+    }
+    const secretsSeen = reach.secretsCover(stored.branchId);
     const columns: string[] = [];
     for (const [letter, value] of comparableColumns(row)) {
+      if (!secretsSeen && SECRET_LETTERS.has(letter)) continue;
       if ((stored.columns.get(letter) ?? null) !== value) columns.push(letter);
     }
     if (columns.length > 0) changed.push(itemOf(row, { entryId: stored.id, columns }));
@@ -324,10 +353,14 @@ export const planRegisterImport = (
     const toCode = row.values.branchCode;
     if (branchId === null || toCode === null) continue;
     const stored = world.imported.get(row.importRow);
-    // Already written: only an OPEN, still-unlinked entry is still to be coupled.
+    // Already written: only an OPEN, still-unlinked entry the importer reaches is still to be
+    // coupled (one out of reach is `changedSinceImport` above, and stays out of this plan).
     if (
       stored !== undefined &&
-      (stored.isDeleted || stored.status !== 'open' || stored.machineId !== null)
+      (!storedInReach(stored) ||
+        stored.isDeleted ||
+        stored.status !== 'open' ||
+        stored.machineId !== null)
     ) {
       continue;
     }
@@ -420,6 +453,7 @@ export const planRegisterImport = (
     if (
       stored === undefined ||
       branchId === null ||
+      !storedInReach(stored) ||
       stored.isDeleted ||
       stored.status !== 'open' ||
       stored.machineId === null ||
@@ -650,6 +684,9 @@ export const loadPlanWorld = async (
     };
   });
 
+  // Every stored row number of the file, whatever its branch: `ux_import_row` is company-wide, so
+  // the idempotency of `entries` needs them all. What the plan may LOOK AT in one of them is
+  // decided per entry in `planRegisterImport` (SEC-1).
   const importedDocs = await AtmRegisterEntryModel.find({
     importRow: { $in: parsed.rows.map((r) => r.importRow) },
   })
@@ -661,6 +698,7 @@ export const loadPlanWorld = async (
     imported.set(doc.importRow, {
       id: String(doc._id),
       importRow: doc.importRow,
+      branchId: doc.branchId === null ? null : String(doc.branchId),
       isDeleted: doc.isDeleted,
       status: doc.status,
       machineId: doc.machineId === null ? null : String(doc.machineId),

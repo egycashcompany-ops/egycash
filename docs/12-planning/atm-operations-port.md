@@ -264,7 +264,9 @@ Operations' hands — gated, never deleted:
 - **The key must reach the branch it touches** (DEC-29): `moveArea` and label edit need the key over
   the machine's or label's whole branch (or the label/machine inside today's `manage` scope); a label
   create needs `atmRefLabel.create` or `manage` over the branch it is filed in, so a top-bar choice
-  that only an unrelated key reaches is refused (review finding F-4).
+  that only an unrelated key reaches is refused (review finding F-4) — a `manage` holder whose scope
+  reaches no whole branch (department, section, own) still adds labels in the branch they are placed
+  in, as before.
 - **Navigation:** the Machine Data row's key moves from `atmMachine.manage` to `atmRefLabel.create`
   through `previousPermission` (`seed-navigation.ts`, the `previousIcon` mechanism) — corrected only
   while the stored row still holds the old key. The web route guard accepts any of

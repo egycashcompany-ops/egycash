@@ -728,6 +728,89 @@ describe('categories, idempotency, coupling', () => {
     expect(first?.machineId).not.toBeNull();
   });
 
+  // Review finding COUPLING-2: the two twins handed over (or deleted) at the same moment. Each
+  // transaction used to count the other twin as still open, and neither archived the master.
+  it('10b — handing over or deleting both twins at once still archives their master', async () => {
+    const twins = async (
+      code: number,
+    ): Promise<{ ids: string[]; versions: number[]; masterId: string }> => {
+      await AtmRegisterEntryModel.deleteMany({}).exec();
+      await AtmMachineModel.deleteMany({}).exec();
+      const file = await workbook([
+        alexOpen({ machineCode: code }),
+        alexOpen({ machineCode: code, name: 'Second period' }),
+      ]);
+      await applyImport(importerToken, file, ['entries', 'create', 'link']);
+      const docs = [await entryOfRow(3), await entryOfRow(4)];
+      return {
+        ids: docs.map((d) => String(d?._id)),
+        versions: docs.map((d) => d?.__v ?? 0),
+        masterId: String(docs[0]?.machineId),
+      };
+    };
+    const handover = (id: string, version: number): request.Test =>
+      request(app)
+        .post(`/api/v1/atm/register/entries/${id}/handover`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ endDate: '2026-09-30', version });
+    const remove = (id: string, version: number): request.Test =>
+      request(app)
+        .delete(`/api/v1/atm/register/entries/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version });
+    const masterActive = async (id: string): Promise<boolean | undefined> =>
+      (await AtmMachineModel.findById(id).lean<AtmMachineDoc>().exec())?.isActive;
+
+    for (const [attempt, pair] of [
+      ['handover + handover', [handover, handover]],
+      ['delete + delete', [remove, remove]],
+      ['handover + delete', [handover, remove]],
+      ['handover + handover, again', [handover, handover]],
+    ] as const) {
+      const { ids, versions, masterId } = await twins(99991010);
+      expect(await masterActive(masterId), attempt).toBe(true);
+      const [first, second] = pair;
+      const answers = await Promise.all([
+        first(ids[0] ?? '', versions[0] ?? 0),
+        second(ids[1] ?? '', versions[1] ?? 0),
+      ]);
+      for (const res of answers) expect(res.status, `${attempt}: ${res.text}`).toBeLessThan(300);
+      expect(await masterActive(masterId), attempt).toBe(false);
+    }
+  });
+
+  // Review finding DATA-2: two OPEN rows whose ATM ID is a placeholder used to pass the preview
+  // and then abort the apply on `ux_open_period_per_code` with a bare E11000.
+  it('10c — two open rows with a placeholder ATM ID import; both are exempt and unlinked', async () => {
+    const file = await workbook([
+      alexOpen({ machineCode: '#' }),
+      alexOpen({ machineCode: '#', name: 'Another unknown machine' }),
+      alexOpen({ machineCode: '********' }),
+      alexOpen({ machineCode: '********', name: 'A third unknown machine' }),
+    ]);
+    const { dto } = await preview(importerToken, file);
+    expect(dto.blockers.filter((b) => b !== 'reportMismatch')).toEqual([]);
+    const applied = await applyImport(importerToken, file, ['entries']);
+    expect(applied.dto.applied?.counts).toMatchObject({ imported: 4 });
+    expect(
+      (await AtmRegisterImportRunModel.findById(applied.dto.applied?.runId).exec())?.state,
+    ).toBe('completed');
+    for (const row of [3, 4, 5, 6]) {
+      const entry = await entryOfRow(row);
+      expect(entry?.status).toBe('open');
+      expect(entry?.openPeriodExempt).toBe(true);
+      expect(entry?.machineId).toBeNull();
+    }
+    // Giving one of them its real code later holds it to the index again.
+    const placeholder = await entryOfRow(3);
+    const res = await request(app)
+      .patch(`/api/v1/atm/register/entries/${String(placeholder?._id)}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: placeholder?.__v ?? 0, machineCode: '99991011' });
+    expect(res.status, res.text).toBe(200);
+    expect((await entryOfRow(3))?.openPeriodExempt).toBe(false);
+  });
+
   it('11 — AO is sealed at rest and the reveal returns what Excel showed', async () => {
     const file = await workbook([
       alexOpen({
@@ -876,6 +959,65 @@ describe('the blockers that guard the register (DEC-31)', () => {
     ]);
     expect(text).not.toContain('Changed delivered name');
     expect(text).not.toContain('2025-07-07');
+  });
+
+  // Review finding SEC-1: the letters are an equality test per column, so they may only ever be
+  // computed over what the importer could read — or a guess, varied, reads the stored value.
+  it('17b — changedSinceImport is no oracle: no K letter without viewSecrets, no entry out of reach', async () => {
+    const stored = await workbook([
+      ended({
+        machineCode: 99991703,
+        'keys.supervisorCode': 'FAKE-SUP-1001',
+        receiptNotes: 'FAKE-NOTE-RECV-1006',
+      }),
+    ]);
+    await applyImport(importerToken, stored, ['entries']);
+    const entryId = String((await entryOfRow(3))?._id);
+    const guessing = async (token: string, row: SyntheticRow) => {
+      const { dto, text } = await preview(token, await workbook([row]));
+      expectNoSecret(text);
+      return { items: category(dto, 'changedSinceImport').items, text };
+    };
+
+    // Org-wide import WITHOUT viewSecrets: a wrong guess and the right one answer alike.
+    for (const supervisorCode of ['WRONG-GUESS', 'FAKE-SUP-1001']) {
+      const { items } = await guessing(
+        noSecretsToken,
+        ended({ machineCode: 99991703, 'keys.supervisorCode': supervisorCode, receiptNotes: 'x' }),
+      );
+      expect(items, supervisorCode).toEqual([]);
+    }
+    // With viewSecrets over the entry the same difference is named — the value is theirs to see.
+    const seen = await guessing(
+      importerToken,
+      ended({
+        machineCode: 99991703,
+        'keys.supervisorCode': 'WRONG-GUESS',
+        receiptNotes: 'FAKE-NOTE-RECV-1006',
+      }),
+    );
+    expect(seen.items.map((i) => [i.importRow, i.columns, i.entryId])).toEqual([
+      [3, ['J'], entryId],
+    ]);
+
+    // A Tanta-scoped importer relabels the Alexandria row as Tanta's: column A, nothing else, no id.
+    for (const name of ['Synthetic ATM', 'Guessed name']) {
+      const { items, text } = await guessing(
+        tantaImporterToken,
+        ended({
+          branchCode: 'EGYCASH-2',
+          area: 'Tanta Center',
+          machineCode: 99991703,
+          name,
+          'keys.supervisorCode': 'WRONG-GUESS',
+        }),
+      );
+      expect(
+        items.map((i) => [i.importRow, i.columns, i.entryId]),
+        name,
+      ).toEqual([[3, ['A'], null]]);
+      expect(text).not.toContain(entryId);
+    }
   });
 
   it('18 — dateUnreadable: a text end date on an otherwise ended row', async () => {

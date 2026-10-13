@@ -15,6 +15,8 @@ import {
   registerActionSlots,
   registerActionsWidth,
   registerColumnWidth,
+  registerWidthOf,
+  REGISTER_BRANCH_MIN_WIDTH,
   registerFieldText,
   registerFrozenOffsets,
   registerGroupSpans,
@@ -71,6 +73,15 @@ describe('the widths', () => {
     expect(registerColumnWidth(9.14)).toBe(72); // 69 → the floor
     expect(registerColumnWidth(0)).toBe(72);
   });
+
+  // Review finding LIVE-3: 87 px left 70 px for text, and «EGYCASH-4» measures 70.3 px at 12 px.
+  it('gives the Branch column room for its nine-character codes', () => {
+    const branch = ATM_REGISTER_COLUMNS.find((c) => c.field === 'branchCode');
+    expect(branch === undefined ? 0 : registerWidthOf(branch)).toBe(REGISTER_BRANCH_MIN_WIDTH);
+    expect(REGISTER_BRANCH_MIN_WIDTH - 16 - 1).toBeGreaterThanOrEqual(76);
+    const name = ATM_REGISTER_COLUMNS.find((c) => c.field === 'name');
+    expect(name === undefined ? 0 : registerWidthOf(name), 'the others follow the sheet').toBe(303);
+  });
 });
 
 describe('the frozen panes', () => {
@@ -80,8 +91,10 @@ describe('the frozen panes', () => {
 
   it('stick at 0, w(A), w(A)+w(B), … from the inline start', () => {
     const offsets = registerFrozenOffsets();
-    const w = (letter: string): number =>
-      registerColumnWidth(ATM_REGISTER_COLUMNS.find((c) => c.excel === letter)?.excelWidth ?? 0);
+    const w = (letter: string): number => {
+      const column = ATM_REGISTER_COLUMNS.find((c) => c.excel === letter);
+      return column === undefined ? 0 : registerWidthOf(column);
+    };
     expect([...offsets.entries()]).toEqual([
       ['branchCode', 0],
       ['area', w('A')],
@@ -89,14 +102,14 @@ describe('the frozen panes', () => {
       ['machineCode', w('A') + w('B') + w('C')],
       ['name', w('A') + w('B') + w('C') + w('D')],
     ]);
-    expect([...offsets.values()]).toEqual([0, 87, 208, 280, 377]);
-    expect(REGISTER_FROZEN_WIDTH).toBe(680);
+    expect([...offsets.values()]).toEqual([0, 96, 217, 289, 386]);
+    expect(REGISTER_FROZEN_WIDTH).toBe(689);
   });
 
   it('freeze only on a board that still leaves a window onto the other columns', () => {
     expect(registerPanesFreeze(null, 160), 'not measured yet').toBe(true);
-    expect(registerPanesFreeze(680 + 160 + REGISTER_MIN_SCROLL_WINDOW, 160)).toBe(true);
-    expect(registerPanesFreeze(680 + 160 + REGISTER_MIN_SCROLL_WINDOW - 1, 160)).toBe(false);
+    expect(registerPanesFreeze(689 + 160 + REGISTER_MIN_SCROLL_WINDOW, 160)).toBe(true);
+    expect(registerPanesFreeze(689 + 160 + REGISTER_MIN_SCROLL_WINDOW - 1, 160)).toBe(false);
     // 1024 px with the sidebar open leaves a 718 px board: the panes alone would fill it.
     expect(registerPanesFreeze(718, 160)).toBe(false);
   });

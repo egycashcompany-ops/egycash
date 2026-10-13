@@ -8,7 +8,8 @@
 //   · every manage-only route answers 403 to the Operations bundle, and still 2xx to a manage holder;
 //   · the Operations routes take the new keys, and the key must reach the branch of the machine or
 //     label it touches (DEC-29) — a department-scoped holder, or one whose top-bar choice names a
-//     branch only an unrelated key reaches, is refused (review finding F-4);
+//     branch only an unrelated key reaches, is refused (review finding F-4); a finer-scoped
+//     `manage` holder still adds labels in the branch they are placed in (review finding F1);
 //   · the nav row's key is corrected through `previousPermission` — and an administrator's own
 //     choice is not (lead override O-1: there is NO role or delegation widening, so nothing is
 //     asserted about roles gaining keys).
@@ -54,6 +55,9 @@ let opsDeptToken: string; // the same bundle, DEPARTMENT scope, placed in a Tant
 let opsReachToken: string; // atmRefLabel.create in Alex + an unrelated key reaching Tanta
 let viewerToken: string; // atmMachine.view only, Alex
 let manageToken: string; // the legacy bundle: atmMachine.view + manage, BRANCH scope, Alex
+let manageDeptToken: string; // the legacy bundle, DEPARTMENT scope, placed in a Tanta department
+let manageOwnToken: string; // the legacy bundle, OWN scope, placed in Alex
+let manageReachToken: string; // atmMachine.manage DELEGATED over Alex, placed in Tanta (ADR-032)
 let alexBranchId: string;
 let tantaBranchId: string;
 let alexAreaLabelId: string;
@@ -276,6 +280,32 @@ beforeAll(async () => {
   const manageId = await mkUser('data-edit-manage@ecms.local', { branchId: alexBranchId });
   await rbacService.ensureAssignment(manageId, manage, 'branch');
   manageToken = await login('data-edit-manage@ecms.local');
+
+  const manageDeptId = await mkUser('data-edit-manage-dept@ecms.local', {
+    branchId: tantaBranchId,
+    departmentId: tantaDept,
+  });
+  await rbacService.ensureAssignment(manageDeptId, manage, 'department');
+  manageDeptToken = await login('data-edit-manage-dept@ecms.local');
+  const manageOwnId = await mkUser('data-edit-manage-own@ecms.local', { branchId: alexBranchId });
+  await rbacService.ensureAssignment(manageOwnId, manage, 'own');
+  manageOwnToken = await login('data-edit-manage-own@ecms.local');
+  // A deputy's shape (ADR-032): `manage` DELEGATED over Alexandria to someone placed in Tanta and
+  // holding no role. A delegated grant reaches only the unit it names — not home — so the
+  // home-branch label fallback (F1, for scopes that reach no whole branch) must not apply to it.
+  const manageReachId = await mkUser('data-edit-manage-reach@ecms.local', {
+    branchId: tantaBranchId,
+  });
+  const delegated = await request(app)
+    .put(`/api/v1/platform/delegations/users/${manageReachId}/grants`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      branchId: alexBranchId,
+      departmentId: null,
+      permissionKeys: ['atmMachine.view', 'atmMachine.manage'],
+    });
+  expect(delegated.status, JSON.stringify(delegated.body)).toBe(200);
+  manageReachToken = await login('data-edit-manage-reach@ecms.local');
 
   alexAreaLabelId = await addLabel(alexBranchId, 'area', 'Smouha');
 }, 240_000);
@@ -584,6 +614,43 @@ describe('branch reach on the Operations paths (DEC-29, F-4)', () => {
     });
     expect(atHome.status, JSON.stringify(atHome.body)).toBe(201);
     expect(data<AtmRefLabelDto>(atHome).branchId).toBe(alexBranchId);
+  });
+
+  // Review finding F1: before this feature every `manage` holder could add a label in the branch
+  // they act in. A finer-scoped one reaches no whole branch, so the reach check alone took that
+  // away; the branch they are PLACED in is still theirs (no other key can stretch it).
+  it('9b — a department- or own-scoped manage holder still adds labels in their own branch', async () => {
+    for (const [who, token, home] of [
+      ['department', manageDeptToken, tantaBranchId],
+      ['own', manageOwnToken, alexBranchId],
+    ] as const) {
+      for (const kind of ['bank', 'area'] as const) {
+        const res = await call('post', `/atm/ref-labels/${kind}`, token, {
+          name: `${who} ${kind} label`,
+        });
+        expect(res.status, `${who} ${kind}: ${JSON.stringify(res.body)}`).toBe(201);
+        expect(data<AtmRefLabelDto>(res).branchId).toBe(home);
+      }
+    }
+    // The fallback is manage's alone: the new key at department scope still needs whole-branch reach.
+    const deptOps = await call('post', '/atm/ref-labels/bank', opsDeptToken, { name: 'Dept bank' });
+    expect(deptOps.status, JSON.stringify(deptOps.body)).toBe(403);
+  });
+
+  it('9c — a manage grant delegated over Alex files no label in the Tanta its holder is placed in', async () => {
+    const placed = await call('post', '/atm/ref-labels/bank', manageReachToken, {
+      name: 'Deputy bank',
+    });
+    expect(placed.status, JSON.stringify(placed.body)).toBe(403);
+    const reached = await call(
+      'post',
+      '/atm/ref-labels/bank',
+      manageReachToken,
+      { name: 'Deputy bank' },
+      alexBranchId,
+    );
+    expect(reached.status, JSON.stringify(reached.body)).toBe(201);
+    expect(data<AtmRefLabelDto>(reached).branchId).toBe(alexBranchId);
   });
 
   it('10 — department-scoped moveArea / label edit on Alex rows → 404; a branch holder in Alex → 200', async () => {

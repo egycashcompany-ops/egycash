@@ -157,8 +157,10 @@ export const ImportPreviewPanel = ({
                         {branchLabel(branch.code, locale)}
                       </span>
                     </td>
-                    <td className={TD} dir="auto">
-                      {branch.branchName === null ? '—' : localized(branch.branchName, locale)}
+                    <td className={TD}>
+                      <span dir="auto">
+                        {branch.branchName === null ? '—' : localized(branch.branchName, locale)}
+                      </span>
                     </td>
                     <td className={TD}>{yesNo(branch.active)}</td>
                     <td className={TD}>{yesNo(branch.inReach)}</td>

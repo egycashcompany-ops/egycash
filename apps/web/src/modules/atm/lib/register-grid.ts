@@ -51,8 +51,18 @@ export const REGISTER_FROZEN_FIELDS: readonly AtmRegisterField[] = [
 export const registerColumnWidth = (excelWidth: number): number =>
   Math.max(72, Math.round(excelWidth * 7 + 5));
 
+/**
+ * The Branch column's floor. Its values are the fixed nine-character `EGYCASH-n` codes, which at the
+ * grid's 12 px measure up to 70.3 px (Inter) — with the cell's 16 px padding and its border, more
+ * than the 87 px the sheet's 11.71 characters give, so `EGYCASH-4` showed as «…YCASH-4» on every
+ * row (review finding LIVE-3). 96 px fits it with room for a wider interface font.
+ */
+export const REGISTER_BRANCH_MIN_WIDTH = 96;
+
 export const registerWidthOf = (column: AtmRegisterColumnDef): number =>
-  registerColumnWidth(column.excelWidth);
+  column.field === 'branchCode'
+    ? Math.max(REGISTER_BRANCH_MIN_WIDTH, registerColumnWidth(column.excelWidth))
+    : registerColumnWidth(column.excelWidth);
 
 /**
  * Where each frozen column sticks: its `inset-inline-start`, the sum of the widths before it.
@@ -72,7 +82,7 @@ export const registerFrozenOffsets = (
   return offsets;
 };
 
-/** The frozen block's total width (Branch … Name): 87 + 121 + 72 + 97 + 303 = 680 px. */
+/** The frozen block's total width (Branch … Name): 96 + 121 + 72 + 97 + 303 = 689 px. */
 export const REGISTER_FROZEN_WIDTH = REGISTER_FROZEN_FIELDS.reduce((sum, field) => {
   const column = REGISTER_GRID_COLUMNS.find((c) => c.field === field);
   return column === undefined ? sum : sum + registerWidthOf(column);

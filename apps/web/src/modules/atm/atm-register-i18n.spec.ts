@@ -318,5 +318,10 @@ describe('register-labels', () => {
     expect(formatAsOf('2026-01-12T23:30:00.000Z', 'en')).toBe('13 / January / 2026');
     expect(formatAsOf('2026-01-12T10:00:00.000Z', 'en')).toBe('12 / January / 2026');
     expect(formatAsOf('not a date', 'en')).toBe('—');
+    // WEB-5: Latin digits in Arabic too, like every count on the report; the month in Arabic.
+    const ar = formatAsOf('2026-10-13T10:00:00.000Z', 'ar');
+    expect(ar).toMatch(/^13 \/ \S+ \/ 2026$/);
+    expect(ar).not.toMatch(/[\u0660-\u0669]/);
+    expect(ar).toContain('أكتوبر');
   });
 });

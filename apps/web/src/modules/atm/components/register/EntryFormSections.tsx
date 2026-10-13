@@ -17,7 +17,7 @@
 // Free-text columns (area, operation type, ATM type, model, HUB) are typed with suggestions from
 // the branch — the sheet's own values plus the Operations labels — never forced onto a list: the
 // workbook has no catalogue for them, and refusing a new model would refuse the machine.
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import {
   ATM_BANK_CODES,
   ATM_REGISTER_COLUMNS,
@@ -306,10 +306,20 @@ export const announceWrite = (
   for (const warning of result.warnings) toast.warning(t(`atm.register.warning.${warning}`));
 };
 
-/** The refusal, inside the dialog that caused it — it stays while the reader fixes the form. */
-export const FormError = ({ message }: { message: string | null }): JSX.Element | null =>
-  message === null ? null : (
+/**
+ * The refusal, inside the dialog that caused it — it stays while the reader fixes the form. It is
+ * the ONLY report of a refused write (the register hooks opt out of the global toast), and it sits
+ * at the top of a form the reader has usually scrolled to its footer to press the button, so it
+ * brings itself into view when it appears (review finding LIVE-1).
+ */
+export const FormError = ({ message }: { message: string | null }): JSX.Element | null => {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (message !== null) box.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [message]);
+  return message === null ? null : (
     <div
+      ref={box}
       role="alert"
       data-register-form-error="true"
       className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200"
@@ -317,6 +327,7 @@ export const FormError = ({ message }: { message: string | null }): JSX.Element 
       {message}
     </div>
   );
+};
 
 // ── The sections ────────────────────────────────────────────────────────────────────────────────
 
@@ -370,6 +381,18 @@ export const EntryFormSections = ({
         ? t('atm.register.form.opsBankLabel')
         : t(columnHeaderKey(key));
 
+  /**
+   * How many lines the STORED value runs to. The sheet holds 1,531 cells on several lines (keys,
+   * cassettes, names, notes …); a single-line `<input>` strips the breaks the moment it is touched,
+   * and the edit then saves the lines run together — '2\n3' becomes '23' (review finding DATA-1).
+   * Such a value gets a text area. Decided from the entry, never from what is being typed, so a
+   * box never changes kind under the reader's cursor.
+   */
+  const storedLines = (key: EntryFormKey): number => {
+    if (entry === null || key === 'branchId' || key === 'opsBankLabel') return 1;
+    return (registerFieldText(entry, key) ?? '').split('\n').length;
+  };
+
   const textBox = (
     key: EntryFormKey,
     {
@@ -411,8 +434,12 @@ export const EntryFormSections = ({
         warning={warning}
         {...(className === undefined ? {} : { className })}
       >
-        {multiline ? (
-          <Textarea {...common} rows={2} onChange={(e) => onChange({ [key]: e.target.value })} />
+        {multiline || storedLines(key) > 1 ? (
+          <Textarea
+            {...common}
+            rows={Math.min(6, Math.max(2, storedLines(key)))}
+            onChange={(e) => onChange({ [key]: e.target.value })}
+          />
         ) : (
           <Input
             {...common}

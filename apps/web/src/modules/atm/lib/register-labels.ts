@@ -39,12 +39,15 @@ export const formatRegisterDate = (iso: string | null): string => {
 
 /**
  * The Data Report's as-of stamp — the Excel's U2 format `dd / MMMM / yyyy` (D7), on the Cairo
- * calendar day of the server's `generatedAt` (computation time = data time).
+ * calendar day of the server's `generatedAt` (computation time = data time). Latin digits in both
+ * languages, like every count on the page (`reportCount`) and like the sheet's own U2, whose
+ * format carries no numeral system: an Arabic-Indic date above Latin counts read as two systems
+ * (review finding WEB-5). The month stays in the reader's language.
  */
 export const formatAsOf = (generatedAt: string, locale: Locale): string => {
   const d = new Date(generatedAt);
   if (Number.isNaN(d.getTime())) return PLACEHOLDER;
-  const parts = new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
+  const parts = new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
     timeZone: CAIRO_TZ,
     day: '2-digit',
     month: 'long',

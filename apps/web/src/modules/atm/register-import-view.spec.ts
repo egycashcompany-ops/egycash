@@ -23,11 +23,13 @@ import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { RegisterImportPage } from './pages/RegisterImportPage';
 import { ImportPreviewPanel } from './components/register-import/ImportPreviewPanel';
+import { ImportRunsCard } from './components/register-import/ImportRunsCard';
 import {
   applyField,
   approvedCategories,
   blockerHintKey,
   canApply,
+  canPreview,
   importErrorDetails,
   importErrorText,
   orderedCategories,
@@ -151,6 +153,80 @@ describe('small helpers', () => {
   });
 });
 
+// Review finding LIVE-2: the file-level reasons say what is wrong with the FILE.
+describe('a refused upload names the file’s own problem', () => {
+  const ar = (key: string): string => translate('ar', key);
+  it('no ATMs sheet, not a workbook, too large — each in its own words, before the code', () => {
+    const noSheet = new ApiError('ATM_REGISTER_IMPORT_LAYOUT', 'x', 422, [
+      { field: 'file', code: 'MISSING_SHEET', message: 'ATMs' },
+    ]);
+    expect(importErrorText(noSheet, ar, 'ar')).toBe(ar('atm.registerImport.error.missingSheet'));
+    expect(importErrorDetails(noSheet, ar), 'the text already names the sheet').toEqual([]);
+    const unreadable = new ApiError('VALIDATION_FAILED', 'x', 422, [
+      { field: 'file', code: 'UNREADABLE', message: 'not a readable .xlsx workbook' },
+    ]);
+    expect(importErrorText(unreadable, ar, 'ar')).toBe(ar('atm.registerImport.error.unreadable'));
+    const tooLarge = new ApiError('ATM_REGISTER_IMPORT_LAYOUT', 'x', 422, [
+      { field: 'file', code: 'TOO_LARGE', message: 'time' },
+    ]);
+    expect(importErrorText(tooLarge, ar, 'ar')).toBe(ar('atm.registerImport.error.tooLarge'));
+    // A renamed header is still "the expected columns", with the column named.
+    const header = new ApiError('ATM_REGISTER_IMPORT_LAYOUT', 'x', 422, [
+      { field: 'E', code: 'MISSING_HEADER', message: 'Name' },
+    ]);
+    expect(importErrorText(header, ar, 'ar')).toBe(
+      ar('atm.register.error.ATM_REGISTER_IMPORT_LAYOUT'),
+    );
+    for (const key of ['missingSheet', 'unreadable', 'tooLarge']) {
+      expect(translate('en', `atm.registerImport.error.${key}`)).not.toBe(
+        `atm.registerImport.error.${key}`,
+      );
+    }
+  });
+});
+
+// Review finding WEB-3: one mutation runs both; a preview pressed mid-apply took its callbacks.
+describe('preview is offered only with a file and nothing in flight', () => {
+  it('needs a file, and no run in progress — an apply included', () => {
+    expect(canPreview(true, false)).toBe(true);
+    expect(canPreview(false, false)).toBe(false);
+    expect(canPreview(true, true)).toBe(false);
+  });
+});
+
+// Review finding WEB-4: the Arabic strings keep their reading order in an RTL line.
+describe('bidi marks in the Arabic import strings', () => {
+  it('an RLM keeps the FX → NBE FOREX arrow pointing forward; the extension is isolated', () => {
+    expect(translate('ar', 'atm.registerImport.category.nbeForex.title')).toContain('FX\u200F ←');
+    expect(translate('ar', 'atm.registerImport.upload')).toContain('\u2066(.xlsx)\u2069');
+  });
+});
+
+// Review finding WEB-6: a failed first load is an error, not "no import has run yet".
+describe('the runs card', () => {
+  it('shows an error with a retry when the runs request fails, never the empty text', () => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, retryOnMount: false } },
+    });
+    const query = qc.getQueryCache().build(qc, { queryKey: listKey('atm', 'registerImportRuns') });
+    query.setState({
+      status: 'error',
+      error: new ApiError('INTERNAL', 'boom', 500),
+      fetchStatus: 'idle',
+      errorUpdateCount: 1,
+      errorUpdatedAt: Date.now(),
+    });
+    const html = renderToStaticMarkup(
+      createElement(Provider, {
+        store: store(),
+        children: createElement(QueryClientProvider, { client: qc }, createElement(ImportRunsCard)),
+      }),
+    );
+    expect(html).not.toContain(translate('en', 'atm.registerImport.runs.empty'));
+    expect(html).toContain(translate('en', 'common.error.title'));
+  });
+});
+
 // ── Rendered once, statically: the page shell and the preview panel ──────────────────────────────
 // No DOM: the markup is read as text, the fleet-dashboard way. The DTO below is what the server
 // sends — it carries no key value and no combination, so the page has nothing secret to show.
@@ -267,6 +343,28 @@ describe('rendered', () => {
     expect(html).toContain(translate('en', 'atm.registerSettings.title'));
     expect(html).toContain(translate('en', 'atm.registerImport.intro'));
     expect(html).toContain(translate('en', 'atm.registerImport.runs.empty'));
+  });
+
+  // Review finding LIVE-4: `dir="auto"` on a <td> turns a cell that starts with a Latin letter
+  // into a left-aligned LTR block inside the RTL table, beside the next column's value. The
+  // direction belongs on the text, not on the cell.
+  it('no table cell takes its own direction from its text — the text does, inside it', () => {
+    const page = renderWith(createElement(RegisterImportPage));
+    const panel = renderWith(
+      createElement(ImportPreviewPanel, {
+        result: PREVIEW,
+        approved: new Set<AtmRegisterImportCategory>(),
+        onToggle: () => undefined,
+        reportOverride: false,
+        onOverride: () => undefined,
+        onApply: () => undefined,
+        applying: false,
+      }),
+    );
+    for (const html of [page, panel]) {
+      expect(html).not.toMatch(/<td[^>]*dir="auto"/);
+      expect(html).toMatch(/<td[^>]*><span dir="auto">/);
+    }
   });
 
   it('the preview panel lists blockers first, the 57 cells, the categories, and keeps Apply off', () => {

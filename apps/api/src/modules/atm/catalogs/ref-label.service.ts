@@ -18,6 +18,7 @@ import { auditService } from '../../../platform/audit';
 import {
   hasPermission,
   keyReachesBranch,
+  reachOfKey,
   scopeSelector,
   type AuthContext,
 } from '../../../shared/types';
@@ -62,9 +63,24 @@ class AtmRefLabelService {
     ctx: AuthContext,
   ): Promise<AtmRefLabelDoc> {
     const branchId = await resolveAtmBranchId(ctx);
+    // A `manage` holder whose grant reaches no whole branch (department, section or own scope)
+    // keeps today's add in the branch they are PLACED in — before this feature they could add
+    // there, and the placement is the one branch no other key can stretch (review finding F1).
+    // Only for those scopes, and only when the grant lists no units elsewhere: a `branch` grant
+    // (a delegated deputy's, say) answers through keyReachesBranch alone, so a deputy reaching
+    // Alexandria cannot file a label into the Tanta branch they happen to be placed in.
+    const manageScope = ctx.permissions['atmMachine.manage'];
+    const manageReach = reachOfKey(ctx, 'atmMachine.manage');
+    const manageAtHome =
+      (manageScope === 'department' || manageScope === 'section' || manageScope === 'own') &&
+      manageReach.branchIds.length === 0 &&
+      manageReach.departments.length === 0 &&
+      ctx.branchId !== null &&
+      branchId === ctx.branchId;
     if (
       !keyReachesBranch(ctx, 'atmRefLabel.create', branchId) &&
-      !keyReachesBranch(ctx, 'atmMachine.manage', branchId)
+      !keyReachesBranch(ctx, 'atmMachine.manage', branchId) &&
+      !manageAtHome
     ) {
       throw new ForbiddenError();
     }

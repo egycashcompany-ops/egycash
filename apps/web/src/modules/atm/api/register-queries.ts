@@ -102,11 +102,20 @@ export const useRegisterImportRuns = (enabled = true) =>
   });
 
 // ── Entry writes ────────────────────────────────────────────────────────────
+// EVERY register mutation declares `onError`, and declaring it is what opts out of the global
+// toast (`shared/lib/query-client.ts`). Each caller reports its own refusal in the reader's words
+// — the dialogs' `FormError`, the link/delete toasts, the import panel's box — through
+// `registerErrorText` / `importErrorText`; the global handler would add a second toast carrying
+// the server's ENGLISH sentence, which for a refusal in a scrolled dialog was the only one in view
+// (review findings WEB-1, LIVE-1). One failure, one message.
+const reportedByCaller = (): void => undefined;
+
 export const useReceiveRegisterEntry = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: ReceiveAtmRegisterEntry) => api.receiveRegisterEntry(body),
     onSuccess: () => invalidateRegister(client),
+    onError: reportedByCaller,
   });
 };
 
@@ -116,6 +125,7 @@ export const useUpdateRegisterEntry = () => {
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmRegisterEntry }) =>
       api.updateRegisterEntry(id, body),
     onSuccess: () => invalidateRegister(client),
+    onError: reportedByCaller,
   });
 };
 
@@ -125,6 +135,7 @@ export const useReceivePendingRegisterEntry = () => {
     mutationFn: ({ id, body }: { id: string; body: ReceivePendingAtmRegisterEntry }) =>
       api.receivePendingRegisterEntry(id, body),
     onSuccess: () => invalidateRegister(client),
+    onError: reportedByCaller,
   });
 };
 
@@ -134,6 +145,7 @@ export const useHandoverRegisterEntry = () => {
     mutationFn: ({ id, body }: { id: string; body: HandoverAtmRegisterEntry }) =>
       api.handoverRegisterEntry(id, body),
     onSuccess: () => invalidateRegister(client),
+    onError: reportedByCaller,
   });
 };
 
@@ -143,6 +155,7 @@ export const useLinkRegisterEntry = () => {
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.linkRegisterEntry(id, version),
     onSuccess: () => invalidateRegister(client),
+    onError: reportedByCaller,
   });
 };
 
@@ -152,6 +165,7 @@ export const useDeleteRegisterEntry = () => {
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.deleteRegisterEntry(id, version),
     onSuccess: () => invalidateRegister(client),
+    onError: reportedByCaller,
   });
 };
 
@@ -164,6 +178,7 @@ export const useRevealRegisterCombination = () =>
   useMutation({
     mutationFn: (id: string) => api.revealRegisterCombination(id),
     gcTime: 0,
+    onError: reportedByCaller,
   });
 
 // ── Import ──────────────────────────────────────────────────────────────────
@@ -191,5 +206,6 @@ export const useImportRegisterWorkbook = () => {
       invalidateRegister(client);
       void client.invalidateQueries({ queryKey: registerKeys.importRuns });
     },
+    onError: reportedByCaller,
   });
 };

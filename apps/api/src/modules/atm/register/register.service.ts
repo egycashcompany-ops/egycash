@@ -709,6 +709,12 @@ class AtmRegisterService {
           await this.assertNoOpenPeriod(ctx, code, settings, id);
         }
         put('machineCode', code);
+        // The exemption from `ux_open_period_per_code` was granted for the OLD code (a DEC-11
+        // pair, or a placeholder — review finding DATA-2); a new real code is held to the index
+        // like any receipt.
+        if (before.status === 'open') {
+          put('openPeriodExempt', code !== null && isPlaceholderMachineCode(code));
+        }
         codeChanged = true;
       }
     }

@@ -788,7 +788,11 @@ describe('secrets (D3, DEC-7)', () => {
     expect(res.text).toContain('99990013');
     for (const secret of [COMBO, COMBO_2, 'SUP-FAKE-9911', NOTE])
       expect(res.text).not.toContain(secret);
-    expect(await auditRows('export', 'export')).not.toHaveLength(0);
+    // The export is audited AFTER the stream ends (register-export.ts), so the response can
+    // arrive first — under a loaded run an immediate read raced it.
+    await vi.waitFor(async () => {
+      expect(await auditRows('export', 'export')).not.toHaveLength(0);
+    });
     expect((await call('get', '/atm/register/entries/export', reportToken)).status).toBe(403);
   });
 });

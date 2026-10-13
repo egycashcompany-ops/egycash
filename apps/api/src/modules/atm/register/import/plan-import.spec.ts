@@ -345,6 +345,7 @@ describe('blockers', () => {
         {
           id: 'e-pairA',
           importRow: pairA.importRow,
+          branchId: ALEX,
           isDeleted: false,
           status: 'open',
           machineId: null,
@@ -405,6 +406,7 @@ describe('blockers', () => {
             {
               id: 'e-23',
               importRow: row.importRow,
+              branchId: ALEX,
               isDeleted: false,
               status: 'ended',
               machineId: null,
@@ -424,6 +426,139 @@ describe('blockers', () => {
     expect(text).not.toContain(FAKE_KEY);
     expect(text).not.toContain('FAKE-KEY-OLD');
     expect(text).not.toContain('11 - 22 - 33');
+  });
+
+  // SEC-1: the per-column comparison is an equality test, so it may only run over what the
+  // importer could read — or a changing guess would read the stored value through the letters.
+  describe('changedSinceImport is never an oracle (review finding SEC-1)', () => {
+    const storedOf = (
+      row: ParsedRow,
+      branchId: string,
+      over: Partial<Record<string, string | null>> = {},
+    ): PlanStoredEntry => ({
+      id: `e-${String(row.importRow)}`,
+      importRow: row.importRow,
+      branchId,
+      isDeleted: false,
+      status: 'ended',
+      machineId: null,
+      opsBankLabel: null,
+      columns: new Map<string, string | null>(
+        Object.entries({
+          A: branchId === ALEX ? 'EGYCASH-4' : 'EGYCASH-2',
+          B: row.values.area,
+          C: row.values.bankCode,
+          D: row.values.machineCode,
+          E: row.values.name,
+          AQ: row.values.startDate,
+          AR: row.values.endDate,
+          ...over,
+        }),
+      ),
+    });
+    const guess = (supervisorCode: string, receiptNotes: string | null = null): ParsedRow =>
+      parsedRow({
+        machineCode: '99990040',
+        endDate: '2025-06-01',
+        receiptNotes,
+        keys: { ...parsedRow({}).values.keys, supervisorCode },
+      });
+    const columnsFor = (
+      row: ParsedRow,
+      stored: PlanStoredEntry,
+      ctx: AuthContext,
+    ): string[] | undefined =>
+      category(
+        planRegisterImport(
+          file([row]),
+          world({ imported: new Map([[row.importRow, stored]]) }),
+          ctx,
+        ),
+        'changedSinceImport',
+      ).items[0]?.columns;
+
+    it('an importer without viewSecrets over the entry: the K columns are not compared', () => {
+      const noSecrets = ctxOf({ 'atmRegister.import': 'organization' });
+      for (const attempt of ['WRONG-GUESS', FAKE_KEY]) {
+        const row = guess(attempt, 'a guessed note');
+        const stored = storedOf(row, ALEX, { J: FAKE_KEY, AN: 'the real note' });
+        expect(columnsFor(row, stored, noSecrets), attempt).toBeUndefined();
+      }
+      // Branch-scoped viewSecrets in Tanta does not cover an Alexandria entry either.
+      const tantaSecrets = ctxOf(
+        { 'atmRegister.import': 'organization', 'atmRegister.viewSecrets': 'branch' },
+        TANTA,
+      );
+      const row = guess('WRONG-GUESS');
+      expect(columnsFor(row, storedOf(row, ALEX, { J: FAKE_KEY }), tantaSecrets)).toBeUndefined();
+      // A P column still counts — that value is the importer's to see.
+      const renamed = guess('WRONG-GUESS');
+      expect(
+        columnsFor(renamed, storedOf(renamed, ALEX, { J: FAKE_KEY, E: 'Old name' }), noSecrets),
+      ).toEqual(['E']);
+    });
+
+    it('an importer whose viewSecrets covers the entry still sees a K column differ', () => {
+      const row = guess('WRONG-GUESS');
+      expect(columnsFor(row, storedOf(row, ALEX, { J: FAKE_KEY }), ORG)).toEqual(['J']);
+    });
+
+    it('an entry imported into a branch out of reach: column A only, no entry id, nothing compared', () => {
+      const tantaImporter = ctxOf(
+        { 'atmRegister.import': 'branch', 'atmRegister.viewSecrets': 'branch' },
+        TANTA,
+      );
+      const answers = ['WRONG-GUESS', FAKE_KEY].map((attempt) => {
+        // The file relabels an Alexandria row as Tanta's.
+        const row = parsedRow({
+          branchCode: 'EGYCASH-2',
+          machineCode: '99990041',
+          endDate: '2025-06-01',
+          name: attempt === FAKE_KEY ? 'Synthetic ATM' : 'Guessed name',
+          keys: { ...parsedRow({}).values.keys, supervisorCode: attempt },
+        });
+        const stored = storedOf(row, ALEX, { J: FAKE_KEY, E: 'Synthetic ATM' });
+        const plan = planRegisterImport(
+          file([row]),
+          world({
+            imported: new Map([[row.importRow, stored]]),
+            nbeForexBranchIds: new Set([TANTA]),
+          }),
+          tantaImporter,
+        );
+        expect(plan.blockers).toContain('changedSinceImport');
+        return category(plan, 'changedSinceImport').items[0];
+      });
+      for (const item of answers) {
+        expect(item?.columns).toEqual(['A']);
+        expect(item?.entryId).toBeNull();
+      }
+    });
+
+    // REG-3: a deleted entry is skipped wherever it sat — the out-of-reach rule above must not
+    // turn it into a blocker the importer could never clear.
+    it('a deleted entry out of reach is skipped, not reported', () => {
+      const tantaImporter = ctxOf(
+        { 'atmRegister.import': 'branch', 'atmRegister.viewSecrets': 'branch' },
+        TANTA,
+      );
+      const row = parsedRow({
+        branchCode: 'EGYCASH-2',
+        machineCode: '99990042',
+        endDate: '2025-06-01',
+      });
+      const stored = { ...storedOf(row, ALEX), isDeleted: true };
+      const plan = planRegisterImport(
+        file([row]),
+        world({
+          imported: new Map([[row.importRow, stored]]),
+          nbeForexBranchIds: new Set([TANTA]),
+        }),
+        tantaImporter,
+      );
+      expect(plan.blockers).not.toContain('changedSinceImport');
+      expect(category(plan, 'changedSinceImport').items).toEqual([]);
+    });
   });
 
   it('secretsOutOfReach: branch-scoped viewSecrets over another branch, and no-branch rows', () => {
@@ -526,6 +661,7 @@ describe('blockers', () => {
             {
               id: 'e-35',
               importRow: ended.importRow,
+              branchId: ALEX,
               isDeleted: false,
               status: 'ended',
               machineId: null,

@@ -48,6 +48,14 @@ export const viewableBranches = (
   (meta?.branches ?? []).filter((b) => b.canView && b.branchId !== null);
 
 /** «EGYCASH-1 · المهندسين» — the code the sheet writes, then the branch's ECMS name. */
+/**
+ * The `q` the search box writes: what was typed, exactly, or nothing for an empty box. NOT trimmed
+ * here — `SearchInput` re-emits whenever its text differs from the value it is handed back, so a
+ * box holding only spaces, written as "no q", came back as '' and was re-emitted every 300 ms,
+ * each one a new history entry (review finding WEB-2). The page trims before it asks the server.
+ */
+export const searchParamOf = (text: string): string | null => (text === '' ? null : text);
+
 export const registerBranchOptionLabel = (
   branch: AtmRegisterMetaDto['branches'][number],
   locale: Locale,
@@ -95,10 +103,14 @@ export const RegisterFilters = ({
             ),
           })}
     >
-      <FilterField label={t('common.search')} active={values.q !== ''} className="w-full sm:w-64">
+      <FilterField
+        label={t('common.search')}
+        active={values.q.trim() !== ''}
+        className="w-full sm:w-64"
+      >
         <SearchInput
           value={values.q}
-          onChange={(q) => onChange({ q: q.trim() === '' ? null : q })}
+          onChange={(q) => onChange({ q: searchParamOf(q) })}
           placeholder={t('atm.register.filter.search')}
         />
       </FilterField>

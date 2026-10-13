@@ -104,11 +104,15 @@ export const useAtmRefLabels = (kind: 'bank' | 'area', params: AtmListParams, en
     enabled,
   });
 
+// The label dialog reports its own failures — "already exists" for the 409, the reader's own
+// words for anything else (`refLabelErrorText`) — so these two opt out of the global toast:
+// declaring `onError` is what opts out (`shared/lib/query-client.ts`). One failure, one message.
 export const useCreateAtmRefLabel = (kind: 'bank' | 'area') => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateAtmRefLabel) => api.createRefLabel(kind, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onError: () => undefined,
   });
 };
 
@@ -118,6 +122,7 @@ export const useUpdateAtmRefLabel = (kind: 'bank' | 'area') => {
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmRefLabel }) =>
       api.updateRefLabel(kind, id, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onError: () => undefined,
   });
 };
 

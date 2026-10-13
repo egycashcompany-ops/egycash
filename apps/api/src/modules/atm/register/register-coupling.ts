@@ -224,6 +224,17 @@ export const archiveIfLastOpen = async (
   session: ClientSession,
 ): Promise<PendingAudit[]> => {
   if (entry.machineId === null) return [];
+  // "Is this the last open entry?" must be decided one transaction at a time (review finding
+  // COUPLING-2). Ending the two DEC-11 twins of one master concurrently writes no document in
+  // common, so each transaction would count the other twin as still open and NEITHER would
+  // archive. Touching the master first makes the two write-conflict; `withTransaction` re-runs the
+  // loser, whose count then sees the other twin ended. Only an active master needs it — an
+  // archived one is not written below either.
+  await AtmMachineModel.updateOne(
+    { _id: entry.machineId, isDeleted: false, isActive: true },
+    { $set: { updatedAt: new Date() } },
+    { session },
+  ).exec();
   const others = await atmRegisterEntryRepository.countOtherOpenForMachine(
     entry.machineId,
     entry._id,

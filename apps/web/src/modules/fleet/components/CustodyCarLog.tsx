@@ -274,14 +274,16 @@ export const custodyCurrentCar = (
 
 /**
  * The figures at the top of a car's log — each kind with its share of the car, the total with its
- * share of everything the fund paid.
+ * share of everything the fund paid over the same filters («إجمالي مصروفات العهدة», `spendTotal`).
+ * Not of the fund itself: «إجمالي العهدة» is what «شحن العهدة» charges into it (`fundTotal` of the
+ * summary), and a share of it here would say something else under the same words.
  */
 const CarTotals = ({
   car,
-  fundTotal,
+  spendTotal,
 }: {
   car: FleetCustodyVehicleRowDto;
-  fundTotal: number;
+  spendTotal: number;
 }): JSX.Element => {
   const t = useT();
   const moneyText = useMoneyText();
@@ -344,15 +346,16 @@ const CarTotals = ({
           {moneyText(car.total)}
         </div>
         <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
-          {/* «8.7%» — a car's share of the fund with one decimal, as the owner's design writes it. */}
+          {/* «8.7%» — a car's share of all the custody spent, with one decimal, as the owner's design
+              writes it. */}
           <span
             dir="ltr"
             data-custody-pct1="true"
             className={cn('font-bold text-emerald-700 dark:text-emerald-400', NUM)}
           >
-            {custodyShare1(car.total, fundTotal)}
+            {custodyShare1(car.total, spendTotal)}
           </span>{' '}
-          {t('fleet.custody.dashboard.carLog.ofFund')}
+          {t('fleet.custody.dashboard.carLog.ofSpend')}
         </div>
       </div>
     </section>
@@ -365,14 +368,17 @@ const CarTotals = ({
  */
 export const CustodyCarLogBody = ({
   car,
-  fundTotal,
+  spendTotal,
   filters,
   initialPage = 1,
   initialPageSize = PAGE_SIZES[0],
 }: {
   car: FleetCustodyVehicleRowDto;
-  /** What the whole fund paid over the same filters — the car's share is of it. */
-  fundTotal: number;
+  /**
+   * What the whole fund paid over the same filters (`total` of the summary) — the car's share is of
+   * it. Not the fund (`fundTotal`), which no filter changes.
+   */
+  spendTotal: number;
   filters: CustodyDashboardFilters;
   /** For the node specs, which cannot click a page. */
   initialPage?: number;
@@ -415,7 +421,7 @@ export const CustodyCarLogBody = ({
         </ul>
       </div>
 
-      <CarTotals car={car} fundTotal={fundTotal} />
+      <CarTotals car={car} spendTotal={spendTotal} />
 
       <section
         aria-labelledby={titleId}
@@ -597,13 +603,14 @@ export const CustodyCarLogBody = ({
  */
 export const CustodyCarLog = ({
   car,
-  fundTotal,
+  spendTotal,
   filters,
   opener,
   onClose,
 }: {
   car: FleetCustodyVehicleRowDto;
-  fundTotal: number;
+  /** What the whole fund paid over the board's filters — see `CustodyCarLogBody`. */
+  spendTotal: number;
   filters: CustodyDashboardFilters;
   /** The «السجل» pressed — the focus goes back to it. */
   opener: HTMLElement | null;
@@ -733,7 +740,7 @@ export const CustodyCarLog = ({
           data-custody-car-log-scroll="true"
           className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6', SCROLLBAR)}
         >
-          <CustodyCarLogBody car={car} fundTotal={fundTotal} filters={filters} />
+          <CustodyCarLogBody car={car} spendTotal={spendTotal} filters={filters} />
         </div>
       </div>
     </div>,

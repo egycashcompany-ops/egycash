@@ -38,9 +38,8 @@ const SQUARE =
 const IDLE =
   'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700/80 dark:bg-[#0c121e] dark:text-slate-300 dark:hover:bg-slate-800';
 /**
- * The current page: the site's purple — or, on the custody screen only, the emerald of the owner's
- * design for it («فى شاشه العهد … فى اللايت سيم والدارك سيم»), as are that screen's filter focus
- * and selection. Its toolbar («الإحصائيات», «لوحة تحكم») stays the site's purple.
+ * The current page: the site's purple — the custody screen too («لا بنفسجى») — or emerald on the
+ * fuel cards and fuel charging boards, which ask for it.
  */
 const CURRENT = {
   brand: 'border-brand-500 bg-brand-600 text-white shadow-md shadow-brand-700/40',

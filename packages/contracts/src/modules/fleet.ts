@@ -3772,6 +3772,12 @@ export interface FleetCustodySummaryDto {
   tyres: number;
   wash: number;
   vehicles: FleetCustodyVehicleRowDto[];
+  /**
+   * «إجمالي العهدة» — the fund itself, in EGP, never below zero: the sum of what «شحن العهدة»
+   * charges into it. That action does not exist yet, so it is 0 for now. It is the fund, not a sum
+   * of the movements: no filter changes it.
+   */
+  fundTotal: number;
 }
 
 /** One line of «كل الحركات» — a receipt from the fund, or a private car's dealership bill. */

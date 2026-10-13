@@ -10535,9 +10535,9 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     ]) {
       const summary = data<FleetCustodySummaryDto>(await read('summary', query));
       const dashboard = data<Dashboard>(await read('dashboard', query));
-      const { count, total, dealership, fuel, tyres, wash, vehicles } = dashboard;
+      const { count, total, dealership, fuel, tyres, wash, vehicles, fundTotal } = dashboard;
       expect(
-        { count, total, dealership, fuel, tyres, wash, vehicles },
+        { count, total, dealership, fuel, tyres, wash, vehicles, fundTotal },
         JSON.stringify(query),
       ).toEqual(summary);
       const movements = await read('movements', { ...query, pageSize: '1' });
@@ -11102,5 +11102,42 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
           .set('Authorization', `Bearer ${branchAToken}`)
       ).status,
     ).toBe(403);
+  });
+
+  it('«إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund on the figures and the dashboard, 0 until «شحن العهدة» charges it', async () => {
+    type Fund = { fundTotal: number; total: number; count: number };
+    const custodyViewer = await rbacService.createRole(
+      { name: { en: 'Custody reader', ar: 'قارئ العهدة' }, permissionKeys: ['fleetCustody.view'] },
+      adminUserId,
+    );
+    const viewerId = await mkUser('custody-fund-reader@ecms.local');
+    await rbacService.ensureAssignment(viewerId, String(custodyViewer._id), 'organization');
+    const viewerToken = await tokenFor(viewerId);
+    const read = async (
+      path: 'summary' | 'dashboard',
+      token = adminToken,
+      query: Record<string, string> = {},
+    ): Promise<Fund> => {
+      const res = await request(app)
+        .get(`/api/v1/fleet/custody/${path}`)
+        .query(query)
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status, `${path} ${JSON.stringify(query)}`).toBe(200);
+      return data<Fund>(res);
+    };
+
+    // Nothing has been charged into the fund — the action does not exist yet — so it is 0 on both,
+    // a number and never `null`, whatever the movements spent.
+    expect((await read('summary')).fundTotal).toBe(0);
+    expect((await read('dashboard')).fundTotal).toBe(0);
+    // It is the fund, not a sum of the movements: a filter that matches nothing leaves it as it is.
+    const nothing = await read('summary', adminToken, { vehicleCodes: 'لا-سيارة-بهذا-الرقم' });
+    expect(nothing).toMatchObject({ count: 0, total: 0, fundTotal: 0 });
+    expect(
+      (await read('dashboard', adminToken, { from: '2001-01-01', to: '2001-01-31' })).fundTotal,
+    ).toBe(0);
+    // A custody viewer reads it under the custody grant alone.
+    expect((await read('summary', viewerToken)).fundTotal).toBe(0);
+    expect((await read('dashboard', viewerToken)).fundTotal).toBe(0);
   });
 });

@@ -130,6 +130,7 @@ const custodySummary: FleetCustodySummaryDto = {
   fuel: 1850,
   tyres: 1400,
   wash: 120,
+  fundTotal: 0,
   vehicles: [
     {
       vehicleId: 'v-204',
@@ -814,7 +815,7 @@ describe('the custody ledger', () => {
     expect(opened).toMatch(/>4,220\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
   });
 
-  it('shows five figures — the total, then each kind on its own tile in its own colour', () => {
+  it('shows six figures — the fund, the total, then each kind on its own tile in its own colour', () => {
     const opened = mount(
       client(),
       ['fleetCustody.view'],
@@ -822,7 +823,7 @@ describe('the custody ledger', () => {
       <CustodyFigures totals={custodySummary} />,
     );
     const order = [...opened.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1]);
-    expect(order).toEqual(['total', 'dealership', 'fuel', 'tyres', 'wash']);
+    expect(order).toEqual(['fund', 'total', 'dealership', 'fuel', 'tyres', 'wash']);
     for (const kind of ['dealership', 'fuel', 'tyres', 'wash'] as const) {
       const at = opened.indexOf(`data-custody-figure="${kind}"`);
       const tile = opened.slice(at, opened.indexOf('</div></div>', at));
@@ -830,9 +831,13 @@ describe('the custody ledger', () => {
       expect(tile, `${kind} wears its kind's tile`).toContain(CUSTODY_KIND[kind].tile);
       expect(tile, `${kind} wears its kind's edge`).toContain(CUSTODY_KIND[kind].accent);
     }
-    // Five across where five sums fit; a sum of money keeps the whole row on a phone, and «ج.م.»
-    // goes under a figure too long for its tile rather than off it.
-    expect(opened).toContain('xl:grid-cols-5');
+    // One to a row on a phone, two from `sm`, three from `xl`, the six in one row only from
+    // 1,680px — never `2xl`, where «ج.م.» would not fit — and «ج.م.» goes under a figure too long
+    // for its tile rather than off it.
+    expect(opened).toContain(
+      'grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1680px]:grid-cols-6',
+    );
+    expect(opened).not.toMatch(/(?:^|[\s"])(?:lg|2xl):grid-cols-[56]/u);
     expect(opened).toContain('[&amp;_.items-baseline]:flex-wrap');
     // «فى شاشه العهد … فى اللايت سيم والدارك سيم»: on this screen fuel is the design's amber,
     // the total its emerald — the house rule keeping amber for states holds on the other boards.

@@ -5,10 +5,10 @@
 // «عاوز دى تكون فى شاشه العهد لما ادوس على لوحة التحكم فى اللايت سيم والدارك سيم»: the owner sent
 // the dashboard's design and chose its colours for the WHOLE custody screen — التوكيل blue, وقود
 // amber, كاوتش rose, غسيل cyan, the total emerald. That sets aside, on this screen only, the house
-// rule that kept amber and red for states and purple for what is picked: the pager's current page
-// and the filter's focus and selection are the design's emerald here. Not the toolbar —
-// «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات»: «الإحصائيات» and «لوحة تحكم»
-// stay the site's purple, as on every board, and the other Fleet boards keep the whole rule. The
+// rule that kept amber and red for states and purple for what is picked: the filter's focus and
+// selection are the design's emerald here. Not the toolbar — «لوحة التحكم والاحصائيات الاتنين يكون
+// لونهم موف زى باقى الشاشات»: «الإحصائيات» and «لوحة تحكم» stay the site's purple, as on every
+// board; nor the pager — «لا بنفسجى»: its current page is the site's purple too. The
 // shades are the design's: the dark theme draws a kind at 500 (its words at 300/400 on a 500/15
 // tile), the light theme at the 600 (blue, cyan) or 500 (amber, rose) the light map gives, its
 // words at 700–900 on a 50 tile. The kind's NAME still rides beside its colour — badge text,
@@ -139,6 +139,35 @@ export const CUSTODY_TOTAL_TILE =
 /** The total's edge on the board's figures, as each kind has its own. */
 export const CUSTODY_TOTAL_ACCENT =
   'border-l-4 border-l-emerald-500 hover:border-l-emerald-500 dark:border-l-emerald-500 dark:hover:border-l-emerald-500';
+
+/** A wallet: its body, the flap folded over it and the clasp. */
+const WALLET = [
+  'M19 7V4a1 1 0 00-1-1H5a2 2 0 000 4h15a1 1 0 011 1v4h-3a2 2 0 000 4h3a1 1 0 001-1v-2a1 1 0 00-1-1',
+  'M3 5v14a2 2 0 002 2h15a1 1 0 001-1v-4',
+];
+
+/**
+ * «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد» — is not a spend:
+ * it is what every spend is drawn from. So it wears no kind's colour and not the spend total's
+ * emerald, but slate — calm, the ink of the screen's neutral chips. Sky was the other calm choice;
+ * it sits between التوكيل's blue and الغسيل's cyan and would read as a fifth kind beside them. The
+ * light theme draws it at slate 600–800 on a slate-100 tile, the dark one at 300–400 on a
+ * slate-400/15 tile — each light surface with its dark one, as every card here.
+ */
+export const CUSTODY_FUND = {
+  /** The card's own border and wash, over the card's surface (`CARD_SURFACE`). */
+  card: 'border-slate-300 bg-gradient-to-br from-slate-100/80 via-white to-white dark:border-slate-500/40',
+  /** Its edge, as the total and each kind has one. */
+  accent:
+    'border-l-4 border-l-slate-600 hover:border-l-slate-600 dark:border-l-slate-400 dark:hover:border-l-slate-400',
+  label: 'font-bold text-slate-800 dark:font-semibold dark:text-slate-300',
+  /** «ج.م.» beside the figure. */
+  unit: 'font-bold text-slate-600 dark:font-semibold dark:text-slate-400',
+  tile: 'border border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-400/30 dark:bg-slate-400/15 dark:text-slate-300 dark:shadow-[0_0_12px_rgba(148,163,184,0.2)]',
+  /** The bar of what was spent of it, on the board's figure. */
+  fill: 'bg-slate-600 dark:bg-slate-400',
+  icon: WALLET,
+} as const;
 
 /**
  * The kind in «كل الحركات» — the alarms board's `lg` pill (`Badge`'s own size), in the design's

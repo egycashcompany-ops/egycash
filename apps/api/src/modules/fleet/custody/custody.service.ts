@@ -29,6 +29,7 @@ import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { sortCustodyMovements } from './custody-sort';
 import { custodyDashboard, type CustodyPendingPrivateBills } from './custody-dashboard';
+import { readCustodyFundTotal } from './custody-fund';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -206,9 +207,16 @@ class FleetCustodyService {
     return all;
   }
 
-  /** The figures and «ملخص لكل سيارة» — over the whole filtered set. */
+  /**
+   * The figures and «ملخص لكل سيارة» — over the whole filtered set — and the fund they are drawn
+   * from («إجمالي العهدة»), which no filter changes.
+   */
   async summary(query: FleetCustodySummaryQuery): Promise<FleetCustodySummaryDto> {
-    return this.fold(await this.movementsFor(query, await this.vehicleIdsFor(query)));
+    const [rows, fundTotal] = await Promise.all([
+      this.vehicleIdsFor(query).then((vehicleIds) => this.movementsFor(query, vehicleIds)),
+      readCustodyFundTotal(),
+    ]);
+    return { ...this.fold(rows), fundTotal };
   }
 
   /**
@@ -217,11 +225,12 @@ class FleetCustodyService {
    */
   async dashboard(query: FleetCustodyDashboardQuery): Promise<FleetCustodyDashboardDto> {
     const vehicleIds = await this.vehicleIdsFor(query);
-    const [rows, pending] = await Promise.all([
+    const [rows, pending, fundTotal] = await Promise.all([
       this.movementsFor(query, vehicleIds),
       this.pendingPrivateBills(query, vehicleIds),
+      readCustodyFundTotal(),
     ]);
-    return { ...this.fold(rows), ...custodyDashboard(rows, query, pending) };
+    return { ...this.fold(rows), fundTotal, ...custodyDashboard(rows, query, pending) };
   }
 
   /**
@@ -250,8 +259,8 @@ class FleetCustodyService {
     return { count: row?.count ?? 0, oldestOutDate: row?.oldest ?? null };
   }
 
-  /** The figures and the per-car lines of a set of movements. */
-  private fold(rows: readonly Movement[]): FleetCustodySummaryDto {
+  /** The figures and the per-car lines of a set of movements — everything but the fund. */
+  private fold(rows: readonly Movement[]): Omit<FleetCustodySummaryDto, 'fundTotal'> {
     const perVehicle = new Map<string, FleetCustodyVehicleRowDto>();
     const totals = { dealership: 0, fuel: 0, tyres: 0, wash: 0 };
     for (const row of rows) {

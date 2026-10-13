@@ -14,9 +14,11 @@ import '@fontsource/cairo/500.css';
 import '@fontsource/cairo/600.css';
 import '@fontsource/cairo/700.css';
 import '@fontsource/cairo/800.css';
-import '@fontsource/jetbrains-mono/400.css';
-import '@fontsource/jetbrains-mono/500.css';
-import '@fontsource/jetbrains-mono/600.css';
+import '@fontsource/azeret-mono/400.css';
+import '@fontsource/azeret-mono/500.css';
+import '@fontsource/azeret-mono/600.css';
+import '@fontsource/azeret-mono/700.css';
+import '@fontsource/azeret-mono/800.css';
 import { type FleetFuelCardCompany, type FleetFuelCardDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -39,10 +41,14 @@ import { FuelCardPhotoPanel } from './FuelCardImage';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { groupCardNumber, ungroupCardNumber } from '../lib/fuel-card-number';
 import { CalendarButton, HIDE_NATIVE_PICKER, type DatePicker } from './DateBox';
+import { FIGURES_FONT } from './FuelCardBoard';
 
-/** The design's type: Cairo for words, JetBrains Mono for codes and numbers. */
+/**
+ * The design's type: Cairo for words, the Fleet figure face (`FIGURES_FONT`, Azeret Mono — a plain
+ * zero) for codes and numbers.
+ */
 export const SANS = "[font-family:'Cairo',sans-serif]";
-export const MONO = "[font-family:'JetBrains_Mono','Cairo',monospace]";
+export const MONO = FIGURES_FONT;
 
 /** «يدعم صيغ PNG, JPG بحد أقصى 5MB» — the design's limit, held here so the words are true. */
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
@@ -108,7 +114,7 @@ export const carBoxClass = (editing: boolean): string =>
     '[&_input]:!text-slate-900 dark:[&_input]:!text-white [&_input]:!font-medium [&_input]:placeholder:!text-slate-500 dark:[&_input]:placeholder:!text-slate-400',
     '[&_input:focus]:!border-indigo-500 [&_input:focus]:ring-1 [&_input:focus]:ring-indigo-500 [&_input]:focus-visible:!ring-offset-0',
     editing
-      ? "[&_input]:!border-slate-200 dark:[&_input]:!border-[#2b3b6b] [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-base [&_input]:font-semibold [&_input]:[font-family:'JetBrains_Mono','Cairo',monospace] [&_input]:placeholder:[font-family:'Cairo',sans-serif] [&_input]:placeholder:!text-sm [&_input]:placeholder:font-normal"
+      ? "[&_input]:!border-slate-200 dark:[&_input]:!border-[#2b3b6b] [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-base [&_input]:font-semibold [&_input]:[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif] [&_input]:placeholder:[font-family:'Cairo',sans-serif] [&_input]:placeholder:!text-sm [&_input]:placeholder:font-normal"
       : '[&_input]:!border-slate-200 dark:[&_input]:!border-[#2b3b6b] [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-[15px]',
     // The clear × and the chevron, with the design's rule between them.
     '[&_.end-2]:!end-3 [&_.end-2]:!gap-1.5 [&_.end-2_svg]:!h-4 [&_.end-2_svg]:!w-4',

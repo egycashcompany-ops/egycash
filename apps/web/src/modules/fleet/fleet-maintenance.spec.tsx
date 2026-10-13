@@ -529,17 +529,14 @@ describe('the maintenance table’s look', () => {
     expect(cells(render({ qc: client([visit({ vehicleCode: null })]) }))[2]).toBe('—');
   });
 
-  it('centres every value and header, and keeps the row’s controls at the end', () => {
+  it('centres every value and header, the row’s controls too («تكون متوسطانه»)', () => {
     const markup = render();
     const heads = headTags(markup);
-    const actions = REQUIRED_COLUMNS.length - 1;
     heads.forEach((tag, index) => {
-      expect(tag, `header ${index}`).toContain(index === actions ? 'text-end' : 'text-center');
+      expect(tag, `header ${index}`).toContain('text-center');
     });
     REQUIRED_COLUMNS.forEach((_, index) => {
-      expect(cellTag(markup, index), `cell ${index}`).toContain(
-        index === actions ? 'text-end' : 'text-center',
-      );
+      expect(cellTag(markup, index), `cell ${index}`).toContain('text-center');
     });
   });
 

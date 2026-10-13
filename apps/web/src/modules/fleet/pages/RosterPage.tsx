@@ -41,11 +41,12 @@ import { errorMessage } from '../../../shared/lib/errors';
 import {
   ChevronEndIcon,
   ChevronStartIcon,
-  EditIcon,
   ResetIcon,
   SwapIcon,
   TrashIcon,
 } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { useFleetCatalog, usePlanRoster, useRosterDay } from '../api/fleet-queries';
 import { EmployeeName, useEmployeeRecords } from '../components/EmployeeName';
@@ -741,9 +742,6 @@ export const RosterPage = (): JSX.Element => {
     setClearing(null);
   };
 
-  const actionButton =
-    'rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
   const slotProps = {
     mayPlan,
     over,
@@ -771,7 +769,7 @@ export const RosterPage = (): JSX.Element => {
       // this fleet dispatches by. It stays on the vehicle record and on the screens that are ABOUT
       // a car; what it no longer does is decide which rows this board shows.
       render: (row) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span className="font-figures text-xs" dir="ltr">
           {row.code}
         </span>
       ),
@@ -893,19 +891,21 @@ export const RosterPage = (): JSX.Element => {
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
-            align: 'end',
+            align: 'center',
+            // «اعملى الالوان دى»: the pen, the swap of the two seats (indigo) and the bin, in the
+            // owner's box (`row-actions-look`).
             render: (row: FleetRosterRowDto) => (
-              <span className="flex items-center justify-end gap-1">
+              <span className={ACTION_GROUP} data-row-actions="roster">
                 {/* FR-5: an in-workshop vehicle cannot be ASSIGNED, but clearing stays legal. */}
                 {!row.inMaintenance && (
                   <button
                     type="button"
-                    className={actionButton}
+                    className={actionTone('edit')}
                     aria-label={t('fleet.roster.editAssignment')}
                     title={t('fleet.roster.editAssignment')}
                     onClick={() => setEditing(row.vehicleId)}
                   >
-                    <EditIcon className="h-4 w-4" />
+                    <SquarePenIcon className="h-4 w-4" />
                   </button>
                 )}
                 {/* «يخلى السائق الاول السائق الثانى ويخلى السائق الثانى السائق الاول». Offered
@@ -917,7 +917,7 @@ export const RosterPage = (): JSX.Element => {
                     <button
                       type="button"
                       data-swap-drivers={row.vehicleId}
-                      className={actionButton}
+                      className={actionTone('transfer')}
                       aria-label={t('fleet.roster.swapDrivers')}
                       title={t('fleet.roster.swapDrivers')}
                       onClick={() => setDraft(() => swapDrivers(draft, row.vehicleId))}
@@ -928,7 +928,7 @@ export const RosterPage = (): JSX.Element => {
                 {carriesPlan(row) && (
                   <button
                     type="button"
-                    className={actionButton}
+                    className={actionTone('delete')}
                     aria-label={t('fleet.roster.clearAssignment')}
                     title={t('fleet.roster.clearAssignment')}
                     onClick={() => setClearing(row)}
@@ -936,7 +936,7 @@ export const RosterPage = (): JSX.Element => {
                     {/* CLEARS THE WHOLE ROW — both drivers, the mission and the note — which is a
                         deletion, not a dismissal, and now says so. The per-driver bins above take
                         one person off; this one empties the car. */}
-                    <TrashIcon className="h-4 w-4" />
+                    <Trash2Icon className="h-4 w-4" />
                   </button>
                 )}
               </span>

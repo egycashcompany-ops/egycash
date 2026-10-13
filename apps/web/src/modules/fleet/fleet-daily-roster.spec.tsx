@@ -495,10 +495,19 @@ describe('a car the workshop holds is red, whole', () => {
     expect(rowOf(markup, '151'), 'and dark mode too').toContain('dark:bg-rose-950/40');
   });
 
+  /**
+   * The row's OWN tag, where the tint lives. The row's bin is rose too — «اعملى الالوان دى», the
+   * owner's colours for the actions — so «no rose» is asked of the `<tr>`, not of its cells.
+   */
+  const rowTag = (markup: string, code: string): string => {
+    const row = rowOf(markup, code);
+    return row.slice(0, row.indexOf('>'));
+  };
+
   it('leaves an ordinary car alone', () => {
     const markup = at('');
-    expect(rowOf(markup, '150')).not.toContain('bg-rose-50');
-    expect(rowOf(markup, '153')).not.toContain('bg-rose-50');
+    expect(rowTag(markup, '150')).not.toContain('bg-rose-50');
+    expect(rowTag(markup, '153')).not.toContain('bg-rose-50');
   });
 
   it('reads `inMaintenance`, never the registry’s `inWorkshop`', () => {
@@ -512,7 +521,7 @@ describe('a car the workshop holds is red, whole', () => {
   it('does not treat a mere ASSIGNMENT as the workshop', () => {
     // 150 carries a mission and a driver and is not in the workshop; 153 is stored-but-empty.
     const markup = at('');
-    expect(rowOf(markup, '150'), 'a plan is not a workshop visit').not.toContain('rose');
+    expect(rowTag(markup, '150'), 'a plan is not a workshop visit').not.toContain('rose');
     expect(rowOf(markup, '152'), 'and a car with both is still red').toContain('bg-rose-50');
   });
 
@@ -1485,7 +1494,8 @@ describe('the board removes with a bin, not with a cross', () => {
   it('the row control is a bin too, and it empties the whole car', () => {
     const at = SOURCE.indexOf('fleet.roster.clearAssignment');
     expect(at, 'the row control is still there').toBeGreaterThan(-1);
-    expect(SOURCE.slice(at, at + 700)).toContain('<TrashIcon');
+    // The bin with the two lines inside it — the owner's picture of the row's actions.
+    expect(SOURCE.slice(at, at + 700)).toContain('<Trash2Icon');
   });
 
   it('no cross is left doing a removal on this board', () => {

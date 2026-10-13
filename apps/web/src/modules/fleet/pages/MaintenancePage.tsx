@@ -48,12 +48,14 @@ import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
-import { CornerDownIcon, EditIcon, TrashIcon, WrenchIcon } from '../../../shared/ui/icons';
+import { CornerDownIcon, WrenchIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
+import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
-import { DARK_TABLE } from './VehiclesListPage';
+import { DARK_TABLE, PLAIN_CELLS } from './VehiclesListPage';
 import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
 import {
   useDeleteMaintenance,
@@ -298,8 +300,6 @@ export const MaintenancePage = (): JSX.Element => {
     setDeleting(null);
   };
 
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
   const dash = <span className="text-slate-400">—</span>;
   /** A day on the row — «2026/09/01», year first, Latin digits. */
   const day = (iso: string): JSX.Element => (
@@ -475,8 +475,8 @@ export const MaintenancePage = (): JSX.Element => {
       key: 'operation',
       align: 'center',
       header: t('fleet.maintenance.fields.operation'),
-      // In a span, as every other value on the row is: the table's bold is put on what a cell
-      // HOLDS, so a bare word would read a weight lighter than its neighbours.
+      // In a span, as every other value on the row is; like them it is written in the normal
+      // weight — `PLAIN_CELLS` sets every body cell and what it holds so.
       render: (visit) => {
         const name = visit.operationId === null ? undefined : catalogName.get(visit.operationId);
         return name === undefined ? dash : <span>{name}</span>;
@@ -615,13 +615,26 @@ export const MaintenancePage = (): JSX.Element => {
     {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
-      align: 'end',
+      align: 'center',
+      // «اعملى الالوان دى»: the owner's picture — the pen, the check-out (violet) or the reopen
+      // (indigo), the bin (`row-actions-look`).
       render: (visit) => (
-        <span className="flex items-center justify-end gap-1">
+        <span className={ACTION_GROUP} data-row-actions="maintenance">
+          {can('fleetMaintenance.edit') && (
+            <button
+              type="button"
+              className={actionTone('edit')}
+              aria-label={t('fleet.maintenance.edit')}
+              title={t('fleet.maintenance.edit')}
+              onClick={() => setEditing(visit)}
+            >
+              <SquarePenIcon className="h-4 w-4" />
+            </button>
+          )}
           {can('fleetMaintenance.checkOut') && visit.outDate === null && (
             <button
               type="button"
-              className={actionButton}
+              className={actionTone('status')}
               aria-label={t('fleet.maintenance.checkOut')}
               title={t('fleet.maintenance.checkOut')}
               onClick={() => setCheckingOut(visit)}
@@ -632,7 +645,7 @@ export const MaintenancePage = (): JSX.Element => {
           {can('fleetMaintenance.checkOut') && visit.outDate !== null && (
             <button
               type="button"
-              className={actionButton}
+              className={actionTone('reopen')}
               aria-label={t('fleet.maintenance.reopen')}
               title={t('fleet.maintenance.reopen')}
               onClick={() => setReopening(visit)}
@@ -640,26 +653,15 @@ export const MaintenancePage = (): JSX.Element => {
               <CornerDownIcon className="h-4 w-4" />
             </button>
           )}
-          {can('fleetMaintenance.edit') && (
-            <button
-              type="button"
-              className={actionButton}
-              aria-label={t('fleet.maintenance.edit')}
-              title={t('fleet.maintenance.edit')}
-              onClick={() => setEditing(visit)}
-            >
-              <EditIcon className="h-4 w-4" />
-            </button>
-          )}
           {can('fleetMaintenance.delete') && (
             <button
               type="button"
-              className={actionButton}
+              className={actionTone('delete')}
               aria-label={t('common.delete')}
               title={t('common.delete')}
               onClick={() => setDeleting(visit)}
             >
-              <TrashIcon className="h-4 w-4" />
+              <Trash2Icon className="h-4 w-4" />
             </button>
           )}
         </span>
@@ -938,10 +940,12 @@ export const MaintenancePage = (): JSX.Element => {
             // Eleven columns on a laptop: the cells take less room between them so the whole row
             // stays on the screen.
             'max-[1749px]:[&_tbody_td]:!px-[5px] max-[1749px]:[&_thead_th]:!px-[5px]',
-            // No line between the columns, as on the drivers table.
-            '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
-            // Every value heavy, the Arabic in Cairo's own bold.
-            "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+            // «زى السيارات ما بين العواميد خط»: the vehicles table's faint line between the columns,
+            // drawn by `DARK_TABLE` — nothing here takes it off any more.
+            // «عاوز اشيل الخط الbold يكون عادى بس حجم الخط ميقلش»: every value in the normal
+            // weight, at the size it had — see `PLAIN_CELLS`.
+            "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif]",
+            PLAIN_CELLS,
             // «عاوز الخط بتاع شاشه الصيانه والعدادات زى شاشة انذار الصيانه فى كل العواميد فى
             // الشاشتين»: the alarms board's type on every column — see `ALARMS_TYPE`. Its sizes
             // only: the laptop's tighter room between the columns above still holds.

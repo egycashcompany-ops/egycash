@@ -369,13 +369,14 @@ describe('the receipts table', () => {
     expect(row).toContain('ج.م');
     // The car's code bold, left to right.
     expect(row).toMatch(/<span dir="ltr" class="[^"]*font-bold[^"]*">204<\/span>/u);
-    // Every value and header centred, as on the drivers board; the actions at the row's end.
+    // Every value and header centred, as on the drivers board — the actions too.
     const cells = row.match(/<td[^>]*>/gu) ?? [];
     expect(cells.length).toBe(10);
     for (const cell of cells.slice(0, 9)) expect(cell).toContain('text-center');
-    expect(cells[9]).toContain('text-end');
+    // «الداتا او الايقونات تكون متوسطانه»: the actions centred like every other cell.
+    expect(cells[9]).toContain('text-center');
     const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
-    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(9);
+    expect((head.match(/<th[^>]*text-center/gu) ?? []).length).toBe(10);
     // An empty car is the boards' grey dash.
     const none = rowWith(renderReceipts({ rows: [receipt({ vehicleCode: null })] }), '640.00');
     expect(none).toContain('<span class="text-slate-400">—</span>');

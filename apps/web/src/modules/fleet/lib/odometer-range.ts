@@ -4,6 +4,10 @@
 // neutral default, it is a request for the whole history. Opening the page therefore means the
 // CURRENT MONTH unless the reader has said otherwise, and the server is what narrows it.
 //
+// The one way to say otherwise WITHOUT a date is `period=all` (`WHOLE_HISTORY`): the vehicle
+// profile's «العدادات» row sends it, because the count on that row («N قراءة») spans the car's
+// whole history and the screen it opens must show the same readings — «تاريخ العربيه كله».
+//
 // The bounds are UTC and date-only, matching what the API does with them: `from` is coerced to
 // that day's midnight UTC and compared with `$gte`, and `to` is compared against the NEXT
 // midnight with `$lt`, so the day it names is included whole. Rendering the month in local time
@@ -29,22 +33,50 @@ export const currentMonthRange = (now: Date): OdometerRange => ({
 });
 
 /**
+ * The `period` value that asks for EVERY day the log holds — no bound at all, rather than the
+ * month. A word, not a pair of dates: «من 2000-01-01» would be a made-up first day standing in for
+ * "from the beginning", printed in the date box as if somebody had chosen it.
+ */
+export const WHOLE_HISTORY = 'all';
+
+/**
  * The range to send, given what the URL asks for.
  *
  * The month fills in only when NEITHER bound is given. Filling in per-field would quietly answer
  * a different question than the one asked: "from the 1st of July" is an open-ended request, and
  * capping it at the end of this month would hide every row after it. One bound alone stays one
  * bound alone — which is exactly what the server already supports.
+ *
+ * `period=all` (`WHOLE_HISTORY`) with no bound sends NO bound either: both sides come back empty
+ * and `defaulted` is false — the reader (or the link they followed) asked for it, so it is not the
+ * page's own default. A bound in the URL wins over it, since a picked date is the more specific
+ * question; any other `period` value is ignored, and the month fills in as before.
  */
 export const odometerRange = (
-  params: { from: string; to: string },
+  params: { from: string; to: string; period?: string },
   now: Date,
 ): OdometerRange & { defaulted: boolean } => {
   if (params.from === '' && params.to === '') {
+    if (params.period === WHOLE_HISTORY) return { from: '', to: '', defaulted: false };
     return { ...currentMonthRange(now), defaulted: true };
   }
   return { from: params.from, to: params.to, defaulted: false };
 };
+
+/**
+ * What picking (or clearing) one date box writes to the URL: that bound, and NO `period`.
+ *
+ * Picking a date lets go of `period=all`: the reader has chosen days, and the chosen days are the
+ * question now. So clearing that date again — `value` empty — leaves neither bound and no
+ * `period`, and `odometerRange` goes back to the month rather than to the whole history.
+ */
+export const dateBoundPatch = (
+  param: 'from' | 'to',
+  value: string,
+): Record<string, string | null> => ({
+  [param]: value === '' ? null : value,
+  period: null,
+});
 
 /**
  * How far back the «وسّع المدى» button on the empty table reaches.

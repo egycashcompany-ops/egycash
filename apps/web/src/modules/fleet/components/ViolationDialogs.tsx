@@ -199,7 +199,7 @@ export const VehicleViolationDialog = ({
           />
           {/* The code stays on the page under the picker, for the reader who came to CONFIRM a
               row rather than change it — and it is what the delete dialog is really asking about. */}
-          <p data-violation-code className="mt-1 font-mono text-xs text-slate-500" dir="ltr">
+          <p data-violation-code className="mt-1 font-figures text-xs text-slate-500" dir="ltr">
             {code}
           </p>
         </Field>

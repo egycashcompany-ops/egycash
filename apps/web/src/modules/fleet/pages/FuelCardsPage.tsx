@@ -743,8 +743,11 @@ const LinkFromStockDialog = ({
               <div className="flex items-center gap-3">
                 <CompanyBadge company={card.company} />
                 <div>
-                  <p className="font-mono text-xs font-bold">{card.name}</p>
-                  <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400" dir="ltr">
+                  <p className="font-figures text-xs font-bold">{card.name}</p>
+                  <p
+                    className="font-figures text-[11px] text-slate-500 dark:text-slate-400"
+                    dir="ltr"
+                  >
                     {groupCardNumber(card.number)}
                     {card.label !== null ? ` · ${card.label}` : ''}
                   </p>

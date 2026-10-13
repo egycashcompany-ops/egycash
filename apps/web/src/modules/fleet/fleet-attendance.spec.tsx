@@ -181,18 +181,18 @@ describe('the attendance board draws its rows as the drivers board does', () => 
     expect(body).toContain('<span class="text-slate-400">—</span>');
   });
 
-  it('centres every column — the row’s actions stay at its end', () => {
+  it('centres every column — the row’s actions too («عاوز الداتا او الايقونات تكون متوسطانه»)', () => {
     const heads = [...thead(html).matchAll(/<th\b[^>]*class="([^"]*)"/g)].map(
       (m) => m[1] as string,
     );
     expect(heads).toHaveLength(6);
     heads.slice(0, -1).forEach((cls) => expect(cls).toContain('text-center'));
-    expect(heads.at(-1), 'the actions header').toContain('text-end');
+    expect(heads.at(-1), 'the actions header').toContain('text-center');
     const firstRow = tbody(html).split('<tr').slice(1)[0] as string;
     const cells = [...firstRow.matchAll(/<td\b[^>]*class="([^"]*)"/g)].map((m) => m[1] as string);
     expect(cells).toHaveLength(6);
     cells.slice(0, -1).forEach((cls) => expect(cls).toContain('text-center'));
-    expect(cells.at(-1), 'the actions cell').toContain('text-end');
+    expect(cells.at(-1), 'the actions cell').toContain('text-center');
   });
 
   it('still offers edit and cancel only under the edit grant', () => {

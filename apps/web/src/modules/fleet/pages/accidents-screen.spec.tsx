@@ -299,8 +299,10 @@ describe('إجمالي المتبقي — derived on the row', () => {
       accident({ amountCollected: 1500, companyCost: 0, paidAmount: 1500 }),
     ]) {
       const cells = rowWith(render({ seed: withRows([row]) }), 'فنوس شمال');
-      expect(cells, JSON.stringify(row)).not.toContain('-0');
-      expect(cells, 'and the wash is actually printed').toContain('0.00');
+      // What the row PRINTS — its text, not its markup: the actions' box is `gap-0.5 py-0.5`.
+      const printed = cells.replace(/<[^>]*>/gu, ' ');
+      expect(printed, JSON.stringify(row)).not.toContain('-0');
+      expect(printed, 'and the wash is actually printed').toContain('0.00');
     }
   });
 

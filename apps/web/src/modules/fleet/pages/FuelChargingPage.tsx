@@ -15,6 +15,7 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate } from '../../../shared/lib/format';
 import { HistoryIcon } from '../../../shared/ui/icons';
+import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { cn } from '../../../shared/lib/cn';
 import {
@@ -202,7 +203,7 @@ const ChargeRow = ({
         <div className="flex min-w-0 flex-col">
           <span
             title={card.name}
-            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white"
+            className="whitespace-nowrap font-figures text-base font-bold tracking-wide text-slate-900 dark:text-white"
           >
             {card.name}
           </span>
@@ -277,16 +278,19 @@ const ChargeRow = ({
         <ChargeRequest card={card} />
       </div>
       <div className="flex items-center gap-2 fuel-grid:justify-self-end">
-        <button
-          type="button"
-          data-fuel-history={card.id}
-          aria-label={t('fleet.fuelCards.history.open')}
-          title={t('fleet.fuelCards.history.open')}
-          onClick={() => onHistory(card)}
-          className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 p-1.5 text-slate-600 dark:text-slate-300 transition hover:border-brand-500/60 hover:bg-brand-500/15 hover:text-brand-700 dark:hover:text-brand-200"
-        >
-          <HistoryIcon className="h-4 w-4" />
-        </button>
+        {/* «اعملى الالوان دى»: the card's log, slate, in the owner's box (`row-actions-look`). */}
+        <span className={ACTION_GROUP} data-row-actions="fuel-charging">
+          <button
+            type="button"
+            data-fuel-history={card.id}
+            aria-label={t('fleet.fuelCards.history.open')}
+            title={t('fleet.fuelCards.history.open')}
+            onClick={() => onHistory(card)}
+            className={actionTone('history')}
+          >
+            <HistoryIcon className="h-4 w-4" />
+          </button>
+        </span>
       </div>
     </div>
   );

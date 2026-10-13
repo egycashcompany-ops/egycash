@@ -1,6 +1,7 @@
 // The photo of a receipt — the dealership invoice's cell (`DealershipImageCell`) for the receipts
-// table: no photo → an upload control; a photo → view, print, delete. The bytes are guarded, so
-// they are fetched with the session and shown as an object URL.
+// table: no photo → the dashed box with the cloud upload; a photo → view, replace, print, delete in
+// the owner's image box (`row-actions-look`). The bytes are guarded, so they are fetched with the
+// session and shown as an object URL.
 import { useEffect, useState } from 'react';
 import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { type FleetReceiptDto, type Locale } from '@ecms/contracts';
@@ -10,16 +11,15 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EyeIcon, PrinterIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
 import { formatDate } from '../../../shared/lib/format';
 import { ZoomableImage } from './ZoomableImage';
+import { IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
+import { ArrowUpFromLineIcon, CloudUploadIcon, Trash2Icon } from './row-action-icons';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { printLicenceRecord } from './vehicle-print';
 import { fetchReceiptImage } from '../api/fleet-api';
 import { useDeleteReceiptImage, useUploadReceiptImage } from '../api/fleet-queries';
-
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 const useReceiptImageUrl = (
   rowId: string,
@@ -218,31 +218,45 @@ export const ReceiptImageCell = ({
     return (
       <PhotoPickButton
         accept={LICENSE_IMAGE_ACCEPT}
-        className={`${actionButton} inline-flex`}
+        className={IMAGE_EMPTY_BOX}
         disabled={upload.isPending}
         label={t('fleet.receipts.image.upload')}
+        data-receipt-image-upload={row.id}
         onFile={(file) => void pick(file)}
       >
-        <UploadIcon className="h-4 w-4" />
+        <CloudUploadIcon className="h-4 w-4" />
       </PhotoPickButton>
     );
   }
 
+  // «اعملى الالوان دى»: the owner's image box — the eye, the replace arrow, the printer, the bin.
   return (
-    <span className="flex items-center gap-1">
+    <span className={IMAGE_GROUP} data-image-actions="receipt">
       <button
         type="button"
-        className={actionButton}
+        className={actionTone('view')}
         aria-label={t('fleet.receipts.image.view')}
         title={t('fleet.receipts.image.view')}
         onClick={() => onPreview(row)}
       >
         <EyeIcon className="h-4 w-4" />
       </button>
+      {mayEdit && (
+        <PhotoPickButton
+          accept={LICENSE_IMAGE_ACCEPT}
+          className={actionTone('upload')}
+          disabled={upload.isPending}
+          label={t('fleet.vehicles.licenseImage.replace')}
+          data-receipt-image-replace={row.id}
+          onFile={(file) => void pick(file)}
+        >
+          <ArrowUpFromLineIcon className="h-4 w-4" />
+        </PhotoPickButton>
+      )}
       <button
         type="button"
         data-receipt-print={row.id}
-        className={actionButton}
+        className={actionTone('print')}
         aria-label={t('common.print')}
         title={t('common.print')}
         onClick={() => void printReceipt(row, locale, t)}
@@ -253,12 +267,12 @@ export const ReceiptImageCell = ({
         <button
           type="button"
           data-receipt-image-delete={row.id}
-          className={actionButton}
+          className={actionTone('delete')}
           aria-label={t('fleet.receipts.image.delete')}
           title={t('fleet.receipts.image.delete')}
           onClick={() => setConfirming(true)}
         >
-          <TrashIcon className="h-4 w-4" />
+          <Trash2Icon className="h-4 w-4" />
         </button>
       )}
       <ReceiptImageDeleteDialog open={confirming} onClose={() => setConfirming(false)} row={row} />

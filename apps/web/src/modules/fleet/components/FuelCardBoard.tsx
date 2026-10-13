@@ -14,6 +14,11 @@ import '@fontsource/cairo/600.css';
 import '@fontsource/cairo/700.css';
 import '@fontsource/cairo/800.css';
 import '@fontsource/cairo/900.css';
+import '@fontsource/azeret-mono/400.css';
+import '@fontsource/azeret-mono/500.css';
+import '@fontsource/azeret-mono/600.css';
+import '@fontsource/azeret-mono/700.css';
+import '@fontsource/azeret-mono/800.css';
 import { type FleetFuelCardCompany, type FleetFuelCardDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -22,6 +27,8 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { revealFuelCardPassword } from '../api/fleet-api';
 import { FUEL_CARD_LOGO } from './FuelCardTiles';
 import { groupCardNumber } from '../lib/fuel-card-number';
+import { ACTION_GROUP, actionColour, actionTone } from './row-actions-look';
+import { SquarePenIcon, Trash2Icon } from './row-action-icons';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -41,9 +48,16 @@ export const expiryState = (
 
 /** The design's type: Cairo for the words. */
 export const BOARD_FONT = "[font-family:'Cairo',sans-serif]";
-/** The design's `.num-mono`: the system monospace with tabular figures. */
-export const NUM =
-  '[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] [font-feature-settings:"tnum"] tabular-nums';
+/**
+ * «الارقام ال0 … ميكونش جوا شرطه»: the Fleet screens' figure face — Azeret Mono, whose zero is
+ * plain (no slash, no dot inside), with Arabic letters falling through to Cairo. The same stack as
+ * Tailwind's `font-figures`, written as an arbitrary property so that, like the monospace stack it
+ * replaces, it still wins over a `'Cairo'` stack on the same element: Tailwind orders arbitrary
+ * properties by their class text, and the family is left unquoted so this one sorts after them.
+ */
+export const FIGURES_FONT = "[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif]";
+/** The design's `.num-mono`: the figure face with tabular figures. */
+export const NUM = `${FIGURES_FONT} [font-feature-settings:"tnum"] tabular-nums`;
 
 /** «2027/09/30» — the design writes a date year first, with slashes. */
 export const ymd = (iso: string | null): string =>
@@ -275,7 +289,7 @@ const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   const mayReveal = card.hasPassword && can('fleetFuelCard.reveal');
   return (
     <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 fuel-grid:justify-self-stretch">
-      <span className="font-mono text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
+      <span className="font-figures text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
       <span
         className={cn(
           'text-base font-bold tracking-widest text-slate-800 dark:text-slate-200',
@@ -392,7 +406,7 @@ export const FuelCardRow = ({
         <div className="flex min-w-0 flex-col">
           <span
             title={card.name}
-            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white"
+            className="whitespace-nowrap font-figures text-base font-bold tracking-wide text-slate-900 dark:text-white"
           >
             {card.name}
           </span>
@@ -421,42 +435,50 @@ export const FuelCardRow = ({
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 fuel-grid:justify-self-end">
-        <button
-          type="button"
-          data-fuel-image={card.id}
-          title={t('fleet.fuelCards.board.photo')}
-          onClick={() => onPhoto(card)}
-          className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
-        >
-          <Svg d={PATH.image} className={cn('h-3.5 w-3.5', tone.text)} />
-          <span className="fuel-grid:sr-only fuel-wide:not-sr-only">
-            {t('fleet.fuelCards.board.photo')}
-          </span>
-        </button>
-        {can('fleetFuelCard.edit') && (
+        {/* «اعملى الالوان دى»: the card's photo (green, the eye's colour — it opens the photo),
+            the pen and the bin in the owner's box (`row-actions-look`). The photo keeps its
+            words on a wide screen. */}
+        <span className={ACTION_GROUP} data-row-actions="fuel-card">
           <button
             type="button"
-            data-fuel-edit={card.id}
-            title={t('fleet.fuelCards.board.edit')}
-            aria-label={t('fleet.fuelCards.board.edit')}
-            onClick={() => onEdit(card)}
-            className="rounded-md border border-slate-300 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800/80 p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-blue-950/40 hover:text-blue-600 dark:hover:text-blue-400"
+            data-fuel-image={card.id}
+            title={t('fleet.fuelCards.board.photo')}
+            onClick={() => onPhoto(card)}
+            className={cn(
+              'inline-flex h-6 min-w-6 items-center justify-center gap-1 rounded-md px-1 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2',
+              actionColour('view'),
+            )}
           >
-            <Svg d={PATH.edit} className="h-3.5 w-3.5" />
+            <Svg d={PATH.image} className="h-4 w-4" />
+            <span className="fuel-grid:sr-only fuel-wide:not-sr-only">
+              {t('fleet.fuelCards.board.photo')}
+            </span>
           </button>
-        )}
-        {can('fleetFuelCard.delete') && (
-          <button
-            type="button"
-            data-fuel-delete={card.id}
-            title={t('fleet.fuelCards.board.delete')}
-            aria-label={t('fleet.fuelCards.board.delete')}
-            onClick={() => onDelete(card)}
-            className="rounded-md border border-slate-300 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800/80 p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400"
-          >
-            <Svg d={PATH.trash} className="h-3.5 w-3.5" />
-          </button>
-        )}
+          {can('fleetFuelCard.edit') && (
+            <button
+              type="button"
+              data-fuel-edit={card.id}
+              title={t('fleet.fuelCards.board.edit')}
+              aria-label={t('fleet.fuelCards.board.edit')}
+              onClick={() => onEdit(card)}
+              className={actionTone('edit')}
+            >
+              <SquarePenIcon className="h-4 w-4" />
+            </button>
+          )}
+          {can('fleetFuelCard.delete') && (
+            <button
+              type="button"
+              data-fuel-delete={card.id}
+              title={t('fleet.fuelCards.board.delete')}
+              aria-label={t('fleet.fuelCards.board.delete')}
+              onClick={() => onDelete(card)}
+              className={actionTone('delete')}
+            >
+              <Trash2Icon className="h-4 w-4" />
+            </button>
+          )}
+        </span>
       </div>
     </div>
   );
@@ -754,7 +776,7 @@ export const StockSection = ({
               <CompanyBadge company={card.company} size="lg" />
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">
+                  <span className="font-figures text-sm font-bold text-slate-900 dark:text-white">
                     {card.name}
                   </span>
                   {/* The label it is known by on the fuel screens — «سفر 1», «اسبير». */}
@@ -767,7 +789,7 @@ export const StockSection = ({
                     {t('fleet.fuelCards.board.unlinked')}
                   </span>
                 </div>
-                <p className="mt-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="mt-0.5 font-figures text-[11px] text-slate-500 dark:text-slate-400">
                   <span dir="ltr">{groupCardNumber(card.number)}</span> •{' '}
                   {t('fleet.fuelCards.board.expiresOn', { date: ymd(card.expiresAt) })}
                 </p>
@@ -785,28 +807,32 @@ export const StockSection = ({
                   <span>{t('fleet.fuelCards.board.assign')}</span>
                 </button>
               )}
-              <button
-                type="button"
-                data-fuel-image={card.id}
-                title={t('fleet.fuelCards.board.preview')}
-                aria-label={t('fleet.fuelCards.board.preview')}
-                onClick={() => onPhoto(card)}
-                className="rounded-lg border border-slate-300 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800/80 p-1.5 text-slate-500 dark:text-slate-400 transition hover:text-slate-800 dark:hover:text-slate-200"
-              >
-                <Svg d={PATH.eye} className="h-3.5 w-3.5" />
-              </button>
-              {can('fleetFuelCard.delete') && (
+              {/* «اعملى الالوان دى»: the eye and the bin in the owner's box; «ربط» keeps its
+                  words beside it. */}
+              <span className={ACTION_GROUP} data-row-actions="fuel-card-unlinked">
                 <button
                   type="button"
-                  data-fuel-delete={card.id}
-                  title={t('fleet.fuelCards.board.delete')}
-                  aria-label={t('fleet.fuelCards.board.delete')}
-                  onClick={() => onDelete(card)}
-                  className="rounded-lg border border-slate-300 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800/80 p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400"
+                  data-fuel-image={card.id}
+                  title={t('fleet.fuelCards.board.preview')}
+                  aria-label={t('fleet.fuelCards.board.preview')}
+                  onClick={() => onPhoto(card)}
+                  className={actionTone('view')}
                 >
-                  <Svg d={PATH.trash} className="h-3.5 w-3.5" />
+                  <Svg d={PATH.eye} className="h-4 w-4" />
                 </button>
-              )}
+                {can('fleetFuelCard.delete') && (
+                  <button
+                    type="button"
+                    data-fuel-delete={card.id}
+                    title={t('fleet.fuelCards.board.delete')}
+                    aria-label={t('fleet.fuelCards.board.delete')}
+                    onClick={() => onDelete(card)}
+                    className={actionTone('delete')}
+                  >
+                    <Trash2Icon className="h-4 w-4" />
+                  </button>
+                )}
+              </span>
             </div>
           </div>
         ))}

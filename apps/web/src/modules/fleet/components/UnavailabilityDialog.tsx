@@ -53,7 +53,7 @@ const FixedDriver = ({ employeeId }: { employeeId: string }): JSX.Element => {
   // The driver card on the decided driver, hovered or reached with Tab.
   const hover = useDriverHoverCard(person === undefined ? [] : [person]);
   return person === undefined ? (
-    <span className="font-mono text-xs text-slate-400" dir="ltr">
+    <span className="font-figures text-xs text-slate-400" dir="ltr">
       {employeeId.slice(-8)}
     </span>
   ) : (

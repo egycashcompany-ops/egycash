@@ -57,7 +57,20 @@ describe('the seeded navigation catalog', () => {
     //
     // So adding a row fails HERE first, on the author's machine, naming the number to change —
     // rather than eight minutes into CI in the one suite that cannot run without a mongod.
-    expect(rows).toHaveLength(126);
+    expect(rows).toHaveLength(128);
+  });
+
+  it('corrects a permission only where the key actually changes', () => {
+    // `previousPermission` mirrors `previousIcon`: a correction that names the value it already
+    // holds would be a no-op that reads like a fix. The one shipped today is the data-edit split
+    // (docs/12-planning/atm-efficiency-register.md §7.3): Machine Data is the Operations page now.
+    const corrected = rows.filter((row) => row.previousPermission !== undefined);
+    for (const row of corrected) {
+      expect(row.previousPermission, `${row.route} must actually change`).not.toBe(row.permission);
+    }
+    const dataEdit = rows.find((row) => row.route === '/atm/data-edit');
+    expect(dataEdit?.previousPermission).toBe('atmMachine.manage');
+    expect(dataEdit?.permission).toBe('atmRefLabel.create');
   });
 });
 

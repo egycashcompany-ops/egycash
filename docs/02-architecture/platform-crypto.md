@@ -59,6 +59,21 @@ a big-bang migration, which is how rotations get postponed indefinitely.
 To rotate: add the new key to the ring, point `ACTIVE_KEY` at it, run `rewrap()` over stored values
 (`keyId` is in the clear precisely so they can be *found* without decrypting), then drop the old key.
 
+The `rewrap()` step runs unattended, as nightly scheduled tasks that touch the data key only — no
+plaintext exists at any point:
+
+| Task | Re-wraps | When |
+|---|---|---|
+| `automation.rotateCredentialKeys` | automation credentials | 02:30 |
+| `atm.rotateRegisterCombinationKeys` | the ATM register's safe-door combinations, soft-deleted entries included ([Efficiency register spec](../12-planning/atm-efficiency-register.md) DEC-33) | 02:45 |
+
+Each pass moves a bounded batch and logs `{ provider, currentKeyId, rotated, failed }` only when it
+found work; the next night continues where it stopped. Drop the old key only after **both** sweeps
+have stopped finding values on it (no rotation log line, or `rotated: 0, failed: 0`). A sealed value
+a person may read — the register's combination — is opened only through an audited reveal
+([ADR-034](../03-decisions/ADR-034-audited-reveal-of-a-sealed-value.md)), so a value stranded on a
+dropped key surfaces as a failed reveal naming the missing key.
+
 `keyId` is stored per value. Retiring a key too early is recoverable — put it back — and the error
 names the missing key rather than saying "failed".
 

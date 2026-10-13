@@ -1,6 +1,12 @@
 // Add / remove for the two label lists — the checkment2/3 (add) and checkment8/9 (remove)
 // branches of the legacy /data_edit_atm POST (contad_app.js:2471-2527). Configuration, not
 // domain facts: audited, no events (the operations bank precedent).
+//
+// Add and edit are Operations' own keys (`atmRefLabel.create` / `.edit`) beside `atmMachine.manage`
+// (D2); remove stays `manage`. A label is filed in ONE branch, and a bank label there drives what
+// the register adopts (D5, DEC-16 — `NBE FOREX`), so the authorizing key must reach THAT branch
+// (DEC-29, review finding F-4): the caller's acting branch alone is chosen from the union reach of
+// all their grants, which an unrelated key could stretch to a branch this key never covers.
 import { Types, type FilterQuery } from 'mongoose';
 import {
   type CreateAtmRefLabel,
@@ -9,7 +15,13 @@ import {
   type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
-import { type AuthContext, scopeSelector } from '../../../shared/types';
+import {
+  hasPermission,
+  keyReachesBranch,
+  scopeSelector,
+  type AuthContext,
+} from '../../../shared/types';
+import { ForbiddenError, NotFoundError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { resolveAtmBranchId } from '../shared/atm-context';
@@ -50,6 +62,12 @@ class AtmRefLabelService {
     ctx: AuthContext,
   ): Promise<AtmRefLabelDoc> {
     const branchId = await resolveAtmBranchId(ctx);
+    if (
+      !keyReachesBranch(ctx, 'atmRefLabel.create', branchId) &&
+      !keyReachesBranch(ctx, 'atmMachine.manage', branchId)
+    ) {
+      throw new ForbiddenError();
+    }
     // The unique index turns the legacy's read-then-push duplicate check (:2473, :2485) into a
     // ConflictError the client renders as "already exists" — same rule, no race.
     const doc = await atmRefLabelRepository.create(
@@ -69,17 +87,27 @@ class AtmRefLabelService {
    * machines that already stored the old string, because the legacy denormalized both the bank
    * and the area onto each machine (:2443) and a cascade would rewrite history nobody asked to
    * change. `isActive: false` archives — the list stops offering it, the machines keep it.
+   *
+   * Allowed to an `atmRefLabel.edit` holder over the label's whole branch, or to a `manage`
+   * holder who finds the label in today's `manage` scope (nothing removed); anything else is a
+   * 404. The label repository is branch-only, so a department or section scope alone would widen
+   * to the company — reach is asked of the key. The write then goes by id and version.
    */
   async update(id: string, input: UpdateAtmRefLabel, ctx: AuthContext): Promise<AtmRefLabelDoc> {
-    const scope = scopeSelector(ctx, 'atmMachine.manage');
-    const before = await atmRefLabelRepository.getById(id, scope);
+    const before = await atmRefLabelRepository.findById(id);
+    if (before === null) throw new NotFoundError('ATM label');
+    const allowed =
+      keyReachesBranch(ctx, 'atmRefLabel.edit', String(before.branchId)) ||
+      (hasPermission(ctx, 'atmMachine.manage') &&
+        (await atmRefLabelRepository.findById(id, scopeSelector(ctx, 'atmMachine.manage'))) !==
+          null);
+    if (!allowed) throw new NotFoundError('ATM label');
     const set: Record<string, unknown> = {};
     if (input.name !== undefined) set.name = input.name.trim();
     if (input.isActive !== undefined) set.isActive = input.isActive;
     const updated = await atmRefLabelRepository.updateById(id, set, {
       by: ctx.userId,
       version: input.version,
-      scope,
     });
     await auditService.record({
       entityRef: entityRef(id),

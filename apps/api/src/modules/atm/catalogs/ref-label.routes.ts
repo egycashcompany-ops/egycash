@@ -1,5 +1,9 @@
 // The two label lists behind /data_edit_atm's bank/area forms. Reads ride `atmMachine.view` (the
-// open forms and pickers need them); mutations are the data-edit surface, `atmMachine.manage`.
+// open forms and pickers need them). Since the register controls which machines exist (D2,
+// docs/12-planning/atm-efficiency-register.md §7.1), Operations add, rename and archive-toggle
+// labels on their own keys — `atmRefLabel.create` / `atmRefLabel.edit`, or `atmMachine.manage` as
+// before — and the service asks that the key reach the label's branch (DEC-29). Deleting a label
+// stays `atmMachine.manage` only.
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
@@ -9,7 +13,7 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { authenticate, authContext } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import {
   asyncHandler,
   created,
@@ -72,14 +76,14 @@ export const buildAtmRefLabelsRouter = (): Router => {
   router.post(
     '/:kind',
     authenticate,
-    authorize('atmMachine.manage'),
+    authorizeAny('atmRefLabel.create', 'atmMachine.manage'),
     validate({ body: CreateAtmRefLabelSchema, params: KindParamSchema }),
     asyncHandler(createLabel),
   );
   router.patch(
     '/:kind/:id',
     authenticate,
-    authorize('atmMachine.manage'),
+    authorizeAny('atmRefLabel.edit', 'atmMachine.manage'),
     validate({ body: UpdateAtmRefLabelSchema, params: KindIdParamSchema }),
     asyncHandler(updateLabel),
   );

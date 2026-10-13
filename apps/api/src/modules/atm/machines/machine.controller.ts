@@ -5,6 +5,7 @@ import {
   type BulkDeleteAtmMachines,
   type CreateAtmMachine,
   type UpdateAtmMachine,
+  type UpdateAtmMachineArea,
   type ListAtmMachinesQuery,
   type ReassignAtmMachineArea,
 } from '@ecms/contracts';
@@ -45,4 +46,9 @@ export const createMachine = async (req: Request, res: Response): Promise<void> 
 export const updateMachine = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<UpdateAtmMachine, never, { id: string }>(req);
   ok(res, toAtmMachineDto(await atmMachineService.update(params.id, body, authContext(req))));
+};
+
+export const moveMachineArea = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<UpdateAtmMachineArea, never, { id: string }>(req);
+  ok(res, toAtmMachineDto(await atmMachineService.moveArea(params.id, body, authContext(req))));
 };

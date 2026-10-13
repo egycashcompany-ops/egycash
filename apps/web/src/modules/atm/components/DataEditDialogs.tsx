@@ -6,12 +6,21 @@
 // ATMs actually arrives (contad_app.js:2412-2466), and a per-item form is a poor way to enter
 // forty of them; the per-item form is the better way to fix ONE of them, which the legacy had no
 // way to do at all.
+//
+// Who opens which (D2, docs/12-planning/atm-efficiency-register.md §8.4). The page does the gating:
+//   · `MachineDialog` and `BulkMachinesDialog` are `atmMachine.manage` only. Adding, archiving and
+//     deleting a machine decide whether it exists, and the Efficiency register decides that now.
+//   · `RefLabelDialog` also serves Operations: add under `atmRefLabel.create`, rename and the
+//     archive toggle under `atmRefLabel.edit`. A label is never deleted from this page.
+//   · `MachineAreaDialog` is Operations' area move (`atmMachine.moveArea`): the area and nothing
+//     else.
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   normalizeAtmMachineCode,
   splitAtmFormLines,
   type AtmMachineDto,
   type AtmRefLabelDto,
+  type UpdateAtmMachineArea,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -24,6 +33,7 @@ import {
   useCreateAtmMachine,
   useCreateAtmRefLabel,
   useUpdateAtmMachine,
+  useUpdateAtmMachineArea,
   useUpdateAtmRefLabel,
 } from '../api/atm-queries';
 
@@ -181,6 +191,97 @@ export const MachineDialog = ({
   );
 };
 
+/** The area move's whole request: the new area and the row's version. The schema is strict. */
+export const machineAreaBody = (machine: AtmMachineDto, area: string): UpdateAtmMachineArea => ({
+  area,
+  version: machine.version,
+});
+
+/**
+ * Operations' «نقل ماكينة لمنطقة» (contad_app.js:2529-2541). The legacy form took a typed machine
+ * number and a new area and set the area alone. This dialog opens on a row, so the code and name
+ * are shown read-only and only the area can change. The server moves the machine's open register
+ * period to the same area in the same write (DEC-4), and the hint says so before the click.
+ */
+export const MachineAreaDialog = ({
+  open,
+  onClose,
+  machine,
+  areas,
+}: {
+  open: boolean;
+  onClose: () => void;
+  machine: AtmMachineDto | null;
+  /** The ACTIVE area labels, the same list the full edit offers. */
+  areas: AtmRefLabelDto[];
+}): JSX.Element => {
+  const t = useT();
+  const [area, setArea] = useState(machine?.area ?? '');
+
+  useEffect(() => {
+    if (!open) return;
+    setArea(machine?.area ?? '');
+  }, [open, machine]);
+
+  const move = useUpdateAtmMachineArea();
+  const current = machine?.area ?? '';
+  // A machine may be moved BECAUSE its area was archived. That area is then missing from the
+  // active list, and a select with no matching option would show the first area as if it were
+  // the current one. So it stays listed but cannot be picked, and the dialog opens on the truth.
+  const currentListed = current === '' || areas.some((option) => option.name === current);
+  const changed = area !== '' && area !== current;
+
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (machine === null || !changed) return;
+    try {
+      await move.mutateAsync({ id: machine.id, body: machineAreaBody(machine, area) });
+      toast.success(t('atm.dataEdit.areaMoved'));
+      onClose();
+    } catch {
+      toast.error(t('atm.common.actionFailed'));
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('atm.dataEdit.moveAreaTitle', { code: machine?.machineCode ?? '' })}
+    >
+      <form onSubmit={(e) => void submit(e)} className="space-y-4">
+        <Field label={t('atm.common.machineId')}>
+          <Input value={machine?.machineCode ?? ''} disabled dir="ltr" />
+        </Field>
+        <Field label={t('atm.dataEdit.machineName')}>
+          <Input value={machine?.name ?? ''} disabled />
+        </Field>
+        <Field label={t('atm.common.area')} required hint={t('atm.dataEdit.moveAreaHint')}>
+          <Select value={area} onChange={(e) => setArea(e.target.value)} required>
+            <option value="" disabled>
+              {t('atm.dataEdit.pickArea')}
+            </option>
+            {!currentListed && (
+              <option value={current} disabled>
+                {current}
+              </option>
+            )}
+            <LabelOptions options={areas} />
+          </Select>
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('atm.common.cancel')}
+          </Button>
+          <Button type="submit" loading={move.isPending} disabled={!changed}>
+            {t('atm.common.save')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+};
+
 export const RefLabelDialog = ({
   open,
   onClose,
@@ -267,6 +368,10 @@ export const RefLabelDialog = ({
  * The legacy bulk forms, kept whole: paste a column of codes beside a column of names to register
  * a batch (existing codes are skipped and NAMED), and paste a column of codes to delete a batch
  * (soft delete + the `-D` rename that frees each code for re-registration).
+ *
+ * `atmMachine.manage` only (D2): both halves decide whether a machine exists, and Operations no
+ * longer do that. The page offers the dialog only behind that key, and the server refuses both
+ * routes without it.
  */
 export const BulkMachinesDialog = ({
   open,

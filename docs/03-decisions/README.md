@@ -41,6 +41,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-031](ADR-031-org-units-defined-once-declared-per-branch.md) | A department is defined once for the company and declared per branch — the rows stay, because `departments._id` is a data scope | Accepted |
 | [ADR-032](ADR-032-delegated-grants-per-site.md) | A manager hands out, per unit, what they hold there — reach is a set of units (whole branches, department copies) per permission key; a delegated grant is a list of keys for one account over one department in one branch, or a whole branch, and the ceiling compares units, not ranks | Accepted (amended) |
 | [ADR-033](ADR-033-outbound-http-one-door.md) | Outbound HTTP leaves through one guarded door — host allowlist, private-address refusal, redirects judged per hop, and a guard spec that forbids a bare `fetch` anywhere else | Accepted |
+| [ADR-034](ADR-034-audited-reveal-of-a-sealed-value.md) | A sealed value a person may see is revealed by an audited `POST …/reveal` under its own key that must reach the record — never a `GET`, never a DTO field, never cached; every call audited, even when nothing is stored | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),

@@ -2,13 +2,16 @@
 //
 // The Operations slice of the legacy standalone ATM system, ported by parity: the seven pages the
 // owner scoped (/atm_replenishment ±done, /atm_maintenance ±done, /mail_maintenance ±log,
-// /all_atm) plus /data_edit_atm, added to scope by the owner after approval. The other legacy ATM
-// sections (efficiency, back office, vaults, supplies, review, preparation) are NOT here — this
-// manifest grows with those slices exactly as Fleet's and Operations' did, never a second one.
+// /all_atm) plus /data_edit_atm, added to scope by the owner after approval. The Efficiency &
+// Investigations slice is here too (docs/12-planning/atm-efficiency-register.md): the machine
+// register and its Data Report, from the owner's workbook. The other legacy ATM sections (back
+// office, vaults, supplies, review, preparation) are NOT here — this manifest grows with those
+// slices exactly as Fleet's and Operations' did, never a second one.
 //
 // Legacy privilege strings → grants (port doc §7.3): atm-user = the operating bundle,
 // atm-user-review = view+complete on the done surfaces, atm-admin = everything incl. the mail
-// log, Efficiency-admin touches only the machine master. Roles carry the mapping; keys stay per
+// log, Efficiency-admin = the register keys (`atmRegister.*`, `atmRegisterReport.view`) — the
+// register now controls which machines exist (D2). Roles carry the mapping; keys stay per
 // resource. Every legacy POST was unauthenticated (contad_app.js:632 …) — closed here by RBAC,
 // the port's one non-negotiable behaviour change (port doc T-auth).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
@@ -19,6 +22,9 @@ import { buildAtmReplenishmentsRouter } from './replenishments/replenishment.rou
 import { buildAtmMaintenancesRouter } from './maintenances/maintenance.routes';
 import { buildAtmMailTicketsRouter } from './mail-tickets/mail-ticket.routes';
 import { buildAtmReportsRouter } from './reports/report.routes';
+import { buildAtmRegisterRouter } from './register/register.routes';
+import { buildAtmRegisterImportRouter } from './register/import/register-import.routes';
+import { rotateRegisterCombinationKeys } from './register/register-secrets';
 import { registerAtmSettings } from './atm.settings';
 import { seedAtm } from './atm.seed';
 import { pollAtmMailbox } from './mail-tickets/mail-poll.service';
@@ -82,8 +88,9 @@ const machinePermissions = declarePermissions(
   { en: 'ATM machines', ar: 'ماكينات الصراف الآلي' },
   ['view'],
   [
-    // The whole /data_edit_atm surface — bulk add, delete, area reassign, bank/area label lists —
-    // is one settings screen, not separately delegable decisions (the catalog-grant precedent).
+    // The administrator's half of /data_edit_atm — add, bulk add, delete-by-codes, archive,
+    // reassign, label delete. Since the register controls which machines exist (D2), Operations
+    // keep only the keys below and `atmRefLabel.*`.
     {
       action: 'manage',
       name: {
@@ -91,8 +98,63 @@ const machinePermissions = declarePermissions(
         ar: 'إدارة بيانات الماكينات وقوائمها',
       },
     },
+    // Legacy «نقل ماكينة لمنطقة» (contad_app.js:2529-2541), kept for Operations (D2): the area
+    // only, through its own route (DEC-3); the machine's open register entries move with it.
+    {
+      action: 'moveArea',
+      name: { en: 'Move a machine to another area', ar: 'نقل ماكينة لمنطقة' },
+    },
   ],
   'atm.machines',
+);
+
+// The bank and area label lists on their own resource (DEC-2): a role may add or rename a label
+// without any authority over machines. Deleting a label stays `atmMachine.manage`.
+const refLabelPermissions = declarePermissions(
+  'atm',
+  'atmRefLabel',
+  { en: 'ATM bank and area lists', ar: 'قوائم البنوك والمناطق للصراف الآلي' },
+  ['create', 'edit'],
+  [],
+  'atm.machines',
+);
+
+// The Efficiency register (D1–D8). Reading is per branch (DEC-29); the three specials are the
+// owner's own actions beside the standard ones: hand a machine back, see its keys and reveal the
+// combination (an audited read — D3), and import the workbook (D8).
+const registerPermissions = declarePermissions(
+  'atm',
+  'atmRegister',
+  { en: 'ATM register', ar: 'سجل الماكينات' },
+  ['view', 'create', 'edit', 'delete', 'export'],
+  [
+    {
+      action: 'handover',
+      name: { en: 'Hand a machine back to the bank', ar: 'تسليم ماكينة للبنك' },
+    },
+    {
+      action: 'viewSecrets',
+      name: {
+        en: 'View machine keys and reveal the safe-door combination',
+        ar: 'عرض مفاتيح الماكينة وكشف الرقم السري لباب الخزينة',
+      },
+    },
+    {
+      action: 'import',
+      name: { en: 'Import the register workbook', ar: 'استيراد ملف سجل الماكينات' },
+    },
+  ],
+  'atm.register',
+);
+
+// The Data Report on a key of its own (D7): a report reader need not see one register row.
+const registerReportPermissions = declarePermissions(
+  'atm',
+  'atmRegisterReport',
+  { en: 'ATM Data Report', ar: 'تقرير بيانات الماكينات' },
+  ['view'],
+  [],
+  'atm.register-report',
 );
 
 registerAtmSettings();
@@ -105,6 +167,9 @@ export const atmPermissions: PermissionDef[] = [
   ...maintenancePermissions,
   ...mailTicketPermissions,
   ...machinePermissions,
+  ...refLabelPermissions,
+  ...registerPermissions,
+  ...registerReportPermissions,
 ];
 
 export const atmPages: PageDef[] = [
@@ -136,6 +201,20 @@ export const atmPages: PageDef[] = [
     route: '/atm/machines',
     sortOrder: 40,
   },
+  {
+    id: 'atm.register',
+    moduleId: 'atm',
+    name: { en: 'ATM register', ar: 'سجل الماكينات' },
+    route: '/atm/register',
+    sortOrder: 50,
+  },
+  {
+    id: 'atm.register-report',
+    moduleId: 'atm',
+    name: { en: 'Data Report', ar: 'تقرير البيانات' },
+    route: '/atm/register/report',
+    sortOrder: 60,
+  },
 ];
 
 export const atmModule: ModuleManifest = {
@@ -153,6 +232,9 @@ export const atmModule: ModuleManifest = {
     { prefix: '/atm/mail-tickets', router: buildAtmMailTicketsRouter() },
     // The daily report rides the existing view grants — no permission, no page (port doc D7).
     { prefix: '/atm/reports', router: buildAtmReportsRouter() },
+    // The import BEFORE the register: its prefix sits inside the register's.
+    { prefix: '/atm/register/import', router: buildAtmRegisterImportRouter() },
+    { prefix: '/atm/register', router: buildAtmRegisterRouter() },
   ],
   collections: [
     'atm_machines',
@@ -160,6 +242,8 @@ export const atmModule: ModuleManifest = {
     'atm_replenishments',
     'atm_maintenances',
     'atm_mail_tickets',
+    'atm_register_entries',
+    'atm_register_import_runs',
   ],
   eventSubscriptions: [],
   scheduledTasks: [
@@ -174,6 +258,19 @@ export const atmModule: ModuleManifest = {
       ownerService: 'atm',
       handler: async () => {
         await pollAtmMailbox();
+      },
+    },
+    {
+      // DEC-33, the `automation.rotateCredentialKeys` shape: the documented key rotation drops the
+      // old key after the re-wrap, so without this sweep every reveal would fail afterwards.
+      key: 'atm.rotateRegisterCombinationKeys',
+      description:
+        'Re-wrap register safe-door combinations still sealed under a retired key. Touches the data key only — no plaintext exists at any point.',
+      // Nightly, after the automation sweep at 02:30.
+      cron: '45 2 * * *',
+      ownerService: 'atm',
+      handler: async () => {
+        await rotateRegisterCombinationKeys();
       },
     },
   ],

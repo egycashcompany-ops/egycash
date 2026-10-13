@@ -8,36 +8,85 @@
 //   · area reassignment rewrites the machine's area string (:2529-2541). Open operations keep
 //     the area they were opened with — legacy operations snapshot the machine at open and are
 //     never rewritten by a master edit.
+//
+// The Efficiency register controls which machines exist (D2, docs/12-planning/
+// atm-efficiency-register.md §7.1): add, bulk add, delete-by-codes, archive and reassign stay the
+// administrator's (`atmMachine.manage`); Operations keep the legacy «نقل ماكينة لمنطقة» as its own
+// area-only write, `moveArea` (DEC-3). Every AREA write — `update`, `reassignArea`, `moveArea` —
+// carries the area onto the machine's OPEN register entries in the same transaction (DEC-4); a
+// name or bank edit does not flow back into the register (the register's bank is an enum the
+// Operations label cannot be mapped back to). Audit rows are recorded once, after commit.
 import {
   normalizeAtmMachineCode,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
   type CreateAtmMachine,
   type UpdateAtmMachine,
+  type UpdateAtmMachineArea,
   type ListAtmMachinesQuery,
   type Paginated,
   type ReassignAtmMachineArea,
 } from '@ecms/contracts';
-import { Types, type FilterQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { auditService } from '../../../platform/audit';
-import { type AuthContext } from '../../../shared/types';
-import { scopeSelector } from '../../../shared/types';
+import { unitOfWork } from '../../../platform/kernel/unit-of-work';
+import { type AuthContext, type ScopeSelector } from '../../../shared/types';
+import { hasPermission, keyReachesBranch, scopeSelector } from '../../../shared/types';
 import { ConflictError, NotFoundError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
+import {
+  ensureMachineVersioned,
+  machineSnapshot,
+  syncMasterAreaToEntries,
+  type PendingAudit,
+} from '../register/register-coupling';
 import { resolveAtmBranchId } from '../shared/atm-context';
 import { atmMachineRepository } from './machine.repository';
 import { type AtmMachineDoc } from './machine.model';
 
 const entityRef = (id: string) => ({ moduleId: 'atm', entityType: 'machine', entityId: id });
 
-const snapshot = (doc: AtmMachineDoc) => ({
-  branchId: String(doc.branchId),
-  bankName: doc.bankName,
-  machineCode: doc.machineCode,
-  name: doc.name,
-  area: doc.area,
-  isActive: doc.isActive,
-});
+/**
+ * The machine's audit snapshot. ONE definition, shared with the register coupling, so a
+ * register-driven change reads in the machine's history exactly like an Operations one.
+ */
+export const snapshot = machineSnapshot;
+
+/**
+ * One versioned master write plus, when it moved the area, the open register entries following it
+ * (DEC-4) — all in the caller's transaction. A legacy row without `__v`/timestamps is backfilled
+ * first (DEC-23), so the version the client read (`__v ?? 0`) matches. Returns the audits owed.
+ */
+const writeMaster = async (
+  before: AtmMachineDoc,
+  set: Record<string, unknown>,
+  meta: {
+    by: string;
+    version: number;
+    scope?: ScopeSelector;
+    session: ClientSession;
+  },
+): Promise<{ updated: AtmMachineDoc; audits: PendingAudit[] }> => {
+  await ensureMachineVersioned(before._id, meta.session);
+  const updated = await atmMachineRepository.updateById(String(before._id), set, meta);
+  const audits: PendingAudit[] = [
+    {
+      entityRef: entityRef(String(before._id)),
+      action: 'update',
+      changes: diffChanges(snapshot(before), snapshot(updated)),
+    },
+  ];
+  if (updated.area !== before.area) {
+    audits.push(
+      ...(await syncMasterAreaToEntries(before._id, updated.area, meta.by, meta.session)),
+    );
+  }
+  return { updated, audits };
+};
+
+const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
+  for (const audit of audits) await auditService.record(audit);
+};
 
 class AtmMachineService {
   async list(query: ListAtmMachinesQuery, ctx: AuthContext): Promise<Paginated<AtmMachineDoc>> {
@@ -157,16 +206,46 @@ class AtmMachineService {
     if (input.name !== undefined) set.name = input.name;
     if (input.area !== undefined) set.area = input.area;
     if (input.isActive !== undefined) set.isActive = input.isActive;
-    const updated = await atmMachineRepository.updateById(id, set, {
-      by: ctx.userId,
-      version: input.version,
-      scope,
-    });
-    await auditService.record({
-      entityRef: entityRef(id),
-      action: 'update',
-      changes: diffChanges(snapshot(before), snapshot(updated)),
-    });
+    // An administrator may archive or rename a master that has an open register entry (DEC-24 —
+    // nothing removed); only the AREA follows onto the entry (DEC-4).
+    const { updated, audits } = await unitOfWork((session) =>
+      writeMaster(before, set, { by: ctx.userId, version: input.version, scope, session }),
+    );
+    await recordAll(audits);
+    return updated;
+  }
+
+  /**
+   * Operations' «نقل ماكينة لمنطقة» (contad_app.js:2529-2541), by id — the area and nothing else
+   * (DEC-3). The key that authorizes it must reach the machine's branch (DEC-29): a
+   * `moveArea` holder over that whole branch, or a `manage` holder who finds the machine in
+   * today's `manage` scope (nothing a manage holder could do is removed). The machine repository
+   * is branch-only, so a department or section scope alone would widen to the company — which is
+   * why reach is asked of the key, not of a scoped read. Anything else is a 404: the machine is
+   * not in the caller's world. Like `reassignArea`, the area is not checked against the label
+   * list; the dialog offers active labels only.
+   */
+  async moveArea(
+    id: string,
+    input: UpdateAtmMachineArea,
+    ctx: AuthContext,
+  ): Promise<AtmMachineDoc> {
+    const before = await atmMachineRepository.findById(id);
+    if (before === null) throw new NotFoundError('ATM machine');
+    const allowed =
+      keyReachesBranch(ctx, 'atmMachine.moveArea', String(before.branchId)) ||
+      (hasPermission(ctx, 'atmMachine.manage') &&
+        (await atmMachineRepository.findById(id, scopeSelector(ctx, 'atmMachine.manage'))) !==
+          null);
+    if (!allowed) throw new NotFoundError('ATM machine');
+    const { updated, audits } = await unitOfWork((session) =>
+      writeMaster(
+        before,
+        { area: input.area },
+        { by: ctx.userId, version: input.version, session },
+      ),
+    );
+    await recordAll(audits);
     return updated;
   }
 
@@ -214,16 +293,15 @@ class AtmMachineService {
     const machineCode = normalizeAtmMachineCode(input.machineCode);
     const existing = await atmMachineRepository.findActiveByCode(branchId, machineCode);
     if (existing === null) throw new NotFoundError('ATM machine');
-    const updated = await atmMachineRepository.updateById(
-      existing._id.toString(),
-      { area: input.area },
-      { by: ctx.userId, version: existing.__v },
+    const { updated, audits } = await unitOfWork((session) =>
+      writeMaster(
+        existing,
+        { area: input.area },
+        // A legacy row read before its backfill carries no `__v`; the backfill sets 0.
+        { by: ctx.userId, version: (existing as Partial<AtmMachineDoc>).__v ?? 0, session },
+      ),
     );
-    await auditService.record({
-      entityRef: entityRef(String(existing._id)),
-      action: 'update',
-      changes: diffChanges(snapshot(existing), snapshot(updated)),
-    });
+    await recordAll(audits);
     return updated;
   }
 }

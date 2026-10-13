@@ -22,6 +22,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'atm.replenishment': { permission: 'atmReplenishment.view' },
   'atm.maintenance': { permission: 'atmMaintenance.view' },
   'atm.mailTicket': { permission: 'atmMailTicket.view' },
+  // The Efficiency register: an entry's writes (and its reveal/export audits, which do not
+  // broadcast) refresh the register screen for whoever may read it.
+  'atm.registerEntry': { permission: 'atmRegister.view' },
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': { permission: 'goldBar.view' },
@@ -228,4 +231,8 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // that request's entity topic already fires from the same decision, because deciding writes the
   // request too. A second topic here would refresh nothing the first one did not.
   'platform.approval': 'the request’s own topic carries the decision',
+  // One audit row per register import apply (DEC-15). The importing screen refetches itself, and
+  // the entries the import wrote are not individually signalled.
+  'atm.registerImport':
+    'one audit row per import run (the attendance-import shape); the importing screen refetches itself and the entries it wrote are not individually signalled',
 };

@@ -45,7 +45,11 @@ const recruitmentPipeline: readonly KeyPrefix[] = [
 
 export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]>> = {
   // ── ATM ────────────────────────────────────────────────────────────────────
-  'atm.machine': [['atm', 'machines']],
+  // A master change moves a register row's drift badge (`masterState`), so the register listens too.
+  'atm.machine': [
+    ['atm', 'machines'],
+    ['atm', 'registerEntries'],
+  ],
   'atm.refLabel': [
     ['atm', 'refLabels'],
     ['atm', 'machines'],
@@ -55,6 +59,13 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'atm.mailTicket': [
     ['atm', 'mailTickets'],
     ['atm', 'maintenances'],
+  ],
+  // The efficiency register — the same three families its own write hooks invalidate. The import
+  // (`atm.registerImport`) is server-excluded: the importing screen refetches itself.
+  'atm.registerEntry': [
+    ['atm', 'registerEntries'],
+    ['atm', 'registerReport'],
+    ['atm', 'registerBranchOptions'],
   ],
 
   // ── Gold ───────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import {
   ClipboardIcon,
   GridIcon,
   InboxIcon,
+  ShieldIcon,
   TagIcon,
   WrenchIcon,
 } from '../../../shared/ui/icons';
@@ -92,13 +93,32 @@ export const ATM_SHORTCUTS: Shortcut[] = [
     icon: ChartIcon,
     permission: 'atmReplenishment.view',
   },
-  /** Legacy `/data_edit_atm`. */
+  /**
+   * Legacy `/data_edit_atm`. The card follows its nav row's key — the Operations key since the
+   * data-edit split (D2, spec §7.3); a `manage`-only holder still reaches the page by its route.
+   */
   {
     to: '/atm/data-edit',
     titleKey: 'atm.nav.dataEdit',
     descKey: 'atm.cards.dataEdit',
     icon: TagIcon,
-    permission: 'atmMachine.manage',
+    permission: 'atmRefLabel.create',
+  },
+  /** The efficiency register — sheet `ATMs` of the owner's workbook. */
+  {
+    to: '/atm/register',
+    titleKey: 'atm.nav.register',
+    descKey: 'atm.cards.register',
+    icon: ShieldIcon,
+    permission: 'atmRegister.view',
+  },
+  /** Sheet `Data Report` — machines in operation per bank and per branch. */
+  {
+    to: '/atm/register/report',
+    titleKey: 'atm.nav.registerReport',
+    descKey: 'atm.cards.registerReport',
+    icon: ChartIcon,
+    permission: 'atmRegisterReport.view',
   },
 ];
 

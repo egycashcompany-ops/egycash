@@ -6,6 +6,7 @@
 //   · a mail DECISION stales maintenances too — accepting creates a maintenance row — and the
 //     unread badge, which is a count of pending tickets;
 //   · a machine-master write stales machines and the label lists it references.
+//   · an area move stales the efficiency register too: the machine's open period follows its area.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type BulkCreateAtmMachines,
@@ -16,6 +17,7 @@ import {
   type CreateAtmRefLabel,
   type ReassignAtmMachineArea,
   type UpdateAtmMachine,
+  type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
@@ -78,6 +80,19 @@ export const useUpdateAtmMachine = () => {
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmMachine }) =>
       api.updateMachine(id, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+  });
+};
+
+/** Operations' area move — the server moves the machine's open register entry with it (DEC-4). */
+export const useUpdateAtmMachineArea = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateAtmMachineArea }) =>
+      api.updateMachineArea(id, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: atmKeys.machines });
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, 'registerEntries') });
+    },
   });
 };
 

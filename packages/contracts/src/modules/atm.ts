@@ -169,6 +169,16 @@ export const ReassignAtmMachineAreaSchema = z
   .strict();
 export type ReassignAtmMachineArea = z.infer<typeof ReassignAtmMachineAreaSchema>;
 
+/**
+ * The same legacy move, area only, on one machine by id — the Operations path that survives the
+ * data-edit split (efficiency register spec D2/DEC-3): `atmMachine.moveArea` may change WHERE a
+ * machine is grouped without any other authority over the master. Versioned like every edit.
+ */
+export const UpdateAtmMachineAreaSchema = z
+  .object({ area: z.string().trim().min(1), version: z.number().int().min(0) })
+  .strict();
+export type UpdateAtmMachineArea = z.infer<typeof UpdateAtmMachineAreaSchema>;
+
 export const ListAtmMachinesQuerySchema = PaginationQuerySchema.extend({
   isActive: booleanQuery().optional(),
   search: z.string().optional(),
@@ -576,6 +586,17 @@ export const AtmSettingKeys = {
    * messages are still marked read, because the tag is a convenience and the ticket is the record.
    */
   MailBranchCategories: 'atm.mail.branchCategories',
+  /**
+   * The efficiency register's `EGYCASH-1..7` → ECMS branch (D4; value schema
+   * `AtmRegisterBranchCodesSettingSchema` in atm-register.ts). DEFAULT EMPTY — no branch is guessed
+   * (EG-18), so an unconfigured install receives nothing and the import is blocked.
+   */
+  RegisterBranchCodes: 'atm.register.branchCodes',
+  /**
+   * The register's bankCode → the label written on `atm_machines.bankName` (D5; value schema
+   * `AtmRegisterBankLabelsSettingSchema`). Defaults to `ATM_DEFAULT_BANK_LABELS_SETTING`.
+   */
+  RegisterBankLabels: 'atm.register.bankLabels',
 } as const;
 
 // ── Daily report (legacy /reports_atm) ──────────────────────────────────────────────────────────

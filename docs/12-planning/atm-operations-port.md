@@ -42,7 +42,7 @@ ECMS" means.
 | `users` / `user_status` | platform auth/RBAC | Single-session enforcement is a platform policy, not module behaviour (T4) |
 | `employees` (dept "الصراف الالى") | `platform/directory` + `atm.maintenanceLeaderDepartmentIds` setting | The hardcoded department NAME became configuration |
 | Legacy pages | `/atm/replenishments(±/done)`, `/atm/maintenance(±/done)`, `/atm/mail-tickets(±/log)`, `/atm/machines`, `/atm/data-edit` | `apps/web/src/modules/atm/routes.tsx` |
-| Privileges (`atm-user`, `atm-user-review`, `atm-admin`, `Efficiency-admin`) | `atmReplenishment.*`, `atmMaintenance.*`, `atmMailTicket.view/decide/viewLog`, `atmMachine.view/manage` | Roles carry the legacy bundles; the review role = view+complete on done surfaces (contad_app.js:1056 vs :2096); the mail log is admin-narrow (:2901) |
+| Privileges (`atm-user`, `atm-user-review`, `atm-admin`, `Efficiency-admin`) | `atmReplenishment.*`, `atmMaintenance.*`, `atmMailTicket.view/decide/viewLog`, `atmMachine.view/manage/moveArea`, `atmRefLabel.create/edit`; Efficiency: `atmRegister.view/create/edit/delete/export/handover/viewSecrets/import`, `atmRegisterReport.view` | Roles carry the legacy bundles; the review role = view+complete on done surfaces (contad_app.js:1056 vs :2096); the mail log is admin-narrow (:2901). Since the Efficiency register, `/atm/data-edit` is split: Operations hold `atmRefLabel.*` + `atmMachine.moveArea`, the administrator keeps `manage` (§9) |
 
 ## 3. Decisions taken under the owner's delegation
 
@@ -51,7 +51,9 @@ ECMS" means.
   module's collection — and the legacy itself kept `atm_data_lists` beside `data_lists` as a
   separate list with a separate administrator. Machines store the label string, as legacy did.
 - **D2 — `/data_edit_atm` in scope** (owner's follow-up message): delivered whole — bulk add with
-  skip-and-name, delete with the `-D` rename, area reassignment, both label lists.
+  skip-and-name, delete with the `-D` rename, area reassignment, both label lists. Since the
+  Efficiency register its authority is split between Operations and the administrator (§9);
+  nothing was removed.
 - **D3 — `/reports_atm` DELIVERED** (revised): originally deferred as outside the owner's page
   list, then built under the owner's standing delegation. It rides the existing view grants and
   declares no permission and no page (the operations B5-report precedent).
@@ -235,3 +237,42 @@ argument for the suite existing at all:
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |
+| — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
+
+## 9. The Efficiency register and the data-edit split
+
+The owner's Efficiency & Investigations workbook became the machine register
+([atm-efficiency-register.md](atm-efficiency-register.md)): one custody period per row, from the
+bank's handover to ECMS until ECMS hands the machine back. From then on the register — not
+`/atm/data-edit` — decides which Operations machines exist (owner decision D2): a receipt creates,
+reactivates or links the `atm_machines` row, a handover archives it.
+
+`/atm/data-edit` therefore stays the OPERATIONS page with the machine-existence actions taken out of
+Operations' hands — gated, never deleted:
+
+| Action | Route | Key after the split |
+|---|---|---|
+| Add / bulk add a machine, delete by codes, reassign by code, edit or archive a machine | `POST /atm/machines`, `/bulk`, `/bulk-delete`, `/reassign-area`, `PATCH /:id` | `atmMachine.manage` (unchanged) |
+| Move ONE machine to another area (legacy «نقل ماكينة لمنطقة», contad_app.js:2529-2541) | `PATCH /atm/machines/:id/area` (new, DEC-3) | `atmMachine.moveArea` or `manage` |
+| Add a bank or area label | `POST /atm/ref-labels/:kind` | `atmRefLabel.create` or `manage` |
+| Rename or archive-toggle a label | `PATCH /atm/ref-labels/:kind/:id` | `atmRefLabel.edit` or `manage` |
+| Delete a label | `DELETE /atm/ref-labels/:kind/:id` | `atmMachine.manage` (unchanged) |
+
+- **Every AREA write moves the machine's open register entries with it** — `moveArea`, `PATCH /:id`
+  and `reassign-area`, in the same transaction (DEC-4). A name or bank edit by an administrator does
+  not flow back into the register.
+- **The key must reach the branch it touches** (DEC-29): `moveArea` and label edit need the key over
+  the machine's or label's whole branch (or the label/machine inside today's `manage` scope); a label
+  create needs `atmRefLabel.create` or `manage` over the branch it is filed in, so a top-bar choice
+  that only an unrelated key reaches is refused (review finding F-4) — a `manage` holder whose scope
+  reaches no whole branch (department, section, own) still adds labels in the branch they are placed
+  in, as before.
+- **Navigation:** the Machine Data row's key moves from `atmMachine.manage` to `atmRefLabel.create`
+  through `previousPermission` (`seed-navigation.ts`, the `previousIcon` mechanism) — corrected only
+  while the stored row still holds the old key. The web route guard accepts any of
+  `atmRefLabel.create`, `atmRefLabel.edit`, `atmMachine.moveArea`, `atmMachine.manage`.
+- **No role or delegated grant is widened at boot** (lead override O-1). Granting the Operations
+  keys to existing roles, and removing `manage` from them, is an administrator's step (register spec
+  §12.2); until then a manage-only holder still opens the page by URL through the route guard, but
+  the sidebar row now needs `atmRefLabel.create`.
+

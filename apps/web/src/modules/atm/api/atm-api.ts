@@ -25,6 +25,7 @@ import {
   type Paginated,
   type ReassignAtmMachineArea,
   type UpdateAtmMachine,
+  type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import {
@@ -56,6 +57,9 @@ export const createMachine = (body: CreateAtmMachine): Promise<AtmMachineDto> =>
   post<AtmMachineDto>('/atm/machines', body);
 export const updateMachine = (id: string, body: UpdateAtmMachine): Promise<AtmMachineDto> =>
   patch<AtmMachineDto>(`/atm/machines/${id}`, body);
+/** The Operations area move (`atmMachine.moveArea`): the area only, by id, versioned. */
+export const updateMachineArea = (id: string, body: UpdateAtmMachineArea): Promise<AtmMachineDto> =>
+  patch<AtmMachineDto>(`/atm/machines/${id}/area`, body);
 
 // ── Reference label lists (legacy `atm_data_lists.bank[]` / `.area[]`) ──────
 export const listRefLabels = (

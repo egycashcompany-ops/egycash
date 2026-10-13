@@ -11,8 +11,19 @@
 //   /atm/mail-tickets          atmMailTicket.view      (legacy /mail_maintenance)
 //   /atm/mail-tickets/log      atmMailTicket.viewLog   (legacy /mail_maintenance_log)
 //   /atm/machines              atmMachine.view         (legacy /all_atm)
-//   /atm/data-edit             atmMachine.manage       (legacy /data_edit_atm)
+//   /atm/data-edit             any of atmRefLabel.create, atmRefLabel.edit, atmMachine.moveArea,
+//                              atmMachine.manage       (legacy /data_edit_atm — Operations keep the
+//                              lists and the area move, the machine master stays `manage`; each
+//                              action on the page is gated again by its own key)
 //   /atm/reports/daily         atmReplenishment.view   (legacy /reports_atm)
+//
+// The efficiency register (docs/12-planning/atm-efficiency-register.md §8.1) — no legacy screen;
+// its source is the owner's workbook `Comprehensive ATMs report` (sheets `ATMs`, `Data Report`):
+//   /atm/register              atmRegister.view        (sheet ATMs)
+//   /atm/register/report       atmRegisterReport.view  (sheet Data Report)
+//   /atm/register/import       atmRegister.import      (the one-time workbook import + settings)
+// The three register screens are built on the feature branch by their own work packages and
+// release together with these routes — the owner rule above holds at release, not per commit.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -27,6 +38,17 @@ import { MailLogPage } from './pages/MailLogPage';
 import { MachinesPage } from './pages/MachinesPage';
 import { DataEditPage } from './pages/DataEditPage';
 import { DailyReportPage } from './pages/DailyReportPage';
+import { RegisterPage } from './pages/RegisterPage';
+import { RegisterReportPage } from './pages/RegisterReportPage';
+import { RegisterImportPage } from './pages/RegisterImportPage';
+
+/** Every key that leads to the data-edit page (spec §7.3) — the route guard is any-of. */
+const DATA_EDIT_KEYS = [
+  'atmRefLabel.create',
+  'atmRefLabel.edit',
+  'atmMachine.moveArea',
+  'atmMachine.manage',
+] as const;
 
 export default function AtmRoutes(): JSX.Element {
   return (
@@ -92,7 +114,7 @@ export default function AtmRoutes(): JSX.Element {
         <Route
           path="data-edit"
           element={
-            <RequirePermission permission="atmMachine.manage">
+            <RequirePermission anyOf={DATA_EDIT_KEYS}>
               <DataEditPage />
             </RequirePermission>
           }
@@ -102,6 +124,30 @@ export default function AtmRoutes(): JSX.Element {
           element={
             <RequirePermission permission="atmReplenishment.view">
               <DailyReportPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="register"
+          element={
+            <RequirePermission permission="atmRegister.view">
+              <RegisterPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="register/report"
+          element={
+            <RequirePermission permission="atmRegisterReport.view">
+              <RegisterReportPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="register/import"
+          element={
+            <RequirePermission permission="atmRegister.import">
+              <RegisterImportPage />
             </RequirePermission>
           }
         />

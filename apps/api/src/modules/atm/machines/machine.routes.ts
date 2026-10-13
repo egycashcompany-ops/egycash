@@ -1,7 +1,13 @@
-// /all_atm (read) rides `atmMachine.view`; every master mutation is the /data_edit_atm surface,
-// `atmMachine.manage` — the legacy gave that page to a smaller privilege set than the read
-// (contad_app.js:2363 vs :2559), and unlike every legacy POST these are actually guarded
-// (port doc conflict T1-auth).
+// /all_atm (read) rides `atmMachine.view`; the master mutations are the /data_edit_atm surface —
+// the legacy gave that page to a smaller privilege set than the read (contad_app.js:2363 vs
+// :2559), and unlike every legacy POST these are actually guarded (port doc conflict T1-auth).
+//
+// Since the Efficiency register controls which machines exist (D2, docs/12-planning/
+// atm-efficiency-register.md §7.1), the surface is split: add, bulk add, delete-by-codes,
+// reassign-by-code and every `PATCH /:id` (name, bank, area, archive) stay `atmMachine.manage`;
+// Operations move ONE machine to another area through `PATCH /:id/area`, which takes
+// `atmMachine.moveArea` or `manage` (DEC-3) — the service then asks that the key reach the
+// machine's branch (DEC-29). Every area write moves the machine's open register entries with it.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -10,17 +16,19 @@ import {
   CreateAtmMachineSchema,
   ListAtmMachinesQuerySchema,
   ReassignAtmMachineAreaSchema,
+  UpdateAtmMachineAreaSchema,
   UpdateAtmMachineSchema,
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   bulkCreateMachines,
   bulkDeleteMachines,
   createMachine,
   listMachines,
+  moveMachineArea,
   reassignMachineArea,
   updateMachine,
 } from './machine.controller';
@@ -65,6 +73,14 @@ export const buildAtmMachinesRouter = (): Router => {
     authorize('atmMachine.manage'),
     validate({ body: ReassignAtmMachineAreaSchema }),
     asyncHandler(reassignMachineArea),
+  );
+  // Declared before `/:id`, the literal-before-param rule the other routes follow.
+  router.patch(
+    '/:id/area',
+    authenticate,
+    authorizeAny('atmMachine.moveArea', 'atmMachine.manage'),
+    validate({ body: UpdateAtmMachineAreaSchema, params: IdParamSchema }),
+    asyncHandler(moveMachineArea),
   );
   router.patch(
     '/:id',

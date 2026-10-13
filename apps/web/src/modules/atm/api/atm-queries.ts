@@ -6,6 +6,7 @@
 //   · a mail DECISION stales maintenances too — accepting creates a maintenance row — and the
 //     unread badge, which is a count of pending tickets;
 //   · a machine-master write stales machines and the label lists it references.
+//   · an area move stales the efficiency register too: the machine's open period follows its area.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type BulkCreateAtmMachines,
@@ -16,6 +17,7 @@ import {
   type CreateAtmRefLabel,
   type ReassignAtmMachineArea,
   type UpdateAtmMachine,
+  type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
@@ -81,6 +83,19 @@ export const useUpdateAtmMachine = () => {
   });
 };
 
+/** Operations' area move — the server moves the machine's open register entry with it (DEC-4). */
+export const useUpdateAtmMachineArea = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateAtmMachineArea }) =>
+      api.updateMachineArea(id, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: atmKeys.machines });
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, 'registerEntries') });
+    },
+  });
+};
+
 // ── Reference labels ────────────────────────────────────────────────────────
 export const useAtmRefLabels = (kind: 'bank' | 'area', params: AtmListParams, enabled = true) =>
   useQuery({
@@ -89,11 +104,15 @@ export const useAtmRefLabels = (kind: 'bank' | 'area', params: AtmListParams, en
     enabled,
   });
 
+// The label dialog reports its own failures — "already exists" for the 409, the reader's own
+// words for anything else (`refLabelErrorText`) — so these two opt out of the global toast:
+// declaring `onError` is what opts out (`shared/lib/query-client.ts`). One failure, one message.
 export const useCreateAtmRefLabel = (kind: 'bank' | 'area') => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateAtmRefLabel) => api.createRefLabel(kind, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onError: () => undefined,
   });
 };
 
@@ -103,6 +122,7 @@ export const useUpdateAtmRefLabel = (kind: 'bank' | 'area') => {
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmRefLabel }) =>
       api.updateRefLabel(kind, id, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onError: () => undefined,
   });
 };
 

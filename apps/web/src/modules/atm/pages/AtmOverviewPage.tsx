@@ -1,7 +1,9 @@
-// ATM module home at /atm — a card per ported legacy screen, shown only when the caller holds
-// the permission the screen is routed behind (the fleet/operations owner rule: no forbidden
-// cards, no card without a shipped screen). The unread-mail badge rides the mail card, which is
-// the port of the counter every legacy ATM page rendered in its nav (contad_app.js:266-268).
+// ATM module home at /atm — a card per ported legacy screen, plus the two efficiency register
+// screens whose source is the owner's workbook rather than a legacy page (sheets `ATMs` and
+// `Data Report`), each shown only when the caller holds the permission the screen is routed
+// behind (the fleet/operations owner rule: no forbidden cards, no card without a shipped screen).
+// The unread-mail badge rides the mail card, which is the port of the counter every legacy ATM
+// page rendered in its nav (contad_app.js:266-268).
 import { type ComponentType, type SVGProps } from 'react';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -13,6 +15,7 @@ import {
   ClipboardIcon,
   GridIcon,
   InboxIcon,
+  ShieldIcon,
   TagIcon,
   WrenchIcon,
 } from '../../../shared/ui/icons';
@@ -92,13 +95,32 @@ export const ATM_SHORTCUTS: Shortcut[] = [
     icon: ChartIcon,
     permission: 'atmReplenishment.view',
   },
-  /** Legacy `/data_edit_atm`. */
+  /**
+   * Legacy `/data_edit_atm`. The card follows its nav row's key — the Operations key since the
+   * data-edit split (D2, spec §7.3); a `manage`-only holder still reaches the page by its route.
+   */
   {
     to: '/atm/data-edit',
     titleKey: 'atm.nav.dataEdit',
     descKey: 'atm.cards.dataEdit',
     icon: TagIcon,
-    permission: 'atmMachine.manage',
+    permission: 'atmRefLabel.create',
+  },
+  /** The efficiency register — sheet `ATMs` of the owner's workbook. */
+  {
+    to: '/atm/register',
+    titleKey: 'atm.nav.register',
+    descKey: 'atm.cards.register',
+    icon: ShieldIcon,
+    permission: 'atmRegister.view',
+  },
+  /** Sheet `Data Report` — machines in operation per bank and per branch. */
+  {
+    to: '/atm/register/report',
+    titleKey: 'atm.nav.registerReport',
+    descKey: 'atm.cards.registerReport',
+    icon: ChartIcon,
+    permission: 'atmRegisterReport.view',
   },
 ];
 

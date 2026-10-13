@@ -152,6 +152,16 @@ export const AUDIT_ACTIONS = [
   // page's question; a diff on a status field cannot answer it. Same argument as gold's verbs.
   'accept',
   'reject',
+  // ATM efficiency register (docs/12-planning/atm-efficiency-register.md). Receipts, handovers and
+  // edits audit under the verbs that already exist (create / statusChange / update / delete, the
+  // transition named in `changes`), so only two acts are new:
+  //   · `secretRevealed` — an audited READ of a sealed value (the safe-door combination). The
+  //     `medicalRecordRead` rule: written even when nothing is recorded, because «somebody went
+  //     looking» is the fact, and the row says that a value was shown — never the value.
+  //   · `atmRegisterImport` — one row per applied workbook import, carrying the batch totals: the
+  //     `attendancePunchImport` shape, one decision over thousands of rows.
+  'secretRevealed',
+  'atmRegisterImport',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

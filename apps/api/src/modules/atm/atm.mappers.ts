@@ -18,6 +18,24 @@ import { type AtmMailTicketDoc } from './mail-tickets/mail-ticket.model';
 const iso = (d: Date): string => d.toISOString();
 const isoOrNull = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
+/**
+ * DEC-23: a master row written by `npm run atm:import` bypassed Mongoose and carries no `__v`,
+ * `createdAt` or `updatedAt` until the boot backfill (machines/machine.migration.ts) has run. The
+ * two master mappers read those as version 0 and the instant inside the row's own ObjectId, so a
+ * list served before the backfill answers instead of throwing.
+ */
+const legacyStamps = (
+  doc: Pick<AtmMachineDoc, '_id' | '__v' | 'createdAt' | 'updatedAt'>,
+): { version: number; createdAt: string; updatedAt: string } => {
+  const raw = doc as Partial<Pick<AtmMachineDoc, '__v' | 'createdAt' | 'updatedAt'>>;
+  const minted = doc._id.getTimestamp();
+  return {
+    version: raw.__v ?? 0,
+    createdAt: iso(raw.createdAt ?? minted),
+    updatedAt: iso(raw.updatedAt ?? raw.createdAt ?? minted),
+  };
+};
+
 export const toAtmMachineDto = (doc: AtmMachineDoc): AtmMachineDto => ({
   id: String(doc._id),
   branchId: String(doc.branchId),
@@ -27,9 +45,7 @@ export const toAtmMachineDto = (doc: AtmMachineDoc): AtmMachineDto => ({
   zone: doc.zone,
   area: doc.area,
   isActive: doc.isActive,
-  version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  ...legacyStamps(doc),
 });
 
 export const toAtmRefLabelDto = (doc: AtmRefLabelDoc): AtmRefLabelDto => ({
@@ -37,9 +53,7 @@ export const toAtmRefLabelDto = (doc: AtmRefLabelDoc): AtmRefLabelDto => ({
   branchId: String(doc.branchId),
   name: doc.name,
   isActive: doc.isActive,
-  version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  ...legacyStamps(doc),
 });
 
 export const toAtmReplenishmentDto = (doc: AtmReplenishmentDoc): AtmReplenishmentDto => ({

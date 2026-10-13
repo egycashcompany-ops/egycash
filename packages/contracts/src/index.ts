@@ -65,3 +65,4 @@ export * from './modules/operations.js';
 export * from './modules/gold.js';
 export * from './modules/gold-portal.js';
 export * from './modules/atm.js';
+export * from './modules/atm-register.js';

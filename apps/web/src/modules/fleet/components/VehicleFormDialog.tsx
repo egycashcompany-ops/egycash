@@ -9,7 +9,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { type FleetVehicleDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
-import { useCan } from '../../../platform/rbac/Can';
 import { createPortal } from 'react-dom';
 import { Input, Select } from '../../../shared/ui/form';
 import { Spinner } from '../../../shared/ui/Spinner';
@@ -18,7 +17,7 @@ import { cn } from '../../../shared/lib/cn';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { localized } from '../../../shared/lib/format';
-import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import { useBranchOptions } from '../../organization/shared/references';
 import {
   useCreateVehicle,
   useDefaultVehicleBranch,
@@ -78,7 +77,6 @@ export const VehicleFormDialog = ({
   vehicle: FleetVehicleDto | null;
 }): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [form, setForm] = useState<FormState>(fromVehicle(vehicle));
   // Create mode only: the picked scan is uploaded AFTER the vehicle exists, because a file is
@@ -87,7 +85,7 @@ export const VehicleFormDialog = ({
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const types = useVehicleTypes();
-  const { data: branches = [] } = useBranches(can('branch.view'));
+  const { data: branches = [] } = useBranchOptions(open);
   const defaultBranch = useDefaultVehicleBranch(open && vehicle === null);
   const create = useCreateVehicle();
   const update = useUpdateVehicle();
@@ -219,13 +217,12 @@ export const VehicleFormDialog = ({
     toast.success(t('fleet.vehicles.licenseImage.uploaded'));
   };
 
-  const branchHint = can('branch.view')
-    ? defaultBranch.data?.branchId == null && vehicle === null
+  const branchHint =
+    defaultBranch.data?.branchId == null && vehicle === null
       ? t('fleet.vehicles.fields.defaultBranchMissing', {
           name: defaultBranch.data?.configuredName ?? '',
         })
-      : undefined
-    : t('fleet.vehicles.fields.branchNoPermission');
+      : undefined;
 
   const hasImage = vehicle?.licenseImage != null;
   const typeName = (types.data?.items ?? []).find((type) => type.id === form.typeId)?.name ?? null;
@@ -471,17 +468,18 @@ export const VehicleFormDialog = ({
                     </DesignField>
                     {/*
                       The branch select renders for EVERY user, unlike the optional org fields
-                      elsewhere: the field is required, so hiding it behind `branch.view` would
-                      leave a user unable to complete the form at all. Without that permission the
-                      branch list is empty and the hint says who to ask.
+                      elsewhere: the field is required, so hiding it — or feeding it from the
+                      `branch.view`-gated list, which left it offering nothing — would leave a user
+                      unable to complete the form at all. It is fed from the reference options,
+                      which any authenticated user may read.
                     */}
                     <DesignField
                       label={t('fleet.vehicles.fields.branch')}
                       required
                       missing={required.isMissing('branch')}
                       hint={branchHint}
-                      // Missing, the line under the box says WHY it is empty — no permission to
-                      // list the branches, or no default to preselect — rather than «حقل مطلوب».
+                      // Missing, the line under the box says WHY it is empty — no default branch
+                      // configured to preselect — rather than «حقل مطلوب».
                       error={
                         required.isMissing('branch') && branchHint !== undefined
                           ? branchHint

@@ -11,7 +11,6 @@ import {
   type OfferTermsDto,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
-import { useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { Button } from '../../../../../shared/ui/Button';
 import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
@@ -19,7 +18,11 @@ import { Field, Input, Select, Textarea, FormActions } from '../../../../../shar
 import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
 import { localized } from '../../../../../shared/lib/format';
 import { ManagerPicker, type ManagerRef } from './ManagerPicker';
-import { useBranches, useDepartments, useJobTitles } from '../api/job-offer-queries';
+import {
+  useBranchOptions,
+  useDepartmentReferenceOptions,
+  useJobTitleReferenceOptions,
+} from '../../../../organization/shared/references';
 
 interface AllowanceRow {
   name: string;
@@ -41,12 +44,14 @@ export const OfferTermsForm = ({
   onSubmit: (terms: OfferTerms) => void;
 }): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
 
-  const branches = useBranches(can('branch.view'));
-  const departments = useDepartments(can('department.view'));
-  const jobTitles = useJobTitles(can('jobTitle.view'));
+  // The reference OPTIONS, not the `<unit>.view`-gated administration lists. All three fields are
+  // required, so a reader without those grants had three empty pickers and a Submit that could
+  // never be satisfied — they could not write an offer at all.
+  const branches = useBranchOptions();
+  const departments = useDepartmentReferenceOptions();
+  const jobTitles = useJobTitleReferenceOptions();
 
   const [jobTitleId, setJobTitleId] = useState(initial?.jobTitleId ?? '');
   const [departmentId, setDepartmentId] = useState(initial?.departmentId ?? '');
@@ -130,7 +135,7 @@ export const OfferTermsForm = ({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label={t('offers.form.jobTitle')} required>
           <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
-            <option value="">{can('jobTitle.view') ? t('offers.form.selectRef') : t('offers.form.noRefAccess')}</option>
+            <option value="">{t('offers.form.selectRef')}</option>
             {jobTitles.data?.map((j) => (
               <option key={j.id} value={j.id}>{localized(j.name, locale)}</option>
             ))}
@@ -138,7 +143,7 @@ export const OfferTermsForm = ({
         </Field>
         <Field label={t('offers.form.department')} required>
           <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
-            <option value="">{can('department.view') ? t('offers.form.selectRef') : t('offers.form.noRefAccess')}</option>
+            <option value="">{t('offers.form.selectRef')}</option>
             {departments.data?.map((d) => (
               <option key={d.id} value={d.id}>{localized(d.name, locale)}</option>
             ))}
@@ -146,7 +151,7 @@ export const OfferTermsForm = ({
         </Field>
         <Field label={t('offers.form.branch')} required>
           <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-            <option value="">{can('branch.view') ? t('offers.form.selectRef') : t('offers.form.noRefAccess')}</option>
+            <option value="">{t('offers.form.selectRef')}</option>
             {branches.data?.map((b) => (
               <option key={b.id} value={b.id}>{localized(b.name, locale)}</option>
             ))}

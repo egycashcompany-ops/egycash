@@ -1,14 +1,19 @@
 // Read-only render of an offer's terms (used for the live package, revisions, and the accepted
-// snapshot). Organizational references resolve to names via the cached reference lists (same as the
-// form); the manager resolves via UserName. Falls back to a short reference without directory access.
+// snapshot). Organizational references resolve to names via the cached reference OPTIONS (same as
+// the form) — authenticated, not `<unit>.view`-gated, so a reader who may open the offer may read
+// the names on it. The manager resolves via UserName; that one still needs `user.view`, and falls
+// back to a short reference without it.
 import { type ReactNode } from 'react';
 import { type Locale, type OfferTermsDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
-import { useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { formatDate, formatMoney, localized } from '../../../../../shared/lib/format';
 import { UserName } from './UserName';
-import { useBranches, useDepartments, useJobTitles } from '../api/job-offer-queries';
+import {
+  useBranchOptions,
+  useDepartmentReferenceOptions,
+  useJobTitleReferenceOptions,
+} from '../../../../organization/shared/references';
 
 const Row = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -19,11 +24,10 @@ const Row = ({ label, children }: { label: string; children: ReactNode }): JSX.E
 
 export const TermsView = ({ terms }: { terms: OfferTermsDto }): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const branches = useBranches(can('branch.view'));
-  const departments = useDepartments(can('department.view'));
-  const jobTitles = useJobTitles(can('jobTitle.view'));
+  const branches = useBranchOptions();
+  const departments = useDepartmentReferenceOptions();
+  const jobTitles = useJobTitleReferenceOptions();
 
   const nameOf = (
     list: { id: string; name: { ar: string; en: string } }[] | undefined,

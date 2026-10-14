@@ -85,7 +85,7 @@ const client = (sort: { sortBy: string; sortDir: string; sort: string }): QueryC
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(listKey('fleet', 'vehicles', vehicleParams(sort)), paged(ROWS));
   qc.setQueryData(listKey('fleet', 'vehicleTypes', { pageSize: 100 }), paged([]));
-  qc.setQueryData(['hr', 'branches', 'active'], paged([]));
+  qc.setQueryData(['organization', 'branches', 'options'], []);
   return qc;
 };
 

@@ -23,9 +23,9 @@ import { localized, orgUnitLabel } from '../../../../../../shared/lib/format';
 import {
   useBranchOptions,
   useDepartmentOptions,
+  useJobTitleReferenceOptions,
   useSectionOptions,
 } from '../../../../../organization/shared/references';
-import { useJobTitles } from '../../../../recruitment/job-offers/api/job-offer-queries';
 import { OfferPicker } from '../OfferPicker';
 import { useEmployees, useExitAction, useRehireAction, useSubordinates } from '../../api/employee-queries';
 import { ActionDialog, useActionCommonFields } from './ActionDialog';
@@ -202,7 +202,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
   const { data: branches = [] } = useBranchOptions(open);
   const { data: departments = [] } = useDepartmentOptions(branchId, open);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId, open);
-  const jobTitles = useJobTitles(open && can('jobTitle.view'));
+  const { data: jobTitles = [] } = useJobTitleReferenceOptions(open);
   const canComp = can('employee.manageCompensation');
 
   const submit = async (): Promise<void> => {
@@ -329,7 +329,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
             <Field label={t('offers.form.jobTitle')} required>
               <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
                 <option value="">{t('common.select')}</option>
-                {(jobTitles.data ?? []).map((jt) => (
+                {jobTitles.map((jt) => (
                   <option key={jt.id} value={jt.id}>{localized(jt.name, locale)}</option>
                 ))}
               </Select>

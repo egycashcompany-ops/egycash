@@ -84,16 +84,6 @@ export const useCreateEmployee = () => {
 };
 
 // ── Platform Identity (ADR-017) ──────────────────────────────────────────────
-/** Resolve the hiring branch's Branch Code; degrades to empty without `branch.view`. */
-export const useBranch = (branchId: string) =>
-  useQuery({
-    queryKey: [MODULE, 'branches', 'detail', branchId],
-    queryFn: () => api.getBranch(branchId),
-    enabled: branchId !== '',
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
-
 /** The employee's linked login account, if any. */
 export const useLinkedUser = (userId: string | null) =>
   useQuery({

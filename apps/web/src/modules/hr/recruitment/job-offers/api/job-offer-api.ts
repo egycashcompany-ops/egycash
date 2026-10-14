@@ -5,9 +5,7 @@
 import {
   type AwaitingOfferCandidateDto,
   type AcceptJobOffer,
-  type BranchDto,
   type CreateJobOffer,
-  type DepartmentDto,
   type JobOfferDto,
   type JobTitleDto,
   type Paginated,
@@ -57,12 +55,12 @@ export const rejectJobOffer = (id: string, body: RejectJobOffer): OfferEnvelope 
 export const withdrawJobOffer = (id: string, body: WithdrawJobOffer): OfferEnvelope =>
   postWorkflow<JobOfferDto>(`/hr/job-offers/${id}/withdraw`, body);
 
-// ── Reference data (existing platform endpoints, reused; each gated by its own *.view) ──────────
-export const listBranches = (): Promise<Paginated<BranchDto>> =>
-  getPage<BranchDto>(`/platform/branches${buildQuery({ status: 'active', pageSize: 100 })}`);
-
-export const listDepartments = (): Promise<Paginated<DepartmentDto>> =>
-  getPage<DepartmentDto>(`/platform/departments${buildQuery({ status: 'active', pageSize: 100 })}`);
+// ── Reference data ─────────────────────────────────────────────────────────────────────────────
+//
+// Branches and Departments used to be read here, from the `<unit>.view`-gated administration lists.
+// They come from `/platform/<unit>/options` now (see `organization/shared/references.ts`): a reader
+// who may see a row may read the name of the unit on it, whether or not they may browse the
+// directory. What stays here is the one question those options cannot answer.
 
 export const listJobTitles = (
   /**
@@ -74,14 +72,10 @@ export const listJobTitles = (
    * stopped narrowing by, and the drivers filters silently went back to matching nobody. Asking
    * the server for the flag makes the answer bounded by the number of driving titles.
    */
-  requiresDrivingTest?: boolean,
+  requiresDrivingTest: boolean,
 ): Promise<Paginated<JobTitleDto>> =>
   getPage<JobTitleDto>(
-    `/platform/job-titles${buildQuery({
-      status: 'active',
-      pageSize: 100,
-      ...(requiresDrivingTest === undefined ? {} : { requiresDrivingTest }),
-    })}`,
+    `/platform/job-titles${buildQuery({ status: 'active', pageSize: 100, requiresDrivingTest })}`,
   );
 
 export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>

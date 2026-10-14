@@ -2332,7 +2332,6 @@ const en: Record<string, string> = {
   'offers.form.noUsers': 'No matching users',
   'offers.form.needDirectory': 'Selecting a manager needs directory access (user.view).',
   'offers.form.selectRef': 'Select…',
-  'offers.form.noRefAccess': 'No access to this list',
   'offers.form.optional': 'Optional',
   'offers.form.employmentType': 'Employment type',
   'offers.form.salary': 'Salary',
@@ -4517,8 +4516,6 @@ const en: Record<string, string> = {
   'fleet.vehicles.fields.operation': 'Operation',
   'fleet.vehicles.fields.insuranceCompany': 'Insurance company',
   'fleet.vehicles.fields.catalogHint': 'Managed in Fleet catalogs',
-  'fleet.vehicles.fields.branchNoPermission':
-    'You cannot list branches. Ask an administrator to set the vehicle’s branch.',
   'fleet.vehicles.fields.defaultBranchMissing':
     'No branch named “{{name}}” was found — choose one.',
   // Filters (§10)
@@ -10738,7 +10735,6 @@ const ar: Record<string, string> = {
   'offers.form.noUsers': 'لا يوجد مستخدمون مطابقون',
   'offers.form.needDirectory': 'يتطلّب اختيار المدير صلاحية عرض المستخدمين (user.view).',
   'offers.form.selectRef': 'اختر…',
-  'offers.form.noRefAccess': 'لا صلاحية لعرض هذه القائمة',
   'offers.form.optional': 'اختياري',
   'offers.form.employmentType': 'نوع التوظيف',
   'offers.form.salary': 'الراتب',
@@ -12893,8 +12889,6 @@ const ar: Record<string, string> = {
   'fleet.vehicles.fields.operation': 'التشغيل',
   'fleet.vehicles.fields.insuranceCompany': 'شركة التأمين',
   'fleet.vehicles.fields.catalogHint': 'تُدار من قوائم الحركة',
-  'fleet.vehicles.fields.branchNoPermission':
-    'لا تملك صلاحية عرض الفروع. اطلب من المسؤول تحديد فرع السيارة.',
   'fleet.vehicles.fields.defaultBranchMissing': 'لا يوجد فرع باسم «{{name}}» — اختر فرعاً.',
   'fleet.vehicles.filters.make': 'اختر الماركة',
   'fleet.vehicles.filters.licenseClass': 'اختر الترخيص',

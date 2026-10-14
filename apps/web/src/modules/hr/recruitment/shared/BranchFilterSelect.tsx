@@ -2,16 +2,21 @@
 // (it is the field the platform's own→…→organization scoping already keys on), so the control is
 // identical everywhere and only the state around it differs.
 //
-// It renders NOTHING without `branch.view`. The catalog is a separate permission from the queue
-// itself, so a user who can see the queue but not the directory would otherwise get an empty
-// dropdown that silently filters nothing — and adding the filter must not change who can read what.
+// It renders for EVERY reader of the queue. Its options come from `/platform/branches/options`,
+// which is authenticated but not `branch.view`-gated — naming the branches a list is already
+// scoped by is not browsing the directory. It used to hide itself without `branch.view`, on the
+// reasoning that an empty dropdown filters nothing; but the dropdown is only empty because it was
+// fed from the administration LIST, and hiding it left a reader whose grants reach the whole
+// company looking at every branch's rows with nothing to narrow them by.
+//
+// It still only NARROWS. The server scopes the rows under the screen's own grant, so picking a
+// branch whose rows the reader may not see returns an empty page, never somebody else's records.
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
-import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import { localized } from '../../../../shared/lib/format';
-import { useBranches } from '../job-offers/api/job-offer-queries';
+import { useBranchOptions } from '../../../organization/shared/references';
 
 export const BranchFilterSelect = ({
   value,
@@ -22,14 +27,10 @@ export const BranchFilterSelect = ({
   onChange: (branchIds: string[]) => void;
   /** A ✕ that clears every pick — see `MultiSelect`. Fleet's bars turn it on. */
   clearable?: boolean;
-}): JSX.Element | null => {
+}): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const allowed = can('branch.view');
-  const { data: branches = [] } = useBranches(allowed);
-
-  if (!allowed) return null;
+  const { data: branches = [] } = useBranchOptions();
 
   return (
     <MultiSelect

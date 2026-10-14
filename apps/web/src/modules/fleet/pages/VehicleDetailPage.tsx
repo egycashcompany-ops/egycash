@@ -17,7 +17,7 @@ import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { formatDate, formatDateTime, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import { useBranchOptions } from '../../organization/shared/references';
 import {
   useExpectedReading,
   useFleetCatalog,
@@ -310,7 +310,7 @@ export const VehicleDetailPage = (): JSX.Element => {
   })();
   const rosterToday = useRosterDay(can('fleetRoster.view') ? today : '');
   const types = useVehicleTypes();
-  const { data: branches = [] } = useBranches(can('branch.view'));
+  const { data: branches = [] } = useBranchOptions();
   // The three catalog references, resolved to names from the same cached per-kind lists the
   // registry's columns and the form's selects read — one request per kind for the whole app.
   const licenseClasses = useFleetCatalog('licenseClass');

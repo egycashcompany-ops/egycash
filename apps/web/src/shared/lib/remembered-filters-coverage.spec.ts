@@ -45,7 +45,9 @@ const pageFiles = (dir: string): string[] =>
 /** Screens that remember their filters, with the params each deliberately does NOT remember. */
 const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/atm/pages/DataEditPage.tsx', ['tab']],
-  ['modules/atm/pages/MachinesPage.tsx', []],
+  // `q`: the free-text search from before the column filters (banks, codes, name, areas — all
+  // remembered), only ever deleted so an old link or remembered view sheds it.
+  ['modules/atm/pages/MachinesPage.tsx', ['q']],
   ['modules/atm/pages/MaintenancePage.tsx', []],
   ['modules/atm/pages/RegisterPage.tsx', []],
   ['modules/atm/pages/ReplenishmentsPage.tsx', []],

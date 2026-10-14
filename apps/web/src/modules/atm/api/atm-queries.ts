@@ -10,6 +10,8 @@
 //   · an area move stales the efficiency register too: the machine's open period follows its area.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AtmMachineDto,
+  type AtmMachinesSummaryDto,
   type AtmOperationFacetsDto,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
@@ -17,6 +19,7 @@ import {
   type BulkUpdateAtmReplenishments,
   type CreateAtmMachine,
   type CreateAtmRefLabel,
+  type Paginated,
   type ReassignAtmMachineArea,
   type UpdateAtmMachine,
   type UpdateAtmMachineArea,
@@ -48,6 +51,55 @@ export const useAtmMachines = (params: AtmListParams, enabled = true) =>
     queryKey: listKey(MODULE, 'machines', params),
     queryFn: () => api.listMachines(params),
     enabled,
+  });
+
+/**
+ * One page of the machine directory (/atm/machines). The page in hand stands while the next is
+ * read — another page, order, size or filter — as the vehicles registry's does (`useVehicles`):
+ * without it every step dropped the table to skeleton rows and took the pager from under the
+ * pointer. Its own query, so the data-edit screen's machine list keeps its behaviour.
+ */
+export const atmMachineDirectoryQuery = (params: AtmListParams) => ({
+  queryKey: listKey(MODULE, 'machines', params),
+  queryFn: () => api.listMachines(params),
+  placeholderData: (previous: Paginated<AtmMachineDto> | undefined) => previous,
+});
+
+export const useAtmMachineDirectory = (params: AtmListParams) =>
+  useQuery(atmMachineDirectoryQuery(params));
+
+/**
+ * The machine directory's summary — counts and dropdown sources over the whole filtered set. The
+ * previous filter's answer stands while the next is read, so the figures and the lists do not
+ * blink empty on every tick.
+ */
+export const useAtmMachinesSummary = (params: AtmListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'machines', { kind: 'summary', ...params }),
+    queryFn: () => api.machinesSummary(params),
+    placeholderData: (previous: AtmMachinesSummaryDto | undefined) => previous,
+  });
+
+/** How many machines the ID picker offers for one search — it narrows as the reader types. */
+export const MACHINE_CODE_SEARCH_SIZE = 50;
+
+/**
+ * The ID picker's search: active machines whose code holds the typed fragment, among those the
+ * other filters match, by code. Asked only once the picker has been opened.
+ */
+export const useAtmMachineCodeSearch = (params: AtmListParams, enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'machines', { kind: 'codeSearch', ...params }),
+    queryFn: () =>
+      api.listMachines({
+        ...params,
+        page: 1,
+        pageSize: MACHINE_CODE_SEARCH_SIZE,
+        sortBy: 'machineCode',
+        sortDir: 'asc',
+      }),
+    enabled,
+    placeholderData: (previous: Paginated<AtmMachineDto> | undefined) => previous,
   });
 
 export const useBulkCreateAtmMachines = () => {

@@ -5,6 +5,7 @@
 import {
   type AtmLeaderOptionDto,
   type AtmMachineDto,
+  type AtmMachinesSummaryDto,
   type AtmMailAcceptMetaDto,
   type AtmMailAcceptRefusalDto,
   type AtmMailTicketDto,
@@ -66,6 +67,9 @@ export const inBulkBatches = async <T>(
 // ── Machines (legacy `atm` master — /all_atm + /data_edit_atm) ──────────────
 export const listMachines = (params: AtmListParams): Promise<Paginated<AtmMachineDto>> =>
   getPage<AtmMachineDto>(`/atm/machines${buildQuery(params)}`);
+/** The list's whole answer counted, and its dropdowns' sources — the same filters as the list. */
+export const machinesSummary = (params: AtmListParams): Promise<AtmMachinesSummaryDto> =>
+  get<AtmMachinesSummaryDto>(`/atm/machines/summary${buildQuery(params)}`);
 export const bulkCreateMachines = (
   body: BulkCreateAtmMachines,
 ): Promise<BulkCreateAtmMachinesResultDto> =>

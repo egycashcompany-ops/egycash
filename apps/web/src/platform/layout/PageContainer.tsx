@@ -50,6 +50,7 @@ export const PageHeader = ({
   breadcrumbs,
   actions,
   aside,
+  figures,
 }: {
   title: string;
   breadcrumbs?: Crumb[];
@@ -59,6 +60,11 @@ export const PageHeader = ({
    * navigation. Wraps below on narrow screens rather than squeezing the breadcrumb.
    */
   aside?: ReactNode;
+  /**
+   * Counts on the title's own line, right after it — how many of what the screen lists. Figures,
+   * never a sentence: the header still has no subtitle. Wraps under the title on a narrow screen.
+   */
+  figures?: ReactNode;
 }): JSX.Element => (
   <div className="mb-6 border-b border-slate-200/80 pb-5 dark:border-slate-800">
     {(breadcrumbs !== undefined && breadcrumbs.length > 0) || aside !== undefined ? (
@@ -72,10 +78,17 @@ export const PageHeader = ({
       </div>
     ) : null}
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
+      <div
+        className={
+          figures === undefined
+            ? 'min-w-0'
+            : 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2'
+        }
+      >
         <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
           {title}
         </h1>
+        {figures}
       </div>
       {actions !== undefined && (
         <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>

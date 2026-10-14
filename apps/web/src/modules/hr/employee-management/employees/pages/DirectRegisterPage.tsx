@@ -29,9 +29,9 @@ import { ApplicantNationalIdOcr } from '../../../recruitment/applicants/componen
 import {
   useBranchOptions,
   useDepartmentOptions,
+  useJobTitleReferenceOptions,
   useSectionOptions,
 } from '../../../../organization/shared/references';
-import { useJobTitles } from '../../../recruitment/job-offers/api/job-offer-queries';
 import { useRegisterEmployeeDirect, useRehireCheck } from '../api/employee-queries';
 
 const MARITAL: MaritalStatus[] = ['single', 'married', 'divorced', 'widowed'];
@@ -75,7 +75,7 @@ export const DirectRegisterPage = (): JSX.Element => {
   const { data: branches = [] } = useBranchOptions();
   const { data: departments = [] } = useDepartmentOptions(branchId === '' ? undefined : branchId);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
-  const jobTitles = useJobTitles(can('jobTitle.view'));
+  const { data: jobTitles = [] } = useJobTitleReferenceOptions();
   const canComp = can('employee.manageCompensation');
 
   // Rehire guard preview (F2): an exited match must be rehired, not re-registered.
@@ -292,7 +292,7 @@ export const DirectRegisterPage = (): JSX.Element => {
               <Field label={t('offers.form.jobTitle')} required>
                 <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
                   <option value="">{t('common.select')}</option>
-                  {(jobTitles.data ?? []).map((jt) => (
+                  {jobTitles.map((jt) => (
                     <option key={jt.id} value={jt.id}>
                       {localized(jt.name, locale)}
                     </option>

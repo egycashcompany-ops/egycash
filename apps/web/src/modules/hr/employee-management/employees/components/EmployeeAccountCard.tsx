@@ -23,7 +23,6 @@ import { Field, Input, Form, FormActions, Select } from '../../../../../shared/u
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../../../shared/lib/api-client';
 import {
-  useBranch,
   useCreateEmployeeLogin,
   useLinkedUser,
   useRequireUserTotp,
@@ -325,7 +324,6 @@ const UsernameEditor = ({ userId, current }: { userId: string; current: string }
 export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JSX.Element => {
   const t = useT();
   const [creating, setCreating] = useState(false);
-  const { data: branch } = useBranch(employee.employment.branchId);
   const linked = useLinkedUser(employee.userId);
   const user = linked.data;
   const { data: assignments = [] } = useUserAssignments(employee.userId);
@@ -361,7 +359,10 @@ export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JS
             <span className="font-mono" dir="ltr">{employee.code}</span>
           </Row>
           <Row label={t('employees.account.branchCode')}>
-            <span className="font-mono" dir="ltr">{branch?.code ?? '—'}</span>
+            {/* From the row the server already resolved (`placement.branch`), not a second,
+                `branch.view`-gated read of the branch — which printed a dash here for anyone who
+                may open an employee file but may not browse the directory. */}
+            <span className="font-mono" dir="ltr">{employee.placement.branch?.code ?? '—'}</span>
           </Row>
           <Row label={t('employees.account.login')}>
             {!hasAccount ? (

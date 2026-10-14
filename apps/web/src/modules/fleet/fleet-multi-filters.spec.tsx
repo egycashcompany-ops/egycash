@@ -138,7 +138,7 @@ const client = (params: Record<string, unknown>, rows: FleetVehicleDto[]): Query
     listKey('fleet', 'catalogs', { kind: 'insuranceCompany', violationSide: undefined }),
     paged([]),
   );
-  qc.setQueryData(['hr', 'branches', 'active'], paged([]));
+  qc.setQueryData(['organization', 'branches', 'options'], []);
   return qc;
 };
 

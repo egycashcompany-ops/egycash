@@ -3,9 +3,9 @@
 // The branch filter is rendered by four recruitment screens and by Fleet's vehicle registry. The
 // failure mode is not that someone edits it badly — it is that someone reaching across a module
 // boundary decides a local copy is tidier, and the two drift: one takes several branches, the other
-// takes one; one hides itself without `branch.view`, the other shows an empty dropdown that
-// silently filters nothing. That divergence is invisible to typecheck, lint and every runtime test,
-// because both copies work.
+// takes one; one fills from the ungated reference options, the other from the `branch.view`-gated
+// administration list and so draws an empty dropdown for half its readers. That divergence is
+// invisible to typecheck, lint and every runtime test, because both copies work.
 //
 // So the invariant is structural: exactly one definition, and every call site imports THAT one.
 import { readdirSync, readFileSync } from 'node:fs';

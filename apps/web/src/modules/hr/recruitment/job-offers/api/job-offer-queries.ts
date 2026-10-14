@@ -65,43 +65,24 @@ export const useApplicantSearch = (term: string) =>
     select: (page) => page.items,
   });
 
-// ── Reference lookups (long-cached; gated by their own *.view — degrade to empty on denial) ──────
-export const useBranches = (enabled: boolean) =>
-  useQuery({
-    queryKey: [MODULE, 'branches', 'active'],
-    queryFn: () => api.listBranches(),
-    enabled,
-    staleTime: 5 * 60_000,
-    retry: false,
-    select: (page) => page.items,
-  });
-
-export const useDepartments = (enabled: boolean) =>
-  useQuery({
-    queryKey: [MODULE, 'departments', 'active'],
-    queryFn: () => api.listDepartments(),
-    enabled,
-    staleTime: 5 * 60_000,
-    retry: false,
-    select: (page) => page.items,
-  });
-
-export const useJobTitles = (enabled: boolean) =>
-  useQuery({
-    queryKey: [MODULE, 'jobTitles', 'active'],
-    queryFn: () => api.listJobTitles(),
-    enabled,
-    staleTime: 5 * 60_000,
-    retry: false,
-    select: (page) => page.items,
-  });
+// ── Reference lookups ───────────────────────────────────────────────────────────────────────────
+//
+// Branches, Departments and Job Titles are no longer read here. They used to come from the
+// organization-ADMINISTRATION lists, each gated on its own `<unit>.view`, which made every consumer
+// pass `can('branch.view')` as the `enabled` flag — so a reader who legitimately saw the ROWS could
+// not read the NAME of the unit on them, and a required picker fed from the same hook offered
+// nothing at all. Naming a unit a screen already shows is not browsing HR's directory.
+//
+// They come from `modules/organization/shared/references.ts` now — `/platform/<unit>/options`,
+// authenticated and ungated, {id, code, name, parentId, catalogId} for active units, paged to
+// exhaustion server-side rather than capped at one page of 100.
 
 /**
  * The seats that require a driving test — the drivers registry's own definition of who it is about.
  *
- * A separate query rather than a filter over `useJobTitles`, because the difference is the QUESTION
- * asked of the server and not the answer's shape: that one reads a page of the catalogue, and a
- * catalogue longer than its page hides exactly the rows this needs.
+ * A separate query rather than a filter over the job-title OPTIONS, because the difference is the
+ * QUESTION asked of the server and not the answer's shape: the options carry no
+ * `requiresDrivingTest`, so filtering them in the browser is not possible at all.
  */
 export const useDrivingJobTitles = (enabled: boolean) =>
   useQuery({

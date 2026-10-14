@@ -56,8 +56,11 @@ export const DailySheetPage = (): JSX.Element => {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const branches = useBranchOptions(can('branch.view'));
-  const sections = useSectionOptions(undefined, can('section.view'));
+  // No `can(...)` gate: both hooks read `/platform/<unit>/options`, which is authenticated and NOT
+  // gated on `<unit>.view`. Passing the grant as the `enabled` flag left a reader of the whole
+  // company's attendance with two filters that drew but offered nothing to narrow by.
+  const branches = useBranchOptions();
+  const sections = useSectionOptions(undefined);
 
   const filters = useMemo(
     () => ({

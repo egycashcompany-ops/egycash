@@ -5,10 +5,13 @@
 //    a label whose key is missing renders the key itself and the bar still "works", so typecheck,
 //    lint and build all stay green while the user reads `screening.filters.ageFrom`.
 //
-// 2. PERMISSIONS. The branch and interviewer controls read catalogs behind their own permissions
-//    (`branch.view`, `user.view`), separate from the permission that opens the queue. A user with
-//    the queue but not the catalog must get no control at all — not an empty dropdown that filters
-//    nothing. Adding a filter must not change who can read what.
+// 2. PERMISSIONS. The interviewer picker reads the user directory behind `user.view`, separate from
+//    the permission that opens the queue, and without it the control steps aside rather than
+//    offering an empty box. The BRANCH filter is deliberately NOT in that class any more: its
+//    options come from `/platform/branches/options`, which is authenticated and ungated, so it is
+//    drawn for every reader of the queue. Requiring `branch.view` for it hid the control from
+//    exactly the reader who needed it — one whose grants reach the whole company and who has no
+//    business browsing HR's directory. The filter only ever NARROWS; the server scopes the rows.
 //
 // Employees Ready is included even though its page lives under the Employees app — it is a
 // recruitment queue (A6/RW15), and its bar was written in the same slice as the others.
@@ -167,14 +170,14 @@ describe('recruitment queue filter bars offer the standard controls', () => {
 });
 
 describe('catalog-backed filters respect their own permissions', () => {
-  it('no branch.view → no branch control at all, rather than an empty dropdown', () => {
+  it('no branch.view → the branch control is still drawn, because its options are ungated', () => {
     for (const [name, node] of [
       ['interviews', interviewBar],
       ['evaluations', evaluationBar],
       ['employees ready', readyBar],
     ] as [string, JSX.Element][]) {
       const markup = render(node, 'en', ['user.view']);
-      expect(markup, `${name} still rendered a branch control`).not.toContain('aria-label="Branch"');
+      expect(markup, `${name} dropped its branch control`).toContain('aria-label="Branch"');
     }
   });
 

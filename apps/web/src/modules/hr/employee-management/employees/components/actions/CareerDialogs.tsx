@@ -15,11 +15,11 @@ import { localized, orgUnitLabel } from '../../../../../../shared/lib/format';
 import {
   useBranchOptions,
   useDepartmentOptions,
+  useJobTitleReferenceOptions,
   useSectionOptions,
   useUserSearch,
   useUser,
 } from '../../../../../organization/shared/references';
-import { useJobTitles } from '../../../../recruitment/job-offers/api/job-offer-queries';
 import { useCompensationAction, useEmploymentAction } from '../../api/employee-queries';
 import { ActionDialog, useActionCommonFields } from './ActionDialog';
 
@@ -33,7 +33,7 @@ export const PromotionDialog = ({ employee, open, onClose }: DialogProps): JSX.E
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const can = useCan();
-  const jobTitles = useJobTitles(can('jobTitle.view'));
+  const { data: jobTitles = [] } = useJobTitleReferenceOptions();
   const action = useEmploymentAction(employee.id);
   const { fields, common } = useActionCommonFields(employee.id);
   const [jobTitleId, setJobTitleId] = useState('');
@@ -76,7 +76,7 @@ export const PromotionDialog = ({ employee, open, onClose }: DialogProps): JSX.E
       <Field label={t('employees.actions.promotion.newTitle')} required>
         <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
           <option value="">{t('common.select')}</option>
-          {(jobTitles.data ?? [])
+          {jobTitles
             .filter((jt) => jt.id !== employee.employment.jobTitleId)
             .map((jt) => (
               <option key={jt.id} value={jt.id}>

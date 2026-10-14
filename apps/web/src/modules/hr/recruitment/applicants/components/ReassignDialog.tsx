@@ -6,7 +6,6 @@
 // the form offers the seat first and the bare branch as the fallback for candidates with no seat yet.
 import { useEffect, useState } from 'react';
 import {
-  MAX_PAGE_SIZE,
   type ApplicantDto,
   type Locale,
   type PlacementChangeSource,
@@ -18,8 +17,7 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select, Textarea } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../../shared/lib/format';
-import { useBranchOptions } from '../../../../organization/shared/references';
-import { useJobTitles } from '../../../../organization/job-titles/job-title-queries';
+import { useBranchOptions, useJobTitleReferenceOptions } from '../../../../organization/shared/references';
 import { useReassignApplicant } from '../api/applicant-queries';
 
 export const ReassignDialog = ({
@@ -62,7 +60,7 @@ export const ReassignDialog = ({
   }, [open, applicant.placement]);
 
   const { data: branches } = useBranchOptions(open);
-  const { data: titles } = useJobTitles({ pageSize: MAX_PAGE_SIZE });
+  const { data: titles = [] } = useJobTitleReferenceOptions(open);
 
   const submit = async (): Promise<void> => {
     if (reason.trim() === '') {
@@ -113,7 +111,7 @@ export const ReassignDialog = ({
         <Field label={t('applicants.reassign.jobTitle')}>
           <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
             <option value="">{t('common.select')}</option>
-            {(titles?.items ?? []).map((jt) => (
+            {titles.map((jt) => (
               <option key={jt.id} value={jt.id}>
                 {localized(jt.name, locale)}
               </option>

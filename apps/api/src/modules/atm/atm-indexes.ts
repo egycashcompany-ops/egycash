@@ -8,6 +8,13 @@
 // idempotency, and `ux_one_running`, one import at a time. Building them at boot also brings each
 // collection into being BEFORE its first insert, which otherwise happens inside a transaction.
 //
+// The two operation logs joined the list with the owner's rule (2026-10-13, port doc OD-1): their
+// `ux_open_replenishment_per_code` / `ux_open_maintenance_per_code` are the race-proof half of "a
+// machine is never open twice". Legacy data may already hold two open rows for one code (the
+// legacy had no guard), so these are the likeliest to be reported and skipped — and their report
+// names the collection and the counts ONLY (`rowsInLog: false`): an operation row is somebody's
+// work record, and nothing of it belongs in a boot log.
+//
 // THE DEFINITIONS ARE READ FROM THE SCHEMAS (`schema.indexes()`), never restated here. ONE INDEX AT
 // A TIME, so a duplicate costs exactly its own index. DUPLICATES ARE REPORTED, NEVER RESOLVED — a
 // legacy `atm_machines` loaded by `npm run atm:import` may violate `ux_branch_code` (risk R-9); the
@@ -19,17 +26,36 @@ import { AtmMachineModel } from './machines/machine.model';
 import { AtmRefLabelModel } from './catalogs/ref-label.model';
 import { AtmRegisterEntryModel } from './register/register.model';
 import { AtmRegisterImportRunModel } from './register/import/register-import-run.model';
+import { AtmReplenishmentModel } from './replenishments/replenishment.model';
+import { AtmMaintenanceModel } from './maintenances/maintenance.model';
+
+export interface AtmIndexedModel {
+  collection: string;
+  model: Model<never>;
+  /**
+   * May a duplicate report carry the offending groups' keys and ids? Yes for the master and the
+   * register (a machine code or an Excel row number, never a K/S value); NO for the operation
+   * logs, whose report is the collection, the index and the counts.
+   */
+  rowsInLog: boolean;
+}
 
 /** The collections whose indexes this step owns — listed, never discovered. */
-export const atmIndexedModels = (): { collection: string; model: Model<never> }[] =>
-  (
+export const atmIndexedModels = (): AtmIndexedModel[] => [
+  ...(
     [
       AtmMachineModel,
       AtmRefLabelModel,
       AtmRegisterEntryModel,
       AtmRegisterImportRunModel,
     ] as unknown as Model<never>[]
-  ).map((model) => ({ collection: model.collection.name, model }));
+  ).map((model) => ({ collection: model.collection.name, model, rowsInLog: true })),
+  ...([AtmReplenishmentModel, AtmMaintenanceModel] as unknown as Model<never>[]).map((model) => ({
+    collection: model.collection.name,
+    model,
+    rowsInLog: false,
+  })),
+];
 
 /** Server-side options only — a rebuild stays byte-identical to the first build. */
 const FORWARDED = ['name', 'unique', 'partialFilterExpression', 'sparse'] as const;
@@ -75,6 +101,27 @@ const duplicateGroups = async (
   }));
 };
 
+/**
+ * Pure: a duplicate report reduced to what may be logged for a collection whose rows stay out of
+ * the log — how many groups (capped at the five `duplicateGroups` reads) and rows they hold.
+ */
+export const duplicateCounts = (
+  groups: readonly { rows: number }[],
+): { groups: number; rows: number } => ({
+  groups: groups.length,
+  rows: groups.reduce((sum, group) => sum + group.rows, 0),
+});
+
+const errorText = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+/** Pure: an error reduced to its name and server code — nothing a message could quote. */
+export const redactedErrorText = (error: unknown): string => {
+  const code = (error as { code?: unknown } | null)?.code;
+  const name = error instanceof Error ? error.name : 'Error';
+  return typeof code === 'number' || typeof code === 'string' ? `${name} ${String(code)}` : name;
+};
+
 export interface AtmIndexMigrationResult {
   built: number;
   alreadyPresent: number;
@@ -91,7 +138,7 @@ export const migrateAtmIndexes = async (): Promise<AtmIndexMigrationResult> => {
     failed: [],
   };
 
-  for (const { collection, model } of atmIndexedModels()) {
+  for (const { collection, model, rowsInLog } of atmIndexedModels()) {
     const existing = await model.collection
       .listIndexes()
       .toArray()
@@ -113,9 +160,12 @@ export const migrateAtmIndexes = async (): Promise<AtmIndexMigrationResult> => {
           );
           if (groups.length > 0) {
             // Ids and counts only — the grouped key of a register index is a machine code or an
-            // Excel row number, never a K/S value.
+            // Excel row number, never a K/S value. An operation log reports counts and nothing
+            // of its rows (`rowsInLog: false`).
             logger.error(
-              { collection, index: name, groups },
+              rowsInLog
+                ? { collection, index: name, groups }
+                : { collection, index: name, ...duplicateCounts(groups) },
               'atm: unique index NOT built — existing rows violate it; resolve them, then redeploy',
             );
             result.skippedDuplicates.push({ collection, index: name, groups: groups.length });
@@ -125,8 +175,14 @@ export const migrateAtmIndexes = async (): Promise<AtmIndexMigrationResult> => {
         await model.collection.createIndex(entry.keys as never, entry.options as never);
         result.built += 1;
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        logger.warn({ collection, index: name, err: error }, 'atm: index not built');
+        // A server message can quote a row (`E11000 … dup key: { machineCode: … }` when a write
+        // slips in between the check above and the build), so a rows-out collection keeps only
+        // the error's name and code.
+        const reason = rowsInLog ? errorText(error) : redactedErrorText(error);
+        logger.warn(
+          rowsInLog ? { collection, index: name, err: error } : { collection, index: name, reason },
+          'atm: index not built',
+        );
         result.failed.push({ collection, index: name, reason });
       }
     }

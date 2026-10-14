@@ -9,6 +9,7 @@
 import { Schema, model, type Types } from 'mongoose';
 import { ATM_MAINTENANCE_SOURCES, type AtmMaintenanceSource } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
+import { OPEN_OPERATION_INDEX_NAMES, openOperationPartialFilter } from '../shared/open-operation';
 
 export interface AtmMaintenanceDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -68,10 +69,20 @@ const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
 maintenanceSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 maintenanceSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 maintenanceSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
-// The mail duplication check: an open maintenance for one machine today (contad_app.js:2674).
+// The owner's rule (2026-10-13, port doc OD-1): at most ONE open maintenance per machine code,
+// company-wide — the race-proof half of the service check (maintenance.service.ts), and the index
+// the mail `duplication` question now reads ("does this machine have an open maintenance?").
+// It replaces `ix_branch_machine_open`, which served the legacy's per-branch "open TODAY" form of
+// that question (contad_app.js:2674); a database that already built that one keeps it unused.
+// Built at boot by atm-indexes.ts; where existing rows already violate it the boot names this
+// collection and skips the index, and the service check still refuses every new duplicate.
 maintenanceSchema.index(
-  { branchId: 1, machineCode: 1, closedAt: 1, openedAt: 1 },
-  { name: 'ix_branch_machine_open' },
+  { machineCode: 1 },
+  {
+    unique: true,
+    name: OPEN_OPERATION_INDEX_NAMES.maintenance,
+    partialFilterExpression: openOperationPartialFilter(),
+  },
 );
 
 export const AtmMaintenanceModel = model<AtmMaintenanceDoc>(

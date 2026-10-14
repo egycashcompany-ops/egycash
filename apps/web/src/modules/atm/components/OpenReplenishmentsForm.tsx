@@ -2,17 +2,22 @@
 // per line, schedule times aligned BY LINE NUMBER, one date for the batch. Codes the master does
 // not know come back in the RESPONSE and are shown here — the per-request replacement for the
 // legacy's shared `mach_arr_not_found` global that flashed for every user (contad_app.js:202).
+// Codes the owner's rule left unopened — the machine already has an open replenishment, or the
+// code was pasted twice (port doc OD-1) — come back the same way and are shown beside them.
 //
 // The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
 // in one bordered row so entry and narrowing read as a single band (ReplenishmentsPage.tsx).
 import { useState, type FormEvent } from 'react';
 import { normalizeAtmMachineCode, splitAtmFormLines } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useOpenAtmReplenishments } from '../api/atm-queries';
+import { alreadyOpenCodesKey, joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
+import { OpenRefusalNotice } from './OpenRefusalNotice';
 
 /** Line pairs → rows: code[i] + schedule[i]; blank code lines dropped, as the legacy loop did. */
 export const buildReplenishmentRows = (
@@ -31,11 +36,13 @@ export const buildReplenishmentRows = (
 
 export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
   const open = useOpenAtmReplenishments();
   const [codes, setCodes] = useState('');
   const [schedules, setSchedules] = useState('');
   const [forceDate, setForceDate] = useState(defaultDate);
   const [unknownCodes, setUnknownCodes] = useState<string[]>([]);
+  const [alreadyOpenCodes, setAlreadyOpenCodes] = useState<string[]>([]);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -47,13 +54,24 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
         forceDate: forceDate === '' ? null : forceDate,
       });
       setUnknownCodes(result.unknownCodes);
+      setAlreadyOpenCodes(result.alreadyOpenCodes);
       if (result.opened.length > 0) {
         toast.success(t('atm.replenishments.openedCount', { count: result.opened.length }));
         setCodes('');
         setSchedules('');
       }
       if (result.unknownCodes.length > 0) {
-        toast.error(t('atm.common.unknownCodes', { codes: result.unknownCodes.join('، ') }));
+        toast.error(
+          t('atm.common.unknownCodes', { codes: joinCodes(result.unknownCodes, locale) }),
+        );
+      }
+      // The owner's rule (OD-1): a machine already open — or pasted twice — was not opened again.
+      if (result.alreadyOpenCodes.length > 0) {
+        toast.error(
+          t(alreadyOpenCodesKey('replenishment'), {
+            codes: joinCodes(result.alreadyOpenCodes, locale),
+          }),
+        );
       }
     } catch {
       toast.error(t('atm.common.actionFailed'));
@@ -83,11 +101,11 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
       <Button type="submit" loading={open.isPending}>
         {t('atm.replenishments.openAction')}
       </Button>
-      {unknownCodes.length > 0 && (
-        <p className="w-full text-sm text-red-600 dark:text-red-400">
-          {t('atm.common.unknownCodes', { codes: unknownCodes.join('، ') })}
-        </p>
-      )}
+      <OpenRefusalNotice
+        kind="replenishment"
+        unknownCodes={unknownCodes}
+        alreadyOpenCodes={alreadyOpenCodes}
+      />
     </form>
   );
 };

@@ -10,7 +10,7 @@
 // written 0 at creation and never changed (models/atm_rep_log.js:19). Here the open state IS
 // `closedAt: null` — the fleet maintenance-visit precedent ("no status field to forget to flip").
 import { z } from 'zod';
-import { PaginationQuerySchema, booleanQuery, listQuery, objectId } from '../common/index.js';
+import { PaginationQuerySchema, booleanQuery, objectId } from '../common/index.js';
 
 // ── Machine identity ────────────────────────────────────────────────────────────────────────────
 
@@ -232,25 +232,106 @@ export type ListAtmRefLabelsQuery = z.infer<typeof ListAtmRefLabelsQuerySchema>;
 
 // ── Operations (replenishment + maintenance) shared shapes ──────────────────────────────────────
 
+/**
+ * The most rows one bulk request carries (close, edit, delete). A board read whole can hold more
+ * checked rows than this; the screen sends them in consecutive requests of this size.
+ */
+export const ATM_BULK_MAX_IDS = 200;
+
 /** Bulk id selection — the checkbox multi-select every legacy grid action supports. */
 export const AtmOperationIdsSchema = z
-  .object({ ids: z.array(objectId()).min(1).max(200) })
+  .object({ ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS) })
   .strict();
 export type AtmOperationIds = z.infer<typeof AtmOperationIdsSchema>;
+
+// ── Bank/area name lists (the open boards' two filters) ─────────────────────────────────────────
+//
+// A bank or an area is FREE TEXT — a label an administrator typed (`atm_ref_labels`), copied onto
+// every machine and every operation as written. So a name may itself hold a comma («Raml,
+// Station»), and the platform's `listQuery` — which splits on every comma — cut such a name in
+// two and the filter matched nothing. The legacy sent these as an array (`selected_cities[]`,
+// atm_replenishment.ejs:592), which had no such problem.
+//
+// The list keeps the platform's own shape — ONE comma-separated value, in the API query and in the
+// board's address bar alike — and escapes the two characters that would break it: `\,` is a comma
+// inside a name, `\\` a backslash. A list whose names hold neither (every link written before this
+// existed) reads exactly as it always did, so a remembered filter or a bookmark keeps working.
+
+const escapeAtmName = (name: string): string => name.replace(/\\/g, '\\\\').replace(/,/g, '\\,');
+
+/** Names → one list value. The inverse of `splitAtmNameList`. */
+export const joinAtmNameList = (names: readonly string[]): string =>
+  names.map(escapeAtmName).join(',');
+
+/**
+ * One list value → the names it carries: split on the commas that are not escaped, each name
+ * trimmed (as `listQuery` trims), empty ones dropped. A backslash before any character keeps that
+ * character; a lone trailing backslash is kept as written.
+ */
+export const splitAtmNameList = (raw: string): string[] => {
+  const names: string[] = [];
+  let current = '';
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw.charAt(index);
+    if (char === '\\' && index + 1 < raw.length) {
+      current += raw.charAt(index + 1);
+      index += 1;
+    } else if (char === ',') {
+      names.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  names.push(current);
+  return names.map((name) => name.trim()).filter((name) => name !== '');
+};
+
+/**
+ * A bank/area list as a query field — `listQuery`'s contract (absent or empty means "not
+ * narrowed"; a repeated parameter is accepted too, each occurrence read the same way) with the
+ * escape above, so a name holding a comma arrives whole.
+ */
+export const atmNameListQuery = (max = 50) =>
+  z.preprocess(
+    (raw) => {
+      if (raw === undefined || raw === null) return undefined;
+      const parts = Array.isArray(raw) ? raw : [raw];
+      const names = parts.flatMap((part) => splitAtmNameList(String(part)));
+      return names.length === 0 ? undefined : names;
+    },
+    z.array(z.string().min(1)).min(1).max(max).optional(),
+  );
 
 /**
  * Open replenishment/maintenance list — bank/area narrowing. The legacy stored these per user in
  * a `filters` collection (models/filters.js) and applied them server-side; the port carries them
  * as query parameters and lets the client persist its own choice, which keeps the same visible
- * behaviour without a server-side preference store (port doc §7.4).
+ * behaviour without a server-side preference store.
+ *
+ * A name matches every stored spelling of it that differs only by surrounding spaces («NBE» and
+ * «NBE ») — the board shows them identically, so the filter treats them as one bank.
  */
 export const ListAtmOpenOperationsQuerySchema = PaginationQuerySchema.extend({
-  banks: listQuery(z.string().min(1)),
-  areas: listQuery(z.string().min(1)),
+  banks: atmNameListQuery(),
+  areas: atmNameListQuery(),
 }).strict();
 export type ListAtmOpenOperationsQuery = z.infer<typeof ListAtmOpenOperationsQuerySchema>;
 
-/** Distinct bank/area values of the OPEN rows — the legacy filter dropdowns (contad_app.js:261-262). */
+/** The filter dropdowns' source — `banks` narrows the AREAS offered (the cascade), nothing else. */
+export const AtmOperationFacetsQuerySchema = z.object({ banks: atmNameListQuery() }).strict();
+export type AtmOperationFacetsQuery = z.infer<typeof AtmOperationFacetsQuerySchema>;
+
+/**
+ * The filter dropdowns: distinct bank/area names of the OPEN rows in the caller's scope, each
+ * name once however many spellings of it differ only by surrounding spaces.
+ *
+ * `banks` is every open row's bank (contad_app.js:261). `areas` is the open rows' areas — of the
+ * SELECTED banks when there are any (the legacy saved filter's cascade, contad_app.js:262), and of
+ * EVERY open row when there are none: the legacy saved filter offered nothing then, but the same
+ * page's table-header filter row listed every area on the board (atm_replenishment.ejs:1001,
+ * atm_maintenance.ejs:1285), so an area could always be chosen on its own.
+ */
 export interface AtmOperationFacetsDto {
   banks: string[];
   areas: string[];
@@ -330,6 +411,14 @@ export type OpenAtmReplenishments = z.infer<typeof OpenAtmReplenishmentsSchema>;
 export interface OpenAtmReplenishmentsResultDto {
   opened: AtmReplenishmentDto[];
   unknownCodes: string[];
+  /**
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»): one entry per submitted line that
+   * was NOT opened because its machine already has an open replenishment — anywhere in the
+   * company — or because the same code appeared earlier in this batch (that earlier line opened).
+   * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
+   * where the open operation is.
+   */
+  alreadyOpenCodes: string[];
 }
 
 export const UpdateAtmReplenishmentSchema = z
@@ -351,7 +440,7 @@ export type UpdateAtmReplenishment = z.infer<typeof UpdateAtmReplenishmentSchema
 /** Checked-rows edit (contad_app.js:870-889): schedule/open time on all, leader on all if changed. */
 export const BulkUpdateAtmReplenishmentsSchema = z
   .object({
-    ids: z.array(objectId()).min(1).max(200),
+    ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS),
     scheduleTime: z.string().nullable().optional(),
     openedAt: z.coerce.date().optional(),
     leaderName: z.string().nullable().optional(),
@@ -420,12 +509,14 @@ export type OpenAtmMaintenances = z.infer<typeof OpenAtmMaintenancesSchema>;
 export interface OpenAtmMaintenancesResultDto {
   opened: AtmMaintenanceDto[];
   unknownCodes: string[];
+  /** The owner's rule, as on `OpenAtmReplenishmentsResultDto.alreadyOpenCodes` — per kind. */
+  alreadyOpenCodes: string[];
 }
 
 /** Close: single or checked set, always with the assigned employee (contad_app.js:1963-1983). */
 export const CloseAtmMaintenancesSchema = z
   .object({
-    ids: z.array(objectId()).min(1).max(200),
+    ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS),
     leaderEmployeeId: objectId(),
   })
   .strict();
@@ -450,7 +541,7 @@ export type UpdateAtmMaintenance = z.infer<typeof UpdateAtmMaintenanceSchema>;
  */
 export const BulkUpdateAtmMaintenancesSchema = z
   .object({
-    ids: z.array(objectId()).min(1).max(200),
+    ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS),
     leaderName: z.string().nullable(),
   })
   .strict();
@@ -482,9 +573,12 @@ export interface AtmMailTicketDto {
   /** Legacy `found` — machine existed in the master at ingest. Stored, never rendered (GAP G2). */
   foundInMaster: boolean;
   /**
-   * Legacy `duplication` — an open maintenance existed for this machine TODAY. Recomputed at
-   * every pending-list read exactly as the legacy GET did (contad_app.js:2674-2698); the ingest-
-   * time value is kept on the row for parity but the list serves the live answer (decision D5).
+   * Legacy `duplication` — "this machine already has an OPEN maintenance", on ANY day and in any
+   * branch. The legacy asked "opened TODAY" (contad_app.js:2674); the owner's rule (2026-10-13,
+   * «مينفعش أضيف ماكينة مرتين») made it exactly the condition under which accept REFUSES the
+   * ticket, so what the screen flags is what accept will refuse (port doc OD-1). Recomputed at
+   * every pending-list read as the legacy GET did; the ingest-time value is kept on the row for
+   * the log page (decision D5).
    */
   duplication: boolean;
   /** Legacy `action_by` + NEW `actionAt` — the legacy log never recorded WHEN (GAP G1). */
@@ -502,6 +596,30 @@ export const DecideAtmMailTicketsSchema = z
   .object({ ids: z.array(objectId()).min(1).max(200) })
   .strict();
 export type DecideAtmMailTickets = z.infer<typeof DecideAtmMailTicketsSchema>;
+
+/**
+ * Why a selected ticket was NOT accepted and stays pending. One reason today: the owner's rule —
+ * the ticket's machine already has an open maintenance (the row the screen flags `duplication`).
+ * A ticket already decided, or outside the caller's scope, is skipped silently as before.
+ */
+export const ATM_MAIL_ACCEPT_REFUSAL_REASONS = ['maintenanceAlreadyOpen'] as const;
+export const AtmMailAcceptRefusalReasonSchema = z.enum(ATM_MAIL_ACCEPT_REFUSAL_REASONS);
+export type AtmMailAcceptRefusalReason = z.infer<typeof AtmMailAcceptRefusalReasonSchema>;
+
+export interface AtmMailAcceptRefusalDto {
+  ticketId: string;
+  /** The ticket's own machine code — never where the blocking maintenance is. */
+  machineCode: string;
+  reason: AtmMailAcceptRefusalReason;
+}
+
+/**
+ * The accept answer's `meta`. The `data` stays the array of tickets ACCEPTED, exactly as before,
+ * so a client that reads only `data` keeps working; the refusals ride beside it.
+ */
+export interface AtmMailAcceptMetaDto {
+  refused: AtmMailAcceptRefusalDto[];
+}
 
 /** The log page range — legacy filters `open_time`, default today (contad_app.js:2909-2928). */
 export const ListAtmMailLogQuerySchema = PaginationQuerySchema.extend({

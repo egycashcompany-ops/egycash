@@ -1,6 +1,9 @@
 // Pure view logic for the operation grids — the two-group split and the live timer, ported from
 // the legacy templates and kept out of the components so the behaviour is testable.
-import { ATM_TIMER_THRESHOLD_HOURS } from '@ecms/contracts';
+import { ATM_TIMER_THRESHOLD_HOURS, ErrorCodes, type Locale } from '@ecms/contracts';
+import { ApiError } from '../../../shared/lib/api-client';
+import { type TableSelection } from '../../../shared/ui/useTableSelection';
+import { listSeparator } from './register-import-view';
 
 const CAIRO_TZ = 'Africa/Cairo';
 
@@ -17,11 +20,25 @@ export const cairoDay = (isoInstant: string | Date): string =>
 
 /**
  * The legacy open grid renders TWO groups (atm_replenishment.ejs:1013 / :1086): rows opened
- * TODAY — live timer, close control, white — and open rows of any OTHER day — grey, no timer,
- * no close. The comparison is by calendar day of the open time.
+ * TODAY — live timer, white — and open rows of any OTHER day — grey, no timer. The comparison is
+ * by calendar day of the open time. The legacy grey group had no close control; since the owner's
+ * rule (port doc OD-1) an open row of ANY day blocks its machine, so both groups can be closed and
+ * checked (D4).
  */
 export const isOpenedToday = (openedAt: string, now: Date = new Date()): boolean =>
   cairoDay(openedAt) === cairoDay(now);
+
+/**
+ * One selection over a board's two groups: the bulk bar acts on every checked row, whichever
+ * group it sits in, while each table's "select all" reaches only its OWN rows.
+ */
+export const groupSelection = (
+  selection: TableSelection,
+  groupIds: readonly string[],
+): TableSelection => ({
+  ...selection,
+  toggleAll: (checked) => selection.toggleMany(groupIds, checked),
+});
 
 /** Whole seconds since open — the "Taken Time" the timer cell counts up. */
 export const elapsedSeconds = (openedAt: string, now: Date = new Date()): number =>
@@ -63,3 +80,52 @@ export const formatDuration = (openedAt: string, closedAt: string): string => {
 
 /** Today's Cairo date string — the done pages' default range and the open form's default date. */
 export const cairoToday = (): string => cairoDay(new Date());
+
+// ── The owner's rule: a machine is never open twice (port doc OD-1) ─────────────────────────────
+
+export type AtmOperationKind = 'replenishment' | 'maintenance';
+
+/**
+ * A list of machine codes as every ATM refusal line prints it, joined in the reader's language —
+ * the Arabic comma in Arabic, a plain comma in English (the module's own `listSeparator`).
+ */
+export const joinCodes = (codes: readonly string[], locale: Locale): string =>
+  codes.join(listSeparator(locale));
+
+/** The line an open form prints for the codes it did NOT open because they are already open. */
+export const alreadyOpenCodesKey = (kind: AtmOperationKind): string =>
+  kind === 'replenishment'
+    ? 'atm.replenishments.alreadyOpenCodes'
+    : 'atm.maintenance.alreadyOpenCodes';
+
+/** The done page's words for a reopen the rule refused. */
+export const reopenRefusalKey = (kind: AtmOperationKind): string =>
+  kind === 'replenishment' ? 'atm.done.reopenAlreadyOpenRep' : 'atm.done.reopenAlreadyOpenMaint';
+
+/** Was this failure the rule's refusal — the machine already has another open operation? */
+export const isAlreadyOpenRefusal = (error: unknown): boolean =>
+  error instanceof ApiError && error.code === ErrorCodes.ATM_OPERATION_ALREADY_OPEN;
+
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+/**
+ * The accept confirm's words. When some of the selected mails are painted DUPLICATE, a second
+ * sentence says those will NOT be accepted and stay pending — the page already knows it, because
+ * `duplication` is exactly the condition accept refuses (OD-1). Without it the dialog promised a
+ * maintenance for every mail and the refusal arrived only afterwards.
+ */
+export const acceptConfirmBody = (
+  t: Translate,
+  rows: readonly { id: string; duplication: boolean }[],
+  ids: readonly string[],
+): string => {
+  const selected = new Set(ids);
+  const flagged = rows.filter((row) => row.duplication && selected.has(row.id)).length;
+  const body = t('atm.mail.acceptBody', { count: ids.length });
+  return flagged === 0 ? body : `${body} ${t('atm.mail.acceptBodyFlagged', { count: flagged })}`;
+};
+
+/** The machine codes of the tickets accept refused, each once, in the order the server named them. */
+export const refusedMachineCodes = (refused: readonly { machineCode: string }[]): string[] => [
+  ...new Set(refused.map((row) => row.machineCode)),
+];

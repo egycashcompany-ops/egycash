@@ -7901,11 +7901,12 @@ const en: Record<string, string> = {
   'atm.common.deleteTitle': 'Delete operations',
   'atm.common.deleteBody': 'Delete {{count}} operation(s)? They disappear from every screen.',
   'atm.common.unknownCodes': 'Unknown machine codes: {{codes}}',
+  'atm.common.emptyFiltered': 'No open operation matches the chosen bank or area.',
 
   'atm.replenishments.title': 'Replenishments',
   'atm.replenishments.scheduleTime': 'Schedule Time',
   'atm.replenishments.todayGroup': 'Today',
-  'atm.replenishments.carriedGroup': 'Other days (no timer, no close)',
+  'atm.replenishments.carriedGroup': 'Other days (no timer)',
   'atm.replenishments.emptyToday': 'No open replenishments.',
   'atm.replenishments.closed': 'Closed.',
   'atm.replenishments.closeTitle': 'Close replenishments',
@@ -7917,6 +7918,8 @@ const en: Record<string, string> = {
   'atm.replenishments.forceDate': 'Date',
   'atm.replenishments.openAction': 'Open replenishments',
   'atm.replenishments.openedCount': '{{count}} operation(s) opened.',
+  'atm.replenishments.alreadyOpenCodes':
+    'Not opened — the machine already has an open replenishment, or the code was entered twice: {{codes}}',
   'atm.replenishments.editTitle': 'Edit {{code}}',
   'atm.replenishments.editManyTitle': 'Edit {{count}} selected operations',
   'atm.replenishments.leaderCascadeHint':
@@ -7931,6 +7934,10 @@ const en: Record<string, string> = {
   'atm.done.reopened': 'Reopened — back on the live page.',
   'atm.done.reopenTitle': 'Reopen operation',
   'atm.done.reopenBody': 'Reopen the operation for machine {{code}}?',
+  'atm.done.reopenAlreadyOpenRep':
+    'This operation cannot be reopened: machine {{code}} already has another open replenishment.',
+  'atm.done.reopenAlreadyOpenMaint':
+    'This operation cannot be reopened: machine {{code}} already has another open maintenance.',
 
   'atm.maintenance.title': 'Maintenance',
   'atm.maintenance.serviceType': 'Service',
@@ -7942,6 +7949,8 @@ const en: Record<string, string> = {
   'atm.maintenance.notes': 'Notes',
   'atm.maintenance.openAction': 'Open maintenance',
   'atm.maintenance.openedCount': '{{count}} operation(s) opened.',
+  'atm.maintenance.alreadyOpenCodes':
+    'Not opened — the machine already has an open maintenance, or the code was entered twice: {{codes}}',
   'atm.maintenance.emptyToday': 'No open maintenance.',
   'atm.maintenance.closed': 'Closed.',
   'atm.maintenance.closeTitle': 'Close maintenance',
@@ -7958,7 +7967,7 @@ const en: Record<string, string> = {
 
   'atm.mail.title': 'Maintenance Mail',
   'atm.mail.subtitle':
-    'Pending maintenance mails. A highlighted row already has an open maintenance today.',
+    'Pending maintenance mails. A highlighted row’s machine already has an open maintenance, so the mail cannot be accepted until it is closed.',
   'atm.mail.issue': 'Service',
   'atm.mail.receivedAt': 'Received',
   'atm.mail.sender': 'Sender',
@@ -7968,10 +7977,14 @@ const en: Record<string, string> = {
   'atm.mail.reject': 'Reject',
   'atm.mail.acceptTitle': 'Accept mails',
   'atm.mail.acceptBody': 'Accept {{count}} mail(s)? A maintenance operation opens for each.',
+  'atm.mail.acceptBodyFlagged':
+    'Except {{count}} of them: their machine already has an open maintenance (highlighted), so they will not be accepted and will stay pending.',
   'atm.mail.rejectTitle': 'Reject mails',
   'atm.mail.rejectBody': 'Reject {{count}} mail(s)? Nothing is created.',
   'atm.mail.acceptedCount': '{{count}} mail(s) accepted.',
   'atm.mail.rejectedCount': '{{count}} mail(s) rejected.',
+  'atm.mail.refusedOpenMaintenance':
+    '{{count}} mail(s) not accepted and still pending — the machine already has an open maintenance: {{codes}}',
   'atm.mail.logTitle': 'Mail Log',
   'atm.mail.logSubtitle': 'Every mail in the selected range, with its decision.',
   'atm.mail.logEmpty': 'No mails in this range.',
@@ -16214,11 +16227,12 @@ const ar: Record<string, string> = {
   'atm.common.deleteTitle': 'حذف عمليات',
   'atm.common.deleteBody': 'حذف {{count}} عملية؟ ستختفي من كل الشاشات.',
   'atm.common.unknownCodes': 'أكواد غير معروفة: {{codes}}',
+  'atm.common.emptyFiltered': 'لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة.',
 
   'atm.replenishments.title': 'التغذيات',
   'atm.replenishments.scheduleTime': 'توقيت التغذية',
   'atm.replenishments.todayGroup': 'اليوم',
-  'atm.replenishments.carriedGroup': 'أيام أخرى (بدون عدّاد وبدون إغلاق)',
+  'atm.replenishments.carriedGroup': 'أيام أخرى (بدون عدّاد)',
   'atm.replenishments.emptyToday': 'لا توجد تغذيات مفتوحة.',
   'atm.replenishments.closed': 'تم الإغلاق.',
   'atm.replenishments.closeTitle': 'إغلاق تغذيات',
@@ -16230,6 +16244,8 @@ const ar: Record<string, string> = {
   'atm.replenishments.forceDate': 'التاريخ',
   'atm.replenishments.openAction': 'فتح التغذيات',
   'atm.replenishments.openedCount': 'تم فتح {{count}} عملية.',
+  'atm.replenishments.alreadyOpenCodes':
+    'لم تُفتح لأن للماكينة تغذية مفتوحة بالفعل أو لأن الكود مُدخل مرتين: {{codes}}',
   'atm.replenishments.editTitle': 'تعديل {{code}}',
   'atm.replenishments.editManyTitle': 'تعديل {{count}} عملية محددة',
   'atm.replenishments.leaderCascadeHint':
@@ -16244,6 +16260,10 @@ const ar: Record<string, string> = {
   'atm.done.reopened': 'أُعيد فتحها — عادت للصفحة الحية.',
   'atm.done.reopenTitle': 'إعادة فتح عملية',
   'atm.done.reopenBody': 'إعادة فتح عملية الماكينة {{code}}؟',
+  'atm.done.reopenAlreadyOpenRep':
+    'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} تغذية مفتوحة أخرى بالفعل.',
+  'atm.done.reopenAlreadyOpenMaint':
+    'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} صيانة مفتوحة أخرى بالفعل.',
 
   'atm.maintenance.title': 'الصيانات',
   'atm.maintenance.serviceType': 'نوع الخدمة',
@@ -16255,6 +16275,8 @@ const ar: Record<string, string> = {
   'atm.maintenance.notes': 'ملاحظات',
   'atm.maintenance.openAction': 'فتح الصيانات',
   'atm.maintenance.openedCount': 'تم فتح {{count}} عملية.',
+  'atm.maintenance.alreadyOpenCodes':
+    'لم تُفتح لأن للماكينة صيانة مفتوحة بالفعل أو لأن الكود مُدخل مرتين: {{codes}}',
   'atm.maintenance.emptyToday': 'لا توجد صيانات مفتوحة.',
   'atm.maintenance.closed': 'تم الإغلاق.',
   'atm.maintenance.closeTitle': 'إغلاق صيانة',
@@ -16269,7 +16291,8 @@ const ar: Record<string, string> = {
     'تغيير القائد يسري على كل العمليات المفتوحة لنفس المنطقة في نفس الوردية.',
 
   'atm.mail.title': 'رسائل الصيانة',
-  'atm.mail.subtitle': 'الرسائل المعلقة. الصف المميز عليه صيانة مفتوحة اليوم بالفعل.',
+  'atm.mail.subtitle':
+    'الرسائل المعلقة. الصف المميز لماكينة لها صيانة مفتوحة بالفعل، ولا يمكن قبول رسالته قبل إغلاق تلك الصيانة.',
   'atm.mail.issue': 'الخدمة',
   'atm.mail.receivedAt': 'وقت الاستلام',
   'atm.mail.sender': 'المرسل',
@@ -16279,10 +16302,14 @@ const ar: Record<string, string> = {
   'atm.mail.reject': 'رفض',
   'atm.mail.acceptTitle': 'قبول رسائل',
   'atm.mail.acceptBody': 'قبول {{count}} رسالة؟ ستُفتح عملية صيانة لكل رسالة.',
+  'atm.mail.acceptBodyFlagged':
+    'باستثناء {{count}} منها، إذ إن لماكيناتها صيانة مفتوحة بالفعل (الصفوف المميزة)، فلن تُقبل وستبقى معلقة.',
   'atm.mail.rejectTitle': 'رفض رسائل',
   'atm.mail.rejectBody': 'رفض {{count}} رسالة؟ لن يُنشأ شيء.',
   'atm.mail.acceptedCount': 'تم قبول {{count}} رسالة.',
   'atm.mail.rejectedCount': 'تم رفض {{count}} رسالة.',
+  'atm.mail.refusedOpenMaintenance':
+    'لم تُقبل {{count}} رسالة وبقيت معلقة لأن للماكينة صيانة مفتوحة بالفعل: {{codes}}',
   'atm.mail.logTitle': 'سجل الرسائل',
   'atm.mail.logSubtitle': 'كل الرسائل في المدى المحدد مع قرار كل رسالة.',
   'atm.mail.logEmpty': 'لا توجد رسائل في هذا المدى.',

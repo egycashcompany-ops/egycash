@@ -2,8 +2,9 @@
 import { type Response } from 'express';
 import { type ApiSuccess, type PageMeta, type Paginated } from '@ecms/contracts';
 
-export const ok = <T>(res: Response, data: T, meta?: PageMeta): void => {
-  const body: ApiSuccess<T> =
+/** `meta` is a list's page block, or an action's own typed meta beside an unchanged `data`. */
+export const ok = <T, M extends object = PageMeta>(res: Response, data: T, meta?: M): void => {
+  const body: ApiSuccess<T, M> =
     meta === undefined ? { success: true, data } : { success: true, data, meta };
   res.status(200).json(body);
 };

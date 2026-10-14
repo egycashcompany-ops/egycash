@@ -38,7 +38,7 @@ ECMS" means.
 | `atm_maint_log` (models/atm_maint_log.js) | `atm_maintenances` | + `source: manual|mail` + `mailTicketId` (provenance the legacy discarded at acceptance) |
 | `atm_mails` (models/atm_mailss.js) | `atm_mail_tickets` | status 0/1/2 → `pending/accepted/rejected`; + `actionAt` (G1) + `providerMessageId` (idempotency) |
 | `atm_data_lists.bank[]/area[]` | `atm_ref_labels` (kind `bank`/`area`) | The five dead arrays (`zone`, `leaders`, `ops_emp`, `rep`, `maint`) not carried (G4) |
-| `filters` per-user collection | URL parameters (client persistence) | Same visible behaviour, no server preference store |
+| `filters` per-user collection | URL parameters (client persistence) | Same visible behaviour, no server preference store; the area list without a bank, the bank-change cascade and the whole-board read are D8 |
 | `users` / `user_status` | platform auth/RBAC | Single-session enforcement is a platform policy, not module behaviour (T4) |
 | `employees` (dept "الصراف الالى") | `platform/directory` + `atm.maintenanceLeaderDepartmentIds` setting | The hardcoded department NAME became configuration |
 | Legacy pages | `/atm/replenishments(±/done)`, `/atm/maintenance(±/done)`, `/atm/mail-tickets(±/log)`, `/atm/machines`, `/atm/data-edit` | `apps/web/src/modules/atm/routes.tsx` |
@@ -62,14 +62,73 @@ ECMS" means.
   read-only aggregate changes no behaviour and stores nothing; the default is still today.
 - **D4 — no `openedAt >= today` floor on the open lists.** The legacy floor (contad_app.js:263)
   made an open row with a past open date invisible on every screen forever — un-closable. Open is
-  open; the client still renders non-today rows as the grey carried-over group with no close
-  control and no timer, which is the visible legacy behaviour (atm_replenishment.ejs:1086).
+  open; the client still renders non-today rows as the grey carried-over group with no timer,
+  which is the visible legacy behaviour (atm_replenishment.ejs:1086). **Amended 2026-10-13 with
+  OD-1:** the legacy grey group also had no close control and no checkbox. Harmless while a
+  machine could simply be opened again; under OD-1 an open row of ANY day blocks its machine (a
+  new open, a reopen, a mail accept), so the grey rows now carry the close button and the checkbox
+  on both boards (bulk close, edit and delete span both groups; each table's "select all" stays in
+  its own group). Without it the only ways out were deleting the record or moving its open time
+  to today — losing or falsifying it. The server's close always accepted any open row.
 - **D5 — mail `duplication` computed at read, not written back during GET.** The legacy GET
   recomputed AND wrote it per render (contad_app.js:2674-2698); the screen shows the same live
-  answer either way. The ingest-time value stays on the row for parity.
+  answer either way. The ingest-time value stays on the row for parity. (What it MEANS changed
+  with OD-1, §4a: an open maintenance on any day, in any branch.)
 - **D6 — accepted mail opens maintenance at the ticket's stored `receivedAt`.** The legacy took
   it from the rendered cell text re-parsed client-side (mail_maintenance.ejs:903) — the same
   intent, minus a timezone round-trip through `document.write`.
+- **D8 — the bank and area filters work on their own and over the whole board** (2026-10-13,
+  «الفلتر بتاع البنك والمنطقة اتأكد إنه شغال فيهم»). Both open boards, one rule set
+  (`operation-log.repository.ts` `facets`/`listOpen`, `apps/web/src/modules/atm/lib/board-filters.ts`,
+  `lib/whole-board.ts`):
+  - **An area can be chosen with no bank — restoring the legacy header filter.** The legacy page
+    had TWO filters. The saved one (contad_app.js:255-266) offered areas only for the chosen banks
+    and, with none chosen, `$in: []` — nothing; the port copied that faithfully. But the same page
+    carried a table-header filter row whose Area select listed every area on the board, whatever
+    the bank (atm_replenishment.ejs:997-1005, :1158-1181; atm_maintenance.ejs:1285, :1499-1522).
+    The port has no header row, so filtering by area alone had become impossible. The facets now
+    answer: no bank chosen → the areas of every open row in scope; banks chosen → those banks'
+    areas (the saved filter's cascade, unchanged).
+  - **A bank change drops the areas it orphaned.** Pick NBE and one of its areas, switch to CIB,
+    and the stale area stayed in the URL — the board asked «CIB in that area» and came up empty
+    with nothing on screen saying why. The screen now prunes the chosen areas against the NEW
+    banks' area list, once that list has loaded (never against a list still loading, being
+    re-read, or failed). Pressing Back before that list arrives leaves the change: nothing is
+    pruned and the board reads the restored selection at once (it used to wait on its loading
+    rows for good). While a bank tick's answer loads, the bank list stays on offer — it is the same
+    whatever the banks chosen — and the area list says it is loading rather than offering the
+    previous banks' areas or «no results». Nothing else prunes: a remembered or linked bank/area that no open row
+    carries right now stays chosen — it is still the desk's question, and the next row opened
+    there belongs on its board — and stays visible: its dropdown lists it, ticked, to untick, and
+    an empty board says «لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة» instead of the
+    unfiltered empty message (the `MultiSelect`/vehicle-code precedent for a value its list has
+    moved past).
+  - **The board is read whole.** It asked for one page of `MAX_PAGE_SIZE` (100) and had no pager,
+    so past the hundredth open operation (by area) rows were invisible — not closable — and every
+    filter searched only those hundred. The screen now walks every page into one cache entry (the
+    fleet `whole-catalog` precedent), each row kept once if it slid across a page boundary between
+    reads. A write landing between two page reads can also slide a row back onto a page already
+    read — missed, while the closed row stays — and on a first load its realtime signal is absorbed
+    by the read in flight, so the walk checks itself: every page must report the first page's
+    total and the rows read must add up to it, else it is read again (at most three walks, the last
+    one shown); selection, bulk actions, close, the today/carried-over split and the realtime refresh
+    all run over the whole set. `MAX_PAGE_SIZE` is unchanged. Since «select all» can now check
+    more rows than one bulk request carries (`ATM_BULK_MAX_IDS`, 200 — unchanged), close, edit and
+    delete send a larger selection in consecutive requests of that size, joined as one answer; a
+    refused batch fails the action and nothing after it is sent.
+  - **A name is matched as the board shows it.** Bank and area are free text, so the filter
+    lists travel escaped: one comma-separated value as before, `\,` a comma inside a name, `\\` a
+    backslash (`joinAtmNameList`/`splitAtmNameList`, `atmNameListQuery`) — «Raml, Station» used to
+    be cut in two and match nothing, while every link and remembered filter written before reads
+    exactly as it did. And a name stands for every stored spelling that differs only by
+    surrounding spaces («NBE» and «NBE »): the dropdown offered both as «NBE», and picking the
+    spaced one matched the OTHER spelling's rows because the query parser trims. Case is not
+    folded — two spellings that differ by case remain two options, each matching its own rows.
+  - **Verified unchanged:** the dropdowns and the list read the same open, live rows under the same
+    `*.view` scope selector, the command bar's branch narrowing included; Arabic names travel
+    percent-encoded and match; a write's invalidation and its realtime signal refresh the board
+    and its dropdowns together (both under the kind's feature key). Suite:
+    `tests/integration/atm-board-filters.spec.ts`.
 - **T7 — open forms validate codes against ACTIVE machines.** Legacy replenishment validated
   against every machine ever stored, deleted included (`Event6.find({})`, contad_app.js:657),
   while its own mail reader validated against active ones (Automation/src/index.js:149-153). The
@@ -87,8 +146,9 @@ ECMS" means.
 | UI | Reopen was the done icon's double-click (atm_replenishment_done.ejs:462) | A visible action with a confirm | Same capability, same data effect (`closedAt` cleared, closer kept) |
 | UI | /all_atm exported via a CDN-loaded xlsx build (all_atm.ejs:986) | CSV with UTF-8 BOM, same four columns | No CDN dependency; Excel opens it identically |
 
-**Preserved quirks worth naming** (because a reviewer will ask): a code pasted twice opens two
-operations (no duplicate guard on open — the paste is the operator's statement); the
+**Preserved quirks worth naming** (because a reviewer will ask): ~~a code pasted twice opens two
+operations (no duplicate guard on open — the paste is the operator's statement)~~ — **withdrawn
+2026-10-13 by the owner's decision OD-1 below**; the
 replenishment leader cascade fires only when open-time is NOT moved in the same submit
 (contad_app.js:854-859) while maintenance's cascades unconditionally (:2019-2032); the cascade's
 night window is anchored to the open time's own calendar day even before 06:00 (:815-817) —
@@ -97,6 +157,59 @@ correctly touches nothing, not even that row (`contad_app.js:858-861` takes the 
 window whenever the hour is < 6); a
 reopen clears `closedAt` and keeps the closer's name, exactly as `end=0` did (:1032); rejection
 does not stop future mails for the same machine; force-date ≠ today opens at 06:00 Cairo (:726).
+
+## 4a. Owner decisions overriding the legacy
+
+| # | Date | The owner's words | Legacy | Port |
+| --- | --- | --- | --- | --- |
+| OD-1 | 2026-10-13 | «في ملحوظه مهمه جداً .. إن مينفعش أضيف ماكينة مرتين سواء فى عملية التغذية أو الصيانة» | No duplicate guard anywhere: the replenishment open (contad_app.js:637-768) and the maintenance open (:1896-1957) inserted one row per submitted line, so a pasted-twice code, a second paste later in the day, or a mail accepted for a machine already in maintenance each opened a second live row | **A machine has at most ONE open replenishment and at most ONE open maintenance** (open = `closedAt: null`, not deleted). The two kinds are independent; after a close the machine may open again. Enforced on every path that creates or re-opens an open row, with a partial unique index per collection behind it |
+
+**OD-1 in detail** (`apps/api/src/modules/atm/shared/open-operation.ts`):
+
+- **Identity is the machine code, company-wide.** The normalized `machineCode` — the identity the
+  mail matcher already uses (§6) — so an operation open in ANOTHER branch blocks too, including a
+  code whose master moved branch. Every refusal names only the code the caller typed: never the
+  other branch, never the blocking row.
+- **The batch opens** (`POST /atm/replenishments/open`, `POST /atm/maintenances/open`) keep their
+  partial semantics: a code that already has an open operation of that kind, or that repeats
+  earlier in the same batch, is not opened and is returned in the NEW response field
+  `alreadyOpenCodes` (one entry per refused line, beside `unknownCodes`); the other lines open.
+- **The reopens** (`POST /atm/replenishments/:id/reopen`, `POST /atm/maintenances/:id/reopen`) answer
+  **409 `ATM_OPERATION_ALREADY_OPEN`** when the machine already has ANOTHER open operation of that
+  kind.
+- **The mail accept** (`POST /atm/mail-tickets/accept` → `maintenance.service.openFromMail`) does not
+  accept a ticket whose machine already has an open maintenance — including one accepted earlier in
+  the same selection. The ticket stays pending; `data` is still the array of accepted tickets
+  (unchanged for existing clients), and the refused ones ride in
+  `meta.refused: [{ ticketId, machineCode, reason: 'maintenanceAlreadyOpen' }]`. A ticket that a
+  CONCURRENT accept of the same ticket just accepted is skipped like any decided ticket, never
+  reported as refused (the maintenance blocking it is its own). The accept confirm already counts
+  the selected mails painted «Duplicate» and says they will stay pending.
+- **The mail `duplication` flag changed meaning** (D5 is otherwise unchanged): it was "an open
+  maintenance opened TODAY in this branch" (contad_app.js:2674); it is now "this machine has an
+  open maintenance" — any day, any branch — on the pending screen AND as the ingest-time value the
+  log stores. What the screen paints is exactly what accept refuses.
+- **Concurrency.** `ux_open_replenishment_per_code` / `ux_open_maintenance_per_code`: unique on
+  `{ machineCode }` where `closedAt: null`, `isDeleted: false` and the code is a non-empty string
+  (an empty code — only a raw legacy import could write one — identifies no machine, and the
+  service check ignores it exactly as the index does). A race past the service check lands on the index and is mapped to the same refusal — a reported
+  line, a refused ticket or a 409 — never a 500 and never a half-written line. Both are built at
+  boot by `atm-indexes.ts` (the two operation models joined its list, so their older non-unique
+  indexes are now built in production too). Production may already hold two open rows for one
+  code: the index is then reported — collection, index and counts only, no row data — and skipped,
+  and the service check keeps refusing every new duplicate. Close or delete the stale row, then
+  redeploy. The maintenance index also serves the `duplication` question, so the legacy-shaped
+  `ix_branch_machine_open` (branch + code + "today") is no longer declared.
+- **A carried-over row is closable where it is shown** (D4, amended): the grey group of rows
+  opened on an earlier day — an overnight operation, a mail received yesterday and accepted today
+  (D6), a back-dated open, a reopened older row, an imported stale row — blocks its machine like
+  any open row, so both boards give it the close button and the checkbox.
+- **Paths that cannot open a row and need no guard:** close, the single and bulk edits (they set
+  schedule, open time, notes, service or leader — never `closedAt` or the code), the leader
+  cascade, soft delete; no restore path exists.
+- **The legacy importer is exempt** (§7): it writes history as it was. A second open row it carries
+  is refused by the index and REPORTED (`openDuplicate`, `openDuplicateIds`), never a crashed run;
+  where the index is absent the report says so (`openIndexMissing`) and the duplicate lands (§7).
 
 ## 5. GAPs (no clear legacy implementation — recorded, not guessed)
 
@@ -199,6 +312,19 @@ Properties worth knowing before running it:
 - **Two fields stay null by design**: `actionAt` (the legacy never recorded when a mail was decided
   — GAP G1; stamping the import time would be a false fact) and `providerMessageId` (these rows
   predate the key; NULL is exempt from its partial unique index).
+- **Open duplicates are reported, not imported** (OD-1). The importer is exempt from the
+  one-open-operation rule's service check — it decides nothing about history — but the partial
+  unique index admits one OPEN row per machine code and kind. A legacy row it refuses is counted in
+  `openDuplicate` and named (first 100) in `openDuplicateIds` by its preserved `_id`; every other
+  row still lands (the bulk write is unordered). A dry run PREDICTS the count within the deployment.
+  Close the stale row in the legacy database and re-run — the import is idempotent. **Only while
+  the index exists:** if the boot skipped it (the database already holds two open rows for one
+  code — likely after an earlier import, since nothing guarded it before OD-1), nothing can refuse.
+  The report then carries `openIndexMissing: true` (dry run and real run alike), `openDuplicate` /
+  `openDuplicateIds` name the deployment's open duplicates that were WRITTEN anyway, and a warning
+  names the collection, the index and the count. Resolve the stored duplicates so the next boot
+  builds the index, then import — or proceed knowingly; the live paths refuse every new duplicate
+  either way.
 - **Maintenance provenance imports as `manual` without exception.** The legacy accept path kept no
   link back to the ticket (contad_app.js:2806-2823), so `source: 'mail'` genuinely cannot be
   recovered — only rows created in ECMS carry it.
@@ -237,6 +363,8 @@ argument for the suite existing at all:
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |
+| — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
+| — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
 
 ## 9. The Efficiency register and the data-edit split

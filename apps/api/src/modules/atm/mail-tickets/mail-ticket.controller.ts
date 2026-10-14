@@ -4,6 +4,8 @@ import { type Request, type Response } from 'express';
 import { type z } from 'zod';
 import {
   PaginationQuerySchema,
+  type AtmMailAcceptMetaDto,
+  type AtmMailTicketDto,
   type DecideAtmMailTickets,
   type ListAtmMailLogQuery,
 } from '@ecms/contracts';
@@ -33,12 +35,16 @@ export const mailUnreadCount = async (req: Request, res: Response): Promise<void
   ok(res, { count: await atmMailTicketService.unreadCount(authContext(req)) });
 };
 
+// `data` stays the ACCEPTED tickets, as it always was; the tickets the owner's rule refused (their
+// machine already has an open maintenance — OD-1) ride in `meta`, so a client reading only `data`
+// keeps working and the screen can still say which tickets stayed pending and why.
 export const acceptMailTickets = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<DecideAtmMailTickets>(req);
-  const decided = await atmMailTicketService.accept(body, authContext(req));
-  ok(
+  const { decided, refused } = await atmMailTicketService.accept(body, authContext(req));
+  ok<AtmMailTicketDto[], AtmMailAcceptMetaDto>(
     res,
     decided.map((doc) => toAtmMailTicketDto(doc)),
+    { refused },
   );
 };
 

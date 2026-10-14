@@ -7,6 +7,7 @@ import { type BaseDocFields } from '../../../shared/base/base.model';
 import { type ScopeSelector } from '../../../shared/types';
 import { type Paginated } from '@ecms/contracts';
 import { cairoDayRange, cairoShiftWindow } from './cairo-time';
+import { boardNames, storedSpellingsOf } from './board-filter';
 
 /** The lifecycle fields both operation kinds carry. */
 export interface AtmOperationLogFields extends BaseDocFields {
@@ -42,15 +43,24 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
    * One deliberate deviation, decision D4: the legacy floor `open_time >= today 00:00` made any
    * open row with a PAST open date invisible on every screen forever — it could never be closed
    * again. Open is open here; the client still renders non-today rows as the grey carried-over
-   * group with no close control, which is the visible legacy behaviour.
+   * group (no timer, the visible legacy behaviour) — and, since the owner's rule made an open row
+   * of any day block its machine (OD-1), with the close control the legacy group lacked (D4).
+   *
+   * A requested bank or area matches every stored spelling of it that differs only by
+   * surrounding spaces (`board-filter.ts`) — resolved to those spellings first, so the page itself
+   * is still a plain `$in` on the stored field, sorted and cut by the same index as before.
    */
   async listOpen(params: OpenListParams): Promise<Paginated<T>> {
     const filter: FilterQuery<T> = { closedAt: null } as FilterQuery<T>;
     if (params.banks !== undefined && params.banks.length > 0) {
-      (filter as Record<string, unknown>).bankName = { $in: [...params.banks] };
+      (filter as Record<string, unknown>).bankName = {
+        $in: await this.openSpellings('bankName', params.banks, params.scope),
+      };
     }
     if (params.areas !== undefined && params.areas.length > 0) {
-      (filter as Record<string, unknown>).area = { $in: [...params.areas] };
+      (filter as Record<string, unknown>).area = {
+        $in: await this.openSpellings('area', params.areas, params.scope),
+      };
     }
     return this.list({
       filter,
@@ -64,29 +74,75 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   }
 
   /**
-   * The filter dropdown sources (contad_app.js:261-262): banks = distinct over ALL open rows;
-   * areas = distinct over open rows OF THE SELECTED BANKS — with none selected the legacy passed
-   * `$in: []` and got an empty area list, and that shape is preserved.
+   * The owner's rule (shared/open-operation.ts): which of these machine codes already have an
+   * OPEN operation of this kind. COMPANY-WIDE and therefore unscoped on purpose — a code open in
+   * a branch the caller cannot read still blocks — so it answers with codes only, never a row:
+   * nothing about the other branch can leave through it.
+   */
+  async openMachineCodes(machineCodes: readonly string[]): Promise<Set<string>> {
+    const wanted = [...new Set(machineCodes)].filter((code) => code !== '');
+    if (wanted.length === 0) return new Set();
+    const open = (await this.model
+      .distinct('machineCode', {
+        isDeleted: false,
+        closedAt: null,
+        machineCode: { $in: wanted },
+      } as FilterQuery<T>)
+      .exec()) as string[];
+    return new Set(open);
+  }
+
+  /**
+   * The same question for one code, not counting `exceptId` — a reopen never blocks itself. An
+   * empty code identifies no machine, so it never blocks: the same exclusion `openMachineCodes`
+   * makes and the index's partial filter (`machineCode: { $gt: '' }`) encodes.
+   */
+  async hasOpenOperation(machineCode: string, exceptId?: string): Promise<boolean> {
+    if (machineCode === '') return false;
+    const filter: Record<string, unknown> = { isDeleted: false, closedAt: null, machineCode };
+    if (exceptId !== undefined && Types.ObjectId.isValid(exceptId)) {
+      filter._id = { $ne: new Types.ObjectId(exceptId) };
+    }
+    return (await this.model.exists(filter as FilterQuery<T>).exec()) !== null;
+  }
+
+  /** The stored spellings of `field` among the open rows in scope, for `storedSpellingsOf`. */
+  private async openSpellings(
+    field: 'bankName' | 'area',
+    requested: readonly string[],
+    scope: ScopeSelector,
+  ): Promise<string[]> {
+    const stored = (await this.model
+      .distinct(field, this.baseFilter(scope, { closedAt: null } as FilterQuery<T>))
+      .exec()) as string[];
+    return storedSpellingsOf(stored, requested);
+  }
+
+  /**
+   * The filter dropdown sources, over the open rows in the caller's scope — the same rows, under
+   * the same scope, that `listOpen` pages through, so every name offered finds its rows.
+   *
+   * banks = every open row's bank (contad_app.js:261). areas = the open rows' areas, OF THE
+   * SELECTED BANKS when there are any (the saved filter's cascade, contad_app.js:262) and of EVERY
+   * open row when there are none. The legacy saved filter offered no area until a bank was chosen
+   * (`$in: []`), but the same page's table-header filter row listed every area on the board
+   * (atm_replenishment.ejs:1001, atm_maintenance.ejs:1285) — so an area could always be filtered
+   * on its own, and the port, which has no header row, restores that here (port doc D8).
    */
   async facets(
     scope: ScopeSelector,
     selectedBanks: readonly string[],
   ): Promise<{ banks: string[]; areas: string[] }> {
     const openFilter = this.baseFilter(scope, { closedAt: null } as FilterQuery<T>);
-    const banks = (await this.model.distinct('bankName', openFilter).exec()) as string[];
-    const areas =
-      selectedBanks.length === 0
-        ? []
-        : ((await this.model
-            .distinct(
-              'area',
-              this.baseFilter(scope, {
-                closedAt: null,
-                bankName: { $in: [...selectedBanks] },
-              } as FilterQuery<T>),
-            )
-            .exec()) as string[]);
-    return { banks: banks.sort(), areas: areas.sort() };
+    const storedBanks = (await this.model.distinct('bankName', openFilter).exec()) as string[];
+    const areaFilter: Record<string, unknown> = { closedAt: null };
+    if (selectedBanks.length > 0) {
+      areaFilter.bankName = { $in: storedSpellingsOf(storedBanks, selectedBanks) };
+    }
+    const storedAreas = (await this.model
+      .distinct('area', this.baseFilter(scope, areaFilter as FilterQuery<T>))
+      .exec()) as string[];
+    return { banks: boardNames(storedBanks), areas: boardNames(storedAreas) };
   }
 
   /**

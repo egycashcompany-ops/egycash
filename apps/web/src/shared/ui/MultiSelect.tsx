@@ -190,7 +190,10 @@ export const MultiSelect = ({
    * putting the remainder back. Omit it and the box keeps its own text, as every other filter does.
    */
   searchValue?: string;
-  /** Fetching the remote answer — only meaningful alongside `onSearch`. */
+  /**
+   * The answer is on its way — the remote search's, alongside `onSearch`, or the options' own
+   * first read. An empty list then says it is loading rather than that nothing matched.
+   */
   searching?: boolean;
   /**
    * How much room the TRIGGER spends on itself — the same opt-in `Input` and `Select` take.

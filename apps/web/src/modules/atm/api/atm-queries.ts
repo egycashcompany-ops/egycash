@@ -54,6 +54,21 @@ export const useAtmMachines = (params: AtmListParams, enabled = true) =>
   });
 
 /**
+ * One page of the machine directory (/atm/machines). The page in hand stands while the next is
+ * read — another page, order, size or filter — as the vehicles registry's does (`useVehicles`):
+ * without it every step dropped the table to skeleton rows and took the pager from under the
+ * pointer. Its own query, so the data-edit screen's machine list keeps its behaviour.
+ */
+export const atmMachineDirectoryQuery = (params: AtmListParams) => ({
+  queryKey: listKey(MODULE, 'machines', params),
+  queryFn: () => api.listMachines(params),
+  placeholderData: (previous: Paginated<AtmMachineDto> | undefined) => previous,
+});
+
+export const useAtmMachineDirectory = (params: AtmListParams) =>
+  useQuery(atmMachineDirectoryQuery(params));
+
+/**
  * The machine directory's summary — counts and dropdown sources over the whole filtered set. The
  * previous filter's answer stands while the next is read, so the figures and the lists do not
  * blink empty on every tick.

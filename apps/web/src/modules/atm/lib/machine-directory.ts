@@ -7,9 +7,12 @@
 // filter here is a query parameter (`ListAtmMachinesQuerySchema`), and the summary, the pages and
 // the export all send the same ones.
 import {
+  ATM_MACHINE_CODES_MAX,
   joinAtmNameList,
+  normalizeAtmMachineCode,
   splitAtmMachineCodeList,
   type AtmMachineDto,
+  type PageMeta,
   type Paginated,
 } from '@ecms/contracts';
 import { type MultiSelectOption } from '../../../shared/ui/MultiSelect';
@@ -70,6 +73,57 @@ export const readTypedMachineCodes = (raw: string): { chosen: string[]; typing: 
   if (last === -1) return { chosen: [], typing: raw };
   return { chosen: splitAtmMachineCodeList(raw.slice(0, last)), typing: raw.slice(last + 1) };
 };
+
+/**
+ * What the ID picker's box now holds, read against what it held a moment ago. TYPED — one
+ * character at a time — it is `readTypedMachineCodes`: a code is taken once its separator follows.
+ * PASTED — more than one character at once, a separator among them — it is a list, and EVERY code
+ * in it is taken, the last one too. A browser pasting a column into a one-line box turns its new
+ * lines into spaces and drops the final one, so the last code arrives with no separator after it;
+ * read as typing, it stayed in the box and was lost when the list closed.
+ */
+export const readMachineCodeInput = (
+  before: string,
+  raw: string,
+): { chosen: string[]; typing: string } =>
+  raw.length - before.length > 1 && CODE_SEPARATOR.test(raw)
+    ? { chosen: splitAtmMachineCodeList(raw), typing: '' }
+    : readTypedMachineCodes(raw);
+
+/**
+ * The fragment the ID picker searches for, normalized as every stored code is
+ * (`normalizeAtmMachineCode`): `0123` looks for machine 123, which a stored `0123` never is. Only
+ * zeros ask for nothing in particular.
+ */
+export const machineCodeSearchTerm = (typing: string): string => normalizeAtmMachineCode(typing);
+
+/**
+ * `codes` added to the ID filter's `value`, each once, up to the most one filter may ask
+ * (`ATM_MACHINE_CODES_MAX` — the API refuses a longer list, and the page would show nothing but
+ * an error). `dropped` counts the codes that did not fit, so the reader can be told.
+ */
+export const addMachineCodes = (
+  value: readonly string[],
+  codes: readonly string[],
+  max: number = ATM_MACHINE_CODES_MAX,
+): { next: string[]; dropped: number } => {
+  const next = value.slice(0, max);
+  let dropped = value.length - next.length;
+  for (const code of codes) {
+    if (next.includes(code)) continue;
+    if (next.length < max) next.push(code);
+    else dropped += 1;
+  }
+  return { next, dropped };
+};
+
+/**
+ * The last page, when the page asked for is past it — a branch switch or an old link keeps
+ * `?page=5` over a set of two pages, and the screen said «no machines» beside counts saying thirty
+ * — or `null` while it is in range. A set with nothing in it has no page to go to.
+ */
+export const pageBeyondEnd = (page: number, meta: PageMeta): number | null =>
+  meta.totalItems > 0 && page > meta.totalPages ? Math.max(1, meta.totalPages) : null;
 
 /**
  * The ID picker's list: what is chosen first — so it can always be seen and unticked, even when the

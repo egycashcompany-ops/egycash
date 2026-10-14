@@ -16,5 +16,8 @@ export const DARK_FILTER_BAR = cn(
   // own; the reset button keeps its size.
   'lg:[&>div]:!flex-nowrap lg:[&>div]:!gap-1.5 lg:[&>div>*]:!min-w-0 lg:[&>div>*]:!flex-1 lg:[&>div>.ms-auto]:!flex-none',
   // A small computer screen (1024–1279) takes the words a size down so they still read whole.
-  'lg:max-xl:[&_input]:!px-1.5 lg:max-xl:[&_input]:!text-xs lg:max-xl:[&_button[aria-haspopup]]:!px-1.5 lg:max-xl:[&_button[aria-haspopup]]:!text-xs lg:max-xl:[&_button[aria-haspopup]_svg]:!h-3 lg:max-xl:[&_button[aria-haspopup]_svg]:!w-3',
+  // The bar's own boxes take the narrower padding; an open list's search box — inside its
+  // `[role=listbox]` panel — keeps its own, or its start padding went under the magnifier drawn
+  // there. The guard is inside `:where()`, so the rule stays exactly as specific as it was.
+  'lg:max-xl:[&_:where(:not([role=listbox]_*))_>_input]:!px-1.5 lg:max-xl:[&_input]:!text-xs lg:max-xl:[&_button[aria-haspopup]]:!px-1.5 lg:max-xl:[&_button[aria-haspopup]]:!text-xs lg:max-xl:[&_button[aria-haspopup]_svg]:!h-3 lg:max-xl:[&_button[aria-haspopup]_svg]:!w-3',
 );

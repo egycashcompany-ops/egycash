@@ -122,6 +122,7 @@ const KEYS = [
   'atm.machines.figures.machines',
   'atm.machines.figures.banks',
   'atm.machines.figures.areas',
+  'atm.machines.codesLimit',
   'atm.dataEdit.title',
   'atm.dataEdit.subtitle',
   'atm.dataEdit.addMachines',

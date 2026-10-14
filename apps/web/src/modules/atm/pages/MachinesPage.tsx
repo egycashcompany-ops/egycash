@@ -13,9 +13,10 @@
 // send the same query (`lib/machine-directory.ts`), so a directory of some 2,600 machines is
 // filtered, counted and exported whole — the page used to read ONE page of a hundred, and its
 // search and its export never saw the rest.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  ATM_MACHINE_CODES_MAX,
   MAX_PAGE_SIZE,
   joinAtmNameList,
   splitAtmMachineCodeList,
@@ -32,7 +33,7 @@ import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { FilterBar, FilterResetStyleContext } from '../../../shared/ui/FilterBar';
 import { FilterWithIcon } from '../../../shared/ui/FilterWithIcon';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
-import { Pagination } from '../../../shared/ui/Pagination';
+import { NumberedPager } from '../../../shared/ui/NumberedPager';
 import { DownloadIcon } from '../../../shared/ui/icons';
 import { DARK_FILTER_BAR } from '../../../shared/ui/dark-filter-bar';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -41,7 +42,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { chosenSorts, clickChosenSort, readSorts, writeSorts } from '../../../shared/lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import * as atmApi from '../api/atm-api';
-import { useAtmMachines, useAtmMachinesSummary } from '../api/atm-queries';
+import { useAtmMachineDirectory, useAtmMachinesSummary } from '../api/atm-queries';
 import { MachineCodeFilter } from '../components/MachineCodeFilter';
 import { MACHINE_ICON, MachineFigures } from '../components/MachineFigures';
 import { boardFilterOptions } from '../lib/board-filters';
@@ -52,6 +53,7 @@ import {
   hasMachineFilters,
   machineFilterQuery,
   machinesCsv,
+  pageBeyondEnd,
 } from '../lib/machine-directory';
 
 /** Remembered across visits: this screen's filters, order and page size. `page` is derived, never kept. */
@@ -67,9 +69,10 @@ export const MachinesPage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   // The address bar is the filter. A bank or an area may hold a comma — the list escapes it
-  // (`joinAtmNameList`); codes hold none, and read normalized.
+  // (`joinAtmNameList`); codes hold none, and read normalized — no more of them than the API takes,
+  // so an old link or a remembered view holding more asks for the first ones, not for an error.
   const banks = splitAtmNameList(sp.get('banks') ?? '');
-  const codes = splitAtmMachineCodeList(sp.get('codes') ?? '');
+  const codes = splitAtmMachineCodeList(sp.get('codes') ?? '').slice(0, ATM_MACHINE_CODES_MAX);
   const name = sp.get('name') ?? '';
   const areas = splitAtmNameList(sp.get('areas') ?? '');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -110,9 +113,17 @@ export const MachinesPage = (): JSX.Element => {
     () => ({ ...filterQuery, ...order, page, pageSize }),
     [filterQuery, order, page, pageSize],
   );
-  const list = useAtmMachines(params);
+  const list = useAtmMachineDirectory(params);
   const rows = list.data?.items ?? [];
   const summary = useAtmMachinesSummary(filterQuery);
+
+  // A page past the end — a branch switch or an old link keeping `?page=5` over two pages — moves
+  // to the last page, once the answer for it is in (not the page before standing in for it).
+  const lastPage =
+    list.data !== undefined && !list.isPlaceholderData ? pageBeyondEnd(page, list.data.meta) : null;
+  useEffect(() => {
+    if (lastPage !== null) patch({ page: lastPage === 1 ? null : String(lastPage) }, false);
+  }, [lastPage]);
 
   const bankOptions = boardFilterOptions(summary.data?.options.banks ?? [], banks);
   const areaOptions = boardFilterOptions(summary.data?.options.areas ?? [], areas);
@@ -281,7 +292,7 @@ export const MachinesPage = (): JSX.Element => {
         empty={filtered ? t('atm.machines.emptyFiltered') : t('atm.machines.empty')}
       />
       {list.data !== undefined && list.data.meta.totalItems > 0 && (
-        <Pagination
+        <NumberedPager
           meta={list.data.meta}
           onPageChange={(next) => patch({ page: String(next) }, false)}
           onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

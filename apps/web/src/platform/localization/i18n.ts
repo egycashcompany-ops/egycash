@@ -515,6 +515,10 @@ const en: Record<string, string> = {
   'common.pagination.prev': 'Previous',
   'common.pagination.next': 'Next',
   'common.pagination.page': 'Page {{page}} of {{total}}',
+  'common.pager.showing.before': 'Showing',
+  'common.pager.showing.of': 'of',
+  'common.pager.perPage': 'Rows per page',
+  'common.pager.label': 'Pages',
   'common.filters.all': 'All',
   'common.filters.clear': 'Clear filters',
   'common.filters.clearOne': 'Clear selection',
@@ -8003,6 +8007,8 @@ const en: Record<string, string> = {
   'atm.machines.figures.machines': 'Machines',
   'atm.machines.figures.banks': 'Banks',
   'atm.machines.figures.areas': 'Areas',
+  'atm.machines.codesLimit':
+    'At most {{max}} machine IDs can be filtered at once; the {{dropped}} beyond that were not added.',
 
   'atm.dataEdit.title': 'Machine Data',
   'atm.dataEdit.subtitle': 'Machine master data, the bank list and the area list.',
@@ -8957,6 +8963,10 @@ const ar: Record<string, string> = {
   'common.pagination.prev': 'السابق',
   'common.pagination.next': 'التالي',
   'common.pagination.page': 'صفحة {{page}} من {{total}}',
+  'common.pager.showing.before': 'عرض',
+  'common.pager.showing.of': 'من أصل',
+  'common.pager.perPage': 'الصفوف بالصفحة',
+  'common.pager.label': 'الصفحات',
   'common.filters.all': 'الكل',
   'common.filters.clear': 'مسح عوامل التصفية',
   'common.filters.clearOne': 'مسح التحديد',
@@ -16332,6 +16342,8 @@ const ar: Record<string, string> = {
   'atm.machines.figures.machines': 'الماكينات',
   'atm.machines.figures.banks': 'البنوك',
   'atm.machines.figures.areas': 'المناطق',
+  'atm.machines.codesLimit':
+    'لا تقبل التصفية أكثر من {{max}} رقم ماكينة في المرة الواحدة، ولم تُضَف الأرقام الزائدة ({{dropped}}).',
 
   'atm.dataEdit.title': 'إضافة البيانات',
   'atm.dataEdit.subtitle': 'بيانات الماكينات وقائمة البنوك وقائمة المناطق.',

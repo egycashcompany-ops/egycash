@@ -15,9 +15,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  ATM_MACHINE_CODES_MAX,
   type AtmMachineDto,
   type AtmMachinesSummaryDto,
   type Locale,
@@ -32,6 +33,25 @@ import { listKey } from '../../shared/lib/query-keys';
 import { formatNumber } from '../../shared/lib/format';
 import { DARK_FILTER_BAR } from '../../shared/ui/dark-filter-bar';
 import { MachinesPage } from './pages/MachinesPage';
+import { atmMachineDirectoryQuery } from './api/atm-queries';
+import type * as AtmApiModule from './api/atm-api';
+
+/** The list's next answer waits on this gate — so a suite can look while it is on its way. */
+let listGate: Promise<void> = Promise.resolve();
+vi.mock('./api/atm-api', async () => {
+  const actual = await vi.importActual<typeof AtmApiModule>('./api/atm-api');
+  return {
+    ...actual,
+    listMachines: async (params: Record<string, unknown>): Promise<Paginated<AtmMachineDto>> => {
+      await listGate;
+      const page = Number(params['page'] ?? 1);
+      return {
+        items: [machine(page * 100, { name: `SYN ATM PAGE ${String(page)}` })],
+        meta: { page, pageSize: 25, totalItems: 2634, totalPages: 106 },
+      };
+    },
+  };
+});
 
 const t = (key: string): string => translate('ar', key);
 
@@ -247,6 +267,20 @@ describe('the address bar is the filter', () => {
     expect(html).toContain('<option value="50" selected="">');
   });
 
+  // MACH-3: the API takes at most ATM_MACHINE_CODES_MAX codes. A link or a remembered view
+  // holding more asked for all of them, and the list and the counts both came back 400.
+  it('asks for no more codes than the API takes, however many the address bar holds', () => {
+    const many = Array.from({ length: 230 }, (_unused, i) => String(20000 + i));
+    const kept = many.slice(0, ATM_MACHINE_CODES_MAX);
+    const html = render({
+      search: `codes=${many.join('%2C')}`,
+      list: paged([machine(7, { name: 'SYN ATM WITHIN LIMIT' })]),
+      listParams: { ...OPENING, codes: kept.join(',') },
+    });
+    // The list drawn is the one asked with the first two hundred codes — not a request refused.
+    expect(html).toContain('SYN ATM WITHIN LIMIT');
+  });
+
   it('a filter matching nothing says so, instead of the empty directory’s words', () => {
     const html = render({
       search: 'name=NOTHING',
@@ -255,5 +289,61 @@ describe('the address bar is the filter', () => {
     });
     expect(html).toContain(t('atm.machines.emptyFiltered'));
     expect(html).not.toContain('data-page-size');
+  });
+});
+
+describe('the pager', () => {
+  // MACH-2: a hundred pages and more of the directory — reachable at once, as on the vehicles
+  // registry, not one «next» at a time.
+  it('numbers the pages — the first, the last, the current one and its neighbours', () => {
+    const html = render({
+      search: 'page=50',
+      list: paged([machine(1)], { page: 50, totalItems: 2634, totalPages: 106 }),
+      listParams: { ...OPENING, page: 50 },
+    });
+    expect(html).toContain('data-pager="true"');
+    const pager = html.slice(html.indexOf('data-pager="true"'));
+    const numbered = [...pager.matchAll(/data-pager-page="(\d+)"/gu)].map((m) => Number(m[1]));
+    expect(numbered).toEqual([1, 49, 50, 51, 106]);
+    expect(pager).toContain('aria-current="page" data-pager-page="50"');
+    expect(pager.split('…').length - 1).toBe(2);
+    expect(pager).toContain(t('common.pager.perPage'));
+    // Not the «page X of Y» pager it replaced.
+    expect(html).not.toContain(
+      translate('ar', 'common.pagination.page', {
+        page: formatNumber(50, 'ar'),
+        total: formatNumber(106, 'ar'),
+      }),
+    );
+  });
+});
+
+describe('moving between pages', () => {
+  // MACH-4: each new page, order or filter is a new query; without the page before standing in,
+  // the table dropped to skeleton rows and the pager — drawn under the data — went with it.
+  it('keeps the page in hand on screen while the next one is read', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const first = { ...OPENING, page: 1 };
+    const observer = new QueryObserver<Paginated<AtmMachineDto>>(qc, atmMachineDirectoryQuery(first));
+    const stop = observer.subscribe(() => undefined);
+    await vi.waitFor(() => expect(observer.getCurrentResult().isSuccess).toBe(true));
+    expect(observer.getCurrentResult().data?.items[0]?.name).toBe('SYN ATM PAGE 1');
+
+    let release = (): void => undefined;
+    listGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    observer.setOptions(atmMachineDirectoryQuery({ ...OPENING, page: 2 }));
+    const reading = observer.getCurrentResult();
+    expect(reading.isLoading).toBe(false);
+    expect(reading.isPlaceholderData).toBe(true);
+    expect(reading.data?.items[0]?.name).toBe('SYN ATM PAGE 1');
+    expect(reading.data?.meta.totalPages).toBe(106);
+
+    release();
+    await vi.waitFor(() => expect(observer.getCurrentResult().isPlaceholderData).toBe(false));
+    expect(observer.getCurrentResult().data?.items[0]?.name).toBe('SYN ATM PAGE 2');
+    stop();
+    listGate = Promise.resolve();
   });
 });

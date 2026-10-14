@@ -2,7 +2,7 @@
 import { type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
-  listQuery,
+  type AtmOperationFacetsQuery,
   type AtmOperationIds,
   type BulkUpdateAtmMaintenances,
   type CloseAtmMaintenances,
@@ -18,9 +18,6 @@ import { atmMaintenanceService } from './maintenance.service';
 
 type IdParam = { id: string };
 
-export const MaintFacetsQuerySchema = z.object({ banks: listQuery(z.string().min(1)) }).strict();
-type MaintFacetsQuery = z.infer<typeof MaintFacetsQuerySchema>;
-
 export const MaintReopenBodySchema = z.object({ version: z.number().int().min(0) }).strict();
 type MaintReopenBody = z.infer<typeof MaintReopenBodySchema>;
 
@@ -30,7 +27,7 @@ export const listOpenMaintenances = async (req: Request, res: Response): Promise
 };
 
 export const maintenanceFacets = async (req: Request, res: Response): Promise<void> => {
-  const { query } = validated<never, MaintFacetsQuery>(req);
+  const { query } = validated<never, AtmOperationFacetsQuery>(req);
   ok(res, await atmMaintenanceService.facets(authContext(req), query.banks ?? []));
 };
 

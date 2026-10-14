@@ -38,7 +38,7 @@ ECMS" means.
 | `atm_maint_log` (models/atm_maint_log.js) | `atm_maintenances` | + `source: manual|mail` + `mailTicketId` (provenance the legacy discarded at acceptance) |
 | `atm_mails` (models/atm_mailss.js) | `atm_mail_tickets` | status 0/1/2 → `pending/accepted/rejected`; + `actionAt` (G1) + `providerMessageId` (idempotency) |
 | `atm_data_lists.bank[]/area[]` | `atm_ref_labels` (kind `bank`/`area`) | The five dead arrays (`zone`, `leaders`, `ops_emp`, `rep`, `maint`) not carried (G4) |
-| `filters` per-user collection | URL parameters (client persistence) | Same visible behaviour, no server preference store |
+| `filters` per-user collection | URL parameters (client persistence) | Same visible behaviour, no server preference store; the area list without a bank, the bank-change cascade and the whole-board read are D8 |
 | `users` / `user_status` | platform auth/RBAC | Single-session enforcement is a platform policy, not module behaviour (T4) |
 | `employees` (dept "الصراف الالى") | `platform/directory` + `atm.maintenanceLeaderDepartmentIds` setting | The hardcoded department NAME became configuration |
 | Legacy pages | `/atm/replenishments(±/done)`, `/atm/maintenance(±/done)`, `/atm/mail-tickets(±/log)`, `/atm/machines`, `/atm/data-edit` | `apps/web/src/modules/atm/routes.tsx` |
@@ -77,6 +77,58 @@ ECMS" means.
 - **D6 — accepted mail opens maintenance at the ticket's stored `receivedAt`.** The legacy took
   it from the rendered cell text re-parsed client-side (mail_maintenance.ejs:903) — the same
   intent, minus a timezone round-trip through `document.write`.
+- **D8 — the bank and area filters work on their own and over the whole board** (2026-10-13,
+  «الفلتر بتاع البنك والمنطقة اتأكد إنه شغال فيهم»). Both open boards, one rule set
+  (`operation-log.repository.ts` `facets`/`listOpen`, `apps/web/src/modules/atm/lib/board-filters.ts`,
+  `lib/whole-board.ts`):
+  - **An area can be chosen with no bank — restoring the legacy header filter.** The legacy page
+    had TWO filters. The saved one (contad_app.js:255-266) offered areas only for the chosen banks
+    and, with none chosen, `$in: []` — nothing; the port copied that faithfully. But the same page
+    carried a table-header filter row whose Area select listed every area on the board, whatever
+    the bank (atm_replenishment.ejs:997-1005, :1158-1181; atm_maintenance.ejs:1285, :1499-1522).
+    The port has no header row, so filtering by area alone had become impossible. The facets now
+    answer: no bank chosen → the areas of every open row in scope; banks chosen → those banks'
+    areas (the saved filter's cascade, unchanged).
+  - **A bank change drops the areas it orphaned.** Pick NBE and one of its areas, switch to CIB,
+    and the stale area stayed in the URL — the board asked «CIB in that area» and came up empty
+    with nothing on screen saying why. The screen now prunes the chosen areas against the NEW
+    banks' area list, once that list has loaded (never against a list still loading, being
+    re-read, or failed). Pressing Back before that list arrives leaves the change: nothing is
+    pruned and the board reads the restored selection at once (it used to wait on its loading
+    rows for good). While a bank tick's answer loads, the bank list stays on offer — it is the same
+    whatever the banks chosen — and the area list says it is loading rather than offering the
+    previous banks' areas or «no results». Nothing else prunes: a remembered or linked bank/area that no open row
+    carries right now stays chosen — it is still the desk's question, and the next row opened
+    there belongs on its board — and stays visible: its dropdown lists it, ticked, to untick, and
+    an empty board says «لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة» instead of the
+    unfiltered empty message (the `MultiSelect`/vehicle-code precedent for a value its list has
+    moved past).
+  - **The board is read whole.** It asked for one page of `MAX_PAGE_SIZE` (100) and had no pager,
+    so past the hundredth open operation (by area) rows were invisible — not closable — and every
+    filter searched only those hundred. The screen now walks every page into one cache entry (the
+    fleet `whole-catalog` precedent), each row kept once if it slid across a page boundary between
+    reads. A write landing between two page reads can also slide a row back onto a page already
+    read — missed, while the closed row stays — and on a first load its realtime signal is absorbed
+    by the read in flight, so the walk checks itself: every page must report the first page's
+    total and the rows read must add up to it, else it is read again (at most three walks, the last
+    one shown); selection, bulk actions, close, the today/carried-over split and the realtime refresh
+    all run over the whole set. `MAX_PAGE_SIZE` is unchanged. Since «select all» can now check
+    more rows than one bulk request carries (`ATM_BULK_MAX_IDS`, 200 — unchanged), close, edit and
+    delete send a larger selection in consecutive requests of that size, joined as one answer; a
+    refused batch fails the action and nothing after it is sent.
+  - **A name is matched as the board shows it.** Bank and area are free text, so the filter
+    lists travel escaped: one comma-separated value as before, `\,` a comma inside a name, `\\` a
+    backslash (`joinAtmNameList`/`splitAtmNameList`, `atmNameListQuery`) — «Raml, Station» used to
+    be cut in two and match nothing, while every link and remembered filter written before reads
+    exactly as it did. And a name stands for every stored spelling that differs only by
+    surrounding spaces («NBE» and «NBE »): the dropdown offered both as «NBE», and picking the
+    spaced one matched the OTHER spelling's rows because the query parser trims. Case is not
+    folded — two spellings that differ by case remain two options, each matching its own rows.
+  - **Verified unchanged:** the dropdowns and the list read the same open, live rows under the same
+    `*.view` scope selector, the command bar's branch narrowing included; Arabic names travel
+    percent-encoded and match; a write's invalidation and its realtime signal refresh the board
+    and its dropdowns together (both under the kind's feature key). Suite:
+    `tests/integration/atm-board-filters.spec.ts`.
 - **T7 — open forms validate codes against ACTIVE machines.** Legacy replenishment validated
   against every machine ever stored, deleted included (`Event6.find({})`, contad_app.js:657),
   while its own mail reader validated against active ones (Automation/src/index.js:149-153). The
@@ -312,6 +364,7 @@ argument for the suite existing at all:
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |
 | — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
+| — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
 
 ## 9. The Efficiency register and the data-edit split

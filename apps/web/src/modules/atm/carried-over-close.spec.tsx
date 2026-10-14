@@ -23,11 +23,11 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
-import { listKey } from '../../shared/lib/query-keys';
 import { type TableSelection } from '../../shared/ui/useTableSelection';
 import { ReplenishmentsPage } from './pages/ReplenishmentsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { groupSelection } from './lib/operation-view';
+import { atmBoardKeys } from './api/atm-queries';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -102,8 +102,8 @@ const renderBoard = (
   permissions: readonly string[],
 ): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(listKey('atm', kind, { kind: 'open', pageSize: MAX_PAGE_SIZE }), page(rows));
-  qc.setQueryData(listKey('atm', kind, { kind: 'facets', banks: [] }), { banks: [], areas: [] });
+  qc.setQueryData(atmBoardKeys.open(kind, { banks: [], areas: [] }), page(rows));
+  qc.setQueryData(atmBoardKeys.facets(kind, []), { banks: [], areas: [] });
   const Board = kind === 'replenishments' ? ReplenishmentsPage : MaintenancePage;
   return renderToStaticMarkup(
     <Provider store={store(permissions)}>

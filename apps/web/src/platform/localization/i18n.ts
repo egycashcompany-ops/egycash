@@ -7901,6 +7901,7 @@ const en: Record<string, string> = {
   'atm.common.deleteTitle': 'Delete operations',
   'atm.common.deleteBody': 'Delete {{count}} operation(s)? They disappear from every screen.',
   'atm.common.unknownCodes': 'Unknown machine codes: {{codes}}',
+  'atm.common.emptyFiltered': 'No open operation matches the chosen bank or area.',
 
   'atm.replenishments.title': 'Replenishments',
   'atm.replenishments.scheduleTime': 'Schedule Time',
@@ -16226,6 +16227,7 @@ const ar: Record<string, string> = {
   'atm.common.deleteTitle': 'حذف عمليات',
   'atm.common.deleteBody': 'حذف {{count}} عملية؟ ستختفي من كل الشاشات.',
   'atm.common.unknownCodes': 'أكواد غير معروفة: {{codes}}',
+  'atm.common.emptyFiltered': 'لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة.',
 
   'atm.replenishments.title': 'التغذيات',
   'atm.replenishments.scheduleTime': 'توقيت التغذية',

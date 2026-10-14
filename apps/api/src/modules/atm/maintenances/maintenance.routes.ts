@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  AtmOperationFacetsQuerySchema,
   AtmOperationIdsSchema,
   BulkUpdateAtmMaintenancesSchema,
   CloseAtmMaintenancesSchema,
@@ -17,7 +18,6 @@ import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
-  MaintFacetsQuerySchema,
   MaintReopenBodySchema,
   bulkUpdateMaintenances,
   closeMaintenances,
@@ -46,7 +46,7 @@ export const buildAtmMaintenancesRouter = (): Router => {
     '/facets',
     authenticate,
     authorize('atmMaintenance.view'),
-    validate({ query: MaintFacetsQuerySchema }),
+    validate({ query: AtmOperationFacetsQuerySchema }),
     asyncHandler(maintenanceFacets),
   );
   router.get(

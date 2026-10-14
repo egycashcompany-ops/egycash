@@ -179,14 +179,6 @@ export const UpdateAtmMachineAreaSchema = z
   .strict();
 export type UpdateAtmMachineArea = z.infer<typeof UpdateAtmMachineAreaSchema>;
 
-export const ListAtmMachinesQuerySchema = PaginationQuerySchema.extend({
-  isActive: booleanQuery().optional(),
-  search: z.string().optional(),
-  bankName: z.string().optional(),
-  area: z.string().optional(),
-}).strict();
-export type ListAtmMachinesQuery = z.infer<typeof ListAtmMachinesQuerySchema>;
-
 // ── Reference labels (legacy `atm_data_lists.bank[]` / `.area[]`) ───────────────────────────────
 //
 // The legacy singleton document held seven arrays; only `bank` and `area` are read or written by
@@ -317,6 +309,96 @@ export const ListAtmOpenOperationsQuerySchema = PaginationQuerySchema.extend({
   areas: atmNameListQuery(),
 }).strict();
 export type ListAtmOpenOperationsQuery = z.infer<typeof ListAtmOpenOperationsQuerySchema>;
+
+// ── The machine list's filters (/atm/machines «كل الماكينات») ───────────────────────────────────
+//
+// One control per column of the table — Bank, ID, ATM Name, Area — in the vehicles registry's
+// shape: the dropdowns take several answers (ORed within a column), the columns are ANDed with each
+// other, and every filter is SERVER-side, so it holds across pages and reaches the export too. The
+// list and its summary read the SAME parameters; the summary is the list's whole answer counted.
+
+/** The columns the machine list sorts by — the table's four, and nothing a stranger can name. */
+export const ATM_MACHINE_SORT_FIELDS = ['bankName', 'machineCode', 'name', 'area'] as const;
+
+/** How many machine codes one filter may name — a pasted list off a message, not the directory. */
+export const ATM_MACHINE_CODES_MAX = 200;
+
+/**
+ * Machine codes typed or pasted into the ID filter → the codes, normalized exactly as every entry
+ * point normalizes them (`normalizeAtmMachineCode`), each once, in the order first written. A
+ * machine code holds no space or comma, so whitespace, commas and semicolons (Latin or Arabic) all
+ * separate; what is left empty — or only zeros — names no machine and is dropped.
+ */
+export const splitAtmMachineCodeList = (raw: string | readonly string[]): string[] => {
+  const parts = Array.isArray(raw)
+    ? (raw as readonly string[]).flatMap((part) => String(part).split(/[\s,،;؛]+/u))
+    : String(raw).split(/[\s,،;؛]+/u);
+  const out: string[] = [];
+  for (const part of parts) {
+    const code = normalizeAtmMachineCode(part);
+    if (code !== '' && !out.includes(code)) out.push(code);
+  }
+  return out;
+};
+
+/** The machine codes as a query field: one comma-separated value or a repeated parameter. */
+export const atmMachineCodesQuery = (max = ATM_MACHINE_CODES_MAX) =>
+  z.preprocess(
+    (raw) => {
+      if (raw === undefined || raw === null) return undefined;
+      const codes = splitAtmMachineCodeList(raw as string | readonly string[]);
+      return codes.length === 0 ? undefined : codes;
+    },
+    z.array(z.string().min(1).max(50)).min(1).max(max).optional(),
+  );
+
+/**
+ * The filters the list and its summary share.
+ *
+ * · `banks` / `areas` — the Bank and Area columns: names, exact, ORed, escaped like the open
+ *   boards' (`atmNameListQuery`), each standing for every stored spelling that differs only by
+ *   surrounding spaces. More of them than a board's: the directory holds every area at once.
+ * · `codes` — the ID column: the machines named EXACTLY, normalized. A code no machine carries
+ *   narrows to nothing rather than being dropped.
+ * · `code` — a substring of the code, case-insensitive: what the ID picker SEARCHES as it is typed.
+ * · `name` — the ATM Name column: a substring of the name, case-insensitive, taken literally.
+ * · `isActive`, `search`, `bankName`, `area` — the list's existing parameters, unchanged.
+ */
+const atmMachineFilterFields = {
+  isActive: booleanQuery().optional(),
+  search: z.string().optional(),
+  bankName: z.string().optional(),
+  area: z.string().optional(),
+  banks: atmNameListQuery(200),
+  areas: atmNameListQuery(200),
+  codes: atmMachineCodesQuery(),
+  code: z.string().trim().max(50).optional(),
+  name: z.string().trim().max(100).optional(),
+};
+
+export const ListAtmMachinesQuerySchema = PaginationQuerySchema.extend(
+  atmMachineFilterFields,
+).strict();
+export type ListAtmMachinesQuery = z.infer<typeof ListAtmMachinesQuerySchema>;
+
+/** The summary takes the list's filters and nothing about pages or order. */
+export const AtmMachinesSummaryQuerySchema = z.object(atmMachineFilterFields).strict();
+export type AtmMachinesSummaryQuery = z.infer<typeof AtmMachinesSummaryQuerySchema>;
+
+/**
+ * What the filter matched, counted over the WHOLE filtered set in the caller's scope — never the
+ * page in hand — and the two dropdowns' sources.
+ *
+ * `counts.banks` / `counts.areas` are distinct names as the table shows them (surrounding spaces
+ * ignored, blank names not counted). `options` follows the faceted rule: each dropdown offers the
+ * names of the machines that match every OTHER filter — its own choice left out — so ticking a
+ * second bank is always possible, while choosing an area narrows the banks to those it has (and
+ * the reverse). A chosen name nothing matches is not offered; the screen still lists it, ticked.
+ */
+export interface AtmMachinesSummaryDto {
+  counts: { machines: number; banks: number; areas: number };
+  options: { banks: string[]; areas: string[] };
+}
 
 /** The filter dropdowns' source — `banks` narrows the AREAS offered (the cascade), nothing else. */
 export const AtmOperationFacetsQuerySchema = z.object({ banks: atmNameListQuery() }).strict();

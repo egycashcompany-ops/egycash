@@ -1,6 +1,7 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type AtmMachinesSummaryQuery,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
   type CreateAtmMachine,
@@ -17,6 +18,11 @@ import { atmMachineService } from './machine.service';
 export const listMachines = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListAtmMachinesQuery>(req);
   okPage(res, await atmMachineService.list(query, authContext(req)), toAtmMachineDto);
+};
+
+export const summarizeMachines = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, AtmMachinesSummaryQuery>(req);
+  ok(res, await atmMachineService.summary(query, authContext(req)));
 };
 
 export const bulkCreateMachines = async (req: Request, res: Response): Promise<void> => {

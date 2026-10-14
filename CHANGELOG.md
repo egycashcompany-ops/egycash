@@ -53,6 +53,20 @@ its entry here in the same PR.
 
 ### Changed
 
+- **«كل الماكينات» filters every column, counts what it shows, and reaches every machine.**
+  «عايز فلتر كامل بكل حاجة فى الجدول زى فلتر الحركة كدا فى السيارات … وكمان عدد الماكينات والبنوك
+  والمناطق يظهر فوق بجانب جملة كل الماكينات (ويتغير بناء على الفلتر)». `/atm/machines` wears the
+  vehicles registry's dark filter bar: one control per column, in the table's order, each with its
+  icon — Bank and Area take several names (offered from the machines the other filters leave), ID
+  takes codes picked from a server search or typed and pasted (normalized, `0123` is 123), ATM
+  Name a few letters. Beside the title: how many machines, banks and areas the filter matches,
+  counted by the server over the whole filtered set in the reader's scope (`GET
+  /atm/machines/summary`). Every column sorts. The page used to read ONE page of a hundred with no
+  pager, so with some 2,600 active machines the list, the search and the export only ever saw the
+  first hundred: it now pages on the server (page size to choose), and the CSV export — the same
+  four columns — walks every page of the filter. The free-text search box gave way to the column
+  filters. The Fleet filter frame, dark bar, stroke icon and sort rules moved to `shared/` so a
+  second module can use them; Fleet draws exactly as before.
 - **An ATM machine is never added twice — to replenishment or to maintenance.** «مينفعش أضيف
   ماكينة مرتين سواء فى عملية التغذية أو الصيانة». A machine now has at most one open replenishment
   and one open maintenance, company-wide (port doc OD-1, overriding the legacy, which had no such

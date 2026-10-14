@@ -17,7 +17,9 @@
 // name or bank edit does not flow back into the register (the register's bank is an enum the
 // Operations label cannot be mapped back to). Audit rows are recorded once, after commit.
 import {
+  ATM_MACHINE_SORT_FIELDS,
   normalizeAtmMachineCode,
+  type AtmMachinesSummaryDto,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
   type CreateAtmMachine,
@@ -41,6 +43,14 @@ import {
   type PendingAudit,
 } from '../register/register-coupling';
 import { resolveAtmBranchId } from '../shared/atm-context';
+import { boardNames, storedSpellingsOf } from '../shared/board-filter';
+import {
+  allOf,
+  machineFilterClauses,
+  type AtmMachineFacet,
+  type AtmMachineFilterQuery,
+  type AtmMachineSpellings,
+} from './machine-filter';
 import { atmMachineRepository } from './machine.repository';
 import { type AtmMachineDoc } from './machine.model';
 
@@ -88,27 +98,69 @@ const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
   for (const audit of audits) await auditService.record(audit);
 };
 
+/**
+ * The stored spellings the chosen bank and area names stand for, over every machine in the
+ * caller's scope (`storedSpellingsOf`): «NBE» and «NBE » are one bank on screen, so one filter.
+ */
+const spellingsFor = async (
+  query: AtmMachineFilterQuery,
+  scope: ScopeSelector,
+): Promise<AtmMachineSpellings> => {
+  const resolve = async (
+    field: 'bankName' | 'area',
+    requested: readonly string[] | undefined,
+  ): Promise<string[] | undefined> =>
+    requested === undefined || requested.length === 0
+      ? undefined
+      : storedSpellingsOf(await atmMachineRepository.distinctIn(field, {}, scope), requested);
+  const [bankName, area] = await Promise.all([
+    resolve('bankName', query.banks),
+    resolve('area', query.areas),
+  ]);
+  return { bankName, area };
+};
+
 class AtmMachineService {
+  /**
+   * The machine list — /all_atm's every ACTIVE machine of the branch when the screen asks
+   * `isActive=true` — narrowed by the column filters (`machine-filter.ts`) and sorted by any of the
+   * table's columns, in the caller's `atmMachine.view` scope.
+   */
   async list(query: ListAtmMachinesQuery, ctx: AuthContext): Promise<Paginated<AtmMachineDoc>> {
-    const filter: FilterQuery<AtmMachineDoc> = {};
-    if (query.isActive !== undefined) filter.isActive = query.isActive;
-    if (query.bankName !== undefined) filter.bankName = query.bankName;
-    if (query.area !== undefined) filter.area = query.area;
-    if (query.search !== undefined && query.search !== '') {
-      filter.$or = [
-        { machineCode: { $regex: query.search, $options: 'i' } },
-        { name: { $regex: query.search, $options: 'i' } },
-      ];
-    }
+    const scope = scopeSelector(ctx, 'atmMachine.view');
+    const filter = allOf(machineFilterClauses(query, await spellingsFor(query, scope)));
     return atmMachineRepository.list({
-      filter,
+      filter: filter as FilterQuery<AtmMachineDoc>,
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      sortableFields: ['machineCode', 'bankName', 'area', 'name', 'createdAt'],
-      scope: scopeSelector(ctx, 'atmMachine.view'),
+      sortableFields: [...ATM_MACHINE_SORT_FIELDS, 'createdAt'],
+      scope,
     });
+  }
+
+  /**
+   * What the list's filter matched, counted over the WHOLE filtered set in the caller's scope —
+   * how many machines, how many distinct banks and areas among them — and what each dropdown
+   * offers: the names of the machines matching every OTHER filter (`AtmMachinesSummaryDto`).
+   */
+  async summary(query: AtmMachineFilterQuery, ctx: AuthContext): Promise<AtmMachinesSummaryDto> {
+    const scope = scopeSelector(ctx, 'atmMachine.view');
+    const spellings = await spellingsFor(query, scope);
+    const where = (leave?: AtmMachineFacet): FilterQuery<AtmMachineDoc> =>
+      allOf(machineFilterClauses(query, spellings, leave)) as FilterQuery<AtmMachineDoc>;
+    const [machines, banks, areas, bankOptions, areaOptions] = await Promise.all([
+      atmMachineRepository.count(where(), scope),
+      atmMachineRepository.distinctIn('bankName', where(), scope),
+      atmMachineRepository.distinctIn('area', where(), scope),
+      atmMachineRepository.distinctIn('bankName', where('banks'), scope),
+      atmMachineRepository.distinctIn('area', where('areas'), scope),
+    ]);
+    return {
+      counts: { machines, banks: boardNames(banks).length, areas: boardNames(areas).length },
+      options: { banks: boardNames(bankOptions), areas: boardNames(areaOptions) },
+    };
   }
 
   async bulkCreate(

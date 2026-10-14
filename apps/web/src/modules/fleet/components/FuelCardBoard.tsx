@@ -24,6 +24,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { StrokeIcon } from '../../../shared/ui/StrokeIcon';
 import { revealFuelCardPassword } from '../api/fleet-api';
 import { FUEL_CARD_LOGO } from './FuelCardTiles';
 import { groupCardNumber } from '../lib/fuel-card-number';
@@ -66,28 +67,8 @@ export const ymd = (iso: string | null): string =>
 /** Chill Out's red mark, square, for the small badges. Wataniya keeps its logo. */
 const CHILLOUT_SQUARE = '/fleet-fuel-cards/chillout-red-square.png';
 
-/** The design's stroke icons, drawn as the design draws them. */
-const Svg = ({
-  d,
-  className,
-  width = 2,
-}: {
-  d: readonly string[];
-  className: string;
-  width?: number;
-}): JSX.Element => (
-  <svg
-    className={className}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    aria-hidden="true"
-  >
-    {d.map((path) => (
-      <path key={path} d={path} strokeLinecap="round" strokeLinejoin="round" strokeWidth={width} />
-    ))}
-  </svg>
-);
+/** The design's stroke icons, drawn as the design draws them (`shared/ui/StrokeIcon`). */
+const Svg = StrokeIcon;
 export const PATH = {
   truck: [
     'M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z',

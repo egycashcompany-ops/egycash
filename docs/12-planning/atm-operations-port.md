@@ -129,6 +129,35 @@ ECMS" means.
     percent-encoded and match; a write's invalidation and its realtime signal refresh the board
     and its dropdowns together (both under the kind's feature key). Suite:
     `tests/integration/atm-board-filters.spec.ts`.
+- **D9 — the machine directory (`/atm/machines`) filters every column, server-side, and counts
+  it** (2026-10-14, «عايز فلتر كامل بكل حاجة فى الجدول زى فلتر الحركة كدا فى السيارات … وكمان عدد
+  الماكينات والبنوك والمناطق يظهر فوق بجانب جملة كل الماكينات (ويتغير بناء على الفلتر)»).
+  `machines/machine-filter.ts`, `GET /atm/machines/summary`,
+  `apps/web/src/modules/atm/pages/MachinesPage.tsx`, `lib/machine-directory.ts`:
+  - **One filter per column, the vehicles registry's bar.** Bank and Area: names, several at once
+    (ORed), escaped like the boards' (`atmNameListQuery`), each standing for every stored spelling
+    that differs only by surrounding spaces (`storedSpellingsOf`, resolved over the machines in
+    scope). ID: `codes` — exact, normalized by `normalizeAtmMachineCode`, up to 200, pasted with any
+    separator — and `code`, a substring, which is what the picker searches (50 at a time, among the
+    machines the other filters leave; the directory is too large to load whole into a dropdown the
+    way the vehicle-code filter loads two hundred cars). ATM Name: `name`, a substring. Every
+    substring is case-insensitive and taken literally (regex-escaped). Columns are ANDed. The
+    existing `isActive`, `search`, `bankName`, `area` parameters read exactly as before; the page
+    sends `isActive=true` as /all_atm did. The page's free-text search box is gone — the four
+    column filters ask what it asked, column by column.
+  - **The summary counts the whole filtered set, never the page.** Machines, distinct banks and
+    distinct areas (names trimmed, blanks not counted) under the same `atmMachine.view` scope as
+    the list, the command bar's branch narrowing included; no branch parameter exists for a screen
+    to send. Its dropdown sources are FACETED: each list offers the names of the machines matching
+    every OTHER filter, its own choice left out — so a second bank can always be ticked, while an
+    area narrows the banks to those it has. A chosen name nothing matches is not offered by the
+    server; the screen still lists it, ticked, to untick (the boards' rule).
+  - **Paged on the server, exported whole.** The page read one page of `MAX_PAGE_SIZE` with no pager,
+    so past the hundredth machine (by code) nothing was listed, searched or exported. It now pages
+    (the shared `Pagination`, 10/25/50/100, 25 by default) and sorts by any column; the CSV export
+    walks every page of the filter (`fetchWholeBoard`) and keeps its four columns. No index was
+    added: the scope's `branchId` prefix is already indexed and the directory is a few thousand rows.
+  - Suite: `tests/integration/atm-machines-filter.spec.ts`.
 - **T7 — open forms validate codes against ACTIVE machines.** Legacy replenishment validated
   against every machine ever stored, deleted included (`Event6.find({})`, contad_app.js:657),
   while its own mail reader validated against active ones (Automation/src/index.js:149-153). The

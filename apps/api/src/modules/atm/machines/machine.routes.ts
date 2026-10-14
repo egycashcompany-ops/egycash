@@ -11,6 +11,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  AtmMachinesSummaryQuerySchema,
   BulkCreateAtmMachinesSchema,
   BulkDeleteAtmMachinesSchema,
   CreateAtmMachineSchema,
@@ -30,6 +31,7 @@ import {
   listMachines,
   moveMachineArea,
   reassignMachineArea,
+  summarizeMachines,
   updateMachine,
 } from './machine.controller';
 
@@ -43,6 +45,15 @@ export const buildAtmMachinesRouter = (): Router => {
     authorize('atmMachine.view'),
     validate({ query: ListAtmMachinesQuerySchema }),
     asyncHandler(listMachines),
+  );
+  // The list's whole answer counted — machines, banks, areas — and its dropdowns' sources, under
+  // the same read grant and the same filters (`AtmMachinesSummaryQuerySchema`).
+  router.get(
+    '/summary',
+    authenticate,
+    authorize('atmMachine.view'),
+    validate({ query: AtmMachinesSummaryQuerySchema }),
+    asyncHandler(summarizeMachines),
   );
   // Per-item add/edit, beside the legacy bulk forms — same grant, since both are the
   // /data_edit_atm surface. `/bulk` is declared first so it is never read as an id.

@@ -18,6 +18,8 @@
 //
 // AUDITS (DM-15): one run row per batch call, plus a per-machine `update` for every PINNED point a
 // batch replaces (precedence row 4), so a pin a person set is never replaced without its own trail.
+// Each replaced pin's row is recorded the moment its write lands, and the run row from a `finally`
+// (marked as failed when the run stopped on an error), so a run that fails part-way loses neither.
 // Interactive writes audit per machine, `entityId = machineId`.
 import {
   ATM_MAP_LINK_BATCH_MAX,
@@ -75,8 +77,10 @@ import {
   applyDerivation,
   bestCandidateIsShortCode,
   deriveLocation,
+  hasShortCodeCandidate,
   mergeOpenEntries,
   normalizeTexts,
+  pinHolds,
   referenceLookup,
   sameIds,
   sameTexts,
@@ -90,6 +94,7 @@ import {
 import { haversineMeters, insideEgypt } from './location/maps-text';
 import {
   defaultShortLinkDeps,
+  emptyShortLinkBatchResult,
   runShortLinkBatch,
   type ShortLinkDeps,
   type ShortLinkResult,
@@ -222,10 +227,6 @@ const replacedPinAudit = (
     { lat: after.lat, lng: after.lng, source: after.source, pinned: after.pinned },
   ),
 });
-
-const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
-  for (const audit of audits) await auditService.record(audit);
-};
 
 const oid = (id: string): Types.ObjectId => new Types.ObjectId(id);
 
@@ -771,154 +772,196 @@ class AtmMachineLocationService {
     ]);
     const docOf = new Map(docs.map((doc) => [String(doc.machineId), doc]));
     const entries = entriesByMachine(rows);
+    const mergedOf = new Map(
+      machines.map((m) => [String(m._id), mergeOpenEntries(entries.get(String(m._id)) ?? [])]),
+    );
     const storedPool = await loadReferencePool([
       ...new Set(machines.map((m) => String(m.branchId))),
     ]);
 
-    // 3. Pass 1: every machine whose best candidate is not a short code. Pass 2: the short codes,
-    //    against the pool pass 1 left (a pin pass 1 replaced counts once, with its new point).
-    const plan = (
-      machine: (typeof machines)[number],
-      pool: readonly ReferencePoolEntry[],
-    ): SyncPlan => {
+    // 3. The DM-34 pool a derivation reads never holds a point this same sync is still deciding,
+    //    so a second sync over the same register finds the same references and writes nothing
+    //    (§9.3 #5). Pass 1a — no short code at all — reads no reference. Pass 1b — a short code
+    //    beside a better candidate, read only for `sourcesDisagree` (DM-44c) — reads the stored
+    //    pins of the machines this sync does not evaluate, pass 1a's results and the pins row 3
+    //    keeps. Pass 2 — the short codes — reads that pool plus pass 1b's results.
+    type Machine = (typeof machines)[number];
+    const merged = (machine: Machine) => mergedOf.get(String(machine._id)) ?? mergeOpenEntries([]);
+    const plan = (machine: Machine, pool: readonly ReferencePoolEntry[]): SyncPlan => {
       const id = String(machine._id);
       const doc = docOf.get(id) ?? null;
-      const merged = mergeOpenEntries(entries.get(id) ?? []);
+      const texts = merged(machine);
       const derived = deriveLocation({
-        ...merged,
+        ...texts,
         resolvedLink: doc?.shortLink ?? null,
         reference: referenceLookup(pool, String(machine.branchId), machine.area, id),
       });
       return {
         machine,
         doc,
-        outcome: applyDerivation(doc === null ? null : existingOf(doc), derived, merged.texts),
+        outcome: applyDerivation(doc === null ? null : existingOf(doc), derived, texts.texts),
       };
     };
-    const isPass2 = (machine: (typeof machines)[number]): boolean => {
-      const id = String(machine._id);
-      const merged = mergeOpenEntries(entries.get(id) ?? []);
+    const passOf = (machine: Machine): '1a' | '1b' | '2' => {
+      const texts = merged(machine);
+      if (!hasShortCodeCandidate(texts)) return '1a';
       return bestCandidateIsShortCode({
-        texts: merged.texts,
-        entryProblem: merged.entryProblem,
-        resolvedLink: docOf.get(id)?.shortLink ?? null,
-      });
+        texts: texts.texts,
+        entryProblem: texts.entryProblem,
+        resolvedLink: docOf.get(String(machine._id))?.shortLink ?? null,
+      })
+        ? '2'
+        : '1b';
     };
-    const pass1 = machines.filter((m) => !isPass2(m)).map((m) => plan(m, storedPool));
-    const pool = new Map(storedPool.map((entry) => [entry.machineId, entry]));
-    for (const p of pass1) {
+    const evaluated = new Set(machines.map((m) => String(m._id)));
+    const pool = new Map(
+      storedPool
+        .filter((entry) => !evaluated.has(entry.machineId))
+        .map((entry) => [entry.machineId, entry]),
+    );
+    const overlay = (p: SyncPlan): void => {
       pool.set(
         String(p.machine._id),
         poolEntry(afterState(p), String(p.machine.branchId), p.machine.area),
       );
+    };
+    const pass1a = machines.filter((m) => passOf(m) === '1a').map((m) => plan(m, []));
+    pass1a.forEach(overlay);
+    for (const m of machines) {
+      const doc = docOf.get(String(m._id));
+      if (passOf(m) !== '1a' && doc !== undefined && pinHolds(doc, merged(m).texts)) {
+        pool.set(String(m._id), poolEntry(doc, String(m.branchId), m.area));
+      }
     }
+    const pool1b = [...pool.values()];
+    const pass1b = machines.filter((m) => passOf(m) === '1b').map((m) => plan(m, pool1b));
+    pass1b.forEach(overlay);
     const pool2 = [...pool.values()];
-    const plans = [...pass1, ...machines.filter(isPass2).map((m) => plan(m, pool2))];
+    const plans = [
+      ...pass1a,
+      ...pass1b,
+      ...machines.filter((m) => passOf(m) === '2').map((m) => plan(m, pool2)),
+    ];
 
     if (syncBeforeWrite !== null) await syncBeforeWrite();
 
-    // 4. Only the documents that changed, in one unordered bulk write under the version guard.
+    // 4. Only the documents that changed, under the version guard. A pin a person set (row 4) is
+    //    written on its own and audited the moment it lands, so no later failure can lose its trail
+    //    (DM-15); every other write goes in one unordered bulk write.
     const now = new Date();
     const by = oid(ctx.userId);
     const setByFields = { setBy: by, setByName: actorName(ctx), setAt: now };
     const writes = plans.filter((p) => p.outcome.write !== null);
-    const ops = writes.map((p) => {
+    const opOf = (p: SyncPlan) => {
       const pointFields = p.outcome.pointChanged ? setByFields : {};
       if (p.doc === null) {
         // A new document leaves an existing one alone: a person's first pin in between wins.
         return {
-          updateOne: {
-            filter: { machineId: p.machine._id, isDeleted: false },
-            update: {
-              $setOnInsert: {
-                ...p.outcome.set,
-                branchId: p.machine.branchId,
-                ...pointFields,
-                // The run's mark: the landed writes are read back by it (below).
-                derivedAt: now,
-                schemaVersion: 1,
-                deletedAt: null,
-                deletedBy: null,
-                createdBy: by,
-                updatedBy: by,
-                createdAt: now,
-                updatedAt: now,
-                __v: 0,
-              },
+          filter: { machineId: p.machine._id, isDeleted: false },
+          update: {
+            $setOnInsert: {
+              ...p.outcome.set,
+              branchId: p.machine.branchId,
+              ...pointFields,
+              // The run's mark: the landed writes are read back by it (below).
+              derivedAt: now,
+              schemaVersion: 1,
+              deletedAt: null,
+              deletedBy: null,
+              createdBy: by,
+              updatedBy: by,
+              createdAt: now,
+              updatedAt: now,
+              __v: 0,
             },
-            upsert: true,
-            timestamps: false,
           },
+          upsert: true,
+          timestamps: false,
         };
       }
       return {
-        updateOne: {
-          filter: { _id: p.doc._id, __v: p.doc.__v, isDeleted: false },
-          update: {
-            $set: { ...p.outcome.set, ...pointFields, derivedAt: now, updatedBy: by },
-            $inc: { __v: 1 },
-          },
+        filter: { _id: p.doc._id, __v: p.doc.__v, isDeleted: false },
+        update: {
+          $set: { ...p.outcome.set, ...pointFields, derivedAt: now, updatedBy: by },
+          $inc: { __v: 1 },
         },
       };
-    });
-    if (ops.length > 0) {
-      try {
-        await AtmMachineLocationModel.bulkWrite(ops as never, { ordered: false });
-      } catch (error) {
-        if (!onlyDuplicateKeyErrors(error)) throw error;
-      }
-    }
-    // Which writes landed: an insert that met a person's document and an update whose version a
-    // person moved both match nothing, so neither carries this run's mark.
-    const landed = new Set(
-      ops.length === 0
-        ? []
-        : (
-            await AtmMachineLocationModel.find(
-              {
-                machineId: { $in: writes.map((p) => p.machine._id) },
-                isDeleted: false,
-                derivedAt: now,
-              },
-              { machineId: 1 },
-            )
-              .lean<Pick<AtmMachineLocationDoc, 'machineId'>[]>()
-              .exec()
-          ).map((doc) => String(doc.machineId)),
-    );
-
-    // 5. «آخر مزامنة» moves for every evaluated machine, changed or not; no version bump.
-    if (ids.length > 0) {
-      await AtmMachineLocationModel.updateMany(
-        { machineId: { $in: ids }, isDeleted: false },
-        { $set: { derivedAt: now } },
-        { timestamps: false },
-      ).exec();
-    }
-
-    const result: AtmMapSyncResultDto = {
-      processed: plans.length,
-      changed: landed.size,
-      located: 0,
-      review: 0,
-      unlocated: 0,
-      kept: 0,
-      conflicts: writes.length - landed.size,
     };
-    for (const p of plans) {
-      const after = afterState(p);
-      if (after.status === 'located' && after.needsReview) result.review += 1;
-      else if (after.status === 'located') result.located += 1;
-      else result.unlocated += 1;
-    }
-    result.kept = result.processed - result.changed - result.conflicts;
+    const replacesPin = (p: SyncPlan): p is SyncPlan & { doc: AtmMachineLocationDoc } =>
+      p.outcome.replacedPin && p.doc !== null;
+    const ops = writes.filter((p) => !replacesPin(p)).map((p) => ({ updateOne: opOf(p) }));
 
-    // 6. One run row, and the trail of every pinned point this sync replaced.
-    const changedMachineIds = writes
-      .map((p) => String(p.machine._id))
-      .filter((id) => landed.has(id));
-    const audits: PendingAudit[] = [
-      {
+    // 6 (recorded whatever happens next). One run row — marked `failed` when the run stopped on an
+    // error, with the machines known to have changed by then — and the replaced pins' own trail.
+    const pinsReplaced: string[] = [];
+    let result: AtmMapSyncResultDto | null = null;
+    let changedMachineIds: string[] | null = null;
+    let completed = false;
+    try {
+      for (const p of writes.filter(replacesPin)) {
+        const { filter, update } = opOf(p);
+        const written = await AtmMachineLocationModel.updateOne(filter, update).exec();
+        if (written.matchedCount !== 1) continue;
+        pinsReplaced.push(String(p.machine._id));
+        await auditService.record(replacedPinAudit(String(p.machine._id), p.doc, afterState(p)));
+      }
+      if (ops.length > 0) {
+        try {
+          await AtmMachineLocationModel.bulkWrite(ops as never, { ordered: false });
+        } catch (error) {
+          if (!onlyDuplicateKeyErrors(error)) throw error;
+        }
+      }
+      // Which writes landed: an insert that met a person's document and an update whose version a
+      // person moved both match nothing, so neither carries this run's mark.
+      const landed = new Set(
+        writes.length === 0
+          ? []
+          : (
+              await AtmMachineLocationModel.find(
+                {
+                  machineId: { $in: writes.map((p) => p.machine._id) },
+                  isDeleted: false,
+                  derivedAt: now,
+                },
+                { machineId: 1 },
+              )
+                .lean<Pick<AtmMachineLocationDoc, 'machineId'>[]>()
+                .exec()
+            ).map((doc) => String(doc.machineId)),
+      );
+      changedMachineIds = writes.map((p) => String(p.machine._id)).filter((id) => landed.has(id));
+
+      const counts: AtmMapSyncResultDto = {
+        processed: plans.length,
+        changed: landed.size,
+        located: 0,
+        review: 0,
+        unlocated: 0,
+        kept: 0,
+        conflicts: writes.length - landed.size,
+      };
+      for (const p of plans) {
+        const after = afterState(p);
+        if (after.status === 'located' && after.needsReview) counts.review += 1;
+        else if (after.status === 'located') counts.located += 1;
+        else counts.unlocated += 1;
+      }
+      counts.kept = counts.processed - counts.changed - counts.conflicts;
+      result = counts;
+
+      // 5. «آخر مزامنة» moves for every evaluated machine, changed or not; no version bump.
+      if (ids.length > 0) {
+        await AtmMachineLocationModel.updateMany(
+          { machineId: { $in: ids }, isDeleted: false },
+          { $set: { derivedAt: now } },
+          { timestamps: false },
+        ).exec();
+      }
+      completed = true;
+      return counts;
+    } finally {
+      await auditService.record({
         entityRef: {
           moduleId: 'atm',
           entityType: 'mapLocationSync',
@@ -928,16 +971,11 @@ class AtmMachineLocationService {
         changes: [
           { field: 'branchIds', old: null, new: branches },
           { field: 'counts', old: null, new: result },
-          { field: 'changedMachineIds', old: null, new: changedMachineIds },
+          { field: 'changedMachineIds', old: null, new: changedMachineIds ?? pinsReplaced },
+          ...(completed ? [] : [{ field: 'failed', old: null, new: true }]),
         ],
-      },
-    ];
-    for (const p of writes) {
-      if (!p.outcome.replacedPin || p.doc === null || !landed.has(String(p.machine._id))) continue;
-      audits.push(replacedPinAudit(String(p.machine._id), p.doc, afterState(p)));
+      });
     }
-    await recordAll(audits);
-    return result;
   }
 
   /** POST /locations/resolve-links — one pass over the pending short links (§5, §6.5). */
@@ -957,9 +995,12 @@ class AtmMachineLocationService {
         'shortLink.status': 'pending',
       }).exec();
 
+    // The lease is one atomic SET NX EX carrying this run's token: it always has its TTL, so a
+    // process or a connection that dies after taking it cannot wedge the resolver, and the release
+    // deletes it only while it is still this run's — never a successor's (§5.1, DM-47).
     const cache = getCache();
-    const lease = await cache.incrWithTtl(RESOLVE_LEASE_KEY, RESOLVE_LEASE_SECONDS);
-    if (lease.count !== 1) {
+    const leaseToken = String(new Types.ObjectId());
+    if (!(await cache.setIfAbsent(RESOLVE_LEASE_KEY, leaseToken, RESOLVE_LEASE_SECONDS))) {
       return {
         attempted: 0,
         resolved: 0,
@@ -998,7 +1039,6 @@ class AtmMachineLocationService {
 
       let pool: ReferencePoolEntry[] | null = null;
       const claims = new Map<string, Date>();
-      const audits: PendingAudit[] = [];
       const by = oid(ctx.userId);
 
       const store = async (
@@ -1060,9 +1100,10 @@ class AtmMachineLocationService {
             { $set: { ...set, updatedBy: by }, $inc: { __v: 1 } },
           ).exec();
           if (written.matchedCount === 1) {
+            // The replaced pin's trail is recorded the moment its write lands (DM-15).
             if (outcome?.replacedPin === true) {
               const after = { ...existingOf(doc), ...outcome.set };
-              audits.push(
+              await auditService.record(
                 replacedPinAudit(item.machineId, doc, {
                   lat: after.lat ?? null,
                   lng: after.lng ?? null,
@@ -1077,61 +1118,69 @@ class AtmMachineLocationService {
         return 'conflict';
       };
 
-      const run = await runShortLinkBatch(
-        items,
-        {
-          // Immediately before the fetch, without a version bump: a person's open pin form never
-          // goes stale because of a claim (§5.4).
-          claim: async (item) => {
-            const at = new Date();
-            const claimed = await AtmMachineLocationModel.findOneAndUpdate(
-              {
-                _id: item.id,
-                isDeleted: false,
-                'shortLink.status': 'pending',
-                'shortLink.url': item.url,
-                $or: [
-                  { 'shortLink.claimedAt': null },
-                  { 'shortLink.claimedAt': { $lt: new Date(at.getTime() - CLAIM_TTL_MS) } },
-                ],
-              },
-              { $set: { 'shortLink.claimedAt': at } },
-              { new: true, timestamps: false },
-            )
-              .lean()
-              .exec();
-            if (claimed === null) return false;
-            claims.set(String(item.id), at);
-            return true;
+      // The run row is recorded whatever happens: a claim, store or release that throws part-way
+      // leaves the links already opened in it, with `stopReason: 'error'`.
+      const run = emptyShortLinkBatchResult<Item>();
+      let remainingAfter: number | null = null;
+      let completed = false;
+      try {
+        await runShortLinkBatch(
+          items,
+          {
+            // Immediately before the fetch, without a version bump: a person's open pin form never
+            // goes stale because of a claim (§5.4).
+            claim: async (item) => {
+              const at = new Date();
+              const claimed = await AtmMachineLocationModel.findOneAndUpdate(
+                {
+                  _id: item.id,
+                  isDeleted: false,
+                  'shortLink.status': 'pending',
+                  'shortLink.url': item.url,
+                  $or: [
+                    { 'shortLink.claimedAt': null },
+                    { 'shortLink.claimedAt': { $lt: new Date(at.getTime() - CLAIM_TTL_MS) } },
+                  ],
+                },
+                { $set: { 'shortLink.claimedAt': at } },
+                { new: true, timestamps: false },
+              )
+                .lean()
+                .exec();
+              if (claimed === null) return false;
+              claims.set(String(item.id), at);
+              return true;
+            },
+            store,
+            release: async (item) => {
+              await AtmMachineLocationModel.updateOne(
+                {
+                  _id: item.id,
+                  'shortLink.url': item.url,
+                  'shortLink.claimedAt': claims.get(String(item.id)) ?? null,
+                },
+                { $set: { 'shortLink.claimedAt': null } },
+                { timestamps: false },
+              ).exec();
+            },
           },
-          store,
-          release: async (item) => {
-            await AtmMachineLocationModel.updateOne(
-              {
-                _id: item.id,
-                'shortLink.url': item.url,
-                'shortLink.claimedAt': claims.get(String(item.id)) ?? null,
-              },
-              { $set: { 'shortLink.claimedAt': null } },
-              { timestamps: false },
-            ).exec();
-          },
-        },
-        shortLinkDeps,
-      );
-
-      const result: AtmMapLinkResolveResultDto = {
-        attempted: run.attempted,
-        resolved: run.resolved,
-        failed: run.failed,
-        remaining: await remaining(machineIds),
-        conflicts: run.conflicts,
-        busy: false,
-        stopReason: run.stopReason,
-      };
-      // One run row — no URL anywhere in it — and the trail of every pinned point replaced.
-      await recordAll([
-        {
+          shortLinkDeps,
+          run,
+        );
+        remainingAfter = await remaining(machineIds);
+        completed = true;
+        return {
+          attempted: run.attempted,
+          resolved: run.resolved,
+          failed: run.failed,
+          remaining: remainingAfter,
+          conflicts: run.conflicts,
+          busy: false,
+          stopReason: run.stopReason,
+        };
+      } finally {
+        // One run row — no URL anywhere in it (the replaced pins' rows are already recorded).
+        await auditService.record({
           entityRef: {
             moduleId: 'atm',
             entityType: 'mapLinkResolution',
@@ -1143,12 +1192,12 @@ class AtmMachineLocationService {
               field: 'counts',
               old: null,
               new: {
-                attempted: result.attempted,
-                resolved: result.resolved,
-                failed: result.failed,
-                remaining: result.remaining,
-                conflicts: result.conflicts,
-                stopReason: result.stopReason,
+                attempted: run.attempted,
+                resolved: run.resolved,
+                failed: run.failed,
+                remaining: remainingAfter,
+                conflicts: run.conflicts,
+                stopReason: completed ? run.stopReason : 'error',
               },
             },
             {
@@ -1161,12 +1210,10 @@ class AtmMachineLocationService {
               })),
             },
           ],
-        },
-        ...audits,
-      ]);
-      return result;
+        });
+      }
     } finally {
-      await cache.del(RESOLVE_LEASE_KEY);
+      await cache.delIfValue(RESOLVE_LEASE_KEY, leaseToken);
     }
   }
 }

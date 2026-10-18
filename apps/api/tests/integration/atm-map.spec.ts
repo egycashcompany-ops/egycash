@@ -23,14 +23,17 @@
 //   9. resolver — with injected fake DNS and hops (never the network): one pass, 20 per call, the
 //      lease, archived machines left alone, a URL-free audit, the rate limit;
 //  10. summary — the counts agree with the points, and `pendingSync` sees what moved;
-//  11. indexes — dropped, then built by the boot step, then reported present.
+//  11. indexes — dropped, then built by the boot step, then reported present;
+//  12. faults — a sync or a resolver run that fails part-way keeps its run row and the replaced
+//      pins' trail; the resolver's lease is never a successor's; and a sync is a fixed point even
+//      where a secondary short code disagrees with its AV pin (DM-44c).
 //
-// Every machine, area, text and link below is synthetic: codes 1001–1050, «ماكينة تجريبية n»,
+// Every machine, area, text and link below is synthetic: codes 1001–1050 and SYN-…, «ماكينة تجريبية n»,
 // «منطقة تجريبية n» (the research checked that none of these codes occurs in the workbook).
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Types, type Model } from 'mongoose';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   AtmSettingKeys,
@@ -78,6 +81,7 @@ import {
   setSyncBeforeWriteForTests,
 } from '../../src/modules/atm/map/location.service';
 import { type ShortLinkDeps } from '../../src/modules/atm/map/location/short-link-resolver';
+import { encode } from '../../src/modules/atm/map/location/plus-code';
 
 const PASSWORD = 'Str0ng#Pass!';
 const MAP_KEYS = ['atmMap.view', 'atmZone.manage', 'atmMachine.locate'];
@@ -92,7 +96,7 @@ let adminToken: string;
 let adminCtx: AuthContext;
 
 const branch: Record<
-  'alex' | 'tanta' | 'sync' | 'empty' | 'review' | 'links' | 'prec' | 'zones',
+  'alex' | 'tanta' | 'sync' | 'empty' | 'review' | 'links' | 'prec' | 'zones' | 'idem' | 'faults',
   string
 > = {
   alex: '',
@@ -103,6 +107,8 @@ const branch: Record<
   links: '',
   prec: '',
   zones: '',
+  idem: '',
+  faults: '',
 };
 
 /** Every caller the suite acts as. */
@@ -335,6 +341,8 @@ beforeAll(async () => {
     links: ['75', 'فرع تجريبي 4', 'SYN Links'],
     prec: ['76', 'فرع تجريبي 5', 'SYN Precedence'],
     zones: ['77', 'فرع تجريبي 6', 'SYN Zones'],
+    idem: ['78', 'فرع تجريبي 7', 'SYN Idempotent'],
+    faults: ['79', 'فرع تجريبي 8', 'SYN Faults'],
   };
   for (const key of Object.keys(names) as (keyof typeof branch)[]) {
     const [code, ar, en] = names[key];
@@ -1758,7 +1766,7 @@ describe('9. resolver', () => {
   });
 
   it('a call while the lease is held answers busy and touches nothing', async () => {
-    await getCache().incrWithTtl(RESOLVE_LEASE_KEY, 60);
+    await getCache().set(RESOLVE_LEASE_KEY, 'another-run', 60);
     try {
       const run = await okData<AtmMapLinkResolveResultDto>(resolve());
       expect(run).toMatchObject({ attempted: 0, busy: true });
@@ -1831,5 +1839,177 @@ describe('11. indexes', () => {
     const second = await migrateAtmIndexes();
     expect(second.built).toBe(0);
     expect(second.alreadyPresent).toBeGreaterThanOrEqual(first.alreadyPresent + 5);
+  });
+});
+
+// ── 12. Faults and the fixed point ──────────────────────────────────────────────────────────────
+
+describe('12. faults', () => {
+  const pinned = async (id: string, lat: number, lng: number): Promise<void> => {
+    const loaded = await detail('locator', id);
+    await okData(place('locator', id, { mode: 'pin', lat, lng, version: loaded.version }));
+  };
+  const trailOf = async (id: string) =>
+    auditsOf({ 'entityRef.entityType': 'machineLocation', 'entityRef.entityId': id });
+  const point = 'https://www.google.com/maps/place/SYN/@30.5,31.5,17z/data=!3d30.5!4d31.5';
+
+  it('a sync that fails part-way keeps its run row and the replaced pin’s own trail', async () => {
+    const id = await addMachine(branch.faults, 'SYN-F1');
+    const entry = await addEntry(id, branch.faults, 'SYN-F1', {
+      url: 'https://www.google.com/maps?q=30.1,31.1',
+    });
+    await syncOk('locator', branch.faults);
+    await pinned(id, 30.101, 31.101);
+    await AtmRegisterEntryModel.updateOne(
+      { _id: oid(entry) },
+      { $set: { locationUrl: 'https://www.google.com/maps?q=30.2,31.2' } },
+    ).exec();
+    const before = (await trailOf(id)).length;
+    const runsBefore = await AuditLogModel.countDocuments({ action: 'atmMapLocationSync' }).exec();
+    // A transient database error after the pin's write landed («آخر مزامنة», step 5).
+    const updateMany = vi
+      .spyOn(AtmMachineLocationModel, 'updateMany')
+      .mockImplementationOnce(() => {
+        throw new Error('simulated MongoNetworkError');
+      });
+    let status = 0;
+    try {
+      status = (await sync('locator', branch.faults)).status;
+    } finally {
+      updateMany.mockRestore();
+    }
+    expect(status).toBe(500);
+    expect(await locationOf(id)).toMatchObject({ lat: 30.2, lng: 31.2, pinned: false });
+    const trail = await trailOf(id);
+    expect(trail).toHaveLength(before + 1);
+    expect(trail.at(-1)?.changes).toEqual(
+      expect.arrayContaining([{ field: 'pinned', old: true, new: false }]),
+    );
+    const runs = await auditsOf({ action: 'atmMapLocationSync' });
+    expect(runs).toHaveLength(runsBefore + 1);
+    expect(runs.at(-1)?.changes).toEqual(
+      expect.arrayContaining([
+        { field: 'changedMachineIds', old: null, new: [id] },
+        { field: 'failed', old: null, new: true },
+      ]),
+    );
+  });
+
+  it('a resolver run that fails part-way keeps its run row and the replaced pin’s own trail', async () => {
+    const first = await addMachine(branch.faults, 'SYN-F2');
+    const firstEntry = await addEntry(first, branch.faults, 'SYN-F2', {
+      url: 'https://www.google.com/maps?q=30.1,31.1',
+    });
+    const second = await addMachine(branch.faults, 'SYN-F3');
+    await addEntry(second, branch.faults, 'SYN-F3', { url: 'https://maps.app.goo.gl/SynFault2' });
+    await syncOk('locator', branch.faults);
+    await pinned(first, 30.101, 31.101);
+    // The AV becomes a short link; the sync queues it and keeps the pin (row 5).
+    await AtmRegisterEntryModel.updateOne(
+      { _id: oid(firstEntry) },
+      { $set: { locationUrl: 'https://maps.app.goo.gl/SynFault1' } },
+    ).exec();
+    await syncOk('locator', branch.faults);
+    expect((await locationOf(first))?.shortLink?.status).toBe('pending');
+    // The second link's claim meets a transient database error.
+    await AtmMachineLocationModel.updateOne(
+      { machineId: oid(second) },
+      { $set: { 'shortLink.lastAttemptAt': new Date('2099-01-01T00:00:00.000Z') } },
+    ).exec();
+    setShortLinkDepsForTests({
+      lookup: async () => ['142.250.74.46'],
+      hop: async () => ({ status: 302, location: point, cancel: async () => undefined }),
+      sleep: async () => undefined,
+      now: () => Date.now(),
+    });
+    const claim = AtmMachineLocationModel.findOneAndUpdate.bind(AtmMachineLocationModel);
+    let claims = 0;
+    const spy = vi.spyOn(AtmMachineLocationModel, 'findOneAndUpdate').mockImplementation(((
+      ...args: Parameters<typeof claim>
+    ) => {
+      claims += 1;
+      if (claims === 2) throw new Error('simulated MongoNetworkError');
+      return claim(...args);
+    }) as never);
+    const before = (await trailOf(first)).length;
+    const runsBefore = await AuditLogModel.countDocuments({ action: 'atmMapLinkResolve' }).exec();
+    let status = 0;
+    try {
+      status = (
+        await call('post', '/atm/map/locations/resolve-links', 'locator', {
+          branchId: branch.faults,
+        })
+      ).status;
+    } finally {
+      spy.mockRestore();
+      setShortLinkDepsForTests(null);
+    }
+    expect(status).toBe(500);
+    expect(await locationOf(first)).toMatchObject({ lat: 30.5, lng: 31.5, pinned: false });
+    expect(await trailOf(first)).toHaveLength(before + 1);
+    const runs = await auditsOf({ action: 'atmMapLinkResolve' });
+    expect(runs).toHaveLength(runsBefore + 1);
+    const counts = runs.at(-1)?.changes.find((c) => c.field === 'counts')?.new;
+    expect(counts).toMatchObject({ attempted: 1, resolved: 1, stopReason: 'error' });
+    expect(runs.at(-1)?.changes.find((c) => c.field === 'outcomes')?.new).toEqual([
+      { machineId: first, status: 'resolved', failure: null },
+    ]);
+    // The lease went with the run: the next call is not busy.
+    expect(await getCache().get(RESOLVE_LEASE_KEY)).toBeNull();
+  });
+
+  it('the lease is released only while it is still this run’s', async () => {
+    const id = await addMachine(branch.faults, 'SYN-F4');
+    await addEntry(id, branch.faults, 'SYN-F4', { url: 'https://maps.app.goo.gl/SynFault4' });
+    await syncOk('locator', branch.faults);
+    // The run outlives its lease, which another run then takes.
+    setShortLinkDepsForTests({
+      lookup: async () => ['142.250.74.46'],
+      hop: async () => {
+        await getCache().set(RESOLVE_LEASE_KEY, 'successor', 60);
+        return { status: 302, location: point, cancel: async () => undefined };
+      },
+      sleep: async () => undefined,
+      now: () => Date.now(),
+    });
+    try {
+      const run = await okData<AtmMapLinkResolveResultDto>(
+        call('post', '/atm/map/locations/resolve-links', 'locator', { branchId: branch.faults }),
+      );
+      expect(run.busy).toBe(false);
+      expect(run.resolved).toBeGreaterThan(0);
+      expect(await getCache().get(RESOLVE_LEASE_KEY)).toBe('successor');
+    } finally {
+      setShortLinkDepsForTests(null);
+      await getCache().del(RESOLVE_LEASE_KEY);
+    }
+  });
+
+  it('a first sync already flags an AP short code far from the AV pin; the next one writes nothing', async () => {
+    // Three trustworthy pins around (30.10, 31.30), then X: an AV pin and an AP short code for a
+    // spot ≈ 3.6 km away (DM-44c).
+    const basis: [string, string][] = [
+      ['SYN-I1', '30.100000,31.300000'],
+      ['SYN-I2', '30.101000,31.301000'],
+      ['SYN-I3', '30.099000,31.299000'],
+    ];
+    for (const [code, q] of basis) {
+      await addEntry(await addMachine(branch.idem, code), branch.idem, code, {
+        url: `https://www.google.com/maps?q=${q}`,
+      });
+    }
+    const x = await addMachine(branch.idem, 'SYN-I4');
+    await addEntry(x, branch.idem, 'SYN-I4', {
+      url: 'https://www.google.com/maps?q=30.100000,31.310000',
+      plusCode: encode(30.08, 31.28).slice(4),
+    });
+    const first = await syncOk('locator', branch.idem);
+    expect(first).toMatchObject({ processed: 4, changed: 4, located: 3, review: 1 });
+    expect(await locationOf(x)).toMatchObject({
+      source: 'registerUrl',
+      needsReview: true,
+      warnings: ['sourcesDisagree'],
+    });
+    expect(await syncOk('locator', branch.idem)).toMatchObject({ changed: 0, kept: 4 });
   });
 });

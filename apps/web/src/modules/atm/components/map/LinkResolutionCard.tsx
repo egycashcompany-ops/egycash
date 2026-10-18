@@ -7,7 +7,7 @@
 // Another person's run (`busy`), Google refusing (`rateLimited`), no answer at all (`unreachable`),
 // a failed call or leaving the page ends it. The pending links stay pending on the server, so
 // «بدء التحويل» resumes — after the idle logout too.
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
@@ -16,6 +16,7 @@ import { formatNumber } from '../../../../shared/lib/format';
 import { Button } from '../../../../shared/ui/Button';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useResolveLinks } from '../../api/map-queries';
+import { useMountedRef } from '../../lib/useMountedRef';
 import {
   resolveLoopEndMessage,
   resolveLoopShouldContinue,
@@ -43,13 +44,8 @@ export const LinkResolutionCard = ({
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [message, setMessage] = useState<{ text: string; tone: FeedbackTone } | null>(null);
-  const alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-    },
-    [],
-  );
+  // Leaving the page ends the loop (§8.10); true again after StrictMode's development remount.
+  const alive = useMountedRef();
 
   const start = async (): Promise<void> => {
     if (running) return;

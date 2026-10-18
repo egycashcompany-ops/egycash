@@ -358,6 +358,67 @@ describe('editing vertices', () => {
     expect(zoneOf(state, A).points).toEqual(square(30, 31, 0.01).slice(0, 3));
     expect(state.selectedVertex).toBeNull();
   });
+
+  // A C-shaped zone: deleting a corner of its notch leaves an edge across the other arm.
+  const NOTCHED: AtmMapZoneSetDto = {
+    branchId: BRANCH,
+    revision: 1,
+    zones: [
+      zone(A, 'قطاع أ', 0, [
+        { lat: 30, lng: 31 },
+        { lat: 30, lng: 31.01 },
+        { lat: 30.002, lng: 31.01 },
+        { lat: 30.002, lng: 31.002 },
+        { lat: 30.008, lng: 31.002 },
+        { lat: 30.008, lng: 31.01 },
+        { lat: 30.01, lng: 31.01 },
+        { lat: 30.01, lng: 31 },
+      ]),
+    ],
+  };
+
+  it('DELETE_VERTEX refuses a delete that leaves a ring crossing itself, and says so', () => {
+    const before = editing(NOTCHED);
+    for (const index of [0, 7]) {
+      const state = run(before, { type: 'DELETE_VERTEX', vertex: { zoneId: A, index } });
+      expect(zoneOf(state, A).points).toEqual(zoneOf(before, A).points);
+      expect(state.past).toHaveLength(0);
+      expect(state.notice?.key).toBe(NOTICE_KEYS.crossing);
+    }
+    // A delete that leaves a proper zone still goes through.
+    const fine = run(before, { type: 'DELETE_VERTEX', vertex: { zoneId: A, index: 1 } });
+    expect(zoneOf(fine, A).points).toHaveLength(7);
+    expect(fine.past).toHaveLength(1);
+  });
+
+  it('a drag that leaves a zone under 100 m² is put back, with the tooSmall notice', () => {
+    const triangle: AtmMapZoneSetDto = {
+      branchId: BRANCH,
+      revision: 1,
+      zones: [
+        zone(A, 'قطاع أ', 0, [
+          { lat: 30, lng: 31 },
+          { lat: 30, lng: 31.01 },
+          { lat: 30.01, lng: 31.005 },
+        ]),
+      ],
+    };
+    const before = editing(triangle);
+    const state = run(
+      before,
+      {
+        type: 'MOVE_VERTEX',
+        zoneId: A,
+        index: 2,
+        point: { lat: 30.000001, lng: 31.005 },
+        unlink: false,
+      },
+      { type: 'END_GESTURE' },
+    );
+    expect(state.draft).toEqual(before.draft);
+    expect(state.past).toHaveLength(0);
+    expect(state.notice?.key).toBe(NOTICE_KEYS.tooSmall);
+  });
 });
 
 describe('zones', () => {

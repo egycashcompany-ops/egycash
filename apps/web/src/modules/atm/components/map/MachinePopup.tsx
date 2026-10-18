@@ -150,6 +150,14 @@ export const MachinePopup = ({
           </>
         )}
       </dl>
+      {point.warnings.includes('outsideEgypt') && (
+        <p
+          data-popup-outside="true"
+          className="mx-3.5 mb-2.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs leading-[1.7] text-amber-800"
+        >
+          {t('atm.map.location.outsideEgypt')}
+        </p>
+      )}
       <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 border-t border-slate-100 px-3.5 pb-3 pt-2.5 text-[12.5px]">
         {canOpenRegister && (
           <Link

@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { ATM_BANK_NAMES, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
+import { formatNumber } from '../../../../shared/lib/format';
 import { NumberedPager } from '../../../../shared/ui/NumberedPager';
 import { bankColor } from '../../lib/map-colors';
 import { machineCountText } from '../../lib/map-count-text';
@@ -80,7 +81,7 @@ export const ZoneDetail = ({
       </div>
       {overlaps > 0 && (
         <p className="rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-2 text-[13px] text-orange-800 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200">
-          {t('atm.map.detail.overlapsOthers', { count: overlaps })}
+          {t('atm.map.detail.overlapsOthers', { count: formatNumber(overlaps, locale) })}
         </p>
       )}
       <section className="flex flex-col gap-2">
@@ -107,7 +108,7 @@ export const ZoneDetail = ({
               style={{ backgroundColor: bankColor(bank.code) }}
             />
             <span className="min-w-0 flex-1 truncate">{bankLabel(bank.code)}</span>
-            <strong className="tabular-nums">{bank.count}</strong>
+            <strong className="tabular-nums">{formatNumber(bank.count, locale)}</strong>
           </div>
         ))}
       </section>
@@ -119,7 +120,7 @@ export const ZoneDetail = ({
             className="flex items-center gap-2 text-[13px] text-slate-700 dark:text-slate-300"
           >
             <span className="min-w-0 flex-1 truncate">{area.name}</span>
-            <strong className="tabular-nums">{area.count}</strong>
+            <strong className="tabular-nums">{formatNumber(area.count, locale)}</strong>
           </div>
         ))}
       </section>

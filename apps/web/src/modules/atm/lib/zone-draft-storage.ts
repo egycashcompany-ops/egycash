@@ -118,3 +118,21 @@ export const draftOffer = (
   if (stored === null) return null;
   return stored.baseRevision === revision ? 'restore' : 'outdated';
 };
+
+/**
+ * What the page does with the stored draft after a render (DM-29; §8.6 "after each history push"):
+ *   · nothing while a drag is under way — one write per finished gesture, and never a shape the
+ *     gesture's end may still put back;
+ *   · keep the draft when it differs from the loaded set;
+ *   · clear it when it does not — except while a stored draft is still offered («استعادة المسودة /
+ *     تجاهلها»): opening the editor changes nothing, and the person has not chosen yet.
+ */
+export const autosaveAction = (state: {
+  gestureActive: boolean;
+  offerPending: boolean;
+  dirty: number;
+}): 'none' | 'save' | 'clear' => {
+  if (state.gestureActive) return 'none';
+  if (state.dirty > 0) return 'save';
+  return state.offerPending ? 'none' : 'clear';
+};

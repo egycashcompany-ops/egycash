@@ -41,6 +41,15 @@ export type AtmMapZoneGeometryIssue = (typeof ATM_MAP_ZONE_GEOMETRY_ISSUES)[numb
 const EPSILON = 1e-7;
 
 /**
+ * The overlap test's ε, in projected degrees (≈ 0.2 m). A vertex snapped onto a neighbour's
+ * SLANTED edge is stored at 6 decimals, which moves it up to 5e-7° per axis off that edge — up to
+ * ≈ 1.2e-6 projected degrees at 60°N, many times `EPSILON`. A tolerance at least as large as that
+ * rounding keeps two snapped neighbours from "overlapping" (the mockup's `onBoundary` tolerance is
+ * likewise larger than its pixel rounding, `Edit.dc.html:350-353`).
+ */
+const OVERLAP_EPSILON = 2e-6;
+
+/**
  * Leaflet's own clamp (`SphericalMercator.MAX_LATITUDE`). The Mercator y of ±90° is infinite, and
  * Leaflet never draws beyond this latitude, so "the plane Leaflet draws" stops here too.
  */
@@ -82,20 +91,20 @@ const segmentDistance = (p: XY, a: XY, b: XY): number => {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 };
 
-const onSegment = (p: XY, a: XY, b: XY): boolean => segmentDistance(p, a, b) <= EPSILON;
+const onSegment = (p: XY, a: XY, b: XY, eps = EPSILON): boolean => segmentDistance(p, a, b) <= eps;
 
 /** Which side of the line through a and b the point p lies on; 0 within ε of the line. */
-const side = (a: XY, b: XY, p: XY): -1 | 0 | 1 => {
+const side = (a: XY, b: XY, p: XY, eps = EPSILON): -1 | 0 | 1 => {
   const length = distance(a, b);
   if (length === 0) return 0;
   const signed = cross(a, b, p) / length;
-  if (Math.abs(signed) <= EPSILON) return 0;
+  if (Math.abs(signed) <= eps) return 0;
   return signed > 0 ? 1 : -1;
 };
 
 /** Each segment's endpoints lie strictly on opposite sides of the other's line. */
-const crossesProperly = (a: XY, b: XY, c: XY, d: XY): boolean =>
-  side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0;
+const crossesProperly = (a: XY, b: XY, c: XY, d: XY, eps = EPSILON): boolean =>
+  side(a, b, c, eps) * side(a, b, d, eps) < 0 && side(c, d, a, eps) * side(c, d, b, eps) < 0;
 
 /** The length two collinear segments share; 0 when they are not collinear. */
 const collinearOverlap = (a: XY, b: XY, c: XY, d: XY): number => {
@@ -142,8 +151,8 @@ const boxesMeet = (a: Box, b: Box): boolean =>
   a.minY <= b.maxY + EPSILON &&
   b.minY <= a.maxY + EPSILON;
 
-const onBoundary = (p: XY, ring: readonly XY[]): boolean =>
-  ring.some((a, i) => onSegment(p, a, ring[(i + 1) % ring.length] as XY));
+const onBoundary = (p: XY, ring: readonly XY[], eps = EPSILON): boolean =>
+  ring.some((a, i) => onSegment(p, a, ring[(i + 1) % ring.length] as XY, eps));
 
 /**
  * Even-odd ray casting towards +x. The half-open rule (one end of an edge counts, the other does
@@ -162,8 +171,8 @@ const rayInside = (p: XY, ring: readonly XY[]): boolean => {
 };
 
 /** Inside by more than ε from the boundary. */
-const strictlyInside = (p: XY, ring: readonly XY[]): boolean =>
-  !onBoundary(p, ring) && rayInside(p, ring);
+const strictlyInside = (p: XY, ring: readonly XY[], eps = EPSILON): boolean =>
+  !onBoundary(p, ring, eps) && rayInside(p, ring);
 
 /** The area centroid; the mean of the vertices when the ring has no area. */
 const centroidOf = (ring: readonly XY[]): XY => {
@@ -289,7 +298,8 @@ export const selfIntersects = (ring: readonly AtmMapLatLng[]): boolean => {
 
 /**
  * Do two zones overlap (D-M7 allows it, with a warning)? Shared edges and shared vertices alone —
- * the snapped borders of two neighbours — are not an overlap. True when any of these holds:
+ * the snapped borders of two neighbours — are not an overlap; "on the boundary" here allows
+ * `OVERLAP_EPSILON`, the rounding of a vertex snapped onto a slanted edge. True when any holds:
  *   · a proper edge crossing;
  *   · a vertex of one ring strictly inside the other;
  *   · the midpoint of an edge of one ring strictly inside the other (a triangle on a square's own
@@ -316,7 +326,9 @@ export const polygonsOverlap = (
     const p = ringA[i] as XY;
     const q = ringA[(i + 1) % ringA.length] as XY;
     for (let j = 0; j < ringB.length; j += 1) {
-      if (crossesProperly(p, q, ringB[j] as XY, ringB[(j + 1) % ringB.length] as XY)) return true;
+      const c = ringB[j] as XY;
+      const d = ringB[(j + 1) % ringB.length] as XY;
+      if (crossesProperly(p, q, c, d, OVERLAP_EPSILON)) return true;
     }
   }
 
@@ -324,12 +336,13 @@ export const polygonsOverlap = (
     for (let i = 0; i < ring.length; i += 1) {
       const p = ring[i] as XY;
       const q = ring[(i + 1) % ring.length] as XY;
-      if (strictlyInside(p, other)) return true;
-      if (strictlyInside({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, other)) return true;
+      if (strictlyInside(p, other, OVERLAP_EPSILON)) return true;
+      const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+      if (strictlyInside(mid, other, OVERLAP_EPSILON)) return true;
     }
     const centre = centroidOf(ring);
     const inOwn = onBoundary(centre, ring) || rayInside(centre, ring);
-    return inOwn && strictlyInside(centre, other);
+    return inOwn && strictlyInside(centre, other, OVERLAP_EPSILON);
   };
   return pokesInto(ringA, ringB) || pokesInto(ringB, ringA);
 };

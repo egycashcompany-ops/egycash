@@ -4,7 +4,12 @@
 import { describe, expect, it } from 'vitest';
 import { type AtmMapZoneSetDto } from '@ecms/contracts';
 import {
+  CLOSE_SHAPE_PX,
+  closeShapeRadiusPx,
+  closesShape,
   coordKey,
+  draggedZoneIds,
+  fitDotsOf,
   insertOnEdge,
   linkedVertices,
   membershipOf,
@@ -12,6 +17,7 @@ import {
   midpoints,
   overlapsOf,
   round6,
+  snapCandidates,
   snapTarget,
   wouldCrossWhileDrawing,
   zoneMembership,
@@ -318,5 +324,85 @@ describe('performance (§8.4 budget)', () => {
     expect(result.size).toBe(2607);
     expect([...result.values()].some((m) => m.primary !== null)).toBe(true);
     expect(elapsed).toBeLessThan(200);
+  });
+});
+
+describe('draggedZoneIds — the zones a drag leaves out of snapping', () => {
+  // A and B share the edge lng = 31.001 (1 px = 1e-5° below); C only touches B's far corner.
+  const A = { id: 'A', points: square(30, 31, 0.001) };
+  const B = { id: 'B', points: square(30, 31.001, 0.001) };
+  const C = { id: 'C', points: square(30.001, 31.002, 0.001) };
+  const zones = [A, B, C];
+  const px1: Projector = (p) => ({ x: p.lng * 100_000, y: -p.lat * 100_000 });
+
+  it('a midpoint drag on a shared edge leaves out every zone that shares the edge', () => {
+    // A's edge 1 runs (30, 31.001) → (30.001, 31.001): B has it too.
+    const at = { lat: 30.0005, lng: 31.001 };
+    const moving = draggedZoneIds(zones, { kind: 'mid', zoneId: 'A', index: 1, at }, false);
+    expect([...moving].sort()).toEqual(['A', 'B']);
+    // Nothing is left to glue the new point back onto B's old edge a few pixels away.
+    const candidates = snapCandidates(zones, px1, moving);
+    const nudged = px1({ lat: 30.0005, lng: 31.00106 });
+    expect(snapTarget(nudged, candidates, 12)).toBeNull();
+    // Leaving out the dragged zone alone would snap the 6 px nudge back onto B's edge.
+    const ownOnly = snapCandidates(zones, px1, new Set(['A']));
+    expect(snapTarget(nudged, ownOnly, 12)).toMatchObject({ kind: 'edge', zoneId: 'B' });
+  });
+
+  it('a midpoint on an edge nobody shares leaves out its own zone only', () => {
+    const at = { lat: 30, lng: 31.0005 };
+    expect([...draggedZoneIds(zones, { kind: 'mid', zoneId: 'A', index: 0, at }, false)]).toEqual([
+      'A',
+    ]);
+  });
+
+  it('a vertex leaves out the zones that share it, or its own zone alone with Alt', () => {
+    const at = { lat: 30.001, lng: 31.002 };
+    const vertex = { kind: 'vertex' as const, zoneId: 'B', index: 2, at };
+    expect([...draggedZoneIds(zones, vertex, false)].sort()).toEqual(['B', 'C']);
+    expect([...draggedZoneIds(zones, vertex, true)]).toEqual(['B']);
+  });
+});
+
+describe('closeShapeRadiusPx — one radius for «إغلاق الشكل» and for the close', () => {
+  it('is never under the first dot’s 14 px, and follows a larger snap threshold', () => {
+    expect(CLOSE_SHAPE_PX).toBe(14);
+    expect(closeShapeRadiusPx({ on: false, px: 12 }, false)).toBe(14);
+    expect(closeShapeRadiusPx({ on: true, px: 12 }, false)).toBe(14);
+    expect(closeShapeRadiusPx({ on: true, px: 4 }, false)).toBe(14);
+    expect(closeShapeRadiusPx({ on: true, px: 30 }, false)).toBe(30);
+    expect(closeShapeRadiusPx({ on: true, px: 30 }, true)).toBe(14);
+    expect(closeShapeRadiusPx(undefined, false)).toBe(14);
+  });
+
+  it('a click under the hint closes the shape, with or without snapping', () => {
+    const first = { x: 100, y: 100 };
+    for (const snap of [
+      { on: false, px: 12 },
+      { on: true, px: 12 },
+    ]) {
+      expect(closesShape({ x: 113, y: 100 }, first, snap, false)).toBe(true);
+      expect(closesShape({ x: 113, y: 100 }, first, snap, true)).toBe(true);
+      expect(closesShape({ x: 15 + 100, y: 100 }, first, snap, false)).toBe(false);
+    }
+    expect(closesShape({ x: 128, y: 100 }, first, { on: true, px: 30 }, false)).toBe(true);
+    // The snap path agrees: `first` wins within the same radius.
+    const hit = snapTarget(
+      { x: 128, y: 100 },
+      { vertices: [], edges: [], first: { px: first, latlng: { lat: 30, lng: 31 } } },
+      closeShapeRadiusPx({ on: true, px: 30 }, false),
+    );
+    expect(hit?.kind).toBe('first');
+  });
+});
+
+describe('fitDotsOf — what the default view fits (§8.4)', () => {
+  it('leaves a point outside Egypt out of the fit, unless every point is outside', () => {
+    const cairo = { lat: 30.04, lng: 31.24 };
+    const alex = { lat: 31.2, lng: 29.9 };
+    const typo = { lat: -12.5, lng: 31.24 }; // a mistyped Plus Code, south of the equator
+    expect(fitDotsOf([cairo, typo, alex])).toEqual([cairo, alex]);
+    expect(fitDotsOf([typo])).toEqual([typo]);
+    expect(fitDotsOf([])).toEqual([]);
   });
 });

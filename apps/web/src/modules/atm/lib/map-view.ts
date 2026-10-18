@@ -12,6 +12,7 @@ import {
   ATM_BANK_CODES,
   type AtmBankCode,
   type AtmMapPointDto,
+  type Locale,
 } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
 import { NO_MEMBERSHIP, type Membership } from './map-geometry';
@@ -31,9 +32,31 @@ export const haversineMeters = (
   return 2 * ATM_MAP_EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(h)));
 };
 
-/** Kilometres with one decimal, for «تحرّك الموقع {{km}} كم». */
-export const kilometresText = (meters: number): string =>
-  (Math.round(meters / 100) / 10).toFixed(1);
+/** Kilometres with one decimal, for «تحرّك الموقع {{km}} كم» — in the UI's digits (DM-21). */
+export const kilometresText = (meters: number, locale: Locale): string =>
+  new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(Math.round(meters / 100) / 10);
+
+/**
+ * When the map fits itself to what it shows (§8.4 "Default view"): once the data of a branch and
+ * a status has arrived, and again only when that branch or status changes. Entering or leaving
+ * edit mode on the same branch is not a new view, so the person keeps the place they zoomed to;
+ * `null` while the data is still on its way (the canvas fits nothing yet).
+ */
+export const mapFitKey = (view: {
+  editing: boolean;
+  viewBranch: string | null;
+  editBranch: string | null;
+  status: string;
+  viewReady: boolean;
+  editReady: boolean;
+}): string | null => {
+  const ready = view.editing ? view.editReady : view.viewReady;
+  if (!ready) return null;
+  return `${String(view.editing ? view.editBranch : view.viewBranch)}|${view.status}`;
+};
 
 // ── ZoneDetail ──────────────────────────────────────────────────────────────────────────────────
 

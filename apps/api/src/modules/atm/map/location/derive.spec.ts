@@ -6,6 +6,8 @@ import { type AtmMapLocationTexts } from '@ecms/contracts';
 import {
   applyDerivation,
   bestCandidateIsShortCode,
+  hasShortCodeCandidate,
+  pinHolds,
   commonBankCode,
   deriveLocation,
   mergeOpenEntries,
@@ -488,6 +490,29 @@ describe('bestCandidateIsShortCode (sync pass 2)', () => {
     expect(ask({ plusCode: '26VP+Q7', url: 'https://plus.codes/8G2H26VP+Q7' })).toBe(false);
     expect(ask({ plusCode: '26VP+Q7', url: LINK }, resolved(LINK, 30, 31))).toBe(false);
     expect(ask({ url: CAIRO_URL })).toBe(false);
+  });
+});
+
+describe('hasShortCodeCandidate / pinHolds (sync passes 1a, 1b and the pool)', () => {
+  it('only a short Plus Code anywhere in the texts makes a derivation read the pool', () => {
+    const ask = (texts: Partial<AtmMapLocationTexts>) =>
+      hasShortCodeCandidate({
+        texts: { plusCode: texts.plusCode ?? null, url: texts.url ?? null },
+        entryProblem: null,
+      });
+    expect(ask({ url: CAIRO_URL })).toBe(false);
+    expect(ask({ plusCode: '8G2H26VP+Q7' })).toBe(false);
+    expect(ask({ plusCode: '26VP+Q7', url: CAIRO_URL })).toBe(true);
+    expect(hasShortCodeCandidate({ texts: null, entryProblem: 'conflictingEntries' })).toBe(false);
+  });
+
+  it('a pin holds while the register text equals the text it was set against (row 3)', () => {
+    const text: AtmMapLocationTexts = { plusCode: null, url: CAIRO_URL };
+    expect(pinHolds({ pinned: true, pinText: text }, { plusCode: '', url: ` ${CAIRO_URL} ` })).toBe(
+      true,
+    );
+    expect(pinHolds({ pinned: true, pinText: text }, { plusCode: null, url: LINK })).toBe(false);
+    expect(pinHolds({ pinned: false, pinText: text }, text)).toBe(false);
   });
 });
 

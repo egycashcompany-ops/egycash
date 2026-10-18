@@ -315,24 +315,29 @@ export interface ShortLinkBatchResult<T> {
   outcomes: { item: T; status: 'resolved' | 'failed'; failure: AtmMapLinkFailure | null }[];
 }
 
+/** A run's counters before its first link. */
+export const emptyShortLinkBatchResult = <T>(): ShortLinkBatchResult<T> => ({
+  attempted: 0,
+  resolved: 0,
+  failed: 0,
+  conflicts: 0,
+  stopReason: null,
+  outcomes: [],
+});
+
 /**
  * One call's links, sequentially: at most `ATM_MAP_LINK_BATCH_MAX`, a 300 ms pause between links,
  * the 40 s budget checked before every link and every hop. A stop — budget, rate limit, Google
- * unreachable — releases the claim of the link it did not finish.
+ * unreachable — releases the claim of the link it did not finish. The counters are kept in
+ * `result` as the run goes, so a claim, store or release that throws part-way still leaves the
+ * caller what was done (its run audit, §6.5 Resolve 5).
  */
 export const runShortLinkBatch = async <T extends { url: string }>(
   items: readonly T[],
   io: ShortLinkBatchIo<T>,
   deps: ShortLinkDeps,
+  result: ShortLinkBatchResult<T> = emptyShortLinkBatchResult<T>(),
 ): Promise<ShortLinkBatchResult<T>> => {
-  const result: ShortLinkBatchResult<T> = {
-    attempted: 0,
-    resolved: 0,
-    failed: 0,
-    conflicts: 0,
-    stopReason: null,
-    outcomes: [],
-  };
   const budgetEndsAt = deps.now() + SHORT_LINK_RUN_BUDGET_MS;
   let pauseDue = false;
 

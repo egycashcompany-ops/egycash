@@ -29,7 +29,7 @@ const missingIn = (locale: Locale, keys: readonly string[]): string[] =>
 
 /** The note an unlocated row shows for each warning a pin can carry (§8.8 `UnlocatedRow`). */
 const WARNING_NOTES: Record<AtmMapLocationWarning, string> = {
-  outsideEgypt: 'atm.map.parse.outsideEgypt',
+  outsideEgypt: 'atm.map.location.outsideEgypt',
   weakReference: 'atm.map.unlocated.weakNote',
   viewportOnly: 'atm.map.unlocated.viewportNote',
   ambiguousUrl: 'atm.map.unlocated.ambiguousNote',
@@ -43,6 +43,12 @@ const PAGE_KEYS = [
   'systemAdmin.users.audit.atmMapLocationSync',
   'systemAdmin.users.audit.atmMapLinkResolve',
   'atm.map.title',
+  'atm.map.sync.title',
+  'atm.map.move.doneTitle',
+  'atm.map.draw.addedTitle',
+  'atm.map.edit.notApplied',
+  'atm.map.location.outsideEgypt',
+  'atm.map.unlocated.notUnderReview',
   'atm.map.aria',
   'atm.map.ariaEdit',
   'atm.map.cluster.label',

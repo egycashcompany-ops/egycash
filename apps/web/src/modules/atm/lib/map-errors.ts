@@ -47,3 +47,16 @@ export const zoneSaveFailure = (error: unknown): ZoneSaveFailure | null => {
   }
   return null;
 };
+
+/**
+ * The warning a refused «اعتماد الموقع» shows (§8.10), or null for `errorMessage` to speak: the
+ * register's text moved since the pin was derived (sync first), or the pin is no longer waiting
+ * for review — a colleague approved it, or a sync cleared it, in between (the list is re-read, so
+ * the stale row leaves it).
+ */
+export const approveFailureKey = (error: unknown): string | null => {
+  if (!(error instanceof ApiError)) return null;
+  if (error.code === ErrorCodes.ATM_MAP_SOURCE_CHANGED) return 'atm.map.unlocated.sourceChanged';
+  if (error.code === ErrorCodes.ATM_MAP_NOT_UNDER_REVIEW) return 'atm.map.unlocated.notUnderReview';
+  return null;
+};

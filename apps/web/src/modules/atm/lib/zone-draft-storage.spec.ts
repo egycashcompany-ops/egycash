@@ -2,7 +2,10 @@
 // says so; an outdated revision is detected; and the key carries the user, so user B is never
 // offered user A's draft for the same branch.
 import { describe, expect, it } from 'vitest';
+import { type AtmMapZoneSetDto } from '@ecms/contracts';
+import { dirtyCount, initialZoneEditorState, zoneEditorReducer } from './zone-editor';
 import {
+  autosaveAction,
   clearDraft,
   draftKey,
   draftOffer,
@@ -94,5 +97,89 @@ describe('zone draft storage', () => {
     expect(draftOffer(DRAFT, 4)).toBe('restore');
     expect(draftOffer(DRAFT, 5)).toBe('outdated');
     expect(draftOffer(null, 5)).toBeNull();
+  });
+});
+
+describe('autosaveAction — what the page does with the stored draft after a render', () => {
+  const SET: AtmMapZoneSetDto = {
+    branchId: 'b1',
+    revision: 4,
+    zones: [
+      {
+        id: '6650a1b2c3d4e5f60000000a',
+        branchId: 'b1',
+        name: 'قطاع 1',
+        color: '#483bba',
+        order: 0,
+        points: [
+          { lat: 30, lng: 31 },
+          { lat: 30, lng: 31.01 },
+          { lat: 30.01, lng: 31.01 },
+          { lat: 30.01, lng: 31 },
+        ],
+        updatedAt: '2026-10-18T00:00:00.000Z',
+      },
+    ],
+  };
+  /** The page's own effect, run against a storage after each state. */
+  const effect = (
+    storage: DraftStorage,
+    state: typeof initialZoneEditorState,
+    offerPending: boolean,
+  ): void => {
+    const action = autosaveAction({
+      gestureActive: state.gesture !== null,
+      offerPending,
+      dirty: dirtyCount(state.base, state.draft),
+    });
+    if (action === 'clear') clearDraft('userA', 'b1', storage);
+    if (action === 'save' && state.base !== null) {
+      saveDraft(
+        'userA',
+        'b1',
+        { baseRevision: state.base.revision, draft: state.draft, savedAt: 'now' },
+        storage,
+      );
+    }
+  };
+
+  it('opening the editor while a draft is offered leaves that draft stored', () => {
+    const storage = memory();
+    saveDraft('userA', 'b1', DRAFT, storage);
+    const opened = zoneEditorReducer(initialZoneEditorState, { type: 'ENTER_EDIT', set: SET });
+    effect(storage, opened, true);
+    // A reload, or «خروج من التعديل» before choosing, still finds it.
+    expect(loadDraft('userA', 'b1', storage)).toEqual(DRAFT);
+    // «تجاهلها»: the offer ends, the draft is clean — now it is cleared.
+    effect(storage, opened, false);
+    expect(loadDraft('userA', 'b1', storage)).toBeNull();
+  });
+
+  it('a drag writes nothing until it ends, then one draft — never a mid-gesture shape', () => {
+    const storage = memory();
+    let state = zoneEditorReducer(initialZoneEditorState, { type: 'ENTER_EDIT', set: SET });
+    const writes: string[] = [];
+    const counting: DraftStorage = {
+      ...storage,
+      setItem: (k, v) => {
+        writes.push(v);
+        storage.setItem(k, v);
+      },
+    };
+    for (let frame = 1; frame <= 30; frame += 1) {
+      state = zoneEditorReducer(state, {
+        type: 'MOVE_VERTEX',
+        zoneId: '6650a1b2c3d4e5f60000000a',
+        index: 2,
+        point: { lat: 30.01 + frame * 1e-4, lng: 31.01 },
+        unlink: false,
+      });
+      effect(counting, state, false);
+    }
+    expect(writes).toHaveLength(0);
+    state = zoneEditorReducer(state, { type: 'END_GESTURE' });
+    effect(counting, state, false);
+    expect(writes).toHaveLength(1);
+    expect(autosaveAction({ gestureActive: true, offerPending: false, dirty: 3 })).toBe('none');
   });
 });

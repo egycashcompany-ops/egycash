@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
-import { machineCountForm, machineCountText } from './map-count-text';
+import { machineCountForm, machineCountText, zoneLabelCountText } from './map-count-text';
 
 const text = (n: number, locale: Locale): string =>
   machineCountText(n, (key, params) => translate(locale, key, params), locale);
@@ -58,5 +58,13 @@ describe('machineCountText', () => {
       '111 machines',
       '1,003 machines',
     ]);
+  });
+});
+
+describe('zoneLabelCountText', () => {
+  it('writes the label’s count in the UI’s digits, as the cluster bubbles beside it', () => {
+    expect(zoneLabelCountText(37, 'ar')).toBe('٣٧');
+    expect(zoneLabelCountText(2595, 'ar')).toBe('٢٬٥٩٥');
+    expect(zoneLabelCountText(37, 'en')).toBe('37');
   });
 });

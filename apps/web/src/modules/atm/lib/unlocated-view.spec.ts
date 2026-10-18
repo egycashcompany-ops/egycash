@@ -13,11 +13,13 @@ import { translate } from '../../../platform/localization/i18n';
 import {
   UNLOCATED_CHIP_ORDER,
   chipLabelKey,
+  chipOf,
   linkFailureKey,
   parseFeedback,
   reasonChipCounts,
   resolveLoopEndMessage,
   resolveLoopShouldContinue,
+  rowToggle,
 } from './unlocated-view';
 
 const exists = (key: string): boolean =>
@@ -69,11 +71,25 @@ describe('reasonChipCounts', () => {
     ]);
   });
 
-  it('has a chip, with a label in both locales, for every reason and for review', () => {
+  it('has a chip, with a label in both locales, for every reason, review and outside Egypt', () => {
     expect([...UNLOCATED_CHIP_ORDER].sort()).toEqual(
-      ['review', ...ATM_MAP_UNLOCATED_REASONS_DTO].sort(),
+      ['review', 'outsideEgypt', ...ATM_MAP_UNLOCATED_REASONS_DTO].sort(),
     );
     for (const chip of UNLOCATED_CHIP_ORDER) expect(exists(chipLabelKey(chip))).toBe(true);
+  });
+
+  it('lists a placed pin outside Egypt (DM-35 warns; it asks nobody for review)', () => {
+    const outside = point({
+      state: 'located',
+      reason: null,
+      lat: -12,
+      lng: 31,
+      warnings: ['outsideEgypt'],
+    });
+    expect(chipOf(outside)).toBe('outsideEgypt');
+    expect(reasonChipCounts([outside])).toEqual([{ chip: 'outsideEgypt', count: 1 }]);
+    // A review pin stays a review pin, whatever else it carries.
+    expect(chipOf({ ...outside, state: 'review' })).toBe('review');
   });
 });
 
@@ -167,5 +183,13 @@ describe('the resolve loop (§8.10)', () => {
       'atm.map.links.unreachable',
     );
     expect(resolveLoopEndMessage(result({ attempted: 0 }), totals)).toBeNull();
+  });
+});
+
+describe('rowToggle — the map’s temporary state belongs to the row that started it', () => {
+  it('opening another row, or closing this one, ends placing mode and drops the pin', () => {
+    expect(rowToggle('a', 'b')).toEqual({ openId: 'b', placing: null, moving: null });
+    expect(rowToggle('a', 'a')).toEqual({ openId: null, placing: null, moving: null });
+    expect(rowToggle(null, 'a')).toEqual({ openId: 'a', placing: null, moving: null });
   });
 });

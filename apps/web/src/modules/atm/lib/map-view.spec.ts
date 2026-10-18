@@ -8,6 +8,7 @@ import {
   findMachine,
   haversineMeters,
   kilometresText,
+  mapFitKey,
   saveSummary,
   zoneBreakdown,
   zoneEditableFromDetail,
@@ -115,7 +116,10 @@ describe('distance, areas, edit button', () => {
     const meters = haversineMeters({ lat: 30, lng: 31 }, { lat: 30.01, lng: 31 });
     expect(meters).toBeGreaterThan(1100);
     expect(meters).toBeLessThan(1120);
-    expect(kilometresText(meters)).toBe('1.1');
+    expect(kilometresText(meters, 'en')).toBe('1.1');
+    // In the Arabic UI the figure is in the page's own digits (DM-21), never «8939.2».
+    expect(kilometresText(meters, 'ar')).toBe('١٫١');
+    expect(kilometresText(8_939_200, 'ar')).toBe('٨٬٩٣٩٫٢');
   });
 
   it('offers each area once, sorted', () => {
@@ -130,5 +134,33 @@ describe('distance, areas, edit button', () => {
     expect(zoneEditableFromDetail('b', 'a', true)).toBe(false);
     expect(zoneEditableFromDetail('a', null, true)).toBe(false);
     expect(zoneEditableFromDetail('a', 'a', false)).toBe(false);
+  });
+});
+
+describe('mapFitKey — when the map fits itself (§8.4 default view)', () => {
+  const view = {
+    editing: false,
+    viewBranch: 'b1',
+    editBranch: null,
+    status: 'active',
+    viewReady: true,
+    editReady: false,
+  };
+
+  it('waits for the data, then fits once per branch and status', () => {
+    expect(mapFitKey({ ...view, viewReady: false })).toBeNull();
+    expect(mapFitKey(view)).toBe('b1|active');
+    expect(mapFitKey({ ...view, viewBranch: 'b2' })).not.toBe(mapFitKey(view));
+    expect(mapFitKey({ ...view, status: 'all' })).not.toBe(mapFitKey(view));
+  });
+
+  it('entering and leaving edit mode on the same branch keeps the key — and the place', () => {
+    const editing = { ...view, editing: true, editBranch: 'b1', editReady: true };
+    expect(mapFitKey(editing)).toBe(mapFitKey(view));
+    // The edit branch's points still loading fit nothing (no refit, no early fit).
+    expect(mapFitKey({ ...editing, editReady: false })).toBeNull();
+    // From «كل الفروع», editing one branch is a new view of that branch.
+    expect(mapFitKey({ ...editing, viewBranch: 'all' })).toBe('b1|active');
+    expect(mapFitKey({ ...view, viewBranch: 'all' })).toBe('all|active');
   });
 });

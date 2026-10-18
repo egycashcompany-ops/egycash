@@ -14,6 +14,7 @@
 // that contains it. Zones of another branch never count, and a zone's bounding box is tested before
 // its ring, so 2,607 machines against 200 zones stays well inside a frame.
 import {
+  EGYPT_BOUNDS,
   polygonsOverlap,
   pointInPolygon,
   project,
@@ -33,6 +34,23 @@ export {
   zoneGeometryIssues,
   type AtmMapLatLng,
 } from '@ecms/contracts';
+
+/** Inside DM-35's box — where the company's machines are; a point outside carries `outsideEgypt`. */
+export const insideEgyptBox = ({ lat, lng }: AtmMapLatLng): boolean =>
+  lat >= EGYPT_BOUNDS.south &&
+  lat <= EGYPT_BOUNDS.north &&
+  lng >= EGYPT_BOUNDS.west &&
+  lng <= EGYPT_BOUNDS.east;
+
+/**
+ * The machines the default view fits (§8.4): those inside Egypt's box. A mistyped Plus Code far
+ * away would otherwise zoom the whole branch out across Africa; it is still drawn, and listed as
+ * «خارج حدود مصر» on the unlocated screen. All of them when none is inside.
+ */
+export const fitDotsOf = <T extends AtmMapLatLng>(dots: readonly T[]): readonly T[] => {
+  const inside = dots.filter(insideEgyptBox);
+  return inside.length > 0 ? inside : dots;
+};
 
 /** A pixel position on the map container (or in Leaflet's world pixels at one zoom). */
 export interface PixelPoint {
@@ -352,6 +370,30 @@ export const snapCandidates = (
   return { vertices, edges };
 };
 
+/**
+ * The first dot of a shape on screen (`Edit.dc.html` `drawDown` / `nearFirst`: 14 px): a click
+ * this near it closes the shape, and «إغلاق الشكل» shows.
+ */
+export const CLOSE_SHAPE_PX = 14;
+
+/**
+ * How near the first dot a click closes the shape — ONE radius for the close and for its hint, so
+ * the hint never promises a close the click does not make: the snap threshold while snapping is on
+ * and Alt is not held, never under `CLOSE_SHAPE_PX`.
+ */
+export const closeShapeRadiusPx = (
+  snap: { on: boolean; px: number } | undefined,
+  altKey: boolean,
+): number => Math.max(snap?.on === true && !altKey ? snap.px : 0, CLOSE_SHAPE_PX);
+
+/** Whether a click at `cursorPx` closes the shape (inclusive, as `snapTarget`'s `first`). */
+export const closesShape = (
+  cursorPx: PixelPoint,
+  firstPx: PixelPoint,
+  snap: { on: boolean; px: number } | undefined,
+  altKey: boolean,
+): boolean => projectedDistance(cursorPx, firstPx) <= closeShapeRadiusPx(snap, altKey);
+
 // ── Shared vertices and edges (DM-6) ────────────────────────────────────────────────────────────
 
 /** Every vertex of the draft at this key — the points two neighbours share. */
@@ -391,6 +433,34 @@ export const zonesWithEdge = (
     }
   }
   return found;
+};
+
+/**
+ * The zones a drag moves, which therefore never snap (the mockup's `snapPoint(p, dr.links)`): a
+ * vertex moves with every zone that shares it (only its own with Alt); a midpoint inserts into
+ * every zone that shares its edge (`INSERT_VERTEX`), so all of them move — leaving one of them a
+ * candidate would glue the new point back onto that zone's old edge.
+ */
+export const draggedZoneIds = (
+  zones: readonly GeometryZone[],
+  drag: { kind: 'vertex' | 'mid'; zoneId: string; index: number; at: AtmMapLatLng },
+  unlink: boolean,
+): Set<string> => {
+  if (drag.kind === 'vertex') {
+    return new Set(
+      unlink
+        ? [drag.zoneId]
+        : [drag.zoneId, ...linkedVertices(zones, coordKey(drag.at)).map((v) => v.zoneId)],
+    );
+  }
+  const zone = zones.find((z) => z.id === drag.zoneId);
+  const a = zone?.points[drag.index];
+  const b = zone?.points[(drag.index + 1) % (zone?.points.length ?? 1)];
+  if (a === undefined || b === undefined) return new Set([drag.zoneId]);
+  return new Set([
+    drag.zoneId,
+    ...zonesWithEdge(zones, coordKey(a), coordKey(b)).map((hit) => hit.zoneId),
+  ]);
 };
 
 /**

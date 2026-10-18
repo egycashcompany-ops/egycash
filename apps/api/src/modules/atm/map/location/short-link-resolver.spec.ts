@@ -8,6 +8,7 @@ import { logger } from '../../../../infrastructure/logging/logger';
 import {
   SHORT_LINK_HOP_LIMIT,
   resolveShortLink,
+  emptyShortLinkBatchResult,
   runShortLinkBatch,
   type ShortLinkBatchIo,
   type ShortLinkDeps,
@@ -449,6 +450,22 @@ describe('the batch', () => {
       stopReason: null,
     });
     expect(f.sleeps).toEqual([300, 300]);
+  });
+
+  it('keeps its counters in the caller’s result, so a store that throws part-way leaves them', async () => {
+    const list = items(3);
+    const f = fake(routesFor(list));
+    const { value, log } = io({
+      store: (item) =>
+        item.id === 'm1'
+          ? Promise.reject(new Error('simulated MongoNetworkError'))
+          : Promise.resolve('stored'),
+    });
+    const progress = emptyShortLinkBatchResult<Item>();
+    await expect(runShortLinkBatch(list, value, f.deps, progress)).rejects.toThrow('simulated');
+    expect(progress).toMatchObject({ attempted: 1, resolved: 1, stopReason: null });
+    expect(progress.outcomes.map((o) => o.item.id)).toEqual(['m0']);
+    expect(log.released).toEqual(['m1']);
   });
 
   it('processes 20 of a batch of 25', async () => {

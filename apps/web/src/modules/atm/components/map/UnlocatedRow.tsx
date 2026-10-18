@@ -30,7 +30,9 @@ import { Spinner } from '../../../../shared/ui/Spinner';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useApproveLocation, useMachineLocation, useParseLocation } from '../../api/map-queries';
 import { bankColor } from '../../lib/map-colors';
+import { approveFailureKey } from '../../lib/map-errors';
 import { originalLinkHref } from '../../lib/map-links';
+import { locatedToast } from '../../lib/map-toasts';
 import {
   chipLabelKey,
   chipOf,
@@ -47,10 +49,14 @@ const TONE: Record<FeedbackTone, string> = {
   error: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-200',
 };
 
-/** Why a pin is under review, one note per reason the server gave (§8.8). */
+/**
+ * Why a pin is under review, one note per reason the server gave (§8.8) — and, under review or
+ * not, a pin outside Egypt (DM-35's warning, which never asks for review on its own).
+ */
 export const reviewNotes = (detail: AtmMachineLocationDetailDto): string[] => {
-  if (!detail.needsReview) return [];
-  const notes: string[] = [];
+  const outside = detail.warnings.includes('outsideEgypt') ? ['atm.map.location.outsideEgypt'] : [];
+  if (!detail.needsReview) return outside;
+  const notes: string[] = [...outside];
   if (detail.source === 'registerShortCode') notes.push('atm.map.unlocated.reviewNote');
   if (detail.warnings.includes('weakReference')) notes.push('atm.map.unlocated.weakNote');
   if (detail.warnings.includes('viewportOnly')) notes.push('atm.map.unlocated.viewportNote');
@@ -86,74 +92,11 @@ export const UnlocatedRow = memo(function UnlocatedRow({
   onToggle: (machineId: string) => void;
 }): JSX.Element {
   const t = useT();
-  const pasteId = useId();
   const chip = chipOf(point);
-  const detail = useMachineLocation(open ? point.machineId : null);
-  const approve = useApproveLocation();
-  const parse = useParseLocation();
-  const [text, setText] = useState('');
-  const [feedback, setFeedback] = useState<{ key: string; tone: FeedbackTone } | null>(null);
   const bank =
     point.bankCode === null
       ? t('atm.map.filters.bankNone')
       : ATM_BANK_NAMES[point.bankCode][locale];
-
-  const read = (): void => {
-    const value = text.trim();
-    if (value === '') return;
-    parse.mutate(
-      { machineId: point.machineId, text: value },
-      {
-        onSuccess: (result) => {
-          setFeedback(parseFeedback(result));
-          if (result.ok) actions.onPreview(point, { lat: result.lat, lng: result.lng }, value);
-        },
-        onError: (error) => toast.error(errorMessage(error, locale)),
-      },
-    );
-  };
-
-  const doApprove = (): void => {
-    const loaded = detail.data;
-    if (loaded === undefined || loaded.version === null) return;
-    approve.mutate(
-      { machineId: point.machineId, body: { version: loaded.version } },
-      {
-        onSuccess: (saved) =>
-          toast.success(
-            t('atm.map.move.done', {
-              code: point.code,
-              zone: actions.zoneNameAt(
-                point.branchId,
-                saved.lat === null || saved.lng === null
-                  ? null
-                  : { lat: saved.lat, lng: saved.lng },
-              ),
-            }),
-          ),
-        onError: (error) => {
-          if (error instanceof ApiError && error.code === ErrorCodes.ATM_MAP_SOURCE_CHANGED) {
-            toast.warning(t('atm.map.unlocated.sourceChanged'));
-            return;
-          }
-          if (error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT) {
-            void detail.refetch();
-          }
-          toast.error(errorMessage(error, locale));
-        },
-      },
-    );
-  };
-
-  const loaded = detail.data;
-  const source = loaded?.sourceVisible === true ? loaded.sourceText : null;
-  const sourceLine =
-    source === null ? null : [source.plusCode, source.url].filter((s) => s !== null).join(' · ');
-  const original = originalLinkHref(source?.url ?? null);
-  const failure =
-    point.reason === 'shortLinkFailed' && loaded?.shortLink?.failure !== undefined
-      ? loaded.shortLink.failure
-      : null;
 
   return (
     <div
@@ -192,100 +135,177 @@ export const UnlocatedRow = memo(function UnlocatedRow({
           )}
         </span>
       </button>
-      {open && (
-        <div className="flex flex-col gap-2.5 px-3 pb-3.5">
-          {detail.isLoading && <Spinner className="h-4 w-4 text-slate-400" />}
-          {sourceLine !== null && sourceLine !== '' && (
-            <div data-source-line="true" className="text-xs text-slate-500 dark:text-slate-400">
-              {t('atm.map.unlocated.sourceLabel')}{' '}
-              <span dir="ltr" className="break-all font-mono text-slate-900 dark:text-slate-100">
-                {sourceLine}
-              </span>
-            </div>
-          )}
-          {failure !== null && (
-            <p className="rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-200">
-              {t(linkFailureKey(failure))}
-            </p>
-          )}
-          {loaded !== undefined &&
-            reviewNotes(loaded).map((key) => (
-              <p
-                key={key}
-                className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs leading-[1.7] text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
-              >
-                {t(key)}
-              </p>
-            ))}
-          {point.state === 'review' && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className={CONFIRM_BUTTON}
-                disabled={loaded === undefined || approve.isPending}
-                onClick={doApprove}
-              >
-                {approve.isPending && <Spinner className="h-4 w-4" />}
-                {t('atm.map.unlocated.approve')}
-              </button>
-              <Button size="sm" variant="secondary" onClick={() => actions.onCorrect(point)}>
-                {t('atm.map.unlocated.correct')}
-              </Button>
-            </div>
-          )}
-          <label htmlFor={pasteId} className="text-xs text-slate-500 dark:text-slate-400">
-            {t('atm.map.unlocated.paste')}
-          </label>
-          <div className="flex gap-1.5">
-            <input
-              id={pasteId}
-              type="text"
-              dir="ltr"
-              value={text}
-              maxLength={2048}
-              placeholder="30.0444, 31.2357"
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  read();
-                }
-              }}
-              className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-9"
-              loading={parse.isPending}
-              disabled={text.trim() === ''}
-              onClick={read}
-            >
-              {t('atm.map.unlocated.read')}
-            </Button>
-          </div>
-          {feedback !== null && (
-            <p role="status" className={cn('rounded-lg px-2.5 py-2 text-xs', TONE[feedback.tone])}>
-              {t(feedback.key)}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => actions.onPlace(point)}>
-              {t('atm.map.unlocated.place')}
-            </Button>
-            {original !== null && (
-              <a
-                href={original}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[13px] text-brand-600 underline-offset-2 hover:underline"
-              >
-                {t('atm.map.unlocated.openOriginal')}
-              </a>
-            )}
-          </div>
-        </div>
-      )}
+      {open && <UnlocatedRowBody point={point} locale={locale} actions={actions} />}
     </div>
   );
 });
+
+/**
+ * The open row: its detail read, the approval, the paste box. Mounted only while the row is open,
+ * so a list of 1,700 closed rows holds no queries, mutations or state of its own (UX-8).
+ */
+const UnlocatedRowBody = ({
+  point,
+  locale,
+  actions,
+}: {
+  point: AtmMapPointDto;
+  locale: Locale;
+  actions: UnlocatedRowActions;
+}): JSX.Element => {
+  const t = useT();
+  const pasteId = useId();
+  const detail = useMachineLocation(point.machineId);
+  const approve = useApproveLocation();
+  const parse = useParseLocation();
+  const [text, setText] = useState('');
+  const [feedback, setFeedback] = useState<{ key: string; tone: FeedbackTone } | null>(null);
+  const read = (): void => {
+    const value = text.trim();
+    if (value === '') return;
+    parse.mutate(
+      { machineId: point.machineId, text: value },
+      {
+        onSuccess: (result) => {
+          setFeedback(parseFeedback(result));
+          if (result.ok) actions.onPreview(point, { lat: result.lat, lng: result.lng }, value);
+        },
+        onError: (error) => toast.error(errorMessage(error, locale)),
+      },
+    );
+  };
+
+  const doApprove = (): void => {
+    const loaded = detail.data;
+    if (loaded === undefined || loaded.version === null) return;
+    approve.mutate(
+      { machineId: point.machineId, body: { version: loaded.version } },
+      {
+        onSuccess: (saved) => {
+          const zone = actions.zoneNameAt(
+            point.branchId,
+            saved.lat === null || saved.lng === null ? null : { lat: saved.lat, lng: saved.lng },
+          );
+          const words = locatedToast(point.code, zone, t);
+          toast.success(words.title, words.description);
+        },
+        onError: (error) => {
+          const key = approveFailureKey(error);
+          if (key !== null) {
+            toast.warning(t(key));
+            return;
+          }
+          if (error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT) {
+            void detail.refetch();
+          }
+          toast.error(errorMessage(error, locale));
+        },
+      },
+    );
+  };
+
+  const loaded = detail.data;
+  const source = loaded?.sourceVisible === true ? loaded.sourceText : null;
+  const sourceLine =
+    source === null ? null : [source.plusCode, source.url].filter((s) => s !== null).join(' · ');
+  const original = originalLinkHref(source?.url ?? null);
+  const failure =
+    point.reason === 'shortLinkFailed' && loaded?.shortLink?.failure !== undefined
+      ? loaded.shortLink.failure
+      : null;
+
+  return (
+    <div className="flex flex-col gap-2.5 px-3 pb-3.5">
+      {detail.isLoading && <Spinner className="h-4 w-4 text-slate-400" />}
+      {sourceLine !== null && sourceLine !== '' && (
+        <div data-source-line="true" className="text-xs text-slate-500 dark:text-slate-400">
+          {t('atm.map.unlocated.sourceLabel')}{' '}
+          <span dir="ltr" className="break-all font-mono text-slate-900 dark:text-slate-100">
+            {sourceLine}
+          </span>
+        </div>
+      )}
+      {failure !== null && (
+        <p className="rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700 dark:bg-red-950 dark:text-red-200">
+          {t(linkFailureKey(failure))}
+        </p>
+      )}
+      {loaded !== undefined &&
+        reviewNotes(loaded).map((key) => (
+          <p
+            key={key}
+            className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs leading-[1.7] text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+          >
+            {t(key)}
+          </p>
+        ))}
+      {point.state === 'review' && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={CONFIRM_BUTTON}
+            disabled={loaded === undefined || approve.isPending}
+            onClick={doApprove}
+          >
+            {approve.isPending && <Spinner className="h-4 w-4" />}
+            {t('atm.map.unlocated.approve')}
+          </button>
+          <Button size="sm" variant="secondary" onClick={() => actions.onCorrect(point)}>
+            {t('atm.map.unlocated.correct')}
+          </Button>
+        </div>
+      )}
+      <label htmlFor={pasteId} className="text-xs text-slate-500 dark:text-slate-400">
+        {t('atm.map.unlocated.paste')}
+      </label>
+      <div className="flex gap-1.5">
+        <input
+          id={pasteId}
+          type="text"
+          dir="ltr"
+          value={text}
+          maxLength={2048}
+          placeholder="30.0444, 31.2357"
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              read();
+            }
+          }}
+          className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-9"
+          loading={parse.isPending}
+          disabled={text.trim() === ''}
+          onClick={read}
+        >
+          {t('atm.map.unlocated.read')}
+        </Button>
+      </div>
+      {feedback !== null && (
+        <p role="status" className={cn('rounded-lg px-2.5 py-2 text-xs', TONE[feedback.tone])}>
+          {t(feedback.key)}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={() => actions.onPlace(point)}>
+          {t('atm.map.unlocated.place')}
+        </Button>
+        {original !== null && (
+          <a
+            href={original}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[13px] text-brand-600 underline-offset-2 hover:underline"
+          >
+            {t('atm.map.unlocated.openOriginal')}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+};

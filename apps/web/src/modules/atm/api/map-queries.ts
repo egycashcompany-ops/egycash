@@ -19,6 +19,7 @@
 // toast with the server's English sentence. One failure, one message.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ErrorCodes,
   type ApproveAtmMachineLocation,
   type ParseAtmMapLocation,
   type PlaceAtmMachineLocation,
@@ -26,6 +27,7 @@ import {
   type SaveAtmMapZoneSetInput,
   type SyncAtmMapLocations,
 } from '@ecms/contracts';
+import { ApiError } from '../../../shared/lib/api-client';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import * as api from './map-api';
 import { type MapBranchParams, type MapPointsParams } from './map-api';
@@ -139,7 +141,13 @@ export const useApproveLocation = () => {
     mutationFn: ({ machineId, body }: { machineId: string; body: ApproveAtmMachineLocation }) =>
       api.approveLocation(machineId, body),
     onSuccess: () => invalidateLocations(client),
-    onError: reportedByCaller,
+    // The caller words the refusal. A pin no longer under review (a colleague approved it, a sync
+    // cleared it) means this screen's points are out of date: re-read them, so its row leaves.
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === ErrorCodes.ATM_MAP_NOT_UNDER_REVIEW) {
+        invalidateLocations(client);
+      }
+    },
   });
 };
 

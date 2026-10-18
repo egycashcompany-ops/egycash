@@ -159,3 +159,23 @@ export const closeShapeElement = (doc: DocLike, text: string, dir: 'rtl' | 'ltr'
   tip.setAttribute('dir', dir);
   return tip;
 };
+
+/**
+ * Where the keyboard focus goes after the edit handles are rebuilt (a point added or deleted, a
+ * zoom; DM-41) — removing a focused handle would otherwise drop the focus on the page, out of
+ * reach of the map's shortcuts. The selected vertex's new handle when there is one, else the map
+ * itself; nothing when the focus was elsewhere and no midpoint insert asked for it.
+ */
+export const handleFocusAfterRebuild = (state: {
+  /** The focus was on one of the handles just removed. */
+  hadFocus: boolean;
+  /** A midpoint drag just inserted the selected vertex. */
+  inserted: boolean;
+  /** The selected vertex's index in the rebuilt zone, or null. */
+  selectedIndex: number | null;
+}): { kind: 'vertex'; index: number } | { kind: 'map' } | null => {
+  if (!state.hadFocus && !state.inserted) return null;
+  return state.selectedIndex === null
+    ? { kind: 'map' }
+    : { kind: 'vertex', index: state.selectedIndex };
+};

@@ -31,6 +31,7 @@ import { translate } from '../../platform/localization/i18n';
 import { MachineMapPage } from './pages/MachineMapPage';
 import { MapPageHeader } from './components/map/MapPageHeader';
 import { ZoneDetail } from './components/map/ZoneDetail';
+import { MachinePopup } from './components/map/MachinePopup';
 import { mapContextKey, mapKeys, mapPointsKey, mapZonesKey } from './api/map-queries';
 import { zoneBreakdown, zoneEditableFromDetail } from './lib/map-view';
 
@@ -247,6 +248,58 @@ describe('ZoneDetail', () => {
   it('offers «تعديل» on a zone of the edit branch only', () => {
     expect(detail(ZONE_A)).toContain('data-zone-edit');
     expect(detail({ ...ZONE_A, branchId: BRANCH_B })).not.toContain('data-zone-edit');
+  });
+
+  it('writes its bank, area and overlap counts in the UI’s digits (DM-21)', () => {
+    const membership = new Map(
+      POINTS.points.map((p) => [p.machineId, { primary: ZONE_A.id, all: [ZONE_A.id] }]),
+    );
+    const html = renderToStaticMarkup(
+      <Provider store={store(EDITOR)}>
+        <ZoneDetail
+          zone={ZONE_A}
+          breakdown={zoneBreakdown(ZONE_A.id, POINTS.points, membership)}
+          overlaps={3}
+          locale="ar"
+          onBack={() => undefined}
+          onEdit={null}
+          onPickMachine={() => undefined}
+        />
+      </Provider>,
+    );
+    const counts = [...html.matchAll(/<strong class="tabular-nums">([^<]*)<\/strong>/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(counts.length).toBeGreaterThan(0);
+    for (const count of counts) expect(count).toMatch(/^[٠-٩٬]+$/);
+    expect(html).toContain('٣');
+    expect(html).not.toMatch(/قطاعات أخرى: \d/);
+  });
+});
+
+describe('MachinePopup', () => {
+  const popup = (warnings: AtmMapPointDto['warnings']): string =>
+    renderToStaticMarkup(
+      <Provider store={store(EDITOR)}>
+        <MemoryRouter>
+          <MachinePopup
+            point={{ ...(POINTS.points[0] as AtmMapPointDto), warnings }}
+            branchName="فرع تجريبي أ"
+            zone={{ primary: null, all: [] }}
+            locale="ar"
+            canOpenRegister={false}
+            canMove={false}
+            onClose={() => undefined}
+            onMove={() => undefined}
+            onNavigate={() => undefined}
+          />
+        </MemoryRouter>
+      </Provider>,
+    );
+
+  it('says when the pin is outside Egypt — a warning no other screen would show (DM-35)', () => {
+    expect(popup(['outsideEgypt'])).toContain(t('atm.map.location.outsideEgypt'));
+    expect(popup([])).not.toContain('data-popup-outside');
   });
 });
 

@@ -11,8 +11,19 @@ export interface KeyValueCache {
   delByPrefix(prefix: string): Promise<void>;
   /** Atomic increment used by the rate limiter; sets TTL on first hit. */
   incrWithTtl(key: string, ttlSeconds: number): Promise<{ count: number; ttl: number }>;
+  /**
+   * A lease: one atomic `SET key value NX EX ttl`. True when this call took the key; the key never
+   * exists without its TTL, so a holder that dies cannot keep it.
+   */
+  setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean>;
+  /** Releases a lease: deletes the key only while it still holds `value` (compare-and-delete). */
+  delIfValue(key: string, value: string): Promise<void>;
   close(): Promise<void>;
 }
+
+/** Compare-and-delete in one step, so a lease that expired and was retaken is never dropped. */
+const DEL_IF_VALUE_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
 
 class RedisCache implements KeyValueCache {
   private readonly client: Redis;
@@ -53,6 +64,14 @@ class RedisCache implements KeyValueCache {
     if (count === 1) await this.client.expire(key, ttlSeconds);
     const ttl = await this.client.ttl(key);
     return { count, ttl: ttl > 0 ? ttl : ttlSeconds };
+  }
+
+  async setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    return (await this.client.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK';
+  }
+
+  async delIfValue(key: string, value: string): Promise<void> {
+    await this.client.eval(DEL_IF_VALUE_SCRIPT, 1, key, value);
   }
 
   async close(): Promise<void> {
@@ -105,6 +124,16 @@ export class MemoryCache implements KeyValueCache {
     const expiresAt = entry?.expiresAt ?? Date.now() + ttlSeconds * 1000;
     this.store.set(key, { value: String(count), expiresAt });
     return { count, ttl: Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000)) };
+  }
+
+  async setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    if (this.live(key) !== undefined) return false;
+    this.store.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+    return true;
+  }
+
+  async delIfValue(key: string, value: string): Promise<void> {
+    if (this.live(key)?.value === value) this.store.delete(key);
   }
 
   async close(): Promise<void> {

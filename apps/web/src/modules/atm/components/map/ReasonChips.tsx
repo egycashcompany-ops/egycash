@@ -11,6 +11,7 @@ import { chipLabelKey, type UnlocatedChip } from '../../lib/unlocated-view';
 export const chipTone = (chip: UnlocatedChip): string => {
   switch (chip) {
     case 'review':
+    case 'outsideEgypt':
       return 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200';
     case 'shortLink':
       return 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200';

@@ -94,7 +94,7 @@ import {
   NO_ZONE_GREY,
   suggestColor,
 } from '../lib/map-colors';
-import { machineCountText } from '../lib/map-count-text';
+import { machineCountText, zoneLabelCountText } from '../lib/map-count-text';
 import {
   BRANCH_ALL,
   ZONE_MULTI,
@@ -128,9 +128,11 @@ import {
   type MapSnapPrefs,
 } from '../lib/map-prefs';
 import { shortcutFor } from '../lib/map-shortcuts';
+import { noticeToast } from '../lib/map-toasts';
 import {
   areasOf,
   findMachine,
+  mapFitKey,
   saveSummary,
   zoneBreakdown,
   zoneEditableFromDetail,
@@ -153,6 +155,7 @@ import {
   type DraftZone,
 } from '../lib/zone-editor';
 import {
+  autosaveAction,
   clearDraft,
   draftOffer,
   loadDraft,
@@ -384,16 +387,19 @@ export const MachineMapPage = (): JSX.Element => {
     const notice = editor.notice;
     if (notice === null) return;
     const tone = NOTICE_TONE[notice.key] ?? 'info';
-    toast[tone](t(notice.key));
+    const words = noticeToast(notice.key, t);
+    toast[tone](words.title, words.description);
   }, [editor.notice?.seq]);
 
-  // The draft is kept on this device after each step (DM-29); a clean draft is not a draft.
+  // The draft is kept on this device after each finished step (DM-29); a clean draft is not a
+  // draft — but one still offered for restoring stays stored until the person chooses.
+  const offerPending = draftNotice?.kind === 'restore';
+  const gestureActive = editor.gesture !== null;
   useEffect(() => {
     if (!editing || editor.base === null || editor.branchId === null || userId === '') return;
-    if (dirty === 0) {
-      clearDraft(userId, editor.branchId);
-      return;
-    }
+    const action = autosaveAction({ gestureActive, offerPending, dirty });
+    if (action === 'clear') clearDraft(userId, editor.branchId);
+    if (action !== 'save') return;
     setDraftKept(
       saveDraft(userId, editor.branchId, {
         baseRevision: editor.base.revision,
@@ -401,7 +407,7 @@ export const MachineMapPage = (): JSX.Element => {
         savedAt: new Date().toISOString(),
       }),
     );
-  }, [editor.past.length, editor.future.length, editor.draft, editor.base]);
+  }, [editor.past, editor.future, editor.draft, editor.base, gestureActive, offerPending]);
 
   const fetchEditSet = async (id: string): Promise<AtmMapZoneSetDto> => {
     const answer = await queryClient.fetchQuery({
@@ -426,6 +432,11 @@ export const MachineMapPage = (): JSX.Element => {
       setMoving(null);
       send({ type: 'ENTER_EDIT', set, selectZoneId });
       if (filters.branch !== editBranchId) patch({ branch: editBranchId });
+      // The zone being edited is brought into view — after the edit branch's own fit, if any.
+      pendingFocus.current =
+        selectZoneId !== null && set.zones.some((z) => z.id === selectZoneId)
+          ? { kind: 'zone', zoneId: selectZoneId }
+          : null;
       const offer = draftOffer(loadDraft(userId, editBranchId), set.revision);
       if (offer === 'outdated') {
         clearDraft(userId, editBranchId);
@@ -525,6 +536,21 @@ export const MachineMapPage = (): JSX.Element => {
     focusSeq.current += 1;
     setFocus({ ...target, seq: focusSeq.current });
   };
+  // The default view (§8.4): once per branch and status, never because the mode changed.
+  const fitKey = mapFitKey({
+    editing,
+    viewBranch: filters.branch,
+    editBranch: editor.branchId,
+    status: raw.status,
+    viewReady: points.isSuccess && zonesQuery.isSuccess,
+    editReady: editPoints.isSuccess,
+  });
+  const pendingFocus = useRef<{ kind: 'zone'; zoneId: string } | null>(null);
+  useEffect(() => {
+    if (pendingFocus.current === null || fitKey === null) return;
+    flyTo(pendingFocus.current);
+    pendingFocus.current = null;
+  }, [fitKey, editing]);
   const [moving, setMoving] = useState<{ point: AtmMapPointDto; at: AtmMapLatLng } | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const view = useRef<CanvasView | null>(null);
@@ -556,10 +582,11 @@ export const MachineMapPage = (): JSX.Element => {
     flyTo({ kind: 'point', lat: found.lat, lng: found.lng });
     openPopup(found.machineId);
   };
-  // `?q=` and `?machine=` from a link act once, when the points have arrived.
+  // `?q=` and `?machine=` from a link act once, when the points have arrived — after the map's
+  // first fit (`fitKey`), which would otherwise take the view back to the whole branch.
   const linked = useRef(false);
   useEffect(() => {
-    if (linked.current || points.data === undefined) return;
+    if (linked.current || points.data === undefined || fitKey === null) return;
     linked.current = true;
     const machine = filters.machine === null ? undefined : pointById.get(filters.machine);
     if (machine !== undefined && hasPoint(machine)) {
@@ -568,7 +595,7 @@ export const MachineMapPage = (): JSX.Element => {
     } else if (filters.q.trim() !== '') {
       search(filters.q);
     }
-  }, [points.data]);
+  }, [points.data, fitKey]);
 
   /** «القطاع: …» for a point of a machine's branch — the shared membership (DM-9). */
   const zoneNameAt = useCallback(
@@ -680,7 +707,7 @@ export const MachineMapPage = (): JSX.Element => {
         color: zone.color,
         cased: needsCasing(zone.color),
         points: zone.points,
-        countText: String(editCounts.get(zone.id) ?? 0),
+        countText: zoneLabelCountText(editCounts.get(zone.id) ?? 0, locale),
       }));
     }
     return viewZones.map((zone) => ({
@@ -689,9 +716,9 @@ export const MachineMapPage = (): JSX.Element => {
       color: zone.color,
       cased: needsCasing(zone.color),
       points: zone.points,
-      countText: String(viewCounts.get(zone.id) ?? 0),
+      countText: zoneLabelCountText(viewCounts.get(zone.id) ?? 0, locale),
     }));
-  }, [editing, editor.draft, editCounts, viewZones, viewCounts]);
+  }, [editing, editor.draft, editCounts, viewZones, viewCounts, locale]);
 
   const dots: CanvasDot[] = useMemo(() => {
     const source = editing ? editLocated : visible.filter(hasPoint);
@@ -1054,10 +1081,6 @@ export const MachineMapPage = (): JSX.Element => {
       }
     : null;
 
-  const fitKey = editing
-    ? `edit|${String(editor.branchId)}|${String(editPoints.isSuccess)}`
-    : `view|${String(filters.branch)}|${raw.status}|${String(points.isSuccess && zonesQuery.isSuccess)}`;
-
   const canvas = (
     <Suspense fallback={MAP_FALLBACK}>
       <MapCanvas
@@ -1193,9 +1216,7 @@ export const MachineMapPage = (): JSX.Element => {
                   setDraftNotice(null);
                 }}
                 onIgnore={() => {
-                  if (draftNotice.kind === 'restore' && editor.branchId !== null) {
-                    clearDraft(userId, editor.branchId);
-                  }
+                  // The autosave then clears the ignored draft (or keeps the edits made since).
                   setDraftNotice(null);
                 }}
               />

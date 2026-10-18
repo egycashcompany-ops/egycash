@@ -27,6 +27,8 @@ import { translate } from '../../platform/localization/i18n';
 import { UnlocatedMachinesPage } from './pages/UnlocatedMachinesPage';
 import { LinkResolutionCard } from './components/map/LinkResolutionCard';
 import { UnlocatedRow, type UnlocatedRowActions } from './components/map/UnlocatedRow';
+import { UNLOCATED_ROWS_STEP, UnlocatedPanel } from './components/map/UnlocatedPanel';
+import { TileErrorBanner } from './components/map/TileErrorBanner';
 import {
   mapContextKey,
   mapLocationKey,
@@ -175,6 +177,84 @@ describe('the unlocated screen for a locate holder', () => {
       t('atm.map.unlocated.progress').replace('{{done}}', '١').replace('{{total}}', '٤'),
     );
   });
+
+  it('below lg the list is capped, so the map — where «تأكيد الموقع» is — stays in reach', () => {
+    const aside = /<aside[^>]*class="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(aside).toContain('max-h-[50vh]');
+    expect(aside).toContain('lg:max-h-none');
+  });
+});
+
+describe('a long list', () => {
+  const many = Array.from({ length: 200 }, (_, i) => point(100 + i));
+  const actions: UnlocatedRowActions = {
+    onCorrect: () => undefined,
+    onPreview: () => undefined,
+    onPlace: () => undefined,
+    zoneNameAt: () => '',
+  };
+  const panel = (openId: string | null): string =>
+    wrap(
+      new QueryClient(),
+      <UnlocatedPanel
+        locale="ar"
+        branchId={null}
+        summary={SUMMARY}
+        chips={[]}
+        selectedReasons={[]}
+        rows={many}
+        anyRows
+        query=""
+        openId={openId}
+        branchNames={new Map()}
+        actions={actions}
+        onToggleReason={() => undefined}
+        onQuery={() => undefined}
+        onToggleRow={() => undefined}
+      />,
+    );
+  const rowsIn = (html: string): number => (html.match(/data-unlocated-row=/g) ?? []).length;
+
+  it('draws its first rows, and the rest as the end of the list comes near (UX-8)', () => {
+    const html = panel(null);
+    expect(rowsIn(html)).toBe(UNLOCATED_ROWS_STEP);
+    expect(html).toContain('data-unlocated-more');
+  });
+
+  it('always draws the open row', () => {
+    expect(rowsIn(panel(many[150]?.machineId ?? null))).toBe(151);
+  });
+
+  it('a closed row holds no query of its own — it renders without a query client', () => {
+    expect(() =>
+      renderToStaticMarkup(
+        <Provider store={store()}>
+          <UnlocatedRow
+            point={many[0] as AtmMapPointDto}
+            branchName=""
+            open={false}
+            locale="ar"
+            actions={actions}
+            onToggle={() => undefined}
+          />
+        </Provider>,
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe('the tile banner', () => {
+  it('takes no click and starts right of the zoom and «عرض الكل» column', () => {
+    const html = renderToStaticMarkup(
+      <Provider store={store()}>
+        <TileErrorBanner dir="rtl" />
+      </Provider>,
+    );
+    const cls = /class="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(cls).toContain('pointer-events-none');
+    expect(cls).toContain('left-14');
+    expect(cls).not.toContain('inset-x-3');
+  });
 });
 
 describe('an open row', () => {
@@ -257,6 +337,19 @@ describe('an open row', () => {
     expect(html).toContain(t('atm.map.unlocated.weakNote'));
     expect(html).toContain(t('atm.map.unlocated.approve'));
     expect(html).toContain(t('atm.map.unlocated.correct'));
+  });
+
+  it('a placed pin outside Egypt says so, though it is not under review (DM-35)', () => {
+    const html = row(
+      detail({
+        state: 'located',
+        needsReview: false,
+        source: 'registerPlusCode',
+        warnings: ['outsideEgypt'],
+      }),
+    );
+    expect(html).toContain(t('atm.map.location.outsideEgypt'));
+    expect(html).not.toContain(t('atm.map.unlocated.reviewNote'));
   });
 });
 

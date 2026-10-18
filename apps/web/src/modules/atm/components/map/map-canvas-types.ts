@@ -109,8 +109,11 @@ export interface MapCanvasProps {
   onPlace?: ((point: AtmMapLatLng) => void) | null;
   pin?: CanvasPin | null;
   anchors?: readonly CanvasAnchor[];
-  /** Fit the zones and dots whenever this changes (§8.4 default view). */
-  fitKey: string;
+  /**
+   * Fit the zones and dots once per new key (§8.4 default view) — `mapFitKey`; null while the
+   * data is still on its way.
+   */
+  fitKey: string | null;
   focus?: CanvasFocus | null;
   onView?: (view: CanvasView) => void;
   onKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void;

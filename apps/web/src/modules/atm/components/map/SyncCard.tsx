@@ -9,6 +9,7 @@ import { formatDateTime, formatNumber } from '../../../../shared/lib/format';
 import { Button } from '../../../../shared/ui/Button';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useSyncLocations } from '../../api/map-queries';
+import { syncDoneToast } from '../../lib/map-toasts';
 
 export const SyncCard = ({
   branchId,
@@ -24,7 +25,6 @@ export const SyncCard = ({
 }): JSX.Element => {
   const t = useT();
   const sync = useSyncLocations();
-  const n = (value: number): string => formatNumber(value, locale);
   return (
     <section
       data-sync-card="true"
@@ -48,14 +48,10 @@ export const SyncCard = ({
         loading={sync.isPending}
         onClick={() =>
           sync.mutate(branchId === null ? {} : { branchId }, {
-            onSuccess: (result) =>
-              toast.success(
-                t('atm.map.sync.done', {
-                  located: n(result.located),
-                  review: n(result.review),
-                  unlocated: n(result.unlocated),
-                }),
-              ),
+            onSuccess: (result) => {
+              const words = syncDoneToast(result, t, locale);
+              toast.success(words.title, words.description);
+            },
             onError: (error) => toast.error(errorMessage(error, locale)),
           })
         }

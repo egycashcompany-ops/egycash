@@ -9,9 +9,10 @@
 // comparison of the draft against it.
 //
 // ONE HISTORY STEP PER FINISHED GESTURE, at most 100. A drag moves points live without touching
-// the history; its end (`END_GESTURE`) checks every zone it touched and either records one step or
-// puts the draft back and says why (`draw.crossing`). A midpoint drag inserts its vertex into every
-// zone that shares the edge and moves them together, still one step.
+// the history; its end (`END_GESTURE`) checks every zone it touched with the save's own geometry
+// test and either records one step or puts the draft back and says why (`draw.crossing`,
+// `draw.tooSmall`). A vertex delete is checked the same way. A midpoint drag inserts its vertex into
+// every zone that shares the edge and moves them together, still one step.
 //
 // DRAWING IS STILL EDITING. While a shape is drawn the zone list stays on screen (§8.8 `EditPanel`),
 // so its order buttons, undo and redo still act on the draft, and a row click leaves the drawing.
@@ -28,7 +29,6 @@ import {
 } from '@ecms/contracts';
 import {
   coordKey,
-  crossingZones,
   insertOnEdge,
   linkedVertices,
   round6,
@@ -211,19 +211,37 @@ const withZone = (
   change: (zone: DraftZone) => DraftZone,
 ): DraftZone[] => draft.map((zone) => (zone.id === zoneId ? change(zone) : zone));
 
-/** Close a drag: one history step, or — when a touched zone now crosses itself — no change at all. */
+/**
+ * The toast for points the save would refuse (`zoneGeometryIssues`, the server's own test), or
+ * null for a valid zone — FINISH_DRAW's mapping: a crossing, a zone under 100 m², anything else.
+ */
+const geometryNotice = (points: readonly AtmMapLatLng[]): string | null => {
+  const issues = zoneGeometryIssues(points);
+  if (issues.length === 0) return null;
+  if (issues.includes('TOO_SMALL')) return NOTICE_KEYS.tooSmall;
+  if (issues.includes('SELF_INTERSECTION')) return NOTICE_KEYS.crossing;
+  return NOTICE_KEYS.geometry;
+};
+
+/**
+ * Close a drag: one history step, or — when a touched zone is now a shape the save would refuse
+ * (it crosses itself, falls under 100 m², doubles a point) — no change at all.
+ */
 const endGesture = (state: ZoneEditorState): ZoneEditorState => {
   const gesture = state.gesture;
   if (gesture === null) return state;
   const touched = new Set(gesture.links.map((link) => link.zoneId));
-  const crossing = crossingZones(state.draft.filter((zone) => touched.has(zone.id)));
-  if (crossing.length > 0) {
+  const refused = state.draft
+    .filter((zone) => touched.has(zone.id))
+    .map((zone) => geometryNotice(zone.points))
+    .find((key) => key !== null);
+  if (refused !== undefined) {
     return {
       ...state,
       draft: gesture.before,
       gesture: null,
       selectedVertex: null,
-      notice: notify(state, NOTICE_KEYS.crossing),
+      notice: notify(state, refused),
     };
   }
   const settled = { ...state, gesture: null };
@@ -467,10 +485,12 @@ export const zoneEditorReducer = (
       }
       // A zone keeps at least three points; the control is disabled there (`vertex.minThree`).
       if (zone.points.length <= ATM_MAP_ZONE_MIN_POINTS) return current;
-      const draft = withZone(current.draft, zone.id, (z) => ({
-        ...z,
-        points: z.points.filter((_, i) => i !== vertex.index),
-      }));
+      const points = zone.points.filter((_, i) => i !== vertex.index);
+      // A delete that leaves a shape the save would refuse (a notch's corner, whose ring then
+      // crosses itself) is refused here, where the person can see why — not at «حفظ».
+      const refused = geometryNotice(points);
+      if (refused !== null) return { ...current, notice: notify(current, refused) };
+      const draft = withZone(current.draft, zone.id, (z) => ({ ...z, points }));
       return { ...committed(current, current.draft, draft), selectedVertex: null };
     }
 

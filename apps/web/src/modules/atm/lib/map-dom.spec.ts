@@ -7,6 +7,7 @@ import {
   clusterElement,
   clusterSizePx,
   closeShapeElement,
+  handleFocusAfterRebuild,
   tempPinElement,
   vertexHandleElement,
   zoneLabelElement,
@@ -95,5 +96,32 @@ describe('the handles', () => {
     expect(clusterSizePx(2)).toBeGreaterThanOrEqual(28);
     expect(clusterSizePx(5000)).toBe(40);
     expect(clusterSizePx(10)).toBeLessThan(clusterSizePx(1000));
+  });
+});
+
+describe('handleFocusAfterRebuild — the keyboard focus survives a rebuild of the handles (DM-41)', () => {
+  it('a focused handle that is rebuilt hands the focus to the selected vertex, else to the map', () => {
+    // A zoom, or an undo that changes the point count, with a vertex still selected.
+    expect(handleFocusAfterRebuild({ hadFocus: true, inserted: false, selectedIndex: 4 })).toEqual({
+      kind: 'vertex',
+      index: 4,
+    });
+    // Delete: the focused vertex is gone and nothing is selected — the map keeps the shortcuts.
+    expect(
+      handleFocusAfterRebuild({ hadFocus: true, inserted: false, selectedIndex: null }),
+    ).toEqual({ kind: 'map' });
+  });
+
+  it('a midpoint insert focuses the new, selected vertex, wherever the focus was', () => {
+    expect(handleFocusAfterRebuild({ hadFocus: false, inserted: true, selectedIndex: 2 })).toEqual({
+      kind: 'vertex',
+      index: 2,
+    });
+  });
+
+  it('leaves the focus alone when it was elsewhere (a panel field) and nothing was inserted', () => {
+    expect(
+      handleFocusAfterRebuild({ hadFocus: false, inserted: false, selectedIndex: 2 }),
+    ).toBeNull();
   });
 });

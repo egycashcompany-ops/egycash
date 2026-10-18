@@ -178,6 +178,48 @@ describe('polygonsOverlap', () => {
     const east = ring([0.25, 1 - 1e-8], [0.25, 2], [0.75, 2], [0.75, 1]);
     expect(polygonsOverlap(unit, east)).toBe(false);
   });
+
+  // The editor snaps a dot onto a neighbour's edge and stores it at 6 decimals (DM-6), which moves
+  // it up to 5e-7° per axis off a slanted edge — the two zones still only share a border.
+  it('is false for a neighbour whose two dots were snapped onto a slanted edge and rounded', () => {
+    const r6 = (v: number): number => Math.round(v * 1e6) / 1e6;
+    const unproject = (x: number, y: number): AtmMapLatLng =>
+      ll((360 / Math.PI) * Math.atan(Math.exp((y * Math.PI) / 180)) - 90, x);
+    /** The point at `t` along a→b as Leaflet draws the edge (straight in the projected plane). */
+    const along = (a: AtmMapLatLng, b: AtmMapLatLng, t: number): AtmMapLatLng => {
+      const [pa, pb] = [project(a), project(b)];
+      const p = unproject(pa.x + (pb.x - pa.x) * t, pa.y + (pb.y - pa.y) * t);
+      return ll(r6(p.lat), r6(p.lng));
+    };
+    let seed = 7;
+    const random = (): number => {
+      seed = (seed * 16807) % 2147483647;
+      return seed / 2147483647;
+    };
+    let overlapping = 0;
+    for (let n = 0; n < 300; n += 1) {
+      const a = ll(r6(30 + random() * 0.05), r6(31.2 + random() * 0.05));
+      const angle = random() * 2 * Math.PI;
+      const length = 0.005 + random() * 0.02;
+      const b = ll(r6(a.lat + length * Math.sin(angle)), r6(a.lng + length * Math.cos(angle)));
+      const normal = { lat: Math.cos(angle) * length, lng: -Math.sin(angle) * length };
+      const apex = (sign: number): AtmMapLatLng =>
+        ll(
+          r6((a.lat + b.lat) / 2 + sign * normal.lat),
+          r6((a.lng + b.lng) / 2 + sign * normal.lng),
+        );
+      const zoneA = [a, b, apex(1)];
+      const zoneB = [along(a, b, 0.3), apex(-1), along(a, b, 0.7)];
+      if (polygonsOverlap(zoneA, zoneB) || polygonsOverlap(zoneB, zoneA)) overlapping += 1;
+    }
+    expect(overlapping).toBe(0);
+  });
+
+  it('still sees a vertex half a metre inside the other ring', () => {
+    const block = square(30.0, 31.2, 30.01, 31.21);
+    const east = ring([30.002, 31.21 - 5e-6], [30.002, 31.22], [30.008, 31.22], [30.008, 31.21]);
+    expect(polygonsOverlap(block, east)).toBe(true);
+  });
 });
 
 describe('polygonAreaM2', () => {

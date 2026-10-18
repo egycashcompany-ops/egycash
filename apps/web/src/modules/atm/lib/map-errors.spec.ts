@@ -1,7 +1,9 @@
 // What a refused zone save tells the person (§8.10).
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/lib/api-client';
-import { zoneSaveFailure } from './map-errors';
+import { translate } from '../../../platform/localization/i18n';
+import { errorMessage } from '../../../shared/lib/errors';
+import { approveFailureKey, zoneSaveFailure } from './map-errors';
 
 const validation = (code: string, message = 'x'): ApiError =>
   new ApiError('VALIDATION_FAILED', 'Validation failed', 400, [{ field: 'body', code, message }]);
@@ -55,5 +57,26 @@ describe('zoneSaveFailure', () => {
     expect(zoneSaveFailure(new ApiError('RATE_LIMITED', 'x', 429))).toBeNull();
     expect(zoneSaveFailure(validation('SOMETHING_ELSE'))).toBeNull();
     expect(zoneSaveFailure(new Error('network'))).toBeNull();
+  });
+});
+
+describe('approveFailureKey', () => {
+  it('words a pin somebody else approved in between — never the server’s English sentence', () => {
+    const error = new ApiError('ATM_MAP_NOT_UNDER_REVIEW', 'the location is not under review', 422);
+    const key = approveFailureKey(error);
+    expect(key).toBe('atm.map.unlocated.notUnderReview');
+    for (const locale of ['ar', 'en'] as const) {
+      expect(translate(locale, key ?? '')).not.toBe(key);
+    }
+    // What the row showed before: the server's own English.
+    expect(errorMessage(error, 'ar')).toBe('the location is not under review');
+  });
+
+  it('words a register text that moved, and leaves everything else to errorMessage', () => {
+    expect(approveFailureKey(new ApiError('ATM_MAP_SOURCE_CHANGED', 'x', 409))).toBe(
+      'atm.map.unlocated.sourceChanged',
+    );
+    expect(approveFailureKey(new ApiError('STALE_DOCUMENT', 'x', 409))).toBeNull();
+    expect(approveFailureKey(new Error('x'))).toBeNull();
   });
 });

@@ -35,6 +35,7 @@ import {
   clusterElement,
   clusterSizePx,
   closeShapeElement,
+  handleFocusAfterRebuild,
   midpointHandleElement,
   reviewPinElement,
   tempPinElement,
@@ -46,8 +47,10 @@ import {
 } from '../../lib/map-dom';
 import {
   boxOf,
-  coordKey,
-  linkedVertices,
+  closeShapeRadiusPx,
+  closesShape,
+  draggedZoneIds,
+  fitDotsOf,
   midpoints,
   round6,
   snapCandidates,
@@ -70,10 +73,6 @@ const POINT_ZOOM = 17;
 /** More than this many tile errors within the window shows the banner (§8.4). */
 const TILE_ERROR_LIMIT = 6;
 const TILE_ERROR_WINDOW_MS = 10_000;
-/** The first dot of a shape is 14 px across; a click within its radius closes the shape. */
-const FIRST_DOT_PX = 7;
-/** «إغلاق الشكل» shows while the cursor is this close to the first dot (`Edit.dc.html`). */
-const CLOSE_HINT_PX = 14;
 const LABEL_HEIGHT_PX = 22;
 const MACHINE_DOT_RADIUS = 5;
 
@@ -136,11 +135,13 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
   const spiderLayers = useRef<L.Layer[]>([]);
   const labelMarkers = useRef<L.Marker[]>([]);
   const handles = useRef<HandleSet | null>(null);
+  /** A midpoint drag inserted the selected vertex: its rebuilt handle takes the focus. */
+  const focusInserted = useRef(false);
   const drawLayers = useRef<L.Layer[]>([]);
   const snapRing = useRef<L.CircleMarker | null>(null);
   const pinMarker = useRef<L.Marker | null>(null);
   const pinDragging = useRef(false);
-  const cursor = useRef<{ latlng: AtmMapLatLng; px: PixelPoint } | null>(null);
+  const cursor = useRef<{ latlng: AtmMapLatLng; px: PixelPoint; altKey: boolean } | null>(null);
   const spider = useRef<{ key: string; center: L.LatLng; ids: string[] } | null>(null);
   const tileErrors = useRef<number[]>([]);
   /** Each pinned overlay's measured height, so a tall popup is kept inside the frame. */
@@ -182,23 +183,27 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
     setSize({ width: box.x, height: box.y });
   };
 
-  const fitAll = (): void => {
+  /**
+   * `animate: false` for the default view: Leaflet queues an animated zoom for a frame later, and a
+   * focus asked for right after (a `?q=` link) would be dropped or undone by it.
+   */
+  const fitAll = (animate = true): void => {
     const instance = map.current;
     if (instance === null) return;
     const { zones, dots, showZones, showDots } = current.current;
     const all: L.LatLngExpression[] = [];
     if (showZones) for (const zone of zones) for (const p of zone.points) all.push(ll(p));
-    if (showDots) for (const dot of dots) all.push(ll(dot));
+    if (showDots) for (const dot of fitDotsOf(dots)) all.push(ll(dot));
     if (all.length === 0) {
-      instance.setView(CAIRO, CAIRO_ZOOM);
+      instance.setView(CAIRO, CAIRO_ZOOM, { animate });
       return;
     }
     const bounds = L.latLngBounds(all);
     if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
-      instance.setView(bounds.getCenter(), 16);
+      instance.setView(bounds.getCenter(), 16, { animate });
       return;
     }
-    instance.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+    instance.fitBounds(bounds, { padding: [32, 32], maxZoom: 16, animate });
   };
 
   // ── Build once ──────────────────────────────────────────────────────────────────────────────
@@ -335,15 +340,14 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
     const editor = current.current.editor;
     const candidates = drawCandidates();
     if (altKey || editor?.snap.on !== true) {
-      // No snapping — but a click on the first dot still closes the shape.
+      // No snapping — but a click near the first dot still closes the shape.
       const first = candidates.first;
       const closes =
-        first !== undefined &&
-        first !== null &&
-        Math.hypot(px.x - first.px.x, px.y - first.px.y) <= FIRST_DOT_PX;
+        first !== undefined && first !== null && closesShape(px, first.px, editor?.snap, altKey);
       return { point: null, first: closes };
     }
-    const hit = snapTarget(px, candidates, Math.max(editor.snap.px, FIRST_DOT_PX));
+    // The first dot within the close radius (the hint's own, below) beats every other target.
+    const hit = snapTarget(px, candidates, closeShapeRadiusPx(editor.snap, altKey));
     if (hit === null) return { point: null, first: false };
     if (hit.kind === 'first') return { point: hit.latlng, first: true };
     // A vertex or an edge must be within the person's own threshold, not the first dot's.
@@ -389,8 +393,9 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
   const onMapMove = (event: L.LeafletMouseEvent): void => {
     if (current.current.editor?.mode !== 'draw') return;
     const px = { x: event.containerPoint.x, y: event.containerPoint.y };
-    const snapped = snapDraw(px, event.originalEvent.altKey);
-    cursor.current = { latlng: snapped.point ?? toLatLng(event.latlng), px };
+    const altKey = event.originalEvent.altKey;
+    const snapped = snapDraw(px, altKey);
+    cursor.current = { latlng: snapped.point ?? toLatLng(event.latlng), px, altKey };
     showSnapRing(snapped.point !== null && !snapped.first ? snapped.point : null);
     drawPreview();
   };
@@ -768,13 +773,14 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
     const unlink = event.altKey;
     const zones = current.current.zones;
     // The zones that move with this point never snap onto themselves (the mockup's `snapPoint`).
-    const moving = new Set(
-      unlink ? [zoneId] : [zoneId, ...linkedVertices(zones, coordKey(at)).map((v) => v.zoneId)],
-    );
+    const moving = draggedZoneIds(zones, { kind, zoneId, index, at }, unlink);
     const candidates = snapCandidates(zones, project, moving);
     let target = index;
     let started = false;
     if (kind === 'mid') {
+      // The inserted vertex is selected; its new handle takes the focus, so Delete and the arrow
+      // keys act on it next (DM-41).
+      focusInserted.current = true;
       editor.onInsertVertex(zoneId, index, at);
       target = index + 1;
       started = true;
@@ -832,8 +838,18 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
       editor?.mode === 'edit' && editor.selectedZoneId !== null
         ? zones.find((z) => z.id === editor.selectedZoneId)
         : undefined;
+    // Whether the focus sits on a handle about to be removed (DM-41: it must not fall to <body>).
+    const focused = document.activeElement;
+    const set0 = handles.current;
+    const hadFocus =
+      set0 !== null &&
+      focused !== null &&
+      [...set0.vertices.map((v) => v.marker), ...set0.mids].some(
+        (marker) => marker.getElement()?.contains(focused) === true,
+      );
     if (zone === undefined) {
       clearHandles();
+      if (hadFocus) instance.getContainer().focus({ preventScroll: true });
       return;
     }
     const zoom = instance.getZoom();
@@ -949,6 +965,17 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
       next.vertices.push({ marker, square });
     });
     handles.current = next;
+    const target = handleFocusAfterRebuild({
+      hadFocus,
+      inserted: focusInserted.current,
+      selectedIndex: selected?.zoneId === zone.id ? selected.index : null,
+    });
+    focusInserted.current = false;
+    if (target?.kind === 'vertex') {
+      next.vertices[target.index]?.marker.getElement()?.focus({ preventScroll: true });
+    } else if (target?.kind === 'map') {
+      instance.getContainer().focus({ preventScroll: true });
+    }
   };
 
   // ── The shape being drawn ───────────────────────────────────────────────────────────────────
@@ -1002,11 +1029,12 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
       );
     }
     const first = drawing.points[0];
+    // Exactly where a click closes the shape (`snapDraw`): the hint never promises more or less.
     const nearFirst =
       first !== undefined &&
       drawing.points.length >= 3 &&
       hover !== null &&
-      Math.hypot(project(first).x - hover.px.x, project(first).y - hover.px.y) < CLOSE_HINT_PX;
+      closesShape(hover.px, project(first), editor?.snap, hover.altKey);
     drawing.points.forEach((p, i) => {
       if (i === 0 && nearFirst) {
         add(
@@ -1187,8 +1215,13 @@ export default function MapCanvas(props: MapCanvasProps): JSX.Element {
     return () => window.clearTimeout(handle);
   }, [props.zones, props.showLabels, props.showZones, props.dots, props.showDots, tick]);
 
+  // The default view, once per new key (§8.4); a mode change keeps the key, and the place.
+  const fittedFor = useRef<string | null>(null);
   useEffect(() => {
-    fitAll();
+    const key = props.fitKey;
+    if (key === null || key === fittedFor.current || map.current === null) return;
+    fittedFor.current = key;
+    fitAll(false);
   }, [props.fitKey]);
 
   const focusSeq = props.focus?.seq ?? null;

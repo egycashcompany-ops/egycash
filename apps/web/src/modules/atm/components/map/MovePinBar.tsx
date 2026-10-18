@@ -25,6 +25,7 @@ import { Spinner } from '../../../../shared/ui/Spinner';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useMachineLocation, usePlaceLocation } from '../../api/map-queries';
 import { haversineMeters, kilometresText } from '../../lib/map-view';
+import { locatedToast } from '../../lib/map-toasts';
 import { MoveConfirmDialog } from './MoveConfirmDialog';
 import { CONFIRM_BUTTON } from './map-buttons';
 
@@ -87,7 +88,8 @@ export const MovePinBar = ({
       {
         onSuccess: () => {
           setAsking(false);
-          toast.success(t('atm.map.move.done', { code: machine.code, zone: zoneNameAt(at) }));
+          const words = locatedToast(machine.code, zoneNameAt(at), t);
+          toast.success(words.title, words.description);
           onDone();
         },
         onError: (error) => {
@@ -160,7 +162,7 @@ export const MovePinBar = ({
       </div>
       <MoveConfirmDialog
         open={asking}
-        km={kilometresText(meters)}
+        km={kilometresText(meters, locale)}
         from={zoneNameAt(origin)}
         to={zoneNameAt(at)}
         saving={place.isPending}

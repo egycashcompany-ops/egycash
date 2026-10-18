@@ -14,12 +14,16 @@ import {
   type AtmMapUnlocatedReasonDto,
 } from '@ecms/contracts';
 
-/** A chip: a pin under review, or why a machine has no point. */
-export type UnlocatedChip = 'review' | AtmMapUnlocatedReasonDto;
+/**
+ * A chip: a pin under review, a placed pin outside Egypt (DM-35: it warns, never blocks — so it is
+ * listed here, where somebody who can locate will see it), or why a machine has no point.
+ */
+export type UnlocatedChip = 'review' | 'outsideEgypt' | AtmMapUnlocatedReasonDto;
 
 /** The chips' order on screen (§8.8 `ReasonChips`). */
 export const UNLOCATED_CHIP_ORDER: readonly UnlocatedChip[] = [
   'review',
+  'outsideEgypt',
   'shortLink',
   'shortLinkFailed',
   'noCoordinates',
@@ -38,6 +42,7 @@ export const chipLabelKey = (chip: UnlocatedChip): string => `atm.map.reason.${c
 export const chipOf = (point: AtmMapPointDto): UnlocatedChip | null => {
   if (point.state === 'review') return 'review';
   if (point.state === 'unlocated') return point.reason ?? 'none';
+  if (point.warnings.includes('outsideEgypt')) return 'outsideEgypt';
   return null;
 };
 
@@ -55,6 +60,21 @@ export const reasonChipCounts = (
     count: counts.get(chip) ?? 0,
   }));
 };
+
+/**
+ * A row's header pressed: it opens (or the open one closes), and the map's temporary state —
+ * placing mode, a dragged or previewed pin — ends. That state belongs to the row that started it
+ * (the mockup's row `pick`: `mm.placing = false; mm.pin = …`), so a click on the map after another
+ * row was opened never places the previous machine.
+ */
+export const rowToggle = (
+  openId: string | null,
+  machineId: string,
+): { openId: string | null; placing: null; moving: null } => ({
+  openId: openId === machineId ? null : machineId,
+  placing: null,
+  moving: null,
+});
 
 export type FeedbackTone = 'success' | 'warning' | 'error';
 

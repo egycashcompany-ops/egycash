@@ -22,3 +22,9 @@ export const machineCountForm = (n: number): MachineCountForm => {
 
 export const machineCountText = (n: number, t: Translate, locale: Locale): string =>
   t(`atm.map.count.${machineCountForm(n)}`, { count: formatNumber(n, locale) });
+
+/**
+ * The bare count on a zone's map label «● name · count» (§8.9), in the UI's own digits — the
+ * mockup's `D.ar(n)` (`Main.dc.html:340`), as the cluster bubbles beside it.
+ */
+export const zoneLabelCountText = (n: number, locale: Locale): string => formatNumber(n, locale);

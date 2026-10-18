@@ -11,7 +11,7 @@
 // EVERY ROW CAN BE ACTED ON. The list is the summary's scope — the branch's machines where the
 // reader can locate (§6.4) — so «تم تحديد موقع n من m» and the rows agree, and no row offers an
 // action the server would refuse.
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   joinAtmNameList,
@@ -52,6 +52,7 @@ import {
   chipOf,
   parseFeedback,
   reasonChipCounts,
+  rowToggle,
   type UnlocatedChip,
 } from '../lib/unlocated-view';
 
@@ -188,8 +189,26 @@ export const UnlocatedMachinesPage = (): JSX.Element => {
     [zoneNameAt],
   );
   const toggleRow = useCallback((machineId: string) => {
-    setOpenId((current) => (current === machineId ? null : machineId));
+    setOpenId((current) => rowToggle(current, machineId).openId);
+    setPlacing(null);
+    setMoving(null);
   }, []);
+  // Placing mode ends with Esc too, as well as with its own «إلغاء».
+  useEffect(() => {
+    if (placing === null) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setPlacing(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [placing]);
+  // Below `lg` the map sits under the list: bring it into view when a pin is to be placed or
+  // confirmed there («تأكيد الموقع» is on the map).
+  const mapSection = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (placing === null && moving === null) return;
+    mapSection.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [placing?.machineId, moving?.point.machineId]);
 
   /** 409 `ATM_MAP_PARSE_CHANGED`: read the text again and show the new point (DM-45). */
   const readAgain = (): void => {
@@ -285,7 +304,7 @@ export const UnlocatedMachinesPage = (): JSX.Element => {
         <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
           <aside
             aria-label={t('atm.map.unlocated.title')}
-            className="shrink-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 lg:w-[440px] dark:border-slate-800 dark:bg-slate-900"
+            className="max-h-[50vh] shrink-0 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 lg:max-h-none lg:w-[440px] dark:border-slate-800 dark:bg-slate-900"
           >
             <UnlocatedPanel
               locale={locale}
@@ -309,7 +328,7 @@ export const UnlocatedMachinesPage = (): JSX.Element => {
               onToggleRow={toggleRow}
             />
           </aside>
-          <section className="min-h-[420px] min-w-0 flex-1">
+          <section ref={mapSection} className="min-h-[420px] min-w-0 flex-1">
             <Suspense fallback={MAP_FALLBACK}>
               <MapCanvas
                 ariaLabel={t('atm.map.aria')}
@@ -346,16 +365,24 @@ export const UnlocatedMachinesPage = (): JSX.Element => {
                           setMoving((m) => (m === null ? m : { ...m, at, text: null })),
                       }
                 }
-                fitKey={`${String(branch)}|${String(points.isSuccess && zonesQuery.isSuccess)}`}
+                fitKey={points.isSuccess && zonesQuery.isSuccess ? String(branch) : null}
                 focus={focus}
               >
                 {placing !== null && (
                   <div
                     role="status"
                     dir={dir}
-                    className="pointer-events-none absolute left-1/2 top-3 z-[1100] -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-900 px-3.5 py-1.5 text-[13px] text-white"
+                    data-placing-hint="true"
+                    className="pointer-events-none absolute left-1/2 top-3 z-[1100] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-slate-900 py-1.5 pe-1.5 ps-3.5 text-[13px] text-white"
                   >
                     {t('atm.map.move.clickHint', { code: placing.code })}
+                    <button
+                      type="button"
+                      onClick={() => setPlacing(null)}
+                      className="pointer-events-auto rounded-full bg-white/15 px-2.5 py-0.5 text-xs hover:bg-white/25"
+                    >
+                      {t('atm.map.move.cancel')}
+                    </button>
                   </div>
                 )}
                 {moving !== null && (

@@ -8595,6 +8595,8 @@ const en: Record<string, string> = {
   'atm.map.draw.crossing': "A zone's border may not cross itself.",
   'atm.map.draw.added':
     'Zone added. Change its name and colour in the panel, then save the changes.',
+  'atm.map.draw.addedTitle': 'New zone',
+  'atm.map.edit.notApplied': 'The change was not applied',
   'atm.map.draw.tooSmall': 'The zone is too small; it must cover at least 100 m².',
   'atm.map.vertex.label': 'Point {{n}} of {{zone}}',
   'atm.map.vertex.shared': 'Point shared with {{names}}',
@@ -8652,6 +8654,7 @@ const en: Record<string, string> = {
   'atm.map.move.ok': 'Confirm',
   'atm.map.move.done':
     'Machine {{code}} located — zone: {{zone}}. The change is recorded in the audit log.',
+  'atm.map.move.doneTitle': 'Location saved',
   'atm.map.unlocated.title': 'Machines without a location',
   'atm.map.unlocated.progress': 'Located {{done}} of {{total}}',
   'atm.map.unlocated.back': 'Back to the map',
@@ -8672,11 +8675,13 @@ const en: Record<string, string> = {
     "The register's location text points to two places far apart. Check the location, then approve or correct it.",
   'atm.map.unlocated.sourceChanged':
     "The register's location text changed after this location was suggested. Run the sync, then review it again.",
+  'atm.map.unlocated.notUnderReview': 'This location is no longer waiting for review.',
   'atm.map.unlocated.paste': 'Paste a full link, coordinates or a Plus Code',
   'atm.map.unlocated.read': 'Read',
   'atm.map.unlocated.place': 'Place on the map',
   'atm.map.unlocated.openOriginal': 'Open the original link',
   'atm.map.reason.review': 'Needs review',
+  'atm.map.reason.outsideEgypt': 'Outside Egypt',
   'atm.map.reason.shortLink': 'Short link',
   'atm.map.reason.shortLinkFailed': 'Could not convert',
   'atm.map.reason.noCoordinates': 'Link without coordinates',
@@ -8701,6 +8706,8 @@ const en: Record<string, string> = {
   'atm.map.parse.viewportReview':
     'The link gives only where the map was centred; put the marker on the machine itself before confirming.',
   'atm.map.parse.outsideEgypt': 'The location is outside Egypt; check it before saving.',
+  'atm.map.location.outsideEgypt':
+    'The location is outside Egypt; check it and correct it if needed.',
   'atm.map.parse.shortPlusCodeReview':
     'Short Plus Code; the location was estimated relative to the branch. Check it before confirming.',
   'atm.map.parse.shortPlusCodeNoReference':
@@ -17228,6 +17235,8 @@ const ar: Record<string, string> = {
   'atm.map.draw.cancelled': 'أُلغي الشكل.',
   'atm.map.draw.crossing': 'لا يجوز أن تتقاطع حدود القطاع مع نفسها.',
   'atm.map.draw.added': 'أُضيف القطاع. غيّر اسمه ولونه من اللوحة، ثم احفظ التغييرات.',
+  'atm.map.draw.addedTitle': 'قطاع جديد',
+  'atm.map.edit.notApplied': 'لم يُطبَّق التغيير',
   'atm.map.draw.tooSmall': 'القطاع صغير جدًا؛ يجب ألا تقل مساحته عن 100 متر مربع.',
   'atm.map.vertex.label': 'نقطة رقم {{n}} في {{zone}}',
   'atm.map.vertex.shared': 'نقطة مشتركة مع {{names}}',
@@ -17284,6 +17293,7 @@ const ar: Record<string, string> = {
   'atm.map.move.ok': 'تأكيد',
   'atm.map.move.done':
     'حُدِّد موقع الماكينة {{code}} — القطاع: {{zone}}. سُجّل التغيير في سجل التدقيق.',
+  'atm.map.move.doneTitle': 'حُفظ الموقع',
   'atm.map.unlocated.title': 'ماكينات بدون موقع',
   'atm.map.unlocated.progress': 'تم تحديد موقع {{done}} من {{total}}',
   'atm.map.unlocated.back': 'رجوع إلى الخريطة',
@@ -17303,11 +17313,13 @@ const ar: Record<string, string> = {
     'يشير نص الموقع في السجل إلى مكانين متباعدين. راجع الموقع ثم اعتمده أو صحّحه.',
   'atm.map.unlocated.sourceChanged':
     'تغيّر نص الموقع في السجل بعد اقتراح هذا الموقع. شغّل المزامنة ثم راجعه من جديد.',
+  'atm.map.unlocated.notUnderReview': 'لم يعد هذا الموقع بانتظار المراجعة.',
   'atm.map.unlocated.paste': 'الصق رابطًا كاملًا أو إحداثيات أو رمز Plus Code',
   'atm.map.unlocated.read': 'قراءة',
   'atm.map.unlocated.place': 'وضع على الخريطة',
   'atm.map.unlocated.openOriginal': 'فتح الرابط الأصلي',
   'atm.map.reason.review': 'يحتاج إلى مراجعة',
+  'atm.map.reason.outsideEgypt': 'خارج حدود مصر',
   'atm.map.reason.shortLink': 'رابط مختصر',
   'atm.map.reason.shortLinkFailed': 'تعذّر التحويل',
   'atm.map.reason.noCoordinates': 'رابط بدون إحداثيات',
@@ -17330,6 +17342,7 @@ const ar: Record<string, string> = {
   'atm.map.parse.viewportReview':
     'يحدد الرابط منطقة عرض الخريطة فقط؛ ضع العلامة على الماكينة نفسها قبل التأكيد.',
   'atm.map.parse.outsideEgypt': 'الموقع خارج حدود مصر؛ تأكّد منه قبل الحفظ.',
+  'atm.map.location.outsideEgypt': 'الموقع خارج حدود مصر؛ تحقّق منه وصحّحه إذا لزم الأمر.',
   'atm.map.parse.shortPlusCodeReview':
     'رمز Plus Code مختصر؛ حُدِّد الموقع تقريبيًا بالنسبة إلى الفرع. راجعه قبل التأكيد.',
   'atm.map.parse.shortPlusCodeNoReference':

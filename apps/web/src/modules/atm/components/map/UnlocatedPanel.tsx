@@ -4,6 +4,12 @@
 //
 // THE LIST AGREES WITH «n من m». Both are the summary's scope: the selected branch's machines in the
 // branches where the reader can locate (§6.4, DM-39). The page hands in exactly those rows.
+//
+// THE LIST GROWS AS IT IS SCROLLED. A company-wide scope holds 1,700 rows and more; mounting them
+// all at once froze the page for half a second, and again on every key that widened the search.
+// The first `UNLOCATED_ROWS_STEP` rows are drawn, and the next ones when the end of the list comes
+// near — the same list, the same order; the open row is always drawn.
+import { useEffect, useRef, useState } from 'react';
 import { type Locale, type AtmMapLocationSummaryDto, type AtmMapPointDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { formatNumber } from '../../../../shared/lib/format';
@@ -13,6 +19,13 @@ import { LinkResolutionCard } from './LinkResolutionCard';
 import { ReasonChips } from './ReasonChips';
 import { SyncCard } from './SyncCard';
 import { UnlocatedRow, type UnlocatedRowActions } from './UnlocatedRow';
+
+/** Rows drawn at first, and added each time the end of the list comes near. */
+export const UNLOCATED_ROWS_STEP = 60;
+
+/** How many rows to draw: the grown count, never fewer than the open row needs. */
+export const shownRowCount = (grown: number, total: number, openIndex: number): number =>
+  Math.min(total, Math.max(grown, openIndex + 1));
 
 export const UnlocatedPanel = ({
   locale,
@@ -49,6 +62,33 @@ export const UnlocatedPanel = ({
   onToggleRow: (machineId: string) => void;
 }): JSX.Element => {
   const t = useT();
+  // A new filter or search starts the list again from its first rows.
+  const [grown, setGrown] = useState({ rows, count: UNLOCATED_ROWS_STEP });
+  const count = grown.rows === rows ? grown.count : UNLOCATED_ROWS_STEP;
+  const shown = shownRowCount(
+    count,
+    rows.length,
+    openId === null ? -1 : rows.findIndex((row) => row.machineId === openId),
+  );
+  const more = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const sentinel = more.current;
+    if (sentinel === null || shown >= rows.length) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setGrown({ rows, count: rows.length });
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setGrown({ rows, count: shown + UNLOCATED_ROWS_STEP });
+        }
+      },
+      { rootMargin: '600px 0px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [rows, shown]);
   const done = summary?.located;
   const total = summary?.totalActive;
   const pct =
@@ -118,7 +158,7 @@ export const UnlocatedPanel = ({
         data-unlocated-list="true"
         className="flex flex-col overflow-hidden rounded-[10px] border border-slate-100 dark:border-slate-800"
       >
-        {rows.map((point) => (
+        {rows.slice(0, shown).map((point) => (
           <UnlocatedRow
             key={point.machineId}
             point={point}
@@ -129,6 +169,9 @@ export const UnlocatedPanel = ({
             onToggle={onToggleRow}
           />
         ))}
+        {shown < rows.length && (
+          <div ref={more} data-unlocated-more="true" aria-hidden="true" className="h-16" />
+        )}
         {!anyRows && summary !== undefined && (
           <p className="px-3 py-6 text-center text-sm text-emerald-700 dark:text-emerald-300">
             {t('atm.map.unlocated.empty')}

@@ -445,6 +445,16 @@ export const deriveLocation = (input: DeriveInput): Derived => {
 };
 
 /**
+ * Whether a derivation reads the DM-34 pool at all: only a short Plus Code candidate asks for a
+ * reference. A machine without one derives the same whatever the pool holds (sync pass 1a).
+ */
+export const hasShortCodeCandidate = (
+  input: Pick<DeriveInput, 'texts' | 'entryProblem'>,
+): boolean =>
+  input.entryProblem === null &&
+  candidatesOf(normalizeTexts(input.texts)).some((c) => c.candidate.kind === 'shortPlusCode');
+
+/**
  * Sync pass 2 (§6.5): a machine whose best candidate is a short Plus Code — no coordinates, full
  * code or resolved link beside it — is derived after pass 1, against the pool pass 1 left.
  */
@@ -588,6 +598,15 @@ const clearedProvenance = (): Pick<
 });
 
 /**
+ * Row 3 of the precedence table: a pin whose register text still equals the text it was set
+ * against stays exactly as it is, whatever the derivation gives.
+ */
+export const pinHolds = (
+  existing: Pick<ExistingLocation, 'pinned' | 'pinText'>,
+  currentTexts: AtmMapLocationTexts | null,
+): boolean => existing.pinned && sameTexts(currentTexts, existing.pinText);
+
+/**
  * What a re-derivation writes over the existing document (§4.3 precedence table). `currentTexts` is
  * the open entries' current text (the sync), or the stored `seenText` (the resolver, which never
  * reads the register).
@@ -636,7 +655,7 @@ export const applyDerivation = (
     };
   }
 
-  if (sameTexts(currentTexts, existing.pinText)) {
+  if (pinHolds(existing, currentTexts)) {
     // Row 3: the text the pin was set against still holds — the point stays. A pinned document
     // whose text equals `pinText` carries no short link (§3.3), so one queued meanwhile is dropped.
     const set: Partial<LocationWrite> = {

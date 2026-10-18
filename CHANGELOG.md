@@ -11,6 +11,13 @@ its entry here in the same PR.
 
 ### Added
 
+- **The IT custody register exports to Excel and PDF.** «عايز يبقي فى زرارين بجانب تسليم عهدة
+  بيـ Extract أكسيل و PDF للجدول المعمول (وأعتمد الفلتر طبعاً)» — beside «تسليم عهدة» on
+  `/it/custody`, for everyone who can read the register. Both files hold every interval the filters
+  match (status, branch, holder), in the table's order, not just the page on screen. The PDF is the
+  company report form under «قطاع تكنولوجيا المعلومات», A4 landscape, with the filters and the day
+  under the title and no signature block
+  ([IT design §17](docs/12-planning/it-module-design.md)).
 - **Every index the schemas declare can now be built before each deploy (reporting only until
   `INDEX_SYNC_MODE=apply`).** «ابدأ نفّذ الخطوات الخمس الأولى من الخطة» — step 3 of the capacity
   plan. `autoIndex` is off in production, so only the few indexes some module built for itself

@@ -37,7 +37,7 @@ export interface Drift {
 }
 
 /** JSON with object keys sorted at every level, so two equal filters stringify identically. */
-const stable = (value: unknown): string => {
+export const stable = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   if (typeof value === 'object' && value !== null) {
     const o = value as Record<string, unknown>;
@@ -50,7 +50,7 @@ const stable = (value: unknown): string => {
 };
 
 /** Key order is significant for a compound index, so this is NOT sorted. */
-const keyShape = (key: Record<string, unknown>): string => JSON.stringify(key);
+export const keyShape = (key: Record<string, unknown>): string => JSON.stringify(key);
 
 const enforcement = (ix: IndexShape): string =>
   `unique=${ix.unique === true}|partial=${stable(ix.partialFilterExpression ?? null)}`;

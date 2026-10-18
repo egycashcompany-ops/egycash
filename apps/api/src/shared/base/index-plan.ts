@@ -50,3 +50,28 @@ export const defaultIndexName = (keys: Record<string, unknown>): string =>
 /** The name a declaration is built under and found by. */
 export const indexNameOf = (entry: IndexPlanEntry): string =>
   typeof entry.options['name'] === 'string' ? entry.options['name'] : defaultIndexName(entry.keys);
+
+/**
+ * The key pattern as `listIndexes` returns it. A text index stores `_fts: 'text', _ftsx: 1` where
+ * its text fields were and keeps the fields themselves in `weights`, so `{ title: 'text' }` reads
+ * back as `{ _fts: 'text', _ftsx: 1 }`. Every other kind of key is stored as declared, in order.
+ */
+export const storedKeyPattern = (keys: Record<string, unknown>): Record<string, unknown> => {
+  const stored: Record<string, unknown> = {};
+  for (const [field, kind] of Object.entries(keys)) {
+    if (kind === 'text') {
+      stored['_fts'] = 'text';
+      stored['_ftsx'] = 1;
+    } else {
+      stored[field] = kind;
+    }
+  }
+  return stored;
+};
+
+/** The fields of a text index, sorted — what the server keeps as the keys of `weights`. */
+export const textFieldsOf = (keys: Record<string, unknown>): string[] =>
+  Object.entries(keys)
+    .filter(([, kind]) => kind === 'text')
+    .map(([field]) => field)
+    .sort();

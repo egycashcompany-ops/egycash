@@ -12,17 +12,25 @@
 // models (the same imports the api makes), compares, and exits. See shared/base/index-sync.ts for
 // what it builds and what it refuses to.
 //
-// IT NEVER FAILS THE DEPLOY. Railway does not start a deployment whose pre-deploy command exits
-// non-zero, so a step that could fail would hold back every release behind it — and the api has
-// run without these indexes until now. A unique index that existing rows violate is reported and
-// left for a person to resolve; a database the step cannot reach, or a run that is still going
-// after ten minutes, is logged as an error; in every case the process exits 0 and the deploy goes
-// on, exactly as before this step existed.
+// IT NEVER FAILS THE DEPLOY BECAUSE OF THE DATABASE, A DUPLICATE OR A SLOW BUILD. Railway does
+// not start a deployment whose pre-deploy command exits non-zero, so a step that could fail would
+// hold back every release behind it — and the api has run without these indexes until now. A
+// unique index that existing rows violate is reported and left for a person to resolve; a
+// database the step cannot reach, or a run that is still going after ten minutes, is logged as an
+// error; in each case the process exits 0 and the deploy goes on, exactly as before this step
+// existed. An invalid app environment (INDEX_SYNC_MODE=APPLY, say) fails env.ts at import, before
+// any of this runs, and fails the deploy like any other — the app would not start with it either.
 import mongoose from 'mongoose';
 import { env } from './infrastructure/config/env';
 import { connectMongo, disconnectMongo } from './infrastructure/database/mongo';
 import { logger } from './infrastructure/logging/logger';
-import { indexSyncModeFrom, syncDeclaredIndexes } from './shared/base/index-sync';
+import {
+  failureReason,
+  indexSyncModeFrom,
+  reportLines,
+  reportSummary,
+  syncDeclaredIndexes,
+} from './shared/base/index-sync';
 
 /** Far more than this database needs; a step that hangs holds the deploy. */
 const WATCHDOG_MS = 10 * 60_000;
@@ -37,28 +45,10 @@ const main = async (): Promise<void> => {
   await import('./sync-indexes.models');
 
   const report = await syncDeclaredIndexes(mode);
-  for (const missing of report.missing) {
-    logger.info(
-      missing,
-      mode === 'apply' ? 'index sync: missing index' : 'index sync: would build',
-    );
+  // Built and would-build at info; anything left unbuilt or unlike its declaration at warn.
+  for (const line of [...reportLines(report), reportSummary(report)]) {
+    logger[line.level](line.fields, line.msg);
   }
-  for (const failure of report.failed) logger.warn(failure, 'index sync: index not built');
-  logger.info(
-    {
-      mode,
-      collections: report.collections,
-      declared: report.declared,
-      alreadyPresent: report.alreadyPresent,
-      missing: report.missing.length,
-      built: report.built.length,
-      blockedByDuplicates: report.missing.filter((m) => m.duplicateGroups !== undefined).length,
-      failed: report.failed.length,
-    },
-    mode === 'apply'
-      ? 'index sync: done'
-      : 'index sync: REPORT ONLY — nothing was built; set INDEX_SYNC_MODE=apply to build',
-  );
 };
 
 setTimeout(() => {
@@ -72,7 +62,18 @@ main()
     process.exit(0);
   })
   .catch(async (error: unknown) => {
-    logger.error({ err: error }, 'index sync failed — nothing more was built; the deploy goes on');
+    // The reason only, never the raw error: a server message can quote field values. An error of
+    // our own (no server code) also gets its stack frames, which name code and never data; the
+    // first line of the stack repeats the message, so it is left out.
+    const serverError = typeof (error as { code?: unknown } | null)?.code === 'number';
+    const frames =
+      !serverError && error instanceof Error
+        ? error.stack?.split('\n').slice(1).join('\n')
+        : undefined;
+    logger.error(
+      { reason: failureReason(error), ...(frames === undefined ? {} : { frames }) },
+      'index sync failed — nothing more was built; the deploy goes on',
+    );
     await disconnectMongo().catch(() => undefined);
     process.exit(0);
   });

@@ -4,11 +4,15 @@
 // itself and a test that only checked "the index exists" would be testing mongoose. Every model
 // here is declared with `autoIndex: false` — the production setting — so whatever is on the
 // server afterwards was put there by the sync, or was already there.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import mongoose, { Schema, type Model } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { connectMongo, disconnectMongo } from '../../src/infrastructure/database/mongo';
-import { syncDeclaredIndexes } from '../../src/shared/base/index-sync';
+import {
+  DUPLICATE_KEY_REASON,
+  SCAN_TIME_LIMIT_MS,
+  syncDeclaredIndexes,
+} from '../../src/shared/base/index-sync';
 
 let replset: MongoMemoryReplSet | undefined;
 
@@ -33,7 +37,14 @@ const declare = (build: (schema: Schema) => void, shared?: string): Model<never>
   counter += 1;
   const collection = shared ?? `index_sync_${process.pid}_${counter}`;
   const schema = new Schema(
-    { email: String, userId: String, expiresAt: Date, status: String, isDeleted: Boolean },
+    {
+      email: String,
+      userId: String,
+      expiresAt: Date,
+      status: String,
+      isDeleted: Boolean,
+      tags: [String],
+    },
     { autoIndex: false, autoCreate: false },
   );
   build(schema);
@@ -49,6 +60,33 @@ const indexNames = async (model: Model<never>): Promise<string[]> => {
     return [];
   }
 };
+
+interface SentCommand {
+  commandName: string;
+  command: Record<string, unknown>;
+}
+
+/**
+ * Every command sent for one collection while `run` runs, as the driver puts it on the wire — so
+ * a scan is seen however the code issues it. `connectMongo` turns command monitoring on.
+ */
+const commandsOn = async (collection: string, run: () => Promise<unknown>) => {
+  const sent: SentCommand[] = [];
+  const client = mongoose.connection.getClient();
+  const listener = (event: SentCommand) => {
+    if (event.command[event.commandName] === collection) sent.push(event);
+  };
+  client.on('commandStarted', listener);
+  try {
+    await run();
+  } finally {
+    client.off('commandStarted', listener);
+  }
+  return sent;
+};
+
+const scans = (sent: SentCommand[]) =>
+  sent.filter((c) => c.commandName === 'aggregate' || c.commandName === 'find');
 
 describe('report mode', () => {
   it('lists what is missing and builds nothing', async () => {
@@ -192,5 +230,239 @@ describe('apply mode', () => {
     expect(report.declared).toBe(2);
     expect(report.failed).toEqual([]);
     expect(await indexNames(first)).toEqual(['_id_', 'ix_status', 'ix_user']);
+  });
+});
+
+describe('the duplicate check', () => {
+  it('finds rows a compound unique index refuses when one stores null and another omits the field', async () => {
+    // The index treats a missing field as null, so these two rows share a key. A plain group key
+    // put them in different groups, and the report promised a build that then failed.
+    const model = declare((schema) => {
+      schema.index({ userId: 1, status: 1 }, { unique: true, name: 'ux_user_status' });
+    });
+    const inserted = await model.collection.insertMany([
+      { userId: 'compound-secret', status: null },
+      { userId: 'compound-secret' },
+      { userId: 'compound-secret', status: 'active' },
+    ] as never);
+    const pair = [inserted.insertedIds[0], inserted.insertedIds[1]].map(String).sort();
+
+    const reported = await syncDeclaredIndexes('report', [model]);
+    const predicted = reported.missing.find((m) => m.index === 'ux_user_status');
+    expect(predicted?.duplicateGroups).toBe(1);
+    expect(predicted?.duplicateExampleIds?.[0]?.sort()).toEqual(pair);
+
+    const applied = await syncDeclaredIndexes('apply', [model]);
+    const blocked = applied.missing.find((m) => m.index === 'ux_user_status');
+    expect(blocked?.duplicateGroups).toBe(1);
+    expect(blocked?.duplicateExampleIds?.[0]?.sort()).toEqual(pair);
+    expect(applied.failed).toEqual([]);
+    expect(await indexNames(model)).toEqual(['_id_']);
+
+    for (const report of [reported, applied]) {
+      expect(JSON.stringify(report)).not.toContain('compound-secret');
+    }
+  });
+
+  it('does not count rows that leave out every key of a sparse unique index as duplicates', async () => {
+    // A sparse index skips such rows, so they cannot collide and the build succeeds.
+    const model = declare((schema) => {
+      schema.index({ email: 1 }, { unique: true, sparse: true, name: 'ux_email_sparse' });
+    });
+    await model.collection.insertMany([{ userId: 'a' }, { userId: 'b' }, { email: 'x@example.com' }] as never);
+
+    const reported = await syncDeclaredIndexes('report', [model]);
+    expect(reported.missing.find((m) => m.index === 'ux_email_sparse')?.duplicateGroups).toBe(undefined);
+    const applied = await syncDeclaredIndexes('apply', [model]);
+    expect(applied.failed).toEqual([]);
+    expect(await indexNames(model)).toEqual(['_id_', 'ux_email_sparse']);
+  });
+
+  it('runs in report mode, with a time limit, counting rows without collecting every id', async () => {
+    const model = declare((schema) => {
+      schema.index({ email: 1 }, { unique: true, name: 'ux_email' });
+    });
+    await model.collection.insertMany([
+      { email: 'twice@example.com' },
+      { email: 'twice@example.com' },
+    ] as never);
+
+    let report: Awaited<ReturnType<typeof syncDeclaredIndexes>> | undefined;
+    const sent = await commandsOn(model.collection.collectionName, async () => {
+      report = await syncDeclaredIndexes('report', [model]);
+    });
+
+    expect(report?.missing[0]?.duplicateGroups).toBe(1);
+    const scan = sent.find((c) => c.commandName === 'aggregate');
+    expect(scan?.command).toMatchObject({ allowDiskUse: true, maxTimeMS: SCAN_TIME_LIMIT_MS });
+    expect(JSON.stringify(scan?.command['pipeline'])).not.toContain('$push');
+    expect(await indexNames(model)).toEqual(['_id_']);
+  });
+
+  it('does not run in apply mode unless the build is refused for a duplicate key', async () => {
+    const clean = declare((schema) => {
+      schema.index({ email: 1 }, { unique: true, name: 'ux_email' });
+    });
+    await clean.collection.insertMany([
+      { email: 'a@example.com' },
+      { email: 'b@example.com' },
+    ] as never);
+    const cleanSent = await commandsOn(clean.collection.collectionName, () =>
+      syncDeclaredIndexes('apply', [clean]),
+    );
+    expect(scans(cleanSent)).toEqual([]);
+    expect(await indexNames(clean)).toEqual(['_id_', 'ux_email']);
+
+    const dirty = declare((schema) => {
+      schema.index({ email: 1 }, { unique: true, name: 'ux_email' });
+    });
+    await dirty.collection.insertMany([
+      { email: 'c@example.com' },
+      { email: 'c@example.com' },
+    ] as never);
+    const dirtySent = await commandsOn(dirty.collection.collectionName, () =>
+      syncDeclaredIndexes('apply', [dirty]),
+    );
+    expect(scans(dirtySent).length).toBeGreaterThan(0);
+  });
+
+  it('records a refusal it cannot attribute without quoting the key', async () => {
+    // A unique index on an array field refuses two rows that share one element; grouping by the
+    // whole array cannot see that, and the server's own message quotes the element.
+    const model = declare((schema) => {
+      schema.index({ tags: 1 }, { unique: true, name: 'ux_tags' });
+      schema.index({ userId: 1 }, { name: 'ix_user' });
+    });
+    await model.collection.insertMany([
+      { tags: ['first', 'array-secret'] },
+      { tags: ['array-secret', 'second'] },
+    ] as never);
+
+    const report = await syncDeclaredIndexes('apply', [model]);
+
+    expect(report.failed).toEqual([
+      {
+        collection: model.collection.collectionName,
+        index: 'ux_tags',
+        reason: DUPLICATE_KEY_REASON,
+      },
+    ]);
+    expect(await indexNames(model)).toEqual(['_id_', 'ix_user']);
+    expect(JSON.stringify(report)).not.toContain('array-secret');
+  });
+
+  it('records a scan that runs out of time against its index, and goes on', async () => {
+    const model = declare((schema) => {
+      schema.index({ email: 1 }, { unique: true, name: 'ux_email' });
+      schema.index({ userId: 1 }, { name: 'ix_user' });
+    });
+    const timeout = Object.assign(new Error('operation exceeded time limit'), {
+      code: 50,
+      codeName: 'MaxTimeMSExpired',
+    });
+    const aggregate = vi
+      .spyOn(model.collection, 'aggregate')
+      .mockReturnValue({ toArray: () => Promise.reject(timeout) } as never);
+    try {
+      const report = await syncDeclaredIndexes('report', [model]);
+      expect(report.failed).toEqual([
+        {
+          collection: model.collection.collectionName,
+          index: 'ux_email',
+          reason: 'MaxTimeMSExpired (50): operation exceeded time limit',
+        },
+      ]);
+      expect(report.missing.map((m) => m.index)).toEqual(['ux_email', 'ix_user']);
+    } finally {
+      aggregate.mockRestore();
+    }
+  });
+});
+
+describe('indexes that cannot be built as declared', () => {
+  it('reports a declaration whose keys are already indexed under another name, and leaves it', async () => {
+    // A hand-built `{ expiresAt: 1 }` under MongoDB's default name: the server refuses the TTL
+    // under the declared name with IndexOptionsConflict, on every deploy.
+    const model = declare((schema) => {
+      schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl_expiresAt' });
+    });
+    await model.collection.createIndex({ expiresAt: 1 }, { name: 'expiresAt_1' });
+    const conflict = {
+      collection: model.collection.collectionName,
+      index: 'ttl_expiresAt',
+      conflictsWith: 'expiresAt_1',
+    };
+
+    const reported = await syncDeclaredIndexes('report', [model]);
+    expect(reported.conflicts).toEqual([conflict]);
+    expect(reported.missing).toEqual([]);
+
+    const applied = await syncDeclaredIndexes('apply', [model]);
+    expect(applied.conflicts).toEqual([conflict]);
+    expect(applied.failed).toEqual([]);
+    expect(applied.built).toEqual([]);
+    expect(await indexNames(model)).toEqual(['_id_', 'expiresAt_1']);
+  });
+
+  it('reports a name match whose definition differs as drifted, and never rebuilds it', async () => {
+    const model = declare((schema) => {
+      schema.index(
+        { email: 1 },
+        { unique: true, partialFilterExpression: { isDeleted: false }, name: 'ux_email' },
+      );
+      schema.index({ userId: 1 }, { name: 'ix_user' });
+    });
+    await model.collection.createIndex({ email: 1 }, { name: 'ux_email' });
+    await model.collection.createIndex({ userId: -1, status: 1 }, { name: 'ix_user' });
+    const live = async () =>
+      (await model.collection.listIndexes().toArray()).filter((index) => index['name'] !== '_id_');
+    const before = await live();
+
+    for (const mode of ['report', 'apply'] as const) {
+      const report = await syncDeclaredIndexes(mode, [model]);
+      expect(report.drifted).toEqual([
+        {
+          collection: model.collection.collectionName,
+          index: 'ux_email',
+          differs: ['unique', 'partialFilterExpression'],
+        },
+        { collection: model.collection.collectionName, index: 'ix_user', differs: ['key'] },
+      ]);
+      expect(report.alreadyPresent).toBe(0);
+      expect(report.missing).toEqual([]);
+      expect(report.failed).toEqual([]);
+    }
+    expect(await live()).toEqual(before);
+  });
+
+  it('skips a collection whose indexes cannot be read instead of taking them all for missing', async () => {
+    const model = declare((schema) => {
+      schema.index({ userId: 1 }, { name: 'ix_user' });
+    });
+    await model.collection.insertOne({ userId: 'u1' } as never);
+    const refused = Object.assign(new Error('not authorized to execute listIndexes'), {
+      code: 13,
+      codeName: 'Unauthorized',
+    });
+    const listIndexes = vi
+      .spyOn(model.collection, 'listIndexes')
+      .mockReturnValue({ toArray: () => Promise.reject(refused) } as never);
+    let report: Awaited<ReturnType<typeof syncDeclaredIndexes>>;
+    try {
+      report = await syncDeclaredIndexes('apply', [model]);
+    } finally {
+      listIndexes.mockRestore();
+    }
+
+    expect(report.failed).toEqual([
+      {
+        collection: model.collection.collectionName,
+        reason: 'Unauthorized (13): not authorized to execute listIndexes',
+      },
+    ]);
+    expect(report.declared).toBe(1);
+    expect(report.missing).toEqual([]);
+    expect(report.built).toEqual([]);
+    expect(await indexNames(model)).toEqual(['_id_']);
   });
 });

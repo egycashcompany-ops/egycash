@@ -117,19 +117,42 @@ npm run db:sync-indexes -w apps/api      # = node apps/api/dist/sync-indexes.cli
 | `INDEX_SYNC_MODE` | What the pre-deploy step does |
 |---|---|
 | `report` (default) | Lists every missing index in the deploy log — `index sync: would build` — and builds nothing. |
-| `apply` | Builds the missing indexes one at a time. |
+| `apply` | Builds the missing indexes one at a time — `index sync: built`. |
 
-Neither mode drops an index. A unique index that existing rows violate is **not** built: the
-log names the collection, the index and up to five document ids per duplicate group (never the
-duplicated values) for someone to resolve; the deploy goes on. For a new TTL index the report
-says how many documents it would delete the moment it exists (`wouldRemoveNow`). The step never
-fails the deploy: a database it cannot reach, or a run still going after ten minutes, is logged
-as `index sync failed` / `still running after ten minutes` and the deploy goes on.
+Neither mode drops or changes an index. A unique index that existing rows violate is **not**
+built: a warning, `index sync: unique index NOT built — existing rows violate it`, names the
+collection, the index and up to five document ids per duplicate group (never the duplicated
+values) for someone to resolve; the deploy goes on. For a new TTL index the report says how many
+documents it would delete the moment it exists (`wouldRemoveNow`).
+
+Two more warnings name an index the step leaves alone, in both modes:
+
+- `index NOT built — its keys are indexed under another name` (`conflictsWith`): an index already
+  on the server, built by hand or under MongoDB's default name, is the same index to MongoDB, so
+  a build under the declared name would be refused on every deploy. Someone decides whether to
+  replace it.
+- `index differs from its declaration — left as it is` (`differs`): an index has the declared
+  name but another definition. `differs` lists which of its keys, `unique`, partial filter,
+  `sparse` or TTL. The step never rebuilds it; the old definition stays in force until someone
+  does.
+
+`index not built` is a build the server refused or a scan that ran out of time; its `reason` gives
+the server's error code and message, with any quoted duplicate key removed (a duplicate-key
+refusal is recorded as `existing rows violate the unique index`). `indexes not read — the
+collection was skipped` means the collection's index list could not be read for a reason other
+than the collection not existing yet; its declarations were neither reported nor built.
+
+The step never fails the deploy because of the database, a duplicate or a slow build: a database
+it cannot reach, or a run still going after ten minutes, is logged as `index sync failed` /
+`still running after ten minutes` and the deploy goes on. An invalid app environment
+(`INDEX_SYNC_MODE=APPLY`, say) fails it like any deploy; the app would not start with it either.
+Leave the app service's **Pre-deploy Timeout** empty, or set it to 660 s (eleven minutes) or more:
+a shorter one can stop the step before its own ten-minute limit, and the deploy fails.
 
 **Switching it on.** Leave `report` for the first deploy, read the summary line
-(`index sync: REPORT ONLY …`) and the `would build` lines in the deploy log — the duplicates and
-the TTL counts above all — then set `INDEX_SYNC_MODE=apply` on the **app** service. Every deploy
-after that builds whatever a code change declared.
+(`index sync: REPORT ONLY …`) and the warnings and `would build` lines in the deploy log — the
+duplicates, conflicts, drifted indexes and TTL counts above all — then set `INDEX_SYNC_MODE=apply`
+on the **app** service. Every deploy after that builds whatever a code change declared.
 
 ## 4b. Fleet go-live imports
 

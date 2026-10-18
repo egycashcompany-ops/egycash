@@ -78,7 +78,9 @@ describe('every api deploy builds the indexes the schemas declare', () => {
 
   it('never holds a deploy back — every way out of the step exits 0', () => {
     // Railway does not start a deployment whose pre-deploy command fails, and the api has run
-    // without these indexes so far: a failing step would block every release for nothing.
+    // without these indexes so far: a failing step would block every release for nothing. This
+    // covers the step once it runs; an environment env.ts rejects fails at import, as the app
+    // itself would.
     const cli = readFileSync(join(HERE, 'sync-indexes.cli.ts'), 'utf8');
     const exits = cli.match(/process\.exit\([^)]*\)/g) ?? [];
     expect(exits.length).toBeGreaterThan(0);

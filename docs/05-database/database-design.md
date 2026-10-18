@@ -43,8 +43,10 @@ and the Recruitment feature set. Visual relationships: [ER Diagrams](er-diagrams
 - `autoIndex` off in production; index sync is a deploy step with diff review —
   `npm run db:sync-indexes -w apps/api`, Railway's pre-deploy command (`railway.json`). It reads
   every model's declared indexes, builds the missing ones one at a time (`INDEX_SYNC_MODE=apply`)
-  or only lists them (`report`, the default), never drops an index, and leaves a unique index that
-  existing rows violate unbuilt, naming the rows' ids in the log but never their values
+  or only lists them (`report`, the default), and never drops or changes an index. A unique index
+  that existing rows violate is left unbuilt, naming the rows' ids in the log but never their
+  values; a declaration whose keys are indexed under another name, or whose name exists with
+  another definition, is reported as a conflict or as drift and left as it is
   (`shared/base/index-sync.ts`).
 
 ## 2. Platform Core — key schemas (abridged)

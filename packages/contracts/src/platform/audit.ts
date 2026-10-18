@@ -162,6 +162,15 @@ export const AUDIT_ACTIONS = [
   //     `attendancePunchImport` shape, one decision over thousands of rows.
   'secretRevealed',
   'atmRegisterImport',
+  // ATM machine map (docs/12-planning/atm-map-zones.md, DM-15). The two batch acts write ONE run
+  // row per call, carrying the counts and the changed machine ids — the `atmRegisterImport` shape,
+  // one decision over thousands of documents. A batch that replaces a pin a PERSON set also writes
+  // that machine's own `update` row, so such a pin is never replaced without its own trail:
+  //   · `atmMapLocationSync` — locations re-derived from the register's AP/AV text;
+  //   · `atmMapLinkResolve`  — Google short links opened once on the server (D-M4). No URL is
+  //     recorded: a short link's path is its token.
+  'atmMapLocationSync',
+  'atmMapLinkResolve',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

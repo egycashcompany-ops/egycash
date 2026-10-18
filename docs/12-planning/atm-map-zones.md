@@ -2321,3 +2321,15 @@ verified part was applied and the rest was decided otherwise, with the reason gi
 | U-22 | applied | §8.13 lists the pill, the tag, the caption, `prefix: false`, the legend, the three ZoneDetail columns and «آخر تحريك للموقع». |
 | U-23 | applied | A pasted short code confirmed by a person sets `reviewedBy/At` (DM-4, §6.5). |
 | U-24 | applied | The 403/400 contract is defined; context cases, DTO allowlist, revision-0 read, nav rows and a web nav↔route join test added (§9.3, §9.4). |
+
+## Implementation notes
+
+- §4.1/§4.2 — a short Plus Code with nothing after `+` (`26VP+`) is `unreadable` — its recovered code has fewer than 10 digits, the "Derivation use" floor.
+- §4.3 row 3 — a pinned document whose text equals `pinText` again also drops a link that row 5 queued meanwhile (`shortLink: null`) — keeps §3.3's invariant, so a link nobody needs is not fetched.
+- §5.1 — the 5 s/12 s deadlines are `setTimeout`-backed abort signals combined with `AbortSignal.any`, not `AbortSignal.timeout` — the test clock cannot advance `AbortSignal.timeout`, and §9.2 pins the 5 s DNS timeout under fake timers.
+- §5.1 — every hop URL (not only the first) must be https with no userinfo and no port, else `hostNotAllowed` before any request — otherwise `outboundFetch` itself would refuse a credentialed URL and log it.
+- §5.3 — `resolveShortLink(url, deps, { budgetEndsAt })` takes the run's budget so it is checked before every hop; the per-call loop (20 links, 300 ms pause, claim → resolve → store, release on a stop) is `runShortLinkBatch(items, io, deps)`, with the claim/store/release queries injected by the service, which keeps the lease — so the batch rules are unit-testable without a database.
+- §6.1 — the `SaveAtmMapZoneSetSchema` refinements carry their code (`TOO_MANY_POINTS_IN_SAVE`, `DUPLICATE_TEMP_ID`, `DUPLICATE_ID`, `UPDATED_AND_DELETED`, `NO_FIELDS`) in the issue's `message` and `params.code` — a Zod custom issue's own code is always `custom`, which `validate.ts:19` turns into the detail code `CUSTOM`.
+- §6.1 — `ATM_MAP_ZONE_MIN_POINTS`/`ATM_MAP_ZONE_MAX_POINTS` are defined in `atm-map-geometry.ts` (exported from the index as before) — `zoneGeometryIssues` needs them and `atm-map.ts` imports `round6` from there; this avoids an import cycle.
+- §6.1 — `project` clamps the latitude to Leaflet's ±85.0511287798° — the Mercator y of ±90° is infinite, and Leaflet clamps the same way.
+- §6.1 — `zoneGeometryIssues` judges `SELF_INTERSECTION` and `TOO_SMALL` on the ring with consecutive duplicates removed, and skips `TOO_SMALL` on a self-intersecting ring — a doubled click is reported once (`DUPLICATE_POINT`), and the shoelace area of a crossing ring means nothing.

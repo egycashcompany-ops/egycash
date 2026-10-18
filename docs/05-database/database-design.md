@@ -40,7 +40,12 @@ and the Recruitment feature set. Visual relationships: [ER Diagrams](er-diagrams
 - Mandatory: scope compound indexes on business data (`{ companyId: 1, branchId: 1, status: 1 }`),
   unique indexes on natural keys (partial, excluding soft-deleted), text indexes for declared
   searchable fields.
-- `autoIndex` off in production; index sync is a deploy step with diff review.
+- `autoIndex` off in production; index sync is a deploy step with diff review —
+  `npm run db:sync-indexes -w apps/api`, Railway's pre-deploy command (`railway.json`). It reads
+  every model's declared indexes, builds the missing ones one at a time (`INDEX_SYNC_MODE=apply`)
+  or only lists them (`report`, the default), never drops an index, and leaves a unique index that
+  existing rows violate unbuilt, naming the rows' ids in the log but never their values
+  (`shared/base/index-sync.ts`).
 
 ## 2. Platform Core — key schemas (abridged)
 

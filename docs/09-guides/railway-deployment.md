@@ -104,6 +104,32 @@ downloadable PDF is skipped.
 
 3. Open `https://<app-domain>` → log in with the seeded admin.
 
+## 4a. Indexes — built before every deploy
+
+`autoIndex` is off in production, so the indexes the schemas declare exist only if something
+builds them. `railway.json` runs the index sync as the **app**'s pre-deploy command, in its own
+container with the app's variables, before the new deployment starts:
+
+```bash
+npm run db:sync-indexes -w apps/api      # = node apps/api/dist/sync-indexes.cli.js
+```
+
+| `INDEX_SYNC_MODE` | What the pre-deploy step does |
+|---|---|
+| `report` (default) | Lists every missing index in the deploy log — `index sync: would build` — and builds nothing. |
+| `apply` | Builds the missing indexes one at a time. |
+
+Neither mode drops an index. A unique index that existing rows violate is **not** built: the
+log names the collection, the index and up to five document ids per duplicate group (never the
+duplicated values) for someone to resolve; the deploy goes on. For a new TTL index the report
+says how many documents it would delete the moment it exists (`wouldRemoveNow`). The step fails
+the deploy only when it cannot reach the database.
+
+**Switching it on.** Leave `report` for the first deploy, read the summary line
+(`index sync: REPORT ONLY …`) and the `would build` lines in the deploy log — the duplicates and
+the TTL counts above all — then set `INDEX_SYNC_MODE=apply` on the **app** service. Every deploy
+after that builds whatever a code change declared.
+
 ## 4b. Fleet go-live imports
 
 > **THE DEPLOY DOES THIS. There is normally nothing to run here.**

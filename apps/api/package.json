@@ -13,6 +13,7 @@
     "test": "vitest run",
     "start": "node dist/server.js",
     "start:worker": "node dist/worker.js",
+    "db:sync-indexes": "node dist/sync-indexes.cli.js",
     "test:unit": "vitest run src",
     "test:integration": "vitest run tests",
     "seed:demo": "tsx --env-file=../../.env src/seed-demo.cli.ts",

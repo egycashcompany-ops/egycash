@@ -176,6 +176,12 @@ const EnvSchema = z.object({
         .filter(Boolean),
     ),
 
+  /**
+   * What the pre-deploy index sync does (sync-indexes.cli.ts): `report` lists the declared
+   * indexes the database lacks and builds nothing; `apply` builds them. Reporting first is the
+   * point — the first run against a live database is a read an operator reviews before flipping it.
+   */
+  INDEX_SYNC_MODE: z.enum(['report', 'apply']).default('report'),
   SENTRY_DSN: z.string().default(''),
   SLOW_QUERY_MS: z.coerce.number().int().min(1).default(200),
 

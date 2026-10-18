@@ -17,6 +17,9 @@ import { describe, expect, it } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONFIG = readFileSync(join(HERE, '../tsup.config.ts'), 'utf8');
+const RAILWAY = JSON.parse(readFileSync(join(HERE, '../../../railway.json'), 'utf8')) as {
+  deploy: { preDeployCommand?: string[]; startCommand: string };
+};
 const PKG = JSON.parse(readFileSync(join(HERE, '../package.json'), 'utf8')) as {
   scripts: Record<string, string>;
   devDependencies: Record<string, string>;
@@ -31,6 +34,8 @@ describe('the operator CLIs reach the deployed image', () => {
     'src/rescan-files.cli.ts',
     // And the org-catalog migration: a dry run against the live database is the whole point.
     'src/migrate-org-catalog.cli.ts',
+    // The index sync is not run by hand at all — Railway runs it before every api deploy.
+    'src/sync-indexes.cli.ts',
   ];
 
   it('builds every go-live CLI, not only the long-running services', () => {
@@ -57,5 +62,17 @@ describe('the operator CLIs reach the deployed image', () => {
         'tsx',
       );
     }
+  });
+});
+
+describe('every api deploy builds the indexes the schemas declare', () => {
+  // `autoIndex` is off in production, so without this step a new index — or a new collection's
+  // indexes — reaches production only if somebody remembers to build it by hand.
+  it('runs the index sync before the new deployment starts', () => {
+    expect(RAILWAY.deploy.preDeployCommand).toEqual(['npm run db:sync-indexes -w apps/api']);
+  });
+
+  it('runs it from the built image, where tsx does not exist', () => {
+    expect(PKG.scripts['db:sync-indexes']).toBe('node dist/sync-indexes.cli.js');
   });
 });

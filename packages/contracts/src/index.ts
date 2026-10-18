@@ -66,3 +66,5 @@ export * from './modules/gold.js';
 export * from './modules/gold-portal.js';
 export * from './modules/atm.js';
 export * from './modules/atm-register.js';
+export * from './modules/atm-map.js';
+export * from './modules/atm-map-geometry.js';

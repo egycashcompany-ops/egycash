@@ -15,6 +15,7 @@ import {
   ClipboardIcon,
   GridIcon,
   InboxIcon,
+  PinIcon,
   ShieldIcon,
   TagIcon,
   WrenchIcon,
@@ -86,6 +87,14 @@ export const ATM_SHORTCUTS: Shortcut[] = [
     descKey: 'atm.cards.machines',
     icon: GridIcon,
     permission: 'atmMachine.view',
+  },
+  /** The machine map and its zones (docs/12-planning/atm-map-zones.md §7.4) — no legacy screen. */
+  {
+    to: '/atm/map',
+    titleKey: 'atm.nav.map',
+    descKey: 'atm.cards.map',
+    icon: PinIcon,
+    permission: 'atmMap.view',
   },
   /** Legacy `/reports_atm` — today's numbers per bank. */
   {

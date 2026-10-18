@@ -10,6 +10,7 @@
 // a working link forever, which is what `mapsUrl` below does for the captain.
 //
 // Pure and React-free, because every one of these shapes is a case worth pinning in a test.
+import { googleMapsUrl } from '../../../shared/lib/google-maps-url';
 
 /** A latitude/longitude pair, exactly as `OperationsLocationSchema` records it. */
 export interface MapsCoordinates {
@@ -122,7 +123,7 @@ export const parseMapsLink = (raw: string): MapsLinkResult => {
  * for the captain's screen to open.
  *
  * `?q=` rather than a directions URL: this answers "where is this branch", and the driver's own app
- * takes it from there. Generated from the point every time, so it cannot go stale.
+ * takes it from there. Generated from the point every time, so it cannot go stale. The function
+ * itself lives in `shared/lib/google-maps-url.ts`, because the ATM map hands out the same link.
  */
-export const mapsUrl = ({ lat, lng }: MapsCoordinates): string =>
-  `https://www.google.com/maps?q=${String(lat)},${String(lng)}`;
+export const mapsUrl: (coordinates: MapsCoordinates) => string = googleMapsUrl;

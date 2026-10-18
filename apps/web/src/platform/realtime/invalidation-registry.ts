@@ -45,10 +45,13 @@ const recruitmentPipeline: readonly KeyPrefix[] = [
 
 export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]>> = {
   // ── ATM ────────────────────────────────────────────────────────────────────
-  // A master change moves a register row's drift badge (`masterState`), so the register listens too.
+  // A master change moves a register row's drift badge (`masterState`), so the register listens too,
+  // and an archived or renamed machine changes the map and the unlocated screen's counts.
   'atm.machine': [
     ['atm', 'machines'],
     ['atm', 'registerEntries'],
+    ['atm', 'mapPoints'],
+    ['atm', 'mapLocationSummary'],
   ],
   'atm.refLabel': [
     ['atm', 'refLabels'],
@@ -62,10 +65,21 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   // The efficiency register — the same three families its own write hooks invalidate. The import
   // (`atm.registerImport`) is server-excluded: the importing screen refetches itself.
+  // The summary listens too: its «بانتظار المزامنة» count compares the open entries' AP/AV text.
   'atm.registerEntry': [
     ['atm', 'registerEntries'],
     ['atm', 'registerReport'],
     ['atm', 'registerBranchOptions'],
+    ['atm', 'mapLocationSummary'],
+  ],
+  // The machine map — the same families its own write hooks invalidate (`map-queries.ts`). The two
+  // batch runs (`atm.mapLocationSync`, `atm.mapLinkResolution`) are server-excluded: the calling
+  // screen refetches itself.
+  'atm.mapZone': [['atm', 'mapZones']],
+  'atm.machineLocation': [
+    ['atm', 'mapPoints'],
+    ['atm', 'mapLocationSummary'],
+    ['atm', 'mapLocation'],
   ],
 
   // ── Gold ───────────────────────────────────────────────────────────────────

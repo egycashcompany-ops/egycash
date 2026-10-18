@@ -395,6 +395,7 @@ argument for the suite existing at all:
 | — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
 | — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
+| — | Machine map and owner-drawn zones: `/atm/map`, `/atm/map/unlocated`, the location sync and the short-link resolver — [atm-map-zones.md](atm-map-zones.md) (no legacy counterpart: GAP, §1) | in progress (ships as one release) |
 
 ## 9. The Efficiency register and the data-edit split
 

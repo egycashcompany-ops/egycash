@@ -147,6 +147,16 @@ export const ErrorCodes = {
   /** One running import at a time (DEC-15). */
   ATM_REGISTER_IMPORT_RUNNING: 'ATM_REGISTER_IMPORT_RUNNING',
 
+  // ── ATM machine map and zones (docs/12-planning/atm-map-zones.md) ─────────────────────────────
+  /** DM-7: the branch's zone set moved since the editor loaded it (409); nothing was written. */
+  ATM_MAP_ZONES_STALE: 'ATM_MAP_ZONES_STALE',
+  /** DM-45: approve while the register text the review pin came from has moved — sync first (409). */
+  ATM_MAP_SOURCE_CHANGED: 'ATM_MAP_SOURCE_CHANGED',
+  /** DM-45: a text placement whose server parse moved away from the previewed point (409). */
+  ATM_MAP_PARSE_CHANGED: 'ATM_MAP_PARSE_CHANGED',
+  /** Approve on a location that is not waiting for review (422). */
+  ATM_MAP_NOT_UNDER_REVIEW: 'ATM_MAP_NOT_UNDER_REVIEW',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

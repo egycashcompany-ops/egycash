@@ -11,6 +11,20 @@ its entry here in the same PR.
 
 ### Added
 
+- **The ATM machines are on a map, divided into zones the branches draw themselves.** «موافق على
+  المقترح كله، ابدأ». `/atm/map` «خريطة الماكينات» shows every active machine of the branches in
+  reach on OpenStreetMap, coloured by zone or by bank, with filters, search and per-zone counts; a
+  branch supervisor draws, reshapes, renames, orders and deletes their branch's zones there (zones may
+  overlap, with a warning; a machine counts for the higher one in the list). `/atm/map/unlocated`
+  «ماكينات بدون موقع» places the machines: a sync reads the register's two location columns (AP/AV:
+  coordinates, Plus Codes, Google links), the server opens the `maps.app.goo.gl` short links once
+  each, and the rest are placed by a pasted link or a click on the map — a short-code pin waits for
+  approval, and a pin a person set is never moved unless the register's text changed. Three new keys,
+  seeded to super-admin only — `atmMap.view`, `atmZone.manage`, `atmMachine.locate` — so after the
+  deploy an administrator grants them (branch or organization scope, never `own`), then runs the
+  sync, resolves the links and checks that the API host reaches Google (GM-1). The register and the
+  machines' `zone` and area are not written. Five new indexes, built by `db:sync-indexes` and at boot
+  ([machine map and zones](docs/12-planning/atm-map-zones.md), rollout §10.2).
 - **The IT asset list exports to Excel and PDF too.** «اعمل نفس الزرارين في شاشة الأصول» — every
   asset the filters match, in the table's order. On both IT screens the two buttons now come before
   the screen's own action and read just «Excel» and «PDF» («كمان عايز الزرارين قبل مش بعد زرار الـ

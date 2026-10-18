@@ -14,6 +14,7 @@
 // register now controls which machines exist (D2). Roles carry the mapping; keys stay per
 // resource. Every legacy POST was unauthenticated (contad_app.js:632 …) — closed here by RBAC,
 // the port's one non-negotiable behaviour change (port doc T-auth).
+// The machine map and its owner-drawn zones sit here too (docs/12-planning/atm-map-zones.md).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildAtmMachinesRouter } from './machines/machine.routes';
@@ -24,6 +25,7 @@ import { buildAtmMailTicketsRouter } from './mail-tickets/mail-ticket.routes';
 import { buildAtmReportsRouter } from './reports/report.routes';
 import { buildAtmRegisterRouter } from './register/register.routes';
 import { buildAtmRegisterImportRouter } from './register/import/register-import.routes';
+import { buildAtmMapRouter } from './map/map.routes';
 import { rotateRegisterCombinationKeys } from './register/register-secrets';
 import { registerAtmSettings } from './atm.settings';
 import { seedAtm } from './atm.seed';
@@ -157,6 +159,53 @@ const registerReportPermissions = declarePermissions(
   'atm.register-report',
 );
 
+// The machine map (docs/12-planning/atm-map-zones.md): reading is per branch, finer scopes narrow
+// to it and `own` reads nothing (DM-10).
+const mapPermissions = declarePermissions(
+  'atm',
+  'atmMap',
+  { en: 'ATM machine map', ar: 'خريطة الماكينات' },
+  ['view'],
+  [],
+  'atm.map',
+);
+
+// Zones are drawn for ONE branch, the top bar's (D-M6); every write asks that the key reach it.
+const zonePermissions = declarePermissions(
+  'atm',
+  'atmZone',
+  { en: 'ATM map zones', ar: 'قطاعات خريطة الماكينات' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Draw, edit, delete and reorder map zones',
+        ar: 'رسم القطاعات وتعديلها وحذفها وترتيبها',
+      },
+    },
+  ],
+  'atm.map',
+);
+
+// Placing a machine on the map sits on the map page, beside the zones (DM-42).
+const locatePermissions = declarePermissions(
+  'atm',
+  'atmMachine',
+  { en: 'ATM machines', ar: 'ماكينات الصراف الآلي' },
+  [],
+  [
+    {
+      action: 'locate',
+      name: {
+        en: 'Place, move or approve a machine location on the map',
+        ar: 'تحديد موقع الماكينة على الخريطة وتعديله واعتماده',
+      },
+    },
+  ],
+  'atm.map',
+);
+
 registerAtmSettings();
 // Opt-in and silent when no mailbox is configured (the OCR-sidecar precedent): without the four
 // `ATM_MAIL_GRAPH_*` settings nothing registers and the poll task below does nothing at all.
@@ -170,6 +219,9 @@ export const atmPermissions: PermissionDef[] = [
   ...refLabelPermissions,
   ...registerPermissions,
   ...registerReportPermissions,
+  ...mapPermissions,
+  ...zonePermissions,
+  ...locatePermissions,
 ];
 
 export const atmPages: PageDef[] = [
@@ -202,6 +254,13 @@ export const atmPages: PageDef[] = [
     sortOrder: 40,
   },
   {
+    id: 'atm.map',
+    moduleId: 'atm',
+    name: { en: 'Machines map', ar: 'خريطة الماكينات' },
+    route: '/atm/map',
+    sortOrder: 45,
+  },
+  {
     id: 'atm.register',
     moduleId: 'atm',
     name: { en: 'ATM register', ar: 'سجل الماكينات' },
@@ -226,6 +285,7 @@ export const atmModule: ModuleManifest = {
   pages: atmPages,
   routes: [
     { prefix: '/atm/machines', router: buildAtmMachinesRouter() },
+    { prefix: '/atm/map', router: buildAtmMapRouter() },
     { prefix: '/atm/ref-labels', router: buildAtmRefLabelsRouter() },
     { prefix: '/atm/replenishments', router: buildAtmReplenishmentsRouter() },
     { prefix: '/atm/maintenances', router: buildAtmMaintenancesRouter() },
@@ -244,6 +304,9 @@ export const atmModule: ModuleManifest = {
     'atm_mail_tickets',
     'atm_register_entries',
     'atm_register_import_runs',
+    'atm_machine_locations',
+    'atm_map_zone_sets',
+    'atm_map_zones',
   ],
   eventSubscriptions: [],
   scheduledTasks: [

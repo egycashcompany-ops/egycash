@@ -22,10 +22,18 @@ import type { Request, RequestHandler, Response } from 'express';
 /** Below this, the headers and the CPU cost more than the bytes saved. */
 export const COMPRESSION_THRESHOLD_BYTES = 1024;
 
-/** The auth routes, under whatever prefix the deployment serves the api from. */
+/**
+ * The auth routes, under whatever prefix the deployment serves the api from. Express also sends
+ * `/API/v1/Auth/login` and `/api/v1//auth/login` to the auth router (its matching ignores case,
+ * and the mount accepts a doubled slash), so both sides are lowercased and repeated slashes
+ * collapsed before comparing. Reading a path as auth when Express would not only means it is
+ * sent uncompressed.
+ */
 export const isAuthPath = (pathname: string, basePath: string): boolean => {
-  const auth = `${basePath}/api/v1/auth`;
-  return pathname === auth || pathname.startsWith(`${auth}/`);
+  const normalise = (path: string): string => path.toLowerCase().replace(/\/{2,}/g, '/');
+  const auth = normalise(`${basePath}/api/v1/auth`);
+  const path = normalise(pathname);
+  return path === auth || path.startsWith(`${auth}/`);
 };
 
 /** Decided when the response's headers are written: its content type is known by then. */

@@ -4,6 +4,7 @@
 import { type Response } from 'express';
 import { SettingKeys, type ExportAuditLogsQuery } from '@ecms/contracts';
 import { currentBranchId, type AuthContext } from '../../shared/types';
+import { drainingWriter } from '../../shared/utils/draining-writer';
 import { settingsService } from '../settings';
 import { auditService, buildAuditFilter } from './audit.service';
 import { maskChanges } from './audit.masking';
@@ -50,13 +51,6 @@ export const rowToCsv = (doc: AuditLogDoc): string => {
   return fields.map(csvEscape).join(',');
 };
 
-/** Writes `chunk`, awaiting the `drain` event under backpressure. */
-const writeAndDrain = async (res: Response, chunk: string): Promise<void> => {
-  if (!res.write(chunk)) {
-    await new Promise<void>((resolve) => res.once('drain', resolve));
-  }
-};
-
 export const streamAuditExport = async (
   res: Response,
   ctx: AuthContext,
@@ -75,26 +69,44 @@ export const streamAuditExport = async (
   );
   res.setHeader('Cache-Control', 'private, no-store');
 
-  await writeAndDrain(res, `${CSV_COLUMNS.join(',')}\n`);
-
+  // Made before the first write: see `drainingWriter`. A false from it means the client has gone,
+  // and the export stops reading the cursor.
+  const write = drainingWriter(res);
   let rowCount = 0;
-  const cursor = AuditLogModel.find(filter)
-    .sort({ at: -1 })
-    .limit(maxRows)
-    .lean<AuditLogDoc[]>()
-    .cursor();
-  for await (const doc of cursor) {
-    await writeAndDrain(res, `${rowToCsv(doc)}\n`);
-    rowCount += 1;
+  // False when the client left before the last row, so the audit row says the count is partial.
+  let completed = false;
+  if (await write(`${CSV_COLUMNS.join(',')}\n`)) {
+    const cursor = AuditLogModel.find(filter)
+      .sort({ at: -1 })
+      .limit(maxRows)
+      .lean<AuditLogDoc[]>()
+      .cursor();
+    // The cursor is closed whether the export finished or the client left part-way: a `break`
+    // only stops reading, and the server would keep the cursor open until it times out.
+    try {
+      let left = false;
+      for await (const doc of cursor) {
+        if (!(await write(`${rowToCsv(doc)}\n`))) {
+          left = true;
+          break;
+        }
+        rowCount += 1;
+      }
+      completed = !left;
+    } finally {
+      await cursor.close();
+    }
   }
   res.end();
 
-  // Audited after the stream completes — never blocks the export itself.
+  // Audited after the stream completes — never blocks the export itself. A download the client
+  // left part-way is audited too, with the rows written before it left.
   await auditService.record({
     entityRef: { moduleId: 'platform', entityType: 'auditLog', entityId: 'export' },
     action: 'export',
     changes: [
       { field: 'rowCount', old: null, new: rowCount },
+      { field: 'completed', old: null, new: completed },
       { field: 'maxRows', old: null, new: maxRows },
       { field: 'filter', old: null, new: JSON.stringify(query) },
     ],

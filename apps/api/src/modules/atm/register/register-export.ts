@@ -1,6 +1,6 @@
 // The register's CSV export (DEC-17, spec §5.9) — streamed like the attendance export (a lean
-// cursor, `writeAndDrain`, audited after the stream), because a server-side export is the only kind
-// that is audited and the only kind that can keep the K/S columns on the server.
+// cursor, `drainingWriter`, audited after the stream), because a server-side export is the only
+// kind that is audited and the only kind that can keep the K/S columns on the server.
 //
 // P-class columns ONLY, for everybody — viewSecrets holders included: key codes, both notes columns
 // and the combination never leave in a file, whose copies nobody can audit. The headers are the
@@ -16,6 +16,7 @@ import {
 import { auditService } from '../../../platform/audit';
 import { csvEscape } from '../../../platform/audit/audit.export';
 import { scopeSelector, type AuthContext } from '../../../shared/types';
+import { drainingWriter } from '../../../shared/utils/draining-writer';
 import { cairoDateString } from '../shared/cairo-time';
 import { registerDateString } from './register.mapper';
 import { AtmRegisterEntryModel, type AtmRegisterEntryDoc } from './register.model';
@@ -65,13 +66,6 @@ export const registerRowToCsv = (doc: AtmRegisterEntryDoc, settings: RegisterSet
     .map((cell) => csvEscape(guardCsvFormula(cell)))
     .join(',');
 
-/** Writes `chunk`, awaiting the `drain` event under backpressure. */
-const writeAndDrain = async (res: Response, chunk: string): Promise<void> => {
-  if (!res.write(chunk)) {
-    await new Promise<void>((resolve) => res.once('drain', resolve));
-  }
-};
-
 export const streamRegisterExport = async (
   res: Response,
   ctx: AuthContext,
@@ -94,25 +88,44 @@ export const streamRegisterExport = async (
   );
   res.setHeader('Cache-Control', 'private, no-store');
 
-  // The BOM makes Excel read the Arabic as UTF-8 (the machines-page export precedent).
-  await writeAndDrain(res, `\uFEFF${REGISTER_EXPORT_HEADERS.map(csvEscape).join(',')}\n`);
+  // Made before the first write: see `drainingWriter`. A false from it means the client has gone,
+  // and the export stops reading the cursor.
+  const write = drainingWriter(res);
   let rowCount = 0;
-  const cursor = AtmRegisterEntryModel.find(filter)
-    .sort({ createdAt: 1, _id: 1 })
-    .lean<AtmRegisterEntryDoc[]>()
-    .cursor();
-  for await (const doc of cursor) {
-    await writeAndDrain(res, `${registerRowToCsv(doc, settings)}\n`);
-    rowCount += 1;
+  // False when the client left before the last row, so the audit row says the count is partial.
+  let completed = false;
+  // The BOM makes Excel read the Arabic as UTF-8 (the machines-page export precedent).
+  if (await write(`\uFEFF${REGISTER_EXPORT_HEADERS.map(csvEscape).join(',')}\n`)) {
+    const cursor = AtmRegisterEntryModel.find(filter)
+      .sort({ createdAt: 1, _id: 1 })
+      .lean<AtmRegisterEntryDoc[]>()
+      .cursor();
+    // The cursor is closed whether the export finished or the client left part-way: a `break`
+    // only stops reading, and the server would keep the cursor open until it times out.
+    try {
+      let left = false;
+      for await (const doc of cursor) {
+        if (!(await write(`${registerRowToCsv(doc, settings)}\n`))) {
+          left = true;
+          break;
+        }
+        rowCount += 1;
+      }
+      completed = !left;
+    } finally {
+      await cursor.close();
+    }
   }
   res.end();
 
-  // Audited after the stream completes — never blocks the export itself (the audit F1 shape).
+  // Audited after the stream completes — never blocks the export itself (the audit F1 shape). A
+  // download the client left part-way is audited too, with the rows written before it left.
   await auditService.record({
     entityRef: { moduleId: 'atm', entityType: 'registerEntry', entityId: 'export' },
     action: 'export',
     changes: [
       { field: 'rowCount', old: null, new: rowCount },
+      { field: 'completed', old: null, new: completed },
       { field: 'filter', old: null, new: JSON.stringify(query) },
     ],
   });

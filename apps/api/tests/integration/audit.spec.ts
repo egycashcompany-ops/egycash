@@ -173,6 +173,8 @@ describe('F1/F3 — audited CSV export', () => {
     expect(items.length).toBeGreaterThan(0);
     const rowCountField = items[0]?.changes.find((c) => c.field === 'rowCount');
     expect(rowCountField).toBeDefined();
+    // A download that ran to the end says so; one the client left part-way says false.
+    expect(items[0]?.changes.find((c) => c.field === 'completed')?.new).toBe(true);
   });
 
   it('denies export without auditLog.export and audits the denial', async () => {

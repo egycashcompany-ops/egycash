@@ -2,9 +2,11 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 import express, { type Express } from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { drainingWriter } from '../../shared/utils/draining-writer';
 import { COMPRESSION_THRESHOLD_BYTES, isAuthPath, responseCompression } from './compression';
 
 const big = { rows: Array.from({ length: 200 }, (_, i) => ({ id: i, name: `employee ${i}` })) };
@@ -82,6 +84,17 @@ describe('response compression', () => {
     expect(['br', 'gzip']).toContain(await encodingOf(app, '/ecms/api/v1/list'));
   });
 
+  it('never compresses another spelling of an auth path that Express routes there', async () => {
+    // Express matches paths regardless of case, and its mount accepts a doubled slash: each of
+    // these reaches the login handler (encodingOf checks the 2xx).
+    for (const path of ['/API/v1/auth/login', '/api/v1/AUTH/login', '/api/v1//auth/login']) {
+      expect(await encodingOf(appWith(), path, {}, 'post'), path).toBeUndefined();
+    }
+    expect(
+      await encodingOf(appWith('/ecms'), '/ECMS/api/v1/auth/login', {}, 'post'),
+    ).toBeUndefined();
+  });
+
   it('never compresses a partial response or server-sent events', async () => {
     expect(await encodingOf(appWith(), '/api/v1/list', { Range: 'bytes=0-99' })).toBeUndefined();
     expect(await encodingOf(appWith(), '/api/v1/events')).toBeUndefined();
@@ -93,6 +106,85 @@ describe('response compression', () => {
     expect(isAuthPath('/ecms/api/v1/auth/login', '/ecms')).toBe(true);
     expect(isAuthPath('/api/v1/authorizations', '')).toBe(false);
     expect(isAuthPath('/api/v1/platform/users', '')).toBe(false);
+  });
+
+  it('knows them whatever their case, and with repeated slashes', () => {
+    expect(isAuthPath('/API/v1/auth/login', '')).toBe(true);
+    expect(isAuthPath('/api/v1/Auth/login', '')).toBe(true);
+    expect(isAuthPath('/api/v1//auth/login', '')).toBe(true);
+    expect(isAuthPath('/api/v1//AUTH', '')).toBe(true);
+    expect(isAuthPath('/ECMS/api/v1/auth/login', '/ecms')).toBe(true);
+    expect(isAuthPath('/ecms/api/v1//auth/login', '/ECMS')).toBe(true);
+    expect(isAuthPath('/API/v1/Authorizations', '')).toBe(false);
+    expect(isAuthPath('/api/v1//authorizations', '')).toBe(false);
+  });
+});
+
+describe('a streamed CSV export behind compression', () => {
+  it('arrives whole, and its waits for drain leave no listener behind', async () => {
+    const rows = 50_000;
+    const warnings: Error[] = [];
+    const onWarning = (warning: Error): void => {
+      warnings.push(warning);
+    };
+    process.on('warning', onWarning);
+    // The gzip streams the middleware makes, to count the 'drain' listeners it moves onto them.
+    const gzips: zlib.Gzip[] = [];
+    const createGzip = zlib.createGzip;
+    const spy = vi.spyOn(zlib, 'createGzip').mockImplementation((options) => {
+      const gzip = createGzip(options);
+      gzips.push(gzip);
+      return gzip;
+    });
+    const row = (i: number): string => `${i},employee ${i},${'note-'.repeat(8)}\n`;
+    let waits = 0;
+    let mostDrainListeners = 0;
+    try {
+      const app = express();
+      app.use(responseCompression(''));
+      app.get('/api/v1/export.csv', (_req, res) => {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        // Counts the writes that hit backpressure, so the test knows it waited often enough to
+        // matter: more than the 10 listeners after which Node warns.
+        const compressedWrite = res.write.bind(res) as (chunk: string) => boolean;
+        res.write = ((chunk: string) => {
+          const accepted = compressedWrite(chunk);
+          if (!accepted) waits += 1;
+          return accepted;
+        }) as typeof res.write;
+        const write = drainingWriter(res);
+        void (async () => {
+          await write('id,name,note\n');
+          for (let i = 0; i < rows; i += 1) {
+            await write(row(i));
+            for (const gzip of gzips) {
+              mostDrainListeners = Math.max(mostDrainListeners, gzip.listenerCount('drain'));
+            }
+          }
+          res.end();
+        })();
+      });
+
+      const response = await request(app).get('/api/v1/export.csv').set('Accept-Encoding', 'gzip');
+      // Node emits the warning on a later tick than the listener that tripped it.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(response.headers['content-encoding']).toBe('gzip');
+      const expected = `id,name,note\n${Array.from({ length: rows }, (_, i) => row(i)).join('')}`;
+      expect(response.text).toHaveLength(expected.length);
+      expect(response.text === expected, 'the decompressed body is the CSV that was written').toBe(
+        true,
+      );
+      expect(waits).toBeGreaterThan(10);
+      expect(warnings.filter((warning) => warning.name === 'MaxListenersExceededWarning')).toEqual(
+        [],
+      );
+      expect(gzips).toHaveLength(1);
+      expect(mostDrainListeners).toBe(1);
+    } finally {
+      process.off('warning', onWarning);
+      spy.mockRestore();
+    }
   });
 });
 

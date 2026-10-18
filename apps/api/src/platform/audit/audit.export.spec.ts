@@ -1,8 +1,13 @@
 // F1/F3 — CSV serialization + field-name-based PII masking (Plan §13).
+import { EventEmitter } from 'node:events';
+import { type Response } from 'express';
 import { Types } from 'mongoose';
-import { describe, expect, it } from 'vitest';
-import { csvEscape, maskChangeValue, rowToCsv } from './audit.export';
-import { type AuditLogDoc } from './audit.model';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { type AuthContext } from '../../shared/types';
+import { settingsService } from '../settings';
+import { csvEscape, maskChangeValue, rowToCsv, streamAuditExport } from './audit.export';
+import { AuditLogModel, type AuditLogDoc } from './audit.model';
+import { auditService } from './audit.service';
 
 describe('csvEscape', () => {
   it('passes plain values through unchanged', () => {
@@ -66,5 +71,79 @@ describe('rowToCsv', () => {
     const fields = row.split(',');
     expect(fields[5]).toBe(''); // actorUserId
     expect(fields[6]).toBe(''); // actorIp
+  });
+});
+
+describe('streamAuditExport', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Takes the header and ten rows, then fills up, and its client leaves before it drains. */
+  class LeavingResponse extends EventEmitter {
+    destroyed = false;
+    writes = 0;
+    readonly end = vi.fn();
+    setHeader(): void {}
+    write(): boolean {
+      this.writes += 1;
+      if (this.writes <= 11) return true;
+      setImmediate(() => {
+        this.destroyed = true;
+        this.emit('close');
+      });
+      return false;
+    }
+  }
+
+  it('stops reading the log when the client leaves, and audits the rows it wrote', async () => {
+    const logs = 1_000;
+    let read = 0;
+    async function* rows(): AsyncGenerator<AuditLogDoc> {
+      for (let i = 0; i < logs; i += 1) {
+        read += 1;
+        yield {
+          _id: new Types.ObjectId(),
+          entityRef: { moduleId: 'platform', entityType: 'user', entityId: `u${i}` },
+          action: 'update',
+          changes: [],
+          actor: { userId: null, ip: null, userAgent: null },
+          requestId: null,
+          at: new Date('2026-07-09T12:00:00.000Z'),
+        };
+      }
+    }
+    // A real query cursor has `close()`, which frees the cursor on the server.
+    const close = vi.fn().mockResolvedValue(undefined);
+    const cursor = () => Object.assign(rows(), { close });
+    const query = { sort: () => query, limit: () => query, lean: () => query, cursor };
+    vi.spyOn(AuditLogModel, 'find').mockReturnValue(query as never);
+    vi.spyOn(settingsService, 'resolve').mockResolvedValue(50_000);
+    const record = vi.spyOn(auditService, 'record').mockResolvedValue();
+    const res = new LeavingResponse();
+    const ctx = { userId: 'u1', branchId: null, permissions: {} } as unknown as AuthContext;
+
+    const outcome = await Promise.race([
+      streamAuditExport(res as unknown as Response, ctx, {}).then(() => 'ended'),
+      new Promise<string>((resolve) => setTimeout(() => resolve('still waiting'), 5_000)),
+    ]);
+
+    expect(outcome).toBe('ended');
+    // Row eleven was the write that found the buffer full; nothing past it was read.
+    expect(read).toBe(11);
+    expect(res.end).toHaveBeenCalledOnce();
+    expect(record).toHaveBeenCalledOnce();
+    expect(record.mock.calls[0]?.[0].changes).toContainEqual({
+      field: 'rowCount',
+      old: null,
+      new: 10,
+    });
+    // The audit row says the count is partial, and the cursor was closed rather than left open.
+    expect(record.mock.calls[0]?.[0].changes).toContainEqual({
+      field: 'completed',
+      old: null,
+      new: false,
+    });
+    expect(close).toHaveBeenCalledOnce();
   });
 });

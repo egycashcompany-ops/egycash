@@ -26,8 +26,9 @@ its entry here in the same PR.
   script goes from 1.64 MB to 0.41 MB on the wire — except the sign-in routes, whose bodies carry
   tokens. The streamed CSV exports (audit log, attendance, ATM register) now wait on one `drain`
   listener per response, which the compressed stream needs, and close their database cursor when
-  they end. A download the client leaves part-way now ends and is audited with the rows written
-  so far and `completed: false`; before, it waited forever and was never audited.
+  they end. A download the client leaves part-way, or that a failed read stops, now ends and is
+  audited with the rows written so far and `completed: false`; before, the first waited forever
+  and neither was audited. A HEAD request gets the headers alone and reads nothing.
 
 - **The IT inventory is on the system.** «عندي فايل Excel فيه 10 شيتات … تسلمه الأجهزة اللى معاه …
   ولو مكتوب مخزن يبقي مش متسلم … الأفرع … خليها مش متسلمه». A one-time step with the deploy

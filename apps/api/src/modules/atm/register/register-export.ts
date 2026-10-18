@@ -17,6 +17,7 @@ import { auditService } from '../../../platform/audit';
 import { csvEscape } from '../../../platform/audit/audit.export';
 import { scopeSelector, type AuthContext } from '../../../shared/types';
 import { drainingWriter } from '../../../shared/utils/draining-writer';
+import { isHeadRequest, streamRows, type StreamedRows } from '../../../shared/utils/stream-rows';
 import { cairoDateString } from '../shared/cairo-time';
 import { registerDateString } from './register.mapper';
 import { AtmRegisterEntryModel, type AtmRegisterEntryDoc } from './register.model';
@@ -88,45 +89,36 @@ export const streamRegisterExport = async (
   );
   res.setHeader('Cache-Control', 'private, no-store');
 
+  // A HEAD request gets the headers alone: see `isHeadRequest`.
+  if (isHeadRequest(res)) {
+    res.end();
+    return;
+  }
+
   // Made before the first write: see `drainingWriter`. A false from it means the client has gone,
   // and the export stops reading the cursor.
   const write = drainingWriter(res);
-  let rowCount = 0;
-  // False when the client left before the last row, so the audit row says the count is partial.
-  let completed = false;
-  // The BOM makes Excel read the Arabic as UTF-8 (the machines-page export precedent).
+  let outcome: StreamedRows = { rowCount: 0, completed: false };
   if (await write(`\uFEFF${REGISTER_EXPORT_HEADERS.map(csvEscape).join(',')}\n`)) {
     const cursor = AtmRegisterEntryModel.find(filter)
       .sort({ createdAt: 1, _id: 1 })
       .lean<AtmRegisterEntryDoc[]>()
       .cursor();
-    // The cursor is closed whether the export finished or the client left part-way: a `break`
-    // only stops reading, and the server would keep the cursor open until it times out.
-    try {
-      let left = false;
-      for await (const doc of cursor) {
-        if (!(await write(`${registerRowToCsv(doc, settings)}\n`))) {
-          left = true;
-          break;
-        }
-        rowCount += 1;
-      }
-      completed = !left;
-    } finally {
-      await cursor.close();
-    }
+    outcome = await streamRows(cursor, write, (doc) => `${registerRowToCsv(doc, settings)}\n`);
   }
-  res.end();
+  if (outcome.failure === undefined) res.end();
 
   // Audited after the stream completes — never blocks the export itself (the audit F1 shape). A
-  // download the client left part-way is audited too, with the rows written before it left.
+  // download the client left part-way, or that a failed read stopped, is audited too, with the rows
+  // written before it ended (`streamRows`); a failure is rethrown after.
   await auditService.record({
     entityRef: { moduleId: 'atm', entityType: 'registerEntry', entityId: 'export' },
     action: 'export',
     changes: [
-      { field: 'rowCount', old: null, new: rowCount },
-      { field: 'completed', old: null, new: completed },
+      { field: 'rowCount', old: null, new: outcome.rowCount },
+      { field: 'completed', old: null, new: outcome.completed },
       { field: 'filter', old: null, new: JSON.stringify(query) },
     ],
   });
+  if (outcome.failure !== undefined) throw outcome.failure;
 };

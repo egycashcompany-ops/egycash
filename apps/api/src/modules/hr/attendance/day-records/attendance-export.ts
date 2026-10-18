@@ -8,6 +8,7 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { orgScopeMatch } from '../../../../shared/base/org-scope-match';
 import { NotFoundError } from '../../../../shared/errors';
 import { drainingWriter } from '../../../../shared/utils/draining-writer';
+import { isHeadRequest, streamRows, type StreamedRows } from '../../../../shared/utils/stream-rows';
 import { auditService } from '../../../../platform/audit';
 import { csvEscape } from '../../../../platform/audit/audit.export';
 import { dateOnlyIso } from '../../shared/business-date';
@@ -93,12 +94,16 @@ export const streamAttendanceExport = async (
   );
   res.setHeader('Cache-Control', 'private, no-store');
 
+  // A HEAD request gets the headers alone: see `isHeadRequest`.
+  if (isHeadRequest(res)) {
+    res.end();
+    return;
+  }
+
   // Made before the first write: see `drainingWriter`. A false from it means the client has gone,
   // and the export stops reading the cursor.
   const write = drainingWriter(res);
-  let rowCount = 0;
-  // False when the client left before the last row, so the audit row says the count is partial.
-  let completed = false;
+  let outcome: StreamedRows = { rowCount: 0, completed: false };
   if (await write(`${CSV_COLUMNS.join(',')}\n`)) {
     // Label lookups batched per employee, not per row — an export is one pass over a range.
     const employeeIds = await AttendanceDayModel.distinct('employeeId', filter).exec();
@@ -108,35 +113,23 @@ export const streamAttendanceExport = async (
       .sort({ workDate: 1, employeeId: 1 })
       .lean<AttendanceDayDoc[]>()
       .cursor();
-    // The cursor is closed whether the export finished or the client left part-way: a `break`
-    // only stops reading, and the server would keep the cursor open until it times out.
-    try {
-      let left = false;
-      for await (const doc of cursor) {
-        if (!(await write(`${rowToCsv(doc, labels.get(String(doc.employeeId)))}\n`))) {
-          left = true;
-          break;
-        }
-        rowCount += 1;
-      }
-      completed = !left;
-    } finally {
-      await cursor.close();
-    }
+    outcome = await streamRows(cursor, write, (doc) => `${rowToCsv(doc, labels.get(String(doc.employeeId)))}\n`);
   }
-  res.end();
+  if (outcome.failure === undefined) res.end();
 
   // Audited after the stream completes — never blocks the export itself (the audit F1 shape). A
-  // download the client left part-way is audited too, with the rows written before it left.
+  // download the client left part-way, or that a failed read stopped, is audited too, with the rows
+  // written before it ended (`streamRows`); a failure is rethrown after.
   await auditService.record({
     entityRef: { moduleId: 'hr', entityType: 'attendanceDay', entityId: 'export' },
     action: 'export',
     changes: [
-      { field: 'rowCount', old: null, new: rowCount },
-      { field: 'completed', old: null, new: completed },
+      { field: 'rowCount', old: null, new: outcome.rowCount },
+      { field: 'completed', old: null, new: outcome.completed },
       { field: 'from', old: null, new: dateOnlyIso(query.from) },
       { field: 'to', old: null, new: dateOnlyIso(query.to) },
       { field: 'filter', old: null, new: JSON.stringify(query) },
     ],
   });
+  if (outcome.failure !== undefined) throw outcome.failure;
 };

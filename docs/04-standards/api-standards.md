@@ -132,7 +132,9 @@ feature, e.g. `WORKFLOW_TRANSITION_NOT_ALLOWED`, `SEQUENCE_EXHAUSTED`), `RATE_LI
   included — except the `auth/*` routes, whose bodies carry tokens (BREACH; matched
   case-insensitively and with repeated slashes collapsed, as Express routes them), partial (Range)
   responses and server-sent events (`infrastructure/http/compression.ts`). A streamed export writes
-  through `shared/utils/draining-writer.ts`, which waits on one `drain` listener per response.
+  through `shared/utils/draining-writer.ts`, which waits on one `drain` listener per response, and
+  reads its cursor through `shared/utils/stream-rows.ts`, which closes it and reports whether the
+  export finished, the client left, or the read failed, so every outcome is audited.
 
 ## 10. Documentation
 

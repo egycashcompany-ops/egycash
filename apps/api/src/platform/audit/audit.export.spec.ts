@@ -146,4 +146,47 @@ describe('streamAuditExport', () => {
     });
     expect(close).toHaveBeenCalledOnce();
   });
+
+  it('audits the rows already sent when the read fails part-way, then lets the error through', async () => {
+    // A cursor the server timed out while a paused client held the download, say. Before, the
+    // error skipped the audit row, so pausing a large download was a way to export unaudited.
+    async function* rows(): AsyncGenerator<AuditLogDoc> {
+      for (let i = 0; i < 100; i += 1) {
+        if (i === 7) throw Object.assign(new Error('cursor id 42 not found'), { code: 43 });
+        yield {
+          _id: new Types.ObjectId(),
+          entityRef: { moduleId: 'platform', entityType: 'user', entityId: `u${i}` },
+          action: 'update',
+          changes: [],
+          actor: { userId: null, ip: null, userAgent: null },
+          requestId: null,
+          at: new Date('2026-07-09T12:00:00.000Z'),
+        };
+      }
+    }
+    const close = vi.fn().mockResolvedValue(undefined);
+    const cursor = () => Object.assign(rows(), { close });
+    const query = { sort: () => query, limit: () => query, lean: () => query, cursor };
+    vi.spyOn(AuditLogModel, 'find').mockReturnValue(query as never);
+    vi.spyOn(settingsService, 'resolve').mockResolvedValue(50_000);
+    const record = vi.spyOn(auditService, 'record').mockResolvedValue();
+    const res = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      setHeader: () => undefined,
+      write: () => true,
+      end: vi.fn(),
+    });
+    const ctx = { userId: 'u1', branchId: null, permissions: {} } as unknown as AuthContext;
+
+    await expect(streamAuditExport(res as unknown as Response, ctx, {})).rejects.toMatchObject({
+      code: 43,
+    });
+    expect(record).toHaveBeenCalledOnce();
+    const changes = record.mock.calls[0]?.[0].changes;
+    expect(changes).toContainEqual({ field: 'rowCount', old: null, new: 7 });
+    expect(changes).toContainEqual({ field: 'completed', old: null, new: false });
+    expect(close).toHaveBeenCalledOnce();
+    // The response is left to the error handler, not ended as if it were a whole file.
+    expect(res.end).not.toHaveBeenCalled();
+  });
 });

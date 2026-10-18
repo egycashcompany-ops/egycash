@@ -41,9 +41,9 @@ its entry here in the same PR.
 ### Fixed
 
 - **A busy office no longer locks itself out of signing in.** Steps 1 and 2 of the capacity plan.
-  Sign-in, TOTP, activation and session renewal were limited per IP address — 10 tries in five
-  minutes shared by everyone behind one office connection — and the address could be rewritten by
-  the caller. The strict limits now sit on what is being guessed or replayed (the account, the
+  Sign-in, TOTP and activation were limited per IP address — 10 tries in five minutes shared by
+  everyone behind one office connection, and 60 renewals for all of them — and the address could
+  be rewritten by the caller. The strict limits now sit on what is being guessed or replayed (the account, the
   one-time token, the session), with a high per-IP ceiling on top (`AUTH_RATE_LIMIT_PER_IP`,
   `AUTH_REFRESH_RATE_LIMIT_PER_IP`), and the address is the one Railway's edge saw (`X-Real-IP`,
   `CLIENT_IP_HEADER`). The web client signs out only when the server refuses a renewal; a rate

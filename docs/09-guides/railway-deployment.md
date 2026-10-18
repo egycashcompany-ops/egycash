@@ -122,8 +122,9 @@ npm run db:sync-indexes -w apps/api      # = node apps/api/dist/sync-indexes.cli
 Neither mode drops an index. A unique index that existing rows violate is **not** built: the
 log names the collection, the index and up to five document ids per duplicate group (never the
 duplicated values) for someone to resolve; the deploy goes on. For a new TTL index the report
-says how many documents it would delete the moment it exists (`wouldRemoveNow`). The step fails
-the deploy only when it cannot reach the database.
+says how many documents it would delete the moment it exists (`wouldRemoveNow`). The step never
+fails the deploy: a database it cannot reach, or a run still going after ten minutes, is logged
+as `index sync failed` / `still running after ten minutes` and the deploy goes on.
 
 **Switching it on.** Leave `report` for the first deploy, read the summary line
 (`index sync: REPORT ONLY …`) and the `would build` lines in the deploy log — the duplicates and

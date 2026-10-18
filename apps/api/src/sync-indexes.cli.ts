@@ -12,14 +12,20 @@
 // models (the same imports the api makes), compares, and exits. See shared/base/index-sync.ts for
 // what it builds and what it refuses to.
 //
-// IT EXITS 0 WHEN AN INDEX CANNOT BE BUILT. A unique index that existing rows violate is reported
-// and left for a person to resolve; the deploy goes on, exactly as the api has run without it so
-// far. Only a failure to reach the database exits non-zero.
+// IT NEVER FAILS THE DEPLOY. Railway does not start a deployment whose pre-deploy command exits
+// non-zero, so a step that could fail would hold back every release behind it — and the api has
+// run without these indexes until now. A unique index that existing rows violate is reported and
+// left for a person to resolve; a database the step cannot reach, or a run that is still going
+// after ten minutes, is logged as an error; in every case the process exits 0 and the deploy goes
+// on, exactly as before this step existed.
 import mongoose from 'mongoose';
 import { env } from './infrastructure/config/env';
 import { connectMongo, disconnectMongo } from './infrastructure/database/mongo';
 import { logger } from './infrastructure/logging/logger';
 import { indexSyncModeFrom, syncDeclaredIndexes } from './shared/base/index-sync';
+
+/** Far more than this database needs; a step that hangs holds the deploy. */
+const WATCHDOG_MS = 10 * 60_000;
 
 const main = async (): Promise<void> => {
   const mode = indexSyncModeFrom(process.argv, env.INDEX_SYNC_MODE);
@@ -55,13 +61,18 @@ const main = async (): Promise<void> => {
   );
 };
 
+setTimeout(() => {
+  logger.error('index sync: still running after ten minutes — stopped; the deploy goes on');
+  process.exit(0);
+}, WATCHDOG_MS).unref();
+
 main()
   .then(async () => {
     await disconnectMongo();
     process.exit(0);
   })
   .catch(async (error: unknown) => {
-    logger.fatal({ err: error }, 'index sync failed');
+    logger.error({ err: error }, 'index sync failed — nothing more was built; the deploy goes on');
     await disconnectMongo().catch(() => undefined);
-    process.exit(1);
+    process.exit(0);
   });

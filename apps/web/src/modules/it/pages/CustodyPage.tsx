@@ -22,10 +22,9 @@ import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
-import { DownloadIcon, EyeIcon, FileIcon, UsersIcon } from '../../../shared/ui/icons';
-import { toast } from '../../../shared/ui/toast/toast-store';
-import { errorMessage } from '../../../shared/lib/errors';
+import { EyeIcon, UsersIcon } from '../../../shared/ui/icons';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
+import { RegisterExportButtons } from '../components/RegisterExportButtons';
 import { AssignAssetDialog } from '../components/CustodyDialogs';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
@@ -38,9 +37,8 @@ import {
   custodyRegisterReport,
   custodyRegisterFilters,
   custodyRegisterSubtitle,
-  gatherCustodyRegister,
-  printCustodyRegister,
 } from '../lib/custody-register-export';
+import { gatherRegister, printItRegister } from '../lib/register-export';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -131,55 +129,34 @@ export const CustodyPage = (): JSX.Element => {
   }, [branches.data, locale]);
 
   // ── The register as a file: Excel and PDF, of everything the filters match ──────────────────
-  // One file at a time; the button pressed shows the spinner while its rows are gathered.
-  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const exportContext = { t, locale, branchName };
   // Every interval the filters match, in the table's order — the table's own params, unpaged.
-  const allRows = () => gatherCustodyRegister(params, api.listAssignments);
+  const allRows = () => gatherRegister(params, api.listAssignments);
   const exportSheet = async (): Promise<void> => {
-    if (exporting !== null) return;
-    setExporting('excel');
-    try {
+    const rows = await allRows();
+    saveSheet({
+      name: t('it.nav.custody'),
+      serialHeader: t('it.export.serial'),
+      header: custodyRegisterHeader(t),
+      rows: rows.map((row) => custodyRegisterLine(row, exportContext, '')),
+    });
+  };
+  const exportPdf = (): Promise<boolean> =>
+    printItRegister(async () => {
       const rows = await allRows();
-      saveSheet({
-        name: t('it.nav.custody'),
-        serialHeader: t('it.custody.export.serial'),
-        header: custodyRegisterHeader(t),
-        rows: rows.map((row) => custodyRegisterLine(row, exportContext, '')),
+      const subtitle = custodyRegisterSubtitle(t, {
+        ...custodyRegisterFilters({
+          openParam,
+          branchId,
+          branchName,
+          employeeId,
+          holderLabel,
+          rows,
+        }),
+        asOf: formatDate(new Date().toISOString(), locale),
       });
-    } catch (failure) {
-      // NAMED, not swallowed: a button that silently does nothing is read as broken.
-      toast.error(errorMessage(failure, locale));
-    } finally {
-      setExporting(null);
-    }
-  };
-  const exportPdf = async (): Promise<void> => {
-    if (exporting !== null) return;
-    setExporting('pdf');
-    try {
-      const printed = await printCustodyRegister(async () => {
-        const rows = await allRows();
-        const subtitle = custodyRegisterSubtitle(t, {
-          ...custodyRegisterFilters({
-            openParam,
-            branchId,
-            branchName,
-            employeeId,
-            holderLabel,
-            rows,
-          }),
-          asOf: formatDate(new Date().toISOString(), locale),
-        });
-        return custodyRegisterReport(rows, exportContext, subtitle);
-      }, t('it.custody.export.preparing'));
-      if (!printed) toast.error(t('it.custody.receipt.popupBlocked'));
-    } catch (failure) {
-      toast.error(errorMessage(failure, locale));
-    } finally {
-      setExporting(null);
-    }
-  };
+      return custodyRegisterReport(rows, exportContext, subtitle);
+    }, t('it.export.preparing'));
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
@@ -309,6 +286,12 @@ export const CustodyPage = (): JSX.Element => {
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
         actions={
           <>
+            {/* «عايز الزرارين قبل مش بعد زرار الـ Action بتاع الفورم» — the files first, the
+                hand-over after them. Not offered when the list failed: the file behind them
+                would be empty or short. */}
+            {!isError && (
+              <RegisterExportButtons name="it-custody" onExcel={exportSheet} onPdf={exportPdf} />
+            )}
             {can('itAsset.assign') && (
               <Button
                 size="sm"
@@ -317,37 +300,6 @@ export const CustodyPage = (): JSX.Element => {
               >
                 {t('it.custody.receipt.title')}
               </Button>
-            )}
-            {/* Not offered when the list failed: the file behind it would be empty or short. */}
-            {!isError && (
-              <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  data-export="it-custody"
-                  title={t('it.custody.export.excelHint')}
-                  disabled={exporting !== null}
-                  loading={exporting === 'excel'}
-                  leftIcon={
-                    <DownloadIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  }
-                  onClick={() => void exportSheet()}
-                >
-                  {t('it.custody.export.excel')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  data-print="it-custody"
-                  title={t('it.custody.export.pdfHint')}
-                  disabled={exporting !== null}
-                  loading={exporting === 'pdf'}
-                  leftIcon={<FileIcon className="h-4 w-4 text-red-600 dark:text-red-400" />}
-                  onClick={() => void exportPdf()}
-                >
-                  {t('it.custody.export.pdf')}
-                </Button>
-              </>
             )}
           </>
         }

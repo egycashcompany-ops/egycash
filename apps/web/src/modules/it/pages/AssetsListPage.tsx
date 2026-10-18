@@ -6,6 +6,10 @@
 // status pill from the derived value (FR-2). Nothing here recomputes either. Actions are gated
 // exactly as the API gates them, and Delete is offered only where FR-5 could allow it — the
 // server still decides, but showing a button that can only ever 409 is worse than not showing it.
+//
+// «اعمل نفس الزرارين في شاشة الأصول» — the custody register's Excel and PDF, here too, before the
+// screen's own action: every asset the filters match, in the table's order, not the page on screen
+// (`lib/asset-register-export.ts`).
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { IT_ASSET_STATUSES, type ItAssetDto, type Locale } from '@ecms/contracts';
@@ -24,7 +28,8 @@ import { BulkActionBar } from '../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, EyeIcon, PlusIcon, QrIcon, TrashIcon } from '../../../shared/ui/icons';
-import { localized } from '../../../shared/lib/format';
+import { formatDate, localized } from '../../../shared/lib/format';
+import * as api from '../api/it-api';
 import {
   useDeleteItAsset,
   useItAssets,
@@ -37,6 +42,16 @@ import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
 import { ItCatalogSelect } from '../components/ItCatalogSelect';
 import { useAssetLabels } from '../components/useAssetLabels';
+import { RegisterExportButtons } from '../components/RegisterExportButtons';
+import { saveSheet } from '../../fleet/lib/fleet-sheet';
+import {
+  assetRegisterFilters,
+  assetRegisterHeader,
+  assetRegisterLine,
+  assetRegisterReport,
+  assetRegisterSubtitle,
+} from '../lib/asset-register-export';
+import { gatherRegister, printItRegister } from '../lib/register-export';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -154,6 +169,38 @@ export const AssetsListPage = (): JSX.Element => {
     }
   };
 
+  // ── The register as a file: Excel and PDF, of everything the filters match ──────────────────
+  const exportContext = { t, categoryName, branchName };
+  // Every asset the filters match, in the table's order — the table's own params, unpaged.
+  const allRows = () => gatherRegister(params, api.listAssets);
+  const exportSheet = async (): Promise<void> => {
+    const all = await allRows();
+    saveSheet({
+      name: t('it.nav.assets'),
+      serialHeader: t('it.export.serial'),
+      header: assetRegisterHeader(t),
+      rows: all.map((row) => assetRegisterLine(row, exportContext, '')),
+    });
+  };
+  const exportPdf = (): Promise<boolean> =>
+    printItRegister(async () => {
+      const all = await allRows();
+      const subtitle = assetRegisterSubtitle(t, {
+        ...assetRegisterFilters({
+          search,
+          status,
+          categoryId,
+          categoryName,
+          branchId,
+          branchName,
+          holderId,
+          holderLabel,
+        }),
+        asOf: formatDate(new Date().toISOString(), locale),
+      });
+      return assetRegisterReport(all, exportContext, subtitle);
+    }, t('it.export.preparing'));
+
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
@@ -249,18 +296,25 @@ export const AssetsListPage = (): JSX.Element => {
         title={t('it.nav.assets')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.assets') }]}
         actions={
-          <Can permission="itAsset.create">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
-              {t('it.assets.create')}
-            </Button>
-          </Can>
+          <>
+            {/* The files first, the form's action after them — for every reader of the list, as
+                the labels are (§4.2). Not offered when the list failed: the file would be short. */}
+            {!isError && (
+              <RegisterExportButtons name="it-assets" onExcel={exportSheet} onPdf={exportPdf} />
+            )}
+            <Can permission="itAsset.create">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => {
+                  setEditing(null);
+                  setFormOpen(true);
+                }}
+              >
+                {t('it.assets.create')}
+              </Button>
+            </Can>
+          </>
         }
       />
 

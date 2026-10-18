@@ -11,6 +11,11 @@ its entry here in the same PR.
 
 ### Added
 
+- **The IT asset list exports to Excel and PDF too.** «اعمل نفس الزرارين في شاشة الأصول» — every
+  asset the filters match, in the table's order. On both IT screens the two buttons now come before
+  the screen's own action and read just «Excel» and «PDF» («كمان عايز الزرارين قبل مش بعد زرار الـ
+  Action بتاع الفورم · كمان عايزك تشيل كلمة تصدير من الزراير»)
+  ([IT design §17](docs/12-planning/it-module-design.md)).
 - **The IT custody register exports to Excel and PDF.** «عايز يبقي فى زرارين بجانب تسليم عهدة
   بيـ Extract أكسيل و PDF للجدول المعمول (وأعتمد الفلتر طبعاً)» — beside «تسليم عهدة» on
   `/it/custody`, for everyone who can read the register. Both files hold every interval the filters

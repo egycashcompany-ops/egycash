@@ -1,26 +1,14 @@
 // The custody register as a file — «عايز يبقي فى زرارين بجانب تسليم عهدة بيـ Extract أكسيل و PDF
-// للجدول المعمول (وأعتمد الفلتر طبعاً)».
-//
-// WHAT THE FILTERS MATCHED, NOT WHAT THE PAGE SHOWS. The table is paged; a reader who narrows the
-// register to one branch's open custody and presses Excel means all of it. So the export asks the
-// server again with the screen's own filters and sort, the paging taken off, and walks every page
-// — the Fleet screens' rule, through the Fleet screens' own walk (`fleet/lib/fleet-sheet.ts`).
-//
-// ONE WRITER, ONE LETTERHEAD. The workbook is the app's one `.xlsx` writer (apps/web carries no
-// spreadsheet library, by house rule) and the print is the company's report form; both live under
-// Fleet, which needed them first, and are pure — no Fleet state, no Fleet request. Writing a
-// second copy of either here is how two exports of the same app come to look different.
+// للجدول المعمول (وأعتمد الفلتر طبعاً)». What every IT register's file shares — the walk over every
+// page the filters match, the report form, the tab opened before the rows are gathered — is
+// `register-export.ts`; this is what the custody table says.
 //
 // The columns are the table's, in its order, with the two codes the table stacks under a name given
 // columns of their own: in a sheet a code is something to filter and sort by, not a caption.
-import { type ItAssetAssignmentDto, type Locale, type Paginated } from '@ecms/contracts';
-import { type QueryParams } from '../../../shared/lib/api-client';
+import { type ItAssetAssignmentDto, type Locale } from '@ecms/contracts';
 import { formatDate } from '../../../shared/lib/format';
-import { openPrintWindow, writePrintWindow } from '../../../shared/lib/print-window';
-import { buildFleetReportHtml, type FleetReport } from '../../fleet/lib/fleet-report-print';
-import { fetchFilteredRows, filtersOnly } from '../../fleet/lib/fleet-sheet';
-
-type Translate = (key: string, params?: Record<string, string | number>) => string;
+import { type FleetReport } from '../../fleet/lib/fleet-report-print';
+import { filterLine, itRegisterReport, namedFilter, type Translate } from './register-export';
 
 export interface CustodyRegisterContext {
   t: Translate;
@@ -31,19 +19,6 @@ export interface CustodyRegisterContext {
 
 /** The status filter's three values — the screen's `open` param. */
 export type CustodyOpenFilter = 'true' | 'false' | 'all';
-
-/**
- * Every interval the screen's filters match, in the table's order.
- *
- * `params` are the SCREEN's — its filters and its sort, exactly what the table asked — with the
- * paging taken off, so the walk starts on the first page whichever page the reader is on and goes
- * to the last. `list` is the register's own request; a test passes a stub.
- */
-export const gatherCustodyRegister = (
-  params: QueryParams,
-  list: (params: QueryParams) => Promise<Paginated<ItAssetAssignmentDto>>,
-): Promise<ItAssetAssignmentDto[]> =>
-  fetchFilteredRows((page, pageSize) => list({ ...filtersOnly(params), page, pageSize }));
 
 /** The heading row, in the table's order — each code right after the name it belongs to. */
 export const custodyRegisterHeader = (t: Translate): string[] => [
@@ -145,63 +120,28 @@ export const custodyRegisterSubtitle = (
   t: Translate,
   filters: CustodyRegisterFilters & { asOf: string },
 ): string =>
-  [
+  filterLine([
     filters.open === 'true'
       ? t('it.custody.filterOpen')
       : filters.open === 'false'
         ? t('it.custody.filterClosed')
         : t('it.custody.filterAll'),
-    filters.branch === null
-      ? t('it.assets.allBranches')
-      : filters.branch === ''
-        ? t('it.custody.export.oneBranch')
-        : filters.branch,
-    filters.holder === null ? null : t('it.custody.export.holderIs', { name: filters.holder }),
-    t('it.custody.export.asOf', { date: filters.asOf }),
-  ]
-    .filter((part): part is string => part !== null)
-    .join(' · ');
+    namedFilter(t, filters.branch, { all: 'it.assets.allBranches', one: 'it.export.oneBranch' }),
+    filters.holder === null ? null : t('it.export.holderIs', { name: filters.holder }),
+    t('it.export.asOf', { date: filters.asOf }),
+  ]);
 
 /** The printed register: the company's report form, landscape for ten columns, nobody signs it. */
 export const custodyRegisterReport = (
   rows: readonly ItAssetAssignmentDto[],
   context: CustodyRegisterContext,
   subtitle: string,
-): FleetReport => {
-  const { t } = context;
-  return {
-    title: t('it.nav.custody'),
-    department: t('it.custody.export.department'),
-    subtitle,
-    header: custodyRegisterHeader(t),
+): FleetReport =>
+  itRegisterReport({
+    t: context.t,
+    title: context.t('it.nav.custody'),
+    header: custodyRegisterHeader(context.t),
     rows: rows.map((row) => custodyRegisterLine(row, context, '—')),
-    totals: [],
-    serialHeader: t('it.custody.export.serial'),
-    emptyLabel: t('it.custody.export.empty'),
+    subtitle,
     orientation: 'landscape',
-  };
-};
-
-/**
- * Print the register — the tab first, while the click still counts as the reader's, then the
- * rows, then the page. Gathering every page takes a moment, and a tab opened after it would be a
- * pop-up the browser no longer believes the reader asked for: that is why the IT receipt opens its
- * tab first, and this does the same.
- *
- * False when the browser blocked the tab. A failed gather closes the tab it opened and rejects,
- * so the caller says why rather than leaving a tab that waits forever.
- */
-export const printCustodyRegister = async (
-  load: () => Promise<FleetReport>,
-  waiting: string,
-): Promise<boolean> => {
-  const win = openPrintWindow(waiting);
-  if (win === null) return false;
-  try {
-    writePrintWindow(win, buildFleetReportHtml(await load()));
-    return true;
-  } catch (error) {
-    win.close();
-    throw error;
-  }
-};
+  });

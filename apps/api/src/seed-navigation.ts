@@ -1054,6 +1054,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'grid',
         permission: 'atmMachine.view',
       },
+      // The machine map and its zones (docs/12-planning/atm-map-zones.md §7.3). No `map` icon exists
+      // (GM-17); `/atm/map/unlocated` has no row of its own — the nested route is matched exactly.
+      {
+        en: 'Machines Map',
+        ar: 'خريطة الماكينات',
+        route: '/atm/map',
+        icon: 'pin',
+        permission: 'atmMap.view',
+      },
       {
         en: 'Daily Report',
         ar: 'تقرير اليوم',

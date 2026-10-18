@@ -15,6 +15,10 @@
 // names the collection and the counts ONLY (`rowsInLog: false`): an operation row is somebody's
 // work record, and nothing of it belongs in a boot log.
 //
+// The machine map's three collections joined the first group (docs/12-planning/atm-map-zones.md
+// §3.4): their keys are ids, never a K or S value, and building them here also brings each one into
+// being before its first insert, which otherwise happens inside the zone save's transaction.
+//
 // THE DEFINITIONS ARE READ FROM THE SCHEMAS (`schema.indexes()`), never restated here. ONE INDEX AT
 // A TIME, so a duplicate costs exactly its own index. DUPLICATES ARE REPORTED, NEVER RESOLVED — a
 // legacy `atm_machines` loaded by `npm run atm:import` may violate `ux_branch_code` (risk R-9); the
@@ -28,6 +32,9 @@ import { AtmRegisterEntryModel } from './register/register.model';
 import { AtmRegisterImportRunModel } from './register/import/register-import-run.model';
 import { AtmReplenishmentModel } from './replenishments/replenishment.model';
 import { AtmMaintenanceModel } from './maintenances/maintenance.model';
+import { AtmMapZoneModel } from './map/zone.model';
+import { AtmMapZoneSetModel } from './map/zone-set.model';
+import { AtmMachineLocationModel } from './map/machine-location.model';
 
 export interface AtmIndexedModel {
   collection: string;
@@ -48,6 +55,9 @@ export const atmIndexedModels = (): AtmIndexedModel[] => [
       AtmRefLabelModel,
       AtmRegisterEntryModel,
       AtmRegisterImportRunModel,
+      AtmMapZoneModel,
+      AtmMapZoneSetModel,
+      AtmMachineLocationModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model, rowsInLog: true })),
   ...([AtmReplenishmentModel, AtmMaintenanceModel] as unknown as Model<never>[]).map((model) => ({

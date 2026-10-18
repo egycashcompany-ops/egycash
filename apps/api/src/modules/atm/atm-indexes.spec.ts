@@ -3,7 +3,7 @@
 // one machine, so their unique index is the likeliest to be reported; the report must name the
 // collection and the counts, never a machine code, a row id or a server message quoting a key.
 import { describe, expect, it } from 'vitest';
-import { duplicateCounts, redactedErrorText } from './atm-indexes';
+import { atmIndexedModels, duplicateCounts, redactedErrorText } from './atm-indexes';
 
 describe('duplicateCounts', () => {
   it('reduces the duplicate groups to how many and how many rows', () => {
@@ -36,5 +36,15 @@ describe('redactedErrorText', () => {
     expect(redactedErrorText(new TypeError('quoted 101'))).toBe('TypeError');
     expect(redactedErrorText('quoted 101')).toBe('Error');
     expect(redactedErrorText(null)).toBe('Error');
+  });
+});
+
+describe('atmIndexedModels', () => {
+  // The machine map (docs/12-planning/atm-map-zones.md §3.4): its keys are ids, never K/S values.
+  it('lists the map collections with their rows allowed in the log', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    for (const collection of ['atm_map_zones', 'atm_map_zone_sets', 'atm_machine_locations']) {
+      expect(listed.get(collection), collection).toBe(true);
+    }
   });
 });

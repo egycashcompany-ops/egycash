@@ -7,11 +7,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   idleStateAt,
+  lastRenewForRetry,
   renewEveryMs,
   secondsLeft,
   shouldRenew,
   warningWindowMs,
   RENEW_AT_MOST_EVERY_MS,
+  RENEW_RETRY_AFTER_MS,
   WARN_BEFORE_MS,
 } from './idle-session';
 
@@ -121,6 +123,36 @@ describe('telling the server somebody is here', () => {
       expect(renewEveryMs(idleMs)).toBeLessThanOrEqual(RENEW_AT_MOST_EVERY_MS);
     }
     expect(renewEveryMs(TEN_MINUTES)).toBe(5 * MINUTE);
+  });
+
+  it('asks again soon after a renewal that got no answer — while the person is still working', () => {
+    const lastRenewAt = lastRenewForRetry(NOW, TEN_MINUTES);
+    const touched = NOW - 1_000;
+    // Not on the very next tick…
+    expect(shouldRenew({ ...base, now: NOW + 1_000, lastRenewAt, lastActivityAt: touched })).toBe(false);
+    // …but RENEW_RETRY_AFTER_MS later, not a whole 5-minute cadence later.
+    expect(
+      shouldRenew({ ...base, now: NOW + RENEW_RETRY_AFTER_MS, lastRenewAt, lastActivityAt: touched }),
+    ).toBe(true);
+    expect(RENEW_RETRY_AFTER_MS).toBeLessThan(renewEveryMs(TEN_MINUTES));
+  });
+
+  it('a retry still never renews an abandoned screen', () => {
+    const lastRenewAt = lastRenewForRetry(NOW, TEN_MINUTES);
+    const abandonedSince = NOW - 9 * MINUTE;
+    expect(
+      shouldRenew({ ...base, now: NOW + RENEW_RETRY_AFTER_MS, lastRenewAt, lastActivityAt: abandonedSince }),
+    ).toBe(false);
+  });
+
+  it('a retry is never later than the normal cadence, however short the window', () => {
+    for (const minutes of [0.05, 0.5, 1, 2, 10, 120]) {
+      const idleMs = minutes * MINUTE;
+      expect(NOW - lastRenewForRetry(NOW, idleMs), `${String(minutes)}m window`).toBeLessThanOrEqual(
+        renewEveryMs(idleMs),
+      );
+      expect(lastRenewForRetry(NOW, idleMs)).toBeLessThanOrEqual(NOW);
+    }
   });
 });
 

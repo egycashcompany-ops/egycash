@@ -23,6 +23,9 @@ export default defineConfig({
     // migrate:org-catalog (P-ORG-2) — the dry run and the write both happen on the service shell
     // against the live database; `npm run migrate:org-catalog` needs tsx and cannot run there.
     'src/migrate-org-catalog.cli.ts',
+    // db:sync-indexes — the Railway pre-deploy command (railway.json) runs this before every api
+    // deploy, so it has to exist on the image like the CLIs above.
+    'src/sync-indexes.cli.ts',
   ],
   format: ['esm'],
   target: 'node22',

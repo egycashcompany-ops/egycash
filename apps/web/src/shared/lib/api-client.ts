@@ -136,32 +136,78 @@ export const setIdleMinutes = (minutes: number): void => {
 
 export const getIdleMinutes = (): number => idleMinutes;
 
-const refreshOnce = async (): Promise<boolean> => {
+/**
+ * What a renewal came to.
+ *
+ * - `renewed`: a fresh access token is in hand.
+ * - `signedOut`: the server said no — the session is revoked, expired, idle-closed or the cookie is
+ *   gone (a 4xx). Only this one signs the person out.
+ * - `unavailable`: the answer never came or was not about the session — a dropped connection, a
+ *   gateway's error page, a 5xx while a deploy swaps instances, or a 429 from the rate limiter. The
+ *   session may well be fine, so the person stays signed in and the renewal is tried again later.
+ *   Treating these as a lost session used to sign people out mid-work whenever the network
+ *   blinked, a deploy rolled, or an office of colleagues shared one rate-limit bucket.
+ */
+export type RenewOutcome = 'renewed' | 'signedOut' | 'unavailable';
+
+/** A 4xx other than 408/429 is the server's answer about this session; anything else is not. */
+const outcomeOfFailure = (error: unknown): RenewOutcome =>
+  error instanceof ApiError &&
+  error.status >= 400 &&
+  error.status < 500 &&
+  error.status !== 408 &&
+  error.status !== 429
+    ? 'signedOut'
+    : 'unavailable';
+
+const refreshOnce = async (): Promise<RenewOutcome> => {
   try {
     const data = await rawRequest<{ accessToken: string; idleMinutes?: number }>('/auth/refresh', {
       method: 'POST',
     });
     setAccessToken(data.accessToken);
     if (data.idleMinutes !== undefined) setIdleMinutes(data.idleMinutes);
-    return true;
-  } catch {
-    setAccessToken(null);
-    return false;
+    return 'renewed';
+  } catch (error) {
+    const outcome = outcomeOfFailure(error);
+    if (outcome === 'signedOut') setAccessToken(null);
+    return outcome;
   }
+};
+
+/**
+ * Pauses before re-asking after an `unavailable` answer: two more tries over about 4 seconds,
+ * enough to ride out a blip or an instance swap without leaving a waiting request hanging.
+ */
+export const REFRESH_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000];
+
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const refreshWithRetry = async (): Promise<RenewOutcome> => {
+  let outcome = await refreshOnce();
+  for (const delay of REFRESH_RETRY_DELAYS_MS) {
+    if (outcome !== 'unavailable') break;
+    await wait(delay);
+    outcome = await refreshOnce();
+  }
+  return outcome;
 };
 
 // SINGLE-FLIGHT (refresh-race fix): the refresh token is single-use and rotates server-side,
 // so N concurrent 401s firing N refreshes make the client race itself — one wins the rotation,
 // the rest are rejected and the session can be revoked as token reuse. All concurrent callers
-// therefore share ONE in-flight refresh; the slot is released the moment it settles (no lock
-// outlives the request), and a failed refresh reports auth loss exactly once — from the shared
-// promise, never from each waiter.
-let refreshPromise: Promise<boolean> | null = null;
+// therefore share ONE in-flight refresh (its retries included); the slot is released the moment it
+// settles (no lock outlives the request), and a refused refresh reports auth loss exactly once —
+// from the shared promise, never from each waiter.
+let refreshPromise: Promise<RenewOutcome> | null = null;
 
-const tryRefresh = (): Promise<boolean> => {
-  refreshPromise ??= refreshOnce()
-    .then((ok) => {
-      if (!ok) {
+const sharedRefresh = (): Promise<RenewOutcome> => {
+  refreshPromise ??= refreshWithRetry()
+    .then((outcome) => {
+      if (outcome === 'signedOut') {
         try {
           onAuthLost?.();
         } catch {
@@ -169,13 +215,16 @@ const tryRefresh = (): Promise<boolean> => {
           // still settles with its ORIGINAL error and the slot still releases below.
         }
       }
-      return ok;
+      return outcome;
     })
     .finally(() => {
       refreshPromise = null;
     });
   return refreshPromise;
 };
+
+/** The lazy path: did the silent refresh produce a token to retry the request with? */
+const tryRefresh = async (): Promise<boolean> => (await sharedRefresh()) === 'renewed';
 
 /**
  * Renew the session because somebody is USING it, not because a request failed.
@@ -184,7 +233,17 @@ const tryRefresh = (): Promise<boolean> => {
  * expired token at the same moment are one rotation, never two racing ones — which is the same
  * reason the lazy path shares it.
  */
-export const renewSession = (): Promise<boolean> => tryRefresh();
+export const renewSession = (): Promise<RenewOutcome> => sharedRefresh();
+
+/**
+ * The first renewal of a page load: whether a session can be resumed from the refresh cookie.
+ *
+ * The same request and the same retries as `renewSession`, so a blip or an instance swap during a
+ * deploy is ridden out instead of showing the sign-in form to someone who is still signed in. It
+ * does not raise auth loss: on the way in there is nothing to sign out of yet — the caller simply
+ * shows the sign-in form when this is not `renewed`.
+ */
+export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry();
 
 /** Run a request with one silent-refresh retry on an expired/invalid access token. */
 const withSilentRefresh = async <R>(path: string, run: () => Promise<R>): Promise<R> => {

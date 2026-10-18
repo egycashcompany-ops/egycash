@@ -48,8 +48,9 @@ describe('the two the owner asked to be named separately', () => {
     // Both used to arrive as AUTH_INVALID_CREDENTIALS, so this mapping would have been dead
     // code without the service change that goes with it.
     expect(AUTH_SERVICE).toContain('ErrorCodes.AUTH_IDENTIFIER_UNKNOWN');
-    // And the reasoning for a decision this consequential is recorded beside it.
-    expect(AUTH_SERVICE).toContain("strictLimit('auth-login')");
+    // And the reasoning for a decision this consequential is recorded beside it, naming the limit
+    // that bounds the abuse today.
+    expect(AUTH_SERVICE).toContain('AUTH_FAILED_LOGIN_LIMIT_PER_IP');
   });
 });
 

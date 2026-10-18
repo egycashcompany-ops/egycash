@@ -7,6 +7,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mongoSanitize from 'express-mongo-sanitize';
 import { env } from './infrastructure/config/env';
+import { installClientIp } from './infrastructure/http/client-ip';
+import { responseCompression } from './infrastructure/http/compression';
 import { logger } from './infrastructure/logging/logger';
 import { newRequestId, runWithContext } from './infrastructure/http/request-context';
 import { errorHandler, notFoundHandler } from './infrastructure/http/error-handler';
@@ -92,6 +94,9 @@ export const buildApp = (): Express => {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
+  // `req.ip` from the edge's own `X-Real-IP`, not the client-writable X-Forwarded-For — see
+  // client-ip.ts. Before the request context below, which records it on every audit row.
+  installClientIp(app, env.CLIENT_IP_HEADER);
 
   // Request context: one requestId traces api → queue → worker (ADR-012).
   app.use((req, res, next) => {
@@ -123,6 +128,10 @@ export const buildApp = (): Express => {
       },
     );
   });
+
+  // gzip/brotli for the api's JSON and the web bundle — before every route and the static files,
+  // so it wraps them all. The auth routes are left out on purpose; see compression.ts.
+  app.use(responseCompression(env.BASE_PATH));
 
   // Helmet's defaults, with ONE directive widened.
   //

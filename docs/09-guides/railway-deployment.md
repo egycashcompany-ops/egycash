@@ -104,6 +104,57 @@ downloadable PDF is skipped.
 
 3. Open `https://<app-domain>` → log in with the seeded admin.
 
+## 4a. Indexes — built before every deploy
+
+`autoIndex` is off in production, so the indexes the schemas declare exist only if something
+builds them. `railway.json` runs the index sync as the **app**'s pre-deploy command, in its own
+container with the app's variables, before the new deployment starts:
+
+```bash
+npm run db:sync-indexes -w apps/api      # = node apps/api/dist/sync-indexes.cli.js
+```
+
+| `INDEX_SYNC_MODE` | What the pre-deploy step does |
+|---|---|
+| `report` (default) | Lists every missing index in the deploy log — `index sync: would build` — and builds nothing. |
+| `apply` | Builds the missing indexes one at a time — `index sync: built`. |
+
+Neither mode drops or changes an index. A unique index that existing rows violate is **not**
+built: a warning, `index sync: unique index NOT built — existing rows violate it`, names the
+collection, the index and up to five document ids per duplicate group (never the duplicated
+values) for someone to resolve; the deploy goes on. For a new TTL index the report says how many
+documents it would delete the moment it exists (`wouldRemoveNow`).
+
+Two more warnings name an index the step leaves alone, in both modes:
+
+- `index NOT built — its keys are indexed under another name` (`conflictsWith`): an index already
+  on the server, built by hand or under MongoDB's default name, is the same index to MongoDB, so
+  a build under the declared name would be refused on every deploy. Someone decides whether to
+  replace it.
+- `index differs from its declaration — left as it is` (`differs`): an index has the declared
+  name but another definition. `differs` lists which of its keys, `unique`, partial filter,
+  `sparse` or TTL. The step never rebuilds it; the old definition stays in force until someone
+  does. Partial filters are compared as written, so one written in another but equivalent form (an
+  `$in` list in another order, say) shows here too.
+
+`index not built` is a build the server refused or a scan that ran out of time; its `reason` gives
+the server's error code and message, with any quoted duplicate key removed (a duplicate-key
+refusal is recorded as `existing rows violate the unique index`). `indexes not read — the
+collection was skipped` means the collection's index list could not be read for a reason other
+than the collection not existing yet; its declarations were neither reported nor built.
+
+The step never fails the deploy because of the database, a duplicate or a slow build: a database
+it cannot reach, or a run still going after ten minutes, is logged as `index sync failed` /
+`still running after ten minutes` and the deploy goes on. An invalid app environment
+(`INDEX_SYNC_MODE=APPLY`, say) fails it like any deploy; the app would not start with it either.
+Leave the app service's **Pre-deploy Timeout** empty, or set it to 660 s (eleven minutes) or more:
+a shorter one can stop the step before its own ten-minute limit, and the deploy fails.
+
+**Switching it on.** Leave `report` for the first deploy, read the summary line
+(`index sync: REPORT ONLY …`) and the warnings and `would build` lines in the deploy log — the
+duplicates, conflicts, drifted indexes and TTL counts above all — then set `INDEX_SYNC_MODE=apply`
+on the **app** service. Every deploy after that builds whatever a code change declared.
+
 ## 4b. Fleet go-live imports
 
 > **THE DEPLOY DOES THIS. There is normally nothing to run here.**
@@ -229,6 +280,7 @@ location /ecms {
     proxy_pass https://<app-service>.up.railway.app;   # no trailing URI part — path passed as-is
     proxy_set_header Host <app-service>.up.railway.app;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Client-IP $remote_addr;          # the caller, as nginx saw it — overwritten, never appended
     proxy_set_header X-Forwarded-Proto https;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;            # future websocket use
@@ -237,8 +289,19 @@ location /ecms {
 }
 ```
 
+Behind such a proxy, Railway's edge sees the proxy as the client, so its `X-Real-IP` is the
+proxy's address for everybody, and every user would share one per-IP rate-limit bucket. Set
+`CLIENT_IP_HEADER=x-client-ip` on the service: nginx writes that header itself from the address it
+saw, replacing anything the caller sent. Do not point it at `X-Forwarded-For` (or leave it empty,
+which falls back to that header's left-most entry): nginx appends to whatever the caller wrote
+there, so the caller would choose its own address. The `<app-service>.up.railway.app` host stays
+publicly reachable, and a caller who goes around nginx can send its own `X-Client-IP`; only
+restricting the service to the proxy closes that. A custom domain pointed straight at Railway, as
+production is, needs none of this: the default `x-real-ip` is right.
+
 (Apache equivalent: `ProxyPass /ecms https://<app>.up.railway.app/ecms` +
-`ProxyPreserveHost Off` + `RequestHeader set Host "<app>.up.railway.app"`.)
+`ProxyPreserveHost Off` + `RequestHeader set Host "<app>.up.railway.app"` +
+`RequestHeader set X-Client-IP "expr=%{REMOTE_ADDR}"`.)
 
 Verify after deploy: `https://egycash.com.eg/ecms/health/ready` answers `{"status":"ok"}`,
 the login page loads at `https://egycash.com.eg/ecms`, and after signing in the browser

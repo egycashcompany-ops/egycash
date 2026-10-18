@@ -1,6 +1,6 @@
 // The register's CSV export (DEC-17, spec §5.9) — streamed like the attendance export (a lean
-// cursor, `writeAndDrain`, audited after the stream), because a server-side export is the only kind
-// that is audited and the only kind that can keep the K/S columns on the server.
+// cursor, `drainingWriter`, audited after the stream), because a server-side export is the only
+// kind that is audited and the only kind that can keep the K/S columns on the server.
 //
 // P-class columns ONLY, for everybody — viewSecrets holders included: key codes, both notes columns
 // and the combination never leave in a file, whose copies nobody can audit. The headers are the
@@ -16,6 +16,8 @@ import {
 import { auditService } from '../../../platform/audit';
 import { csvEscape } from '../../../platform/audit/audit.export';
 import { scopeSelector, type AuthContext } from '../../../shared/types';
+import { drainingWriter } from '../../../shared/utils/draining-writer';
+import { isHeadRequest, streamRows, type StreamedRows } from '../../../shared/utils/stream-rows';
 import { cairoDateString } from '../shared/cairo-time';
 import { registerDateString } from './register.mapper';
 import { AtmRegisterEntryModel, type AtmRegisterEntryDoc } from './register.model';
@@ -65,13 +67,6 @@ export const registerRowToCsv = (doc: AtmRegisterEntryDoc, settings: RegisterSet
     .map((cell) => csvEscape(guardCsvFormula(cell)))
     .join(',');
 
-/** Writes `chunk`, awaiting the `drain` event under backpressure. */
-const writeAndDrain = async (res: Response, chunk: string): Promise<void> => {
-  if (!res.write(chunk)) {
-    await new Promise<void>((resolve) => res.once('drain', resolve));
-  }
-};
-
 export const streamRegisterExport = async (
   res: Response,
   ctx: AuthContext,
@@ -94,26 +89,36 @@ export const streamRegisterExport = async (
   );
   res.setHeader('Cache-Control', 'private, no-store');
 
-  // The BOM makes Excel read the Arabic as UTF-8 (the machines-page export precedent).
-  await writeAndDrain(res, `\uFEFF${REGISTER_EXPORT_HEADERS.map(csvEscape).join(',')}\n`);
-  let rowCount = 0;
-  const cursor = AtmRegisterEntryModel.find(filter)
-    .sort({ createdAt: 1, _id: 1 })
-    .lean<AtmRegisterEntryDoc[]>()
-    .cursor();
-  for await (const doc of cursor) {
-    await writeAndDrain(res, `${registerRowToCsv(doc, settings)}\n`);
-    rowCount += 1;
+  // A HEAD request gets the headers alone: see `isHeadRequest`.
+  if (isHeadRequest(res)) {
+    res.end();
+    return;
   }
-  res.end();
 
-  // Audited after the stream completes — never blocks the export itself (the audit F1 shape).
+  // Made before the first write: see `drainingWriter`. A false from it means the client has gone,
+  // and the export stops reading the cursor.
+  const write = drainingWriter(res);
+  let outcome: StreamedRows = { rowCount: 0, completed: false };
+  if (await write(`\uFEFF${REGISTER_EXPORT_HEADERS.map(csvEscape).join(',')}\n`)) {
+    const cursor = AtmRegisterEntryModel.find(filter)
+      .sort({ createdAt: 1, _id: 1 })
+      .lean<AtmRegisterEntryDoc[]>()
+      .cursor();
+    outcome = await streamRows(cursor, write, (doc) => `${registerRowToCsv(doc, settings)}\n`);
+  }
+  if (outcome.failure === undefined) res.end();
+
+  // Audited after the stream completes — never blocks the export itself (the audit F1 shape). A
+  // download the client left part-way, or that a failed read stopped, is audited too, with the rows
+  // written before it ended (`streamRows`); a failure is rethrown after.
   await auditService.record({
     entityRef: { moduleId: 'atm', entityType: 'registerEntry', entityId: 'export' },
     action: 'export',
     changes: [
-      { field: 'rowCount', old: null, new: rowCount },
+      { field: 'rowCount', old: null, new: outcome.rowCount },
+      { field: 'completed', old: null, new: outcome.completed },
       { field: 'filter', old: null, new: JSON.stringify(query) },
     ],
   });
+  if (outcome.failure !== undefined) throw outcome.failure;
 };

@@ -173,6 +173,19 @@ describe('F1/F3 — audited CSV export', () => {
     expect(items.length).toBeGreaterThan(0);
     const rowCountField = items[0]?.changes.find((c) => c.field === 'rowCount');
     expect(rowCountField).toBeDefined();
+    // A download that ran to the end says so; one the client left part-way says false.
+    expect(items[0]?.changes.find((c) => c.field === 'completed')?.new).toBe(true);
+  });
+
+  it('answers a HEAD request with the headers alone, reading and auditing nothing', async () => {
+    const exportsSoFar = () => AuditLogModel.countDocuments({ action: 'export' }).exec();
+    const before = await exportsSoFar();
+    const head = await request(app)
+      .head('/api/v1/platform/audit-logs/export')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(head.status).toBe(200);
+    expect(head.headers['content-type']).toContain('text/csv');
+    expect(await exportsSoFar()).toBe(before);
   });
 
   it('denies export without auditLog.export and audits the denial', async () => {

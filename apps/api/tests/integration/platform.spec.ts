@@ -5,6 +5,7 @@
 // password policy. Runs against a real in-memory Mongo REPLICA SET (transactions).
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { authenticator } from 'otplib';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { platformPermissions, SettingKeys, type JobTitleDto, type MeDto } from '@ecms/contracts';
@@ -15,6 +16,8 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { SessionModel } from '../../src/platform/auth/session.model';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { FAILED_SIGN_IN_WINDOW_SECONDS } from '../../src/platform/auth/failed-sign-ins';
 import { env } from '../../src/infrastructure/config/env';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
@@ -1374,6 +1377,22 @@ describe('refresh rotation with reuse detection (ADR-006)', () => {
     const afterRevoke = await request(app).post('/api/v1/auth/refresh').set('Cookie', secondCookie);
     expect(afterRevoke.status).toBe(401);
   });
+
+  it('refuses every replay, but reports only the first few, so one stolen cookie cannot flood the alerts', async () => {
+    const login = await doLogin('admin@ecms.local', PASSWORD);
+    const firstCookie = (login.cookie ?? '').split(';')[0] ?? '';
+    const refreshed = await request(app).post('/api/v1/auth/refresh').set('Cookie', firstCookie);
+    expect(refreshed.status).toBe(200);
+
+    const reports = () => AuditLogModel.countDocuments({ action: 'refreshReuse' }).exec();
+    const before = await reports();
+    for (let i = 0; i < 8; i += 1) {
+      const replay = await request(app).post('/api/v1/auth/refresh').set('Cookie', firstCookie);
+      expect(replay.status).toBe(401);
+      expect((replay.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_REVOKED');
+    }
+    expect((await reports()) - before).toBe(5);
+  });
 });
 
 /**
@@ -1551,12 +1570,283 @@ describe('TOTP 2FA enforced for privileged accounts (Review R13)', () => {
 });
 
 describe('rate limiting (API Standards §9)', () => {
-  it('throttles repeated login attempts per IP', async () => {
+  /** A plain active account (no role, no TOTP) that signs in with PASSWORD. */
+  const activeUser = async (email: string): Promise<string> => {
+    const { user } = await userService.create(
+      {
+        email,
+        firstName: { ar: 'ض', en: 'R' },
+        lastName: { ar: 'ض', en: 'L' },
+        locale: 'en',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      adminId,
+    );
+    await userService.setPassword(String(user._id), PASSWORD, 'passwordReset');
+    await userService.forceActivate(String(user._id));
+    return String(user._id);
+  };
+
+  /** A sign-in sent as if from `address`, the way Railway's edge states it (X-Real-IP). */
+  const loginFrom = (address: string, email: string, password: string) =>
+    request(app).post('/api/v1/auth/login').set('X-Real-IP', address).send({ email, password });
+
+  /**
+   * Failed sign-ins are counted in fixed slots of the clock, so a test that counts up to the limit
+   * must not run across the edge of a slot, where the count starts again. Near an edge, wait it out.
+   */
+  const clearOfSlotEdge = async (): Promise<void> => {
+    const slotMs = FAILED_SIGN_IN_WINDOW_SECONDS * 1000;
+    const left = slotMs - (Date.now() % slotMs);
+    if (left < 20_000) await new Promise((resolve) => setTimeout(resolve, left + 100));
+  };
+
+  const refreshCookieOf = (response: request.Response): string => {
+    const issued = [response.headers['set-cookie']]
+      .flat()
+      .find((c) => typeof c === 'string' && c.startsWith('ecms_refresh='));
+    return (issued ?? '').split(';')[0] ?? '';
+  };
+
+  it('throttles repeated login attempts on one account', async () => {
     let lastStatus = 200;
     for (let i = 0; i < 12; i += 1) {
       const response = await request(app)
         .post('/api/v1/auth/login')
         .send({ email: 'nobody@ecms.local', password: 'Wrong#Pass1x' });
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it('limits each account on its own, so colleagues behind one office address are not blocked together', async () => {
+    // Every request in this suite comes from the same address — an office behind one NAT. Each
+    // test starts with empty buckets, so first one account is tried until it is limited.
+    for (let i = 0; i < 10; i += 1) {
+      await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'tried-too-often@ecms.local', password: 'Wrong#Pass1x' });
+    }
+    const limited = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'tried-too-often@ecms.local', password: 'Wrong#Pass1x' });
+    expect(limited.status).toBe(429);
+    // Fifteen different people signing in from the same address are not held back by it.
+    const statuses: number[] = [];
+    for (let i = 0; i < 15; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: `colleague-${String(i)}@ecms.local`, password: 'Wrong#Pass1x' });
+      statuses.push(response.status);
+    }
+    expect(statuses).not.toContain(429);
+  });
+
+  it('limits renewal per session: a runaway session is cut off, another session from the same address is not', async () => {
+    // No refresh cookie: only the generous per-IP ceiling applies, so the bootstrap renewal that
+    // every public page load sends cannot use up anybody's session budget.
+    for (let i = 0; i < 70; i += 1) {
+      const response = await request(app).post('/api/v1/auth/refresh');
+      expect(response.status).not.toBe(429);
+    }
+    // A real session: every renewal rotates the cookie, and the next request carries the new one,
+    // exactly as a browser does. 60 renewals per 5 minutes, then 429.
+    const renewerId = await activeUser('renewer@ecms.local');
+    const signedIn = await doLogin('renewer@ecms.local', PASSWORD);
+    expect(signedIn.status).toBe(200);
+    let cookie = (signedIn.cookie ?? '').split(';')[0] ?? '';
+    for (let i = 0; i < 60; i += 1) {
+      const renewed = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+      expect(renewed.status).toBe(200);
+      const next = refreshCookieOf(renewed);
+      expect(next).not.toBe(cookie);
+      cookie = next;
+    }
+    const refused = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(refused.status).toBe(429);
+    expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+    // Refused, not ended: no new cookie, and the session is still there to carry on with.
+    expect(refreshCookieOf(refused)).toBe('');
+    const session = await SessionModel.findOne({ userId: renewerId }).exec();
+    expect(session).not.toBeNull();
+    expect(session?.revokedAt ?? null).toBeNull();
+
+    // Another session from the same address renews.
+    const otherSignIn = await doLogin('renewer@ecms.local', PASSWORD);
+    const other = await request(app)
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', (otherSignIn.cookie ?? '').split(';')[0] ?? '');
+    expect(other.status).toBe(200);
+  });
+
+  it('limits TOTP codes per ACCOUNT, however many challenge tokens fresh sign-ins hand out', async () => {
+    const secret = authenticator.generateSecret();
+    const holderId = await activeUser('totp-holder@ecms.local');
+    await userService.setTotp(holderId, { enabled: true, secret, backupCodeHashes: [] });
+    const wrongCode = authenticator.generate(secret) === '000000' ? '111111' : '000000';
+
+    // Three password sign-ins, three challenge tokens. A token carries its issue time in whole
+    // seconds, so the sign-ins are a second apart to make the tokens differ.
+    const tokens: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 1_100));
+      const signIn = await doLogin('totp-holder@ecms.local', PASSWORD);
+      expect(signIn.body.data?.totpRequired).toBe(true);
+      tokens.push(signIn.body.data?.challengeToken ?? '');
+    }
+    expect(new Set(tokens).size).toBe(3);
+
+    // Wrong codes spread over the three tokens: ten are checked for the account, then 429.
+    const statuses: number[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/totp/challenge')
+        .send({ challengeToken: tokens[i % 3], code: wrongCode });
+      statuses.push(response.status);
+    }
+    expect(statuses).toEqual([...Array<number>(10).fill(401), 429, 429]);
+
+    // A colleague's account, from the same address, is unaffected...
+    const colleagueSecret = authenticator.generateSecret();
+    const colleagueId = await activeUser('totp-colleague@ecms.local');
+    await userService.setTotp(colleagueId, {
+      enabled: true,
+      secret: colleagueSecret,
+      backupCodeHashes: [],
+    });
+    // ...even by a token forged in the colleague's name. It is not signed by this server, so it
+    // spends a bucket of its own and none of the colleague's guesses.
+    const forged = jwt.sign({ sub: colleagueId, typ: 'totp-challenge' }, 'not-this-servers-secret');
+    // Nor by a plain string spelled like an account's bucket key: a token that does not verify is
+    // hashed under its own prefix, so no string sent as a token can reach an account's bucket.
+    for (const challengeToken of [forged, `account:${colleagueId}`, `totp:${colleagueId}`]) {
+      for (let i = 0; i < 11; i += 1) {
+        await request(app)
+          .post('/api/v1/auth/totp/challenge')
+          .send({ challengeToken, code: '000000' });
+      }
+    }
+    const colleagueSignIn = await doLogin('totp-colleague@ecms.local', PASSWORD);
+    const colleagueCode = await request(app)
+      .post('/api/v1/auth/totp/challenge')
+      .send({
+        challengeToken: colleagueSignIn.body.data?.challengeToken ?? '',
+        code: authenticator.generate(colleagueSecret),
+      });
+    expect(colleagueCode.status).toBe(200);
+  });
+
+  it('limits starting a TOTP enrolment per ACCOUNT too, not per enrolment token', async () => {
+    const enrolleeId = await activeUser('totp-enrollee@ecms.local');
+    await userService.setTotpRequired(enrolleeId, true);
+    const tokens: string[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 1_100));
+      const signIn = await doLogin('totp-enrollee@ecms.local', PASSWORD);
+      expect(signIn.body.data?.enrollmentRequired).toBe(true);
+      tokens.push(signIn.body.data?.challengeToken ?? '');
+    }
+    expect(new Set(tokens).size).toBe(2);
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/totp/enroll-challenge')
+        .send({ challengeToken: tokens[i % 2] });
+      statuses.push(response.status);
+    }
+    expect(statuses.slice(0, 10).every((status) => status !== 429)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+
+  it('refuses every sign-in from an address once it has used up its failed sign-ins, even with the right password', async () => {
+    await clearOfSlotEdge();
+    await activeUser('office-worker@ecms.local');
+    const limit = env.AUTH_FAILED_LOGIN_LIMIT_PER_IP;
+    for (let i = 0; i < limit; i += 1) {
+      // A different identifier each time, so no per-account limit is what refuses them.
+      const guess = await loginFrom('203.0.113.40', `guess-${String(i)}@ecms.local`, PASSWORD);
+      expect(guess.status).toBe(401);
+    }
+    const right = await loginFrom('203.0.113.40', 'office-worker@ecms.local', PASSWORD);
+    expect(right.status).toBe(429);
+    expect(Number(right.headers['retry-after'])).toBeGreaterThan(0);
+
+    // Another address is unaffected.
+    const elsewhere = await loginFrom('203.0.113.41', 'office-worker@ecms.local', PASSWORD);
+    expect(elsewhere.status).toBe(200);
+  });
+
+  it('counts only refused credentials: successful sign-ins and a locked account do not count', async () => {
+    await clearOfSlotEdge();
+    await activeUser('signs-in-fine@ecms.local');
+    const lockedId = await activeUser('locked-colleague@ecms.local');
+    await userService.recordFailedLogin(lockedId, 1, 15);
+    const limit = env.AUTH_FAILED_LOGIN_LIMIT_PER_IP;
+    for (let i = 0; i < limit - 1; i += 1) {
+      const guess = await loginFrom('203.0.113.42', `typo-${String(i)}@ecms.local`, PASSWORD);
+      expect(guess.status).toBe(401);
+    }
+    for (let i = 0; i < 5; i += 1) {
+      const fine = await loginFrom('203.0.113.42', 'signs-in-fine@ecms.local', PASSWORD);
+      expect(fine.status).toBe(200);
+      const locked = await loginFrom('203.0.113.42', 'locked-colleague@ecms.local', PASSWORD);
+      expect(locked.body.error?.code).toBe('AUTH_ACCOUNT_LOCKED');
+    }
+    // The last failure the address has left is still answered...
+    const last = await loginFrom('203.0.113.42', 'one-more-typo@ecms.local', PASSWORD);
+    expect(last.status).toBe(401);
+    // ...and only then is the address refused.
+    const after = await loginFrom('203.0.113.42', 'signs-in-fine@ecms.local', PASSWORD);
+    expect(after.status).toBe(429);
+  });
+
+  it('counts wrong passwords on real accounts too, so spraying passwords is limited per address', async () => {
+    await clearOfSlotEdge();
+    const limit = env.AUTH_FAILED_LOGIN_LIMIT_PER_IP;
+    // Three wrong passwords per account at most, well under the lockout, so every answer is a
+    // plain refusal of the credentials and none of them is a lockout.
+    const perAccount = 3;
+    const accounts: string[] = [];
+    for (let i = 0; i < Math.ceil(limit / perAccount); i += 1) {
+      const email = `sprayed-${String(i)}@ecms.local`;
+      await activeUser(email);
+      accounts.push(email);
+    }
+    for (let i = 0; i < limit; i += 1) {
+      const guess = await loginFrom('203.0.113.70', accounts[i % accounts.length] ?? '', 'Wrong#Pass1x');
+      expect(guess.status).toBe(401);
+      expect((guess.body as { error?: { code?: string } }).error?.code).toBe('AUTH_INVALID_CREDENTIALS');
+    }
+    const right = await loginFrom('203.0.113.70', accounts[0] ?? '', PASSWORD);
+    expect(right.status).toBe(429);
+    // The account itself is fine: from another address its owner signs in.
+    const owner = await loginFrom('203.0.113.71', accounts[0] ?? '', PASSWORD);
+    expect(owner.status).toBe(200);
+  });
+
+  it('counts the address the edge saw (X-Real-IP), not the X-Forwarded-For the caller writes', async () => {
+    await clearOfSlotEdge();
+    // A caller that writes a fresh X-Forwarded-For on every request still comes from one address.
+    let lastStatus = 200;
+    for (let i = 0; i <= env.AUTH_FAILED_LOGIN_LIMIT_PER_IP; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .set('X-Real-IP', '203.0.113.60')
+        .set('X-Forwarded-For', `198.51.100.${String(i + 1)}`)
+        .send({ email: `rotating-${String(i)}@ecms.local`, password: 'Wrong#Pass1x' });
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it('still has a ceiling per address that counts every sign-in request, not only failed ones', async () => {
+    // Failed sign-ins have their own, lower limit, so these requests never reach a password check
+    // (no password: refused by validation). The ceiling counts them all the same.
+    let lastStatus = 200;
+    for (let i = 0; i < env.AUTH_RATE_LIMIT_PER_IP + 1; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: `spray-${String(i)}@ecms.local` });
       lastStatus = response.status;
     }
     expect(lastStatus).toBe(429);

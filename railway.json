@@ -5,6 +5,7 @@
     "buildCommand": "npm run build -w packages/contracts && npm run build -w apps/api && npm run build -w apps/web"
   },
   "deploy": {
+    "preDeployCommand": ["npm run db:sync-indexes -w apps/api"],
     "startCommand": "npm run start -w apps/api",
     "healthcheckPath": "/health/ready",
     "healthcheckTimeout": 300,

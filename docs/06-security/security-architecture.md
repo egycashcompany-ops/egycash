@@ -41,12 +41,17 @@ exist by trying addresses at the login page. It no longer does: `AUTH_IDENTIFIER
 was wrong. The owner weighed the enumeration risk against staff who could not tell why they were
 refused, and chose to name it.
 
-What carries the weight instead: the route's rate limit (**ten attempts per five minutes per
-address**, `strictLimit('auth-login')`), an audit row and an `AuthLoginFailed` event for every
-attempt, and account lockout with backoff after repeated failures. Every other account state
-(locked, suspended, never activated) already had its own code and has only become visible in the
-UI. **Revisit this if the login page is ever reachable from outside the company network**, where
-the enumeration the merge prevented becomes cheap to run at scale.
+What carries the weight instead: a limit on **failed sign-ins per address**
+(`AUTH_FAILED_LOGIN_LIMIT_PER_IP`, 30 per five minutes — an unknown identifier or a wrong
+password; once used up, every sign-in from that address is refused until the window ends, correct
+passwords included), **ten attempts per five minutes per identifier**, a ceiling of 200 sign-in
+requests per five minutes per address, an audit row and an `AuthLoginFailed` event for every
+attempt, and account lockout with backoff after repeated failures. The address is the one the
+edge saw (`X-Real-IP`), not one the caller wrote. Every other account state (locked, suspended,
+never activated) already had its own code and has only become visible in the UI. When the owner
+decided, the limit was ten sign-in attempts of any kind per address, and the decision was to be
+revisited if the login page became reachable from outside the company network. **It is**
+(ecms.egycash.com.eg), so the owner should re-confirm it with the limits above in mind.
 
 **Inactivity timeout (`SESSION_IDLE_MINUTES`, default 10; `0` switches it off).** A session whose
 `lastUsedAt` is older than the window is **revoked** at its next renewal — not merely refused,

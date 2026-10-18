@@ -938,15 +938,16 @@ two flagged counts `activeWithUnmappedBranch` / `activeWithoutBank`, exactly as 
 
 ### 5.9 Export — `register/register-export.ts`
 
-Streamed like `modules/hr/attendance/day-records/attendance-export.ts:41-45, 88-130`
-(`writeAndDrain`, lean cursor, audit after the stream). Headers `Content-Type: text/csv; charset=utf-8`,
+Streamed like `modules/hr/attendance/day-records/attendance-export.ts`
+(`drainingWriter` from `shared/utils/draining-writer.ts`, a lean cursor read through `streamRows`
+from `shared/utils/stream-rows.ts`, which closes it, audit after the stream whatever its outcome). Headers `Content-Type: text/csv; charset=utf-8`,
 `Content-Disposition: attachment; filename="atm-register-YYYY-MM-DD.csv"` (Cairo date),
 `Cache-Control: private, no-store`. First bytes: the UTF-8 BOM (`\uFEFF`). Columns: the Excel header TEXT (newlines
 replaced by a space) of every **P-class** column in A..AW order — A..I, R..AM, AP, AQ, AR, AS, AT,
 AV, AW — then `Status`. Values: branch → EGYCASH code (or empty), dates `YYYY-MM-DD`, status
 English token. Cells escaped with `csvEscape` (`platform/audit/audit.export.ts:25-28`) after the
 DEC-17 injection guard. Scope `registerScopeMatch(scopeSelector(ctx,'atmRegister.export'))` (§5.2 — the cursor reads the model directly, so it must apply the same match the repository would), same filters as the list.
-Audit after completion: `{ entityRef: { moduleId:'atm', entityType:'registerEntry', entityId:'export' }, action:'export', changes:[rowCount, filter] }`.
+Audit after the stream: `{ entityRef: { moduleId:'atm', entityType:'registerEntry', entityId:'export' }, action:'export', changes:[rowCount, completed, filter] }`. A download the client leaves part-way, or that a failed read stops, is audited too, with the rows written so far and `completed: false`.
 
 ### 5.10 Audit and realtime
 

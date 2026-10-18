@@ -111,10 +111,15 @@ feature, e.g. `WORKFLOW_TRANSITION_NOT_ALLOWED`, `SEQUENCE_EXHAUSTED`), `RATE_LI
 
 - Redis-backed limits: strict on `auth/*`, standard on writes, generous on reads; responses
   include `Retry-After`. On the staff-facing `auth/*` routes the strict limit sits on what is being
-  guessed or replayed — the account (sign-in), the one-time token (TOTP, activation), the session
-  (renewal) — with a generous per-IP ceiling on top (`AUTH_RATE_LIMIT_PER_IP`,
-  `AUTH_REFRESH_RATE_LIMIT_PER_IP`). A per-IP limit alone is shared by everyone behind one office
-  address. The client address is read from a header the edge in front of the api writes itself
+  guessed or replayed: the account (sign-in, and TOTP codes, whichever challenge token carries
+  them), the one-time token (activation), the session (renewal, counted by session id because the
+  cookie rotates). On top sit a generous per-IP ceiling on every request (`AUTH_RATE_LIMIT_PER_IP`,
+  `AUTH_REFRESH_RATE_LIMIT_PER_IP`) and a lower per-IP limit on FAILED sign-ins only
+  (`AUTH_FAILED_LOGIN_LIMIT_PER_IP`, 30 per 5 minutes), which bounds account discovery and password
+  spraying while an office signing in together is never counted. A per-IP limit on every request
+  alone is shared by everyone behind one office address. Replays of a used refresh token are
+  refused every time but reported (audit row, alert) only for the first five per session per
+  window. The client address is read from a header the edge in front of the api writes itself
   (`CLIENT_IP_HEADER`: Railway's `X-Real-IP` by default, or the subpath proxy's own header), not
   from the left-most `X-Forwarded-For`, which the caller can write.
 - A renewal the server did not refuse (429, 5xx, a dropped connection) never signs the person
@@ -122,8 +127,10 @@ feature, e.g. `WORKFLOW_TRANSITION_NOT_ALLOWED`, `SEQUENCE_EXHAUSTED`), `RATE_LI
 - Helmet-managed security headers; CORS locked to known web origins; request body size capped
   (higher only on upload routes).
 - Responses over 1 KB are compressed (brotli or gzip, whichever the client accepts), the web bundle
-  included — except the `auth/*` routes, whose bodies carry tokens (BREACH), partial (Range)
-  responses and server-sent events (`infrastructure/http/compression.ts`).
+  included — except the `auth/*` routes, whose bodies carry tokens (BREACH; matched
+  case-insensitively and with repeated slashes collapsed, as Express routes them), partial (Range)
+  responses and server-sent events (`infrastructure/http/compression.ts`). A streamed export writes
+  through `shared/utils/draining-writer.ts`, which waits on one `drain` listener per response.
 
 ## 10. Documentation
 

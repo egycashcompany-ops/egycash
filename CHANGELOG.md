@@ -11,18 +11,23 @@ its entry here in the same PR.
 
 ### Added
 
-- **Every index the schemas declare is built before each deploy.** «ابدأ نفّذ الخطوات الخمس الأولى
-  من الخطة» — step 3 of the capacity plan. `autoIndex` is off in production, so only the few
-  indexes some module built for itself existed there: a production-mode boot on an empty database
-  builds 264 of the ~640 the schemas declare (sessions had no lookup or expiry index; users and
-  employees none of their unique ones). Railway now runs `npm run db:sync-indexes -w apps/api`
-  before every app deploy. It only reports until `INDEX_SYNC_MODE=apply` is set: what is missing,
-  which unique indexes existing rows violate (by document id, never the values) and how many
-  documents a new expiry index would delete at once. It never drops an index
+- **Every index the schemas declare can now be built before each deploy (reporting only until
+  `INDEX_SYNC_MODE=apply`).** «ابدأ نفّذ الخطوات الخمس الأولى من الخطة» — step 3 of the capacity
+  plan. `autoIndex` is off in production, so only the few indexes some module built for itself
+  existed there: a production-mode boot on an empty database builds 95 of the 476 indexes the
+  schemas declare (sessions had no lookup or expiry index; users and employees none of their
+  unique ones). Railway now runs `npm run db:sync-indexes -w apps/api` before every app deploy.
+  Until `INDEX_SYNC_MODE=apply` is set it only reports: what is missing, which unique indexes
+  existing rows violate (by document id, never the values), how many documents a new expiry index
+  would delete at once, and any index whose keys are already indexed under another name or whose
+  definition differs from its declaration. It never drops or changes an index
   ([Railway deployment §4a](docs/09-guides/railway-deployment.md)).
 - **Responses are compressed.** Step 4. Brotli or gzip for everything over 1 KB — the main web
   script goes from 1.64 MB to 0.41 MB on the wire — except the sign-in routes, whose bodies carry
-  tokens.
+  tokens. The streamed CSV exports (audit log, attendance, ATM register) now wait on one `drain`
+  listener per response, which the compressed stream needs, and close their database cursor when
+  they end. A download the client leaves part-way now ends and is audited with the rows written
+  so far and `completed: false`; before, it waited forever and was never audited.
 
 - **The IT inventory is on the system.** «عندي فايل Excel فيه 10 شيتات … تسلمه الأجهزة اللى معاه …
   ولو مكتوب مخزن يبقي مش متسلم … الأفرع … خليها مش متسلمه». A one-time step with the deploy
@@ -43,11 +48,17 @@ its entry here in the same PR.
 - **A busy office no longer locks itself out of signing in.** Steps 1 and 2 of the capacity plan.
   Sign-in, TOTP and activation were limited per IP address — 10 tries in five minutes shared by
   everyone behind one office connection, and 60 renewals for all of them — and the address could
-  be rewritten by the caller. The strict limits now sit on what is being guessed or replayed (the account, the
-  one-time token, the session), with a high per-IP ceiling on top (`AUTH_RATE_LIMIT_PER_IP`,
-  `AUTH_REFRESH_RATE_LIMIT_PER_IP`), and the address is the one Railway's edge saw (`X-Real-IP`,
-  `CLIENT_IP_HEADER`). The web client signs out only when the server refuses a renewal; a rate
-  limit, a deploy or a dropped connection is retried and the person stays signed in.
+  be rewritten by the caller. The strict limits now sit on what is being guessed or replayed: the
+  account for sign-in and for TOTP codes, the one-time token for activation, and the session for
+  renewal. On top, each address has a high ceiling on every request (`AUTH_RATE_LIMIT_PER_IP`,
+  `AUTH_REFRESH_RATE_LIMIT_PER_IP`) and a lower one on failed sign-ins only
+  (`AUTH_FAILED_LOGIN_LIMIT_PER_IP`, 30 per five minutes), so finding accounts or spraying
+  passwords from one address is still bounded while successful sign-ins never count. The address
+  is the one Railway's edge saw (`X-Real-IP`, `CLIENT_IP_HEADER`). The web client signs out only
+  when the server refuses a renewal; a rate limit, a deploy or a dropped connection is retried —
+  from «stay signed in» too — and the person stays signed in. A replayed refresh token is still
+  refused every time, but only the first five replays per session per five minutes are reported,
+  so one stolen cookie cannot flood the security alerts.
 - **proxy-addr 2.0.7 → 2.0.8.** A new critical advisory
   ([GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h): IP spoofing through
   an IPv4-mapped IPv6 trust subnet) turned the dependency gate red for every pipeline. proxy-addr

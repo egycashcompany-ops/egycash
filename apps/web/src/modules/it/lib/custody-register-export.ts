@@ -11,8 +11,8 @@
 // Fleet, which needed them first, and are pure — no Fleet state, no Fleet request. Writing a
 // second copy of either here is how two exports of the same app come to look different.
 //
-// The columns are the table's, with the two codes the table stacks under a name given columns of
-// their own: in a sheet a code is something to filter and sort by, not a caption.
+// The columns are the table's, in its order, with the two codes the table stacks under a name given
+// columns of their own: in a sheet a code is something to filter and sort by, not a caption.
 import { type ItAssetAssignmentDto, type Locale, type Paginated } from '@ecms/contracts';
 import { type QueryParams } from '../../../shared/lib/api-client';
 import { formatDate } from '../../../shared/lib/format';
@@ -45,14 +45,14 @@ export const gatherCustodyRegister = (
 ): Promise<ItAssetAssignmentDto[]> =>
   fetchFilteredRows((page, pageSize) => list({ ...filtersOnly(params), page, pageSize }));
 
-/** The heading row, in the table's order. */
+/** The heading row, in the table's order — each code right after the name it belongs to. */
 export const custodyRegisterHeader = (t: Translate): string[] => [
   t('it.custody.asset'),
   t('it.custody.export.assetCode'),
+  t('it.custody.assignedAt'),
   t('it.custody.holder'),
   t('it.custody.export.holderCode'),
   t('it.assets.columns.branch'),
-  t('it.custody.assignedAt'),
   t('it.custody.expectedReturnAt'),
   t('it.assets.columns.status'),
   t('it.custody.returnedAt'),
@@ -75,10 +75,10 @@ export const custodyRegisterLine = (
     // cannot name is shown by the id the row carries rather than by a guess.
     row.assetName ?? t('it.custody.assetUnknown'),
     row.assetCode ?? empty,
+    day(row.assignedAt),
     row.assignedToEmployeeName ?? row.assignedToEmployeeId,
     row.assignedToEmployeeCode ?? empty,
     branchName.get(row.branchId) ?? empty,
-    day(row.assignedAt),
     day(row.expectedReturnAt),
     row.returnedAt === null ? t('it.custody.open') : t('it.custody.closed'),
     day(row.returnedAt),
@@ -92,13 +92,58 @@ export const custodyRegisterLine = (
   ];
 };
 
+/** The filters in force, as the printed page names them — `null` where a filter is not set. */
+export interface CustodyRegisterFilters {
+  open: CustodyOpenFilter;
+  branch: string | null;
+  holder: string | null;
+}
+
+/**
+ * The screen's filters, named for paper.
+ *
+ * A FILTER IN FORCE IS NEVER DROPPED. A register narrowed to one person or one branch that printed
+ * without saying so would read as the company's — and an empty one as «nobody holds anything
+ * anywhere». So when a filter is set and its name cannot be had, the line still says it is set:
+ *   · the holder by the gathered rows' own name first (every one of them is that person's), then
+ *     the chip's, then the id the table itself falls back to;
+ *   · the branch by name, or «فرع محدد» when the id is not among the options (a closed branch, or
+ *     options not loaded yet) — an id on paper says nothing to the reader.
+ * The status is read the way the request reads it: anything but «true» or «all» is the returned.
+ */
+export const custodyRegisterFilters = ({
+  openParam,
+  branchId,
+  branchName,
+  employeeId,
+  holderLabel,
+  rows,
+}: {
+  openParam: string;
+  branchId: string;
+  branchName: ReadonlyMap<string, string>;
+  employeeId: string;
+  holderLabel: string;
+  rows: readonly ItAssetAssignmentDto[];
+}): CustodyRegisterFilters => ({
+  open: openParam === 'all' ? 'all' : openParam === 'true' ? 'true' : 'false',
+  branch: branchId === '' ? null : (branchName.get(branchId) ?? ''),
+  holder:
+    employeeId === ''
+      ? null
+      : rows.find((row) => row.assignedToEmployeeId === employeeId)?.assignedToEmployeeName ||
+        holderLabel ||
+        employeeId,
+});
+
 /**
  * What the printed page is a view OF, under its title: the status filter, the branch, the holder
- * when one is picked, and the day it was taken — a register on paper is only true as of a date.
+ * when one is set, and the day it was taken — a register on paper is only true as of a date. A
+ * branch set but unnamed (`''`) prints as «فرع محدد».
  */
 export const custodyRegisterSubtitle = (
   t: Translate,
-  filters: { open: CustodyOpenFilter; branch: string; holder: string; asOf: string },
+  filters: CustodyRegisterFilters & { asOf: string },
 ): string =>
   [
     filters.open === 'true'
@@ -106,8 +151,12 @@ export const custodyRegisterSubtitle = (
       : filters.open === 'false'
         ? t('it.custody.filterClosed')
         : t('it.custody.filterAll'),
-    filters.branch === '' ? t('it.assets.allBranches') : filters.branch,
-    filters.holder === '' ? null : t('it.custody.export.holderIs', { name: filters.holder }),
+    filters.branch === null
+      ? t('it.assets.allBranches')
+      : filters.branch === ''
+        ? t('it.custody.export.oneBranch')
+        : filters.branch,
+    filters.holder === null ? null : t('it.custody.export.holderIs', { name: filters.holder }),
     t('it.custody.export.asOf', { date: filters.asOf }),
   ]
     .filter((part): part is string => part !== null)

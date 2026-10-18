@@ -30,16 +30,16 @@ import { AssignAssetDialog } from '../components/CustodyDialogs';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import * as api from '../api/it-api';
-import { useItAssignments, useItBranchOptions } from '../api/it-queries';
+import { useItAssignments, useItBranchOptions, useItPerson } from '../api/it-queries';
 import { saveSheet } from '../../fleet/lib/fleet-sheet';
 import {
   custodyRegisterHeader,
   custodyRegisterLine,
   custodyRegisterReport,
+  custodyRegisterFilters,
   custodyRegisterSubtitle,
   gatherCustodyRegister,
   printCustodyRegister,
-  type CustodyOpenFilter,
 } from '../lib/custody-register-export';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
@@ -105,14 +105,23 @@ export const CustodyPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useItAssignments(params);
 
-  // The chip's label. A pick supplies it directly; arriving on a deep link with only an id in the
-  // URL, the loaded rows supply it — they now carry the name, so the picker needs no resolve-by-id.
-  const [pickedLabel, setPickedLabel] = useState('');
-  const holderLabel =
-    pickedLabel !== ''
-      ? pickedLabel
-      : ((data?.items ?? []).find((a) => a.assignedToEmployeeId === employeeId)
-          ?.assignedToEmployeeName ?? '');
+  // The chip's label. A pick supplies it — kept WITH the id it was picked for, so back/forward,
+  // which changes the id underneath, makes the chip follow the URL rather than the last pick (the
+  // asset list's rule). Arriving on a link or a remembered filter with only an id, the loaded rows
+  // supply it; when no row names them — nothing matches, or HR has no name — the person is
+  // resolved by id. The printed register's filter line reads the same label.
+  const [pickedHolder, setPickedHolder] = useState({ id: '', label: '' });
+  const pickedHere = pickedHolder.id === employeeId && pickedHolder.label !== '';
+  const rowHolderName =
+    (data?.items ?? []).find((a) => a.assignedToEmployeeId === employeeId)
+      ?.assignedToEmployeeName ?? null;
+  const holderPerson = useItPerson(employeeId, !pickedHere && rowHolderName === null);
+  const holderLabel = pickedHere
+    ? pickedHolder.label
+    : (rowHolderName ??
+      (holderPerson.data === undefined
+        ? ''
+        : `${holderPerson.data.fullNameAr} (${holderPerson.data.code})`));
 
   const branches = useItBranchOptions();
   const branchName = useMemo(() => {
@@ -151,22 +160,15 @@ export const CustodyPage = (): JSX.Element => {
     try {
       const printed = await printCustodyRegister(async () => {
         const rows = await allRows();
-        // The status as the request reads it: anything but «true» or «all» asks for the returned.
-        const open: CustodyOpenFilter =
-          openParam === 'all' ? 'all' : openParam === 'true' ? 'true' : 'false';
-        // The holder's name from the chip, or — on a link carrying only the id — from the rows,
-        // every one of which is theirs.
-        const holder =
-          employeeId === ''
-            ? ''
-            : holderLabel ||
-              (rows.find((row) => row.assignedToEmployeeId === employeeId)
-                ?.assignedToEmployeeName ??
-                '');
         const subtitle = custodyRegisterSubtitle(t, {
-          open,
-          branch: branchId === '' ? '' : (branchName.get(branchId) ?? ''),
-          holder,
+          ...custodyRegisterFilters({
+            openParam,
+            branchId,
+            branchName,
+            employeeId,
+            holderLabel,
+            rows,
+          }),
           asOf: formatDate(new Date().toISOString(), locale),
         });
         return custodyRegisterReport(rows, exportContext, subtitle);
@@ -356,7 +358,7 @@ export const CustodyPage = (): JSX.Element => {
         <FilterBar
           hasActiveFilters={openParam !== 'true' || branchId !== '' || employeeId !== ''}
           onClear={() => {
-            setPickedLabel('');
+            setPickedHolder({ id: '', label: '' });
             patch({ open: null, branch: null, employee: null });
           }}
         >
@@ -393,7 +395,7 @@ export const CustodyPage = (): JSX.Element => {
             valueLabel={holderLabel}
             ariaLabel={t('it.custody.filterHolder')}
             onChange={(id, label) => {
-              setPickedLabel(label);
+              setPickedHolder({ id, label });
               patch({ employee: id || null });
             }}
           />

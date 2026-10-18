@@ -8,6 +8,7 @@ import { translate } from '../../../platform/localization/i18n';
 import { formatDate } from '../../../shared/lib/format';
 import { buildFleetReportHtml } from '../../fleet/lib/fleet-report-print';
 import {
+  custodyRegisterFilters,
   custodyRegisterHeader,
   custodyRegisterLine,
   custodyRegisterReport,
@@ -90,14 +91,14 @@ describe('the rows the files hold', () => {
 });
 
 describe('the register’s columns', () => {
-  it('are the table’s, with the two codes in columns of their own', () => {
+  it('are the table’s, in its order, with the two codes in columns of their own', () => {
     expect(custodyRegisterHeader(t)).toEqual([
       'الصنف',
       'كود الصنف',
+      'تاريخ التسليم',
       'المستلِم',
       'كود الموظف',
       'الفرع',
-      'تاريخ التسليم',
       'موعد الإعادة',
       'الحالة',
       'تاريخ الاسترجاع',
@@ -109,10 +110,10 @@ describe('the register’s columns', () => {
     expect(custodyRegisterLine(interval(), context, '')).toEqual([
       'لاب توب Lenovo',
       'AST-00012',
+      formatDate('2026-10-07T09:00:00.000Z', 'ar'),
       'محمد أحمد علي',
       '0100052',
       'المهندسين',
-      formatDate('2026-10-07T09:00:00.000Z', 'ar'),
       '',
       'مُسلَّم',
       '',
@@ -130,8 +131,8 @@ describe('the register’s columns', () => {
       context,
       '—',
     );
-    expect(line.slice(5)).toEqual([
-      formatDate('2026-10-07T09:00:00.000Z', 'ar'),
+    expect(line[2]).toBe(formatDate('2026-10-07T09:00:00.000Z', 'ar'));
+    expect(line.slice(6)).toEqual([
       formatDate('2026-12-01T00:00:00.000Z', 'ar'),
       'مُسترجَع',
       formatDate('2026-11-20T00:00:00.000Z', 'ar'),
@@ -156,9 +157,9 @@ describe('the register’s columns', () => {
     expect(line[0]).toBe('خارج نطاقك');
     expect(line[1]).toBe('—');
     // A holder HR cannot name is shown by the id the row carries.
-    expect(line[2]).toBe('e-1');
-    expect(line[3]).toBe('—');
+    expect(line[3]).toBe('e-1');
     expect(line[4]).toBe('—');
+    expect(line[5]).toBe('—');
     expect(line[9]).toBe('—');
   });
 });
@@ -175,13 +176,79 @@ describe('what the printed page says it is a view of', () => {
     ).toBe('المُسلَّم حاليًا · المهندسين · المستلِم: محمد أحمد علي · بتاريخ ١٨ أكتوبر ٢٠٢٦');
   });
 
-  it('says «every branch» when none is picked, and leaves out a holder nobody picked', () => {
-    expect(custodyRegisterSubtitle(t, { open: 'all', branch: '', holder: '', asOf: 'اليوم' })).toBe(
-      'الكل · كل الفروع · بتاريخ اليوم',
-    );
+  it('says «every branch» when none is set, and leaves out a holder nobody set', () => {
     expect(
-      custodyRegisterSubtitle(t, { open: 'false', branch: '', holder: '', asOf: 'اليوم' }),
+      custodyRegisterSubtitle(t, { open: 'all', branch: null, holder: null, asOf: 'اليوم' }),
+    ).toBe('الكل · كل الفروع · بتاريخ اليوم');
+    expect(
+      custodyRegisterSubtitle(t, { open: 'false', branch: null, holder: null, asOf: 'اليوم' }),
     ).toBe('المُسترجَع · كل الفروع · بتاريخ اليوم');
+  });
+
+  it('never says «every branch» for a branch that is set but has no name to print', () => {
+    expect(
+      custodyRegisterSubtitle(t, { open: 'true', branch: '', holder: null, asOf: 'اليوم' }),
+    ).toBe('المُسلَّم حاليًا · فرع محدد · بتاريخ اليوم');
+  });
+});
+
+describe('the filters the printed page names', () => {
+  const screen = {
+    openParam: 'true',
+    branchId: '',
+    branchName: context.branchName,
+    employeeId: '',
+    holderLabel: '',
+    rows: [interval()],
+  };
+
+  it('are the ones in force, by name', () => {
+    expect(custodyRegisterFilters({ ...screen, branchId: 'b-hq', employeeId: 'e-1' })).toEqual({
+      open: 'true',
+      branch: 'المهندسين',
+      holder: 'محمد أحمد علي',
+    });
+    expect(custodyRegisterFilters(screen)).toEqual({ open: 'true', branch: null, holder: null });
+  });
+
+  it('read the status as the request does: anything but «true» or «all» is the returned', () => {
+    expect(custodyRegisterFilters({ ...screen, openParam: 'all' }).open).toBe('all');
+    expect(custodyRegisterFilters({ ...screen, openParam: 'false' }).open).toBe('false');
+    expect(custodyRegisterFilters({ ...screen, openParam: 'nonsense' }).open).toBe('false');
+  });
+
+  it('name the holder by the rows before a chip that may be stale after Back', () => {
+    // The chip still says the last pick; the URL — and so every row — is somebody else's.
+    expect(
+      custodyRegisterFilters({ ...screen, employeeId: 'e-1', holderLabel: 'سيد حسن (0100099)' })
+        .holder,
+    ).toBe('محمد أحمد علي');
+  });
+
+  it('keep a holder filter that matched nothing, by the chip or else by the id', () => {
+    // Somebody who has returned everything: no row to name them, and the paper must not read as
+    // «nobody in the company holds anything».
+    expect(
+      custodyRegisterFilters({
+        ...screen,
+        employeeId: 'e-7',
+        holderLabel: 'سيد حسن (0100099)',
+        rows: [],
+      }).holder,
+    ).toBe('سيد حسن (0100099)');
+    expect(custodyRegisterFilters({ ...screen, employeeId: 'e-7', rows: [] }).holder).toBe('e-7');
+    // …and a holder HR cannot name, on rows that are theirs.
+    expect(
+      custodyRegisterFilters({
+        ...screen,
+        employeeId: 'e-1',
+        rows: [interval({ assignedToEmployeeName: null })],
+      }).holder,
+    ).toBe('e-1');
+  });
+
+  it('keep a branch filter whose name is not among the options', () => {
+    expect(custodyRegisterFilters({ ...screen, branchId: 'b-closed' }).branch).toBe('');
   });
 });
 

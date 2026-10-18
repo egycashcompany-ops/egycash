@@ -134,7 +134,8 @@ Two more warnings name an index the step leaves alone, in both modes:
 - `index differs from its declaration — left as it is` (`differs`): an index has the declared
   name but another definition. `differs` lists which of its keys, `unique`, partial filter,
   `sparse` or TTL. The step never rebuilds it; the old definition stays in force until someone
-  does.
+  does. Partial filters are compared as written, so one written in another but equivalent form (an
+  `$in` list in another order, say) shows here too.
 
 `index not built` is a build the server refused or a scan that ran out of time; its `reason` gives
 the server's error code and message, with any quoted duplicate key removed (a duplicate-key

@@ -133,6 +133,21 @@ export const isDuplicateKeyError = (error: unknown): boolean => {
 };
 
 /**
+ * The server's own word that an equivalent index already exists under another name
+ * (IndexOptionsConflict). The check before the build catches the usual cases; this is the backstop
+ * for one it cannot see, so the index is reported as a conflict instead of failing every deploy.
+ * The other index's name is taken from the message when it is there.
+ */
+export const conflictingIndexName = (error: unknown): string | null => {
+  const e = (typeof error === 'object' && error !== null ? error : {}) as ServerErrorFields;
+  if (e.code !== 85 && e.codeName !== 'IndexOptionsConflict') return null;
+  const message = typeof e.message === 'string' ? e.message : '';
+  const named = [...message.matchAll(/name: "([^"]+)"/g)].at(-1)?.[1];
+  const plain = /different name: ([\w.$-]+)/.exec(message)?.[1];
+  return named ?? plain ?? 'an index under another name';
+};
+
+/**
  * A server error as it may be written to the deploy log: the error's code and name, and its
  * message with anything from `dup key:` on cut off, since that part quotes the key's values.
  */
@@ -191,21 +206,25 @@ const DISTINGUISHING: readonly IndexProperty[] = ['unique', 'partialFilterExpres
  * A live index under another name that the server counts as the same index as the declaration:
  * the same keys in the same order, partial filter, uniqueness and sparseness. `createIndex` is
  * refused for it with IndexOptionsConflict, whatever else the two differ in (a TTL, say). The same
- * keys with a different filter or uniqueness can coexist, and are built, and so can one with a
- * collation: no declaration carries one, so a live index that has it is a different index.
+ * keys with a different filter or uniqueness can coexist, and are built, and so can one whose
+ * collation is not the collection's default: no declaration carries a collation of its own.
  */
 export const sameIndexUnderAnotherName = (
   entry: IndexPlanEntry,
   live: readonly LiveIndex[],
-): LiveIndex | undefined =>
-  live.find(
+): LiveIndex | undefined => {
+  // A collection created with a default collation gives it to every index, the one about to be
+  // built included, so a live index is the same index when its collation is the collection's.
+  const collectionCollation = stable(live.find((i) => i.name === '_id_')?.collation ?? null);
+  return live.find(
     (index) =>
       index.name !== '_id_' &&
       index.name !== indexNameOf(entry) &&
-      index.collation === undefined &&
+      stable(index.collation ?? null) === collectionCollation &&
       sameKeyPattern(entry, index) &&
       !differences(entry, index).some((property) => DISTINGUISHING.includes(property)),
   );
+};
 
 /**
  * Up to five groups of rows that share a key the unique index would refuse, each as up to five
@@ -380,7 +399,12 @@ export const syncDeclaredIndexes = async (
         if (typeof entry.options['expireAfterSeconds'] === 'number') {
           missing.ttl = {
             seconds: entry.options['expireAfterSeconds'],
-            wouldRemoveNow: await expiredNow(model, entry),
+            // Only information: in apply mode a count that fails (a slow or huge collection) must
+            // not cost the build, or the expiry index that would shrink it is never built.
+            wouldRemoveNow:
+              mode === 'apply'
+                ? await expiredNow(model, entry).catch(() => null)
+                : await expiredNow(model, entry),
           };
         }
         if (mode === 'report') {
@@ -397,6 +421,12 @@ export const syncDeclaredIndexes = async (
         if (refusal === null) {
           live.push(asLive(index, entry));
           report.built.push(key);
+          continue;
+        }
+        const conflictsWith = conflictingIndexName(refusal.error);
+        if (conflictsWith !== null) {
+          report.missing.pop();
+          report.conflicts.push({ collection, index, conflictsWith });
           continue;
         }
         if (!entry.unique || !isDuplicateKeyError(refusal.error)) throw refusal.error;

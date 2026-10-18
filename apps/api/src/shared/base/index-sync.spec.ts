@@ -14,6 +14,7 @@ import {
   registeredModels,
   reportLines,
   reportSummary,
+  conflictingIndexName,
   sameIndexUnderAnotherName,
   type IndexSyncReport,
   type LiveIndex,
@@ -193,6 +194,15 @@ describe('the same keys under another name', () => {
     expect(sameIndexUnderAnotherName(entry, [other])).toBe(other);
   });
 
+  it('counts a live index with the collection default collation as the same index', () => {
+    const entry = planned({ email: 1 }, { name: 'ix_email' });
+    const ar = { locale: 'ar' };
+    const twin: LiveIndex = { name: 'email_1', key: { email: 1 }, collation: ar };
+    expect(
+      sameIndexUnderAnotherName(entry, [{ name: '_id_', key: { _id: 1 }, collation: ar }, twin]),
+    ).toBe(twin);
+  });
+
   it('leaves out a live index with a collation — the server keeps both, so the declaration is built', () => {
     const entry = planned({ email: 1 }, { name: 'ix_email' });
     const collated: LiveIndex = { name: 'email_1', key: { email: 1 }, collation: { locale: 'ar' } };
@@ -277,5 +287,26 @@ describe('the deploy log lines', () => {
     expect(reportSummary(reported).msg).toBe(
       'index sync: REPORT ONLY — nothing was built; set INDEX_SYNC_MODE=apply to build',
     );
+  });
+});
+
+describe('a conflict the server reports at build time', () => {
+  it('is recognised by its code, and names the other index when the message does', () => {
+    const plain = { code: 85, message: 'Index already exists with a different name: email_1' };
+    expect(conflictingIndexName(plain)).toBe('email_1');
+    const detailed = {
+      codeName: 'IndexOptionsConflict',
+      message:
+        'An equivalent index already exists with a different name and options. Requested index: { v: 2, key: { email: 1 }, name: "ix_email" }, existing index: { v: 2, key: { email: 1 }, name: "email_1" }',
+    };
+    expect(conflictingIndexName(detailed)).toBe('email_1');
+    expect(conflictingIndexName({ code: 85, message: 'something else' })).toBe(
+      'an index under another name',
+    );
+  });
+
+  it('is not any other error', () => {
+    expect(conflictingIndexName({ code: 11000, message: 'E11000 duplicate key' })).toBe(null);
+    expect(conflictingIndexName(new Error('boom'))).toBe(null);
   });
 });

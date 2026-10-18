@@ -269,13 +269,41 @@ describe('the duplicate check', () => {
     const model = declare((schema) => {
       schema.index({ email: 1 }, { unique: true, sparse: true, name: 'ux_email_sparse' });
     });
-    await model.collection.insertMany([{ userId: 'a' }, { userId: 'b' }, { email: 'x@example.com' }] as never);
+    await model.collection.insertMany([
+      { userId: 'a' },
+      { userId: 'b' },
+      { email: 'x@example.com' },
+    ] as never);
 
     const reported = await syncDeclaredIndexes('report', [model]);
-    expect(reported.missing.find((m) => m.index === 'ux_email_sparse')?.duplicateGroups).toBe(undefined);
+    // The scan ran and found nothing — it did not fail and land the index in `failed`.
+    expect(reported.failed).toEqual([]);
+    expect(reported.missing.find((m) => m.index === 'ux_email_sparse')?.duplicateGroups).toBe(
+      undefined,
+    );
     const applied = await syncDeclaredIndexes('apply', [model]);
     expect(applied.failed).toEqual([]);
     expect(await indexNames(model)).toEqual(['_id_', 'ux_email_sparse']);
+  });
+
+  it('still finds real duplicates of a sparse unique index next to rows that leave its key out', async () => {
+    const model = declare((schema) => {
+      schema.index({ email: 1 }, { unique: true, sparse: true, name: 'ux_email_sparse' });
+    });
+    const inserted = await model.collection.insertMany([
+      { userId: 'a' },
+      { userId: 'b' },
+      { email: 'twice@example.com' },
+      { email: 'twice@example.com' },
+    ] as never);
+
+    const reported = await syncDeclaredIndexes('report', [model]);
+    const predicted = reported.missing.find((m) => m.index === 'ux_email_sparse');
+    expect(reported.failed).toEqual([]);
+    expect(predicted?.duplicateGroups).toBe(1);
+    expect(predicted?.duplicateExampleIds?.[0]?.sort()).toEqual(
+      [inserted.insertedIds[2], inserted.insertedIds[3]].map(String).sort(),
+    );
   });
 
   it('runs in report mode, with a time limit, counting rows without collecting every id', async () => {
@@ -296,7 +324,42 @@ describe('the duplicate check', () => {
     const scan = sent.find((c) => c.commandName === 'aggregate');
     expect(scan?.command).toMatchObject({ allowDiskUse: true, maxTimeMS: SCAN_TIME_LIMIT_MS });
     expect(JSON.stringify(scan?.command['pipeline'])).not.toContain('$push');
+    // The follow-up finds that fetch the ids carry the same limit.
+    const finds = sent.filter((c) => c.commandName === 'find');
+    expect(finds.length).toBeGreaterThan(0);
+    for (const find of finds) expect(find.command).toMatchObject({ maxTimeMS: SCAN_TIME_LIMIT_MS });
     expect(await indexNames(model)).toEqual(['_id_']);
+  });
+
+  it('puts the time limit on the count of rows a TTL index would remove', async () => {
+    const model = declare((schema) => {
+      schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl_expiresAt' });
+    });
+    await model.collection.insertOne({ expiresAt: new Date(Date.now() - 60_000) } as never);
+    const sent = await commandsOn(model.collection.collectionName, () =>
+      syncDeclaredIndexes('report', [model]),
+    );
+    // `countDocuments` is an aggregate on the wire.
+    const count = sent.find((c) => c.commandName === 'aggregate');
+    expect(count?.command).toMatchObject({ maxTimeMS: SCAN_TIME_LIMIT_MS });
+  });
+
+  it('builds a TTL index in apply mode even when counting what it would remove fails', async () => {
+    const model = declare((schema) => {
+      schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, name: 'ttl_expiresAt' });
+    });
+    await model.collection.insertOne({ expiresAt: new Date(Date.now() - 60_000) } as never);
+    const count = vi
+      .spyOn(model.collection, 'countDocuments')
+      .mockRejectedValue(Object.assign(new Error('operation exceeded time limit'), { code: 50 }));
+    try {
+      const applied = await syncDeclaredIndexes('apply', [model]);
+      expect(applied.failed).toEqual([]);
+      expect(applied.missing[0]?.ttl).toEqual({ seconds: 0, wouldRemoveNow: null });
+      expect(await indexNames(model)).toEqual(['_id_', 'ttl_expiresAt']);
+    } finally {
+      count.mockRestore();
+    }
   });
 
   it('does not run in apply mode unless the build is refused for a duplicate key', async () => {
@@ -402,6 +465,58 @@ describe('indexes that cannot be built as declared', () => {
     expect(applied.failed).toEqual([]);
     expect(applied.built).toEqual([]);
     expect(await indexNames(model)).toEqual(['_id_', 'expiresAt_1']);
+  });
+
+  it('sees the same index under another name on a collection with a default collation', async () => {
+    // Every index of such a collection inherits its collation, the one about to be built too, so
+    // the server counts a hand-built twin as the same index and would refuse the declared one.
+    const model = declare((schema) => {
+      schema.index({ email: 1 }, { name: 'ix_email' });
+    });
+    await mongoose.connection.db?.createCollection(model.collection.collectionName, {
+      collation: { locale: 'ar' },
+    });
+    await model.collection.createIndex({ email: 1 }, { name: 'email_1' });
+    const conflict = {
+      collection: model.collection.collectionName,
+      index: 'ix_email',
+      conflictsWith: 'email_1',
+    };
+
+    const reported = await syncDeclaredIndexes('report', [model]);
+    expect(reported.conflicts).toEqual([conflict]);
+    expect(reported.missing).toEqual([]);
+    const applied = await syncDeclaredIndexes('apply', [model]);
+    expect(applied.failed).toEqual([]);
+    expect(await indexNames(model)).toEqual(['_id_', 'email_1']);
+  });
+
+  it('records a conflict the server reports at build time as a conflict, not a failure', async () => {
+    // The check before the build cannot foresee every equivalence the server applies; when the
+    // server says IndexOptionsConflict, the index is a conflict to resolve, not a failed build.
+    const model = declare((schema) => {
+      schema.index({ email: 1 }, { name: 'ix_email' });
+    });
+    const build = vi.spyOn(model.collection, 'createIndex').mockRejectedValue(
+      Object.assign(new Error('Index already exists with a different name: email_1'), {
+        code: 85,
+        codeName: 'IndexOptionsConflict',
+      }),
+    );
+    try {
+      const applied = await syncDeclaredIndexes('apply', [model]);
+      expect(applied.failed).toEqual([]);
+      expect(applied.missing).toEqual([]);
+      expect(applied.conflicts).toEqual([
+        {
+          collection: model.collection.collectionName,
+          index: 'ix_email',
+          conflictsWith: 'email_1',
+        },
+      ]);
+    } finally {
+      build.mockRestore();
+    }
   });
 
   it('reports a name match whose definition differs as drifted, and never rebuilds it', async () => {

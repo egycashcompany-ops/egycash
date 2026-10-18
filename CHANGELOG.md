@@ -14,7 +14,7 @@ its entry here in the same PR.
 - **The ATM machines are on a map, divided into zones the branches draw themselves.** «موافق على
   المقترح كله، ابدأ». `/atm/map` «خريطة الماكينات» shows every active machine of the branches in
   reach on OpenStreetMap, coloured by zone or by bank, with filters, search and per-zone counts; a
-  branch supervisor draws, reshapes, renames, orders and deletes his branch's zones there (zones may
+  branch supervisor draws, reshapes, renames, orders and deletes their branch's zones there (zones may
   overlap, with a warning; a machine counts for the higher one in the list). `/atm/map/unlocated`
   «ماكينات بدون موقع» places the machines: a sync reads the register's two location columns (AP/AV:
   coordinates, Plus Codes, Google links), the server opens the `maps.app.goo.gl` short links once
@@ -25,6 +25,11 @@ its entry here in the same PR.
   sync, resolves the links and checks that the API host reaches Google (GM-1). The register and the
   machines' `zone` and area are not written. Five new indexes, built by `db:sync-indexes` and at boot
   ([machine map and zones](docs/12-planning/atm-map-zones.md), rollout §10.2).
+- **The IT asset list exports to Excel and PDF too.** «اعمل نفس الزرارين في شاشة الأصول» — every
+  asset the filters match, in the table's order. On both IT screens the two buttons now come before
+  the screen's own action and read just «Excel» and «PDF» («كمان عايز الزرارين قبل مش بعد زرار الـ
+  Action بتاع الفورم · كمان عايزك تشيل كلمة تصدير من الزراير»)
+  ([IT design §17](docs/12-planning/it-module-design.md)).
 - **The IT custody register exports to Excel and PDF.** «عايز يبقي فى زرارين بجانب تسليم عهدة
   بيـ Extract أكسيل و PDF للجدول المعمول (وأعتمد الفلتر طبعاً)» — beside «تسليم عهدة» on
   `/it/custody`, for everyone who can read the register. Both files hold every interval the filters

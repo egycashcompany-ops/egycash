@@ -876,3 +876,16 @@ starts only on an explicit owner GO.
   `signatories` and `orientation` became optional; every Fleet report prints as before). The tab
   opens on the click and the rows are gathered after, as the receipt does, so the browser does not
   take it for an unrequested pop-up. No API change.
+- **The asset list as Excel and PDF; the buttons before the form's action** (2026-10-18) — owner
+  request: «اعمل نفس الزرارين في شاشة الأصول · كمان عايز الزرارين قبل مش بعد زرار الـ Action بتاع
+  الفورم · كمان عايزك تشيل كلمة تصدير من الزراير». `/it/assets` gets the custody register's two
+  buttons: every asset the filters match (search, status, category, branch, holder), in the table's
+  sort and columns — الكود، الاسم، الفئة، الرقم التسلسلي، الفرع، الحالة — the workbook «الأصول-YYYY-MM-DD.xlsx»
+  and the PDF on the same report form, A4 portrait (six columns fit), its filter line naming every
+  filter in force («فئة محددة» / «فرع محدد» when the name is not among the options; the holder by
+  the chip, else the id — the asset rows do not name their holder). On both screens the pair now
+  comes BEFORE the screen's own action («تسليم عهدة», «تسجيل أصل») and reads just «Excel» and «PDF».
+  One control (`components/RegisterExportButtons.tsx`) and one shared helper
+  (`lib/register-export.ts`: the walk, the filter line, the report, the tab opened first) serve
+  both screens. Offered to every reader of the list, as the custody export and the labels are;
+  the §11 server CSV under `itAsset.export` is still unbuilt and is a separate thing.

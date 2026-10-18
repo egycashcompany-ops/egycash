@@ -1,9 +1,9 @@
 // «زرارين بجانب تسليم عهدة بيـ Extract أكسيل و PDF للجدول المعمول (وأعتمد الفلتر طبعاً)» — what
-// the custody register's files say, line by line; that they hold every row the filters match and
-// not the page on screen; and that the print opens its tab before it gathers the rows.
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MAX_PAGE_SIZE, type ItAssetAssignmentDto, type Paginated } from '@ecms/contracts';
-import { type QueryParams } from '../../../shared/lib/api-client';
+// the custody register's files say, line by line, and the filters its printed page names. That the
+// files hold every row the filters match, and that the print opens its tab before it gathers them,
+// is `register-export.spec.ts`.
+import { describe, expect, it } from 'vitest';
+import { type ItAssetAssignmentDto } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
 import { formatDate } from '../../../shared/lib/format';
 import { buildFleetReportHtml } from '../../fleet/lib/fleet-report-print';
@@ -13,8 +13,6 @@ import {
   custodyRegisterLine,
   custodyRegisterReport,
   custodyRegisterSubtitle,
-  gatherCustodyRegister,
-  printCustodyRegister,
   type CustodyRegisterContext,
 } from './custody-register-export';
 
@@ -50,44 +48,6 @@ const interval = (over: Partial<ItAssetAssignmentDto> = {}): ItAssetAssignmentDt
   createdAt: '2026-10-07T09:00:00.000Z',
   updatedAt: '2026-10-07T09:00:00.000Z',
   ...over,
-});
-
-describe('the rows the files hold', () => {
-  it('are every row the filters match, from the first page to the last, whatever page is on screen', async () => {
-    const seen: QueryParams[] = [];
-    const list = (params: QueryParams): Promise<Paginated<ItAssetAssignmentDto>> => {
-      seen.push(params);
-      const page = Number(params['page']);
-      return Promise.resolve({
-        items: [interval({ id: `a-${String(page)}` })],
-        meta: { page, pageSize: MAX_PAGE_SIZE, totalItems: 3, totalPages: 3 },
-      });
-    };
-    // The reader is on page 3 of 25 rows, narrowed to one branch's open custody, oldest first.
-    const rows = await gatherCustodyRegister(
-      {
-        page: 3,
-        pageSize: 25,
-        sortBy: 'assignedAt',
-        sortDir: 'asc',
-        open: true,
-        branchId: 'b-hq',
-        employeeId: undefined,
-      },
-      list,
-    );
-    expect(rows.map((row) => row.id)).toEqual(['a-1', 'a-2', 'a-3']);
-    expect(seen.map((params) => params['page'])).toEqual([1, 2, 3]);
-    for (const params of seen) {
-      expect(params).toMatchObject({
-        pageSize: MAX_PAGE_SIZE,
-        sortBy: 'assignedAt',
-        sortDir: 'asc',
-        open: true,
-        branchId: 'b-hq',
-      });
-    }
-  });
 });
 
 describe('the register’s columns', () => {
@@ -279,69 +239,5 @@ describe('the printed register', () => {
     const empty = buildFleetReportHtml(custodyRegisterReport([], context, ''));
     expect(empty).toContain('لا توجد سجلات مطابقة لعوامل التصفية.');
     expect(empty).not.toContain('<table>');
-  });
-});
-
-/** A tab as small as the print door needs. */
-const fakeTab = () => {
-  const written: string[] = [];
-  const tab = {
-    closed: false,
-    focus: vi.fn(),
-    print: vi.fn(),
-    close: vi.fn(),
-    addEventListener: vi.fn(),
-    setTimeout: vi.fn(),
-    document: {
-      readyState: 'complete',
-      body: { offsetHeight: 1 },
-      images: [],
-      open: vi.fn(),
-      write: (html: string) => written.push(html),
-      close: vi.fn(),
-      querySelectorAll: () => [],
-    },
-  };
-  return { tab, written };
-};
-
-describe('printing it', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('opens the tab while the click still counts, then gathers the rows, then writes the page', async () => {
-    const { tab, written } = fakeTab();
-    const order: string[] = [];
-    vi.stubGlobal('window', {
-      open: vi.fn(() => {
-        order.push('open');
-        return tab;
-      }),
-    });
-    const printed = await printCustodyRegister(async () => {
-      order.push('load');
-      return custodyRegisterReport([interval()], context, '');
-    }, 'جارٍ تجهيز سجل العهد…');
-    expect(printed).toBe(true);
-    expect(order).toEqual(['open', 'load']);
-    expect(written[0]).toContain('جارٍ تجهيز سجل العهد…');
-    expect(written.at(-1)).toContain('AST-00012');
-  });
-
-  it('gathers nothing when the browser blocked the tab, and says it did not print', async () => {
-    vi.stubGlobal('window', { open: vi.fn(() => null) });
-    const load = vi.fn();
-    expect(await printCustodyRegister(load, '')).toBe(false);
-    expect(load).not.toHaveBeenCalled();
-  });
-
-  it('closes its tab and passes the failure on when the rows cannot be gathered', async () => {
-    const { tab } = fakeTab();
-    vi.stubGlobal('window', { open: vi.fn(() => tab) });
-    await expect(
-      printCustodyRegister(() => Promise.reject(new Error('offline')), ''),
-    ).rejects.toThrow('offline');
-    expect(tab.close).toHaveBeenCalledTimes(1);
   });
 });

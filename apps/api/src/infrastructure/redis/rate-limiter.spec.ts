@@ -13,9 +13,13 @@ const fakeReq = (ip: string, subject?: string): Request =>
 /** Runs one middleware call and reports what it passed to `next`. */
 const hit = (mw: ReturnType<typeof rateLimit>, req: Request): Promise<unknown> =>
   new Promise((resolve) => {
-    mw(req, {} as Response, ((error?: unknown) => {
-      resolve(error);
-    }) as NextFunction);
+    mw(
+      req,
+      {} as Response,
+      ((error?: unknown) => {
+        resolve(error);
+      }) as NextFunction,
+    );
   });
 
 let seq = 0;

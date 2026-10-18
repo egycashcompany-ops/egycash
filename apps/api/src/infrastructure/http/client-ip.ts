@@ -22,7 +22,11 @@ export const clientIpFrom = (
 };
 
 const findDescriptor = (target: object, key: string): PropertyDescriptor | undefined => {
-  for (let proto: object | null = target; proto !== null; proto = Object.getPrototypeOf(proto) as object | null) {
+  for (
+    let proto: object | null = target;
+    proto !== null;
+    proto = Object.getPrototypeOf(proto) as object | null
+  ) {
     const descriptor = Object.getOwnPropertyDescriptor(proto, key);
     if (descriptor !== undefined) return descriptor;
   }

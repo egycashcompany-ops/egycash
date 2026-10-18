@@ -154,7 +154,8 @@ export const IdleSessionGuard = ({
           if (outcome === 'signedOut') signingOut.current = true;
           // No answer about the session — a dropped connection, a deploy, a rate limit. The
           // person stays signed in and the renewal is asked again shortly, not a cadence later.
-          else if (outcome === 'unavailable') lastRenewAt.current = lastRenewForRetry(Date.now(), idleMs);
+          else if (outcome === 'unavailable')
+            lastRenewAt.current = lastRenewForRetry(Date.now(), idleMs);
         });
       }
     };

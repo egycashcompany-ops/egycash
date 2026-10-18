@@ -63,8 +63,8 @@ describe('the address a request came from', () => {
     plain.get('/ip', (req, res) => {
       res.json({ ip: req.ip ?? null });
     });
-    expect(await ipOf(plain, { 'X-Real-IP': '203.0.113.5', 'X-Forwarded-For': '198.51.100.7' })).toBe(
-      '198.51.100.7',
-    );
+    expect(
+      await ipOf(plain, { 'X-Real-IP': '203.0.113.5', 'X-Forwarded-For': '198.51.100.7' }),
+    ).toBe('198.51.100.7');
   });
 });

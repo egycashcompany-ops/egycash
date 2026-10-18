@@ -162,7 +162,9 @@ describe('the window is the SERVER’s number', () => {
     // A dropped connection, a deploy or a rate limit says nothing about the session. Treating it
     // as a lost session signed people out mid-work; the guard now stops only on `signedOut`.
     expect(GUARD).toContain("if (outcome === 'signedOut') signingOut.current = true;");
-    expect(GUARD).toContain("else if (outcome === 'unavailable') lastRenewAt.current = lastRenewForRetry(Date.now(), idleMs);");
+    expect(GUARD).toMatch(
+      /else if \(outcome === 'unavailable'\)\s+lastRenewAt\.current = lastRenewForRetry\(Date\.now\(\), idleMs\);/,
+    );
     expect(GUARD).not.toMatch(/if \(!ok\) signingOut/);
   });
 });

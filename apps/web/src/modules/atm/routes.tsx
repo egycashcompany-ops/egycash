@@ -24,6 +24,10 @@
 //   /atm/register/import       atmRegister.import      (the one-time workbook import + settings)
 // The three register screens are built on the feature branch by their own work packages and
 // release together with these routes — the owner rule above holds at release, not per commit.
+//
+// The machine map (docs/12-planning/atm-map-zones.md §8.1) — no legacy screen:
+//   /atm/map                   atmMap.view             (the map, and its zone edit mode)
+//   /atm/map/unlocated         atmMap.view + atmMachine.locate (machines without a location)
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -41,6 +45,8 @@ import { DailyReportPage } from './pages/DailyReportPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { RegisterReportPage } from './pages/RegisterReportPage';
 import { RegisterImportPage } from './pages/RegisterImportPage';
+import { MachineMapPage } from './pages/MachineMapPage';
+import { UnlocatedMachinesPage } from './pages/UnlocatedMachinesPage';
 
 /** Every key that leads to the data-edit page (spec §7.3) — the route guard is any-of. */
 const DATA_EDIT_KEYS = [
@@ -108,6 +114,27 @@ export default function AtmRoutes(): JSX.Element {
           element={
             <RequirePermission permission="atmMachine.view">
               <MachinesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="map"
+          element={
+            <RequirePermission permission="atmMap.view">
+              <MachineMapPage />
+            </RequirePermission>
+          }
+        />
+        {/* Both keys: the screen returns coordinates and counts of the map (`atmMap.view`) and
+            every action on it places a pin (`atmMachine.locate`). The guard takes one key or
+            any-of, so the two are nested. */}
+        <Route
+          path="map/unlocated"
+          element={
+            <RequirePermission permission="atmMap.view">
+              <RequirePermission permission="atmMachine.locate">
+                <UnlocatedMachinesPage />
+              </RequirePermission>
             </RequirePermission>
           }
         />

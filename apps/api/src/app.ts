@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import mongoSanitize from 'express-mongo-sanitize';
 import { env } from './infrastructure/config/env';
 import { installClientIp } from './infrastructure/http/client-ip';
+import { responseCompression } from './infrastructure/http/compression';
 import { logger } from './infrastructure/logging/logger';
 import { newRequestId, runWithContext } from './infrastructure/http/request-context';
 import { errorHandler, notFoundHandler } from './infrastructure/http/error-handler';
@@ -127,6 +128,10 @@ export const buildApp = (): Express => {
       },
     );
   });
+
+  // gzip/brotli for the api's JSON and the web bundle — before every route and the static files,
+  // so it wraps them all. The auth routes are left out on purpose; see compression.ts.
+  app.use(responseCompression(env.BASE_PATH));
 
   // Helmet's defaults, with ONE directive widened.
   //

@@ -120,6 +120,9 @@ feature, e.g. `WORKFLOW_TRANSITION_NOT_ALLOWED`, `SEQUENCE_EXHAUSTED`), `RATE_LI
   out: the web client retries it and keeps the session. Only a 4xx refusal does.
 - Helmet-managed security headers; CORS locked to known web origins; request body size capped
   (higher only on upload routes).
+- Responses over 1 KB are compressed (brotli or gzip, whichever the client accepts), the web bundle
+  included — except the `auth/*` routes, whose bodies carry tokens (BREACH), partial (Range)
+  responses and server-sent events (`infrastructure/http/compression.ts`).
 
 ## 10. Documentation
 

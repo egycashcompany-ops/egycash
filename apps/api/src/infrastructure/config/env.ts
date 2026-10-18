@@ -143,6 +143,24 @@ const EnvSchema = z.object({
    * rule on the server are always the same number.
    */
   SESSION_IDLE_MINUTES: z.coerce.number().int().min(0).max(1440).default(10),
+  /**
+   * Ceilings PER CLIENT IP on the public auth routes, per 5 minutes — sign-in, TOTP, activation
+   * (`AUTH_RATE_LIMIT_PER_IP`) and session renewal (`AUTH_REFRESH_RATE_LIMIT_PER_IP`).
+   *
+   * Deliberately high. A whole office reaches the internet from one address, so this number is
+   * shared by everyone there: every open tab renews every 5 minutes, and people sign in again after
+   * each idle sign-out. The strict limits sit on what is actually being guessed or replayed — the
+   * account, the one-time token, the session — and are fixed in `auth.routes.ts`; these only stop
+   * one machine from spraying many accounts or sessions.
+   */
+  /**
+   * The request header the edge in front of the api writes the caller's address into. Railway's
+   * edge sets `X-Real-IP`; it is read for `req.ip` (rate limits, audit) when present, and Express's
+   * own answer is kept when it is not. Empty switches the override off.
+   */
+  CLIENT_IP_HEADER: z.string().trim().default('x-real-ip'),
+  AUTH_RATE_LIMIT_PER_IP: z.coerce.number().int().min(10).max(100_000).default(200),
+  AUTH_REFRESH_RATE_LIMIT_PER_IP: z.coerce.number().int().min(60).max(100_000).default(1500),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('false')

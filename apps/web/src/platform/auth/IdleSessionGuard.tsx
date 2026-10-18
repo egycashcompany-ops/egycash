@@ -30,6 +30,7 @@ import {
   ACTIVITY_WRITE_THROTTLE_MS,
   clearActivity,
   idleStateAt,
+  lastRenewForRetry,
   markActivity,
   readActivityAt,
   secondsLeft,
@@ -147,10 +148,13 @@ export const IdleSessionGuard = ({
       // has been — see `shouldRenew`.
       if (shouldRenew({ lastActivityAt, lastRenewAt: lastRenewAt.current, now, idleMs })) {
         lastRenewAt.current = now;
-        void renewSession().then((ok) => {
+        void renewSession().then((outcome) => {
           // A refused renewal is a session that is already gone; the api client has signed the
           // app out through its own auth-loss handler, so there is nothing to do but stop.
-          if (!ok) signingOut.current = true;
+          if (outcome === 'signedOut') signingOut.current = true;
+          // No answer about the session — a dropped connection, a deploy, a rate limit. The
+          // person stays signed in and the renewal is asked again shortly, not a cadence later.
+          else if (outcome === 'unavailable') lastRenewAt.current = lastRenewForRetry(Date.now(), idleMs);
         });
       }
     };

@@ -5,7 +5,15 @@ import {
   type SessionDto,
   type UpdateMyPreferences,
 } from '@ecms/contracts';
-import { api, del, patch, post, setAccessToken, setIdleMinutes } from '../../shared/lib/api-client';
+import {
+  api,
+  del,
+  patch,
+  post,
+  refreshAtBootstrap,
+  setAccessToken,
+  setIdleMinutes,
+} from '../../shared/lib/api-client';
 
 /** Login by ANY enabled identifier — username, employee code, or email (auth design 4.3). */
 export const loginRequest = async (identifier: string, password: string): Promise<LoginResponse> => {
@@ -89,15 +97,15 @@ export const logoutRequest = async (): Promise<void> => {
   setAccessToken(null);
 };
 
-/** Session bootstrap: try a silent refresh, then load the identity. */
+/**
+ * Session bootstrap: resume the session from the refresh cookie, then load the identity.
+ *
+ * The renewal is the shared one (`refreshAtBootstrap`), which learns the token and the idle window
+ * together and rides out a dropped connection or a deploy before giving up.
+ */
 export const bootstrapSession = async (): Promise<MeDto | null> => {
+  if ((await refreshAtBootstrap()) !== 'renewed') return null;
   try {
-    const { accessToken, idleMinutes } = await post<{
-      accessToken: string;
-      idleMinutes: number;
-    }>('/auth/refresh', {});
-    setAccessToken(accessToken);
-    setIdleMinutes(idleMinutes);
     return await fetchMe();
   } catch {
     return null;

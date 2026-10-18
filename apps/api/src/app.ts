@@ -7,6 +7,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mongoSanitize from 'express-mongo-sanitize';
 import { env } from './infrastructure/config/env';
+import { installClientIp } from './infrastructure/http/client-ip';
 import { logger } from './infrastructure/logging/logger';
 import { newRequestId, runWithContext } from './infrastructure/http/request-context';
 import { errorHandler, notFoundHandler } from './infrastructure/http/error-handler';
@@ -92,6 +93,9 @@ export const buildApp = (): Express => {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
+  // `req.ip` from the edge's own `X-Real-IP`, not the client-writable X-Forwarded-For — see
+  // client-ip.ts. Before the request context below, which records it on every audit row.
+  installClientIp(app, env.CLIENT_IP_HEADER);
 
   // Request context: one requestId traces api → queue → worker (ADR-012).
   app.use((req, res, next) => {

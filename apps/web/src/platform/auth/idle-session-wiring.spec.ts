@@ -143,13 +143,26 @@ describe('the window is the SERVER’s number', () => {
     // one cycle rather than at the next full page load.
     expect(API_CLIENT).toContain('setIdleMinutes(data.idleMinutes)');
     // …and login, TOTP and the portal all learn it at the same moment they learn the token.
-    expect(AUTH_API.match(/setIdleMinutes\(/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+    expect(AUTH_API.match(/setIdleMinutes\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    // The page-load way in resumes through the shared renewal, which is the one that learns it
+    // (asserted above) — so it is learned there too, not restated beside it.
+    expect(AUTH_API).toContain('if ((await refreshAtBootstrap()) !== \'renewed\') return null;');
+    expect(API_CLIENT).toContain('export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry();');
   });
 
   it('renews through the shared single-flight, so it cannot race the lazy refresh', () => {
     // Two rotations of a single-use refresh token read as replay server-side, which revokes the
     // session — the exact opposite of what this feature is for.
     expect(GUARD).toContain('renewSession()');
-    expect(API_CLIENT).toContain('export const renewSession = (): Promise<boolean> => tryRefresh()');
+    expect(API_CLIENT).toContain('export const renewSession = (): Promise<RenewOutcome> => sharedRefresh();');
+    expect(API_CLIENT).toContain("const tryRefresh = async (): Promise<boolean> => (await sharedRefresh()) === 'renewed';");
+  });
+
+  it('signs out only on a refusal, and retries soon when the renewal got no answer', () => {
+    // A dropped connection, a deploy or a rate limit says nothing about the session. Treating it
+    // as a lost session signed people out mid-work; the guard now stops only on `signedOut`.
+    expect(GUARD).toContain("if (outcome === 'signedOut') signingOut.current = true;");
+    expect(GUARD).toContain("else if (outcome === 'unavailable') lastRenewAt.current = lastRenewForRetry(Date.now(), idleMs);");
+    expect(GUARD).not.toMatch(/if \(!ok\) signingOut/);
   });
 });

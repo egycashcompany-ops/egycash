@@ -237,6 +237,11 @@ location /ecms {
 }
 ```
 
+Behind such a proxy, Railway's edge sees the proxy as the client, so its `X-Real-IP` is the
+proxy's address for everybody. Set `CLIENT_IP_HEADER=` (empty) on the service so the api reads the
+caller's address from the proxy's `X-Forwarded-For` instead; otherwise every user shares one
+per-IP rate-limit bucket. A custom domain pointed straight at Railway needs nothing.
+
 (Apache equivalent: `ProxyPass /ecms https://<app>.up.railway.app/ecms` +
 `ProxyPreserveHost Off` + `RequestHeader set Host "<app>.up.railway.app"`.)
 

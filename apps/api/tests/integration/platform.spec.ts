@@ -1551,12 +1551,60 @@ describe('TOTP 2FA enforced for privileged accounts (Review R13)', () => {
 });
 
 describe('rate limiting (API Standards §9)', () => {
-  it('throttles repeated login attempts per IP', async () => {
+  it('throttles repeated login attempts on one account', async () => {
     let lastStatus = 200;
     for (let i = 0; i < 12; i += 1) {
       const response = await request(app)
         .post('/api/v1/auth/login')
         .send({ email: 'nobody@ecms.local', password: 'Wrong#Pass1x' });
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
+  });
+
+  it('limits each account on its own, so colleagues behind one office address are not blocked together', async () => {
+    // Every request in this suite comes from the same address — an office behind one NAT. The
+    // account above is exhausted; fifteen different people signing in from here are not.
+    const statuses: number[] = [];
+    for (let i = 0; i < 15; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: `colleague-${String(i)}@ecms.local`, password: 'Wrong#Pass1x' });
+      statuses.push(response.status);
+    }
+    expect(statuses).not.toContain(429);
+  });
+
+  it('limits renewal per session: one session is cut off, a request with no session is not counted against it', async () => {
+    // No refresh cookie: only the generous per-IP ceiling applies, so the bootstrap renewal that
+    // every public page load sends cannot use up anybody's session budget.
+    for (let i = 0; i < 70; i += 1) {
+      const response = await request(app).post('/api/v1/auth/refresh');
+      expect(response.status).not.toBe(429);
+    }
+    // One session (one cookie) renewing far beyond any real cadence: 60 per 5 minutes, then 429.
+    let lastStatus = 200;
+    for (let i = 0; i < 61; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', 'ecms_refresh=replayed-or-runaway-session');
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
+    // A different session from the same address is unaffected.
+    const other = await request(app)
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', 'ecms_refresh=a-colleagues-session');
+    expect(other.status).not.toBe(429);
+  });
+
+  it('still stops one address from spraying many accounts, past the per-IP ceiling', async () => {
+    // Last on purpose: it spends this address's whole sign-in ceiling for the window.
+    let lastStatus = 200;
+    for (let i = 0; i < env.AUTH_RATE_LIMIT_PER_IP + 1; i += 1) {
+      const response = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: `spray-${String(i)}@ecms.local`, password: 'Wrong#Pass1x' });
       lastStatus = response.status;
     }
     expect(lastStatus).toBe(429);

@@ -109,8 +109,15 @@ feature, e.g. `WORKFLOW_TRANSITION_NOT_ALLOWED`, `SEQUENCE_EXHAUSTED`), `RATE_LI
 
 ## 9. Rate limiting & security headers
 
-- Redis-backed limits: strict on `auth/*` (per IP + per account), standard on writes, generous on
-  reads; responses include `Retry-After`.
+- Redis-backed limits: strict on `auth/*`, standard on writes, generous on reads; responses
+  include `Retry-After`. On the staff-facing `auth/*` routes the strict limit sits on what is being
+  guessed or replayed — the account (sign-in), the one-time token (TOTP, activation), the session
+  (renewal) — with a generous per-IP ceiling on top (`AUTH_RATE_LIMIT_PER_IP`,
+  `AUTH_REFRESH_RATE_LIMIT_PER_IP`). A per-IP limit alone is shared by everyone behind one office
+  address. The client address is the edge's `X-Real-IP` (`CLIENT_IP_HEADER`), never the
+  client-writable `X-Forwarded-For`.
+- A renewal the server did not refuse (429, 5xx, a dropped connection) never signs the person
+  out: the web client retries it and keeps the session. Only a 4xx refusal does.
 - Helmet-managed security headers; CORS locked to known web origins; request body size capped
   (higher only on upload routes).
 

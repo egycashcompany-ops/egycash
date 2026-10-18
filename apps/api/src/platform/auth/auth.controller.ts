@@ -20,7 +20,7 @@ import { authContext } from './auth.middleware';
 
 // The refresh cookie is scoped to the auth endpoints only (ADR-006):
 // httpOnly + Secure + SameSite=Strict, never readable by the SPA.
-const REFRESH_COOKIE = 'ecms_refresh';
+export const REFRESH_COOKIE = 'ecms_refresh';
 // Prefix-aware (subpath deployments): the cookie must match the mounted auth route.
 const REFRESH_COOKIE_PATH = `${env.BASE_PATH}/api/v1/auth`;
 

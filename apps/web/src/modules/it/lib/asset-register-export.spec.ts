@@ -72,13 +72,14 @@ describe('the asset register’s columns', () => {
     ]);
   });
 
-  it('leave a blank where the table shows a dash', () => {
+  it('leave a blank cell in the sheet where the table shows a dash', () => {
+    // '' is what the screen passes for the workbook: an empty cell, not a «—» to filter around.
     const line = assetRegisterLine(
       asset({ serialNumber: null, categoryId: 'c-gone', branchId: 'b-gone', status: 'inStock' }),
       context,
-      '—',
+      '',
     );
-    expect(line.slice(2)).toEqual(['—', '—', '—', t('it.assets.status.inStock')]);
+    expect(line.slice(2)).toEqual(['', '', '', t('it.assets.status.inStock')]);
   });
 });
 
@@ -134,7 +135,11 @@ describe('the filters the printed page names', () => {
 });
 
 describe('the printed asset register', () => {
-  const report = assetRegisterReport([asset()], context, 'كل الحالات');
+  const report = assetRegisterReport(
+    [asset(), asset({ id: 'asset-2', serialNumber: null })],
+    context,
+    'كل الحالات',
+  );
   const html = buildFleetReportHtml(report);
 
   it('is «الأصول» on the company form, portrait — six columns fit', () => {
@@ -142,5 +147,9 @@ describe('the printed asset register', () => {
     expect(report.orientation).toBe('portrait');
     expect(html).toContain('@page { size: A4 portrait; margin: 14mm; }');
     expect(html).toContain('PF3ABC12');
+  });
+
+  it('marks a blank box with a dash on paper', () => {
+    expect(report.rows[1]?.[3]).toBe('—');
   });
 });

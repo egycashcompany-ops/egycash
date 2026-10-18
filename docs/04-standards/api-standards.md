@@ -114,8 +114,9 @@ feature, e.g. `WORKFLOW_TRANSITION_NOT_ALLOWED`, `SEQUENCE_EXHAUSTED`), `RATE_LI
   guessed or replayed — the account (sign-in), the one-time token (TOTP, activation), the session
   (renewal) — with a generous per-IP ceiling on top (`AUTH_RATE_LIMIT_PER_IP`,
   `AUTH_REFRESH_RATE_LIMIT_PER_IP`). A per-IP limit alone is shared by everyone behind one office
-  address. The client address is the edge's `X-Real-IP` (`CLIENT_IP_HEADER`), never the
-  client-writable `X-Forwarded-For`.
+  address. The client address is read from a header the edge in front of the api writes itself
+  (`CLIENT_IP_HEADER`: Railway's `X-Real-IP` by default, or the subpath proxy's own header), not
+  from the left-most `X-Forwarded-For`, which the caller can write.
 - A renewal the server did not refuse (429, 5xx, a dropped connection) never signs the person
   out: the web client retries it and keeps the session. Only a 4xx refusal does.
 - Helmet-managed security headers; CORS locked to known web origins; request body size capped

@@ -256,6 +256,7 @@ location /ecms {
     proxy_pass https://<app-service>.up.railway.app;   # no trailing URI part — path passed as-is
     proxy_set_header Host <app-service>.up.railway.app;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Client-IP $remote_addr;          # the caller, as nginx saw it — overwritten, never appended
     proxy_set_header X-Forwarded-Proto https;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;            # future websocket use
@@ -265,12 +266,18 @@ location /ecms {
 ```
 
 Behind such a proxy, Railway's edge sees the proxy as the client, so its `X-Real-IP` is the
-proxy's address for everybody. Set `CLIENT_IP_HEADER=` (empty) on the service so the api reads the
-caller's address from the proxy's `X-Forwarded-For` instead; otherwise every user shares one
-per-IP rate-limit bucket. A custom domain pointed straight at Railway needs nothing.
+proxy's address for everybody, and every user would share one per-IP rate-limit bucket. Set
+`CLIENT_IP_HEADER=x-client-ip` on the service: nginx writes that header itself from the address it
+saw, replacing anything the caller sent. Do not point it at `X-Forwarded-For` (or leave it empty,
+which falls back to that header's left-most entry): nginx appends to whatever the caller wrote
+there, so the caller would choose its own address. The `<app-service>.up.railway.app` host stays
+publicly reachable, and a caller who goes around nginx can send its own `X-Client-IP`; only
+restricting the service to the proxy closes that. A custom domain pointed straight at Railway, as
+production is, needs none of this: the default `x-real-ip` is right.
 
 (Apache equivalent: `ProxyPass /ecms https://<app>.up.railway.app/ecms` +
-`ProxyPreserveHost Off` + `RequestHeader set Host "<app>.up.railway.app"`.)
+`ProxyPreserveHost Off` + `RequestHeader set Host "<app>.up.railway.app"` +
+`RequestHeader set X-Client-IP "expr=%{REMOTE_ADDR}"`.)
 
 Verify after deploy: `https://egycash.com.eg/ecms/health/ready` answers `{"status":"ok"}`,
 the login page loads at `https://egycash.com.eg/ecms`, and after signing in the browser

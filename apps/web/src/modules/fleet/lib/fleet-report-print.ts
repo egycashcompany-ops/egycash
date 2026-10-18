@@ -65,7 +65,14 @@ export interface FleetReport {
    * signed copies put it.
    */
   totalRow?: ReportTotal;
-  signatories: ReportSignatories;
+  /**
+   * Who signs it. Left out on a register nobody signs — the IT custody register's print — and the
+   * block goes with it: two «التوقيع /» lines with nobody over them would read as a form somebody
+   * forgot to fill in.
+   */
+  signatories?: ReportSignatories;
+  /** A4 portrait unless the table is too wide for it — the IT custody register's ten columns. */
+  orientation?: 'portrait' | 'landscape';
   /** The serial column's heading — «م». Passed so the caller owns every word on the page. */
   serialHeader: string;
   /** Printed when the filters matched nothing, so an empty page is still evidence. */
@@ -133,9 +140,13 @@ const pageHtml = (doc: FleetReport): string => {
       : `<table><thead><tr>${head}</tr></thead><tbody>${body}${totalRow}</tbody></table>`
   }
   ${totals === '' ? '' : `<div class="totals">${totals}</div>`}
-  <div class="signs">${signature(s.preparedByTitle, s.preparedByName)}${signature(s.approvedByTitle, s.approvedByName)}</div>
   ${
-    s.endorsementNote === '' && s.endorsedByName === ''
+    s === undefined
+      ? ''
+      : `<div class="signs">${signature(s.preparedByTitle, s.preparedByName)}${signature(s.approvedByTitle, s.approvedByName)}</div>`
+  }
+  ${
+    s === undefined || (s.endorsementNote === '' && s.endorsedByName === '')
       ? ''
       : `<div class="endorse"><div>${esc(s.endorsementNote)}</div><div class="who">${esc(s.endorsedByName)}</div><div>التوقيع / </div></div>`
   }
@@ -156,7 +167,7 @@ export const buildFleetReportsHtml = (docs: readonly FleetReport[]): string => {
   ${FONTS}
   .page + .page { break-before: page; page-break-before: always; }
   * { box-sizing: border-box; }
-  @page { size: A4 portrait; margin: 14mm; }
+  @page { size: A4 ${doc.orientation ?? 'portrait'}; margin: 14mm; }
   body { font-family: Tajawal, sans-serif; color: ${BRAND.text}; margin: 0; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .head img { height: 46px; }

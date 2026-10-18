@@ -4,6 +4,10 @@
 // answers "what do we own", and that is a different question. URL-synced so a filtered view is a
 // shareable link, and defaulting to OPEN intervals because that is what the question means; the
 // closed ones are one filter away for the times it means "who had it".
+//
+// «عايز يبقي فى زرارين بجانب تسليم عهدة بيـ Extract أكسيل و PDF للجدول المعمول (وأعتمد الفلتر
+// طبعاً)» — beside the hand-over, the register as Excel and as a printed PDF: every row the
+// filters match, in the table's order, not the page on screen (`lib/custody-register-export.ts`).
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ItAssetAssignmentDto, type Locale } from '@ecms/contracts';
@@ -18,12 +22,25 @@ import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
-import { EyeIcon, UsersIcon } from '../../../shared/ui/icons';
+import { DownloadIcon, EyeIcon, FileIcon, UsersIcon } from '../../../shared/ui/icons';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
 import { AssignAssetDialog } from '../components/CustodyDialogs';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { useItAssignments, useItBranchOptions } from '../api/it-queries';
+import * as api from '../api/it-api';
+import { useItAssignments, useItBranchOptions, useItPerson } from '../api/it-queries';
+import { saveSheet } from '../../fleet/lib/fleet-sheet';
+import {
+  custodyRegisterHeader,
+  custodyRegisterLine,
+  custodyRegisterReport,
+  custodyRegisterFilters,
+  custodyRegisterSubtitle,
+  gatherCustodyRegister,
+  printCustodyRegister,
+} from '../lib/custody-register-export';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -88,14 +105,23 @@ export const CustodyPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useItAssignments(params);
 
-  // The chip's label. A pick supplies it directly; arriving on a deep link with only an id in the
-  // URL, the loaded rows supply it — they now carry the name, so the picker needs no resolve-by-id.
-  const [pickedLabel, setPickedLabel] = useState('');
-  const holderLabel =
-    pickedLabel !== ''
-      ? pickedLabel
-      : ((data?.items ?? []).find((a) => a.assignedToEmployeeId === employeeId)
-          ?.assignedToEmployeeName ?? '');
+  // The chip's label. A pick supplies it — kept WITH the id it was picked for, so back/forward,
+  // which changes the id underneath, makes the chip follow the URL rather than the last pick (the
+  // asset list's rule). Arriving on a link or a remembered filter with only an id, the loaded rows
+  // supply it; when no row names them — nothing matches, or HR has no name — the person is
+  // resolved by id. The printed register's filter line reads the same label.
+  const [pickedHolder, setPickedHolder] = useState({ id: '', label: '' });
+  const pickedHere = pickedHolder.id === employeeId && pickedHolder.label !== '';
+  const rowHolderName =
+    (data?.items ?? []).find((a) => a.assignedToEmployeeId === employeeId)
+      ?.assignedToEmployeeName ?? null;
+  const holderPerson = useItPerson(employeeId, !pickedHere && rowHolderName === null);
+  const holderLabel = pickedHere
+    ? pickedHolder.label
+    : (rowHolderName ??
+      (holderPerson.data === undefined
+        ? ''
+        : `${holderPerson.data.fullNameAr} (${holderPerson.data.code})`));
 
   const branches = useItBranchOptions();
   const branchName = useMemo(() => {
@@ -103,6 +129,57 @@ export const CustodyPage = (): JSX.Element => {
     for (const branch of branches.data ?? []) map.set(branch.id, localized(branch.name, locale));
     return map;
   }, [branches.data, locale]);
+
+  // ── The register as a file: Excel and PDF, of everything the filters match ──────────────────
+  // One file at a time; the button pressed shows the spinner while its rows are gathered.
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
+  const exportContext = { t, locale, branchName };
+  // Every interval the filters match, in the table's order — the table's own params, unpaged.
+  const allRows = () => gatherCustodyRegister(params, api.listAssignments);
+  const exportSheet = async (): Promise<void> => {
+    if (exporting !== null) return;
+    setExporting('excel');
+    try {
+      const rows = await allRows();
+      saveSheet({
+        name: t('it.nav.custody'),
+        serialHeader: t('it.custody.export.serial'),
+        header: custodyRegisterHeader(t),
+        rows: rows.map((row) => custodyRegisterLine(row, exportContext, '')),
+      });
+    } catch (failure) {
+      // NAMED, not swallowed: a button that silently does nothing is read as broken.
+      toast.error(errorMessage(failure, locale));
+    } finally {
+      setExporting(null);
+    }
+  };
+  const exportPdf = async (): Promise<void> => {
+    if (exporting !== null) return;
+    setExporting('pdf');
+    try {
+      const printed = await printCustodyRegister(async () => {
+        const rows = await allRows();
+        const subtitle = custodyRegisterSubtitle(t, {
+          ...custodyRegisterFilters({
+            openParam,
+            branchId,
+            branchName,
+            employeeId,
+            holderLabel,
+            rows,
+          }),
+          asOf: formatDate(new Date().toISOString(), locale),
+        });
+        return custodyRegisterReport(rows, exportContext, subtitle);
+      }, t('it.custody.export.preparing'));
+      if (!printed) toast.error(t('it.custody.receipt.popupBlocked'));
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
@@ -231,15 +308,48 @@ export const CustodyPage = (): JSX.Element => {
         title={t('it.nav.custody')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
         actions={
-          can('itAsset.assign') ? (
-            <Button
-              size="sm"
-              leftIcon={<UsersIcon className="h-4 w-4" />}
-              onClick={() => setHandingOver(true)}
-            >
-              {t('it.custody.receipt.title')}
-            </Button>
-          ) : undefined
+          <>
+            {can('itAsset.assign') && (
+              <Button
+                size="sm"
+                leftIcon={<UsersIcon className="h-4 w-4" />}
+                onClick={() => setHandingOver(true)}
+              >
+                {t('it.custody.receipt.title')}
+              </Button>
+            )}
+            {/* Not offered when the list failed: the file behind it would be empty or short. */}
+            {!isError && (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-export="it-custody"
+                  title={t('it.custody.export.excelHint')}
+                  disabled={exporting !== null}
+                  loading={exporting === 'excel'}
+                  leftIcon={
+                    <DownloadIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  }
+                  onClick={() => void exportSheet()}
+                >
+                  {t('it.custody.export.excel')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-print="it-custody"
+                  title={t('it.custody.export.pdfHint')}
+                  disabled={exporting !== null}
+                  loading={exporting === 'pdf'}
+                  leftIcon={<FileIcon className="h-4 w-4 text-red-600 dark:text-red-400" />}
+                  onClick={() => void exportPdf()}
+                >
+                  {t('it.custody.export.pdf')}
+                </Button>
+              </>
+            )}
+          </>
         }
       />
       <AssignAssetDialog open={handingOver} onClose={() => setHandingOver(false)} asset={null} />
@@ -248,7 +358,7 @@ export const CustodyPage = (): JSX.Element => {
         <FilterBar
           hasActiveFilters={openParam !== 'true' || branchId !== '' || employeeId !== ''}
           onClear={() => {
-            setPickedLabel('');
+            setPickedHolder({ id: '', label: '' });
             patch({ open: null, branch: null, employee: null });
           }}
         >
@@ -285,7 +395,7 @@ export const CustodyPage = (): JSX.Element => {
             valueLabel={holderLabel}
             ariaLabel={t('it.custody.filterHolder')}
             onChange={(id, label) => {
-              setPickedLabel(label);
+              setPickedHolder({ id, label });
               patch({ employee: id || null });
             }}
           />

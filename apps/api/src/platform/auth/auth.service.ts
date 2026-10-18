@@ -25,8 +25,14 @@ import {
 import { env } from '../../infrastructure/config/env';
 import { logger } from '../../infrastructure/logging/logger';
 import { getCache } from '../../infrastructure/redis/cache';
+import { consumeRateLimit } from '../../infrastructure/redis/rate-limiter';
 import { getContext, type ActorIdentity } from '../../infrastructure/http/request-context';
-import { BusinessRuleError, NotFoundError, UnauthenticatedError } from '../../shared/errors';
+import {
+  BusinessRuleError,
+  NotFoundError,
+  RateLimitedError,
+  UnauthenticatedError,
+} from '../../shared/errors';
 import {
   type AuthContext,
   touchedBranches,
@@ -59,6 +65,10 @@ const USED_HASHES_KEPT = 20;
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 const PENDING_TOTP_TTL_SECONDS = 10 * 60;
 const USER_SNAPSHOT_TTL_SECONDS = 60;
+/** Renewals per session; see `refresh`. */
+const SESSION_RENEWAL_LIMIT = { name: 'auth-refresh-session', windowSeconds: 300, max: 60 };
+/** Replays of a used token that are reported per session; see `refresh`. */
+const REUSE_REPORT_LIMIT = { name: 'auth-refresh-reuse', windowSeconds: 300, max: 5 };
 
 interface AccessClaims {
   sub: string;
@@ -71,6 +81,20 @@ interface ChallengeClaims {
   sub: string;
   typ: 'totp-challenge' | 'totp-enroll';
 }
+
+/**
+ * The claims of a challenge token this server signed and that has not expired, or null. Exported
+ * for the TOTP rate limit, which keys on the account the token was issued to.
+ */
+export const verifiedChallengeClaims = (token: string): ChallengeClaims | null => {
+  try {
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as Partial<ChallengeClaims>;
+    if (decoded.typ !== 'totp-challenge' && decoded.typ !== 'totp-enroll') return null;
+    return typeof decoded.sub === 'string' ? { sub: decoded.sub, typ: decoded.typ } : null;
+  } catch {
+    return null;
+  }
+};
 
 /** `?? null` because the field postdates existing documents and every read is `.lean()`. */
 const externalOf = (user: UserDoc): ExternalSubjectDto | null => {
@@ -185,16 +209,11 @@ class AuthService {
   }
 
   private verifyChallengeToken(token: string): ChallengeClaims {
-    try {
-      const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as ChallengeClaims;
-      if (decoded.typ !== 'totp-challenge' && decoded.typ !== 'totp-enroll') {
-        throw new UnauthenticatedError(ErrorCodes.AUTH_TOKEN_INVALID);
-      }
-      return decoded;
-    } catch (error) {
-      if (error instanceof UnauthenticatedError) throw error;
+    const claims = verifiedChallengeClaims(token);
+    if (claims === null) {
       throw new UnauthenticatedError(ErrorCodes.AUTH_TOKEN_INVALID, 'Challenge token invalid');
     }
+    return claims;
   }
 
   // ── Sessions ──────────────────────────────────────────────────────────────
@@ -332,10 +351,14 @@ class AuthService {
       // that against staff who cannot tell whether they mistyped their address or their
       // password — «حدد الايميل لوحده والباسورد لوحده» — and chose to name it.
       //
-      // What still limits the abuse: the rate limit on this route is ten attempts per five
-      // minutes per address (`strictLimit('auth-login')`), and every attempt leaves an audit row
-      // and an `AuthLoginFailed` event naming who sent it. Worth revisiting together if this
-      // login page is ever reachable from outside the company.
+      // What limits the abuse. When the owner decided, it was ten sign-in attempts per five minutes
+      // per address, shared by a whole office. Now an address may FAIL to sign in
+      // `AUTH_FAILED_LOGIN_LIMIT_PER_IP` times per five minutes (30 by default), and then every
+      // sign-in from it is refused until the window ends (`failed-sign-ins.ts`); each identifier
+      // tried is limited to ten attempts per five minutes (`auth.routes.ts`); and every attempt
+      // leaves an audit row and an `AuthLoginFailed` event naming who sent it. The login page is
+      // reachable from outside the company (ecms.egycash.com.eg), which is worth weighing when
+      // this decision is revisited.
       throw new UnauthenticatedError(
         ErrorCodes.AUTH_IDENTIFIER_UNKNOWN,
         'No account matches that identifier',
@@ -689,6 +712,14 @@ class AuthService {
         .lean<SessionDoc>()
         .exec();
       if (replayed !== null) {
+        // The first few replays in a window revoke the session and are reported: the audit row,
+        // the event and the SECURITY log line, which raise an alert. After that the session is
+        // already revoked, and the same stolen cookie replayed over and over would only flood the
+        // audit trail and the alerts, so later replays are refused without writing anything.
+        const report = await consumeRateLimit(REUSE_REPORT_LIMIT, String(replayed._id));
+        if (!report.allowed) {
+          throw new UnauthenticatedError(ErrorCodes.AUTH_SESSION_REVOKED, 'Session revoked');
+        }
         await this.revokeSession(replayed, 'refresh-reuse');
         const requestActor = actorOf(null);
         await auditService.record({
@@ -747,6 +778,14 @@ class AuthService {
       await this.revokeSession(session, 'user-not-active');
       throw new UnauthenticatedError(ErrorCodes.AUTH_ACCOUNT_NOT_ACTIVE, 'Account is not active');
     }
+
+    // At most 60 renewals per SESSION per five minutes. Counted here, by the session's id, because
+    // the cookie changes on every renewal, so a limit keyed on the cookie would never see the same
+    // session twice. An open tab renews every few minutes, so only a runaway client comes near
+    // this; it gets a 429 and the session stays as it is. Only renewals that would rotate count:
+    // the reuse check above must answer every replay, however busy the session is.
+    const renewals = await consumeRateLimit(SESSION_RENEWAL_LIMIT, String(session._id));
+    if (!renewals.allowed) throw new RateLimitedError(renewals.retryAfter);
 
     // Rotate: current → used (bounded), new token becomes current; sliding expiry.
     const newRefreshToken = randomToken();

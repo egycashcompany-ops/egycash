@@ -17,10 +17,11 @@ import { UnauthenticatedError } from '../../shared/errors';
 import { userService } from '../users';
 import { authService, type IssuedTokens } from './auth.service';
 import { authContext } from './auth.middleware';
+import { withFailedSignInLimit } from './failed-sign-ins';
 
 // The refresh cookie is scoped to the auth endpoints only (ADR-006):
 // httpOnly + Secure + SameSite=Strict, never readable by the SPA.
-export const REFRESH_COOKIE = 'ecms_refresh';
+const REFRESH_COOKIE = 'ecms_refresh';
 // Prefix-aware (subpath deployments): the cookie must match the mounted auth route.
 const REFRESH_COOKIE_PATH = `${env.BASE_PATH}/api/v1/auth`;
 
@@ -41,7 +42,9 @@ const clearRefreshCookie = (res: Response): void => {
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<Login>(req);
   const identifier = body.identifier ?? body.email ?? '';
-  const { response, tokens } = await authService.login(identifier, body.password);
+  const { response, tokens } = await withFailedSignInLimit(req.ip ?? 'unknown', () =>
+    authService.login(identifier, body.password),
+  );
   if (tokens !== undefined) setRefreshCookie(res, tokens);
   ok(res, response);
 };

@@ -26,7 +26,6 @@ import {
   login,
   logout,
   me,
-  REFRESH_COOKIE,
   refresh,
   revokeSession,
   totpChallenge,
@@ -38,6 +37,7 @@ import {
   updateMyPreferences,
 } from './auth.controller';
 import { authenticate } from './auth.middleware';
+import { verifiedChallengeClaims } from './auth.service';
 
 const WINDOW_SECONDS = 300;
 
@@ -49,7 +49,9 @@ const strictLimit = (name: string) => rateLimit({ name, windowSeconds: WINDOW_SE
 // from one place at all — and a refused renewal signs the person out. Every staff-facing route
 // below therefore carries TWO limits: a strict one on the thing that is actually being guessed or
 // replayed (the account, the one-time token, the session), and a generous per-IP ceiling
-// (env.AUTH_*_RATE_LIMIT_PER_IP) that still stops one machine from spraying many of them.
+// (env.AUTH_*_RATE_LIMIT_PER_IP) that still stops one machine from spraying many of them. Two of
+// the strict limits live where their subject is known: failed sign-ins per address in the login
+// controller (failed-sign-ins.ts), renewals per session in `authService.refresh`.
 const perIpCeiling = (name: string, max: number) =>
   rateLimit({ name: `${name}-ip`, windowSeconds: WINDOW_SECONDS, max });
 
@@ -67,7 +69,7 @@ const accountKey = (req: Request): string | null => {
   return named === null ? null : hashedKey(named.trim().toLowerCase());
 };
 
-/** A one-time token in the body (TOTP challenge, setup link) — each token is its own bucket. */
+/** A one-time token in the body (setup link) — each token is its own bucket. */
 const tokenKey =
   (field: string) =>
   (req: Request): string | null => {
@@ -75,10 +77,21 @@ const tokenKey =
     return token === null ? null : hashedKey(token);
   };
 
-/** The session a renewal is for. No cookie = nothing to renew, and only the IP ceiling applies. */
-const sessionKey = (req: Request): string | null => {
-  const cookie = (req.cookies as Record<string, string | undefined> | undefined)?.[REFRESH_COOKIE];
-  return cookie === undefined || cookie === '' ? null : hashedKey(cookie);
+/**
+ * The ACCOUNT a TOTP challenge token was issued to. A guessed code is aimed at the account's TOTP
+ * secret, and every password sign-in mints a new token, so a bucket per token would hand out a
+ * fresh set of guesses with each sign-in. The token is verified, not just decoded, so a forged one
+ * naming somebody else cannot use up their guesses; one that does not verify gets a bucket of its
+ * own, and the route refuses it anyway.
+ *
+ * The two kinds of bucket hash under different prefixes, so no string sent as a token can land in
+ * an account's bucket: a raw `account:<id>` is hashed as `token:account:<id>`.
+ */
+const challengeAccountKey = (req: Request): string | null => {
+  const token = bodyString(req, 'challengeToken');
+  if (token === null) return null;
+  const claims = verifiedChallengeClaims(token);
+  return claims === null ? hashedKey(`token:${token}`) : hashedKey(`account:${claims.sub}`);
 };
 
 /** The caller's bearer token, for the one authenticated route limited before `authenticate`. */
@@ -101,7 +114,9 @@ export const buildAuthRouter = (): Router => {
   );
 
   // 10 attempts per ACCOUNT, on top of the account lockout (5 wrong passwords lock it for 15
-  // minutes), and a ceiling per IP for one machine trying many accounts.
+  // minutes), and a ceiling per IP for one machine trying many accounts. The controller also
+  // limits FAILED sign-ins per IP (env.AUTH_FAILED_LOGIN_LIMIT_PER_IP), which is what bounds
+  // testing which identifiers exist and spraying one password across many accounts.
   router.post(
     '/login',
     perIpCeiling('auth-login', authIpMax),
@@ -125,26 +140,28 @@ export const buildAuthRouter = (): Router => {
     validate({ body: CompletePortalChallengeSchema }),
     asyncHandler(completePortalChallenge),
   );
+  // 10 codes per ACCOUNT per 5 minutes, however many times the password is entered to get new
+  // challenge tokens.
   router.post(
     '/totp/challenge',
     perIpCeiling('auth-totp', authIpMax),
-    perSubject('auth-totp', 10, tokenKey('challengeToken')),
+    perSubject('auth-totp', 10, challengeAccountKey),
     validate({ body: TotpChallengeSchema }),
     asyncHandler(totpChallenge),
   );
   router.post(
     '/totp/enroll-challenge',
     perIpCeiling('auth-totp-enroll', authIpMax),
-    perSubject('auth-totp-enroll', 10, tokenKey('challengeToken')),
+    perSubject('auth-totp-enroll', 10, challengeAccountKey),
     validate({ body: EnrollChallengeBodySchema }),
     asyncHandler(totpEnrollWithChallenge),
   );
-  // 60 renewals per session per 5 minutes: one open tab renews once every 5 minutes, so this
-  // leaves room for many tabs and page loads of the same person.
+  // Only the ceiling per IP here. The limit per session (60 renewals per 5 minutes) is applied in
+  // `authService.refresh`, once the session is found: the cookie changes on every renewal, so it
+  // cannot name the session at this point.
   router.post(
     '/refresh',
     perIpCeiling('auth-refresh', env.AUTH_REFRESH_RATE_LIMIT_PER_IP),
-    perSubject('auth-refresh', 60, sessionKey),
     asyncHandler(refresh),
   );
   router.post(

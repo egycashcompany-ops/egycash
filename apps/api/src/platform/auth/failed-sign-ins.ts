@@ -4,7 +4,13 @@
 // `authService.login`), and its per-account limit gives every guessed identifier a fresh bucket.
 // Without a limit on the ADDRESS, one machine could test identifiers or spray passwords across
 // accounts up to the generous per-IP ceiling. This limit counts only the sign-ins that fail, so an
-// office signing in together after an idle sign-out is never held back by it.
+// office signing in together after an idle sign-out is not held back by it.
+//
+// THE PRICE: anyone who shares the address — a colleague, a guest on the office Wi-Fi, malware on
+// one PC — can use the limit up on purpose with 30 wrong sign-ins, and then every sign-in from that
+// address is refused, correct passwords included, until the five-minute slot ends. The limit it
+// replaced (ten sign-in attempts of any kind per address) allowed the same, more cheaply. Keying
+// known browsers by a device cookie instead of the address would remove it; that is not built.
 import { ErrorCodes } from '@ecms/contracts';
 import { env } from '../../infrastructure/config/env';
 import { logger } from '../../infrastructure/logging/logger';

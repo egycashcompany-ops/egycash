@@ -68,8 +68,13 @@ export const startCountedAttempt = async (
     await cache.incrWithTtl(returnedKey, retryAfter);
   };
 
-  const { count: taken } = await cache.incrWithTtl(takenKey, retryAfter);
+  // Read what was handed back BEFORE taking the slot. Both counters only grow, so a hand-back that
+  // lands between the two calls — from this process or another replica — can only make the count
+  // of slots in use look higher than it is, never lower: near the limit an attempt may be refused
+  // one early, but the limit itself can never be passed. Read after the increment, a concurrent
+  // hand-back would make it look lower and let an attempt through over the limit.
   const returned = Number((await cache.get(returnedKey)) ?? 0);
+  const { count: taken } = await cache.incrWithTtl(takenKey, retryAfter);
   if (taken - returned > rule.max) {
     // A refused attempt is not a failure: without this, attempts refused while others were still
     // running would keep the address blocked after those others turned out to succeed.

@@ -116,7 +116,9 @@ feature, e.g. `WORKFLOW_TRANSITION_NOT_ALLOWED`, `SEQUENCE_EXHAUSTED`), `RATE_LI
   cookie rotates). On top sit a generous per-IP ceiling on every request (`AUTH_RATE_LIMIT_PER_IP`,
   `AUTH_REFRESH_RATE_LIMIT_PER_IP`) and a lower per-IP limit on FAILED sign-ins only
   (`AUTH_FAILED_LOGIN_LIMIT_PER_IP`, 30 per 5 minutes), which bounds account discovery and password
-  spraying while an office signing in together is never counted. A per-IP limit on every request
+  spraying while successful sign-ins are not counted. Once an address has used it up, every
+  sign-in from it is refused until the window ends, correct passwords included, so anyone sharing
+  the address can block it for up to five minutes on purpose. A per-IP limit on every request
   alone is shared by everyone behind one office address. Replays of a used refresh token are
   refused every time but reported (audit row, alert) only for the first five per session per
   window. The client address is read from a header the edge in front of the api writes itself

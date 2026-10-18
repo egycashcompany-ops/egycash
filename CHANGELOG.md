@@ -53,7 +53,9 @@ its entry here in the same PR.
   renewal. On top, each address has a high ceiling on every request (`AUTH_RATE_LIMIT_PER_IP`,
   `AUTH_REFRESH_RATE_LIMIT_PER_IP`) and a lower one on failed sign-ins only
   (`AUTH_FAILED_LOGIN_LIMIT_PER_IP`, 30 per five minutes), so finding accounts or spraying
-  passwords from one address is still bounded while successful sign-ins never count. The address
+  passwords from one address is still bounded while successful sign-ins never count. The price:
+  anyone sharing an address can use those 30 up on purpose and block every sign-in from it for the
+  rest of the five minutes, as the old limit allowed with ten. The address
   is the one Railway's edge saw (`X-Real-IP`, `CLIENT_IP_HEADER`). The web client signs out only
   when the server refuses a renewal; a rate limit, a deploy or a dropped connection is retried —
   from «stay signed in» too — and the person stays signed in. A replayed refresh token is still

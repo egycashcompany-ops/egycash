@@ -713,11 +713,13 @@ class AuthService {
         .exec();
       if (replayed !== null) {
         // The first few replays in a window revoke the session and are reported: the audit row,
-        // the event and the SECURITY log line, which raise an alert. After that the session is
-        // already revoked, and the same stolen cookie replayed over and over would only flood the
-        // audit trail and the alerts, so later replays are refused without writing anything.
+        // the event and the SECURITY log line, which raise an alert. The same stolen cookie
+        // replayed over and over would only flood the audit trail and the alerts, so later replays
+        // are not reported. They still revoke the session if it is somehow not revoked yet (an
+        // earlier revocation that failed), so the cap never leaves a stolen session usable.
         const report = await consumeRateLimit(REUSE_REPORT_LIMIT, String(replayed._id));
         if (!report.allowed) {
+          if (replayed.revokedAt === null) await this.revokeSession(replayed, 'refresh-reuse');
           throw new UnauthenticatedError(ErrorCodes.AUTH_SESSION_REVOKED, 'Session revoked');
         }
         await this.revokeSession(replayed, 'refresh-reuse');

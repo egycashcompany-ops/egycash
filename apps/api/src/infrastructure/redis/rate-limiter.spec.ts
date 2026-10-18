@@ -5,6 +5,7 @@
 import { type NextFunction, type Request, type Response } from 'express';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RateLimitedError } from '../../shared/errors';
+import { getCache } from './cache';
 import { hashedKey, rateLimit, startCountedAttempt } from './rate-limiter';
 
 const fakeReq = (ip: string, subject?: string): Request =>
@@ -93,6 +94,42 @@ describe('a limit that counts only failed attempts', () => {
       [1, 2, 3, 4].map(() => startCountedAttempt(limit, '203.0.113.7')),
     );
     expect(burst.filter((attempt) => attempt.allowed)).toHaveLength(2);
+  });
+
+  it('is never let over the limit by a hand-back that lands between its two reads', async () => {
+    // Two attempts are running and the limit is two. A third starts; while it is between its two
+    // calls to the cache, a fourth (another replica, say) is refused and hands its slot back. Read
+    // in the wrong order, that hand-back made the third look like it fitted, and it was let in.
+    const limit = rule(2);
+    const running = await Promise.all([1, 2].map(() => startCountedAttempt(limit, '203.0.113.9')));
+    expect(running.every((attempt) => attempt.allowed)).toBe(true);
+
+    const cache = getCache();
+    const realGet = cache.get.bind(cache);
+    const realIncr = cache.incrWithTtl.bind(cache);
+    let injected = false;
+    const interleave = async (): Promise<void> => {
+      if (injected) return;
+      injected = true;
+      getSpy.mockRestore();
+      incrSpy.mockRestore();
+      const other = await startCountedAttempt(limit, '203.0.113.9');
+      expect(other.allowed).toBe(false);
+    };
+    const getSpy = vi.spyOn(cache, 'get').mockImplementation(async (key) => {
+      const value = await realGet(key);
+      await interleave();
+      return value;
+    });
+    const incrSpy = vi.spyOn(cache, 'incrWithTtl').mockImplementation(async (key, ttl) => {
+      const value = await realIncr(key, ttl);
+      await interleave();
+      return value;
+    });
+
+    const third = await startCountedAttempt(limit, '203.0.113.9');
+    expect(injected).toBe(true);
+    expect(third.allowed).toBe(false);
   });
 
   it('frees the slot of a running attempt that succeeds, even if attempts were refused meanwhile', async () => {

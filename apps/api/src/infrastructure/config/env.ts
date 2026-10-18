@@ -165,8 +165,11 @@ const EnvSchema = z.object({
    * FAILED sign-ins allowed PER CLIENT IP per 5 minutes: an unknown identifier or a wrong password.
    * Once an address has used them up, every sign-in from it is refused until the window ends.
    * A successful sign-in costs nothing once it has been answered, so an office signing in together
-   * is not held back by it; while one is being checked it holds a slot (`failed-sign-ins.ts`), so
-   * only a burst of more than this many sign-ins at the same instant could be refused.
+   * is not held back by it. While one is being checked it holds a slot (`failed-sign-ins.ts`), so
+   * once failures have used most of the limit, a few sign-ins at the same instant can be refused.
+   * Anyone sharing the address can also use the limit up on purpose, which refuses every sign-in
+   * from it, correct passwords included, until the window ends — the price of bounding guessing
+   * per address (the old limit, ten attempts of any kind, did the same more cheaply).
    *
    * This is what bounds account discovery and password spraying from one address, because the
    * sign-in answers whether an identifier exists (`AUTH_IDENTIFIER_UNKNOWN`, an owner decision —

@@ -167,4 +167,13 @@ describe('the window is the SERVER’s number', () => {
     );
     expect(GUARD).not.toMatch(/if \(!ok\) signingOut/);
   });
+
+  it('treats «stay signed in» the same way as the tick, so its renewal is retried too', () => {
+    // The person said they are here, often in the last minute before the server closes the
+    // session. A renewal from that button that got no answer must be asked again shortly, not
+    // after a full cadence, which can land after the server has already closed it.
+    expect(GUARD.match(/renewSession\(\)/g)?.length, 'one renewal call, shared').toBe(1);
+    expect(GUARD).toMatch(/noteActivity\(\);\s+renewNow\(getIdleMinutes\(\) \* 60_000\);/);
+    expect(GUARD).toMatch(/shouldRenew\([^)]*\)\) \{\s+renewNow\(idleMs\);/);
+  });
 });

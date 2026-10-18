@@ -104,6 +104,23 @@ export const IdleSessionGuard = ({
     lastWrite.current = now;
   }, []);
 
+  /**
+   * Renew now, and act on the answer. One path for the tick and for «stay signed in», so a renewal
+   * that got no answer is asked again shortly whichever of them sent it.
+   */
+  const renewNow = useCallback((idleMs: number): void => {
+    lastRenewAt.current = Date.now();
+    void renewSession().then((outcome) => {
+      // A refused renewal is a session that is already gone; the api client has signed the
+      // app out through its own auth-loss handler, so there is nothing to do but stop.
+      if (outcome === 'signedOut') signingOut.current = true;
+      // No answer about the session — a dropped connection, a deploy, a rate limit. The
+      // person stays signed in and the renewal is asked again shortly, not a cadence later.
+      else if (outcome === 'unavailable')
+        lastRenewAt.current = lastRenewForRetry(Date.now(), idleMs);
+    });
+  }, []);
+
   // ── The listeners ────────────────────────────────────────────────────────
   useEffect(() => {
     markActivity();
@@ -147,23 +164,14 @@ export const IdleSessionGuard = ({
       // The renewal is what tells the server somebody is here, so it happens only when somebody
       // has been — see `shouldRenew`.
       if (shouldRenew({ lastActivityAt, lastRenewAt: lastRenewAt.current, now, idleMs })) {
-        lastRenewAt.current = now;
-        void renewSession().then((outcome) => {
-          // A refused renewal is a session that is already gone; the api client has signed the
-          // app out through its own auth-loss handler, so there is nothing to do but stop.
-          if (outcome === 'signedOut') signingOut.current = true;
-          // No answer about the session — a dropped connection, a deploy, a rate limit. The
-          // person stays signed in and the renewal is asked again shortly, not a cadence later.
-          else if (outcome === 'unavailable')
-            lastRenewAt.current = lastRenewForRetry(Date.now(), idleMs);
-        });
+        renewNow(idleMs);
       }
     };
     const id = window.setInterval(tick, TICK_MS);
     return () => {
       window.clearInterval(id);
     };
-  }, [endSession]);
+  }, [endSession, renewNow]);
 
   return (
     <>
@@ -192,8 +200,7 @@ export const IdleSessionGuard = ({
               variant="primary"
               onClick={() => {
                 noteActivity();
-                lastRenewAt.current = Date.now();
-                void renewSession();
+                renewNow(getIdleMinutes() * 60_000);
               }}
             >
               {t('auth.idle.staySignedIn')}

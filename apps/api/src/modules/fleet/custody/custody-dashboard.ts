@@ -1,10 +1,10 @@
 // «عاوز جمب الاحصائيات داش بورد تفتح ف الشاشه كلها … كل حاجة بالتفصيل» — what the dashboard adds
 // to the figures, folded from the SAME movements `/summary` folds (see `custody.service.ts`).
 //
-// Deliberately not a Mongo pipeline: the ledger is two collections read with their own filters
-// (the book-code fallback, the driver rule, `isDeleted`) and merged in memory. A pipeline would
-// copy those rules a second time and could drift from the board's figures; one pass over the rows
-// the board already counts cannot.
+// Deliberately not a Mongo pipeline: the ledger is the fund's receipts read with the board's own
+// filters (the cars, the kinds, the driver, the dates, `isDeleted`). A pipeline would copy those
+// rules a second time and could drift from the board's figures; one pass over the rows the board
+// already counts cannot.
 //
 // The owner's design (the custody «لوحة تحكم») reads more off the same pass: the period's days,
 // the fund's fuel by «الشركة» («شل أوت / وطنية» — «ومش عاوز اى داتا اجبارى», so a receipt that
@@ -47,15 +47,9 @@ export interface CustodyDashboardRow {
   company: FleetFuelCardCompany | null;
   /** A fuel receipt's litres, when it was priced; `null` on everything else. */
   litres: number | null;
-  /** Whether a receipt has its photo — a dealership bill is never counted as a receipt. */
+  /** Whether the receipt has its photo. */
   hasImage: boolean;
   amount: number;
-}
-
-/** The private cars' bills still waiting for their invoice — read beside the rows, not in them. */
-export interface CustodyPendingPrivateBills {
-  count: number;
-  oldestOutDate: Date | null;
 }
 
 /** The dashboard's own fields — the summary's are folded by the service, once, for both. */
@@ -142,7 +136,7 @@ export const custodyGranularity = (filter: {
 
 const emptyBucket = (key: string): FleetCustodyTimeBucketDto => ({
   key,
-  dealership: 0,
+  maintenance: 0,
   fuel: 0,
   tyres: 0,
   wash: 0,
@@ -185,17 +179,13 @@ const fuelGroup = (
 /**
  * «تنبيهات وتدقيق العهدة» off the receipts in the set: a car fuelled from the fund more than once on
  * one day, receipts with no photo, and receipts that repeat another (the same car, day, kind and
- * amount — the extra copies only). The bills awaiting an invoice are read by the service.
+ * amount — the extra copies only).
  */
-const custodyAlerts = (
-  rows: readonly CustodyDashboardRow[],
-  pendingPrivateBills: CustodyPendingPrivateBills,
-): FleetCustodyAlertsDto => {
+const custodyAlerts = (rows: readonly CustodyDashboardRow[]): FleetCustodyAlertsDto => {
   const fuelDays = new Map<string, FleetCustodyDoubleFuelDto>();
   const copies = new Map<string, number>();
   let receiptsWithoutPhoto = 0;
   for (const row of rows) {
-    if (row.ref !== 'receipt') continue;
     if (!row.hasImage) receiptsWithoutPhoto += 1;
     // A receipt is always on a car; the code stands in only should the id ever be missing.
     const car = row.vehicleId ?? `code:${row.vehicleCode ?? ''}`;
@@ -222,13 +212,6 @@ const custodyAlerts = (
           (a.date < b.date ? 1 : a.date > b.date ? -1 : 0) ||
           compareFleetVehicleCodes(a.vehicleCode ?? '', b.vehicleCode ?? ''),
       ),
-    pendingPrivateBills: {
-      count: pendingPrivateBills.count,
-      oldestOutDate:
-        pendingPrivateBills.oldestOutDate === null
-          ? null
-          : pendingPrivateBills.oldestOutDate.toISOString(),
-    },
     receiptsWithoutPhoto,
     duplicateReceipts: [...copies.values()].reduce((extra, n) => extra + n - 1, 0),
   };
@@ -237,21 +220,18 @@ const custodyAlerts = (
 /**
  * Everything the dashboard shows beyond the figures, in one pass over the filtered movements.
  * `rows` arrive newest first (the ledger's own order), so a driver's name is the latest one typed.
- * `pendingPrivateBills` is the service's own read: those bills have no amount yet, so they are not
- * movements of the fund and never in `rows`.
  */
 export const custodyDashboard = (
   rows: readonly CustodyDashboardRow[],
   filter: { from?: Date | undefined; to?: Date | undefined },
-  pendingPrivateBills: CustodyPendingPrivateBills = { count: 0, oldestOutDate: null },
 ): CustodyDashboardExtras => {
   const counts = Object.fromEntries(FLEET_CUSTODY_SOURCES.map((kind) => [kind, 0])) as Record<
     FleetCustodySource,
     number
   >;
+  // «المصدر»: the receipts screen is the fund's one source.
   const bySource = new Map<FleetCustodyMovementDto['ref'], { count: number; amount: number }>([
     ['receipt', { count: 0, amount: 0 }],
-    ['dealershipInvoice', { count: 0, amount: 0 }],
   ]);
   const cars = new Set<string>();
   const drivers = new Map<string, FleetCustodyDriverRowDto>();
@@ -296,8 +276,7 @@ export const custodyDashboard = (
     bucket.count += 1;
     buckets.set(key, bucket);
 
-    if (row.source === 'dealership') continue;
-    // A receipt: its driver, and for fuel its type and litres.
+    // Every movement is a receipt: its driver, and for fuel its type and litres.
     const who = driverKey(row);
     if (who === null) {
       noDriver.count += 1;
@@ -306,6 +285,7 @@ export const custodyDashboard = (
       const line = drivers.get(who) ?? {
         driverEmployeeId: row.driverEmployeeId,
         driverName: (row.driverName ?? '').trim().replace(/\s+/gu, ' '),
+        maintenance: 0,
         fuel: 0,
         tyres: 0,
         wash: 0,
@@ -380,7 +360,7 @@ export const custodyDashboard = (
         .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
         .map((bucket) => ({
           ...bucket,
-          dealership: round(bucket.dealership),
+          maintenance: round(bucket.maintenance),
           fuel: round(bucket.fuel),
           tyres: round(bucket.tyres),
           wash: round(bucket.wash),
@@ -390,6 +370,7 @@ export const custodyDashboard = (
     drivers: [...drivers.values()]
       .map((line) => ({
         ...line,
+        maintenance: round(line.maintenance),
         fuel: round(line.fuel),
         tyres: round(line.tyres),
         wash: round(line.wash),
@@ -419,6 +400,6 @@ export const custodyDashboard = (
       })),
       none: fuelGroup(noCompany, companyTypes.get(null)),
     },
-    alerts: custodyAlerts(rows, pendingPrivateBills),
+    alerts: custodyAlerts(rows),
   };
 };

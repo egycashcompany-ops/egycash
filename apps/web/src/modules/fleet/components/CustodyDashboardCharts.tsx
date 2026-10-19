@@ -1,6 +1,6 @@
 // The drawings of «لوحة تحكم», as the owner's design draws them: «المصروف عبر الزمن» in clustered
-// columns, «حسب النوع والمصدر» as two concentric rings, «أعلى السيارات صرفًا» as full-width bars
-// split by each car's own kinds, «أعلى السائقين صرفًا» as rings, and «تفصيل استهلاك الوقود».
+// columns, «حسب النوع» as a ring of the kinds, «أعلى السيارات صرفًا» as full-width bars split by
+// each car's own kinds, «أعلى السائقين صرفًا» as rings, and «تفصيل استهلاك الوقود».
 //
 // Every number is the server's (`GET /fleet/custody/dashboard`); the browser only sorts, cuts and
 // draws, and a share is a ratio of two server numbers. Nothing the data does not hold is drawn:
@@ -144,7 +144,7 @@ const shiftMonth = (key: string, by: number): string => {
 
 const zeroBucket = (key: string): FleetCustodyTimeBucketDto => ({
   key,
-  dealership: 0,
+  maintenance: 0,
   fuel: 0,
   tyres: 0,
   wash: 0,
@@ -190,7 +190,7 @@ const tallestBar = (bucket: FleetCustodyTimeBucketDto): number =>
   CUSTODY_KINDS.reduce((top, kind) => Math.max(top, bucket[kind]), 0);
 
 /**
- * (3) The spend over time — four thin bars a period (التوكيل، وقود، كاوتش، غسيل), not stacked;
+ * (3) The spend over time — four thin bars a period (صيانة، وقود، كاوتش، غسيل), not stacked;
  * a kind with nothing that period is a 2px stub. The dearest period carries its total over its
  * bars in amber; the period read out (under the pointer or the focus, the latest until then) in
  * emerald. Time runs left to right whatever the page's direction; ←/→/Home/End walk the columns.
@@ -609,42 +609,25 @@ export const CustodyTimeline = ({
   );
 };
 
-// ── «حسب النوع والمصدر» ─────────────────────────────────────────────────────────────────────
+// ── «حسب النوع» ──────────────────────────────────────────────────────────────────────────────
 
 const OUTER_R = 64;
-const INNER_R = 44;
 const OUTER_C = 2 * Math.PI * OUTER_R;
-const INNER_C = 2 * Math.PI * INNER_R;
-const SOURCES = ['receipt', 'dealershipInvoice'] as const;
-/** The inner ring: the receipts screen emerald, the dealership's bills blue. */
-const SOURCE_LOOK = {
-  receipt: {
-    stroke: 'stroke-[#059669] dark:stroke-[#10b981]',
-    dot: 'bg-emerald-600 dark:bg-emerald-500',
-    text: 'text-emerald-800 dark:text-emerald-400',
-    label: 'fleet.custody.dashboard.donut.receipts',
-  },
-  dealershipInvoice: {
-    stroke: 'stroke-[#2563eb] dark:stroke-[#3b82f6]',
-    dot: 'bg-blue-600 dark:bg-blue-500',
-    text: 'text-blue-700 dark:text-blue-400',
-    label: 'fleet.custody.dashboard.donut.dealership',
-  },
-} as const;
 
 /**
- * (4) «حسب النوع والمصدر» — the kinds on the outer ring, the two sources (the receipts screen,
- * the dealership's bills) on the inner one, the total in the middle; the legend, a small table of
- * the kinds, and the fuel's suppliers under it. «عرض حركات التوكيل» sets the board's own «المصدر»
- * to التوكيل and closes the dashboard.
+ * (4) «حسب النوع» — the kinds on the ring, the total in the middle; the legend, a small table of
+ * the kinds, and the fuel's suppliers under it. The ring of the source (the receipts screen
+ * against the dealership's bills) is gone: «التوكيل … ملهاش علاقة ب حاجة» — every movement is a
+ * receipt now. «عرض حركات الصيانة» sets the board's own «المصدر» to «صيانة» and closes the
+ * dashboard.
  */
 export const CustodyByKindSource = ({
   data,
-  onShowDealership,
+  onShowMaintenance,
   filters = {},
 }: {
   data: FleetCustodyDashboardDto;
-  onShowDealership?: (() => void) | undefined;
+  onShowMaintenance?: (() => void) | undefined;
   /** The board's filters — only the words of the line a card of no movement carries. */
   filters?: CustodyDashboardFilters;
 }): JSX.Element => {
@@ -652,20 +635,11 @@ export const CustodyByKindSource = ({
   const money = useMoney();
   const moneyText = useMoneyText();
   const sep = useSeparator();
-  const { count } = useCount();
   const titleId = useId();
   const kinds = custodyArcs(
     CUSTODY_KINDS.map((kind) => data[kind]),
     OUTER_C,
     4,
-  );
-  const lines = SOURCES.map(
-    (ref) => data.bySource.find((line) => line.ref === ref) ?? { ref, count: 0, amount: 0 },
-  );
-  const sources = custodyArcs(
-    lines.map((line) => line.amount),
-    INNER_C,
-    2.5,
   );
   const companies = custodyCompanies(data);
   const none = data.fuelByCompany.none;
@@ -680,7 +654,7 @@ export const CustodyByKindSource = ({
       <CardHead
         id={titleId}
         level={2}
-        title={t('fleet.custody.dashboard.byKindSource')}
+        title={t('fleet.custody.dashboard.byKind')}
         end={
           <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800 dark:border-emerald-700/30 dark:bg-emerald-950/40 dark:text-emerald-400/90">
             {t('fleet.custody.dashboard.donut.chip')}
@@ -691,16 +665,10 @@ export const CustodyByKindSource = ({
         <div
           role="img"
           data-custody-donut="true"
-          aria-label={[
-            ...CUSTODY_KINDS.map(
-              (kind) =>
-                `${kindName(t, kind)}: ${moneyText(data[kind])} (${custodyShare(data[kind], data.total)})`,
-            ),
-            ...lines.map(
-              (line) =>
-                `${t(SOURCE_LOOK[line.ref].label)}: ${moneyText(line.amount)} (${custodyShare(line.amount, data.total)})`,
-            ),
-          ].join(sep)}
+          aria-label={CUSTODY_KINDS.map(
+            (kind) =>
+              `${kindName(t, kind)}: ${moneyText(data[kind])} (${custodyShare(data[kind], data.total)})`,
+          ).join(sep)}
           className="relative flex h-44 w-44 shrink-0 items-center justify-center"
         >
           <svg className="h-full w-full -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
@@ -729,33 +697,6 @@ export const CustodyByKindSource = ({
                   className={CUSTODY_KIND[kind].stroke}
                 >
                   <title>{`${kindName(t, kind)}: ${moneyText(data[kind])}`}</title>
-                </circle>
-              );
-            })}
-            <circle
-              cx="80"
-              cy="80"
-              r={INNER_R}
-              fill="transparent"
-              strokeWidth={8}
-              className="stroke-[#f1f5f9] dark:stroke-[#131b29]"
-            />
-            {lines.map((line, i) => {
-              const arc = sources[i];
-              return arc === undefined || arc.value <= 0 ? null : (
-                <circle
-                  key={line.ref}
-                  data-custody-arc={line.ref}
-                  cx="80"
-                  cy="80"
-                  r={INNER_R}
-                  fill="transparent"
-                  strokeWidth={8}
-                  strokeDasharray={`${arc.length} ${INNER_C.toFixed(2)}`}
-                  strokeDashoffset={arc.offset}
-                  className={SOURCE_LOOK[line.ref].stroke}
-                >
-                  <title>{`${t(SOURCE_LOOK[line.ref].label)}: ${moneyText(line.amount)}`}</title>
                 </circle>
               );
             })}
@@ -854,37 +795,12 @@ export const CustodyByKindSource = ({
               </div>
             ),
           )}
-          <div className="flex justify-between gap-2 border-b border-slate-200 pb-1 pt-2 text-[11px] font-bold text-slate-600 dark:border-slate-800 dark:font-semibold dark:text-slate-400">
-            <span>{t('fleet.custody.dashboard.donut.inner')}</span>
-            <span className="shrink-0 text-slate-500">
-              {t('fleet.custody.dashboard.donut.innerCount')}
-            </span>
-          </div>
-          {lines.map((line) => (
-            <div
-              key={line.ref}
-              data-custody-source-row={line.ref}
-              className="flex items-center justify-between gap-2 text-[11px]"
-            >
-              <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                <span
-                  aria-hidden="true"
-                  className={cn('h-2 w-2 shrink-0 rounded', SOURCE_LOOK[line.ref].dot)}
-                />
-                {t(SOURCE_LOOK[line.ref].label)}
-              </span>
-              <span className={cn('whitespace-nowrap', SOURCE_LOOK[line.ref].text, NUM)}>
-                <CustodyShare part={line.amount} whole={data.total} /> (
-                {count('movement', line.count)})
-              </span>
-            </div>
-          ))}
         </div>
       </div>
 
       <div className={cn(MINI_FRAME, 'mb-2')}>
         <table
-          aria-label={t('fleet.custody.dashboard.byKindSource')}
+          aria-label={t('fleet.custody.dashboard.byKind')}
           className="w-full min-w-[20rem] text-start text-xs"
         >
           <thead className={MINI_THEAD}>
@@ -981,14 +897,14 @@ export const CustodyByKindSource = ({
             )}
           </span>
         )}
-        {onShowDealership !== undefined && (
+        {onShowMaintenance !== undefined && (
           <button
             type="button"
-            data-custody-show-dealership="true"
-            onClick={onShowDealership}
+            data-custody-show-maintenance="true"
+            onClick={onShowMaintenance}
             className="font-bold text-emerald-700 transition hover:underline dark:font-medium dark:text-emerald-400 dark:hover:text-emerald-300"
           >
-            {t('fleet.custody.dashboard.donut.showDealership')}
+            {t('fleet.custody.dashboard.donut.showMaintenance')}
           </button>
         )}
       </div>
@@ -997,10 +913,6 @@ export const CustodyByKindSource = ({
 };
 
 // ── «أعلى السيارات صرفًا» ──────────────────────────────────────────────────────────────────────
-
-/** The legend's short names — the design writes «توكيل» there, the kind's name elsewhere. */
-const shortName = (t: ReturnType<typeof useT>, kind: FleetCustodySource): string =>
-  kind === 'dealership' ? t('fleet.custody.dashboard.short.dealership') : kindName(t, kind);
 
 /**
  * (5) The ten dearest cars: each bar the FULL width, split by that car's own kinds; beside the
@@ -1052,7 +964,7 @@ export const CustodyTopCars = ({
               data-custody-swatch={kind}
               className={cn('h-2 w-2 rounded', CUSTODY_KIND[kind].fill)}
             />
-            {shortName(t, kind)}
+            {kindName(t, kind)}
           </span>
         ))}
       </div>
@@ -1123,22 +1035,16 @@ export const CustodyTopCars = ({
 
 // ── «أعلى السائقين صرفًا» ─────────────────────────────────────────────────────────────────────
 
-/** The kinds a driver is named on — the receipts'; a dealership bill names no driver. */
-const DRIVER_KINDS = ['fuel', 'tyres', 'wash'] as const;
-
 /**
- * What the receipts came to (fuel, tyres, washing) — the whole a driver's share is of, never the
- * whole fund: a dealership bill names no driver, so against the whole every driver would look
- * smaller by the dealership's part.
+ * What the receipts came to (صيانة، وقود، كاوتش، غسيل) — the whole a driver's share is of. Every
+ * kind is a receipt's, and a receipt names its driver, so this is everything the fund paid.
  */
 export const custodyReceipts = (data: FleetCustodyDashboardDto): number =>
-  DRIVER_KINDS.reduce((sum, kind) => sum + data[kind], 0);
+  CUSTODY_KINDS.reduce((sum, kind) => sum + data[kind], 0);
 
 /** «وقود 65% • كاوتش 25%» — a driver's two biggest kinds, dearest first. */
-export const custodyTopKinds = (
-  driver: FleetCustodyDriverRowDto,
-): (typeof DRIVER_KINDS)[number][] =>
-  DRIVER_KINDS.filter((kind) => driver[kind] > 0)
+export const custodyTopKinds = (driver: FleetCustodyDriverRowDto): FleetCustodySource[] =>
+  CUSTODY_KINDS.filter((kind) => driver[kind] > 0)
     .sort((a, b) => driver[b] - driver[a])
     .slice(0, 2);
 
@@ -1155,8 +1061,8 @@ export const CUSTODY_RINGS = [
 const RING_PATH = 'M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831';
 
 /**
- * (6) The receipts' drivers (a bill names none) — each a ring of his share of the receipts, his
- * two biggest kinds under his name, his total at the end; then the receipts that name no driver.
+ * (6) The receipts' drivers — each a ring of his share of the receipts, his two biggest kinds
+ * under his name, his total at the end; then the receipts that name no driver.
  */
 export const CustodyTopDrivers = ({
   data,
@@ -1195,7 +1101,7 @@ export const CustodyTopDrivers = ({
         {ranked.length === 0 && data.count === 0 ? (
           <CustodyNoMovements filtered={custodyFiltered(filters)} className="py-4 text-center" />
         ) : ranked.length === 0 ? (
-          // A dealership bill names no driver, and a receipt may name none: nothing to rank.
+          // A receipt may name no driver: nothing to rank.
           <p
             data-custody-no-drivers="true"
             className="py-4 text-center text-xs text-slate-500 dark:text-slate-400"

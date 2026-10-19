@@ -34,7 +34,11 @@ const entityRef = (id: string) => ({
 const stringOrNull = (value: Types.ObjectId | null | undefined): string | null =>
   value === null || value === undefined ? null : String(value);
 
-/** Where the money comes from, by the rule — a private car with no invoice number pays from custody. */
+/**
+ * The `side` stored with a recorded invoice, written as it always was — a private car with no
+ * invoice number reads «custody», any other «dealership». History on the row only: nothing reads
+ * it, and the custody fund never counts a dealership invoice.
+ */
 export const sideOf = (doc: {
   privateCar: boolean;
   invoiceNumber: string | null;
@@ -234,7 +238,6 @@ class FleetDealershipService {
           ? undefined
           : await fleetVehicleRepository.idsByCodes(query.vehicleCodes),
       vehicleCodes: query.vehicleCodes,
-      side: query.side,
       pending: query.pending,
       workKind: query.workKind,
       from: query.from,
@@ -318,9 +321,9 @@ class FleetDealershipService {
   }
 
   /**
-   * Record or correct the invoice. The one rule: a car that is NOT «ملاكي» needs an invoice
-   * number once an amount is on the row — the dealership bills by number, and the custody fund
-   * only covers private cars.
+   * Record or correct the invoice — saved as entered, and nothing else moves: no custody figure, no
+   * fuel card. The one rule: a car that is NOT «ملاكي» needs an invoice number once an amount is on
+   * the row — the dealership bills by number.
    */
   async update(
     id: string,

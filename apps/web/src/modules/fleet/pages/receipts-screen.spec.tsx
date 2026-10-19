@@ -98,13 +98,14 @@ const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
 });
 
 const receiptTotals: FleetReceiptTotalsDto = {
-  count: 5,
-  custodyTotal: 2020,
+  count: 6,
+  custodyTotal: 2320,
   cardTotal: 1440,
   fuelTotal: 1940,
   fuelLitres: 115.74,
   tyresTotal: 1400,
   washTotal: 120,
+  maintenanceTotal: 300,
 };
 
 const RECEIPT_FILTERS = {
@@ -126,7 +127,7 @@ const CUSTODY_FILTERS = {
 const custodySummary: FleetCustodySummaryDto = {
   count: 5,
   total: 4220,
-  dealership: 850,
+  maintenance: 850,
   fuel: 1850,
   tyres: 1400,
   wash: 120,
@@ -135,7 +136,7 @@ const custodySummary: FleetCustodySummaryDto = {
     {
       vehicleId: 'v-204',
       vehicleCode: '204',
-      dealership: 0,
+      maintenance: 0,
       fuel: 1350,
       tyres: 0,
       wash: 0,
@@ -144,7 +145,7 @@ const custodySummary: FleetCustodySummaryDto = {
     {
       vehicleId: 'v-63',
       vehicleCode: '63',
-      dealership: 850,
+      maintenance: 850,
       fuel: 0,
       tyres: 0,
       wash: 0,
@@ -337,7 +338,8 @@ describe('the receipts table', () => {
     expect(strip, 'after the filters').toBeGreaterThan(filters);
     expect(table, 'before the table').toBeGreaterThan(strip);
     expect(PAGE).toContain('useReceiptSummary(filters)');
-    // Opened, they are the server's sums: the fund, the cards, fuel with its litres, tyres + wash.
+    // Opened, they are the server's sums: the fund, the cards, fuel with its litres, and tyres,
+    // washing and maintenance together — the three the fund alone pays for.
     const figures = mount(
       client(),
       ['fleetReceipt.view'],
@@ -346,14 +348,16 @@ describe('the receipts table', () => {
     );
     expect(figures).toContain('data-receipt-figures="true"');
     expect(figures).toContain(ar('fleet.receipts.totals.custody'));
-    expect(figures).toContain('2,020.00');
+    expect(figures).toContain('2,320.00');
     expect(figures).toContain(ar('fleet.receipts.totals.card'));
     expect(figures).toContain('1,440.00');
     expect(figures).toContain(ar('fleet.receipts.totals.fuel'));
     expect(figures).toContain('1,940.00');
     expect(figures).toContain('115.74');
     expect(figures).toContain(ar('fleet.receipts.totals.tyresWash'));
-    expect(figures).toContain('1,520.00');
+    expect(ar('fleet.receipts.totals.tyresWash')).toBe('كاوتش + غسيل + صيانة');
+    expect(figures).toContain('1,820.00');
+    expect(PAGE).toContain('totals.tyresTotal + totals.washTotal + totals.maintenanceTotal');
   });
 
   it('writes the row as the drivers board does — a year-first Latin date, the code bold, figures grouped, every value centred', () => {
@@ -526,8 +530,18 @@ describe('«كارت اخر» and «كم» on the table and the sheets', () => {
 });
 
 describe('the receipt modal', () => {
-  it('asks the kind first — «وقود / كاوتش / غسيل» — and takes a card only for fuel', () => {
+  it('asks the kind first — «وقود / كاوتش / غسيل / صيانة» — and takes a card only for fuel', () => {
     expect(FORM).toContain('<KindSwitch value={kind} onChange={changeKind} />');
+    // «عاوز اضيف صيانة تكون زى الكاوتش والغسيل»: a fourth tab, after «غسيل».
+    const tabs = [...dialog(null).matchAll(/data-receipt-kind="(\w+)"[^>]*>([^<]*)</gu)].map(
+      (m) => [m[1], m[2]],
+    );
+    expect(tabs).toEqual([
+      ['fuel', ar('fleet.receipts.kind.fuel')],
+      ['tyres', ar('fleet.receipts.kind.tyres')],
+      ['wash', ar('fleet.receipts.kind.wash')],
+      ['maintenance', 'صيانة'],
+    ]);
     // A car with no card of its own pays from the fund — unless «كارت آخر» pays.
     expect(FORM).toContain('const byCard = isFuel && useCard && (other || !noCards);');
     expect(FORM).toContain('cardId: byCard ? cardId : null,');
@@ -682,13 +696,13 @@ describe('the receipt modal', () => {
       FORM.lastIndexOf('<DesignField', FORM.indexOf('data-receipt-odometer')),
     );
     expect(field.slice(0, field.indexOf('>'))).not.toContain('required');
-    // A new receipt opens with it empty; tyres and washing have none at all.
+    // A new receipt opens with it empty; tyres, washing and maintenance have none at all.
     const fresh = dialog(null);
     const freshBox = fresh.slice(
       fresh.lastIndexOf('<input', fresh.indexOf('data-receipt-odometer="true"')),
     );
     expect(freshBox.slice(0, freshBox.indexOf('>'))).toContain('value=""');
-    for (const kind of ['tyres', 'wash'] as const) {
+    for (const kind of ['tyres', 'wash', 'maintenance'] as const) {
       const html = dialog(
         receipt({ kind, source: 'custody', cardId: null, fuelType: null, litres: null }),
       );
@@ -759,10 +773,10 @@ describe('«الشركة» on a fuel receipt the fund pays — «ومش عاوز
     expect(named).toContain(ar('fleet.receipts.fields.companyNone'));
     expect(pickedCompany(dialog(fund()))).toBe('none');
     // Off a card (the card names its company), on a new receipt that a card pays by default, and
-    // on tyres and washing: no choice at all.
+    // on tyres, washing and maintenance: no choice at all.
     expect(dialog(receipt())).not.toContain('data-receipt-company');
     expect(dialog(null)).not.toContain('data-receipt-company');
-    for (const kind of ['tyres', 'wash'] as const) {
+    for (const kind of ['tyres', 'wash', 'maintenance'] as const) {
       expect(dialog(fund({ kind, fuelType: null, litres: null })), kind).not.toContain(
         'data-receipt-company',
       );
@@ -802,7 +816,7 @@ describe('the custody ledger', () => {
     expect(opened).toContain('data-custody-figures="true"');
     expect(opened).toContain(ar('fleet.custody.totals.total'));
     expect(opened).toContain('4,220.00');
-    expect(opened).toContain(ar('fleet.custody.totals.dealership'));
+    expect(opened).toContain(ar('fleet.custody.totals.maintenance'));
     expect(opened).toContain('850.00');
     expect(opened).toContain(ar('fleet.custody.totals.fuel'));
     expect(opened).toContain('1,850.00');
@@ -824,8 +838,9 @@ describe('the custody ledger', () => {
       <CustodyFigures totals={custodySummary} />,
     );
     const order = [...opened.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1]);
-    expect(order).toEqual(['fund', 'total', 'dealership', 'fuel', 'tyres', 'wash']);
-    for (const kind of ['dealership', 'fuel', 'tyres', 'wash'] as const) {
+    // «وتظهر فى مكان التوكيل»: «صيانة» first among the kinds, where التوكيل was.
+    expect(order).toEqual(['fund', 'total', 'maintenance', 'fuel', 'tyres', 'wash']);
+    for (const kind of ['maintenance', 'fuel', 'tyres', 'wash'] as const) {
       const at = opened.indexOf(`data-custody-figure="${kind}"`);
       const tile = opened.slice(at, opened.indexOf('</div></div>', at));
       // The owner's dashboard design, on the whole custody screen: the kind's tile and edge.
@@ -846,20 +861,12 @@ describe('the custody ledger', () => {
     expect(opened).toContain('border-l-emerald-500');
   });
 
-  it('draws the kind in «كل الحركات» in its own colour — the dealership, fuel, tyres and washing apart', () => {
+  it('draws the kind in «كل الحركات» in its own colour — maintenance, fuel, tyres and washing apart', () => {
     const html = renderCustody([
       movement({ id: 'f', source: 'fuel', amount: 101 }),
       movement({ id: 't', source: 'tyres', fuelType: null, amount: 102 }),
       movement({ id: 'w', source: 'wash', fuelType: null, amount: 103 }),
-      movement({
-        id: 'd',
-        ref: 'dealershipInvoice',
-        source: 'dealership',
-        driverName: null,
-        fuelType: null,
-        detail: 'إصلاح',
-        amount: 104,
-      }),
+      movement({ id: 'm', source: 'maintenance', fuelType: null, amount: 104 }),
     ]);
     const movements = html.indexOf('data-custody-movements="true"');
     const fills = new Set<string>();
@@ -867,7 +874,7 @@ describe('the custody ledger', () => {
       ['fuel', '101.00'],
       ['tyres', '102.00'],
       ['wash', '103.00'],
-      ['dealership', '104.00'],
+      ['maintenance', '104.00'],
     ] as const) {
       const row = rowWith(html, amount, movements);
       const at = row.indexOf(`data-custody-kind="${kind}"`);
@@ -884,7 +891,7 @@ describe('the custody ledger', () => {
     }
     expect(fills.size, 'four kinds, four colours').toBe(4);
     expect(CUSTODY).toContain('<CustodyKindBadge kind={row.source} />');
-    expect(CUSTODY).not.toContain("tone={row.source === 'dealership' ? 'info' : 'neutral'}");
+    expect(CUSTODY).not.toContain("'dealership'");
   });
 
   it('prints tyres and washing on totals of their own', () => {
@@ -1007,18 +1014,15 @@ describe('the custody ledger', () => {
     );
   });
 
-  it('shows «ملخص لكل سيارة» with a grand-total row, then every movement with where it came from', () => {
+  it('shows «ملخص لكل سيارة» with a grand-total row, then every movement — each one a receipt', () => {
     const html = renderCustody([
       movement(),
       movement({
-        id: 'd-1',
-        ref: 'dealershipInvoice',
-        source: 'dealership',
+        id: 'm-1',
+        source: 'maintenance',
         vehicleId: 'v-63',
         vehicleCode: '63',
-        driverName: null,
         fuelType: null,
-        detail: 'إصلاح',
         amount: 850,
       }),
     ]);
@@ -1029,9 +1033,14 @@ describe('the custody ledger', () => {
     const total = rowWith(html, ar('fleet.custody.grandTotal'), perVehicle);
     expect(total).toContain('4,220.00');
     expect(total).toContain('850.00');
-    const bill = rowWith(html, ar('fleet.custody.from.dealershipInvoice'), movements);
-    expect(bill).toContain('63');
-    expect(bill).toContain('إصلاح');
+    // «صيانة» is a receipt like the rest: «خصم الإيصالات» is where every line comes from, and no
+    // dealership invoice is among them.
+    const maintenance = rowWith(html, '850.00', movements);
+    expect(maintenance).toContain('63');
+    expect(maintenance).toContain(ar('fleet.custody.source.maintenance'));
+    expect(maintenance).toContain(ar('fleet.custody.from.receipt'));
+    expect(html).not.toContain('dealershipInvoice');
+    expect(html).not.toContain('التوكيل');
     const fuel = rowWith(html, ar('fleet.custody.from.receipt'), movements);
     expect(fuel).toContain(ar('fleet.receipts.fuelType.petrol92'));
     expect(fuel).toContain('أيمن حسن مصطفى');

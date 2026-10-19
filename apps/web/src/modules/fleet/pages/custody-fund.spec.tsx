@@ -117,7 +117,7 @@ const esc = (classes: string): string =>
 const summary: FleetCustodySummaryDto = {
   count: 6,
   total: 4335.5,
-  dealership: 850,
+  maintenance: 850,
   fuel: 1965.5,
   tyres: 1400,
   wash: 120,
@@ -139,7 +139,7 @@ const figure = (html: string, id: string): string => {
 const dashboard = (over: Partial<FleetCustodyDashboardDto> = {}): FleetCustodyDashboardDto => ({
   ...summary,
   vehicleCount: 0,
-  counts: { dealership: 1, fuel: 3, tyres: 1, wash: 1 },
+  counts: { maintenance: 1, fuel: 3, tyres: 1, wash: 1 },
   bySource: [],
   timeline: { granularity: 'month', buckets: [] },
   drivers: [],
@@ -157,7 +157,6 @@ const dashboard = (over: Partial<FleetCustodyDashboardDto> = {}): FleetCustodyDa
   },
   alerts: {
     doubleFuel: [],
-    pendingPrivateBills: { count: 0, oldestOutDate: null },
     receiptsWithoutPhoto: 0,
     duplicateReceipts: 0,
   },

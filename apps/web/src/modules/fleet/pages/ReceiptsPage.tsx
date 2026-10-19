@@ -1,5 +1,6 @@
 // خصم الإيصالات — the papers the driver brings back: fuel off the car's card or out of the custody
-// fund, tyres and washing out of the fund. Entry is a modal («الادخال يكون فى مودال»).
+// fund, tyres, washing and maintenance («صيانة») out of the fund. Entry is a modal («الادخال يكون فى
+// مودال»).
 //
 // «حسن الui زى شاشة السيارات و السواقيين»: no page title — a toolbar with the count, the
 // «الإحصائيات» toggle, the Excel / PDF pill and «إيصال جديد»; the dark filter bar; the boards'
@@ -151,7 +152,8 @@ export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Elemen
 
 /**
  * The four sums behind «الإحصائيات» — the server's, over the whole filtered set, never the page:
- * the fund, the cards, fuel with its litres, tyres and washing together.
+ * the fund, the cards, fuel with its litres, and tyres, washing and maintenance together — the
+ * three kinds the fund alone pays for.
  */
 export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): JSX.Element => {
   const t = useT();
@@ -192,7 +194,7 @@ export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): J
           icon={FILTER_ICON.motor}
           iconClass="bg-slate-500/10 text-slate-600 dark:text-slate-300"
           label={t('fleet.receipts.totals.tyresWash')}
-          {...moneyChip(totals.tyresTotal + totals.washTotal, locale)}
+          {...moneyChip(totals.tyresTotal + totals.washTotal + totals.maintenanceTotal, locale)}
         />
       </div>
     </section>
@@ -689,7 +691,7 @@ export const ReceiptsPage = (): JSX.Element => {
                 }
               />
             </FilterWithIcon>
-            {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — three kinds, so several at once. */}
+            {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — four kinds, so several at once. */}
             <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
               <MultiSelect
                 clearable

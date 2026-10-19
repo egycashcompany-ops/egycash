@@ -135,6 +135,7 @@ const TOTALS: FleetReceiptTotalsDto = {
   fuelLitres: 74.2,
   tyresTotal: 0,
   washTotal: 0,
+  maintenanceTotal: 0,
 };
 
 const FILTERS = {

@@ -1,9 +1,13 @@
 // The dealership screen (التوكيل), proven against what it actually produces.
 //
 // «العربيه اللى بتخرج من الصيانه بتظهر فى الشاشه دى بس الصف بيكون باللون الاصفر»: a row waiting
-// for its invoice is yellow and offers «تسجيل الفاتورة»; a recorded one says who paid; the totals
+// for its invoice is yellow and offers «تسجيل الفاتورة»; a recorded one turns green; the totals
 // sit between the filters and the table; print and Excel are icons on the page's side. The bill's
 // form opens its insurer on «لا يوجد», offers the car's own under the arrow, and takes a photo.
+//
+// «التوكيل لما بسجل فاتوره عاوز الحاجات دى تتحفظ زى ما هى ولا تنقص من الكروت ولا تنقص من العهدة
+// وملهاش علاقة ب حاجة»: nothing on the screen or the form reads an invoice as custody money — no
+// «الجهة», no custody total — and «ملاكي» stays, as data.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,8 +94,7 @@ const row = (over: Partial<FleetDealershipInvoiceDto> = {}): FleetDealershipInvo
 const totals = (over: Partial<FleetDealershipTotalsDto> = {}): FleetDealershipTotalsDto => ({
   count: 3,
   pending: 1,
-  dealershipTotal: 3250,
-  custodyTotal: 850,
+  dealershipTotal: 4100,
   ...over,
 });
 
@@ -99,7 +102,6 @@ const FILTERS = {
   from: undefined,
   to: undefined,
   vehicleCodes: undefined,
-  side: undefined,
   pending: undefined,
   workKind: undefined,
 };
@@ -177,7 +179,7 @@ describe('the dealership table', () => {
     expect(pending).not.toContain('مصر للتأمين');
   });
 
-  it('says who paid a recorded row, and turns it green', () => {
+  it('turns a recorded row green — and says nothing of «الجهة»: no invoice is custody money', () => {
     const html = render({
       rows: [
         row({
@@ -202,13 +204,22 @@ describe('the dealership table', () => {
     const dealer = rowWith(html, '48213');
     expect(dealer).toContain('data-pending="false"');
     expect(dealer).not.toContain('data-dealership-waiting');
-    expect(dealer).toContain(ar('fleet.dealership.side.dealership'));
     expect(dealer).toContain('3,250.00');
     // «عاوز لما اعمل تسجيل الفاتوره تبقى اخضر»: only a recorded row is tinted, and green.
     expect(PAGE).toContain('[&_tbody_tr[data-pending=false]]:!bg-emerald-50');
     expect(PAGE).not.toContain('[&_tbody_tr[data-pending=true]]');
-    const custody = rowWith(html, 'إصلاح</span>');
-    expect(custody).toContain(ar('fleet.dealership.side.custody'));
+    // A private car's bill with no number — stored with `side: 'custody'`, as it always was —
+    // shows its amount as entered, and nothing calls it the fund's.
+    const privateBill = rowWith(html, 'إصلاح</span>');
+    expect(privateBill).toContain('data-pending="false"');
+    expect(privateBill).toContain('850.00');
+    for (const one of [dealer, privateBill]) {
+      expect(one).not.toContain(ar('fleet.nav.custody'));
+    }
+    expect(html).not.toContain(ar('fleet.nav.custody'));
+    for (const gone of ["'side'", 'row.side', 'fleet.dealership.side.', 'columns.side']) {
+      expect(PAGE, gone).not.toContain(gone);
+    }
   });
 
   it('puts the totals BETWEEN the filters and the table, behind «الإحصائيات» — the server’s figures', () => {
@@ -222,9 +233,12 @@ describe('the dealership table', () => {
     expect(filters).toBeGreaterThan(-1);
     expect(figures, 'after the filters').toBeGreaterThan(filters);
     expect(table, 'before the table').toBeGreaterThan(figures);
-    for (const key of ['dealership', 'custody', 'pending', 'count']) {
+    for (const key of ['dealership', 'pending', 'count']) {
       expect(PAGE).toContain(`t('fleet.dealership.totals.${key}')`);
     }
+    // No custody total: an invoice is not custody money, a private car's neither.
+    expect(PAGE).not.toContain('totals.custody');
+    expect(PAGE).not.toContain('custodyTotal');
     expect(PAGE).toContain('useDealershipSummary(filters)');
   });
 
@@ -237,6 +251,13 @@ describe('the dealership table', () => {
     expect(html.indexOf('data-export="dealership"'), 'above the table').toBeLessThan(
       html.indexOf('<table'),
     );
+    // The files' last column is «الحالة» — waiting or recorded — never who paid.
+    const header = PAGE.slice(
+      PAGE.indexOf('const header = ['),
+      PAGE.indexOf('];', PAGE.indexOf('const header = [')),
+    );
+    expect(header).toContain("t('fleet.dealership.filters.state'),");
+    expect(PAGE.match(/stateLabel\(row\),/gu), 'the sheet and the print').toHaveLength(2);
   });
 
   it('carries the image column exactly as the vehicle licence does — upload, then view / print / delete', () => {
@@ -274,9 +295,20 @@ describe('recording the invoice', () => {
     expect(FORM).toContain('data-dealership-private="true"');
   });
 
-  it('needs an invoice number unless the car is private — then the custody fund pays', () => {
+  it('needs an invoice number unless the car is private — and says no «الجهة»: nothing goes to the fund', () => {
     expect(FORM).toContain("const numberOk = privateCar || invoiceNumber.trim() !== '';");
-    expect(FORM).toMatch(/privateCar && invoiceNumber\.trim\(\) === ''\s*\?\s*'custody'\s*:\s*'dealership'/u);
+    // The banner that said who would pay after the save is gone, with every word of it.
+    expect(FORM).not.toContain('data-dealership-side');
+    expect(FORM).not.toContain("'custody'");
+    for (const key of ['sideUnknown', 'sideCustodyHint', 'sideDealershipHint']) {
+      expect(FORM, key).not.toContain(key);
+    }
+    const html = dialog(row({ privateCar: true }));
+    expect(html).not.toContain(ar('fleet.nav.custody'));
+    expect(html).toContain(ar('fleet.dealership.invoiceNumberOptional'));
+    expect(ar('fleet.dealership.invoiceNumberOptional')).toBe('اختياري لسيارة ملاكي.');
+    // «ملاكي» is still sent as it was picked — saved exactly as entered.
+    expect(FORM).toContain('        privateCar,\n');
   });
 
   it('keeps Save pressable and names what is missing — the number only when the car is not private', () => {

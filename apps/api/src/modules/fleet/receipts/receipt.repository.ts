@@ -121,6 +121,10 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
         (row) => row._id.kind === 'wash',
         (row) => row.amount,
       ),
+      maintenanceTotal: sum(
+        (row) => row._id.kind === 'maintenance',
+        (row) => row.amount,
+      ),
     };
   }
 }

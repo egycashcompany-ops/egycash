@@ -201,7 +201,7 @@ describe('the three WHOLE boards order what they already hold', () => {
       page.indexOf('const vehicleColumns'),
     );
     expect(kinds, 'each of its four kinds').toContain('sortable: true');
-    for (const kind of ['dealership', 'fuel', 'tyres', 'wash']) {
+    for (const kind of ['maintenance', 'fuel', 'tyres', 'wash']) {
       expect(page, kind).toContain(`kindCol('${kind}'),`);
     }
     expect(column(page, 'total'), 'and «الإجمالي»').toContain('sortable: true');

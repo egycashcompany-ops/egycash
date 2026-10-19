@@ -351,11 +351,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'fleet.noticeSettings': [['fleet', 'notices']],
   'fleet.licenseExpense': [['fleet', 'licenseExpenses']],
   'fleet.licenseExpenseSettings': [['fleet', 'licenseExpenses']],
-  // A private car's bill is also a line of the custody ledger.
-  'fleet.dealershipInvoice': [
-    ['fleet', 'dealership'],
-    ['fleet', 'custody'],
-  ],
+  // The dealership board alone: an invoice is saved as entered and moves nothing else — not the
+  // custody ledger, not a fuel card.
+  'fleet.dealershipInvoice': [['fleet', 'dealership']],
   'fleet.fuelCard': [['fleet', 'fuelCards']],
   // A receipt is its own row, a line of the ledger, and money off a card.
   'fleet.receipt': [

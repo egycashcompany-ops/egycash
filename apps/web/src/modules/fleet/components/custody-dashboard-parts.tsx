@@ -230,15 +230,6 @@ export const custodyShare1 = (part: number, whole: number): string => {
   return `${pct.toFixed(1)}%`;
 };
 
-const DAY_MS = 86_400_000;
-
-/** Whole days from a UTC day (`YYYY-MM-DD…`) to today's — 0 on the day itself, never below. */
-export const custodyDaysSince = (iso: string, now: number = Date.now()): number => {
-  const start = Date.parse(`${iso.slice(0, 10)}T00:00:00Z`);
-  if (Number.isNaN(start)) return 0;
-  return Math.max(0, Math.floor(now / DAY_MS) - Math.floor(start / DAY_MS));
-};
-
 /**
  * Which form a counted noun takes. Arabic writes «1 حركة», «9 حركات», «15 حركة» (and «0 إيصالات»)
  * — the plural from 2 to 10 and for none, the singular otherwise; English the plural but for one.
@@ -251,7 +242,7 @@ export const custodyCountForm = (locale: Locale, n: number): CustodyCountForm =>
   return n === 0 || (tail >= 2 && tail <= 10) ? 'few' : 'other';
 };
 
-export type CustodyNoun = 'movement' | 'day' | 'car' | 'privateBill';
+export type CustodyNoun = 'movement' | 'day' | 'car';
 
 /** «9 حركات», «14 سيارة» — a count and its noun; `noun` alone gives the noun for a split figure. */
 export const useCount = (): {

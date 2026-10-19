@@ -1,6 +1,8 @@
 // العهدة — «شاشه العهده اللى فيها التجميعه بتاعت مصروفات العهده»: everything the custody fund paid,
-// summed per source and per car, with every movement under it. A VIEW over the two screens that
-// write the fund's side — the receipts and the dealership — never a copy.
+// summed per source and per car, with every movement under it. A VIEW over the receipts
+// («خصم الإيصالات») — صيانة, وقود, كاوتش, غسيل — never a copy. «التوكيل لما بسجل فاتوره … ولا تنقص
+// من العهدة وملهاش علاقة ب حاجة»: a dealership invoice is no custody movement, and «صيانة» stands
+// where التوكيل stood.
 //
 // «تعالى بقى نشتغل على العهده»: what the other Fleet boards were given, given here too — no page
 // title, a toolbar with the count, «الإحصائيات» and the Excel / PDF pill; the dark filter bar with
@@ -14,10 +16,10 @@
 // apart; and «لوحة تحكم» beside «الإحصائيات» opens everything in detail over the same filters.
 //
 // «عاوز دى تكون فى شاشه العهد … فى اللايت سيم والدارك سيم»: the owner's dashboard design sets the
-// colours of this WHOLE screen — the kinds blue, amber, rose and cyan. Not the toolbar: «لوحة
-// التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات» — «الإحصائيات» and «لوحة تحكم» wear
-// the site's purple, as on every other board (`PRESS_BUTTON`); nor the pager's current page, purple
-// too («لا بنفسجى»).
+// colours of this WHOLE screen — the kinds blue (صيانة, where التوكيل was), amber, rose and cyan.
+// Not the toolbar: «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات» —
+// «الإحصائيات» and «لوحة تحكم» wear the site's purple, as on every other board (`PRESS_BUTTON`);
+// nor the pager's current page, purple too («لا بنفسجى»).
 //
 // «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»: every
 // car of «ملخص لكل سيارة» carries «السجل» — its log over the board, under the board's own filters.
@@ -113,6 +115,14 @@ const DEFAULT_SORT = 'date:desc';
 /** «ملخص لكل سيارة» opens in the server's order — by the car's code. */
 const DEFAULT_CAR_SORT = 'vehicleCode:asc';
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
+/**
+ * «المصدر» as the address holds it, kept to the kinds the server knows: a remembered or bookmarked
+ * `source=dealership` (التوكيل, no custody movement any more) is dropped, not sent to be refused.
+ */
+const custodySources = (raw: string | null): FleetCustodySource[] =>
+  csv(raw).filter((v): v is FleetCustodySource =>
+    (FLEET_CUSTODY_SOURCES as readonly string[]).includes(v),
+  );
 const GRAND_TOTAL = '__total__';
 
 /** Every filter is `density="tight"`, as on the vehicles board. */
@@ -182,7 +192,7 @@ const CALM_FOOT_INK = 'text-slate-900 dark:text-white';
 const KIND_HEAD_DOT =
   "[&>button]:before:inline-block [&>button]:before:h-2 [&>button]:before:w-2 [&>button]:before:shrink-0 [&>button]:before:rounded-full [&>button]:before:content-['']";
 const KIND_HEAD_DOT_INK: Record<FleetCustodySource, string> = {
-  dealership: '[&>button]:before:bg-blue-600 dark:[&>button]:before:bg-blue-400',
+  maintenance: '[&>button]:before:bg-blue-600 dark:[&>button]:before:bg-blue-400',
   fuel: '[&>button]:before:bg-amber-500 dark:[&>button]:before:bg-amber-400',
   tyres: '[&>button]:before:bg-rose-500 dark:[&>button]:before:bg-rose-400',
   wash: '[&>button]:before:bg-cyan-600 dark:[&>button]:before:bg-cyan-400',
@@ -298,14 +308,14 @@ const GRAND_INK = 'text-emerald-800 dark:text-emerald-300';
 /** A fuel receipt's company in «كل الحركات» — the dashboard log's badge, a size under the kind's. */
 const COMPANY_BADGE =
   'inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-0.5 text-[13px] leading-5';
-/** «من» — a bill's and a receipt's alike, in the row's plain ink. */
+/** «من» — the receipts screen's, in the row's plain ink. */
 const CALM_FROM = 'text-slate-600 dark:text-slate-300';
 /**
  * «كل الحركات» in the dashboard log's inks, on a span of each cell's own (the board's table sets
  * its ink on the `<td>` with `!important`; a span's own colour still wins):
  * - the head slate-700 on the light map (the board's is slate-500), one selector deeper as on
  *   «ملخص لكل سيارة»; the design's dark head is the board's own slate-400, which still wins dark;
- * - the date muted; «من», a bill's and a receipt's alike, in the row's plain ink (`CALM_FROM`);
+ * - the date muted; «من» in the row's plain ink (`CALM_FROM`);
  * - the car's code in a slate chip on the light map, white on the dark design;
  * - the amount, figure and «ج.م.», slate-900 / white.
  */
@@ -335,7 +345,7 @@ export const CustodyPage = (): JSX.Element => {
   const codesParam = sp.get('vehicleCodes') ?? '';
   const sourcesParam = sp.get('source') ?? '';
   const vehicleCodes = csv(codesParam);
-  const sources = csv(sourcesParam);
+  const sources = custodySources(sourcesParam);
   const driver = sp.get('driver') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -438,7 +448,7 @@ export const CustodyPage = (): JSX.Element => {
       {
         vehicleId: GRAND_TOTAL,
         vehicleCode: t('fleet.custody.grandTotal'),
-        dealership: summary.data.dealership,
+        maintenance: summary.data.maintenance,
         fuel: summary.data.fuel,
         tyres: summary.data.tyres,
         wash: summary.data.wash,
@@ -498,7 +508,7 @@ export const CustodyPage = (): JSX.Element => {
           </span>
         ),
     },
-    kindCol('dealership'),
+    kindCol('maintenance'),
     kindCol('fuel'),
     kindCol('tyres'),
     kindCol('wash'),
@@ -544,7 +554,7 @@ export const CustodyPage = (): JSX.Element => {
       key: 'source',
       align: 'center',
       header: t('fleet.receipts.columns.kind'),
-      // In the filter's order — dealership, fuel, tyres, wash — not the word's alphabet.
+      // In the filter's order — maintenance, fuel, tyres, wash — not the word's alphabet.
       sortable: true,
       // The alarms board's pill size, so the kind reads at the row's 16px; the detail in a span
       // of its own, so the table's bold reaches it. A fuel receipt that names its company wears
@@ -568,7 +578,7 @@ export const CustodyPage = (): JSX.Element => {
       key: 'driverName',
       align: 'center',
       header: t('fleet.receipts.columns.driver'),
-      // A bill names no driver, so it sorts last whichever way the arrow points.
+      // A receipt that names no driver sorts last whichever way the arrow points.
       sortable: true,
       // «عاوز الاسم بتاع السواق كامل وشيل الكود»: the WHOLE name, the code on hover — as on the
       // maintenance and odometer boards. A name from the old books stays grey.
@@ -581,7 +591,7 @@ export const CustodyPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.custody.columns.from'),
       sortable: true,
-      // «هادية»: a bill and a receipt alike in the row's plain ink — the kind's pill says which.
+      // «هادية»: in the row's plain ink — every movement is a receipt; the kind's pill says which.
       render: (row) => (
         <span data-custody-from={row.ref} className={CALM_FROM}>
           {t(`fleet.custody.from.${row.ref}`)}
@@ -658,8 +668,8 @@ export const CustodyPage = (): JSX.Element => {
             : [
                 { label: t('fleet.custody.totals.total'), value: reportMoney(summary.data.total) },
                 {
-                  label: t('fleet.custody.totals.dealership'),
-                  value: reportMoney(summary.data.dealership),
+                  label: t('fleet.custody.totals.maintenance'),
+                  value: reportMoney(summary.data.maintenance),
                 },
                 { label: t('fleet.custody.totals.fuel'), value: reportMoney(summary.data.fuel) },
                 { label: t('fleet.custody.totals.tyres'), value: reportMoney(summary.data.tyres) },
@@ -907,14 +917,14 @@ export const CustodyPage = (): JSX.Element => {
         {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the money boards. */}
         {statsOpen && summary.data !== undefined && <CustodyFigures totals={summary.data} />}
         {/* The board's own `filters`: the dashboard asks exactly what the figures ask, and what it
-            changes it changes HERE — clearing them, «المصدر» = التوكيل. */}
+            changes it changes HERE — clearing them, «المصدر» = صيانة. */}
         <CustodyDashboard
           open={dashOpen}
           onClose={() => setDashOpen(false)}
           filters={filters}
           onClearFilters={clearFilters}
-          onShowDealership={() => {
-            patch({ source: 'dealership' });
+          onShowMaintenance={() => {
+            patch({ source: 'maintenance' });
             setDashOpen(false);
           }}
         />

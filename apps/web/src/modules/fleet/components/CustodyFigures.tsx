@@ -121,7 +121,7 @@ export const CUSTODY_FUND_LABEL = 'fleet.custody.fund.title';
 
 /** Each figure's words, the kind's own key under `fleet.custody.totals`. */
 export const CUSTODY_KIND_LABEL = {
-  dealership: 'fleet.custody.totals.dealership',
+  maintenance: 'fleet.custody.totals.maintenance',
   fuel: 'fleet.custody.totals.fuel',
   tyres: 'fleet.custody.totals.tyres',
   wash: 'fleet.custody.totals.wash',

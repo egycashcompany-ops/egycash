@@ -16,10 +16,10 @@
 //
 // Every number is the server's (`GET /fleet/custody/dashboard`), folded from the very movements
 // `/summary` folds, so the dashboard and «الإحصائيات» never disagree. What the design shows and
-// the data does not hold is not drawn («شيلهم»): no
-// station panel, no kind of wash, no «تكلفة معلقة» amount (a waiting bill has none yet) — only its
-// count and how long the oldest has waited. The owner's choices on it are in `CustodyKinds.tsx`
-// (the colours) and in `custody-dashboard-parts.tsx` (the surfaces, the type, the counted words).
+// the data does not hold is not drawn («شيلهم»): no station panel, no kind of wash, no «تكلفة
+// معلقة» — a dealership bill is not custody money («التوكيل … ملهاش علاقة ب حاجة»), so none waits
+// on the fund. The owner's choices on it are in `CustodyKinds.tsx` (the colours) and in
+// `custody-dashboard-parts.tsx` (the surfaces, the type, the counted words).
 //
 // «عاوز الداش بورد بكل حاجة تكون ظاهره حتى لو لسه مفيش اى اكشن او حركه او خصم او زياده فاهم يعنى
 // على الاقل الاشكال موجودة»: there is no empty face. With no movement in the set, every section is
@@ -57,7 +57,6 @@ import {
   CARD_SURFACE,
   COMPANY,
   COUNT,
-  custodyDaysSince,
   custodyFilterChips,
   custodyFiltered,
   custodyTrapFocus,
@@ -81,8 +80,8 @@ export {
 export interface CustodyDashboardActions {
   /** «إعادة ضبط الفلاتر»: clears the board's own filters; the dashboard follows them. */
   onClearFilters?: (() => void) | undefined;
-  /** «عرض حركات التوكيل»: the board's «المصدر» set to التوكيل, the dashboard closed. */
-  onShowDealership?: (() => void) | undefined;
+  /** «عرض حركات الصيانة»: the board's «المصدر» set to «صيانة», the dashboard closed. */
+  onShowMaintenance?: (() => void) | undefined;
 }
 
 /**
@@ -104,9 +103,9 @@ export const custodyDashboardView = (query: {
 
 /**
  * The owner chose the board's filters only: the design's filter inputs are not built here. The
- * chips say what the dashboard was opened over; the design's note on the driver filter shows when
- * one is set (a bill names no driver, so the server leaves the bills out), and «إعادة ضبط الفلاتر»
- * clears the board's own filters.
+ * chips say what the dashboard was opened over, and «إعادة ضبط الفلاتر» clears the board's own
+ * filters. The design's note on the driver filter (a dealership bill named no driver, so the
+ * server left the bills out) is gone with the bills: every movement now is a receipt.
  */
 export const CustodyDashboardFilterBar = ({
   filters,
@@ -118,7 +117,6 @@ export const CustodyDashboardFilterBar = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const chips = custodyFilterChips(filters, t, locale);
-  const driver = filters.driver !== undefined && filters.driver !== '';
   const reset = custodyFiltered(filters) && onClearFilters !== undefined;
   return (
     <section
@@ -136,29 +134,17 @@ export const CustodyDashboardFilterBar = ({
           </li>
         ))}
       </ul>
-      {(driver || reset) && (
+      {reset && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 text-[11px] text-slate-500 dark:border-[#1a2538] dark:text-slate-400">
-          {driver ? (
-            <div data-custody-driver-note="true" className="flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
-              />
-              <span>{t('fleet.custody.dashboard.filters.driverNote')}</span>
-            </div>
-          ) : (
-            <span />
-          )}
-          {reset && (
-            <button
-              type="button"
-              data-custody-reset-filters="true"
-              onClick={onClearFilters}
-              className="font-bold text-emerald-700 transition hover:underline dark:font-medium dark:text-emerald-400 dark:hover:text-emerald-300"
-            >
-              {t('fleet.custody.dashboard.filters.reset')}
-            </button>
-          )}
+          <span />
+          <button
+            type="button"
+            data-custody-reset-filters="true"
+            onClick={onClearFilters}
+            className="font-bold text-emerald-700 transition hover:underline dark:font-medium dark:text-emerald-400 dark:hover:text-emerald-300"
+          >
+            {t('fleet.custody.dashboard.filters.reset')}
+          </button>
         </div>
       )}
     </section>
@@ -169,10 +155,7 @@ export const CustodyDashboardFilterBar = ({
 
 /** Is there anything to warn about? With nothing, the banner is not drawn at all. */
 export const custodyHasAlerts = (alerts: FleetCustodyAlertsDto): boolean =>
-  alerts.doubleFuel.length > 0 ||
-  alerts.pendingPrivateBills.count > 0 ||
-  alerts.receiptsWithoutPhoto > 0 ||
-  alerts.duplicateReceipts > 0;
+  alerts.doubleFuel.length > 0 || alerts.receiptsWithoutPhoto > 0 || alerts.duplicateReceipts > 0;
 
 /** How many of the double fuellings the banner names before «+N». */
 const DOUBLE_FUEL_SHOWN = 3;
@@ -200,26 +183,20 @@ const Emphasised = ({
 
 /**
  * The amber banner — every line a count read from the rows, nothing estimated: a car fuelled from
- * the fund twice in a day (up to three named, then «+N»); the private cars' bills waiting for their
- * invoice, how many and how long the oldest has waited («3»: no amount, there is none yet); the
- * receipts with no photo and the duplicated ones.
+ * the fund twice in a day (up to three named, then «+N»); the receipts with no photo and the
+ * duplicated ones. A dealership bill is not custody money, so none waits here.
  */
 export const CustodyAlerts = ({
   alerts,
-  now = Date.now(),
 }: {
   alerts: FleetCustodyAlertsDto;
-  /** Today, for the age of the oldest waiting bill — fixed by the specs. */
-  now?: number;
 }): JSX.Element | null => {
   const t = useT();
-  const { count, phrase } = useCount();
+  const { phrase } = useCount();
   const titleId = useId();
   if (!custodyHasAlerts(alerts)) return null;
   const doubles = alerts.doubleFuel.slice(0, DOUBLE_FUEL_SHOWN);
   const more = alerts.doubleFuel.length - doubles.length;
-  const pending = alerts.pendingPrivateBills;
-  const age = pending.oldestOutDate === null ? null : custodyDaysSince(pending.oldestOutDate, now);
   const TOKEN = '⁣';
   const items: ReactNode[] = [
     ...doubles.map((line) => (
@@ -253,29 +230,6 @@ export const CustodyAlerts = ({
             className={cn('font-bold text-amber-700 dark:text-amber-300', NUM)}
           >
             {t('fleet.custody.dashboard.alerts.more', { count: COUNT.format(more) })}
-          </span>,
-        ]
-      : []),
-    ...(pending.count > 0
-      ? [
-          <span key="pending" data-custody-alert="pendingBills" className="flex items-center gap-1">
-            <span aria-hidden="true" className="text-blue-600 dark:text-sky-400">
-              ⏳
-            </span>
-            <span>
-              {/* Bold in the line's own ink on the dark — only a car's code is set in white. */}
-              <strong
-                data-custody-pending-count="true"
-                className="font-bold text-slate-900 dark:text-inherit"
-              >
-                {count('privateBill', pending.count)}
-              </strong>{' '}
-              {age === null
-                ? t('fleet.custody.dashboard.alerts.pendingNoDate')
-                : age === 0
-                  ? t('fleet.custody.dashboard.alerts.pendingToday')
-                  : t('fleet.custody.dashboard.alerts.pending', { days: count('day', age) })}
-            </span>
           </span>,
         ]
       : []),
@@ -335,8 +289,8 @@ const FIGURE = cn(
 );
 /**
  * «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد» — six figures: one to a row on a
- * phone, two from `sm`, three from `lg` (the fund, the spend and the dealership over fuel, tyres
- * and washing), all six in one row of the design from `2xl`, where a sixth of the row still holds
+ * phone, two from `sm`, three from `lg` (the fund, the spend and «صيانة» over fuel, tyres and
+ * washing), all six in one row of the design from `2xl`, where a sixth of the row still holds
  * a sum and its «ج.م.».
  */
 const KPI_GRID = 'grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6';
@@ -648,29 +602,28 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
 /**
  * Everything the dashboard shows of an answer, in the design's order — up to the fuel: the cars'
  * table and the log are the board's own. Every section, whatever the answer holds: with no
- * movement, each at zero with its line (`CustodyNoMovements`), the banner by its own rules — a
- * private car's bill waiting for its invoice is not a movement, so it may still have one to say.
+ * movement, each at zero with its line (`CustodyNoMovements`), the banner by its own rules.
  */
 export const CustodyDashboardBody = ({
   data,
   filters = {},
-  onShowDealership,
+  onShowMaintenance,
   now,
 }: {
   data: FleetCustodyDashboardDto;
   /** The board's filters — the time chart's frame and the words of the line, with no movement. */
   filters?: CustodyDashboardFilters;
-  /** Today, for the age of the oldest waiting bill and the time chart's frame — fixed by the specs. */
+  /** Today, for the time chart's frame — fixed by the specs. */
   now?: number;
 } & CustodyDashboardActions): JSX.Element => {
   const today = now === undefined ? {} : { now };
   return (
     <div className="space-y-6" data-custody-dashboard-body="true">
-      <CustodyAlerts alerts={data.alerts} {...today} />
+      <CustodyAlerts alerts={data.alerts} />
       <CustodyKpis data={data} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         <CustodyTimeline data={data} filters={filters} {...today} />
-        <CustodyByKindSource data={data} onShowDealership={onShowDealership} filters={filters} />
+        <CustodyByKindSource data={data} onShowMaintenance={onShowMaintenance} filters={filters} />
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <CustodyTopCars data={data} filters={filters} />
@@ -713,7 +666,7 @@ export const CustodyDashboardContent = ({
   error,
   onRetry,
   filters = {},
-  onShowDealership,
+  onShowMaintenance,
   now,
 }: {
   view: CustodyDashboardView;
@@ -725,7 +678,7 @@ export const CustodyDashboardContent = ({
    * حركات بعد.» — and the time chart frames the months they name.
    */
   filters?: CustodyDashboardFilters;
-  /** Today, for the age of the oldest waiting bill and the time chart's frame — fixed by the specs. */
+  /** Today, for the time chart's frame — fixed by the specs. */
   now?: number;
 } & CustodyDashboardActions): JSX.Element => {
   if (view === 'loading') return <BodySkeleton />;
@@ -740,7 +693,7 @@ export const CustodyDashboardContent = ({
     <CustodyDashboardBody
       data={data}
       filters={filters}
-      onShowDealership={onShowDealership}
+      onShowMaintenance={onShowMaintenance}
       {...(now === undefined ? {} : { now })}
     />
   );
@@ -759,7 +712,7 @@ export const CustodyDashboard = ({
   onClose,
   filters,
   onClearFilters,
-  onShowDealership,
+  onShowMaintenance,
 }: {
   open: boolean;
   onClose: () => void;
@@ -883,7 +836,7 @@ export const CustodyDashboard = ({
               error={query.error}
               onRetry={() => void query.refetch()}
               filters={filters}
-              onShowDealership={onShowDealership}
+              onShowMaintenance={onShowMaintenance}
             />
           </div>
         </div>

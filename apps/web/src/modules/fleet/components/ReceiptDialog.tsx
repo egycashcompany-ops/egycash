@@ -1,15 +1,17 @@
-// «إيصال جديد» — «بيكون فوق اختار وقود او كاوتش او غسيل»: the kind first, then the paper.
+// «إيصال جديد» — «بيكون فوق اختار وقود او كاوتش او غسيل»: the kind first, then the paper. Since
+// «عاوز اضيف صيانة تكون زى الكاوتش والغسيل وتخصم من العهده», «صيانة» is a fourth kind after «غسيل»,
+// drawn and saved exactly as tyres and washing are.
 //
 // A fuel receipt may be taken off one of the car's two cards («جمبها علامه صح معناها يسمح انى
-// استخدم فيزا») or, with the tick off, from the custody fund; tyres and washing always come from
-// the fund. «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: once a car is picked, ANY other
-// card may pay instead — another car's, or one on no car («سفر 1») — searched and picked under the
-// car's own, and offered on a car with no card too. The driver is read off the daily roster for
-// the date and the car — and can be cleared and typed over («لو عاوز امسحه واكتب حد غيره عادى»).
-// The litres are the amount priced by the fleet settings, shown as the clerk types; «نوع الوقود»
-// opens on «سولار» («سولار افتراضى»), and «كم» — the odometer at the pump — is the paper's own,
-// optional («اختيارى عند كتابه مبلغ التفويل»). A fuel receipt the fund pays may name «الشركة» —
-// «شل أوت» or «وطنية» — so the custody dashboard can split the fund's fuel by company; never
+// استخدم فيزا») or, with the tick off, from the custody fund; tyres, washing and maintenance always
+// come from the fund. «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: once a car is picked, ANY
+// other card may pay instead — another car's, or one on no car («سفر 1») — searched and picked
+// under the car's own, and offered on a car with no card too. The driver is read off the daily
+// roster for the date and the car — and can be cleared and typed over («لو عاوز امسحه واكتب حد غيره
+// عادى»). The litres are the amount priced by the fleet settings, shown as the clerk types; «نوع
+// الوقود» opens on «سولار» («سولار افتراضى»), and «كم» — the odometer at the pump — is the paper's
+// own, optional («اختيارى عند كتابه مبلغ التفويل»). A fuel receipt the fund pays may name «الشركة»
+// — «شل أوت» or «وطنية» — so the custody dashboard can split the fund's fuel by company; never
 // required («ومش عاوز اى داتا اجبارى»), and a card receipt has its card's.
 //
 // «حسن الui … بالفورم بتاعت التسجيل والتعديل»: the vehicle form's design (`DesignDialog`) around the
@@ -81,7 +83,10 @@ const RECEIPT_PATH = [
 const CARD_NOTE =
   'rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium dark:border-[#2b3b6b] dark:bg-[#0a1233]/60';
 
-/** «وقود / كاوتش / غسيل» across the top. */
+/**
+ * «وقود / كاوتش / غسيل / صيانة» across the top. Four fit a phone's width a little tighter, and wrap
+ * rather than run off it.
+ */
 const KindSwitch = ({
   value,
   onChange,
@@ -93,7 +98,7 @@ const KindSwitch = ({
   return (
     <div
       role="radiogroup"
-      className="inline-flex gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 shadow-inner dark:border-[#2b3b6b] dark:bg-[#0a1233]"
+      className="inline-flex max-w-full flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 shadow-inner dark:border-[#2b3b6b] dark:bg-[#0a1233]"
     >
       {FLEET_RECEIPT_KINDS.map((kind) => (
         <button
@@ -104,7 +109,7 @@ const KindSwitch = ({
           data-receipt-kind={kind}
           onClick={() => onChange(kind)}
           className={cn(
-            'rounded-lg px-5 py-2 text-[15px] font-bold transition-all active:scale-[0.98]',
+            'rounded-lg px-3.5 py-2 text-[15px] font-bold transition-all active:scale-[0.98] sm:px-5',
             // The picked kind in the site's purple — what is pressed, nothing else.
             value === kind
               ? 'bg-brand-600 text-white shadow-md shadow-brand-700/30'
@@ -548,7 +553,7 @@ export const ReceiptDialog = ({
   };
   const summary = summaryLine();
 
-  // «كم» belongs to a fuel paper: a receipt that turns into tyres or washing drops it.
+  // «كم» belongs to a fuel paper: a receipt that turns into tyres, washing or maintenance drops it.
   const changeKind = (next: FleetReceiptKind): void => {
     setKind(next);
     if (next !== 'fuel') setOdometer('');

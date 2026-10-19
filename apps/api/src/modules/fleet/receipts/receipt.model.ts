@@ -1,10 +1,12 @@
-// A receipt (إيصال) the driver brought back — fuel, tyres or washing — and what paid for it.
+// A receipt (إيصال) the driver brought back — fuel, tyres, washing or maintenance — and what paid
+// for it.
 //
 // «في حاله الوقود تبع الفيزا ... بيخصم من الفيز / في حاله الوقود تبع العهدة ... بيخصم من العهده /
-// كاوتش او غسيل ... بيخصم من العهدة». The SOURCE is stored, not derived, so the custody screen can
-// sum the fund's side in the database; for a card it is also the card's own `receipt` movement,
-// written with this row in one transaction (see `receipt.service.ts`). The card may be any card —
-// «هل تريد تسجيل كارت اخر» — so `cardId` is never read as «this car's card».
+// كاوتش او غسيل ... بيخصم من العهدة», and «صيانة تكون زى الكاوتش والغسيل وتخصم من العهده»:
+// maintenance is a fund paper like tyres and washing. The SOURCE is stored, not derived, so the
+// custody screen can sum the fund's side in the database; for a card it is also the card's own
+// `receipt` movement, written with this row in one transaction (see `receipt.service.ts`). The card
+// may be any card — «هل تريد تسجيل كارت اخر» — so `cardId` is never read as «this car's card».
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_FUEL_CARD_COMPANIES,

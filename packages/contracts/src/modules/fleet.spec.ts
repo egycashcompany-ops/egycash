@@ -604,8 +604,8 @@ describe('a receipt — «ادخال كم (اختيارى عند كتابه مب
     }
   });
 
-  it('refuses the odometer on tyres and washing — they never reach a pump', () => {
-    for (const kind of ['tyres', 'wash'] as const) {
+  it('refuses the odometer on tyres, washing and maintenance — they never reach a pump', () => {
+    for (const kind of ['tyres', 'wash', 'maintenance'] as const) {
       const paper = { date: '2026-10-01', vehicleId: oid('1'), kind, amount: 120 };
       expect(CreateFleetReceiptSchema.safeParse({ ...paper, odometer: 1000 }).success).toBe(false);
       expect(CreateFleetReceiptSchema.safeParse({ ...paper, odometer: null }).success).toBe(true);
@@ -613,6 +613,18 @@ describe('a receipt — «ادخال كم (اختيارى عند كتابه مب
         false,
       );
     }
+  });
+
+  it('takes «صيانة» as tyres and washing are taken — from the fund, never off a card', () => {
+    const paper = { date: '2026-10-01', vehicleId: oid('1'), kind: 'maintenance', amount: 750 };
+    expect(CreateFleetReceiptSchema.parse(paper).kind).toBe('maintenance');
+    expect(CreateFleetReceiptSchema.safeParse({ ...paper, cardId: oid('2') }).success).toBe(false);
+    expect(CreateFleetReceiptSchema.safeParse({ ...paper, fuelType: 'diesel' }).success).toBe(
+      false,
+    );
+    expect(UpdateFleetReceiptSchema.safeParse({ kind: 'maintenance', version: 0 }).success).toBe(
+      true,
+    );
   });
 
   it('an edit keeps the odometer when absent and clears it with null', () => {
@@ -662,7 +674,7 @@ describe('a custody fuel receipt’s «الشركة» — «ومش عاوز اى
     expect(CreateFleetReceiptSchema.safeParse({ ...fund, company: 'shell' }).success).toBe(false);
   });
 
-  it('refuses it off a card — the card has its own — and on tyres and washing', () => {
+  it('refuses it off a card — the card has its own — and on tyres, washing and maintenance', () => {
     expect(
       CreateFleetReceiptSchema.safeParse({ ...fund, cardId: oid('2'), company: 'chillout' })
         .success,
@@ -670,7 +682,7 @@ describe('a custody fuel receipt’s «الشركة» — «ومش عاوز اى
     expect(
       CreateFleetReceiptSchema.safeParse({ ...fund, cardId: oid('2'), company: null }).success,
     ).toBe(true);
-    for (const kind of ['tyres', 'wash'] as const) {
+    for (const kind of ['tyres', 'wash', 'maintenance'] as const) {
       const paper = { date: '2026-10-01', vehicleId: oid('1'), kind, amount: 120 };
       expect(CreateFleetReceiptSchema.safeParse({ ...paper, company: 'wataniya' }).success).toBe(
         false,
@@ -704,15 +716,21 @@ describe('receipt kinds and custody sources take several — «اختيار مت
     expect(ListFleetReceiptsQuerySchema.parse({ kind: 'fuel' }).kind).toEqual(['fuel']);
     expect(ListFleetReceiptsQuerySchema.parse({ kind: '' }).kind).toBeUndefined();
     expect(ListFleetReceiptsQuerySchema.safeParse({ kind: 'fuel,petrol' }).success).toBe(false);
+    expect(ListFleetReceiptsQuerySchema.parse({ kind: 'maintenance,wash' }).kind).toEqual([
+      'maintenance',
+      'wash',
+    ]);
   });
 
   it('a custody filter reads one source or several', () => {
-    expect(FleetCustodySummaryQuerySchema.parse({ source: 'dealership,fuel' }).source).toEqual([
-      'dealership',
+    expect(FleetCustodySummaryQuerySchema.parse({ source: 'maintenance,fuel' }).source).toEqual([
+      'maintenance',
       'fuel',
     ]);
     expect(FleetCustodySummaryQuerySchema.parse({ source: 'wash' }).source).toEqual(['wash']);
     expect(FleetCustodySummaryQuerySchema.safeParse({ source: 'card' }).success).toBe(false);
+    // «التوكيل» is no longer a custody kind: a dealership invoice never reaches the fund.
+    expect(FleetCustodySummaryQuerySchema.safeParse({ source: 'dealership' }).success).toBe(false);
   });
 
   it('the movements take the arrows’ whole order; the figures are never ordered', () => {

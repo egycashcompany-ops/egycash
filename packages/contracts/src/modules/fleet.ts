@@ -3145,12 +3145,16 @@ export interface FleetNoticeSettingsDto {
 // workshop exit opens one row here (two, when the visit's work type was «صيانة + إصلاح» — each
 // half carries its own invoice). The row is PENDING, and yellow, until its invoice is recorded.
 //
-// WHO PAYS is the row's `side`: a row with an invoice number is the dealership's (التوكيل); a
-// private car (ملاكي) may be recorded with no invoice number, and then the amount comes out of the
-// custody fund (العهدة). The side is stored, not re-derived on every read, because the custody
-// screen sums it in the database.
+// «التوكيل لما بسجل فاتوره عاوز الحاجات دى تتحفظ زى ما هى ولا تنقص من الكروت ولا تنقص من العهدة
+// وملهاش علاقة ب حاجة»: an invoice is saved exactly as entered and moves nothing else — not the
+// custody fund (العهدة), not a fuel card. A private car (ملاكي) may still be recorded with no
+// invoice number; that is all «ملاكي» decides.
+//
+// The row's `side` is kept as it was always stored — a row with an invoice number reads
+// «dealership», a private car's with none «custody» — but it is history on the row only: no screen
+// counts it, and the custody ledger never reads these rows.
 
-/** The two sides the invoice's money is on. */
+/** The two values the stored `side` takes — data on the row, read by nothing. */
 export const FLEET_DEALERSHIP_SIDES = ['dealership', 'custody'] as const;
 export const FleetDealershipSideSchema = z.enum(FLEET_DEALERSHIP_SIDES);
 export type FleetDealershipSide = z.infer<typeof FleetDealershipSideSchema>;
@@ -3163,7 +3167,7 @@ export type FleetDealershipWorkKind = z.infer<typeof FleetDealershipWorkKindSche
 /**
  * Record (or correct) the invoice on a row. Nothing but the version is required: a row is edited
  * piece by piece, and the rule that a non-private car needs an invoice number is checked by the
- * service when an amount is written, where the car is known.
+ * service when an amount is written, where the car is known. Saving it touches nothing but the row.
  */
 export const UpdateFleetDealershipInvoiceSchema = z
   .object({
@@ -3184,7 +3188,6 @@ const dealershipFilters = {
   /** The workshop EXIT date the row carries. */
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
-  side: FleetDealershipSideSchema.optional(),
   /** `true` — only rows still waiting for their invoice; `false` — only recorded ones. */
   pending: booleanQuery().optional(),
   workKind: FleetDealershipWorkKindSchema.optional(),
@@ -3235,7 +3238,10 @@ export interface FleetDealershipInvoiceDto {
   invoiceNumber: string | null;
   invoiceAmount: number | null;
   image: FleetLicenseImageDto | null;
-  /** `null` while the row waits for its invoice. */
+  /**
+   * The side stored with the invoice — `null` while the row waits for it. Kept as saved; it moves
+   * no money and no screen counts it.
+   */
   side: FleetDealershipSide | null;
   /** No invoice recorded yet — the yellow row. */
   pending: boolean;
@@ -3250,10 +3256,8 @@ export interface FleetDealershipTotalsDto {
   count: number;
   /** …of which still waiting for an invoice. */
   pending: number;
-  /** Recorded invoices on the dealership's side, summed. */
+  /** Every recorded invoice's amount, summed — private cars' («ملاكي») included. */
   dealershipTotal: number;
-  /** Recorded amounts taken from the custody fund, summed. */
-  custodyTotal: number;
 }
 
 // ── Fuel cards (الفيز) and their charging ────────────────────────────────────
@@ -3528,17 +3532,19 @@ export type UpdateFleetFuelCardMovement = z.infer<typeof UpdateFleetFuelCardMove
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ───────────────────
 //
 // «وفى شاشه خصم الايصالات بيكون فوق اختار وقود او كاوتش او غسيل». A receipt is one paper the
-// driver brought back: fuel paid with a fuel card OR from the custody fund, tyres and washing
-// always from the fund. A fuel receipt taken off a card is a `receipt` movement on that card,
-// written with the receipt in one transaction. What the fund paid — these receipts and the
-// dealership rows on the custody side — is the ledger the custody screen sums.
+// driver brought back: fuel paid with a fuel card OR from the custody fund, tyres, washing and
+// maintenance («عاوز اضيف صيانة تكون زى الكاوتش والغسيل وتخصم من العهده») always from the fund. A
+// fuel receipt taken off a card is a `receipt` movement on that card, written with the receipt in
+// one transaction. What the fund paid — these receipts, and nothing else — is the ledger the
+// custody screen sums.
 //
 // «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: the card is usually one of the car's own,
 // but may be ANY card in the system — another car's, or one on no car («سفر 1», «اسبير»).
 
 export const FLEET_RECEIPT_FILE_CATEGORY = 'fleet-receipts';
 
-export const FLEET_RECEIPT_KINDS = ['fuel', 'tyres', 'wash'] as const;
+/** «وقود», «كاوتش», «غسيل», «صيانة» — the dialog's tabs in this order. */
+export const FLEET_RECEIPT_KINDS = ['fuel', 'tyres', 'wash', 'maintenance'] as const;
 export const FleetReceiptKindSchema = z.enum(FLEET_RECEIPT_KINDS);
 export type FleetReceiptKind = z.infer<typeof FleetReceiptKindSchema>;
 
@@ -3600,7 +3606,8 @@ const receiptRules = (
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['cardId'],
-      message: 'only a fuel receipt is taken off a card — tyres and washing come from the fund',
+      message:
+        'only a fuel receipt is taken off a card — tyres, washing and maintenance come from the fund',
     });
   }
   if (value.kind !== 'fuel' && value.fuelType != null) {
@@ -3651,7 +3658,7 @@ export type UpdateFleetReceipt = z.infer<typeof UpdateFleetReceiptSchema>;
 
 const receiptFilters = {
   vehicleCodes: vehicleCodesQuery(),
-  /** One kind or several — `?kind=tyres,wash`. A link with one kind still reads as before. */
+  /** One kind or several — `?kind=tyres,wash,maintenance`. A link with one kind reads as before. */
   kind: listQuery(FleetReceiptKindSchema),
   source: FleetReceiptSourceSchema.optional(),
   /** Part of the driver's name. */
@@ -3696,7 +3703,7 @@ export interface FleetReceiptDto {
   odometer: number | null;
   /**
    * «الشركة» of a fuel receipt the custody fund paid — `null` when none was picked («بدون شركة»),
-   * and always on a card receipt (its company is `cardCompany`), tyres and washing.
+   * and always on a card receipt (its company is `cardCompany`), tyres, washing and maintenance.
    */
   company: FleetFuelCardCompany | null;
   image: FleetLicenseImageDto | null;
@@ -3714,16 +3721,21 @@ export interface FleetReceiptTotalsDto {
   fuelLitres: number;
   tyresTotal: number;
   washTotal: number;
+  maintenanceTotal: number;
 }
 
-/** What the custody fund paid for — the dealership (private cars), fuel, tyres, washing. */
-export const FLEET_CUSTODY_SOURCES = ['dealership', 'fuel', 'tyres', 'wash'] as const;
+/**
+ * What the custody fund paid for — «صيانة», fuel, tyres, washing: exactly the receipt kinds, each
+ * one the receipts screen's own, in the order the custody screen shows them. Nothing else feeds
+ * the fund: a dealership invoice («التوكيل») is not among them.
+ */
+export const FLEET_CUSTODY_SOURCES = ['maintenance', 'fuel', 'tyres', 'wash'] as const;
 export const FleetCustodySourceSchema = z.enum(FLEET_CUSTODY_SOURCES);
 export type FleetCustodySource = z.infer<typeof FleetCustodySourceSchema>;
 
 const custodyFilters = {
   vehicleCodes: vehicleCodesQuery(),
-  /** One source or several — `?source=dealership,fuel`. A link with one still reads as before. */
+  /** One source or several — `?source=maintenance,fuel`. A link with one still reads as before. */
   source: listQuery(FleetCustodySourceSchema),
   driver: z.string().trim().min(1).max(200).optional(),
   from: z.coerce.date().optional(),
@@ -3744,9 +3756,9 @@ export const ListFleetCustodyMovementsQuerySchema = PaginationQuerySchema.extend
   /**
    * «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»:
    * one line of «ملخص لكل سيارة» exactly, over (never instead of) the filters above. `vehicleId` is
-   * the registry's car; `bookCode` a line kept from the old book on a car the registry never had —
-   * matched whole, spaces and all, where `vehicleCodes` would split it, and never a registry car
-   * that happens to carry the same code. Both given, both must hold.
+   * the registry's car. `bookCode` named a line kept from the old book on a car the registry never
+   * had; it is still read, so an older link answers, but a receipt is always on a registry car, so
+   * it now matches nothing. Both given, both must hold.
    */
   vehicleId: objectId().optional(),
   bookCode: z.string().trim().min(1).max(100).optional(),
@@ -3757,7 +3769,7 @@ export type ListFleetCustodyMovementsQuery = z.infer<typeof ListFleetCustodyMove
 export interface FleetCustodyVehicleRowDto {
   vehicleId: string | null;
   vehicleCode: string | null;
-  dealership: number;
+  maintenance: number;
   fuel: number;
   tyres: number;
   wash: number;
@@ -3767,7 +3779,7 @@ export interface FleetCustodyVehicleRowDto {
 export interface FleetCustodySummaryDto {
   count: number;
   total: number;
-  dealership: number;
+  maintenance: number;
   fuel: number;
   tyres: number;
   wash: number;
@@ -3780,20 +3792,22 @@ export interface FleetCustodySummaryDto {
   fundTotal: number;
 }
 
-/** One line of «كل الحركات» — a receipt from the fund, or a private car's dealership bill. */
+/** One line of «كل الحركات» — a receipt the fund paid. */
 export interface FleetCustodyMovementDto {
   id: string;
-  ref: 'receipt' | 'dealershipInvoice';
+  /** Where the line comes from — always the receipts screen («خصم الإيصالات»). */
+  ref: 'receipt';
   source: FleetCustodySource;
   date: string;
   vehicleId: string | null;
   vehicleCode: string | null;
   driverEmployeeId: string | null;
   driverName: string | null;
-  /** The fuel type of a fuel receipt, the work of a dealership bill. */
+  /** The fuel type of a fuel receipt. */
   fuelType: FleetFuelType | null;
   /** A fuel receipt's «الشركة» (`FleetReceiptDto.company`); `null` when none was picked, and on the rest. */
   company: FleetFuelCardCompany | null;
+  /** Kept for the readers that print it; a receipt has none, so it is always `null`. */
   detail: string | null;
   amount: number;
 }
@@ -3801,7 +3815,7 @@ export interface FleetCustodyMovementDto {
 /** One stretch of «المصروف عبر الزمن» — a month (`YYYY-MM`), or a day (`YYYY-MM-DD`). */
 export interface FleetCustodyTimeBucketDto {
   key: string;
-  dealership: number;
+  maintenance: number;
   fuel: number;
   tyres: number;
   wash: number;
@@ -3810,12 +3824,13 @@ export interface FleetCustodyTimeBucketDto {
 }
 
 /**
- * One driver's receipts — a dealership bill names no driver, so it is never on one. Each kind's
- * amount is kept so the line under the name («وقود 65% • كاوتش 25%») is the driver's own split.
+ * One driver's receipts. Each kind's amount is kept so the line under the name («وقود 65% • كاوتش
+ * 25%») is the driver's own split.
  */
 export interface FleetCustodyDriverRowDto {
   driverEmployeeId: string | null;
   driverName: string;
+  maintenance: number;
   fuel: number;
   tyres: number;
   wash: number;
@@ -3877,13 +3892,6 @@ export interface FleetCustodyDoubleFuelDto {
 export interface FleetCustodyAlertsDto {
   /** Newest day first, then the car's code. */
   doubleFuel: FleetCustodyDoubleFuelDto[];
-  /**
-   * Private cars' («ملاكي») dealership bills still waiting for their invoice (no amount yet), by
-   * exit date within the board's dates and cars — how many, and the oldest exit. No amount: there
-   * is none until the invoice comes. A driver filter, or a source filter without the dealership,
-   * leaves them out as it leaves the bills out.
-   */
-  pendingPrivateBills: { count: number; oldestOutDate: string | null };
   /** Receipts from the fund in the set with no photo attached. */
   receiptsWithoutPhoto: number;
   /**
@@ -3899,11 +3907,11 @@ export interface FleetCustodyAlertsDto {
  * numbers `/summary` answers with for the same filters.
  */
 export interface FleetCustodyDashboardDto extends FleetCustodySummaryDto {
-  /** The cars the movements fall on (a bill typed with a book code counts as its car). */
+  /** The cars the movements fall on. */
   vehicleCount: number;
   /** How many movements of each kind. */
   counts: Record<FleetCustodySource, number>;
-  /** «المصدر»: the receipts screen and the dealership, each with its count and sum. */
+  /** «المصدر»: the receipts screen — the fund's one source — with its count and sum. */
   bySource: { ref: FleetCustodyMovementDto['ref']; count: number; amount: number }[];
   /**
    * By the day when the filter spans a month at most (both dates chosen), else by the month — the

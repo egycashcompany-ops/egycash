@@ -272,9 +272,9 @@ const fuelChargePermissions = declarePermissions(
 );
 
 /**
- * Receipts (خصم الإيصالات): fuel, tyres and washing the driver paid for — off the car's fuel card
- * or out of the custody fund. The custody screen (العهدة) only READS: it is the fund's ledger,
- * summed from these receipts and from the dealership's custody-side bills.
+ * Receipts (خصم الإيصالات): fuel, tyres, washing and maintenance the driver paid for — off the
+ * car's fuel card (fuel only) or out of the custody fund. The custody screen (العهدة) only READS:
+ * it is the fund's ledger, summed from these receipts alone.
  */
 const receiptPermissions = declarePermissions(
   'fleet',

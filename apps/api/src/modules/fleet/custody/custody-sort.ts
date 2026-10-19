@@ -1,17 +1,16 @@
 // The arrows on «كل الحركات» — the custody ledger's order, over the WHOLE filtered set.
 //
-// The ledger is not one collection but two read and merged in memory (see `custody.service.ts`),
-// so there is no query to hand the order to: it is applied here, to every movement the filters
-// matched, BEFORE the page is cut — a page sorted on its own would be twenty-five rows pretending
-// to be the ledger.
+// The ledger is read and folded in memory (see `custody.service.ts`), so the order is not handed
+// to a query: it is applied here, to every movement the filters matched, BEFORE the page is cut —
+// a page sorted on its own would be twenty-five rows pretending to be the ledger.
 //
 // The rule is the one every Fleet board follows (`driver-roster.ts`, the web's `sort-rows.ts`):
 // the columns decide in the order they were clicked, and a missing value sorts LAST in either
 // direction. Rows the columns cannot separate are closed the way `_id` closes them on every other
 // board (`base.repository.ts`): in the LAST column's direction — the ledger's own order (newest
-// first, receipts before bills on the same day) under a descending arrow, that order turned round
-// under an ascending one. So «التاريخ» ascending is the exact mirror of the default, entries of one
-// day included, and a page boundary never swaps two equal rows.
+// first) under a descending arrow, that order turned round under an ascending one. So «التاريخ»
+// ascending is the exact mirror of the default, entries of one day included, and a page boundary
+// never swaps two equal rows.
 import {
   FLEET_CUSTODY_SOURCES,
   fleetVehicleCodeOrderKey,
@@ -20,7 +19,7 @@ import {
   type FleetSortEntry,
 } from '@ecms/contracts';
 
-/** What one movement offers the arrows — the fields both the receipts and the bills carry. */
+/** What one movement offers the arrows. */
 export interface CustodySortRow {
   date: Date;
   vehicleCode: string | null;
@@ -32,19 +31,19 @@ export interface CustodySortRow {
 
 type SortValue = string | number | null;
 
-/** «المصدر» in the table — a receipt, then a dealership bill, as the two screens are listed. */
-const REF_ORDER: readonly FleetCustodyMovementDto['ref'][] = ['receipt', 'dealershipInvoice'];
+/** «المصدر» in the table — the receipts screen, the ledger's one source. */
+const REF_ORDER: readonly FleetCustodyMovementDto['ref'][] = ['receipt'];
 
 /**
- * What each column is worth. The kind follows the filter's and the figures' order rather than the
- * word's alphabet; the car's code follows the fleet's own order (`fleetVehicleCodeOrderKey`), so
- * «160» comes before «1500».
+ * What each column is worth. The kind follows the filter's and the figures' order — «صيانة»، وقود،
+ * كاوتش، غسيل — rather than the word's alphabet; the car's code follows the fleet's own order
+ * (`fleetVehicleCodeOrderKey`), so «160» comes before «1500».
  */
 const SORT_VALUE = {
   date: (row: CustodySortRow): SortValue => row.date.getTime(),
   vehicleCode: (row: CustodySortRow): SortValue => fleetVehicleCodeOrderKey(row.vehicleCode),
   source: (row: CustodySortRow): SortValue => FLEET_CUSTODY_SOURCES.indexOf(row.source),
-  // A dealership bill names no driver: `null`, so it sorts last whichever way the arrow points.
+  // A receipt that names no driver: `null`, so it sorts last whichever way the arrow points.
   driverName: (row: CustodySortRow): SortValue =>
     row.driverName === null || row.driverName.trim() === '' ? null : row.driverName,
   ref: (row: CustodySortRow): SortValue => REF_ORDER.indexOf(row.ref),

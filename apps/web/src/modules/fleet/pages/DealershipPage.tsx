@@ -5,6 +5,11 @@
 // «الإحصائيات» toggle and the Excel / PDF pill, the dark filter bar, the boards' table. The totals
 // sit BETWEEN the filters and the table, as asked, and are the server's, over the whole filtered
 // set, never the page.
+//
+// «التوكيل لما بسجل فاتوره عاوز الحاجات دى تتحفظ زى ما هى ولا تنقص من الكروت ولا تنقص من العهدة
+// وملهاش علاقة ب حاجة»: an invoice is saved as entered and moves nothing else. The board shows no
+// «الجهة» and no custody total: no invoice is custody money. Every field is kept as it was saved —
+// «ملاكي» too, which only lets a private car's invoice go without a number.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type FleetDealershipInvoiceDto, type Locale } from '@ecms/contracts';
@@ -17,7 +22,6 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
-import { Badge } from '../../../shared/ui/Badge';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
@@ -51,16 +55,7 @@ import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 
 /** Remembered across visits: the filters and the view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = [
-  'from',
-  'to',
-  'vehicleCodes',
-  'side',
-  'state',
-  'work',
-  'size',
-  'sort',
-] as const;
+const REMEMBERED_FILTERS = ['from', 'to', 'vehicleCodes', 'state', 'work', 'size', 'sort'] as const;
 const DEFAULT_PAGE_SIZE = 25;
 const DEFAULT_SORT = 'outDate:desc';
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
@@ -101,7 +96,6 @@ export const DealershipPage = (): JSX.Element => {
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
-  const side = sp.get('side') ?? '';
   const state = sp.get('state') ?? '';
   const work = sp.get('work') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -123,12 +117,7 @@ export const DealershipPage = (): JSX.Element => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
   const hasActiveFilters =
-    from !== '' ||
-    to !== '' ||
-    vehicleCodes.length > 0 ||
-    side !== '' ||
-    state !== '' ||
-    work !== '';
+    from !== '' || to !== '' || vehicleCodes.length > 0 || state !== '' || work !== '';
 
   /** What the reader is looking at — the filters alone, which is also what the totals are asked for. */
   const filters = useMemo(
@@ -136,7 +125,6 @@ export const DealershipPage = (): JSX.Element => {
       from: from || undefined,
       to: to || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
-      side: side || undefined,
       pending: state === '' ? undefined : state === 'pending',
       workKind: work || undefined,
     }),
@@ -163,8 +151,9 @@ export const DealershipPage = (): JSX.Element => {
 
   const money = (value: number | null): string =>
     value === null ? '—' : formatMoney(value, 'EGP', locale);
-  const sideLabel = (row: FleetDealershipInvoiceDto): string =>
-    row.side === null ? '' : t(`fleet.dealership.side.${row.side}`);
+  /** «بانتظار الفاتورة» / «مسجَّلة» — the files' «الحالة», as the yellow and green rows say it. */
+  const stateLabel = (row: FleetDealershipInvoiceDto): string =>
+    row.pending ? t('fleet.dealership.pending') : t('fleet.dealership.recorded');
   const dash = <span className="text-slate-400">—</span>;
 
   const columns: Column<FleetDealershipInvoiceDto>[] = [
@@ -245,16 +234,6 @@ export const DealershipPage = (): JSX.Element => {
       render: (row) => row.insuranceCompanyName ?? t('fleet.dealership.noInsurer'),
     },
     {
-      key: 'side',
-      header: t('fleet.dealership.columns.side'),
-      render: (row) =>
-        row.side === null ? (
-          dash
-        ) : (
-          <Badge tone={row.side === 'custody' ? 'warning' : 'info'}>{sideLabel(row)}</Badge>
-        ),
-    },
-    {
       key: 'image',
       align: 'center',
       header: t('fleet.dealership.columns.image'),
@@ -318,7 +297,7 @@ export const DealershipPage = (): JSX.Element => {
     t('fleet.dealership.columns.invoiceNumber'),
     t('fleet.dealership.columns.invoiceAmount'),
     t('fleet.vehicles.fields.insuranceCompany'),
-    t('fleet.dealership.columns.side'),
+    t('fleet.dealership.filters.state'),
   ];
   const allRows = () =>
     fetchFilteredRows((pageNo, size) =>
@@ -348,7 +327,7 @@ export const DealershipPage = (): JSX.Element => {
         row.invoiceNumber ?? '',
         row.invoiceAmount ?? '',
         row.insuranceCompanyName ?? '',
-        row.pending ? t('fleet.dealership.pending') : sideLabel(row),
+        stateLabel(row),
       ]),
       moneyColumns: [4],
     });
@@ -377,7 +356,7 @@ export const DealershipPage = (): JSX.Element => {
           row.invoiceNumber ?? '—',
           row.invoiceAmount === null ? '—' : reportMoney(row.invoiceAmount),
           row.insuranceCompanyName ?? '—',
-          row.pending ? t('fleet.dealership.pending') : sideLabel(row),
+          stateLabel(row),
         ]),
         totals:
           summary.data === undefined
@@ -386,10 +365,6 @@ export const DealershipPage = (): JSX.Element => {
                 {
                   label: t('fleet.dealership.totals.dealership'),
                   value: reportMoney(summary.data.dealershipTotal),
-                },
-                {
-                  label: t('fleet.dealership.totals.custody'),
-                  value: reportMoney(summary.data.custodyTotal),
                 },
               ],
         signatories,
@@ -530,7 +505,6 @@ export const DealershipPage = (): JSX.Element => {
                 from: null,
                 to: null,
                 vehicleCodes: null,
-                side: null,
                 state: null,
                 work: null,
               })
@@ -546,21 +520,6 @@ export const DealershipPage = (): JSX.Element => {
                 onChange={(next) =>
                   patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
                 }
-              />
-            </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.company} tone="text-violet-600 dark:text-violet-300">
-              <MultiSelect
-                clearable
-                fullWidth
-                density="tight"
-                showSelectedValues
-                label={t('fleet.dealership.columns.side')}
-                options={[
-                  { value: 'dealership', label: t('fleet.dealership.side.dealership') },
-                  { value: 'custody', label: t('fleet.dealership.side.custody') },
-                ]}
-                value={one(side)}
-                onChange={(next) => patch({ side: pickOne(one(side), next) })}
               />
             </FilterWithIcon>
             <FilterWithIcon icon={FILTER_ICON.status} tone="text-emerald-600 dark:text-emerald-400">
@@ -600,24 +559,16 @@ export const DealershipPage = (): JSX.Element => {
         {statsOpen && summary.data !== undefined && (
           <section
             data-dealership-figures="true"
-            className="animate-drop-in grid grid-cols-2 gap-3 lg:grid-cols-4"
+            className="animate-drop-in grid grid-cols-2 gap-3 lg:grid-cols-3"
           >
-            {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile. */}
+            {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile. Every
+                recorded invoice is in it — a private car's («ملاكي») too: none is custody money. */}
             <div className="col-span-2 sm:col-span-1">
               <FigureChip
                 icon={PATH.card}
                 iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
                 label={t('fleet.dealership.totals.dealership')}
                 {...moneyChip(summary.data.dealershipTotal, locale)}
-              />
-            </div>
-            {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile. */}
-            <div className="col-span-2 sm:col-span-1">
-              <FigureChip
-                icon={FILTER_ICON.company}
-                iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-300"
-                label={t('fleet.dealership.totals.custody')}
-                {...moneyChip(summary.data.custodyTotal, locale)}
               />
             </div>
             <FigureChip
@@ -656,8 +607,8 @@ export const DealershipPage = (): JSX.Element => {
             onRetry={() => void refetch()}
             sort={sorts}
             onSortChange={changeSort}
-            // The yellow row: left the workshop, no invoice yet. A second signal only — the side
-            // column is empty and the actions say «تسجيل الفاتورة».
+            // The yellow row: left the workshop, no invoice yet. A second signal only — the amount
+            // is empty and the actions say «تسجيل الفاتورة».
             rowProps={(row) => ({ 'data-pending': row.pending ? 'true' : 'false' }) as never}
             stickyHead
           />

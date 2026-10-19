@@ -1,6 +1,6 @@
 // The drawings of «لوحة تحكم», as the owner's design draws them: «المصروف عبر الزمن» in clustered
-// columns, «حسب النوع» as a ring of the kinds, «أعلى السيارات صرفًا» as full-width bars split by
-// each car's own kinds, «أعلى السائقين صرفًا» as rings, and «تفصيل استهلاك الوقود».
+// columns, «حسب النوع والمصدر» as two concentric rings, «أعلى السيارات صرفًا» as full-width bars
+// split by each car's own kinds, «أعلى السائقين صرفًا» as rings, and «تفصيل استهلاك الوقود».
 //
 // Every number is the server's (`GET /fleet/custody/dashboard`); the browser only sorts, cuts and
 // draws, and a share is a ratio of two server numbers. Nothing the data does not hold is drawn:
@@ -609,17 +609,32 @@ export const CustodyTimeline = ({
   );
 };
 
-// ── «حسب النوع» ──────────────────────────────────────────────────────────────────────────────
+// ── «حسب النوع والمصدر» ─────────────────────────────────────────────────────────────────────
 
 const OUTER_R = 64;
+const INNER_R = 44;
 const OUTER_C = 2 * Math.PI * OUTER_R;
+const INNER_C = 2 * Math.PI * INNER_R;
+/**
+ * The inner ring's sources. «التوكيل … ملهاش علاقة ب حاجة»: a dealership bill is no movement of
+ * the fund any more, so the receipts screen is the one source left — its arc, emerald, is the
+ * whole ring. The design's two rings stay as they were drawn.
+ */
+const SOURCES = ['receipt'] as const;
+const SOURCE_LOOK = {
+  receipt: {
+    stroke: 'stroke-[#059669] dark:stroke-[#10b981]',
+    dot: 'bg-emerald-600 dark:bg-emerald-500',
+    text: 'text-emerald-800 dark:text-emerald-400',
+    label: 'fleet.custody.dashboard.donut.receipts',
+  },
+} as const;
 
 /**
- * (4) «حسب النوع» — the kinds on the ring, the total in the middle; the legend, a small table of
- * the kinds, and the fuel's suppliers under it. The ring of the source (the receipts screen
- * against the dealership's bills) is gone: «التوكيل … ملهاش علاقة ب حاجة» — every movement is a
- * receipt now. «عرض حركات الصيانة» sets the board's own «المصدر» to «صيانة» and closes the
- * dashboard.
+ * (4) «حسب النوع والمصدر» — the kinds on the outer ring («صيانة» first, in the blue التوكيل had),
+ * the source on the inner one, the total in the middle; the legend, a small table of the kinds,
+ * and the fuel's suppliers under it. «عرض حركات الصيانة» sets the board's own «المصدر» to «صيانة»
+ * and closes the dashboard.
  */
 export const CustodyByKindSource = ({
   data,
@@ -635,11 +650,20 @@ export const CustodyByKindSource = ({
   const money = useMoney();
   const moneyText = useMoneyText();
   const sep = useSeparator();
+  const { count } = useCount();
   const titleId = useId();
   const kinds = custodyArcs(
     CUSTODY_KINDS.map((kind) => data[kind]),
     OUTER_C,
     4,
+  );
+  const lines = SOURCES.map(
+    (ref) => data.bySource.find((line) => line.ref === ref) ?? { ref, count: 0, amount: 0 },
+  );
+  const sources = custodyArcs(
+    lines.map((line) => line.amount),
+    INNER_C,
+    2.5,
   );
   const companies = custodyCompanies(data);
   const none = data.fuelByCompany.none;
@@ -654,7 +678,7 @@ export const CustodyByKindSource = ({
       <CardHead
         id={titleId}
         level={2}
-        title={t('fleet.custody.dashboard.byKind')}
+        title={t('fleet.custody.dashboard.byKindSource')}
         end={
           <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800 dark:border-emerald-700/30 dark:bg-emerald-950/40 dark:text-emerald-400/90">
             {t('fleet.custody.dashboard.donut.chip')}
@@ -665,10 +689,16 @@ export const CustodyByKindSource = ({
         <div
           role="img"
           data-custody-donut="true"
-          aria-label={CUSTODY_KINDS.map(
-            (kind) =>
-              `${kindName(t, kind)}: ${moneyText(data[kind])} (${custodyShare(data[kind], data.total)})`,
-          ).join(sep)}
+          aria-label={[
+            ...CUSTODY_KINDS.map(
+              (kind) =>
+                `${kindName(t, kind)}: ${moneyText(data[kind])} (${custodyShare(data[kind], data.total)})`,
+            ),
+            ...lines.map(
+              (line) =>
+                `${t(SOURCE_LOOK[line.ref].label)}: ${moneyText(line.amount)} (${custodyShare(line.amount, data.total)})`,
+            ),
+          ].join(sep)}
           className="relative flex h-44 w-44 shrink-0 items-center justify-center"
         >
           <svg className="h-full w-full -rotate-90" viewBox="0 0 160 160" aria-hidden="true">
@@ -697,6 +727,33 @@ export const CustodyByKindSource = ({
                   className={CUSTODY_KIND[kind].stroke}
                 >
                   <title>{`${kindName(t, kind)}: ${moneyText(data[kind])}`}</title>
+                </circle>
+              );
+            })}
+            <circle
+              cx="80"
+              cy="80"
+              r={INNER_R}
+              fill="transparent"
+              strokeWidth={8}
+              className="stroke-[#f1f5f9] dark:stroke-[#131b29]"
+            />
+            {lines.map((line, i) => {
+              const arc = sources[i];
+              return arc === undefined || arc.value <= 0 ? null : (
+                <circle
+                  key={line.ref}
+                  data-custody-arc={line.ref}
+                  cx="80"
+                  cy="80"
+                  r={INNER_R}
+                  fill="transparent"
+                  strokeWidth={8}
+                  strokeDasharray={`${arc.length} ${INNER_C.toFixed(2)}`}
+                  strokeDashoffset={arc.offset}
+                  className={SOURCE_LOOK[line.ref].stroke}
+                >
+                  <title>{`${t(SOURCE_LOOK[line.ref].label)}: ${moneyText(line.amount)}`}</title>
                 </circle>
               );
             })}
@@ -795,12 +852,37 @@ export const CustodyByKindSource = ({
               </div>
             ),
           )}
+          <div className="flex justify-between gap-2 border-b border-slate-200 pb-1 pt-2 text-[11px] font-bold text-slate-600 dark:border-slate-800 dark:font-semibold dark:text-slate-400">
+            <span>{t('fleet.custody.dashboard.donut.inner')}</span>
+            <span className="shrink-0 text-slate-500">
+              {t('fleet.custody.dashboard.donut.innerCount')}
+            </span>
+          </div>
+          {lines.map((line) => (
+            <div
+              key={line.ref}
+              data-custody-source-row={line.ref}
+              className="flex items-center justify-between gap-2 text-[11px]"
+            >
+              <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                <span
+                  aria-hidden="true"
+                  className={cn('h-2 w-2 shrink-0 rounded', SOURCE_LOOK[line.ref].dot)}
+                />
+                {t(SOURCE_LOOK[line.ref].label)}
+              </span>
+              <span className={cn('whitespace-nowrap', SOURCE_LOOK[line.ref].text, NUM)}>
+                <CustodyShare part={line.amount} whole={data.total} /> (
+                {count('movement', line.count)})
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
       <div className={cn(MINI_FRAME, 'mb-2')}>
         <table
-          aria-label={t('fleet.custody.dashboard.byKind')}
+          aria-label={t('fleet.custody.dashboard.byKindSource')}
           className="w-full min-w-[20rem] text-start text-xs"
         >
           <thead className={MINI_THEAD}>

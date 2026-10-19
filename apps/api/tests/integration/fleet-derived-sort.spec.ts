@@ -20,6 +20,8 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
 import { FleetAccidentModel } from '../../src/modules/fleet/accidents/accident.model';
 import { fleetAccidentRepository } from '../../src/modules/fleet/accidents/accident.repository';
+import { FleetReceiptModel } from '../../src/modules/fleet/receipts/receipt.model';
+import { fleetReceiptRepository } from '../../src/modules/fleet/receipts/receipt.repository';
 
 let replset: MongoMemoryReplSet | undefined;
 
@@ -84,6 +86,25 @@ const plant = async (): Promise<void> => {
       createdAt: day(car.on),
     })),
   );
+  // One receipt of each kind, planted in neither the kinds' order nor their keys' alphabet.
+  await FleetReceiptModel.collection.insertMany(
+    (['wash', 'maintenance', 'fuel', 'tyres'] as const).map((kind, i) => ({
+      date: day(`2026-04-0${i + 1}`),
+      vehicleId: vehicleIds.get('DER-100') as Types.ObjectId,
+      driverEmployeeId: null,
+      driverName: null,
+      kind,
+      source: 'custody',
+      cardId: null,
+      fuelType: null,
+      pricePerLitre: null,
+      litres: null,
+      amount: 100 + i,
+      image: null,
+      isDeleted: false,
+      createdAt: day(`2026-04-0${i + 1}`),
+    })),
+  );
 };
 
 /** The cars the register answers for, in the order asked for. */
@@ -105,6 +126,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await FleetAccidentModel.deleteMany({ vehicleId: { $in: [...vehicleIds.values()] } }).exec();
+  await FleetReceiptModel.deleteMany({ vehicleId: { $in: [...vehicleIds.values()] } }).exec();
   await FleetVehicleModel.deleteMany({ code: { $regex: '^DER-' } }).exec();
   await disconnectMongo();
   await replset?.stop();
@@ -192,5 +214,35 @@ describe('«إجمالي المتبقي» — computed, never stored', () => {
       'DER-100',
       'DER-300',
     ]);
+  });
+});
+
+describe('«النوع» on the receipts — the kinds’ own order, not their keys’ alphabet', () => {
+  const kinds = async (sort: string): Promise<string[]> => {
+    const answered = await fleetReceiptRepository.listReceipts({
+      filter: { vehicleId: { $in: [...vehicleIds.values()] } },
+      page: 1,
+      pageSize: 50,
+      sorts: parseFleetSort(sort),
+    });
+    return answered.items.map((doc) => doc.kind);
+  };
+
+  it('puts «صيانة» after «غسيل», as the dialog’s tabs and the filter list it', async () => {
+    // The alphabet of the keys would answer fuel, maintenance, tyres, wash.
+    expect(await kinds('kind:asc')).toEqual(['fuel', 'tyres', 'wash', 'maintenance']);
+    expect(await kinds('kind:desc')).toEqual(['maintenance', 'wash', 'tyres', 'fuel']);
+  });
+
+  it('hands every receipt back with its stored kind, and no computed field', async () => {
+    const answered = await fleetReceiptRepository.listReceipts({
+      filter: { vehicleId: { $in: [...vehicleIds.values()] } },
+      page: 1,
+      pageSize: 50,
+      sortBy: 'kind',
+      sortDir: 'asc',
+    });
+    expect(answered.items.map((doc) => doc.kind)).toEqual(['fuel', 'tyres', 'wash', 'maintenance']);
+    for (const doc of answered.items) expect(doc).not.toHaveProperty('kindOrder');
   });
 });

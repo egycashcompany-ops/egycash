@@ -240,6 +240,10 @@ describe('the dealership table', () => {
     expect(PAGE).not.toContain('totals.custody');
     expect(PAGE).not.toContain('custodyTotal');
     expect(PAGE).toContain('useDealershipSummary(filters)');
+    // Three tiles: the money alone on a phone's first row, then all three on one row from `sm` —
+    // never two over one with half a row empty.
+    expect(PAGE).toContain('className="animate-drop-in grid grid-cols-2 gap-3 sm:grid-cols-3"');
+    expect(PAGE).toContain('<div className="col-span-2 sm:col-span-1">');
   });
 
   it('offers Excel and PDF in the toolbar above the filters, like the boards — no page title', () => {
@@ -305,8 +309,15 @@ describe('recording the invoice', () => {
     }
     const html = dialog(row({ privateCar: true }));
     expect(html).not.toContain(ar('fleet.nav.custody'));
-    expect(html).toContain(ar('fleet.dealership.invoiceNumberOptional'));
-    expect(ar('fleet.dealership.invoiceNumberOptional')).toBe('اختياري لسيارة ملاكي.');
+    // «اختياري لسيارة ملاكي» once — in the empty box — and no hint under it repeating the words.
+    expect(ar('fleet.dealership.invoiceNumberPrivate')).toBe('اختياري لسيارة ملاكي');
+    expect(html.split(ar('fleet.dealership.invoiceNumberPrivate'))).toHaveLength(2);
+    expect(html).toContain(`placeholder="${ar('fleet.dealership.invoiceNumberPrivate')}"`);
+    expect(FORM).not.toContain('invoiceNumberOptional');
+    // A car that is not private: the number is asked for, and nothing says it is optional.
+    expect(dialog(row({ privateCar: false }))).not.toContain(
+      ar('fleet.dealership.invoiceNumberPrivate'),
+    );
     // «ملاكي» is still sent as it was picked — saved exactly as entered.
     expect(FORM).toContain('        privateCar,\n');
   });

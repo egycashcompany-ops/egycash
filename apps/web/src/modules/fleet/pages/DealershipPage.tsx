@@ -559,10 +559,11 @@ export const DealershipPage = (): JSX.Element => {
         {statsOpen && summary.data !== undefined && (
           <section
             data-dealership-figures="true"
-            className="animate-drop-in grid grid-cols-2 gap-3 lg:grid-cols-3"
+            className="animate-drop-in grid grid-cols-2 gap-3 sm:grid-cols-3"
           >
-            {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile. Every
-                recorded invoice is in it — a private car's («ملاكي») too: none is custody money. */}
+            {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile; from
+                `sm` up the three tiles share one row. Every recorded invoice is in it — a private
+                car's («ملاكي») too: none is custody money. */}
             <div className="col-span-2 sm:col-span-1">
               <FigureChip
                 icon={PATH.card}

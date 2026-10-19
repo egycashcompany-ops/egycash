@@ -1221,38 +1221,40 @@ describe('(3) «المصروف عبر الزمن» — clustered, not stacked', 
   });
 });
 
-describe('(4) «حسب النوع» — the ring of the kinds', () => {
+describe('(4) «حسب النوع والمصدر» — two concentric rings', () => {
   const card = (onShow?: () => void, data = dashboard): string =>
     draw(<CustodyByKindSource data={data} onShowMaintenance={onShow} />);
 
-  it('is titled without the stations — there is no station data — and without the source', () => {
+  it('is titled without the stations — there is no station data', () => {
     const html = card();
-    expect(text(html)).toContain('حسب النوع');
-    // «المصدر» was the receipts screen against the dealership's bills: one source now, no ring.
-    expect(text(html)).not.toContain('حسب النوع والمصدر');
+    expect(text(html)).toContain('حسب النوع والمصدر');
     expect(html).not.toContain('محطات');
     expect(text(html)).toContain(ar('fleet.custody.dashboard.donut.chip'));
   });
 
-  it('rings the kinds — no ring of the source — the total in the middle, each theme its shades', () => {
+  it('rings the kinds outside, the source inside, the total in the middle — each theme its shades', () => {
     const html = card();
     const arcs = [
       ...html.matchAll(/data-custody-arc="(\w+)"[^>]*stroke-dasharray="([\d.]+) ([\d.]+)"/gu),
     ];
-    // «صيانة» first, where التوكيل was; nothing for the receipts screen or the dealership.
-    expect(arcs.map((m) => m[1])).toEqual([...CUSTODY_KINDS]);
+    // «صيانة» first on the outer ring, where التوكيل was; inside, the receipts screen alone — a
+    // dealership bill is no movement of the fund, so it has no arc.
+    expect(arcs.map((m) => m[1])).toEqual([...CUSTODY_KINDS, 'receipt']);
     expect(arcs.map((m) => m[1])[0]).toBe('maintenance');
-    // The ring's length is 402.12 (r 64); the inner one (r 44) is gone.
+    expect(html).not.toContain('data-custody-arc="dealershipInvoice"');
+    // The outer ring's length is 402.12 (r 64), the inner one's 276.46 (r 44).
     expect(arcs[0]?.[3]).toBe('402.12');
-    expect(html).not.toContain('276.46');
+    expect(arcs[4]?.[3]).toBe('276.46');
+    // The receipts are the whole inner ring — one part, so no gap between parts.
+    expect(arcs[4]?.[2]).toBe('276.46');
     // Fuel 45% of the ring, less the design's 4 between parts.
     expect(Number(arcs[1]?.[2])).toBeCloseTo((1965.5 / 4335.5) * 402.1239 - 4, 1);
     expect(html).toContain('stroke-[#e2e8f0] dark:stroke-[#162032]');
-    expect(html).not.toContain('stroke-[#f1f5f9] dark:stroke-[#131b29]');
+    expect(html).toContain('stroke-[#f1f5f9] dark:stroke-[#131b29]');
     expect(CUSTODY_KIND.maintenance.stroke).toBe('stroke-[#2563eb] dark:stroke-[#3b82f6]');
     expect(CUSTODY_KIND.tyres.stroke).toBe('stroke-[#e11d48] dark:stroke-[#f43f5e]');
     expect(CUSTODY_KIND.wash.stroke).toBe('stroke-[#0891b2] dark:stroke-[#06b6d4]');
-    expect(html).not.toContain('stroke-[#059669] dark:stroke-[#10b981]');
+    expect(html).toContain('stroke-[#059669] dark:stroke-[#10b981]');
     const middle = html.indexOf('pointer-events-none absolute inset-0 flex flex-col');
     const centre = text(html.slice(middle, html.indexOf('data-custody-donut-legend')));
     expect(centre).toContain('المصروف 4,336 100%');
@@ -1260,14 +1262,14 @@ describe('(4) «حسب النوع» — the ring of the kinds', () => {
       /role="img" data-custody-donut="true" aria-label="صيانة: 850\.00 ج\.م\. \(20%\)/u,
     );
     const label = /data-custody-donut="true" aria-label="([^"]*)"/u.exec(html)?.[1] ?? '';
-    expect(label).toMatch(/غسيل: 120\.00 ج\.م\. \(3%\)$/u);
+    expect(label).toMatch(/غسيل: 120\.00 ج\.م\. \(3%\)، خصم إيصالات: 4,335\.50 ج\.م\. \(100%\)$/u);
     expect(label).not.toContain('التوكيل');
   });
 
   it('writes the legend — fuel’s box with «شل أوت / وطنية» and the receipts with no company', () => {
     const html = card();
     const legend = html.slice(html.indexOf('data-custody-donut-legend'));
-    expect(text(legend)).toContain('الحلقة (النوع ومورّد الوقود) 4 فئات');
+    expect(text(legend)).toContain('الحلقة الخارجية (النوع ومورّد الوقود) 4 فئات');
     const fuel = legend.slice(legend.indexOf('data-custody-legend-kind="fuel"'));
     expect(text(fuel.slice(0, fuel.indexOf('data-custody-legend-kind="tyres"')))).toContain(
       'وقود (شل أوت / وطنية) 45% (1,966 ج.م.)',
@@ -1277,11 +1279,14 @@ describe('(4) «حسب النوع» — the ring of the kinds', () => {
     expect(text(fuel)).toContain('بدون شركة: 1,466 (75%)');
     expect(fuel).toContain('border-amber-200 bg-amber-50/70');
     expect(text(legend)).toContain('صيانة 20% (850 ج.م.)');
-    // No part of the legend for a source: the receipts are the fund's one source now.
-    expect(text(legend)).not.toContain('الحلقة الداخلية');
+    // The inner ring's part: the receipts screen, the fund's one source now — all six movements.
+    expect(text(legend)).toContain('الحلقة الداخلية (المصدر) مصدر واحد');
+    expect(text(legend)).toContain('خصم إيصالات 100% (6 حركات)');
+    expect([...legend.matchAll(/data-custody-source-row="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'receipt',
+    ]);
     expect(text(legend)).not.toContain('مصدران');
     expect(text(legend)).not.toContain('التوكيل');
-    expect(legend).not.toContain('data-custody-source-row');
   });
 
   it('tabulates the kinds — amount, share, movements — fuel split by company under its name', () => {
@@ -1566,7 +1571,7 @@ describe('(5) the cars, (6) the drivers, (7) the fuel', () => {
     expect(html).not.toContain('توزيع محطات التزويد');
     expect(html).not.toContain('محطات');
     expect(html).not.toContain('والمحطات');
-    for (const key of ['byKind', 'fuelTitle', 'fuelNote', 'donut.outer']) {
+    for (const key of ['byKindSource', 'fuelTitle', 'fuelNote', 'donut.outer']) {
       expect(ar(`fleet.custody.dashboard.${key}`), key).not.toContain('محطات');
     }
     expect(draw(<CustodyFuelBreakdown data={{ ...dashboard, fuelTypes: [] }} />)).toContain(
@@ -1808,12 +1813,12 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
     );
   });
 
-  it('rings nothing in grey round a «0» — the legend and the table at zero', () => {
+  it('rings nothing in grey round a «0» — the legend, the source and the table at zero', () => {
     const html = draw(<CustodyByKindSource data={nothing} onShowMaintenance={() => undefined} />);
-    // The ring's track, no arc — and no inner track: there is no ring of the source.
+    // Both tracks, no arc.
     expect(html).not.toContain('data-custody-arc');
     expect(html).toContain('stroke-[#e2e8f0] dark:stroke-[#162032]');
-    expect(html).not.toContain('stroke-[#f1f5f9] dark:stroke-[#131b29]');
+    expect(html).toContain('stroke-[#f1f5f9] dark:stroke-[#131b29]');
     const centre = html.slice(
       html.indexOf('pointer-events-none absolute inset-0'),
       html.lastIndexOf('<', html.indexOf('data-custody-donut-legend')),
@@ -1826,7 +1831,11 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
       const row = html.slice(at, html.indexOf('data-custody-legend-kind=', at + 10));
       expect(text(row), kind).toContain('— (0 ج.م.)');
     }
-    expect(html).not.toContain('data-custody-source-row');
+    // …and the source «— (0 حركات)».
+    const at = html.indexOf('data-custody-source-row="receipt"');
+    expect(at).toBeGreaterThan(-1);
+    expect(text(html.slice(at, html.indexOf('</div>', at)))).toContain('— (0 حركات)');
+    expect(html).not.toContain('data-custody-source-row="dealershipInvoice"');
     // The kinds' table: four rows of «0.00 ج.م.», «—», 0.
     const rows = [...html.matchAll(/data-custody-kind-row="(\w+)"/gu)].map((m) => m[1]);
     expect(rows).toEqual([...CUSTODY_KINDS]);

@@ -322,8 +322,9 @@ export const DealershipInvoiceDialog = ({
                 label={t('fleet.dealership.columns.invoiceNumber')}
                 required={!privateCar}
                 missing={required.isMissing('invoiceNumber')}
-                {...(privateCar ? { hint: t('fleet.dealership.invoiceNumberOptional') } : {})}
               >
+                {/* «اختياري لسيارة ملاكي» once, inside the empty box — no hint under it saying the
+                    same words again. */}
                 <Input
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}

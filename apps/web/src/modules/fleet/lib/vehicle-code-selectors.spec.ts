@@ -357,6 +357,8 @@ describe('every Fleet car picker offers the WHOLE registry', () => {
     expect(passing).toEqual([
       // The balance transfer — every place that holds a card, a car or a label on no car.
       'modules/fleet/components/FuelTransferDialog.tsx',
+      // «مذكرة جديدة» — the cars of the kind's receipts no memo holds yet, in the period on show.
+      'modules/fleet/pages/CustodyMemoEditorPage.tsx',
       // Both rosters — every active car on the day's board.
       'modules/fleet/pages/FixedRosterPage.tsx',
       // «التراخيص» — the «ت» licence-class cars, as the owner asked.

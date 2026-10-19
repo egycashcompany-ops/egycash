@@ -54,6 +54,8 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/components/CompanyViolationsPanel.tsx': { money: 1, integer: 1 },
   // A reading's out and in.
   'modules/fleet/components/CorrectOdometerDialog.tsx': { integer: 2 },
+  // «شحن العهدة»: the amount charged into the fund.
+  'modules/fleet/components/CustodyChargeDialog.tsx': { money: 1 },
   'modules/fleet/components/DealershipInvoiceDialog.tsx': { money: 1 },
   'modules/fleet/components/DriverFormDialog.tsx': { phone: 1 },
   // The per-type counters, each fine's amount, and the amount filter.

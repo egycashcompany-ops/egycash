@@ -50,6 +50,9 @@ describe('a Fleet status filter with three choices or more takes several', () =>
 
   it.each([
     ['modules/fleet/pages/CustodyPage.tsx', 'source', 'FLEET_CUSTODY_SOURCES'],
+    // «المذكرات»: the four custody kinds; «سجل العهدة»: the three operations and the receipts.
+    ['modules/fleet/pages/CustodyMemosPage.tsx', 'kind', 'FLEET_CUSTODY_SOURCES'],
+    ['modules/fleet/pages/CustodyLedgerPage.tsx', 'op', 'FLEET_CUSTODY_LEDGER_OPS'],
     ['modules/fleet/pages/FuelChargingPage.tsx', 'state', 'CHARGING_STATES'],
     ['modules/fleet/pages/ReceiptsPage.tsx', 'kind', 'FLEET_RECEIPT_KINDS'],
   ])('%s: «%s» is a clearable multi-select over every choice', (file, param, list) => {

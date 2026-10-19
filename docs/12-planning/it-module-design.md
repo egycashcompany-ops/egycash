@@ -889,3 +889,12 @@ starts only on an explicit owner GO.
   (`lib/register-export.ts`: the walk, the filter line, the report, the tab opened first) serve
   both screens. Offered to every reader of the list, as the custody export and the labels are;
   the §11 server CSV under `itAsset.export` is still unbuilt and is a separate thing.
+- **The acknowledgment names the item by its category** (2026-10-19) — owner request: «فى طباعة
+  الإيصال … بأنني قد استلمت جهاز · عايز كلمة جهاز تبقى متغيرة بتاء على نوع ما يتم تسليمه فلو شاشة
+  يبقى شاشة ولو ماوس أو كيبورد يتكتبوا ولو جهاز يبقي جهاز وهكذا حسب (الفئة)». The statement's
+  fixed «جهاز» is now the receipt line's `deviceType` — the asset's category, snapshotted when the
+  receipt is written — in the form's ink, followed in red by the make and model, or the asset's own
+  name when neither is on file (without the kind a second time when the name starts with it, as a
+  whole word). «جهاز» only for a line with no kind on file. The catalog decides the word: a
+  category named «جهاز كمبيوتر» prints «جهاز كمبيوتر». The rest of the form's wording
+  («ومواصفاته»، «لاستخدامه» …) is unchanged. Web only; no API or data change.

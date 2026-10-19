@@ -1,6 +1,7 @@
 // What a receipt line prints about the device — «إقرار استلام» (FR-18).
 //
-// «بأنني قد استلمت جهاز لاب توب برقم مسلسل … ومواصفاته كالتالي: [table] ومشتملاته كالتالي: …».
+// «بأنني قد استلمت لاب توب Dell / N4050 برقم مسلسل … ومواصفاته كالتالي: [table] ومشتملاته كالتالي:
+// …» — the item named by its kind (the category) and its make and model.
 // Each line of a receipt is one page of the acknowledgment, and this is the part of it that comes
 // from the asset: the kind of device (its category, as the paper names it), its make and model,
 // its specifications table and what is handed over with it. Taken as a SNAPSHOT when the receipt

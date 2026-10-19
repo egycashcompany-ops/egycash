@@ -114,6 +114,10 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The IT acknowledgment names what is handed over by its category, not always «جهاز».** «عايز
+  كلمة جهاز تبقى متغيرة … حسب (الفئة)» — «بأنني قد استلمت شاشة Dell / P2419H», «… ماوس …», «… لاب
+  توب …»; «جهاز» only where the receipt has no kind on file
+  ([IT design §17](docs/12-planning/it-module-design.md)).
 - **«كل الماكينات» filters every column, counts what it shows, and reaches every machine.**
   «عايز فلتر كامل بكل حاجة فى الجدول زى فلتر الحركة كدا فى السيارات … وكمان عدد الماكينات والبنوك
   والمناطق يظهر فوق بجانب جملة كل الماكينات (ويتغير بناء على الفلتر)». `/atm/machines` wears the

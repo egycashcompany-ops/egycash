@@ -4,7 +4,8 @@
 // with the department's own form, and this is that form, ONE PAGE PER DEVICE. The letterhead (the
 // logo, and «قطاع تكنولوجيا المعلومات» on its banner) over a rule; «إقرار استلام»; the statement —
 // «أقر أنا / … بوظيفة … بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي … بأنني قد
-// استلمت جهاز … برقم مسلسل … ومواصفاته كالتالي:»; the specifications table (Component / Details,
+// استلمت [النوع] … برقم مسلسل … ومواصفاته كالتالي:», the form's «جهاز» now the kind of what is
+// received («شاشة»، «ماوس»، «لاب توب» …); the specifications table (Component / Details,
 // grouped System · Storage · Graphics · Network); «ومشتملاته كالتالي:» and its numbered list; the
 // undertaking; «وهذا إقرار مني بذلك»; «المقر بما فيه» with the name, signature and date on the
 // left; and the footer «EGYCASH | IT Dept. |» with the paper's own number and the red block. It is
@@ -137,15 +138,35 @@ export const makeAndModel = (
  */
 const WHOLE_DEVICE_NAME = 60;
 
+/** What the sentence calls the item when the receipt has no kind on file — the form's own word. */
+export const DEFAULT_DEVICE_KIND = 'جهاز';
+
 /**
- * «جهاز Lenovo / ThinkCentre neo 50a 24 gen 5» — the device by its make and model («خليه يظهر الـ
- * Manufacturer / Model بداله»); by its kind (the category) when neither is on file, and by the
- * asset's own name for a receipt from before either.
+ * «شاشة Dell / P2419H», «ماوس Logitech / M185», «لاب توب Lenovo / ThinkPad T14» — what was received,
+ * by its KIND and then its make and model.
+ *
+ * «عايز كلمة جهاز تبقى متغيرة … فلو شاشة يبقى شاشة ولو ماوس أو كيبورد يتكتبوا ولو جهاز يبقي جهاز
+ * وهكذا حسب (الفئة)»: the form's «جهاز» is the asset's category as the IT team names it — so the
+ * catalog decides the word, and a category called «جهاز كمبيوتر» prints «جهاز كمبيوتر». «جهاز»
+ * itself only for a receipt with no kind on file (one written before the kind was kept). The kind
+ * is the form's word in its ink; what follows is filled in, in red: the make and model («خليه يظهر
+ * الـ Manufacturer / Model بداله»), or the asset's own name when neither is on file — without its
+ * kind a second time when the name already starts with it («كمبيوتر مكتبي HP»).
  */
+export const deviceKind = (line: Pick<ItCustodyReceiptLineDto, 'deviceType'>): string =>
+  line.deviceType?.trim() || DEFAULT_DEVICE_KIND;
+
+/** The name without its kind in front — a whole word only: «شاشات Dell» is not «شاشة» + «ات Dell». */
+const withoutKind = (named: string, kind: string): string => {
+  const leads = named.toLocaleLowerCase('ar').startsWith(kind.toLocaleLowerCase('ar'));
+  const next = named.charAt(kind.length);
+  return leads && (next === '' || /\s/u.test(next)) ? named.slice(kind.length).trim() : named;
+};
+
 const device = (line: ItCustodyReceiptLineDto): string => {
-  const named = makeAndModel(line) || line.deviceType?.trim() || line.name;
-  const whole = named.length <= WHOLE_DEVICE_NAME;
-  return named.startsWith('جهاز') ? fill(named, 24, whole) : `جهاز ${fill(named, 24, whole)}`;
+  const kind = deviceKind(line);
+  const rest = withoutKind(makeAndModel(line) || line.name.trim(), kind);
+  return `${esc(kind)} ${fill(rest, 24, rest.length <= WHOLE_DEVICE_NAME)}`;
 };
 
 /** One row of the specifications table. */

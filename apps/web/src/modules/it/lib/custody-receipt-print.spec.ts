@@ -96,10 +96,10 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     // «شيل كلمة لتكنولوجيا … وخليها للحلول النقدية على طول».
     expect(html).toContain('بشركة إيجي كاش للحلول النقدية،');
     expect(html).not.toContain('لتكنولوجيا');
-    // The device by its make and model («خليه يظهر الـ Manufacturer / Model بداله»), then its
-    // serial, then the table it introduces.
+    // The item by its kind — the category, «لاب توب» — and its make and model («خليه يظهر الـ
+    // Manufacturer / Model بداله»), then its serial, then the table it introduces.
     expect(html).toContain(
-      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>Dell / N4050</bdi></span>',
+      'بأنني قد استلمت لاب توب <span class="fill whole"><bdi>Dell / N4050</bdi></span>',
     );
     expect(html).toContain(
       'برقم مسلسل <span class="fill whole"><bdi>B600DN3</bdi></span> ومواصفاته كالتالي:',
@@ -116,9 +116,9 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     const lenovo = { ...LAPTOP, manufacturer: 'Lenovo', model: 'ThinkCentre neo 50a 24 gen 5' };
     const [page] = pages(buildCustodyReceiptHtml(paper({ lines: [lenovo] }), LABELS));
     expect(page).toContain(
-      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>Lenovo / ThinkCentre neo 50a 24 gen 5</bdi></span>',
+      'بأنني قد استلمت لاب توب <span class="fill whole"><bdi>Lenovo / ThinkCentre neo 50a 24 gen 5</bdi></span>',
     );
-    // The category is not what the sentence names any more.
+    // The kind is the form's word, in its ink; only the make and model are filled in red.
     expect(page).not.toContain('<bdi>لاب توب</bdi>');
     // The table still has its «Manufacturer / Model» row.
     expect(page).toContain(
@@ -130,7 +130,7 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(html).toMatch(/\.statement \{[^}]*text-align: start;/u);
   });
 
-  it('names the device by its kind when neither make nor model is on file', () => {
+  it('names the item by its kind and its own name when neither make nor model is on file', () => {
     const [page] = pages(
       buildCustodyReceiptHtml(
         paper({ lines: [{ ...LAPTOP, manufacturer: null, model: null }] }),
@@ -138,8 +138,61 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
       ),
     );
     expect(page).toContain(
-      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>لاب توب</bdi></span>',
+      'بأنني قد استلمت لاب توب <span class="fill whole"><bdi>Dell Inspiron N4050</bdi></span>',
     );
+  });
+
+  // «عايز كلمة جهاز تبقى متغيرة بتاء على نوع ما يتم تسليمه · فلو شاشة يبقى شاشة ولو ماوس أو كيبورد
+  // يتكتبوا ولو جهاز يبقي جهاز وهكذا حسب (الفئة)».
+  it.each([
+    [
+      'شاشة',
+      'Dell',
+      'P2419H',
+      'استلمت شاشة <span class="fill whole"><bdi>Dell / P2419H</bdi></span>',
+    ],
+    [
+      'ماوس',
+      'Logitech',
+      'M185',
+      'استلمت ماوس <span class="fill whole"><bdi>Logitech / M185</bdi></span>',
+    ],
+    [
+      'كيبورد',
+      'Logitech',
+      'K120',
+      'استلمت كيبورد <span class="fill whole"><bdi>Logitech / K120</bdi></span>',
+    ],
+    [
+      'جهاز كمبيوتر',
+      'HP',
+      'ProDesk 400',
+      'استلمت جهاز كمبيوتر <span class="fill whole"><bdi>HP / ProDesk 400</bdi></span>',
+    ],
+  ])('calls a «%s» what its category calls it, not «جهاز»', (kind, manufacturer, model, phrase) => {
+    const line = { ...SCREEN, deviceType: kind, manufacturer, model };
+    const [page] = pages(buildCustodyReceiptHtml(paper({ lines: [line] }), LABELS));
+    expect(page).toContain(`بأنني قد ${phrase}`);
+    if (kind !== 'جهاز كمبيوتر') expect(page).not.toContain('استلمت جهاز');
+  });
+
+  it('does not say the kind twice when the asset’s name already starts with it', () => {
+    // The inventory named a model-less desktop «كمبيوتر مكتبي HP».
+    const desktop = {
+      ...SCREEN,
+      deviceType: 'كمبيوتر مكتبي',
+      name: 'كمبيوتر مكتبي HP',
+      manufacturer: null,
+      model: null,
+    };
+    const [page] = pages(buildCustodyReceiptHtml(paper({ lines: [desktop] }), LABELS));
+    expect(page).toContain('استلمت كمبيوتر مكتبي <span class="fill whole"><bdi>HP</bdi></span>');
+  });
+
+  it('takes the kind off the name only as a whole word', () => {
+    const screens = { ...SCREEN, deviceType: 'شاشة', name: 'شاشةDell 24' };
+    const [page] = pages(buildCustodyReceiptHtml(paper({ lines: [screens] }), LABELS));
+    expect(page).toContain('استلمت شاشة <span class="fill whole"><bdi>شاشةDell 24</bdi></span>');
   });
 
   it('fills the employee code right after the company — «عايز بردو أضيف كود الموظف هنا»', () => {
@@ -226,7 +279,7 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(pages(two)).toHaveLength(2);
     expect(first).toContain('<bdi>B600DN3</bdi>');
     expect(second).toContain('<bdi>49WNRS3</bdi>');
-    expect(second).toContain('جهاز <span class="fill whole"><bdi>شاشة</bdi></span>');
+    expect(second).toContain('استلمت شاشة <span class="fill whole"><bdi>Dell Screen</bdi></span>');
     expect(first).toContain('EGYCASH-IT-F-14-0007</span>\n    <span class="block">1/2</span>');
     expect(second).toContain('EGYCASH-IT-F-14-0007</span>\n    <span class="block">2/2</span>');
     expect(two).toMatch(/\.page \{[^}]*break-after: page;/u);
@@ -240,16 +293,19 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(bare).not.toContain('ومشتملاته');
   });
 
-  it('a receipt from before the acknowledgment names the device by the asset’s own name', () => {
+  it('a receipt with no kind on file keeps the form’s «جهاز», then the asset’s own name', () => {
     const legacy = { ...SCREEN, deviceType: null };
     const [old] = pages(buildCustodyReceiptHtml(paper({ lines: [legacy] }), LABELS));
-    expect(old).toContain('جهاز <span class="fill whole"><bdi>Dell Screen</bdi></span>');
+    expect(old).toContain('استلمت جهاز <span class="fill whole"><bdi>Dell Screen</bdi></span>');
   });
 
-  it('a category already named «جهاز …» is not doubled', () => {
+  it('a category already named «جهاز …» is said once, not «جهاز جهاز»', () => {
     const named = { ...SCREEN, deviceType: 'جهاز كمبيوتر مكتبي' };
     const [page] = pages(buildCustodyReceiptHtml(paper({ lines: [named] }), LABELS));
-    expect(page).toContain('استلمت <span class="fill whole"><bdi>جهاز كمبيوتر مكتبي</bdi></span>');
+    expect(page).toContain(
+      'استلمت جهاز كمبيوتر مكتبي <span class="fill whole"><bdi>Dell Screen</bdi></span>',
+    );
+    expect(page).not.toContain('جهاز جهاز');
   });
 
   it('leaves a line for the pen when the system cannot name the employee', () => {

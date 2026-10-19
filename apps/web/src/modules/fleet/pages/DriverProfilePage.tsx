@@ -33,7 +33,7 @@ import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatAmount, formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { listKey } from '../../../shared/lib/query-keys';
 import { cn } from '../../../shared/lib/cn';
-import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import { useBranchOptions } from '../../organization/shared/references';
 import * as fleetApi from '../api/fleet-api';
 import {
   useAccidents,
@@ -100,7 +100,7 @@ export const DriverProfilePage = (): JSX.Element => {
   const { name } = useEmployeeName(employeeId);
   // The person's own facts — code, phone, governorate, branch, address — from Fleet's roster.
   const person = useEmployeeRecord(employeeId);
-  const { data: branches = [] } = useBranches(can('branch.view'));
+  const { data: branches = [] } = useBranchOptions();
   const job = useCatalogItem('driverJob', profile?.jobId ?? null);
   const specialization = useCatalogItem('driverSpecialization', profile?.specializationId ?? null);
   const licenseType = useCatalogItem('driverLicenseType', profile?.licenseTypeId ?? null);

@@ -1,6 +1,12 @@
 // ATM settings — declared at module load, before boot resolves any value.
 import { z } from 'zod';
-import { AtmSettingKeys, objectId } from '@ecms/contracts';
+import {
+  ATM_DEFAULT_BANK_LABELS_SETTING,
+  AtmRegisterBankLabelsSettingSchema,
+  AtmRegisterBranchCodesSettingSchema,
+  AtmSettingKeys,
+  objectId,
+} from '@ecms/contracts';
 import { declareSetting } from '../../platform/settings';
 
 export const registerAtmSettings = (): void => {
@@ -30,6 +36,28 @@ export const registerAtmSettings = (): void => {
       .max(100),
     defaultValue: [],
     // Organization only: which colour means which branch is one fact about one shared mailbox.
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: AtmSettingKeys.RegisterBranchCodes,
+    description:
+      "The register workbook's `EGYCASH-n` branch codes (column A of the ATMs sheet) → the ECMS " +
+      'branch each one is (D4). Empty means no register receipt is possible (DEC-10) and the ' +
+      'workbook import is blocked (`branchUnmapped`); nothing is guessed — which branch EGYCASH-7 ' +
+      'is, is the administrator’s answer (EG-18).',
+    schema: AtmRegisterBranchCodesSettingSchema,
+    defaultValue: [],
+    // Organization only: what a code on the owner's sheet means is one fact about the company.
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: AtmSettingKeys.RegisterBankLabels,
+    description:
+      'Register bank code → the bank label written on the Operations machine (`atm_machines.' +
+      'bankName`) when a receipt creates or reactivates it (D5). The defaults are the legacy ' +
+      'labels (BM → MISR); a bank left out falls back to its default.',
+    schema: AtmRegisterBankLabelsSettingSchema,
+    defaultValue: ATM_DEFAULT_BANK_LABELS_SETTING,
     allowedScopes: ['organization'],
   });
 };

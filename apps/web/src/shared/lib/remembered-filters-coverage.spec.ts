@@ -45,8 +45,17 @@ const pageFiles = (dir: string): string[] =>
 /** Screens that remember their filters, with the params each deliberately does NOT remember. */
 const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/atm/pages/DataEditPage.tsx', ['tab']],
-  ['modules/atm/pages/MachinesPage.tsx', []],
+  // `q`: the free-text search from before the column filters (banks, codes, name, areas — all
+  // remembered), only ever deleted so an old link or remembered view sheds it.
+  ['modules/atm/pages/MachinesPage.tsx', ['q']],
+  // `q`: the fly-to search, and `machine`: a link that opens one machine's popup — neither filters
+  // the map (docs/12-planning/atm-map-zones.md §7.5).
+  ['modules/atm/pages/MachineMapPage.tsx', ['q', 'machine']],
+  // `q`: the list's search; `branch`: handed over by the map's links and checked against the
+  // screen's own context, never remembered (§7.5).
+  ['modules/atm/pages/UnlocatedMachinesPage.tsx', ['q', 'branch']],
   ['modules/atm/pages/MaintenancePage.tsx', []],
+  ['modules/atm/pages/RegisterPage.tsx', []],
   ['modules/atm/pages/ReplenishmentsPage.tsx', []],
   ['modules/fleet/pages/AccidentsPage.tsx', []],
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
@@ -174,6 +183,8 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
   ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
   ['modules/atm/pages/MailTicketsPage.tsx'],
+  ['modules/atm/pages/RegisterImportPage.tsx'],
+  ['modules/atm/pages/RegisterReportPage.tsx'],
   ['modules/fleet/pages/DriverProfilePage.tsx'],
   ['modules/fleet/pages/FleetDashboardPage.tsx'],
   ['modules/fleet/pages/FleetSettingsPage.tsx'],

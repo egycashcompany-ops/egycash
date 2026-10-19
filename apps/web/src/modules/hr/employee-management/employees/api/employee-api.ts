@@ -5,7 +5,6 @@
 import {
   type ActionOverlapDto,
   type FileDto,
-  type BranchDto,
   type CancelEmployeeAction,
   type CompensationAction,
   type CreateEmployee,
@@ -152,12 +151,10 @@ export const cancelEmployeeAction = (
 ): Promise<EmployeeActionDto> =>
   post<EmployeeActionDto>(`/hr/employees/${id}/actions/${actionId}/cancel`, body);
 
-// ── Platform Identity (ADR-017): create a login for an employee, resolve the branch code, and
-// read/update the linked account. All reuse existing platform endpoints — no new API surface. ──
+// ── Platform Identity (ADR-017): create a login for an employee and read/update the linked
+// account. All reuse existing platform endpoints — no new API surface. ──
 export const createEmployeeLogin = (id: string, body: CreateEmployeeLogin): Promise<EmployeeLoginDto> =>
   post<EmployeeLoginDto>(`/hr/employees/${id}/login`, body);
-
-export const getBranch = (id: string): Promise<BranchDto> => get<BranchDto>(`/platform/branches/${id}`);
 
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
 

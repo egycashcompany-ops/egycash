@@ -3863,7 +3863,9 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     const driver = await mkEmployee({ fullNameAr: 'سائق مرفوض' });
     await mkDriverProfile(driver);
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const inDate = '2026-10-14';
+    // Today (UTC, the roster's own day), not a fixed date: the roster refuses a day already past
+    // with PAST_DATE, so the fixed date this test was written with turned it red the day after.
+    const inDate = new Date().toISOString().slice(0, 10);
     const opened = await checkIn({
       vehicleId: v.id,
       inDate,

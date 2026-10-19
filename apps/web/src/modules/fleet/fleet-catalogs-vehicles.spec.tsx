@@ -133,11 +133,13 @@ const seededClient = (): QueryClient => {
   for (const [kind, item] of Object.entries(CATALOG)) {
     qc.setQueryData(listKey(M, 'catalogs', { kind }), page([catalogItem(kind, item.id, item.name)]));
   }
-  // `useBranches` selects `page.items`, so the cache must hold the PAGE the endpoint returns.
-  qc.setQueryData(['hr', 'branches', 'active'], page([
-    { id: 'b1', code: '01', name: { ar: 'المهندسين', en: 'Mohandessin' }, status: 'active' },
-    { id: 'b2', code: '02', name: { ar: 'الجيزة', en: 'Giza' }, status: 'active' },
-  ]));
+  // Branch names come from `/platform/branches/options` — a bare ARRAY, no page wrapper and no
+  // `select`, and no `branch.view` behind it. The specs below prove exactly that: the column fills
+  // for a reader who holds no organization grant at all.
+  qc.setQueryData(['organization', 'branches', 'options'], [
+    { id: 'b1', code: '01', name: { ar: 'المهندسين', en: 'Mohandessin' }, parentId: null, catalogId: null },
+    { id: 'b2', code: '02', name: { ar: 'الجيزة', en: 'Giza' }, parentId: null, catalogId: null },
+  ]);
   qc.setQueryData(listKey(M, 'vehicles', { defaultBranch: true }), {
     branchId: 'b1',
     name: { ar: 'المهندسين', en: 'Mohandessin' },
@@ -520,14 +522,39 @@ describe('the registry table renders the frozen column order', () => {
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
+  const tbodyOf = (html: string): string => {
+    const open = html.indexOf('<tbody');
+    const close = html.indexOf('</tbody>');
+    expect(open, 'no table body in the render').toBeGreaterThan(-1);
+    return html.slice(open, close);
+  };
+
   it('resolves the three catalog references and the branch to NAMES', () => {
     const html = withRows([vehicle()]);
     expect(html).toContain(CATALOG.licenseClass.name.ar);
     expect(html).toContain(CATALOG.operation.name.ar);
     expect(html).toContain(CATALOG.insuranceCompany.name.ar);
-    expect(html).toContain('المهندسين');
+    // In the BODY, not merely somewhere on the page: the branch filter prints the same names in
+    // its own options, so a page-wide `toContain` passes even when every cell is a dash.
+    expect(tbodyOf(html)).toContain('المهندسين');
     // A resolved reference must never leak its id into the cell.
     expect(html).not.toContain(`>${CATALOG.operation.id}<`);
+  });
+
+  // THE REGRESSION. The «الفرع» column read its names from the organization-ADMINISTRATION
+  // list, which is gated on `branch.view`. A reader whose fleet grants reach the whole company
+  // — and who has no business browsing HR's directory — therefore saw every branch's vehicles
+  // with a dash where the branch should be, and no branch filter at all to narrow them by.
+  //
+  // The names come from `/platform/branches/options` now: authenticated, ungated, {id, code, name}.
+  it('names the branch, and offers the branch filter, WITHOUT `branch.view`', () => {
+    const html = withRows([vehicle()], ['fleetVehicle.view']);
+    expect(tbodyOf(html), 'the branch cell fell back to a dash').toContain('المهندسين');
+    // `aria-label`, not the bare word: the COLUMN header is «الفرع» too, so a page-wide
+    // `toContain` on the label passes with the filter missing entirely.
+    expect(html, 'the branch filter was not drawn').toContain(
+      `aria-label="${t('recruitment.filters.branch')}"`,
+    );
   });
 
   // The four identifier boxes each stacked onto their own line in the registry, because the shared

@@ -1,10 +1,14 @@
 // /atm/maintenance — the legacy /atm_maintenance page (atm_maintenance.ejs) by parity. The same
 // two-group grid as replenishments, with the maintenance-only facts: service type, notes,
 // reference number, and a CLOSE that requires assigning an employee (the modal). Rows can also
-// arrive from an accepted mail ticket — the badge names that source.
-import { useMemo, useState } from 'react';
+// arrive from an accepted mail ticket — the badge names that source. As on replenishments, the
+// grey carried-over group can be closed and checked too: an open row of ANY day blocks its machine
+// under the owner's rule (port doc OD-1, D4) — and the bank/area filters work the same way: an
+// area on its own, a bank change dropping the areas it orphaned, every matching row read whole
+// past one page (port doc D8).
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type AtmMaintenanceDto } from '@ecms/contracts';
+import { type AtmMaintenanceDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -24,12 +28,13 @@ import {
   useDeleteAtmMaintenances,
   useOpenAtmMaintenancesList,
 } from '../api/atm-queries';
-import { isOpenedToday } from '../lib/operation-view';
+import { groupSelection, isOpenedToday } from '../lib/operation-view';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenMaintenancesForm } from '../components/OpenMaintenancesForm';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { CloseMaintenanceDialog, EditMaintenanceDialog } from '../components/MaintenanceDialogs';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { useBoardFilters } from '../lib/useBoardFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -44,33 +49,18 @@ export const MaintenancePage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  const banks = useMemo(() => (sp.get('banks') ?? '').split(',').filter(Boolean), [sp]);
-  const areas = useMemo(() => (sp.get('areas') ?? '').split(',').filter(Boolean), [sp]);
-
-  const setFilter = (key: 'banks' | 'areas', values: string[]): void => {
-    const next = new URLSearchParams(sp);
-    if (values.length === 0) next.delete(key);
-    else next.set(key, values.join(','));
-    setSp(next);
-  };
-
-  const listParams = useMemo(
-    () => ({
-      pageSize: MAX_PAGE_SIZE,
-      ...(banks.length > 0 ? { banks: banks.join(',') } : {}),
-      ...(areas.length > 0 ? { areas: areas.join(',') } : {}),
-    }),
-    [banks, areas],
-  );
-  const list = useOpenAtmMaintenancesList(listParams);
-  const facets = useAtmMaintenanceFacets(banks);
+  const filters = useBoardFilters([sp, setSp], useAtmMaintenanceFacets);
+  const list = useOpenAtmMaintenancesList(filters, !filters.settling);
 
   const now = useNowTick();
   const rows = list.data?.items ?? [];
   const todayRows = rows.filter((row) => isOpenedToday(row.openedAt, now));
   const otherRows = rows.filter((row) => !isOpenedToday(row.openedAt, now));
 
-  const selection = useTableSelection(todayRows.map((row) => row.id));
+  // Selection spans BOTH groups: a carried-over row blocks its machine like any open row (OD-1).
+  const todayIds = todayRows.map((row) => row.id);
+  const otherIds = otherRows.map((row) => row.id);
+  const selection = useTableSelection([...todayIds, ...otherIds]);
   const remove = useDeleteAtmMaintenances();
 
   const [closing, setClosing] = useState<AtmMaintenanceDto[] | null>(null);
@@ -129,13 +119,14 @@ export const MaintenancePage = (): JSX.Element => {
     { key: 'addedBy', header: t('atm.common.addedBy'), render: (row) => row.openedByName ?? '—' },
   ];
 
-  const actionsColumn = (withClose: boolean): Column<AtmMaintenanceDto> => ({
+  // Both groups: close, edit, delete.
+  const actionsColumn: Column<AtmMaintenanceDto> = {
     key: 'actions',
     header: '',
     align: 'end',
     render: (row) => (
       <RowActions>
-        {withClose && can('atmMaintenance.complete') && (
+        {can('atmMaintenance.complete') && (
           <Button
             size="icon"
             variant="ghost-brand"
@@ -167,7 +158,7 @@ export const MaintenancePage = (): JSX.Element => {
         )}
       </RowActions>
     ),
-  });
+  };
 
   const todayColumns: Column<AtmMaintenanceDto>[] = [
     ...baseColumns,
@@ -177,12 +168,12 @@ export const MaintenancePage = (): JSX.Element => {
       render: (row) => <LiveTimerCell openedAt={row.openedAt} now={now} />,
     },
     ...tailColumns,
-    actionsColumn(true),
+    actionsColumn,
   ];
   const carriedColumns: Column<AtmMaintenanceDto>[] = [
     ...baseColumns,
     ...tailColumns,
-    actionsColumn(false),
+    actionsColumn,
   ];
 
   return (
@@ -198,15 +189,16 @@ export const MaintenancePage = (): JSX.Element => {
         <div className="ms-auto flex flex-wrap items-end gap-2">
           <MultiSelect
             label={t('atm.common.bank')}
-            options={(facets.data?.banks ?? []).map((b) => ({ value: b, label: b }))}
-            value={banks}
-            onChange={(next) => setFilter('banks', next)}
+            options={filters.bankOptions}
+            value={filters.banks}
+            onChange={filters.setBanks}
           />
           <MultiSelect
             label={t('atm.common.area')}
-            options={(facets.data?.areas ?? []).map((a) => ({ value: a, label: a }))}
-            value={areas}
-            onChange={(next) => setFilter('areas', next)}
+            options={filters.areaOptions}
+            value={filters.areas}
+            onChange={filters.setAreas}
+            searching={filters.areasLoading}
           />
         </div>
       </div>
@@ -236,11 +228,15 @@ export const MaintenancePage = (): JSX.Element => {
         columns={todayColumns}
         rows={todayRows}
         rowKey={(row) => row.id}
-        loading={list.isLoading}
+        loading={list.isLoading || filters.settling}
         error={list.error}
         onRetry={() => void list.refetch()}
-        empty={t('atm.maintenance.emptyToday')}
-        selection={selection}
+        empty={
+          rows.length === 0 && filters.filtered
+            ? t('atm.common.emptyFiltered')
+            : t('atm.maintenance.emptyToday')
+        }
+        selection={groupSelection(selection, todayIds)}
       />
 
       {otherRows.length > 0 && (
@@ -254,6 +250,7 @@ export const MaintenancePage = (): JSX.Element => {
               rows={otherRows}
               rowKey={(row) => row.id}
               empty={t('atm.maintenance.emptyToday')}
+              selection={groupSelection(selection, otherIds)}
             />
           </div>
         </>

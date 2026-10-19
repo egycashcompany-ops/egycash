@@ -143,6 +143,39 @@ const EnvSchema = z.object({
    * rule on the server are always the same number.
    */
   SESSION_IDLE_MINUTES: z.coerce.number().int().min(0).max(1440).default(10),
+  /**
+   * The request header the edge in front of the api writes the caller's address into. Railway's
+   * edge sets `X-Real-IP`; it is read for `req.ip` (rate limits, audit) when present, and Express's
+   * own answer is kept when it is not. Empty switches the override off.
+   */
+  CLIENT_IP_HEADER: z.string().trim().default('x-real-ip'),
+  /**
+   * Ceilings PER CLIENT IP on the public auth routes, per 5 minutes — sign-in, TOTP, activation
+   * (`AUTH_RATE_LIMIT_PER_IP`) and session renewal (`AUTH_REFRESH_RATE_LIMIT_PER_IP`).
+   *
+   * Deliberately high. A whole office reaches the internet from one address, so this number is
+   * shared by everyone there: every open tab renews every 5 minutes, and people sign in again after
+   * each idle sign-out. The strict limits sit on what is actually being guessed or replayed — the
+   * account, the one-time token, the session — and are fixed in `auth.routes.ts` and
+   * `auth.service.ts`; these only stop one machine from spraying many accounts or sessions.
+   */
+  AUTH_RATE_LIMIT_PER_IP: z.coerce.number().int().min(10).max(100_000).default(200),
+  AUTH_REFRESH_RATE_LIMIT_PER_IP: z.coerce.number().int().min(60).max(100_000).default(1500),
+  /**
+   * FAILED sign-ins allowed PER CLIENT IP per 5 minutes: an unknown identifier or a wrong password.
+   * Once an address has used them up, every sign-in from it is refused until the window ends.
+   * A successful sign-in costs nothing once it has been answered, so an office signing in together
+   * is not held back by it. While one is being checked it holds a slot (`failed-sign-ins.ts`), so
+   * once failures have used most of the limit, a few sign-ins at the same instant can be refused.
+   * Anyone sharing the address can also use the limit up on purpose, which refuses every sign-in
+   * from it, correct passwords included, until the window ends — the price of bounding guessing
+   * per address (the old limit, ten attempts of any kind, did the same more cheaply).
+   *
+   * This is what bounds account discovery and password spraying from one address, because the
+   * sign-in answers whether an identifier exists (`AUTH_IDENTIFIER_UNKNOWN`, an owner decision —
+   * see `authService.login`) and a guessed account gets its own per-account bucket.
+   */
+  AUTH_FAILED_LOGIN_LIMIT_PER_IP: z.coerce.number().int().min(10).max(100_000).default(30),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('false')
@@ -158,6 +191,12 @@ const EnvSchema = z.object({
         .filter(Boolean),
     ),
 
+  /**
+   * What the pre-deploy index sync does (sync-indexes.cli.ts): `report` lists the declared
+   * indexes the database lacks and builds nothing; `apply` builds them. Reporting first is the
+   * point — the first run against a live database is a read an operator reviews before flipping it.
+   */
+  INDEX_SYNC_MODE: z.enum(['report', 'apply']).default('report'),
   SENTRY_DSN: z.string().default(''),
   SLOW_QUERY_MS: z.coerce.number().int().min(1).default(200),
 

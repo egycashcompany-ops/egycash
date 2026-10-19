@@ -102,10 +102,16 @@ export interface Paginated<T> {
 
 // ── Response envelope (API Standards §2) ────────────────────────────────────
 
-export interface ApiSuccess<T> {
+/**
+ * `meta` is the pagination block on lists (API Standards §4). An ACTION may carry its own typed
+ * `meta` beside an unchanged `data` — how an answer grows without breaking a client that reads
+ * only `data` (the ATM mail accept's refusals, `AtmMailAcceptMetaDto`). The default stays
+ * `PageMeta`, so every existing reader of the envelope is untouched.
+ */
+export interface ApiSuccess<T, M = PageMeta> {
   success: true;
   data: T;
-  meta?: PageMeta;
+  meta?: M;
 }
 
 export interface ApiErrorDetail {
@@ -124,7 +130,7 @@ export interface ApiFailure {
   };
 }
 
-export type ApiEnvelope<T> = ApiSuccess<T> | ApiFailure;
+export type ApiEnvelope<T, M = PageMeta> = ApiSuccess<T, M> | ApiFailure;
 
 // ── Entity references (audit, files, workflow all share this shape) ─────────
 

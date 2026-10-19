@@ -1,5 +1,6 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { BaseRepository } from '../../../shared/base/base.repository';
+import { type ScopeSelector } from '../../../shared/types';
 import { AtmMachineModel, type AtmMachineDoc } from './machine.model';
 
 class AtmMachineRepository extends BaseRepository<AtmMachineDoc> {
@@ -21,6 +22,18 @@ class AtmMachineRepository extends BaseRepository<AtmMachineDoc> {
       machineCode,
     } as FilterQuery<AtmMachineDoc>);
     return doc !== null && doc.isActive ? doc : null;
+  }
+
+  /**
+   * The distinct stored values of `field` among the machines `filter` matches in the caller's
+   * scope — what the list summary counts and what its dropdowns offer, before names are trimmed.
+   */
+  async distinctIn(
+    field: 'bankName' | 'area',
+    filter: FilterQuery<AtmMachineDoc>,
+    scope: ScopeSelector,
+  ): Promise<string[]> {
+    return (await this.model.distinct(field, this.baseFilter(scope, filter)).exec()) as string[];
   }
 
   /** Batch form of the same lookup — one query for a 50-line paste, not 50. */

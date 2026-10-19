@@ -33,7 +33,7 @@ let app: Express;
  * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
  * database, so adding a row fails there first — on the author's machine, naming the number.
  */
-const SEEDED_APPLICATIONS = 126;
+const SEEDED_APPLICATIONS = 129;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -253,15 +253,20 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/machines');
     expect(routes).toContain('/atm/reports/daily');
     expect(routes).toContain('/atm/data-edit');
+    // The Efficiency register and its Data Report (docs/12-planning/atm-efficiency-register.md §7.3).
+    expect(routes).toContain('/atm/register');
+    expect(routes).toContain('/atm/register/report');
+    // The machine map and its zones (docs/12-planning/atm-map-zones.md §7.3).
+    expect(routes).toContain('/atm/map');
     // The two Communication rows — the same act from two directions: a person saying something
     // once, and the system saying it every time a thing happens.
     expect(routes).toContain('/announcements');
     expect(routes).toContain('/notification-rules');
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
-    // 38 (HR) + 15 (Operations) + 13 (IT) + 13 (Fleet) + 12 (Gold Vault) + 10 (ATM)
-    //   + 10 (Administration) + 6 (Organization) = 117. Re-counted from `seed-navigation.ts`,
-    //   because the previous breakdown said 103 while the constant beside it said 116 — it had
+    // 38 (HR) + 21 (Fleet) + 15 (Operations) + 6 (Organization) + 14 (IT) + 12 (Gold Vault)
+    //   + 13 (ATM) + 10 (Administration) = 129. Re-counted from `seed-navigation.ts`, because an
+    //   earlier breakdown said 103 while the constant beside it said 116 — it had
     //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
     //   above it was written about. A breakdown that does not sum to the constant is worse than
     //   no breakdown: it reads like a check and is not one.

@@ -337,7 +337,7 @@ describe('a click on «النوع» reaches the server', () => {
       listKey('fleet', 'catalogs', { kind: 'insuranceCompany', violationSide: undefined }),
       paged([]),
     );
-    qc.setQueryData(['hr', 'branches', 'active'], paged([]));
+    qc.setQueryData(['organization', 'branches', 'options'], []);
     const markup = renderToStaticMarkup(
       <Provider store={store()}>
         <QueryClientProvider client={qc}>

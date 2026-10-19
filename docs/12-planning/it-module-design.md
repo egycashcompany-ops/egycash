@@ -857,3 +857,35 @@ starts only on an explicit owner GO.
   transaction. The settled devices are handed over on ONE receipt per employee (the next form
   numbers), so IT prints each employee's acknowledgment and files the signed copy as for any
   hand-over; a holder HR shows as having left gets nothing. The run row says what was written.
+- **The custody register as Excel and PDF** (2026-10-18) — owner request: «في الشاشة دى /it/custody
+  عايز يبقي فى زرارين بجانب تسليم عهدة بيـ Extract أكسيل و PDF للجدول المعمول (وأعتمد الفلتر
+  طبعاً)». Two buttons beside «تسليم عهدة», offered to everyone who can read the register (not only
+  to whoever may hand over) and hidden when the list failed. Both hold EVERY interval the filters
+  match — status, branch, holder — in the table's sort, not the page on screen: the screen's own
+  params, unpaged, walked page by page (`lib/custody-register-export.ts` → Fleet's
+  `fetchFilteredRows`). The columns are the table's, in its order, the asset and employee codes in
+  columns of their own: الصنف، كود الصنف، تاريخ التسليم، المستلِم، كود الموظف، الفرع، موعد الإعادة،
+  الحالة، تاريخ الاسترجاع، إيصال الاستلام (signed / awaiting signature). A filter in force is never
+  dropped from the PDF's filter line: the holder is named by the rows' own name, then the chip's,
+  then the id; a branch not among the options prints as «فرع محدد». The holder chip's label is now
+  kept with the id it was picked for and resolved by id on a link, as on the asset list, so Back
+  never leaves another person's name on it. Excel is the app's one `.xlsx`
+  writer («عهدة الأصول-YYYY-MM-DD.xlsx»); the PDF is the company report form the Fleet lists print
+  on — the letterhead with «قطاع تكنولوجيا المعلومات», a «م» column, the filters and the day under
+  the title — A4 landscape for the ten columns and with no signature block (the form's
+  `signatories` and `orientation` became optional; every Fleet report prints as before). The tab
+  opens on the click and the rows are gathered after, as the receipt does, so the browser does not
+  take it for an unrequested pop-up. No API change.
+- **The asset list as Excel and PDF; the buttons before the form's action** (2026-10-18) — owner
+  request: «اعمل نفس الزرارين في شاشة الأصول · كمان عايز الزرارين قبل مش بعد زرار الـ Action بتاع
+  الفورم · كمان عايزك تشيل كلمة تصدير من الزراير». `/it/assets` gets the custody register's two
+  buttons: every asset the filters match (search, status, category, branch, holder), in the table's
+  sort and columns — الكود، الاسم، الفئة، الرقم التسلسلي، الفرع، الحالة — the workbook «الأصول-YYYY-MM-DD.xlsx»
+  and the PDF on the same report form, A4 portrait (six columns fit), its filter line naming every
+  filter in force («فئة محددة» / «فرع محدد» when the name is not among the options; the holder by
+  the chip, else the id — the asset rows do not name their holder). On both screens the pair now
+  comes BEFORE the screen's own action («تسليم عهدة», «تسجيل أصل») and reads just «Excel» and «PDF».
+  One control (`components/RegisterExportButtons.tsx`) and one shared helper
+  (`lib/register-export.ts`: the walk, the filter line, the report, the tab opened first) serve
+  both screens. Offered to every reader of the list, as the custody export and the labels are;
+  the §11 server CSV under `itAsset.export` is still unbuilt and is a separate thing.

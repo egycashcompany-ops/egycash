@@ -249,10 +249,11 @@ const seededClient = (
   // `hr: false` is what a caller without the roster grant really sees: the query is disabled, so
   // nothing ever lands for the cells to read and each renders its dash.
   if (hr) qc.setQueryData(['fleet', 'people'], [fleetPerson()]);
-  // `useBranches` / `useJobTitles` select `page.items`, so the cache holds the PAGE.
+  // Branch names come from `/platform/branches/options` — a bare ARRAY, ungated. `useJobTitles`
+  // still selects `page.items`, so the driving-seats key below keeps its PAGE.
   qc.setQueryData(
-    ['hr', 'branches', 'active'],
-    page([{ id: 'b1', code: '01', name: { ar: HR.branch, en: 'Mohandessin' }, status: 'active' }]),
+    ['organization', 'branches', 'options'],
+    [{ id: 'b1', code: '01', name: { ar: HR.branch, en: 'Mohandessin' }, parentId: null, catalogId: null }],
   );
   // `requiresDrivingTest` is what makes this a DRIVING seat — the flag the registry's membership
   // is derived from, and the one the HR filter step narrows itself to.
@@ -1867,21 +1868,25 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     }
   });
 
-  it('offers the BRANCH select only with `branch.view` — its options are HR\u2019s directory', () => {
-    // Without the grant the branch list comes back empty, and the control would be a dropdown
-    // with nothing to pick. The three FLEET catalogs are not gated that way: they are Fleet's own
-    // rows, read with the fleet grant this screen already required.
-    const noBranches = render(<DriversListPage />, {
+  it('offers the BRANCH select WITHOUT `branch.view` — naming a branch is not browsing HR', () => {
+    // It used to require the grant, because its options came from the organization-ADMINISTRATION
+    // list and without the grant the dropdown had nothing to pick. That left the reader this
+    // screen is built for — fleet grants reaching the whole company, no business in HR's
+    // directory — looking at every branch's drivers with no way to narrow them, and a «الفرع»
+    // column full of dashes beside it. The options come from `/platform/branches/options` now,
+    // which is authenticated and ungated, so the control is drawn and filled for both readers.
+    const noBranchView = render(<DriversListPage />, {
       permissions: ['fleetDriver.view', 'employee.view'],
     });
-    expect(noBranches).not.toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
-    expect(noBranches, 'الوظيفة is still offered').toContain(
+    expect(noBranchView).toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
+    expect(noBranchView, 'the branch NAME, not a dash').toContain(HR.branch);
+    expect(noBranchView, 'الوظيفة is still offered').toContain(
       `aria-label="${t('fleet.drivers.columns.jobTitle')}"`,
     );
-    const withBranches = render(<DriversListPage />, {
+    const withBranchView = render(<DriversListPage />, {
       permissions: ['fleetDriver.view', 'employee.view', 'branch.view'],
     });
-    expect(withBranches).toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
+    expect(withBranchView).toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
   });
 
   it('keeps name and employee code on ONE control, because HR’s search is one parameter', () => {

@@ -43,7 +43,7 @@ import { EyeIcon, PrinterIcon, WrenchIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
-import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import { useBranchOptions } from '../../organization/shared/references';
 import {
   useAllVehicles,
   useDeleteVehicle,
@@ -304,9 +304,11 @@ export const VehiclesListPage = (): JSX.Element => {
       insurance: tally(insurers.data?.items, (v) => v.insuranceCompanyId),
     };
   }, [wholeRegistry.data, licenseClasses.data, operations.data, insurers.data, locale, t]);
-  // Branch names come from the same hook the filter uses; without `branch.view` it stays empty and
-  // the column degrades to a dash rather than leaking an id.
-  const { data: branches = [] } = useBranches(can('branch.view'));
+  // Branch NAMES come from `/platform/branches/options`, which is authenticated but NOT gated on
+  // `branch.view`. Naming the branch a vehicle already shows is not browsing the directory — and
+  // reading it from the gated list is what printed a dash in the column, the export and the print
+  // for a reader whose fleet grants reach the whole company.
+  const { data: branches = [] } = useBranchOptions();
   const branchName = useMemo(() => nameMap(branches, locale), [branches, locale]);
 
   const [formOpen, setFormOpen] = useState(false);

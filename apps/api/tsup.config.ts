@@ -23,6 +23,9 @@ export default defineConfig({
     // migrate:org-catalog (P-ORG-2) — the dry run and the write both happen on the service shell
     // against the live database; `npm run migrate:org-catalog` needs tsx and cannot run there.
     'src/migrate-org-catalog.cli.ts',
+    // db:sync-indexes — the Railway pre-deploy command (railway.json) runs this before every api
+    // deploy, so it has to exist on the image like the CLIs above.
+    'src/sync-indexes.cli.ts',
   ],
   format: ['esm'],
   target: 'node22',
@@ -56,6 +59,11 @@ export default defineConfig({
    *
    * It is also a real runtime dependency now (it was a devDependency while only the CLI read
    * workbooks), so `npm ci --omit=dev` installs it in the image — which is what external requires.
+   *
+   * JSZip, for the same reason. It is CommonJS too, and the ATM register import loads it with
+   * `await import('jszip')` to open the uploaded workbook in memory and hand ExcelJS a reduced zip
+   * (modules/atm/register/import/read-register-workbook.ts) — bundled, it would meet the same
+   * missing `require`. It is a declared runtime dependency of the api, so the image installs it.
    */
-  external: ['exceljs'],
+  external: ['exceljs', 'jszip'],
 });

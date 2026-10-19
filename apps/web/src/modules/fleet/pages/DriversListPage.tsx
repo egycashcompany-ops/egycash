@@ -64,10 +64,8 @@ import { cn } from '../../../shared/lib/cn';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
 import * as fleetApi from '../api/fleet-api';
 import { useDriverHrFilter, type DriverHrFilter } from '../api/driver-hr-filter';
-import {
-  useBranches,
-  useDrivingJobTitles,
-} from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import { useDrivingJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import { useBranchOptions } from '../../organization/shared/references';
 import { useEmployeeRecord } from '../components/EmployeeName';
 import { useDriverHoverCard } from '../components/DriverHoverCard';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
@@ -335,9 +333,12 @@ export const DriversListPage = (): JSX.Element => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
   // The two HR reference lists this screen reads. Declared before the HR filter step because it
-  // needs one of them: without the matching `*.view` grant each stays empty, and the column that
-  // depends on it degrades to a dash rather than showing a raw id.
-  const { data: branches = [] } = useBranches(can('branch.view'));
+  // needs one of them.
+  //
+  // Branch NAMES come from `/platform/branches/options` — authenticated, not `branch.view`-gated.
+  // Read from the administration list instead, the «الفرع» column printed a dash and the «الفرع»
+  // filter was not drawn at all for a reader whose fleet grants reach the whole company.
+  const { data: branches = [] } = useBranchOptions();
   // WHO THIS REGISTRY IS: everyone whose job title requires a driving test. Handing those titles
   // to step ① is what keeps «الجيزة» a question about DRIVERS rather than about the payroll — see
   // `useDriverHrFilter`. Without `jobTitle.view` the list is empty and the hook does not narrow,
@@ -1073,22 +1074,20 @@ export const DriversListPage = (): JSX.Element => {
                 density={TIGHT}
               />
             </FilterWithIcon>
-            {can('branch.view') && (
-              <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-600 dark:text-violet-300">
-                <MultiSelect
-                  clearable
-                  label={t('fleet.drivers.columns.branch')}
-                  options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
-                  value={branchIds}
-                  onChange={(ids) => patch({ branch: writeList(ids) })}
-                  showSelectedValues
-                  chips
-                  density={TIGHT}
-                  fullWidth
-                  className="w-full"
-                />
-              </FilterWithIcon>
-            )}
+            <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-600 dark:text-violet-300">
+              <MultiSelect
+                clearable
+                label={t('fleet.drivers.columns.branch')}
+                options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+                value={branchIds}
+                onChange={(ids) => patch({ branch: writeList(ids) })}
+                showSelectedValues
+                chips
+                density={TIGHT}
+                fullWidth
+                className="w-full"
+              />
+            </FilterWithIcon>
             {mayFilterByHr && (
               <FilterWithIcon icon={FILTER_ICON.phone} tone="text-slate-500 dark:text-slate-400">
                 <DebouncedInput

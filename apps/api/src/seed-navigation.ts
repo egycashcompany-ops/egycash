@@ -36,6 +36,13 @@ interface AppDef {
    */
   previousIcon?: string;
   /**
+   * The key this row shipped with BEFORE, where its permission has been corrected since.
+   *
+   * The same narrow exception as `previousIcon`, for the permission: corrected only while the
+   * stored row still holds exactly this value, so an administrator's own choice survives.
+   */
+  previousPermission?: string;
+  /**
    * The permission opening this page requires — the SAME key the client route guard checks.
    *
    * REQUIRED. Navigation is the set of applications whose key the caller holds, so a row without one
@@ -980,7 +987,12 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
   {
     // ATM Operations (module port). Every `permission` below is the SAME key the client route
     // guard checks in apps/web/src/modules/atm/routes.tsx — nothing new is declared here. The
-    // rows mirror the legacy home menu (views/events/index.ejs) one for one, in its order.
+    // rows mirror the legacy home menu (views/events/index.ejs) one for one, in its order, then
+    // the Efficiency register's two pages (docs/12-planning/atm-efficiency-register.md §7.3).
+    // Machine Data is the Operations page now (D2): its row carries the Operations key, while the
+    // route guard accepts any of `atmRefLabel.create`, `atmRefLabel.edit`, `atmMachine.moveArea`,
+    // `atmMachine.manage` — so a manage-only holder still opens it by URL until an administrator
+    // grants a new key (lead override O-1). The import page has no row (reached from the register).
     en: 'ATM',
     ar: 'الصراف الآلي',
     icon: 'grid',
@@ -1042,6 +1054,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'grid',
         permission: 'atmMachine.view',
       },
+      // The machine map and its zones (docs/12-planning/atm-map-zones.md §7.3). No `map` icon exists
+      // (GM-17); `/atm/map/unlocated` has no row of its own — the nested route is matched exactly.
+      {
+        en: 'Machines Map',
+        ar: 'خريطة الماكينات',
+        route: '/atm/map',
+        icon: 'pin',
+        permission: 'atmMap.view',
+      },
       {
         en: 'Daily Report',
         ar: 'تقرير اليوم',
@@ -1054,7 +1075,22 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         ar: 'إضافة البيانات',
         route: '/atm/data-edit',
         icon: 'tag',
-        permission: 'atmMachine.manage',
+        permission: 'atmRefLabel.create',
+        previousPermission: 'atmMachine.manage',
+      },
+      {
+        en: 'ATM Register',
+        ar: 'سجل الماكينات',
+        route: '/atm/register',
+        icon: 'shield',
+        permission: 'atmRegister.view',
+      },
+      {
+        en: 'Data Report',
+        ar: 'تقرير البيانات',
+        route: '/atm/register/report',
+        icon: 'chart',
+        permission: 'atmRegisterReport.view',
       },
     ],
   },
@@ -1240,6 +1276,21 @@ const backfillApplicationIcon = async (def: AppDef, by: string): Promise<void> =
   );
 };
 
+/**
+ * Correct a row's permission — ONLY while it still holds the key this seed used to ship. The icon
+ * correction's rule, for the key: an administrator who chose another key keeps it.
+ */
+const correctApplicationPermission = async (def: AppDef, by: string): Promise<void> => {
+  if (def.previousPermission === undefined) return;
+  const existing = await applicationRepository.findOne({ route: def.route });
+  if (existing === null || existing.permissionKey !== def.previousPermission) return;
+  await applicationService.update(
+    String(existing._id),
+    { permissionKey: def.permission, version: existing.__v },
+    by,
+  );
+};
+
 const backfillApplicationPermission = async (def: AppDef, by: string): Promise<void> => {
   const existing = await applicationRepository.findOne({ route: def.route });
   if (existing === null || (existing.permissionKey ?? null) !== null) return;
@@ -1283,6 +1334,8 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
  * - a category icon is filled in ONLY while it is null (pre-icon installs); a non-null icon —
  *   seeded or admin-chosen — is never overwritten; an application's permission key follows the
  *   same rule (filled only while null, which is what teaches pre-field installs their keys);
+ * - the two corrections, `previousIcon` and `previousPermission`, rewrite a row's value only while
+ *   it still equals what this seed used to ship — an administrator's own choice is never touched;
  * - a new application lands BETWEEN the neighbours it sits between in the catalog, at half the
  *   gap in their STORED ordering. A counter derived from position in this array would hand an
  *   inserted row a number an existing sibling already owns (nothing renumbers the old rows), and
@@ -1299,6 +1352,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
     for (const app of category.apps) {
       await backfillApplicationPermission(app, actor);
       await backfillApplicationIcon(app, actor);
+      await correctApplicationPermission(app, actor);
     }
     // Resolve the whole group up front: where a new row belongs depends on the stored order of
     // the next EXISTING neighbour, which a forward-only walk cannot see yet.

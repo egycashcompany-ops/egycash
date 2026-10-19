@@ -3,11 +3,23 @@
 // three things this page administers are URL-synced tabs, each a live paginated table with a
 // status filter, and entry is a dialog per item rather than a wall of textareas.
 //
+// WHO MAY DO WHAT (D2, docs/12-planning/atm-efficiency-register.md §8.4). Whether a machine EXISTS
+// is now decided by the Efficiency register: a receipt from the bank creates it, a handover
+// archives it. This stays Operations' page, minus the actions that decide existence:
+//   · Operations (`atmRefLabel.create`, `atmRefLabel.edit`, `atmMachine.moveArea`) add a bank or an
+//     area, rename one or toggle its archive, and move a machine to another area. Apart from that
+//     move, the machines tab is read-only to them. Nobody deletes a label from this page.
+//   · `atmMachine.manage` keeps everything it had: add a machine, the bulk add and delete-by-codes,
+//     the full edit (name, bank, area, archive) and the row delete.
+// Each control checks its own key. The server enforces the same split (§7.1); hiding a control
+// only spares a click that would be refused.
+//
 // Nothing the legacy could do was dropped in the move:
 //   · bulk add (code+name line pairs, one bank and one area for the batch) and delete-by-codes
 //     (soft + `-D` rename) live in the bulk dialog, reached from the machines tab;
-//   · "نقل ماكينة لمنطقة" (:2529-2541) is now just editing the machine's area — same effect,
-//     one fewer form, and it works on a machine you can see rather than one you must name;
+//   · "نقل ماكينة لمنطقة" (:2529-2541) is Operations' area-move dialog on each row, and `manage`
+//     changes the area inside the full edit as before. Both work on a machine you can see rather
+//     than one you must name;
 //   · the bank and area lists (:2471-2527) are two of the tabs.
 //
 // What the legacy could NOT do and this can: fix one machine's name or bank, and ARCHIVE a
@@ -25,10 +37,15 @@ import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Input, Select } from '../../../shared/ui/form';
-import { EditIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon, PinIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAtmMachines, useAtmRefLabels, useBulkDeleteAtmMachines } from '../api/atm-queries';
-import { BulkMachinesDialog, MachineDialog, RefLabelDialog } from '../components/DataEditDialogs';
+import {
+  BulkMachinesDialog,
+  MachineAreaDialog,
+  MachineDialog,
+  RefLabelDialog,
+} from '../components/DataEditDialogs';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
@@ -55,6 +72,12 @@ const actionButton =
 export const DataEditPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
+  // The D2 split. Each control below reads the flag for its own key, and `manage` still passes
+  // every check it passed before.
+  const canManage = can('atmMachine.manage');
+  const canMoveArea = can('atmMachine.moveArea');
+  const canAddLabels = canManage || can('atmRefLabel.create');
+  const canEditLabels = canManage || can('atmRefLabel.edit');
   const [sp, setSp] = useSearchParams();
 
   const tabParam = sp.get('tab');
@@ -122,6 +145,7 @@ export const DataEditPage = (): JSX.Element => {
   const [creating, setCreating] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState<AtmMachineDto | null>(null);
+  const [movingMachine, setMovingMachine] = useState<AtmMachineDto | null>(null);
   const [editingLabel, setEditingLabel] = useState<AtmRefLabelDto | null>(null);
   const [deleting, setDeleting] = useState<AtmMachineDto | null>(null);
   const bulkDelete = useBulkDeleteAtmMachines();
@@ -148,7 +172,7 @@ export const DataEditPage = (): JSX.Element => {
     { key: 'bankName', header: t('atm.common.bank'), sortable: true, render: (r) => r.bankName },
     { key: 'area', header: t('atm.common.area'), sortable: true, render: (r) => r.area },
     statusColumn<AtmMachineDto>(),
-    ...(can('atmMachine.manage')
+    ...(canManage || canMoveArea
       ? [
           {
             key: 'actions',
@@ -156,26 +180,45 @@ export const DataEditPage = (): JSX.Element => {
             align: 'end',
             render: (r: AtmMachineDto) => (
               <div className="flex justify-end gap-1">
-                <button
-                  type="button"
-                  className={actionButton}
-                  aria-label={t('atm.dataEdit.editMachine')}
-                  title={t('atm.dataEdit.editMachine')}
-                  onClick={() => setEditingMachine(r)}
-                >
-                  <EditIcon className="h-4 w-4" />
-                </button>
+                {canManage ? (
+                  <button
+                    type="button"
+                    className={actionButton}
+                    aria-label={t('atm.dataEdit.editMachine')}
+                    title={t('atm.dataEdit.editMachine')}
+                    data-edit-action="edit-machine"
+                    onClick={() => setEditingMachine(r)}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </button>
+                ) : (
+                  // Operations: the area alone. `manage` changes it inside the full edit instead.
+                  <button
+                    type="button"
+                    className={actionButton}
+                    aria-label={t('atm.dataEdit.moveArea')}
+                    title={t('atm.dataEdit.moveArea')}
+                    data-edit-action="move-area"
+                    onClick={() => setMovingMachine(r)}
+                  >
+                    <PinIcon className="h-4 w-4" />
+                  </button>
+                )}
                 {/* Archive (the edit dialog's `isActive`) keeps the code taken; DELETE is the
-                    legacy action that frees it, via the `-D` rename (contad_app.js:2494-2508). */}
-                <button
-                  type="button"
-                  className={actionButton}
-                  aria-label={t('atm.dataEdit.deleteMachine')}
-                  title={t('atm.dataEdit.deleteMachine')}
-                  onClick={() => setDeleting(r)}
-                >
-                  <TrashIcon className="h-4 w-4" />
-                </button>
+                    legacy action that frees it, via the `-D` rename (contad_app.js:2494-2508).
+                    Both decide whether the machine exists, so both stay `manage` only (D2). */}
+                {canManage && (
+                  <button
+                    type="button"
+                    className={actionButton}
+                    aria-label={t('atm.dataEdit.deleteMachine')}
+                    title={t('atm.dataEdit.deleteMachine')}
+                    data-edit-action="delete-machine"
+                    onClick={() => setDeleting(r)}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             ),
           } satisfies Column<AtmMachineDto>,
@@ -186,7 +229,7 @@ export const DataEditPage = (): JSX.Element => {
   const labelColumns: Column<AtmRefLabelDto>[] = [
     { key: 'name', header: t('atm.dataEdit.labelName'), sortable: true, render: (r) => r.name },
     statusColumn<AtmRefLabelDto>(),
-    ...(can('atmMachine.manage')
+    ...(canEditLabels
       ? [
           {
             key: 'actions',
@@ -198,6 +241,7 @@ export const DataEditPage = (): JSX.Element => {
                 className={actionButton}
                 aria-label={t('atm.common.edit')}
                 title={t('atm.common.edit')}
+                data-edit-action="edit-label"
                 onClick={() => setEditingLabel(r)}
               >
                 <EditIcon className="h-4 w-4" />
@@ -209,10 +253,6 @@ export const DataEditPage = (): JSX.Element => {
   ];
 
   const query = tab === 'machines' ? machines : labels;
-  const addLabel =
-    tab === 'machines'
-      ? t('atm.dataEdit.addMachine')
-      : t(tab === 'bank' ? 'atm.dataEdit.addBank' : 'atm.dataEdit.addArea');
 
   return (
     <PageContainer>
@@ -223,22 +263,41 @@ export const DataEditPage = (): JSX.Element => {
           { label: t('atm.dataEdit.title') },
         ]}
         actions={
-          <Can permission="atmMachine.manage">
-            <div className="flex gap-2">
-              {tab === 'machines' && (
-                <Button size="sm" variant="secondary" onClick={() => setBulkOpen(true)}>
+          tab === 'machines' ? (
+            <Can permission="atmMachine.manage">
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-edit-action="bulk"
+                  onClick={() => setBulkOpen(true)}
+                >
                   {t('atm.dataEdit.bulkTitle')}
                 </Button>
-              )}
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setCreating(true)}
-              >
-                {addLabel}
-              </Button>
-            </div>
-          </Can>
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  data-edit-action="add-machine"
+                  onClick={() => setCreating(true)}
+                >
+                  {t('atm.dataEdit.addMachine')}
+                </Button>
+              </div>
+            </Can>
+          ) : (
+            <Can anyOf={['atmRefLabel.create', 'atmMachine.manage']}>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  data-edit-action="add-label"
+                  onClick={() => setCreating(true)}
+                >
+                  {t(tab === 'bank' ? 'atm.dataEdit.addBank' : 'atm.dataEdit.addArea')}
+                </Button>
+              </div>
+            </Can>
+          )
         }
       />
 
@@ -323,40 +382,48 @@ export const DataEditPage = (): JSX.Element => {
         )}
       </div>
 
+      {/* Each dialog also checks its key. `creating` survives a tab change through Back, so
+          without the check an "add bank" begun on one tab could open "add machine" on another. */}
       <MachineDialog
-        open={creating && tab === 'machines'}
+        open={creating && tab === 'machines' && canManage}
         onClose={() => setCreating(false)}
         machine={null}
         banks={banks}
         areas={areas}
       />
       <MachineDialog
-        open={editingMachine !== null}
+        open={editingMachine !== null && canManage}
         onClose={() => setEditingMachine(null)}
         machine={editingMachine}
         banks={banks}
         areas={areas}
       />
+      <MachineAreaDialog
+        open={movingMachine !== null && canMoveArea}
+        onClose={() => setMovingMachine(null)}
+        machine={movingMachine}
+        areas={areas}
+      />
       <RefLabelDialog
-        open={creating && tab !== 'machines'}
+        open={creating && tab !== 'machines' && canAddLabels}
         onClose={() => setCreating(false)}
         kind={tab === 'area' ? 'area' : 'bank'}
         label={null}
       />
       <RefLabelDialog
-        open={editingLabel !== null}
+        open={editingLabel !== null && canEditLabels}
         onClose={() => setEditingLabel(null)}
         kind={tab === 'area' ? 'area' : 'bank'}
         label={editingLabel}
       />
       <BulkMachinesDialog
-        open={bulkOpen}
+        open={bulkOpen && canManage}
         onClose={() => setBulkOpen(false)}
         banks={banks}
         areas={areas}
       />
       <ConfirmActionDialog
-        open={deleting !== null}
+        open={deleting !== null && canManage}
         onClose={() => setDeleting(null)}
         title={t('atm.dataEdit.deleteMachine')}
         body={t('atm.dataEdit.deleteMachineBody', { code: deleting?.machineCode ?? '' })}

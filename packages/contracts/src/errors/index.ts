@@ -112,6 +112,51 @@ export const ErrorCodes = {
   /** Someone else moved this stop first; the transition's precondition no longer holds. */
   OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',
 
+  // ── ATM operations (docs/12-planning/atm-operations-port.md) ──────────────────────────────────
+  /**
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»): the machine code already has an
+   * OPEN operation of this kind — at most one open replenishment and one open maintenance per
+   * machine, company-wide. Answered by a reopen; the batch opens report such codes instead.
+   */
+  ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
+
+  // ── ATM efficiency register (docs/12-planning/atm-efficiency-register.md) ─────────────────────
+  /** D6: the machine code already has an OPEN custody period somewhere in the company. */
+  ATM_REGISTER_OPEN_PERIOD_EXISTS: 'ATM_REGISTER_OPEN_PERIOD_EXISTS',
+  /** DEC-9: an ACTIVE Operations machine with this code exists in another branch. */
+  ATM_REGISTER_CODE_ACTIVE_ELSEWHERE: 'ATM_REGISTER_CODE_ACTIVE_ELSEWHERE',
+  /** DEC-10: the branch has no `EGYCASH-n` code in the register settings. */
+  ATM_REGISTER_BRANCH_UNMAPPED: 'ATM_REGISTER_BRANCH_UNMAPPED',
+  /** DEC-12: a branch-less (imported) pending entry cannot be received. */
+  ATM_REGISTER_BRANCH_REQUIRED: 'ATM_REGISTER_BRANCH_REQUIRED',
+  /** D6: an area is required to couple the entry to the Operations list. */
+  ATM_REGISTER_AREA_REQUIRED: 'ATM_REGISTER_AREA_REQUIRED',
+  ATM_REGISTER_NOT_OPEN: 'ATM_REGISTER_NOT_OPEN',
+  ATM_REGISTER_NOT_PENDING: 'ATM_REGISTER_NOT_PENDING',
+  ATM_REGISTER_NOT_ENDED: 'ATM_REGISTER_NOT_ENDED',
+  /** A field that cannot change in the entry's current state (e.g. the ATM ID once linked). */
+  ATM_REGISTER_IMMUTABLE_FIELD: 'ATM_REGISTER_IMMUTABLE_FIELD',
+  /** DEC-30: the entry already has its Operations machine. */
+  ATM_REGISTER_ALREADY_LINKED: 'ATM_REGISTER_ALREADY_LINKED',
+  /** The workbook is not the expected `ATMs` layout, or is too large to read. */
+  ATM_REGISTER_IMPORT_LAYOUT: 'ATM_REGISTER_IMPORT_LAYOUT',
+  /** Apply refused: the preview carries blockers (details name them). */
+  ATM_REGISTER_IMPORT_BLOCKED: 'ATM_REGISTER_IMPORT_BLOCKED',
+  /** The applied bytes are not the previewed bytes (`fileSha256`). */
+  ATM_REGISTER_IMPORT_FILE_CHANGED: 'ATM_REGISTER_IMPORT_FILE_CHANGED',
+  /** One running import at a time (DEC-15). */
+  ATM_REGISTER_IMPORT_RUNNING: 'ATM_REGISTER_IMPORT_RUNNING',
+
+  // ── ATM machine map and zones (docs/12-planning/atm-map-zones.md) ─────────────────────────────
+  /** DM-7: the branch's zone set moved since the editor loaded it (409); nothing was written. */
+  ATM_MAP_ZONES_STALE: 'ATM_MAP_ZONES_STALE',
+  /** DM-45: approve while the register text the review pin came from has moved — sync first (409). */
+  ATM_MAP_SOURCE_CHANGED: 'ATM_MAP_SOURCE_CHANGED',
+  /** DM-45: a text placement whose server parse moved away from the previewed point (409). */
+  ATM_MAP_PARSE_CHANGED: 'ATM_MAP_PARSE_CHANGED',
+  /** Approve on a location that is not waiting for review (422). */
+  ATM_MAP_NOT_UNDER_REVIEW: 'ATM_MAP_NOT_UNDER_REVIEW',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

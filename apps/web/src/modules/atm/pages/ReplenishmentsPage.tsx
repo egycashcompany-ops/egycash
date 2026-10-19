@@ -2,16 +2,21 @@
 //
 //   · the multi-row open form: machine codes one per line, schedule times aligned BY LINE, one
 //     force date for the batch (:558-580);
-//   · the open grid in TWO groups — today's rows (white, live timer, close control) and open rows
-//     of other days (grey, no timer, no close — :1013 / :1086);
+//   · the open grid in TWO groups — today's rows (white, live timer) and open rows of other days
+//     (grey, no timer — :1013 / :1086). The legacy grey group had no close and no checkbox; both
+//     groups have them here, because an open row of ANY day blocks its machine under the owner's
+//     rule (port doc OD-1) and must be closable where it is shown (D4);
 //   · the timer counts from open and paints ≥1h green / ≥2h yellow / ≥3h crimson (:1915-1921);
 //   · bank/area narrowing — the legacy saved these per user server-side; the URL carries them
-//     here so a bookmark keeps a desk's view (port doc §7.4);
+//     here so a bookmark keeps a desk's view. An area can be chosen with no bank (the legacy
+//     header filter row), a bank change drops the areas it orphaned, and the board is read WHOLE —
+//     every open row the filters match, past the hundred one page holds (`lib/board-filters.ts`,
+//     `lib/whole-board.ts`, port doc D8);
 //   · row actions: close, edit (schedule/open time/leader with the shift cascade), delete; the
-//     checkbox column drives the same actions in bulk (:1016-1078).
-import { useMemo, useState } from 'react';
+//     checkbox column drives the same actions in bulk (:1016-1078), over both groups.
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type AtmReplenishmentDto } from '@ecms/contracts';
+import { type AtmReplenishmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -31,11 +36,12 @@ import {
   useDeleteAtmReplenishments,
   useOpenAtmReplenishmentsList,
 } from '../api/atm-queries';
-import { cairoToday, isOpenedToday } from '../lib/operation-view';
+import { cairoToday, groupSelection, isOpenedToday } from '../lib/operation-view';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenReplenishmentsForm } from '../components/OpenReplenishmentsForm';
 import { ConfirmActionDialog, EditReplenishmentDialog } from '../components/ReplenishmentDialogs';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { useBoardFilters } from '../lib/useBoardFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -50,35 +56,19 @@ export const ReplenishmentsPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  const banks = useMemo(() => (sp.get('banks') ?? '').split(',').filter(Boolean), [sp]);
-  const areas = useMemo(() => (sp.get('areas') ?? '').split(',').filter(Boolean), [sp]);
-
-  const setFilter = (key: 'banks' | 'areas', values: string[]): void => {
-    const next = new URLSearchParams(sp);
-    if (values.length === 0) next.delete(key);
-    else next.set(key, values.join(','));
-    setSp(next);
-  };
-
-  const listParams = useMemo(
-    () => ({
-      pageSize: MAX_PAGE_SIZE,
-      ...(banks.length > 0 ? { banks: banks.join(',') } : {}),
-      ...(areas.length > 0 ? { areas: areas.join(',') } : {}),
-    }),
-    [banks, areas],
-  );
-  const list = useOpenAtmReplenishmentsList(listParams);
-  const facets = useAtmReplenishmentFacets(banks);
+  const filters = useBoardFilters([sp, setSp], useAtmReplenishmentFacets);
+  const list = useOpenAtmReplenishmentsList(filters, !filters.settling);
 
   const now = useNowTick();
   const rows = list.data?.items ?? [];
   const todayRows = rows.filter((row) => isOpenedToday(row.openedAt, now));
   const otherRows = rows.filter((row) => !isOpenedToday(row.openedAt, now));
 
-  // Selection spans BOTH groups' visible rows — checked carried-over rows can be edited/deleted
-  // in bulk, exactly as legacy checkboxes allowed; close still applies to open rows only.
-  const selection = useTableSelection(todayRows.map((row) => row.id));
+  // Selection spans BOTH groups' visible rows: a carried-over row blocks its machine like any open
+  // row (OD-1), so it can be checked and closed, edited or deleted in bulk with today's.
+  const todayIds = todayRows.map((row) => row.id);
+  const otherIds = otherRows.map((row) => row.id);
+  const selection = useTableSelection([...todayIds, ...otherIds]);
 
   const close = useCloseAtmReplenishments();
   const remove = useDeleteAtmReplenishments();
@@ -133,6 +123,47 @@ export const ReplenishmentsPage = (): JSX.Element => {
     },
   ];
 
+  // Both groups: close, edit, delete.
+  const actionsColumn: Column<AtmReplenishmentDto> = {
+    key: 'actions',
+    header: '',
+    align: 'end',
+    render: (row) => (
+      <RowActions>
+        {can('atmReplenishment.complete') && (
+          <Button
+            size="icon"
+            variant="ghost-brand"
+            title={t('atm.common.close')}
+            onClick={() => setClosing([row])}
+          >
+            <LockIcon className="h-4 w-4" />
+          </Button>
+        )}
+        {can('atmReplenishment.edit') && (
+          <Button
+            size="icon"
+            variant="ghost"
+            title={t('atm.common.edit')}
+            onClick={() => setEditing([row])}
+          >
+            <EditIcon className="h-4 w-4" />
+          </Button>
+        )}
+        {can('atmReplenishment.delete') && (
+          <Button
+            size="icon"
+            variant="ghost-danger"
+            title={t('atm.common.delete')}
+            onClick={() => setDeleting([row])}
+          >
+            <TrashIcon className="h-4 w-4" />
+          </Button>
+        )}
+      </RowActions>
+    ),
+  };
+
   const todayColumns: Column<AtmReplenishmentDto>[] = [
     ...baseColumns,
     {
@@ -142,81 +173,15 @@ export const ReplenishmentsPage = (): JSX.Element => {
     },
     { key: 'leader', header: t('atm.common.leader'), render: (row) => row.leaderName ?? '—' },
     { key: 'addedBy', header: t('atm.common.addedBy'), render: (row) => row.openedByName ?? '—' },
-    {
-      key: 'actions',
-      header: '',
-      align: 'end',
-      render: (row) => (
-        <RowActions>
-          {can('atmReplenishment.complete') && (
-            <Button
-              size="icon"
-              variant="ghost-brand"
-              title={t('atm.common.close')}
-              onClick={() => setClosing([row])}
-            >
-              <LockIcon className="h-4 w-4" />
-            </Button>
-          )}
-          {can('atmReplenishment.edit') && (
-            <Button
-              size="icon"
-              variant="ghost"
-              title={t('atm.common.edit')}
-              onClick={() => setEditing([row])}
-            >
-              <EditIcon className="h-4 w-4" />
-            </Button>
-          )}
-          {can('atmReplenishment.delete') && (
-            <Button
-              size="icon"
-              variant="ghost-danger"
-              title={t('atm.common.delete')}
-              onClick={() => setDeleting([row])}
-            >
-              <TrashIcon className="h-4 w-4" />
-            </Button>
-          )}
-        </RowActions>
-      ),
-    },
+    actionsColumn,
   ];
 
-  // Carried-over rows: no timer, no close — the legacy grey group (:1086-1135) kept edit/delete.
+  // Carried-over rows: no timer — the legacy grey group (:1086-1135). Its close is new (OD-1, D4).
   const carriedColumns: Column<AtmReplenishmentDto>[] = [
     ...baseColumns,
     { key: 'leader', header: t('atm.common.leader'), render: (row) => row.leaderName ?? '—' },
     { key: 'addedBy', header: t('atm.common.addedBy'), render: (row) => row.openedByName ?? '—' },
-    {
-      key: 'actions',
-      header: '',
-      align: 'end',
-      render: (row) => (
-        <RowActions>
-          {can('atmReplenishment.edit') && (
-            <Button
-              size="icon"
-              variant="ghost"
-              title={t('atm.common.edit')}
-              onClick={() => setEditing([row])}
-            >
-              <EditIcon className="h-4 w-4" />
-            </Button>
-          )}
-          {can('atmReplenishment.delete') && (
-            <Button
-              size="icon"
-              variant="ghost-danger"
-              title={t('atm.common.delete')}
-              onClick={() => setDeleting([row])}
-            >
-              <TrashIcon className="h-4 w-4" />
-            </Button>
-          )}
-        </RowActions>
-      ),
-    },
+    actionsColumn,
   ];
 
   return (
@@ -232,15 +197,16 @@ export const ReplenishmentsPage = (): JSX.Element => {
         <div className="ms-auto flex flex-wrap items-end gap-2">
           <MultiSelect
             label={t('atm.common.bank')}
-            options={(facets.data?.banks ?? []).map((b) => ({ value: b, label: b }))}
-            value={banks}
-            onChange={(next) => setFilter('banks', next)}
+            options={filters.bankOptions}
+            value={filters.banks}
+            onChange={filters.setBanks}
           />
           <MultiSelect
             label={t('atm.common.area')}
-            options={(facets.data?.areas ?? []).map((a) => ({ value: a, label: a }))}
-            value={areas}
-            onChange={(next) => setFilter('areas', next)}
+            options={filters.areaOptions}
+            value={filters.areas}
+            onChange={filters.setAreas}
+            searching={filters.areasLoading}
           />
         </div>
       </div>
@@ -270,11 +236,15 @@ export const ReplenishmentsPage = (): JSX.Element => {
         columns={todayColumns}
         rows={todayRows}
         rowKey={(row) => row.id}
-        loading={list.isLoading}
+        loading={list.isLoading || filters.settling}
         error={list.error}
         onRetry={() => void list.refetch()}
-        empty={t('atm.replenishments.emptyToday')}
-        selection={selection}
+        empty={
+          rows.length === 0 && filters.filtered
+            ? t('atm.common.emptyFiltered')
+            : t('atm.replenishments.emptyToday')
+        }
+        selection={groupSelection(selection, todayIds)}
       />
 
       {otherRows.length > 0 && (
@@ -288,6 +258,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
               rows={otherRows}
               rowKey={(row) => row.id}
               empty={t('atm.replenishments.emptyToday')}
+              selection={groupSelection(selection, otherIds)}
             />
           </div>
         </>

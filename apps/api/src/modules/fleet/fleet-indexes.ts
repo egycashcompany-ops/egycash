@@ -33,6 +33,7 @@
 // the only effect is that constraints the schemas already declare start being enforced.
 import { type Model } from 'mongoose';
 import { logger } from '../../infrastructure/logging/logger';
+import { indexBuildPlan } from '../../shared/base/index-plan';
 import { FleetVehicleModel } from './vehicles/vehicle.model';
 import { FleetVehicleTypeModel } from './vehicle-types/vehicle-type.model';
 import { FleetCatalogItemModel } from './catalogs/catalog-item.model';
@@ -91,40 +92,9 @@ export const fleetIndexedModels = (): { collection: string; model: Model<never> 
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model }));
 
-/**
- * The options that describe an index to the SERVER, filtered out of what mongoose hands back.
- *
- * `schema.indexes()` carries driver-side hints too — `background` above all, which modern mongo
- * ignores and which would otherwise be stored as part of the definition a later rebuild is
- * compared against. Forwarding a fixed, known set keeps a rebuild byte-identical to the first
- * build, which is what makes the whole step idempotent rather than conflict-prone.
- */
-const FORWARDED = [
-  'name',
-  'unique',
-  'partialFilterExpression',
-  'sparse',
-  'expireAfterSeconds',
-] as const;
-
-export interface IndexPlanEntry {
-  keys: Record<string, unknown>;
-  options: Record<string, unknown>;
-  /** A unique index needs a duplicate check before it can be built. */
-  unique: boolean;
-}
-
-/** Pure: what will actually be sent to `createIndex`, for one schema's declarations. */
-export const indexBuildPlan = (
-  declared: readonly (readonly [Record<string, unknown>, Record<string, unknown> | undefined])[],
-): IndexPlanEntry[] =>
-  declared.map(([keys, raw]) => {
-    const options: Record<string, unknown> = {};
-    for (const key of FORWARDED) {
-      if (raw !== undefined && raw[key] !== undefined) options[key] = raw[key];
-    }
-    return { keys, options, unique: options['unique'] === true };
-  });
+// The plan (which options reach the server, and in what shape) is shared with the platform-wide
+// index sync — one definition, so the two builders can never disagree about an index.
+export { indexBuildPlan, type IndexPlanEntry } from '../../shared/base/index-plan';
 
 /**
  * Rows that would violate a unique index, asked with the index's OWN partial filter.

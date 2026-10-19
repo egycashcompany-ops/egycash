@@ -11,6 +11,51 @@ its entry here in the same PR.
 
 ### Added
 
+- **The ATM machines are on a map, divided into zones the branches draw themselves.** «موافق على
+  المقترح كله، ابدأ». `/atm/map` «خريطة الماكينات» shows every active machine of the branches in
+  reach on OpenStreetMap, coloured by zone or by bank, with filters, search and per-zone counts; a
+  branch supervisor draws, reshapes, renames, orders and deletes their branch's zones there (zones may
+  overlap, with a warning; a machine counts for the higher one in the list). `/atm/map/unlocated`
+  «ماكينات بدون موقع» places the machines: a sync reads the register's two location columns (AP/AV:
+  coordinates, Plus Codes, Google links), the server opens the `maps.app.goo.gl` short links once
+  each, and the rest are placed by a pasted link or a click on the map — a short-code pin waits for
+  approval, and a pin a person set is never moved unless the register's text changed. Three new keys,
+  seeded to super-admin only — `atmMap.view`, `atmZone.manage`, `atmMachine.locate` — so after the
+  deploy an administrator grants them (branch or organization scope, never `own`), then runs the
+  sync, resolves the links and checks that the API host reaches Google (GM-1). The register and the
+  machines' `zone` and area are not written. Five new indexes, built by `db:sync-indexes` and at boot
+  ([machine map and zones](docs/12-planning/atm-map-zones.md), rollout §10.2).
+- **The IT asset list exports to Excel and PDF too.** «اعمل نفس الزرارين في شاشة الأصول» — every
+  asset the filters match, in the table's order. On both IT screens the two buttons now come before
+  the screen's own action and read just «Excel» and «PDF» («كمان عايز الزرارين قبل مش بعد زرار الـ
+  Action بتاع الفورم · كمان عايزك تشيل كلمة تصدير من الزراير»)
+  ([IT design §17](docs/12-planning/it-module-design.md)).
+- **The IT custody register exports to Excel and PDF.** «عايز يبقي فى زرارين بجانب تسليم عهدة
+  بيـ Extract أكسيل و PDF للجدول المعمول (وأعتمد الفلتر طبعاً)» — beside «تسليم عهدة» on
+  `/it/custody`, for everyone who can read the register. Both files hold every interval the filters
+  match (status, branch, holder), in the table's order, not just the page on screen. The PDF is the
+  company report form under «قطاع تكنولوجيا المعلومات», A4 landscape, with the filters and the day
+  under the title and no signature block
+  ([IT design §17](docs/12-planning/it-module-design.md)).
+- **Every index the schemas declare can now be built before each deploy (reporting only until
+  `INDEX_SYNC_MODE=apply`).** «ابدأ نفّذ الخطوات الخمس الأولى من الخطة» — step 3 of the capacity
+  plan. `autoIndex` is off in production, so only the few indexes some module built for itself
+  existed there: a production-mode boot on an empty database builds 95 of the 476 indexes the
+  schemas declare (sessions had no lookup or expiry index; users and employees none of their
+  unique ones). Railway now runs `npm run db:sync-indexes -w apps/api` before every app deploy.
+  Until `INDEX_SYNC_MODE=apply` is set it only reports: what is missing, which unique indexes
+  existing rows violate (by document id, never the values), how many documents a new expiry index
+  would delete at once, and any index whose keys are already indexed under another name or whose
+  definition differs from its declaration. It never drops or changes an index
+  ([Railway deployment §4a](docs/09-guides/railway-deployment.md)).
+- **Responses are compressed.** Step 4. Brotli or gzip for everything over 1 KB — the main web
+  script goes from 1.64 MB to 0.41 MB on the wire — except the sign-in routes, whose bodies carry
+  tokens. The streamed CSV exports (audit log, attendance, ATM register) now wait on one `drain`
+  listener per response, which the compressed stream needs, and close their database cursor when
+  they end. A download the client leaves part-way, or that a failed read stops, now ends and is
+  audited with the rows written so far and `completed: false`; before, the first waited forever
+  and neither was audited. A HEAD request gets the headers alone and reads nothing.
+
 - **The IT inventory is on the system.** «عندي فايل Excel فيه 10 شيتات … تسلمه الأجهزة اللى معاه …
   ولو مكتوب مخزن يبقي مش متسلم … الأفرع … خليها مش متسلمه». A one-time step with the deploy
   registers the 454 devices of the owner's inventory workbook, reviewed with the owner first: the
@@ -27,6 +72,22 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **A busy office no longer locks itself out of signing in.** Steps 1 and 2 of the capacity plan.
+  Sign-in, TOTP and activation were limited per IP address — 10 tries in five minutes shared by
+  everyone behind one office connection, and 60 renewals for all of them — and the address could
+  be rewritten by the caller. The strict limits now sit on what is being guessed or replayed: the
+  account for sign-in and for TOTP codes, the one-time token for activation, and the session for
+  renewal. On top, each address has a high ceiling on every request (`AUTH_RATE_LIMIT_PER_IP`,
+  `AUTH_REFRESH_RATE_LIMIT_PER_IP`) and a lower one on failed sign-ins only
+  (`AUTH_FAILED_LOGIN_LIMIT_PER_IP`, 30 per five minutes), so finding accounts or spraying
+  passwords from one address is still bounded while successful sign-ins never count. The price:
+  anyone sharing an address can use those 30 up on purpose and block every sign-in from it for the
+  rest of the five minutes, as the old limit allowed with ten. The address
+  is the one Railway's edge saw (`X-Real-IP`, `CLIENT_IP_HEADER`). The web client signs out only
+  when the server refuses a renewal; a rate limit, a deploy or a dropped connection is retried —
+  from «stay signed in» too — and the person stays signed in. A replayed refresh token is still
+  refused every time, but only the first five replays per session per five minutes are reported,
+  so one stolen cookie cannot flood the security alerts.
 - **proxy-addr 2.0.7 → 2.0.8.** A new critical advisory
   ([GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h): IP spoofing through
   an IPv4-mapped IPv6 trust subnet) turned the dependency gate red for every pipeline. proxy-addr
@@ -53,6 +114,35 @@ its entry here in the same PR.
 
 ### Changed
 
+- **«كل الماكينات» filters every column, counts what it shows, and reaches every machine.**
+  «عايز فلتر كامل بكل حاجة فى الجدول زى فلتر الحركة كدا فى السيارات … وكمان عدد الماكينات والبنوك
+  والمناطق يظهر فوق بجانب جملة كل الماكينات (ويتغير بناء على الفلتر)». `/atm/machines` wears the
+  vehicles registry's dark filter bar: one control per column, in the table's order, each with its
+  icon — Bank and Area take several names (offered from the machines the other filters leave), ID
+  takes codes picked from a server search or typed and pasted (normalized, `0123` is 123), ATM
+  Name a few letters. Beside the title: how many machines, banks and areas the filter matches,
+  counted by the server over the whole filtered set in the reader's scope (`GET
+  /atm/machines/summary`). Every column sorts. The page used to read ONE page of a hundred with no
+  pager, so with some 2,600 active machines the list, the search and the export only ever saw the
+  first hundred: it now pages on the server (page size to choose), and the CSV export — the same
+  four columns — walks every page of the filter. The free-text search box gave way to the column
+  filters. The Fleet filter frame, dark bar, stroke icon and sort rules moved to `shared/` so a
+  second module can use them; Fleet draws exactly as before.
+- **An ATM machine is never added twice — to replenishment or to maintenance.** «مينفعش أضيف
+  ماكينة مرتين سواء فى عملية التغذية أو الصيانة». A machine now has at most one open replenishment
+  and one open maintenance, company-wide (port doc OD-1, overriding the legacy, which had no such
+  guard). The open forms leave a machine that is already open — or a code pasted twice — unopened
+  and name it in red beside the unknown codes, while the other lines still open; reopening from a
+  done page is refused while another operation of the machine is open; a maintenance mail whose
+  machine already has an open maintenance is not accepted, stays pending and is named on the
+  screen. The mail «Duplicate» flag now means exactly that — an open maintenance on any day, not
+  only today, and the accept confirm says beforehand how many of the selected mails will stay
+  pending for that reason. Because an open operation of ANY day now blocks its machine, the grey
+  carried-over rows on both live boards (opened on an earlier day, or still open after midnight)
+  gain the close button and the checkbox they never had, so they can be closed where they are
+  shown. A unique index per collection holds the rule under concurrent submits; the legacy
+  importer reports the historical open duplicates the index refuses instead of failing — and says
+  so when that index is absent and nothing could refuse them.
 - **The acknowledgment prints the employee's code.** «عايز بردو أضيف كود الموظف هنا»: the
   statement reads «… بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي …», the code filled from
   the system in the form's red and digits, or left for the pen when the employee cannot be named.

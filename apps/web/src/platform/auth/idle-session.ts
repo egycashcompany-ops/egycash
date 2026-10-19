@@ -103,6 +103,20 @@ export const shouldRenew = (args: {
 export const renewEveryMs = (idleMs: number): number =>
   Math.max(1_000, Math.min(Math.floor(idleMs / 2), RENEW_AT_MOST_EVERY_MS));
 
+/** How soon a renewal that got no answer about the session is tried again. */
+export const RENEW_RETRY_AFTER_MS = 30_000;
+
+/**
+ * The `lastRenewAt` to record after a renewal that got no answer about the session (a dropped
+ * connection, a deploy, a rate limit), so `shouldRenew` asks again `RENEW_RETRY_AFTER_MS` from now
+ * instead of a whole cadence later — the idle window keeps running on the server meanwhile. Never
+ * later than the normal cadence would have asked anyway.
+ */
+export const lastRenewForRetry = (now: number, idleMs: number): number => {
+  const every = renewEveryMs(idleMs);
+  return now - every + Math.min(RENEW_RETRY_AFTER_MS, every);
+};
+
 /** Whole seconds remaining, for a countdown that reads 60, 59, 58 rather than 59.8. */
 export const secondsLeft = (msLeft: number): number =>
   Number.isFinite(msLeft) ? Math.max(0, Math.ceil(msLeft / 1_000)) : 0;

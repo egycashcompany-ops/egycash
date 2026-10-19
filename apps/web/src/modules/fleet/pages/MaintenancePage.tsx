@@ -824,21 +824,18 @@ export const MaintenancePage = (): JSX.Element => {
                 label={t('fleet.vehicles.filters.operation')}
               />
             </FilterWithIcon>
-            {/* `BranchFilterSelect` draws nothing without `branch.view`, so neither does its box;
-                it takes no width of its own, so its trigger is sized from here. */}
-            {can('branch.view') && (
-              <FilterWithIcon
-                icon={FILTER_ICON.branch}
-                tone="text-violet-600 dark:text-violet-300"
-                className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
-              >
-                <BranchFilterSelect
-                  clearable
-                  value={branchIds}
-                  onChange={(next) => patch({ branch: next.length === 0 ? null : next.join(',') })}
-                />
-              </FilterWithIcon>
-            )}
+            {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized from here. */}
+            <FilterWithIcon
+              icon={FILTER_ICON.branch}
+              tone="text-violet-600 dark:text-violet-300"
+              className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+            >
+              <BranchFilterSelect
+                clearable
+                value={branchIds}
+                onChange={(next) => patch({ branch: next.length === 0 ? null : next.join(',') })}
+              />
+            </FilterWithIcon>
             {/* Several drivers at once: a visit is matched on its ENTRY driver or its EXIT driver,
                 so asking about a crew is one question, not two searches run in turn. */}
             {mayFilterByDriver && (

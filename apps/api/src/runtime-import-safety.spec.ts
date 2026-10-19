@@ -65,6 +65,9 @@ const RUNTIME_ROOTS = [
   // loads — it reaches the org models through the barrel, and reaching them any other way is the
   // TDZ crash the entry above met in production.
   './src/org-catalog-migration/apply.ts',
+  // db:sync-indexes — the models it loads, in the order it loads them. The CLI itself connects at
+  // import; this is the graph it reaches after that, on every api deploy.
+  './src/sync-indexes.models.ts',
 ];
 
 describe('runtime import safety', () => {

@@ -3,22 +3,35 @@
 //
 //   · a replenishment/maintenance write stales its own list, its done list AND its facets — the
 //     filter dropdowns are distinct values over the open rows, so opening or closing changes them;
+//     the open board is read WHOLE (every page, one cache entry), so the refresh re-reads it all;
 //   · a mail DECISION stales maintenances too — accepting creates a maintenance row — and the
 //     unread badge, which is a count of pending tickets;
 //   · a machine-master write stales machines and the label lists it references.
+//   · an area move stales the efficiency register too: the machine's open period follows its area.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AtmMachineDto,
+  type AtmMachinesSummaryDto,
+  type AtmOperationFacetsDto,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
   type BulkUpdateAtmMaintenances,
   type BulkUpdateAtmReplenishments,
   type CreateAtmMachine,
   type CreateAtmRefLabel,
+  type Paginated,
   type ReassignAtmMachineArea,
   type UpdateAtmMachine,
+  type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
+import { errorMessage } from '../../../shared/lib/errors';
+import { store } from '../../../store';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { isAlreadyOpenRefusal } from '../lib/operation-view';
+import { boardQuery } from '../lib/board-filters';
+import { fetchWholeBoard } from '../lib/whole-board';
 import * as api from './atm-api';
 import { type AtmListParams } from './atm-api';
 
@@ -38,6 +51,55 @@ export const useAtmMachines = (params: AtmListParams, enabled = true) =>
     queryKey: listKey(MODULE, 'machines', params),
     queryFn: () => api.listMachines(params),
     enabled,
+  });
+
+/**
+ * One page of the machine directory (/atm/machines). The page in hand stands while the next is
+ * read — another page, order, size or filter — as the vehicles registry's does (`useVehicles`):
+ * without it every step dropped the table to skeleton rows and took the pager from under the
+ * pointer. Its own query, so the data-edit screen's machine list keeps its behaviour.
+ */
+export const atmMachineDirectoryQuery = (params: AtmListParams) => ({
+  queryKey: listKey(MODULE, 'machines', params),
+  queryFn: () => api.listMachines(params),
+  placeholderData: (previous: Paginated<AtmMachineDto> | undefined) => previous,
+});
+
+export const useAtmMachineDirectory = (params: AtmListParams) =>
+  useQuery(atmMachineDirectoryQuery(params));
+
+/**
+ * The machine directory's summary — counts and dropdown sources over the whole filtered set. The
+ * previous filter's answer stands while the next is read, so the figures and the lists do not
+ * blink empty on every tick.
+ */
+export const useAtmMachinesSummary = (params: AtmListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'machines', { kind: 'summary', ...params }),
+    queryFn: () => api.machinesSummary(params),
+    placeholderData: (previous: AtmMachinesSummaryDto | undefined) => previous,
+  });
+
+/** How many machines the ID picker offers for one search — it narrows as the reader types. */
+export const MACHINE_CODE_SEARCH_SIZE = 50;
+
+/**
+ * The ID picker's search: active machines whose code holds the typed fragment, among those the
+ * other filters match, by code. Asked only once the picker has been opened.
+ */
+export const useAtmMachineCodeSearch = (params: AtmListParams, enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'machines', { kind: 'codeSearch', ...params }),
+    queryFn: () =>
+      api.listMachines({
+        ...params,
+        page: 1,
+        pageSize: MACHINE_CODE_SEARCH_SIZE,
+        sortBy: 'machineCode',
+        sortDir: 'asc',
+      }),
+    enabled,
+    placeholderData: (previous: Paginated<AtmMachineDto> | undefined) => previous,
   });
 
 export const useBulkCreateAtmMachines = () => {
@@ -81,6 +143,19 @@ export const useUpdateAtmMachine = () => {
   });
 };
 
+/** Operations' area move — the server moves the machine's open register entry with it (DEC-4). */
+export const useUpdateAtmMachineArea = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateAtmMachineArea }) =>
+      api.updateMachineArea(id, body),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: atmKeys.machines });
+      void client.invalidateQueries({ queryKey: featureKey(MODULE, 'registerEntries') });
+    },
+  });
+};
+
 // ── Reference labels ────────────────────────────────────────────────────────
 export const useAtmRefLabels = (kind: 'bank' | 'area', params: AtmListParams, enabled = true) =>
   useQuery({
@@ -89,11 +164,15 @@ export const useAtmRefLabels = (kind: 'bank' | 'area', params: AtmListParams, en
     enabled,
   });
 
+// The label dialog reports its own failures — "already exists" for the 409, the reader's own
+// words for anything else (`refLabelErrorText`) — so these two opt out of the global toast:
+// declaring `onError` is what opts out (`shared/lib/query-client.ts`). One failure, one message.
 export const useCreateAtmRefLabel = (kind: 'bank' | 'area') => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateAtmRefLabel) => api.createRefLabel(kind, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onError: () => undefined,
   });
 };
 
@@ -103,6 +182,7 @@ export const useUpdateAtmRefLabel = (kind: 'bank' | 'area') => {
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmRefLabel }) =>
       api.updateRefLabel(kind, id, body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onError: () => undefined,
   });
 };
 
@@ -114,18 +194,84 @@ export const useDeleteAtmRefLabel = (kind: 'bank' | 'area') => {
   });
 };
 
+// ── The two open boards ─────────────────────────────────────────────────────
+/** An open board's two filters, as the screen holds them. */
+export interface AtmBoardFilters {
+  banks: readonly string[];
+  areas: readonly string[];
+}
+
+/**
+ * The open boards' cache keys — under each kind's feature key, so every write of that kind and its
+ * realtime signal refresh the board and its dropdowns together. Exported for the screens' specs.
+ */
+export const atmBoardKeys = {
+  open: (feature: 'replenishments' | 'maintenances', filters: AtmBoardFilters) =>
+    listKey(MODULE, feature, {
+      kind: 'open',
+      whole: true,
+      banks: [...filters.banks],
+      areas: [...filters.areas],
+    }),
+  facets: (feature: 'replenishments' | 'maintenances', banks: readonly string[]) =>
+    listKey(MODULE, feature, { kind: 'facets', banks: [...banks] }),
+};
+
+/**
+ * EVERY open operation the filters match — the board has no pager, and a busy day has more than
+ * one page of them. Walked page by page into one cache entry (`lib/whole-board.ts`), so a refresh
+ * (a write's own invalidation, or its realtime signal) re-reads the whole board. Exported as
+ * options so the cache-layer spec runs the very query function the boards run.
+ */
+export const atmOpenBoardQueries = {
+  replenishments: (filters: AtmBoardFilters) => ({
+    queryKey: atmBoardKeys.open('replenishments', filters),
+    queryFn: () =>
+      fetchWholeBoard((page, pageSize) =>
+        api.listOpenReplenishments({ ...boardQuery(filters), page, pageSize }),
+      ),
+  }),
+  maintenances: (filters: AtmBoardFilters) => ({
+    queryKey: atmBoardKeys.open('maintenances', filters),
+    queryFn: () =>
+      fetchWholeBoard((page, pageSize) =>
+        api.listOpenMaintenances({ ...boardQuery(filters), page, pageSize }),
+      ),
+  }),
+};
+
+/** The previous bank selection's dropdown sources, held while the new selection's are read. */
+const previousFacets = (
+  previous: AtmOperationFacetsDto | undefined,
+): AtmOperationFacetsDto | undefined => previous;
+
+/**
+ * The filter dropdowns' sources for one bank selection. Each bank tick is a new key; until it
+ * answers, the previous selection's answer is held as placeholder data, so the bank list — the
+ * same whatever the banks chosen — does not collapse to the ticked banks under the reader. Which
+ * parts of a placeholder may be shown, and that it never prunes, is `lib/board-filters.ts`.
+ * Exported as options so the cache-layer spec runs the very query the boards run.
+ */
+export const atmBoardFacetsQueries = {
+  replenishments: (banks: readonly string[]) => ({
+    queryKey: atmBoardKeys.facets('replenishments', banks),
+    queryFn: () => api.replenishmentFacets(banks),
+    placeholderData: previousFacets,
+  }),
+  maintenances: (banks: readonly string[]) => ({
+    queryKey: atmBoardKeys.facets('maintenances', banks),
+    queryFn: () => api.maintenanceFacets(banks),
+    placeholderData: previousFacets,
+  }),
+};
+
 // ── Replenishments ──────────────────────────────────────────────────────────
-export const useOpenAtmReplenishmentsList = (params: AtmListParams) =>
-  useQuery({
-    queryKey: listKey(MODULE, 'replenishments', { kind: 'open', ...params }),
-    queryFn: () => api.listOpenReplenishments(params),
-  });
+/** The open replenishment board, whole — see `atmOpenBoardQueries`. */
+export const useOpenAtmReplenishmentsList = (filters: AtmBoardFilters, enabled = true) =>
+  useQuery({ ...atmOpenBoardQueries.replenishments(filters), enabled });
 
 export const useAtmReplenishmentFacets = (banks: readonly string[]) =>
-  useQuery({
-    queryKey: listKey(MODULE, 'replenishments', { kind: 'facets', banks }),
-    queryFn: () => api.replenishmentFacets(banks),
-  });
+  useQuery(atmBoardFacetsQueries.replenishments(banks));
 
 export const useDoneAtmReplenishments = (params: AtmListParams) =>
   useQuery({
@@ -155,12 +301,25 @@ export const useCloseAtmReplenishments = () => {
   });
 };
 
+/**
+ * A reopen the owner's rule refused (port doc OD-1: the machine already has another open
+ * operation of that kind) is worded by its done page, in the reader's language. Every OTHER
+ * failure still gets the global toast exactly as before — declaring `onError` is what opts a hook
+ * out of it (`shared/lib/query-client.ts`), so the hook raises that same toast for the rest.
+ */
+const toastUnlessAlreadyOpen = (error: unknown): void => {
+  if (!isAlreadyOpenRefusal(error)) {
+    toast.error(errorMessage(error, store.getState().locale.locale));
+  }
+};
+
 export const useReopenAtmReplenishment = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.reopenReplenishment(id, version),
     onSuccess: () => invalidateReplenishments(client),
+    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -200,17 +359,12 @@ export const useDeleteAtmReplenishments = () => {
 };
 
 // ── Maintenance ─────────────────────────────────────────────────────────────
-export const useOpenAtmMaintenancesList = (params: AtmListParams) =>
-  useQuery({
-    queryKey: listKey(MODULE, 'maintenances', { kind: 'open', ...params }),
-    queryFn: () => api.listOpenMaintenances(params),
-  });
+/** The open maintenance board, whole — see `atmOpenBoardQueries`. */
+export const useOpenAtmMaintenancesList = (filters: AtmBoardFilters, enabled = true) =>
+  useQuery({ ...atmOpenBoardQueries.maintenances(filters), enabled });
 
 export const useAtmMaintenanceFacets = (banks: readonly string[]) =>
-  useQuery({
-    queryKey: listKey(MODULE, 'maintenances', { kind: 'facets', banks }),
-    queryFn: () => api.maintenanceFacets(banks),
-  });
+  useQuery(atmBoardFacetsQueries.maintenances(banks));
 
 export const useDoneAtmMaintenances = (params: AtmListParams) =>
   useQuery({
@@ -254,6 +408,7 @@ export const useReopenAtmMaintenance = () => {
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.reopenMaintenance(id, version),
     onSuccess: () => invalidateMaintenances(client),
+    onError: toastUnlessAlreadyOpen,
   });
 };
 

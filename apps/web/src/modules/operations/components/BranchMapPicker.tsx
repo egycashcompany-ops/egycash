@@ -15,6 +15,7 @@ import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useT } from '../../../platform/localization/useT';
+import { OSM_ATTRIBUTION, OSM_TILE_URL } from '../../../shared/lib/osm-tiles';
 import { type MapsCoordinates } from '../lib/maps-link';
 
 /** Where the map opens when the branch has no point yet. Most branches are in greater Cairo. */
@@ -64,9 +65,9 @@ export const BranchMapPicker = ({
       [start?.lat ?? DEFAULT_CENTRE.lat, start?.lng ?? DEFAULT_CENTRE.lng],
       start === null ? DEFAULT_ZOOM : POINT_ZOOM,
     );
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer(OSM_TILE_URL, {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap',
+      attribution: OSM_ATTRIBUTION,
     }).addTo(instance);
     instance.on('click', (event: L.LeafletMouseEvent) => {
       emit.current(round({ lat: event.latlng.lat, lng: event.latlng.lng }));

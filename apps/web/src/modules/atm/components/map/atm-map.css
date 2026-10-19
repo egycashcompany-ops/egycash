@@ -1,0 +1,10 @@
+/*
+ * The machine map's own rule (docs/12-planning/atm-map-zones.md §8.4). Imported by `MapCanvas`
+ * only, so it travels in the map's lazy chunk beside `leaflet.css`.
+ *
+ * «شوارع باهتة (لتظهر ألوان القطاعات أوضح)»: the streets fade, the zones and the machines do not.
+ * A filter on the tile pane — never on the tiles' colours themselves, and never an inline style.
+ */
+.atm-map-faded .leaflet-tile-pane {
+  filter: grayscale(0.6) opacity(0.75);
+}

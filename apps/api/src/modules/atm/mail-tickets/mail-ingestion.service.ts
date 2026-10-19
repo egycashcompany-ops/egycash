@@ -81,10 +81,12 @@ class AtmMailIngestionService {
     }
     const machine = machines[0] as AtmMachineDoc;
 
-    // The ingest-time flags, exactly as the legacy reader computed them (index.js:168-175):
-    // found = the master lookup above succeeded; duplication = an open maintenance exists today.
-    const duplicationAtIngest = await atmMaintenanceRepository.hasOpenToday(
-      machine.branchId,
+    // The ingest-time flags, as the legacy reader computed them (index.js:168-175): found = the
+    // master lookup above succeeded; duplication = the machine already has an open maintenance.
+    // The legacy asked "opened TODAY"; the owner's rule (OD-1) made duplication mean exactly what
+    // accept refuses — an open maintenance on any day, in any branch — and the stored value the
+    // log page shows asks the same question the pending screen does.
+    const duplicationAtIngest = await atmMaintenanceRepository.hasOpenOperation(
       machine.machineCode,
     );
 

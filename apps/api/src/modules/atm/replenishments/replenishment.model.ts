@@ -8,6 +8,7 @@
 // (:691) — not carried either.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
+import { OPEN_OPERATION_INDEX_NAMES, openOperationPartialFilter } from '../shared/open-operation';
 
 export interface AtmReplenishmentDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -60,6 +61,18 @@ const replenishmentSchema = new Schema<AtmReplenishmentDoc>(
 replenishmentSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 replenishmentSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 replenishmentSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
+// The owner's rule (2026-10-13, port doc OD-1): at most ONE open replenishment per machine code,
+// company-wide — the race-proof half of the service check (replenishment.service.ts). Built at
+// boot by atm-indexes.ts; where existing rows already violate it the boot names this collection
+// and skips the index, and the service check still refuses every new duplicate.
+replenishmentSchema.index(
+  { machineCode: 1 },
+  {
+    unique: true,
+    name: OPEN_OPERATION_INDEX_NAMES.replenishment,
+    partialFilterExpression: openOperationPartialFilter(),
+  },
+);
 
 export const AtmReplenishmentModel = model<AtmReplenishmentDoc>(
   'AtmReplenishment',

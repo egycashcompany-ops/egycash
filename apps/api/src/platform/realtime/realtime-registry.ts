@@ -22,6 +22,14 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'atm.replenishment': { permission: 'atmReplenishment.view' },
   'atm.maintenance': { permission: 'atmMaintenance.view' },
   'atm.mailTicket': { permission: 'atmMailTicket.view' },
+  // The Efficiency register: an entry's writes (and its reveal/export audits, which do not
+  // broadcast) refresh the register screen for whoever may read it.
+  'atm.registerEntry': { permission: 'atmRegister.view' },
+  // The machine map (docs/12-planning/atm-map-zones.md §6.7): a zone save and a pin write refresh
+  // the map for whoever may see it. Branch-scoped viewers do not join topic rooms (GM-6); the zone
+  // set's revision check is their guard, and their screens refetch.
+  'atm.mapZone': { permission: 'atmMap.view' },
+  'atm.machineLocation': { permission: 'atmMap.view' },
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': { permission: 'goldBar.view' },
@@ -228,4 +236,14 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // that request's entity topic already fires from the same decision, because deciding writes the
   // request too. A second topic here would refresh nothing the first one did not.
   'platform.approval': 'the request’s own topic carries the decision',
+  // One audit row per register import apply (DEC-15). The importing screen refetches itself, and
+  // the entries the import wrote are not individually signalled.
+  'atm.registerImport':
+    'one audit row per import run (the attendance-import shape); the importing screen refetches itself and the entries it wrote are not individually signalled',
+  // One audit row per batch call of the machine map (DM-15): the location sync and the short-link
+  // resolution. A pinned point a batch replaces is audited on `atm.machineLocation` as well.
+  'atm.mapLocationSync':
+    'one audit row per batch call (the register-import shape); the calling screen refetches itself',
+  'atm.mapLinkResolution':
+    'one audit row per batch call (the register-import shape); the calling screen refetches itself',
 };

@@ -6,7 +6,6 @@
 // server enforces is computed here from the values on screen, purely to warn.
 import { useState } from 'react';
 import {
-  MAX_PAGE_SIZE,
   type CreateJobRequisition,
   type JobRequisitionDto,
   type JobRequisitionPriority,
@@ -18,7 +17,6 @@ import { useAppSelector } from '../../../../../store';
 import { useT } from '../../../../../platform/localization/useT';
 import { get } from '../../../../../shared/lib/api-client';
 import { localized } from '../../../../../shared/lib/format';
-import { useJobTitles } from '../../../../organization/job-titles/job-title-queries';
 
 export interface RequisitionDraft {
   jobTitleId: string;
@@ -110,7 +108,19 @@ export const RequisitionForm = ({
     queryFn: () => orgOptions('departments'),
   });
   const sections = useQuery({ queryKey: ['org', 'sections'], queryFn: () => orgOptions('sections') });
-  const titles = useJobTitles({ pageSize: MAX_PAGE_SIZE, status: 'active', search: titleSearch });
+  // The job-title OPTIONS, like the three org pickers above it: authenticated, ungated, and the
+  // WHOLE active catalogue rather than one capped page. The search narrows in the browser, which it
+  // could not do before — a search over a page the server had already truncated could not find a
+  // title that fell off the end, and the list was empty outright for a reader without `jobTitle.view`.
+  const titles = useQuery({ queryKey: ['org', 'job-titles'], queryFn: () => orgOptions('job-titles') });
+  const titleTerm = titleSearch.trim().toLowerCase();
+  const shownTitles = (titles.data ?? []).filter(
+    (title) =>
+      titleTerm === '' ||
+      title.code.toLowerCase().includes(titleTerm) ||
+      title.name.ar.toLowerCase().includes(titleTerm) ||
+      title.name.en.toLowerCase().includes(titleTerm),
+  );
 
   const set = <K extends keyof RequisitionDraft>(key: K, value: RequisitionDraft[K]): void =>
     onChange({ ...draft, [key]: value });
@@ -133,7 +143,7 @@ export const RequisitionForm = ({
           onChange={(e) => set('jobTitleId', e.target.value)}
         >
           <option value="">{t('hr.requisitions.form.choose')}</option>
-          {(titles.data?.items ?? []).map((title) => (
+          {shownTitles.map((title) => (
             <option key={title.id} value={title.id}>
               {localized(title.name, locale)}
             </option>

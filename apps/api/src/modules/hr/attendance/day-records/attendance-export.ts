@@ -7,6 +7,8 @@ import { Types, type FilterQuery } from 'mongoose';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { orgScopeMatch } from '../../../../shared/base/org-scope-match';
 import { NotFoundError } from '../../../../shared/errors';
+import { drainingWriter } from '../../../../shared/utils/draining-writer';
+import { isHeadRequest, streamRows, type StreamedRows } from '../../../../shared/utils/stream-rows';
 import { auditService } from '../../../../platform/audit';
 import { csvEscape } from '../../../../platform/audit/audit.export';
 import { dateOnlyIso } from '../../shared/business-date';
@@ -35,13 +37,6 @@ const rowToCsv = (doc: AttendanceDayDoc, label: EmployeeLabel | undefined): stri
     doc.frozenAt === null ? '' : doc.frozenAt.toISOString(),
   ];
   return fields.map(csvEscape).join(',');
-};
-
-/** Writes `chunk`, awaiting the `drain` event under backpressure. */
-const writeAndDrain = async (res: Response, chunk: string): Promise<void> => {
-  if (!res.write(chunk)) {
-    await new Promise<void>((resolve) => res.once('drain', resolve));
-  }
 };
 
 const buildFilter = async (
@@ -99,32 +94,42 @@ export const streamAttendanceExport = async (
   );
   res.setHeader('Cache-Control', 'private, no-store');
 
-  await writeAndDrain(res, `${CSV_COLUMNS.join(',')}\n`);
-
-  // Label lookups batched per employee, not per row — an export is one pass over a range.
-  const employeeIds = await AttendanceDayModel.distinct('employeeId', filter).exec();
-  const labels = await employeeLabelMap(employeeIds.map((id) => String(id)));
-
-  let rowCount = 0;
-  const cursor = AttendanceDayModel.find(filter)
-    .sort({ workDate: 1, employeeId: 1 })
-    .lean<AttendanceDayDoc[]>()
-    .cursor();
-  for await (const doc of cursor) {
-    await writeAndDrain(res, `${rowToCsv(doc, labels.get(String(doc.employeeId)))}\n`);
-    rowCount += 1;
+  // A HEAD request gets the headers alone: see `isHeadRequest`.
+  if (isHeadRequest(res)) {
+    res.end();
+    return;
   }
-  res.end();
 
-  // Audited after the stream completes — never blocks the export itself (the audit F1 shape).
+  // Made before the first write: see `drainingWriter`. A false from it means the client has gone,
+  // and the export stops reading the cursor.
+  const write = drainingWriter(res);
+  let outcome: StreamedRows = { rowCount: 0, completed: false };
+  if (await write(`${CSV_COLUMNS.join(',')}\n`)) {
+    // Label lookups batched per employee, not per row — an export is one pass over a range.
+    const employeeIds = await AttendanceDayModel.distinct('employeeId', filter).exec();
+    const labels = await employeeLabelMap(employeeIds.map((id) => String(id)));
+
+    const cursor = AttendanceDayModel.find(filter)
+      .sort({ workDate: 1, employeeId: 1 })
+      .lean<AttendanceDayDoc[]>()
+      .cursor();
+    outcome = await streamRows(cursor, write, (doc) => `${rowToCsv(doc, labels.get(String(doc.employeeId)))}\n`);
+  }
+  if (outcome.failure === undefined) res.end();
+
+  // Audited after the stream completes — never blocks the export itself (the audit F1 shape). A
+  // download the client left part-way, or that a failed read stopped, is audited too, with the rows
+  // written before it ended (`streamRows`); a failure is rethrown after.
   await auditService.record({
     entityRef: { moduleId: 'hr', entityType: 'attendanceDay', entityId: 'export' },
     action: 'export',
     changes: [
-      { field: 'rowCount', old: null, new: rowCount },
+      { field: 'rowCount', old: null, new: outcome.rowCount },
+      { field: 'completed', old: null, new: outcome.completed },
       { field: 'from', old: null, new: dateOnlyIso(query.from) },
       { field: 'to', old: null, new: dateOnlyIso(query.to) },
       { field: 'filter', old: null, new: JSON.stringify(query) },
     ],
   });
+  if (outcome.failure !== undefined) throw outcome.failure;
 };

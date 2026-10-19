@@ -57,6 +57,29 @@ describe('two pages in one printed document', () => {
   });
 });
 
+describe('a register nobody signs', () => {
+  // The IT custody register prints on this form too, but it is a list, not a document that goes
+  // up for signature — and it is ten columns wide.
+  const { signatories, ...unsigned } = page('سجل', 'صف');
+  const html = buildFleetReportHtml({ ...unsigned, orientation: 'landscape' });
+
+  it('leaves the signature block out when nobody is named to sign', () => {
+    expect(signatories).toBeDefined(); // taken off the page above, not missing from it
+    expect(html).not.toContain('class="signs"');
+    expect(html).not.toContain('class="endorse"');
+    expect(html).not.toContain('التوقيع /');
+    expect(html).toContain('صف');
+  });
+
+  it('turns the page on its side when asked, and keeps every other report portrait', () => {
+    expect(html).toContain('@page { size: A4 landscape; margin: 14mm; }');
+    expect(buildFleetReportHtml(page('أولى', 'صف'))).toContain(
+      '@page { size: A4 portrait; margin: 14mm; }',
+    );
+    expect(buildFleetReportHtml(page('أولى', 'صف'))).toContain('التوقيع /');
+  });
+});
+
 describe('two sheets in one workbook', () => {
   const sheet = (name: string, cell: string) => ({
     name,

@@ -27,9 +27,21 @@ import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { sortCustodyMovements } from './custody-sort';
 import { custodyDashboard } from './custody-dashboard';
-import { readCustodyFundTotal } from './custody-fund';
+import { readCustodyFundTerms, type CustodyFundTerms } from './custody-fund';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
+
+/**
+ * «إجمالي العهدة» and the two sums its card reads — «صُرف من إجمالي الشحن» is `fundSpent /
+ * fundCharged`. The fund's, not the board's: no filter changes any of them.
+ */
+const fundFigures = (
+  terms: CustodyFundTerms,
+): Pick<FleetCustodySummaryDto, 'fundTotal' | 'fundCharged' | 'fundSpent'> => ({
+  fundTotal: terms.fundTotal,
+  fundCharged: terms.charged.amount,
+  fundSpent: terms.spent.amount,
+});
 
 /** One line before the car's code is joined in. */
 interface Movement {
@@ -154,11 +166,11 @@ class FleetCustodyService {
    * from («إجمالي العهدة»), which no filter changes.
    */
   async summary(query: FleetCustodySummaryQuery): Promise<FleetCustodySummaryDto> {
-    const [rows, fundTotal] = await Promise.all([
+    const [rows, terms] = await Promise.all([
       this.vehicleIdsFor(query).then((vehicleIds) => this.movementsFor(query, vehicleIds)),
-      readCustodyFundTotal(),
+      readCustodyFundTerms(),
     ]);
-    return { ...this.fold(rows), fundTotal };
+    return { ...this.fold(rows), ...fundFigures(terms) };
   }
 
   /**
@@ -167,15 +179,17 @@ class FleetCustodyService {
    */
   async dashboard(query: FleetCustodyDashboardQuery): Promise<FleetCustodyDashboardDto> {
     const vehicleIds = await this.vehicleIdsFor(query);
-    const [rows, fundTotal] = await Promise.all([
+    const [rows, terms] = await Promise.all([
       this.movementsFor(query, vehicleIds),
-      readCustodyFundTotal(),
+      readCustodyFundTerms(),
     ]);
-    return { ...this.fold(rows), fundTotal, ...custodyDashboard(rows, query) };
+    return { ...this.fold(rows), ...fundFigures(terms), ...custodyDashboard(rows, query) };
   }
 
   /** The figures and the per-car lines of a set of movements — everything but the fund. */
-  private fold(rows: readonly Movement[]): Omit<FleetCustodySummaryDto, 'fundTotal'> {
+  private fold(
+    rows: readonly Movement[],
+  ): Omit<FleetCustodySummaryDto, 'fundTotal' | 'fundCharged' | 'fundSpent'> {
     const perVehicle = new Map<string, FleetCustodyVehicleRowDto>();
     const totals = { maintenance: 0, fuel: 0, tyres: 0, wash: 0 };
     for (const row of rows) {

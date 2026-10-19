@@ -86,7 +86,19 @@ import {
   custodyCurrentCar,
   type CustodyOpenCarLog,
 } from '../components/CustodyCarLog';
-import { COMPANY, TABLE_CARD, TITLE, useCount } from '../components/custody-dashboard-parts';
+import { COMPANY, TITLE, useCount } from '../components/custody-dashboard-parts';
+import {
+  CARS_CHIP,
+  CUSTODY_FILTER_LOOK,
+  CUSTODY_TABLE,
+  EMBEDDED_TABLE,
+  GRAND_ROW,
+  MOVES_CHIP,
+  PILL_BUTTON,
+  SECTION_CARD,
+  SECTION_FOOT,
+  SECTION_STRIP,
+} from '../components/custody-board-looks';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverCell } from '../components/DriverPerson';
@@ -95,8 +107,7 @@ import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { sortRows, type SortValue } from '../lib/sort-rows';
-import { DARK_TABLE } from './VehiclesListPage';
-import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
+import { ALARMS_CODE_TYPE } from './MaintenanceAlarmsPage';
 
 /** Remembered across visits: the filters, the page size and both tables' orders. Never `page`. */
 const REMEMBERED_FILTERS = [
@@ -134,51 +145,9 @@ const FIGURE = cn('whitespace-nowrap', NUM);
 const DASH = <span className="text-slate-400">—</span>;
 /** «—» where a car paid nothing that way — the dashboard's muted dash, in both themes. */
 const NONE = <span className="text-slate-400 dark:text-slate-500">—</span>;
-
-/**
- * The filter bar on the dashboard's card (`CARD`, rounded-2xl) with the design's boxes — white on
- * slate-300 light, #0a0e17 on #223048 dark, rounded-xl — the open list on the card's surface and
- * what is picked emerald. Laid OVER `DARK_FILTER_BAR` (its one-row
- * layout stays), each selector doubled (`&&`) so it outranks the bar's own.
- */
-const CUSTODY_FILTER_LOOK = cn(
-  '[&&>div]:!rounded-2xl [&&>div]:!p-4',
-  '[&&>div]:!border-[#e2e8f0] dark:[&&>div]:!border-[rgba(42,58,84,.65)] [&&>div]:!bg-white dark:[&&>div]:!bg-transparent dark:[&&>div]:!bg-[linear-gradient(180deg,rgba(19,26,43,.82)_0%,rgba(13,18,30,.92)_100%)]',
-  '[&&>div]:!shadow-[0_1px_3px_0_rgba(0,0,0,.05),0_1px_2px_-1px_rgba(0,0,0,.05)] dark:[&&>div]:!shadow-[0_8px_24px_-4px_rgba(0,0,0,.5),inset_0_1px_0_0_rgba(255,255,255,.04)]',
-  '[&&_input]:!rounded-xl [&&_input]:!border-slate-300 [&&_input]:!bg-white dark:[&&_input]:!border-[#223048] dark:[&&_input]:!bg-[#0a0e17] dark:[&&_input]:!text-white',
-  '[&&_input:focus]:!border-emerald-500 [&&_input:focus]:!ring-2 [&&_input:focus]:!ring-emerald-500/20 dark:[&&_input:focus]:!border-emerald-500/60',
-  '[&&_button[aria-haspopup]]:!rounded-xl [&&_button[aria-haspopup]]:!border-slate-300 [&&_button[aria-haspopup]]:!bg-white dark:[&&_button[aria-haspopup]]:!border-[#223048] dark:[&&_button[aria-haspopup]]:!bg-[#0a0e17] dark:[&&_button[aria-haspopup]]:!text-white',
-  '[&&_button[aria-haspopup]:focus-visible]:!border-emerald-500 [&&_button[aria-haspopup][aria-expanded=true]]:!border-emerald-500 dark:[&&_button[aria-haspopup][aria-expanded=true]]:!border-emerald-500/60',
-  '[&&_[role=listbox]]:!rounded-xl [&&_[role=listbox]]:!border-[#e2e8f0] dark:[&&_[role=listbox]]:!border-[#223048] dark:[&&_[role=listbox]]:!bg-[#111726]',
-  '[&&_[role=option]:hover]:!bg-emerald-500/10 [&&_[role=option][aria-selected=true]]:!text-emerald-700 dark:[&&_[role=option][aria-selected=true]]:!text-emerald-300',
-);
-
-/**
- * A table's card: the dashboard's table card (`TABLE_CARD` — rounded-2xl, the deeper shadow dark),
- * its rows clipped to the round corners. The board's table inside loses its own frame
- * (`EMBEDDED_TABLE`) and takes the design's body — white light, #0d1424 dark — and head — slate-100
- * light, #0c1322 over its #233552 rule dark.
- */
-const SECTION_CARD = cn(TABLE_CARD, 'overflow-hidden');
-/** The strip over a table — the dashboard's `STRIP`, a little lower so the rows keep the room. */
-const SECTION_STRIP =
-  'flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-2.5 dark:border-[#1c293f] dark:bg-[#0a101b]';
-/** The count beside «ملخص لكل سيارة» — the design's emerald chip. */
-const CARS_CHIP =
-  'shrink-0 whitespace-nowrap rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:font-medium dark:text-emerald-400';
-/** The count beside «كل الحركات» — the design's slate chip. */
-const MOVES_CHIP =
-  'shrink-0 whitespace-nowrap rounded border border-slate-200 bg-slate-200/80 px-2 py-0.5 text-xs font-bold text-slate-700 dark:border-slate-700/60 dark:bg-[#142135] dark:font-medium dark:text-slate-300';
-const EMBEDDED_TABLE = cn(
-  '[&&>div]:!rounded-none [&&>div]:!border-0 [&&>div]:!bg-white dark:[&&>div]:!bg-[#0d1424]/85',
-  'dark:[&&_thead_tr]:!bg-[#0c1322] [&&_thead_th]:shadow-[inset_0_-1px_0_#cbd5e1] dark:[&&_thead_th]:shadow-[inset_0_-1px_0_#233552]',
-  'dark:[&&_tbody_tr]:!border-slate-800/80 dark:[&&_tbody_tr:hover]:!bg-slate-800/40',
-  // The design's thin scrollbars (`SCROLLBAR`) on the table's own scroller, dark only.
-  'dark:[&>div::-webkit-scrollbar]:h-1.5 dark:[&>div::-webkit-scrollbar]:w-1.5 dark:[&>div::-webkit-scrollbar-track]:bg-[#090d16] dark:[&>div::-webkit-scrollbar-thumb]:rounded dark:[&>div::-webkit-scrollbar-thumb]:bg-[#1e293b] dark:[&>div::-webkit-scrollbar-thumb:hover]:bg-[#334155]',
-);
-/** The pager in the card's foot — the design's strip under the log. */
-const SECTION_FOOT =
-  'shrink-0 border-t border-slate-200 bg-slate-50/80 px-4 dark:border-slate-800 dark:bg-[#0a101b]';
+// The filter bar's card, the tables' cards, strips, chips and foot, both tables' look, the
+// «الإجمالي» line and the framed groups' buttons are the screen's, shared with «المذكرات» and
+// «سجل العهدة»: `custody-board-looks.ts`.
 
 /**
  * «هادية» — a car's sums in plain ink: slate-800 / slate-200 (the foot's slate-900 / white), «ج.م.»
@@ -204,8 +173,6 @@ const KIND_HEAD_DOT_INK: Record<FleetCustodySource, string> = {
  */
 const PRESS_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
-const PILL_BUTTON =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
 
 /**
  * «زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين»: the fund's three
@@ -255,18 +222,6 @@ const FUND_ACTIONS = [
 ] as const;
 
 /**
- * Both tables: the receipts board's (the vehicles table with no line between the columns, every
- * value heavy in Cairo's own bold) in the alarms board's TYPE — see `ALARMS_TYPE`. The row-filling
- * part (`BOARD_TABLE_FILL`) goes on the movements only: the per-car table keeps its own bound.
- */
-const CUSTODY_TABLE = cn(
-  DARK_TABLE,
-  '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
-  "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
-  ALARMS_TYPE,
-);
-
-/**
  * «ملخص لكل سيارة» in the dashboard's colours. What the board's table forces on every cell with
  * `!important` is reached here one selector deeper:
  * - the head: the dashboard's slate-700 on the light map, the design's slate-300 dark (the board's
@@ -289,19 +244,6 @@ const TOTAL_INK = 'text-slate-900 dark:text-white';
 /** The car's code in «ملخص لكل سيارة» — the dashboard's blue chip, at the board's code size. */
 const CAR_CHIP =
   'inline-flex h-8 min-w-[2rem] items-center justify-center whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1.5 font-bold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400';
-/**
- * «الإجمالي» as the dashboard's foot: slate-100 light, #090e18 dark; the design's 2px emerald-500
- * rule over every cell (an inset shadow — the table's own row borders are `!important`); and the
- * fund's total in its emerald box — the light map's emerald-50 with emerald-200 sides, the design's
- * #122238 with its faint line under the rule. Black type on the light map, as the foot's.
- */
-const GRAND_ROW = cn(
-  'bg-slate-100 dark:bg-[#090e18]',
-  '[&>td]:shadow-[inset_0_2px_0_#10b981]',
-  '[&>td:last-child]:bg-emerald-50 dark:[&>td:last-child]:bg-[#122238]',
-  '[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_1px_0_0_#a7f3d0,inset_-1px_0_0_#a7f3d0] dark:[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_0_3px_0_rgba(16,185,129,0.3)]',
-  '[&>td_span]:!font-black dark:[&>td_span]:!font-bold',
-);
 /** «الإجمالي» itself, and the fund's total — the foot's emerald. */
 const GRAND_WORD = 'text-emerald-800 dark:text-emerald-400';
 const GRAND_INK = 'text-emerald-800 dark:text-emerald-300';

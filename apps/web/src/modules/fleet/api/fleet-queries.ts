@@ -16,6 +16,14 @@ import {
   type CreateFleetFuelCard,
   type CreateFleetNotice,
   type CreateFleetLicenseExpense,
+  type CreateFleetCustodyCharge,
+  type CreateFleetCustodyMemo,
+  type CreateFleetCustodyReplenishment,
+  type CreateFleetCustodySettlement,
+  type FleetCustodyMemoCandidatesQuery,
+  type FleetCustodyPaperSettingsDto,
+  type SaveFleetCustodyPaperSettings,
+  type UpdateFleetCustodyMemo,
   type SaveFleetLicenseExpenseSettings,
   type UpdateFleetLicenseExpense,
   type RequestFleetFuelCharge,
@@ -1183,7 +1191,12 @@ const useLicenseExpenseMutation = <TInput, TResult>(
   const qc = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses }),
+    // A record written, changed or removed is a settle candidate gained, changed or lost — the
+    // custody fund's «تسوية العهدة» reads its parts, so the custody subtree goes stale with it.
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses });
+      void qc.invalidateQueries({ queryKey: fleetKeys.custody });
+    },
   });
 };
 
@@ -1216,6 +1229,210 @@ export const useSaveLicenseExpenseSettings = () => {
     onSuccess: (saved) => {
       qc.setQueryData(licenseExpenseSettingsKey, saved);
       void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses });
+    },
+  });
+};
+
+// ── Custody memos («المذكرات»), the fund («سجل العهدة») and the papers («إعداد المذكرات») ──────
+// Every key sits under the custody subtree (`['fleet', 'custody']`): a receipt saved, edited or
+// deleted (`useReceiptMutation`, the `fleet.receipt` signal) already throws that subtree away, so
+// the memos' banner, the editor's candidates, the ledger's spend lines and the fund all follow a
+// receipt with no wiring of their own. Exported so a spec can seed exactly what a hook reads.
+export const custodyFundKey = [...fleetKeys.custody, 'fund'] as const;
+export const custodyLedgerKey = [...fleetKeys.custody, 'ledger'] as const;
+export const custodyMemosKey = [...fleetKeys.custody, 'memos'] as const;
+export const custodyPaperSettingsKey = [...fleetKeys.custody, 'paper-settings'] as const;
+
+/** The pieces of every key below, so a spec seeds the very key a hook reads. */
+export const custodyQueryKeys = {
+  fund: (): readonly unknown[] => custodyFundKey,
+  ledger: (params: FleetListParams): readonly unknown[] => [...custodyLedgerKey, 'list', params],
+  ledgerTotals: (filters: FleetListParams): readonly unknown[] => [
+    ...custodyLedgerKey,
+    'summary',
+    filters,
+  ],
+  operation: (id: string): readonly unknown[] => [...custodyLedgerKey, 'operation', id],
+  candidates: (op: 'replenish' | 'settle'): readonly unknown[] => [
+    ...custodyLedgerKey,
+    'candidates',
+    op,
+  ],
+  memos: (params: FleetListParams): readonly unknown[] => [...custodyMemosKey, 'list', params],
+  memoTotals: (filters: FleetListParams): readonly unknown[] => [
+    ...custodyMemosKey,
+    'summary',
+    filters,
+  ],
+  memosOutside: (): readonly unknown[] => [...custodyMemosKey, 'outside'],
+  memo: (id: string): readonly unknown[] => [...custodyMemosKey, 'detail', id],
+  memoCandidates: (query: FleetCustodyMemoCandidatesQuery): readonly unknown[] => [
+    ...custodyMemosKey,
+    'candidates',
+    query,
+  ],
+  paperSettings: (): readonly unknown[] => custodyPaperSettingsKey,
+} as const;
+
+/**
+ * «إجمالي العهدة» and everything that made it — unfiltered, one answer for the tabs' badges, the
+ * ledger's tiles and every fund dialog's «إجمالي العهدة الآن».
+ */
+export const useCustodyFundSummary = (enabled = true) =>
+  useQuery({
+    queryKey: custodyQueryKeys.fund(),
+    queryFn: () => api.getCustodyFundSummary(),
+    enabled,
+  });
+export const useCustodyLedger = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: custodyQueryKeys.ledger(params),
+    queryFn: () => api.listCustodyLedger(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+/** The count chip over every row the filters match — never the page. */
+export const useCustodyLedgerTotals = (filters: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: custodyQueryKeys.ledgerTotals(filters),
+    queryFn: () => api.custodyLedgerTotals(filters),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+/** One operation with its snapshot and its place in the ledger; nothing asked for `''`. */
+export const useCustodyOperation = (id: string) =>
+  useQuery({
+    queryKey: custodyQueryKeys.operation(id),
+    queryFn: () => api.getCustodyOperation(id),
+    enabled: id !== '',
+  });
+/** Read while «استعاضة العهدة» is open — no placeholder: a stale list would tick stale memos. */
+export const useReplenishCandidates = (enabled: boolean) =>
+  useQuery({
+    queryKey: custodyQueryKeys.candidates('replenish'),
+    queryFn: () => api.custodyReplenishCandidates(),
+    enabled,
+  });
+/** Read while «تسوية العهدة» is open. */
+export const useSettleCandidates = (enabled: boolean) =>
+  useQuery({
+    queryKey: custodyQueryKeys.candidates('settle'),
+    queryFn: () => api.custodySettleCandidates(),
+    enabled,
+  });
+
+export const useCustodyMemos = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: custodyQueryKeys.memos(params),
+    queryFn: () => api.listCustodyMemos(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+/** The strip's figures over EVERY memo the filters match — never summed from the rows shown. */
+export const useCustodyMemoTotals = (filters: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: custodyQueryKeys.memoTotals(filters),
+    queryFn: () => api.custodyMemoTotals(filters),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+/** «إيصالات لم تدخل أي مذكرة بعد», per kind. */
+export const useCustodyMemosOutside = (enabled = true) =>
+  useQuery({
+    queryKey: custodyQueryKeys.memosOutside(),
+    queryFn: () => api.custodyMemosOutside(),
+    enabled,
+  });
+export const useCustodyMemo = (id: string) =>
+  useQuery({
+    queryKey: custodyQueryKeys.memo(id),
+    queryFn: () => api.getCustodyMemo(id),
+    enabled: id !== '',
+  });
+/**
+ * What a memo of the kind can hold — keyed by the kind (and the memo being edited) alone, and with
+ * NO placeholder: the only other answer it could show is another kind's receipts, which under this
+ * kind's tab would be ticked as this kind's.
+ */
+export const custodyMemoCandidatesOptions = (
+  query: FleetCustodyMemoCandidatesQuery,
+  enabled = true,
+) => ({
+  queryKey: custodyQueryKeys.memoCandidates(query),
+  queryFn: () => api.custodyMemoCandidates(query),
+  enabled,
+});
+export const useCustodyMemoCandidates = (query: FleetCustodyMemoCandidatesQuery, enabled = true) =>
+  useQuery(custodyMemoCandidatesOptions(query, enabled));
+/** The names every paper prints with — his own (`version: null`) until somebody saves. */
+export const useCustodyPaperSettings = (enabled = true) =>
+  useQuery({
+    queryKey: custodyQueryKeys.paperSettings(),
+    queryFn: () => api.getCustodyPaperSettings(),
+    enabled,
+  });
+
+/**
+ * A memo written, changed or deleted moves the custody subtree (the banner, the fund's pending
+ * memos, the ledger) and the receipts screen too — each receipt says which memo holds it.
+ */
+const useCustodyMemoMutation = <TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.custody });
+      void qc.invalidateQueries({ queryKey: fleetKeys.receipts });
+    },
+  });
+};
+export const useCreateCustodyMemo = () =>
+  useCustodyMemoMutation((body: CreateFleetCustodyMemo) => api.createCustodyMemo(body));
+export const useUpdateCustodyMemo = () =>
+  useCustodyMemoMutation(({ id, body }: { id: string; body: UpdateFleetCustodyMemo }) =>
+    api.updateCustodyMemo(id, body),
+  );
+export const useDeleteCustodyMemo = () =>
+  useCustodyMemoMutation((id: string) => api.deleteCustodyMemo(id));
+
+/** «شحن العهدة» — the fund, its ledger and its tabs move; nothing else does. */
+export const useChargeCustody = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateFleetCustodyCharge) => api.chargeCustody(body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.custody }),
+  });
+};
+/**
+ * «استعاضة العهدة» — the memos it brings back are replenished: the custody subtree moves, and the
+ * receipts screen, whose rows say their memo was replenished (and lock with it).
+ */
+export const useReplenishCustody = () =>
+  useCustodyMemoMutation((body: CreateFleetCustodyReplenishment) => api.replenishCustody(body));
+/** «تسوية العهدة» — the fund moves, and so does «الحالة» of every licence part it settled. */
+export const useSettleCustody = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateFleetCustodySettlement) => api.settleCustody(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.custody });
+      void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses });
+    },
+  });
+};
+/**
+ * The saved names go straight into the cache, their new version with them — the next save then
+ * carries the version the server holds — and the read is refreshed behind it.
+ */
+export const useSaveCustodyPaperSettings = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveFleetCustodyPaperSettings) => api.saveCustodyPaperSettings(body),
+    onSuccess: (saved: FleetCustodyPaperSettingsDto) => {
+      qc.setQueryData(custodyPaperSettingsKey, saved);
+      void qc.invalidateQueries({ queryKey: custodyPaperSettingsKey });
     },
   });
 };

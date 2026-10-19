@@ -5,6 +5,10 @@
 // «حسن الui زى شاشة السيارات و السواقيين»: no page title — a toolbar with the count, the
 // «الإحصائيات» toggle, the Excel / PDF pill and «إيصال جديد»; the dark filter bar; the boards'
 // table. The totals sit BETWEEN the filters and the table, as asked, behind «الإحصائيات».
+//
+// A receipt the custody fund paid may be a line of a custody memo («المذكرات»): the row names the
+// memo under «العهدة», and its bin is locked — a receipt is taken off its memo before it is deleted,
+// and never once that memo is replenished. The form locks what the memo holds (ReceiptDialog).
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -52,6 +56,10 @@ import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { receiptMemoState } from '../lib/receipt-memo-lock';
+import { writeRefusalOf } from '../lib/write-refusal';
+import { LockedRowAction } from '../components/LockedRowAction';
+import { ReceiptMemoChip } from '../components/ReceiptMemoChip';
 
 const REMEMBERED_FILTERS = [
   'from',
@@ -271,9 +279,27 @@ export const ReceiptsPage = (): JSX.Element => {
   const remove = useDeleteReceipt();
   const confirmDelete = async (): Promise<void> => {
     if (deleting === null) return;
-    await remove.mutateAsync(deleting.id);
+    try {
+      await remove.mutateAsync(deleting.id);
+    } catch (failure) {
+      // Put on a custody memo since the list was read: said in so many words, and the list read
+      // again so the row shows its memo and its locked bin. Anything else keeps the usual toast.
+      if (writeRefusalOf(failure) !== 'locked') throw failure;
+      toast.error(t('fleet.receipts.memo.refusedDelete'));
+      setDeleting(null);
+      void refetch();
+      return;
+    }
     toast.success(t('fleet.receipts.deleted'));
     setDeleting(null);
+  };
+  // A save the memo refused (ReceiptDialog): the receipt is read again and the form opens on what
+  // it is now — its memo, and what that memo locks — instead of on what it was.
+  const reloadEditing = async (): Promise<void> => {
+    const id = editing?.id;
+    if (id === undefined) return;
+    const fresh = await refetch();
+    setEditing(fresh.data?.items.find((row) => row.id === id) ?? null);
   };
 
   const kindLabel = (row: FleetReceiptDto): string => t(`fleet.receipts.kind.${row.kind}`);
@@ -346,7 +372,16 @@ export const ReceiptsPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.receipts.columns.source'),
       sortable: true,
-      render: (row) => <ReceiptSourceCell row={row} />,
+      // A receipt on a custody memo: «العهدة», and under it «مذكرة رقم 7».
+      render: (row) =>
+        row.memo == null ? (
+          <ReceiptSourceCell row={row} />
+        ) : (
+          <span className="inline-flex flex-col items-center gap-1">
+            <ReceiptSourceCell row={row} />
+            <ReceiptMemoChip memo={row.memo} />
+          </span>
+        ),
     },
     {
       key: 'amount',
@@ -397,7 +432,9 @@ export const ReceiptsPage = (): JSX.Element => {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
       align: 'center',
-      // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`).
+      // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`). A receipt
+      // on a custody memo keeps its pen (the form locks what the memo holds); its bin stays in its
+      // place, faded, saying why.
       render: (row) => (
         <span className={ACTION_GROUP} data-row-actions="receipt">
           {can('fleetReceipt.edit') && (
@@ -412,18 +449,32 @@ export const ReceiptsPage = (): JSX.Element => {
               <SquarePenIcon className="h-4 w-4" />
             </button>
           )}
-          {can('fleetReceipt.delete') && (
-            <button
-              type="button"
-              data-receipt-delete={row.id}
-              className={actionTone('delete')}
-              aria-label={t('common.delete')}
-              title={t('common.delete')}
-              onClick={() => setDeleting(row)}
-            >
-              <Trash2Icon className="h-4 w-4" />
-            </button>
-          )}
+          {can('fleetReceipt.delete') &&
+            (row.memo != null ? (
+              <LockedRowAction
+                kind="delete"
+                reason={t(
+                  receiptMemoState(row) === 'replenished'
+                    ? 'fleet.receipts.memo.lockedDeleteReplenished'
+                    : 'fleet.receipts.memo.lockedDelete',
+                  { no: row.memo.no },
+                )}
+                mark="receipt-delete"
+              >
+                <Trash2Icon className="h-4 w-4" />
+              </LockedRowAction>
+            ) : (
+              <button
+                type="button"
+                data-receipt-delete={row.id}
+                className={actionTone('delete')}
+                aria-label={t('common.delete')}
+                title={t('common.delete')}
+                onClick={() => setDeleting(row)}
+              >
+                <Trash2Icon className="h-4 w-4" />
+              </button>
+            ))}
         </span>
       ),
     },
@@ -777,6 +828,7 @@ export const ReceiptsPage = (): JSX.Element => {
           setEditing(null);
         }}
         row={editing}
+        onRefused={() => void reloadEditing()}
       />
       <ReceiptImagePreviewDialog
         open={previewing !== null}

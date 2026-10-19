@@ -300,10 +300,11 @@ const TILE = cn(CARD, 'flex flex-wrap items-center justify-between gap-2 rounded
 const TILE_ICON = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border';
 
 /**
- * Six figures — the fund first («إجمالي العهدة», the board's own card: what was spent of it), the
- * total in emerald, then each kind with its share of the total and its count; fuel splits into
- * «شل أوت» and «وطنية» by the company each receipt names, and the receipts that name none are a
- * small line of their own under the two. Then the movements, the cars and the litres.
+ * Six figures — the fund first («إجمالي العهدة», the board's own card: what was spent of all that
+ * was charged into it; the fund below zero in red), the total in emerald, then each kind with its
+ * share of the total and its count; fuel splits into «شل أوت» and «وطنية» by the company each
+ * receipt names, and the receipts that name none are a small line of their own under the two.
+ * Then the movements, the cars and the litres.
  */
 export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
@@ -315,7 +316,12 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
     <section data-custody-dashboard-section="kpis" className="space-y-3.5">
       <div className={KPI_GRID}>
         <div data-custody-kpi="fund" className="flex min-w-0 flex-col">
-          <CustodyFundCard fundTotal={data.fundTotal} spent={data.total} figure={FIGURE} />
+          <CustodyFundCard
+            fundTotal={data.fundTotal}
+            charged={data.fundCharged}
+            spent={data.fundSpent}
+            figure={FIGURE}
+          />
         </div>
         <div
           data-custody-kpi="total"

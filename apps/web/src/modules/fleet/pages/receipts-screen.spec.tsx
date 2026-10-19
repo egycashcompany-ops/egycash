@@ -91,6 +91,8 @@ const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
   odometer: null,
   company: null,
   image: null,
+  // In no custody memo («لم تدخل أي مذكرة بعد») unless a test says otherwise.
+  memo: null,
   version: 0,
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-01T00:00:00.000Z',
@@ -132,6 +134,8 @@ const custodySummary: FleetCustodySummaryDto = {
   tyres: 1400,
   wash: 120,
   fundTotal: 0,
+  fundCharged: 0,
+  fundSpent: 0,
   vehicles: [
     {
       vehicleId: 'v-204',

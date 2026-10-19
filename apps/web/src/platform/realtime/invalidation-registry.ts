@@ -349,7 +349,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // notices screen and its editor.
   'fleet.fleetNotice': [['fleet', 'notices']],
   'fleet.noticeSettings': [['fleet', 'notices']],
-  'fleet.licenseExpense': [['fleet', 'licenseExpenses']],
+  // A licence record is a settle candidate of the custody fund («تسوية العهدة») too.
+  'fleet.licenseExpense': [
+    ['fleet', 'licenseExpenses'],
+    ['fleet', 'custody'],
+  ],
   'fleet.licenseExpenseSettings': [['fleet', 'licenseExpenses']],
   // The dealership board alone: an invoice is saved as entered and moves nothing else — not the
   // custody ledger, not a fuel card.
@@ -361,6 +365,18 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['fleet', 'custody'],
     ['fleet', 'fuelCards'],
   ],
+  // «المذكرات», «سجل العهدة» and «إعداد المذكرات» live under the custody subtree. A memo also
+  // moves the receipts screen (each receipt says which memo holds it); an operation moves the
+  // licence screen's «الحالة» (a settle) — a replenish also signals `custodyMemo` for its memos.
+  'fleet.custodyMemo': [
+    ['fleet', 'custody'],
+    ['fleet', 'receipts'],
+  ],
+  'fleet.custodyOperation': [
+    ['fleet', 'custody'],
+    ['fleet', 'licenseExpenses'],
+  ],
+  'fleet.custodyPaperSettings': [['fleet', 'custody']],
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   'it.asset': [

@@ -140,6 +140,8 @@ describe('no printed page carries a script of its own', () => {
       'modules/fleet/lib/fleet-report-print.ts',
       'modules/fleet/lib/notice-render.ts',
       'modules/fleet/components/vehicle-print.ts',
+      // The custody's memos and letters («المذكرات», «سجل العهدة»): `printPaperAfter`.
+      'modules/fleet/lib/custody-papers.ts',
       'modules/gold/lib/gold-print.ts',
       'modules/it/lib/custody-receipt-print.ts',
       'modules/it/components/useAssetLabels.ts',

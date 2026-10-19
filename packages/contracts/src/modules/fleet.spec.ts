@@ -24,6 +24,19 @@ import {
   RecordFleetOdometerSchema,
   RecordFleetVehicleViolationSchema,
   SaveFleetFixedRosterSchema,
+  CreateFleetCustodyChargeSchema,
+  CreateFleetCustodyMemoSchema,
+  CreateFleetCustodyReplenishmentSchema,
+  CreateFleetCustodySettlementSchema,
+  FLEET_CUSTODY_MEMO_MAX_LINES,
+  FleetCustodyLedgerSummaryQuerySchema,
+  FleetCustodyMemoCandidatesQuerySchema,
+  FleetCustodyMemoSummaryQuerySchema,
+  FleetLicenseExpenseSummaryQuerySchema,
+  ListFleetCustodyLedgerQuerySchema,
+  ListFleetCustodyMemosQuerySchema,
+  ListFleetLicenseExpensesQuerySchema,
+  UpdateFleetCustodyMemoSchema,
 } from './fleet.js';
 import { EVENT_LIFECYCLE, eventCatalogEntry } from '../events/catalog.js';
 
@@ -806,5 +819,282 @@ describe('fleetMonthWindow — a licence-expiry month as its first and last inst
     const parsed = ListFleetVehiclesQuerySchema.parse({ licenseExpiryMonths: '2026-11,2027-01' });
     expect(parsed.licenseExpiryMonths).toEqual(['2026-11', '2027-01']);
     expect(() => ListFleetVehiclesQuerySchema.parse({ licenseExpiryMonths: '2026-13' })).toThrow();
+  });
+});
+
+describe('custody memos and the fund’s operations — «ومش عاوز اى داتا اجبارى»', () => {
+  const line = (n: number, over: Record<string, unknown> = {}) => ({
+    receiptId: oid(String(n)),
+    ...over,
+  });
+  const memo = (over: Record<string, unknown> = {}) => ({
+    kind: 'tyres',
+    lines: [line(1)],
+    ...over,
+  });
+  const paths = (result: { success: boolean; error?: { issues: { path: unknown[] }[] } }) =>
+    (result.error?.issues ?? []).map((issue) => issue.path.join('.'));
+
+  it('a memo needs its kind and one receipt — nothing else', () => {
+    const parsed = CreateFleetCustodyMemoSchema.parse(memo());
+    expect(parsed).toEqual({
+      kind: 'tyres',
+      name: '',
+      lines: [{ receiptId: oid('1'), mission: '', statement: '', note: '' }],
+    });
+    expect(parsed.date).toBeUndefined();
+    expect(CreateFleetCustodyMemoSchema.safeParse(memo({ lines: [] })).success).toBe(false);
+    expect(CreateFleetCustodyMemoSchema.safeParse({ lines: [line(1)] }).success).toBe(false);
+    // Only a custody kind: a card receipt or a dealership invoice never makes a memo.
+    for (const kind of ['card', 'dealership', 'licence']) {
+      expect(CreateFleetCustodyMemoSchema.safeParse(memo({ kind })).success, kind).toBe(false);
+    }
+    expect(CreateFleetCustodyMemoSchema.safeParse(memo({ no: 7 })).success).toBe(false);
+  });
+
+  it('its name is optional free text — trimmed, at most 120 characters', () => {
+    expect(CreateFleetCustodyMemoSchema.parse(memo({ name: '  كاوتش أكتوبر  ' })).name).toBe(
+      'كاوتش أكتوبر',
+    );
+    expect(CreateFleetCustodyMemoSchema.parse(memo({ name: '   ' })).name).toBe('');
+    expect(CreateFleetCustodyMemoSchema.safeParse(memo({ name: 'x'.repeat(120) })).success).toBe(
+      true,
+    );
+    expect(CreateFleetCustodyMemoSchema.safeParse(memo({ name: 'x'.repeat(121) })).success).toBe(
+      false,
+    );
+  });
+
+  it('a receipt appears once in a memo, however its id is spelled', () => {
+    const twice = CreateFleetCustodyMemoSchema.safeParse(
+      memo({ lines: [line(1), line(2), line(1)] }),
+    );
+    expect(twice.success).toBe(false);
+    expect(paths(twice)).toEqual(['lines.2.receiptId']);
+    const upper = 'ABCDEF0123456789ABCDEF01';
+    expect(
+      CreateFleetCustodyMemoSchema.safeParse(
+        memo({ lines: [{ receiptId: upper }, { receiptId: upper.toLowerCase() }] }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it('each kind takes only the cells its paper writes by hand', () => {
+    const ok = (kind: string, cells: Record<string, string>) =>
+      CreateFleetCustodyMemoSchema.safeParse(memo({ kind, lines: [line(1, cells)] }));
+    expect(ok('fuel', { mission: 'شلاتين', note: 'ملاحظة' }).success).toBe(true);
+    expect(ok('maintenance', { statement: 'تغيير زيت', note: 'ملاحظة' }).success).toBe(true);
+    expect(paths(ok('tyres', { mission: 'شلاتين' }))).toEqual(['lines.0.mission']);
+    expect(paths(ok('fuel', { statement: 'تغيير زيت' }))).toEqual(['lines.0.statement']);
+    expect(paths(ok('wash', { note: 'ملاحظة' }))).toEqual(['lines.0.note']);
+    expect(paths(ok('tyres', { note: 'ملاحظة' }))).toEqual(['lines.0.note']);
+    // Blank cells are no cells: whitespace trims away on every kind.
+    expect(ok('wash', { mission: '  ', statement: ' ', note: '   ' }).success).toBe(true);
+    expect(ok('fuel', { mission: 'x'.repeat(121) }).success).toBe(false);
+    expect(ok('maintenance', { statement: 'x'.repeat(501) }).success).toBe(false);
+    expect(ok('fuel', { note: 'x'.repeat(301) }).success).toBe(false);
+    expect(
+      CreateFleetCustodyMemoSchema.safeParse(memo({ lines: [line(1, { amount: 5 })] })).success,
+    ).toBe(false);
+  });
+
+  it('its period runs forward; absent or null, the lines decide it', () => {
+    const bad = CreateFleetCustodyMemoSchema.safeParse(
+      memo({ from: '2026-10-05', to: '2026-10-01' }),
+    );
+    expect(bad.success).toBe(false);
+    expect(paths(bad)).toEqual(['to']);
+    const same = CreateFleetCustodyMemoSchema.parse(
+      memo({ date: '2026-10-19', from: '2026-10-05', to: '2026-10-05' }),
+    );
+    expect(same.date?.toISOString()).toBe('2026-10-19T00:00:00.000Z');
+    expect(same.from?.toISOString()).toBe('2026-10-05T00:00:00.000Z');
+    const open = CreateFleetCustodyMemoSchema.parse(memo({ from: null, to: null }));
+    expect(open.from).toBeNull();
+    expect(open.to).toBeNull();
+    expect(CreateFleetCustodyMemoSchema.parse(memo({ from: '2026-10-05' })).to).toBeUndefined();
+  });
+
+  it('holds at most FLEET_CUSTODY_MEMO_MAX_LINES receipts — the one cap, 3000', () => {
+    expect(FLEET_CUSTODY_MEMO_MAX_LINES).toBe(3000);
+    const many = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ receiptId: (i + 1).toString(16).padStart(24, '0') }));
+    expect(
+      CreateFleetCustodyMemoSchema.safeParse(memo({ lines: many(FLEET_CUSTODY_MEMO_MAX_LINES) }))
+        .success,
+    ).toBe(true);
+    expect(
+      CreateFleetCustodyMemoSchema.safeParse(
+        memo({ lines: many(FLEET_CUSTODY_MEMO_MAX_LINES + 1) }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it('an edit is the whole memo again, with its version, under the same rules', () => {
+    expect(UpdateFleetCustodyMemoSchema.safeParse(memo()).success).toBe(false);
+    const parsed = UpdateFleetCustodyMemoSchema.parse(memo({ version: 2 }));
+    expect(parsed.version).toBe(2);
+    expect(parsed.date).toBeUndefined();
+    expect(
+      UpdateFleetCustodyMemoSchema.safeParse(memo({ version: 2, lines: [line(1), line(1)] }))
+        .success,
+    ).toBe(false);
+    expect(
+      UpdateFleetCustodyMemoSchema.safeParse(
+        memo({ version: 2, kind: 'wash', lines: [line(1, { mission: 'شلاتين' })] }),
+      ).success,
+    ).toBe(false);
+    expect(
+      UpdateFleetCustodyMemoSchema.safeParse(
+        memo({ version: 2, from: '2026-10-05', to: '2026-10-01' }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it('the memos list filters by kinds, status and period; its figures are never ordered', () => {
+    expect(
+      ListFleetCustodyMemosQuerySchema.parse({
+        kind: 'fuel,tyres',
+        status: 'pending',
+        from: '2026-10-01',
+        sort: 'no:desc',
+      }),
+    ).toMatchObject({ kind: ['fuel', 'tyres'], status: 'pending', sort: 'no:desc' });
+    expect(ListFleetCustodyMemosQuerySchema.parse({ status: 'replenished' }).status).toBe(
+      'replenished',
+    );
+    expect(ListFleetCustodyMemosQuerySchema.safeParse({ status: 'settled' }).success).toBe(false);
+    expect(ListFleetCustodyMemosQuerySchema.safeParse({ kind: 'card' }).success).toBe(false);
+    expect(FleetCustodyMemoSummaryQuerySchema.parse({ kind: 'wash' }).kind).toEqual(['wash']);
+    expect(FleetCustodyMemoSummaryQuerySchema.safeParse({ sort: 'no:asc' }).success).toBe(false);
+    expect(FleetCustodyMemoSummaryQuerySchema.safeParse({ page: '2' }).success).toBe(false);
+  });
+
+  it('the editor’s receipts are asked for one kind, and the memo being edited', () => {
+    expect(FleetCustodyMemoCandidatesQuerySchema.parse({ kind: 'fuel' })).toEqual({ kind: 'fuel' });
+    expect(
+      FleetCustodyMemoCandidatesQuerySchema.parse({ kind: 'fuel', memoId: oid('9') }).memoId,
+    ).toBe(oid('9'));
+    expect(FleetCustodyMemoCandidatesQuerySchema.safeParse({}).success).toBe(false);
+    expect(FleetCustodyMemoCandidatesQuerySchema.safeParse({ kind: 'fuel,wash' }).success).toBe(
+      false,
+    );
+    expect(
+      FleetCustodyMemoCandidatesQuerySchema.safeParse({ kind: 'fuel', memoId: '7' }).success,
+    ).toBe(false);
+  });
+
+  it('«شحن العهدة» needs its amount and nothing else', () => {
+    expect(CreateFleetCustodyChargeSchema.parse({ amount: 200_000 })).toEqual({
+      amount: 200_000,
+      reason: '',
+    });
+    expect(
+      CreateFleetCustodyChargeSchema.parse({
+        amount: 124_139.46,
+        date: '2026-10-05',
+        reason: '  مصروفات الحركة  ',
+      }),
+    ).toMatchObject({ amount: 124_139.46, reason: 'مصروفات الحركة' });
+    for (const amount of [undefined, 0, -5, 10.005, 1_000_000_001, '200000']) {
+      expect(CreateFleetCustodyChargeSchema.safeParse({ amount }).success, String(amount)).toBe(
+        false,
+      );
+    }
+    expect(
+      CreateFleetCustodyChargeSchema.safeParse({ amount: 5, reason: 'x'.repeat(501) }).success,
+    ).toBe(false);
+    expect(CreateFleetCustodyChargeSchema.safeParse({ amount: 5, memoIds: [] }).success).toBe(
+      false,
+    );
+  });
+
+  it('«استعاضة عهدة» names each memo once, and its period runs forward', () => {
+    expect(CreateFleetCustodyReplenishmentSchema.parse({ memoIds: [oid('1'), oid('2')] })).toEqual({
+      memoIds: [oid('1'), oid('2')],
+    });
+    expect(CreateFleetCustodyReplenishmentSchema.safeParse({ memoIds: [] }).success).toBe(false);
+    const twice = CreateFleetCustodyReplenishmentSchema.safeParse({
+      memoIds: [oid('1'), oid('2'), oid('1')],
+    });
+    expect(twice.success).toBe(false);
+    expect(paths(twice)).toEqual(['memoIds.2']);
+    expect(
+      CreateFleetCustodyReplenishmentSchema.safeParse({
+        memoIds: ['ABCDEF0123456789ABCDEF01', 'abcdef0123456789abcdef01'],
+      }).success,
+    ).toBe(false);
+    const backwards = CreateFleetCustodyReplenishmentSchema.safeParse({
+      memoIds: [oid('1')],
+      from: '2026-09-30',
+      to: '2026-09-01',
+    });
+    expect(paths(backwards)).toEqual(['to']);
+    expect(
+      CreateFleetCustodyReplenishmentSchema.parse({ memoIds: [oid('1')], from: null, to: null }),
+    ).toMatchObject({ from: null, to: null });
+  });
+
+  it('«تسوية عهدة» names each licensing memo once — a record’s two memos are two', () => {
+    const both = CreateFleetCustodySettlementSchema.parse({
+      parts: [
+        { expenseId: oid('1'), part: 'renewal' },
+        { expenseId: oid('1'), part: 'extension' },
+      ],
+    });
+    expect(both.parts).toHaveLength(2);
+    const twice = CreateFleetCustodySettlementSchema.safeParse({
+      parts: [
+        { expenseId: oid('1'), part: 'renewal' },
+        { expenseId: oid('2'), part: 'renewal' },
+        { expenseId: oid('1'), part: 'renewal' },
+      ],
+    });
+    expect(twice.success).toBe(false);
+    expect(paths(twice)).toEqual(['parts.2']);
+    expect(CreateFleetCustodySettlementSchema.safeParse({ parts: [] }).success).toBe(false);
+    expect(
+      CreateFleetCustodySettlementSchema.safeParse({
+        parts: [{ expenseId: oid('1'), part: 'both' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateFleetCustodySettlementSchema.safeParse({
+        parts: [{ expenseId: oid('1'), part: 'renewal' }],
+        from: '2026-10-05',
+        to: '2026-10-04',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('«سجل العهدة» filters by one operation or several; its figures are never ordered', () => {
+    expect(ListFleetCustodyLedgerQuerySchema.parse({ op: 'charge,spend' }).op).toEqual([
+      'charge',
+      'spend',
+    ]);
+    expect(ListFleetCustodyLedgerQuerySchema.parse({ op: '' }).op).toBeUndefined();
+    expect(ListFleetCustodyLedgerQuerySchema.parse({ sort: 'date:asc' }).sort).toBe('date:asc');
+    expect(ListFleetCustodyLedgerQuerySchema.safeParse({ op: 'refund' }).success).toBe(false);
+    expect(
+      FleetCustodyLedgerSummaryQuerySchema.parse({ op: 'replenish,settle', from: '2026-10-01' }),
+    ).toMatchObject({ op: ['replenish', 'settle'] });
+    expect(FleetCustodyLedgerSummaryQuerySchema.safeParse({ sort: 'date:asc' }).success).toBe(
+      false,
+    );
+  });
+
+  it('the licensing board filters by «الحالة» — waiting or settled', () => {
+    for (const schema of [
+      ListFleetLicenseExpensesQuerySchema,
+      FleetLicenseExpenseSummaryQuerySchema,
+    ]) {
+      expect(schema.parse({ status: 'waiting' }).status).toBe('waiting');
+      expect(schema.parse({ status: 'settled', kind: 'renewal' })).toMatchObject({
+        status: 'settled',
+        kind: 'renewal',
+      });
+      expect(schema.parse({}).status).toBeUndefined();
+      expect(schema.safeParse({ status: 'pending' }).success).toBe(false);
+    }
   });
 });

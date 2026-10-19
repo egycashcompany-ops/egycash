@@ -16,6 +16,12 @@
 //
 // «حسن الui … بالفورم بتاعت التسجيل والتعديل»: the vehicle form's design (`DesignDialog`) around the
 // same fields, rules, required marks and hooks as before.
+//
+// A receipt that is a line of a custody memo («المذكرات») opens with a note naming the memo, and
+// what the memo holds cannot be changed here (`receipt-memo-lock.ts`): its kind and what paid for
+// it while the memo waits for its «استعاضة»; its amount, date and car too once it is replenished.
+// Each locked box says why on hover. A save the server still refuses — the memo moved while the
+// form was open — says so in words and reads the receipt again.
 import { useEffect, useMemo, useState } from 'react';
 import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
 import {
@@ -68,6 +74,8 @@ import {
 } from '../lib/receipt-cards';
 import { groupCardNumber, maskCardNumber } from '../lib/fuel-card-number';
 import { saveThenAttachPhoto } from '../lib/save-with-photo';
+import { memoDay, receiptMemoLocks, receiptMemoState } from '../lib/receipt-memo-lock';
+import { writeRefusalOf } from '../lib/write-refusal';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const round = (value: number): number => Math.round(value * 100) / 100;
@@ -344,14 +352,31 @@ export const ReceiptDialog = ({
   open,
   onClose,
   row,
+  onRefused,
 }: {
   open: boolean;
   onClose: () => void;
   /** The receipt being edited; `null` for a new one. */
   row: FleetReceiptDto | null;
+  /**
+   * The server refused the save because the receipt's custody memo moved, or the receipt changed,
+   * since it was read — the caller reads it again and hands the fresh row back in.
+   */
+  onRefused?: () => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // What the custody memo holding this receipt keeps as it is, and the reason each locked box gives.
+  const memoState = receiptMemoState(row);
+  const locks = receiptMemoLocks(row);
+  const memoNo = row?.memo?.no ?? 0;
+  const lockReason =
+    memoState === 'replenished'
+      ? t('fleet.receipts.memo.lockedReplenished', { no: memoNo })
+      : t('fleet.receipts.memo.lockedPending', { no: memoNo });
+  /** A box the memo holds: not pressable, the reason on hover. */
+  const held = (locked: boolean): { disabled?: true; title?: string } =>
+    locked ? { disabled: true, title: lockReason } : {};
   // Seeded from the row on the first paint — an edit never flashes an empty form — and reset on
   // every open by the effect below.
   const [kind, setKind] = useState<FleetReceiptKind>(row?.kind ?? 'fuel');
@@ -577,17 +602,33 @@ export const ReceiptDialog = ({
     // The photo goes up once the receipt exists. The receipt has already taken its money off the
     // card by then, so a refused photo must not leave the form open for a second Save — that would
     // record the receipt twice (`saveThenAttachPhoto`): say it is saved without its photo, close.
-    const { photo } = await saveThenAttachPhoto(
-      () =>
-        row === null
-          ? create.mutateAsync(body)
-          : update.mutateAsync({ id: row.id, body: { ...body, version: row.version } }),
-      file,
-      (id, picked) => upload.mutateAsync({ id, file: picked }),
-    );
-    if (photo === 'failed') toast.warning(t('fleet.receipts.image.notUploaded'));
-    else toast.success(t('fleet.receipts.saved'));
-    onClose();
+    try {
+      const { photo } = await saveThenAttachPhoto(
+        () =>
+          row === null
+            ? create.mutateAsync(body)
+            : update.mutateAsync({ id: row.id, body: { ...body, version: row.version } }),
+        file,
+        (id, picked) => upload.mutateAsync({ id, file: picked }),
+      );
+      if (photo === 'failed') toast.warning(t('fleet.receipts.image.notUploaded'));
+      else toast.success(t('fleet.receipts.saved'));
+      onClose();
+    } catch (failure) {
+      // Nothing was written. A custody memo took the receipt, or was replenished, while the form
+      // was open — or somebody saved it first: said in so many words, and the receipt read again
+      // so the form shows what it is now. Anything else keeps its usual message.
+      const refusal = row === null ? null : writeRefusalOf(failure);
+      if (refusal === null) throw failure;
+      toast.error(
+        t(
+          refusal === 'locked'
+            ? 'fleet.receipts.memo.refusedEdit'
+            : 'fleet.receipts.memo.refusedStale',
+        ),
+      );
+      onRefused?.();
+    }
   };
 
   // The design's boxes: a date's ends are kept clear by `DesignField`'s `datePicker`; an amount
@@ -622,14 +663,41 @@ export const ReceiptDialog = ({
       }
     >
       <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+      {row?.memo != null && (
+        <p
+          role="note"
+          data-receipt-memo-lock={memoState}
+          className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200"
+        >
+          {memoState === 'replenished'
+            ? t('fleet.receipts.memo.replenishedNotice', {
+                no: row.memo.no,
+                date: memoDay(row.memo.replenishedAt ?? ''),
+              })
+            : t('fleet.receipts.memo.pendingNotice', { no: row.memo.no })}
+        </p>
+      )}
       <DesignSection title={t('fleet.receipts.form.sections.receipt')} icon={PATH.truck}>
-        <KindSwitch value={kind} onChange={changeKind} />
+        {/* The kind a custody memo holds: the picked one stays lit, the others fade and refuse. */}
+        <fieldset
+          {...held(locks.kind)}
+          data-receipt-kind-locked={locks.kind ? 'true' : undefined}
+          // The buttons take no pointer, so the hover lands on the fieldset and its reason shows.
+          className={cn(
+            'min-w-0',
+            locks.kind &&
+              'cursor-not-allowed [&_[aria-checked=false]]:opacity-40 [&_button]:pointer-events-none',
+          )}
+        >
+          <KindSwitch value={kind} onChange={changeKind} />
+        </fieldset>
         <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
           <DesignField
             label={t('fleet.receipts.columns.date')}
             required
             missing={required.isMissing('date')}
-            datePicker
+            // A date the replenished memo holds: its calendar cannot open it either.
+            datePicker={locks.date ? { disabled: true } : true}
           >
             <Input
               type="date"
@@ -638,6 +706,7 @@ export const ReceiptDialog = ({
               onChange={(e) => setDate(e.target.value)}
               data-receipt-date="true"
               tone={dateBox}
+              {...held(locks.date)}
             />
           </DesignField>
           <DesignField
@@ -645,23 +714,29 @@ export const ReceiptDialog = ({
             required
             missing={vehicleMissing}
           >
-            <div
-              {...(vehicleMissing ? { 'data-car-missing': 'true' } : {})}
-              className={cn(
-                carBoxClass(false),
-                // Empty when Save was pressed: the design's rose frame and glow, and the box's
-                // ✕ and chevron step inward to leave the far end to the «!».
-                '[&[data-car-missing]_input]:!border-rose-500/70 [&[data-car-missing]_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
-                '[&[data-car-missing]_input]:!pe-28 [&[data-car-missing]_.end-2]:!end-10',
-              )}
+            <fieldset
+              {...held(locks.vehicle)}
+              data-receipt-vehicle-locked={locks.vehicle ? 'true' : undefined}
+              className="min-w-0"
             >
-              <VehicleCodeCombobox
-                value={vehicleId}
-                onChange={setVehicleId}
-                anyStatus
-                testId="receipt-vehicle"
-              />
-            </div>
+              <div
+                {...(vehicleMissing ? { 'data-car-missing': 'true' } : {})}
+                className={cn(
+                  carBoxClass(false),
+                  // Empty when Save was pressed: the design's rose frame and glow, and the box's
+                  // ✕ and chevron step inward to leave the far end to the «!».
+                  '[&[data-car-missing]_input]:!border-rose-500/70 [&[data-car-missing]_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
+                  '[&[data-car-missing]_input]:!pe-28 [&[data-car-missing]_.end-2]:!end-10',
+                )}
+              >
+                <VehicleCodeCombobox
+                  value={vehicleId}
+                  onChange={setVehicleId}
+                  anyStatus
+                  testId="receipt-vehicle"
+                />
+              </div>
+            </fieldset>
           </DesignField>
           <DesignField
             label={t('fleet.receipts.columns.driver')}
@@ -697,101 +772,108 @@ export const ReceiptDialog = ({
       </DesignSection>
 
       <DesignSection title={t('fleet.receipts.columns.source')} icon={PATH.card}>
-        <DesignField
-          label={t('fleet.receipts.fields.card')}
-          required={byCard}
-          missing={required.isMissing('card')}
-          // The cards are tiles, not a box: no «!» laid over them — the line under says it.
-          endAdornment={null}
+        {/* What paid for it — the tick, the cards and «كارت آخر» — stays as the memo holds it. */}
+        <fieldset
+          {...held(locks.source)}
+          data-receipt-source-locked={locks.source ? 'true' : undefined}
+          className="min-w-0"
         >
-          {other && isFuel ? (
-            <div className="space-y-3" data-receipt-other="true">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                  {t('fleet.receipts.otherCard.title')}
-                </span>
+          <DesignField
+            label={t('fleet.receipts.fields.card')}
+            required={byCard}
+            missing={required.isMissing('card')}
+            // The cards are tiles, not a box: no «!» laid over them — the line under says it.
+            endAdornment={null}
+          >
+            {other && isFuel ? (
+              <div className="space-y-3" data-receipt-other="true">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                    {t('fleet.receipts.otherCard.title')}
+                  </span>
+                  <button
+                    type="button"
+                    data-receipt-other-back="true"
+                    onClick={backToOwn}
+                    className={OTHER_BUTTON}
+                  >
+                    {t('fleet.receipts.otherCard.back')}
+                  </button>
+                </div>
+                <OtherCardPick
+                  cards={otherCards}
+                  status={otherStatus}
+                  value={cardId}
+                  onChange={setCardId}
+                  search={search}
+                  onSearch={setSearch}
+                  enabled={byCard}
+                  tone={box}
+                />
+              </div>
+            ) : cardsState.kind === 'noCar' ? (
+              <p className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}>
+                {t('fleet.receipts.fields.pickCar')}
+              </p>
+            ) : cardsState.kind === 'loading' ? (
+              <p
+                data-receipt-cards="loading"
+                className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
+              >
+                {t('fleet.receipts.fields.loadingCards')}
+              </p>
+            ) : cardsState.kind === 'failed' ? (
+              <p
+                data-receipt-cards="failed"
+                className={cn(CARD_NOTE, 'text-red-600 dark:text-red-400')}
+              >
+                {t('fleet.receipts.fields.cardsFailed')}
+              </p>
+            ) : noCards ? (
+              <p
+                data-receipt-cards="none"
+                className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
+              >
+                {t('fleet.receipts.fields.noCards')}
+              </p>
+            ) : (
+              <CardPick cards={carCards} value={cardId} onChange={setCardId} enabled={byCard} />
+            )}
+            {/* «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: once the car's cards are known,
+              any other card is on offer — with cards on the car and without. */}
+            {!other && isFuel && cardsState.kind === 'ready' && (
+              <div className="mt-3">
                 <button
                   type="button"
-                  data-receipt-other-back="true"
-                  onClick={backToOwn}
+                  data-receipt-other-open="true"
+                  onClick={openOther}
                   className={OTHER_BUTTON}
                 >
-                  {t('fleet.receipts.otherCard.back')}
+                  <Stroke d={[...PATH.card]} className="h-4 w-4" />
+                  {t('fleet.receipts.otherCard.open')}
                 </button>
               </div>
-              <OtherCardPick
-                cards={otherCards}
-                status={otherStatus}
-                value={cardId}
-                onChange={setCardId}
-                search={search}
-                onSearch={setSearch}
-                enabled={byCard}
-                tone={box}
+            )}
+            <div className="mt-3">
+              <Checkbox
+                className="font-semibold"
+                data-receipt-use-card="true"
+                label={
+                  !isFuel
+                    ? t('fleet.receipts.fields.fundOnly')
+                    : noCards && !other
+                      ? t('fleet.receipts.fields.noCardCustody')
+                      : useCard
+                        ? t('fleet.receipts.fields.useCard')
+                        : t('fleet.receipts.fields.noCardFund')
+                }
+                checked={byCard}
+                disabled={!isFuel || (noCards && !other)}
+                onChange={(e) => setUseCard(e.target.checked)}
               />
             </div>
-          ) : cardsState.kind === 'noCar' ? (
-            <p className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}>
-              {t('fleet.receipts.fields.pickCar')}
-            </p>
-          ) : cardsState.kind === 'loading' ? (
-            <p
-              data-receipt-cards="loading"
-              className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
-            >
-              {t('fleet.receipts.fields.loadingCards')}
-            </p>
-          ) : cardsState.kind === 'failed' ? (
-            <p
-              data-receipt-cards="failed"
-              className={cn(CARD_NOTE, 'text-red-600 dark:text-red-400')}
-            >
-              {t('fleet.receipts.fields.cardsFailed')}
-            </p>
-          ) : noCards ? (
-            <p
-              data-receipt-cards="none"
-              className={cn(CARD_NOTE, 'text-slate-500 dark:text-slate-400')}
-            >
-              {t('fleet.receipts.fields.noCards')}
-            </p>
-          ) : (
-            <CardPick cards={carCards} value={cardId} onChange={setCardId} enabled={byCard} />
-          )}
-          {/* «هل تريد تسجيل كارت اخر حتى لو العربيه عليها كروت»: once the car's cards are known,
-              any other card is on offer — with cards on the car and without. */}
-          {!other && isFuel && cardsState.kind === 'ready' && (
-            <div className="mt-3">
-              <button
-                type="button"
-                data-receipt-other-open="true"
-                onClick={openOther}
-                className={OTHER_BUTTON}
-              >
-                <Stroke d={[...PATH.card]} className="h-4 w-4" />
-                {t('fleet.receipts.otherCard.open')}
-              </button>
-            </div>
-          )}
-          <div className="mt-3">
-            <Checkbox
-              className="font-semibold"
-              data-receipt-use-card="true"
-              label={
-                !isFuel
-                  ? t('fleet.receipts.fields.fundOnly')
-                  : noCards && !other
-                    ? t('fleet.receipts.fields.noCardCustody')
-                    : useCard
-                      ? t('fleet.receipts.fields.useCard')
-                      : t('fleet.receipts.fields.noCardFund')
-              }
-              checked={byCard}
-              disabled={!isFuel || (noCards && !other)}
-              onChange={(e) => setUseCard(e.target.checked)}
-            />
-          </div>
-        </DesignField>
+          </DesignField>
+        </fieldset>
         {/* «الشركة»: shown only while the fund pays for fuel — optional, never starred. */}
         {fundFuel && (
           <DesignField
@@ -843,6 +925,7 @@ export const ReceiptDialog = ({
               onChange={setAmount}
               data-receipt-amount="true"
               tone={amountBox}
+              {...held(locks.amount)}
             />
           </DesignField>
           {/* «ادخال كم (اختيارى عند كتابه مبلغ التفويل)»: beside the amount, fuel only, never

@@ -125,6 +125,40 @@ describe('a receipt row names the card that paid, wherever it sits', () => {
   });
 });
 
+describe('a receipt names the custody memo it is a line of («المذكرات»)', () => {
+  it('on no memo — and on a row written before memos existed — `memo` is null', () => {
+    expect(toReceiptDto(joins()).memo).toBeNull();
+    expect(toReceiptDto(joins({ memo: null })).memo).toBeNull();
+  });
+
+  it('on a memo: its id, number and replenishment day, as the joins found them', () => {
+    const memo = { id: new Types.ObjectId().toString(), no: 7, replenishedAt: '2026-10-05' };
+    expect(toReceiptDto(joins({ memo })).memo).toEqual(memo);
+    expect(toReceiptDto(joins({ memo: { ...memo, replenishedAt: null } })).memo).toEqual({
+      ...memo,
+      replenishedAt: null,
+    });
+  });
+
+  it('the receipt service asks the memo before an edit or a delete, inside the transaction', () => {
+    const source = readFileSync(join(__dirname, 'receipt.service.ts'), 'utf8');
+    const update = source.slice(
+      source.indexOf('  async update('),
+      source.indexOf('  private async giveBack('),
+    );
+    const remove = source.slice(
+      source.indexOf('  async remove('),
+      source.indexOf('  // ── The photo'),
+    );
+    expect(update).toMatch(/findLive\(id, session\)[\s\S]*assertReceiptChangeAllowed\(/u);
+    expect(update).toMatch(/assertReceiptChangeAllowed\([\s\S]*updateById\(/u);
+    expect(remove).toMatch(
+      /findLive\(id, session\)[\s\S]*assertReceiptRemovable\(live, session\)/u,
+    );
+    expect(remove).toMatch(/assertReceiptRemovable\([\s\S]*softDeleteById\(/u);
+  });
+});
+
 describe('a card’s log names the car a receipt line paid for', () => {
   const line = (kind: FleetFuelCardMovementDoc['kind']): FleetFuelCardMovementDoc =>
     ({

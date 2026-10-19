@@ -2,10 +2,14 @@
 // every Fleet record.
 import { Types, type FilterQuery } from 'mongoose';
 import {
+  FLEET_LICENSE_EXPENSE_KINDS,
   type CreateFleetLicenseExpense,
   type FleetLicenseExpenseDto,
+  type FleetLicenseExpenseKind,
   type FleetLicenseExpensePart,
   type FleetLicenseExpensePartDto,
+  type FleetLicenseExpenseSettleStatus,
+  type FleetLicenseExpenseSettlementDto,
   type FleetLicenseExpenseSettingsDto,
   type FleetLicenseExpenseSignatures,
   type FleetLicenseExpenseSummaryQuery,
@@ -26,6 +30,7 @@ import {
   type FleetLicenseExpenseDoc,
   type FleetLicenseExpensePartDoc,
 } from './license-expense.model';
+import { settlementField, settlementOf } from './license-expense-lock';
 
 /** The names the department's own sheets carry — what the set-up starts from. */
 export const DEFAULT_LICENSE_EXPENSE_SIGNATURES: FleetLicenseExpenseSignatures = {
@@ -112,32 +117,71 @@ const snapshot = (doc: FleetLicenseExpenseDoc) => ({
   signatures: signaturesOf(doc.signatures),
 });
 
+/**
+ * «التسوية»: a memo settled, or present and still waiting. A missing settlement field matches
+ * `null`, so a record from before settlements existed reads as waiting.
+ */
+const settledClause = (
+  part: FleetLicenseExpenseKind,
+  status: FleetLicenseExpenseSettleStatus,
+): FilterQuery<FleetLicenseExpenseDoc> => ({
+  [part]: { $ne: null },
+  [settlementField(part)]: status === 'settled' ? { $ne: null } : null,
+});
+
+/**
+ * With «النوع», that memo's own status. Without it, `waiting` is a record with any memo still
+ * waiting and `settled` one with any memo settled — a half-settled record is both.
+ */
+const statusClause = (
+  status: FleetLicenseExpenseSettleStatus,
+  kind: FleetLicenseExpenseKind | undefined,
+): FilterQuery<FleetLicenseExpenseDoc> =>
+  kind !== undefined
+    ? settledClause(kind, status)
+    : { $or: FLEET_LICENSE_EXPENSE_KINDS.map((part) => settledClause(part, status)) };
+
 /** The table's filters, as one database filter — the list's and its figures' alike. */
 const expenseFilter = async (
   query: FleetLicenseExpenseSummaryQuery,
 ): Promise<FilterQuery<FleetLicenseExpenseDoc>> => {
-  const filter: FilterQuery<FleetLicenseExpenseDoc> = {};
+  // One clause per filter, joined by `$and`: the cars and the status both need an `$or` of their
+  // own, and two `$or` keys on one object would overwrite each other.
+  const clauses: FilterQuery<FleetLicenseExpenseDoc>[] = [];
   if (query.vehicleCodes !== undefined) {
     const ids = (await fleetVehicleRepository.idsByCodes(query.vehicleCodes)).map(
       (id) => new Types.ObjectId(id),
     );
-    filter.$or = [
-      { 'renewal.vehicles.vehicleId': { $in: ids } },
-      { 'extension.vehicles.vehicleId': { $in: ids } },
-    ];
+    clauses.push({
+      $or: [
+        { 'renewal.vehicles.vehicleId': { $in: ids } },
+        { 'extension.vehicles.vehicleId': { $in: ids } },
+      ],
+    });
   }
-  if (query.kind !== undefined) filter[query.kind] = { $ne: null };
+  if (query.kind !== undefined) clauses.push({ [query.kind]: { $ne: null } });
+  if (query.status !== undefined) clauses.push(statusClause(query.status, query.kind));
   if (query.from !== undefined || query.to !== undefined) {
-    filter.date = {
-      ...(query.from === undefined ? {} : { $gte: query.from }),
-      ...(query.to === undefined ? {} : { $lt: dayAfter(query.to) }),
-    };
+    clauses.push({
+      date: {
+        ...(query.from === undefined ? {} : { $gte: query.from }),
+        ...(query.to === undefined ? {} : { $lt: dayAfter(query.to) }),
+      },
+    });
   }
-  return filter;
+  if (clauses.length === 0) return {};
+  return clauses.length === 1
+    ? (clauses[0] as FilterQuery<FleetLicenseExpenseDoc>)
+    : { $and: clauses };
 };
 
-/** The registry's codes for a page of memos — one read, not one per car. */
-const codesFor = async (docs: readonly FleetLicenseExpenseDoc[]): Promise<Map<string, string>> => {
+/**
+ * The registry's codes for a page of memos — one read, not one per car. Exported for «تسوية عهدة»,
+ * which writes the codes onto its letter.
+ */
+export const codesFor = async (
+  docs: readonly FleetLicenseExpenseDoc[],
+): Promise<Map<string, string>> => {
   const ids = new Set<string>();
   for (const doc of docs) {
     for (const part of [doc.renewal, doc.extension]) {
@@ -147,9 +191,23 @@ const codesFor = async (docs: readonly FleetLicenseExpenseDoc[]): Promise<Map<st
   return fleetVehicleRepository.codesByIds([...ids]);
 };
 
+const settlementDto = (
+  doc: FleetLicenseExpenseDoc,
+  part: FleetLicenseExpenseKind,
+): FleetLicenseExpenseSettlementDto | null => {
+  const settlement = settlementOf(doc, part);
+  return settlement === null
+    ? null
+    : {
+        operationId: String(settlement.operationId),
+        date: settlement.settledAt.toISOString().slice(0, 10),
+      };
+};
+
 const partDto = (
   part: FleetLicenseExpensePartDoc | null | undefined,
   codes: Map<string, string>,
+  settlement: FleetLicenseExpenseSettlementDto | null,
 ): FleetLicenseExpensePartDto | null =>
   part == null
     ? null
@@ -170,6 +228,7 @@ const partDto = (
           paidBy: item.paidBy,
           receipt: item.receipt,
         })),
+        settlement,
       };
 
 export const toLicenseExpenseDto = (
@@ -178,8 +237,8 @@ export const toLicenseExpenseDto = (
 ): FleetLicenseExpenseDto => ({
   id: String(doc._id),
   date: doc.date.toISOString().slice(0, 10),
-  renewal: partDto(doc.renewal, codes),
-  extension: partDto(doc.extension, codes),
+  renewal: partDto(doc.renewal, codes, settlementDto(doc, 'renewal')),
+  extension: partDto(doc.extension, codes, settlementDto(doc, 'extension')),
   signatures: signaturesOf(doc.signatures),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
@@ -235,6 +294,9 @@ class FleetLicenseExpenseService {
     by: string,
   ): Promise<FleetLicenseExpenseDto> {
     const before = await fleetLicenseExpenseRepository.getById(id);
+    // A record «تسوية عهدة» settled is refused INSIDE the write (the repository's
+    // `writeConditions`) — 422, whatever the version — and a settlement that lands after this
+    // read bumped the version, so the edit is told it is stale instead of overwriting it.
     const updated = await fleetLicenseExpenseRepository.updateById(
       id,
       {
@@ -255,6 +317,7 @@ class FleetLicenseExpenseService {
 
   async remove(id: string, by: string): Promise<void> {
     const before = await fleetLicenseExpenseRepository.getById(id);
+    // Soft, and refused (422) for a settled record — atomically, by the repository's lock.
     await fleetLicenseExpenseRepository.softDeleteById(id, { by });
     await auditService.record({
       entityRef: entityRef(id),

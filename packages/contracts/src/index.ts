@@ -59,6 +59,7 @@ export * from './modules/hr-medical-insurance.js';
 export * from './modules/hr-job-requisition.js';
 export * from './modules/hr-contract.js';
 export * from './modules/fleet.js';
+export * from './modules/fleet-custody-paper-defaults.js';
 export * from './modules/fleet-odometer-bracket.js';
 export * from './modules/it.js';
 export * from './modules/operations.js';

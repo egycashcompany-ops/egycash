@@ -45,6 +45,25 @@ import {
   type FleetCustodySummaryDto,
   type FleetCustodyDashboardDto,
   type FleetCustodyMovementDto,
+  type CreateFleetCustodyCharge,
+  type CreateFleetCustodyMemo,
+  type CreateFleetCustodyReplenishment,
+  type CreateFleetCustodySettlement,
+  type FleetCustodyFundSummaryDto,
+  type FleetCustodyLedgerRowDto,
+  type FleetCustodyLedgerTotalsDto,
+  type FleetCustodyMemoCandidatesDto,
+  type FleetCustodyMemoCandidatesQuery,
+  type FleetCustodyMemoDto,
+  type FleetCustodyMemoRowDto,
+  type FleetCustodyMemoTotalsDto,
+  type FleetCustodyOperationDto,
+  type FleetCustodyOutsideKindDto,
+  type FleetCustodyPaperSettingsDto,
+  type FleetCustodyReplenishCandidatesDto,
+  type FleetCustodySettleCandidatesDto,
+  type SaveFleetCustodyPaperSettings,
+  type UpdateFleetCustodyMemo,
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type OrderFleetCatalog,
@@ -594,6 +613,79 @@ export const listCustodyMovements = (
   params: FleetListParams,
 ): Promise<Paginated<FleetCustodyMovementDto>> =>
   getPage<FleetCustodyMovementDto>(`/fleet/custody/movements${buildQuery(params)}`);
+
+// ── Custody memos («المذكرات») — the receipts gathered onto his papers, per kind ──────────────
+// Their own router under the custody prefix. Reads ride `fleetCustody.view`; writes need it and
+// the matching «إيصالات العهدة» grant as well (`fleetReceipt.create|edit|delete`).
+export const listCustodyMemos = (
+  params: FleetListParams,
+): Promise<Paginated<FleetCustodyMemoRowDto>> =>
+  getPage<FleetCustodyMemoRowDto>(`/fleet/custody/memos${buildQuery(params)}`);
+/** The strip's count, receipts and total over EVERY memo the filters match — never the page. */
+export const custodyMemoTotals = (params: FleetListParams): Promise<FleetCustodyMemoTotalsDto> =>
+  get<FleetCustodyMemoTotalsDto>(`/fleet/custody/memos/summary${buildQuery(params)}`);
+/** «إيصالات لم تدخل أي مذكرة بعد» — one line per custody kind, zeros kept. */
+export const custodyMemosOutside = (): Promise<FleetCustodyOutsideKindDto[]> =>
+  get<FleetCustodyOutsideKindDto[]>('/fleet/custody/memos/outside');
+/** What a memo of `kind` can hold: every receipt in no memo yet (and, editing, its own lines). */
+export const custodyMemoCandidates = (
+  query: FleetCustodyMemoCandidatesQuery,
+): Promise<FleetCustodyMemoCandidatesDto> =>
+  get<FleetCustodyMemoCandidatesDto>(
+    `/fleet/custody/memos/candidates${buildQuery({ kind: query.kind, memoId: query.memoId })}`,
+  );
+export const getCustodyMemo = (id: string): Promise<FleetCustodyMemoDto> =>
+  get<FleetCustodyMemoDto>(`/fleet/custody/memos/${id}`);
+export const createCustodyMemo = (body: CreateFleetCustodyMemo): Promise<FleetCustodyMemoDto> =>
+  post<FleetCustodyMemoDto>('/fleet/custody/memos', body);
+export const updateCustodyMemo = (
+  id: string,
+  body: UpdateFleetCustodyMemo,
+): Promise<FleetCustodyMemoDto> => patch<FleetCustodyMemoDto>(`/fleet/custody/memos/${id}`, body);
+/** A soft delete: the row stays, its receipts go back to «لم تدخل أي مذكرة بعد». */
+export const deleteCustodyMemo = (id: string): Promise<void> =>
+  del<void>(`/fleet/custody/memos/${id}`);
+
+// ── «إعداد المذكرات» — the names every paper prints with ───────────────────────────────────────
+/** His own names (`version: null`) until somebody saves. */
+export const getCustodyPaperSettings = (): Promise<FleetCustodyPaperSettingsDto> =>
+  get<FleetCustodyPaperSettingsDto>('/fleet/custody/paper-settings');
+export const saveCustodyPaperSettings = (
+  body: SaveFleetCustodyPaperSettings,
+): Promise<FleetCustodyPaperSettingsDto> =>
+  put<FleetCustodyPaperSettingsDto>('/fleet/custody/paper-settings', body);
+
+// ── The fund itself: «شحن / استعاضة / تسوية العهدة» and «سجل العهدة» ──────────────────────────
+/** «إجمالي العهدة» and what made it — unfiltered; the tabs' badges and the ledger's tiles. */
+export const getCustodyFundSummary = (): Promise<FleetCustodyFundSummaryDto> =>
+  get<FleetCustodyFundSummaryDto>('/fleet/custody/fund/summary');
+export const listCustodyLedger = (
+  params: FleetListParams,
+): Promise<Paginated<FleetCustodyLedgerRowDto>> =>
+  getPage<FleetCustodyLedgerRowDto>(`/fleet/custody/fund/ledger${buildQuery(params)}`);
+/** How many operations and spend lines the filters match — the count chip, never the page. */
+export const custodyLedgerTotals = (
+  params: FleetListParams,
+): Promise<FleetCustodyLedgerTotalsDto> =>
+  get<FleetCustodyLedgerTotalsDto>(`/fleet/custody/fund/ledger/summary${buildQuery(params)}`);
+export const getCustodyOperation = (id: string): Promise<FleetCustodyOperationDto> =>
+  get<FleetCustodyOperationDto>(`/fleet/custody/fund/operations/${id}`);
+/** The memos not replenished yet, oldest number first, and the receipts in no memo. */
+export const custodyReplenishCandidates = (): Promise<FleetCustodyReplenishCandidatesDto> =>
+  get<FleetCustodyReplenishCandidatesDto>('/fleet/custody/fund/replenish/candidates');
+/** The licence parts not settled yet — renewal and extension of one record are two. */
+export const custodySettleCandidates = (): Promise<FleetCustodySettleCandidatesDto> =>
+  get<FleetCustodySettleCandidatesDto>('/fleet/custody/fund/settle/candidates');
+export const chargeCustody = (body: CreateFleetCustodyCharge): Promise<FleetCustodyOperationDto> =>
+  post<FleetCustodyOperationDto>('/fleet/custody/fund/charge', body);
+export const replenishCustody = (
+  body: CreateFleetCustodyReplenishment,
+): Promise<FleetCustodyOperationDto> =>
+  post<FleetCustodyOperationDto>('/fleet/custody/fund/replenish', body);
+export const settleCustody = (
+  body: CreateFleetCustodySettlement,
+): Promise<FleetCustodyOperationDto> =>
+  post<FleetCustodyOperationDto>('/fleet/custody/fund/settle', body);
 
 // ── Licensing expenses (مصروفات التراخيص) ─────────────────────────────────────
 export const listLicenseExpenses = (

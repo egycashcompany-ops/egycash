@@ -162,6 +162,11 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'fleet.dealershipInvoice': { permission: 'fleetDealership.view' },
   'fleet.fuelCard': { permission: 'fleetFuelCard.view' },
   'fleet.receipt': { permission: 'fleetReceipt.view' },
+  // «المذكرات», «سجل العهدة» and «إعداد المذكرات» are tabs of the custody screen: whoever may see
+  // it refreshes when a memo, a fund operation or the papers' names change.
+  'fleet.custodyMemo': { permission: 'fleetCustody.view' },
+  'fleet.custodyOperation': { permission: 'fleetCustody.view' },
+  'fleet.custodyPaperSettings': { permission: 'fleetCustody.view' },
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   'it.asset': { permission: 'itAsset.view' },

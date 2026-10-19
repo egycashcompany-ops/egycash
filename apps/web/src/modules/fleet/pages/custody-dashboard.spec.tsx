@@ -182,8 +182,10 @@ const dashboard: FleetCustodyDashboardDto = {
   fuel: 1965.5,
   tyres: 1400,
   wash: 120,
-  // The fund — what «شحن العهدة» charged into it — 4,335.50 of it spent: «8.7%».
+  // The fund: 50,000.00 charged into it («شحن العهدة»), 4,335.50 of it spent: «8.7%».
   fundTotal: 50_000,
+  fundCharged: 50_000,
+  fundSpent: 4335.5,
   vehicles: [
     {
       vehicleId: 'v-204',
@@ -305,6 +307,8 @@ const nothing: FleetCustodyDashboardDto = {
   tyres: 0,
   wash: 0,
   fundTotal: 50_000,
+  fundCharged: 50_000,
+  fundSpent: 0,
   vehicles: [],
   vehicleCount: 0,
   counts: { maintenance: 0, fuel: 0, tyres: 0, wash: 0 },
@@ -438,6 +442,8 @@ const board = (
     wash: dashboard.wash,
     vehicles: dashboard.vehicles,
     fundTotal: dashboard.fundTotal,
+    fundCharged: dashboard.fundCharged,
+    fundSpent: dashboard.fundSpent,
     ...over,
   } satisfies FleetCustodySummaryDto);
   qc.setQueryData(
@@ -536,6 +542,8 @@ describe('«لوحة تحكم» on the custody board', () => {
       wash: 0,
       vehicles: [],
       fundTotal: 0,
+      fundCharged: 0,
+      fundSpent: 0,
     } satisfies FleetCustodySummaryDto);
     const html = mount(qc, <CustodyPage />);
     const stats = html.indexOf('data-custody-stats-toggle="true"');
@@ -1642,13 +1650,16 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
       'tyres',
       'wash',
     ]);
-    // The fund is the fund: with money in it, it is written whole, and nothing of it spent yet is
-    // «0%».
+    // The fund is the fund: with money in it, it is written whole, and nothing spent yet of what
+    // was charged into it is «0%» («صُرف من إجمالي الشحن»).
     const fund = card(html, 'fund');
     expect(fund).toContain('50,000.00');
     expect(fund).toMatch(/data-custody-fund-pct="true"[^>]*>0%</u);
     // Nothing charged into it yet («شحن العهدة»): «0.00 ج.م.», never «—» — and its share «—».
-    const empty = card(draw(<CustodyKpis data={{ ...nothing, fundTotal: 0 }} />), 'fund');
+    const empty = card(
+      draw(<CustodyKpis data={{ ...nothing, fundTotal: 0, fundCharged: 0 }} />),
+      'fund',
+    );
     expect(empty).toMatch(/data-custody-fund-value="true"[^>]*>0\.00</u);
     expect(empty).toMatch(/data-custody-fund-pct="true"[^>]*>—</u);
     // The total and each kind: «0.00», their share of nothing «—», their count «0 حركات».
@@ -2983,6 +2994,8 @@ describe('«السجل» — every car’s own log, over the board', () => {
       wash: dashboard.wash,
       vehicles: [...dashboard.vehicles, book, nameless],
       fundTotal: dashboard.fundTotal,
+      fundCharged: dashboard.fundCharged,
+      fundSpent: dashboard.fundSpent,
     } satisfies FleetCustodySummaryDto);
     const html = mount(qc, <CustodyPage />);
     const table = html.slice(
@@ -3388,6 +3401,8 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
           wash: 0,
           vehicles: [],
           fundTotal: 0,
+          fundCharged: 0,
+          fundSpent: 0,
         }}
       />,
     );

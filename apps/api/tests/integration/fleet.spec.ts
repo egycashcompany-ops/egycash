@@ -10681,9 +10681,31 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     ]) {
       const summary = data<FleetCustodySummaryDto>(await read('summary', query));
       const dashboard = data<Dashboard>(await read('dashboard', query));
-      const { count, total, maintenance, fuel, tyres, wash, vehicles, fundTotal } = dashboard;
+      const {
+        count,
+        total,
+        maintenance,
+        fuel,
+        tyres,
+        wash,
+        vehicles,
+        fundTotal,
+        fundCharged,
+        fundSpent,
+      } = dashboard;
       expect(
-        { count, total, maintenance, fuel, tyres, wash, vehicles, fundTotal },
+        {
+          count,
+          total,
+          maintenance,
+          fuel,
+          tyres,
+          wash,
+          vehicles,
+          fundTotal,
+          fundCharged,
+          fundSpent,
+        },
         JSON.stringify(query),
       ).toEqual(summary);
       const movements = await read('movements', { ...query, pageSize: '1' });
@@ -11253,8 +11275,14 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     ).toBe(403);
   });
 
-  it('«إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund on the figures and the dashboard, 0 until «شحن العهدة» charges it', async () => {
-    type Fund = { fundTotal: number; total: number; count: number };
+  it('«إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund on the figures and the dashboard — Σ شحن − Σ custody receipts + Σ استعاضة − Σ تسوية, whatever the filters', async () => {
+    type Fund = {
+      fundTotal: number;
+      fundCharged: number;
+      fundSpent: number;
+      total: number;
+      count: number;
+    };
     const custodyViewer = await rbacService.createRole(
       { name: { en: 'Custody reader', ar: 'قارئ العهدة' }, permissionKeys: ['fleetCustody.view'] },
       adminUserId,
@@ -11274,19 +11302,26 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       expect(res.status, `${path} ${JSON.stringify(query)}`).toBe(200);
       return data<Fund>(res);
     };
+    const round = (value: number): number => Math.round(value * 100) / 100;
 
-    // Nothing has been charged into the fund — the action does not exist yet — so it is 0 on both,
-    // a number and never `null`, whatever the movements spent.
-    expect((await read('summary')).fundTotal).toBe(0);
-    expect((await read('dashboard')).fundTotal).toBe(0);
+    // Nothing has been charged into the fund in this suite, and no memo replenished nor licensing
+    // memo settled: the fund is everything the custody receipts paid, below zero — numbers, never
+    // `null`. Unfiltered, the board's own total IS every custody receipt there is.
+    const whole = await read('summary');
+    expect(whole.fundCharged).toBe(0);
+    expect(whole.fundSpent).toBeGreaterThan(0);
+    expect(whole.fundSpent).toBe(whole.total);
+    expect(whole.fundTotal).toBe(round(whole.fundCharged - whole.fundSpent));
+    const fund = { fundTotal: whole.fundTotal, fundCharged: 0, fundSpent: whole.fundSpent };
+    expect(await read('dashboard')).toMatchObject(fund);
     // It is the fund, not a sum of the movements: a filter that matches nothing leaves it as it is.
     const nothing = await read('summary', adminToken, { vehicleCodes: 'لا-سيارة-بهذا-الرقم' });
-    expect(nothing).toMatchObject({ count: 0, total: 0, fundTotal: 0 });
+    expect(nothing).toMatchObject({ count: 0, total: 0, ...fund });
     expect(
-      (await read('dashboard', adminToken, { from: '2001-01-01', to: '2001-01-31' })).fundTotal,
-    ).toBe(0);
+      await read('dashboard', adminToken, { from: '2001-01-01', to: '2001-01-31' }),
+    ).toMatchObject(fund);
     // A custody viewer reads it under the custody grant alone.
-    expect((await read('summary', viewerToken)).fundTotal).toBe(0);
-    expect((await read('dashboard', viewerToken)).fundTotal).toBe(0);
+    expect(await read('summary', viewerToken)).toMatchObject(fund);
+    expect(await read('dashboard', viewerToken)).toMatchObject(fund);
   });
 });

@@ -3707,9 +3707,25 @@ export interface FleetReceiptDto {
    */
   company: FleetFuelCardCompany | null;
   image: FleetLicenseImageDto | null;
+  /**
+   * The custody memo («المذكرات») this receipt is a line of — `null` while it is in none («لم تدخل
+   * أي مذكرة بعد»), and always on a card receipt. The receipts screen shows it and locks what the
+   * memo holds: on a memo, the receipt's kind and source stay and it cannot be deleted; once that
+   * memo is replenished (`replenishedAt`, the replenishment's day, YYYY-MM-DD), its amount, date
+   * and car stay too.
+   */
+  memo: FleetReceiptMemoLinkDto | null;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A receipt's custody memo, as the receipts screen names it: «مذكرة … رقم `no`». */
+export interface FleetReceiptMemoLinkDto {
+  id: string;
+  no: number;
+  /** The day its replenishment («استعاضة») was recorded, YYYY-MM-DD; `null` while still pending. */
+  replenishedAt: string | null;
 }
 
 /** The figures between the filters and the table on the receipts screen. */
@@ -3785,11 +3801,15 @@ export interface FleetCustodySummaryDto {
   wash: number;
   vehicles: FleetCustodyVehicleRowDto[];
   /**
-   * «إجمالي العهدة» — the fund itself, in EGP, never below zero: the sum of what «شحن العهدة»
-   * charges into it. That action does not exist yet, so it is 0 for now. It is the fund, not a sum
-   * of the movements: no filter changes it.
+   * «إجمالي العهدة» — the fund itself, in EGP, to the piastre: Σ «شحن العهدة» − Σ custody receipts
+   * + Σ «استعاضة عهدة» − Σ «تسوية عهدة». It may be negative (more was spent than was ever charged
+   * into it). It is the fund, not a sum of the movements: no filter changes it.
    */
   fundTotal: number;
+  /** Σ «شحن العهدة» — everything ever charged into the fund. Unfiltered, like `fundTotal`. */
+  fundCharged: number;
+  /** Σ every live custody receipt — everything the fund ever paid. Unfiltered, like `fundTotal`. */
+  fundSpent: number;
 }
 
 /** One line of «كل الحركات» — a receipt the fund paid. */
@@ -4020,12 +4040,25 @@ export const UpdateFleetLicenseExpenseSchema = z
   .refine(eitherKind, { message: 'a renewal, an extension, or both', path: ['renewal'] });
 export type UpdateFleetLicenseExpense = z.infer<typeof UpdateFleetLicenseExpenseSchema>;
 
+/**
+ * «الحالة» of a licensing memo against the custody fund: still waiting for its «تسوية عهدة», or
+ * settled by one. Nothing is stored for `waiting` — a memo no settlement names is waiting.
+ */
+export const FLEET_LICENSE_EXPENSE_SETTLE_STATUSES = ['waiting', 'settled'] as const;
+export const FleetLicenseExpenseSettleStatusSchema = z.enum(FLEET_LICENSE_EXPENSE_SETTLE_STATUSES);
+export type FleetLicenseExpenseSettleStatus = z.infer<typeof FleetLicenseExpenseSettleStatusSchema>;
+
 /** The table's filters — shared by the list and its figures, so both read the same rows. */
 const licenseExpenseFilters = {
   /** Records carrying any of these cars, in either memo. */
   vehicleCodes: vehicleCodesQuery(),
   /** Records carrying this memo. */
   kind: FleetLicenseExpenseKindSchema.optional(),
+  /**
+   * With `kind`: that memo is settled, or present and not settled. Without it: `waiting` is a
+   * record with any present memo not settled, `settled` a record with any memo settled.
+   */
+  status: FleetLicenseExpenseSettleStatusSchema.optional(),
   /** The memo's date, from and to, both days included. */
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
@@ -4067,9 +4100,22 @@ export interface FleetLicenseExpenseItemDto {
   receipt: boolean;
 }
 
+/** The «تسوية عهدة» that settled one memo of a record. */
+export interface FleetLicenseExpenseSettlementDto {
+  /** The custody operation (`FleetCustodyOperationDto.id`, kind `settle`). */
+  operationId: string;
+  /** The settlement's day, YYYY-MM-DD. */
+  date: string;
+}
+
 export interface FleetLicenseExpensePartDto {
   vehicles: FleetLicenseExpenseVehicleDto[];
   items: FleetLicenseExpenseItemDto[];
+  /**
+   * `null` while the custody fund has not settled this memo («لم تُسوَّ بعد»). A record with any
+   * memo settled can no longer be edited or deleted — both of its memos are locked.
+   */
+  settlement: FleetLicenseExpenseSettlementDto | null;
 }
 
 export interface FleetLicenseExpenseDto {
@@ -4132,3 +4178,583 @@ export const SaveFleetLicenseExpenseSettingsSchema = z
   })
   .strict();
 export type SaveFleetLicenseExpenseSettings = z.infer<typeof SaveFleetLicenseExpenseSettingsSchema>;
+
+// ── Custody memos (المذكرات), the fund's operations (سجل العهدة) and their papers ──────────────
+//
+// «المذكرات» group the custody receipts into the department's memos — one kind each (كاوتش، وقود،
+// صيانة، غسيل), numbered, printed on his own Excel papers. «استعاضة عهدة» brings a set of memos
+// back into the fund, «تسوية عهدة» takes the licensing memos out of it, «شحن العهدة» charges it;
+// each prints his Word letter. «سجل العهدة» is the fund's running ledger over all of it.
+//
+// DAYS. Every `date`, `from`, `to`, `dateTo` and `replenishedAt` below is a calendar day written
+// `YYYY-MM-DD` (the UTC ISO string sliced to 10) — NEVER a full ISO timestamp: the papers split
+// them on '-'. Only `createdAt` / `updatedAt` are full ISO strings.
+//
+// Nothing here is required beyond what the arithmetic needs: a memo needs its kind and one
+// receipt, a charge its amount, a replenishment one memo, a settlement one licensing memo.
+
+const custodyText = (max: number) => z.string().trim().max(max).default('');
+const custodyFromTo = (
+  value: { from?: Date | null | undefined; to?: Date | null | undefined },
+  ctx: z.RefinementCtx,
+): void => {
+  if (value.from != null && value.to != null && value.from.getTime() > value.to.getTime()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['to'],
+      message: 'from must not be after to',
+    });
+  }
+};
+
+/**
+ * ONE cap for a memo's size: the lines one memo may hold, the waiting receipts the editor is sent
+ * (`FleetCustodyMemoCandidatesDto.truncated` beyond it), and what the editor's «تحديد الكل» may
+ * tick. One number, so a memo the editor lets you build is always one the API accepts.
+ */
+export const FLEET_CUSTODY_MEMO_MAX_LINES = 3000;
+
+// Papers and their signatures («إعداد المذكرات»)
+
+/** His three Word letters. */
+export const FLEET_CUSTODY_LETTERS = ['replenish', 'settle', 'charge'] as const;
+export const FleetCustodyLetterSchema = z.enum(FLEET_CUSTODY_LETTERS);
+export type FleetCustodyLetter = z.infer<typeof FleetCustodyLetterSchema>;
+/** «إعداد المذكرات» order — the sample's: كاوتش، وقود، صيانة، غسيل، then the three letters. */
+export const FLEET_CUSTODY_PAPERS = [
+  'tyres',
+  'fuel',
+  'maintenance',
+  'wash',
+  'replenish',
+  'settle',
+  'charge',
+] as const;
+export const FleetCustodyPaperSchema = z.enum(FLEET_CUSTODY_PAPERS);
+export type FleetCustodyPaper = z.infer<typeof FleetCustodyPaperSchema>;
+/** المُعِدّ، مدير إدارة الحركة، مدير الإدارة المالية، المدير العام. */
+export const FLEET_CUSTODY_SIGN_ROLES = ['preparer', 'director', 'finance', 'endorser'] as const;
+export const FleetCustodySignRoleSchema = z.enum(FLEET_CUSTODY_SIGN_ROLES);
+export type FleetCustodySignRole = z.infer<typeof FleetCustodySignRoleSchema>;
+const MEMO_SIGN_ROLES = ['preparer', 'director', 'endorser'] as const;
+const LETTER_SIGN_ROLES = ['director', 'finance', 'endorser'] as const;
+/**
+ * Each paper's signature blocks, in print order: a memo's preparer · director · endorser, a
+ * letter's director · finance · endorser.
+ */
+export const FLEET_CUSTODY_PAPER_ROLES: Readonly<
+  Record<FleetCustodyPaper, readonly FleetCustodySignRole[]>
+> = {
+  tyres: MEMO_SIGN_ROLES,
+  fuel: MEMO_SIGN_ROLES,
+  maintenance: MEMO_SIGN_ROLES,
+  wash: MEMO_SIGN_ROLES,
+  replenish: LETTER_SIGN_ROLES,
+  settle: LETTER_SIGN_ROLES,
+  charge: LETTER_SIGN_ROLES,
+};
+/** A memo paper (one of the four Excel memos) — the rest are the letters. */
+export const isFleetCustodyMemoPaper = (paper: FleetCustodyPaper): paper is FleetCustodySource =>
+  (FLEET_CUSTODY_SOURCES as readonly string[]).includes(paper);
+
+export const FleetCustodySignBlockSchema = z
+  .object({
+    role: FleetCustodySignRoleSchema,
+    /** The office — «مشرف الصيانه». Trims the ENDS only: his inner double spaces are kept. */
+    office: z.string().trim().max(200),
+    /** The name exactly as it prints — «النقيب / صلاح صبري علي». */
+    name: z.string().trim().max(300),
+    /** Printed on this paper? The settle letter leaves the general manager off. */
+    on: z.boolean(),
+  })
+  .strict();
+export type FleetCustodySignBlock = z.infer<typeof FleetCustodySignBlockSchema>;
+export const FleetCustodyPaperSignaturesSchema = z
+  .object({
+    blocks: z.array(FleetCustodySignBlockSchema).min(1).max(4),
+    /** The memos' underlined review line over the endorser; '' on fuel and the letters. */
+    note: z.string().trim().max(300),
+  })
+  .strict();
+export type FleetCustodyPaperSignatures = z.infer<typeof FleetCustodyPaperSignaturesSchema>;
+const paperSignaturesFor = (paper: FleetCustodyPaper) =>
+  FleetCustodyPaperSignaturesSchema.superRefine((value, ctx) => {
+    const want = FLEET_CUSTODY_PAPER_ROLES[paper];
+    if (
+      value.blocks.length !== want.length ||
+      value.blocks.some((block, i) => block.role !== want[i])
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['blocks'],
+        message: `roles must be ${want.join(',')}`,
+      });
+    }
+    if (isFleetCustodyMemoPaper(paper)) {
+      value.blocks.forEach((block, i) => {
+        if ((block.role === 'preparer' || block.role === 'director') && !block.on) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['blocks', i, 'on'],
+            message: 'always printed on a memo',
+          });
+        }
+      });
+    }
+  });
+export const FleetCustodyPaperSetSchema = z
+  .object({
+    tyres: paperSignaturesFor('tyres'),
+    fuel: paperSignaturesFor('fuel'),
+    maintenance: paperSignaturesFor('maintenance'),
+    wash: paperSignaturesFor('wash'),
+    replenish: paperSignaturesFor('replenish'),
+    settle: paperSignaturesFor('settle'),
+    charge: paperSignaturesFor('charge'),
+  })
+  .strict();
+export type FleetCustodyPaperSet = z.infer<typeof FleetCustodyPaperSetSchema>;
+export interface FleetCustodyPaperSettingsDto {
+  papers: FleetCustodyPaperSet;
+  /** `null` before anybody saved: the papers are then his defaults. */
+  version: number | null;
+}
+export const SaveFleetCustodyPaperSettingsSchema = z
+  .object({
+    papers: FleetCustodyPaperSetSchema,
+    version: z.number().int().min(0).optional(),
+  })
+  .strict();
+export type SaveFleetCustodyPaperSettings = z.infer<typeof SaveFleetCustodyPaperSettingsSchema>;
+
+// Memos
+
+/** «لم تُستعَض بعد» / «تمت الاستعاضة». */
+export const FLEET_CUSTODY_MEMO_STATUSES = ['pending', 'replenished'] as const;
+export const FleetCustodyMemoStatusSchema = z.enum(FLEET_CUSTODY_MEMO_STATUSES);
+export type FleetCustodyMemoStatus = z.infer<typeof FleetCustodyMemoStatusSchema>;
+
+/** One receipt on a memo, with the cells his paper of that kind writes by hand. */
+export const FleetCustodyMemoLineSchema = z
+  .object({
+    receiptId: objectId(),
+    /** «المأمورية» — fuel only. */
+    mission: custodyText(120),
+    /** «البيان» — maintenance only. */
+    statement: custodyText(500),
+    /** «ملاحظات» — fuel and maintenance. */
+    note: custodyText(300),
+  })
+  .strict();
+export type FleetCustodyMemoLineInput = z.input<typeof FleetCustodyMemoLineSchema>;
+export type FleetCustodyMemoLine = z.infer<typeof FleetCustodyMemoLineSchema>;
+
+const custodyMemoBody = {
+  /** The memo's kind — one custody kind. */
+  kind: FleetCustodySourceSchema,
+  /** «اسم المذكرة» — free text, optional, shown in the app only and NEVER printed. */
+  name: custodyText(120),
+  /** «تاريخ المذكرة». Create: absent is today (UTC day). Update: absent keeps the stored one. */
+  date: z.coerce.date().optional(),
+  /** The period. Absent or null: from its first line's day (and recomputed on update). */
+  from: z.coerce.date().nullish(),
+  /** Absent or null: its last line's day (and recomputed on update). */
+  to: z.coerce.date().nullish(),
+  lines: z.array(FleetCustodyMemoLineSchema).min(1).max(FLEET_CUSTODY_MEMO_MAX_LINES),
+};
+const custodyMemoRules = (
+  value: {
+    kind: FleetCustodySource;
+    from?: Date | null | undefined;
+    to?: Date | null | undefined;
+    lines: FleetCustodyMemoLine[];
+  },
+  ctx: z.RefinementCtx,
+): void => {
+  const seen = new Set<string>();
+  value.lines.forEach((line, i) => {
+    // A unique multikey index does not refuse the same receipt twice inside ONE memo, so this does.
+    const id = line.receiptId.toLowerCase();
+    if (seen.has(id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lines', i, 'receiptId'],
+        message: 'a receipt appears once in a memo',
+      });
+    }
+    seen.add(id);
+    if (line.mission !== '' && value.kind !== 'fuel') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lines', i, 'mission'],
+        message: 'mission is for fuel memos',
+      });
+    }
+    if (line.statement !== '' && value.kind !== 'maintenance') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lines', i, 'statement'],
+        message: 'statement is for maintenance memos',
+      });
+    }
+    if (line.note !== '' && value.kind !== 'fuel' && value.kind !== 'maintenance') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lines', i, 'note'],
+        message: 'note is for fuel and maintenance memos',
+      });
+    }
+  });
+  custodyFromTo(value, ctx);
+};
+export const CreateFleetCustodyMemoSchema = z
+  .object(custodyMemoBody)
+  .strict()
+  .superRefine(custodyMemoRules);
+export type CreateFleetCustodyMemo = z.infer<typeof CreateFleetCustodyMemoSchema>;
+/**
+ * The whole memo again. `kind` must equal the memo's own — the service refuses a change (422).
+ * `date` absent keeps the stored day; `from` / `to` absent or null are recomputed from the lines.
+ */
+export const UpdateFleetCustodyMemoSchema = z
+  .object({ ...custodyMemoBody, version: z.number().int().min(0) })
+  .strict()
+  .superRefine(custodyMemoRules);
+export type UpdateFleetCustodyMemo = z.infer<typeof UpdateFleetCustodyMemoSchema>;
+
+const custodyMemoFilters = {
+  kind: listQuery(FleetCustodySourceSchema),
+  status: FleetCustodyMemoStatusSchema.optional(),
+  /** Period overlap: the memo's `to` on or after `from` … */
+  from: z.coerce.date().optional(),
+  /** … and its `from` on or before `to` (the whole day). */
+  to: z.coerce.date().optional(),
+};
+export const ListFleetCustodyMemosQuerySchema = PaginationQuerySchema.extend({
+  ...custodyMemoFilters,
+  /** `no`, `date`, `createdAt`; default `no:desc`. */
+  sort: fleetSortQuery(),
+}).strict();
+export type ListFleetCustodyMemosQuery = z.infer<typeof ListFleetCustodyMemosQuerySchema>;
+export const FleetCustodyMemoSummaryQuerySchema = z.object(custodyMemoFilters).strict();
+export type FleetCustodyMemoSummaryQuery = z.infer<typeof FleetCustodyMemoSummaryQuerySchema>;
+export const FleetCustodyMemoCandidatesQuerySchema = z
+  .object({
+    kind: FleetCustodySourceSchema,
+    /** The memo being edited: its own lines come back too (`inThisMemo`). */
+    memoId: objectId().optional(),
+  })
+  .strict();
+export type FleetCustodyMemoCandidatesQuery = z.infer<typeof FleetCustodyMemoCandidatesQuerySchema>;
+
+export interface FleetCustodyMemoRowDto {
+  id: string;
+  no: number;
+  kind: FleetCustodySource;
+  /** '' when saved without a name — the app then says «مذكرة <النوع> رقم N». Never printed. */
+  name: string;
+  /** YYYY-MM-DD, all three. */
+  date: string;
+  from: string;
+  to: string;
+  /** Live from its receipts. */
+  receipts: number;
+  /** Live from its receipts, to the piastre. */
+  total: number;
+  /** The «استعاضة عهدة» that brought it back (`date` YYYY-MM-DD); `null` while pending. */
+  replenishment: { id: string; date: string } | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface FleetCustodyMemoLineDto {
+  receiptId: string;
+  /** The receipt's day, YYYY-MM-DD. */
+  date: string;
+  vehicleId: string;
+  vehicleCode: string | null;
+  driverEmployeeId: string | null;
+  driverName: string | null;
+  amount: number;
+  fuelType: FleetFuelType | null;
+  litres: number | null;
+  mission: string;
+  statement: string;
+  note: string;
+}
+export interface FleetCustodyMemoDto extends FleetCustodyMemoRowDto {
+  /** Receipt day ascending, then the receipt's `createdAt`. */
+  lines: FleetCustodyMemoLineDto[];
+  /** The signatures it prints with — taken when it was created, never refreshed. */
+  signatures: FleetCustodyPaperSignatures;
+}
+export interface FleetCustodyMemoTotalsDto {
+  count: number;
+  receipts: number;
+  total: number;
+}
+/**
+ * «إيصالات لم تدخل أي مذكرة بعد» — one per custody kind, in `FLEET_CUSTODY_SOURCES` order, zeros
+ * kept.
+ */
+export interface FleetCustodyOutsideKindDto {
+  kind: FleetCustodySource;
+  count: number;
+  total: number;
+}
+export interface FleetCustodyMemoCandidateDto {
+  id: string;
+  /** The receipt's day, YYYY-MM-DD. */
+  date: string;
+  vehicleId: string;
+  vehicleCode: string | null;
+  driverEmployeeId: string | null;
+  driverName: string | null;
+  amount: number;
+  fuelType: FleetFuelType | null;
+  litres: number | null;
+  company: FleetFuelCardCompany | null;
+  /** Fuel only. */
+  suggestedMission: string | null;
+  /** On an edit: already a line of `memoId`. */
+  inThisMemo: boolean;
+}
+export interface FleetCustodyMemoCandidatesDto {
+  /** The «رقم N» preview — may change if somebody saves first. */
+  nextNo: number;
+  /** Day ascending, then `createdAt`; at most `FLEET_CUSTODY_MEMO_MAX_LINES`. */
+  receipts: FleetCustodyMemoCandidateDto[];
+  missionOptions: string[];
+  /** More than `FLEET_CUSTODY_MEMO_MAX_LINES` were waiting; only the oldest came back. */
+  truncated: boolean;
+}
+
+// Fund operations
+
+export const FLEET_CUSTODY_OPERATION_KINDS = ['charge', 'replenish', 'settle'] as const;
+export const FleetCustodyOperationKindSchema = z.enum(FLEET_CUSTODY_OPERATION_KINDS);
+export type FleetCustodyOperationKind = z.infer<typeof FleetCustodyOperationKindSchema>;
+/** The ledger's rows: the three operations, and the receipts the fund paid («صرف»). */
+export const FLEET_CUSTODY_LEDGER_OPS = ['charge', 'replenish', 'settle', 'spend'] as const;
+export const FleetCustodyLedgerOpSchema = z.enum(FLEET_CUSTODY_LEDGER_OPS);
+export type FleetCustodyLedgerOp = z.infer<typeof FleetCustodyLedgerOpSchema>;
+
+/** A letter's date (absent: today) and the period it names (optional). */
+const letterHead = {
+  date: z.coerce.date().optional(),
+  from: z.coerce.date().nullish(),
+  to: z.coerce.date().nullish(),
+};
+export const CreateFleetCustodyChargeSchema = z
+  .object({
+    date: z.coerce.date().optional(),
+    /** The only required figure. To the piastre. */
+    amount: egp()
+      .positive()
+      .max(1_000_000_000)
+      .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, {
+        message: 'At most two decimal places',
+      }),
+    /** «وذلك نظير …» — the service stores it without a leading «نظير». */
+    reason: custodyText(500),
+  })
+  .strict();
+export type CreateFleetCustodyCharge = z.infer<typeof CreateFleetCustodyChargeSchema>;
+export const CreateFleetCustodyReplenishmentSchema = z
+  .object({ ...letterHead, memoIds: z.array(objectId()).min(1).max(500) })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.memoIds.forEach((memoId, i) => {
+      const id = memoId.toLowerCase();
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['memoIds', i],
+          message: 'a memo is listed twice',
+        });
+      }
+      seen.add(id);
+    });
+    custodyFromTo(value, ctx);
+  });
+export type CreateFleetCustodyReplenishment = z.infer<typeof CreateFleetCustodyReplenishmentSchema>;
+export const CreateFleetCustodySettlementSchema = z
+  .object({
+    ...letterHead,
+    parts: z
+      .array(z.object({ expenseId: objectId(), part: FleetLicenseExpenseKindSchema }).strict())
+      .min(1)
+      .max(500),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.parts.forEach((part, i) => {
+      const key = `${part.expenseId.toLowerCase()}:${part.part}`;
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['parts', i],
+          message: 'a licensing memo is listed twice',
+        });
+      }
+      seen.add(key);
+    });
+    custodyFromTo(value, ctx);
+  });
+export type CreateFleetCustodySettlement = z.infer<typeof CreateFleetCustodySettlementSchema>;
+
+/** A memo as its replenishment recorded it. */
+export interface FleetCustodyReplenishedMemoDto {
+  memoId: string;
+  no: number;
+  kind: FleetCustodySource;
+  name: string;
+  /** YYYY-MM-DD, both. */
+  from: string;
+  to: string;
+  receipts: number;
+  amount: number;
+}
+/** A licensing memo as its settlement recorded it. */
+export interface FleetCustodySettledPartDto {
+  expenseId: string;
+  part: FleetLicenseExpenseKind;
+  /** The licensing record's day, YYYY-MM-DD. */
+  date: string;
+  cars: number;
+  codes: string[];
+  visaTotal: number;
+  cashTotal: number;
+  amount: number;
+}
+export interface FleetCustodyOperationDto {
+  id: string;
+  kind: FleetCustodyOperationKind;
+  /** YYYY-MM-DD, all three; the period is `null` when none was given. */
+  date: string;
+  from: string | null;
+  to: string | null;
+  /** Positive, as entered or summed; the sign is the kind's. */
+  amount: number;
+  /** A charge's «وذلك نظير» (without «نظير»); '' on the rest. */
+  reason: string;
+  /** A replenishment's memos, by `no`; empty on the rest. */
+  memos: FleetCustodyReplenishedMemoDto[];
+  /** A settlement's licensing memos — day ascending, renewal first; empty on the rest. */
+  parts: FleetCustodySettledPartDto[];
+  /** «إجمالي العهدة» just before it. */
+  fundBefore: number;
+  /** Σ «شحن العهدة» at the time (this charge excluded). */
+  chargedTotal: number;
+  /**
+   * The letter's bracket figure, kept so a reprint never changes: a replenishment's «عهده اداره
+   * الحركه ( X )» is `chargedTotal`, a settlement's «من العهده ( X )» is `fundBefore`; `null` on a
+   * charge.
+   */
+  letterFigure: number | null;
+  /** The signatures it prints with — taken when it was recorded, never refreshed. */
+  signatures: FleetCustodyPaperSignatures;
+  /** Its place in the fund, from the ledger's fold — on `GET :id` and the create answer. */
+  ledger: { before: number; after: number } | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// The ledger («سجل العهدة») and the fund's figures
+
+const custodyLedgerFilters = {
+  op: listQuery(FleetCustodyLedgerOpSchema),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+};
+export const ListFleetCustodyLedgerQuerySchema = PaginationQuerySchema.extend({
+  ...custodyLedgerFilters,
+  /** `date:asc` or `date:desc` only; default `date:desc`. */
+  sort: fleetSortQuery(),
+}).strict();
+export type ListFleetCustodyLedgerQuery = z.infer<typeof ListFleetCustodyLedgerQuerySchema>;
+export const FleetCustodyLedgerSummaryQuerySchema = z.object(custodyLedgerFilters).strict();
+export type FleetCustodyLedgerSummaryQuery = z.infer<typeof FleetCustodyLedgerSummaryQuerySchema>;
+/** One kind's receipts in a «صرف» row; `outside` = how many of them are in no memo. */
+export interface FleetCustodyKindSpendDto {
+  count: number;
+  amount: number;
+  outside: number;
+}
+export interface FleetCustodyLedgerRowDto {
+  /** The operation's id, or `spend:<from>:<to>`. */
+  id: string;
+  op: FleetCustodyLedgerOp;
+  /** YYYY-MM-DD; a «صرف» row runs from `date` to `dateTo` (its first and last day). */
+  date: string;
+  dateTo: string | null;
+  /** Signed: a charge and a replenishment +, a settlement and spending −. */
+  amount: number;
+  /** The running «إجمالي العهدة» over the WHOLE history, whatever the filters. */
+  before: number;
+  after: number;
+  /** The last row of the whole history («الآن»). */
+  latest: boolean;
+  /** A charge's reason; `null` on the rest. */
+  reason: string | null;
+  /** The letter's period, YYYY-MM-DD; `null` when none. */
+  from: string | null;
+  to: string | null;
+  /** A replenishment's memos. */
+  memos: { count: number; kinds: FleetCustodySource[] } | null;
+  /** A settlement's licensing memos, per kind. */
+  licence: Record<FleetLicenseExpenseKind, { count: number; cars: number }> | null;
+  /** A «صرف» row's receipts. */
+  receipts: number | null;
+  byKind: Record<FleetCustodySource, FleetCustodyKindSpendDto> | null;
+  memoNos: number[] | null;
+}
+export interface FleetCustodyLedgerTotalsDto {
+  operations: number;
+  spendLines: number;
+}
+export interface FleetCustodyCountAmountDto {
+  count: number;
+  amount: number;
+}
+export interface FleetCustodyFundSummaryDto {
+  /** «إجمالي العهدة» — may be negative. */
+  fundTotal: number;
+  charged: FleetCustodyCountAmountDto;
+  /** `count` = receipts. */
+  spent: FleetCustodyCountAmountDto;
+  replenished: FleetCustodyCountAmountDto & { memos: number };
+  settled: FleetCustodyCountAmountDto & { parts: number };
+  /** `charged.count + replenished.count + settled.count`. */
+  operations: number;
+  memos: { count: number; pending: number; pendingTotal: number };
+  outside: FleetCustodyOutsideKindDto[];
+}
+export interface FleetCustodyReplenishCandidatesDto {
+  /** The memos not replenished yet, oldest `no` first. */
+  memos: FleetCustodyMemoRowDto[];
+  outside: FleetCustodyOutsideKindDto[];
+  fundTotal: number;
+  chargedTotal: number;
+}
+export interface FleetCustodySettleCandidateDto {
+  expenseId: string;
+  part: FleetLicenseExpenseKind;
+  /** The licensing record's day, YYYY-MM-DD. */
+  date: string;
+  cars: number;
+  codes: string[];
+  visaTotal: number;
+  cashTotal: number;
+  total: number;
+  /** The whole record, so the eye preview needs no licensing grant. */
+  expense: FleetLicenseExpenseDto;
+}
+export interface FleetCustodySettleCandidatesDto {
+  /** The licensing memos not settled yet — day ascending, renewal before extension. */
+  parts: FleetCustodySettleCandidateDto[];
+  fundTotal: number;
+}

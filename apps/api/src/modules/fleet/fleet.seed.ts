@@ -14,6 +14,7 @@ import { ensureNoticeDocsCategory } from './notices/notice-files';
 import { ensureReceiptDocsCategory } from './receipts/receipt-files';
 import { ensureFuelCardDocsCategory } from './fuel-cards/fuel-card-files';
 import { runFleetMigrations } from './fleet.migration';
+import { ensureCustodyMemoCounter } from './custody/custody-memo.service';
 
 export const seedFleet = async (): Promise<void> => {
   // THE GO-LIVE RESET, FIRST. Once per database it clears the owner's test data off eight Fleet
@@ -144,6 +145,11 @@ export const seedFleet = async (): Promise<void> => {
   }
 
   await runFleetMigrations();
+
+  // «مذكرة … رقم N»'s counter — AFTER the index step above, so its unique key exists before the
+  // first upsert and two processes booting on a fresh database cannot write two counters. Raised
+  // to the highest number already used, never lowered; create-if-missing, no row is touched.
+  await ensureCustodyMemoCounter();
 
   // THE VEHICLE REGISTRY IS NOT STARTED HERE, and the reason is worth the paragraph.
   //

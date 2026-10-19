@@ -6,9 +6,17 @@
 // board's table (no column lines, Cairo bold) in the alarms board's type, every value centred; an
 // arrow on every column, several at once, ordered by the server; and the figures over the whole
 // filtered set, between the filters and the table.
+//
+// «الحالة» against the custody fund: each memo waiting for its «تسوية عهدة», or settled on its day
+// — a way to that settlement in «سجل العهدة». A record with a settled memo is no longer edited or
+// deleted: its pen and bin stay in their places, faded, saying why.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { type FleetLicenseExpenseDto, type Locale } from '@ecms/contracts';
+import {
+  type FleetLicenseExpenseDto,
+  type FleetLicenseExpenseSettlementDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -46,11 +54,30 @@ import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { memoHtml, memoTitle, memosOf, printMemos, sumOf } from '../lib/license-expense-memo';
+import {
+  LICENCE_SETTLE_FILTER,
+  licenceLock,
+  licencePartStatuses,
+  licenceSettleParam,
+  licenceStatusText,
+  settlementDay,
+} from '../lib/license-expense-settlement';
+import { writeRefusalOf } from '../lib/write-refusal';
+import { DoneChip, WaitChip } from '../components/custody-memo-parts';
+import { LockedRowAction } from '../components/LockedRowAction';
 import { DARK_TABLE } from './VehiclesListPage';
 import { ALARMS_TYPE } from './MaintenanceAlarmsPage';
 
 /** Remembered across visits: the filters, the page size and the order. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['from', 'to', 'vehicleCodes', 'kind', 'size', 'sort'] as const;
+const REMEMBERED_FILTERS = [
+  'from',
+  'to',
+  'vehicleCodes',
+  'kind',
+  'status',
+  'size',
+  'sort',
+] as const;
 const DEFAULT_PAGE_SIZE = 25;
 /** The newest memo first, as the table always opened. */
 const DEFAULT_SORT = 'date:desc';
@@ -146,16 +173,6 @@ export const LicenseExpensesPage = (): JSX.Element => {
   const [viewing, setViewing] = useState<FleetLicenseExpenseDto | null>(null);
   const [deleting, setDeleting] = useState<FleetLicenseExpenseDto | null>(null);
   const remove = useDeleteLicenseExpense();
-  const confirmDelete = async (): Promise<void> => {
-    if (deleting === null) return;
-    try {
-      await remove.mutateAsync(deleting.id);
-      toast.success(t('fleet.licenseExpenses.deletedToast'));
-      setDeleting(null);
-    } catch (failure) {
-      toast.error(errorMessage(failure, locale));
-    }
-  };
   const print = (row: FleetLicenseExpenseDto): void => {
     try {
       printMemos(memosOf(row));
@@ -171,6 +188,8 @@ export const LicenseExpensesPage = (): JSX.Element => {
   const codesParam = sp.get('vehicleCodes');
   const vehicleCodes = useMemo(() => csv(codesParam), [codesParam]);
   const kind = sp.get('kind') ?? '';
+  // «التسوية»: settled, waiting, or — anything else in the address — no filter at all.
+  const status = licenceSettleParam(sp.get('status'));
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const sortParam = sp.get('sort');
@@ -188,7 +207,8 @@ export const LicenseExpensesPage = (): JSX.Element => {
   const changeSort = (by: string): void => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
-  const hasActiveFilters = from !== '' || to !== '' || vehicleCodes.length > 0 || kind !== '';
+  const hasActiveFilters =
+    from !== '' || to !== '' || vehicleCodes.length > 0 || kind !== '' || status !== '';
 
   // The filters alone — the table's, the figures' and the files' question is one question.
   const filters = useMemo(
@@ -197,8 +217,9 @@ export const LicenseExpensesPage = (): JSX.Element => {
       ...(to === '' ? {} : { to }),
       ...(vehicleCodes.length === 0 ? {} : { vehicleCodes }),
       ...(kind === '' ? {} : { kind }),
+      ...(status === '' ? {} : { status }),
     }),
-    [from, to, vehicleCodes, kind],
+    [from, to, vehicleCodes, kind, status],
   );
   const params = useMemo(
     () => ({ page, pageSize, ...filters, ...sortQuery(sorts) }),
@@ -208,6 +229,50 @@ export const LicenseExpensesPage = (): JSX.Element => {
   // «الإحصائيات» over every memo the filters match — the server's sums, never this page's.
   const summary = useLicenseExpenseSummary(filters);
   const rows = data?.items ?? [];
+
+  const confirmDelete = async (): Promise<void> => {
+    if (deleting === null) return;
+    try {
+      await remove.mutateAsync(deleting.id);
+      toast.success(t('fleet.licenseExpenses.deletedToast'));
+      setDeleting(null);
+    } catch (failure) {
+      // Settled by «تسوية عهدة» since the list was read: said in so many words, and the list is
+      // read again so its row shows the settlement and its locked bin.
+      if (writeRefusalOf(failure) === 'locked') {
+        toast.error(t('fleet.licenseExpenses.settlement.refusedDelete'));
+        setDeleting(null);
+        void refetch();
+        return;
+      }
+      toast.error(errorMessage(failure, locale));
+    }
+  };
+
+  // A way into «سجل العهدة» is offered only to whoever may read it; the chip says the same either way.
+  const mayOpenLog = can('fleetCustody.view');
+  const statusChip = (settlement: FleetLicenseExpenseSettlementDto | null): JSX.Element =>
+    settlement === null ? (
+      <WaitChip label={t('fleet.licenseExpenses.settlement.waiting')} mark="licence-waiting" />
+    ) : (
+      <DoneChip
+        label={t('fleet.licenseExpenses.settlement.settled')}
+        date={settlement.date}
+        to={
+          mayOpenLog
+            ? `/fleet/custody/log?open=${encodeURIComponent(settlement.operationId)}`
+            : null
+        }
+        title={
+          mayOpenLog
+            ? t('fleet.licenseExpenses.settlement.open')
+            : t('fleet.licenseExpenses.settlement.settledTitle', {
+                date: settlementDay(settlement),
+              })
+        }
+        mark="licence-settled"
+      />
+    );
 
   const kindsText = (row: FleetLicenseExpenseDto): string =>
     memosOf(row)
@@ -360,58 +425,108 @@ export const LicenseExpensesPage = (): JSX.Element => {
       ),
     },
     {
+      key: 'status',
+      align: 'center',
+      header: t('fleet.licenseExpenses.columns.status'),
+      // No arrow: a memo's place against the fund is read, not ordered by — the filter picks it.
+      // A record holding both memos stacks two chips, each named by its kind; one memo, one chip,
+      // as the sample draws it.
+      render: (row) => {
+        const parts = licencePartStatuses(row);
+        return (
+          <span
+            data-license-expense-status={row.id}
+            className="inline-flex flex-col items-center gap-1"
+          >
+            {parts.map((part) => (
+              <span key={part.kind} className="inline-flex items-center gap-1.5">
+                {parts.length > 1 && (
+                  <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+                    {t(`fleet.licenseExpenses.kinds.${part.kind}`)}
+                  </span>
+                )}
+                {statusChip(part.settlement)}
+              </span>
+            ))}
+          </span>
+        );
+      },
+    },
+    {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
       align: 'center',
       // «اعملى الالوان دى»: the owner's picture — the eye, the pen, the printer and the bin in
-      // one box (`row-actions-look`).
-      render: (row) => (
-        <span className={ACTION_GROUP} data-row-actions="license-expense">
-          <button
-            type="button"
-            data-license-expense-view={row.id}
-            title={t('fleet.licenseExpenses.view')}
-            aria-label={t('fleet.licenseExpenses.view')}
-            onClick={() => setViewing(row)}
-            className={actionTone('view')}
-          >
-            <EyeIcon className="h-4 w-4" />
-          </button>
-          {can('fleetLicenseExpense.edit') && (
-            <Link
-              to={`/fleet/license-expenses/${row.id}`}
-              data-license-expense-edit={row.id}
-              title={t('common.edit')}
-              aria-label={t('common.edit')}
-              className={actionTone('edit')}
-            >
-              <SquarePenIcon className="h-4 w-4" />
-            </Link>
-          )}
-          <button
-            type="button"
-            data-license-expense-print={row.id}
-            title={t('fleet.licenseExpenses.print')}
-            aria-label={t('fleet.licenseExpenses.print')}
-            onClick={() => print(row)}
-            className={actionTone('print')}
-          >
-            <PrinterIcon className="h-4 w-4" />
-          </button>
-          {can('fleetLicenseExpense.delete') && (
+      // one box (`row-actions-look`). A settled record keeps its eye and printer; its pen and bin
+      // stay where they are, faded, saying why — the grants still decide whether they show at all.
+      render: (row) => {
+        const locked = licenceLock(row) !== null;
+        return (
+          <span className={ACTION_GROUP} data-row-actions="license-expense">
             <button
               type="button"
-              data-license-expense-delete={row.id}
-              title={t('common.delete')}
-              aria-label={t('common.delete')}
-              onClick={() => setDeleting(row)}
-              className={actionTone('delete')}
+              data-license-expense-view={row.id}
+              title={t('fleet.licenseExpenses.view')}
+              aria-label={t('fleet.licenseExpenses.view')}
+              onClick={() => setViewing(row)}
+              className={actionTone('view')}
             >
-              <Trash2Icon className="h-4 w-4" />
+              <EyeIcon className="h-4 w-4" />
             </button>
-          )}
-        </span>
-      ),
+            {can('fleetLicenseExpense.edit') &&
+              (locked ? (
+                <LockedRowAction
+                  kind="edit"
+                  reason={t('fleet.licenseExpenses.settlement.lockedEdit')}
+                  mark="license-expense-edit"
+                >
+                  <SquarePenIcon className="h-4 w-4" />
+                </LockedRowAction>
+              ) : (
+                <Link
+                  to={`/fleet/license-expenses/${row.id}`}
+                  data-license-expense-edit={row.id}
+                  title={t('common.edit')}
+                  aria-label={t('common.edit')}
+                  className={actionTone('edit')}
+                >
+                  <SquarePenIcon className="h-4 w-4" />
+                </Link>
+              ))}
+            <button
+              type="button"
+              data-license-expense-print={row.id}
+              title={t('fleet.licenseExpenses.print')}
+              aria-label={t('fleet.licenseExpenses.print')}
+              onClick={() => print(row)}
+              className={actionTone('print')}
+            >
+              <PrinterIcon className="h-4 w-4" />
+            </button>
+            {can('fleetLicenseExpense.delete') &&
+              (locked ? (
+                <LockedRowAction
+                  kind="delete"
+                  reason={t('fleet.licenseExpenses.settlement.lockedDelete')}
+                  mark="license-expense-delete"
+                >
+                  <Trash2Icon className="h-4 w-4" />
+                </LockedRowAction>
+              ) : (
+                <button
+                  type="button"
+                  data-license-expense-delete={row.id}
+                  title={t('common.delete')}
+                  aria-label={t('common.delete')}
+                  onClick={() => setDeleting(row)}
+                  className={actionTone('delete')}
+                >
+                  <Trash2Icon className="h-4 w-4" />
+                </button>
+              ))}
+          </span>
+        );
+      },
     },
   ];
 
@@ -424,6 +539,8 @@ export const LicenseExpensesPage = (): JSX.Element => {
     t('fleet.licenseExpenses.totals.visa'),
     t('fleet.licenseExpenses.totals.cash'),
     t('fleet.licenseExpenses.totals.all'),
+    // «الحالة» last, after the money: a word per memo, never a figure.
+    t('fleet.licenseExpenses.columns.status'),
   ];
   const allRows = () =>
     fetchFilteredRows((pageNo, size) =>
@@ -442,6 +559,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
         carsOf(row).map(carName).join('، '),
         // A blank where the table draws its dash (`moneyOf`), as the dealership sheet leaves one.
         ...MONEY_COLUMNS.map((column) => moneyOf(row, column) ?? ''),
+        licenceStatusText(row, t),
       ]),
       moneyColumns: [4, 5, 6],
     });
@@ -477,6 +595,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
             const value = moneyOf(row, column);
             return value === null ? '—' : reportMoney(value);
           }),
+          licenceStatusText(row, t),
         ]),
         totals:
           figures === undefined
@@ -679,7 +798,9 @@ export const LicenseExpensesPage = (): JSX.Element => {
         <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
           <FilterBar
             hasActiveFilters={hasActiveFilters}
-            onClear={() => patch({ from: null, to: null, vehicleCodes: null, kind: null })}
+            onClear={() =>
+              patch({ from: null, to: null, vehicleCodes: null, kind: null, status: null })
+            }
           >
             {dateBound('fleet.receipts.filters.from', from, 'from')}
             {dateBound('fleet.receipts.filters.to', to, 'to')}
@@ -706,6 +827,22 @@ export const LicenseExpensesPage = (): JSX.Element => {
                 ]}
                 value={kind === '' ? [] : [kind]}
                 onChange={(next) => patch({ kind: pickOne(kind === '' ? [] : [kind], next) })}
+              />
+            </FilterWithIcon>
+            {/* «التسوية»: ONE answer — settled or waiting; clearing it is «all». */}
+            <FilterWithIcon icon={FILTER_ICON.status} tone="text-emerald-600 dark:text-emerald-400">
+              <MultiSelect
+                clearable
+                fullWidth
+                density={TIGHT}
+                showSelectedValues
+                label={t('fleet.licenseExpenses.settlement.filter')}
+                options={LICENCE_SETTLE_FILTER.map((value) => ({
+                  value,
+                  label: t(`fleet.licenseExpenses.settlement.${value}`),
+                }))}
+                value={status === '' ? [] : [status]}
+                onChange={(next) => patch({ status: pickOne(status === '' ? [] : [status], next) })}
               />
             </FilterWithIcon>
           </FilterBar>

@@ -138,35 +138,69 @@ export const makeAndModel = (
  */
 const WHOLE_DEVICE_NAME = 60;
 
-/** What the sentence calls the item when the receipt has no kind on file — the form's own word. */
+/** The form's own word for the item — a computer, and anything the receipt has no kind for. */
 export const DEFAULT_DEVICE_KIND = 'جهاز';
 
-/**
- * «شاشة Dell / P2419H», «ماوس Logitech / M185», «لاب توب Lenovo / ThinkPad T14» — what was received,
- * by its KIND and then its make and model.
- *
- * «عايز كلمة جهاز تبقى متغيرة … فلو شاشة يبقى شاشة ولو ماوس أو كيبورد يتكتبوا ولو جهاز يبقي جهاز
- * وهكذا حسب (الفئة)»: the form's «جهاز» is the asset's category as the IT team names it — so the
- * catalog decides the word, and a category called «جهاز كمبيوتر» prints «جهاز كمبيوتر». «جهاز»
- * itself only for a receipt with no kind on file (one written before the kind was kept). The kind
- * is the form's word in its ink; what follows is filled in, in red: the make and model («خليه يظهر
- * الـ Manufacturer / Model بداله»), or the asset's own name when neither is on file — without its
- * kind a second time when the name already starts with it («كمبيوتر مكتبي HP»).
- */
-export const deviceKind = (line: Pick<ItCustodyReceiptLineDto, 'deviceType'>): string =>
-  line.deviceType?.trim() || DEFAULT_DEVICE_KIND;
+/** A category name folded for comparing: case, spacing, the hamza forms and taa marbuta. */
+const foldKind = (name: string): string =>
+  name
+    .trim()
+    .toLocaleLowerCase('ar')
+    .replace(/[أإآٱ]/gu, 'ا')
+    .replace(/ة/gu, 'ه')
+    .replace(/\s+/gu, ' ');
 
-/** The name without its kind in front — a whole word only: «شاشات Dell» is not «شاشة» + «ات Dell». */
-const withoutKind = (named: string, kind: string): string => {
-  const leads = named.toLocaleLowerCase('ar').startsWith(kind.toLocaleLowerCase('ar'));
-  const next = named.charAt(kind.length);
-  return leads && (next === '' || /\s/u.test(next)) ? named.slice(kind.length).trim() : named;
+/**
+ * Is this category a computer — a desktop or an all-in-one? Those the form calls «جهاز»: «ولو جهاز
+ * يبقي جهاز», and «كمبيوتر All» is the very name the owner had the statement stop printing
+ * («يظهر … جهاز كمبيوتر All لأ خليه يظهر الـ Manufacturer / Model بداله»). The names are the ones
+ * the inventory import files computers under (`go-live/inventory-import.ts`), and any category
+ * whose first word is «كمبيوتر». A laptop keeps its own name.
+ */
+const COMPUTER_KINDS = new Set(
+  ['desktop', 'desktop computer', 'all in one', 'computer', 'pc'].map(foldKind),
+);
+export const isComputerKind = (category: string): boolean => {
+  const folded = foldKind(category);
+  return COMPUTER_KINDS.has(folded) || /^كمبيوتر(\s|$)/u.test(folded);
 };
 
+/**
+ * What the sentence calls the item — «عايز كلمة جهاز تبقى متغيرة بتاء على نوع ما يتم تسليمه فلو
+ * شاشة يبقى شاشة ولو ماوس أو كيبورد يتكتبوا ولو جهاز يبقي جهاز وهكذا حسب (الفئة)»: its category
+ * as the IT team names it («شاشة», «ماوس», «كيبورد», «لاب توب», «طابعة» …), «جهاز» for a computer,
+ * and «جهاز» for a receipt with no kind on file (one written before the kind was kept).
+ */
+export const deviceKind = (line: Pick<ItCustodyReceiptLineDto, 'deviceType'>): string => {
+  const category = line.deviceType?.trim() ?? '';
+  return category === '' || isComputerKind(category) ? DEFAULT_DEVICE_KIND : category;
+};
+
+/** The name without a word for its kind in front — whole words only: «شاشةDell» keeps its own. */
+const withoutKind = (named: string, kind: string): string => {
+  const kindWords = foldKind(kind)
+    .split(' ')
+    .filter((word) => word !== '');
+  const words = named.trim().split(/\s+/u);
+  if (kindWords.length === 0 || words.length < kindWords.length) return named;
+  const leads = kindWords.every((word, i) => foldKind(words[i] ?? '') === word);
+  return leads ? words.slice(kindWords.length).join(' ') : named;
+};
+
+/**
+ * «شاشة Dell / P2419H», «ماوس Logitech / M185», «جهاز Lenovo / ThinkCentre neo 50a 24 gen 5» — the
+ * item by its kind, in the form's ink and kept on one line («لاب توب» is one word to a reader), then
+ * filled in red: its make and model («خليه يظهر الـ Manufacturer / Model بداله»), or the asset's
+ * own name when neither is on file — without the category's name a second time when the name
+ * starts with it («كمبيوتر مكتبي HP» is «جهاز HP»), nor «جهاز» twice.
+ */
 const device = (line: ItCustodyReceiptLineDto): string => {
   const kind = deviceKind(line);
-  const rest = withoutKind(makeAndModel(line) || line.name.trim(), kind);
-  return `${esc(kind)} ${fill(rest, 24, rest.length <= WHOLE_DEVICE_NAME)}`;
+  const rest = withoutKind(
+    withoutKind(makeAndModel(line) || line.name.trim(), line.deviceType?.trim() ?? ''),
+    kind,
+  );
+  return `<span class="kind">${esc(kind)}</span> ${fill(rest, 24, rest.length <= WHOLE_DEVICE_NAME)}`;
 };
 
 /** One row of the specifications table. */
@@ -309,6 +343,7 @@ export const buildCustodyReceiptHtml = (
   .fill { color: ${COLORS.fill}; }
   /* A serial, a national ID, a date, a short device name: read whole, never split across two lines. */
   .fill.whole { white-space: nowrap; }
+  .kind { white-space: nowrap; }
   .specs { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.15; }
   .specs col.g { width: 13.9%; }
   .specs col.c { width: 38.2%; }

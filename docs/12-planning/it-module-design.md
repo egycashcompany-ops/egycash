@@ -169,9 +169,10 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
   holder); the lines and the signer are a snapshot of what was printed.
-- Each line describes its device as its page prints it: the asset's `manufacturer` and `model`
-  (what the statement names the device by — «جهاز Lenovo / ThinkCentre …»), `deviceType` (the
-  asset category's Arabic name, named instead when neither is on file), `specs` and
+- Each line describes its device as its page prints it: `deviceType` (the asset category's
+  Arabic name — the word the statement calls the item by: «شاشة», «ماوس», «لاب توب» …, and «جهاز»
+  for a computer or a line with none, §17 2026-10-19), the asset's `manufacturer` and `model` (what
+  follows it — «جهاز Lenovo / ThinkCentre …»; the asset's name when neither is on file), `specs` and
   `accessories` — the hand-over line's own accessories when it gives them. One composer
   (`receipt-device.ts`) serves the preview, the hand-over, a transfer and a receipt issued for older
   custody, so the paper previewed is the paper stored. Lines from before the acknowledgment have
@@ -438,7 +439,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   counter never handed out, or one already on another receipt, is refused); a reprint keeps it.
   The print tab shows the paper as A4 sheets (§17, 2026-10-05). The paper is the IT department's
   «إقرار استلام», one page per device: the statement filled with the employee's name and job and
-  the device's make and model (its kind when neither is on file) and serial, the device's
+  the item's kind (its category; «جهاز» for a computer) with its make and model (its name when
+  neither is on file) and serial, the device's
   specifications table and accessories (recorded on the
   asset; a hand-over may say what came with it this time), the undertaking, and the signature
   block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
@@ -893,8 +895,11 @@ starts only on an explicit owner GO.
   الإيصال … بأنني قد استلمت جهاز · عايز كلمة جهاز تبقى متغيرة بتاء على نوع ما يتم تسليمه فلو شاشة
   يبقى شاشة ولو ماوس أو كيبورد يتكتبوا ولو جهاز يبقي جهاز وهكذا حسب (الفئة)». The statement's
   fixed «جهاز» is now the receipt line's `deviceType` — the asset's category, snapshotted when the
-  receipt is written — in the form's ink, followed in red by the make and model, or the asset's own
-  name when neither is on file (without the kind a second time when the name starts with it, as a
-  whole word). «جهاز» only for a line with no kind on file. The catalog decides the word: a
-  category named «جهاز كمبيوتر» prints «جهاز كمبيوتر». The rest of the form's wording
-  («ومواصفاته»، «لاستخدامه» …) is unchanged. Web only; no API or data change.
+  receipt is written — in the form's ink and on one line, followed in red by the make and model, or
+  the asset's own name when neither is on file (without the category's name a second time when the
+  name starts with it, as whole words). A computer — a desktop or an all-in-one: the inventory's
+  computer category names, or any category whose first word is «كمبيوتر» — keeps «جهاز» («ولو جهاز
+  يبقي جهاز»; and «كمبيوتر All» is the name the owner had the statement stop printing on
+  2026-10-05), as does a line with no kind on file. Every other category prints its own name, so
+  the catalog decides the word. The rest of the form's wording («ومواصفاته»، «لاستخدامه» …) is
+  unchanged. Web only; no API or data change.

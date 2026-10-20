@@ -3,6 +3,7 @@
 // What IT knows about a person is what they held and what they asked for:
 //   • custody — what they hold NOW, and every asset they held before, with when and in what
 //     condition it came back (the custody register, narrowed to them);
+//   • mobile lines — the SIM lines they hold now, and the ones they held before (FR-19);
 //   • tickets — the ones they opened, and the ones they worked as a technician.
 // A leaver's history is exactly as complete as anybody's: the reason this page exists is that the
 // person who left with a laptop is still somebody the company has to be able to look up.
@@ -13,7 +14,12 @@
 // has custody but cannot have tickets, and the page says so rather than showing an empty table.
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { type ItAssetAssignmentDto, type ItTicketDto, type Locale } from '@ecms/contracts';
+import {
+  type ItAssetAssignmentDto,
+  type ItMobileLineAssignmentDto,
+  type ItTicketDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -30,11 +36,14 @@ import {
   useItBranchOptions,
   useItDepartmentOptions,
   useItJobTitleOptions,
+  useItMobileLineAssignments,
   useItPerson,
   useItTickets,
 } from '../api/it-queries';
 import { PersonStatusBadge } from '../components/PersonStatusBadge';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
+import { MobileLineReceiptActions } from '../components/MobileLineReceipt';
+import { MobileNetworkBadge } from '../components/MobileNetworkLogo';
 import { TicketStatusBadge } from '../components/TicketStatusBadge';
 
 const PAGE_SIZE = 10;
@@ -69,6 +78,7 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
   const person = useItPerson(employeeId);
 
   const [pastPage, setPastPage] = useState(1);
+  const [pastLinesPage, setPastLinesPage] = useState(1);
   const [requestedPage, setRequestedPage] = useState(1);
   const [workedPage, setWorkedPage] = useState(1);
 
@@ -82,6 +92,23 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
       employeeId,
       open: false,
       page: pastPage,
+      pageSize: PAGE_SIZE,
+      sortBy: 'returnedAt',
+      sortDir: 'desc',
+    },
+    employeeId !== '',
+  );
+
+  // Mobile lines — the same grant as custody. What they hold now is a handful: one page holds it.
+  const currentLines = useItMobileLineAssignments(
+    { employeeId, open: true, pageSize: 100, sortBy: 'assignedAt', sortDir: 'desc' },
+    employeeId !== '',
+  );
+  const pastLines = useItMobileLineAssignments(
+    {
+      employeeId,
+      open: false,
+      page: pastLinesPage,
       pageSize: PAGE_SIZE,
       sortBy: 'returnedAt',
       sortDir: 'desc',
@@ -200,6 +227,59 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
       },
     ];
     return { open, closed };
+  }, [t, locale]);
+
+  // The lines' own columns — a line is not an asset, and its row does not open the asset page.
+  const lineColumns = useMemo(() => {
+    const network: Column<ItMobileLineAssignmentDto> = {
+      key: 'network',
+      header: t('it.mobileLines.columns.network'),
+      render: (a) => (a.network === null ? '—' : <MobileNetworkBadge network={a.network} />),
+    };
+    const number: Column<ItMobileLineAssignmentDto> = {
+      key: 'phoneNumber',
+      header: t('it.mobileLines.columns.number'),
+      render: (a) =>
+        a.phoneNumber === null ? (
+          t('it.custody.assetUnknown')
+        ) : (
+          <span className="font-mono text-xs" dir="ltr">
+            {a.phoneNumber}
+          </span>
+        ),
+    };
+    const plan: Column<ItMobileLineAssignmentDto> = {
+      key: 'ratePlan',
+      header: t('it.mobileLines.columns.plan'),
+      render: (a) => a.ratePlan ?? '—',
+    };
+    const assignedAt: Column<ItMobileLineAssignmentDto> = {
+      key: 'assignedAt',
+      header: t('it.custody.assignedAt'),
+      render: (a) => <span className="tabular-nums">{formatDate(a.assignedAt, locale)}</span>,
+    };
+    const receipt: Column<ItMobileLineAssignmentDto> = {
+      // The acknowledgment they signed for the line: print it again, file or view the copy.
+      key: 'receipt',
+      header: t('it.custody.receipt.column'),
+      render: (a) => (
+        <MobileLineReceiptActions receiptId={a.receiptId} receiptSigned={a.receiptSigned} />
+      ),
+    };
+    const returnedAt: Column<ItMobileLineAssignmentDto> = {
+      key: 'returnedAt',
+      header: t('it.custody.returnedAt'),
+      render: (a) =>
+        a.returnedAt === null ? (
+          '—'
+        ) : (
+          <span className="tabular-nums">{formatDate(a.returnedAt, locale)}</span>
+        ),
+    };
+    return {
+      open: [network, number, plan, assignedAt, receipt],
+      closed: [network, number, plan, assignedAt, returnedAt, receipt],
+    };
   }, [t, locale]);
 
   const ticketColumns: Column<ItTicketDto>[] = [
@@ -334,6 +414,45 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
             {past.data !== undefined && past.data.meta.totalPages > 1 && (
               <Pagination meta={past.data.meta} onPageChange={setPastPage} />
             )}
+          </CardBody>
+        </Card>
+
+        {/* «خطوط المحمول» — what they hold now, then what they held before, each with the
+            acknowledgment they signed for it. */}
+        <Card>
+          <CardHeader
+            title={t('it.nav.mobileLines')}
+            description={t('it.employees.mobileLinesHint')}
+          />
+          <CardBody>
+            <div className="space-y-4">
+              <DataTable
+                embedded
+                columns={lineColumns.open}
+                rows={currentLines.data?.items ?? []}
+                rowKey={(a) => a.id}
+                loading={currentLines.isLoading}
+                error={currentLines.isError ? currentLines.error : undefined}
+                onRetry={() => void currentLines.refetch()}
+                empty={t('it.employees.noCurrentLines')}
+              />
+              <h4 className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {t('it.employees.pastLines')}
+              </h4>
+              <DataTable
+                embedded
+                columns={lineColumns.closed}
+                rows={pastLines.data?.items ?? []}
+                rowKey={(a) => a.id}
+                loading={pastLines.isLoading}
+                error={pastLines.isError ? pastLines.error : undefined}
+                onRetry={() => void pastLines.refetch()}
+                empty={t('it.employees.noPastLines')}
+              />
+              {pastLines.data !== undefined && pastLines.data.meta.totalPages > 1 && (
+                <Pagination meta={pastLines.data.meta} onPageChange={setPastLinesPage} />
+              )}
+            </div>
           </CardBody>
         </Card>
 

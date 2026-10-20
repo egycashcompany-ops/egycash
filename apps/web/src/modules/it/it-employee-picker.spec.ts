@@ -95,8 +95,15 @@ const sources = (dir = HERE): string[] =>
       : [];
   });
 
-/** The only places a person is HANDED something: custody hand-overs and a ticket's technician. */
-const HAND_OVERS = ['components/CustodyDialogs.tsx', 'components/TicketDialogs.tsx'];
+/**
+ * The only places a person is HANDED something: custody hand-overs, a mobile line's hand-over
+ * (FR-19) and a ticket's technician.
+ */
+const HAND_OVERS = [
+  'components/CustodyDialogs.tsx',
+  'components/MobileLineDialogs.tsx',
+  'components/TicketDialogs.tsx',
+];
 
 describe('which box asks for which population', () => {
   const using = sources().filter((rel) => pickers(code(rel)).length > 0);
@@ -110,10 +117,15 @@ describe('which box asks for which population', () => {
 
   it('every filter, on every screen, finds leavers too', () => {
     const filters = using.filter((rel) => rel.startsWith('pages/'));
-    // The custody register, the asset register and the help desk — the three screens that narrow
-    // a list by a person.
+    // The custody register, the asset register, the mobile lines and the help desk — the screens
+    // that narrow a list by a person.
     expect(filters.sort()).toEqual(
-      ['pages/AssetsListPage.tsx', 'pages/CustodyPage.tsx', 'pages/TicketsListPage.tsx'].sort(),
+      [
+        'pages/AssetsListPage.tsx',
+        'pages/CustodyPage.tsx',
+        'pages/MobileLinesPage.tsx',
+        'pages/TicketsListPage.tsx',
+      ].sort(),
     );
     for (const rel of filters) {
       for (const element of pickers(code(rel))) {

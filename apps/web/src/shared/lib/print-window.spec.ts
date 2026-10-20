@@ -144,6 +144,8 @@ describe('no printed page carries a script of its own', () => {
       'modules/fleet/lib/custody-papers.ts',
       'modules/gold/lib/gold-print.ts',
       'modules/it/lib/custody-receipt-print.ts',
+      // FR-19 — the line acknowledgment, on the device paper's shared parts.
+      'modules/it/lib/mobile-line-receipt-print.ts',
       'modules/it/components/useAssetLabels.ts',
     ]) {
       const code = all.find(([name]) => name === file)?.[1] ?? '';

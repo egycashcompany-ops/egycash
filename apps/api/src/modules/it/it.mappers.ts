@@ -20,6 +20,11 @@ import {
   type ItVendorDto,
   type ItPersonDto,
   type ItTechnicianDto,
+  type ItMobileLineAssignmentDto,
+  type ItMobileLineDto,
+  type ItMobileLineHistoryEntryDto,
+  type ItMobileLineReceiptDto,
+  type ItMobileNetwork,
 } from '@ecms/contracts';
 import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
@@ -38,6 +43,10 @@ import { type ItSparePartMovementDoc } from './spare-parts/movement.model';
 import { type ItSoftwareProductDoc } from './software/product.model';
 import { type ItSoftwareInstallationDoc } from './software/installation.model';
 import { type ItLicenseView } from './licenses/license.service';
+import { type ItMobileLineDoc } from './mobile-lines/mobile-line.model';
+import { type ItMobileLineAssignmentDoc } from './mobile-lines/line-assignment.model';
+import { type ItMobileLineEventDoc } from './mobile-lines/line-event.model';
+import { type ItMobileLineReceiptDoc } from './mobile-lines/line-receipt.model';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -267,6 +276,170 @@ export const toItAssetHistoryEntryDto = (doc: ItAssetEventDoc): ItAssetHistoryEn
   type: doc.type,
   at: iso(doc.at),
   actorUserId: doc.actorUserId === null ? null : String(doc.actorUserId),
+  actorName: doc.actorName,
+  metadata: doc.metadata ?? {},
+  notes: doc.notes,
+});
+
+// ── Mobile lines (FR-19) ────────────────────────────────────────────────────
+
+/**
+ * What the register shows beside each line, resolved ONCE per page by the caller and handed in —
+ * the open intervals by id, their employees' labels, their papers' signed state. The mapper only
+ * reads the maps, so the number of round-trips a page costs is decided in one place.
+ */
+export interface ItMobileLineHolderLabels {
+  intervals: ReadonlyMap<string, ItMobileLineAssignmentDoc>;
+  employees: ItHolderLabels;
+  receipts: ItReceiptStates;
+}
+
+/** The line behind each interval — its network, number and plan, read under the reader's scope. */
+export type ItMobileLineLabels = ReadonlyMap<
+  string,
+  { network: ItMobileNetwork; phoneNumber: string; ratePlan: string | null }
+>;
+
+const idOrNull = (id: { toString(): string } | null | undefined): string | null =>
+  id == null ? null : String(id);
+
+const signedState = (receiptId: string | null, receipts?: ItReceiptStates): boolean | null =>
+  receiptId === null ? null : (receipts?.get(receiptId)?.signed ?? false);
+
+export const toItMobileLineDto = (
+  doc: ItMobileLineDoc,
+  labels?: ItMobileLineHolderLabels,
+): ItMobileLineDto => {
+  const currentAssignmentId = idOrNull(doc.currentAssignmentId);
+  // Only the interval the line itself points at: a stale pointer or a closed interval holds nothing.
+  const open =
+    currentAssignmentId === null ? undefined : labels?.intervals.get(currentAssignmentId);
+  const employeeId = idOrNull(open?.assignedToEmployeeId);
+  const employee = employeeId === null ? undefined : labels?.employees.get(employeeId);
+  const receiptId = idOrNull(open?.receiptId);
+  return {
+    id: String(doc._id),
+    network: doc.network,
+    phoneNumber: doc.phoneNumber,
+    accountNumber: doc.accountNumber ?? null,
+    ratePlan: doc.ratePlan ?? null,
+    simKind: doc.simKind,
+    simSerial: doc.simSerial ?? null,
+    status: doc.status,
+    branchId: String(doc.branchId),
+    notes: doc.notes ?? null,
+    currentAssignmentId,
+    holder:
+      open === undefined || open.returnedAt !== null
+        ? null
+        : {
+            assignmentId: String(open._id),
+            kind: open.holderKind,
+            employeeId,
+            employeeCode: employee?.code ?? null,
+            employeeName: employee?.fullNameAr ?? null,
+            vehicleCode: open.vehicleCode ?? null,
+            vehiclePlate: open.vehiclePlate ?? null,
+            assignedAt: iso(open.assignedAt),
+            receiptId,
+            receiptSigned: signedState(receiptId, labels?.receipts),
+          },
+    version: doc.__v,
+    createdAt: iso(doc.createdAt),
+    updatedAt: iso(doc.updatedAt),
+  };
+};
+
+export const toItMobileLineAssignmentDto = (
+  doc: ItMobileLineAssignmentDoc,
+  holders?: ItHolderLabels,
+  lines?: ItMobileLineLabels,
+  receipts?: ItReceiptStates,
+): ItMobileLineAssignmentDto => {
+  const employeeId = idOrNull(doc.assignedToEmployeeId);
+  const holder = employeeId === null ? undefined : holders?.get(employeeId);
+  const line = lines?.get(String(doc.lineId));
+  const receiptId = idOrNull(doc.receiptId);
+  return {
+    id: String(doc._id),
+    lineId: String(doc.lineId),
+    network: line?.network ?? null,
+    phoneNumber: line?.phoneNumber ?? null,
+    ratePlan: line?.ratePlan ?? null,
+    holderKind: doc.holderKind,
+    assignedToEmployeeId: employeeId,
+    assignedToEmployeeCode: holder?.code ?? null,
+    assignedToEmployeeName: holder?.fullNameAr ?? null,
+    vehicleCode: doc.vehicleCode ?? null,
+    vehiclePlate: doc.vehiclePlate ?? null,
+    assignedByUserId: idOrNull(doc.assignedByUserId),
+    assignedAt: iso(doc.assignedAt),
+    returnedAt: doc.returnedAt === null ? null : iso(doc.returnedAt),
+    returnedToUserId: idOrNull(doc.returnedToUserId),
+    notes: doc.notes ?? null,
+    branchId: String(doc.branchId),
+    receiptId,
+    receiptSigned: signedState(receiptId, receipts),
+    version: doc.__v,
+    createdAt: iso(doc.createdAt),
+    updatedAt: iso(doc.updatedAt),
+  };
+};
+
+/**
+ * A line's acknowledgment — the paper as printed, plus whether its signed copy is in. The national
+ * ID only for a caller allowed to see it (`revealNationalId`), exactly as a device receipt's.
+ */
+export const toItMobileLineReceiptDto = (
+  doc: ItMobileLineReceiptDoc,
+  revealNationalId = false,
+): ItMobileLineReceiptDto => ({
+  id: String(doc._id),
+  formNumber: doc.formNumber ?? null,
+  issuedAt: iso(doc.issuedAt),
+  employeeId: String(doc.employeeId),
+  employeeName: doc.employeeName ?? null,
+  employeeCode: doc.employeeCode ?? null,
+  jobTitle: orgName(doc.jobTitle),
+  ...receiptNationalId(doc.nationalId, revealNationalId),
+  section: orgName(doc.section),
+  department: orgName(doc.department),
+  line: {
+    lineId: String(doc.line.lineId),
+    assignmentId: String(doc.line.assignmentId),
+    network: doc.line.network,
+    phoneNumber: doc.line.phoneNumber,
+    simKind: doc.line.simKind,
+    simSerial: doc.line.simSerial ?? null,
+    ratePlan: doc.line.ratePlan ?? null,
+    accountNumber: doc.line.accountNumber ?? null,
+  },
+  issuedByUserId: idOrNull(doc.issuedByUserId),
+  branchId: String(doc.branchId),
+  signedCopy:
+    doc.signedCopy == null
+      ? null
+      : {
+          fileId: String(doc.signedCopy.fileId),
+          fileName: doc.signedCopy.fileName,
+          mime: doc.signedCopy.mime,
+          size: doc.signedCopy.size,
+          uploadedAt: iso(doc.signedCopy.uploadedAt),
+        },
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/** A line's history entry — stored under the timelines' uniform `subjectId`, named `lineId` here. */
+export const toItMobileLineHistoryEntryDto = (
+  doc: ItMobileLineEventDoc,
+): ItMobileLineHistoryEntryDto => ({
+  id: String(doc._id),
+  lineId: String(doc.subjectId),
+  type: doc.type,
+  at: iso(doc.at),
+  actorUserId: idOrNull(doc.actorUserId),
   actorName: doc.actorName,
   metadata: doc.metadata ?? {},
   notes: doc.notes,

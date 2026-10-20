@@ -41,7 +41,7 @@ import { type ItAssetDoc } from './asset.model';
 import { itCustodyReceiptRepository } from './receipt.repository';
 import { type ItCustodyReceiptDoc, type ItCustodyReceiptLineSub } from './receipt.model';
 import { readReceiptHolder, type ReceiptHolder } from './receipt-holder';
-import { receiptNumberFor } from './receipt-number';
+import { claimReceiptNumber, receiptNumberFor } from './receipt-number';
 import { readDeviceTypesOf, receiptDeviceFields } from './receipt-device';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
@@ -346,6 +346,7 @@ class ItAssetCustodyService {
 
       const [first] = assets;
       if (first === undefined) throw new BusinessRuleError('a receipt lists at least one asset');
+      await claimReceiptNumber(formNumber, session);
       const receipt = await itCustodyReceiptRepository.create(
         {
           _id: receiptId,
@@ -542,6 +543,7 @@ class ItAssetCustodyService {
 
       if (!sameHolder && receiptId !== null && named !== null) {
         formNumber ??= await receiptNumberFor(input.formNumber);
+        await claimReceiptNumber(formNumber, session);
         await itCustodyReceiptRepository.create(
           {
             _id: receiptId,

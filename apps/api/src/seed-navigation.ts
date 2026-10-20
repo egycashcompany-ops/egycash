@@ -810,6 +810,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'itAsset.view',
       },
       {
+        // FR-19 — the company's SIM lines on their three networks, under the asset grants: whoever
+        // keeps the devices keeps the lines.
+        en: 'Mobile Lines',
+        ar: 'خطوط المحمول',
+        route: '/it/mobile-lines',
+        icon: 'phone',
+        permission: 'itAsset.view',
+      },
+      {
         // Everybody HR has, current and departed, each opening their whole IT history. Under the
         // custody grant: the register already names a holder on every row.
         en: 'Employees',

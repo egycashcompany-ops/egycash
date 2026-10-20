@@ -497,6 +497,14 @@ export const PrinterIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A mobile phone — the handset with its speaker slot and button, for the SIM lines' register. */
+export const PhoneIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="6" y="2" width="12" height="20" rx="2.5" />
+    <path d="M10.5 5h3M12 18h.01" />
+  </Base>
+);
+
 /** A receipt — the torn-edged slip with its lines, for a screen of money written on paper. */
 export const ReceiptIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>

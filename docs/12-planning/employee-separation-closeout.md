@@ -35,8 +35,8 @@ exit.
 
 ## 2. Who is listening, and what each one closes
 
-Five subscribers exist today, in three modules plus two outside HR. Every one of them was found in
-the code, not in a document:
+Six subscribers exist today, in three modules plus two outside HR (IT has two). Every one of
+them was found in the code, not in a document:
 
 | subscriber | module | what it closes | the judgement in it |
 |---|---|---|---|
@@ -45,14 +45,15 @@ the code, not in a document:
 | `attendance.onEmployeeExited` | Attendance | recomputes the last seven days, so days after the exit stop being expected | the employment-span check inside the engine is what actually drops them; this only makes it act |
 | `fleet.deactivateExitedDriver` | Fleet | the driver profile leaves the pool | design §9.1 — event-driven, with no HR import |
 | `it.flagAssetsHeldByExitedEmployee` | IT | open asset assignments are **recorded**, never auto-returned | FR-13 — a physical return is a thing a human witnesses; writing one because HR closed a record would put a custody fact in the chain that never happened |
+| `it.flagMobileLinesHeldByExitedEmployee` | IT | the mobile lines the leaver holds are **recorded**, never auto-returned | FR-19 — the same judgement as their devices: a SIM is handed back in person |
 
-**Two of those five deliberately do not finish the job**, and say so. IT records rather than
-returns; Loans flags rather than recovers. Both are right, and both are the reason this audit does
-not read «unclosed» as «broken».
+**Three of those six deliberately do not finish the job**, and say so. IT records rather than
+returns — devices and mobile lines alike; Loans flags rather than recovers. All three are right,
+and all three are the reason this audit does not read «unclosed» as «broken».
 
-### A sixth consumer, reached through the login
+### One more consumer, reached through the login
 
-Grepping `hr.employee.exited` finds five subscribers. It does not find this one, and this one is the
+Grepping `hr.employee.exited` finds six subscribers. It does not find this one, and this one is the
 most security-bearing of them all:
 
 > exit → **login suspended** (D3, inside the act) → `platform.user.statusChanged` → Automation

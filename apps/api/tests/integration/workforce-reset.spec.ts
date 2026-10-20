@@ -236,6 +236,8 @@ describe('a dry run', () => {
       'gold_receiving_receipts',
       'gold_transfers',
       'hr_job_offers',
+      // Who holds each mobile line — cars as well as people; the line itself says it is out.
+      'it_mobile_line_assignments',
     ]);
   }, 240_000);
 });
@@ -353,8 +355,8 @@ describe('the recruitment pipeline', () => {
     const report = await runReset({ write: false, includeRecruitment: true });
     expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
     expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
-    // The other nine are still off limits.
-    expect(report.untouched).toHaveLength(10);
+    // The other eleven are still off limits.
+    expect(report.untouched).toHaveLength(11);
   }, 240_000);
 });
 

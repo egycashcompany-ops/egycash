@@ -11,6 +11,22 @@ its entry here in the same PR.
 
 ### Added
 
+- **The company's mobile lines have their own page in IT.** «الـ 3 فايلات دول عبارة عن خطوط موبايل
+  عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة». `/it/mobile-lines`
+  «خطوط المحمول» lists every line with its network's logo beside it, its number, plan, SIM serial,
+  status and holder. The three network cards — Vodafone, Etisalat and Orange, each with its logo,
+  its number of lines, how many are in stock, handed over and suspended, and its account numbers
+  — are the network filter («عايزك تستخدم الـ 3 لوجوهات فى الفلتر وفى الجدول»), next to search,
+  status, branch, holder and «employee or car». A line is registered, edited, handed over to an
+  employee on a printed «إقرار استلام» (print first, numbered in the same EGYCASH-IT-F-14 series as
+  the devices' papers, the signed copy filed against it) or to a car by its code and plate,
+  returned, suspended and reactivated, and every step is in its history; the list goes to Excel and
+  PDF; an employee's IT page shows their lines beside their devices. It rides the asset grants —
+  whoever manages «الأصول» manages the lines — with no new permission. With the deploy, a one-time
+  step loads the 392 lines of the three networks' files as reviewed with the owner: 301 handed to
+  their 285 employees with an acknowledgment each, the 18 tracker SIMs to their cars, 68 in stock
+  (a line registered to someone who has left, or to a name HR does not have, says so in its notes)
+  and 5 suspended ([IT design §17](docs/12-planning/it-module-design.md)).
 - **The ATM machines are on a map, divided into zones the branches draw themselves.** «موافق على
   المقترح كله، ابدأ». `/atm/map` «خريطة الماكينات» shows every active machine of the branches in
   reach on OpenStreetMap, coloured by zone or by bank, with filters, search and per-zone counts; a

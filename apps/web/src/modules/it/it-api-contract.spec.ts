@@ -9,7 +9,7 @@
 // So this reads the IT route files from `apps/api` and the IT api/ surface from here, and asserts
 // they agree. It is a source-level check on purpose: it needs no database, no server and no
 // network, so it runs everywhere including CI's fastest job.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -289,6 +289,146 @@ describe('the people and technicians the IT client reads exist on the API', () =
     expect(CLIENT).toContain('`/it/people/${employeeId}`');
     expect(CLIENT).toContain('`/it/technicians${buildQuery(');
     expect(CLIENT).not.toContain('/hr/employees');
+  });
+});
+
+// FR-19 — the mobile lines: the register, its custody intervals, and the line acknowledgments.
+// The three routers are found by the function each exports, not by a file name, and each is read
+// on its own — `declared()` over a whole file would mix two routers kept in one.
+describe('the mobile lines the IT client calls exist on the API, on the assets’ grants', () => {
+  const DIR = resolve(API_SRC, 'mobile-lines');
+  const router = (name: string): string => {
+    const files = existsSync(DIR) ? readdirSync(DIR).filter((f) => f.endsWith('.routes.ts')) : [];
+    for (const file of files) {
+      const text = readFileSync(resolve(DIR, file), 'utf8');
+      const body = new RegExp(`export const ${name} = [\\s\\S]*?\\n};`).exec(text)?.[0];
+      if (body !== undefined) return body;
+    }
+    return '';
+  };
+  const LINES = router('buildItMobileLinesRouter');
+  const INTERVALS = router('buildItMobileLineAssignmentsRouter');
+  const RECEIPTS = router('buildItMobileLineReceiptsRouter');
+
+  /** The grants one route rides — `authorize('x')` and every key of `authorizeAny('x', 'y')`. */
+  const gates = (routes: string, verb: string, path: string): string[] => {
+    const route =
+      new RegExp(`router\\.${verb}\\(\\s*'${path}'[\\s\\S]*?\\);`).exec(routes)?.[0] ?? '';
+    return [...route.matchAll(/authorize(?:Any)?\(([^)]*)\)/g)].flatMap((m) =>
+      [...(m[1] ?? '').matchAll(/'([^']+)'/g)].flatMap((k) => (k[1] ? [k[1]] : [])),
+    );
+  };
+
+  it('mounts the three routers', () => {
+    for (const prefix of [
+      '/it/mobile-lines',
+      '/it/mobile-line-assignments',
+      '/it/mobile-line-receipts',
+    ]) {
+      expect(MANIFEST, `manifest does not mount ${prefix}`).toContain(`prefix: '${prefix}'`);
+    }
+  });
+
+  it('the register: list, figures, read, register, edit, history — and four NAMED actions', () => {
+    expect(declared(LINES)).toEqual(
+      new Set([
+        'get /',
+        'get /summary',
+        'post /',
+        'get /:id',
+        'patch /:id',
+        'get /:id/history',
+        // Custody and the network's stop are actions, never a PATCH of `status`.
+        'post /:id/assign',
+        'post /:id/return',
+        'post /:id/suspend',
+        'post /:id/reactivate',
+      ]),
+    );
+    // The literal segment before the id matcher, or `summary` would be read as an id.
+    expect(LINES.indexOf("'/summary'")).toBeLessThan(LINES.indexOf("'/:id'"));
+    expect(CLIENT).toContain('getPage<ItMobileLineDto>(`/it/mobile-lines${buildQuery(params)}`)');
+    expect(CLIENT).toContain('`/it/mobile-lines/summary${buildQuery(params)}`');
+    expect(CLIENT).toContain("post<ItMobileLineDto>('/it/mobile-lines'");
+    expect(CLIENT).toContain('`/it/mobile-lines/${id}`');
+    expect(CLIENT).toContain('`/it/mobile-lines/${id}/history');
+    for (const action of ['assign', 'return', 'suspend', 'reactivate']) {
+      expect(CLIENT, `client never calls /${action}`).toContain(
+        `/it/mobile-lines/\${id}/${action}`,
+      );
+    }
+  });
+
+  it('the intervals: one read-only list — an employee’s lines, a line’s chain', () => {
+    expect(declared(INTERVALS)).toEqual(new Set(['get /']));
+    expect(CLIENT).toContain('`/it/mobile-line-assignments${buildQuery(params)}`');
+  });
+
+  it('the acknowledgments: the device receipt’s preview, read, reprint and signed copy', () => {
+    expect(declared(RECEIPTS)).toEqual(
+      new Set([
+        'post /preview',
+        'get /:id',
+        'post /:id/print',
+        'get /:id/signed-copy',
+        'post /:id/signed-copy',
+        'delete /:id/signed-copy',
+      ]),
+    );
+    expect(RECEIPTS.indexOf("'/preview'")).toBeLessThan(RECEIPTS.indexOf("'/:id'"));
+    expect(CLIENT).toContain("'/it/mobile-line-receipts/preview'");
+    expect(CLIENT).toContain('`/it/mobile-line-receipts/${id}`');
+    expect(CLIENT).toContain('`/it/mobile-line-receipts/${id}/print`');
+    expect(CLIENT).toContain('`/it/mobile-line-receipts/${id}/signed-copy`');
+  });
+
+  // «no new permission keys»: a line is read, registered, edited and handed over under exactly
+  // the grants an asset is — reads on view, the hand-over and return on the ONE custody grant,
+  // suspend and reactivate on edit, and the paper's writes on the custody grant like a device's.
+  it('every route rides the gate the asset beside it rides', () => {
+    const expected: [string, string, string, string][] = [
+      [LINES, 'get', '/', 'itAsset.view'],
+      [LINES, 'get', '/summary', 'itAsset.view'],
+      [LINES, 'post', '/', 'itAsset.create'],
+      [LINES, 'get', '/:id', 'itAsset.view'],
+      [LINES, 'patch', '/:id', 'itAsset.edit'],
+      [LINES, 'get', '/:id/history', 'itAsset.view'],
+      [LINES, 'post', '/:id/assign', 'itAsset.assign'],
+      [LINES, 'post', '/:id/return', 'itAsset.assign'],
+      [LINES, 'post', '/:id/suspend', 'itAsset.edit'],
+      [LINES, 'post', '/:id/reactivate', 'itAsset.edit'],
+      [INTERVALS, 'get', '/', 'itAsset.view'],
+      [RECEIPTS, 'post', '/preview', 'itAsset.assign'],
+      [RECEIPTS, 'get', '/:id', 'itAsset.view'],
+      [RECEIPTS, 'post', '/:id/print', 'itAsset.view'],
+      [RECEIPTS, 'get', '/:id/signed-copy', 'itAsset.view'],
+      [RECEIPTS, 'post', '/:id/signed-copy', 'itAsset.assign'],
+      [RECEIPTS, 'delete', '/:id/signed-copy', 'itAsset.assign'],
+    ];
+    for (const [routes, verb, path, permission] of expected) {
+      expect(gates(routes, verb, path), `${verb} ${path}`).toEqual([permission]);
+    }
+  });
+
+  it('declares no filter the contract does not', () => {
+    const CONTRACTS = readFileSync(
+      resolve(HERE, '../../../../../packages/contracts/src/modules/it.ts'),
+      'utf8',
+    );
+    const schema =
+      /ListItMobileLinesQuerySchema = PaginationQuerySchema\.extend\(\{([\s\S]*?)\}\)/.exec(
+        CONTRACTS,
+      )?.[1] ?? '';
+    for (const field of [
+      'search',
+      'networks',
+      'status',
+      'branchId',
+      'holderEmployeeId',
+      'holderKind',
+    ]) {
+      expect(schema, `${field} is not a declared line filter`).toContain(`${field}:`);
+    }
   });
 });
 

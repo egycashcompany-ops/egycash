@@ -83,6 +83,7 @@ describe('what the classification decides', () => {
     ['fleet_notices', 'paperwork already sent to the insurer'],
     ['fleet_receipts', 'a record about the vehicle and the money'],
     ['atm_maintenances', 'a record about the machine'],
+    ['it_mobile_line_assignments', 'custody a car holds too'],
     ['hr_job_offers', 'recruitment history'],
   ])('leaves %s completely alone (%s)', (collection) => {
     expect(find(collection)?.action).toBe('keep');

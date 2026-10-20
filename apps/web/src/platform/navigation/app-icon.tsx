@@ -24,6 +24,7 @@ import {
   LinkIcon,
   MonitorIcon,
   OfferIcon,
+  PhoneIcon,
   PinIcon,
   QrIcon,
   ReceiptIcon,
@@ -81,6 +82,9 @@ const REGISTRY: Record<string, NavIcon> = {
   qr: QrIcon,
   // مصروفات التراخيص — the department's memo of what licences cost: money written on paper.
   receipt: ReceiptIcon,
+  // خطوط المحمول — the IT register of the company's SIM lines. Registered with the row that names
+  // it: an unregistered name falls back to the neutral glyph silently, which looks chosen.
+  phone: PhoneIcon,
   // P10 — the notification-templates row. Registered with the row that uses it: an unregistered
   // name falls back silently, which looks like a design choice rather than a missing entry.
   bell: BellIcon,

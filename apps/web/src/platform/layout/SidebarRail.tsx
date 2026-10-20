@@ -16,7 +16,7 @@ import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
-import { BuildingIcon, ChevronEndIcon, ChevronStartIcon, InboxIcon } from '../../shared/ui/icons';
+import { BuildingIcon, InboxIcon } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
@@ -33,6 +33,7 @@ import {
 } from '../navigation/nav-model';
 import { AppRow, AppWithChildren, NavSectionGroup, StateShell } from './nav-rows';
 import { useFloatingNav } from './floating-nav';
+import { NavPinButton } from './NavPinButton';
 
 // Whether the floating panel is pinned open lives in `floating-nav.ts`.
 const LAST_MODULE_KEY = 'ecms.nav.lastModule';
@@ -73,13 +74,10 @@ const ModuleRail = ({
   modules,
   shownId,
   onPick,
-  footer,
 }: {
   modules: NavModule[];
   shownId: string;
   onPick: (m: NavModule) => void;
-  /** Pinned under the module icons: the desktop's open/close toggle for the floating panel. */
-  footer?: JSX.Element | undefined;
 }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
@@ -110,11 +108,6 @@ const ModuleRail = ({
           );
         })}
       </div>
-      {footer !== undefined && (
-        <div className="flex justify-center border-t border-slate-200/60 py-2 dark:border-slate-800/60">
-          {footer}
-        </div>
-      )}
     </div>
   );
 };
@@ -132,7 +125,7 @@ const ModulePanel = ({
   pinnedApps: NavApp[];
   allRoutes: string[];
   collapsible: boolean;
-  /** Whether the floating panel is pinned open; its header button pins or closes it. */
+  /** Whether the floating panel is pinned open; the pin in its header, after the name, toggles it. */
   pinned: boolean;
   onTogglePinned: () => void;
   onNavigate?: (() => void) | undefined;
@@ -149,22 +142,7 @@ const ModulePanel = ({
             {localized(module.name, locale)}
           </span>
         </div>
-        {collapsible && (
-          <button
-            type="button"
-            onClick={onTogglePinned}
-            aria-label={t(pinned ? 'nav.collapse' : 'nav.expand')}
-            aria-expanded={pinned}
-            title={t(pinned ? 'nav.collapse' : 'nav.expand')}
-            className="hidden shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-900/[0.04] hover:text-slate-600 dark:hover:bg-white/[0.05] lg:block"
-          >
-            {pinned ? (
-              <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
-            ) : (
-              <ChevronEndIcon className="h-4 w-4 rtl:-scale-x-100" />
-            )}
-          </button>
-        )}
+        {collapsible && <NavPinButton pinned={pinned} onToggle={onTogglePinned} />}
       </div>
       <nav className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
         {pinnedApps.length > 0 && (
@@ -319,31 +297,12 @@ const RailShell = ({
     );
   }
 
-  const toggleLabel = t(floating.pinned ? 'nav.collapse' : 'nav.expand');
-  const ToggleIcon = floating.pinned ? ChevronStartIcon : ChevronEndIcon;
-
   // A desktop: only the rail stands beside the page. The module's panel is drawn OVER the page from
-  // the rail's edge — on hover, or pinned open with the toggle — and the page keeps its width.
+  // the rail's edge — on hover, or pinned open with the pin in its header — and the page keeps its
+  // width.
   return (
     <div data-nav-strip className="relative flex h-full" {...floating.hoverProps}>
-      <ModuleRail
-        modules={modules}
-        shownId={current.id}
-        onPick={pickModule}
-        footer={
-          <button
-            data-nav-toggle
-            type="button"
-            onClick={floating.togglePinned}
-            aria-label={toggleLabel}
-            aria-expanded={floating.pinned}
-            title={toggleLabel}
-            className="grid h-9 w-9 place-items-center rounded-md text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:text-slate-500 dark:hover:bg-slate-800/60 dark:hover:text-slate-300"
-          >
-            <ToggleIcon className="h-4 w-4 rtl:-scale-x-100" />
-          </button>
-        }
-      />
+      <ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />
       {floating.shown && (
         <div
           data-nav-panel

@@ -10,6 +10,8 @@ import {
   HOVER_CLOSE_DELAY_MS,
   HOVER_OPEN_DELAY_MS,
   NAV_PINNED_KEY,
+  focusInside,
+  keyboardFocus,
   loadNavPinned,
   navPanelShown,
   persistNavPinned,
@@ -20,6 +22,9 @@ const read = (file: string): string => readFileSync(resolve(HERE, file), 'utf8')
 const LAUNCHPAD = read('Sidebar.tsx');
 const RAIL = read('SidebarRail.tsx');
 const TOPBAR = read('Topbar.tsx');
+const PIN = read('NavPinButton.tsx');
+const HOOK = read('floating-nav.ts');
+const I18N = read('../localization/i18n.ts');
 
 describe('when the floating panel is drawn', () => {
   it('pinned, hovered or held open — any one is enough', () => {
@@ -35,6 +40,73 @@ describe('when the floating panel is drawn', () => {
     expect(HOVER_OPEN_DELAY_MS).toBeGreaterThan(0);
     expect(HOVER_CLOSE_DELAY_MS).toBeGreaterThan(HOVER_OPEN_DELAY_MS);
     expect(HOVER_CLOSE_DELAY_MS).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('the keyboard reaches the panel too', () => {
+  // This suite has no DOM; the two checks need only `instanceof`, `contains` and `matches`.
+  const globals = globalThis as { Node?: unknown; Element?: unknown };
+  const original = { Node: globals.Node, Element: globals.Element };
+  class FakeElement {
+    constructor(
+      private readonly kids: readonly unknown[] = [],
+      private readonly visibleFocus: boolean | 'throws' = false,
+    ) {}
+    contains(other: unknown): boolean {
+      return (
+        other === this || this.kids.some((kid) => kid instanceof FakeElement && kid.contains(other))
+      );
+    }
+    matches(selector: string): boolean {
+      if (this.visibleFocus === 'throws') throw new Error('unsupported selector');
+      return selector === ':focus-visible' && this.visibleFocus;
+    }
+  }
+  beforeEach(() => {
+    globals.Node = FakeElement;
+    globals.Element = FakeElement;
+  });
+  afterEach(() => {
+    globals.Node = original.Node;
+    globals.Element = original.Element;
+  });
+
+  // The fakes stand in for DOM elements; the casts only satisfy the DOM types of the signatures.
+  const el = (...args: ConstructorParameters<typeof FakeElement>): Element =>
+    new FakeElement(...args) as unknown as Element;
+
+  it('counts focus inside the strip or the panel, not focus inside a portal opened from them', () => {
+    const pin = el();
+    const box = el([el([pin])]);
+    const launchpadCard = el();
+    expect(focusInside(box, pin)).toBe(true);
+    // React hands a portal's focus events to its React parents; in the DOM it is elsewhere.
+    expect(focusInside(box, launchpadCard)).toBe(false);
+    expect(focusInside(box, null)).toBe(false);
+  });
+
+  it('opens for keyboard focus only: a click focuses what it lands on, and must not hold the panel', () => {
+    expect(keyboardFocus(el([], true))).toBe(true);
+    expect(keyboardFocus(el([], false))).toBe(false);
+    expect(keyboardFocus(el([], 'throws'))).toBe(false);
+    expect(keyboardFocus(null)).toBe(false);
+  });
+
+  it('and the pointer and the focus are wired into one box, both read from the DOM', () => {
+    expect(HOOK).toContain('hoverProps: { onMouseOver, onMouseOut, onFocus, onBlur }');
+    // The pointer, too, enters and leaves by the DOM: to React the launchpad portal is inside the
+    // box, and a panel that never saw the pointer leave for it stayed open after it closed.
+    expect(HOOK).not.toContain('onMouseEnter');
+    expect(HOOK).not.toContain('onMouseLeave');
+    expect(HOOK).toMatch(
+      /onMouseOut = useCallback\([^]*?focusInside\(e\.currentTarget, e\.target\)[^]*?focusInside\(e\.currentTarget, e\.relatedTarget\)\) return;\s*schedule\(false\);/,
+    );
+    expect(HOOK).toMatch(
+      /onFocus = useCallback\([^]*?focusInside\(e\.currentTarget, e\.target\)[^]*?keyboardFocus\(e\.target\)/,
+    );
+    expect(HOOK).toMatch(
+      /onBlur = useCallback\([^]*?focusInside\(e\.currentTarget, e\.relatedTarget\)\) return;/,
+    );
   });
 });
 
@@ -106,11 +178,8 @@ describe('on a desktop the panel never takes the page’s width', () => {
     },
   );
 
-  it('the launchpad strip stays 56px wide, and the toggle pins the panel open', () => {
+  it('the launchpad strip stays 56px wide', () => {
     expect(LAUNCHPAD).toContain('className="relative flex h-full w-14 shrink-0"');
-    expect(LAUNCHPAD).toContain('onClick={floating.togglePinned}');
-    expect(RAIL).toContain('onClick={floating.togglePinned}');
-    expect(RAIL).toContain('onTogglePinned={floating.togglePinned}');
   });
 
   it('the module launchpad opened from the floating panel holds it open until it closes', () => {
@@ -130,5 +199,52 @@ describe('on a desktop the panel never takes the page’s width', () => {
 
   it('the top bar stays above the panel, so its menus open over it', () => {
     expect(TOPBAR).toContain('<header className="relative z-40 flex');
+  });
+});
+
+describe('one pin at the top of the panel opens and closes it — nothing at the bottom', () => {
+  it('the pin is a toggle that says which way it is set, in either language', () => {
+    expect(PIN).toContain('data-nav-toggle');
+    expect(PIN).toContain('aria-pressed={pinned}');
+    expect(PIN).toContain("t(pinned ? 'nav.unpinPanel' : 'nav.pinPanel')");
+    // Its own words, not the page-favourite pin's («تثبيت» on a page row means something else).
+    expect(I18N.match(/'nav\.pinPanel': /g)).toHaveLength(2);
+    expect(I18N.match(/'nav\.unpinPanel': /g)).toHaveLength(2);
+    expect(I18N).toContain("'nav.pinPanel': 'تثبيت القائمة'");
+    expect(I18N).toContain("'nav.unpinPanel': 'إلغاء تثبيت القائمة'");
+  });
+
+  it('launchpad: right after the module switcher (the name and its four squares), on a desktop only', () => {
+    expect(LAUNCHPAD).toMatch(
+      /<ModuleSwitcher[^]*?onPick=\{pickModule\}\s*\/>\s*<\/div>\s*\{collapsible && <NavPinButton pinned=\{floating\.pinned\} onToggle=\{floating\.togglePinned\} \/>\}/,
+    );
+  });
+
+  it('rail: right after the module’s name in the panel header', () => {
+    expect(RAIL).toMatch(
+      /\{localized\(module\.name, locale\)\}\s*<\/span>\s*<\/div>\s*\{collapsible && <NavPinButton pinned=\{pinned\} onToggle=\{onTogglePinned\} \/>\}/,
+    );
+    expect(RAIL).toContain('onTogglePinned={floating.togglePinned}');
+  });
+
+  it.each([
+    ['launchpad', LAUNCHPAD],
+    ['rail', RAIL],
+  ])(
+    '%s: the old expand and collapse buttons are gone, from the strip and the panel',
+    (name, source) => {
+      expect(source, `${name} has no toggle of its own`).not.toContain('data-nav-toggle');
+      expect(source).not.toContain('onClick={floating.togglePinned}');
+      expect(source).not.toContain("'nav.collapse'");
+      expect(source).not.toContain("'nav.expand'");
+      expect(source).not.toContain('ToggleIcon');
+    },
+  );
+
+  it('the rail strip carries module icons only', () => {
+    expect(RAIL).not.toContain('footer');
+    expect(RAIL).toContain(
+      '<ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />',
+    );
   });
 });

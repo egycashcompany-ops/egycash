@@ -7,7 +7,12 @@
 // alerts, five figures and three tiles, the time chart beside the rings of kind and source, the
 // cars, the drivers and the fuel — in its dark theme and in the light map that came with it, as
 // `dark:` variants over the `dark` class the app stamps on <html>. Since «عاوز ازود اجمالى العهده
-// فى الاحصايات و تكون فى الداس بورد», the fund («إجمالي العهدة») leads the figures: six of them.
+// فى الاحصايات و تكون فى الداس بورد», the fund («إجمالي العهدة») is on it too — and since the memos
+// and the fund's own operations, it heads a section of its own, «العهدة الآن» (`CustodyDashboardFund`):
+// the fund over its whole history, whatever the filters — the formula as five tiles, the money
+// waiting for «استعاضة العهدة» and for «تسوية العهدة», the fund after every operation and the
+// newest of them — with its own lines in the alerts. Under it, «مصروفات العهدة حسب الفلاتر»: the
+// five spend figures (each with its memos' state), the tiles and the charts, as before.
 //
 // «عاوزك تشيل من الداش بورد الجدول اللى فى العربيات والسجل يكون برا زى ما هو … وسجل كل الحركات
 // برضو»: the design's last two tables — «ملخص لكل سيارة» and «سجل كل الحركات» — are not drawn here.
@@ -39,7 +44,7 @@ import { CloseIcon } from '../../../shared/ui/icons';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { useCustodyDashboard } from '../api/fleet-queries';
-import { CustodyFundCard, CustodyShare, CUSTODY_KIND_LABEL } from './CustodyFigures';
+import { CustodyShare, CUSTODY_KIND_LABEL } from './CustodyFigures';
 import { CUSTODY_KIND, CUSTODY_KINDS, CUSTODY_TOTAL_TILE, FLASK } from './CustodyKinds';
 import {
   CustodyByKindSource,
@@ -68,6 +73,20 @@ import {
   WHOLE,
   type CustodyDashboardFilters,
 } from './custody-dashboard-parts';
+import {
+  CUSTODY_FUND_ROW,
+  CustodyFundAlertLines,
+  CustodyFundNow,
+  CustodyFundSteps,
+  CustodyMemoStateBar,
+  CustodyRecentOps,
+  CustodySectionHeading,
+  CustodySettleCard,
+  CustodyWaitingCard,
+  useCustodyFundAlerts,
+  type CustodyFundSectionActions,
+} from './CustodyDashboardFund';
+import { custodyMemoStateParts, type CustodyFundAlert } from '../lib/custody-dashboard-fund';
 
 export {
   custodyFilterChips,
@@ -77,7 +96,7 @@ export {
 } from './custody-dashboard-parts';
 
 /** What the dashboard can ask of the board behind it — each optional, the dashboard draws without. */
-export interface CustodyDashboardActions {
+export interface CustodyDashboardActions extends CustodyFundSectionActions {
   /** «إعادة ضبط الفلاتر»: clears the board's own filters; the dashboard follows them. */
   onClearFilters?: (() => void) | undefined;
   /** «عرض حركات الصيانة»: the board's «المصدر» set to «صيانة», the dashboard closed. */
@@ -184,17 +203,25 @@ const Emphasised = ({
 /**
  * The amber banner — every line a count read from the rows, nothing estimated: a car fuelled from
  * the fund twice in a day (up to three named, then «+N»); the receipts with no photo and the
- * duplicated ones. A dealership bill is not custody money, so none waits here.
+ * duplicated ones. A dealership bill is not custody money, so none waits here. Under them, the
+ * fund's own lines (`fundLines`, a–e): the fund below zero, receipts in no memo for more than 30
+ * days, a memo not replenished or a licensing memo not settled for as long, and settlements waiting
+ * past what the fund holds — each with the way to deal with it. Drawn when either has a line.
  */
 export const CustodyAlerts = ({
   alerts,
+  fundLines = [],
+  onFundAction,
 }: {
   alerts: FleetCustodyAlertsDto;
+  fundLines?: readonly CustodyFundAlert[];
+  onFundAction?: CustodyFundSectionActions['onFundAction'];
 }): JSX.Element | null => {
   const t = useT();
   const { phrase } = useCount();
   const titleId = useId();
-  if (!custodyHasAlerts(alerts)) return null;
+  const rowAlerts = custodyHasAlerts(alerts);
+  if (!rowAlerts && fundLines.length === 0) return null;
   const doubles = alerts.doubleFuel.slice(0, DOUBLE_FUEL_SHOWN);
   const more = alerts.doubleFuel.length - doubles.length;
   const TOKEN = '⁣';
@@ -244,7 +271,7 @@ export const CustodyAlerts = ({
         <div className="mt-0.5 shrink-0 rounded-lg bg-amber-100 p-1.5 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
           <BoardIcon d={PATH.warn} className="h-4 w-4" />
         </div>
-        <div className="min-w-0 space-y-1">
+        <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700 dark:text-slate-300">
             <span
               id={titleId}
@@ -263,14 +290,17 @@ export const CustodyAlerts = ({
               </span>
             ))}
           </div>
-          <p
-            data-custody-alert="audit"
-            className="text-[11px] font-medium text-slate-500 dark:font-normal dark:text-slate-400"
-          >
-            <span aria-hidden="true">🔍 </span>
-            {phrase('fleet.custody.dashboard.alerts.noPhoto', alerts.receiptsWithoutPhoto)} |{' '}
-            {phrase('fleet.custody.dashboard.alerts.duplicates', alerts.duplicateReceipts)}
-          </p>
+          {rowAlerts && (
+            <p
+              data-custody-alert="audit"
+              className="text-[11px] font-medium text-slate-500 dark:font-normal dark:text-slate-400"
+            >
+              <span aria-hidden="true">🔍 </span>
+              {phrase('fleet.custody.dashboard.alerts.noPhoto', alerts.receiptsWithoutPhoto)} |{' '}
+              {phrase('fleet.custody.dashboard.alerts.duplicates', alerts.duplicateReceipts)}
+            </p>
+          )}
+          <CustodyFundAlertLines lines={fundLines} ruled={rowAlerts} onFundAction={onFundAction} />
         </div>
       </div>
     </section>
@@ -280,31 +310,30 @@ export const CustodyAlerts = ({
 // ── (2) The figures ───────────────────────────────────────────────────────────────────────────
 
 /**
- * A figure's sum: Cairo, black, tight — a size down from 1,536px, where the six share one row (a
- * sixth of the modal's 1,600px at most); below that they are three to a row and need no shrinking.
+ * A figure's sum: Cairo, black, tight — a size down from 1,536px, where the five share one row (a
+ * fifth of the modal's 1,600px at most); below that they are three to a row and need no shrinking.
  */
 const FIGURE = cn(
   'text-2xl font-black tracking-tight text-slate-900 [overflow-wrap:anywhere] 2xl:text-xl dark:text-white',
   CAIRO,
 );
 /**
- * «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد» — six figures: one to a row on a
- * phone, two from `sm`, three from `lg` (the fund, the spend and «صيانة» over fuel, tyres and
- * washing), all six in one row of the design from `2xl`, where a sixth of the row still holds
- * a sum and its «ج.م.».
+ * Five figures — the spend and its four kinds; «إجمالي العهدة» moved up to «العهدة الآن», where the
+ * fund is over its whole history and the filters never reach it. One to a row on a phone, two from
+ * `sm`, three from `lg`, all five in one row of the design from `2xl`.
  */
-const KPI_GRID = 'grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6';
+const KPI_GRID = 'grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5';
 const FOOT =
   'flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs dark:border-[#1c273b]';
 const TILE = cn(CARD, 'flex flex-wrap items-center justify-between gap-2 rounded-xl p-3.5');
 const TILE_ICON = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border';
 
 /**
- * Six figures — the fund first («إجمالي العهدة», the board's own card: what was spent of all that
- * was charged into it; the fund below zero in red), the total in emerald, then each kind with its
- * share of the total and its count; fuel splits into «شل أوت» and «وطنية» by the company each
- * receipt names, and the receipts that name none are a small line of their own under the two.
- * Then the movements, the cars and the litres.
+ * Five figures — the total in emerald, then each kind with its share of the total and its count;
+ * fuel splits into «شل أوت» and «وطنية» by the company each receipt names, and the receipts that
+ * name none are a small line of their own under the two. Each wears its spend's memos' state as a
+ * thin bar — replenished, waiting in a memo, in no memo yet — the total with its legend, a kind
+ * with «لم تُستعَض: X» when any of it waits. Then the movements, the cars and the litres.
  */
 export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
   const t = useT();
@@ -312,17 +341,10 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
   const { count, noun } = useCount();
   const total = money(data.total);
   const none = data.fuelByCompany.none;
+  const totalStates = custodyMemoStateParts(data.memoStates);
   return (
     <section data-custody-dashboard-section="kpis" className="space-y-3.5">
       <div className={KPI_GRID}>
-        <div data-custody-kpi="fund" className="flex min-w-0 flex-col">
-          <CustodyFundCard
-            fundTotal={data.fundTotal}
-            charged={data.fundCharged}
-            spent={data.fundSpent}
-            figure={FIGURE}
-          />
-        </div>
         <div
           data-custody-kpi="total"
           className={cn(
@@ -355,28 +377,34 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
               <BoardIcon d={PATH.box} className="h-5 w-5" />
             </div>
           </div>
-          <div className={cn(FOOT, 'mt-3 text-slate-600 dark:text-slate-400')}>
-            <span className="text-slate-600 dark:text-slate-300">
-              <CustodyShare part={data.total} whole={data.total} />{' '}
-              {t('fleet.custody.dashboard.kpi.ofAll')}
-            </span>
-            {data.periodDays > 0 && (
-              <span
-                data-custody-period-days="true"
-                className={cn(
-                  'shrink-0 whitespace-nowrap rounded border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:border-emerald-700/30 dark:bg-emerald-950/40 dark:text-xs dark:text-emerald-400',
-                  NUM,
-                )}
-              >
-                {count('day', data.periodDays)}
-              </span>
+          <div className="mt-auto">
+            {totalStates !== null && (
+              <CustodyMemoStateBar parts={totalStates} legend name="total" />
             )}
+            <div className={cn(FOOT, 'mt-3 text-slate-600 dark:text-slate-400')}>
+              <span className="text-slate-600 dark:text-slate-300">
+                <CustodyShare part={data.total} whole={data.total} />{' '}
+                {t('fleet.custody.dashboard.kpi.ofAll')}
+              </span>
+              {data.periodDays > 0 && (
+                <span
+                  data-custody-period-days="true"
+                  className={cn(
+                    'shrink-0 whitespace-nowrap rounded border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:border-emerald-700/30 dark:bg-emerald-950/40 dark:text-xs dark:text-emerald-400',
+                    NUM,
+                  )}
+                >
+                  {count('day', data.periodDays)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         {CUSTODY_KINDS.map((kind) => {
           const look = CUSTODY_KIND[kind];
           const sum = money(data[kind]);
+          const states = custodyMemoStateParts(data.memoStates, kind);
           return (
             <div
               key={kind}
@@ -468,21 +496,26 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
                   )}
                 </>
               )}
-              <div className={cn(FOOT, kind === 'fuel' ? 'mt-2' : 'mt-3')}>
-                <span className="text-slate-600 dark:text-slate-400">
-                  <CustodyShare part={data[kind]} whole={data.total} />{' '}
-                  {t('fleet.custody.totals.ofTotal')}
-                </span>
-                <span
-                  data-custody-kpi-count={kind}
-                  className={cn('shrink-0 whitespace-nowrap', look.chip, NUM)}
-                >
-                  {kind === 'fuel'
-                    ? t('fleet.custody.dashboard.kpi.fuelCount', {
-                        movements: count('movement', data.counts.fuel),
-                      })
-                    : count('movement', data.counts[kind])}
-                </span>
+              <div className="mt-auto">
+                {states !== null && (
+                  <CustodyMemoStateBar parts={states} legend={false} name={kind} />
+                )}
+                <div className={cn(FOOT, kind === 'fuel' ? 'mt-2' : 'mt-3')}>
+                  <span className="text-slate-600 dark:text-slate-400">
+                    <CustodyShare part={data[kind]} whole={data.total} />{' '}
+                    {t('fleet.custody.totals.ofTotal')}
+                  </span>
+                  <span
+                    data-custody-kpi-count={kind}
+                    className={cn('shrink-0 whitespace-nowrap', look.chip, NUM)}
+                  >
+                    {kind === 'fuel'
+                      ? t('fleet.custody.dashboard.kpi.fuelCount', {
+                          movements: count('movement', data.counts.fuel),
+                        })
+                      : count('movement', data.counts[kind])}
+                  </span>
+                </div>
               </div>
             </div>
           );
@@ -607,26 +640,45 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
 
 /**
  * Everything the dashboard shows of an answer, in the design's order — up to the fuel: the cars'
- * table and the log are the board's own. Every section, whatever the answer holds: with no
- * movement, each at zero with its line (`CustodyNoMovements`), the banner by its own rules.
+ * table and the log are the board's own. Two scopes, kept visibly apart: «العهدة الآن» — the fund
+ * over its whole history, whatever the filters (its heading says so) — then «مصروفات العهدة حسب
+ * الفلاتر», every section of it filtered as it always was. Every section, whatever the answer
+ * holds: with no movement, each at zero with its line (`CustodyNoMovements`), the banner by its own
+ * rules; each of the fund's cards loads and fails on its own, and nothing else waits for it.
  */
 export const CustodyDashboardBody = ({
   data,
   filters = {},
   onShowMaintenance,
+  onFundAction,
+  onShowPeriod,
   now,
 }: {
   data: FleetCustodyDashboardDto;
   /** The board's filters — the time chart's frame and the words of the line, with no movement. */
   filters?: CustodyDashboardFilters;
-  /** Today, for the time chart's frame — fixed by the specs. */
+  /** Today, for the time chart's frame and the fund's ages — fixed by the specs. */
   now?: number;
 } & CustodyDashboardActions): JSX.Element => {
+  const t = useT();
   const today = now === undefined ? {} : { now };
+  const fundLines = useCustodyFundAlerts(data.fundTotal, now);
   return (
     <div className="space-y-6" data-custody-dashboard-body="true">
-      <CustodyAlerts alerts={data.alerts} />
-      <CustodyKpis data={data} />
+      <CustodyAlerts alerts={data.alerts} fundLines={fundLines} onFundAction={onFundAction} />
+      <CustodyFundNow data={data} />
+      <div className={CUSTODY_FUND_ROW}>
+        <CustodyWaitingCard onFundAction={onFundAction} {...today} />
+        <CustodySettleCard onFundAction={onFundAction} {...today} />
+      </div>
+      <div className={CUSTODY_FUND_ROW}>
+        <CustodyFundSteps onShowPeriod={onShowPeriod} />
+        <CustodyRecentOps onShowPeriod={onShowPeriod} />
+      </div>
+      <div className="space-y-4 pt-2">
+        <CustodySectionHeading name="spend" title={t('fleet.custody.dashboard.spend.heading')} />
+        <CustodyKpis data={data} />
+      </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         <CustodyTimeline data={data} filters={filters} {...today} />
         <CustodyByKindSource data={data} onShowMaintenance={onShowMaintenance} filters={filters} />
@@ -643,8 +695,17 @@ export const CustodyDashboardBody = ({
 /** Loading: the frame of the body, shimmering — no layout jump when the answer lands. */
 const BodySkeleton = (): JSX.Element => (
   <div className="space-y-6" data-custody-dashboard-loading="true">
+    <Skeleton className="h-[130px] rounded-2xl" />
+    <div className={CUSTODY_FUND_ROW}>
+      <Skeleton className="h-[380px] rounded-2xl lg:col-span-7" />
+      <Skeleton className="h-[380px] rounded-2xl lg:col-span-5" />
+    </div>
+    <div className={CUSTODY_FUND_ROW}>
+      <Skeleton className="h-[430px] rounded-2xl lg:col-span-7" />
+      <Skeleton className="h-[430px] rounded-2xl lg:col-span-5" />
+    </div>
     <div className={KPI_GRID}>
-      {[0, 1, 2, 3, 4, 5].map((i) => (
+      {[0, 1, 2, 3, 4].map((i) => (
         <Skeleton key={i} className="h-[120px] rounded-2xl" />
       ))}
     </div>
@@ -673,6 +734,8 @@ export const CustodyDashboardContent = ({
   onRetry,
   filters = {},
   onShowMaintenance,
+  onFundAction,
+  onShowPeriod,
   now,
 }: {
   view: CustodyDashboardView;
@@ -700,6 +763,8 @@ export const CustodyDashboardContent = ({
       data={data}
       filters={filters}
       onShowMaintenance={onShowMaintenance}
+      onFundAction={onFundAction}
+      onShowPeriod={onShowPeriod}
       {...(now === undefined ? {} : { now })}
     />
   );
@@ -719,6 +784,8 @@ export const CustodyDashboard = ({
   filters,
   onClearFilters,
   onShowMaintenance,
+  onFundAction,
+  onShowPeriod,
 }: {
   open: boolean;
   onClose: () => void;
@@ -843,6 +910,8 @@ export const CustodyDashboard = ({
               onRetry={() => void query.refetch()}
               filters={filters}
               onShowMaintenance={onShowMaintenance}
+              onFundAction={onFundAction}
+              onShowPeriod={onShowPeriod}
             />
           </div>
         </div>

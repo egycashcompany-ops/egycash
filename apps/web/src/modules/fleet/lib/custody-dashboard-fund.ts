@@ -78,8 +78,7 @@ export const custodySettleWaiting = (
  * which the dashboard sets as the board's own «من» / «إلى» (it stays open, its filtered part follows).
  */
 export type CustodyLedgerTarget =
-  | { kind: 'operation'; to: string }
-  | { kind: 'period'; from: string; to: string };
+  { kind: 'operation'; to: string } | { kind: 'period'; from: string; to: string };
 
 export const custodyLedgerTarget = (
   row: Pick<FleetCustodyLedgerRowDto, 'id' | 'op' | 'date' | 'dateTo'>,
@@ -126,7 +125,8 @@ export const custodyFundAlerts = (input: {
 }): CustodyFundAlert[] => {
   const now = input.now ?? Date.now();
   const lines: CustodyFundAlert[] = [];
-  if (input.fundTotal < 0) lines.push({ type: 'negative', key: 'negative', amount: input.fundTotal });
+  if (input.fundTotal < 0)
+    lines.push({ type: 'negative', key: 'negative', amount: input.fundTotal });
   for (const line of input.outside ?? []) {
     if (line.stale.count <= 0 || line.oldest === null) continue;
     lines.push({

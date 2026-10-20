@@ -50,7 +50,10 @@ import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { NUM, ymd } from '../components/FuelCardBoard';
 import { CAIRO, TITLE } from '../components/custody-dashboard-parts';
 import { LedgerFigures } from '../components/CustodyLedgerFigures';
-import { LedgerOpChip as OpChip, ledgerOpLabel as opLabelKey } from '../components/custody-ledger-parts';
+import {
+  LedgerOpChip as OpChip,
+  ledgerOpLabel as opLabelKey,
+} from '../components/custody-ledger-parts';
 import {
   CUSTODY_FILTER_LOOK,
   CUSTODY_TAB_TABLE,
@@ -81,7 +84,6 @@ const REMEMBERED_FILTERS = ['from', 'to', 'op', 'size', 'sort'] as const;
 const DEFAULT_PAGE_SIZE = 25;
 /** Newest first — the line with «الآن» on top. Only the date orders the log. */
 const DEFAULT_SORT = 'date:desc';
-const COUNT = new Intl.NumberFormat('en-US');
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 /** «العملية» as the address holds it, kept to what the server knows. */
 const ledgerOps = (raw: string | null): FleetCustodyLedgerOp[] =>

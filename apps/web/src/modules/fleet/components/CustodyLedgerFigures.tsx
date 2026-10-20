@@ -11,7 +11,11 @@
 //                                   card («صُرف من إجمالي الشحن X%»), handed in as `fundCard`.
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { type FleetCustodyFundSummaryDto, type FleetCustodyLedgerOp, type Locale } from '@ecms/contracts';
+import {
+  type FleetCustodyFundSummaryDto,
+  type FleetCustodyLedgerOp,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { formatMoneyParts } from '../../../shared/lib/format';

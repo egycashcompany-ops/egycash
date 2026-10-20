@@ -14,7 +14,9 @@ export const ledgerOpLabel = (op: FleetCustodyLedgerOp): string =>
   op === 'spend' ? 'fleet.custody.ledger.op.spend' : CUSTODY_OPS[op].label;
 
 /** Each operation's chip and icon — the action's own, the receipts' slate. */
-export const ledgerOpLook = (op: FleetCustodyLedgerOp): { chip: string; icon: readonly string[] } =>
+export const ledgerOpLook = (
+  op: FleetCustodyLedgerOp,
+): { chip: string; icon: readonly string[] } =>
   op === 'spend'
     ? { chip: SPEND_LOOK.chip, icon: RECEIPT_ICON }
     : { chip: CUSTODY_OPS[op].chip, icon: CUSTODY_OPS[op].icon };

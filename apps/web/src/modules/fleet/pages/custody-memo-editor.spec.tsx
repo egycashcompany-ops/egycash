@@ -401,7 +401,13 @@ const me = (): MeDto =>
   }) as unknown as MeDto;
 
 const OUTSIDE: FleetCustodyOutsideKindDto[] = [
-  { kind: 'maintenance', count: 3, total: 5720, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+  {
+    kind: 'maintenance',
+    count: 3,
+    total: 5720,
+    oldest: '2026-10-06',
+    stale: { count: 0, total: 0 },
+  },
   { kind: 'fuel', count: 8, total: 7876, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
   { kind: 'tyres', count: 18, total: 1690, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
   { kind: 'wash', count: 0, total: 0, oldest: null, stale: { count: 0, total: 0 } },

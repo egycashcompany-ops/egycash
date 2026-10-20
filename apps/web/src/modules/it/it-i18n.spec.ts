@@ -20,6 +20,11 @@ import {
   IT_LICENSE_STATES,
   IT_MAINTENANCE_KINDS,
   IT_MAINTENANCE_ORDER_STATUSES,
+  IT_MOBILE_LINE_EVENT_TYPES,
+  IT_MOBILE_LINE_HOLDER_KINDS,
+  IT_MOBILE_LINE_STATUSES,
+  IT_MOBILE_NETWORKS,
+  IT_MOBILE_SIM_KINDS,
   IT_TICKET_EVENT_TYPES,
   IT_TICKET_STATUSES,
   type Locale,
@@ -56,6 +61,27 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   // The employees register and a person's history name HR's employment status through a
   // TEMPLATE key — the badge — so the source scan below cannot see these either.
   { name: 'employment status', prefix: 'it.employees.status', values: EMPLOYEE_STATUSES },
+  // FR-19 — the mobile lines. The networks (the cards, the badge, the logo's alt), the statuses,
+  // the SIM kinds, who holds a line (and the filter's «لدى …») and the history's event types are
+  // all rendered through TEMPLATE keys, which the source scan below cannot see.
+  { name: 'mobile network', prefix: 'it.mobileLines.network', values: IT_MOBILE_NETWORKS },
+  { name: 'mobile line status', prefix: 'it.mobileLines.status', values: IT_MOBILE_LINE_STATUSES },
+  { name: 'SIM kind', prefix: 'it.mobileLines.simKind', values: IT_MOBILE_SIM_KINDS },
+  {
+    name: 'mobile line holder kind',
+    prefix: 'it.mobileLines.holderKind',
+    values: IT_MOBILE_LINE_HOLDER_KINDS,
+  },
+  {
+    name: 'mobile line holder filter',
+    prefix: 'it.mobileLines.heldBy',
+    values: IT_MOBILE_LINE_HOLDER_KINDS,
+  },
+  {
+    name: 'mobile line event type',
+    prefix: 'it.mobileLines.event',
+    values: IT_MOBILE_LINE_EVENT_TYPES,
+  },
 ];
 
 const sources = (dir: string): string[] =>

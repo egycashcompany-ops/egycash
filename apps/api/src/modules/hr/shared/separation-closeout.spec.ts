@@ -46,13 +46,14 @@ const bodyOf = (source: string, declaration: string, next: RegExp): string => {
   return match === null ? rest : rest.slice(0, match.index);
 };
 
-describe('the exit reaches all seven consumers', () => {
+describe('the exit reaches all eight consumers', () => {
   /**
-   * Five live in HR — leave, loans, attendance, and the two this phase adds — and two live outside
-   * it. Counted rather than listed one by one, because the NUMBER is what a reader checks against
-   * the audit: `employee-separation-closeout.md` §2 names five consumers and §5 adds two more (the
-   * contract fix is a query change, not a subscriber, which is exactly D3). An eighth appearing
-   * with no row in either is the thing this catches.
+   * Five live in HR — leave, loans, attendance, and the two this phase adds — and three live
+   * outside it (Fleet's, and IT's two: devices and mobile lines). Counted rather than listed one
+   * by one, because the NUMBER is what a reader checks against the audit:
+   * `employee-separation-closeout.md` §2 names six consumers and §5 adds two more (the contract fix
+   * is a query change, not a subscriber, which is exactly D3). A ninth appearing with no row in
+   * either is the thing this catches.
    */
   it('registers five subscriptions inside HR', () => {
     const subscriptions = MODULE.match(/event: 'hr\.employee\.exited'/g) ?? [];
@@ -60,15 +61,17 @@ describe('the exit reaches all seven consumers', () => {
   });
 
   /**
-   * And the two outside it still listen. Held here rather than in each module because the failure
+   * And the ones outside it still listen. Held here rather than in each module because the failure
    * this catches is a change to the EVENT — a rename, a payload split — and the symptom of that is
    * two modules going quiet, in different directories, with nothing failing.
    */
-  it('leaves the two consumers outside HR listening', () => {
+  it('leaves the consumers outside HR listening', () => {
     const fleet = readFileSync(resolve(HR, '../fleet/fleet.module.ts'), 'utf8');
     const it = readFileSync(resolve(HR, '../it/it.module.ts'), 'utf8');
     expect(fleet).toContain("event: 'hr.employee.exited'");
-    expect(it).toContain("event: 'hr.employee.exited'");
+    expect(it.match(/event: 'hr\.employee\.exited'/g) ?? []).toHaveLength(2);
+    expect(it).toContain("handlerId: 'it.flagAssetsHeldByExitedEmployee'");
+    expect(it).toContain("handlerId: 'it.flagMobileLinesHeldByExitedEmployee'");
   });
 
   it('wires the performance closeout by handler id and calls the service', () => {
@@ -84,7 +87,7 @@ describe('the exit reaches all seven consumers', () => {
 
 /**
  * The consumer that searching for `hr.employee.exited` does not find, and the one that matters
- * most (§2, «A sixth consumer, reached through the login»).
+ * most (§2, «One more consumer, reached through the login»).
  *
  *   exit → login suspended → `platform.user.statusChanged` → the leaver's workflows are suspended
  *

@@ -8,8 +8,17 @@
 //
 // The signed copy's bytes are guarded, so they are fetched with the session and shown as an object
 // URL — a photo inline, a scanned PDF in a frame.
+//
+// A mobile line handed to an employee is signed for on the same form (FR-19), and its paper offers
+// exactly the same: print it again, file the signed copy, look at it. So the controls take a
+// `ReceiptStore` — where a kind of paper is kept — and a printer; the device receipts' are the
+// default, and `MobileLineReceipt.tsx` passes the line acknowledgments'.
 import { useEffect, useState } from 'react';
-import { type ItAssetAssignmentDto, type ItCustodyReceiptDocumentDto } from '@ecms/contracts';
+import {
+  type ItAssetAssignmentDto,
+  type ItCustodyReceiptDocumentDto,
+  type ItCustodyReceiptSignedCopyDto,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -24,7 +33,7 @@ import {
   useItCustodyReceipt,
   useUploadReceiptSignedCopy,
 } from '../api/it-queries';
-import { printCustodyReceipt } from '../lib/custody-receipt-print';
+import { printCustodyReceipt, type ReceiptWindowLabels } from '../lib/custody-receipt-print';
 
 /** What the signed copy may be: a phone photo of the paper, or the office scanner's PDF. */
 export const RECEIPT_COPY_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
@@ -33,25 +42,58 @@ const iconButton =
   'inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100';
 
 /**
- * Print a receipt — the tab first, while the click still counts, then the paper. Answers the paper
- * that was printed (the hand-over records its number), or null when nothing was: the browser
- * blocked the tab, or the server refused the receipt — each said, rather than a button that seems
- * to do nothing.
+ * Where a kind of acknowledgment is kept — the device receipts, or the line acknowledgments: how
+ * one is read, and how its signed copy is fetched, filed and withdrawn. The controls below are the
+ * same for both, so the two papers never disagree about what they offer.
  */
-export const useReceiptPrinter = (): {
-  print: (
-    load: () => Promise<ItCustodyReceiptDocumentDto>,
-  ) => Promise<ItCustodyReceiptDocumentDto | null>;
+export interface ReceiptStore {
+  useReceipt: (id: string | null) => {
+    data:
+      { employeeName: string | null; signedCopy: ItCustodyReceiptSignedCopyDto | null } | undefined;
+    isPending: boolean;
+  };
+  useUploadSignedCopy: () => {
+    mutateAsync: (input: { id: string; file: File }) => Promise<unknown>;
+    isPending: boolean;
+  };
+  useDeleteSignedCopy: () => {
+    mutateAsync: (id: string) => Promise<unknown>;
+    isPending: boolean;
+  };
+  fetchSignedCopy: (id: string) => Promise<Blob>;
+}
+
+/** The device receipts (`/it/custody-receipts`) — every control's default. */
+export const DEVICE_RECEIPTS: ReceiptStore = {
+  useReceipt: useItCustodyReceipt,
+  useUploadSignedCopy: useUploadReceiptSignedCopy,
+  useDeleteSignedCopy: useDeleteReceiptSignedCopy,
+  fetchSignedCopy: api.fetchReceiptSignedCopy,
+};
+
+/** A paper the printer can say something about: whether its national ID line was left blank. */
+interface PrintablePaper {
+  nationalIdVisible: boolean;
+}
+
+/**
+ * Print a paper with its own builder — the tab first, while the click still counts, then the
+ * paper. Answers the paper that was printed (the hand-over records its number), or null when
+ * nothing was: the browser blocked the tab, or the server refused the paper — each said, rather
+ * than a button that seems to do nothing.
+ */
+export const usePaperPrinter = <P extends PrintablePaper>(
+  printer: (load: () => Promise<P>, labels: ReceiptWindowLabels) => Promise<P | null>,
+): {
+  print: (load: () => Promise<P>) => Promise<P | null>;
   isPrinting: boolean;
 } => {
   const t = useT();
   const [isPrinting, setPrinting] = useState(false);
-  const print = async (
-    load: () => Promise<ItCustodyReceiptDocumentDto>,
-  ): Promise<ItCustodyReceiptDocumentDto | null> => {
+  const print = async (load: () => Promise<P>): Promise<P | null> => {
     setPrinting(true);
     try {
-      const paper = await printCustodyReceipt(load, {
+      const paper = await printer(load, {
         waiting: t('it.custody.receipt.preparing'),
         print: t('it.custody.receipt.print'),
         close: t('common.close'),
@@ -71,9 +113,18 @@ export const useReceiptPrinter = (): {
   return { print, isPrinting };
 };
 
+/** The device receipt's printer — the custody hand-over's, the transfer's, the register's. */
+export const useReceiptPrinter = (): {
+  print: (
+    load: () => Promise<ItCustodyReceiptDocumentDto>,
+  ) => Promise<ItCustodyReceiptDocumentDto | null>;
+  isPrinting: boolean;
+} => usePaperPrinter(printCustodyReceipt);
+
 const useSignedCopyUrl = (
   receiptId: string,
   fileId: string | null,
+  store: ReceiptStore,
 ): { url: string | null; loading: boolean; failed: boolean } => {
   const [state, setState] = useState<{ url: string | null; loading: boolean; failed: boolean }>({
     url: null,
@@ -88,8 +139,8 @@ const useSignedCopyUrl = (
     let objectUrl: string | null = null;
     let cancelled = false;
     setState({ url: null, loading: true, failed: false });
-    void api
-      .fetchReceiptSignedCopy(receiptId)
+    void store
+      .fetchSignedCopy(receiptId)
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -112,14 +163,16 @@ export const SignedCopyUpload = ({
   label,
   className,
   children,
+  store = DEVICE_RECEIPTS,
 }: {
   receiptId: string;
   label: string;
   className?: string;
   children: JSX.Element | string | (JSX.Element | string)[];
+  store?: ReceiptStore;
 }): JSX.Element => {
   const t = useT();
-  const upload = useUploadReceiptSignedCopy();
+  const upload = store.useUploadSignedCopy();
   const [inputKey, setInputKey] = useState(0);
   const pick = async (file: File | undefined): Promise<void> => {
     if (file === undefined) return;
@@ -153,21 +206,24 @@ export const SignedCopyDialog = ({
   open,
   onClose,
   receiptId,
+  store = DEVICE_RECEIPTS,
 }: {
   open: boolean;
   onClose: () => void;
   receiptId: string;
+  store?: ReceiptStore;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
   const mayEdit = can('itAsset.assign');
-  const receipt = useItCustodyReceipt(open ? receiptId : null);
+  const receipt = store.useReceipt(open ? receiptId : null);
   const copy = receipt.data?.signedCopy ?? null;
   const { url, loading, failed } = useSignedCopyUrl(
     receiptId,
     open ? (copy?.fileId ?? null) : null,
+    store,
   );
-  const remove = useDeleteReceiptSignedCopy();
+  const remove = store.useDeleteSignedCopy();
   const [confirming, setConfirming] = useState(false);
 
   const confirmDelete = async (): Promise<void> => {
@@ -207,6 +263,7 @@ export const SignedCopyDialog = ({
             {mayEdit && (
               <SignedCopyUpload
                 receiptId={receiptId}
+                store={store}
                 label={t('it.custody.receipt.replaceSigned')}
                 className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
@@ -272,6 +329,80 @@ export const SignedCopyDialog = ({
 };
 
 /**
+ * What a paper on file offers, on one line: print it again, and its signed copy — filed → look at
+ * it; not yet → upload it, or «بانتظار التوقيع» for a reader who cannot. The device receipts and
+ * the line acknowledgments both draw this; `store` says where the paper is kept.
+ */
+export const ReceiptPaperActions = ({
+  receiptId,
+  signed,
+  onPrint,
+  isPrinting,
+  store = DEVICE_RECEIPTS,
+}: {
+  receiptId: string;
+  signed: boolean | null;
+  onPrint: () => void;
+  isPrinting: boolean;
+  store?: ReceiptStore;
+}): JSX.Element => {
+  const t = useT();
+  const can = useCan();
+  const mayAssign = can('itAsset.assign');
+  const [viewing, setViewing] = useState(false);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        data-receipt-print={receiptId}
+        className={iconButton}
+        title={t('it.custody.receipt.print')}
+        aria-label={t('it.custody.receipt.print')}
+        disabled={isPrinting}
+        onClick={onPrint}
+      >
+        <PrinterIcon className="h-4 w-4" />
+      </button>
+      {signed === true ? (
+        <button
+          type="button"
+          data-receipt-signed={receiptId}
+          className={iconButton}
+          title={t('it.custody.receipt.viewSigned')}
+          onClick={() => setViewing(true)}
+        >
+          <EyeIcon className="h-4 w-4" />
+          <Badge tone="success" size="sm">
+            {t('it.custody.receipt.signed')}
+          </Badge>
+        </button>
+      ) : mayAssign ? (
+        <SignedCopyUpload
+          receiptId={receiptId}
+          store={store}
+          label={t('it.custody.receipt.uploadSigned')}
+        >
+          <UploadIcon className="h-4 w-4" />
+          <Badge tone="warning" size="sm">
+            {t('it.custody.receipt.awaitingSignature')}
+          </Badge>
+        </SignedCopyUpload>
+      ) : (
+        <Badge tone="warning" size="sm">
+          {t('it.custody.receipt.awaitingSignature')}
+        </Badge>
+      )}
+      <SignedCopyDialog
+        open={viewing}
+        onClose={() => setViewing(false)}
+        receiptId={receiptId}
+        store={store}
+      />
+    </span>
+  );
+};
+
+/**
  * Everything a custody interval's receipt offers, on one line: print it again, its signed copy
  * (filed → look at it; not yet → upload it, or «بانتظار التوقيع» for a reader who cannot), and,
  * for an interval still open with no receipt at all, issue one.
@@ -286,7 +417,6 @@ export const CustodyReceiptActions = ({
   const mayAssign = can('itAsset.assign');
   const printer = useReceiptPrinter();
   const issue = useIssueAssignmentReceipt();
-  const [viewing, setViewing] = useState(false);
   const receiptId = assignment.receiptId;
 
   if (receiptId === null) {
@@ -309,44 +439,11 @@ export const CustodyReceiptActions = ({
   }
 
   return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      <button
-        type="button"
-        data-receipt-print={receiptId}
-        className={iconButton}
-        title={t('it.custody.receipt.print')}
-        aria-label={t('it.custody.receipt.print')}
-        disabled={printer.isPrinting}
-        onClick={() => void printer.print(() => api.printCustodyReceipt(receiptId))}
-      >
-        <PrinterIcon className="h-4 w-4" />
-      </button>
-      {assignment.receiptSigned === true ? (
-        <button
-          type="button"
-          data-receipt-signed={receiptId}
-          className={iconButton}
-          title={t('it.custody.receipt.viewSigned')}
-          onClick={() => setViewing(true)}
-        >
-          <EyeIcon className="h-4 w-4" />
-          <Badge tone="success" size="sm">
-            {t('it.custody.receipt.signed')}
-          </Badge>
-        </button>
-      ) : mayAssign ? (
-        <SignedCopyUpload receiptId={receiptId} label={t('it.custody.receipt.uploadSigned')}>
-          <UploadIcon className="h-4 w-4" />
-          <Badge tone="warning" size="sm">
-            {t('it.custody.receipt.awaitingSignature')}
-          </Badge>
-        </SignedCopyUpload>
-      ) : (
-        <Badge tone="warning" size="sm">
-          {t('it.custody.receipt.awaitingSignature')}
-        </Badge>
-      )}
-      <SignedCopyDialog open={viewing} onClose={() => setViewing(false)} receiptId={receiptId} />
-    </span>
+    <ReceiptPaperActions
+      receiptId={receiptId}
+      signed={assignment.receiptSigned}
+      isPrinting={printer.isPrinting}
+      onPrint={() => void printer.print(() => api.printCustodyReceipt(receiptId))}
+    />
   );
 };

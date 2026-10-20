@@ -24,6 +24,7 @@ import {
   InboxIcon,
   LayersIcon,
   MonitorIcon,
+  PhoneIcon,
   QrIcon,
   UsersIcon,
   WrenchIcon,
@@ -175,6 +176,13 @@ export const ItHomePage = (): JSX.Element => {
                   title={t('it.nav.employees')}
                   description={t('it.employees.subtitle')}
                   icon={UsersIcon}
+                />
+                {/* The SIM lines ride the assets' grants, so they sit with the assets. */}
+                <ShortcutCard
+                  to="/it/mobile-lines"
+                  title={t('it.nav.mobileLines')}
+                  description={t('it.mobileLines.subtitle')}
+                  icon={PhoneIcon}
                 />
               </>
             )}

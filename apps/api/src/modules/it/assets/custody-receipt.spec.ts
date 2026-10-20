@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   createReceipt: vi.fn(),
   emit: vi.fn(),
   receiptNumberFor: vi.fn(),
+  claimReceiptNumber: vi.fn(),
   findAssetsSystem: vi.fn(),
   findCategoriesSystem: vi.fn(),
 }));
@@ -31,7 +32,10 @@ vi.mock('./receipt.repository', () => ({
     ensureCollection: vi.fn(async () => undefined),
   },
 }));
-vi.mock('./receipt-number', () => ({ receiptNumberFor: mocks.receiptNumberFor }));
+vi.mock('./receipt-number', () => ({
+  receiptNumberFor: mocks.receiptNumberFor,
+  claimReceiptNumber: mocks.claimReceiptNumber,
+}));
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/kernel/event-bus', () => ({ emit: mocks.emit }));
 vi.mock('../../../platform/audit', () => ({
@@ -115,7 +119,7 @@ beforeEach(() => {
   mocks.readReceiptHolder.mockResolvedValue({
     employee: null,
     employeeCode: '0100026',
-    employeeName: 'مصطفى عثمان محمود',
+    employeeName: 'وليد صفوت جلال',
     jobTitle: { ar: 'محاسب', en: 'Accountant' },
     nationalId: '29801011234567',
     section: { ar: 'التسويات', en: 'Settlements' },
@@ -182,7 +186,7 @@ describe('a hand-over is ONE receipt over every asset it hands over', () => {
       ['Dell Screen', '49WNRS3', 'N', null],
     ]);
     // «الإسم» and «الوظيفة» — what the paper prints in the signature block, kept as printed.
-    expect(receipt.employeeName).toBe('مصطفى عثمان محمود');
+    expect(receipt.employeeName).toBe('وليد صفوت جلال');
     expect(receipt.jobTitle).toEqual({ ar: 'محاسب', en: 'Accountant' });
     // «بطاقة رقم قومي … صادرة من قسم … – …» — the identity line, kept as printed too.
     expect(receipt.nationalId).toBe('29801011234567');
@@ -287,6 +291,9 @@ describe('the receipt number — EGYCASH-IT-F-14-0001, one more on every print',
     );
     expect(mocks.receiptNumberFor).toHaveBeenCalledWith(7);
     expect(receipt.formNumber).toBe(7);
+    // Claimed inside the hand-over's transaction — the one place a device paper and a mobile
+    // line's acknowledgment meet, so one number is never recorded on both.
+    expect(mocks.claimReceiptNumber).toHaveBeenCalledWith(7, expect.anything());
   });
 
   it('takes the next number for a hand-over that printed nothing', async () => {

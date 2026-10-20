@@ -46,6 +46,8 @@ describe('IT routes', () => {
         'maintenance',
         'maintenance-plans',
         'maintenance/:id',
+        // FR-19 — the SIM lines, on the assets' grants.
+        'mobile-lines',
         'software',
         'spare-parts',
         'tickets',

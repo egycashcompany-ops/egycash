@@ -246,8 +246,34 @@ describe('the register’s filters', () => {
 
     const { $or } = filterOf() as { $or: Record<string, unknown>[] };
     const [byNumber] = $or;
-    expect(String(byNumber?.phoneNumber)).toBe(String(/010\.3/i));
+    // The digits as the register stores them — the separator is not part of the number.
+    expect(String(byNumber?.phoneNumber)).toBe(String(/0103/));
     expect($or).toContainEqual({ currentAssignmentId: { $in: byCar } });
+  });
+
+  it('finds a pasted number and a card serial in its printed groups', async () => {
+    mocks.openIdsMatching.mockResolvedValue([]);
+
+    // Copied from a chat: the international prefix, spaces and an invisible direction mark.
+    await itMobileLineService.list(
+      { page: 1, pageSize: 25, sortDir: 'desc', search: '\u200e+20 10 1234 5678' },
+      scope,
+    );
+    const pasted = (filterOf() as { $or: Record<string, unknown>[] }).$or;
+    expect(String(pasted[0]?.phoneNumber)).toBe(String(/01012345678/));
+    expect(String(pasted[1]?.simSerial)).toBe(String(/01012345678/));
+
+    await itMobileLineService.list(
+      { page: 1, pageSize: 25, sortDir: 'desc', search: '8920 0220 2271' },
+      scope,
+    );
+    const last = mocks.listLines.mock.calls.at(-1) as [
+      { filter: { $or: Record<string, unknown>[] } },
+    ];
+    const card = last[0].filter.$or;
+    expect(String(card[1]?.simSerial)).toBe(String(/892002202271/));
+    // A plan or a note is matched as typed.
+    expect(String(card[2]?.ratePlan)).toBe(String(/8920 0220 2271/i));
   });
 });
 

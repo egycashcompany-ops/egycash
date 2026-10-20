@@ -92,7 +92,7 @@ const scope = {} as never;
 const person = (status: DirectoryEmployee['status']): DirectoryEmployee => ({
   employeeId: NEWCOMER,
   code: '0100026',
-  fullNameAr: 'مصطفى عثمان محمود',
+  fullNameAr: 'وليد صفوت جلال',
   status,
   branchId: String(BRANCH),
   departmentId: null,

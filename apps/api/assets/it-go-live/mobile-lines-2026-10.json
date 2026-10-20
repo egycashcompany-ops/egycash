@@ -13,6 +13,7 @@
       "status": "assigned",
       "holderCode": "0101002",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -29,6 +30,7 @@
       "status": "assigned",
       "holderCode": "0100925",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -45,6 +47,7 @@
       "status": "assigned",
       "holderCode": "0100230",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -61,6 +64,7 @@
       "status": "assigned",
       "holderCode": "0100345",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -77,6 +81,7 @@
       "status": "assigned",
       "holderCode": "0402058",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -93,6 +98,7 @@
       "status": "assigned",
       "holderCode": "0300803",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -109,6 +115,7 @@
       "status": "assigned",
       "holderCode": "0300438",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -125,6 +132,7 @@
       "status": "assigned",
       "holderCode": "0500980",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -141,6 +149,7 @@
       "status": "assigned",
       "holderCode": "0501178",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -157,6 +166,7 @@
       "status": "assigned",
       "holderCode": "0200171",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -173,6 +183,7 @@
       "status": "assigned",
       "holderCode": "0200634",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -189,6 +200,7 @@
       "status": "assigned",
       "holderCode": "0601465",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -205,6 +217,7 @@
       "status": "assigned",
       "holderCode": "0601462",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -221,6 +234,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -237,6 +251,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -253,6 +268,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -269,6 +285,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -285,6 +302,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -301,6 +319,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -317,6 +336,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -333,6 +353,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -349,6 +370,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -365,6 +387,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -381,6 +404,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -397,6 +421,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -413,6 +438,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -429,6 +455,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -445,6 +472,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -461,6 +489,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -477,6 +506,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -493,6 +523,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -509,6 +540,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -525,6 +557,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -541,6 +574,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -557,6 +591,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -573,6 +608,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -589,6 +625,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -605,6 +642,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -621,6 +659,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -637,6 +676,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -653,6 +693,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -669,6 +710,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -685,6 +727,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -701,6 +744,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -717,6 +761,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -733,6 +778,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -749,6 +795,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -765,6 +812,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -781,6 +829,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -797,6 +846,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -813,6 +863,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100000",
+      "registeredToLikely": true,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -829,6 +880,7 @@
       "status": "assigned",
       "holderCode": "0100143",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -845,6 +897,7 @@
       "status": "assigned",
       "holderCode": "0100297",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -861,6 +914,7 @@
       "status": "assigned",
       "holderCode": "0101083",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -877,6 +931,7 @@
       "status": "assigned",
       "holderCode": "0102173",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -893,6 +948,7 @@
       "status": "assigned",
       "holderCode": "0100222",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -909,6 +965,7 @@
       "status": "assigned",
       "holderCode": "0100094",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -925,6 +982,7 @@
       "status": "assigned",
       "holderCode": "0100049",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -941,6 +999,7 @@
       "status": "assigned",
       "holderCode": "0100780",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -957,6 +1016,7 @@
       "status": "assigned",
       "holderCode": "0100746",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -973,6 +1033,7 @@
       "status": "assigned",
       "holderCode": "0100468",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -989,6 +1050,7 @@
       "status": "assigned",
       "holderCode": "0100536",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1005,6 +1067,7 @@
       "status": "assigned",
       "holderCode": "0100182",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1021,6 +1084,7 @@
       "status": "assigned",
       "holderCode": "0101032",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1037,6 +1101,7 @@
       "status": "assigned",
       "holderCode": "0100401",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1053,6 +1118,7 @@
       "status": "assigned",
       "holderCode": "0100006",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1069,6 +1135,7 @@
       "status": "assigned",
       "holderCode": "0101858",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1085,6 +1152,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0101975",
+      "registeredToLikely": true,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1101,6 +1169,7 @@
       "status": "assigned",
       "holderCode": "0100411",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1117,6 +1186,7 @@
       "status": "assigned",
       "holderCode": "0100046",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1133,6 +1203,7 @@
       "status": "assigned",
       "holderCode": "0100658",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1149,6 +1220,7 @@
       "status": "assigned",
       "holderCode": "0100028",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1165,6 +1237,7 @@
       "status": "assigned",
       "holderCode": "0100688",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1181,6 +1254,7 @@
       "status": "assigned",
       "holderCode": "0101110",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1197,6 +1271,7 @@
       "status": "assigned",
       "holderCode": "0100273",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1213,6 +1288,7 @@
       "status": "assigned",
       "holderCode": "0702463",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1229,6 +1305,7 @@
       "status": "assigned",
       "holderCode": "0102301",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1245,6 +1322,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "مسجّل في الشبكة باسم شخص غير موجود في الموارد البشرية"
@@ -1261,6 +1339,7 @@
       "status": "assigned",
       "holderCode": "0100211",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1277,6 +1356,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "مسجّل في الشبكة باسم شخص غير موجود في الموارد البشرية"
@@ -1293,6 +1373,7 @@
       "status": "assigned",
       "holderCode": "0200489",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1309,6 +1390,7 @@
       "status": "assigned",
       "holderCode": "0100561",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1325,6 +1407,7 @@
       "status": "assigned",
       "holderCode": "0100722",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1341,6 +1424,7 @@
       "status": "assigned",
       "holderCode": "0100618",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1357,6 +1441,7 @@
       "status": "assigned",
       "holderCode": "0100933",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1373,6 +1458,7 @@
       "status": "assigned",
       "holderCode": "0100433",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1389,6 +1475,7 @@
       "status": "assigned",
       "holderCode": "0100617",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1405,6 +1492,7 @@
       "status": "assigned",
       "holderCode": "0100545",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1421,6 +1509,7 @@
       "status": "assigned",
       "holderCode": "0100547",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1437,6 +1526,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100458",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1453,6 +1543,7 @@
       "status": "assigned",
       "holderCode": "0100668",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1469,6 +1560,7 @@
       "status": "assigned",
       "holderCode": "0100691",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1485,6 +1577,7 @@
       "status": "assigned",
       "holderCode": "0100939",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1501,6 +1594,7 @@
       "status": "assigned",
       "holderCode": "0101002",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1517,6 +1611,7 @@
       "status": "assigned",
       "holderCode": "0100564",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1533,6 +1628,7 @@
       "status": "assigned",
       "holderCode": "0100513",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1549,6 +1645,7 @@
       "status": "assigned",
       "holderCode": "0100240",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1565,6 +1662,7 @@
       "status": "assigned",
       "holderCode": "0400840",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1581,6 +1679,7 @@
       "status": "assigned",
       "holderCode": "0101403",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1597,6 +1696,7 @@
       "status": "assigned",
       "holderCode": "0100566",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1613,6 +1713,7 @@
       "status": "assigned",
       "holderCode": "0100494",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1629,6 +1730,7 @@
       "status": "assigned",
       "holderCode": "0100838",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1645,6 +1747,7 @@
       "status": "assigned",
       "holderCode": "0100301",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1661,6 +1764,7 @@
       "status": "assigned",
       "holderCode": "0100546",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1677,6 +1781,7 @@
       "status": "assigned",
       "holderCode": "0100914",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1693,6 +1798,7 @@
       "status": "assigned",
       "holderCode": "0100660",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1709,6 +1815,7 @@
       "status": "assigned",
       "holderCode": "0101234",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1725,6 +1832,7 @@
       "status": "assigned",
       "holderCode": "0101536",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1741,6 +1849,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0101450",
+      "registeredToLikely": true,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1757,6 +1866,7 @@
       "status": "assigned",
       "holderCode": "0101414",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1773,6 +1883,7 @@
       "status": "assigned",
       "holderCode": "0101383",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1789,6 +1900,7 @@
       "status": "assigned",
       "holderCode": "0101237",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1805,6 +1917,7 @@
       "status": "assigned",
       "holderCode": "0101217",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1821,6 +1934,7 @@
       "status": "assigned",
       "holderCode": "0101092",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1837,6 +1951,7 @@
       "status": "assigned",
       "holderCode": "0101780",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1853,6 +1968,7 @@
       "status": "assigned",
       "holderCode": "0100380",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1869,6 +1985,7 @@
       "status": "assigned",
       "holderCode": "0101041",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1885,6 +2002,7 @@
       "status": "assigned",
       "holderCode": "0100878",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1901,6 +2019,7 @@
       "status": "assigned",
       "holderCode": "0401857",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1917,6 +2036,7 @@
       "status": "assigned",
       "holderCode": "0101247",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1933,6 +2053,7 @@
       "status": "assigned",
       "holderCode": "0402058",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1949,6 +2070,7 @@
       "status": "assigned",
       "holderCode": "0100014",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1965,6 +2087,7 @@
       "status": "assigned",
       "holderCode": "0100597",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1981,6 +2104,7 @@
       "status": "assigned",
       "holderCode": "0402438",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -1997,6 +2121,7 @@
       "status": "assigned",
       "holderCode": "0100187",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2013,6 +2138,7 @@
       "status": "assigned",
       "holderCode": "0402614",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2029,6 +2155,7 @@
       "status": "assigned",
       "holderCode": "0300495",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2045,6 +2172,7 @@
       "status": "assigned",
       "holderCode": "0300906",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2061,6 +2189,7 @@
       "status": "assigned",
       "holderCode": "0300064",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2077,6 +2206,7 @@
       "status": "assigned",
       "holderCode": "0100369",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2093,6 +2223,7 @@
       "status": "assigned",
       "holderCode": "0300438",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2109,6 +2240,7 @@
       "status": "assigned",
       "holderCode": "0300435",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2125,6 +2257,7 @@
       "status": "assigned",
       "holderCode": "0300402",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2141,6 +2274,7 @@
       "status": "assigned",
       "holderCode": "0300476",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2157,6 +2291,7 @@
       "status": "assigned",
       "holderCode": "0300803",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2173,6 +2308,7 @@
       "status": "assigned",
       "holderCode": "0300749",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2189,6 +2325,7 @@
       "status": "assigned",
       "holderCode": "0300762",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2205,6 +2342,7 @@
       "status": "assigned",
       "holderCode": "0300974",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2221,6 +2359,7 @@
       "status": "assigned",
       "holderCode": "0301655",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2237,6 +2376,7 @@
       "status": "assigned",
       "holderCode": "0300649",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2253,6 +2393,7 @@
       "status": "assigned",
       "holderCode": "0300444",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2269,6 +2410,7 @@
       "status": "assigned",
       "holderCode": "0301138",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2285,6 +2427,7 @@
       "status": "assigned",
       "holderCode": "0300484",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2301,6 +2444,7 @@
       "status": "assigned",
       "holderCode": "0300490",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2317,6 +2461,7 @@
       "status": "assigned",
       "holderCode": "0300882",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2333,6 +2478,7 @@
       "status": "assigned",
       "holderCode": "0301899",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2349,6 +2495,7 @@
       "status": "assigned",
       "holderCode": "0301900",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2365,6 +2512,7 @@
       "status": "assigned",
       "holderCode": "0300812",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2381,6 +2529,7 @@
       "status": "assigned",
       "holderCode": "0301723",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2397,6 +2546,7 @@
       "status": "assigned",
       "holderCode": "0301486",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2413,6 +2563,7 @@
       "status": "assigned",
       "holderCode": "0300864",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2429,6 +2580,7 @@
       "status": "assigned",
       "holderCode": "0300854",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2445,6 +2597,7 @@
       "status": "assigned",
       "holderCode": "0301014",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2461,6 +2614,7 @@
       "status": "assigned",
       "holderCode": "0301141",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2477,6 +2631,7 @@
       "status": "assigned",
       "holderCode": "0302221",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2493,6 +2648,7 @@
       "status": "assigned",
       "holderCode": "0501018",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2509,6 +2665,7 @@
       "status": "assigned",
       "holderCode": "0501178",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2525,6 +2682,7 @@
       "status": "assigned",
       "holderCode": "0501127",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2541,6 +2699,7 @@
       "status": "assigned",
       "holderCode": "0501005",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2557,6 +2716,7 @@
       "status": "assigned",
       "holderCode": "0500980",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2573,6 +2733,7 @@
       "status": "assigned",
       "holderCode": "0500990",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2589,6 +2750,7 @@
       "status": "assigned",
       "holderCode": "0100149",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2605,6 +2767,7 @@
       "status": "assigned",
       "holderCode": "0101004",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2621,6 +2784,7 @@
       "status": "assigned",
       "holderCode": "0500961",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2637,6 +2801,7 @@
       "status": "assigned",
       "holderCode": "0502000",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2653,6 +2818,7 @@
       "status": "assigned",
       "holderCode": "0501483",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2669,6 +2835,7 @@
       "status": "assigned",
       "holderCode": "0501454",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2685,6 +2852,7 @@
       "status": "assigned",
       "holderCode": "0200984",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2701,6 +2869,7 @@
       "status": "assigned",
       "holderCode": "0200634",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2717,6 +2886,7 @@
       "status": "assigned",
       "holderCode": "0200429",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2733,6 +2903,7 @@
       "status": "assigned",
       "holderCode": "0201088",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2749,6 +2920,7 @@
       "status": "assigned",
       "holderCode": "0200171",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2765,6 +2937,7 @@
       "status": "assigned",
       "holderCode": "0200473",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2781,6 +2954,7 @@
       "status": "assigned",
       "holderCode": "0200773",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2797,6 +2971,7 @@
       "status": "assigned",
       "holderCode": "0200472",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2813,6 +2988,7 @@
       "status": "assigned",
       "holderCode": "0200593",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2829,6 +3005,7 @@
       "status": "assigned",
       "holderCode": "0200790",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2845,6 +3022,7 @@
       "status": "assigned",
       "holderCode": "0200801",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2861,6 +3039,7 @@
       "status": "assigned",
       "holderCode": "0200777",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2877,6 +3056,7 @@
       "status": "assigned",
       "holderCode": "0200392",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2893,6 +3073,7 @@
       "status": "assigned",
       "holderCode": "0200602",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2909,6 +3090,7 @@
       "status": "assigned",
       "holderCode": "0200631",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2925,6 +3107,7 @@
       "status": "assigned",
       "holderCode": "0200776",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2941,6 +3124,7 @@
       "status": "assigned",
       "holderCode": "0200633",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2957,6 +3141,7 @@
       "status": "assigned",
       "holderCode": "0200827",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2973,6 +3158,7 @@
       "status": "assigned",
       "holderCode": "0200820",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -2989,6 +3175,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0200943",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3005,6 +3192,7 @@
       "status": "assigned",
       "holderCode": "0200630",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3021,6 +3209,7 @@
       "status": "assigned",
       "holderCode": "0200530",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3037,6 +3226,7 @@
       "status": "assigned",
       "holderCode": "0201550",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3053,6 +3243,7 @@
       "status": "assigned",
       "holderCode": "0201391",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3069,6 +3260,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0201447",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3085,6 +3277,7 @@
       "status": "assigned",
       "holderCode": "0201917",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3101,6 +3294,7 @@
       "status": "assigned",
       "holderCode": "0201820",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3117,6 +3311,7 @@
       "status": "assigned",
       "holderCode": "0202117",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3133,6 +3328,7 @@
       "status": "assigned",
       "holderCode": "0202015",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3149,6 +3345,7 @@
       "status": "assigned",
       "holderCode": "0200819",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3165,6 +3362,7 @@
       "status": "assigned",
       "holderCode": "0201725",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3181,6 +3379,7 @@
       "status": "assigned",
       "holderCode": "0200412",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3197,6 +3396,7 @@
       "status": "assigned",
       "holderCode": "0201876",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3213,6 +3413,7 @@
       "status": "assigned",
       "holderCode": "0200376",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3229,6 +3430,7 @@
       "status": "assigned",
       "holderCode": "0200710",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3245,6 +3447,7 @@
       "status": "assigned",
       "holderCode": "0100846",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3261,6 +3464,7 @@
       "status": "assigned",
       "holderCode": "0100884",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3277,6 +3481,7 @@
       "status": "assigned",
       "holderCode": "0501196",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3293,6 +3498,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100346",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3309,6 +3515,7 @@
       "status": "assigned",
       "holderCode": "0100953",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3325,6 +3532,7 @@
       "status": "assigned",
       "holderCode": "0101199",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3341,6 +3549,7 @@
       "status": "assigned",
       "holderCode": "0100382",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3357,6 +3566,7 @@
       "status": "assigned",
       "holderCode": "0101121",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3373,6 +3583,7 @@
       "status": "assigned",
       "holderCode": "0100062",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3389,6 +3600,7 @@
       "status": "assigned",
       "holderCode": "0500963",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3405,6 +3617,7 @@
       "status": "assigned",
       "holderCode": "0100378",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3421,6 +3634,7 @@
       "status": "assigned",
       "holderCode": "0100071",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3437,6 +3651,7 @@
       "status": "assigned",
       "holderCode": "0100397",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3453,6 +3668,7 @@
       "status": "assigned",
       "holderCode": "0100045",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3469,6 +3685,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0301142",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3485,6 +3702,7 @@
       "status": "assigned",
       "holderCode": "0300405",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3501,6 +3719,7 @@
       "status": "assigned",
       "holderCode": "0100013",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3517,6 +3736,7 @@
       "status": "assigned",
       "holderCode": "0100487",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3533,6 +3753,7 @@
       "status": "assigned",
       "holderCode": "0500979",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3549,6 +3770,7 @@
       "status": "assigned",
       "holderCode": "0100465",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3565,6 +3787,7 @@
       "status": "assigned",
       "holderCode": "0100039",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3581,6 +3804,7 @@
       "status": "assigned",
       "holderCode": "0300753",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3597,6 +3821,7 @@
       "status": "assigned",
       "holderCode": "0300427",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3613,6 +3838,7 @@
       "status": "assigned",
       "holderCode": "0100158",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3629,6 +3855,7 @@
       "status": "assigned",
       "holderCode": "0101180",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3645,6 +3872,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100695",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3661,6 +3889,7 @@
       "status": "assigned",
       "holderCode": "0300437",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3677,6 +3906,7 @@
       "status": "assigned",
       "holderCode": "0300750",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3693,6 +3923,7 @@
       "status": "assigned",
       "holderCode": "0100596",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3709,6 +3940,7 @@
       "status": "assigned",
       "holderCode": "0101086",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3725,6 +3957,7 @@
       "status": "assigned",
       "holderCode": "0300772",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3741,6 +3974,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100430",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3757,6 +3991,7 @@
       "status": "assigned",
       "holderCode": "0300852",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3773,6 +4008,7 @@
       "status": "assigned",
       "holderCode": "0100789",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3789,6 +4025,7 @@
       "status": "assigned",
       "holderCode": "0100514",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3805,6 +4042,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "مسجّل في الشبكة باسم شخص غير موجود في الموارد البشرية"
@@ -3821,6 +4059,7 @@
       "status": "assigned",
       "holderCode": "0300851",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3837,6 +4076,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100678",
+      "registeredToLikely": true,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3853,6 +4093,7 @@
       "status": "assigned",
       "holderCode": "0100694",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3869,6 +4110,7 @@
       "status": "assigned",
       "holderCode": "0300879",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3885,6 +4127,7 @@
       "status": "assigned",
       "holderCode": "0300882",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3901,6 +4144,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100620",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3917,6 +4161,7 @@
       "status": "assigned",
       "holderCode": "0100502",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3933,6 +4178,7 @@
       "status": "assigned",
       "holderCode": "0100501",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3949,6 +4195,7 @@
       "status": "assigned",
       "holderCode": "0300975",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3965,6 +4212,7 @@
       "status": "assigned",
       "holderCode": "0500958",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3981,6 +4229,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100853",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -3997,6 +4246,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100535",
+      "registeredToLikely": true,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4013,6 +4263,7 @@
       "status": "assigned",
       "holderCode": "0101021",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4029,6 +4280,7 @@
       "status": "assigned",
       "holderCode": "0100377",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4045,6 +4297,7 @@
       "status": "assigned",
       "holderCode": "0100611",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4061,6 +4314,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100802",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4077,6 +4331,7 @@
       "status": "assigned",
       "holderCode": "0100040",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4093,6 +4348,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0101062",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4109,6 +4365,7 @@
       "status": "assigned",
       "holderCode": "0100986",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4125,6 +4382,7 @@
       "status": "assigned",
       "holderCode": "0100467",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4141,6 +4399,7 @@
       "status": "assigned",
       "holderCode": "0100026",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4157,6 +4416,7 @@
       "status": "assigned",
       "holderCode": "0100345",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4173,6 +4433,7 @@
       "status": "assigned",
       "holderCode": "0100533",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4189,6 +4450,7 @@
       "status": "assigned",
       "holderCode": "0100829",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4205,6 +4467,7 @@
       "status": "assigned",
       "holderCode": "0301016",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4221,6 +4484,7 @@
       "status": "assigned",
       "holderCode": "0100982",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4237,6 +4501,7 @@
       "status": "assigned",
       "holderCode": "0300902",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4253,6 +4518,7 @@
       "status": "assigned",
       "holderCode": "0100607",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4269,6 +4535,7 @@
       "status": "assigned",
       "holderCode": "0100941",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4285,6 +4552,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100207",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4301,6 +4569,7 @@
       "status": "assigned",
       "holderCode": "0100565",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4317,6 +4586,7 @@
       "status": "assigned",
       "holderCode": "0300752",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4333,6 +4603,7 @@
       "status": "assigned",
       "holderCode": "0100227",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4349,6 +4620,7 @@
       "status": "assigned",
       "holderCode": "0601323",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4365,6 +4637,7 @@
       "status": "assigned",
       "holderCode": "0601072",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4381,6 +4654,7 @@
       "status": "assigned",
       "holderCode": "0601467",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4397,6 +4671,7 @@
       "status": "assigned",
       "holderCode": "0601453",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4413,6 +4688,7 @@
       "status": "assigned",
       "holderCode": "0601462",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4429,6 +4705,7 @@
       "status": "assigned",
       "holderCode": "0601505",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4445,6 +4722,7 @@
       "status": "assigned",
       "holderCode": "0601504",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4461,6 +4739,7 @@
       "status": "assigned",
       "holderCode": "0601627",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4477,6 +4756,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0601678",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4493,6 +4773,7 @@
       "status": "assigned",
       "holderCode": "0601473",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4509,6 +4790,7 @@
       "status": "assigned",
       "holderCode": "0601506",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4525,6 +4807,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0601856",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4541,6 +4824,7 @@
       "status": "assigned",
       "holderCode": "0602033",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4557,6 +4841,7 @@
       "status": "assigned",
       "holderCode": "0602077",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4573,6 +4858,7 @@
       "status": "assigned",
       "holderCode": "0601661",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4589,6 +4875,7 @@
       "status": "assigned",
       "holderCode": "0602381",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4605,6 +4892,7 @@
       "status": "assigned",
       "holderCode": "0602179",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4621,6 +4909,7 @@
       "status": "assigned",
       "holderCode": "0602429",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4637,6 +4926,7 @@
       "status": "assigned",
       "holderCode": "0601712",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4653,6 +4943,7 @@
       "status": "assigned",
       "holderCode": "0602598",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4669,6 +4960,7 @@
       "status": "assigned",
       "holderCode": "0100233",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4685,6 +4977,7 @@
       "status": "assigned",
       "holderCode": "0100925",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4701,6 +4994,7 @@
       "status": "assigned",
       "holderCode": "0102017",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4717,6 +5011,7 @@
       "status": "assigned",
       "holderCode": "0101347",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4733,6 +5028,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0101524",
+      "registeredToLikely": true,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4749,6 +5045,7 @@
       "status": "assigned",
       "holderCode": "0100069",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -4765,6 +5062,7 @@
       "status": "suspended",
       "holderCode": null,
       "registeredToCode": "0501103",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "خط موقوف"
@@ -4781,6 +5079,7 @@
       "status": "suspended",
       "holderCode": null,
       "registeredToCode": "0101052",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "خط موقوف"
@@ -4797,6 +5096,7 @@
       "status": "suspended",
       "holderCode": null,
       "registeredToCode": "0301592",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "خط موقوف"
@@ -4813,6 +5113,7 @@
       "status": "suspended",
       "holderCode": null,
       "registeredToCode": "0300403",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "خط موقوف"
@@ -4829,6 +5130,7 @@
       "status": "suspended",
       "holderCode": null,
       "registeredToCode": "0301260",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "خط موقوف"
@@ -4845,6 +5147,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "64",
       "vehiclePlate": "ج ك ق 4718",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -4861,6 +5164,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "67",
       "vehiclePlate": "ج ك ق 5731",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -4877,6 +5181,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "65",
       "vehiclePlate": "ج ك ق 5726",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -4893,6 +5198,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "68",
       "vehiclePlate": "ج ك ق 5728",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -4909,6 +5215,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "63",
       "vehiclePlate": "ج ك ق 4716",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -4925,6 +5232,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "61",
       "vehiclePlate": "ج ك ق 4719",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -4941,6 +5249,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "62",
       "vehiclePlate": "ج ك ق 4721",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -4957,6 +5266,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "كوستر 1",
       "vehiclePlate": "ك هـ 9486",
       "note": "شريحة جهاز تتبع — Toyota Coster"
@@ -4973,6 +5283,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "MG 1",
       "vehiclePlate": "ى هـ 4491",
       "note": "شريحة جهاز تتبع — MG RX5"
@@ -4989,6 +5300,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "MG 3",
       "vehiclePlate": "ج ك ى 4856",
       "note": "شريحة جهاز تتبع — MG ZS"
@@ -5005,6 +5317,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "بيجو 5008",
       "vehiclePlate": "ى ن 9116",
       "note": "شريحة جهاز تتبع — Peugeot 5008"
@@ -5021,6 +5334,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "MG 2",
       "vehiclePlate": "ى هـ 4489",
       "note": "شريحة جهاز تتبع — MG RX5"
@@ -5037,6 +5351,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "كولراى",
       "vehiclePlate": "ج ك ى 4857",
       "note": "شريحة جهاز تتبع — Geely Coolray"
@@ -5053,6 +5368,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "66",
       "vehiclePlate": "ج ك ق 5729",
       "note": "شريحة جهاز تتبع — Suzuki Carry"
@@ -5069,6 +5385,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "تويوتا 2",
       "vehiclePlate": "ج ي 3243",
       "note": "شريحة جهاز تتبع — Toyota Hi ACE"
@@ -5085,6 +5402,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "تويوتا 1",
       "vehiclePlate": "ن ف 1767",
       "note": "شريحة جهاز تتبع — Toyota Hi ACE"
@@ -5101,6 +5419,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "فورتشنر 2",
       "vehiclePlate": "ي ي 2814",
       "note": "شريحة جهاز تتبع — Toyota Fortuner"
@@ -5117,6 +5436,7 @@
       "status": "assigned",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": "فورتشنر 1",
       "vehiclePlate": "س ه 7884",
       "note": "شريحة جهاز تتبع — Toyota Fortuner"
@@ -5133,6 +5453,7 @@
       "status": "assigned",
       "holderCode": "0100000",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5149,6 +5470,7 @@
       "status": "assigned",
       "holderCode": "0101110",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5165,6 +5487,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": "مسجّل في الشبكة باسم: جمال النيل لنقل الأموال"
@@ -5181,6 +5504,7 @@
       "status": "assigned",
       "holderCode": "0200354",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5197,6 +5521,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0200344",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5213,6 +5538,7 @@
       "status": "assigned",
       "holderCode": "0300400",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5229,6 +5555,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100209",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5245,6 +5572,7 @@
       "status": "assigned",
       "holderCode": "0100334",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5261,6 +5589,7 @@
       "status": "assigned",
       "holderCode": "0100460",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5277,6 +5606,7 @@
       "status": "assigned",
       "holderCode": "0100210",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5293,6 +5623,7 @@
       "status": "assigned",
       "holderCode": "0200305",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5309,6 +5640,7 @@
       "status": "assigned",
       "holderCode": "0100341",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5325,6 +5657,7 @@
       "status": "assigned",
       "holderCode": "0100183",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5341,6 +5674,7 @@
       "status": "assigned",
       "holderCode": "0100179",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5357,6 +5691,7 @@
       "status": "assigned",
       "holderCode": "0100200",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5373,6 +5708,7 @@
       "status": "assigned",
       "holderCode": "0100316",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5389,6 +5725,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100126",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5405,6 +5742,7 @@
       "status": "assigned",
       "holderCode": "0100170",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5421,6 +5759,7 @@
       "status": "assigned",
       "holderCode": "0100024",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5437,6 +5776,7 @@
       "status": "assigned",
       "holderCode": "0100199",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5453,6 +5793,7 @@
       "status": "assigned",
       "holderCode": "0100205",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5469,6 +5810,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100214",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5485,6 +5827,7 @@
       "status": "assigned",
       "holderCode": "0100242",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5501,6 +5844,7 @@
       "status": "assigned",
       "holderCode": "0100230",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5517,6 +5861,7 @@
       "status": "assigned",
       "holderCode": "0100184",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5533,6 +5878,7 @@
       "status": "assigned",
       "holderCode": "0100131",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5549,6 +5895,7 @@
       "status": "assigned",
       "holderCode": "0100243",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5565,6 +5912,7 @@
       "status": "assigned",
       "holderCode": "0100241",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5581,6 +5929,7 @@
       "status": "assigned",
       "holderCode": "0100010",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5597,6 +5946,7 @@
       "status": "assigned",
       "holderCode": "0100249",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5613,6 +5963,7 @@
       "status": "assigned",
       "holderCode": "0100165",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5629,6 +5980,7 @@
       "status": "assigned",
       "holderCode": "0300178",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5645,6 +5997,7 @@
       "status": "assigned",
       "holderCode": "0100061",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5661,6 +6014,7 @@
       "status": "assigned",
       "holderCode": "0100198",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5677,6 +6031,7 @@
       "status": "assigned",
       "holderCode": "0100231",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5693,6 +6048,7 @@
       "status": "assigned",
       "holderCode": "0200141",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5709,6 +6065,7 @@
       "status": "assigned",
       "holderCode": "0100225",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5725,6 +6082,7 @@
       "status": "assigned",
       "holderCode": "0100144",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5741,6 +6099,7 @@
       "status": "assigned",
       "holderCode": "0100233",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5757,6 +6116,7 @@
       "status": "assigned",
       "holderCode": "0100195",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5773,6 +6133,7 @@
       "status": "assigned",
       "holderCode": "0100432",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5789,6 +6150,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100655",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5805,6 +6167,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100457",
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5821,6 +6184,7 @@
       "status": "assigned",
       "holderCode": "0100066",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5837,6 +6201,7 @@
       "status": "assigned",
       "holderCode": "0100237",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5853,6 +6218,7 @@
       "status": "assigned",
       "holderCode": "0100586",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5869,6 +6235,7 @@
       "status": "assigned",
       "holderCode": "0100406",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5885,6 +6252,7 @@
       "status": "assigned",
       "holderCode": "0100256",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5901,6 +6269,7 @@
       "status": "assigned",
       "holderCode": "0100076",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5917,6 +6286,7 @@
       "status": "assigned",
       "holderCode": "0100073",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5933,6 +6303,7 @@
       "status": "assigned",
       "holderCode": "0100083",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5949,6 +6320,7 @@
       "status": "assigned",
       "holderCode": "0100123",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5965,6 +6337,7 @@
       "status": "assigned",
       "holderCode": "0100074",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5981,6 +6354,7 @@
       "status": "assigned",
       "holderCode": "0100319",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -5997,6 +6371,7 @@
       "status": "assigned",
       "holderCode": "0100075",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6013,6 +6388,7 @@
       "status": "assigned",
       "holderCode": "0100081",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6029,6 +6405,7 @@
       "status": "assigned",
       "holderCode": "0100038",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6045,6 +6422,7 @@
       "status": "assigned",
       "holderCode": "0100434",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6061,6 +6439,7 @@
       "status": "assigned",
       "holderCode": "0100016",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6077,6 +6456,7 @@
       "status": "assigned",
       "holderCode": "0100070",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6093,6 +6473,7 @@
       "status": "assigned",
       "holderCode": "0100033",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6109,6 +6490,7 @@
       "status": "assigned",
       "holderCode": "0100213",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6125,6 +6507,7 @@
       "status": "assigned",
       "holderCode": "0100032",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6141,6 +6524,7 @@
       "status": "assigned",
       "holderCode": "0100007",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6157,6 +6541,7 @@
       "status": "assigned",
       "holderCode": "0100034",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6173,6 +6558,7 @@
       "status": "assigned",
       "holderCode": "0100008",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6189,6 +6575,7 @@
       "status": "assigned",
       "holderCode": "0100052",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6205,6 +6592,7 @@
       "status": "assigned",
       "holderCode": "0100018",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6221,6 +6609,7 @@
       "status": "inStock",
       "holderCode": null,
       "registeredToCode": "0100058",
+      "registeredToLikely": true,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6237,6 +6626,7 @@
       "status": "assigned",
       "holderCode": "0100544",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6253,6 +6643,7 @@
       "status": "assigned",
       "holderCode": "0100040",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null
@@ -6269,6 +6660,7 @@
       "status": "assigned",
       "holderCode": "0100021",
       "registeredToCode": null,
+      "registeredToLikely": false,
       "vehicleCode": null,
       "vehiclePlate": null,
       "note": null

@@ -29,7 +29,7 @@ const paper = (
   formNumber: 42,
   issuedAt: '2026-10-20T09:00:00.000Z',
   employeeId: '000000000000000000000a01',
-  employeeName: 'مصطفى عثمان محمود عثمان',
+  employeeName: 'وليد صفوت جلال صفوت',
   employeeCode: '0100026',
   jobTitle: { ar: 'محاسب', en: 'Accountant' },
   nationalId: '29801011234567',
@@ -64,7 +64,7 @@ describe('the line acknowledgment (إقرار استلام)', () => {
 
   it('states what was received — «خط محمول رقم …» — with the employee filled in', () => {
     const text = statement(html);
-    expect(text).toContain('أقر أنا / مصطفى عثمان محمود عثمان بوظيفة محاسب');
+    expect(text).toContain('أقر أنا / وليد صفوت جلال صفوت بوظيفة محاسب');
     expect(text).toContain('بشركة إيجي كاش للحلول النقدية، كود ٠١٠٠٠٢٦،');
     expect(text).toContain('بطاقة رقم قومي ٢٩٨٠١٠١١٢٣٤٥٦٧');
     expect(text).toContain('بأنني قد استلمت خط محمول رقم 01012345678 وبياناته كالتالي:');
@@ -118,7 +118,7 @@ describe('the line acknowledgment (إقرار استلام)', () => {
     expect(html).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING}</p>`);
     expect(html).toContain('وهذا إقرار مني بذلك ،،،');
     expect(html).toContain('<div class="by">المقر بما فيه</div>');
-    expect(html).toContain('<div>الاسم: مصطفى عثمان محمود</div>');
+    expect(html).toContain('<div>الاسم: وليد صفوت جلال</div>');
   });
 
   it('numbers the paper in its footer from the F-14 series, with no page count', () => {

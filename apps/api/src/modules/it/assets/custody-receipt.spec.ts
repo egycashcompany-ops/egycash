@@ -119,7 +119,7 @@ beforeEach(() => {
   mocks.readReceiptHolder.mockResolvedValue({
     employee: null,
     employeeCode: '0100026',
-    employeeName: 'مصطفى عثمان محمود',
+    employeeName: 'وليد صفوت جلال',
     jobTitle: { ar: 'محاسب', en: 'Accountant' },
     nationalId: '29801011234567',
     section: { ar: 'التسويات', en: 'Settlements' },
@@ -186,7 +186,7 @@ describe('a hand-over is ONE receipt over every asset it hands over', () => {
       ['Dell Screen', '49WNRS3', 'N', null],
     ]);
     // «الإسم» and «الوظيفة» — what the paper prints in the signature block, kept as printed.
-    expect(receipt.employeeName).toBe('مصطفى عثمان محمود');
+    expect(receipt.employeeName).toBe('وليد صفوت جلال');
     expect(receipt.jobTitle).toEqual({ ar: 'محاسب', en: 'Accountant' });
     // «بطاقة رقم قومي … صادرة من قسم … – …» — the identity line, kept as printed too.
     expect(receipt.nationalId).toBe('29801011234567');

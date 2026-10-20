@@ -148,12 +148,20 @@ class ItMobileLineService {
       };
     }
     if (query.search !== undefined && query.search !== '') {
-      // A number is typed in either digit set; the register stores ASCII.
-      const pattern = new RegExp(escapeRegex(asciiDigits(query.search)), 'i');
+      // A number is typed in either digit set; the register stores ASCII. The invisible direction
+      // marks a number copied from a chat carries are not part of it.
+      const text = asciiDigits(query.search)
+        .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/gu, '')
+        .trim();
+      const pattern = new RegExp(escapeRegex(text), 'i');
+      // A pasted number or card serial — «010 1234 5678», «+20 10…», the card's printed groups — is
+      // matched the way the register stores it: digits only, the international prefix as a 0.
+      const compact = text.replace(/[\s\-().،]/gu, '').replace(/^(\+20|0020)/u, '0');
+      const digits = /^\d+$/u.test(compact) ? new RegExp(escapeRegex(compact)) : pattern;
       const byCar = await itMobileLineAssignmentRepository.openIdsMatching({ vehicle: pattern });
       filter.$or = [
-        { phoneNumber: pattern },
-        { simSerial: pattern },
+        { phoneNumber: digits },
+        { simSerial: digits },
         { ratePlan: pattern },
         { accountNumber: pattern },
         { notes: pattern },

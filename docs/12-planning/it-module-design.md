@@ -986,5 +986,9 @@ starts only on an explicit owner GO.
   reported; a branch it cannot find refuses the run, and the next boot retries; a finished run
   is recognised before anything is read. The workforce reset keeps the lines' intervals
   (`keep`, not `purge` like the devices'): a tracker SIM's custody is a car's, and a line whose
-  interval vanished could be neither returned nor handed over again. The audit rows of a line's
+  interval vanished could be neither returned nor handed over again; the papers, which carry the
+  national ID, are still purged, and a line whose paper is gone simply offers none. The seven
+  lines the review matched to an employee by name alone say the match is unconfirmed
+  (`registeredToLikely`). A number is searched as stored: a pasted «+20 10 …» or a card serial in
+  its printed groups is found. The audit rows of a line's
   hand-over, return and status change are written after the commit.

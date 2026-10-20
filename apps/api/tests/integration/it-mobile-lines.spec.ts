@@ -201,8 +201,8 @@ beforeAll(async () => {
   await rbacService.ensureAssignment(viewerId, String(viewerRole._id), 'branch');
   branchAToken = await login('lines-viewer@ecms.local');
 
-  await plantEmployee(EMPLOYEE, '0101002', 'مصطفى عثمان محمود', 'active');
-  await plantEmployee(LEAVER, '0100001', 'محمود ونيس غنيمي', 'exited');
+  await plantEmployee(EMPLOYEE, '0101002', 'وليد صفوت جلال', 'active');
+  await plantEmployee(LEAVER, '0100001', 'شريف ممدوح فاروق', 'exited');
 
   // A device category, for the one-series check against a device receipt.
   const category = await api.post('/catalog-items', {
@@ -306,7 +306,7 @@ describe('handing a line to an employee', () => {
       kind: 'employee',
       employeeId: String(EMPLOYEE),
       employeeCode: '0101002',
-      employeeName: 'مصطفى عثمان محمود',
+      employeeName: 'وليد صفوت جلال',
       vehicleCode: null,
       receiptId: receipt?.id,
       receiptSigned: false,

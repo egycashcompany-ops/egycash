@@ -94,6 +94,7 @@ const row = (key: string, over: Partial<MobileLineRow>): MobileLineRow => ({
   status: 'inStock',
   holderCode: null,
   registeredToCode: null,
+  registeredToLikely: false,
   vehicleCode: null,
   vehiclePlate: null,
   note: null,
@@ -152,6 +153,7 @@ const LINES: MobileLineRow[] = [
   row('Etisalat صف 7', {
     phoneNumber: '01100000007',
     registeredToCode: '0100006',
+    registeredToLikely: true,
   }),
   // Registered by the IT team since the files were made.
   row('Orange صف 11', {
@@ -168,8 +170,8 @@ const lineByNumber = (phoneNumber: string) =>
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   await plantBranch(HQ, 'HQ', 'المهندسين');
-  await plantEmployee(EMPLOYEE, '0100006', 'محمد عادل محمد عبد الفتاح', 'active');
-  await plantEmployee(LEAVER, '0100001', 'محمود ونيس غنيمي عبادة', 'exited');
+  await plantEmployee(EMPLOYEE, '0100006', 'حازم رأفت حازم عبد الوهاب', 'active');
+  await plantEmployee(LEAVER, '0100001', 'شريف ممدوح فاروق عزمي', 'exited');
   await ItMobileLineModel.collection.insertOne({
     _id: new Types.ObjectId(),
     network: 'orange',
@@ -267,7 +269,7 @@ describe('importing the mobile lines', () => {
     for (const receipt of receipts) {
       expect(receipt).toMatchObject({
         employeeCode: '0100006',
-        employeeName: 'محمد عادل محمد عبد الفتاح',
+        employeeName: 'حازم رأفت حازم عبد الوهاب',
         issuedByUserId: null,
         issuedAt: AT,
         signedCopy: null,
@@ -299,7 +301,7 @@ describe('importing the mobile lines', () => {
     expect(await lineByNumber('01100000011')).toMatchObject({
       status: 'inStock',
       currentAssignmentId: null,
-      notes: 'مسجّل باسم موظف ترك العمل: محمود ونيس غنيمي عبادة (0100001)',
+      notes: 'مسجّل باسم موظف ترك العمل: شريف ممدوح فاروق عزمي (0100001)',
     });
     const unknown = await lineByNumber('01100000012');
     expect(unknown).toMatchObject({ status: 'inStock', currentAssignmentId: null });
@@ -309,7 +311,8 @@ describe('importing the mobile lines', () => {
     expect(await lineByNumber('01100000007')).toMatchObject({
       status: 'inStock',
       currentAssignmentId: null,
-      notes: 'مسجّل في الشبكة باسم: محمد عادل محمد عبد الفتاح (0100006)',
+      notes:
+        'مسجّل في الشبكة باسم: حازم رأفت حازم عبد الوهاب (0100006) — مطابقة بالاسم فقط وغير مؤكدة',
     });
 
     // Suspended, and its history says so after the registration.
@@ -317,7 +320,7 @@ describe('importing the mobile lines', () => {
     expect(stopped).toMatchObject({
       status: 'suspended',
       currentAssignmentId: null,
-      notes: 'خط موقوف، مسجّل باسم موظف ترك العمل: محمود ونيس غنيمي عبادة (0100001)',
+      notes: 'خط موقوف، مسجّل باسم موظف ترك العمل: شريف ممدوح فاروق عزمي (0100001)',
     });
     const history = await ItMobileLineEventModel.find({ subjectId: stopped?._id })
       .sort({ at: -1, _id: -1 })

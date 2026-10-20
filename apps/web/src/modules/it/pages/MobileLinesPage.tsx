@@ -50,6 +50,7 @@ import {
   UsersIcon,
 } from '../../../shared/ui/icons';
 import { cn } from '../../../shared/lib/cn';
+import { errorMessage } from '../../../shared/lib/errors';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import * as api from '../api/it-api';
 import {
@@ -567,9 +568,26 @@ export const MobileLinesPage = (): JSX.Element => {
               />
             ))}
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {t('it.mobileLines.networksHint')}
-          </p>
+          {summary.isError ? (
+            // The cards still filter; only their figures are missing — say so, and offer again.
+            <p
+              className="flex flex-wrap items-center gap-2 text-xs text-red-600 dark:text-red-400"
+              role="alert"
+            >
+              {errorMessage(summary.error, locale)}
+              <button
+                type="button"
+                className="cursor-pointer underline"
+                onClick={() => void summary.refetch()}
+              >
+                {t('common.retry')}
+              </button>
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t('it.mobileLines.networksHint')}
+            </p>
+          )}
         </div>
 
         <FilterBar

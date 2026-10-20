@@ -97,7 +97,7 @@ const line = (status: 'inStock' | 'assigned' | 'suspended') => ({
 const person = (status: DirectoryEmployee['status']): DirectoryEmployee => ({
   employeeId: EMPLOYEE,
   code: '0101002',
-  fullNameAr: 'مصطفى عثمان محمود',
+  fullNameAr: 'وليد صفوت جلال',
   status,
   branchId: String(BRANCH),
   departmentId: null,
@@ -110,7 +110,7 @@ const person = (status: DirectoryEmployee['status']): DirectoryEmployee => ({
 const holderFor = (status: DirectoryEmployee['status']) => ({
   employee: person(status),
   employeeCode: '0101002',
-  employeeName: 'مصطفى عثمان محمود',
+  employeeName: 'وليد صفوت جلال',
   jobTitle: { ar: 'محاسب', en: 'Accountant' },
   nationalId: '29801011234567',
   section: { ar: 'التسويات', en: 'Settlements' },
@@ -170,7 +170,7 @@ describe('handing a line to an employee', () => {
     // The signer as the device paper names them — the same `signer(holder)`.
     expect(receipt).toMatchObject({
       employeeCode: '0101002',
-      employeeName: 'مصطفى عثمان محمود',
+      employeeName: 'وليد صفوت جلال',
       jobTitle: { ar: 'محاسب', en: 'Accountant' },
       nationalId: '29801011234567',
       section: { ar: 'التسويات', en: 'Settlements' },

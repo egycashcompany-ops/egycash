@@ -267,6 +267,9 @@ class ItAssetCustodyService {
     const receiptId = new Types.ObjectId();
 
     const result = await unitOfWork(async (session) => {
+      // The paper's number first — before anything this attempt audits: a number another paper
+      // already records refuses the hand-over, and a race on it retries, before any write.
+      await claimReceiptNumber(formNumber, session);
       const assets: ItAssetDoc[] = [];
       const assignments: ItAssetAssignmentDoc[] = [];
       const lines: ItCustodyReceiptLineSub[] = [];
@@ -346,7 +349,6 @@ class ItAssetCustodyService {
 
       const [first] = assets;
       if (first === undefined) throw new BusinessRuleError('a receipt lists at least one asset');
-      await claimReceiptNumber(formNumber, session);
       const receipt = await itCustodyReceiptRepository.create(
         {
           _id: receiptId,

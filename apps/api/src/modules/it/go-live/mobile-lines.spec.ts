@@ -103,6 +103,12 @@ describe('the committed file is the reviewed one', () => {
     // 20 leavers, 7 likely matches the review left unsettled, 5 suspended lines.
     expect(registered).toHaveLength(32);
     expect(registered.every((row) => row.status !== 'assigned')).toBe(true);
+    // The seven matched by name alone say so — never presented as the network's own record.
+    const likely = lines.filter((row) => row.registeredToLikely);
+    expect(likely).toHaveLength(7);
+    expect(likely.every((row) => row.status === 'inStock' && row.registeredToCode !== null)).toBe(
+      true,
+    );
     const notes = new Set(lines.flatMap((row) => row.note ?? []));
     for (const note of notes) {
       expect(note).toMatch(
@@ -127,6 +133,7 @@ describe('a row keeps the register’s rules', () => {
     status: 'inStock',
     holderCode: null,
     registeredToCode: null,
+    registeredToLikely: false,
     vehicleCode: null,
     vehiclePlate: null,
     note: null,
@@ -180,5 +187,7 @@ describe('a row keeps the register’s rules', () => {
       accepts([row({ status: 'assigned', holderCode: '0100002', registeredToCode: '0100001' })]),
     ).toBe(false);
     expect(accepts([row({ registeredToCode: '100001' })])).toBe(false);
+    expect(accepts([row({ registeredToCode: '0100001', registeredToLikely: true })])).toBe(true);
+    expect(accepts([row({ registeredToLikely: true })])).toBe(false);
   });
 });

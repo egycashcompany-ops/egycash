@@ -62,7 +62,7 @@ const paper = (
   formNumber: 7,
   issuedAt: '2023-08-30T09:00:00.000Z',
   employeeId: '000000000000000000000a01',
-  employeeName: 'مصطفى عثمان محمود عثمان',
+  employeeName: 'وليد صفوت جلال صفوت',
   employeeCode: '0100026',
   jobTitle: { ar: 'محاسب', en: 'Accountant' },
   nationalId: '29801011234567',
@@ -84,13 +84,13 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(html).toContain('<polygon');
     expect(html).toContain('<h1>إقرار استلام</h1>');
     expect(html).toContain(
-      '<title>إقرار استلام EGYCASH-IT-F-14-0007 — مصطفى عثمان محمود عثمان</title>',
+      '<title>إقرار استلام EGYCASH-IT-F-14-0007 — وليد صفوت جلال صفوت</title>',
     );
   });
 
   it('fills the statement in the form’s red with what the system knows', () => {
     expect(html).toContain(
-      'أقر أنا / <span class="fill"><bdi>مصطفى عثمان محمود عثمان</bdi></span>',
+      'أقر أنا / <span class="fill"><bdi>وليد صفوت جلال صفوت</bdi></span>',
     );
     expect(html).toContain('بوظيفة <span class="fill"><bdi>محاسب</bdi></span>');
     // «شيل كلمة لتكنولوجيا … وخليها للحلول النقدية على طول».
@@ -284,9 +284,9 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(html).toContain('وهذا إقرار مني بذلك ،،،');
     expect(html).toContain('<div class="by">المقر بما فيه</div>');
     // Three parts under the signature — «ممكن ثلاثي فقط تحت عند الإمضاء» — the full name above.
-    expect(html).toContain('<div>الاسم: مصطفى عثمان محمود</div>');
+    expect(html).toContain('<div>الاسم: وليد صفوت جلال</div>');
     expect(html).toContain(
-      'أقر أنا / <span class="fill"><bdi>مصطفى عثمان محمود عثمان</bdi></span>',
+      'أقر أنا / <span class="fill"><bdi>وليد صفوت جلال صفوت</bdi></span>',
     );
     expect(html).toContain('<div>التوقيع:</div>');
     expect(html).toContain('<div>التاريخ: ٣٠ / ٨ / ٢٠٢٣</div>');
@@ -388,7 +388,7 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
   });
 
   it('shortens the signature name to three parts, compound parts whole', () => {
-    expect(signatureName('بسام هشام رضوان محمد حسنين')).toBe('بسام هشام رضوان');
+    expect(signatureName('كريم سامح فؤاد منير حمدي')).toBe('كريم سامح فؤاد');
     expect(signatureName('محمد عبد الله علي حسن')).toBe('محمد عبد الله علي');
     expect(signatureName(null)).toBe('');
   });

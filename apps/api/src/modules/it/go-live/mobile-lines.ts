@@ -140,11 +140,15 @@ type RegisteredAnswer =
 
 /**
  * Whom the network has a line nobody holds registered to, in HR's spelling: a leaver in the
- * owner's wording, anybody else as the network's own «مسجّل في الشبكة باسم».
+ * owner's wording, anybody else as the network's own «مسجّل في الشبكة باسم». A match the review
+ * made by name alone says so — the IT team confirms it before handing the line over.
  */
-const registeredNote = (code: string, answer: RegisteredAnswer): string => {
-  if (answer.kind === 'exited') return `مسجّل باسم موظف ترك العمل: ${answer.name} (${code})`;
-  if (answer.kind === 'employed') return `مسجّل في الشبكة باسم: ${answer.name} (${code})`;
+const registeredNote = (code: string, answer: RegisteredAnswer, likely: boolean): string => {
+  const unsure = likely ? ' — مطابقة بالاسم فقط وغير مؤكدة' : '';
+  if (answer.kind === 'exited') {
+    return `مسجّل باسم موظف ترك العمل: ${answer.name} (${code})${unsure}`;
+  }
+  if (answer.kind === 'employed') return `مسجّل في الشبكة باسم: ${answer.name} (${code})${unsure}`;
   return `مسجّل بكود موظف غير موجود في الموارد البشرية: ${code}`;
 };
 
@@ -297,6 +301,7 @@ export const importItMobileLines = async (
             : registeredNote(
                 row.registeredToCode,
                 registeredTo.get(row.registeredToCode) ?? { kind: 'unknown' },
+                row.registeredToLikely,
               ),
         ),
       } as unknown as ItMobileLineDoc;

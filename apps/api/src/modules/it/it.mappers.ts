@@ -306,6 +306,14 @@ const idOrNull = (id: { toString(): string } | null | undefined): string | null 
 const signedState = (receiptId: string | null, receipts?: ItReceiptStates): boolean | null =>
   receiptId === null ? null : (receipts?.get(receiptId)?.signed ?? false);
 
+/**
+ * The paper an interval names — only when it can be read. An interval can outlive its paper (a
+ * workforce reset keeps the lines' intervals and purges the papers that carry national IDs), and
+ * offering to print or file a paper that is gone would be a button that can only fail.
+ */
+const paperOf = (receiptId: string | null, receipts?: ItReceiptStates): string | null =>
+  receiptId !== null && receipts !== undefined && !receipts.has(receiptId) ? null : receiptId;
+
 export const toItMobileLineDto = (
   doc: ItMobileLineDoc,
   labels?: ItMobileLineHolderLabels,
@@ -316,7 +324,7 @@ export const toItMobileLineDto = (
     currentAssignmentId === null ? undefined : labels?.intervals.get(currentAssignmentId);
   const employeeId = idOrNull(open?.assignedToEmployeeId);
   const employee = employeeId === null ? undefined : labels?.employees.get(employeeId);
-  const receiptId = idOrNull(open?.receiptId);
+  const receiptId = paperOf(idOrNull(open?.receiptId), labels?.receipts);
   return {
     id: String(doc._id),
     network: doc.network,
@@ -359,7 +367,7 @@ export const toItMobileLineAssignmentDto = (
   const employeeId = idOrNull(doc.assignedToEmployeeId);
   const holder = employeeId === null ? undefined : holders?.get(employeeId);
   const line = lines?.get(String(doc.lineId));
-  const receiptId = idOrNull(doc.receiptId);
+  const receiptId = paperOf(idOrNull(doc.receiptId), receipts);
   return {
     id: String(doc._id),
     lineId: String(doc.lineId),

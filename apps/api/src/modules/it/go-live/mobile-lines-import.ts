@@ -60,6 +60,11 @@ export const MobileLineRowSchema = z
       .string()
       .regex(/^\d{7}$/u)
       .nullable(),
+    /**
+     * The review matched `registeredToCode` by NAME only — the network's record did not confirm it
+     * — so the note says the match is unconfirmed rather than naming the person as a fact.
+     */
+    registeredToLikely: z.boolean(),
     /** The car a tracker SIM is in, as the network's sheet writes it — text, never a Fleet id. */
     vehicleCode: text.max(40).nullable(),
     vehiclePlate: text.max(40).nullable(),
@@ -120,6 +125,9 @@ export const MobileLinesFileSchema = z
       }
       if (row.status === 'assigned' && row.registeredToCode !== null) {
         issue(index, 'registeredToCode', `${row.key} is handed over; its holder is the record`);
+      }
+      if (row.registeredToLikely && row.registeredToCode === null) {
+        issue(index, 'registeredToLikely', `${row.key} names no code to be unsure of`);
       }
     });
   });

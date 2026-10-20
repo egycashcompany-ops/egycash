@@ -34,7 +34,7 @@ beforeEach(() => {
       {
         employeeId: EMPLOYEE,
         code: '0100026',
-        fullNameAr: 'بسام هشام رضوان محمد حسنين',
+        fullNameAr: 'كريم سامح فؤاد منير حمدي',
         status: 'active',
         departmentId: 'dep-1',
         jobTitleId: 'job-1',
@@ -55,7 +55,7 @@ beforeEach(() => {
 describe('the receipt’s holder', () => {
   it('reads the identity line from HR and the organization', async () => {
     const holder = await readReceiptHolder(EMPLOYEE);
-    expect(holder.employeeName).toBe('بسام هشام رضوان محمد حسنين');
+    expect(holder.employeeName).toBe('كريم سامح فؤاد منير حمدي');
     expect(holder.jobTitle).toEqual({ ar: 'أخصائي تسويات', en: 'Settlements specialist' });
     expect(holder.nationalId).toBe('29801011234567');
     expect(holder.section).toEqual({ ar: 'التسويات', en: 'Settlements' });

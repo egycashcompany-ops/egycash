@@ -47,26 +47,12 @@ import {
 } from '../navigation/nav-model';
 import { AppRow, AppWithChildren, NavSectionGroup, StateShell } from './nav-rows';
 import { RailShell } from './SidebarRail';
+import { useFloatingNav } from './floating-nav';
 
 // ── Persisted chrome state ──────────────────────────────────────────────────
-const PANEL_KEY = 'ecms.nav.panelCollapsed';
+// Whether the floating panel is pinned open lives in `floating-nav.ts`.
 const LAST_MODULE_KEY = 'ecms.nav.lastModule';
 const LAST_PAGE_KEY = 'ecms.nav.lastPage';
-
-const loadCollapsed = (): boolean => {
-  try {
-    return localStorage.getItem(PANEL_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-const persistCollapsed = (v: boolean): void => {
-  try {
-    localStorage.setItem(PANEL_KEY, v ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-};
 
 /**
  * The last module the user actually worked in. This is a FALLBACK, not a mode: it answers the
@@ -608,6 +594,7 @@ const ModuleSwitcher = ({
   collapsed = false,
   shortcuts,
   onOpen,
+  onClosed,
   onPick,
 }: {
   modules: NavModule[];
@@ -621,6 +608,8 @@ const ModuleSwitcher = ({
   shortcuts: boolean;
   /** Fired as the launchpad opens, so the mobile drawer can step out from behind it. */
   onOpen?: (() => void) | undefined;
+  /** Fired as the launchpad closes, so a floating panel that held itself open can let go. */
+  onClosed?: (() => void) | undefined;
   onPick: (m: NavModule) => void;
 }): JSX.Element => {
   const t = useT();
@@ -702,6 +691,7 @@ const ModuleSwitcher = ({
           onChoose={onPick}
           onClose={(focusTrigger) => {
             setOpen(false);
+            onClosed?.();
             if (focusTrigger) triggerRef.current?.focus();
           }}
         />
@@ -862,7 +852,9 @@ const NavShell = ({
     }
   }, [urlModuleId, lastModuleId, pathname]);
 
-  const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && loadCollapsed());
+  // On a desktop the panel floats over the page (floating-nav.ts); the mobile drawer is the full
+  // panel already, so it has nothing to float.
+  const floating = useFloatingNav(collapsible);
 
   // Every route the catalog serves — the basis for "does another page live under this one?".
   const allRoutes = useMemo(() => flattenApps(data).map((a) => a.route), [data]);
@@ -905,13 +897,6 @@ const NavShell = ({
     modules.find((m) => m.id === lastModuleId) ??
     modules[0]!;
 
-  const toggleCollapsed = (): void => {
-    setCollapsed((v) => {
-      persistCollapsed(!v);
-      return !v;
-    });
-  };
-
   // Switching modules NAVIGATES — it does not flip a local flag. The URL then re-scopes the
   // column, which is what keeps the two in step by construction.
   const pickModule = (m: NavModule): void => {
@@ -921,14 +906,92 @@ const NavShell = ({
     onNavigate?.();
   };
 
+  // The full panel: this module's switcher, the pinned favourites, then its pages. The mobile
+  // drawer shows it as it is; on a desktop it is what floats over the page.
+  const panel = (
+    <>
+      <div className="border-b border-slate-200/60 px-3 py-2 dark:border-slate-800/60">
+        <ModuleSwitcher
+          modules={modules}
+          current={current}
+          shortcuts={shortcuts}
+          onOpen={() => {
+            floating.hold();
+            onNavigate?.();
+          }}
+          onClosed={floating.release}
+          onPick={pickModule}
+        />
+      </div>
+      <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
+        {pinnedApps.length > 0 && (
+          <section className="mb-5">
+            <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
+              {t('nav.pinned')}
+            </p>
+            <ul className="mt-0.5 space-y-px">
+              {pinnedApps.map((a) => (
+                <li key={`pin-${a.id}`}>
+                  <AppRow
+                    app={a}
+                    onNavigate={onNavigate}
+                    showPinAtRest={false}
+                    end={requiresExactMatch(a.route, allRoutes)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {/* This module's pages, and nothing else. Ungrouped rows first — they are the ones
+            that belong to no section, and they read as the module's own top level. */}
+        <ul className="space-y-px">
+          {current.apps.map((a) => (
+            <AppWithChildren
+              key={a.id}
+              app={a}
+              onNavigate={onNavigate}
+              end={requiresExactMatch(a.route, allRoutes)}
+            />
+          ))}
+        </ul>
+        {current.sections.map((section) => (
+          <NavSectionGroup
+            key={section.id}
+            section={section}
+            allRoutes={allRoutes}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </nav>
+    </>
+  );
+
+  // The mobile drawer: the full panel, as it always was.
+  if (!collapsible) {
+    return (
+      <div className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+        {panel}
+      </div>
+    );
+  }
+
+  const toggleLabel = t(floating.pinned ? 'nav.collapse' : 'nav.expand');
+  const toggleButtonClass = cn(
+    'flex h-8 items-center gap-2.5 rounded-md text-slate-400 transition-colors',
+    'hover:bg-slate-900/[0.04] hover:text-slate-600 focus-visible:outline-none',
+    'focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:text-slate-500',
+    'dark:hover:bg-white/[0.05] dark:hover:text-slate-300',
+  );
+  const ToggleIcon = floating.pinned ? ChevronStartIcon : ChevronEndIcon;
+
+  // A desktop: the slim strip is the only thing beside the page. The full panel is drawn OVER the
+  // page from the strip's edge — on hover, or pinned open with the toggle — and the page keeps its
+  // whole width underneath it. Both live in one box, so moving from the strip into the panel is
+  // not "leaving".
   return (
-    <div
-      className={cn(
-        'flex shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
-        collapsed ? 'w-14' : 'w-60',
-      )}
-    >
-      {collapsed ? (
+    <div data-nav-strip className="relative flex h-full w-14 shrink-0" {...floating.hoverProps}>
+      <div className="flex w-14 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
         <IconStrip
           modules={modules}
           current={current}
@@ -938,85 +1001,44 @@ const NavShell = ({
           onPickModule={pickModule}
           onNavigate={onNavigate}
         />
-      ) : (
-        <>
-          <div className="border-b border-slate-200/60 px-3 py-2 dark:border-slate-800/60">
-            <ModuleSwitcher
-              modules={modules}
-              current={current}
-              shortcuts={shortcuts}
-              onOpen={onNavigate}
-              onPick={pickModule}
-            />
-          </div>
-          <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
-            {pinnedApps.length > 0 && (
-              <section className="mb-5">
-                <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
-                  {t('nav.pinned')}
-                </p>
-                <ul className="mt-0.5 space-y-px">
-                  {pinnedApps.map((a) => (
-                    <li key={`pin-${a.id}`}>
-                      <AppRow
-                        app={a}
-                        onNavigate={onNavigate}
-                        showPinAtRest={false}
-                        end={requiresExactMatch(a.route, allRoutes)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            {/* This module's pages, and nothing else. Ungrouped rows first — they are the ones
-                that belong to no section, and they read as the module's own top level. */}
-            <ul className="space-y-px">
-              {current.apps.map((a) => (
-                <AppWithChildren
-                  key={a.id}
-                  app={a}
-                  onNavigate={onNavigate}
-                  end={requiresExactMatch(a.route, allRoutes)}
-                />
-              ))}
-            </ul>
-            {current.sections.map((section) => (
-              <NavSectionGroup
-                key={section.id}
-                section={section}
-                allRoutes={allRoutes}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </nav>
-        </>
-      )}
-
-      {collapsible && (
         <div className="border-t border-slate-200/60 px-2 py-2 dark:border-slate-800/60">
           <button
+            data-nav-toggle
             type="button"
-            onClick={toggleCollapsed}
-            aria-label={t(collapsed ? 'nav.expand' : 'nav.collapse')}
-            title={t(collapsed ? 'nav.expand' : 'nav.collapse')}
-            className={cn(
-              'flex h-8 items-center gap-2.5 rounded-md text-slate-400 transition-colors',
-              'hover:bg-slate-900/[0.04] hover:text-slate-600 focus-visible:outline-none',
-              'focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:text-slate-500',
-              'dark:hover:bg-white/[0.05] dark:hover:text-slate-300',
-              collapsed ? 'w-9 justify-center' : 'w-full px-2',
-            )}
+            onClick={floating.togglePinned}
+            aria-label={toggleLabel}
+            aria-expanded={floating.pinned}
+            title={toggleLabel}
+            className={cn(toggleButtonClass, 'w-9 justify-center')}
           >
-            {collapsed ? (
-              <ChevronEndIcon className="h-4 w-4 rtl:-scale-x-100" />
-            ) : (
-              <>
-                <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
-                <span className="text-[12px]">{t('nav.collapse')}</span>
-              </>
-            )}
+            <ToggleIcon className="h-4 w-4 rtl:-scale-x-100" />
           </button>
+        </div>
+      </div>
+
+      {floating.shown && (
+        <div
+          data-nav-panel
+          className={cn(
+            'absolute inset-y-0 start-0 z-[35] flex w-60 animate-fade-in flex-col',
+            'border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
+            'shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
+          )}
+        >
+          {panel}
+          <div className="border-t border-slate-200/60 px-2 py-2 dark:border-slate-800/60">
+            <button
+              type="button"
+              onClick={floating.togglePinned}
+              aria-label={toggleLabel}
+              aria-expanded={floating.pinned}
+              title={toggleLabel}
+              className={cn(toggleButtonClass, 'w-full px-2')}
+            >
+              <ToggleIcon className="h-4 w-4 rtl:-scale-x-100" />
+              <span className="text-[12px]">{toggleLabel}</span>
+            </button>
+          </div>
         </div>
       )}
     </div>

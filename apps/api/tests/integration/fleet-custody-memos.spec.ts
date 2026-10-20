@@ -12,7 +12,7 @@
 //   7. who may do what, over HTTP; 8. the audit trail; 9. rows from before memos existed.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
@@ -752,7 +752,7 @@ describe('«إيصالات لم تدخل أي مذكرة بعد» — the oldest
     expect(await kindOf('maintenance')).toEqual(before);
   });
 
-  it('reaches «المذكرات», the fund’s figures and «استعاضة عهدة» alike, from today’s UTC day', async () => {
+  const sameDayCase = async (): Promise<void> => {
     const DAY = 24 * 60 * 60 * 1000;
     const now = new Date();
     const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
@@ -792,6 +792,17 @@ describe('«إيصالات لم تدخل أي مذكرة بعد» — the oldest
         oldest: was.oldest !== null && was.oldest < daysAgo(31) ? was.oldest : daysAgo(31),
         stale: { count: was.stale.count + 1, total: pounds(was.stale.total + 11) },
       });
+    }
+  };
+
+  it('reaches «المذكرات», the fund’s figures and «استعاضة عهدة» alike, from today’s UTC day', async () => {
+    // One instant for the whole case: the reads run in-process, so the API's own `new Date()` is
+    // held still with the case's — no UTC midnight can fall between the seeding and the reads.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date() });
+    try {
+      await sameDayCase();
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

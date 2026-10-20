@@ -14,7 +14,7 @@
 //
 // The cases run in order — the fund is one fund — and the races and grants come after the ledger
 // has been checked against the sample.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { type Express } from 'express';
@@ -412,7 +412,9 @@ describe('«إجمالي العهدة» — the formula, before and as the lette
 });
 
 describe('«استعاضة عهدة»', () => {
-  it('offers the memos not replenished yet, oldest first, and the receipts in none', async () => {
+  const candidatesCase = async (): Promise<void> => {
+    // Late past 30 days by today's clock — the same cutoff the API reads, so the case ages well.
+    const cutoff = custodyStaleCutoff(new Date());
     const candidates = await fleetCustodyFundService.replenishCandidates();
     expect(candidates.memos.map((row) => [row.no, row.kind, row.total])).toEqual([
       [1, 'tyres', 1690],
@@ -421,8 +423,6 @@ describe('«استعاضة عهدة»', () => {
       [4, 'maintenance', 5720],
       [5, 'maintenance', 23694],
     ]);
-    // Late past 30 days by today's clock — the same cutoff the API reads, so the case ages well.
-    const cutoff = custodyStaleCutoff(new Date());
     const late = (
       [
         ['2026-09-12', 150],
@@ -438,6 +438,17 @@ describe('«استعاضة عهدة»', () => {
       stale: { count: late.length, total: sum(late.map(([, amount]) => amount)) },
     });
     expect(candidates).toMatchObject({ fundTotal: 17492, chargedTotal: 100000 });
+  };
+
+  it('offers the memos not replenished yet, oldest first, and the receipts in none', async () => {
+    // The clock held still for the case, and the cutoff read before the service's: the case and
+    // the service age the receipts from one and the same UTC day.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date() });
+    try {
+      await candidatesCase();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('brings the memos back with their totals, marks them with the letter’s day, and the fund rises', async () => {

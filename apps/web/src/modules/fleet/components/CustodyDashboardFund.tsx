@@ -15,7 +15,7 @@
 // hooks «العهدة» and «سجل العهدة» already read (all under `fleetKeys.custody`, so a «شحن», a
 // «استعاضة», a «تسوية», a memo or a receipt refreshes them). Each card loads and fails on its own —
 // its own shimmer, its own error with a retry — and the body never waits for it.
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   FLEET_CUSTODY_STALE_DAYS,
@@ -164,6 +164,13 @@ export const CustodySectionHeading = ({
   </div>
 );
 
+/**
+ * The fund's two rows of cards at 1,536px on the owner's scenario — «مبالغ صُرفت …» beside «مصروفات
+ * تراخيص …», the step line beside «آخر عمليات العهدة»: each card shimmers at that height.
+ */
+const WAITING_ROW_H = 'min-h-[475px]';
+const HISTORY_ROW_H = 'min-h-[542px]';
+
 /** A card's own face while its read is on its way, or its own error with a retry. */
 const CardState = ({
   name,
@@ -203,6 +210,9 @@ const MAKE_MEMO =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-brand-500/50 bg-brand-500/15 px-2 py-0.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 dark:text-brand-200';
 const NOW_CHIP =
   'rounded-full bg-emerald-100 px-2 py-px text-[11px] leading-4 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300';
+/** «الآن» on the newest line of «آخر عمليات العهدة» — a size down from the readout's. */
+const NOW_CHIP_SMALL =
+  'rounded-full bg-emerald-100 px-1.5 py-px text-[10px] leading-4 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300';
 export const CLOCK: readonly string[] = ['M12 21a9 9 0 100-18 9 9 0 000 18z', 'M12 7v5l3 2'];
 
 /** «اليوم», «منذ يومين», «منذ 5 أيام», «منذ 42 يومًا» — whole UTC days from the board's day. */
@@ -346,29 +356,57 @@ const FundCardHead = ({
 
 // ── N1 «العهدة الآن» ────────────────────────────────────────────────────────────────────────────
 
+/** The fund's own three figures — unfiltered, on the dashboard's answer and the fund's summary alike. */
+export type CustodyFundFigures = Pick<
+  FleetCustodyDashboardDto,
+  'fundTotal' | 'fundCharged' | 'fundSpent'
+>;
+
+/** A tile's height in «العهدة الآن» at 1,536px — its shimmer the same, so nothing moves when it lands. */
+const FORMULA_TILE_H = 'min-h-[124px]';
+
 /**
  * The heading with its scope chip, and the formula as five tiles. The fund's own card stands at
- * the end from the dashboard's answer (unfiltered: `fundTotal`, `fundCharged`, `fundSpent`); the
- * four terms come from the fund's summary, shimmering while it is on its way.
+ * the end from the dashboard's answer (unfiltered: `fundTotal`, `fundCharged`, `fundSpent`) — or,
+ * while the filtered answer is on its way, from the fund's summary, which holds the same three; the
+ * four terms come from the summary, shimmering while it is on its way.
  */
-export const CustodyFundNow = ({ data }: { data: FleetCustodyDashboardDto }): JSX.Element => {
+export const CustodyFundNow = ({
+  data,
+}: {
+  data?: CustodyFundFigures | undefined;
+}): JSX.Element => {
   const t = useT();
   const headingId = useId();
   const fund = useCustodyFundSummary();
-  const card = (
-    <Link
-      to="/fleet/custody/log"
-      data-custody-fund-now="true"
-      className={cn('block h-full rounded-2xl', FOCUS_RING)}
-    >
-      <CustodyFundCard
-        fundTotal={data.fundTotal}
-        charged={data.fundCharged}
-        spent={data.fundSpent}
-        figure={STRIP_FIGURE}
-      />
-    </Link>
-  );
+  const figures: CustodyFundFigures | undefined =
+    data ??
+    (fund.data === undefined
+      ? undefined
+      : {
+          fundTotal: fund.data.fundTotal,
+          fundCharged: fund.data.charged.amount,
+          fundSpent: fund.data.spent.amount,
+        });
+  const card =
+    figures === undefined ? (
+      <div className="contents" data-custody-card-loading="fundNow">
+        <Skeleton className={cn('h-full rounded-2xl', FORMULA_TILE_H)} />
+      </div>
+    ) : (
+      <Link
+        to="/fleet/custody/log"
+        data-custody-fund-now="true"
+        className={cn('block h-full rounded-2xl', FOCUS_RING)}
+      >
+        <CustodyFundCard
+          fundTotal={figures.fundTotal}
+          charged={figures.fundCharged}
+          spent={figures.fundSpent}
+          figure={STRIP_FIGURE}
+        />
+      </Link>
+    );
   return (
     <section
       data-custody-dashboard-section="fund"
@@ -392,7 +430,7 @@ export const CustodyFundNow = ({ data }: { data: FleetCustodyDashboardDto }): JS
                 name="formula"
                 error={null}
                 onRetry={() => undefined}
-                className="min-h-[130px]"
+                className={FORMULA_TILE_H}
               />
             ))
           ) : (
@@ -511,7 +549,7 @@ export const CustodyWaitingCard = ({
           void cand.refetch();
           void fund.refetch();
         }}
-        className="min-h-[380px] lg:col-span-7"
+        className={cn(WAITING_ROW_H, 'lg:col-span-7')}
       />
     );
   }
@@ -792,7 +830,7 @@ export const CustodySettleCard = ({
         name="settle"
         error={cand.error}
         onRetry={() => void cand.refetch()}
-        className="min-h-[380px] lg:col-span-5"
+        className={cn(WAITING_ROW_H, 'lg:col-span-5')}
       />
     );
   }
@@ -942,15 +980,56 @@ const SHORT: Record<FleetCustodyLedgerRowDto['op'], string> = {
   spend: 'fleet.custody.ledger.op.spend',
 };
 
-/** The value axis over a history: round steps over its highest, down to its lowest below zero. */
+/**
+ * The value axis over a history: round steps over its highest — and, when the fund went below zero,
+ * the same round steps carried down past its lowest, so «−97,794» has a figure to be read against.
+ * One step over the whole span, above and below zero alike; `bottom` is the lowest tick.
+ */
 export const custodyStepScale = (
   rows: readonly Pick<FleetCustodyLedgerRowDto, 'before' | 'after'>[],
 ): { ticks: number[]; top: number; bottom: number; negative: boolean } => {
   const values = rows.flatMap((row) => [row.before, row.after]);
-  const ticks = custodyTicks(Math.max(0, ...values));
-  const top = ticks[ticks.length - 1] ?? 0;
-  const bottom = Math.min(0, ...values);
-  return { ticks, top, bottom, negative: bottom < 0 };
+  const high = Math.max(0, ...values);
+  const low = Math.min(0, ...values);
+  if (low >= 0) {
+    const ticks = custodyTicks(high);
+    return { ticks, top: ticks[ticks.length - 1] ?? 0, bottom: 0, negative: false };
+  }
+  const step = custodyTicks(high - low)[1] ?? high - low;
+  const ticks: number[] = [];
+  for (let k = Math.floor(low / step); k <= Math.ceil(high / step); k += 1) {
+    ticks.push(Math.round(k * step * 100) / 100);
+  }
+  return { ticks, top: ticks[ticks.length - 1] ?? 0, bottom: ticks[0] ?? low, negative: true };
+};
+
+/** A tick of the value axis — «−25K» below zero, with the true minus. */
+const tickText = (tick: number): string =>
+  tick < 0 ? `−${COMPACT.format(-tick)}` : COMPACT.format(tick);
+
+/** Half the line's width: the plot is drawn 1:1 upright, so this many units are its pixels. */
+const LINE_EDGE = 1.5;
+
+const NOW_LABEL_H = 24;
+const NOW_LABEL_GAP = 14;
+/**
+ * Where «الآن X» goes by the latest point — on the side away from the step's own amount, which
+ * stands beside its fall (above the point) or its rise (below it): under a fall, over a rise. When
+ * that side runs past the plot — the fund at the bottom of its history, below zero or nearly
+ * nothing — the label stands beside the point instead, on its left, where the line is not: it came
+ * in at the step's other end.
+ */
+export const custodyNowLabelPlace = (
+  pointY: number,
+  beforeY: number,
+): { top: number; beside: boolean } => {
+  const rise = beforeY > pointY;
+  const below = pointY + NOW_LABEL_GAP;
+  const above = pointY - NOW_LABEL_GAP - NOW_LABEL_H;
+  if (!rise && below + NOW_LABEL_H <= CHART_H - PAD.bottom) return { top: below, beside: false };
+  if (rise && above >= 0) return { top: above, beside: false };
+  const top = Math.min(Math.max(0, pointY - NOW_LABEL_H / 2), CHART_H - NOW_LABEL_H);
+  return { top, beside: true };
 };
 
 export const CustodyFundSteps = ({
@@ -962,17 +1041,25 @@ export const CustodyFundSteps = ({
   const money = useMoneyText();
   const navigate = useNavigate();
   const titleId = useId();
-  const gradientId = `custody-fund-area-${useId().replace(/[^a-zA-Z0-9_-]/gu, '')}`;
+  const plotId = `custody-fund-${useId().replace(/[^a-zA-Z0-9_-]/gu, '')}`;
+  const gradientId = `${plotId}-area`;
   const kit = useLedgerWordsKit();
   const ledger = useCustodyLedger(CUSTODY_LEDGER_PARAMS);
   const [picked, setPicked] = useState<number | null>(null);
+  // Wider than its card, the plot opens on its latest stretch — «الآن» — at the right end.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lines = ledger.data?.items.length ?? 0;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el !== null) el.scrollLeft = el.scrollWidth;
+  }, [lines]);
   if (ledger.data === undefined) {
     return (
       <CardState
         name="steps"
         error={ledger.error}
         onRetry={() => void ledger.refetch()}
-        className="min-h-[430px] lg:col-span-7"
+        className={cn(HISTORY_ROW_H, 'lg:col-span-7')}
       />
     );
   }
@@ -991,8 +1078,13 @@ export const CustodyFundSteps = ({
   rows.forEach((row, i) => {
     line += ` H ${x(i)} V ${y(row.after)}`;
   });
-  const area = `${line} H ${PLOT_W - PAD.right} V ${y(Math.max(0, bottom))} H ${PAD.left} Z`;
+  // Closed on zero: above it the area is the fund's green, below it the red of money short.
+  const zero = y(0);
+  const area = `${line} H ${PLOT_W - PAD.right} V ${zero} H ${PAD.left} Z`;
   if (n > 0) line += ` H ${PLOT_W - PAD.right}`;
+  /** Below zero only: what is drawn above it, or under it. */
+  const clip = (side: 'above' | 'below' | 'line-above' | 'line-below'): { clipPath?: string } =>
+    negative ? { clipPath: `url(#${plotId}-${side})` } : {};
   const go = (row: FleetCustodyLedgerRowDto): void => {
     const target = custodyLedgerTarget(row);
     if (target.kind === 'operation') void navigate(target.to);
@@ -1072,7 +1164,12 @@ export const CustodyFundSteps = ({
             </div>
           </div>
 
-          <div className={cn('overflow-x-auto', SCROLLBAR)} dir="ltr">
+          <div
+            ref={scrollRef}
+            data-custody-steps-scroll="true"
+            className={cn('overflow-x-auto', SCROLLBAR)}
+            dir="ltr"
+          >
             <div style={{ minWidth: `${n * 96 + 70}px` }}>
               <div className="relative" style={{ height: CHART_H }}>
                 <svg
@@ -1086,10 +1183,45 @@ export const CustodyFundSteps = ({
                       <stop offset="0%" stopColor="#10b981" stopOpacity="0.22" />
                       <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
                     </linearGradient>
+                    {negative && (
+                      <>
+                        <clipPath id={`${plotId}-above`}>
+                          <rect
+                            data-custody-steps-clip="above"
+                            x={0}
+                            y={0}
+                            width={PLOT_W}
+                            height={zero}
+                          />
+                        </clipPath>
+                        <clipPath id={`${plotId}-below`}>
+                          <rect
+                            data-custody-steps-clip="below"
+                            x={0}
+                            y={zero}
+                            width={PLOT_W}
+                            height={CHART_H - zero}
+                          />
+                        </clipPath>
+                        {/* The line's own: a stretch AT zero is not short of anything — green. */}
+                        <clipPath id={`${plotId}-line-above`}>
+                          <rect x={0} y={0} width={PLOT_W} height={zero + LINE_EDGE} />
+                        </clipPath>
+                        <clipPath id={`${plotId}-line-below`}>
+                          <rect
+                            x={0}
+                            y={zero + LINE_EDGE}
+                            width={PLOT_W}
+                            height={CHART_H - zero - LINE_EDGE}
+                          />
+                        </clipPath>
+                      </>
+                    )}
                   </defs>
                   {ticks.map((tick) => (
                     <line
                       key={tick}
+                      {...(tick === 0 ? { 'data-custody-steps-zero': zero } : {})}
                       x1={PAD.left}
                       x2={PLOT_W - PAD.right}
                       y1={y(tick)}
@@ -1103,17 +1235,9 @@ export const CustodyFundSteps = ({
                       vectorEffect="non-scaling-stroke"
                     />
                   ))}
-                  {negative && (
-                    <rect
-                      data-custody-steps-negative="true"
-                      x={PAD.left}
-                      y={y(0)}
-                      width={inner}
-                      height={y(bottom) - y(0)}
-                      className="fill-red-500/10"
-                    />
-                  )}
+                  {/* The picked slot under the band, the area and the line — each reads over it. */}
                   <rect
+                    data-custody-step-highlight={active}
                     x={PAD.left + slot * active}
                     y={PAD.top - 18}
                     width={slot}
@@ -1123,15 +1247,51 @@ export const CustodyFundSteps = ({
                     strokeWidth={1}
                     vectorEffect="non-scaling-stroke"
                   />
-                  <path d={area} fill={`url(#${gradientId})`} />
+                  {negative && (
+                    <rect
+                      data-custody-steps-negative="true"
+                      x={PAD.left}
+                      y={zero}
+                      width={inner}
+                      height={y(bottom) - zero}
+                      className="fill-red-500/10"
+                    />
+                  )}
+                  <path
+                    data-custody-steps-area="above"
+                    d={area}
+                    fill={`url(#${gradientId})`}
+                    {...clip('above')}
+                  />
+                  {negative && (
+                    <path
+                      data-custody-steps-area="below"
+                      d={area}
+                      {...clip('below')}
+                      className="fill-red-500/15"
+                    />
+                  )}
                   <path
                     d={line}
                     fill="none"
+                    {...clip('line-above')}
                     className="stroke-emerald-600 dark:stroke-emerald-400"
                     strokeWidth={2.5}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                   />
+                  {negative && (
+                    <path
+                      data-custody-steps-line="below"
+                      d={line}
+                      fill="none"
+                      {...clip('line-below')}
+                      className="stroke-red-600 dark:stroke-red-400"
+                      strokeWidth={2.5}
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
                 </svg>
                 {/* The value axis, in HTML so its figures are not stretched with the plot. */}
                 {ticks.map((tick) => (
@@ -1143,13 +1303,14 @@ export const CustodyFundSteps = ({
                     )}
                     style={{ top: y(tick) }}
                   >
-                    {COMPACT.format(tick)}
+                    {tickText(tick)}
                   </span>
                 ))}
                 {rows.map((row, i) => {
                   const up = row.amount >= 0;
                   const left = `${(x(i) / PLOT_W) * 100}%`;
                   const mid = (y(row.before) + y(row.after)) / 2;
+                  const nowAt = custodyNowLabelPlace(y(row.after), y(row.before));
                   return (
                     <div key={row.id}>
                       {/* The step's own amount, beside its rise or its fall. */}
@@ -1187,14 +1348,18 @@ export const CustodyFundSteps = ({
                       />
                       {row.latest && (
                         <span
-                          data-custody-now-label="true"
+                          data-custody-now-label={nowAt.beside ? 'beside' : 'true'}
                           dir="rtl"
                           className={cn(
-                            'absolute -translate-x-1/2 whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-800 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-950/80 dark:text-emerald-300',
+                            'absolute whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-bold text-emerald-800 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-950/80 dark:text-emerald-300',
+                            nowAt.beside ? '-translate-x-full' : '-translate-x-1/2',
                             NUM,
                             row.after < 0 && 'text-red-600 dark:text-red-400',
                           )}
-                          style={{ left, top: y(row.after) + 14 }}
+                          style={{
+                            left: nowAt.beside ? `calc(${left} - 12px)` : left,
+                            top: nowAt.top,
+                          }}
                         >
                           {t('fleet.custody.ledger.now')}{' '}
                           <span dir="ltr">
@@ -1284,6 +1449,11 @@ export const CustodyFundSteps = ({
 
 /** How many of the newest lines the card lists. */
 const RECENT = 6;
+/**
+ * The frame runs down to the card's foot beside the step chart; its lines keep their own height,
+ * one under the other from the top — six fill it, one or two never stretch to it.
+ */
+const RECENT_LIST = 'flex flex-1 flex-col justify-start';
 
 export const CustodyRecentOps = ({
   onShowPeriod,
@@ -1300,7 +1470,7 @@ export const CustodyRecentOps = ({
         name="recent"
         error={ledger.error}
         onRetry={() => void ledger.refetch()}
-        className="min-h-[430px] lg:col-span-5"
+        className={cn(HISTORY_ROW_H, 'lg:col-span-5')}
       />
     );
   }
@@ -1324,7 +1494,7 @@ export const CustodyRecentOps = ({
           {t(`${D}.steps.empty`)}
         </div>
       ) : (
-        <div className={cn(LIST_FRAME, 'flex flex-1 flex-col')}>
+        <div data-custody-recent-list="true" className={cn(LIST_FRAME, RECENT_LIST)}>
           {rows.map((row) => {
             const words = ledgerWords(row, kit);
             return (
@@ -1333,7 +1503,7 @@ export const CustodyRecentOps = ({
                 row={row}
                 onShowPeriod={onShowPeriod}
                 className={cn(
-                  'flex flex-1 items-center gap-3 px-3 py-2.5',
+                  'flex items-center gap-3 px-3 py-2.5',
                   ROW_HOVER,
                   FOCUS_RING,
                   row.op === 'spend' && 'bg-slate-100/70 dark:bg-white/[0.025]',
@@ -1387,7 +1557,7 @@ export const CustodyRecentOps = ({
                       {LATIN2.format(Math.abs(row.after))}
                     </span>
                     {row.latest && (
-                      <span className={cn(NOW_CHIP, 'px-1.5 text-[10px]')}>
+                      <span data-custody-recent-now="true" className={NOW_CHIP_SMALL}>
                         {t('fleet.custody.ledger.now')}
                       </span>
                     )}
@@ -1412,18 +1582,24 @@ export const CustodyRecentOps = ({
  * way raises nothing and a failed one says nothing here (its card says it).
  */
 export const useCustodyFundAlerts = (
-  fundTotal: number,
+  fundTotal: number | undefined,
   now?: number | undefined,
 ): CustodyFundAlert[] => {
   const replenish = useReplenishCandidates(true);
   const settle = useSettleCandidates(true);
-  return custodyFundAlerts({
-    fundTotal,
+  // The dashboard's answer on its way: the fund's own reads hold the same unfiltered total.
+  const fund = fundTotal ?? replenish.data?.fundTotal;
+  const lines = custodyFundAlerts({
+    fundTotal: fund ?? 0,
     outside: replenish.data?.outside,
     memos: replenish.data?.memos,
     parts: settle.data?.parts,
     ...(now === undefined ? {} : { now }),
   });
+  // With no total at all yet, nothing is said about it: below zero, or past what it holds.
+  return fund === undefined
+    ? lines.filter((line) => line.type !== 'negative' && line.type !== 'settleOver')
+    : lines;
 };
 
 /**
@@ -1450,11 +1626,14 @@ const Sentence = ({
   strong,
   ink = {},
   nodes = {},
+  wrap = [],
 }: {
   text: (params: Record<string, string>) => string;
   params: Record<string, string>;
   strong: readonly string[];
   ink?: Record<string, string>;
+  /** Values set apart that may still fold onto the next line — a name he typed, of any length. */
+  wrap?: readonly string[];
   /** How a value set apart is drawn, when not as its words — money with its «ج.م.». */
   nodes?: Record<string, ReactNode>;
 }): JSX.Element => {
@@ -1480,7 +1659,8 @@ const Sentence = ({
             {...(ltr ? { dir: 'ltr' } : {})}
             data-custody-alert-value={name}
             className={cn(
-              'whitespace-nowrap font-bold',
+              !wrap.includes(name) && 'whitespace-nowrap',
+              'font-bold',
               NUM,
               ink[name] ?? 'text-slate-900 dark:text-white',
             )}
@@ -1563,7 +1743,14 @@ const FundAlertLine = ({
       break;
     }
     case 'memo':
-      body = t(`${D}.alerts.memo`, { memo: memoDisplayName(line.memo, t), age: age(line.days) });
+      body = (
+        <Sentence
+          text={(p) => t(`${D}.alerts.memo`, p)}
+          params={{ memo: memoDisplayName(line.memo, t), age: age(line.days) }}
+          strong={['memo', 'age']}
+          wrap={['memo']}
+        />
+      );
       action = (
         <Link to="/fleet/custody/memos?status=pending" className={ALERT_LINK}>
           {t(`${D}.waiting.showMemos`)}
@@ -1571,11 +1758,17 @@ const FundAlertLine = ({
       );
       break;
     case 'licence':
-      body = t(`${D}.alerts.licence`, {
-        part: t(`fleet.licenseExpenses.kinds.${line.part.part}`),
-        date: ymd(line.part.date),
-        age: age(line.days),
-      });
+      body = (
+        <Sentence
+          text={(p) => t(`${D}.alerts.licence`, p)}
+          params={{
+            part: t(`fleet.licenseExpenses.kinds.${line.part.part}`),
+            date: ymd(line.part.date),
+            age: age(line.days),
+          }}
+          strong={['date', 'age']}
+        />
+      );
       action = can('fleetLicenseExpense.view') ? (
         <Link to={licenceWaitingLink(line.part.part)} className={ALERT_LINK}>
           {t(`${D}.settle.show`)}

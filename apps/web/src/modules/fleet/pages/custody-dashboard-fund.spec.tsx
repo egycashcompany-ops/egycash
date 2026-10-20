@@ -32,11 +32,17 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { custodyQueryKeys } from '../api/fleet-queries';
-import { CustodyAlerts, CustodyDashboardBody, CustodyKpis } from '../components/CustodyDashboard';
+import {
+  CustodyAlerts,
+  CustodyDashboardBody,
+  CustodyDashboardContent,
+  CustodyKpis,
+} from '../components/CustodyDashboard';
 import {
   CUSTODY_LEDGER_PARAMS,
   CustodyFundNow,
   CustodyFundSteps,
+  custodyNowLabelPlace,
   CustodyRecentOps,
   CustodySettleCard,
   custodyStepScale,
@@ -497,10 +503,39 @@ describe('the fund’s arithmetic — ages, waiting money, where a line leads', 
     expect(scale.top).toBeGreaterThanOrEqual(299400);
     expect(scale.bottom).toBe(0);
     expect(scale.negative).toBe(false);
+    expect(scale.ticks[0]).toBe(0);
+    // Below zero, the same round step carried down past the lowest — its last tick the bottom.
     const below = custodyStepScale([row({ before: 1000, after: -15286 })]);
-    expect(below.bottom).toBe(-15286);
+    expect(below.ticks).toEqual([-20000, -15000, -10000, -5000, 0, 5000]);
+    expect(below.bottom).toBe(-20000);
+    expect(below.top).toBe(5000);
     expect(below.negative).toBe(true);
+    // Never charged: only below zero, «−97,794» read against −25K … −100K.
+    const never = custodyStepScale([row({ before: 0, after: -97794 })]);
+    expect(never.ticks).toEqual([-100000, -75000, -50000, -25000, 0]);
+    expect(never.top).toBe(0);
+    // A high peak and a shallow dip: one step for both sides, a tick under the zero line.
+    const dip = custodyStepScale([
+      row({ before: 0, after: 300000 }),
+      row({ before: 300000, after: -20000 }),
+    ]);
+    expect(dip.ticks).toEqual([-100000, 0, 100000, 200000, 300000]);
     expect(custodyStepScale([]).ticks).toEqual([0]);
+  });
+
+  it('puts «الآن X» away from the step’s own amount — beside the point when that side runs out', () => {
+    // The plot is 250px, its last 8 the axis' margin: from 26px (the top) to 242px (the bottom).
+    // A fall (its amount above the point): under it — the approved place.
+    expect(custodyNowLabelPlace(100, 50)).toEqual({ top: 114, beside: false });
+    expect(custodyNowLabelPlace(200, 26)).toEqual({ top: 214, beside: false });
+    // A rise (its amount under the point): over it.
+    expect(custodyNowLabelPlace(100, 150)).toEqual({ top: 62, beside: false });
+    // The fund at the bottom of its history — below zero, or nearly nothing: beside the point, on
+    // its left, never over the dates under the plot.
+    expect(custodyNowLabelPlace(205, 100)).toEqual({ top: 193, beside: true });
+    expect(custodyNowLabelPlace(242, 200)).toEqual({ top: 226, beside: true });
+    // A rise to the top of the plot: beside it too.
+    expect(custodyNowLabelPlace(26, 100)).toEqual({ top: 14, beside: true });
   });
 
   it('splits the spend by its memos’ state — the whole card or one kind', () => {
@@ -625,9 +660,19 @@ describe('the fund’s alert lines (a–e)', () => {
     const memo = element(html, 'data-custody-alert="fund-memo"');
     expect(text(memo)).toContain('مذكرة غسيل رقم 6 لم تُستعَض منذ 31 يومًا');
     expect(hrefs(memo)).toEqual(['/fleet/custody/memos?status=pending']);
+    // Set apart as washing's line sets apart its own: the memo and its age, its date and its age.
+    expect(all(memo, 'data-custody-alert-value')).toEqual(['memo', 'age']);
+    expect(text(element(memo, 'data-custody-alert-value="memo"'))).toBe('مذكرة غسيل رقم 6');
+    // A name he typed may fold; the rest stays on its line.
+    expect(element(memo, 'data-custody-alert-value="memo"')).not.toContain('whitespace-nowrap');
     const licence = element(html, 'data-custody-alert="fund-licence"');
     expect(text(licence)).toContain('مذكرة مد مدة بتاريخ 2026/09/10 لم تُسوَّ منذ 39 يومًا');
     expect(hrefs(licence)).toEqual(['/fleet/license-expenses?kind=extension&status=waiting']);
+    expect(all(licence, 'data-custody-alert-value')).toEqual(['date', 'age']);
+    const date = element(licence, 'data-custody-alert-value="date"');
+    expect(date).toContain('dir="ltr"');
+    expect(date).toContain('whitespace-nowrap');
+    expect(text(element(licence, 'data-custody-alert-value="age"'))).toBe('منذ 39 يومًا');
     const over = element(html, 'data-custody-alert="fund-settleOver"');
     expect(text(over)).toContain(
       'التسويات المنتظرة (41,250.00 ج.م.) تتجاوز إجمالي العهدة الآن (−1,000.00 ج.م.)',
@@ -720,7 +765,7 @@ describe('N1 «العهدة الآن» — the formula as five tiles, whatever t
     );
     expect(read('CustodyLedgerPage.tsx')).not.toMatch(/const (LedgerFigures|Term|OpChip) =/u);
     expect(read('../components/CustodyDashboardFund.tsx')).toMatch(
-      /<CustodyFundCard\s+fundTotal=\{data\.fundTotal\}\s+charged=\{data\.fundCharged\}\s+spent=\{data\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
+      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
     );
   });
 });
@@ -912,7 +957,52 @@ describe('N4 «إجمالي العهدة بعد كل عملية»', () => {
       }),
     );
     expect(below).toContain('data-custody-steps-negative="true"');
-    expect(text(element(below, 'data-custody-now-label="true"'))).toBe('الآن −15,000.00');
+    expect(text(element(below, 'data-custody-now-label="beside"'))).toBe('الآن −15,000.00');
+    // The picked slot (the latest, at the bottom) is painted first: the red band reads over it.
+    const svg = element(below, 'preserveAspectRatio="none"');
+    const at = (attr: string): number => svg.indexOf(attr);
+    expect(at('data-custody-step-highlight="1"')).toBeGreaterThan(-1);
+    expect(at('data-custody-step-highlight=')).toBeLessThan(at('data-custody-steps-negative='));
+    expect(at('data-custody-steps-negative=')).toBeLessThan(at('data-custody-steps-area="above"'));
+    // The green area ends on zero; under it the area and the line are red.
+    const zero = Number(all(svg, 'data-custody-steps-zero')[0]);
+    expect(zero).toBeGreaterThan(26);
+    expect(zero).toBeLessThan(242);
+    const above = element(svg, 'data-custody-steps-clip="above"');
+    expect(above).toContain(`height="${zero}"`);
+    expect(above).toContain('y="0"');
+    expect(element(svg, 'data-custody-steps-clip="below"')).toContain(`y="${zero}"`);
+    const area = element(svg, 'data-custody-steps-area="above"');
+    expect(area).toMatch(/clip-path="url\(#custody-fund-[\w-]+-above\)"/u);
+    expect(element(svg, 'data-custody-steps-area="below"')).toContain('fill-red-500/15');
+    expect(element(svg, 'data-custody-steps-line="below"')).toContain('stroke-red-600');
+    // A value axis below zero too: −5K … −15K under the zero line.
+    expect(text(below)).toContain('−15K');
+    expect(text(below)).toContain('−5K');
+    // The latest point at the bottom: «الآن» beside it, on its left — clear of the dates under the
+    // plot and of the step's own amount on the point's right.
+    const point = element(below, 'data-custody-step="s"');
+    expect(point).toContain('top:242px');
+    const now = element(below, 'data-custody-now-label="beside"');
+    expect(now).toContain('top:226px');
+    expect(now).toMatch(/left:calc\([\d.]+% - 12px\)/u);
+    expect(now).toContain('-translate-x-full');
+  });
+
+  it('opens its scroller on the latest stretch, «الآن» in view, as the time chart does', () => {
+    const html = draw(<CustodyFundSteps />);
+    const scroller = element(html, 'data-custody-steps-scroll="true"');
+    expect(scroller).toContain('overflow-x-auto');
+    expect(scroller).toContain('dir="ltr"');
+    expect(scroller).toContain(`min-width:${ROWS.length * 96 + 70}px`);
+    const source = read('../components/CustodyDashboardFund.tsx');
+    expect(source).toContain('ref={scrollRef}');
+    expect(source).toContain('if (el !== null) el.scrollLeft = el.scrollWidth;');
+    // A history above zero: no band, no red line, nothing clipped, no tick under zero.
+    expect(html).not.toContain('data-custody-steps-clip');
+    expect(html).not.toContain('clip-path');
+    expect(html).not.toContain('data-custody-steps-line="below"');
+    expect(text(html)).not.toMatch(/−\d+K/u);
   });
 
   it('says so when the fund has no history yet, and shimmers on its way', () => {
@@ -962,6 +1052,28 @@ describe('N5 «آخر عمليات العهدة»', () => {
     const onBoard = draw(<CustodyRecentOps onShowPeriod={() => undefined} />);
     expect(element(onBoard, 'data-custody-recent-row="spend"')).toMatch(/^<button/u);
     expect(element(onBoard, 'data-custody-recent-row="settle"')).toMatch(/^<a /u);
+  });
+
+  it('wears the approved «الآن» chip — 10px, 6px each side — and keeps each line its own height', () => {
+    const html = draw(<CustodyRecentOps />);
+    const chip = element(html, 'data-custody-recent-now="true"');
+    expect(text(chip)).toBe('الآن');
+    const classes = (chip.slice(0, chip.indexOf('>')).match(/class="([^"]*)"/u)?.[1] ?? '').split(
+      ' ',
+    );
+    expect(classes).toEqual(
+      expect.arrayContaining(['px-1.5', 'py-px', 'text-[10px]', 'leading-4']),
+    );
+    expect(classes).not.toContain('px-2');
+    expect(classes).not.toContain('text-[11px]');
+    // The frame runs to the card's foot; the lines never stretch to fill it.
+    const list = element(html, 'data-custody-recent-list="true"');
+    expect(list).toContain('flex-1');
+    expect(list).toContain('justify-start');
+    for (const line of [...list.matchAll(/data-custody-recent-row="\w+"[^>]*class="([^"]*)"/gu)]) {
+      expect((line[1] ?? '').split(' ')).not.toContain('flex-1');
+    }
+    expect([...list.matchAll(/data-custody-recent-row=/gu)]).toHaveLength(6);
   });
 
   it('writes «بعدها» below zero in red', () => {
@@ -1106,6 +1218,74 @@ describe('the dashboard’s two scopes, in the approved order', () => {
       'topDrivers',
       'fuel',
     ]);
+  });
+
+  it('never swaps «العهدة الآن» for a shimmer while the filtered answer is on its way — or failed', () => {
+    const loading = draw(
+      <CustodyDashboardContent
+        view="loading"
+        data={undefined}
+        error={null}
+        onRetry={() => undefined}
+        now={NOW}
+      />,
+    );
+    // The fund's part whole, from its own reads — the fund's card from the summary's three figures.
+    expect(all(loading, 'data-custody-dashboard-section')).toEqual([
+      'alerts',
+      'fund',
+      'waiting',
+      'settle',
+      'steps',
+      'recent',
+    ]);
+    expect(text(element(loading, 'data-custody-fund-now="true"'))).toBe(
+      'إجمالي العهدة 159,974.54 ج.م. صُرف من إجمالي الشحن 33%',
+    );
+    expect(loading).toContain('data-custody-alert="fund-stale"');
+    expect(loading).not.toContain('data-custody-card-loading');
+    // Under it, only the filtered part shimmers — its heading already in place.
+    expect(all(loading, 'data-custody-dashboard-heading')).toEqual(['fund', 'spend']);
+    const shimmer = loading.slice(loading.indexOf('data-custody-dashboard-loading="true"'));
+    expect(shimmer).not.toContain('data-custody-dashboard-section');
+    // The same tree in every face: the fund's part first, the spend after it — a filter that
+    // changes never remounts the step line (its picked point holds) nor blanks the cards.
+    const failedFace = draw(
+      <CustodyDashboardContent
+        view="error"
+        data={undefined}
+        error={new Error('boom')}
+        onRetry={() => undefined}
+        now={NOW}
+      />,
+    );
+    expect(all(failedFace, 'data-custody-dashboard-section')).toEqual([
+      'alerts',
+      'fund',
+      'waiting',
+      'settle',
+      'steps',
+      'recent',
+    ]);
+    expect(text(element(failedFace, 'data-custody-dashboard-error="true"'))).toContain(
+      ar('common.retry'),
+    );
+    const modal = read('../components/CustodyDashboard.tsx');
+    expect(modal).not.toContain("if (view === 'loading') return");
+    // With nothing read at all yet, nothing is said of the fund's total: no «بالسالب», no «تتجاوز».
+    const nothing = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const blank = draw(
+      <CustodyDashboardContent
+        view="loading"
+        data={undefined}
+        error={null}
+        onRetry={() => undefined}
+        now={NOW}
+      />,
+      nothing,
+    );
+    expect(blank).not.toContain('data-custody-dashboard-section="alerts"');
+    expect(blank).toContain('data-custody-card-loading="fundNow"');
   });
 
   it('wires the board: «استعاضة / تسوية العهدة» close the dashboard and open its dialog; a receipts line sets «من» / «إلى»', () => {

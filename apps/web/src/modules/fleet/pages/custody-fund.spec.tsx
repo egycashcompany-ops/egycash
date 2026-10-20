@@ -506,11 +506,26 @@ describe('«إجمالي العهدة» on «لوحة تحكم» — the last ti
     const loading = mount(
       <CustodyDashboardContent view="loading" data={undefined} error={null} onRetry={() => {}} />,
     );
-    expect(loading.match(/h-\[120px\]/gu)).toHaveLength(5);
-    // Over them, the fund's own frame: the formula's strip and its two rows of cards.
-    expect(loading.match(/h-\[130px\]/gu)).toHaveLength(1);
-    expect(loading.match(/h-\[380px\]/gu)).toHaveLength(2);
-    expect(loading.match(/h-\[430px\]/gu)).toHaveLength(2);
+    // Five spend cards shimmering at their own height — the memos' bars in them (N7).
+    expect(loading.match(/ h-\[266px\]/gu)).toHaveLength(5);
+    expect(loading).toContain('data-custody-dashboard-loading="true"');
+    // Over them, «العهدة الآن» is never a shimmer of the filtered answer: its own cards, each on its
+    // own read, at the heights they land at — the formula's five tiles and its two rows of cards.
+    expect(loading).toContain('data-custody-dashboard-heading="fund"');
+    expect(loading.match(/min-h-\[124px\]/gu)).toHaveLength(5);
+    expect(loading.match(/min-h-\[475px\]/gu)).toHaveLength(2);
+    expect(loading.match(/min-h-\[542px\]/gu)).toHaveLength(2);
+    expect([...loading.matchAll(/data-custody-card-loading="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'formula',
+      'formula',
+      'formula',
+      'formula',
+      'fundNow',
+      'waiting',
+      'settle',
+      'steps',
+      'recent',
+    ]);
     // The shared look: no font-family twice on one element.
     for (const m of html.matchAll(/class="([^"]*)"/gu)) {
       expect((m[1] ?? '').match(/\[font-family:/gu)?.length ?? 0, m[1]).toBeLessThanOrEqual(1);
@@ -533,7 +548,7 @@ describe('«إجمالي العهدة» on «لوحة تحكم» — the last ti
       /<CustodyFundCard\s+fundTotal=\{totals\.fundTotal\}\s+charged=\{totals\.fundCharged\}\s+spent=\{totals\.fundSpent\}\s+board\s+\/>/u,
     );
     expect(read('../components/CustodyDashboardFund.tsx')).toMatch(
-      /<CustodyFundCard\s+fundTotal=\{data\.fundTotal\}\s+charged=\{data\.fundCharged\}\s+spent=\{data\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
+      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
     );
     expect(read('../components/CustodyDashboard.tsx')).not.toContain('<CustodyFundCard');
     // A spent total of nothing over what was charged: «0%», not a dash.

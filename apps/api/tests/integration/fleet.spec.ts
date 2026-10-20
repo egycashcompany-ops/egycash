@@ -10732,6 +10732,19 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     });
     expect(whole).not.toHaveProperty('dealership');
     expect(whole.alerts).not.toHaveProperty('pendingPrivateBills');
+    // No memo in this suite: every receipt of the set is «خارج المذكرات», each under its kind.
+    expect(whole.memoStates.outside).toEqual({
+      count: 5,
+      amount: 3185,
+      byKind: {
+        maintenance: { count: 1, amount: 850 },
+        fuel: { count: 2, amount: 815 },
+        tyres: { count: 1, amount: 1400 },
+        wash: { count: 1, amount: 120 },
+      },
+    });
+    expect(whole.memoStates.replenished).toMatchObject({ count: 0, amount: 0 });
+    expect(whole.memoStates.pending).toMatchObject({ count: 0, amount: 0 });
     expect(whole.litres).toBeCloseTo(litres, 2);
     expect(whole.fuelTypes.map((line) => [line.fuelType, line.count, line.amount])).toEqual([
       ['petrol80', 1, 315],

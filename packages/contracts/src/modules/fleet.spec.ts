@@ -29,7 +29,11 @@ import {
   CreateFleetCustodyReplenishmentSchema,
   CreateFleetCustodySettlementSchema,
   FLEET_CUSTODY_MEMO_MAX_LINES,
+  FLEET_CUSTODY_MEMO_STATES,
+  FLEET_CUSTODY_MEMO_STATUSES,
+  FLEET_CUSTODY_STALE_DAYS,
   FleetCustodyLedgerSummaryQuerySchema,
+  FleetCustodyMemoStateSchema,
   FleetCustodyMemoCandidatesQuerySchema,
   FleetCustodyMemoSummaryQuerySchema,
   FleetLicenseExpenseSummaryQuerySchema,
@@ -968,6 +972,18 @@ describe('custody memos and the fund’s operations — «ومش عاوز اى �
     expect(FleetCustodyMemoSummaryQuerySchema.parse({ kind: 'wash' }).kind).toEqual(['wash']);
     expect(FleetCustodyMemoSummaryQuerySchema.safeParse({ sort: 'no:asc' }).success).toBe(false);
     expect(FleetCustodyMemoSummaryQuerySchema.safeParse({ page: '2' }).success).toBe(false);
+  });
+
+  it('the dashboard splits the spend three ways against the memos; a receipt is late after 30 days', () => {
+    // «تمت الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات» — in the bars' order.
+    expect(FLEET_CUSTODY_MEMO_STATES).toEqual(['replenished', 'pending', 'outside']);
+    // A memo's own two statuses are two of the three; «خارج المذكرات» is a receipt on none.
+    for (const status of FLEET_CUSTODY_MEMO_STATUSES) {
+      expect(FLEET_CUSTODY_MEMO_STATES).toContain(status);
+    }
+    expect(FleetCustodyMemoStateSchema.parse('outside')).toBe('outside');
+    expect(FleetCustodyMemoStateSchema.safeParse('settled').success).toBe(false);
+    expect(FLEET_CUSTODY_STALE_DAYS).toBe(30);
   });
 
   it('the editor’s receipts are asked for one kind, and the memo being edited', () => {

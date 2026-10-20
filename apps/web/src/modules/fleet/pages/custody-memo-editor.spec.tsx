@@ -104,6 +104,8 @@ describe('which kind «مذكرة جديدة» opens on', () => {
         kind,
         count: counts[kind],
         total: counts[kind] * 10,
+        oldest: counts[kind] > 0 ? '2026-10-06' : null,
+        stale: { count: 0, total: 0 },
       }));
     expect(defaultMemoKind(outside({ maintenance: 0, fuel: 0, tyres: 18, wash: 4 }))).toBe('tyres');
     expect(defaultMemoKind(outside({ maintenance: 0, fuel: 8, tyres: 18, wash: 0 }))).toBe('fuel');
@@ -399,10 +401,10 @@ const me = (): MeDto =>
   }) as unknown as MeDto;
 
 const OUTSIDE: FleetCustodyOutsideKindDto[] = [
-  { kind: 'maintenance', count: 3, total: 5720 },
-  { kind: 'fuel', count: 8, total: 7876 },
-  { kind: 'tyres', count: 18, total: 1690 },
-  { kind: 'wash', count: 0, total: 0 },
+  { kind: 'maintenance', count: 3, total: 5720, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+  { kind: 'fuel', count: 8, total: 7876, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+  { kind: 'tyres', count: 18, total: 1690, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+  { kind: 'wash', count: 0, total: 0, oldest: null, stale: { count: 0, total: 0 } },
 ];
 const TYRES = [
   receipt(1, { date: '2026-10-06', vehicleCode: '248', amount: 150 }),

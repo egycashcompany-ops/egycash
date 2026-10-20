@@ -53,10 +53,10 @@ const fund: FleetCustodyFundSummaryDto = {
   operations: 4,
   memos: { count: 6, pending: 1, pendingTotal: 600 },
   outside: [
-    { kind: 'maintenance', count: 3, total: 5720 },
-    { kind: 'fuel', count: 12, total: 7876 },
-    { kind: 'tyres', count: 2, total: 1690 },
-    { kind: 'wash', count: 0, total: 0 },
+    { kind: 'maintenance', count: 3, total: 5720, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+    { kind: 'fuel', count: 12, total: 7876, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+    { kind: 'tyres', count: 2, total: 1690, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+    { kind: 'wash', count: 0, total: 0, oldest: null, stale: { count: 0, total: 0 } },
   ],
 };
 

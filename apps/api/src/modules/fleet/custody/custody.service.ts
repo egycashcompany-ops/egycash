@@ -26,8 +26,13 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { sortCustodyMovements } from './custody-sort';
-import { custodyDashboard } from './custody-dashboard';
+import {
+  custodyDashboard,
+  custodyMemoStateOf,
+  type CustodyDashboardRow,
+} from './custody-dashboard';
 import { readCustodyFundTerms, type CustodyFundTerms } from './custody-fund';
+import { FleetCustodyMemoModel } from './custody-memo.model';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -63,6 +68,8 @@ interface Movement {
   /** Whether a receipt has its photo — the dashboard's alert, never on «كل الحركات». */
   hasImage: boolean;
   amount: number;
+  /** The memo holding the receipt, `null` when none — the dashboard's, never on «كل الحركات». */
+  memoId: string | null;
 }
 
 /** A movement as «كل الحركات» lists it — field by field, so nothing the dashboard reads leaks out. */
@@ -80,6 +87,31 @@ const toMovementDto = (row: Movement): FleetCustodyMovementDto => ({
   detail: row.detail,
   amount: row.amount,
 });
+
+/**
+ * Each movement with where it stands against the memos («تمت الاستعاضة» / «في مذكرات لم تُستعَض» /
+ * «خارج المذكرات») — ONE read of the live memos the rows name, their `replenishmentId` only. The
+ * dashboard's alone: the figures and «كل الحركات» never pay for it.
+ */
+const withMemoStates = async (
+  rows: readonly Movement[],
+): Promise<(Movement & Pick<CustodyDashboardRow, 'memoState'>)[]> => {
+  const ids = [...new Set(rows.flatMap((row) => (row.memoId === null ? [] : [row.memoId])))];
+  const memos =
+    ids.length === 0
+      ? []
+      : await FleetCustodyMemoModel.find({
+          _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+          isDeleted: false,
+        })
+          .select({ replenishmentId: 1 })
+          .lean<{ _id: Types.ObjectId; replenishmentId?: Types.ObjectId | null }[]>()
+          .exec();
+  const replenished = new Map(
+    memos.map((memo) => [String(memo._id), memo.replenishmentId != null]),
+  );
+  return rows.map((row) => ({ ...row, memoState: custodyMemoStateOf(row.memoId, replenished) }));
+};
 
 /**
  * «السجل» of one line of «ملخص لكل سيارة»: the registry's car by its id. A code from the old book
@@ -151,6 +183,7 @@ class FleetCustodyService {
       litres: doc.litres ?? null,
       hasImage: doc.image != null,
       amount: doc.amount,
+      memoId: doc.memoId == null ? null : String(doc.memoId),
     }));
     const codes = await fleetVehicleRepository.codesByIds([
       ...new Set(all.flatMap((row) => (row.vehicleId === null ? [] : [row.vehicleId]))),
@@ -175,12 +208,13 @@ class FleetCustodyService {
 
   /**
    * «لوحة تحكم» — the figures, then everything else about the same movements. One read, one fold:
-   * its summary fields ARE `/summary`'s for the same filters, by construction.
+   * its summary fields ARE `/summary`'s for the same filters, by construction. The memos the rows
+   * name are read once more, for `memoStates`.
    */
   async dashboard(query: FleetCustodyDashboardQuery): Promise<FleetCustodyDashboardDto> {
     const vehicleIds = await this.vehicleIdsFor(query);
     const [rows, terms] = await Promise.all([
-      this.movementsFor(query, vehicleIds),
+      this.movementsFor(query, vehicleIds).then(withMemoStates),
       readCustodyFundTerms(),
     ]);
     return { ...this.fold(rows), ...fundFigures(terms), ...custodyDashboard(rows, query) };

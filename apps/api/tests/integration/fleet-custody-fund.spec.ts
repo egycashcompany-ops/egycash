@@ -30,6 +30,8 @@ import {
   ListFleetLicenseExpensesQuerySchema,
   SaveFleetCustodyPaperSettingsSchema,
   UpdateFleetLicenseExpenseSchema,
+  type FleetCustodyCountAmountDto,
+  type FleetCustodyDashboardDto,
   type FleetCustodyFundSummaryDto,
   type FleetCustodyLedgerRowDto,
   type FleetCustodyLedgerTotalsDto,
@@ -56,6 +58,7 @@ import { fleetCustodyMemoService } from '../../src/modules/fleet/custody/custody
 import { fleetCustodyPapersService } from '../../src/modules/fleet/custody/custody-papers.service';
 import { fleetCustodyFundService } from '../../src/modules/fleet/custody/custody-fund.service';
 import { readCustodyFundTerms } from '../../src/modules/fleet/custody/custody-fund';
+import { custodyStaleCutoff } from '../../src/modules/fleet/custody/custody-memo-rules';
 import { FleetLicenseExpenseModel } from '../../src/modules/fleet/license-expenses/license-expense.model';
 import { fleetLicenseExpenseService } from '../../src/modules/fleet/license-expenses/license-expense.service';
 import { partMoney } from '../../src/modules/fleet/license-expenses/license-expense-money';
@@ -418,10 +421,21 @@ describe('«استعاضة عهدة»', () => {
       [4, 'maintenance', 5720],
       [5, 'maintenance', 23694],
     ]);
+    // Late past 30 days by today's clock — the same cutoff the API reads, so the case ages well.
+    const cutoff = custodyStaleCutoff(new Date());
+    const late = (
+      [
+        ['2026-09-12', 150],
+        ['2026-09-19', 150],
+        ['2026-09-26', 300],
+      ] as const
+    ).filter(([iso]) => day(iso).getTime() < cutoff.getTime());
     expect(candidates.outside.find((row) => row.kind === 'wash')).toEqual({
       kind: 'wash',
       count: 3,
       total: 600,
+      oldest: '2026-09-12',
+      stale: { count: late.length, total: sum(late.map(([, amount]) => amount)) },
     });
     expect(candidates).toMatchObject({ fundTotal: 17492, chargedTotal: 100000 });
   });
@@ -761,6 +775,168 @@ describe('«سجل العهدة» — his scenario, row for row', () => {
       // Memo 6 (washing) waits for its replenishment.
       memos: { count: 6, pending: 1, pendingTotal: 600 },
     });
+    // October's receipts are in no memo: each kind's oldest day; washing has none left outside.
+    expect(
+      data<FleetCustodyFundSummaryDto>(res).outside.map((row) => [
+        row.kind,
+        row.count,
+        row.total,
+        row.oldest,
+      ]),
+    ).toEqual([
+      ['maintenance', 1, 5720, '2026-10-08'],
+      ['fuel', 1, 7876, '2026-10-06'],
+      ['tyres', 2, 1690, '2026-10-06'],
+      ['wash', 0, 0, null],
+    ]);
+    expect(data<FleetCustodyFundSummaryDto>(res).outside[3]?.stale).toEqual({ count: 0, total: 0 });
+  });
+});
+
+describe('the dashboard’s spend against the memos — «تمت الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات»', () => {
+  const board = async (query: Record<string, string> = {}): Promise<FleetCustodyDashboardDto> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/custody/dashboard')
+      .query(query)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(res.status, JSON.stringify(query)).toBe(200);
+    return data<FleetCustodyDashboardDto>(res);
+  };
+  const pair = (count: number, amount: number): FleetCustodyCountAmountDto => ({ count, amount });
+  const none = pair(0, 0);
+  const kinds = ['maintenance', 'fuel', 'tyres', 'wash'] as const;
+  /** Every way the states are cut adds up to the board's own figures for the same filters. */
+  const addsUp = (dto: FleetCustodyDashboardDto, label: string): void => {
+    const states = Object.values(dto.memoStates);
+    expect(
+      states.reduce((n, state) => n + state.count, 0),
+      label,
+    ).toBe(dto.count);
+    expect(sum(states.map((state) => state.amount)), label).toBe(dto.total);
+    for (const kind of kinds) {
+      expect(
+        states.reduce((n, state) => n + state.byKind[kind].count, 0),
+        `${label} ${kind}`,
+      ).toBe(dto.counts[kind]);
+      expect(sum(states.map((state) => state.byKind[kind].amount)), `${label} ${kind}`).toBe(
+        dto[kind],
+      );
+    }
+  };
+  /** Over no filter, the three are the fund's own figures. */
+  const matchesFund = async (): Promise<void> => {
+    const [whole, fund] = await Promise.all([board(), fleetCustodyFundService.summary()]);
+    expect(whole.memoStates.replenished.amount).toBe(fund.replenished.amount);
+    expect(whole.memoStates.pending.amount).toBe(fund.memos.pendingTotal);
+    expect(whole.memoStates.outside.amount).toBe(sum(fund.outside.map((row) => row.total)));
+    expect(whole.memoStates.outside.count).toBe(fund.outside.reduce((n, row) => n + row.count, 0));
+    addsUp(whole, 'no filter');
+  };
+
+  it('over no filter: Σ «استعاضة», the memo waiting, and October in no memo — the fund’s figures', async () => {
+    expect((await board()).memoStates).toEqual({
+      replenished: {
+        count: 12,
+        amount: 81908,
+        byKind: {
+          maintenance: pair(4, 29414),
+          fuel: pair(3, 49844),
+          tyres: pair(5, 2650),
+          wash: none,
+        },
+      },
+      pending: {
+        count: 3,
+        amount: 600,
+        byKind: { maintenance: none, fuel: none, tyres: none, wash: pair(3, 600) },
+      },
+      outside: {
+        count: 4,
+        amount: 15286,
+        byKind: {
+          maintenance: pair(1, 5720),
+          fuel: pair(1, 7876),
+          tyres: pair(2, 1690),
+          wash: none,
+        },
+      },
+    });
+    await matchesFund();
+  });
+
+  it('follows the board’s filters like every other spend figure — the kinds, the dates, the cars', async () => {
+    const kindsOnly = await board({ source: 'tyres,wash' });
+    expect(
+      Object.fromEntries(
+        Object.entries(kindsOnly.memoStates).map(([state, line]) => [
+          state,
+          [line.count, line.amount],
+        ]),
+      ),
+    ).toEqual({ replenished: [5, 2650], pending: [3, 600], outside: [2, 1690] });
+    expect(kindsOnly.memoStates.replenished.byKind.fuel).toEqual(none);
+    addsUp(kindsOnly, 'tyres,wash');
+
+    const october = await board({ from: '2026-10-01' });
+    expect(october.memoStates.replenished).toMatchObject({ count: 0, amount: 0 });
+    expect(october.memoStates.pending).toMatchObject({ count: 0, amount: 0 });
+    expect(october.memoStates.outside).toMatchObject({ count: 4, amount: 15286 });
+    addsUp(october, 'October');
+
+    // 10/09–19/09: tyres 500 and 460, fuel 15000, maintenance 20000 — all replenished; two washes.
+    const window = await board({ from: '2026-09-10', to: '2026-09-19' });
+    expect(window.memoStates.replenished).toMatchObject({ count: 4, amount: 35960 });
+    expect(window.memoStates.pending).toMatchObject({
+      count: 2,
+      amount: 300,
+      byKind: { wash: pair(2, 300) },
+    });
+    expect(window.memoStates.outside).toMatchObject({ count: 0, amount: 0 });
+    addsUp(window, '10/09–19/09');
+
+    // A car with no receipts: every state there, all zeros.
+    const empty = await board({ vehicleCodes: CODES.b });
+    for (const state of ['replenished', 'pending', 'outside'] as const) {
+      expect(empty.memoStates[state], state).toEqual({
+        count: 0,
+        amount: 0,
+        byKind: { maintenance: none, fuel: none, tyres: none, wash: none },
+      });
+    }
+  });
+
+  it('moves a receipt as its memo moves: outside → waiting → back on a delete → replenished', async () => {
+    const fuel = ids.october[2]!; // 06/10, fuel 7,876.00 — in no memo
+    const states = async () => (await board({ source: 'fuel', from: '2026-10-01' })).memoStates;
+    expect(await states()).toMatchObject({
+      replenished: { count: 0 },
+      pending: { count: 0 },
+      outside: { count: 1, amount: 7876 },
+    });
+
+    const waiting = await memo('fuel', [fuel]);
+    expect(await states()).toMatchObject({
+      replenished: { count: 0 },
+      pending: { count: 1, amount: 7876, byKind: { fuel: pair(1, 7876) } },
+      outside: { count: 0, amount: 0 },
+    });
+    await matchesFund();
+
+    // A soft delete frees the receipt: outside again.
+    await fleetCustodyMemoService.remove(waiting.id, ACTOR);
+    expect(await states()).toMatchObject({
+      pending: { count: 0 },
+      outside: { count: 1, amount: 7876 },
+    });
+
+    const again = await memo('fuel', [fuel]);
+    await replenish({ memoIds: [again.id] });
+    expect(await states()).toMatchObject({
+      replenished: { count: 1, amount: 7876, byKind: { fuel: pair(1, 7876) } },
+      pending: { count: 0, amount: 0 },
+      outside: { count: 0, amount: 0 },
+    });
+    await matchesFund();
   });
 });
 

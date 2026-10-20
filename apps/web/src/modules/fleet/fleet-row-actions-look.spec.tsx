@@ -121,6 +121,8 @@ const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
   odometer: null,
   company: null,
   image: null,
+  // In no custody memo unless a test says otherwise.
+  memo: null,
   version: 0,
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-01T00:00:00.000Z',
@@ -135,6 +137,7 @@ const TOTALS: FleetReceiptTotalsDto = {
   fuelLitres: 74.2,
   tyresTotal: 0,
   washTotal: 0,
+  maintenanceTotal: 0,
 };
 
 const FILTERS = {
@@ -356,6 +359,43 @@ describe('the receipts table — the actions and the image, as the picture draws
     expect(box).toContain(TRASH_2);
     expect(markup, 'no row is left without one or the other').not.toContain(
       'data-receipt-image-upload="r-2"',
+    );
+  });
+});
+
+describe('a receipt a custody memo holds — the bin stays in the box, faded', () => {
+  it('keeps the pen in blue and the bin in red, the bin disabled inside a titled span', () => {
+    const qc = client();
+    const rows = [
+      receipt({
+        source: 'custody',
+        cardId: null,
+        cardCompany: null,
+        cardNumber: null,
+        memo: { id: 'm-7', no: 7, replenishedAt: null },
+      }),
+    ];
+    qc.setQueryData(
+      listKey('fleet', 'receipts', {
+        ...FILTERS,
+        page: 1,
+        pageSize: 25,
+        sortBy: 'date',
+        sortDir: 'desc',
+        sort: 'date:desc',
+      }),
+      { items: rows, meta: { page: 1, pageSize: 25, totalItems: 1, totalPages: 1 } },
+    );
+    qc.setQueryData(listKey('fleet', 'receipts', { summary: true, ...FILTERS }), TOTALS);
+    const box = element(
+      mount(qc, RECEIPT_GRANTS, '/fleet/receipts', <ReceiptsPage />),
+      'data-row-actions="receipt"',
+    );
+    // The same two icons in the same order and colours — the bin is the one that no longer works.
+    expect(buttonClasses(box).map(kindOf)).toEqual(['edit', 'delete']);
+    expect(box).toContain(TRASH_2);
+    expect(box).toMatch(
+      /<span title="[^"]+" data-locked-action="receipt-delete"[^>]*><button type="button" disabled=""/u,
     );
   });
 });

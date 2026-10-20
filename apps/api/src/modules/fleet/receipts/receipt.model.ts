@@ -1,10 +1,12 @@
-// A receipt (إيصال) the driver brought back — fuel, tyres or washing — and what paid for it.
+// A receipt (إيصال) the driver brought back — fuel, tyres, washing or maintenance — and what paid
+// for it.
 //
 // «في حاله الوقود تبع الفيزا ... بيخصم من الفيز / في حاله الوقود تبع العهدة ... بيخصم من العهده /
-// كاوتش او غسيل ... بيخصم من العهدة». The SOURCE is stored, not derived, so the custody screen can
-// sum the fund's side in the database; for a card it is also the card's own `receipt` movement,
-// written with this row in one transaction (see `receipt.service.ts`). The card may be any card —
-// «هل تريد تسجيل كارت اخر» — so `cardId` is never read as «this car's card».
+// كاوتش او غسيل ... بيخصم من العهدة», and «صيانة تكون زى الكاوتش والغسيل وتخصم من العهده»:
+// maintenance is a fund paper like tyres and washing. The SOURCE is stored, not derived, so the
+// custody screen can sum the fund's side in the database; for a card it is also the card's own
+// `receipt` movement, written with this row in one transaction (see `receipt.service.ts`). The card
+// may be any card — «هل تريد تسجيل كارت اخر» — so `cardId` is never read as «this car's card».
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_FUEL_CARD_COMPANIES,
@@ -51,6 +53,13 @@ export interface FleetReceiptDoc extends BaseDocFields {
    * Absent on rows written before it was asked, which read as «بدون شركة».
    */
   company?: FleetFuelCardCompany | null;
+  /**
+   * The custody memo («المذكرات») this receipt is a line of — written with the memo in one
+   * transaction, never by the receipts screen. `null` while it is in none («لم تدخل أي مذكرة بعد»).
+   * Absent on rows written before memos existed, which `{ memoId: null }` matches as well: they
+   * read as in no memo, with nothing migrated.
+   */
+  memoId?: Types.ObjectId | null;
   image: FleetReceiptImage | null;
 }
 
@@ -80,6 +89,7 @@ const receiptSchema = new Schema<FleetReceiptDoc>(
     amount: { type: Number, required: true, min: 0 },
     odometer: { type: Number, default: null, min: 0 },
     company: { type: String, enum: [...FLEET_FUEL_CARD_COMPANIES, null], default: null },
+    memoId: { type: Schema.Types.ObjectId, default: null },
     image: { type: imageSchema, default: null },
     ...baseFields,
   },
@@ -92,6 +102,12 @@ receiptSchema.index({ vehicleId: 1, date: -1 }, { name: 'ix_receipt_vehicle_date
 receiptSchema.index({ source: 1, date: -1 }, { name: 'ix_receipt_source_date' });
 receiptSchema.index({ kind: 1, date: -1 }, { name: 'ix_receipt_kind_date' });
 receiptSchema.index({ cardId: 1 }, { name: 'ix_receipt_card' });
+// «المذكرات»: the custody receipts of a kind that no memo holds yet (the editor's candidates, the
+// «لم تدخل أي مذكرة بعد» counts), and a memo's own receipts.
+receiptSchema.index(
+  { source: 1, memoId: 1, kind: 1, date: 1 },
+  { name: 'ix_receipt_custody_memo' },
+);
 
 export const FleetReceiptModel = model<FleetReceiptDoc>(
   'FleetReceipt',

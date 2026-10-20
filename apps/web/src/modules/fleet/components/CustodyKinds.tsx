@@ -4,15 +4,19 @@
 //
 // «عاوز دى تكون فى شاشه العهد لما ادوس على لوحة التحكم فى اللايت سيم والدارك سيم»: the owner sent
 // the dashboard's design and chose its colours for the WHOLE custody screen — التوكيل blue, وقود
-// amber, كاوتش rose, غسيل cyan, the total emerald. That sets aside, on this screen only, the house
-// rule that kept amber and red for states and purple for what is picked: the filter's focus and
-// selection are the design's emerald here. Not the toolbar — «لوحة التحكم والاحصائيات الاتنين يكون
-// لونهم موف زى باقى الشاشات»: «الإحصائيات» and «لوحة تحكم» stay the site's purple, as on every
-// board; nor the pager — «لا بنفسجى»: its current page is the site's purple too. The
-// shades are the design's: the dark theme draws a kind at 500 (its words at 300/400 on a 500/15
-// tile), the light theme at the 600 (blue, cyan) or 500 (amber, rose) the light map gives, its
-// words at 700–900 on a 50 tile. The kind's NAME still rides beside its colour — badge text,
-// an icon on the tile, a legend on every chart — so the colour is never the only way to tell them.
+// amber, كاوتش rose, غسيل cyan, the total emerald. «عاوز اضيف صيانة تكون زى الكاوتش والغسيل وتخصم
+// من العهده وتظهر فى مكان التوكيل فى شاشه العهدة»: «صيانة» now holds التوكيل's first place and wears
+// its blue, tile and icon; a dealership invoice is no longer custody money.
+//
+// That sets aside, on this screen only, the house rule that kept amber and red for states and
+// purple for what is picked: the filter's focus and selection are the design's emerald here. Not
+// the toolbar — «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات»: «الإحصائيات»
+// and «لوحة تحكم» stay the site's purple, as on every board; nor the pager — «لا بنفسجى»: its
+// current page is the site's purple too. The shades are the design's: the dark theme draws a kind
+// at 500 (its words at 300/400 on a 500/15 tile), the light theme at the 600 (blue, cyan) or 500
+// (amber, rose) the light map gives, its words at 700–900 on a 50 tile. The kind's NAME still
+// rides beside its colour — badge text, an icon on the tile, a legend on every chart — so the
+// colour is never the only way to tell them.
 //
 // Every class is written out whole, `dark:` variant included, so Tailwind sees each one. An accent
 // edge names its dark shade and its hover too: a card's own border colour (`CARD_BORDER`) would
@@ -48,7 +52,7 @@ export interface CustodyKindLook {
   icon: readonly string[];
 }
 
-/** «M8 7h12…» — two arrows, the design's dealership icon. */
+/** «M8 7h12…» — two arrows, the design's first-kind icon («صيانة» took it from التوكيل). */
 const ARROWS = ['M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'];
 /** The design's bolt for fuel. */
 export const BOLT = ['M13 10V3L4 14h7v7l9-11h-7z'];
@@ -60,7 +64,7 @@ export const FLASK = [
 ];
 
 export const CUSTODY_KIND: Record<FleetCustodySource, CustodyKindLook> = {
-  dealership: {
+  maintenance: {
     fill: 'bg-blue-600 dark:bg-blue-500',
     stub: 'bg-blue-200 dark:bg-blue-500/30',
     text: 'text-blue-700 dark:text-blue-400',
@@ -150,7 +154,7 @@ const WALLET = [
  * «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد» — is not a spend:
  * it is what every spend is drawn from. So it wears no kind's colour and not the spend total's
  * emerald, but slate — calm, the ink of the screen's neutral chips. Sky was the other calm choice;
- * it sits between التوكيل's blue and الغسيل's cyan and would read as a fifth kind beside them. The
+ * it sits between الصيانة's blue and الغسيل's cyan and would read as a fifth kind beside them. The
  * light theme draws it at slate 600–800 on a slate-100 tile, the dark one at 300–400 on a
  * slate-400/15 tile — each light surface with its dark one, as every card here.
  */

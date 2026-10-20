@@ -43,6 +43,7 @@ export const VehicleCodeCombobox = ({
   emptyText,
   extra,
   exclude,
+  disabled = false,
 }: {
   /** The chosen vehicle's id ('' = none). The box shows its CODE. */
   value: string;
@@ -80,6 +81,8 @@ export const VehicleCodeCombobox = ({
    * «متجبش اوبشن انه يختار نفس العربيه اصلا».
    */
   exclude?: readonly string[];
+  /** Locked: no ✕, no list — the box reads as one that cannot be changed. */
+  disabled?: boolean;
 }): JSX.Element => {
   const t = useT();
   const [query, setQuery] = useState('');
@@ -142,6 +145,7 @@ export const VehicleCodeCombobox = ({
       emptyText={whole.isLoading ? t('common.loading') : (emptyText ?? t('common.noResults'))}
       clearLabel={t('common.clear')}
       tallList
+      disabled={disabled}
       {...(density === undefined ? {} : { density })}
       {...(testId === undefined ? {} : { testId })}
       {...(ariaLabel === undefined ? {} : { ariaLabel })}

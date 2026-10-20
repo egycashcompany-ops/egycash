@@ -105,7 +105,7 @@ export const CustodyCarLogButton = ({
   );
 };
 
-/** «وقود (بنزين 92)», «التوكيل (صيانة)», «غسيل» — the kind and what the row itself recorded. */
+/** «وقود (بنزين 92)», «صيانة», «غسيل» — the kind and what the row itself recorded. */
 export const custodyKindText = (
   t: ReturnType<typeof useT>,
   row: FleetCustodyMovementDto,
@@ -263,7 +263,7 @@ export const custodyCurrentCar = (
   return (
     vehicles.find((car) => custodyCarKey(car) === open.key) ?? {
       ...open.car,
-      dealership: 0,
+      maintenance: 0,
       fuel: 0,
       tyres: 0,
       wash: 0,
@@ -553,14 +553,7 @@ export const CustodyCarLogBody = ({
                     >
                       {row.driverName ?? '—'}
                     </td>
-                    <td
-                      className={cn(
-                        'p-3',
-                        row.ref === 'dealershipInvoice'
-                          ? 'font-bold text-blue-700 dark:font-medium dark:text-blue-300'
-                          : 'text-slate-500 dark:text-slate-400',
-                      )}
-                    >
+                    <td className="p-3 text-slate-500 dark:text-slate-400">
                       {t(`fleet.custody.from.${row.ref}`)}
                     </td>
                     <td

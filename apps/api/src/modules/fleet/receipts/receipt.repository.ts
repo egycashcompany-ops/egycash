@@ -1,5 +1,6 @@
 import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
 import {
+  FLEET_RECEIPT_KINDS,
   type FleetReceiptKind,
   type FleetReceiptSource,
   type FleetReceiptTotalsDto,
@@ -10,6 +11,20 @@ import { FleetReceiptModel, type FleetReceiptDoc } from './receipt.model';
 
 const escapeRegex = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 const round = (value: number): number => Math.round(value * 100) / 100;
+
+/**
+ * «النوع», as a sort key — in the kinds' own order (`FLEET_RECEIPT_KINDS`: وقود، كاوتش، غسيل،
+ * صيانة), the dialog's tabs and the filter's list, not the stored word's alphabet: that one put
+ * «صيانة» (`maintenance`) between وقود and كاوتش. The three older kinds keep the order they always
+ * sorted in. Computed, never stored — the column still asks for `kind`, translated below.
+ */
+export const RECEIPT_KIND_SORT = {
+  key: 'kindOrder',
+  expression: { $indexOfArray: [{ $literal: [...FLEET_RECEIPT_KINDS] }, '$kind'] },
+} as const;
+
+/** The column's own name for the kind, swapped for the computed key it is ordered by. */
+const kindOrder = (by: string): string => (by === 'kind' ? RECEIPT_KIND_SORT.key : by);
 
 interface TotalsRow {
   _id: { kind: FleetReceiptKind; source: FleetReceiptSource };
@@ -55,18 +70,22 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
   async listReceipts(params: ListParams<FleetReceiptDoc>) {
     return this.list({
       ...params,
+      sortBy: params.sortBy === undefined ? undefined : kindOrder(params.sortBy),
+      ...(params.sorts === undefined
+        ? {}
+        : { sorts: params.sorts.map((entry) => ({ ...entry, by: kindOrder(entry.by) })) }),
       sortableFields: [
         'date',
         'createdAt',
         'amount',
         'litres',
         'odometer',
-        'kind',
+        RECEIPT_KIND_SORT.key,
         'source',
         'driverName',
         VEHICLE_CODE_SORT.key,
       ],
-      sortDerived: [VEHICLE_CODE_SORT],
+      sortDerived: [VEHICLE_CODE_SORT, RECEIPT_KIND_SORT],
     });
   }
 
@@ -119,6 +138,10 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
       ),
       washTotal: sum(
         (row) => row._id.kind === 'wash',
+        (row) => row.amount,
+      ),
+      maintenanceTotal: sum(
+        (row) => row._id.kind === 'maintenance',
         (row) => row.amount,
       ),
     };

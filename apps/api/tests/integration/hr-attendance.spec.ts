@@ -1155,10 +1155,22 @@ describe('AT-6 — screens, self-service and export', () => {
     );
     expect(wide.status).toBe(400);
 
-    // The export audits ITSELF.
-    const audit = await get('platform/audit-logs?entityType=attendanceDay&action=export', adminToken);
-    expect(audit.status).toBe(200);
-    expect((audit.body.data as { action: string }[]).length).toBeGreaterThan(0);
+    // The export audits ITSELF — once the download has ended (`streamAttendanceExport`: the audit
+    // never holds up the file), so on a busy machine the next request can be answered before that
+    // row lands. Asked again until it has.
+    await expect
+      .poll(
+        async () => {
+          const audit = await get(
+            'platform/audit-logs?entityType=attendanceDay&action=export',
+            adminToken,
+          );
+          expect(audit.status).toBe(200);
+          return (audit.body.data as { action: string }[]).length;
+        },
+        { timeout: 5_000 },
+      )
+      .toBeGreaterThan(0);
   });
 });
 

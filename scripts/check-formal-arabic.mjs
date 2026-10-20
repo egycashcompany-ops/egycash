@@ -28,6 +28,8 @@
 //   · Tests. Their fixtures are what a user TYPED: a maintenance note reading «اتصلح فى ورشة
 //     الجيزة» is data, and data is not written by us.
 //   · The files in `DATA_FILES`. Their Arabic is input to match against, not prose to read.
+//   · The files in `VERBATIM_PAPERS`. They hold the owner's own printed papers, word for word —
+//     a record of his documents, like a quotation in a comment. Only the printed words live there.
 //   · English. Its register was never in question.
 //
 // A guard that cries wolf gets loosened until it catches nothing, so only forms with no formal
@@ -133,6 +135,18 @@ const DATA_FILES = [
   'apps/web/src/shared/national-id/transliterate.ts',
 ];
 
+/**
+ * The owner's own printed papers, reproduced word for word («عاوز زيهم بالظبط»): a record of HIS
+ * documents, like a quotation in a comment. Correcting «الاجمالى النهائى» would print a paper that
+ * is not his. Only the printed words live in these files — every word the SCREENS say about the
+ * papers is an i18n key, and the web's formal-arabic spec pins this list to exactly these two
+ * files and keeps every other paper file free of Arabic letters.
+ */
+export const VERBATIM_PAPERS = [
+  'apps/web/src/modules/fleet/lib/custody-paper-wording.ts',
+  'packages/contracts/src/modules/fleet-custody-paper-defaults.ts',
+];
+
 const SKIP_DIRS = new Set([
   'node_modules', 'dist', 'build', 'coverage', '.git', '.next', 'assets', 'spikes', 'tests',
 ]);
@@ -179,7 +193,7 @@ export const offendersIn = (text) => {
 
 /** Every Arabic string literal in the product's own prose, with where it is written. */
 export const productStrings = () => {
-  const excluded = new Set(DATA_FILES.map((p) => resolve(ROOT, p)));
+  const excluded = new Set([...DATA_FILES, ...VERBATIM_PAPERS].map((p) => resolve(ROOT, p)));
   const out = [];
   for (const dir of ['apps', 'packages']) {
     for (const file of sourceFiles(join(ROOT, dir))) {

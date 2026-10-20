@@ -15,6 +15,7 @@ import {
   type FleetFuelCardCompany,
   type FleetFuelType,
   type FleetReceiptDto,
+  type FleetReceiptMemoLinkDto,
   type FleetReceiptSummaryQuery,
   type FleetReceiptTotalsDto,
   type ListFleetReceiptsQuery,
@@ -34,6 +35,13 @@ import { drivingSeatRoster } from '../driver-profiles/driving-seat-roster';
 import { fleetFuelCardRepository } from '../fuel-cards/fuel-card.repository';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
 import { type FleetFuelCardDoc } from '../fuel-cards/fuel-card.model';
+import { fleetCustodyMemoRepository } from '../custody/custody-memo.repository';
+import {
+  assertReceiptChangeAllowed,
+  assertReceiptRemovable,
+  followReceiptDay,
+  type MemoPeriodMove,
+} from '../custody/custody-memo-guard';
 import { fleetReceiptRepository } from './receipt.repository';
 import { resolveReceiptDocsCategoryId } from './receipt-files';
 import { type FleetReceiptDoc } from './receipt.model';
@@ -51,6 +59,8 @@ export interface ReceiptWithJoins {
   card: Pick<FleetFuelCardDoc, 'company' | 'number' | 'vehicleId' | 'label'> | null;
   /** The code of the car the card is on — which may be another car than the receipt's. */
   cardVehicleCode: string | null;
+  /** The custody memo it is a line of («المذكرات»); absent or `null` while it is on none. */
+  memo?: FleetReceiptMemoLinkDto | null;
 }
 
 export const toReceiptDto = ({
@@ -58,6 +68,7 @@ export const toReceiptDto = ({
   vehicleCode,
   card,
   cardVehicleCode,
+  memo,
 }: ReceiptWithJoins): FleetReceiptDto => ({
   id: String(doc._id),
   date: doc.date.toISOString(),
@@ -89,6 +100,7 @@ export const toReceiptDto = ({
           size: doc.image.size,
           uploadedAt: doc.image.uploadedAt.toISOString(),
         },
+  memo: memo ?? null,
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),
@@ -175,6 +187,10 @@ class FleetReceiptService {
       ]),
     ];
     const codes = await fleetVehicleRepository.codesByIds(vehicleIds);
+    // «مذكرة … رقم N» for the rows on a memo — one read for the page.
+    const memos = await fleetCustodyMemoRepository.linksByIds(
+      docs.flatMap((doc) => (doc.memoId == null ? [] : [String(doc.memoId)])),
+    );
     return new Map(
       docs.map((doc) => {
         const card = doc.cardId == null ? null : (byCard.get(String(doc.cardId)) ?? null);
@@ -186,6 +202,7 @@ class FleetReceiptService {
             card,
             cardVehicleCode:
               card?.vehicleId == null ? null : (codes.get(String(card.vehicleId)) ?? null),
+            memo: doc.memoId == null ? null : (memos.get(String(doc.memoId)) ?? null),
           },
         ];
       }),
@@ -334,9 +351,25 @@ class FleetReceiptService {
       stringOrNull(before.cardId) !== stringOrNull(set.cardId ?? null) ||
       before.amount !== set.amount ||
       before.date.getTime() !== (set.date as Date).getTime();
+    // Set on the attempt that commits (a retried transaction sets it again).
+    let periodMove: MemoPeriodMove | null = null;
     const updated = await unitOfWork(async (session) => {
+      periodMove = null;
       const live = await fleetReceiptRepository.findLive(id, session);
       if (live === null) throw new NotFoundError();
+      // On a custody memo, the memo decides what may still change (`custody-memo-guard.ts`).
+      await assertReceiptChangeAllowed(
+        live,
+        {
+          date: set.date as Date,
+          vehicleId: set.vehicleId,
+          kind: set.kind as FleetReceiptDoc['kind'],
+          source: set.source as FleetReceiptDoc['source'],
+          cardId: set.cardId ?? null,
+          amount: set.amount as number,
+        },
+        session,
+      );
       // The old card gets its money back before the new one is charged — one transaction.
       if (moneyMoved && live.cardId !== null) {
         await this.giveBack(live, by, session);
@@ -346,6 +379,8 @@ class FleetReceiptService {
         version: input.version,
         session,
       });
+      // A pending memo's worked-out period follows its line to the receipt's new day.
+      periodMove = await followReceiptDay(live, next.date, by, session);
       if (moneyMoved && next.cardId !== null) {
         await fleetFuelCardService.debit(
           String(next.cardId),
@@ -363,6 +398,14 @@ class FleetReceiptService {
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
+    const moved = periodMove as MemoPeriodMove | null;
+    if (moved !== null) {
+      await auditService.record({
+        entityRef: { moduleId: 'fleet', entityType: 'custodyMemo', entityId: moved.memoId },
+        action: 'update',
+        changes: diffChanges(moved.before, moved.after),
+      });
+    }
     return this.get(id);
   }
 
@@ -384,6 +427,8 @@ class FleetReceiptService {
     await unitOfWork(async (session) => {
       const live = await fleetReceiptRepository.findLive(id, session);
       if (live === null) throw new NotFoundError();
+      // A receipt on a custody memo stays until it is taken off the memo.
+      await assertReceiptRemovable(live, session);
       await this.giveBack(live, by, session);
       await fleetReceiptRepository.softDeleteById(id, { by, session });
     });

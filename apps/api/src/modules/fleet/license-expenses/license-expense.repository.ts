@@ -1,5 +1,6 @@
-import { type FilterQuery, type PipelineStage } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
 import {
+  type FleetLicenseExpenseKind,
   type FleetLicenseExpensePaidBy,
   type FleetLicenseExpenseTotalsDto,
   type Paginated,
@@ -9,7 +10,14 @@ import {
   type ListParams,
   type SortDerivedField,
 } from '../../../shared/base/base.repository';
+import { BusinessRuleError } from '../../../shared/errors';
 import { FleetLicenseExpenseModel, type FleetLicenseExpenseDoc } from './license-expense.model';
+import {
+  LICENSE_EXPENSE_WRITABLE,
+  licenseExpenseLockedMessage,
+  settledDayOf,
+  settlementField,
+} from './license-expense-lock';
 
 // «الإحصائيات» and the arrows on the money and the cars read figures a memo never stores: a total is
 // every line's amount times its count, over the renewal and the extension together, and the cars
@@ -96,6 +104,79 @@ class FleetLicenseExpenseRepository extends BaseRepository<FleetLicenseExpenseDo
     // No org placement of its own: a memo is the department's paperwork, and who may read it is
     // decided by `fleetLicenseExpense.view` alone.
     super(FleetLicenseExpenseModel, {});
+  }
+
+  /**
+   * «تسوية عهدة» locks a record: once either memo is settled, no edit and no delete passes — the
+   * condition rides inside the same atomic write, so a settlement landing between a read and its
+   * write is never overtaken (license-expense-lock.ts).
+   */
+  protected override writeConditions(): FilterQuery<FleetLicenseExpenseDoc> {
+    return { ...LICENSE_EXPENSE_WRITABLE };
+  }
+
+  protected override assertWritable(current: FleetLicenseExpenseDoc): void {
+    const day = settledDayOf(current);
+    if (day !== null)
+      throw new BusinessRuleError(licenseExpenseLockedMessage(String(current._id), day));
+  }
+
+  /** The live records among `ids`, read inside the settlement's transaction. */
+  async findLiveByIds(
+    ids: readonly string[],
+    session?: ClientSession,
+  ): Promise<FleetLicenseExpenseDoc[]> {
+    const distinct = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    if (distinct.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: distinct.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .session(session ?? null)
+      .lean<FleetLicenseExpenseDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Every live record with a memo still waiting for its settlement — what «تسوية عهدة» offers.
+   * Oldest first.
+   */
+  async findUnsettled(): Promise<FleetLicenseExpenseDoc[]> {
+    return this.model
+      .find({
+        isDeleted: false,
+        $or: [
+          { renewal: { $ne: null }, renewalSettlement: null },
+          { extension: { $ne: null }, extensionSettlement: null },
+        ],
+      })
+      .sort({ date: 1, createdAt: 1, _id: 1 })
+      .lean<FleetLicenseExpenseDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Settle one memo of a record — only if the record is live, holds that memo, and nobody settled
+   * it first. `false` when the condition missed (the caller aborts the whole settlement). Bumps
+   * the version, so an edit opened before it is told it is stale rather than overwriting it.
+   */
+  async markSettled(
+    id: string,
+    part: FleetLicenseExpenseKind,
+    settlement: { operationId: Types.ObjectId; settledAt: Date },
+    by: string,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const field = settlementField(part);
+    const result = await this.model
+      .updateOne(
+        { _id: new Types.ObjectId(id), isDeleted: false, [part]: { $ne: null }, [field]: null },
+        {
+          $set: { [field]: settlement, updatedBy: new Types.ObjectId(by) },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
   }
 
   /** The table: the date, and every figure the screen derives, each with its arrow. */

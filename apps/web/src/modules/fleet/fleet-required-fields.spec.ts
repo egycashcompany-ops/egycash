@@ -41,6 +41,11 @@ const FORMS: Record<string, number> = {
   // The company statement entry bar.
   'modules/fleet/components/CompanyViolationsPanel.tsx': 1,
   'modules/fleet/components/CorrectOdometerDialog.tsx': 1,
+  // The custody fund's three: «شحن العهدة» (the amount), «استعاضة العهدة» (the memos), «تسوية العهدة»
+  // (the licensing memos).
+  'modules/fleet/components/CustodyChargeDialog.tsx': 1,
+  'modules/fleet/components/CustodyReplenishDialog.tsx': 1,
+  'modules/fleet/components/CustodySettleDialog.tsx': 1,
   'modules/fleet/components/DealershipInvoiceDialog.tsx': 1,
   // The drivers' counting bar and its cards.
   'modules/fleet/components/DriverViolationsPanel.tsx': 1,
@@ -55,9 +60,25 @@ const FORMS: Record<string, number> = {
   'modules/fleet/components/VehicleStatusDialog.tsx': 1,
   // Company row, driver fine, grievance.
   'modules/fleet/components/ViolationDialogs.tsx': 3,
+  // A custody memo — its receipts.
+  'modules/fleet/pages/CustodyMemoEditorPage.tsx': 1,
   // The values card.
   'modules/fleet/pages/FleetSettingsPage.tsx': 1,
 };
+
+/**
+ * How many guarded Saves each of a file's forms has — one, unless it says otherwise. The custody
+ * memo and the fund's three dialogs each save two ways: «حفظ» and «… وطباعة» (the save, then its
+ * paper), both behind the same guard.
+ */
+const GUARDED_SAVES: Record<string, number> = {
+  'modules/fleet/components/CustodyChargeDialog.tsx': 2,
+  'modules/fleet/components/CustodyReplenishDialog.tsx': 2,
+  'modules/fleet/components/CustodySettleDialog.tsx': 2,
+  'modules/fleet/pages/CustodyMemoEditorPage.tsx': 2,
+};
+/** The guarded Saves a file holds: each form's, times how many ways it saves. */
+const guardedSaves = (file: string, forms: number): number => forms * (GUARDED_SAVES[file] ?? 1);
 
 const count = (source: string, pattern: RegExp): number => source.match(pattern)?.length ?? 0;
 
@@ -91,14 +112,14 @@ const ruleLists = (source: string): { list: string; owner: string }[] => {
 
 /**
  * Every `<Button …>` opening tag in a file — and every raw `<button …>`, which a form drawn to the
- * owner's own design (the fuel card form) uses for its Save, and every `<DesignSave …>`, the same
- * design's Save shared by the forms drawn in it since — braces balanced so a `>` inside `{…}` does
- * not end it.
+ * owner's own design (the fuel card form) uses for its Save, every `<DesignSave …>`, the same
+ * design's Save shared by the forms drawn in it since, and every `<PrintButton …>`, the custody
+ * forms' second Save («حفظ وطباعة») — braces balanced so a `>` inside `{…}` does not end it.
  */
 const buttonTags = (source: string): string[] => {
   const tags: string[] = [];
   const next = (from: number): number => {
-    const found = ['<Button', '<button', '<DesignSave']
+    const found = ['<Button', '<button', '<DesignSave', '<PrintButton']
       .map((tag) => source.indexOf(tag, from))
       .filter((index) => index !== -1);
     return found.length === 0 ? -1 : Math.min(...found);
@@ -130,7 +151,7 @@ describe('every Fleet form with required values names what is missing', () => {
     ({ file, forms }) => {
       const source = code(file);
       expect(count(source, /\buseRequiredFields\(/gu), 'rule lists').toBe(forms);
-      expect(count(source, /\.guard\(/gu), 'guarded saves').toBe(forms);
+      expect(count(source, /\.guard\(/gu), 'guarded saves').toBe(guardedSaves(file, forms));
       expect(count(source, /<MissingFieldsBanner\b/gu), 'banners').toBe(forms);
     },
   );
@@ -166,7 +187,7 @@ describe('every Fleet form with required values names what is missing', () => {
     let guarded = 0;
     for (const [file, forms] of Object.entries(FORMS)) {
       const saves = buttonTags(code(file)).filter((tag) => tag.includes('.guard('));
-      expect(saves, `${file}: guarded Save buttons`).toHaveLength(forms);
+      expect(saves, `${file}: guarded Save buttons`).toHaveLength(guardedSaves(file, forms));
       for (const tag of saves) {
         for (const match of tag.matchAll(/disabled=\{[^}]*\}/gu)) {
           expect(ALLOWED_DISABLED.has(match[0]), `${file}: ${match[0]} on a guarded Save`).toBe(
@@ -176,7 +197,9 @@ describe('every Fleet form with required values names what is missing', () => {
         guarded += 1;
       }
     }
-    expect(guarded).toBe(Object.values(FORMS).reduce((sum, forms) => sum + forms, 0));
+    expect(guarded).toBe(
+      Object.entries(FORMS).reduce((sum, [file, forms]) => sum + guardedSaves(file, forms), 0),
+    );
   });
 
   it('no Fleet Save that skips the guard is disabled — bar the all-optional drivers form', () => {

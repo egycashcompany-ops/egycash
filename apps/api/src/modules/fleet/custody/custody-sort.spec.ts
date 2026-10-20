@@ -88,15 +88,15 @@ describe('sortCustodyMovements', () => {
     ).toEqual(['1500', '200', '160', 'none']);
   });
 
-  it('orders the kind as the filter lists it — dealership, fuel, tyres, wash', () => {
+  it('orders the kind as the filter lists it — maintenance, fuel, tyres, wash', () => {
     const rows = [
       row('wash', { source: 'wash' }),
       row('fuel', { source: 'fuel' }),
-      row('dealership', { source: 'dealership', ref: 'dealershipInvoice', driverName: null }),
+      row('maintenance', { source: 'maintenance' }),
       row('tyres', { source: 'tyres' }),
     ];
     expect(ids(sortCustodyMovements(rows, [{ by: 'source', dir: 'asc' }]))).toEqual([
-      'dealership',
+      'maintenance',
       'fuel',
       'tyres',
       'wash',
@@ -105,37 +105,35 @@ describe('sortCustodyMovements', () => {
       'wash',
       'tyres',
       'fuel',
-      'dealership',
+      'maintenance',
     ]);
   });
 
-  it('orders the driver as a word, and a bill (no driver) last in BOTH directions', () => {
+  it('orders the driver as a word, and a receipt with no driver last in BOTH directions', () => {
     const rows = [
-      row('bill', { driverName: null, ref: 'dealershipInvoice', source: 'dealership' }),
+      row('none', { driverName: null, source: 'maintenance' }),
       row('m', { driverName: 'محمد رأفت' }),
       row('a', { driverName: 'أحمد' }),
       row('blank', { driverName: '  ' }),
     ];
     const asc = ids(sortCustodyMovements(rows, [{ by: 'driverName', dir: 'asc' }]));
     expect(asc.slice(0, 2)).toEqual(['a', 'm']);
-    expect(asc.slice(2).sort()).toEqual(['bill', 'blank']);
+    expect(asc.slice(2).sort()).toEqual(['blank', 'none']);
     const desc = ids(sortCustodyMovements(rows, [{ by: 'driverName', dir: 'desc' }]));
     expect(desc.slice(0, 2)).toEqual(['m', 'a']);
-    expect(desc.slice(2).sort()).toEqual(['bill', 'blank']);
+    expect(desc.slice(2).sort()).toEqual(['blank', 'none']);
   });
 
-  it('orders «المصدر» — a receipt, then a dealership bill', () => {
-    const rows = [
-      row('bill', { ref: 'dealershipInvoice', source: 'dealership', driverName: null }),
-      row('receipt', { ref: 'receipt' }),
-    ];
+  it('leaves «المصدر» to the ledger’s order — every line is a receipt', () => {
+    const rows = [row('newer', { source: 'maintenance' }), row('older', { source: 'fuel' })];
+    // The column cannot separate them: the ledger's own order in the arrow's direction.
     expect(ids(sortCustodyMovements(rows, [{ by: 'ref', dir: 'asc' }]))).toEqual([
-      'receipt',
-      'bill',
+      'older',
+      'newer',
     ]);
     expect(ids(sortCustodyMovements(rows, [{ by: 'ref', dir: 'desc' }]))).toEqual([
-      'bill',
-      'receipt',
+      'newer',
+      'older',
     ]);
   });
 

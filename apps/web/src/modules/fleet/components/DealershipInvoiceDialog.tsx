@@ -2,7 +2,10 @@
 //
 // The grey facts (exit date, car, work) came with the row and are not edited here. What the clerk
 // writes: the invoice number and amount, whether the car is «ملاكي» (preset from its operation,
-// theirs to change), the insurer, and the photo of the bill.
+// theirs to change), the insurer, and the photo of the bill. «التوكيل لما بسجل فاتوره عاوز الحاجات
+// دى تتحفظ زى ما هى ولا تنقص من الكروت ولا تنقص من العهدة»: what is written is saved as written, and
+// nothing else moves — the form says no «الجهة» any more. «ملاكي» still lets a private car's
+// invoice go without a number, as it always did.
 //
 // «الافتراضى بتاع الربي فى التامين لا يوجد حتى لو العربيه فيها تامين بس لو فيها تامين اقدر ادوس على
 // السهم واختار»: the insurer opens on «لا يوجد» for every bill; the arrow offers the car's own
@@ -161,11 +164,6 @@ export const DealershipInvoiceDialog = ({
     ],
     open,
   );
-  const side = !amountOk
-    ? null
-    : privateCar && invoiceNumber.trim() === ''
-      ? 'custody'
-      : 'dealership';
 
   /** A pick from the box, the camera or the device — refused here when the upload would be. */
   const take = (picked: File | undefined): void => {
@@ -324,8 +322,9 @@ export const DealershipInvoiceDialog = ({
                 label={t('fleet.dealership.columns.invoiceNumber')}
                 required={!privateCar}
                 missing={required.isMissing('invoiceNumber')}
-                {...(privateCar ? { hint: t('fleet.dealership.invoiceNumberOptional') } : {})}
               >
+                {/* «اختياري لسيارة ملاكي» once, inside the empty box — no hint under it saying the
+                    same words again. */}
                 <Input
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
@@ -420,29 +419,6 @@ export const DealershipInvoiceDialog = ({
             </div>
             <PhotoSourceButtons accept={LICENSE_IMAGE_ACCEPT} onFile={take} disabled={pending} />
           </section>
-          {/* Who pays, in its state's colour: the dealership green, the custody fund amber. */}
-          <p
-            data-dealership-side={side ?? 'none'}
-            className={cn(
-              'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold',
-              side === null &&
-                'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300',
-              side === 'dealership' &&
-                'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-200',
-              side === 'custody' &&
-                'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200',
-            )}
-          >
-            <BoardIcon
-              d={side === null ? PATH.warn : FILTER_ICON.status}
-              className="h-4 w-4 shrink-0"
-            />
-            {side === null
-              ? t('fleet.dealership.sideUnknown')
-              : side === 'custody'
-                ? t('fleet.dealership.sideCustodyHint')
-                : t('fleet.dealership.sideDealershipHint')}
-          </p>
         </div>
       )}
     </Dialog>

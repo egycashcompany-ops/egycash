@@ -6,9 +6,11 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Types } from 'mongoose';
 import {
   CreateFleetCatalogItemSchema,
+  CreateFleetCustodySettlementSchema,
   CreateFleetLicenseExpenseSchema,
   FleetLicenseExpenseSummaryQuerySchema,
   ListFleetLicenseExpensesQuerySchema,
+  type FleetLicenseExpenseDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { moduleManifests } from '../../src/modules';
@@ -21,6 +23,7 @@ import {
 import { FleetCatalogItemModel } from '../../src/modules/fleet/catalogs/catalog-item.model';
 import { fleetCatalogItemService } from '../../src/modules/fleet/catalogs/catalog-item.service';
 import { toCatalogItemDto } from '../../src/modules/fleet/fleet.mappers';
+import { fleetCustodyFundService } from '../../src/modules/fleet/custody/custody-fund.service';
 
 let replset: MongoMemoryReplSet | undefined;
 
@@ -71,6 +74,8 @@ describe('a licensing-expenses memo', () => {
       signatures: SIGNATURES,
       version: 0,
     });
+    // Not settled by «تسوية عهدة» yet: «لم تُسوَّ بعد».
+    expect(dto.renewal).toEqual({ vehicles: [], items: [], settlement: null });
   });
 
   it('keeps both memos, every line and a hand-typed plate; edits under a version; deletes softly', async () => {
@@ -435,5 +440,110 @@ describe('the licensing-expenses board orders money as the cell prints it', () =
       ).items.map((row) => row.id);
       expect(ids, sort).toEqual([exact, residue]);
     }
+  });
+});
+
+describe('«التسوية» — a licensing memo the custody fund settled', () => {
+  // A month of its own, apart from every case above.
+  const JULY = { from: '2023-07-01', to: '2023-07-31' };
+  const memo = (amount: number) => ({
+    vehicles: [{ vehicleId: null, plate: 'ل ت 9' }],
+    items: [
+      { itemId: null, label: 'بند', amount, count: 1, paidBy: 'visa' as const, receipt: true },
+    ],
+  });
+  const write = async (date: string, renewal: number | null, extension: number | null) =>
+    fleetLicenseExpenseService.create(
+      CreateFleetLicenseExpenseSchema.parse({
+        date,
+        renewal: renewal === null ? null : memo(renewal),
+        extension: extension === null ? null : memo(extension),
+        signatures: SIGNATURES,
+      }),
+      ACTOR,
+    );
+  const ids = async (raw: Record<string, unknown>): Promise<string[]> =>
+    (
+      await fleetLicenseExpenseService.list(
+        ListFleetLicenseExpensesQuerySchema.parse({ ...JULY, ...raw }),
+      )
+    ).items
+      .map((row) => row.id)
+      .sort();
+  const sorted = (...values: string[]): string[] => [...values].sort();
+
+  let renewalOnly: FleetLicenseExpenseDto;
+  let both: FleetLicenseExpenseDto;
+  let operationId: string;
+  beforeAll(async () => {
+    renewalOnly = await write('2023-07-03', 100, null);
+    both = await write('2023-07-10', 200, 300);
+    // The renewal of the second record only — each memo of a record settles on its own.
+    const op = await fleetCustodyFundService.settle(
+      CreateFleetCustodySettlementSchema.parse({
+        date: '2023-07-20',
+        parts: [{ expenseId: both.id, part: 'renewal' }],
+      }),
+      ACTOR,
+    );
+    operationId = op.id;
+  });
+
+  it('names the settlement on the memo it settled, and only on that one', async () => {
+    const settled = await fleetLicenseExpenseService.get(both.id);
+    expect(settled.renewal?.settlement).toEqual({ operationId, date: '2023-07-20' });
+    expect(settled.extension?.settlement).toBeNull();
+    expect((await fleetLicenseExpenseService.get(renewalOnly.id)).renewal?.settlement).toBeNull();
+  });
+
+  it('filters by «التسوية» — a half-settled record is both waiting and settled', async () => {
+    expect(await ids({ status: 'waiting' })).toEqual(sorted(renewalOnly.id, both.id));
+    expect(await ids({ status: 'settled' })).toEqual([both.id]);
+    expect(await ids({ status: 'waiting', kind: 'renewal' })).toEqual([renewalOnly.id]);
+    expect(await ids({ status: 'settled', kind: 'renewal' })).toEqual([both.id]);
+    expect(await ids({ status: 'waiting', kind: 'extension' })).toEqual([both.id]);
+    expect(await ids({ status: 'settled', kind: 'extension' })).toEqual([]);
+    expect(ListFleetLicenseExpensesQuerySchema.safeParse({ status: 'paid' }).success).toBe(false);
+    // The figures read the same rows.
+    const totals = await fleetLicenseExpenseService.summary(
+      FleetLicenseExpenseSummaryQuerySchema.parse({ ...JULY, status: 'settled' }),
+    );
+    expect(totals).toEqual({ count: 1, cars: 2, visaTotal: 500, cashTotal: 0 });
+  });
+
+  it('locks the whole settled record — its unsettled memo too — and leaves the rest writable', async () => {
+    const current = await fleetLicenseExpenseService.get(both.id);
+    await expect(
+      fleetLicenseExpenseService.update(
+        both.id,
+        {
+          date: new Date('2023-07-11'),
+          renewal: current.renewal,
+          extension: memo(999),
+          signatures: SIGNATURES,
+          version: current.version,
+        } as never,
+        ACTOR,
+      ),
+    ).rejects.toMatchObject({ httpStatus: 422 });
+    await expect(fleetLicenseExpenseService.remove(both.id, ACTOR)).rejects.toMatchObject({
+      httpStatus: 422,
+    });
+    expect((await FleetLicenseExpenseModel.findById(both.id).lean().exec())?.isDeleted).toBe(false);
+
+    const edited = await fleetLicenseExpenseService.update(
+      renewalOnly.id,
+      {
+        date: new Date('2023-07-04'),
+        renewal: memo(150),
+        extension: null,
+        signatures: SIGNATURES,
+        version: renewalOnly.version,
+      } as never,
+      ACTOR,
+    );
+    expect(edited.renewal?.items[0]?.amount).toBe(150);
+    await fleetLicenseExpenseService.remove(renewalOnly.id, ACTOR);
+    expect(await ids({})).toEqual([both.id]);
   });
 });

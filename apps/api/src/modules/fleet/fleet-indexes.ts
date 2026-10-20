@@ -55,6 +55,10 @@ import { FleetLicenseExpenseSettingsModel } from './license-expenses/license-exp
 import { FleetDealershipInvoiceModel } from './dealership/dealership.model';
 import { FleetFuelCardModel, FleetFuelCardMovementModel } from './fuel-cards/fuel-card.model';
 import { FleetReceiptModel } from './receipts/receipt.model';
+import { FleetCustodyMemoModel } from './custody/custody-memo.model';
+import { FleetCustodyOperationModel } from './custody/custody-operation.model';
+import { FleetCustodyPaperSettingsModel } from './custody/custody-paper-settings.model';
+import { FleetCustodyCounterModel } from './custody/custody-counter.model';
 
 /**
  * Every Fleet collection, listed once.
@@ -89,6 +93,10 @@ export const fleetIndexedModels = (): { collection: string; model: Model<never> 
       FleetFuelCardModel,
       FleetFuelCardMovementModel,
       FleetReceiptModel,
+      FleetCustodyMemoModel,
+      FleetCustodyOperationModel,
+      FleetCustodyPaperSettingsModel,
+      FleetCustodyCounterModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model }));
 

@@ -46,6 +46,36 @@ class FleetDutyAssignmentRepository extends BaseRepository<FleetDutyAssignmentDo
       .exec();
   }
 
+  /**
+   * «المأمورية» a car's roster row named, for many (car, day) pairs at once — the fuel memo's
+   * suggestion. One read: every live row of those cars on those days (the roster stamps a UTC
+   * midnight, the days given are too). Keyed `<vehicleId>|<YYYY-MM-DD>`; a row with no mission maps
+   * to `null`, a pair with no row is absent.
+   */
+  async missionTypesFor(
+    vehicleIds: readonly string[],
+    days: readonly Date[],
+  ): Promise<Map<string, string | null>> {
+    const cars = [...new Set(vehicleIds)].filter((id) => Types.ObjectId.isValid(id));
+    const stamps = [...new Map(days.map((day) => [day.getTime(), day])).values()];
+    if (cars.length === 0 || stamps.length === 0) return new Map();
+    const rows = await this.model
+      .find({
+        isDeleted: false,
+        vehicleId: { $in: cars.map((id) => new Types.ObjectId(id)) },
+        date: { $in: stamps },
+      })
+      .select({ vehicleId: 1, date: 1, missionTypeId: 1 })
+      .lean<{ vehicleId: Types.ObjectId; date: Date; missionTypeId: Types.ObjectId | null }[]>()
+      .exec();
+    return new Map(
+      rows.map((row) => [
+        `${String(row.vehicleId)}|${row.date.toISOString().slice(0, 10)}`,
+        row.missionTypeId == null ? null : String(row.missionTypeId),
+      ]),
+    );
+  }
+
   /** employeeId → vehicleId for every driver slot taken on the day (both slots). */
   takenDrivers(rows: readonly FleetDutyAssignmentDoc[]): Map<string, string> {
     const taken = new Map<string, string>();

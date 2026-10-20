@@ -65,6 +65,10 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/FuelChargingPage.tsx', []],
   ['modules/fleet/pages/ReceiptsPage.tsx', []],
   ['modules/fleet/pages/CustodyPage.tsx', []],
+  ['modules/fleet/pages/CustodyMemosPage.tsx', []],
+  // `open`: a link that opens one operation's drawer, and `letter`: that drawer opened on its
+  // printed letter — each names a record, not a narrowing of the list.
+  ['modules/fleet/pages/CustodyLedgerPage.tsx', ['open', 'letter']],
   ['modules/fleet/pages/DriversListPage.tsx', []],
   ['modules/fleet/pages/FixedRosterPage.tsx', []],
   ['modules/fleet/pages/LicenseExpensesPage.tsx', []],
@@ -185,6 +189,8 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/MailTicketsPage.tsx'],
   ['modules/atm/pages/RegisterImportPage.tsx'],
   ['modules/atm/pages/RegisterReportPage.tsx'],
+  ['modules/fleet/pages/CustodyMemoEditorPage.tsx'],
+  ['modules/fleet/pages/CustodyPapersSetupPage.tsx'],
   ['modules/fleet/pages/DriverProfilePage.tsx'],
   ['modules/fleet/pages/FleetDashboardPage.tsx'],
   ['modules/fleet/pages/FleetSettingsPage.tsx'],

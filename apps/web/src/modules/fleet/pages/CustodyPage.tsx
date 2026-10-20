@@ -1,6 +1,8 @@
 // العهدة — «شاشه العهده اللى فيها التجميعه بتاعت مصروفات العهده»: everything the custody fund paid,
-// summed per source and per car, with every movement under it. A VIEW over the two screens that
-// write the fund's side — the receipts and the dealership — never a copy.
+// summed per source and per car, with every movement under it. A VIEW over the receipts
+// («خصم الإيصالات») — صيانة, وقود, كاوتش, غسيل — never a copy. «التوكيل لما بسجل فاتوره … ولا تنقص
+// من العهدة وملهاش علاقة ب حاجة»: a dealership invoice is no custody movement, and «صيانة» stands
+// where التوكيل stood.
 //
 // «تعالى بقى نشتغل على العهده»: what the other Fleet boards were given, given here too — no page
 // title, a toolbar with the count, «الإحصائيات» and the Excel / PDF pill; the dark filter bar with
@@ -14,10 +16,10 @@
 // apart; and «لوحة تحكم» beside «الإحصائيات» opens everything in detail over the same filters.
 //
 // «عاوز دى تكون فى شاشه العهد … فى اللايت سيم والدارك سيم»: the owner's dashboard design sets the
-// colours of this WHOLE screen — the kinds blue, amber, rose and cyan. Not the toolbar: «لوحة
-// التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات» — «الإحصائيات» and «لوحة تحكم» wear
-// the site's purple, as on every other board (`PRESS_BUTTON`); nor the pager's current page, purple
-// too («لا بنفسجى»).
+// colours of this WHOLE screen — the kinds blue (صيانة, where التوكيل was), amber, rose and cyan.
+// Not the toolbar: «لوحة التحكم والاحصائيات الاتنين يكون لونهم موف زى باقى الشاشات» —
+// «الإحصائيات» and «لوحة تحكم» wear the site's purple, as on every other board (`PRESS_BUTTON`);
+// nor the pager's current page, purple too («لا بنفسجى»).
 //
 // «عاوز اضيف علامه السجل لكل عربيه لما ادوس عليها يجيب كل اللى العربيه صرفته ك سجل للعربيه»: every
 // car of «ملخص لكل سيارة» carries «السجل» — its log over the board, under the board's own filters.
@@ -45,7 +47,7 @@
 // «انت مش كنت خليت الارقام بتاعت التوكيل و الوقود وكدا بيكون جمبهم نقط الوان غيرتها ليه»: the
 // kind's colour stays beside its numbers — a small dot of it before every sum that is not zero (a
 // car's and the foot's) and before each kind's heading (`KIND_HEAD_DOT`). A spec fails without them.
-import { Fragment, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_CUSTODY_SOURCES,
@@ -77,6 +79,9 @@ import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { CustodyFigures } from '../components/CustodyFigures';
 import { CUSTODY_KIND, CustodyKindBadge } from '../components/CustodyKinds';
 import { CustodyDashboard } from '../components/CustodyDashboard';
+import { CustodyTabs } from '../components/CustodyTabs';
+import { CustodyFundActions } from '../components/CustodyFundActions';
+import { CustodyFundDialogs } from '../components/CustodyFundDialogs';
 import {
   CustodyCarLog,
   custodyCarKey,
@@ -84,7 +89,19 @@ import {
   custodyCurrentCar,
   type CustodyOpenCarLog,
 } from '../components/CustodyCarLog';
-import { COMPANY, TABLE_CARD, TITLE, useCount } from '../components/custody-dashboard-parts';
+import { COMPANY, TITLE, useCount } from '../components/custody-dashboard-parts';
+import {
+  CARS_CHIP,
+  CUSTODY_FILTER_LOOK,
+  CUSTODY_TABLE,
+  EMBEDDED_TABLE,
+  GRAND_ROW,
+  MOVES_CHIP,
+  PILL_BUTTON,
+  SECTION_CARD,
+  SECTION_FOOT,
+  SECTION_STRIP,
+} from '../components/custody-board-looks';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverCell } from '../components/DriverPerson';
@@ -93,8 +110,7 @@ import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { sortRows, type SortValue } from '../lib/sort-rows';
-import { DARK_TABLE } from './VehiclesListPage';
-import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
+import { ALARMS_CODE_TYPE } from './MaintenanceAlarmsPage';
 
 /** Remembered across visits: the filters, the page size and both tables' orders. Never `page`. */
 const REMEMBERED_FILTERS = [
@@ -113,6 +129,14 @@ const DEFAULT_SORT = 'date:desc';
 /** «ملخص لكل سيارة» opens in the server's order — by the car's code. */
 const DEFAULT_CAR_SORT = 'vehicleCode:asc';
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
+/**
+ * «المصدر» as the address holds it, kept to the kinds the server knows: a remembered or bookmarked
+ * `source=dealership` (التوكيل, no custody movement any more) is dropped, not sent to be refused.
+ */
+const custodySources = (raw: string | null): FleetCustodySource[] =>
+  csv(raw).filter((v): v is FleetCustodySource =>
+    (FLEET_CUSTODY_SOURCES as readonly string[]).includes(v),
+  );
 const GRAND_TOTAL = '__total__';
 
 /** Every filter is `density="tight"`, as on the vehicles board. */
@@ -124,51 +148,9 @@ const FIGURE = cn('whitespace-nowrap', NUM);
 const DASH = <span className="text-slate-400">—</span>;
 /** «—» where a car paid nothing that way — the dashboard's muted dash, in both themes. */
 const NONE = <span className="text-slate-400 dark:text-slate-500">—</span>;
-
-/**
- * The filter bar on the dashboard's card (`CARD`, rounded-2xl) with the design's boxes — white on
- * slate-300 light, #0a0e17 on #223048 dark, rounded-xl — the open list on the card's surface and
- * what is picked emerald. Laid OVER `DARK_FILTER_BAR` (its one-row
- * layout stays), each selector doubled (`&&`) so it outranks the bar's own.
- */
-const CUSTODY_FILTER_LOOK = cn(
-  '[&&>div]:!rounded-2xl [&&>div]:!p-4',
-  '[&&>div]:!border-[#e2e8f0] dark:[&&>div]:!border-[rgba(42,58,84,.65)] [&&>div]:!bg-white dark:[&&>div]:!bg-transparent dark:[&&>div]:!bg-[linear-gradient(180deg,rgba(19,26,43,.82)_0%,rgba(13,18,30,.92)_100%)]',
-  '[&&>div]:!shadow-[0_1px_3px_0_rgba(0,0,0,.05),0_1px_2px_-1px_rgba(0,0,0,.05)] dark:[&&>div]:!shadow-[0_8px_24px_-4px_rgba(0,0,0,.5),inset_0_1px_0_0_rgba(255,255,255,.04)]',
-  '[&&_input]:!rounded-xl [&&_input]:!border-slate-300 [&&_input]:!bg-white dark:[&&_input]:!border-[#223048] dark:[&&_input]:!bg-[#0a0e17] dark:[&&_input]:!text-white',
-  '[&&_input:focus]:!border-emerald-500 [&&_input:focus]:!ring-2 [&&_input:focus]:!ring-emerald-500/20 dark:[&&_input:focus]:!border-emerald-500/60',
-  '[&&_button[aria-haspopup]]:!rounded-xl [&&_button[aria-haspopup]]:!border-slate-300 [&&_button[aria-haspopup]]:!bg-white dark:[&&_button[aria-haspopup]]:!border-[#223048] dark:[&&_button[aria-haspopup]]:!bg-[#0a0e17] dark:[&&_button[aria-haspopup]]:!text-white',
-  '[&&_button[aria-haspopup]:focus-visible]:!border-emerald-500 [&&_button[aria-haspopup][aria-expanded=true]]:!border-emerald-500 dark:[&&_button[aria-haspopup][aria-expanded=true]]:!border-emerald-500/60',
-  '[&&_[role=listbox]]:!rounded-xl [&&_[role=listbox]]:!border-[#e2e8f0] dark:[&&_[role=listbox]]:!border-[#223048] dark:[&&_[role=listbox]]:!bg-[#111726]',
-  '[&&_[role=option]:hover]:!bg-emerald-500/10 [&&_[role=option][aria-selected=true]]:!text-emerald-700 dark:[&&_[role=option][aria-selected=true]]:!text-emerald-300',
-);
-
-/**
- * A table's card: the dashboard's table card (`TABLE_CARD` — rounded-2xl, the deeper shadow dark),
- * its rows clipped to the round corners. The board's table inside loses its own frame
- * (`EMBEDDED_TABLE`) and takes the design's body — white light, #0d1424 dark — and head — slate-100
- * light, #0c1322 over its #233552 rule dark.
- */
-const SECTION_CARD = cn(TABLE_CARD, 'overflow-hidden');
-/** The strip over a table — the dashboard's `STRIP`, a little lower so the rows keep the room. */
-const SECTION_STRIP =
-  'flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-2.5 dark:border-[#1c293f] dark:bg-[#0a101b]';
-/** The count beside «ملخص لكل سيارة» — the design's emerald chip. */
-const CARS_CHIP =
-  'shrink-0 whitespace-nowrap rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:font-medium dark:text-emerald-400';
-/** The count beside «كل الحركات» — the design's slate chip. */
-const MOVES_CHIP =
-  'shrink-0 whitespace-nowrap rounded border border-slate-200 bg-slate-200/80 px-2 py-0.5 text-xs font-bold text-slate-700 dark:border-slate-700/60 dark:bg-[#142135] dark:font-medium dark:text-slate-300';
-const EMBEDDED_TABLE = cn(
-  '[&&>div]:!rounded-none [&&>div]:!border-0 [&&>div]:!bg-white dark:[&&>div]:!bg-[#0d1424]/85',
-  'dark:[&&_thead_tr]:!bg-[#0c1322] [&&_thead_th]:shadow-[inset_0_-1px_0_#cbd5e1] dark:[&&_thead_th]:shadow-[inset_0_-1px_0_#233552]',
-  'dark:[&&_tbody_tr]:!border-slate-800/80 dark:[&&_tbody_tr:hover]:!bg-slate-800/40',
-  // The design's thin scrollbars (`SCROLLBAR`) on the table's own scroller, dark only.
-  'dark:[&>div::-webkit-scrollbar]:h-1.5 dark:[&>div::-webkit-scrollbar]:w-1.5 dark:[&>div::-webkit-scrollbar-track]:bg-[#090d16] dark:[&>div::-webkit-scrollbar-thumb]:rounded dark:[&>div::-webkit-scrollbar-thumb]:bg-[#1e293b] dark:[&>div::-webkit-scrollbar-thumb:hover]:bg-[#334155]',
-);
-/** The pager in the card's foot — the design's strip under the log. */
-const SECTION_FOOT =
-  'shrink-0 border-t border-slate-200 bg-slate-50/80 px-4 dark:border-slate-800 dark:bg-[#0a101b]';
+// The filter bar's card, the tables' cards, strips, chips and foot, both tables' look, the
+// «الإجمالي» line and the framed groups' buttons are the screen's, shared with «المذكرات» and
+// «سجل العهدة»: `custody-board-looks.ts`.
 
 /**
  * «هادية» — a car's sums in plain ink: slate-800 / slate-200 (the foot's slate-900 / white), «ج.م.»
@@ -182,7 +164,7 @@ const CALM_FOOT_INK = 'text-slate-900 dark:text-white';
 const KIND_HEAD_DOT =
   "[&>button]:before:inline-block [&>button]:before:h-2 [&>button]:before:w-2 [&>button]:before:shrink-0 [&>button]:before:rounded-full [&>button]:before:content-['']";
 const KIND_HEAD_DOT_INK: Record<FleetCustodySource, string> = {
-  dealership: '[&>button]:before:bg-blue-600 dark:[&>button]:before:bg-blue-400',
+  maintenance: '[&>button]:before:bg-blue-600 dark:[&>button]:before:bg-blue-400',
   fuel: '[&>button]:before:bg-amber-500 dark:[&>button]:before:bg-amber-400',
   tyres: '[&>button]:before:bg-rose-500 dark:[&>button]:before:bg-rose-400',
   wash: '[&>button]:before:bg-cyan-600 dark:[&>button]:before:bg-cyan-400',
@@ -194,67 +176,6 @@ const KIND_HEAD_DOT_INK: Record<FleetCustodySource, string> = {
  */
 const PRESS_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
-const PILL_BUTTON =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
-
-/**
- * «زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين»: the fund's three
- * actions at the row's far left, the export pair right beside them («عاوز دول قبل الاكسيل والبى
- * دى اف»: read left to right, they come first), and drawn like it — one framed group, each with its own
- * coloured icon. What each one does is still to be decided by the owner, so for now a press only
- * says so; the buttons are here so the board already has its final shape. On a phone each says its
- * one word (`short`), as the export pair says «Excel» and «PDF»: the three whole names are wider
- * than a phone's toolbar, and what overflows it there is cut off with no scroll to reach it.
- */
-const FUND_ACTIONS = [
-  {
-    key: 'settle',
-    label: 'fleet.custody.actions.settle',
-    short: 'fleet.custody.actions.settleShort',
-    // A balance — the fund squared against what was spent.
-    icon: [
-      'M12 3v18',
-      'M7 21h10',
-      'M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2',
-      'm16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z',
-      'm2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z',
-    ],
-    tone: 'text-emerald-600 dark:text-emerald-400',
-    hover:
-      'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300',
-  },
-  {
-    key: 'replenish',
-    label: 'fleet.custody.actions.replenish',
-    short: 'fleet.custody.actions.replenishShort',
-    // Turning back round — what was spent comes back into the fund.
-    icon: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
-    tone: 'text-sky-600 dark:text-sky-400',
-    hover: 'hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-sky-950/60 dark:hover:text-sky-300',
-  },
-  {
-    key: 'charge',
-    label: 'fleet.custody.actions.charge',
-    short: 'fleet.custody.actions.chargeShort',
-    // A plus in a circle — money added to the fund.
-    icon: ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8v8', 'M8 12h8'],
-    tone: 'text-teal-600 dark:text-teal-400',
-    hover:
-      'hover:bg-teal-50 hover:text-teal-700 dark:hover:bg-teal-950/60 dark:hover:text-teal-300',
-  },
-] as const;
-
-/**
- * Both tables: the receipts board's (the vehicles table with no line between the columns, every
- * value heavy in Cairo's own bold) in the alarms board's TYPE — see `ALARMS_TYPE`. The row-filling
- * part (`BOARD_TABLE_FILL`) goes on the movements only: the per-car table keeps its own bound.
- */
-const CUSTODY_TABLE = cn(
-  DARK_TABLE,
-  '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
-  "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
-  ALARMS_TYPE,
-);
 
 /**
  * «ملخص لكل سيارة» in the dashboard's colours. What the board's table forces on every cell with
@@ -279,33 +200,20 @@ const TOTAL_INK = 'text-slate-900 dark:text-white';
 /** The car's code in «ملخص لكل سيارة» — the dashboard's blue chip, at the board's code size. */
 const CAR_CHIP =
   'inline-flex h-8 min-w-[2rem] items-center justify-center whitespace-nowrap rounded border border-blue-200 bg-blue-50 px-1.5 font-bold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400';
-/**
- * «الإجمالي» as the dashboard's foot: slate-100 light, #090e18 dark; the design's 2px emerald-500
- * rule over every cell (an inset shadow — the table's own row borders are `!important`); and the
- * fund's total in its emerald box — the light map's emerald-50 with emerald-200 sides, the design's
- * #122238 with its faint line under the rule. Black type on the light map, as the foot's.
- */
-const GRAND_ROW = cn(
-  'bg-slate-100 dark:bg-[#090e18]',
-  '[&>td]:shadow-[inset_0_2px_0_#10b981]',
-  '[&>td:last-child]:bg-emerald-50 dark:[&>td:last-child]:bg-[#122238]',
-  '[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_1px_0_0_#a7f3d0,inset_-1px_0_0_#a7f3d0] dark:[&>td:last-child]:shadow-[inset_0_2px_0_#10b981,inset_0_3px_0_rgba(16,185,129,0.3)]',
-  '[&>td_span]:!font-black dark:[&>td_span]:!font-bold',
-);
 /** «الإجمالي» itself, and the fund's total — the foot's emerald. */
 const GRAND_WORD = 'text-emerald-800 dark:text-emerald-400';
 const GRAND_INK = 'text-emerald-800 dark:text-emerald-300';
 /** A fuel receipt's company in «كل الحركات» — the dashboard log's badge, a size under the kind's. */
 const COMPANY_BADGE =
   'inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-0.5 text-[13px] leading-5';
-/** «من» — a bill's and a receipt's alike, in the row's plain ink. */
+/** «من» — the receipts screen's, in the row's plain ink. */
 const CALM_FROM = 'text-slate-600 dark:text-slate-300';
 /**
  * «كل الحركات» in the dashboard log's inks, on a span of each cell's own (the board's table sets
  * its ink on the `<td>` with `!important`; a span's own colour still wins):
  * - the head slate-700 on the light map (the board's is slate-500), one selector deeper as on
  *   «ملخص لكل سيارة»; the design's dark head is the board's own slate-400, which still wins dark;
- * - the date muted; «من», a bill's and a receipt's alike, in the row's plain ink (`CALM_FROM`);
+ * - the date muted; «من» in the row's plain ink (`CALM_FROM`);
  * - the car's code in a slate chip on the light map, white on the dark design;
  * - the amount, figure and «ج.م.», slate-900 / white.
  */
@@ -335,7 +243,7 @@ export const CustodyPage = (): JSX.Element => {
   const codesParam = sp.get('vehicleCodes') ?? '';
   const sourcesParam = sp.get('source') ?? '';
   const vehicleCodes = csv(codesParam);
-  const sources = csv(sourcesParam);
+  const sources = custodySources(sourcesParam);
   const driver = sp.get('driver') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -438,7 +346,7 @@ export const CustodyPage = (): JSX.Element => {
       {
         vehicleId: GRAND_TOTAL,
         vehicleCode: t('fleet.custody.grandTotal'),
-        dealership: summary.data.dealership,
+        maintenance: summary.data.maintenance,
         fuel: summary.data.fuel,
         tyres: summary.data.tyres,
         wash: summary.data.wash,
@@ -498,7 +406,7 @@ export const CustodyPage = (): JSX.Element => {
           </span>
         ),
     },
-    kindCol('dealership'),
+    kindCol('maintenance'),
     kindCol('fuel'),
     kindCol('tyres'),
     kindCol('wash'),
@@ -544,7 +452,7 @@ export const CustodyPage = (): JSX.Element => {
       key: 'source',
       align: 'center',
       header: t('fleet.receipts.columns.kind'),
-      // In the filter's order — dealership, fuel, tyres, wash — not the word's alphabet.
+      // In the filter's order — maintenance, fuel, tyres, wash — not the word's alphabet.
       sortable: true,
       // The alarms board's pill size, so the kind reads at the row's 16px; the detail in a span
       // of its own, so the table's bold reaches it. A fuel receipt that names its company wears
@@ -568,7 +476,7 @@ export const CustodyPage = (): JSX.Element => {
       key: 'driverName',
       align: 'center',
       header: t('fleet.receipts.columns.driver'),
-      // A bill names no driver, so it sorts last whichever way the arrow points.
+      // A receipt that names no driver sorts last whichever way the arrow points.
       sortable: true,
       // «عاوز الاسم بتاع السواق كامل وشيل الكود»: the WHOLE name, the code on hover — as on the
       // maintenance and odometer boards. A name from the old books stays grey.
@@ -581,7 +489,7 @@ export const CustodyPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.custody.columns.from'),
       sortable: true,
-      // «هادية»: a bill and a receipt alike in the row's plain ink — the kind's pill says which.
+      // «هادية»: in the row's plain ink — every movement is a receipt; the kind's pill says which.
       render: (row) => (
         <span data-custody-from={row.ref} className={CALM_FROM}>
           {t(`fleet.custody.from.${row.ref}`)}
@@ -658,8 +566,8 @@ export const CustodyPage = (): JSX.Element => {
             : [
                 { label: t('fleet.custody.totals.total'), value: reportMoney(summary.data.total) },
                 {
-                  label: t('fleet.custody.totals.dealership'),
-                  value: reportMoney(summary.data.dealership),
+                  label: t('fleet.custody.totals.maintenance'),
+                  value: reportMoney(summary.data.maintenance),
                 },
                 { label: t('fleet.custody.totals.fuel'), value: reportMoney(summary.data.fuel) },
                 { label: t('fleet.custody.totals.tyres'), value: reportMoney(summary.data.tyres) },
@@ -722,6 +630,8 @@ export const CustodyPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
+      {/* «العهدة · المذكرات · سجل العهدة» — the board is the first of three tabs. */}
+      <CustodyTabs />
       <div className={BOARD_FRAME}>
         {/* «زى شاشة السيارات و السواقيين»: no page title — the board opens on its toolbar. */}
         <div className="flex items-center justify-between gap-2" data-custody-toolbar="true">
@@ -824,28 +734,13 @@ export const CustodyPage = (): JSX.Element => {
                 </button>
               </div>
             )}
-            {/* «عاوز دول قبل الاكسيل والبى دى اف» — the leftmost of the row, the files beside it. */}
-            <div
-              data-custody-fund-actions="true"
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80"
-            >
-              {FUND_ACTIONS.map((action, index) => (
-                <Fragment key={action.key}>
-                  {index > 0 && <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />}
-                  <button
-                    type="button"
-                    data-custody-fund-action={action.key}
-                    title={t(action.label)}
-                    onClick={() => toast.info(t('fleet.custody.actions.soon'))}
-                    className={cn(PILL_BUTTON, action.hover)}
-                  >
-                    <BoardIcon d={action.icon} className={cn('h-3.5 w-3.5', action.tone)} />
-                    <span className="sm:hidden">{t(action.short)}</span>
-                    <span className="hidden sm:inline">{t(action.label)}</span>
-                  </button>
-                </Fragment>
-              ))}
-            </div>
+            {/* «زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين»: the fund's three
+                actions, each opening its own dialog through the address (`?fund=<op>`) — one framed
+                group, the export pair's frame, each with its own coloured icon; on a phone each says
+                its one word. «عاوز دول قبل الاكسيل والبى دى اف» — the leftmost of the row, the files
+                beside it. Drawn only for a reader who may write custody money (`fleetReceipt.create`);
+                the same group stands on «سجل العهدة». */}
+            <CustodyFundActions />
           </span>
         </div>
 
@@ -903,18 +798,21 @@ export const CustodyPage = (): JSX.Element => {
             </FilterWithIcon>
           </FilterBar>
         </div>
+        {/* The dialog the address names (`?fund=settle|replenish|charge`), outside the toolbar — one
+            at a time, opened fresh, and closed by taking `fund` out of the address. */}
+        <CustodyFundDialogs />
 
         {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the money boards. */}
         {statsOpen && summary.data !== undefined && <CustodyFigures totals={summary.data} />}
         {/* The board's own `filters`: the dashboard asks exactly what the figures ask, and what it
-            changes it changes HERE — clearing them, «المصدر» = التوكيل. */}
+            changes it changes HERE — clearing them, «المصدر» = صيانة. */}
         <CustodyDashboard
           open={dashOpen}
           onClose={() => setDashOpen(false)}
           filters={filters}
           onClearFilters={clearFilters}
-          onShowDealership={() => {
-            patch({ source: 'dealership' });
+          onShowMaintenance={() => {
+            patch({ source: 'maintenance' });
             setDashOpen(false);
           }}
         />

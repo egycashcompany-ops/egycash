@@ -12,6 +12,10 @@
 // «ضيف كل حاجه كنا عملنها»: the Fleet forms' design (`DesignDialog`) on a PAGE — its header with
 // the icon tile, Save and Print kept on screen above the scrolling columns, the sections headed with
 // their icons, every field in the design's box and every figure in its monospace.
+//
+// A record the custody fund has settled («تسوية عهدة») is read, not written: the page says when it
+// was settled, the form is shown as it was saved but cannot be changed, and there is no Save — the
+// memo still previews and prints.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -73,6 +77,8 @@ import {
   printMemos,
   sumOf,
 } from '../lib/license-expense-memo';
+import { licenceLock, settlementDay } from '../lib/license-expense-settlement';
+import { writeRefusalOf } from '../lib/write-refusal';
 
 const KINDS: readonly LicenseExpenseKind[] = ['renewal', 'extension'];
 
@@ -345,15 +351,21 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
   // writer changes them.
   const loaded = useRef<FleetLicenseExpenseDto | null>(null);
   const signaturesTouched = useRef(false);
-  useEffect(() => {
-    const row = saved.data;
-    if (row === undefined || loaded.current?.id === row.id) return;
+  const fill = (row: FleetLicenseExpenseDto): void => {
     loaded.current = row;
     setKinds(KINDS.filter((kind) => row[kind] !== null));
     setDate(row.date);
     setDrafts({ renewal: draftOf(row.renewal), extension: draftOf(row.extension) });
     setSignatures(row.signatures);
+  };
+  useEffect(() => {
+    const row = saved.data;
+    if (row === undefined || loaded.current?.id === row.id) return;
+    fill(row);
   }, [saved.data]);
+  // Settled by «تسوية عهدة»: the whole record is read-only, its other memo too.
+  const lock = editingId === '' || saved.data === undefined ? null : licenceLock(saved.data);
+  const locked = lock !== null;
   useEffect(() => {
     if (editingId !== '' || signaturesTouched.current || settings.data === undefined) return;
     setSignatures(settings.data.signatures);
@@ -519,12 +531,29 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       } else {
         await update.mutateAsync({
           id: editingId,
-          body: { ...body(), version: saved.data?.version ?? 0 },
+          // The version the form was filled from, not the live query's (realtime refetches it):
+          // a record changed elsewhere meanwhile is a stale 409, never a silent overwrite.
+          body: { ...body(), version: loaded.current?.version ?? saved.data?.version ?? 0 },
         });
       }
       toast.success(t('fleet.licenseExpenses.savedToast'));
       navigate('/fleet/license-expenses');
     } catch (failure) {
+      // Settled, or changed by someone else, since the page read it: said in so many words, and the
+      // record read again — a settled one then opens read-only, a changed one with its new content.
+      const refusal = editingId === '' ? null : writeRefusalOf(failure);
+      if (refusal !== null) {
+        toast.error(
+          t(
+            refusal === 'locked'
+              ? 'fleet.licenseExpenses.settlement.refusedEdit'
+              : 'fleet.licenseExpenses.settlement.refusedStale',
+          ),
+        );
+        const fresh = await saved.refetch();
+        if (fresh.data !== undefined) fill(fresh.data);
+        return;
+      }
       toast.error(errorMessage(failure, locale));
     }
   };
@@ -560,13 +589,16 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
         <Link to="/fleet/license-expenses" className={DESIGN_BACK}>
           {t('fleet.licenseExpenses.back')}
         </Link>
-        <DesignSave
-          onClick={() => void onSave()}
-          busy={pending}
-          disabled={editingId !== '' && saved.data === undefined}
-          label={t('fleet.licenseExpenses.save')}
-          data-license-expense-save="true"
-        />
+        {/* A settled record has nothing to save: no Save at all, rather than one that never works. */}
+        {!locked && (
+          <DesignSave
+            onClick={() => void onSave()}
+            busy={pending}
+            disabled={editingId !== '' && saved.data === undefined}
+            label={t('fleet.licenseExpenses.save')}
+            data-license-expense-save="true"
+          />
+        )}
         <button
           type="button"
           data-license-expense-print="true"
@@ -580,106 +612,134 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 lg:flex-row">
         <section className={DESIGN_COLUMN}>
-          <DesignSection title={t('fleet.licenseExpenses.memoSection')} icon={PATH.calendar}>
-            <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
-              <DesignField label={t('fleet.licenseExpenses.kind')} endAdornment={null}>
-                {/* Either, or both — each pressed one is a memo below. */}
-                <div className={SWITCH_TRAY}>
-                  {KINDS.map((kind) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      aria-pressed={kinds.includes(kind)}
-                      data-license-expense-kind={kind}
-                      onClick={() => toggleKind(kind)}
-                      className={switchOption(kinds.includes(kind))}
-                    >
-                      {kinds.includes(kind) ? '✓ ' : ''}
-                      {t(`fleet.licenseExpenses.kinds.${kind}`)}
-                    </button>
-                  ))}
-                </div>
-              </DesignField>
-              <DesignField label={t('fleet.licenseExpenses.date')} datePicker>
-                <Input
-                  type="date"
-                  dir="ltr"
-                  aria-label={t('fleet.licenseExpenses.date')}
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  tone={DATE_BOX}
-                />
-              </DesignField>
+          {lock !== null && (
+            <div
+              role="note"
+              data-license-expense-locked={lock.operationId}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+            >
+              <span>
+                {t('fleet.licenseExpenses.settlement.editorLocked', { date: settlementDay(lock) })}
+              </span>
+              {can('fleetCustody.view') && (
+                <Link
+                  to={`/fleet/custody/log?open=${encodeURIComponent(lock.operationId)}`}
+                  data-license-expense-settlement-link={lock.operationId}
+                  className="whitespace-nowrap text-xs font-bold underline underline-offset-4"
+                >
+                  {t('fleet.licenseExpenses.settlement.open')}
+                </Link>
+              )}
             </div>
-          </DesignSection>
-
-          {kinds.map((kind) => (
-            <MemoBlock
-              key={kind}
-              kind={kind}
-              draft={drafts[kind]}
-              setDraft={(update) => setDrafts((held) => ({ ...held, [kind]: update(held[kind]) }))}
-              byCode={byCode}
-              catalogItems={catalogItems}
-              {...(can('fleetCatalog.manage')
-                ? { onAddToCatalog: (label: string) => addToCatalog(kind, label) }
-                : {})}
-              templateOf={(paid) => templateOf(kind, paid)}
-              {...(can('fleetLicenseExpense.edit')
-                ? {
-                    onSaveTemplate: (paid: LicenseExpensePaidBy, items: LicenseExpenseItemLine[]) =>
-                      void onSaveTemplate(kind, paid, items),
-                  }
-                : {})}
-            />
-          ))}
-
-          <DesignSection
-            title={t('fleet.licenseExpenses.signaturesSection')}
-            icon={FILTER_ICON.person}
-          >
-            <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
-              <DesignField label={t('fleet.licenseExpenses.signatures.agent')}>
-                <Input
-                  aria-label={t('fleet.licenseExpenses.signatures.agent')}
-                  value={signatures.agent}
-                  onChange={(e) => editSignatures({ agent: e.target.value })}
-                  tone={BOX}
-                />
-              </DesignField>
-              <DesignField label={t('fleet.licenseExpenses.signatures.director')}>
-                <Input
-                  aria-label={t('fleet.licenseExpenses.signatures.director')}
-                  value={signatures.director}
-                  onChange={(e) => editSignatures({ director: e.target.value })}
-                  tone={BOX}
-                />
-              </DesignField>
-              <div className="sm:col-span-2">
-                <DesignField label={t('fleet.licenseExpenses.signatures.generalManager')}>
-                  <Textarea
-                    rows={3}
-                    aria-label={t('fleet.licenseExpenses.signatures.generalManager')}
-                    value={signatures.generalManager}
-                    onChange={(e) => editSignatures({ generalManager: e.target.value })}
-                    className={NOTE_BOX}
+          )}
+          {/* Every box, switch and button of the form at once: a settled record is shown, not
+              changed. */}
+          <fieldset disabled={locked} className="min-w-0 space-y-7">
+            <DesignSection title={t('fleet.licenseExpenses.memoSection')} icon={PATH.calendar}>
+              <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
+                <DesignField label={t('fleet.licenseExpenses.kind')} endAdornment={null}>
+                  {/* Either, or both — each pressed one is a memo below. */}
+                  <div className={SWITCH_TRAY}>
+                    {KINDS.map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        aria-pressed={kinds.includes(kind)}
+                        data-license-expense-kind={kind}
+                        onClick={() => toggleKind(kind)}
+                        className={switchOption(kinds.includes(kind))}
+                      >
+                        {kinds.includes(kind) ? '✓ ' : ''}
+                        {t(`fleet.licenseExpenses.kinds.${kind}`)}
+                      </button>
+                    ))}
+                  </div>
+                </DesignField>
+                <DesignField label={t('fleet.licenseExpenses.date')} datePicker>
+                  <Input
+                    type="date"
+                    dir="ltr"
+                    aria-label={t('fleet.licenseExpenses.date')}
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    tone={DATE_BOX}
                   />
                 </DesignField>
               </div>
-            </div>
-            {/* «تتظبط مرة في الإعداد وتتعدل في كل مذكرة»: these names become every new memo's. */}
-            {can('fleetLicenseExpense.edit') && (
-              <button
-                type="button"
-                data-license-expense-save-defaults="true"
-                disabled={saveSettings.isPending}
-                onClick={() => void onSaveDefaults()}
-                className="text-xs font-bold text-brand-600 hover:underline disabled:opacity-50 dark:text-brand-300"
-              >
-                {t('fleet.licenseExpenses.saveDefaults')}
-              </button>
-            )}
-          </DesignSection>
+            </DesignSection>
+
+            {kinds.map((kind) => (
+              <MemoBlock
+                key={kind}
+                kind={kind}
+                draft={drafts[kind]}
+                setDraft={(update) =>
+                  setDrafts((held) => ({ ...held, [kind]: update(held[kind]) }))
+                }
+                byCode={byCode}
+                catalogItems={catalogItems}
+                {...(can('fleetCatalog.manage')
+                  ? { onAddToCatalog: (label: string) => addToCatalog(kind, label) }
+                  : {})}
+                templateOf={(paid) => templateOf(kind, paid)}
+                {...(can('fleetLicenseExpense.edit')
+                  ? {
+                      onSaveTemplate: (
+                        paid: LicenseExpensePaidBy,
+                        items: LicenseExpenseItemLine[],
+                      ) => void onSaveTemplate(kind, paid, items),
+                    }
+                  : {})}
+              />
+            ))}
+
+            <DesignSection
+              title={t('fleet.licenseExpenses.signaturesSection')}
+              icon={FILTER_ICON.person}
+            >
+              <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
+                <DesignField label={t('fleet.licenseExpenses.signatures.agent')}>
+                  <Input
+                    aria-label={t('fleet.licenseExpenses.signatures.agent')}
+                    value={signatures.agent}
+                    onChange={(e) => editSignatures({ agent: e.target.value })}
+                    tone={BOX}
+                  />
+                </DesignField>
+                <DesignField label={t('fleet.licenseExpenses.signatures.director')}>
+                  <Input
+                    aria-label={t('fleet.licenseExpenses.signatures.director')}
+                    value={signatures.director}
+                    onChange={(e) => editSignatures({ director: e.target.value })}
+                    tone={BOX}
+                  />
+                </DesignField>
+                <div className="sm:col-span-2">
+                  <DesignField label={t('fleet.licenseExpenses.signatures.generalManager')}>
+                    <Textarea
+                      rows={3}
+                      aria-label={t('fleet.licenseExpenses.signatures.generalManager')}
+                      value={signatures.generalManager}
+                      onChange={(e) => editSignatures({ generalManager: e.target.value })}
+                      className={NOTE_BOX}
+                    />
+                  </DesignField>
+                </div>
+              </div>
+              {/* «تتظبط مرة في الإعداد وتتعدل في كل مذكرة»: these names become every new memo's. */}
+              {can('fleetLicenseExpense.edit') && (
+                <button
+                  type="button"
+                  data-license-expense-save-defaults="true"
+                  disabled={saveSettings.isPending}
+                  onClick={() => void onSaveDefaults()}
+                  className="text-xs font-bold text-brand-600 hover:underline disabled:opacity-50 dark:text-brand-300"
+                >
+                  {t('fleet.licenseExpenses.saveDefaults')}
+                </button>
+              )}
+            </DesignSection>
+          </fieldset>
         </section>
 
         <section className="min-h-0 flex-1 space-y-4 overflow-auto rounded-xl bg-slate-200 p-4 dark:bg-slate-800">

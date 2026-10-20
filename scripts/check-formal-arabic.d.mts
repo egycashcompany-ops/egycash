@@ -20,5 +20,11 @@ export function productStrings(): ArabicString[];
 /** The strings that are not written in formal Arabic, with the tells found in each. */
 export function findOffenders(): (ArabicString & { found: string[] })[];
 
+/**
+ * The owner's printed papers, reproduced word for word and therefore not scanned: repo-relative
+ * paths of the papers' wording and of their default signature names.
+ */
+export const VERBATIM_PAPERS: readonly string[];
+
 /** Absolute path of the repository root the scan walks. */
 export const ROOT: string;

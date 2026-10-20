@@ -25,6 +25,9 @@ import { buildFleetDealershipRouter } from './dealership/dealership.routes';
 import { buildFleetFuelCardsRouter } from './fuel-cards/fuel-card.routes';
 import { buildFleetReceiptsRouter } from './receipts/receipt.routes';
 import { buildFleetCustodyRouter } from './custody/custody.routes';
+import { buildFleetCustodyMemosRouter } from './custody/custody-memo.routes';
+import { buildFleetCustodyPaperSettingsRouter } from './custody/custody-papers.routes';
+import { buildFleetCustodyFundRouter } from './custody/custody-fund.routes';
 import { receiptFileAuthorizer } from './receipts/receipt-files';
 import { fuelCardFileAuthorizer } from './fuel-cards/fuel-card-files';
 import { noticeFileAuthorizer } from './notices/notice-files';
@@ -272,9 +275,14 @@ const fuelChargePermissions = declarePermissions(
 );
 
 /**
- * Receipts (خصم الإيصالات): fuel, tyres and washing the driver paid for — off the car's fuel card
- * or out of the custody fund. The custody screen (العهدة) only READS: it is the fund's ledger,
- * summed from these receipts and from the dealership's custody-side bills.
+ * Receipts (خصم الإيصالات): fuel, tyres, washing and maintenance the driver paid for — off the
+ * car's fuel card (fuel only) or out of the custody fund.
+ *
+ * The custody screen (العهدة) reads the fund under its one grant, `fleetCustody.view`, and WRITES
+ * the fund's own paperwork — «المذكرات» over these receipts, «شحن / استعاضة / تسوية العهدة», and
+ * «إعداد المذكرات» — under that grant AND this one's matching write grant (`fleetReceipt.create`,
+ * `.edit`, `.delete`): custody money is what «إيصالات العهدة» already writes, so whoever writes the
+ * receipts writes their memos and letters, and no new key has to be handed out.
  */
 const receiptPermissions = declarePermissions(
   'fleet',
@@ -499,6 +507,11 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/fuel-cards', router: buildFleetFuelCardsRouter() },
     { prefix: '/fleet/receipts', router: buildFleetReceiptsRouter() },
     { prefix: '/fleet/custody', router: buildFleetCustodyRouter() },
+    // Their own routers, under the custody prefix: the one above has only `/summary`, `/dashboard`
+    // and `/movements`, so a `/memos/…` request finds nothing there and falls through to these.
+    { prefix: '/fleet/custody/memos', router: buildFleetCustodyMemosRouter() },
+    { prefix: '/fleet/custody/paper-settings', router: buildFleetCustodyPaperSettingsRouter() },
+    { prefix: '/fleet/custody/fund', router: buildFleetCustodyFundRouter() },
     { prefix: '/fleet/people', router: buildFleetPeopleRouter() },
   ],
   collections: [
@@ -524,6 +537,10 @@ export const fleetModule: ModuleManifest = {
     'fleet_fuel_cards',
     'fleet_fuel_card_movements',
     'fleet_receipts',
+    'fleet_custody_memos',
+    'fleet_custody_operations',
+    'fleet_custody_paper_settings',
+    'fleet_custody_counters',
   ],
   // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
   // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is

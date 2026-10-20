@@ -14,7 +14,8 @@
 //
 // «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: six figures now — the fund itself
 // first («إجمالي العهدة», `CustodyFundCard`), then everything it paid for. The board and «لوحة تحكم»
-// draw the same card, the board's with the bar of what was spent of it.
+// draw the same card, the board's with the bar of what was spent of all that was charged into it.
+// The fund is real now (شحن − مصروفات + استعاضة − تسوية) and may be below zero: written «−X» in red.
 import { type FleetCustodySummaryDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -80,48 +81,57 @@ export const CustodyShare = ({
 );
 
 /**
- * The fund as a sum — what «شحن العهدة» charged into it, 0 until that action exists. Anything that
- * is not an amount reads as 0 too: an older server's `null`, or an answer with no `fundTotal` at
- * all (while a deploy rolls the web out first), must never print «ليس رقمًا» or «NaN%».
+ * An amount as the fund's figures read it: a finite number passes as it is — the fund itself may be
+ * NEGATIVE (more spent than was ever charged into it, or a settle past it), and is never clamped.
+ * Anything that is not an amount reads as 0: an older server's `null`, or an answer with no field
+ * at all (while a deploy rolls the web out first), must never print «ليس رقمًا» or «NaN%».
  */
 export const custodyFundAmount = (fund: number | null | undefined): number =>
-  typeof fund === 'number' && Number.isFinite(fund) && fund > 0 ? fund : 0;
+  typeof fund === 'number' && Number.isFinite(fund) ? fund : 0;
 
 /**
- * «صُرف منها 4.3%» — what the movements spent of the fund: one decimal under ten per cent, whole
- * from there; a sliver «<0.1%», never «0.0%». Past the fund it says so — the spend can outrun what
- * was charged into it — and the two ends never claim what is not true: all but a sliver is «>99%»,
- * never «100%», and a sliver over is «>100%», never «100%». With nothing in the fund (0), a dash:
- * there is nothing to divide by.
+ * «صُرف من إجمالي الشحن 4.3%» — what the receipts spent of everything charged into the fund
+ * (`fundSpent / fundCharged`, the approved sample's): one decimal under ten per cent, whole from
+ * there; a sliver «<0.1%», never «0.0%». Past it it says so — the spend can outrun what was charged
+ * — and the two ends never claim what is not true: all but a sliver is «>99%», never «100%», and a
+ * sliver over is «>100%», never «100%». With nothing charged (0, or less), a dash: there is nothing
+ * to divide by.
  */
-export const custodySpentOfFund = (spent: number, fundTotal: number | null | undefined): string => {
-  const fund = custodyFundAmount(fundTotal);
-  if (fund <= 0) return '—';
-  if (spent <= 0) return '0%';
-  const pct = (spent / fund) * 100;
+export const custodySpentOfFund = (
+  spent: number | null | undefined,
+  charged: number | null | undefined,
+): string => {
+  const whole = custodyFundAmount(charged);
+  const part = custodyFundAmount(spent);
+  if (whole <= 0) return '—';
+  if (part <= 0) return '0%';
+  const pct = (part / whole) * 100;
   if (pct < 0.1) return '<0.1%';
   if (Math.round(pct * 10) / 10 < 10) return `${pct.toFixed(1)}%`;
-  const whole = Math.round(pct);
-  if (spent < fund && whole >= 100) return '>99%';
-  if (spent > fund && whole <= 100) return '>100%';
-  return `${whole}%`;
+  const rounded = Math.round(pct);
+  if (part < whole && rounded >= 100) return '>99%';
+  if (part > whole && rounded <= 100) return '>100%';
+  return `${rounded}%`;
 };
 
-/** The same, as the width of a bar: with nothing in the fund, none; past the fund, the whole bar. */
+/** The same, as the width of a bar: with nothing charged, none; past it, the whole bar. */
 export const custodySpentOfFundPct = (
-  spent: number,
-  fundTotal: number | null | undefined,
+  spent: number | null | undefined,
+  charged: number | null | undefined,
 ): number => {
-  const fund = custodyFundAmount(fundTotal);
-  return fund > 0 ? Math.min(100, Math.max(0, (spent / fund) * 100)) : 0;
+  const whole = custodyFundAmount(charged);
+  return whole > 0 ? Math.min(100, Math.max(0, (custodyFundAmount(spent) / whole) * 100)) : 0;
 };
+
+/** The red of a fund below zero — the ledger's «−» amounts wear it too. */
+export const CUSTODY_NEGATIVE_INK = 'text-red-600 dark:text-red-400';
 
 /** The fund's words, under `fleet.custody.fund`. */
 export const CUSTODY_FUND_LABEL = 'fleet.custody.fund.title';
 
 /** Each figure's words, the kind's own key under `fleet.custody.totals`. */
 export const CUSTODY_KIND_LABEL = {
-  dealership: 'fleet.custody.totals.dealership',
+  maintenance: 'fleet.custody.totals.maintenance',
   fuel: 'fleet.custody.totals.fuel',
   tyres: 'fleet.custody.totals.tyres',
   wash: 'fleet.custody.totals.wash',
@@ -142,32 +152,37 @@ const TILE_RULE = 'mt-3 border-t border-slate-100 pt-2 text-xs dark:border-[#1c2
 const TILE_FOOT = cn(TILE_RULE, 'flex items-center justify-between gap-2');
 
 /**
- * «إجمالي العهدة» — the fund: what «شحن العهدة» charged into it, «0.00 ج.م.» until that action
- * exists — always a sum, never «—». The spend's own card in the fund's slate (`CUSTODY_FUND`), a
- * wallet on its tile. Under it, «صُرف منها X%»: the movements' total over the fund — the board's
- * own filters hold for the spend, the fund is the fund — and «—» while the fund is 0. On the board
- * (`board`) a bar draws that share, as each kind's tile draws its own (empty while the fund is 0),
- * and the figure is in the boards' monospace, as its tiles write theirs; on «لوحة تحكم» it takes
- * the dashboard's own figure (`figure`, Cairo), with no bar, as its other cards.
+ * «إجمالي العهدة» — the fund: Σ «شحن» − Σ the receipts + Σ «استعاضة» − Σ «تسوية», always a sum,
+ * never «—». Below zero it is written «−X» in red — it is never clamped to 0. The spend's own card
+ * in the fund's slate (`CUSTODY_FUND`), a wallet on its tile. Under it, «صُرف من إجمالي الشحن X%»:
+ * every receipt the fund paid over everything charged into it (`fundSpent / fundCharged`; no filter
+ * changes either), with its meaning in the tooltip, and «—» while nothing is charged. On the board
+ * (`board`) a bar draws that share, as each kind's tile draws its own, and the figure is in the
+ * boards' monospace, as its tiles write theirs; on «لوحة تحكم» it takes the dashboard's own figure
+ * (`figure`, Cairo), with no bar, as its other cards.
  */
 export const CustodyFundCard = ({
   fundTotal,
+  charged,
   spent,
   board = false,
   figure = TILE_FIGURE,
 }: {
-  /** The fund in EGP; an older server's `null` or a missing one (`undefined`) reads as 0. */
+  /** The fund in EGP, maybe negative; an older server's `null` or a missing one reads as 0. */
   fundTotal: number | null | undefined;
-  /** The movements' total over the same filters — `total` of the summary. */
-  spent: number;
-  /** The board's figure: the bar of what was spent of the fund under it. */
+  /** Σ «شحن العهدة» (`fundCharged`), unfiltered; missing reads as 0. */
+  charged: number | null | undefined;
+  /** Σ every custody receipt (`fundSpent`), unfiltered; missing reads as 0. */
+  spent: number | null | undefined;
+  /** The board's figure: the bar of what was spent of what was charged under it. */
   board?: boolean;
   /** The sum's classes — the board's tiles' by default, the dashboard's on «لوحة تحكم». */
   figure?: string;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const fund = moneyChip(custodyFundAmount(fundTotal), locale);
+  const amount = custodyFundAmount(fundTotal);
+  const fund = moneyChip(Math.abs(amount), locale);
   return (
     <div
       data-custody-fund="true"
@@ -183,7 +198,20 @@ export const CustodyFundCard = ({
           <span className={cn('block text-xs', CUSTODY_FUND.label)}>{t(CUSTODY_FUND_LABEL)}</span>
           <span className="mt-1 flex flex-wrap items-baseline gap-1">
             <span data-custody-fund-value="true" className={figure}>
-              {fund.value}
+              {amount < 0 ? (
+                // «−124,139.46» — left to right, or the minus would sit after the figure in an
+                // Arabic line; the red is the figure's own, over the card's black.
+                <span
+                  dir="ltr"
+                  data-custody-fund-negative="true"
+                  title={t('fleet.custody.fund.negativeTitle')}
+                  className={CUSTODY_NEGATIVE_INK}
+                >
+                  {`\u2212${fund.value}`}
+                </span>
+              ) : (
+                fund.value
+              )}
             </span>
             <span className={cn('text-xs', CUSTODY_FUND.unit)}>{fund.unit}</span>
           </span>
@@ -198,7 +226,11 @@ export const CustodyFundCard = ({
         </span>
       </span>
       <span className={cn(TILE_RULE, 'flex flex-col gap-1.5')}>
-        <span data-custody-fund-spent="true" className="text-slate-600 dark:text-slate-400">
+        <span
+          data-custody-fund-spent="true"
+          title={t('fleet.custody.fund.spentTitle')}
+          className="text-slate-600 dark:text-slate-400"
+        >
           {t('fleet.custody.fund.spent')}{' '}
           <span
             dir="ltr"
@@ -208,7 +240,7 @@ export const CustodyFundCard = ({
               NUM,
             )}
           >
-            {custodySpentOfFund(spent, fundTotal)}
+            {custodySpentOfFund(spent, charged)}
           </span>
         </span>
         {board && (
@@ -219,7 +251,7 @@ export const CustodyFundCard = ({
           >
             <span
               className={cn('block h-full rounded-full', CUSTODY_FUND.fill)}
-              style={{ width: `${custodySpentOfFundPct(spent, fundTotal)}%` }}
+              style={{ width: `${custodySpentOfFundPct(spent, charged)}%` }}
             />
           </span>
         )}
@@ -249,7 +281,12 @@ export const CustodyFigures = ({ totals }: { totals: FleetCustodySummaryDto }): 
       {/* Each card fills its cell (`h-full`). Spans inside the card, so the card is one box to
           whatever reads its markup. */}
       <div data-custody-figure="fund">
-        <CustodyFundCard fundTotal={totals.fundTotal} spent={totals.total} board />
+        <CustodyFundCard
+          fundTotal={totals.fundTotal}
+          charged={totals.fundCharged}
+          spent={totals.fundSpent}
+          board
+        />
       </div>
       <div data-custody-figure="total">
         <div

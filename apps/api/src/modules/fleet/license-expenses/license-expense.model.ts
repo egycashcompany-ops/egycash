@@ -30,12 +30,27 @@ export interface FleetLicenseExpensePartDoc {
   items: FleetLicenseExpenseItem[];
 }
 
+/** The «تسوية عهدة» that took one memo of a record off the custody fund. */
+export interface FleetLicenseExpenseSettlementDoc {
+  /** The custody operation (`fleet_custody_operations`, kind `settle`). */
+  operationId: Types.ObjectId;
+  /** The settlement letter's day (UTC midnight). */
+  settledAt: Date;
+}
+
 export interface FleetLicenseExpenseDoc extends BaseDocFields {
   date: Date;
   renewal: FleetLicenseExpensePartDoc | null;
   extension: FleetLicenseExpensePartDoc | null;
   /** Who signs this memo — the set-up's names, as this memo was written. */
   signatures: FleetLicenseExpenseSignatures;
+  /**
+   * The settlement of each memo, top level so an edit's `renewal` / `extension` can never wipe it.
+   * Absent on every record written before «تسوية عهدة» existed, which reads as «لم تُسوَّ بعد» —
+   * `{renewalSettlement: null}` matches a missing field, so no migration is needed.
+   */
+  renewalSettlement?: FleetLicenseExpenseSettlementDoc | null;
+  extensionSettlement?: FleetLicenseExpenseSettlementDoc | null;
 }
 
 const vehicleSchema = new Schema<FleetLicenseExpenseVehicle>(
@@ -75,12 +90,22 @@ export const signaturesSchema = new Schema<FleetLicenseExpenseSignatures>(
   { _id: false },
 );
 
+const settlementSchema = new Schema<FleetLicenseExpenseSettlementDoc>(
+  {
+    operationId: { type: Schema.Types.ObjectId, required: true },
+    settledAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const licenseExpenseSchema = new Schema<FleetLicenseExpenseDoc>(
   {
     date: { type: Date, required: true },
     renewal: { type: partSchema, default: null },
     extension: { type: partSchema, default: null },
     signatures: { type: signaturesSchema, required: true },
+    renewalSettlement: { type: settlementSchema, default: null },
+    extensionSettlement: { type: settlementSchema, default: null },
     ...baseFields,
   },
   { ...baseSchemaOptions, minimize: false },

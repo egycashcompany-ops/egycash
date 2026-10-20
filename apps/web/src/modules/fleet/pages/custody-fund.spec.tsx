@@ -1,8 +1,9 @@
 // «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد». The fund, first
 // among the board's figures («الإحصائيات») and first in the KPI row of «لوحة تحكم», in its own calm
-// slate, a wallet on its tile; under it «صُرف منها X%» — the spend over the fund. The fund is what
-// «شحن العهدة» charges into it, so until that action exists it is «0.00 ج.م.» — a sum, never «—» —
-// and its share «—», the board's bar empty. Proven against what the components produce.
+// slate, a wallet on its tile. The fund is real: Σ «شحن» − Σ the receipts + Σ «استعاضة» − Σ «تسوية»,
+// and it may be NEGATIVE — written «−X» in red, never clamped to 0. Under it «صُرف من إجمالي
+// الشحن X%» — every receipt the fund paid over everything charged into it (`fundSpent /
+// fundCharged`), «—» while nothing is charged. Proven against what the components produce.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,9 @@ import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import {
   CustodyFigures,
+  CUSTODY_NEGATIVE_INK,
   CustodyFundCard,
+  custodyFundAmount,
   custodySpentOfFund,
   custodySpentOfFundPct,
 } from '../components/CustodyFigures';
@@ -111,21 +114,33 @@ const esc = (classes: string): string =>
     .replace(/"/gu, '&quot;');
 
 /**
- * The board's figures: 4,335.50 spent of a fund of 50,000.00 — «8.7%» — as they will read once
- * «شحن العهدة» has charged the fund.
+ * The board's figures: 50,000.00 charged into the fund, 4,335.50 of it spent — «8.7%» — and a
+ * replenish of the same brought it back to 50,000.00.
  */
 const summary: FleetCustodySummaryDto = {
   count: 6,
   total: 4335.5,
-  dealership: 850,
+  maintenance: 850,
   fuel: 1965.5,
   tyres: 1400,
   wash: 120,
   vehicles: [],
   fundTotal: 50_000,
+  fundCharged: 50_000,
+  fundSpent: 4335.5,
 };
-/** As the server answers today: the same spend, and nothing charged into the fund yet. */
-const empty: FleetCustodySummaryDto = { ...summary, fundTotal: 0 };
+/** A fund with nothing in it, nothing charged and nothing spent. */
+const empty: FleetCustodySummaryDto = { ...summary, fundTotal: 0, fundCharged: 0, fundSpent: 0 };
+/**
+ * The day it goes live: every custody receipt ever recorded, and no «شحن العهدة» yet — the fund is
+ * below zero.
+ */
+const atStart: FleetCustodySummaryDto = {
+  ...summary,
+  fundTotal: -4335.5,
+  fundCharged: 0,
+  fundSpent: 4335.5,
+};
 
 /** One figure's markup on the board, up to the next figure. */
 const figure = (html: string, id: string): string => {
@@ -139,7 +154,7 @@ const figure = (html: string, id: string): string => {
 const dashboard = (over: Partial<FleetCustodyDashboardDto> = {}): FleetCustodyDashboardDto => ({
   ...summary,
   vehicleCount: 0,
-  counts: { dealership: 1, fuel: 3, tyres: 1, wash: 1 },
+  counts: { maintenance: 1, fuel: 3, tyres: 1, wash: 1 },
   bySource: [],
   timeline: { granularity: 'month', buckets: [] },
   drivers: [],
@@ -157,7 +172,6 @@ const dashboard = (over: Partial<FleetCustodyDashboardDto> = {}): FleetCustodyDa
   },
   alerts: {
     doubleFuel: [],
-    pendingPrivateBills: { count: 0, oldestOutDate: null },
     receiptsWithoutPhoto: 0,
     duplicateReceipts: 0,
   },
@@ -172,7 +186,7 @@ const kpi = (html: string, id: string): string => {
   return html.slice(at, html.lastIndexOf('<', end));
 };
 
-describe('«صُرف منها X%» — what was spent of the fund', () => {
+describe('«صُرف من إجمالي الشحن X%» — what was spent of all that was charged', () => {
   it('writes one decimal under ten per cent, whole from there', () => {
     expect(custodySpentOfFund(4335.5, 50_000)).toBe('8.7%');
     expect(custodySpentOfFund(4970, 50_000)).toBe('9.9%');
@@ -189,14 +203,14 @@ describe('«صُرف منها X%» — what was spent of the fund', () => {
     // All but a sliver is not «100%»; a sliver past it is not «100%» either.
     expect(custodySpentOfFund(49_900, 50_000)).toBe('>99%');
     expect(custodySpentOfFund(50_100, 50_000)).toBe('>100%');
-    // The spend can outrun what was charged into the fund — and says so.
+    // The spend can outrun what was charged — after a few replenishes it does — and says so.
     expect(custodySpentOfFund(60_000, 50_000)).toBe('120%');
-    // Nothing in the fund (0, as today): nothing to divide by.
+    // Nothing charged yet: nothing to divide by.
     expect(custodySpentOfFund(4335.5, 0)).toBe('—');
     expect(custodySpentOfFund(0, 0)).toBe('—');
   });
 
-  it('draws the same share as a bar: nothing in the fund, none; past the fund, all of it', () => {
+  it('draws the same share as a bar: nothing charged, none; past it, all of it', () => {
     expect(custodySpentOfFundPct(25_000, 50_000)).toBe(50);
     expect(custodySpentOfFundPct(60_000, 50_000)).toBe(100);
     expect(custodySpentOfFundPct(4335.5, 0)).toBe(0);
@@ -204,12 +218,25 @@ describe('«صُرف منها X%» — what was spent of the fund', () => {
     expect(custodySpentOfFundPct(0, 50_000)).toBe(0);
   });
 
-  it('reads an answer with no fund in it — an older server — as 0, never «NaN%»', () => {
-    // The web can reach the screen before the API that carries `fundTotal` as a number (a
-    // staggered deploy): an older server's `null`, or no field at all.
-    for (const fund of [null, undefined, Number.NaN, Infinity, -5]) {
-      expect(custodySpentOfFund(4335.5, fund), String(fund)).toBe('—');
-      expect(custodySpentOfFundPct(4335.5, fund), String(fund)).toBe(0);
+  it('reads an answer with no figures in it — an older server — as 0, never «NaN%»', () => {
+    // The web can reach the screen before the API that carries the figures (a staggered deploy):
+    // an older server's `null`, or no field at all.
+    for (const odd of [null, undefined, Number.NaN, Infinity, -5]) {
+      expect(custodySpentOfFund(4335.5, odd), String(odd)).toBe('—');
+      expect(custodySpentOfFundPct(4335.5, odd), String(odd)).toBe(0);
+    }
+    for (const odd of [null, undefined, Number.NaN, Infinity]) {
+      expect(custodySpentOfFund(odd, 50_000), String(odd)).toBe('0%');
+      expect(custodySpentOfFundPct(odd, 50_000), String(odd)).toBe(0);
+    }
+  });
+
+  it('passes the fund through as it is — below zero too — and anything else as 0', () => {
+    expect(custodyFundAmount(50_000)).toBe(50_000);
+    expect(custodyFundAmount(-4335.5)).toBe(-4335.5);
+    expect(custodyFundAmount(0)).toBe(0);
+    for (const odd of [null, undefined, Number.NaN, Infinity, -Infinity]) {
+      expect(custodyFundAmount(odd), String(odd)).toBe(0);
     }
   });
 });
@@ -226,14 +253,21 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     expect(text(figure(html, 'fund'))).toContain(ar('fleet.custody.fund.title'));
   });
 
-  it('shows the fund, «ج.م.» apart, and «صُرف منها 8.7%» over a bar of the same share', () => {
+  it('shows the fund, «ج.م.» apart, and «صُرف من إجمالي الشحن 8.7%» over a bar of the same share', () => {
     const fund = figure(mount(<CustodyFigures totals={summary} />), 'fund');
+    // The line's words: what was spent of everything charged in — «صُرف منها» (of the fund) no more.
+    expect(ar('fleet.custody.fund.spent')).toBe('صُرف من إجمالي الشحن');
+    expect(translate('en', 'fleet.custody.fund.spent')).toBe('Spent of all top-ups');
+    expect(ar('fleet.custody.fund.spentTitle')).toBe(
+      'مصروفات الإيصالات ÷ إجمالي ما شُحن في العهدة',
+    );
     // The board's figure: black, in the boards' monospace, as its tiles write theirs.
     expect(fund).toContain(
       `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">50,000.00</span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,
     );
     expect(text(fund)).toContain(`${ar('fleet.custody.fund.spent')} 8.7%`);
-    expect(ar('fleet.custody.fund.spent')).toBe('صُرف منها');
+    // What the share means, on hover.
+    expect(fund).toContain(`title="${ar('fleet.custody.fund.spentTitle')}"`);
     // The share left to right, in Latin digits, on its own chip.
     expect(fund).toMatch(
       /<span dir="ltr" data-custody-fund-pct="true" class="[^"]*">8\.7%<\/span>/u,
@@ -241,6 +275,40 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     expect(fund).toContain(
       `<span class="block h-full rounded-full ${CUSTODY_FUND.fill}" style="width:8.671%"></span>`,
     );
+  });
+
+  it('takes the share from everything spent over everything charged — never from the filtered sums', () => {
+    // The board's filters narrow «إجمالي مصروفات العهدة» (`total`); the fund's share is the whole
+    // fund's: 20,000 of 50,000 charged.
+    const fund = figure(
+      mount(<CustodyFigures totals={{ ...summary, total: 120, fundSpent: 20_000 }} />),
+      'fund',
+    );
+    expect(text(fund)).toContain(`${ar('fleet.custody.fund.spent')} 40%`);
+    expect(fund).toContain('style="width:40%"');
+  });
+
+  it('writes a fund below zero «−X» in red — never clamped to 0', () => {
+    const fund = figure(mount(<CustodyFigures totals={atStart} />), 'fund');
+    expect(fund).toContain(
+      `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}"><span dir="ltr" data-custody-fund-negative="true" title="${ar('fleet.custody.fund.negativeTitle')}" class="${CUSTODY_NEGATIVE_INK}">−4,335.50</span></span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,
+    );
+    expect(CUSTODY_NEGATIVE_INK).toBe('text-red-600 dark:text-red-400');
+    // The minus is the minus sign, not a hyphen; the share «—»: nothing was charged yet.
+    expect(text(fund)).toBe(
+      `${ar('fleet.custody.fund.title')} −4,335.50 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+    );
+    expect(fund).toContain('style="width:0%"');
+    expect(fund).not.toMatch(/NaN|Infinity|-4,335/u);
+    // A positive fund wears no red.
+    expect(figure(mount(<CustodyFigures totals={summary} />), 'fund')).not.toContain('red-');
+    // …and the dashboard's card, the same component.
+    const card = kpi(
+      mount(<CustodyKpis data={dashboard({ fundTotal: -124_139.46, fundCharged: 300_000 })} />),
+      'fund',
+    );
+    expect(card).toContain('data-custody-fund-negative="true"');
+    expect(text(card)).toContain('−124,139.46 ج.م.');
   });
 
   it('wears its own calm slate — the dashboard’s card, no kind’s colour and not the total’s emerald', () => {
@@ -277,7 +345,7 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     }
   });
 
-  it('shows «0.00 ج.م.» while nothing is charged into the fund — its share «—», its bar empty', () => {
+  it('shows «0.00 ج.م.» while the fund holds nothing — its share «—», its bar empty', () => {
     const fund = figure(mount(<CustodyFigures totals={empty} />), 'fund');
     expect(fund).toContain(
       `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">0.00</span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,
@@ -299,9 +367,11 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
   });
 
   it('reads an answer with no fund at all as 0 — no «ليس رقمًا», no «NaN%»', () => {
-    // An older server's summary, without the field: the board's tile reads «0.00 ج.م.».
+    // An older server's summary, without the fields: the board's tile reads «0.00 ج.م.».
     const older: Partial<FleetCustodySummaryDto> = { ...summary };
     delete older.fundTotal;
+    delete older.fundCharged;
+    delete older.fundSpent;
     expect('fundTotal' in older).toBe(false);
     const fund = figure(mount(<CustodyFigures totals={older as FleetCustodySummaryDto} />), 'fund');
     expect(text(fund)).toBe(
@@ -310,9 +380,18 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     expect(fund).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
     expect(fund).toContain('style="width:0%"');
     // …and so does an older server's `null`, and a value that is no amount at all.
-    for (const odd of [null, Number.NaN, Infinity, -5]) {
+    for (const odd of [null, Number.NaN, Infinity]) {
       const tile = figure(
-        mount(<CustodyFigures totals={{ ...summary, fundTotal: odd as unknown as number }} />),
+        mount(
+          <CustodyFigures
+            totals={{
+              ...summary,
+              fundTotal: odd as unknown as number,
+              fundCharged: odd as unknown as number,
+              fundSpent: odd as unknown as number,
+            }}
+          />,
+        ),
         'fund',
       );
       expect(text(tile), String(odd)).toBe(
@@ -323,7 +402,15 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     }
     // …and the dashboard's card, the same component.
     const card = kpi(
-      mount(<CustodyKpis data={dashboard({ fundTotal: undefined as unknown as number })} />),
+      mount(
+        <CustodyKpis
+          data={dashboard({
+            fundTotal: undefined as unknown as number,
+            fundCharged: undefined as unknown as number,
+            fundSpent: undefined as unknown as number,
+          })}
+        />,
+      ),
       'fund',
     );
     expect(text(card)).toBe(
@@ -366,9 +453,9 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     );
   });
 
-  it('reads past the fund as it is — «120%», the bar full', () => {
+  it('reads a spend past all that was charged as it is — «120%», the bar full', () => {
     const fund = figure(
-      mount(<CustodyFigures totals={{ ...summary, total: 60_000, fundTotal: 50_000 }} />),
+      mount(<CustodyFigures totals={{ ...summary, fundSpent: 60_000, fundCharged: 50_000 }} />),
       'fund',
     );
     expect(text(fund)).toContain(`${ar('fleet.custody.fund.spent')} 120%`);
@@ -423,8 +510,11 @@ describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
     }
   });
 
-  it('shows «0.00 ج.م.» while nothing is charged into the fund, its share «—», with no bar', () => {
-    const card = kpi(mount(<CustodyKpis data={dashboard({ fundTotal: 0 })} />), 'fund');
+  it('shows «0.00 ج.م.» while the fund holds nothing, its share «—», with no bar', () => {
+    const card = kpi(
+      mount(<CustodyKpis data={dashboard({ fundTotal: 0, fundCharged: 0, fundSpent: 0 })} />),
+      'fund',
+    );
     expect(text(card)).toBe(
       `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
     );
@@ -434,17 +524,17 @@ describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
     expect(card).not.toMatch(/NaN|Infinity/u);
   });
 
-  it('is one component, drawn by both', () => {
+  it('is one component, drawn by both, fed the unfiltered figures', () => {
     const figures = read('../components/CustodyFigures.tsx');
     const modal = read('../components/CustodyDashboard.tsx');
-    expect(figures).toContain(
-      '<CustodyFundCard fundTotal={totals.fundTotal} spent={totals.total} board />',
+    expect(figures).toMatch(
+      /<CustodyFundCard\s+fundTotal=\{totals\.fundTotal\}\s+charged=\{totals\.fundCharged\}\s+spent=\{totals\.fundSpent\}\s+board\s+\/>/u,
     );
-    expect(modal).toContain(
-      '<CustodyFundCard fundTotal={data.fundTotal} spent={data.total} figure={FIGURE} />',
+    expect(modal).toMatch(
+      /<CustodyFundCard\s+fundTotal=\{data\.fundTotal\}\s+charged=\{data\.fundCharged\}\s+spent=\{data\.fundSpent\}\s+figure=\{FIGURE\}\s+\/>/u,
     );
-    // A spent total of nothing over a fund: «0%», not a dash.
-    const zero = mount(<CustodyFundCard fundTotal={50_000} spent={0} />);
+    // A spent total of nothing over what was charged: «0%», not a dash.
+    const zero = mount(<CustodyFundCard fundTotal={50_000} charged={50_000} spent={0} />);
     expect(text(zero)).toContain(`${ar('fleet.custody.fund.spent')} 0%`);
   });
 });

@@ -7,9 +7,16 @@
 // of the list inside this file and read nothing but `i18n.ts`, and that is precisely how a screen
 // full of «ومش هيتعمل» and «صفوف ما اتقريتش» reached the owner with a green build behind it. One
 // list, read by both, or the two drift and the weaker one is the one that runs.
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { offendersIn, productStrings } from '../../../../../scripts/check-formal-arabic.mjs';
+import {
+  ROOT,
+  VERBATIM_PAPERS,
+  offendersIn,
+  productStrings,
+} from '../../../../../scripts/check-formal-arabic.mjs';
 
 describe('the Arabic the product speaks is formal Arabic', () => {
   const strings = productStrings();
@@ -66,5 +73,61 @@ describe('the Arabic the product speaks is formal Arabic', () => {
     ]) {
       expect(offendersIn(formal), formal).toEqual([]);
     }
+  });
+});
+
+// His printed papers are exempt — by FILE, two of them, and nothing else. «عاوز زيهم بالظبط»: the
+// custody's memos and letters print his words, his spelling included («الاجمالى النهائى»), so the
+// file holding those words and the file holding his default names are listed in `VERBATIM_PAPERS`
+// and not corrected. What keeps that exemption from quietly growing is pinned here: exactly those
+// two files; every other file of the paper engine carries no Arabic letter at all (the
+// Arabic-Indic digits, «٫» and the tatweel are built from code points, and they are not letters);
+// and the rule itself is untouched — his words written anywhere else are still caught.
+describe('his printed papers — the one exemption, held narrow', () => {
+  const PAPER_LIB = 'apps/web/src/modules/fleet/lib';
+  /** His scenario's data for the papers' specs: scanned like any other file (and formal). */
+  const SAMPLES = `${PAPER_LIB}/custody-paper-samples.ts`;
+
+  /** Comments blanked the way the check blanks them — a quotation of his is not code. */
+  const code = (file: string): string =>
+    readFileSync(join(ROOT, file), 'utf8')
+      .replace(/\/\*[^]*?\*\//gu, ' ')
+      .replace(/(^|[^:'"`\\])\/\/[^\n]*/gu, '$1');
+
+  it('exempts exactly his papers’ wording and his default names — both files exist', () => {
+    expect([...VERBATIM_PAPERS].sort()).toEqual([
+      'apps/web/src/modules/fleet/lib/custody-paper-wording.ts',
+      'packages/contracts/src/modules/fleet-custody-paper-defaults.ts',
+    ]);
+    for (const file of VERBATIM_PAPERS) expect(existsSync(join(ROOT, file)), file).toBe(true);
+  });
+
+  it('reads nothing out of them', () => {
+    const strings = productStrings();
+    for (const file of VERBATIM_PAPERS) {
+      expect(
+        strings.filter((s) => s.file === file),
+        file,
+      ).toEqual([]);
+    }
+  });
+
+  it('keeps every other file of the paper engine free of Arabic letters', () => {
+    const files = readdirSync(join(ROOT, PAPER_LIB))
+      .filter((name) => /^custody-papers?(?:-[a-z]+)?\.ts$/u.test(name))
+      .map((name) => `${PAPER_LIB}/${name}`)
+      .filter((file) => !VERBATIM_PAPERS.includes(file) && file !== SAMPLES);
+    expect(files.length).toBeGreaterThanOrEqual(7);
+    // Arabic LETTERS (ء … ي): a digit, «٫» or the tatweel would be built from its code point.
+    const offenders = files.filter((file) => /[\u0621-\u064A]/u.test(code(file)));
+    expect(offenders).toEqual([]);
+  });
+
+  it('still catches his spelling anywhere else — the exemption is the file, not a softer rule', () => {
+    expect(offendersIn('الاجمالى النهائى')).toContain('«الاجمالى» → «الإجمالي»');
+    expect(offendersIn('عن الفتره من 1 الى 30')).toContain('«الى» → «إلى»');
+    // And the screens' own names for his papers are formal.
+    expect(offendersIn('مذكرة بمصروفات الكاوتش')).toEqual([]);
+    expect(offendersIn('مذكرة داخلية بمصروفات التموين')).toEqual([]);
   });
 });

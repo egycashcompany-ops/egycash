@@ -164,7 +164,19 @@ export const buildApp = (): Express => {
     }),
   );
   app.use(cors({ origin: env.CORS_ORIGINS, credentials: true }));
-  app.use(express.json({ limit: '1mb' }));
+  // A custody memo («مذكرة») is the one write whose contract-valid body can pass 1mb, so the
+  // app-wide parser leaves its path alone: the memo router reads that body itself, with room for
+  // it, only AFTER `authenticate` and `authorize` — nobody unauthenticated makes the server buffer
+  // more than anywhere else (see `custody-memo.routes.ts`). Every other path keeps the 1mb limit.
+  const jsonUpTo1mb = express.json({ limit: '1mb' });
+  const memoPath = `${env.BASE_PATH}/api/v1/fleet/custody/memos`;
+  app.use((req, res, next) => {
+    if (req.path === memoPath || req.path.startsWith(`${memoPath}/`)) {
+      next();
+      return;
+    }
+    jsonUpTo1mb(req, res, next);
+  });
   app.use(cookieParser());
   app.use(mongoSanitize());
 

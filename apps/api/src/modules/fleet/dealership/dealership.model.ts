@@ -35,7 +35,7 @@ export interface FleetDealershipInvoiceDoc extends BaseDocFields {
   invoiceNumber: string | null;
   invoiceAmount: number | null;
   image: FleetDealershipImage | null;
-  /** Stored once the invoice is recorded, so the custody screen can sum it in the database. */
+  /** Stored once the invoice is recorded, as it always was — kept on the row, counted nowhere. */
   side: FleetDealershipSide | null;
 }
 
@@ -69,7 +69,7 @@ const dealershipSchema = new Schema<FleetDealershipInvoiceDoc>(
   baseSchemaOptions,
 );
 
-// The screen lists by exit date, newest first; the custody screen sums by side over a date range.
+// The screen lists by exit date, newest first. The side index is kept as it was built.
 dealershipSchema.index({ outDate: -1 }, { name: 'ix_dealership_out' });
 dealershipSchema.index({ vehicleId: 1, outDate: -1 }, { name: 'ix_dealership_vehicle_out' });
 dealershipSchema.index({ side: 1, outDate: -1 }, { name: 'ix_dealership_side_out' });

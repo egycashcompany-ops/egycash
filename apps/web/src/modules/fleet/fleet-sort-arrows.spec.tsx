@@ -177,6 +177,28 @@ describe('the custody ledger orders its movements on the server', () => {
   });
 });
 
+describe('«المذكرات» and «سجل العهدة» order on the server', () => {
+  it('orders the memos by their number, newest first, asked of the server', () => {
+    // The number is the memo's own order — one running count across every kind.
+    arrowed('pages/CustodyMemosPage.tsx', ['no']);
+    const page = code('pages/CustodyMemosPage.tsx');
+    expect(page, 'no column renamed on its way to the server').not.toContain('sortKey:');
+    expect(page).toContain('...sortQuery(sorts)');
+    expect(page).toContain("const DEFAULT_SORT = 'no:desc';");
+    // The other columns are read, not ordered by: the filters pick them.
+    for (const key of ['name', 'kind', 'period', 'receipts', 'total', 'status']) {
+      expect(column(page, key), key).not.toContain('sortable: true');
+    }
+  });
+
+  it('orders the fund’s history by its day, asked of the server', () => {
+    arrowed('pages/CustodyLedgerPage.tsx', ['date']);
+    const page = code('pages/CustodyLedgerPage.tsx');
+    expect(page).toContain('...sortQuery(sorts)');
+    expect(page).toContain("const DEFAULT_SORT = 'date:desc';");
+  });
+});
+
 describe('the three WHOLE boards order what they already hold', () => {
   it('offers the alarms board an arrow on each of its five columns', () => {
     arrowed('pages/MaintenanceAlarmsPage.tsx', [
@@ -201,7 +223,7 @@ describe('the three WHOLE boards order what they already hold', () => {
       page.indexOf('const vehicleColumns'),
     );
     expect(kinds, 'each of its four kinds').toContain('sortable: true');
-    for (const kind of ['dealership', 'fuel', 'tyres', 'wash']) {
+    for (const kind of ['maintenance', 'fuel', 'tyres', 'wash']) {
       expect(page, kind).toContain(`kindCol('${kind}'),`);
     }
     expect(column(page, 'total'), 'and «الإجمالي»').toContain('sortable: true');

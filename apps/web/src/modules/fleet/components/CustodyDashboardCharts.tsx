@@ -144,7 +144,7 @@ const shiftMonth = (key: string, by: number): string => {
 
 const zeroBucket = (key: string): FleetCustodyTimeBucketDto => ({
   key,
-  dealership: 0,
+  maintenance: 0,
   fuel: 0,
   tyres: 0,
   wash: 0,
@@ -190,7 +190,7 @@ const tallestBar = (bucket: FleetCustodyTimeBucketDto): number =>
   CUSTODY_KINDS.reduce((top, kind) => Math.max(top, bucket[kind]), 0);
 
 /**
- * (3) The spend over time — four thin bars a period (التوكيل، وقود، كاوتش، غسيل), not stacked;
+ * (3) The spend over time — four thin bars a period (صيانة، وقود، كاوتش، غسيل), not stacked;
  * a kind with nothing that period is a 2px stub. The dearest period carries its total over its
  * bars in amber; the period read out (under the pointer or the focus, the latest until then) in
  * emerald. Time runs left to right whatever the page's direction; ←/→/Home/End walk the columns.
@@ -615,8 +615,12 @@ const OUTER_R = 64;
 const INNER_R = 44;
 const OUTER_C = 2 * Math.PI * OUTER_R;
 const INNER_C = 2 * Math.PI * INNER_R;
-const SOURCES = ['receipt', 'dealershipInvoice'] as const;
-/** The inner ring: the receipts screen emerald, the dealership's bills blue. */
+/**
+ * The inner ring's sources. «التوكيل … ملهاش علاقة ب حاجة»: a dealership bill is no movement of
+ * the fund any more, so the receipts screen is the one source left — its arc, emerald, is the
+ * whole ring. The design's two rings stay as they were drawn.
+ */
+const SOURCES = ['receipt'] as const;
 const SOURCE_LOOK = {
   receipt: {
     stroke: 'stroke-[#059669] dark:stroke-[#10b981]',
@@ -624,27 +628,21 @@ const SOURCE_LOOK = {
     text: 'text-emerald-800 dark:text-emerald-400',
     label: 'fleet.custody.dashboard.donut.receipts',
   },
-  dealershipInvoice: {
-    stroke: 'stroke-[#2563eb] dark:stroke-[#3b82f6]',
-    dot: 'bg-blue-600 dark:bg-blue-500',
-    text: 'text-blue-700 dark:text-blue-400',
-    label: 'fleet.custody.dashboard.donut.dealership',
-  },
 } as const;
 
 /**
- * (4) «حسب النوع والمصدر» — the kinds on the outer ring, the two sources (the receipts screen,
- * the dealership's bills) on the inner one, the total in the middle; the legend, a small table of
- * the kinds, and the fuel's suppliers under it. «عرض حركات التوكيل» sets the board's own «المصدر»
- * to التوكيل and closes the dashboard.
+ * (4) «حسب النوع والمصدر» — the kinds on the outer ring («صيانة» first, in the blue التوكيل had),
+ * the source on the inner one, the total in the middle; the legend, a small table of the kinds,
+ * and the fuel's suppliers under it. «عرض حركات الصيانة» sets the board's own «المصدر» to «صيانة»
+ * and closes the dashboard.
  */
 export const CustodyByKindSource = ({
   data,
-  onShowDealership,
+  onShowMaintenance,
   filters = {},
 }: {
   data: FleetCustodyDashboardDto;
-  onShowDealership?: (() => void) | undefined;
+  onShowMaintenance?: (() => void) | undefined;
   /** The board's filters — only the words of the line a card of no movement carries. */
   filters?: CustodyDashboardFilters;
 }): JSX.Element => {
@@ -981,14 +979,14 @@ export const CustodyByKindSource = ({
             )}
           </span>
         )}
-        {onShowDealership !== undefined && (
+        {onShowMaintenance !== undefined && (
           <button
             type="button"
-            data-custody-show-dealership="true"
-            onClick={onShowDealership}
+            data-custody-show-maintenance="true"
+            onClick={onShowMaintenance}
             className="font-bold text-emerald-700 transition hover:underline dark:font-medium dark:text-emerald-400 dark:hover:text-emerald-300"
           >
-            {t('fleet.custody.dashboard.donut.showDealership')}
+            {t('fleet.custody.dashboard.donut.showMaintenance')}
           </button>
         )}
       </div>
@@ -997,10 +995,6 @@ export const CustodyByKindSource = ({
 };
 
 // ── «أعلى السيارات صرفًا» ──────────────────────────────────────────────────────────────────────
-
-/** The legend's short names — the design writes «توكيل» there, the kind's name elsewhere. */
-const shortName = (t: ReturnType<typeof useT>, kind: FleetCustodySource): string =>
-  kind === 'dealership' ? t('fleet.custody.dashboard.short.dealership') : kindName(t, kind);
 
 /**
  * (5) The ten dearest cars: each bar the FULL width, split by that car's own kinds; beside the
@@ -1052,7 +1046,7 @@ export const CustodyTopCars = ({
               data-custody-swatch={kind}
               className={cn('h-2 w-2 rounded', CUSTODY_KIND[kind].fill)}
             />
-            {shortName(t, kind)}
+            {kindName(t, kind)}
           </span>
         ))}
       </div>
@@ -1123,22 +1117,16 @@ export const CustodyTopCars = ({
 
 // ── «أعلى السائقين صرفًا» ─────────────────────────────────────────────────────────────────────
 
-/** The kinds a driver is named on — the receipts'; a dealership bill names no driver. */
-const DRIVER_KINDS = ['fuel', 'tyres', 'wash'] as const;
-
 /**
- * What the receipts came to (fuel, tyres, washing) — the whole a driver's share is of, never the
- * whole fund: a dealership bill names no driver, so against the whole every driver would look
- * smaller by the dealership's part.
+ * What the receipts came to (صيانة، وقود، كاوتش، غسيل) — the whole a driver's share is of. Every
+ * kind is a receipt's, and a receipt names its driver, so this is everything the fund paid.
  */
 export const custodyReceipts = (data: FleetCustodyDashboardDto): number =>
-  DRIVER_KINDS.reduce((sum, kind) => sum + data[kind], 0);
+  CUSTODY_KINDS.reduce((sum, kind) => sum + data[kind], 0);
 
 /** «وقود 65% • كاوتش 25%» — a driver's two biggest kinds, dearest first. */
-export const custodyTopKinds = (
-  driver: FleetCustodyDriverRowDto,
-): (typeof DRIVER_KINDS)[number][] =>
-  DRIVER_KINDS.filter((kind) => driver[kind] > 0)
+export const custodyTopKinds = (driver: FleetCustodyDriverRowDto): FleetCustodySource[] =>
+  CUSTODY_KINDS.filter((kind) => driver[kind] > 0)
     .sort((a, b) => driver[b] - driver[a])
     .slice(0, 2);
 
@@ -1155,8 +1143,8 @@ export const CUSTODY_RINGS = [
 const RING_PATH = 'M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831';
 
 /**
- * (6) The receipts' drivers (a bill names none) — each a ring of his share of the receipts, his
- * two biggest kinds under his name, his total at the end; then the receipts that name no driver.
+ * (6) The receipts' drivers — each a ring of his share of the receipts, his two biggest kinds
+ * under his name, his total at the end; then the receipts that name no driver.
  */
 export const CustodyTopDrivers = ({
   data,
@@ -1195,7 +1183,7 @@ export const CustodyTopDrivers = ({
         {ranked.length === 0 && data.count === 0 ? (
           <CustodyNoMovements filtered={custodyFiltered(filters)} className="py-4 text-center" />
         ) : ranked.length === 0 ? (
-          // A dealership bill names no driver, and a receipt may name none: nothing to rank.
+          // A receipt may name no driver: nothing to rank.
           <p
             data-custody-no-drivers="true"
             className="py-4 text-center text-xs text-slate-500 dark:text-slate-400"

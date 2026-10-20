@@ -1,9 +1,10 @@
 // «لوحة تحكم»: everything the dashboard adds to the figures, folded from the same movements — by
 // the day inside a month and by the month past it, every stretch in between, each driver once,
-// the bills on no driver, the litres and the receipts that have none — and every part adding up
-// to the whole. Then what the owner's design reads off the same pass: the period's days, the
-// fund's fuel by «الشركة» with «بدون شركة» kept apart, and the alerts banner — all counted, none
-// guessed.
+// the receipts on no driver, the litres and the receipts that have none — and every part adding
+// up to the whole. Every movement is a receipt from the fund: «صيانة» is one like tyres and
+// washing, and no dealership invoice is ever among them. Then what the owner's design reads off the
+// same pass: the period's days, the fund's fuel by «الشركة» with «بدون شركة» kept apart, and the
+// alerts banner — all counted, none guessed.
 import { describe, expect, it } from 'vitest';
 import {
   custodyDashboard,
@@ -28,11 +29,10 @@ const row = (over: Partial<CustodyDashboardRow> = {}): CustodyDashboardRow => ({
   ...over,
 });
 
-const bill = (over: Partial<CustodyDashboardRow> = {}): CustodyDashboardRow =>
+/** «صيانة» — a receipt from the fund like tyres and washing: no fuel type, no litres. */
+const maintenance = (over: Partial<CustodyDashboardRow> = {}): CustodyDashboardRow =>
   row({
-    ref: 'dealershipInvoice',
-    source: 'dealership',
-    driverName: null,
+    source: 'maintenance',
     fuelType: null,
     litres: null,
     amount: 850,
@@ -61,11 +61,8 @@ describe('custodyDashboard', () => {
   it('says nothing of an empty set — zeros, no stretch, no driver', () => {
     expect(custodyDashboard([], {})).toEqual({
       vehicleCount: 0,
-      counts: { dealership: 0, fuel: 0, tyres: 0, wash: 0 },
-      bySource: [
-        { ref: 'receipt', count: 0, amount: 0 },
-        { ref: 'dealershipInvoice', count: 0, amount: 0 },
-      ],
+      counts: { maintenance: 0, fuel: 0, tyres: 0, wash: 0 },
+      bySource: [{ ref: 'receipt', count: 0, amount: 0 }],
       timeline: { granularity: 'month', buckets: [] },
       drivers: [],
       noDriver: { count: 0, amount: 0 },
@@ -82,7 +79,6 @@ describe('custodyDashboard', () => {
       },
       alerts: {
         doubleFuel: [],
-        pendingPrivateBills: { count: 0, oldestOutDate: null },
         receiptsWithoutPhoto: 0,
         duplicateReceipts: 0,
       },
@@ -93,7 +89,7 @@ describe('custodyDashboard', () => {
     const rows = [
       row({ date: new Date('2026-12-05T00:00:00.000Z'), amount: 100 }),
       row({ source: 'wash', date: new Date('2026-12-01T00:00:00.000Z'), amount: 40 }),
-      bill({ date: new Date('2026-09-30T00:00:00.000Z'), amount: 850 }),
+      maintenance({ date: new Date('2026-09-30T00:00:00.000Z'), amount: 850 }),
     ];
     const { timeline } = custodyDashboard(rows, {});
     expect(timeline.granularity).toBe('month');
@@ -105,7 +101,7 @@ describe('custodyDashboard', () => {
     ]);
     expect(timeline.buckets[0]).toEqual({
       key: '2026-09',
-      dealership: 850,
+      maintenance: 850,
       fuel: 0,
       tyres: 0,
       wash: 0,
@@ -151,7 +147,7 @@ describe('custodyDashboard', () => {
     expect(timeline.buckets[0]).toMatchObject({ total: 0, count: 0 });
   });
 
-  it('names each driver once — by the roster’s person, else the typed name — and the bills on none', () => {
+  it('names each driver once — by the roster’s person, else the typed name — and the receipts on none', () => {
     const rows = [
       row({ driverEmployeeId: 'e-7', driverName: 'ابراهيم السيد', amount: 300 }),
       row({
@@ -166,23 +162,27 @@ describe('custodyDashboard', () => {
       row({ source: 'tyres', driverName: 'محمد رأفت', fuelType: null, litres: null, amount: 900 }),
       row({ source: 'wash', driverName: '  ', fuelType: null, litres: null, amount: 40 }),
       row({ source: 'tyres', driverName: null, fuelType: null, litres: null, amount: 60 }),
-      bill({ amount: 850 }),
+      // «صيانة» names its driver as tyres and washing do.
+      maintenance({ driverName: 'محمد رأفت', amount: 850 }),
+      maintenance({ driverName: null, amount: 75 }),
     ];
     const out = custodyDashboard(rows, {});
     expect(out.drivers).toEqual([
       {
         driverEmployeeId: null,
         driverName: 'محمد رأفت',
+        maintenance: 850,
         fuel: 100,
         tyres: 900,
         wash: 0,
-        total: 1000,
-        count: 2,
+        total: 1850,
+        count: 3,
       },
       {
         driverEmployeeId: 'e-7',
         // The newest receipt's name — the rows arrive newest first.
         driverName: 'ابراهيم السيد',
+        maintenance: 0,
         fuel: 300,
         tyres: 0,
         wash: 50,
@@ -190,12 +190,11 @@ describe('custodyDashboard', () => {
         count: 2,
       },
     ]);
-    // A receipt with no name, or only spaces, is on no driver; a bill is never on one.
-    expect(out.noDriver).toEqual({ count: 2, amount: 100 });
+    // A receipt with no name, or only spaces, is on no driver — whatever its kind.
+    expect(out.noDriver).toEqual({ count: 3, amount: 175 });
     // The drivers and the receipts on none are every receipt.
-    const receipts = rows.filter((r) => r.source !== 'dealership');
     expect(sum([...out.drivers.map((d) => d.total), out.noDriver.amount])).toBe(
-      sum(receipts.map((r) => r.amount)),
+      sum(rows.map((r) => r.amount)),
     );
   });
 
@@ -217,21 +216,20 @@ describe('custodyDashboard', () => {
     ]);
   });
 
-  it('counts each kind, each screen and each car — a bill typed with a book code is its car', () => {
+  it('counts each kind, the one screen and each car — «صيانة» in the place «التوكيل» had', () => {
     const rows = [
       row(),
       row({ source: 'tyres', amount: 1400 }),
       row({ vehicleId: 'v-204', vehicleCode: '204', source: 'wash', amount: 120 }),
-      bill({ vehicleId: null, vehicleCode: '63', amount: 850 }),
-      bill({ vehicleId: null, vehicleCode: null, amount: 0 }),
+      maintenance({ vehicleId: 'v-63', vehicleCode: '63', amount: 850 }),
+      maintenance({ amount: 150 }),
     ];
     const out = custodyDashboard(rows, {});
-    expect(out.counts).toEqual({ dealership: 2, fuel: 1, tyres: 1, wash: 1 });
-    expect(out.bySource).toEqual([
-      { ref: 'receipt', count: 3, amount: 1835 },
-      { ref: 'dealershipInvoice', count: 2, amount: 850 },
-    ]);
-    expect(out.vehicleCount, '160, 204 and the book code 63 — a line with no car is none').toBe(3);
+    expect(out.counts).toEqual({ maintenance: 2, fuel: 1, tyres: 1, wash: 1 });
+    expect(Object.keys(out.counts)).toEqual(['maintenance', 'fuel', 'tyres', 'wash']);
+    // «المصدر»: every movement is a receipt from the fund.
+    expect(out.bySource).toEqual([{ ref: 'receipt', count: 5, amount: 2835 }]);
+    expect(out.vehicleCount, '160, 204 and 63').toBe(3);
   });
 
   it('adds up to the whole every way it is cut — the stretches, the screens, the kinds', () => {
@@ -239,7 +237,7 @@ describe('custodyDashboard', () => {
       row({ amount: 315.1 }),
       row({ source: 'tyres', amount: 1400.2, date: new Date('2026-08-03T00:00:00.000Z') }),
       row({ source: 'wash', amount: 120.3, date: new Date('2026-07-15T00:00:00.000Z') }),
-      bill({ amount: 850.4, date: new Date('2026-09-09T00:00:00.000Z') }),
+      maintenance({ amount: 850.4, date: new Date('2026-09-09T00:00:00.000Z') }),
     ];
     const total = sum(rows.map((r) => r.amount));
     const out = custodyDashboard(rows, {});
@@ -248,7 +246,7 @@ describe('custodyDashboard', () => {
     expect(sum(out.bySource.map((line) => line.amount))).toBe(total);
     expect(sum(Object.values(out.counts))).toBe(rows.length);
     for (const bucket of out.timeline.buckets) {
-      expect(sum([bucket.dealership, bucket.fuel, bucket.tyres, bucket.wash]), bucket.key).toBe(
+      expect(sum([bucket.maintenance, bucket.fuel, bucket.tyres, bucket.wash]), bucket.key).toBe(
         bucket.total,
       );
     }
@@ -265,7 +263,7 @@ describe('custodyDashboard', () => {
       row({ company: null, fuelType: null, litres: null, amount: 70 }),
       // Not fuel: never in the split.
       row({ source: 'tyres', fuelType: null, litres: null, amount: 900 }),
-      bill({ amount: 850 }),
+      maintenance({ amount: 850 }),
     ];
     const out = custodyDashboard(rows, {});
     expect(out.fuelByCompany).toMatchObject({
@@ -308,7 +306,7 @@ describe('custodyDashboard', () => {
       row({ company: null, fuelType: null, litres: null, amount: 70 }),
       // Not fuel: in no company and no type.
       row({ source: 'tyres', company: null, fuelType: null, litres: null, amount: 900 }),
-      bill({ amount: 850 }),
+      maintenance({ amount: 850 }),
     ];
     const { fuelByCompany, fuelTypes } = custodyDashboard(rows, {});
     const fuel = sum(rows.filter((r) => r.source === 'fuel').map((r) => r.amount));
@@ -386,7 +384,7 @@ describe('custodyDashboard', () => {
     const rows = [
       row({ date: d('2026-10-09T21:30:00.000Z') }),
       row({ date: d('2026-10-04T00:00:00.000Z') }),
-      bill({ date: d('2026-10-01T00:00:00.000Z') }),
+      maintenance({ date: d('2026-10-01T00:00:00.000Z') }),
     ];
     // Both ends kept: the 1st to the 9th is nine days — the hour of the last one does not matter.
     expect(custodyPeriodDays(rows, {})).toBe(9);
@@ -423,11 +421,12 @@ describe('custodyDashboard', () => {
       row({ vehicleId: 'v-9', vehicleCode: '9', date: at('2026-10-06T10:00:00.000Z') }),
       row({ vehicleId: 'v-12', vehicleCode: '12', date: at('2026-10-06T10:00:00.000Z') }),
       row({ vehicleId: 'v-12', vehicleCode: '12', date: at('2026-10-06T11:00:00.000Z') }),
-      // Tyres and washing the same day are not a second fuelling; another car is another car.
+      // Tyres, washing and maintenance the same day are not a second fuelling; another car is
+      // another car.
       row({ vehicleId: 'v-160', vehicleCode: '160', source: 'tyres', fuelType: null }),
       row({ vehicleId: 'v-160', vehicleCode: '160' }),
       row({ vehicleId: 'v-160', vehicleCode: '160', source: 'wash', fuelType: null }),
-      bill({ vehicleId: 'v-160', vehicleCode: '160' }),
+      maintenance({ vehicleId: 'v-160', vehicleCode: '160' }),
     ];
     expect(custodyDashboard(rows, {}).alerts.doubleFuel).toEqual([
       { vehicleId: 'v-9', vehicleCode: '9', date: '2026-10-06', count: 2 },
@@ -436,14 +435,15 @@ describe('custodyDashboard', () => {
     ]);
   });
 
-  it('counts the receipts with no photo — a dealership bill is no receipt', () => {
+  it('counts the receipts with no photo — «صيانة» as tyres and washing', () => {
     const rows = [
       row({ hasImage: false }),
       row({ source: 'wash', fuelType: null, hasImage: false }),
       row({ hasImage: true }),
-      bill({ hasImage: false }),
+      maintenance({ hasImage: false }),
+      maintenance({ hasImage: true }),
     ];
-    expect(custodyDashboard(rows, {}).alerts.receiptsWithoutPhoto).toBe(2);
+    expect(custodyDashboard(rows, {}).alerts.receiptsWithoutPhoto).toBe(3);
   });
 
   it('counts the extra copies of a receipt — the same car, day, kind and amount', () => {
@@ -463,17 +463,19 @@ describe('custodyDashboard', () => {
       // Compared to the piastre: a sum that lands a hair off is the same amount.
       row({ source: 'tyres', fuelType: null, amount: 0.1 + 0.2 }),
       row({ source: 'tyres', fuelType: null, amount: 0.3 }),
-      // Two bills of one amount are two bills, not two receipts.
-      bill({ amount: 850 }),
-      bill({ amount: 850 }),
+      // Two alike maintenance receipts: one extra copy; a fuel one of the same amount is another kind.
+      maintenance({ amount: 850 }),
+      maintenance({ amount: 850 }),
+      row({ amount: 850 }),
     ];
-    expect(custodyDashboard(rows, {}).alerts.duplicateReceipts).toBe(4);
+    expect(custodyDashboard(rows, {}).alerts.duplicateReceipts).toBe(5);
   });
 
-  it('hands on the private bills awaiting their invoice as the service read them — no amount', () => {
-    const oldest = new Date('2026-10-02T00:00:00.000Z');
-    expect(
-      custodyDashboard([], {}, { count: 2, oldestOutDate: oldest }).alerts.pendingPrivateBills,
-    ).toEqual({ count: 2, oldestOutDate: '2026-10-02T00:00:00.000Z' });
+  it('raises nothing but what the receipts hold — no alert of a dealership invoice', () => {
+    expect(Object.keys(custodyDashboard([], {}).alerts)).toEqual([
+      'doubleFuel',
+      'receiptsWithoutPhoto',
+      'duplicateReceipts',
+    ]);
   });
 });

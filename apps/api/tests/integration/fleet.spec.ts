@@ -9478,7 +9478,20 @@ describe('dealership invoices (التوكيل) — «العربيه اللى ب�
     ]);
   });
 
-  it('a car that is not «ملاكي» needs an invoice number; a private one without it pays from the custody fund', async () => {
+  it('a car that is not «ملاكي» needs an invoice number; a private one without it is saved as entered and moves nothing', async () => {
+    // «ولا تنقص من الكروت ولا تنقص من العهدة وملهاش علاقة ب حاجة»: what the fund and the cards
+    // hold before any invoice here is written.
+    const custody = async (): Promise<FleetCustodySummaryDto> =>
+      data<FleetCustodySummaryDto>(
+        await request(app)
+          .get('/api/v1/fleet/custody/summary')
+          .set('Authorization', `Bearer ${adminToken}`),
+      );
+    const cardMovements = (): Promise<number> =>
+      FleetFuelCardMovementModel.countDocuments({}).exec();
+    const custodyBefore = await custody();
+    const cardsBefore = await cardMovements();
+
     const { visitId } = await exit('إصلاح');
     const [row] = await rowsOf(visitId);
     if (row === undefined) throw new Error('no row');
@@ -9493,13 +9506,33 @@ describe('dealership invoices (التوكيل) — «العربيه اللى ب�
       pending: false,
     });
 
-    // The clerk may say the car IS private — then the number is optional and the fund pays.
+    // The clerk may say the car IS private — then the number is optional. The invoice is kept
+    // exactly as entered, «ملاكي» and all.
     const { visitId: privateVisit } = await exit('إصلاح');
     const [privateRow] = await rowsOf(privateVisit);
     if (privateRow === undefined) throw new Error('no row');
-    const fromCustody = await record(privateRow, { privateCar: true, invoiceAmount: 850 });
-    expect(fromCustody.status).toBe(200);
-    expect(data<Row>(fromCustody)).toMatchObject({ side: 'custody', privateCar: true });
+    const privateBill = await record(privateRow, { privateCar: true, invoiceAmount: 850 });
+    expect(privateBill.status).toBe(200);
+    expect(data<Row>(privateBill)).toMatchObject({
+      privateCar: true,
+      invoiceNumber: null,
+      invoiceAmount: 850,
+      pending: false,
+    });
+    const [kept] = await rowsOf(privateVisit);
+    expect(kept).toMatchObject({ privateCar: true, invoiceNumber: null, invoiceAmount: 850 });
+
+    // Neither invoice touched the custody fund — not a figure, not a line — nor any fuel card.
+    expect(await custody()).toEqual(custodyBefore);
+    expect(await cardMovements()).toBe(cardsBefore);
+    const lines = await request(app)
+      .get('/api/v1/fleet/custody/movements')
+      .query({ pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(lines.status).toBe(200);
+    const lineIds = data<FleetCustodyMovementDto[]>(lines).map((line) => line.id);
+    expect(lineIds).not.toContain(row.id);
+    expect(lineIds).not.toContain(privateRow.id);
   });
 
   it('sums the whole filtered set between the filters and the table', async () => {
@@ -9511,12 +9544,18 @@ describe('dealership invoices (التوكيل) — «العربيه اللى ب�
       count: number;
       pending: number;
       dealershipTotal: number;
-      custodyTotal: number;
     }>(summary);
-    expect(totals.dealershipTotal).toBeGreaterThanOrEqual(3250);
-    expect(totals.custodyTotal).toBeGreaterThanOrEqual(850);
+    // Every recorded invoice, the private car's with no number included — none is custody money.
+    expect(totals.dealershipTotal).toBeGreaterThanOrEqual(3250 + 850);
+    expect(totals).not.toHaveProperty('custodyTotal');
     expect(totals.pending).toBeGreaterThanOrEqual(1);
     expect(totals.count).toBeGreaterThanOrEqual(totals.pending);
+    // There is no «الجهة» to filter by any more: the query refuses it rather than reading it.
+    const bySide = await request(app)
+      .get('/api/v1/fleet/dealership/summary')
+      .query({ side: 'custody' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bySide.status).toBe(400);
   });
 
   it('a reopened visit takes its pending rows back — a recorded one stays', async () => {
@@ -10060,6 +10099,14 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(unknownCard.status).toBe(400);
     const tyresOnCard = await post({ vehicleId: v.id, kind: 'tyres', cardId: card.id, amount: 10 });
     expect(tyresOnCard.status).toBe(400);
+    // «صيانة» is paid from the fund exactly as tyres are — never off a card.
+    const maintenanceOnCard = await post({
+      vehicleId: v.id,
+      kind: 'maintenance',
+      cardId: card.id,
+      amount: 10,
+    });
+    expect(maintenanceOnCard.status).toBe(400);
     const noFuelType = await post({ vehicleId: v.id, kind: 'fuel', amount: 10 });
     expect(noFuelType.status).toBe(400);
   });
@@ -10269,6 +10316,9 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect((await post({ vehicleId: v.id, kind: 'tyres', amount: 1, odometer: 100 })).status).toBe(
       400,
     );
+    expect(
+      (await post({ vehicleId: v.id, kind: 'maintenance', amount: 1, odometer: 100 })).status,
+    ).toBe(400);
 
     const edit = async (body: Record<string, unknown>): Promise<Receipt> => {
       const res = await request(app)
@@ -10317,7 +10367,7 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(await readings()).toBe(before);
   });
 
-  it('fuel from the fund, tyres and washing go to the custody ledger with a private car’s dealership bill', async () => {
+  it('fuel from the fund, tyres, washing and «صيانة» go to the custody ledger — a dealership bill never does', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const fuel = await post({
       vehicleId: v.id,
@@ -10332,35 +10382,102 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(
       (await post({ vehicleId: v.id, kind: 'wash', amount: 120, date: '2026-10-02' })).status,
     ).toBe(201);
+    // «صيانة تكون زى الكاوتش والغسيل وتخصم من العهده».
+    const maintenance = await post({
+      vehicleId: v.id,
+      kind: 'maintenance',
+      amount: 750,
+      driverName: 'محمد رأفت',
+      date: '2026-10-03',
+    });
+    expect(maintenance.status).toBe(201);
+    expect(data<Receipt>(maintenance)).toMatchObject({
+      kind: 'maintenance',
+      source: 'custody',
+      cardId: null,
+      fuelType: null,
+      litres: null,
+      odometer: null,
+      company: null,
+      driverName: 'محمد رأفت',
+    });
+    // A private car's dealership bill on the same car, recorded with no invoice number: kept on
+    // its own screen, never a movement of the fund.
+    await FleetDealershipInvoiceModel.create({
+      visitId: new Types.ObjectId(),
+      vehicleId: new Types.ObjectId(v.id),
+      outDate: new Date('2026-10-02T00:00:00.000Z'),
+      workKind: 'repair',
+      workTypeLabel: 'إصلاح',
+      privateCar: true,
+      invoiceAmount: 850,
+      side: 'custody',
+    });
 
     const totals = await request(app)
       .get('/api/v1/fleet/receipts/summary')
       .query({ vehicleCodes: v.code })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(data<Record<string, number>>(totals)).toMatchObject({
-      count: 3,
-      custodyTotal: 1835,
+      count: 4,
+      custodyTotal: 2585,
       cardTotal: 0,
       fuelTotal: 315,
       fuelLitres: 20,
       tyresTotal: 1400,
       washTotal: 120,
+      maintenanceTotal: 750,
     });
+    const onlyMaintenance = await request(app)
+      .get('/api/v1/fleet/receipts')
+      .query({ vehicleCodes: v.code, kind: 'maintenance' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<Receipt[]>(onlyMaintenance).map((row) => row.amount)).toEqual([750]);
 
     const ledger = await request(app)
       .get('/api/v1/fleet/custody/summary')
       .query({ vehicleCodes: v.code })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(ledger.status).toBe(200);
-    expect(data<Record<string, unknown>>(ledger)).toMatchObject({
-      count: 3,
-      total: 1835,
-      dealership: 0,
+    const figures = data<FleetCustodySummaryDto>(ledger);
+    expect(figures).toMatchObject({
+      count: 4,
+      total: 2585,
+      maintenance: 750,
       fuel: 315,
       tyres: 1400,
       wash: 120,
-      vehicles: [{ vehicleCode: v.code, fuel: 315, tyres: 1400, wash: 120, total: 1835 }],
+      vehicles: [
+        {
+          vehicleCode: v.code,
+          maintenance: 750,
+          fuel: 315,
+          tyres: 1400,
+          wash: 120,
+          total: 2585,
+        },
+      ],
     });
+    expect(figures).not.toHaveProperty('dealership');
+    const ofMaintenance = await request(app)
+      .get('/api/v1/fleet/custody/movements')
+      .query({ vehicleCodes: v.code, source: 'maintenance' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetCustodyMovementDto[]>(ofMaintenance)).toEqual([
+      expect.objectContaining({
+        id: data<Receipt>(maintenance).id,
+        ref: 'receipt',
+        source: 'maintenance',
+        driverName: 'محمد رأفت',
+        amount: 750,
+      }),
+    ]);
+    // «التوكيل» is no longer a custody kind: asking for it is refused, never read as «everything».
+    const byDealership = await request(app)
+      .get('/api/v1/fleet/custody/summary')
+      .query({ vehicleCodes: v.code, source: 'dealership' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(byDealership.status).toBe(400);
     const movements = await request(app)
       .get('/api/v1/fleet/custody/movements')
       .query({ vehicleCodes: v.code, source: 'fuel' })
@@ -10374,12 +10491,15 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
         { ref: 'receipt', source: 'fuel', driverName: 'محمد رأفت', fuelType: 'petrol80' } as never,
       ].map((row) => expect.objectContaining(row)),
     );
-    // The driver filter finds the typed name; a bill names nobody and is left out.
+    // The driver filter finds the typed name — on the fuel and on the maintenance alike.
     const byDriver = await request(app)
       .get('/api/v1/fleet/custody/movements')
       .query({ vehicleCodes: v.code, driver: 'رأفت' })
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(data<unknown[]>(byDriver)).toHaveLength(1);
+    expect(data<{ source: string }[]>(byDriver).map((row) => row.source)).toEqual([
+      'maintenance',
+      'fuel',
+    ]);
   });
 
   it('orders «كل الحركات» by the arrows over the whole filtered set, several columns at once', async () => {
@@ -10404,6 +10524,17 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
         })
       ).status,
     ).toBe(201);
+    expect(
+      (
+        await post({
+          vehicleId: v.id,
+          kind: 'maintenance',
+          amount: 50,
+          driverName: 'زياد',
+          date: '2026-09-30',
+        })
+      ).status,
+    ).toBe(201);
 
     type Line = { amount: number; source: string; driverName: string | null };
     const read = async (query: Record<string, string | number>) => {
@@ -10421,29 +10552,31 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       (await read(query)).rows.map((row) => row.amount);
 
     // No order chosen: newest first, as the ledger always opened — on one day, the later entry first.
-    expect(await amounts({})).toEqual([120, 1400, 315]);
+    expect(await amounts({})).toEqual([120, 1400, 315, 50]);
     // Turned round, the mirror of it — the day's two entries too, as `_id` closes a tie elsewhere.
-    expect(await amounts({ sort: 'date:asc' })).toEqual([315, 1400, 120]);
-    expect(await amounts({ sort: 'amount:asc' })).toEqual([120, 315, 1400]);
-    expect(await amounts({ sort: 'amount:desc' })).toEqual([1400, 315, 120]);
+    expect(await amounts({ sort: 'date:asc' })).toEqual([50, 315, 1400, 120]);
+    expect(await amounts({ sort: 'amount:asc' })).toEqual([50, 120, 315, 1400]);
+    expect(await amounts({ sort: 'amount:desc' })).toEqual([1400, 315, 120, 50]);
     // The tyres name nobody: last whichever way the arrow points.
-    expect(await amounts({ sort: 'driverName:asc' })).toEqual([120, 315, 1400]);
-    expect(await amounts({ sort: 'driverName:desc' })).toEqual([315, 120, 1400]);
-    // The kind in the filter's order — fuel, tyres, wash — and a second column breaking no tie.
+    expect(await amounts({ sort: 'driverName:asc' })).toEqual([120, 50, 315, 1400]);
+    expect(await amounts({ sort: 'driverName:desc' })).toEqual([315, 50, 120, 1400]);
+    // The kind in the filter's order — «صيانة», fuel, tyres, wash — «صيانة» where «التوكيل» was,
+    // and a second column breaking no tie.
     expect((await read({ sort: 'source:asc,amount:desc' })).rows.map((r) => r.source)).toEqual([
+      'maintenance',
       'fuel',
       'tyres',
       'wash',
     ]);
-    // Over the WHOLE set, then cut: the second page of two holds the dearest.
-    expect(await amounts({ sort: 'amount:asc', pageSize: 2, page: 2 })).toEqual([1400]);
+    // Over the WHOLE set, then cut: the second page of two holds the dearest two.
+    expect(await amounts({ sort: 'amount:asc', pageSize: 2, page: 2 })).toEqual([315, 1400]);
     // The platform's single column, from a client that sends no `sort`.
-    expect(await amounts({ sortBy: 'amount', sortDir: 'asc' })).toEqual([120, 315, 1400]);
+    expect(await amounts({ sortBy: 'amount', sortDir: 'asc' })).toEqual([50, 120, 315, 1400]);
     // A column the ledger does not know changes nothing — never a 400.
-    expect(await amounts({ sort: 'nope:asc' })).toEqual([120, 1400, 315]);
+    expect(await amounts({ sort: 'nope:asc' })).toEqual([120, 1400, 315, 50]);
     // The order never changes what is counted.
     for (const sort of ['amount:asc', 'driverName:desc', 'nope:asc']) {
-      expect((await read({ sort })).total, sort).toBe(3);
+      expect((await read({ sort })).total, sort).toBe(4);
     }
     // The figures are never ordered: their query refuses the parameter.
     expect(
@@ -10497,7 +10630,16 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
           .set('Authorization', `Bearer ${adminToken}`)
       ).status,
     ).toBe(204);
-    // A private car's bill paid by the fund; a deleted one, and one the dealership paid, are not.
+    // «صيانة» from the fund on the 4th — where a private car's dealership bill used to sit.
+    await made({
+      vehicleId: v1.id,
+      kind: 'maintenance',
+      amount: 850,
+      driverName: 'سائق اللوحة',
+      date: '2026-10-04',
+    });
+    // The dealership's bills — a private car's with no invoice number among them — are no
+    // movement of the fund: none is counted anywhere below.
     const bill = (over: Record<string, unknown>) => ({
       visitId: new Types.ObjectId(),
       vehicleId: new Types.ObjectId(v1.id),
@@ -10513,6 +10655,7 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       bill({}),
       bill({ vehicleId: new Types.ObjectId(v2.id), invoiceAmount: 9999, isDeleted: true }),
       bill({ invoiceNumber: '48213', invoiceAmount: 3250, privateCar: false, side: 'dealership' }),
+      bill({ invoiceAmount: null, side: null, outDate: new Date('2026-09-01T00:00:00.000Z') }),
     ]);
 
     const codes = `${v1.code},${v2.code}`;
@@ -10531,15 +10674,38 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       { vehicleCodes: codes },
       { vehicleCodes: v1.code },
       { vehicleCodes: codes, source: 'fuel,wash' },
-      { vehicleCodes: codes, source: 'dealership' },
+      { vehicleCodes: codes, source: 'maintenance' },
       { vehicleCodes: codes, driver: 'رأفت' },
+      { vehicleCodes: codes, driver: 'اللوحة' },
       { vehicleCodes: codes, from: '2026-10-01', to: '2026-10-31' },
     ]) {
       const summary = data<FleetCustodySummaryDto>(await read('summary', query));
       const dashboard = data<Dashboard>(await read('dashboard', query));
-      const { count, total, dealership, fuel, tyres, wash, vehicles, fundTotal } = dashboard;
+      const {
+        count,
+        total,
+        maintenance,
+        fuel,
+        tyres,
+        wash,
+        vehicles,
+        fundTotal,
+        fundCharged,
+        fundSpent,
+      } = dashboard;
       expect(
-        { count, total, dealership, fuel, tyres, wash, vehicles, fundTotal },
+        {
+          count,
+          total,
+          maintenance,
+          fuel,
+          tyres,
+          wash,
+          vehicles,
+          fundTotal,
+          fundCharged,
+          fundSpent,
+        },
         JSON.stringify(query),
       ).toEqual(summary);
       const movements = await read('movements', { ...query, pageSize: '1' });
@@ -10553,27 +10719,39 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(whole).toMatchObject({
       count: 5,
       total: 3185,
-      dealership: 850,
+      maintenance: 850,
       fuel: 815,
       tyres: 1400,
       wash: 120,
       vehicleCount: 2,
-      counts: { dealership: 1, fuel: 2, tyres: 1, wash: 1 },
-      bySource: [
-        { ref: 'receipt', count: 4, amount: 2335 },
-        { ref: 'dealershipInvoice', count: 1, amount: 850 },
-      ],
+      counts: { maintenance: 1, fuel: 2, tyres: 1, wash: 1 },
+      // «المصدر»: every movement is a receipt from the fund.
+      bySource: [{ ref: 'receipt', count: 5, amount: 3185 }],
       noDriver: { count: 1, amount: 120 },
       litresMissing: 0,
     });
+    expect(whole).not.toHaveProperty('dealership');
+    expect(whole.alerts).not.toHaveProperty('pendingPrivateBills');
     expect(whole.litres).toBeCloseTo(litres, 2);
     expect(whole.fuelTypes.map((line) => [line.fuelType, line.count, line.amount])).toEqual([
       ['petrol80', 1, 315],
       ['diesel', 1, 500],
     ]);
     expect(whole.drivers).toEqual([
-      expect.objectContaining({ driverName: 'محمد رأفت', fuel: 500, tyres: 1400, total: 1900 }),
-      expect.objectContaining({ driverName: 'سائق اللوحة', fuel: 315, total: 315, count: 1 }),
+      expect.objectContaining({
+        driverName: 'محمد رأفت',
+        maintenance: 0,
+        fuel: 500,
+        tyres: 1400,
+        total: 1900,
+      }),
+      expect.objectContaining({
+        driverName: 'سائق اللوحة',
+        maintenance: 850,
+        fuel: 315,
+        total: 1165,
+        count: 2,
+      }),
     ]);
     // Month by month, September's nothing kept between August and October.
     expect(whole.timeline.granularity).toBe('month');
@@ -10583,13 +10761,13 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       ['2026-10', 2870, 4],
     ]);
     expect(whole.timeline.buckets[2]).toMatchObject({
-      dealership: 850,
+      maintenance: 850,
       fuel: 500,
       tyres: 1400,
       wash: 120,
     });
 
-    // Inside one month, day by day — every day of October, the bill on its exit date.
+    // Inside one month, day by day — every day of October, the maintenance on its own day.
     const october = data<FleetCustodyDashboardDto>(
       await read('dashboard', { vehicleCodes: codes, from: '2026-10-01', to: '2026-10-31' }),
     );
@@ -10598,7 +10776,7 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(october.timeline.buckets[0]?.key).toBe('2026-10-01');
     expect(october.timeline.buckets[30]?.key).toBe('2026-10-31');
     expect(october.timeline.buckets.find((b) => b.key === '2026-10-04')).toMatchObject({
-      dealership: 850,
+      maintenance: 850,
       total: 850,
       count: 1,
     });
@@ -10766,8 +10944,11 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
           .attach('file', PNG, 'receipt.png')
       ).status,
     ).toBe(200);
-    // The dealership: a private car's bill the fund paid on the 1st; private bills still waiting
-    // for their invoice; and the rows that are not that — another car's kind, a deleted one.
+    // «صيانة» from the fund on the 1st, with no photo.
+    await made({ vehicleId: v1.id, kind: 'maintenance', amount: 850, date: '2026-10-01' });
+    // The dealership: a private car's bill recorded with no number, private bills still waiting
+    // for their invoice, and others besides — none of them the fund's, so none is counted or
+    // raised.
     const bill = (over: Record<string, unknown>) => ({
       visitId: new Types.ObjectId(),
       vehicleId: new Types.ObjectId(v1.id),
@@ -10798,8 +10979,8 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       return data<FleetCustodyDashboardDto>(res);
     };
     const whole = await read({ vehicleCodes: codes });
-    // Five receipts from the fund and the bill it paid; the bill on the 1st to the receipts on the
-    // 6th is six days, both ends kept.
+    // Six receipts from the fund, no bill; the maintenance on the 1st to the receipts on the 6th is
+    // six days, both ends kept.
     expect(whole.count).toBe(6);
     expect(whole.periodDays).toBe(6);
     // «وطنيه لوخدها وشيل اوت لوحدها»: each company with its own fuel types under it.
@@ -10836,48 +11017,33 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       ['petrol92', ['chillout']],
       ['diesel', ['wataniya']],
     ]);
+    // The receipts' alerts alone — no dealership bill, waiting or recorded, raises one.
     expect(whole.alerts).toEqual({
       doubleFuel: [{ vehicleId: v1.id, vehicleCode: v1.code, date: '2026-10-04', count: 2 }],
-      // Three private bills wait — not the deleted one, not the car that is not «ملاكي» — and no
-      // amount is claimed for them.
-      pendingPrivateBills: { count: 3, oldestOutDate: '2026-09-01T00:00:00.000Z' },
-      // Five receipts from the fund, one with its photo.
-      receiptsWithoutPhoto: 4,
+      // Six receipts from the fund, one with its photo.
+      receiptsWithoutPhoto: 5,
       duplicateReceipts: 1,
     });
 
-    // The board's dates: October's every day, and only October's waiting bills.
+    // The board's dates: October's every day.
     const october = await read({ vehicleCodes: codes, from: '2026-10-01', to: '2026-10-31' });
     expect(october.periodDays).toBe(31);
-    expect(october.alerts.pendingPrivateBills).toEqual({
-      count: 2,
-      oldestOutDate: '2026-10-02T00:00:00.000Z',
-    });
     // The board's cars.
     const second = await read({ vehicleCodes: v2.code });
-    expect(second.alerts).toMatchObject({
+    expect(second.alerts).toEqual({
       doubleFuel: [],
-      pendingPrivateBills: { count: 1, oldestOutDate: '2026-10-05T00:00:00.000Z' },
+      receiptsWithoutPhoto: 2,
       duplicateReceipts: 1,
     });
-    // A driver filter, or a source without the dealership, leaves the bills out — waiting or not.
-    for (const query of [
-      { vehicleCodes: codes, driver: 'رأفت' },
-      { vehicleCodes: codes, source: 'fuel' },
-    ]) {
-      expect((await read(query)).alerts.pendingPrivateBills, JSON.stringify(query)).toEqual({
-        count: 0,
-        oldestOutDate: null,
-      });
-    }
-    const dealership = await read({ vehicleCodes: codes, source: 'dealership' });
-    expect(dealership.alerts).toEqual({
+    // «صيانة» alone: the one receipt, on its one day.
+    const maintenance = await read({ vehicleCodes: codes, source: 'maintenance' });
+    expect(maintenance).toMatchObject({ count: 1, total: 850, maintenance: 850 });
+    expect(maintenance.alerts).toEqual({
       doubleFuel: [],
-      pendingPrivateBills: { count: 3, oldestOutDate: '2026-09-01T00:00:00.000Z' },
-      receiptsWithoutPhoto: 0,
+      receiptsWithoutPhoto: 1,
       duplicateReceipts: 0,
     });
-    expect(dealership.periodDays).toBe(1);
+    expect(maintenance.periodDays).toBe(1);
     // Nothing matched: no period, no split, no alert.
     const empty = await read({ vehicleCodes: codes, from: '2027-01-01', to: '2026-12-31' });
     expect(empty).toMatchObject({
@@ -10889,14 +11055,13 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       },
       alerts: {
         doubleFuel: [],
-        pendingPrivateBills: { count: 0, oldestOutDate: null },
         receiptsWithoutPhoto: 0,
         duplicateReceipts: 0,
       },
     });
   });
 
-  it('«السجل» of one car is `/movements` over the board’s filters and that car — an old-book line too', async () => {
+  it('«السجل» of one car is `/movements` over the board’s filters and that car — receipts only, never a dealership bill', async () => {
     const v1 = data<FleetVehicleDto>(await createVehicle(adminToken));
     const v2 = data<FleetVehicleDto>(await createVehicle(adminToken));
     const made = async (body: Record<string, unknown>): Promise<Receipt> => {
@@ -10914,6 +11079,12 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     });
     const tyres = await made({ vehicleId: v1.id, kind: 'tyres', amount: 1400, date: '2026-10-06' });
     const wash = await made({ vehicleId: v1.id, kind: 'wash', amount: 120, date: '2026-09-20' });
+    const maintenance = await made({
+      vehicleId: v1.id,
+      kind: 'maintenance',
+      amount: 850,
+      date: '2026-10-01',
+    });
     // Another car, and a receipt off a card: in no log of car 1's.
     await made({
       vehicleId: v2.id,
@@ -10940,9 +11111,9 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
           .set('Authorization', `Bearer ${adminToken}`)
       ).status,
     ).toBe(204);
-    // The dealership: car 1's bill the fund paid; one still waiting (no amount — not a movement);
-    // one the dealership side paid; and a line kept from the old book on a car the registry never
-    // had, its code with a space in it — the very code `vehicleCodes` would cut in two.
+    // The dealership's bills on car 1 — a private car's with no invoice number, one still
+    // waiting, one with its number — and a line kept from the old book on a car the registry
+    // never had, its code with a space in it: none of them is a movement of the fund.
     const BOOK = `كوستر ${v1.code}`;
     const bill = (over: Record<string, unknown>) => ({
       visitId: new Types.ObjectId(),
@@ -10955,18 +11126,18 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       side: 'custody',
       ...over,
     });
-    const [paid, , , book] = await FleetDealershipInvoiceModel.create([
+    const bills = await FleetDealershipInvoiceModel.create([
       bill({}),
       bill({ invoiceAmount: null, side: null }),
-      bill({ side: 'dealership' }),
+      bill({ invoiceNumber: '48213', side: 'dealership' }),
       bill({
         vehicleId: null,
         vehicleCode: BOOK,
         invoiceAmount: 300,
         outDate: new Date('2026-10-03'),
       }),
-      bill({ vehicleId: null, vehicleCode: BOOK, invoiceAmount: 77, isDeleted: true }),
     ]);
+    const billIds = bills.map((doc) => String(doc._id));
 
     type Line = FleetCustodyMovementDto;
     const log = async (query: Record<string, string | number>) => {
@@ -10979,34 +11150,45 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     };
     const ids = (rows: readonly Line[]) => rows.map((row) => row.id);
 
-    // Everything car 1 drew on the fund, newest first — its receipts and its paid bill.
+    // Everything car 1 drew on the fund, newest first — its receipts, «صيانة» among them.
     const car1 = await log({ vehicleId: v1.id });
-    expect(ids(car1.rows)).toEqual([tyres.id, fuel.id, String(paid?._id), wash.id]);
+    expect(ids(car1.rows)).toEqual([tyres.id, fuel.id, maintenance.id, wash.id]);
     expect(car1.total).toBe(4);
+    expect(car1.rows.every((row) => row.ref === 'receipt')).toBe(true);
+    for (const id of billIds) expect(ids(car1.rows)).not.toContain(id);
     expect(car1.rows.find((row) => row.id === fuel.id)).toMatchObject({
       source: 'fuel',
       fuelType: 'diesel',
       company: 'wataniya',
       vehicleCode: v1.code,
     });
-    // Its sum is car 1's line of «ملخص لكل سيارة», to the piastre.
+    expect(car1.rows.find((row) => row.id === maintenance.id)).toMatchObject({
+      source: 'maintenance',
+      fuelType: null,
+      company: null,
+      detail: null,
+      amount: 850,
+    });
+    // Its sum is car 1's line of «ملخص لكل سيارة», to the piastre — «صيانة» in its own column.
     const summary = data<FleetCustodySummaryDto>(
       await request(app)
         .get('/api/v1/fleet/custody/summary')
         .query({ vehicleCodes: `${v1.code},${v2.code}` })
         .set('Authorization', `Bearer ${adminToken}`),
     );
-    expect(car1.rows.reduce((total, row) => total + row.amount, 0)).toBe(
-      summary.vehicles.find((line) => line.vehicleId === v1.id)?.total,
-    );
+    const line = summary.vehicles.find((row) => row.vehicleId === v1.id);
+    expect(car1.rows.reduce((total, row) => total + row.amount, 0)).toBe(line?.total);
+    expect(line).toMatchObject({ maintenance: 850, fuel: 465, tyres: 1400, wash: 120 });
+    // No line of the board is the old book's code: the bill on it is the dealership's alone.
+    expect(summary.vehicles.map((row) => row.vehicleCode)).not.toContain(BOOK);
 
     // Over the board's filters, never instead of them: the dates, the kinds, the cars.
     expect(
       ids((await log({ vehicleId: v1.id, from: '2026-10-02', to: '2026-10-31' })).rows),
     ).toEqual([tyres.id, fuel.id]);
-    expect(ids((await log({ vehicleId: v1.id, source: 'fuel,dealership' })).rows)).toEqual([
+    expect(ids((await log({ vehicleId: v1.id, source: 'fuel,maintenance' })).rows)).toEqual([
       fuel.id,
-      String(paid?._id),
+      maintenance.id,
     ]);
     expect(
       ids((await log({ vehicleId: v1.id, vehicleCodes: `${v1.code},${v2.code}` })).rows),
@@ -11018,29 +11200,16 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     expect(ids(second.rows)).toEqual([wash.id]);
     expect(second.total).toBe(4);
 
-    // The old book's line, whole, spaces and all — its live bill only, no receipt.
-    const fromBook = await log({ bookCode: BOOK });
-    expect(fromBook.rows).toEqual([
-      expect.objectContaining({
-        id: String(book?._id),
-        ref: 'dealershipInvoice',
-        vehicleId: null,
-        vehicleCode: BOOK,
-        amount: 300,
-      }),
-    ]);
-    // `vehicleCodes` cuts the same words into two codes — «كوستر» and car 1's — and finds car 1,
-    // never the book's line.
+    // The old book's code still reads — and finds nothing: its bill is no movement of the fund.
+    expect((await log({ bookCode: BOOK })).total).toBe(0);
+    // `vehicleCodes` cuts the same words into two codes — «كوستر» and car 1's — and finds car 1.
     const cut = await log({ vehicleCodes: BOOK });
     expect(ids(cut.rows)).toEqual(ids(car1.rows));
-    expect(ids(cut.rows)).not.toContain(String(book?._id));
-    // The book's line stays apart from the registry's car whose code it holds, both ways.
-    expect(ids((await log({ vehicleId: v1.id })).rows)).not.toContain(String(book?._id));
     expect((await log({ bookCode: v1.code })).total).toBe(0);
     // Both given, both must hold — and no line is both.
     expect((await log({ vehicleId: v1.id, bookCode: BOOK })).total).toBe(0);
-    // Not a car: refused, never read as «every car».
-    for (const query of [{ vehicleId: '160' }, { bookCode: '' }]) {
+    // Not a car, or «التوكيل» as a kind: refused, never read as «every car» or «every kind».
+    for (const query of [{ vehicleId: '160' }, { bookCode: '' }, { source: 'dealership' }]) {
       const res = await request(app)
         .get('/api/v1/fleet/custody/movements')
         .query(query)
@@ -11106,8 +11275,14 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
     ).toBe(403);
   });
 
-  it('«إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund on the figures and the dashboard, 0 until «شحن العهدة» charges it', async () => {
-    type Fund = { fundTotal: number; total: number; count: number };
+  it('«إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund on the figures and the dashboard — Σ شحن − Σ custody receipts + Σ استعاضة − Σ تسوية, whatever the filters', async () => {
+    type Fund = {
+      fundTotal: number;
+      fundCharged: number;
+      fundSpent: number;
+      total: number;
+      count: number;
+    };
     const custodyViewer = await rbacService.createRole(
       { name: { en: 'Custody reader', ar: 'قارئ العهدة' }, permissionKeys: ['fleetCustody.view'] },
       adminUserId,
@@ -11127,19 +11302,26 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
       expect(res.status, `${path} ${JSON.stringify(query)}`).toBe(200);
       return data<Fund>(res);
     };
+    const round = (value: number): number => Math.round(value * 100) / 100;
 
-    // Nothing has been charged into the fund — the action does not exist yet — so it is 0 on both,
-    // a number and never `null`, whatever the movements spent.
-    expect((await read('summary')).fundTotal).toBe(0);
-    expect((await read('dashboard')).fundTotal).toBe(0);
+    // Nothing has been charged into the fund in this suite, and no memo replenished nor licensing
+    // memo settled: the fund is everything the custody receipts paid, below zero — numbers, never
+    // `null`. Unfiltered, the board's own total IS every custody receipt there is.
+    const whole = await read('summary');
+    expect(whole.fundCharged).toBe(0);
+    expect(whole.fundSpent).toBeGreaterThan(0);
+    expect(whole.fundSpent).toBe(whole.total);
+    expect(whole.fundTotal).toBe(round(whole.fundCharged - whole.fundSpent));
+    const fund = { fundTotal: whole.fundTotal, fundCharged: 0, fundSpent: whole.fundSpent };
+    expect(await read('dashboard')).toMatchObject(fund);
     // It is the fund, not a sum of the movements: a filter that matches nothing leaves it as it is.
     const nothing = await read('summary', adminToken, { vehicleCodes: 'لا-سيارة-بهذا-الرقم' });
-    expect(nothing).toMatchObject({ count: 0, total: 0, fundTotal: 0 });
+    expect(nothing).toMatchObject({ count: 0, total: 0, ...fund });
     expect(
-      (await read('dashboard', adminToken, { from: '2001-01-01', to: '2001-01-31' })).fundTotal,
-    ).toBe(0);
+      await read('dashboard', adminToken, { from: '2001-01-01', to: '2001-01-31' }),
+    ).toMatchObject(fund);
     // A custody viewer reads it under the custody grant alone.
-    expect((await read('summary', viewerToken)).fundTotal).toBe(0);
-    expect((await read('dashboard', viewerToken)).fundTotal).toBe(0);
+    expect(await read('summary', viewerToken)).toMatchObject(fund);
+    expect(await read('dashboard', viewerToken)).toMatchObject(fund);
   });
 });

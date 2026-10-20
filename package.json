@@ -16,8 +16,8 @@
   ],
   "scripts": {
     "dev": "npm run build -w packages/contracts && concurrently -n api,worker,web -c blue,magenta,green \"npm run dev -w apps/api\" \"npm run dev:worker -w apps/api\" \"npm run dev -w apps/web\"",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "eslint . --ignore-pattern \"apps/api/**\" --ignore-pattern \"apps/web/**\" && eslint apps/api && eslint apps/web",
+    "lint:fix": "eslint . --ignore-pattern \"apps/api/**\" --ignore-pattern \"apps/web/**\" --fix && eslint apps/api --fix && eslint apps/web --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "npm run build -w packages/contracts && npm run typecheck --workspaces --if-present",

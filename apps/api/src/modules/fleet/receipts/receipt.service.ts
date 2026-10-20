@@ -36,7 +36,12 @@ import { fleetFuelCardRepository } from '../fuel-cards/fuel-card.repository';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
 import { type FleetFuelCardDoc } from '../fuel-cards/fuel-card.model';
 import { fleetCustodyMemoRepository } from '../custody/custody-memo.repository';
-import { assertReceiptChangeAllowed, assertReceiptRemovable } from '../custody/custody-memo-guard';
+import {
+  assertReceiptChangeAllowed,
+  assertReceiptRemovable,
+  followReceiptDay,
+  type MemoPeriodMove,
+} from '../custody/custody-memo-guard';
 import { fleetReceiptRepository } from './receipt.repository';
 import { resolveReceiptDocsCategoryId } from './receipt-files';
 import { type FleetReceiptDoc } from './receipt.model';
@@ -346,7 +351,10 @@ class FleetReceiptService {
       stringOrNull(before.cardId) !== stringOrNull(set.cardId ?? null) ||
       before.amount !== set.amount ||
       before.date.getTime() !== (set.date as Date).getTime();
+    // Set on the attempt that commits (a retried transaction sets it again).
+    let periodMove: MemoPeriodMove | null = null;
     const updated = await unitOfWork(async (session) => {
+      periodMove = null;
       const live = await fleetReceiptRepository.findLive(id, session);
       if (live === null) throw new NotFoundError();
       // On a custody memo, the memo decides what may still change (`custody-memo-guard.ts`).
@@ -371,6 +379,8 @@ class FleetReceiptService {
         version: input.version,
         session,
       });
+      // A pending memo's worked-out period follows its line to the receipt's new day.
+      periodMove = await followReceiptDay(live, next.date, by, session);
       if (moneyMoved && next.cardId !== null) {
         await fleetFuelCardService.debit(
           String(next.cardId),
@@ -388,6 +398,14 @@ class FleetReceiptService {
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
+    const moved = periodMove as MemoPeriodMove | null;
+    if (moved !== null) {
+      await auditService.record({
+        entityRef: { moduleId: 'fleet', entityType: 'custodyMemo', entityId: moved.memoId },
+        action: 'update',
+        changes: diffChanges(moved.before, moved.after),
+      });
+    }
     return this.get(id);
   }
 

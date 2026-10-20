@@ -65,6 +65,13 @@ describe('his tyres memo (memo 1 — 18 lines, 1,690)', () => {
     expect(rowNumbers(html, 'tyres')).toEqual(Array.from({ length: 18 }, (_, i) => i + 1));
   });
 
+  it('rounds each line half up to the piastre before adding — the API’s total, to the piastre', () => {
+    const line = (amount: number) => ({ ...SAMPLE_MEMOS.tyres.lines[0]!, amount });
+    expect(memoTotal([line(12.125)])).toBe(12.13);
+    expect(memoTotal([line(10.004), line(10.004)])).toBe(20);
+    expect(memoTotal([line(0.1), line(0.2)])).toBe(0.3);
+  });
+
   it('writes a code in Arabic letters in Arial, as he typed «تويوتا 1»', () => {
     expect(html).toMatch(/class="xc c ari b"[^>]*>تويوتا 1<\/div>/u);
     expect(html).toMatch(/class="xc c cal b"[^>]*>248<\/div>/u);
@@ -137,6 +144,31 @@ describe('his maintenance memo (memo 4 — 3 lines, 5,720)', () => {
     expect(long).toBeGreaterThanOrEqual(6);
     expect(long).toBeLessThan(11);
     expect(size('عدد 2 لمبة المانى')).toBe(11);
+  });
+
+  it('a «البيان» or «ملاحظات» too long for its cell goes onto two lines, else is cut at its edges', () => {
+    const long =
+      'تغيير طقم تيل فرامل امامى + خلفى + تغيير زيت + فلتر زيت + فلتر هواء + فلتر بنزين + عدد 4 بوجيه + ضبط زوايا';
+    const huge = `${'كلمة '.repeat(100)}`.trim();
+    const lines = SAMPLE_MEMOS.maintenance.lines.map((line, i) =>
+      i === 0
+        ? { ...line, statement: long, note: long }
+        : i === 1
+          ? { ...line, statement: huge }
+          : line,
+    );
+    const page = memoSheets({ ...SAMPLE_MEMOS.maintenance, lines })[0]!;
+    const cellOf = (start: string): string =>
+      new RegExp(`<div class="xc[^"]*" style="([^"]*)">${start}`, 'u').exec(page)?.[1] ?? '';
+    // Two lines in the row, each centred, as large as the row lets two lines be — not cut.
+    const wrapped = cellOf('تغيير طقم');
+    expect(wrapped).toContain('text-align:center');
+    expect(wrapped).not.toContain('overflow:hidden');
+    expect(page).toMatch(/>تغيير طقم[^<]*\n[^<]*ضبط زوايا</u);
+    // Past what two lines can hold at the least: cut at the cell's own edges.
+    expect(cellOf('كلمة')).toContain('overflow:hidden');
+    // The rest stay exactly as before: one line, no clip.
+    expect(cellOf('عدد 3 مروحة تكييف')).not.toMatch(/text-align|overflow/u);
   });
 
   it('places the preparer, then the director, then the general manager under his review line', () => {
@@ -348,7 +380,8 @@ describe('the names a memo is signed with', () => {
         signatures: DEFAULTS[kind],
       }).join('');
       expect(html, kind).not.toContain('<img src=x');
-      expect(html, kind).toContain('&lt;img src=x onerror=alert(1)&gt;');
+      // A narrow cell may put it on two lines (`fitCell`) — a line break where a space was.
+      expect(html, kind).toMatch(/&lt;img[ \n]src=x[ \n]onerror=alert\(1\)&gt;/u);
     }
   });
 });

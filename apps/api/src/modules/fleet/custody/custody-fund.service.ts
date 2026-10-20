@@ -44,9 +44,10 @@ import { codesFor, toLicenseExpenseDto } from '../license-expenses/license-expen
 import { partMoney } from '../license-expenses/license-expense-money';
 import { settlementField, settlementOf } from '../license-expenses/license-expense-lock';
 import { FleetCustodyCounterModel, ensureCustodyCounter } from './custody-counter.model';
+import { signalReceiptsOfMemo } from './custody-memo-guard';
 import { fleetCustodyMemoRepository } from './custody-memo.repository';
 import { fleetCustodyMemoService } from './custody-memo.service';
-import { readMemoTotals } from './custody-memo-totals';
+import { RECEIPT_PIASTRES, readMemoTotals } from './custody-memo-totals';
 import { fleetCustodyPapersService } from './custody-papers.service';
 import {
   chargeReasonOf,
@@ -240,7 +241,7 @@ const readReceiptGroups = async (): Promise<LedgerReceiptGroup[]> => {
           memoId: { $ifNull: ['$memoId', null] },
         },
         count: { $sum: 1 },
-        piastres: { $sum: { $round: [{ $multiply: ['$amount', 100] }, 0] } },
+        piastres: { $sum: RECEIPT_PIASTRES },
       },
     },
   ]).exec();
@@ -472,6 +473,8 @@ class FleetCustodyFundService {
         ],
       });
     }
+    // Their receipts are locked now: the receipts screen reads again (one signal, not one per memo).
+    if (memoIds.length > 0) signalReceiptsOfMemo(String(operationId));
     return this.operation(String(operationId));
   }
 

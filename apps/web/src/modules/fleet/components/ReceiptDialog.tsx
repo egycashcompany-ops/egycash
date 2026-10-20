@@ -377,6 +377,9 @@ export const ReceiptDialog = ({
   /** A box the memo holds: not pressable, the reason on hover. */
   const held = (locked: boolean): { disabled?: true; title?: string } =>
     locked ? { disabled: true, title: lockReason } : {};
+  // A locked box LOOKS locked — faded, the not-allowed cursor — not an editable one that ignores
+  // the click (the notice at the top says why).
+  const LOCKED_LOOK = '!cursor-not-allowed !opacity-60';
   // Seeded from the row on the first paint — an edit never flashes an empty form — and reset on
   // every open by the effect below.
   const [kind, setKind] = useState<FleetReceiptKind>(row?.kind ?? 'fuel');
@@ -705,7 +708,7 @@ export const ReceiptDialog = ({
               value={date}
               onChange={(e) => setDate(e.target.value)}
               data-receipt-date="true"
-              tone={dateBox}
+              tone={cn(dateBox, locks.date && LOCKED_LOOK)}
               {...held(locks.date)}
             />
           </DesignField>
@@ -717,7 +720,7 @@ export const ReceiptDialog = ({
             <fieldset
               {...held(locks.vehicle)}
               data-receipt-vehicle-locked={locks.vehicle ? 'true' : undefined}
-              className="min-w-0"
+              className={cn('min-w-0', locks.vehicle && '[&_input]:!cursor-not-allowed opacity-60')}
             >
               <div
                 {...(vehicleMissing ? { 'data-car-missing': 'true' } : {})}
@@ -734,6 +737,7 @@ export const ReceiptDialog = ({
                   onChange={setVehicleId}
                   anyStatus
                   testId="receipt-vehicle"
+                  disabled={locks.vehicle}
                 />
               </div>
             </fieldset>
@@ -776,7 +780,7 @@ export const ReceiptDialog = ({
         <fieldset
           {...held(locks.source)}
           data-receipt-source-locked={locks.source ? 'true' : undefined}
-          className="min-w-0"
+          className={cn('min-w-0', locks.source && 'opacity-60 [&_*]:!cursor-not-allowed')}
         >
           <DesignField
             label={t('fleet.receipts.fields.card')}
@@ -924,7 +928,7 @@ export const ReceiptDialog = ({
               value={amount}
               onChange={setAmount}
               data-receipt-amount="true"
-              tone={amountBox}
+              tone={cn(amountBox, locks.amount && LOCKED_LOOK)}
               {...held(locks.amount)}
             />
           </DesignField>

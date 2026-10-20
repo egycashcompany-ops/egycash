@@ -76,13 +76,39 @@ import {
 import { nextViolationsPage } from '../lib/violations-paging';
 import { fetchWholeCatalog } from '../lib/whole-catalog';
 import { fetchWholeVehicleRegistry } from '../lib/whole-vehicle-registry';
+import { writeRefusalOf } from '../lib/write-refusal';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
+import { errorMessage } from '../../../shared/lib/errors';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { store } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { useSetSetting } from '../../../platform/settings/settings-api';
 import * as api from './fleet-api';
 import { type FleetListParams } from './fleet-api';
 
 const MODULE = 'fleet';
+
+/**
+ * Which failures of a write its screen says itself — `true` for one it words and acts on (reads the
+ * record again, refetches its list), `false` for one it leaves to the usual toast.
+ */
+type SaidByScreen = (error: unknown) => boolean;
+/** A screen that reports every failure of the write itself — refusals in so many words, the rest
+ * with the usual sentence — so nothing is left for the global toast. */
+const SAYS_EVERY_FAILURE: SaidByScreen = () => true;
+
+/**
+ * Declaring `onError` is what opts a mutation out of the GLOBAL error toast (query-client.ts). A
+ * write whose screen names its refusals — «تمت تسوية هذه المذكرة…», «بعض الإيصالات دخلت مذكرة
+ * أخرى…» — would otherwise show two: the screen's own, and the global one with the server's English
+ * sentence (a 409 DUPLICATE, a 422) under it. So the hook raises that same global toast only for
+ * what its screen does not say (`said`), worded exactly as the global one.
+ */
+const toastUnlessSaid =
+  (said: SaidByScreen) =>
+  (error: unknown): void => {
+    if (!said(error)) toast.error(errorMessage(error, store.getState().locale.locale));
+  };
 
 // Feature-subtree invalidation targets — internal: every consumer outside this file goes
 // through the hooks, never the keys.
@@ -1092,7 +1118,12 @@ export const useReceiptSummary = (params: FleetListParams, enabled = true) =>
     enabled,
   });
 // A receipt moves money on three screens: its own, the ledger it feeds, and the card it charged.
-const useReceiptMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {
+// `said`, when given, is what the sending screen reports itself (`toastUnlessSaid`); without it the
+// write keeps the global toast — a new receipt and the photo's two writes name no refusal.
+const useReceiptMutation = <TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+  said?: SaidByScreen,
+) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn,
@@ -1101,15 +1132,23 @@ const useReceiptMutation = <TInput, TResult>(mutationFn: (input: TInput) => Prom
       void qc.invalidateQueries({ queryKey: fleetKeys.custody });
       void qc.invalidateQueries({ queryKey: fleetKeys.fuelCards });
     },
+    ...(said === undefined ? {} : { onError: toastUnlessSaid(said) }),
   });
 };
 export const useCreateReceipt = () =>
   useReceiptMutation((body: CreateFleetReceipt) => api.createReceipt(body));
+/** The receipt form names a custody memo's lock (422) and a stale receipt (409) and reads it again. */
 export const useUpdateReceipt = () =>
-  useReceiptMutation(({ id, body }: { id: string; body: UpdateFleetReceipt }) =>
-    api.updateReceipt(id, body),
+  useReceiptMutation(
+    ({ id, body }: { id: string; body: UpdateFleetReceipt }) => api.updateReceipt(id, body),
+    (error) => writeRefusalOf(error) !== null,
   );
-export const useDeleteReceipt = () => useReceiptMutation((id: string) => api.deleteReceipt(id));
+/** The receipts board names a custody memo's lock (422) on a delete and reads its list again. */
+export const useDeleteReceipt = () =>
+  useReceiptMutation(
+    (id: string) => api.deleteReceipt(id),
+    (error) => writeRefusalOf(error) === 'locked',
+  );
 export const useUploadReceiptImage = () =>
   useReceiptMutation(({ id, file }: { id: string; file: File }) =>
     api.uploadReceiptImage(id, file),
@@ -1187,6 +1226,7 @@ export const useLicenseExpense = (id: string) =>
 
 const useLicenseExpenseMutation = <TInput, TResult>(
   mutationFn: (input: TInput) => Promise<TResult>,
+  said?: SaidByScreen,
 ) => {
   const qc = useQueryClient();
   return useMutation({
@@ -1197,17 +1237,32 @@ const useLicenseExpenseMutation = <TInput, TResult>(
       void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses });
       void qc.invalidateQueries({ queryKey: fleetKeys.custody });
     },
+    ...(said === undefined ? {} : { onError: toastUnlessSaid(said) }),
   });
 };
 
+/**
+ * The editor words every failure of a new record itself (`onSave`), so the global toast would only
+ * repeat it.
+ */
 export const useCreateLicenseExpense = () =>
-  useLicenseExpenseMutation((body: CreateFleetLicenseExpense) => api.createLicenseExpense(body));
+  useLicenseExpenseMutation(
+    (body: CreateFleetLicenseExpense) => api.createLicenseExpense(body),
+    SAYS_EVERY_FAILURE,
+  );
+/**
+ * The editor names a settled record (422) and a stale one (409), reads it again, and words every
+ * other failure itself — as the list does for a delete — so neither leaves anything to the global
+ * toast.
+ */
 export const useUpdateLicenseExpense = () =>
-  useLicenseExpenseMutation(({ id, body }: { id: string; body: UpdateFleetLicenseExpense }) =>
-    api.updateLicenseExpense(id, body),
+  useLicenseExpenseMutation(
+    ({ id, body }: { id: string; body: UpdateFleetLicenseExpense }) =>
+      api.updateLicenseExpense(id, body),
+    SAYS_EVERY_FAILURE,
   );
 export const useDeleteLicenseExpense = () =>
-  useLicenseExpenseMutation((id: string) => api.deleteLicenseExpense(id));
+  useLicenseExpenseMutation((id: string) => api.deleteLicenseExpense(id), SAYS_EVERY_FAILURE);
 
 export const licenseExpenseSettingsKey = [...fleetKeys.licenseExpenses, 'settings'] as const;
 
@@ -1375,6 +1430,11 @@ export const useCustodyPaperSettings = (enabled = true) =>
 /**
  * A memo written, changed or deleted moves the custody subtree (the banner, the fund's pending
  * memos, the ledger) and the receipts screen too — each receipt says which memo holds it.
+ *
+ * Every screen that sends one — the editor, «المذكرات», «استعاضة العهدة» — words each failure
+ * itself: a receipt another memo took (409), receipts that changed (400), a memo replenished (422),
+ * changed (409) or deleted (404), each in so many words, and the rest with the usual sentence. So
+ * the global toast is left nothing to add.
  */
 const useCustodyMemoMutation = <TInput, TResult>(
   mutationFn: (input: TInput) => Promise<TResult>,
@@ -1386,6 +1446,7 @@ const useCustodyMemoMutation = <TInput, TResult>(
       void qc.invalidateQueries({ queryKey: fleetKeys.custody });
       void qc.invalidateQueries({ queryKey: fleetKeys.receipts });
     },
+    onError: toastUnlessSaid(SAYS_EVERY_FAILURE),
   });
 };
 export const useCreateCustodyMemo = () =>
@@ -1397,12 +1458,16 @@ export const useUpdateCustodyMemo = () =>
 export const useDeleteCustodyMemo = () =>
   useCustodyMemoMutation((id: string) => api.deleteCustodyMemo(id));
 
-/** «شحن العهدة» — the fund, its ledger and its tabs move; nothing else does. */
+/**
+ * «شحن العهدة» — the fund, its ledger and its tabs move; nothing else does. Its dialog words every
+ * failure itself (`useFundOperation`), as «تسوية العهدة» and «استعاضة العهدة» do.
+ */
 export const useChargeCustody = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateFleetCustodyCharge) => api.chargeCustody(body),
     onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.custody }),
+    onError: toastUnlessSaid(SAYS_EVERY_FAILURE),
   });
 };
 /**
@@ -1420,6 +1485,7 @@ export const useSettleCustody = () => {
       void qc.invalidateQueries({ queryKey: fleetKeys.custody });
       void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses });
     },
+    onError: toastUnlessSaid(SAYS_EVERY_FAILURE),
   });
 };
 /**
@@ -1434,5 +1500,7 @@ export const useSaveCustodyPaperSettings = () => {
       qc.setQueryData(custodyPaperSettingsKey, saved);
       void qc.invalidateQueries({ queryKey: custodyPaperSettingsKey });
     },
+    // «إعداد المذكرات» says a stale save, and every other failure, itself: one toast, not two.
+    onError: toastUnlessSaid(SAYS_EVERY_FAILURE),
   });
 };

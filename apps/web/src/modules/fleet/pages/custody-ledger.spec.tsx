@@ -610,7 +610,19 @@ describe('«سجل العهدة» — an operation’s drawer', () => {
   it('a settlement: its licensing memos, their total, its letter', () => {
     const drawer = element(page('/fleet/custody/log?open=op-s1'), 'data-ledger-details="op-s1"');
     const parts = element(drawer, 'data-ledger-settle-parts="true"');
-    expect(parts).toContain('href="/fleet/license-expenses"');
+    // Settling needs no licence grant: without one, the count is words, not a way to a screen
+    // that would refuse its reader.
+    expect(parts).not.toContain('href="/fleet/license-expenses"');
+    expect(text(parts)).toContain('3 مذكرات — في «مصروفات التراخيص»');
+    const licensed = element(
+      page('/fleet/custody/log?open=op-s1', client(), [
+        'fleetCustody.view',
+        'fleetReceipt.create',
+        'fleetLicenseExpense.view',
+      ]),
+      'data-ledger-settle-parts="true"',
+    );
+    expect(licensed).toContain('href="/fleet/license-expenses"');
     expect(parts.match(/data-licence-kind="renewal"/gu)?.length).toBeGreaterThanOrEqual(3);
     expect(text(parts)).toContain(figure(124139.46));
     expect(text(element(drawer, 'data-ledger-sum-cell="after"'))).toContain(figure(175260.54));
@@ -716,7 +728,7 @@ describe.skipIf(!merged)('«سجل العهدة» reads as the approved sample d
     expect(text(element(html, 'data-ledger-detail="op-r1"'))).toContain(
       '5 مذكرات: كاوتش، وقود، صيانة',
     );
-    expect(text(element(html, 'data-ledger-detail="op-s1"'))).toContain('3 مذكرات مصروفات تراخيص');
+    expect(text(element(html, 'data-ledger-detail="op-s1"'))).toContain('3 مصروفات تراخيص');
     expect(text(element(html, 'data-ledger-detail="spend:2026-09-01:2026-09-28"'))).toContain(
       '97 إيصالًا صُرفت من العهدة',
     );

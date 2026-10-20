@@ -2,18 +2,20 @@
 // الزراير وانا هبقى اقولك هنعمل فى كل واحد ايه»: the fund's three actions on the custody board's
 // toolbar — «تسوية العهدة», «استعاضة العهدة», «شحن العهدة», in that order, one framed group at the
 // row's far left with the Excel/PDF pair beside it («عاوز دول قبل الاكسيل والبى دى اف»: read left to
-// right they come first, so in the right-to-left markup they come last). What each one does is the
-// owner's to say, so for now a press only
-// says «سيُفعَّل هذا الإجراء قريبًا.».
+// right they come first, so in the right-to-left markup they come last).
 //
-// The three now each open their own dialog: `CustodyFundActions` draws the same group, a press
-// writes `?fund=<op>` into the address (`useFundParam`), and a reader who may not write custody
-// money («إيصالات العهدة» — `fleetReceipt.create`) sees no group at all. The board itself still
-// draws its own group until it mounts `CustodyFundActions` (with its dialogs) in its place.
+// The three now each open their own dialog: the board mounts `CustodyFundActions`, which draws the
+// same group; a press writes `?fund=<op>` into the address (`useFundParam`), and the board's
+// `CustodyFundDialogs` draws the dialog the address names. A reader who may not write custody money
+// («إيصالات العهدة» — `fleetReceipt.create`) sees no group and no dialog at all. Nothing says
+// «سيُفعَّل هذا الإجراء قريبًا.» any more: the toast and its words are gone.
 //
 // The suite has no DOM, so nothing here clicks: the page is rendered to markup, and each button's
 // own `onClick` — caught as the element is created — is pressed by hand, against a toast store
 // that only records.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -114,6 +116,7 @@ const {
 const { PILL_FRAME } = await import('../components/custody-board-looks');
 
 const ar = (key: string): string => translate('ar', key);
+const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'CustodyPage.tsx'), 'utf8');
 
 const me = (permissions: readonly string[] = ['fleetCustody.view']): MeDto =>
   ({
@@ -158,15 +161,19 @@ const group = (
     </Provider>,
   );
 
-const board = (): string => {
-  const store = storeFor();
+/** May open the fund's dialogs: the custody grant and the receipts' create. */
+const WRITER = ['fleetCustody.view', 'fleetReceipt.create'] as const;
+
+/** The custody board at `path`, for a reader holding `permissions`. */
+const board = (permissions: readonly string[] = WRITER, path = '/fleet/custody'): string => {
+  const store = storeFor(permissions);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   return renderToStaticMarkup(
     <Provider store={store}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/fleet/custody']}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/fleet/custody" element={<CustodyPage />} />
           </Routes>
@@ -281,20 +288,67 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
     );
   });
 
-  it('says «سيُفعَّل هذا الإجراء قريبًا.» on a press — an info toast, whichever of the three', () => {
+  it('opens its dialog on a press — `?fund=<op>` on the board’s own address, no toast', () => {
     pressed.clear();
     raised.length = 0;
-    board();
+    asked.length = 0;
+    board(WRITER, '/fleet/custody?from=2026-09-01&source=fuel&page=2');
     expect([...pressed.keys()]).toEqual([...ORDER]);
-    expect(ar('fleet.custody.actions.soon')).toBe('سيُفعَّل هذا الإجراء قريبًا.');
-    for (const key of ORDER) {
-      pressed.get(key)?.();
-      expect(raised.at(-1), key).toEqual({
-        variant: 'info',
-        title: 'سيُفعَّل هذا الإجراء قريبًا.',
-      });
+    for (const key of ORDER) pressed.get(key)?.();
+    // The board's filters and page stay as they were; only `fund` joins them.
+    expect(asked).toEqual([
+      'from=2026-09-01&source=fuel&page=2&fund=settle',
+      'from=2026-09-01&source=fuel&page=2&fund=replenish',
+      'from=2026-09-01&source=fuel&page=2&fund=charge',
+    ]);
+    expect(raised).toEqual([]);
+    // «سيُفعَّل هذا الإجراء قريبًا.» is gone — from the board and from both dictionaries.
+    expect(PAGE).not.toContain('actions.soon');
+    expect(PAGE).not.toContain('FUND_ACTIONS');
+    expect(PAGE.match(/<CustodyFundActions \/>/gu)).toHaveLength(1);
+    for (const locale of ['ar', 'en'] as const) {
+      expect(translate(locale, 'fleet.custody.actions.soon'), locale).toBe(
+        'fleet.custody.actions.soon',
+      );
     }
-    expect(raised).toHaveLength(3);
+  });
+
+  it.each([
+    ['settle', 'data-memo-settle="true"'],
+    ['replenish', 'data-memo-replenish="true"'],
+    ['charge', 'data-memo-charge="true"'],
+  ])('draws the «%s» dialog where the address says `?fund=` — and only that one', (op, panel) => {
+    const html = board(WRITER, `/fleet/custody?fund=${op}`);
+    expect(html).toContain(panel);
+    expect(html.match(/data-memo-(?:settle|replenish|charge)="true"/gu)).toHaveLength(1);
+    // Outside the toolbar: after the filter bar, never inside the row of buttons.
+    const toolbar = html.indexOf('data-custody-toolbar="true"');
+    const filters = html.indexOf('data-custody-filter-bar="true"');
+    expect(filters).toBeGreaterThan(toolbar);
+    expect(html.indexOf(panel)).toBeGreaterThan(filters);
+  });
+
+  it('opens no dialog without `?fund=`, nor for a `fund` it does not know', () => {
+    for (const path of ['/fleet/custody', '/fleet/custody?fund=refund']) {
+      expect(board(WRITER, path), path).not.toMatch(
+        /data-memo-(?:settle|replenish|charge)="true"/u,
+      );
+    }
+  });
+
+  it('is not drawn for a reader who may not write custody money — nor is any dialog', () => {
+    for (const permissions of [
+      ['fleetCustody.view'],
+      ['fleetCustody.view', 'fleetReceipt.edit', 'fleetReceipt.delete'],
+    ]) {
+      const html = board(permissions, '/fleet/custody?fund=charge');
+      expect(html, permissions.join()).not.toContain('data-custody-fund-actions');
+      expect(html, permissions.join()).not.toContain('data-custody-fund-action=');
+      expect(html, permissions.join()).not.toMatch(/data-memo-(?:settle|replenish|charge)="true"/u);
+      // The rest of the toolbar is all there.
+      expect(html).toContain('data-export="custody"');
+      expect(html).toContain('data-custody-dashboard-open="true"');
+    }
   });
 });
 

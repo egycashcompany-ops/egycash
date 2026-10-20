@@ -71,9 +71,18 @@ export const cell = (
   h: number,
   inner: string,
   look: Look | null,
-  o: { a?: 'c' | 'r' | 'l'; v?: 'b' | 'm'; fill?: string; drop?: number } = {},
+  o: {
+    a?: 'c' | 'r' | 'l';
+    v?: 'b' | 'm';
+    fill?: string;
+    drop?: number;
+    /** Two lines in the row (Excel's «wrap text»), each centred. */
+    wrap?: boolean;
+    /** Cut at the cell's own edges: never over a neighbour, never off the paper. */
+    clip?: boolean;
+  } = {},
 ): string =>
-  `<div class="xc ${o.a ?? 'c'}${o.v === 'm' ? ' m' : ''}${look === null ? '' : ` ${cls(look)}`}" style="right:${n(x)}px;top:${n(y)}px;width:${n(w)}px;height:${n(h)}px${look === null ? '' : `;font-size:${look.pt}pt`}${o.fill === undefined ? '' : `;background:${o.fill}`}${o.drop === undefined ? '' : o.v === 'm' ? `;padding-top:${n(2 * o.drop)}px` : `;padding-bottom:${n(2 - o.drop)}px`}">${inner}</div>`;
+  `<div class="xc ${o.a ?? 'c'}${o.v === 'm' ? ' m' : ''}${look === null ? '' : ` ${cls(look)}`}" style="right:${n(x)}px;top:${n(y)}px;width:${n(w)}px;height:${n(h)}px${look === null ? '' : `;font-size:${look.pt}pt`}${o.fill === undefined ? '' : `;background:${o.fill}`}${o.drop === undefined ? '' : o.v === 'm' ? `;padding-top:${n(2 * o.drop)}px` : `;padding-bottom:${n(2 - o.drop)}px`}${o.wrap === true ? ';text-align:center' : ''}${o.clip === true ? ';overflow:hidden' : ''}">${inner}</div>`;
 
 export const fill = (x: number, y: number, w: number, h: number, colour: string): string =>
   `<div style="right:${n(x)}px;top:${n(y)}px;width:${n(w)}px;height:${n(h)}px;background:${colour}"></div>`;
@@ -207,18 +216,108 @@ const widthEm = (words: string): number =>
     return sum + 0.5;
   }, 0);
 
+/** Each face's stack, as the sheet's CSS names it — what a cell's words are measured in. */
+const FACE_STACK: Record<Face, string> = {
+  cal: STACK.cal,
+  ari: STACK.ari,
+  art: STACK.ariThin,
+  ark: STACK.ariCell,
+  arh: STACK.ariTop,
+};
+
+/** A line's width in px, in `face` at `size` — measured once the faces are in, else estimated. */
+const widthOf = (words: string, size: number, face: Face = 'cal', bold = true): number =>
+  measureText(words, `${bold ? 700 : 400} ${size}pt ${FACE_STACK[face]}`) ??
+  widthEm(words) * px(size);
+
 /**
  * A Calibri-bold cell's text at `pt`, made smaller (by quarter points) until it fits `room` px —
  * Excel's «shrink to fit», as his maintenance sheet's long «البيان» lines are.
  */
-export const shrinkPt = (words: string, pt: number, room: number, least = 6): number => {
-  const width = (size: number): number =>
-    measureText(words, `700 ${size}pt ${STACK.cal}`) ?? widthEm(words) * px(size);
+export const shrinkPt = (
+  words: string,
+  pt: number,
+  room: number,
+  least = 6,
+  face: Face = 'cal',
+  bold = true,
+): number => {
+  const width = (size: number): number => widthOf(words, size, face, bold);
   let size = pt;
   if (width(size) <= room) return size;
   size = Math.max(least, Math.floor(((pt * room) / width(pt)) * 4) / 4);
   while (size > least && width(size) > room) size -= 0.25;
   return size;
+};
+
+/** The smallest a typed cell's words are drawn — on one line, then on two. */
+const LEAST_ONE = 6;
+const LEAST_TWO = 4.5;
+
+export interface CellFit {
+  look: Look;
+  /** The words as the cell prints them — two lines joined by «\n» when wrapped. */
+  words: string;
+  wrap: boolean;
+  clip: boolean;
+}
+
+/**
+ * A typed cell («البيان», «ملاحظات», «المأموريه») made to hold its own words — never spilling over
+ * the «م» or the amount beside it, or off the paper:
+ *   1. as typed, when they fit; else Excel's «shrink to fit», down to 6pt;
+ *   2. else smaller on one line, or on two lines in the row (Excel's «wrap text», split where the
+ *      two come out most even, as large as the row's height lets two lines be) — whichever reads
+ *      larger, down to 4.5pt;
+ *   3. else those two lines (or the one, with no space to break at) at 4.5pt, cut at the cell's
+ *      edges.
+ * `room` is the cell's width less its 3px sides; `rowPx` its height.
+ */
+export const fitCell = (words: string, look: Look, room: number, rowPx: number): CellFit => {
+  const bold = look.b === true;
+  const at = (size: number): Look => ({ ...look, pt: size });
+  const one = (size: number): number => widthOf(words, size, look.f, bold);
+  // 1. Excel's «shrink to fit», as his sheets do it — down to 6pt.
+  const shrunk = shrinkPt(words, look.pt, room, Math.min(LEAST_ONE, look.pt), look.f, bold);
+  if (one(shrunk) <= room) return { look: at(shrunk), words, wrap: false, clip: false };
+  // 2. Smaller still on one line, or on two — whichever reads larger.
+  const oneLine = shrinkPt(words, shrunk, room, LEAST_TWO, look.f, bold);
+  const halves = evenSplit(words, (part) => widthOf(part, look.pt, look.f, bold));
+  if (halves === null) {
+    return { look: at(oneLine), words, wrap: false, clip: one(oneLine) > room };
+  }
+  const [a, b] = halves;
+  const wider = (size: number): number =>
+    Math.max(widthOf(a, size, look.f, bold), widthOf(b, size, look.f, bold));
+  // Two lines at line-height 1 in the row, over its 2px foot.
+  const tallest = Math.floor(((rowPx - 2) / 2 / px(1)) * 4) / 4;
+  let twoLines = Math.min(look.pt, tallest);
+  while (twoLines > LEAST_TWO && wider(twoLines) > room) twoLines -= 0.25;
+  twoLines = Math.max(LEAST_TWO, twoLines);
+  const oneFits = one(oneLine) <= room;
+  const twoFits = wider(twoLines) <= room;
+  if (oneFits && (!twoFits || oneLine >= twoLines)) {
+    return { look: at(oneLine), words, wrap: false, clip: false };
+  }
+  // 3. Two lines — cut at the cell's edges when even the least is too wide.
+  return { look: at(twoLines), words: `${a}\n${b}`, wrap: true, clip: !twoFits };
+};
+
+/** `words` in two at the space where the wider half is narrowest; `null` with no space. */
+const evenSplit = (words: string, width: (part: string) => number): [string, string] | null => {
+  let best: [string, string] | null = null;
+  let bestWidth = Infinity;
+  for (let i = words.indexOf(' '); i > 0; i = words.indexOf(' ', i + 1)) {
+    const a = words.slice(0, i).trim();
+    const b = words.slice(i + 1).trim();
+    if (a === '' || b === '') continue;
+    const w = Math.max(width(a), width(b));
+    if (w < bestWidth) {
+      bestWidth = w;
+      best = [a, b];
+    }
+  }
+  return best;
 };
 
 /** The looks his cells are written in. */

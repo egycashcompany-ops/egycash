@@ -17,6 +17,15 @@ export interface CustodyMemoTotals {
 const ZERO: CustodyMemoTotals = { receipts: 0, total: 0 };
 
 /**
+ * One receipt's amount in whole piastres, rounded HALF UP — the same rule as `Math.round(x * 100)`
+ * on the receipts, the editor and the printed memo. (`$round` rounds half to EVEN: 12.125 would be
+ * 1212 here and 1213 on the paper.) Amounts are positive, so ⌊x·100 + ½⌋ is exactly `Math.round`.
+ */
+export const RECEIPT_PIASTRES = {
+  $floor: { $add: [{ $multiply: ['$amount', 100] }, 0.5] },
+} as const;
+
+/**
  * memo id → its receipts and total, for every memo given (zeros for one with none). One
  * aggregate over the receipts' own link, in `session` when given — so a «استعاضة» reads exactly
  * the amounts its transaction sees.
@@ -43,7 +52,7 @@ export const readMemoTotals = async (
       $group: {
         _id: '$memoId',
         receipts: { $sum: 1 },
-        piastres: { $sum: { $round: [{ $multiply: ['$amount', 100] }, 0] } },
+        piastres: { $sum: RECEIPT_PIASTRES },
       },
     },
   ])

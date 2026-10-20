@@ -17,8 +17,15 @@ import {
 import { ApiError } from '../../../shared/lib/api-client';
 import { writeRefusalOf } from './write-refusal';
 
-/** Today as the fund's forms write it — the API's UTC day, `YYYY-MM-DD`. */
-export const todayDay = (now: Date = new Date()): string => now.toISOString().slice(0, 10);
+/**
+ * Today as the fund's forms write it, `YYYY-MM-DD` — the CALENDAR day on the clerk's own clock, as
+ * the memo editor's `today()` reads it. (The UTC day would be yesterday from Cairo's midnight to
+ * 02:00/03:00, and the letter would print it.) The body then carries that day as UTC midnight.
+ */
+export const todayDay = (now: Date = new Date()): string => {
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+};
 
 const DAY = /^(\d{4})-(\d{2})-(\d{2})$/u;
 
@@ -53,6 +60,16 @@ export const fundAfter = (before: number, change: number): number =>
   (piastres(before) + piastres(change)) / 100;
 
 /** «المبلغ» as typed, when it is an amount the fund can be charged with; else `null`. */
+/** The most a «شحن العهدة» may record — the contract's own ceiling. */
+export const CHARGE_AMOUNT_MAX = 1_000_000_000;
+
+/** «وذلك نظير» — the contract's own limit. */
+export const CHARGE_REASON_MAX = 500;
+
+/** A letter's period reads forward: «إلى» never before «من» (an open end is always in order). */
+export const periodInOrder = (period: { from: string; to: string }): boolean =>
+  period.from === '' || period.to === '' || period.from <= period.to;
+
 export const chargeAmountOf = (raw: string): number | null => {
   if (raw.trim() === '') return null;
   const value = Number(raw);

@@ -25,6 +25,7 @@ import {
   freshLetterHead,
   fundAfter,
   letterPeriod,
+  periodInOrder,
   settleBody,
   settlePartKey,
   sumMoney,
@@ -108,7 +109,15 @@ export const CustodySettleDialog = ({
   );
 
   const required = useRequiredFields(
-    [{ key: 'parts', label: t('fleet.custody.fundForm.required.parts'), ok: picked.length > 0 }],
+    [
+      { key: 'parts', label: t('fleet.custody.fundForm.required.parts'), ok: picked.length > 0 },
+      // «إلى» before «من» is refused by the server naming no field: «إلى» says it here instead.
+      {
+        key: 'period',
+        label: t('fleet.custody.fundForm.required.period'),
+        ok: periodInOrder(period),
+      },
+    ],
     open,
   );
   const { run, busy } = useFundOperation({
@@ -325,6 +334,7 @@ export const CustodySettleDialog = ({
             from={period.from}
             to={period.to}
             onChange={(patch) => setHead((held) => ({ ...held, ...patch }))}
+            periodMissing={required.isMissing('period')}
           />
         </DesignSection>
 

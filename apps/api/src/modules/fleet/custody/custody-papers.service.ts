@@ -4,6 +4,7 @@
 import { type ClientSession } from 'mongoose';
 import {
   DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES,
+  ErrorCodes,
   FLEET_CUSTODY_PAPERS,
   FleetCustodyPaperSetSchema,
   type FleetCustodyPaper,
@@ -13,6 +14,7 @@ import {
   type SaveFleetCustodyPaperSettings,
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
+import { ConflictError, StaleDocumentError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCustodyPaperSettingsRepository } from './custody-paper-settings.repository';
 
@@ -53,16 +55,22 @@ class FleetCustodyPapersService {
       : { papers: mergePaperSettings(doc.papers), version: doc.__v };
   }
 
-  /** First save creates the row; every later one is versioned (a stale one is 409). */
+  /**
+   * A save without a version is the FIRST one — the page read «nothing saved yet» — and may only
+   * create the row: when a row exists by now (someone saved meanwhile), or two first saves race and
+   * the unique key refuses the second, it is a stale 409, never a silent overwrite. Every later save
+   * carries the version it read (a stale one is 409 too).
+   */
   async saveSettings(
     input: SaveFleetCustodyPaperSettings,
     by: string,
   ): Promise<FleetCustodyPaperSettingsDto> {
     const before = await fleetCustodyPaperSettingsRepository.findByKey(SETTINGS_KEY);
     const papers = copy(input.papers);
+    if (before !== null && input.version === undefined) throw new StaleDocumentError();
     const saved =
       before === null
-        ? await fleetCustodyPaperSettingsRepository.create({ key: SETTINGS_KEY, papers }, { by })
+        ? await this.createFirst(papers, by)
         : await fleetCustodyPaperSettingsRepository.updateById(
             String(before._id),
             { papers },
@@ -76,6 +84,21 @@ class FleetCustodyPapersService {
       }),
     });
     return { papers: mergePaperSettings(saved.papers), version: saved.__v };
+  }
+
+  /** The first row; a racing first save that lost on the unique key reads as stale. */
+  private async createFirst(papers: FleetCustodyPaperSet, by: string) {
+    try {
+      return await fleetCustodyPaperSettingsRepository.create(
+        { key: SETTINGS_KEY, papers },
+        { by },
+      );
+    } catch (error) {
+      if (error instanceof ConflictError && error.code === ErrorCodes.DUPLICATE) {
+        throw new StaleDocumentError();
+      }
+      throw error;
+    }
   }
 
   /**

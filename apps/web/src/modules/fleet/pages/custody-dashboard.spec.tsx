@@ -747,6 +747,36 @@ describe('«لوحة تحكم» on the custody board', () => {
   });
 });
 
+describe('«العهدة · المذكرات · سجل العهدة» — the board is the first of three tabs', () => {
+  /** The opening tag of the tab `key`. */
+  const tabTag = (html: string, key: string): string => {
+    const at = html.indexOf(`data-custody-tab="${key}"`);
+    expect(at, key).toBeGreaterThan(-1);
+    return html.slice(html.lastIndexOf('<', at), html.indexOf('>', at));
+  };
+
+  it('opens on the tabs, over its toolbar, «العهدة» the one it is on', () => {
+    const html = board();
+    const tabs = html.indexOf('data-custody-tabs="true"');
+    expect(tabs, 'the tabs are drawn').toBeGreaterThan(-1);
+    expect(tabs, 'over the toolbar').toBeLessThan(html.indexOf('data-custody-toolbar="true"'));
+    expect([...html.matchAll(/data-custody-tab="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'board',
+      'memos',
+      'log',
+    ]);
+    expect(tabTag(html, 'board')).toContain('aria-selected="true"');
+    expect(tabTag(html, 'board')).toContain('href="/fleet/custody"');
+    expect(tabTag(html, 'memos')).toContain('aria-selected="false"');
+    expect(tabTag(html, 'memos')).toContain('href="/fleet/custody/memos"');
+    expect(tabTag(html, 'log')).toContain('aria-selected="false"');
+    expect(tabTag(html, 'log')).toContain('href="/fleet/custody/log"');
+    // Mounted once, from its own file: the board's source carries none of the tabs' purple.
+    expect(PAGE.match(/<CustodyTabs \/>/gu)).toHaveLength(1);
+    expect(PAGE).not.toContain('bg-brand-600');
+  });
+});
+
 describe('(0) the board’s filters, read only', () => {
   const bar = (filters: CustodyDashboardFilters, onClearFilters?: () => void): string =>
     draw(<CustodyDashboardFilterBar filters={filters} onClearFilters={onClearFilters} />);

@@ -13,7 +13,7 @@ import type {
   FleetCustodySignRole,
   FleetCustodySource,
 } from '@ecms/contracts';
-import { dMy, esc, fixed2, general, grouped, r2 } from './custody-paper-format';
+import { dMy, esc, fixed2, general, grouped } from './custody-paper-format';
 import {
   ari,
   arh,
@@ -23,17 +23,18 @@ import {
   cal,
   cell,
   fill,
+  fitCell,
   grid,
   hl,
   logo,
   memoPage,
   num,
   planRunOn,
-  shrinkPt,
   signLine,
   text,
   textMid,
   vl,
+  type Look,
 } from './custody-paper-excel';
 import {
   FUEL_WORDS,
@@ -64,11 +65,32 @@ export interface MemoPaperInput {
   signatures: FleetCustodyPaperSignatures;
 }
 
-/** The memo's total, to the piastre. */
+/**
+ * The memo's total, to the piastre: each line rounded half up to the piastre FIRST, then added —
+ * the API's rule for the memo's total, the «استعاضة» and the fund, so the paper never prints a
+ * figure a piastre off theirs (two lines of 10.004 are 20.00 there, not 20.01).
+ */
 export const memoTotal = (lines: readonly MemoPaperLine[]): number =>
-  r2(lines.reduce((sum, line) => sum + line.amount, 0));
+  lines.reduce((sum, line) => sum + Math.round(line.amount * 100), 0) / 100;
 
 const ARABIC = /[\u0600-\u06FF]/u;
+
+/**
+ * A cell of words the clerk typed, made to hold them (`fitCell`): as typed when they fit, else
+ * shrunk, else on two lines in the row, else cut at its own edges.
+ */
+const typedCell = (
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  words: string,
+  look: Look,
+  o: { v?: 'b' | 'm'; drop?: number } = {},
+): string => {
+  const fit = fitCell(words, look, w - 6, h);
+  return cell(x, y, w, h, esc(fit.words), fit.look, { ...o, wrap: fit.wrap, clip: fit.clip });
+};
 
 /** The block printed for a role — none when it is switched off for this paper. */
 const blockOf = (
@@ -119,12 +141,11 @@ const maintenanceBody: Body = (input, from, to, top, foot) => {
     const line = input.lines[i];
     if (line === undefined) continue;
     o.push(cell(0, y, xM, rowH, num(String(i + 1)), cal(13)));
-    const statement = line.statement ?? '';
-    o.push(
-      cell(xM, y, xBayan - xM, rowH, esc(statement), cal(shrinkPt(statement, 11, xBayan - xM - 6))),
-    );
+    // «البيان» and «ملاحظات» hold their own words: shrunk, else on two lines, else cut at the
+    // cell's edge — never over the «م» or the amount, never off the paper (`fitCell`).
+    o.push(typedCell(xM, y, xBayan - xM, rowH, line.statement ?? '', cal(11)));
     o.push(cell(xBayan, y, xTotal - xBayan, rowH, num(general(line.amount)), cal(10)));
-    o.push(cell(xTotal, y, W - xTotal, rowH, esc(line.note ?? ''), cal(10)));
+    o.push(typedCell(xTotal, y, W - xTotal, rowH, line.note ?? '', cal(10)));
     y += rowH;
     ys.push(y);
   }
@@ -295,10 +316,12 @@ const fuelBody: Body = (input, from, to, top, foot) => {
   const data = ari(DATA);
   // A cell in Arabic (a mission, a code like «جبلي»): smaller than the figures, in the row's
   // middle (his: ink from 0.2R to 0.8R, its tail included).
+  // Each holds its own words (`fitCell`): a long «المأموريه» or «ملاحظات» never runs into the
+  // amount or the next column.
   const said = (x: number, y: number, w: number, value: string): string =>
     ARABIC.test(value)
-      ? cell(x, y, w, R, esc(value), ark(DATA_AR), { v: 'm' })
-      : cell(x, y, w, R, esc(value), data, { drop: SINK });
+      ? typedCell(x, y, w, R, value, ark(DATA_AR), { v: 'm' })
+      : typedCell(x, y, w, R, value, data, { drop: SINK });
   let y = 0;
   if (top) {
     o.push(cell(-1, 0, 420, 0.9 * R, esc(MEMO_COMPANY), arh(0.9 * D), { a: 'r' }));

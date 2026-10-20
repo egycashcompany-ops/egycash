@@ -7,16 +7,44 @@
 // api, and what it asked the cache to throw away is what is asserted.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+} from '@tanstack/react-query';
+import { DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES } from '@ecms/contracts';
 import { keysForTopic } from '../../../platform/realtime/invalidation-registry';
+import { ApiError } from '../../../shared/lib/api-client';
+import { errorMessage } from '../../../shared/lib/errors';
+import { store } from '../../../store';
+import type * as ToastStore from '../../../shared/ui/toast/toast-store';
 
 const calls = vi.hoisted(() => [] as { fn: string; args: unknown[] }[]);
+/** When set, every stood-in write fails with it. */
+const refuse = vi.hoisted(() => ({ with: null as unknown }));
+/** Every error toast raised, in order — the hooks' own, and `GLOBAL` for the app's global one. */
+const raised = vi.hoisted(() => [] as string[]);
+vi.mock('../../../shared/ui/toast/toast-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof ToastStore>();
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      error: (title: string): string => {
+        raised.push(title);
+        return `toast-${raised.length}`;
+      },
+    },
+  };
+});
 
 vi.mock('./fleet-api', async (original) => {
   const actual = await original<Record<string, unknown>>();
   const doc = (fn: string) =>
     vi.fn(async (...args: unknown[]) => {
       calls.push({ fn, args });
+      if (refuse.with !== null) throw refuse.with;
       return { id: '650000000000000000000001', version: 1 };
     });
   return {
@@ -32,6 +60,10 @@ vi.mock('./fleet-api', async (original) => {
     updateLicenseExpense: doc('updateLicenseExpense'),
     deleteLicenseExpense: doc('deleteLicenseExpense'),
     createReceipt: doc('createReceipt'),
+    updateReceipt: doc('updateReceipt'),
+    deleteReceipt: doc('deleteReceipt'),
+    uploadReceiptImage: doc('uploadReceiptImage'),
+    deleteReceiptImage: doc('deleteReceiptImage'),
   };
 });
 
@@ -62,6 +94,8 @@ const run = async (hook: unknown, input: unknown): Promise<{ keys: string[]; qc:
 afterEach(() => {
   vi.restoreAllMocks();
   calls.length = 0;
+  refuse.with = null;
+  raised.length = 0;
 });
 
 const ID = '650000000000000000000001';
@@ -197,5 +231,104 @@ describe('and so is a screen left open when somebody ELSE makes that write', () 
   });
   it('a licence record: its screen and the custody subtree', () => {
     expect(keys('fleet.licenseExpense')).toEqual([LICENCE, CUSTODY]);
+  });
+});
+
+describe('a failure is said once — by the screen when it names it, by the usual toast when not', () => {
+  const REFUSALS = {
+    locked: new ApiError('BUSINESS_RULE_VIOLATION', 'Settled memos cannot change', 422),
+    stale: new ApiError('STALE_DOCUMENT', 'Document was modified', 409),
+    duplicate: new ApiError('DUPLICATE', 'Receipt already on a memo', 409),
+    gone: new ApiError('NOT_FOUND', 'Not found', 404),
+    lines: new ApiError('VALIDATION_FAILED', 'Invalid', 400, [
+      { field: 'lines.0.receiptId', code: 'custom', message: 'changed' },
+    ]),
+    server: new ApiError('INTERNAL', 'Boom', 500),
+    network: new TypeError('Failed to fetch'),
+  } as const;
+  type Refusal = keyof typeof REFUSALS;
+  const ALL = Object.keys(REFUSALS) as Refusal[];
+
+  /**
+   * Runs one write that fails with `refusal`, over a client whose global handler is the app's
+   * (query-client.ts): it toasts `GLOBAL` for any mutation that declares no `onError` of its own.
+   */
+  const fail = async (hook: unknown, input: unknown, refusal: Refusal): Promise<string[]> => {
+    raised.length = 0;
+    refuse.with = REFUSALS[refusal];
+    const qc = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+      mutationCache: new MutationCache({
+        onError: (_error, _variables, _context, mutation) => {
+          if (mutation.options.onError === undefined) raised.push('GLOBAL');
+        },
+      }),
+    });
+    let mutation: { mutateAsync: (input: unknown) => Promise<unknown> } | null = null;
+    const Probe = (): null => {
+      mutation = (hook as Hook)() as unknown as typeof mutation;
+      return null;
+    };
+    renderToStaticMarkup(
+      <QueryClientProvider client={qc}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    await expect(
+      (mutation as unknown as { mutateAsync: (i: unknown) => Promise<unknown> }).mutateAsync(input),
+    ).rejects.toBe(REFUSALS[refusal]);
+    return [...raised];
+  };
+  const usual = (refusal: Refusal): string =>
+    errorMessage(REFUSALS[refusal], store.getState().locale.locale);
+
+  it.each([
+    ['a memo saved', queries.useCreateCustodyMemo, { kind: 'tyres', lines: [] }],
+    ['a memo changed', queries.useUpdateCustodyMemo, { id: ID, body: { version: 0 } }],
+    ['a memo deleted', queries.useDeleteCustodyMemo, ID],
+    ['a replenish', queries.useReplenishCustody, { memoIds: [ID] }],
+    ['a settle', queries.useSettleCustody, { parts: [{ expenseId: ID, part: 'renewal' }] }],
+    ['a charge', queries.useChargeCustody, { amount: 100, reason: '' }],
+    ['a licence record added', queries.useCreateLicenseExpense, { date: new Date() }],
+    ['a licence record changed', queries.useUpdateLicenseExpense, { id: ID, body: { version: 0 } }],
+    ['a licence record deleted', queries.useDeleteLicenseExpense, ID],
+    [
+      'the papers’ names saved',
+      queries.useSaveCustodyPaperSettings,
+      { papers: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES },
+    ],
+  ])('%s — its screen words every failure, so nothing else does', async (_, hook, input) => {
+    // The editor, «المذكرات», the three fund dialogs and the licence screens each say a refusal in
+    // so many words and every other failure with the usual sentence: a second toast would repeat it.
+    for (const refusal of ALL) expect(await fail(hook, input, refusal), refusal).toEqual([]);
+  });
+
+  it('a receipt changed — the form names a memo’s lock and a stale receipt; the rest as usual', async () => {
+    const input = { id: ID, body: { version: 0 } };
+    for (const refusal of ['locked', 'stale'] as const) {
+      expect(await fail(queries.useUpdateReceipt, input, refusal), refusal).toEqual([]);
+    }
+    for (const refusal of ['duplicate', 'gone', 'lines', 'server', 'network'] as const) {
+      expect(await fail(queries.useUpdateReceipt, input, refusal), refusal).toEqual([
+        usual(refusal),
+      ]);
+    }
+  });
+
+  it('a receipt deleted — the board names a memo’s lock; the rest as usual', async () => {
+    expect(await fail(queries.useDeleteReceipt, ID, 'locked')).toEqual([]);
+    for (const refusal of ['stale', 'gone', 'server', 'network'] as const) {
+      expect(await fail(queries.useDeleteReceipt, ID, refusal), refusal).toEqual([usual(refusal)]);
+    }
+  });
+
+  it.each([
+    ['a receipt added', queries.useCreateReceipt, {}],
+    ['a receipt’s photo uploaded', queries.useUploadReceiptImage, { id: ID, file: null }],
+    ['a receipt’s photo deleted', queries.useDeleteReceiptImage, ID],
+  ])('%s — names no refusal, and keeps the global toast', async (_, hook, input) => {
+    for (const refusal of ['locked', 'server'] as const) {
+      expect(await fail(hook, input, refusal), refusal).toEqual(['GLOBAL']);
+    }
   });
 });

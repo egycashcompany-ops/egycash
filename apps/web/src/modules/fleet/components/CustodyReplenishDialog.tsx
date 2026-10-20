@@ -30,6 +30,7 @@ import {
   fundAfter,
   LETTER_KIND_ORDER,
   letterPeriod,
+  periodInOrder,
   replenishBody,
   sumMoney,
   toggled,
@@ -115,7 +116,15 @@ export const CustodyReplenishDialog = ({
   });
 
   const required = useRequiredFields(
-    [{ key: 'memos', label: t('fleet.custody.fundForm.required.memos'), ok: picked.length > 0 }],
+    [
+      { key: 'memos', label: t('fleet.custody.fundForm.required.memos'), ok: picked.length > 0 },
+      // «إلى» before «من» is refused by the server naming no field: «إلى» says it here instead.
+      {
+        key: 'period',
+        label: t('fleet.custody.fundForm.required.period'),
+        ok: periodInOrder(period),
+      },
+    ],
     open,
   );
   const { run, busy } = useFundOperation({
@@ -203,7 +212,9 @@ export const CustodyReplenishDialog = ({
                     {/* Its name — what he typed, or «مذكرة كاوتش رقم 7» muted — over its kind
                         and running number. */}
                     <span className="mx-auto flex max-w-[15rem] flex-col items-center gap-1">
-                      <MemoName memo={memo} boxed />
+                      <span className="contents" data-memo-replenish-name={memo.no}>
+                        <MemoName memo={memo} boxed />
+                      </span>
                       <span className="flex items-center gap-2 whitespace-nowrap text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                         <KindPill kind={memo.kind} />
                         <span>
@@ -286,6 +297,7 @@ export const CustodyReplenishDialog = ({
             from={period.from}
             to={period.to}
             onChange={(patch) => setHead((held) => ({ ...held, ...patch }))}
+            periodMissing={required.isMissing('period')}
           />
         </DesignSection>
 
@@ -395,10 +407,11 @@ export const CustodyReplenishDialog = ({
           >
             <Stroke d={[...PATH.warn]} className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              {t('fleet.custody.fundForm.replenish.outsideWarn', {
-                kind: t(`fleet.custody.source.${line.kind}`),
-                amount: figure(line.total),
-              })}{' '}
+              {figureLine(
+                'fleet.custody.fundForm.replenish.outsideWarn',
+                { amount: figure(line.total) },
+                { kind: t(`fleet.custody.source.${line.kind}`) },
+              )}{' '}
               <Link
                 to={`/fleet/custody/memos/new/${line.kind}`}
                 data-memo-replenish-make={line.kind}

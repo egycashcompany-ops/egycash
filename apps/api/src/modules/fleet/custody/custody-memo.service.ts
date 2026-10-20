@@ -53,9 +53,15 @@ import {
   type FleetCustodyMemoDoc,
   type FleetCustodyMemoLineDoc,
 } from './custody-memo.model';
+import { signalReceiptsOfMemo } from './custody-memo-guard';
 import { assertCustodyMemoWritable, fleetCustodyMemoRepository } from './custody-memo.repository';
 import { dayAfter, dayKey, lineChanges, orderLines, periodOf, utcDay } from './custody-memo-rules';
-import { readMemoTotals, sumMemoTotals, type CustodyMemoTotals } from './custody-memo-totals';
+import {
+  RECEIPT_PIASTRES,
+  readMemoTotals,
+  sumMemoTotals,
+  type CustodyMemoTotals,
+} from './custody-memo-totals';
 import { missionOptions, suggestMissions } from './custody-mission';
 import { fleetCustodyPapersService } from './custody-papers.service';
 
@@ -218,7 +224,7 @@ class FleetCustodyMemoService {
         $group: {
           _id: '$kind',
           count: { $sum: 1 },
-          piastres: { $sum: { $round: [{ $multiply: ['$amount', 100] }, 0] } },
+          piastres: { $sum: RECEIPT_PIASTRES },
         },
       },
     ]).exec();
@@ -515,6 +521,7 @@ class FleetCustodyMemoService {
       action: 'create',
       changes: diffChanges({}, snapshot(created)),
     });
+    signalReceiptsOfMemo(String(created._id));
     return this.get(String(created._id));
   }
 
@@ -582,6 +589,7 @@ class FleetCustodyMemoService {
         snapshot(updated),
       ),
     });
+    signalReceiptsOfMemo(id);
     return this.get(id);
   }
 
@@ -604,6 +612,7 @@ class FleetCustodyMemoService {
       action: 'delete',
       changes: diffChanges(snapshot(before), {}),
     });
+    signalReceiptsOfMemo(id);
   }
 }
 

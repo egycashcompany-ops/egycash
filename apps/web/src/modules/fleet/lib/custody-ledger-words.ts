@@ -6,7 +6,7 @@
 //             its «نظير» (the API drops it), so it is written back here, once.
 //   استعاضة   «5 مذكرات: كاوتش، وقود، صيانة» / «عن الفترة من 2026/09/01 إلى 2026/09/30» — the kinds
 //             in his letter's order, not the board's.
-//   تسوية     «3 مذكرات مصروفات تراخيص» / «تجديد تراخيص 15 سيارة».
+//   تسوية     «3 مصروفات تراخيص» / «تجديد تراخيص 15 سيارة».
 //   صرف       «97 إيصالًا صُرفت من العهدة» / «كاوتش، وقود، صيانة، غسيل — في 5 مذكرات، منها 4 إيصالات لم
 //             تدخل أي مذكرة بعد».
 //
@@ -38,7 +38,7 @@ export interface LedgerWordsKit {
 
 const LEDGER = 'fleet.custody.ledger';
 
-/** «3 مذكرات مصروفات تراخيص» — licence parts, counted as the memos they are. */
+/** «3 مصروفات تراخيص» — licence parts, as the approved ledger counts them. */
 export const partsPhrase = (n: number, kit: LedgerWordsKit): string =>
   kit.t(`${LEDGER}.parts.${kit.form(n)}`, { count: new Intl.NumberFormat('en-US').format(n) });
 

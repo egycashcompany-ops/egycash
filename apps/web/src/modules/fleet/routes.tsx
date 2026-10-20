@@ -26,6 +26,11 @@
 //   /fleet/fuel-cards/charging fleetFuelCharge.view        شحن الكروت
 //   /fleet/receipts           fleetReceipt.view            خصم الإيصالات
 //   /fleet/custody            fleetCustody.view            العهدة
+//   /fleet/custody/memos      fleetCustody.view            المذكرات
+//   /fleet/custody/memos/new (+/:kind) fleetCustody.view + fleetReceipt.create  مذكرة جديدة
+//   /fleet/custody/memos/:id  fleetCustody.view + fleetReceipt.edit              تعديل المذكرة
+//   /fleet/custody/memos/setup (+/:paper) fleetCustody.view + fleetReceipt.edit إعداد المذكرات
+//   /fleet/custody/log        fleetCustody.view            سجل العهدة
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
 //   /fleet/settings           fleetMaintenanceRule.manage  FW-10
 import { Route, Routes } from 'react-router-dom';
@@ -58,6 +63,10 @@ import { FuelCardsPage } from './pages/FuelCardsPage';
 import { FuelChargingPage } from './pages/FuelChargingPage';
 import { ReceiptsPage } from './pages/ReceiptsPage';
 import { CustodyPage } from './pages/CustodyPage';
+import { CustodyMemosPage } from './pages/CustodyMemosPage';
+import { CustodyMemoEditorPage } from './pages/CustodyMemoEditorPage';
+import { CustodyPapersSetupPage } from './pages/CustodyPapersSetupPage';
+import { CustodyLedgerPage } from './pages/CustodyLedgerPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
 
@@ -252,6 +261,66 @@ export default function FleetRoutes(): JSX.Element {
             element={
               <RequirePermission permission="fleetCustody.view">
                 <CustodyPage />
+              </RequirePermission>
+            }
+          />
+          {/* «العهدة · المذكرات · سجل العهدة»: three tabs, each its own address, so each remembers its
+              own filters. Writing a memo needs what «إيصالات العهدة» needs to write a receipt — the
+              custody grant first, then the receipts' create (a new memo) or edit (a saved one, and
+              the names his papers are signed with). Static segments outrank `:id`. */}
+          <Route
+            path="custody/memos"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <CustodyMemosPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="custody/memos/new"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <RequirePermission permission="fleetReceipt.create">
+                  <CustodyMemoEditorPage />
+                </RequirePermission>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="custody/memos/new/:kind"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <RequirePermission permission="fleetReceipt.create">
+                  <CustodyMemoEditorPage />
+                </RequirePermission>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="custody/memos/setup/:paper?"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <RequirePermission permission="fleetReceipt.edit">
+                  <CustodyPapersSetupPage />
+                </RequirePermission>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="custody/memos/:id"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <RequirePermission permission="fleetReceipt.edit">
+                  <CustodyMemoEditorPage />
+                </RequirePermission>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="custody/log"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <CustodyLedgerPage />
               </RequirePermission>
             }
           />

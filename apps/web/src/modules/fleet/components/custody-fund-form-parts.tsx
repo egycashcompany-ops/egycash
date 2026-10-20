@@ -31,7 +31,7 @@ import {
   letterSheets,
   printPaperAfter,
 } from '../lib/custody-papers';
-import { fundRefusalOf, type LetterHead } from '../lib/custody-fund-forms';
+import { fundRefusalOf, periodInOrder, type LetterHead } from '../lib/custody-fund-forms';
 import { DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
 
 const BOX = boxTone(LOOK.add);
@@ -55,11 +55,19 @@ export const useFigure = (): ((value: number) => string) => {
  * A sentence with its figures in the figures' face — «سيُضاف إلى العهدة: 81,908.00 — إجمالي العهدة
  * بعدها 99,400.00»: the i18n template is filled with markers, then each marker becomes its figure.
  */
-export const useFigureLine = (): ((key: string, figures: Record<string, string>) => ReactNode) => {
+export const useFigureLine = (): ((
+  key: string,
+  figures: Record<string, string>,
+  words?: Record<string, string>,
+) => ReactNode) => {
   const t = useT();
-  return (key, figures) => {
+  return (key, figures, words = {}) => {
     const names = Object.keys(figures);
-    const marked = t(key, Object.fromEntries(names.map((name, i) => [name, `\uE000${i}\uE001`])));
+    // `words` (a kind's name…) go in as they are; only the figures are set apart.
+    const marked = t(key, {
+      ...words,
+      ...Object.fromEntries(names.map((name, i) => [name, `\uE000${i}\uE001`])),
+    });
     return marked.split(/\uE000(\d+)\uE001/u).map((part, index) =>
       index % 2 === 1 ? (
         <span key={index} dir="ltr" className={MONO}>
@@ -82,13 +90,18 @@ export const LetterFields = ({
   from,
   to,
   onChange,
+  periodMissing = false,
 }: {
   date: string;
   from: string;
   to: string;
   onChange: (patch: Partial<LetterHead>) => void;
+  /** Save was pressed with the period backwards (the form's `isMissing('period')`). */
+  periodMissing?: boolean;
 }): JSX.Element => {
   const t = useT();
+  // Typed backwards, «إلى» says so at once — the server would refuse it naming no field.
+  const backwards = periodMissing || !periodInOrder({ from, to });
   return (
     <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3 sm:gap-5">
       <DesignField label={t('fleet.custody.fundForm.letter.date')} datePicker>
@@ -111,7 +124,12 @@ export const LetterFields = ({
           data-fund-letter-from="true"
         />
       </DesignField>
-      <DesignField label={t('fleet.custody.fundForm.letter.to')} datePicker>
+      <DesignField
+        label={t('fleet.custody.fundForm.letter.to')}
+        datePicker
+        missing={backwards}
+        error={backwards ? t('fleet.custody.fundForm.periodOrder') : undefined}
+      >
         <Input
           type="date"
           dir="ltr"

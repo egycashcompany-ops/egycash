@@ -657,6 +657,28 @@ describe('the list and its figures', () => {
   });
 });
 
+describe('a receipt’s piastres', () => {
+  it('round half up, line by line — as the receipts, the editor and the printed memo add them', async () => {
+    // 12.125 is exactly 1212.5 piastres: half-to-even would make it 12.12, the paper 12.13.
+    const a = await mkReceipt({ kind: 'wash', amount: 12.125, date: '2024-03-02' });
+    const b = await mkReceipt({ kind: 'wash', amount: 10.004, date: '2024-03-03' });
+    const c = await mkReceipt({ kind: 'wash', amount: 10.004, date: '2024-03-04' });
+    const half = await createMemo({ kind: 'wash', lines: lines([a]) });
+    const twice = await createMemo({ kind: 'wash', lines: lines([b, c]) });
+    expect((await fleetCustodyMemoService.get(half.id)).total).toBe(12.13);
+    expect((await fleetCustodyMemoService.get(twice.id)).total).toBe(20);
+    const summary = await request(app)
+      .get(`${MEMOS}/summary`)
+      .query({ from: '2024-03-01', to: '2024-03-31' })
+      .set(...auth(tokens.viewer));
+    expect(data<FleetCustodyMemoTotalsDto>(summary)).toEqual({
+      count: 2,
+      receipts: 3,
+      total: 32.13,
+    });
+  });
+});
+
 describe('the receipts screen, for a receipt on a memo', () => {
   const patch = (id: string, receipt: FleetReceiptDto, over: Record<string, unknown> = {}) =>
     request(app)
@@ -748,6 +770,68 @@ describe('the receipts screen, for a receipt on a memo', () => {
       ).status,
     ).toBe(422);
     expect((await FleetCustodyMemoModel.findById(memo.id).lean().exec())?.isDeleted).toBe(false);
+  });
+
+  it('a pending memo’s worked-out period follows a line moved to another day', async () => {
+    const early = await mkReceipt({ kind: 'tyres', amount: 10, date: '2023-09-01' });
+    const late = await mkReceipt({ kind: 'tyres', amount: 20, date: '2023-09-05' });
+    const memo = await createMemo({ kind: 'tyres', lines: lines([early, late]) });
+    expect(memo).toMatchObject({ from: '2023-09-01', to: '2023-09-05' });
+
+    const moved = await patch(late, await read(late), { date: '2023-10-03T00:00:00.000Z' });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const after = await fleetCustodyMemoService.get(memo.id);
+    expect(after).toMatchObject({ from: '2023-09-01', to: '2023-10-03' });
+    // An editor still holding the memo as it was is stale now — it cannot write the old period back.
+    expect(after.version).toBe(memo.version + 1);
+    const october = await request(app)
+      .get(MEMOS)
+      .query({ from: '2023-10-01', to: '2023-10-31' })
+      .set(...auth(tokens.viewer));
+    expect(data<FleetCustodyMemoRowDto[]>(october).map((row) => row.no)).toEqual([memo.no]);
+
+    // Its first day moves forward with its first line, too.
+    const forward = await patch(early, await read(early), { date: '2023-09-03T00:00:00.000Z' });
+    expect(forward.status).toBe(200);
+    expect(await fleetCustodyMemoService.get(memo.id)).toMatchObject({
+      from: '2023-09-03',
+      to: '2023-10-03',
+    });
+    const audit = await AuditLogModel.find({
+      'entityRef.entityType': 'custodyMemo',
+      'entityRef.entityId': memo.id,
+      action: 'update',
+    })
+      .lean()
+      .exec();
+    expect(audit).toHaveLength(2);
+  });
+
+  it('a period typed wider than its lines stays — widened only to take in a moved line', async () => {
+    const one = await mkReceipt({ kind: 'wash', amount: 10, date: '2023-05-10' });
+    const two = await mkReceipt({ kind: 'wash', amount: 20, date: '2023-05-12' });
+    const memo = await createMemo({
+      kind: 'wash',
+      from: new Date('2023-05-01T00:00:00.000Z'),
+      to: new Date('2023-05-31T00:00:00.000Z'),
+      lines: lines([one, two]),
+    });
+    expect(memo).toMatchObject({ from: '2023-05-01', to: '2023-05-31' });
+    expect((await patch(two, await read(two), { date: '2023-05-20T00:00:00.000Z' })).status).toBe(
+      200,
+    );
+    expect(await fleetCustodyMemoService.get(memo.id)).toMatchObject({
+      from: '2023-05-01',
+      to: '2023-05-31',
+      version: memo.version,
+    });
+    expect((await patch(two, await read(two), { date: '2023-06-02T00:00:00.000Z' })).status).toBe(
+      200,
+    );
+    expect(await fleetCustodyMemoService.get(memo.id)).toMatchObject({
+      from: '2023-05-01',
+      to: '2023-06-02',
+    });
   });
 
   it('a receipt on no memo is edited and deleted as before', async () => {
@@ -887,6 +971,83 @@ describe('who may do what', () => {
       .set(...auth(tokens.creator))
       .send({ kind: 'tyres', lines: [] });
     expect(res.status).toBe(400);
+  });
+
+  it('a memo body past the app’s 1mb is read — its path alone has the room; others keep 1mb', async () => {
+    // 700 maintenance lines with «البيان» and «ملاحظات» typed to their limits: about 1.2mb, well
+    // inside the contract (3000 lines).
+    const car = await someCar();
+    const rows = await FleetReceiptModel.insertMany(
+      Array.from({ length: 700 }, () => ({
+        date: new Date('2026-09-12T00:00:00.000Z'),
+        vehicleId: car,
+        driverEmployeeId: null,
+        driverName: 'سائق',
+        kind: 'maintenance',
+        source: 'custody',
+        cardId: null,
+        fuelType: null,
+        pricePerLitre: null,
+        litres: null,
+        amount: 10,
+        image: null,
+        isDeleted: false,
+      })),
+    );
+    const statement = 'ب'.repeat(500);
+    const note = 'م'.repeat(300);
+    const body = {
+      kind: 'maintenance',
+      lines: rows.map((row) => ({ receiptId: String(row._id), statement, note })),
+    };
+    expect(Buffer.byteLength(JSON.stringify(body))).toBeGreaterThan(1024 * 1024);
+    const res = await request(app)
+      .post(MEMOS)
+      .set(...auth(tokens.creator))
+      .send(body);
+    expect(res.status).toBe(201);
+    const memo = data<FleetCustodyMemoDto>(res);
+    expect(memo.lines).toHaveLength(700);
+    expect(memo.lines[699]).toMatchObject({ statement, note });
+    expect(memo.total).toBe(7000);
+
+    // The same bytes on any other path stop at the app-wide parser, before the router: a 413.
+    const elsewhere = await request(app)
+      .post('/api/v1/fleet/custody/fund/charge')
+      .set(...auth(tokens.creator))
+      .send({ amount: 1, reason: 'x'.repeat(1024 * 1024 + 1) });
+    expect(elsewhere.status).toBe(413);
+    expect((elsewhere.body as { error: { code: string } }).error.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+
+  it('the room is read only after sign-in and the grants; past 8mb is a 413, not a 500', async () => {
+    const huge = { kind: 'tyres', lines: [{ receiptId: '0'.repeat(24), note: 'x'.repeat(9e6) }] };
+    // No token: refused before a byte of the body is parsed — not a 413, not a 500.
+    const anonymous = await request(app).post(MEMOS).send(huge);
+    expect(anonymous.status).toBe(401);
+    // No write grant: the same.
+    const viewer = await request(app)
+      .post(MEMOS)
+      .set(...auth(tokens.viewer))
+      .send(huge);
+    expect(viewer.status).toBe(403);
+    // Allowed, but past the memo's own 8mb.
+    const creator = await request(app)
+      .post(MEMOS)
+      .set(...auth(tokens.creator))
+      .send(huge);
+    expect(creator.status).toBe(413);
+    expect((creator.body as { error: { code: string } }).error.code).toBe('PAYLOAD_TOO_LARGE');
+  });
+
+  it('a memo body still passes the sanitizer: an operator key in it is stripped', async () => {
+    const r = await mkReceipt({ kind: 'wash' });
+    const res = await request(app)
+      .post(MEMOS)
+      .set(...auth(tokens.creator))
+      .send({ kind: 'wash', lines: [{ receiptId: r }], $where: 'sleep(1)' });
+    // `.strict()` would refuse an unknown key with a 400; stripped first, the body is valid.
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
   });
 });
 

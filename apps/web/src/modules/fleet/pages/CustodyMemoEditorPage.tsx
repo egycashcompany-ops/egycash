@@ -241,8 +241,13 @@ export const CustodyMemoEditorPage = (): JSX.Element => {
   // is the memo, not an empty form; a refused save (changed elsewhere) fills it again from what
   // the server holds now.
   const [filledFor, setFilledFor] = useState<string | null>(null);
+  // The version the form was filled from — NOT the live query's, which realtime refetches: a save
+  // carries what the form shows was read, so a memo changed elsewhere meanwhile is a stale 409
+  // (and the form fills again) instead of a silent overwrite of the other change.
+  const [filledVersion, setFilledVersion] = useState(0);
   const fill = (memo: FleetCustodyMemoDto): void => {
     setFilledFor(memo.id);
+    setFilledVersion(memo.version);
     setNames({ [memo.kind]: memo.name });
     setPeriods({ [memo.kind]: editPeriodOf(memo) });
     setCodes({});
@@ -356,7 +361,7 @@ export const CustodyMemoEditorPage = (): JSX.Element => {
     if (kind === null) throw new Error('no kind');
     const draft = { kind, name, date, period, picked };
     return editing
-      ? update.mutateAsync({ id: editingId, body: memoUpdateBody(draft, memo?.version ?? 0) })
+      ? update.mutateAsync({ id: editingId, body: memoUpdateBody(draft, filledVersion) })
       : create.mutateAsync(memoBody(draft));
   };
   const done = (): void => {
@@ -484,7 +489,10 @@ export const CustodyMemoEditorPage = (): JSX.Element => {
           <Day day={row.date} />
         </td>
         <td className="hidden sm:table-cell">
-          <span className="whitespace-nowrap">
+          {/* One line, as on the approved sample: the name's own look wraps by default, which
+              squeezed it onto three lines beside fuel's «المأمورية» and «ملاحظات». On the
+              wrapper, so a name from the old books (which takes no class) stays on one too. */}
+          <span className="whitespace-nowrap [&_span]:!max-w-none [&_span]:!whitespace-nowrap">
             <DriverCell employeeId={row.driverEmployeeId} name={row.driverName} look="name" />
           </span>
         </td>
@@ -583,9 +591,9 @@ export const CustodyMemoEditorPage = (): JSX.Element => {
             <th>{t('fleet.custody.memoEditor.col.date')}</th>
             <th className="hidden sm:table-cell">{t('fleet.custody.memoEditor.col.driver')}</th>
             <th>{t('fleet.custody.memoEditor.col.amount')}</th>
-            {isFuel && <th className="w-40">{t('fleet.custody.memoEditor.col.mission')}</th>}
+            {isFuel && <th className="w-32">{t('fleet.custody.memoEditor.col.mission')}</th>}
             {isFuel && (
-              <th className="hidden w-40 sm:table-cell">
+              <th className="hidden w-24 sm:table-cell">
                 {t('fleet.custody.memoEditor.col.note')}
               </th>
             )}

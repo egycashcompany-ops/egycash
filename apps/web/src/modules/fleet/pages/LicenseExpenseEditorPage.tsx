@@ -531,7 +531,9 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       } else {
         await update.mutateAsync({
           id: editingId,
-          body: { ...body(), version: saved.data?.version ?? 0 },
+          // The version the form was filled from, not the live query's (realtime refetches it):
+          // a record changed elsewhere meanwhile is a stale 409, never a silent overwrite.
+          body: { ...body(), version: loaded.current?.version ?? saved.data?.version ?? 0 },
         });
       }
       toast.success(t('fleet.licenseExpenses.savedToast'));

@@ -163,6 +163,59 @@ describe('«العهدة · المذكرات · سجل العهدة»', () => {
     expect(custodyTabOf('/fleet/receipts')).toBeNull();
   });
 
+  it('opens each of the three pages — the board, the memos, the log — on the same tabs', () => {
+    for (const page of ['CustodyPage.tsx', 'CustodyMemosPage.tsx', 'CustodyLedgerPage.tsx']) {
+      const source = read(page);
+      expect(source, page).toContain("import { CustodyTabs } from '../components/CustodyTabs';");
+      expect(source.match(/<CustodyTabs \/>/gu), page).toHaveLength(1);
+      // First in the page, over its board.
+      expect(source.indexOf('<CustodyTabs />'), page).toBeLessThan(source.indexOf('BOARD_FRAME}'));
+    }
+  });
+
+  it('routes every custody address behind the custody grant — writes behind the receipts’ too', () => {
+    const routes = read('../routes.tsx');
+    /** The element routed at `path`: its gates, outermost first, and the page inside them. */
+    const routed = (path: string): { gates: string[]; page: string } => {
+      const at = routes.indexOf(`path="${path}"`);
+      expect(at, path).toBeGreaterThan(-1);
+      const element = routes.slice(at, routes.indexOf('/>\n', routes.indexOf('<Custody', at)));
+      return {
+        gates: [...element.matchAll(/<RequirePermission permission="([^"]+)">/gu)].map(
+          (m) => m[1] ?? '',
+        ),
+        page: /<(Custody\w*Page) $/u.exec(element)?.[1] ?? '',
+      };
+    };
+    const VIEW = 'fleetCustody.view';
+    expect(routed('custody')).toEqual({ gates: [VIEW], page: 'CustodyPage' });
+    expect(routed('custody/memos')).toEqual({ gates: [VIEW], page: 'CustodyMemosPage' });
+    for (const path of ['custody/memos/new', 'custody/memos/new/:kind']) {
+      expect(routed(path), path).toEqual({
+        gates: [VIEW, 'fleetReceipt.create'],
+        page: 'CustodyMemoEditorPage',
+      });
+    }
+    expect(routed('custody/memos/:id')).toEqual({
+      gates: [VIEW, 'fleetReceipt.edit'],
+      page: 'CustodyMemoEditorPage',
+    });
+    expect(routed('custody/memos/setup/:paper?')).toEqual({
+      gates: [VIEW, 'fleetReceipt.edit'],
+      page: 'CustodyPapersSetupPage',
+    });
+    expect(routed('custody/log')).toEqual({ gates: [VIEW], page: 'CustodyLedgerPage' });
+    // Each page imported from its own file.
+    for (const page of [
+      'CustodyMemosPage',
+      'CustodyMemoEditorPage',
+      'CustodyPapersSetupPage',
+      'CustodyLedgerPage',
+    ]) {
+      expect(routes, page).toContain(`import { ${page} } from './pages/${page}';`);
+    }
+  });
+
   it('keeps its purple in its own file — `CustodyPage.tsx` stays free of it', () => {
     const purple = /\b(?:[a-z]+:)?(?:bg|text|border|ring)-(?:brand|purple|violet|indigo)-/u;
     expect(read('../components/CustodyTabs.tsx')).toMatch(purple);

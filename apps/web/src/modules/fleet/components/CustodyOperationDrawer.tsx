@@ -25,6 +25,7 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Skeleton } from '../../../shared/ui/Skeleton';
@@ -45,7 +46,6 @@ import {
 import { fundAfter, sumMoney } from '../lib/custody-fund-forms';
 import {
   operationIntro,
-  partsPhrase,
   replenishedByKind,
   type LedgerWordsKit,
 } from '../lib/custody-ledger-words';
@@ -322,8 +322,13 @@ const ReplenishBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element =>
 /** The settlement: the licensing memos it took off the fund, ticked. */
 const SettleBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const kit = useLedgerWordsKit();
   const parts = op.parts;
+  // «3 مذكرات — في «مصروفات التراخيص»», as the approved drawer reads.
+  const partsLink = t('fleet.custody.ledger.drawer.partsLink', {
+    memos: kit.count('memo', parts.length),
+  });
   const lines: PartLine[] = [...parts, { expenseId: '__total__' }];
   const sumOf = (key: 'visaTotal' | 'cashTotal'): number =>
     sumMoney(parts.map((part) => part[key]));
@@ -397,9 +402,14 @@ const SettleBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element => {
     <section className={SECTION_CARD} data-ledger-settle-parts="true">
       <div className={SECTION_STRIP}>
         <h3 className={TITLE}>{t('fleet.custody.ledger.drawer.parts')}</h3>
-        <Link to="/fleet/license-expenses" className={cn(MOVES_CHIP, 'hover:brightness-95')}>
-          {t('fleet.custody.ledger.drawer.partsLink', { parts: partsPhrase(parts.length, kit) })}
-        </Link>
+        {/* Settling needs no licence grant: the licence screen is offered only to who may open it. */}
+        {can('fleetLicenseExpense.view') ? (
+          <Link to="/fleet/license-expenses" className={cn(MOVES_CHIP, 'hover:brightness-95')}>
+            {partsLink}
+          </Link>
+        ) : (
+          <span className={MOVES_CHIP}>{partsLink}</span>
+        )}
       </div>
       {/* A phone: one line per licensing memo, ticked. */}
       <ul className="divide-y divide-slate-100 sm:hidden dark:divide-[#1c273b]">

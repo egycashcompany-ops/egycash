@@ -15,7 +15,14 @@ import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { useChargeCustody, useCustodyFundSummary } from '../api/fleet-queries';
 import { chargeLetterSentence } from '../lib/custody-papers';
-import { chargeAmountOf, chargeBody, fundAfter, todayDay } from '../lib/custody-fund-forms';
+import {
+  CHARGE_AMOUNT_MAX,
+  CHARGE_REASON_MAX,
+  chargeAmountOf,
+  chargeBody,
+  fundAfter,
+  todayDay,
+} from '../lib/custody-fund-forms';
 import { DesignCancel, DesignDialog, DesignSave, DesignSection } from './DesignDialog';
 import { DesignField } from './FuelCardDialog';
 import { PATH } from './FuelCardBoard';
@@ -50,8 +57,13 @@ export const CustodyChargeDialog = ({
   const value = chargeAmountOf(amount);
   const before = fund.data?.fundTotal ?? 0;
   const after = fundAfter(before, value ?? 0);
+  // Past the contract's ceiling the server would refuse it with no field named: said here instead.
+  const tooBig = value !== null && value > CHARGE_AMOUNT_MAX;
   const required = useRequiredFields(
-    [{ key: 'amount', label: t('fleet.custody.fundForm.required.amount'), ok: value !== null }],
+    [
+      { key: 'amount', label: t('fleet.custody.fundForm.required.amount'), ok: value !== null },
+      { key: 'amount', label: t('fleet.custody.fundForm.required.amountMax'), ok: !tooBig },
+    ],
     open,
   );
   const { run, busy } = useFundOperation({
@@ -112,6 +124,7 @@ export const CustodyChargeDialog = ({
             label={t('fleet.custody.fundForm.charge.amount')}
             required
             missing={required.isMissing('amount')}
+            error={tooBig ? t('fleet.custody.fundForm.amountTooBig') : undefined}
           >
             <MoneyInput
               value={amount}
@@ -124,6 +137,7 @@ export const CustodyChargeDialog = ({
         <DesignField label={t('fleet.custody.fundForm.charge.reason')}>
           <Textarea
             rows={2}
+            maxLength={CHARGE_REASON_MAX}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             className={NOTE_BOX}

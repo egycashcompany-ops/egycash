@@ -20,6 +20,11 @@ export const notFoundHandler = (_req: Request, res: Response): void => {
   res.status(404).json(body);
 };
 
+const isTooLarge = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  (error as { type?: unknown }).type === 'entity.too.large';
+
 export const errorHandler = (
   error: unknown,
   req: Request,
@@ -48,6 +53,21 @@ export const errorHandler = (
       },
     };
     res.status(error.httpStatus).json(body);
+    return;
+  }
+
+  // body-parser's own refusal of a body past its limit: the client's fault, said as such.
+  if (isTooLarge(error)) {
+    logger.info({ path: req.path }, 'request body too large');
+    const body: ApiFailure = {
+      success: false,
+      error: {
+        code: ErrorCodes.PAYLOAD_TOO_LARGE,
+        message: 'Request body is too large',
+        requestId,
+      },
+    };
+    res.status(413).json(body);
     return;
   }
 

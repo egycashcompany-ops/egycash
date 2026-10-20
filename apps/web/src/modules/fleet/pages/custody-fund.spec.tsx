@@ -255,6 +255,12 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
 
   it('shows the fund, «ج.م.» apart, and «صُرف من إجمالي الشحن 8.7%» over a bar of the same share', () => {
     const fund = figure(mount(<CustodyFigures totals={summary} />), 'fund');
+    // The line's words: what was spent of everything charged in — «صُرف منها» (of the fund) no more.
+    expect(ar('fleet.custody.fund.spent')).toBe('صُرف من إجمالي الشحن');
+    expect(translate('en', 'fleet.custody.fund.spent')).toBe('Spent of all top-ups');
+    expect(ar('fleet.custody.fund.spentTitle')).toBe(
+      'مصروفات الإيصالات ÷ إجمالي ما شُحن في العهدة',
+    );
     // The board's figure: black, in the boards' monospace, as its tiles write theirs.
     expect(fund).toContain(
       `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">50,000.00</span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,

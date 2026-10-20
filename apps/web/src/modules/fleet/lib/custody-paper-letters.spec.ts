@@ -158,6 +158,64 @@ describe('«تسويه عهدة» — the 05/10 settlement (124,139.46)', () => 
   });
 });
 
+describe('a letter past one sheet', () => {
+  const textOfAll = (sheets: readonly string[]): string[] => sheets.map(textOf);
+
+  it('settle: the table runs on — heads again on each sheet, every row once, in order; the total and the signers on the last', () => {
+    const rows = Array.from({ length: 30 }, (_, i) => ({
+      part: 'renewal' as const,
+      cars: 5,
+      amount: 1000 + i,
+    }));
+    const sheets = letterSheets({ ...SAMPLE_SETTLE, rows, amount: 30435 });
+    expect(sheets.length).toBe(2);
+    for (const html of sheets) {
+      expect(html).toContain('<div class="wl-frame"></div>');
+      expect(html).toContain('<img class="wl-logo"');
+      expect(html.match(/<td class="n4">م<\/td>/gu)).toHaveLength(1);
+    }
+    const numbers = sheets.flatMap((html) =>
+      [...html.matchAll(/<tr style="height:16\.1pt"><td class="n4">([^<]+)<\/td>/gu)].map(
+        (m) => m[1],
+      ),
+    );
+    expect(numbers).toEqual(rows.map((_, i) => (i + 1).toLocaleString('ar-EG')));
+    const [first, last] = textOfAll(sheets);
+    expect(first).toContain('برجاء التكرم');
+    expect(first).not.toContain('التوقيع');
+    expect(first).not.toContain('الاجمالى');
+    expect(last).not.toContain('برجاء التكرم');
+    expect(last).toContain('30,435.00');
+    expect(last!.match(/التوقيع/gu)).toHaveLength(2);
+    // At least two rows go over with the total — never the total alone.
+    expect(
+      sheets[1]!.match(/<tr style="height:16\.1pt"><td class="n4">/gu)!.length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it('settle: as many rows as fit stay on his one sheet', () => {
+    const rows = Array.from({ length: 18 }, () => ({
+      part: 'renewal' as const,
+      cars: 5,
+      amount: 1,
+    }));
+    expect(letterSheets({ ...SAMPLE_SETTLE, rows, amount: 18 })).toHaveLength(1);
+  });
+
+  it('charge: a reason too long for one sheet sends the closing and the signers, together, to a second', () => {
+    const reason = 'تجديد تراخيص سيارات الفرع الرئيسي ومد مدة سيارات فرع الاسكندرية + '
+      .repeat(8)
+      .trim();
+    const sheets = letterSheets({ ...SAMPLE_CHARGE, reason });
+    expect(sheets).toHaveLength(2);
+    const [first, second] = textOfAll(sheets);
+    expect(bodyOf(sheets[0]!)).toContain('و ذلك نظير');
+    expect(first).not.toContain('التوقيع');
+    expect(second).toContain('والأمر مفوض لسيادتكم');
+    expect(second!.match(/التوقيع/gu)).toHaveLength(3);
+  });
+});
+
 describe('every letter', () => {
   const all = { charge: SAMPLE_CHARGE, replenish: SAMPLE_REPLENISH, settle: SAMPLE_SETTLE };
 

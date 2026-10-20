@@ -14,6 +14,7 @@
 import { type ClientSession } from 'mongoose';
 import { type FleetCustodyOperationKind } from '@ecms/contracts';
 import { FleetReceiptModel } from '../receipts/receipt.model';
+import { RECEIPT_PIASTRES } from './custody-memo-totals';
 import { FleetCustodyOperationModel } from './custody-operation.model';
 
 /** Pounds → whole piastres: every sum of the fund is exact. */
@@ -70,7 +71,7 @@ interface OperationSumRow {
 }
 
 /** A sum taken in the database in whole piastres — `$sum` of pounds would carry binary residue. */
-const PIASTRES = { $sum: { $round: [{ $multiply: ['$amount', 100] }, 0] } };
+const PIASTRES = { $sum: RECEIPT_PIASTRES };
 
 const readReceiptSums = async (session?: ClientSession): Promise<ReceiptSumRow | undefined> => {
   const [row] = await FleetReceiptModel.aggregate<ReceiptSumRow>([

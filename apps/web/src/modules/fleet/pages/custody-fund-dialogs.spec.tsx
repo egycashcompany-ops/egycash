@@ -429,6 +429,12 @@ describe('the fund forms’ arithmetic and bodies', () => {
     expect(forms.monthBounds(['', 'nonsense'])).toBeNull();
   });
 
+  it('dates the letter by the clerk’s own calendar day, not the UTC one', () => {
+    // 01:30 on 1 October by the local clock — still 30 September in UTC east of Greenwich.
+    expect(forms.todayDay(new Date(2026, 9, 1, 1, 30))).toBe('2026-10-01');
+    expect(forms.freshLetterHead(new Date(2026, 9, 1, 23, 59)).date).toBe('2026-10-01');
+  });
+
   it('follows what is picked until a box is typed in', () => {
     const head = forms.freshLetterHead(new Date('2026-09-29T10:00:00Z'));
     expect(head).toEqual({ date: '2026-09-29', from: null, to: null });
@@ -544,8 +550,37 @@ describe('«استعاضة العهدة»', () => {
     // A memo saved with no name reads «مذكرة كاوتش رقم 2», muted.
     expect(list).toContain('data-memo-name="fallback"');
     expect(list.match(/data-memo-name="typed"/gu)).toHaveLength(4);
+    // The sample's mark on each name, which the shoot scripts read.
+    expect([...list.matchAll(/data-memo-replenish-name="(\d+)"/gu)].map((m) => m[1])).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+    ]);
     // Each has its eye.
     expect(list.match(/data-memo-replenish-view="m\d"/gu)).toHaveLength(5);
+  });
+
+  it('the eye opens that memo’s own paper over the dialog, which stays under it', () => {
+    const qc = client();
+    const third = MEMOS[2] as FleetCustodyMemoRowDto;
+    qc.setQueryData(custodyQueryKeys.memo(third.id), {
+      ...third,
+      lines: [],
+      signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.fuel,
+    });
+    steps.push({
+      attr: 'data-memo-replenish-view',
+      value: third.id,
+      run: (p) => (p.onClick as () => void)(),
+    });
+    const html = dialog(qc);
+    // The list is still there, and over it the memo's view with its paper.
+    expect(html).toContain('data-memo-replenish-list="true"');
+    const view = element(html, `data-memo-view="${third.no}"`);
+    expect(view).toContain('data-paper-sheet="true"');
+    expect(html).toContain(`data-memo-view-print="${third.no}"`);
   });
 
   it('tiles the replenishment per kind in his letter’s order, a kind with none «—» and its outside receipts', () => {

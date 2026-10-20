@@ -216,4 +216,44 @@ describe('«إعداد المذكرات»', () => {
     expect(read.papers.wash).toEqual(DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.wash);
     expect(read.papers.fuel.blocks[1]?.name).toBe('عميد / اسم آخر');
   });
+
+  it('a save without a version once a set-up exists is stale — it never overwrites', async () => {
+    const before = data<FleetCustodyPaperSettingsDto>(
+      await request(app).get(URL_).set('Authorization', `Bearer ${viewerToken}`),
+    );
+    const next = structuredClone(before.papers);
+    next.tyres.blocks[1] = { ...next.tyres.blocks[1]!, name: 'اسم من صفحة قديمة' };
+    const res = await request(app)
+      .put(URL_)
+      .set('Authorization', `Bearer ${editorToken}`)
+      .send({ papers: next });
+    expect(res.status).toBe(409);
+    expect((res.body as { error: { code: string } }).error.code).toBe('STALE_DOCUMENT');
+    const after = data<FleetCustodyPaperSettingsDto>(
+      await request(app).get(URL_).set('Authorization', `Bearer ${viewerToken}`),
+    );
+    expect(after).toEqual(before);
+  });
+
+  it('two first saves at once: one writes, the other is stale — the first one’s names stay', async () => {
+    await FleetCustodyPaperSettingsModel.deleteMany({}).exec();
+    const first = withNames(DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES);
+    const second = structuredClone(DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES);
+    second.fuel.blocks[2] = { ...second.fuel.blocks[2]!, name: 'الاستاذ / اسم ثان' };
+    const results = await Promise.all(
+      [first, second].map((papers) =>
+        request(app).put(URL_).set('Authorization', `Bearer ${editorToken}`).send({ papers }),
+      ),
+    );
+    const statuses = results.map((res) => res.status).sort();
+    expect(statuses).toEqual([200, 409]);
+    const refused = results.find((res) => res.status === 409);
+    expect((refused?.body as { error: { code: string } }).error.code).toBe('STALE_DOCUMENT');
+    const won = results.find((res) => res.status === 200);
+    const read = data<FleetCustodyPaperSettingsDto>(
+      await request(app).get(URL_).set('Authorization', `Bearer ${viewerToken}`),
+    );
+    expect(read).toEqual(data<FleetCustodyPaperSettingsDto>(won!));
+    expect(await FleetCustodyPaperSettingsModel.countDocuments().exec()).toBe(1);
+  });
 });

@@ -7,8 +7,8 @@
 // (`short`), as the export pair says «Excel» and «PDF»: the three whole names are wider than a
 // phone's toolbar. Writing money into or out of the fund is what «إيصالات العهدة» already does, so
 // the group is drawn only for a reader who may add one (`fleetReceipt.create`).
-import { Fragment } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Fragment, useRef } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
@@ -99,9 +99,57 @@ export const withFundParam = (
  */
 export const useFundParam = (): [CustodyFundOp | null, (op: CustodyFundOp | null) => void] => {
   const [sp, setSp] = useSearchParams();
+  const overlay = useOverlayHistory();
   const raw = sp.get('fund');
   const open = isCustodyFundOp(raw) ? raw : null;
-  return [open, (op) => setSp(withFundParam(sp, op))];
+  return [
+    open,
+    (op) =>
+      op === null
+        ? overlay.close(() => setSp(withFundParam(sp, null), { replace: true }))
+        : setSp(withFundParam(sp, op), overlay.openOptions(open !== null)),
+  ];
+};
+
+/** The mark an overlay's own history entry carries: the entry its opening pushed. */
+const OVERLAY_ENTRY = { custodyOverlay: true } as const;
+const isOverlayEntry = (state: unknown): boolean =>
+  typeof state === 'object' &&
+  state !== null &&
+  (state as { custodyOverlay?: unknown }).custodyOverlay === true;
+
+/**
+ * A dialog or drawer kept in the address (`?fund=…`, `?open=…`): opening it PUSHES one marked
+ * entry — so the browser's Back closes it — and closing it POPS that entry again, rather than
+ * pushing another: Back after a close (or after the operation was recorded) then leaves the page
+ * instead of reopening the dialog. Opened from an address typed or reloaded (no entry of its own),
+ * it closes in place.
+ */
+export const useOverlayHistory = (): {
+  /** The navigation options for opening — in place when one is already open. */
+  openOptions: (alreadyOpen: boolean) => { replace?: boolean; state: unknown };
+  /** Close: pop the entry the opening pushed, else `inPlace()`. */
+  close: (inPlace: () => void) => void;
+} => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pushed = isOverlayEntry(location.state);
+  // The entry already popped: a second close before the address moves (a double click on ✕, an
+  // Escape on top of a save) must not go back a second step and leave the page.
+  const popped = useRef<string | null>(null);
+  return {
+    openOptions: (alreadyOpen) =>
+      alreadyOpen ? { replace: true, state: location.state } : { state: OVERLAY_ENTRY },
+    close: (inPlace) => {
+      if (!pushed) {
+        inPlace();
+        return;
+      }
+      if (popped.current === location.key) return;
+      popped.current = location.key;
+      void navigate(-1);
+    },
+  };
 };
 
 /**

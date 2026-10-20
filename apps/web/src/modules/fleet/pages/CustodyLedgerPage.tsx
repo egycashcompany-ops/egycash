@@ -45,7 +45,11 @@ import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { CUSTODY_FUND } from '../components/CustodyKinds';
 import { CustodyTabs } from '../components/CustodyTabs';
-import { CUSTODY_OPS, CustodyFundActions } from '../components/CustodyFundActions';
+import {
+  CUSTODY_OPS,
+  CustodyFundActions,
+  useOverlayHistory,
+} from '../components/CustodyFundActions';
 import { CustodyFundDialogs } from '../components/CustodyFundDialogs';
 import { CustodyOperationDrawer, useLedgerWordsKit } from '../components/CustodyOperationDrawer';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
@@ -519,18 +523,23 @@ export const CustodyLedgerPage = (): JSX.Element => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
   /** Open an operation's drawer — at its letter when `letter`. */
+  // Opening pushes one entry (Back closes the drawer); closing pops it rather than pushing
+  // another, so Back after a close leaves the page instead of reopening the drawer.
+  const overlay = useOverlayHistory();
   const openOperation = (id: string, letter: boolean): void => {
     const next = new URLSearchParams(sp);
     next.set('open', id);
     if (letter) next.set('letter', '1');
     else next.delete('letter');
-    setSp(next);
+    setSp(next, overlay.openOptions(sp.get('open') !== null));
   };
   const closeOperation = (): void => {
-    const next = new URLSearchParams(sp);
-    next.delete('open');
-    next.delete('letter');
-    setSp(next);
+    overlay.close(() => {
+      const next = new URLSearchParams(sp);
+      next.delete('open');
+      next.delete('letter');
+      setSp(next, { replace: true });
+    });
   };
   const hasActiveFilters = from !== '' || to !== '' || ops.length > 0;
   const clearFilters = (): void => patch({ from: null, to: null, op: null });
@@ -581,9 +590,12 @@ export const CustodyLedgerPage = (): JSX.Element => {
             data-ledger-detail={row.id}
             className={cn('inline-flex flex-col items-center leading-tight', CAIRO)}
           >
+            {/* Both wrap inside the column, never past it: a long «وذلك نظير» or a month of
+                four kinds over many memos would otherwise push «إجراءات» off the card. */}
             <span
+              title={words.title}
               className={cn(
-                'whitespace-nowrap text-[15px] leading-[22px]',
+                'line-clamp-2 max-w-[26rem] whitespace-normal text-balance text-[15px] leading-[22px]',
                 row.op === 'spend'
                   ? 'text-slate-600 dark:text-slate-300'
                   : 'text-slate-900 dark:text-white',
@@ -592,7 +604,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
               {words.title}
             </span>
             {words.note !== '' && (
-              <span className="whitespace-nowrap text-[12px] leading-4 text-slate-500 [&&]:!font-medium dark:text-slate-400">
+              <span className="max-w-[26rem] whitespace-normal text-balance text-[12px] leading-4 text-slate-500 [&&]:!font-medium dark:text-slate-400">
                 {words.note}
               </span>
             )}

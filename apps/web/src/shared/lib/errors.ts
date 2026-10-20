@@ -15,6 +15,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     BUSINESS_RULE: 'That action is not allowed right now.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
+    PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
     FILE_BLOCKED: 'The virus scanner blocked this file.',
     FILE_SCAN_PENDING: 'This file is still being scanned for viruses — try again in a moment.',
     // The 500 code. Without it a server fault fell through to the server's own
@@ -36,6 +37,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     BUSINESS_RULE: 'هذا الإجراء غير مسموح حاليًا.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
+    PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',
     FILE_BLOCKED: 'حظر فاحص الفيروسات هذا الملف.',
     FILE_SCAN_PENDING: 'ما زال هذا الملف قيد فحص الفيروسات — حاول مجددًا بعد لحظات.',
     INTERNAL: 'تعذّر على الخادم إتمام هذا الطلب.',

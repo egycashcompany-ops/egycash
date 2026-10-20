@@ -667,8 +667,9 @@ export interface ItCustodyReceiptLineDto {
   /** Recorded with the hand-over; the acknowledgment does not print it. */
   notes: string | null;
   /**
-   * The device's kind — its asset category's Arabic name. The statement names the device by its
-   * make and model («جهاز Lenovo / ThinkCentre …») and falls back to this when neither is known.
+   * The device's kind — its asset category's Arabic name. It is the word the statement calls the
+   * item by («شاشة Dell / …», «ماوس …»; «جهاز» for a computer or when null), followed by its make
+   * and model («جهاز Lenovo / ThinkCentre …»), or its name when neither is known.
    */
   deviceType: string | null;
   manufacturer: string | null;

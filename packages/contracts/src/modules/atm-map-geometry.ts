@@ -392,3 +392,79 @@ export const zoneGeometryIssues = (points: readonly AtmMapLatLng[]): AtmMapZoneG
   if (polygonAreaM2(ring) < ATM_MAP_ZONE_MIN_AREA_M2) issues.push('TOO_SMALL');
   return issues;
 };
+
+// ── Membership (D-M7, DM-9) ─────────────────────────────────────────────────────────────────────
+//
+// Moved here from the web (`apps/web/src/modules/atm/lib/map-geometry.ts`) by the settlements
+// spec (docs/12-planning/atm-settlements-phase1.md §6.9, DS-17), so the map and «إنشاء الخطوط من
+// القطاعات» run the same code. A machine counts for the FIRST zone of its own branch, in list
+// order, that contains it; zones of another branch never count, and a zone's bounding box is
+// tested before its ring.
+
+export interface LatLngBox {
+  south: number;
+  north: number;
+  west: number;
+  east: number;
+}
+
+const latLngBoxOf = (points: readonly AtmMapLatLng[]): LatLngBox => {
+  const box = { south: Infinity, north: -Infinity, west: Infinity, east: -Infinity };
+  for (const p of points) {
+    box.south = Math.min(box.south, p.lat);
+    box.north = Math.max(box.north, p.lat);
+    box.west = Math.min(box.west, p.lng);
+    box.east = Math.max(box.east, p.lng);
+  }
+  return box;
+};
+
+/** The bounding-box prefilter, with the six-decimal tolerance of a stored point. */
+export const inBox = (p: AtmMapLatLng, box: LatLngBox): boolean =>
+  p.lat >= box.south - 1e-6 &&
+  p.lat <= box.north + 1e-6 &&
+  p.lng >= box.west - 1e-6 &&
+  p.lng <= box.east + 1e-6;
+
+/** A zone of one branch, with its bounding box cached for the prefilter. */
+export interface MembershipZone {
+  id: string;
+  points: readonly AtmMapLatLng[];
+  branchId: string;
+  box: LatLngBox;
+}
+
+/** Cache each zone's bounding box once; the list order is kept — it is the priority (D-M7). */
+export const membershipZones = (
+  zones: readonly { id: string; branchId: string; points: readonly AtmMapLatLng[] }[],
+): MembershipZone[] =>
+  zones.map((zone) => ({
+    id: zone.id,
+    branchId: zone.branchId,
+    points: zone.points,
+    box: latLngBoxOf(zone.points),
+  }));
+
+export interface Membership {
+  /** The zone the machine counts for: the first in list order that contains it. */
+  primary: string | null;
+  /** Every zone of its branch that contains it, in list order. */
+  all: string[];
+}
+
+/**
+ * Which zones of the machine's own branch contain it, in list order (`zonesOfBranchInOrder` is the
+ * branch's list; a zone of another branch is skipped all the same).
+ */
+export const zoneMembership = (
+  point: { lat: number; lng: number; branchId: string },
+  zonesOfBranchInOrder: readonly MembershipZone[],
+): Membership => {
+  const all: string[] = [];
+  for (const zone of zonesOfBranchInOrder) {
+    if (zone.branchId !== point.branchId) continue;
+    if (!inBox(point, zone.box)) continue;
+    if (pointInPolygon(point, zone.points)) all.push(zone.id);
+  }
+  return { primary: all[0] ?? null, all };
+};

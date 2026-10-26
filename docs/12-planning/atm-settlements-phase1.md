@@ -2861,3 +2861,23 @@ unchanged. "Applied" means applied as proposed; "applied, adapted" names the one
 
 No finding was rejected outright. Four were applied in an adapted form (SEC-18, MON-17, UI-9,
 UI-16), and three offered two options, the chosen one named (SEC-22, MON-9, UI-7).
+
+## Implementation notes
+
+WP-S1 step a (contracts and the pure/importer layer of the API). One line each: section, change, why.
+
+- §3.1 `layoutIssues`: a spare slot that is not planned is reported as `SLOT_COUNT` on that slot — the "every slot planned" rule of a spare has no code of its own in the list.
+- §3.4 `fillFromStandard(slots, null)` fills every planned slot with 0 — the "else all 0" case of §6.5 S14 step 4, so the caller needs no empty profile.
+- §3.6 / §8.5: added `repTapeSlots(slots)` (the blank / 0-0 rule of the REP. TAPE and ATM_2 pairs) and `ATM_REP_TAPE_BANK_LABELS` (`BRK → 'AlBarka'`, the "contracts constant" of column P) — `AtmRepTapeExportDto.slots` names the rule but no function.
+- §6.1: added the query schemas §6.3 needs (`AtmSettlementContextQuerySchema`, `AtmSettlementBankQuerySchema`, `AtmSettlementPlanQuerySchema`, `AtmSettlementDayQuerySchema`, `AtmVersionQuerySchema`) and the code lists behind the DTO unions (issue, outcome, flag, mode, refusal, status, print-kind) — the routes validate queries and the web's enum-backed i18n test (§10.4) needs the lists.
+- §6.1 `LayoutImportFieldsSchema`: `previewRevisions` leaves the schema parsed (`{ machineId, revision }[]`); the `superRefine` validates the JSON and a `transform` parses it, so the service never parses it again.
+- §6.9: with `zoneMembership` and `inBox`, `LatLngBox`, `MembershipZone` and `membershipZones` moved too — `zoneMembership` reads each zone's cached box, so a caller must be able to build one; the contracts' box helper is `latLngBoxOf` because the file already has a private `boxOf`. The web keeps its copy until WP-S2 makes it a re-export.
+- §5.1 `readSheetRows`: takes `columns` (a list, or one per row) and `lastRow`, so the settlements reader reads exactly the cells it names and REP. TAPE's count columns are never read; a reduction also returns its `sheets` (names, in reading order) and its `errors`, and a sheet is found by position, because ExcelJS names a worksheet through the original rels target, which a renamed part no longer matches.
+- §5.1 entry count: besides the end record's fields, the central directory is walked (from where JSZip starts it, prepended bytes included) and counted, because JSZip reads central records until the signature stops, whatever the end record says.
+- §5.2: REP. TAPE row 7 is checked over the columns read only (B `Reference`, E/G/I/K `Denom1..4`), a miss named `REP. TAPE!<col>7`; Full list headers are looked for in its first 64 columns, the first match binding; `masterProfileOf(bank)` answers `ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK`.
+- §5.3 cells: a denomination or count cell holding a text of digits is read as that number (what Excel shows); the standard row's D may be any number (a non-integer D is a `mismatch`, not `invalid`).
+- §5.3 `reversedOrder`: slot 1 empty and at least two later denominations strictly rising.
+- §5.3 `registerDenominationsDiffer`: an open entry whose `withdrawal1..5` are all blank is not compared (it names nothing), and a register 0 is dropped like a Full list 0.
+- §5.3 row DTO: a label over its cap is returned as `after: null` (the row is `invalid` + `labelTooLong`), so an overlong cell never rides the preview response.
+- §6.2 `register-bank.ts`: `bankOfEntries` reads an open entry without a bank as no bank — `[null]` → `noRegisterBank`, `[BRK, null]` → `otherBank` (the `commonBankCode` rule); `registerRowsByMachine` and `bankMachineIds` (the bank's machines in a branch, re-checked) are the two reads §6.2 describes.
+- §6.1 audit verbs: the web's audit-label specs (`system-admin-i18n.spec.ts`, `audit-screens.spec.tsx`) fail until WP-S2 adds the two `systemAdmin.users.audit.*` keys of §9.9.

@@ -169,6 +169,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   operations_shipment_assignments: { action: 'purge', why: 'a shipment captained by somebody' },
   it_asset_assignments: { action: 'purge', why: 'an asset held by somebody — the ASSET survives' },
   it_custody_receipts: { action: 'purge', why: 'the paper somebody signed for what they hold' },
+  it_mobile_line_receipts: {
+    action: 'purge',
+    why: 'the paper somebody signed for a line they hold',
+  },
   fleet_duty_assignments: { action: 'purge', why: 'a day’s duty roster, made of specific people' },
   fleet_fixed_crews: { action: 'purge', why: 'a fixed crew IS the pairing of two drivers' },
 
@@ -198,6 +202,15 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
     why: 'a fuel, tyre or washing receipt is a record about the vehicle and the money — the driver is named on it',
   },
   atm_maintenances: { action: 'keep', why: 'a maintenance visit is a record about the machine' },
+  // NOT purged like the devices' intervals: a line's custody is not only people's — the tracker
+  // SIMs are held by CARS, which no workforce reset is about — and the line itself says it is
+  // handed over, so an interval deleted under it would leave a line nobody can return or hand
+  // over again. Kept, an employee's open interval simply names somebody who is gone, and the IT
+  // team records the line's return as for any other.
+  it_mobile_line_assignments: {
+    action: 'keep',
+    why: 'who holds each SIM line — cars as well as people; the line says it is handed over',
+  },
   gold_receiving_receipts: { action: 'keep', why: 'a printed financial record of received metal' },
   gold_delivery_receipts: { action: 'keep', why: 'a printed financial record of delivered metal' },
   gold_transfers: { action: 'keep', why: 'a financial record of metal moved between vaults' },

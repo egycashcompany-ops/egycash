@@ -169,9 +169,10 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
   holder); the lines and the signer are a snapshot of what was printed.
-- Each line describes its device as its page prints it: the asset's `manufacturer` and `model`
-  (what the statement names the device by — «جهاز Lenovo / ThinkCentre …»), `deviceType` (the
-  asset category's Arabic name, named instead when neither is on file), `specs` and
+- Each line describes its device as its page prints it: `deviceType` (the asset category's
+  Arabic name — the word the statement calls the item by: «شاشة», «ماوس», «لاب توب» …, and «جهاز»
+  for a computer or a line with none, §17 2026-10-19), the asset's `manufacturer` and `model` (what
+  follows it — «جهاز Lenovo / ThinkCentre …»; the asset's name when neither is on file), `specs` and
   `accessories` — the hand-over line's own accessories when it gives them. One composer
   (`receipt-device.ts`) serves the preview, the hand-over, a transfer and a receipt issued for older
   custody, so the paper previewed is the paper stored. Lines from before the acknowledgment have
@@ -290,6 +291,38 @@ vendor has a handful of contacts), rule-4-of-ADR-019 territory. Vendors are IT-o
 if Procurement arrives later it takes ownership and IT re-points — the collection prefix stays
 `it_` until that day (§13-Q6).
 
+### 2.10 `it_mobile_lines` — Mobile line (خط محمول, FR-19)
+
+The company's SIM lines on its three networks' business accounts — a register beside the assets,
+not inside them: a line is a number on a network account, not a device with a serial, a category
+and a specifications table (§17, 2026-10-20).
+
+`{ network: vodafone|etisalat|orange, phoneNumber (11 digits, unique ux_phone_number), accountNumber?,
+ratePlan?, simKind: physical|esim, simSerial? (the ICCID, unique ux_sim_serial when present; none
+for an eSIM), status: inStock|assigned|suspended, branchId, currentAssignmentId?, notes? }`
+
+- **`it_mobile_line_assignments`** — the custody intervals, at most one OPEN per line (partial
+  unique index `ux_open_assignment_per_line`, both holder kinds): `{ lineId, holderKind:
+  employee|vehicle, assignedToEmployeeId?, vehicleCode?, vehiclePlate?, assignedByUserId,
+  assignedAt, returnedAt?, returnedToUserId?, notes?, branchId, receiptId? }`. A tracker SIM is
+  held by a CAR, written as the car's code and plate in text — no Fleet id and no Fleet read
+  (§9.2 still holds).
+- **`it_mobile_line_events`** — the line's history (`registered · updated · assigned · returned ·
+  suspended · reactivated`), the timeline model.
+- **`it_mobile_line_receipts`** — the employee's «إقرار استلام» for a line: the device receipt's
+  header (`formNumber`, `issuedAt`, the signer snapshot, the national ID behind
+  `itAsset.viewNationalId`) and ONE line snapshot `{ lineId, assignmentId, network, phoneNumber,
+  simKind, simSerial?, ratePlan?, accountNumber? }`; `signedCopy` under Files category
+  `it-mobile-line-receipts`, authorizer `it/mobileLineReceipt`. One line per paper, so the form's
+  undertaking reads as written («لاستخدامه … عليه … برده»). Numbered from the same counter as the
+  device papers (`custodyReceipt:global`, EGYCASH-IT-F-14-####): a number printed for one kind of
+  paper is refused on the other, and every hand-over claims the number it records inside its own
+  transaction (`custodyReceipt:global#<n>` beside the counter in `it_sequences`), so two
+  hand-overs racing on one number — whichever kind of paper — cannot both commit.
+- `status` is on no write schema; it moves only by hand-over, return, suspension and reactivation.
+  A suspended line is held by nobody; a held line is returned before it is suspended, and its
+  branch changes only while nobody holds it.
+
 ## 3. Relationships
 
 ```
@@ -308,6 +341,9 @@ it_tickets ──n─1 platform users (requester, technician)
    ├──1─n it_ticket_events                              (history + conversation, one stream)
    └──0..n it_maintenance_orders (corrective, born from the ticket)
 platform files ── additive attachments on tickets, comment events, assets
+it_mobile_lines ──1─n it_mobile_line_events                                  (history)
+   └──1─n it_mobile_line_assignments ──n─1 hr employees | a car (code + plate, text)
+              └──n─0..1 it_mobile_line_receipts                              (one line per paper)
 ```
 
 Cross-module references are **by id + event subscription only** — IT never imports HR or Fleet
@@ -438,7 +474,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   counter never handed out, or one already on another receipt, is refused); a reprint keeps it.
   The print tab shows the paper as A4 sheets (§17, 2026-10-05). The paper is the IT department's
   «إقرار استلام», one page per device: the statement filled with the employee's name and job and
-  the device's make and model (its kind when neither is on file) and serial, the device's
+  the item's kind (its category; «جهاز» for a computer) with its make and model (its name when
+  neither is on file) and serial, the device's
   specifications table and accessories (recorded on the
   asset; a hand-over may say what came with it this time), the undertaking, and the signature
   block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
@@ -447,6 +484,14 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   not printed; the name under the signature is the first three parts (§17, 2026-10-05). The
   employee's code follows the company, «… بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي …»
   (§17, 2026-10-06).
+- **FR-19** Mobile lines are a register of their own (§2.10) under the asset grants
+  (`itAsset.*`): registered with their network, number, account, plan and SIM; handed over to a
+  current employee — on a printed «إقرار استلام», print first, as for devices (FR-18) — or to a
+  car by its code and plate, with no paper; returned; suspended and reactivated. The screen
+  filters by network with the networks' logos and shows each network's figures (lines; in stock,
+  handed over, suspended; accounts; plans) under the other filters; the list goes to Excel and
+  PDF. A leaver's lines are flagged like their assets (FR-13), never returned automatically
+  (§17, 2026-10-20).
 
 ## 6. States catalog
 
@@ -454,6 +499,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 |---|---|---|
 | Asset | `inStock · assigned · underMaintenance · disposed` | `disposed` |
 | Assignment | `open · closed` (by `returnedAt`) | closed |
+| Mobile line | `inStock · assigned · suspended` | — |
+| Mobile-line assignment | `open · closed` (by `returnedAt`) | closed |
 | Ticket | `open · inProgress · onHold · resolved · closed · cancelled` | `closed`, `cancelled` (reopen exits `closed` within the window) |
 | Maintenance order | `open · inProgress · completed · cancelled` | `completed`, `cancelled` |
 | License | derived: `active · expiringSoon · expired · perpetual` (from `expiresAt`) | — (no stored state) |
@@ -465,6 +512,7 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it` (home/dashboards) | any `it*` view permission | — |
 | `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only) |
 | `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
+| `/it/mobile-lines` | `itAsset.view` | `itAsset.create`, `.edit` (edit, suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment), `.viewNationalId` — the asset grants: granting «الأصول» now covers the lines too, and no key or page was added (§17, 2026-10-20) |
 | `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories — one grant, the `fleetCatalog.manage` precedent) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
 | `/it/helpdesk-settings` | — | `itSlaPolicy.manage` (priorities + their SLA targets — behaviour-carrying, its own grant: the `fleetMaintenanceRule.manage` precedent) |
@@ -526,10 +574,13 @@ directory seam (`searchDirectoryEmployees`) — no IT screen needs HR's `employe
 2026-09-27).
 Subscribes to `hr.employee.exited`: assets held by the leaver are **flagged** (dashboard panel
 "assets held by exited employees" + notification to IT) — never auto-returned (FR-13); the exit
-checklist is the human process, the flag is its safety net.
+checklist is the human process, the flag is its safety net. The leaver's mobile lines are flagged
+the same way, by a second subscription (`it.flagMobileLinesHeldByExitedEmployee`, FR-19).
 **9.2 Fleet (boundary, no coupling):** vehicles never enter `it_assets`; `it_maintenance_*` and
 `fleet_maintenance_visits` are different domains that happen to share a word. No shared code, no
-shared collections.
+shared collections. A tracker SIM handed to a car (FR-19) names the car by the code and plate
+written on the hand-over — text on the interval, not a Fleet id — so IT still reads nothing of
+Fleet's, and a car Fleet later renames or disposes is not updated on the line's record.
 **9.3 Contracts/Procurement/Accounting (future):** vendor contracts, purchase workflows and
 asset value land in their own modules; IT already publishes the events (§8.1) and holds the ids
 they will need.
@@ -575,6 +626,9 @@ precedent; `itAsset.export`).
 | `/it/people` | read-only: `GET /` (search, `status` all/employed/exited, branch) · `GET /:employeeId` — HR's people through the directory (§9.1) |
 | `/it/technicians` | read-only: `GET /` — the IT departments' people (FR-17) |
 | `/it/custody-receipts` | `POST /preview` (the paper and its new number; nothing else written) · `POST /` (the hand-over: intervals + receipt) · `GET /:id` · `POST /:id/print` (print again, under its number) · `GET+POST+DELETE /:id/signed-copy` — FR-18; plus `POST /it/assignments/:id/receipt` for an interval from before receipts |
+| `/it/mobile-lines` | `GET /summary` (each network's figures under the filters) · `POST /:id/assign` (employee or car) · `/:id/return` · `/:id/suspend` · `/:id/reactivate` · `GET /:id/history` — FR-19 |
+| `/it/mobile-line-assignments` | read-only: `GET /` (open, line, employee, branch) — FR-19 |
+| `/it/mobile-line-receipts` | `POST /preview` · `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-19 |
 | `/it/dashboard` | `GET /assets` · `/tickets` · `/maintenance` · `GET /reports/warranty` |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
@@ -889,3 +943,52 @@ starts only on an explicit owner GO.
   (`lib/register-export.ts`: the walk, the filter line, the report, the tab opened first) serve
   both screens. Offered to every reader of the list, as the custody export and the labels are;
   the §11 server CSV under `itAsset.export` is still unbuilt and is a separate thing.
+- **The acknowledgment names the item by its category** (2026-10-19) — owner request: «فى طباعة
+  الإيصال … بأنني قد استلمت جهاز · عايز كلمة جهاز تبقى متغيرة بتاء على نوع ما يتم تسليمه فلو شاشة
+  يبقى شاشة ولو ماوس أو كيبورد يتكتبوا ولو جهاز يبقي جهاز وهكذا حسب (الفئة)». The statement's
+  fixed «جهاز» is now the receipt line's `deviceType` — the asset's category, snapshotted when the
+  receipt is written — in the form's ink and on one line, followed in red by the make and model, or
+  the asset's own name when neither is on file (without the category's name a second time when the
+  name starts with it, as whole words). A computer — a desktop or an all-in-one: the inventory's
+  computer category names, or any category whose first word is «كمبيوتر» — keeps «جهاز» («ولو جهاز
+  يبقي جهاز»; and «كمبيوتر All» is the name the owner had the statement stop printing on
+  2026-10-05), as does a line with no kind on file. Every other category prints its own name, so
+  the catalog decides the word. The rest of the form's wording («ومواصفاته»، «لاستخدامه» …) is
+  unchanged. Web only; no API or data change.
+- **Mobile lines** (2026-10-20) — owner request: «الـ 3 فايلات دول عبارة عن خطوط موبايل عايز أعملهم
+  صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة» and, with the networks' logos,
+  «عايزك تستخدم الـ 3 لوجوهات فى الفلتر وفى الجدول جنب كل خط تابع لشركته». A register of its own
+  (§2.10, FR-19) rather than an asset category: a line has a number, a network account, a plan
+  and a SIM, and none of an asset's code, category or specifications. Four collections —
+  `it_mobile_lines`, `it_mobile_line_assignments`, `it_mobile_line_events`,
+  `it_mobile_line_receipts` — and three routers (§12). **No new permission and no new page**: the
+  asset grants cover it (owner, the plan's answer «موافق على اقتراحاتك كلها»), so whoever holds
+  «الأصول» manages lines. A hand-over to an employee is print-first on the department's own
+  acknowledgment, one line per paper, its number from the F-14 series the device papers use; a
+  tracker SIM goes to a CAR by its code and plate as text — a deliberate snapshot rather than a
+  Fleet link, so §3 and §9.2 stand. `/it/mobile-lines` («خطوط المحمول», in the IT rail): the three
+  network cards, each with its logo, its lines and states and its account numbers, ARE the
+  network filter (none pressed = every network); search, status, branch, holder (leavers
+  included) and holder kind; the table shows each line beside its network's logo; Excel and PDF
+  hold every line the filters match (network names as text). An employee's IT page lists their
+  lines next to their devices. The go-live file `apps/api/assets/it-go-live/mobile-lines-2026-10.json`
+  is the owner's review of Vodafone.xlsx, Etisalat.xlsx and Orange.xls (392 lines: Vodafone 50,
+  Etisalat 270 with the 18 trackers, Orange 72) — employee and car codes only, no national IDs or
+  addresses, and — the repository being public — no person's name: a line nobody holds that the
+  network has registered to somebody HR knows carries their code (`registeredToCode`), and the
+  import writes their name from HR into the line's notes («مسجّل باسم موظف ترك العمل: … (كود)»,
+  the owner's wording, or «مسجّل في الشبكة باسم: … (كود)»); the three people HR does not have
+  are described, not named; the trackers' IMEIs are left out. A one-time boot step
+  (`go-live/mobile-lines.ts`, key `go-live:it-mobile-lines-2026-10:v1`) registers them in ONE
+  transaction: 301 lines handed to their 285 employees, one acknowledgment each (a block of
+  F-14 numbers), 18 to their cars, 68 in stock and 5 suspended. A holder HR shows as having left
+  gets nothing and the line says so; a number or SIM the register already holds is skipped and
+  reported; a branch it cannot find refuses the run, and the next boot retries; a finished run
+  is recognised before anything is read. The workforce reset keeps the lines' intervals
+  (`keep`, not `purge` like the devices'): a tracker SIM's custody is a car's, and a line whose
+  interval vanished could be neither returned nor handed over again; the papers, which carry the
+  national ID, are still purged, and a line whose paper is gone simply offers none. The seven
+  lines the review matched to an employee by name alone say the match is unconfirmed
+  (`registeredToLikely`). A number is searched as stored: a pasted «+20 10 …» or a card serial in
+  its printed groups is found. The audit rows of a line's
+  hand-over, return and status change are written after the commit.

@@ -30,6 +30,7 @@ import { startReadingsFixGoLive } from './modules/fleet/go-live/readings-fix';
 import { startDealershipBackfillGoLive } from './modules/fleet/go-live/dealership-backfill';
 import { startItAssetRestartGoLive } from './modules/it/go-live/asset-restart';
 import { startItInventoryGoLive } from './modules/it/go-live/inventory';
+import { startItMobileLinesGoLive } from './modules/it/go-live/mobile-lines';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
@@ -75,6 +76,10 @@ const main = async (): Promise<void> => {
   // registered, the head office's handed over to the employees the review settled, the rest in
   // stock — once, after the restart (see the file).
   startItInventoryGoLive();
+  // «الـ 3 فايلات دول عبارة عن خطوط موبايل عايز أعملهم صفحة لإدارتهم وتسليمهم» — the three
+  // networks' files, reviewed with the owner: every line registered, handed to its employee or its
+  // car, suspended or in stock — once (see the file).
+  startItMobileLinesGoLive();
 
   const workers = startWorkers();
   await schedulerService.startSchedules();

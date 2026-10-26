@@ -2,7 +2,8 @@
 // الزرارين في شاشة الأصول · كمان عايز الزرارين قبل مش بعد زرار الـ Action بتاع الفورم · كمان عايزك
 // تشيل كلمة تصدير من الزراير» — the two buttons on the custody register and on the asset list,
 // BEFORE each screen's own action, saying just «Excel» and «PDF», for everybody who can read the
-// list. What the files hold is the `lib/*-export.spec.ts` files.
+// list — and on the mobile lines (FR-19) the same. What the files hold is the `lib/*-export.spec.ts`
+// files.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +21,7 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { CustodyPage } from './CustodyPage';
 import { AssetsListPage } from './AssetsListPage';
+import { MobileLinesPage } from './MobileLinesPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -30,6 +32,7 @@ vi.mock('react-dom', async () => {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(join(HERE, 'CustodyPage.tsx'), 'utf8');
 const ASSETS = readFileSync(join(HERE, 'AssetsListPage.tsx'), 'utf8');
+const LINES = readFileSync(join(HERE, 'MobileLinesPage.tsx'), 'utf8');
 const ar = (key: string): string => translate('ar', key);
 
 const me = (permissions: string[]): MeDto =>
@@ -101,7 +104,19 @@ const asset = {
   updatedAt: '2026-10-07T09:00:00.000Z',
 };
 
-const render = (screen: 'custody' | 'assets', permissions: string[]): string => {
+type Screen = 'custody' | 'assets' | 'lines';
+const PATHS: Record<Screen, string> = {
+  custody: '/it/custody',
+  assets: '/it/assets',
+  lines: '/it/mobile-lines',
+};
+const PAGES: Record<Screen, JSX.Element> = {
+  custody: <CustodyPage />,
+  assets: <AssetsListPage />,
+  lines: <MobileLinesPage />,
+};
+
+const render = (screen: Screen, permissions: string[]): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
@@ -120,6 +135,12 @@ const render = (screen: 'custody' | 'assets', permissions: string[]): string => 
     listKey('it', 'assets', { page: 1, pageSize: 25, sortBy: 'assetCode', sortDir: 'asc' }),
     { items: [asset], meta: { page: 1, pageSize: 25, totalItems: 1, totalPages: 1 } },
   );
+  // The lines' register in its own order (no sort chosen), and its cards' figures.
+  qc.setQueryData(listKey('it', 'mobileLines', { page: 1, pageSize: 25 }), {
+    items: [],
+    meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 0 },
+  });
+  qc.setQueryData(listKey('it', 'mobileLines', { summary: true }), { networks: [] });
   qc.setQueryData(listKey('it', 'branchOptions'), [
     { id: 'b-hq', code: '01', name: { ar: 'المهندسين', en: 'HQ' }, parentId: null },
   ]);
@@ -131,16 +152,13 @@ const render = (screen: 'custody' | 'assets', permissions: string[]): string => 
       ui: { theme: 'light' as const, sidebarOpen: false },
     },
   });
-  const path = screen === 'custody' ? '/it/custody' : '/it/assets';
+  const path = PATHS[screen];
   return renderToStaticMarkup(
     <Provider store={store}>
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route
-              path={path}
-              element={screen === 'custody' ? <CustodyPage /> : <AssetsListPage />}
-            />
+            <Route path={path} element={PAGES[screen]} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -174,6 +192,15 @@ describe.each([
     filter: 'it.assets.allStatuses',
     source: ASSETS,
     list: 'gatherRegister(params, api.listAssets)',
+  },
+  {
+    screen: 'lines' as const,
+    name: 'it-mobile-lines',
+    action: 'it.mobileLines.create',
+    actionPermission: 'itAsset.create',
+    filter: 'it.mobileLines.allStatuses',
+    source: LINES,
+    list: 'gatherRegister(params, api.listMobileLines)',
   },
 ])(
   'the $screen screen’s Excel and PDF',

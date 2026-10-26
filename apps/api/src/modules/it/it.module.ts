@@ -5,7 +5,9 @@
 // stream that is both history and conversation, and the SLA + auto-close sweeps; IT-4 adds
 // maintenance — preventive plans, work orders and the spare-parts ledger (ADR-024); IT-5 adds the
 // software register — products, installations, licences and the expiry sweep (ADR-025). IT-6 adds
-// dashboards — extending THIS manifest, never adding a second one.
+// dashboards — extending THIS manifest, never adding a second one. FR-19 adds the mobile lines —
+// the company's SIM lines on their three networks, handed to an employee on the F-14 paper or to a
+// car, on the asset grants (no key and no page of their own).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
@@ -25,6 +27,13 @@ import {
 import { buildItSparePartsRouter } from './spare-parts';
 import { buildItSoftwareInstallationsRouter, buildItSoftwareProductsRouter } from './software';
 import { buildItLicensesRouter } from './licenses';
+import {
+  buildItMobileLineAssignmentsRouter,
+  buildItMobileLineReceiptsRouter,
+  buildItMobileLinesRouter,
+  itMobileLineCustodyService,
+  mobileLineReceiptFileAuthorizer,
+} from './mobile-lines';
 import { buildItPeopleRouter, buildItTechniciansRouter } from './people';
 import { expirySweep } from './shared/expiry-sweeps';
 import { registerItSettings } from './it.settings';
@@ -320,6 +329,11 @@ export const itModule: ModuleManifest = {
     { prefix: '/it/assignments', router: buildItAssignmentsRouter() },
     // FR-18 — the paper an employee signs for what they are handed (إيصال استلام).
     { prefix: '/it/custody-receipts', router: buildItCustodyReceiptsRouter() },
+    // FR-19 — «عايز أعملهم صفحة لإدارتهم وتسليمهم»: the lines, who has had them, and the paper an
+    // employee signs for one.
+    { prefix: '/it/mobile-lines', router: buildItMobileLinesRouter() },
+    { prefix: '/it/mobile-line-assignments', router: buildItMobileLineAssignmentsRouter() },
+    { prefix: '/it/mobile-line-receipts', router: buildItMobileLineReceiptsRouter() },
     { prefix: '/it/catalog-items', router: buildItCatalogRouter() },
     { prefix: '/it/vendors', router: buildItVendorsRouter() },
     { prefix: '/it/tickets', router: buildItTicketsRouter() },
@@ -340,6 +354,10 @@ export const itModule: ModuleManifest = {
     'it_asset_assignments',
     'it_asset_events',
     'it_custody_receipts',
+    'it_mobile_lines',
+    'it_mobile_line_assignments',
+    'it_mobile_line_events',
+    'it_mobile_line_receipts',
     'it_catalog_items',
     'it_vendors',
     'it_sequences',
@@ -410,8 +428,12 @@ export const itModule: ModuleManifest = {
   // ADR-023 — IT answers the Files service's "may this caller see the owning entity?" for its
   // file-carrying types. Declaring them is what makes ticket and comment attachments — and a
   // receipt's signed copy (FR-18) — safe on EVERY path, including a direct file id and a download
-  // ticket.
-  fileEntityAuthorizers: [...itFileEntityAuthorizers, custodyReceiptFileAuthorizer],
+  // ticket. A line's acknowledgment carries one too (FR-19), under its own entity type.
+  fileEntityAuthorizers: [
+    ...itFileEntityAuthorizers,
+    custodyReceiptFileAuthorizer,
+    mobileLineReceiptFileAuthorizer,
+  ],
   eventSubscriptions: [
     {
       // Design §9.1 / FR-13 — leaving the company does NOT return the assets. The leaver's open
@@ -424,6 +446,18 @@ export const itModule: ModuleManifest = {
         const payload = envelope.payload as { employeeId?: string };
         if (typeof payload.employeeId === 'string') {
           await itAssetCustodyService.flagAssetsHeldByExitedEmployee(payload.employeeId);
+        }
+      },
+    },
+    {
+      // The same safety net for the lines a leaver holds (FR-19): recorded for the exit
+      // checklist, never returned on HR's word — a return is something somebody witnesses.
+      event: 'hr.employee.exited',
+      handlerId: 'it.flagMobileLinesHeldByExitedEmployee',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await itMobileLineCustodyService.flagMobileLinesHeldByExitedEmployee(payload.employeeId);
         }
       },
     },

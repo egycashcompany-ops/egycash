@@ -64,6 +64,19 @@ import {
   type ItCustodyReceiptDto,
   type ItHandOverResultDto,
   type PreviewItCustodyReceipt,
+  type AssignItMobileLine,
+  type CreateItMobileLine,
+  type ItMobileLineAssignResultDto,
+  type ItMobileLineAssignmentDto,
+  type ItMobileLineDto,
+  type ItMobileLineHistoryEntryDto,
+  type ItMobileLineReceiptDocumentDto,
+  type ItMobileLineReceiptDto,
+  type ItMobileLineStatusAction,
+  type ItMobileLinesSummaryDto,
+  type PreviewItMobileLineReceipt,
+  type ReturnItMobileLine,
+  type UpdateItMobileLine,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -258,6 +271,77 @@ export const listAssignments = (
   params: ItListParams,
 ): Promise<Paginated<ItAssetAssignmentDto>> =>
   getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);
+
+// ── Mobile lines — خطوط المحمول (FR-19) ─────────────────────────────────────
+// «عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة». The register, each
+// network's figures, and the same NAMED custody actions an asset has — each answering with the
+// line in its new state, so `status` stays the server's (it is on no write schema at all).
+
+export const listMobileLines = (params: ItListParams): Promise<Paginated<ItMobileLineDto>> =>
+  getPage<ItMobileLineDto>(`/it/mobile-lines${buildQuery(params)}`);
+/** «مع بيانات كل شبكة» — every network's counts, accounts and plans under the same filters. */
+export const getMobileLinesSummary = (params: ItListParams): Promise<ItMobileLinesSummaryDto> =>
+  get<ItMobileLinesSummaryDto>(`/it/mobile-lines/summary${buildQuery(params)}`);
+export const getMobileLine = (id: string): Promise<ItMobileLineDto> =>
+  get<ItMobileLineDto>(`/it/mobile-lines/${id}`);
+export const createMobileLine = (body: CreateItMobileLine): Promise<ItMobileLineDto> =>
+  post<ItMobileLineDto>('/it/mobile-lines', body);
+export const updateMobileLine = (id: string, body: UpdateItMobileLine): Promise<ItMobileLineDto> =>
+  patch<ItMobileLineDto>(`/it/mobile-lines/${id}`, body);
+/** The line's business history, newest first — rendered from its own events, not the audit. */
+export const listMobileLineHistory = (
+  id: string,
+  params: ItListParams,
+): Promise<Paginated<ItMobileLineHistoryEntryDto>> =>
+  getPage<ItMobileLineHistoryEntryDto>(`/it/mobile-lines/${id}/history${buildQuery(params)}`);
+
+/** To an employee (who signs an acknowledgment, recorded with the hand-over) or to a car. */
+export const assignMobileLine = (
+  id: string,
+  body: AssignItMobileLine,
+): Promise<ItMobileLineAssignResultDto> =>
+  post<ItMobileLineAssignResultDto>(`/it/mobile-lines/${id}/assign`, body);
+export const returnMobileLine = (id: string, body: ReturnItMobileLine): Promise<ItMobileLineDto> =>
+  post<ItMobileLineDto>(`/it/mobile-lines/${id}/return`, body);
+export const suspendMobileLine = (
+  id: string,
+  body: ItMobileLineStatusAction,
+): Promise<ItMobileLineDto> => post<ItMobileLineDto>(`/it/mobile-lines/${id}/suspend`, body);
+export const reactivateMobileLine = (
+  id: string,
+  body: ItMobileLineStatusAction,
+): Promise<ItMobileLineDto> => post<ItMobileLineDto>(`/it/mobile-lines/${id}/reactivate`, body);
+
+/** The lines' custody intervals — one line's chain, or one employee's lines, held or returned. */
+export const listMobileLineAssignments = (
+  params: ItListParams,
+): Promise<Paginated<ItMobileLineAssignmentDto>> =>
+  getPage<ItMobileLineAssignmentDto>(`/it/mobile-line-assignments${buildQuery(params)}`);
+
+// The line acknowledgment (إقرار استلام, F-14) — the device receipt's four steps: printed BEFORE
+// the hand-over (`preview` writes nothing), recorded WITH it (the hand-over answers it), printed
+// again after, and the employee's signed copy filed against it.
+export const previewMobileLineReceipt = (
+  body: PreviewItMobileLineReceipt,
+): Promise<ItMobileLineReceiptDocumentDto> =>
+  post<ItMobileLineReceiptDocumentDto>('/it/mobile-line-receipts/preview', body);
+export const getMobileLineReceipt = (id: string): Promise<ItMobileLineReceiptDto> =>
+  get<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}`);
+/** Print a stored acknowledgment again — it keeps its number. */
+export const printMobileLineReceipt = (id: string): Promise<ItMobileLineReceiptDto> =>
+  post<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}/print`, {});
+export const uploadMobileLineReceiptSignedCopy = (
+  id: string,
+  file: File,
+): Promise<ItMobileLineReceiptDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}/signed-copy`, form);
+};
+export const fetchMobileLineReceiptSignedCopy = (id: string): Promise<Blob> =>
+  fetchBlob(`/it/mobile-line-receipts/${id}/signed-copy`);
+export const deleteMobileLineReceiptSignedCopy = (id: string): Promise<ItMobileLineReceiptDto> =>
+  del<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}/signed-copy`);
 
 // ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
 export const listTicketPriorities = (

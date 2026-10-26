@@ -385,6 +385,17 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»).
   'it.custodyReceipt': [['it', 'custody']],
+  // FR-19 — a line moves its register row, its network's card and its history, and its custody
+  // intervals (a person's history page reads those).
+  'it.mobileLine': [
+    ['it', 'mobileLines'],
+    ['it', 'mobileLineAssignments'],
+  ],
+  // A line acknowledgment's signed copy shows on the register's row and on the intervals.
+  'it.mobileLineReceipt': [
+    ['it', 'mobileLines'],
+    ['it', 'mobileLineAssignments'],
+  ],
   'it.catalogItem': [
     ['it', 'catalogs'],
     ['it', 'priorities'],

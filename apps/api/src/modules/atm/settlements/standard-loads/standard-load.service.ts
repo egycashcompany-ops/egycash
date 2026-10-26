@@ -34,11 +34,7 @@ import {
 import { diffChanges } from '../../../../shared/utils/diff';
 import { type PendingAudit } from '../../register/register-coupling';
 import { branchScopeBranches, branchScopeMatch } from '../../shared/branch-scope';
-import {
-  branchMismatch,
-  isDuplicateKey,
-  requireWorkBranch,
-} from '../shared/settlement-context';
+import { branchMismatch, isDuplicateKey, requireWorkBranch } from '../shared/settlement-context';
 import { AtmCassetteLayoutModel } from '../layouts/cassette-layout.model';
 import { AtmPlanLineModel } from '../plans/plan-line.model';
 import { AtmStandardLoadModel, type AtmStandardLoadDoc } from './standard-load.model';
@@ -170,7 +166,11 @@ class AtmStandardLoadService {
     if (query.branchId !== undefined) {
       if (!inReadReach(ctx, query.branchId)) {
         throw new ValidationError([
-          { field: 'query.branchId', code: 'OUT_OF_REACH', message: 'the branch is outside your reach' },
+          {
+            field: 'query.branchId',
+            code: 'OUT_OF_REACH',
+            message: 'the branch is outside your reach',
+          },
         ]);
       }
       branchId = query.branchId;
@@ -293,7 +293,13 @@ class AtmStandardLoadService {
       result = await unitOfWork(async (session) => {
         const audits: PendingAudit[] =
           input.isDefault && !current.isDefault
-            ? await clearPreviousDefault(current.branchId, current.bankCode, current._id, by, session)
+            ? await clearPreviousDefault(
+                current.branchId,
+                current.bankCode,
+                current._id,
+                by,
+                session,
+              )
             : [];
         const updated = await AtmStandardLoadModel.findOneAndUpdate(
           { _id: current._id, __v: version, isDeleted: false },

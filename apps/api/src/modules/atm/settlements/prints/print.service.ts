@@ -44,13 +44,16 @@ import { keyReachesBranch, scopeSelector, type AuthContext } from '../../../../s
 import { actorName } from '../../shared/atm-context';
 import { branchScopeMatch, narrowToBranch } from '../../shared/branch-scope';
 import { AtmDispatchRouteModel, type AtmDispatchRouteDoc } from '../control/dispatch-route.model';
-import { AtmRouteAssignmentModel, type AtmRouteAssignmentDoc } from '../control/route-assignment.model';
+import {
+  AtmRouteAssignmentModel,
+  type AtmRouteAssignmentDoc,
+} from '../control/route-assignment.model';
 import { type AtmLinePreparationDoc } from '../preparation/line-preparation.model';
 import { plainPlanSlots, preparationsByLine, receiptFigures, bySerial } from '../plans/plan-dto';
 import { AtmPlanLineModel, type AtmPlanLineDoc } from '../plans/plan-line.model';
 import { atmSettlementPlanService } from '../plans/plan.service';
 import { AtmReplenishmentPlanModel, type AtmReplenishmentPlanDoc } from '../plans/plan.model';
-import { branchNameOf } from '../shared/settlement-context';
+import { branchMismatch, branchNameOf, requireWorkBranch } from '../shared/settlement-context';
 import { runSettlementHook } from '../shared/test-hooks';
 
 const PLAN_VIEW = 'atmSettlementPlan.view';
@@ -58,6 +61,7 @@ const PLAN_PRINT = 'atmSettlementPlan.print';
 const PLAN_EXPORT = 'atmSettlementPlan.export';
 const CONTROL_VIEW = 'atmControl.view';
 const CONTROL_PRINT = 'atmControl.print';
+const CONTROL_MANAGE = 'atmControl.manage';
 
 const asId = (id: Types.ObjectId | string): Types.ObjectId =>
   typeof id === 'string' ? new Types.ObjectId(id) : id;
@@ -248,7 +252,11 @@ class AtmSettlementPrintService {
   ): Promise<AtmReceiptPrintDto> {
     const [lines, drafts] = await Promise.all([
       issuedLinesOf(plan._id),
-      AtmPlanLineModel.countDocuments({ planId: plan._id, status: 'draft', isDeleted: false }).exec(),
+      AtmPlanLineModel.countDocuments({
+        planId: plan._id,
+        status: 'draft',
+        isDeleted: false,
+      }).exec(),
     ]);
     const figures = receiptFigures(lines);
     const serials = lines.flatMap((l) => (l.serial === null ? [] : [l.serial]));
@@ -372,6 +380,9 @@ class AtmSettlementPrintService {
       return this.handover(plan, true, ctx);
     }
     narrowToBranch(scopeSelector(ctx, CONTROL_VIEW), input.branchId, 'body.branchId');
+    // §6.2: a body branch must also be the branch the Control page works in.
+    const work = await requireWorkBranch(ctx, CONTROL_VIEW, CONTROL_MANAGE);
+    if (work.branchId !== input.branchId) throw branchMismatch();
     requireReach(ctx, CONTROL_PRINT, input.branchId);
     return this.routes(input, ctx);
   }

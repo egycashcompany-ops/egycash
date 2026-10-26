@@ -47,7 +47,10 @@ import { branchScopeBranches, branchScopeMatch } from '../../shared/branch-scope
 import { bySerial, plainPlanSlots } from '../plans/plan-dto';
 import { AtmPlanLineModel, type AtmPlanLineDoc } from '../plans/plan-line.model';
 import { AtmReplenishmentPlanModel, type AtmReplenishmentPlanDoc } from '../plans/plan.model';
-import { AtmLinePreparationModel, type AtmLinePreparationDoc } from '../preparation/line-preparation.model';
+import {
+  AtmLinePreparationModel,
+  type AtmLinePreparationDoc,
+} from '../preparation/line-preparation.model';
 import { suggestedDay, duplicatesOfLine, sealFieldsOf } from '../preparation/preparation.service';
 import { findSealDuplicates } from '../preparation/seal-duplicates';
 import { signalControlDay } from '../shared/day-signals';
@@ -83,7 +86,9 @@ const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
   for (const audit of audits) await auditService.record(audit);
 };
 
-const routeSnapshot = (r: Pick<AtmDispatchRouteDoc, 'name' | 'leaderName' | 'order' | 'zoneId'>) => ({
+const routeSnapshot = (
+  r: Pick<AtmDispatchRouteDoc, 'name' | 'leaderName' | 'order' | 'zoneId'>,
+) => ({
   name: r.name,
   leaderName: r.leaderName,
   order: r.order,
@@ -92,7 +97,11 @@ const routeSnapshot = (r: Pick<AtmDispatchRouteDoc, 'name' | 'leaderName' | 'ord
 
 const duplicateName = (): ValidationError =>
   new ValidationError([
-    { field: 'body.name', code: 'DUPLICATE_NAME', message: 'another line of this day has this name' },
+    {
+      field: 'body.name',
+      code: 'DUPLICATE_NAME',
+      message: 'another line of this day has this name',
+    },
   ]);
 
 const routeGone = (field: string): ValidationError =>
@@ -128,16 +137,21 @@ class AtmControlService {
   }
 
   /** The day's routes (live, in order) and their non-cancelled lines. */
-  private async routesOfDay(
-    branchId: string,
-    date: string,
-  ): Promise<AtmControlRouteDto[]> {
+  private async routesOfDay(branchId: string, date: string): Promise<AtmControlRouteDto[]> {
     const [routes, assignments] = await Promise.all([
-      AtmDispatchRouteModel.find({ branchId: asId(branchId), replenishDate: date, isDeleted: false })
+      AtmDispatchRouteModel.find({
+        branchId: asId(branchId),
+        replenishDate: date,
+        isDeleted: false,
+      })
         .sort({ order: 1, _id: 1 })
         .lean<AtmDispatchRouteDoc[]>()
         .exec(),
-      AtmRouteAssignmentModel.find({ branchId: asId(branchId), replenishDate: date, isDeleted: false })
+      AtmRouteAssignmentModel.find({
+        branchId: asId(branchId),
+        replenishDate: date,
+        isDeleted: false,
+      })
         .lean<AtmRouteAssignmentDoc[]>()
         .exec(),
     ]);
@@ -464,7 +478,10 @@ class AtmControlService {
         { session },
       ).exec();
       if (deleted.matchedCount !== 1) throw new StaleDocumentError();
-      const assignments = await AtmRouteAssignmentModel.find({ routeId: route._id, isDeleted: false })
+      const assignments = await AtmRouteAssignmentModel.find({
+        routeId: route._id,
+        isDeleted: false,
+      })
         .session(session)
         .lean<AtmRouteAssignmentDoc[]>()
         .exec();
@@ -486,13 +503,11 @@ class AtmControlService {
         action: 'delete',
         changes: diffChanges(routeSnapshot(route), {}),
       },
-      ...removed.map(
-        (lineId): PendingAudit => ({
-          entityRef: assignmentRef(lineId),
-          action: 'delete',
-          changes: [{ field: 'routeId', old: routeId, new: null }],
-        }),
-      ),
+      ...removed.map((lineId): PendingAudit => ({
+        entityRef: assignmentRef(lineId),
+        action: 'delete',
+        changes: [{ field: 'routeId', old: routeId, new: null }],
+      })),
     ]);
   }
 
@@ -593,7 +608,10 @@ class AtmControlService {
       if (current === null) return [];
       await AtmRouteAssignmentModel.updateOne(
         { _id: current._id, isDeleted: false },
-        { $set: { isDeleted: true, deletedAt: now, deletedBy: by, updatedBy: by }, $inc: { __v: 1 } },
+        {
+          $set: { isDeleted: true, deletedAt: now, deletedBy: by, updatedBy: by },
+          $inc: { __v: 1 },
+        },
         { session },
       ).exec();
       return [
@@ -606,7 +624,16 @@ class AtmControlService {
     }
     if (current === null) {
       await AtmRouteAssignmentModel.create(
-        [{ lineId, routeId: asId(move.to), branchId, replenishDate: date, createdBy: by, updatedBy: by }],
+        [
+          {
+            lineId,
+            routeId: asId(move.to),
+            branchId,
+            replenishDate: date,
+            createdBy: by,
+            updatedBy: by,
+          },
+        ],
         { session },
       );
       return [

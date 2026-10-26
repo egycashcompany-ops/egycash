@@ -43,7 +43,10 @@ import { AtmMachineModel, type AtmMachineDoc } from '../../machines/machine.mode
 import { actorName } from '../../shared/atm-context';
 import { branchScopeMatch, resolveWorkBranch } from '../../shared/branch-scope';
 import { cairoDateString } from '../../shared/cairo-time';
-import { AtmLayoutImportRunModel, type AtmLayoutImportRunDoc } from '../import/layout-import-run.model';
+import {
+  AtmLayoutImportRunModel,
+  type AtmLayoutImportRunDoc,
+} from '../import/layout-import-run.model';
 import { AtmPlanLineModel, type AtmPlanLineDoc } from '../plans/plan-line.model';
 import { bankMachineIds, machineBanks } from '../shared/register-bank';
 import {
@@ -248,7 +251,10 @@ class AtmCassetteLayoutService {
   }
 
   /** S3 — the last 10 import runs of the caller's branch(es) for the bank, counts only. */
-  async runs(query: AtmSettlementBankQuery, ctx: AuthContext): Promise<AtmLayoutImportRunSummaryDto[]> {
+  async runs(
+    query: AtmSettlementBankQuery,
+    ctx: AuthContext,
+  ): Promise<AtmLayoutImportRunSummaryDto[]> {
     const view = scopeSelector(ctx, VIEW);
     const branchId = await readBranch(ctx, VIEW, IMPORT, query.branchId);
     const docs = await AtmLayoutImportRunModel.find({
@@ -305,10 +311,15 @@ class AtmCassetteLayoutService {
         { planId: 1, replenishDate: 1, serial: 1, status: 1, run: 1 },
       )
         .sort({ replenishDate: 1, run: 1 })
-        .lean<Pick<AtmPlanLineDoc, '_id' | 'planId' | 'replenishDate' | 'serial' | 'status' | 'run'>[]>()
+        .lean<
+          Pick<AtmPlanLineDoc, '_id' | 'planId' | 'replenishDate' | 'serial' | 'status' | 'run'>[]
+        >()
         .exec(),
     ]);
-    const loadIds = await profileIdsOf(machine.branchId, banks.get(String(machine._id))?.bank ?? null);
+    const loadIds = await profileIdsOf(
+      machine.branchId,
+      banks.get(String(machine._id))?.bank ?? null,
+    );
     return {
       ...toRowDto(machine, layout, loadIds),
       versions: versions.map(toLayoutVersionDto),
@@ -462,7 +473,10 @@ class AtmCassetteLayoutService {
     await auditService.record({
       entityRef: layoutRef(String(machine._id)),
       action: current === null ? 'create' : 'update',
-      changes: [...changes, ...(reason === null ? [] : [{ field: 'reason', old: null, new: reason }])],
+      changes: [
+        ...changes,
+        ...(reason === null ? [] : [{ field: 'reason', old: null, new: reason }]),
+      ],
     });
     return this.detailOf(machine);
   }

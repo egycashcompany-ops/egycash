@@ -64,13 +64,11 @@ export const importLayouts = async (req: Request, res: Response): Promise<void> 
   const parsed = LayoutImportFieldsSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     throw new ValidationError(
-      parsed.error.issues.map(
-        (issue): ApiErrorDetail => ({
-          field: `body${issue.path.length > 0 ? '.' + issue.path.join('.') : ''}`,
-          code: issue.code.toUpperCase(),
-          message: issue.message,
-        }),
-      ),
+      parsed.error.issues.map((issue): ApiErrorDetail => ({
+        field: `body${issue.path.length > 0 ? '.' + issue.path.join('.') : ''}`,
+        code: issue.code.toUpperCase(),
+        message: issue.message,
+      })),
     );
   }
   ok(

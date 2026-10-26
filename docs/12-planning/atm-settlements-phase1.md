@@ -2881,3 +2881,16 @@ WP-S1 step a (contracts and the pure/importer layer of the API). One line each: 
 - §5.3 row DTO: a label over its cap is returned as `after: null` (the row is `invalid` + `labelTooLong`), so an overlong cell never rides the preview response.
 - §6.2 `register-bank.ts`: `bankOfEntries` reads an open entry without a bank as no bank — `[null]` → `noRegisterBank`, `[BRK, null]` → `otherBank` (the `commonBankCode` rule); `registerRowsByMachine` and `bankMachineIds` (the bank's machines in a branch, re-checked) are the two reads §6.2 describes.
 - §6.1 audit verbs: the web's audit-label specs (`system-admin-i18n.spec.ts`, `audit-screens.spec.tsx`) fail until WP-S2 adds the two `systemAdmin.users.audit.*` keys of §9.9.
+
+WP-S1 step b (models, services, routes, the integration suite). One line each: section, change, why.
+
+- §6.2 / §6.9 C7 `routes`: the body branch is first narrowed (`OUT_OF_REACH`), then must equal the Control page's work branch (422 `ATM_WORK_BRANCH_REQUIRED` when blocked, 400 `BRANCH_MISMATCH`) — §6.2 lists route prints among both the work-branch endpoints and the body-branch checks, §6.9 names only the narrowing; both apply, narrowing first.
+- §6.4 S7: a `branchId` query is checked against the OR of the two pages' read reach (`OUT_OF_REACH` when neither view key reaches it) — the read match is that OR, and `narrowToBranch` on one key would refuse a plan-only user the profiles their page offers.
+- §6.4 S6: saving the layout of an archived machine answers 422 (business rule) — "live and active" names no code.
+- §6.4 S9: a PUT naming another bank than the profile's answers 400 `BANK_MISMATCH` — a profile keeps the bank it was created for, and the schema carries `bankCode` on every save.
+- §6.5 S16: `refreshLayout` on a spare line answers 400 `SPARE_LINE` and on a machine with no layout 422 `NO_LAYOUT`; moving a line onto an occupied run answers 422 with detail `DUPLICATE_IN_RUN` — the spec names the outcomes, not the codes.
+- §6.5 S21: a machine line answers 409 `ATM_PLAN_LINE_STATE`; a refused machine answers 422 with the reason (`unknownCode` / `inactive` / `noRegisterBank` / `otherBank`) as the detail code.
+- §6.9 C3: spare lines are counted in `unlocated` — `AtmRoutesFromZonesResultDto` has no spare count, and a spare set has no point.
+- §6.9 C7 `routes`: a listed `routeIds` entry that is not a live route of that day answers 400 `ROUTE_GONE` — the other route writes' code for the same case.
+- §10.3 case 10: slot 9 is refused by `SlotNotes` (`max(8)`, §6.1) as a schema 400, so `UNKNOWN_SLOT` is proven with slot 5 on a 4-slot line.
+- §10.3 "Interleaving": an add has its own pause point (`plan.add.beforeWrite`, before its transaction) so "two concurrent adds of the same code" runs interleaved like the other race cases; every pause point is a no-op unless a test registers it.

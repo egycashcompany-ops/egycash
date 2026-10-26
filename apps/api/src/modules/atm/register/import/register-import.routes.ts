@@ -46,9 +46,14 @@ export const workbookUpload = (maxMb: number): RequestHandler => {
       }
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
         next(
-          new AppError(ErrorCodes.VALIDATION_FAILED, 422, `File exceeds the ${String(maxMb)} MB cap`, {
-            details: [{ field: 'file', code: 'TOO_LARGE', message: `${String(maxMb)} MB` }],
-          }),
+          new AppError(
+            ErrorCodes.VALIDATION_FAILED,
+            422,
+            `File exceeds the ${String(maxMb)} MB cap`,
+            {
+              details: [{ field: 'file', code: 'TOO_LARGE', message: `${String(maxMb)} MB` }],
+            },
+          ),
         );
         return;
       }

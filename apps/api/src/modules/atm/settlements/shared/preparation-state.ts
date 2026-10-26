@@ -24,7 +24,9 @@ export const requiredMissing = (prep: PrepFields, slots: SlotNotes): string[] =>
     bagRequired(bag, slots) && bag.qr === null ? [`bags[${String(i)}].qr`] : [],
   ),
   ...prep.seals.flatMap((seal) =>
-    sealRequired(seal.slot, slots) && seal.value === null ? [`seals[slot=${String(seal.slot)}]`] : [],
+    sealRequired(seal.slot, slots) && seal.value === null
+      ? [`seals[slot=${String(seal.slot)}]`]
+      : [],
   ),
 ];
 

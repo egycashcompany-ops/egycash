@@ -172,7 +172,9 @@ const applyDenominationNotes = (
       'no planned cassette of the line carries this denomination',
     );
   }
-  return slots.map((s) => (fill.notes.has(s.slot) ? { ...s, notes: fill.notes.get(s.slot) ?? 0 } : s));
+  return slots.map((s) =>
+    fill.notes.has(s.slot) ? { ...s, notes: fill.notes.get(s.slot) ?? 0 } : s,
+  );
 };
 
 /** S16 step 4 / S15: single-slot overrides; only a planned slot of the line takes notes (DS-4). */
@@ -202,19 +204,21 @@ const applySlotNotes = (
 const notesSnapshot = (slots: readonly AtmPlanSlot[]) =>
   slots.map((s) => ({ slot: s.slot, notes: s.notes }));
 
-const lineSnapshot = (line: Pick<
-  AtmPlanLineDoc,
-  | 'run'
-  | 'scheduleTime'
-  | 'slots'
-  | 'countsSource'
-  | 'standardLoadId'
-  | 'layoutRevision'
-  | 'typeLabel'
-  | 'featuresLabel'
-  | 'hubLabel'
-  | 'egpTotalMinor'
->) => ({
+const lineSnapshot = (
+  line: Pick<
+    AtmPlanLineDoc,
+    | 'run'
+    | 'scheduleTime'
+    | 'slots'
+    | 'countsSource'
+    | 'standardLoadId'
+    | 'layoutRevision'
+    | 'typeLabel'
+    | 'featuresLabel'
+    | 'hubLabel'
+    | 'egpTotalMinor'
+  >,
+) => ({
   run: line.run,
   scheduleTime: line.scheduleTime,
   notes: notesSnapshot(line.slots),
@@ -266,7 +270,10 @@ class AtmSettlementPlanService {
     viewKey = VIEW,
   ): Promise<AtmReplenishmentPlanDoc> {
     const plan = await AtmReplenishmentPlanModel.findOne({
-      $and: [{ _id: asId(planId), isDeleted: false }, branchScopeMatch(scopeSelector(ctx, viewKey))],
+      $and: [
+        { _id: asId(planId), isDeleted: false },
+        branchScopeMatch(scopeSelector(ctx, viewKey)),
+      ],
     } as FilterQuery<AtmReplenishmentPlanDoc>)
       .lean<AtmReplenishmentPlanDoc>()
       .exec();
@@ -275,7 +282,11 @@ class AtmSettlementPlanService {
   }
 
   /** §6.2: a line of THIS plan, through the read match (a line of another plan is a 404). */
-  private async loadLine(planId: string, lineId: string, ctx: AuthContext): Promise<AtmPlanLineDoc> {
+  private async loadLine(
+    planId: string,
+    lineId: string,
+    ctx: AuthContext,
+  ): Promise<AtmPlanLineDoc> {
     const line = await AtmPlanLineModel.findOne({
       $and: [
         { _id: asId(lineId), planId: asId(planId), isDeleted: false },
@@ -294,7 +305,10 @@ class AtmSettlementPlanService {
     }
   }
 
-  private async linesOf(planId: Types.ObjectId, session?: ClientSession): Promise<AtmPlanLineDoc[]> {
+  private async linesOf(
+    planId: Types.ObjectId,
+    session?: ClientSession,
+  ): Promise<AtmPlanLineDoc[]> {
     return AtmPlanLineModel.find({ planId, isDeleted: false })
       .session(session ?? null)
       .lean<AtmPlanLineDoc[]>()
@@ -409,6 +423,7 @@ class AtmSettlementPlanService {
     by: Types.ObjectId,
   ): Promise<{ inserted: AtmPlanLineDoc[]; duplicates: number[] }> {
     const k = candidates.length;
+    await runSettlementHook('plan.add.beforeWrite');
     try {
       return await unitOfWork(async (session) => {
         const moved = await AtmReplenishmentPlanModel.findOneAndUpdate(
@@ -653,7 +668,11 @@ class AtmSettlementPlanService {
   }
 
   /** S15 — a spare set: its own line with a type and no machine (S-9, DS-27). */
-  async addSpare(planId: string, input: AddAtmSpareLine, ctx: AuthContext): Promise<AtmPlanLineDto> {
+  async addSpare(
+    planId: string,
+    input: AddAtmSpareLine,
+    ctx: AuthContext,
+  ): Promise<AtmPlanLineDto> {
     const plan = await this.loadPlan(planId, ctx);
     this.requireManage(ctx, plan.branchId);
     const slots: AtmCassetteSlot[] = input.slots.map((s) => ({
@@ -665,13 +684,11 @@ class AtmSettlementPlanService {
     const issues = layoutIssues(slots, { spare: true });
     if (issues.length > 0) {
       throw new ValidationError(
-        issues.map(
-          (issue): ApiErrorDetail => ({
-            field: issue.slot === null ? 'body.slots' : `body.slots.slot=${String(issue.slot)}`,
-            code: issue.code,
-            message: 'the spare set’s cassettes are not valid',
-          }),
-        ),
+        issues.map((issue): ApiErrorDetail => ({
+          field: issue.slot === null ? 'body.slots' : `body.slots.slot=${String(issue.slot)}`,
+          code: issue.code,
+          message: 'the spare set’s cassettes are not valid',
+        })),
       );
     }
     const loads = await liveStandardLoads(plan.branchId, plan.bankCode);
@@ -749,7 +766,11 @@ class AtmSettlementPlanService {
     // 1. refreshLayout: the machine and the layout again, then the counts from the line's profile.
     if (patch.refreshLayout === true) {
       if (line.kind !== 'machine' || line.machineId === null) {
-        throw fieldError('body.refreshLayout', 'SPARE_LINE', 'a spare line has no layout to refresh');
+        throw fieldError(
+          'body.refreshLayout',
+          'SPARE_LINE',
+          'a spare line has no layout to refresh',
+        );
       }
       const machine = await AtmMachineModel.findOne(
         { _id: line.machineId, isDeleted: false },
@@ -771,7 +792,10 @@ class AtmSettlementPlanService {
         featuresLabel: layout.featuresLabel,
         hubLabel: layout.hubLabel,
         layoutRevision: layout.revision,
-        ...filledFrom(layout.slots, profileFor(loads, [line.standardLoadId, layout.standardLoadId])),
+        ...filledFrom(
+          layout.slots,
+          profileFor(loads, [line.standardLoadId, layout.standardLoadId]),
+        ),
       });
     }
 
@@ -824,7 +848,11 @@ class AtmSettlementPlanService {
             ErrorCodes.BUSINESS_RULE_VIOLATION,
             422,
             'the machine already has a line in this run',
-            { details: [{ field: 'body.run', code: 'DUPLICATE_IN_RUN', message: 'DUPLICATE_IN_RUN' }] },
+            {
+              details: [
+                { field: 'body.run', code: 'DUPLICATE_IN_RUN', message: 'DUPLICATE_IN_RUN' },
+              ],
+            },
           );
         }
       }
@@ -883,7 +911,12 @@ class AtmSettlementPlanService {
   }
 
   /** S17 — delete a draft line (soft). */
-  async deleteLine(planId: string, lineId: string, version: number, ctx: AuthContext): Promise<void> {
+  async deleteLine(
+    planId: string,
+    lineId: string,
+    version: number,
+    ctx: AuthContext,
+  ): Promise<void> {
     const line = await this.loadLine(planId, lineId, ctx);
     this.requireManage(ctx, line.branchId);
     if (line.status !== 'draft') throw lineStateError(line.status);
@@ -936,7 +969,11 @@ class AtmSettlementPlanService {
   }
 
   /** S18 — issue draft lines: serials, bags and an open preparation each (DS-10, DS-11, DS-13). */
-  async issue(planId: string, input: IssueAtmPlan, ctx: AuthContext): Promise<AtmSettlementPlanDto> {
+  async issue(
+    planId: string,
+    input: IssueAtmPlan,
+    ctx: AuthContext,
+  ): Promise<AtmSettlementPlanDto> {
     // 1. The plan in reach; manage reaching its branch.
     const plan = await this.loadPlan(planId, ctx);
     this.requireManage(ctx, plan.branchId);
@@ -984,7 +1021,10 @@ class AtmSettlementPlanService {
         const serial = first + i;
         const bags = bagAllocation(line.slots);
         const bagOf = new Map(bags.flatMap((b) => b.slots.map((slot) => [slot, b.bag] as const)));
-        const slots = plainPlanSlots(line.slots).map((s) => ({ ...s, bag: bagOf.get(s.slot) ?? null }));
+        const slots = plainPlanSlots(line.slots).map((s) => ({
+          ...s,
+          bag: bagOf.get(s.slot) ?? null,
+        }));
         const moved = await AtmPlanLineModel.updateOne(
           { _id: line._id, planId: plan._id, status: 'draft', __v: line.__v, isDeleted: false },
           {
@@ -1098,7 +1138,13 @@ class AtmSettlementPlanService {
       const pending: PendingAudit[] = [];
       const now = new Date();
       const moved = await AtmPlanLineModel.updateOne(
-        { _id: line._id, planId: line.planId, status: 'issued', __v: input.version, isDeleted: false },
+        {
+          _id: line._id,
+          planId: line.planId,
+          status: 'issued',
+          __v: input.version,
+          isDeleted: false,
+        },
         {
           $set: {
             status: 'draft',
@@ -1106,9 +1152,6 @@ class AtmSettlementPlanService {
             'slots.$[].bag': null,
             notePrintCount: 0,
             notePrintedAt: null,
-            issuedAt: null,
-            issuedBy: null,
-            issuedByName: null,
             updatedBy: by,
           },
           $push: {
@@ -1305,7 +1348,10 @@ class AtmSettlementPlanService {
           spareUse:
             line.spareUse === null
               ? null
-              : { machineId: String(line.spareUse.machineId), machineCode: line.spareUse.machineCode },
+              : {
+                  machineId: String(line.spareUse.machineId),
+                  machineCode: line.spareUse.machineCode,
+                },
         },
         { spareUse: { machineId: String(machine._id), machineCode: machine.machineCode } },
       ),

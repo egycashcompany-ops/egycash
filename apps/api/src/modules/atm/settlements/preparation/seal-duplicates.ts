@@ -45,9 +45,7 @@ const TOP_N = 6;
 const MATCHES_MAX = 5;
 
 export const fieldKey = (f: Pick<SealField, 'lineId' | 'field' | 'bag' | 'slot'>): string =>
-  f.field === 'bag'
-    ? `${f.lineId}|bag:${String(f.bag)}`
-    : `${f.lineId}|seal:${String(f.slot)}`;
+  f.field === 'bag' ? `${f.lineId}|bag:${String(f.bag)}` : `${f.lineId}|seal:${String(f.slot)}`;
 
 const topOccurrences = async (
   field: 'bag' | 'seal',
@@ -111,9 +109,7 @@ export const findSealDuplicates = async (
     );
 
   const lineIds = [
-    ...new Set(
-      keys.flatMap((key) => occurrencesOf(key).map((o) => String(o.lineId))),
-    ),
+    ...new Set(keys.flatMap((key) => occurrencesOf(key).map((o) => String(o.lineId)))),
   ];
   const lines = await AtmPlanLineModel.find(
     { _id: { $in: lineIds } },

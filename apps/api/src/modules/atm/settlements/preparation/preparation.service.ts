@@ -163,7 +163,8 @@ export const toPreparationLineDto = (
       required: sealRequired(s.slot, line.slots),
     })),
     lastCapturedByName: prep.lastCapturedByName,
-    lastCapturedAt: prep.lastCapturedAt === null ? null : new Date(prep.lastCapturedAt).toISOString(),
+    lastCapturedAt:
+      prep.lastCapturedAt === null ? null : new Date(prep.lastCapturedAt).toISOString(),
     preparedByName: prep.preparedByName,
     preparedAt: prep.preparedAt === null ? null : new Date(prep.preparedAt).toISOString(),
   },
@@ -289,7 +290,10 @@ class AtmPreparationService {
     ctx: AuthContext,
   ): Promise<{ prep: AtmLinePreparationDoc; line: AtmPlanLineDoc }> {
     const prep = await AtmLinePreparationModel.findOne({
-      $and: [{ lineId: asId(lineId), isDeleted: false }, branchScopeMatch(scopeSelector(ctx, VIEW))],
+      $and: [
+        { lineId: asId(lineId), isDeleted: false },
+        branchScopeMatch(scopeSelector(ctx, VIEW)),
+      ],
     } as FilterQuery<AtmLinePreparationDoc>)
       .lean<AtmLinePreparationDoc>()
       .exec();
@@ -304,7 +308,10 @@ class AtmPreparationService {
     return { prep, line };
   }
 
-  private async lineDtoOf(lineId: Types.ObjectId, ctx: AuthContext): Promise<AtmPreparationLineDto> {
+  private async lineDtoOf(
+    lineId: Types.ObjectId,
+    ctx: AuthContext,
+  ): Promise<AtmPreparationLineDto> {
     const [line, prep] = await Promise.all([
       AtmPlanLineModel.findOne({ _id: lineId, isDeleted: false }).lean<AtmPlanLineDoc>().exec(),
       AtmLinePreparationModel.findOne({ lineId, isDeleted: false })
@@ -357,7 +364,11 @@ class AtmPreparationService {
     input.bags.forEach((b, i) => {
       const qr = cleanScannedValue(b.qr);
       if (qr !== null && !AtmBagQrSchema.safeParse(qr).success) {
-        invalid.push({ field: `bags[${String(i)}].qr`, code: 'INVALID_SEAL', message: 'not a bag QR' });
+        invalid.push({
+          field: `bags[${String(i)}].qr`,
+          code: 'INVALID_SEAL',
+          message: 'not a bag QR',
+        });
       }
       bagValue.set(b.bag, { qr, qrKey: qr === null ? null : sealKey(qr) });
     });
@@ -365,7 +376,11 @@ class AtmPreparationService {
     input.seals.forEach((s, i) => {
       const value = cleanScannedValue(s.value);
       if (value !== null && !AtmSealValueSchema.safeParse(value).success) {
-        invalid.push({ field: `seals[${String(i)}].value`, code: 'INVALID_SEAL', message: 'not a seal' });
+        invalid.push({
+          field: `seals[${String(i)}].value`,
+          code: 'INVALID_SEAL',
+          message: 'not a seal',
+        });
       }
       sealValue.set(s.slot, { value, key: value === null ? null : sealKey(value) });
     });
@@ -385,7 +400,13 @@ class AtmPreparationService {
     const by = asId(ctx.userId);
     await unitOfWork(async (session) => {
       const saved = await AtmLinePreparationModel.updateOne(
-        { _id: prep._id, lineId: prep.lineId, status: 'open', __v: input.version, isDeleted: false },
+        {
+          _id: prep._id,
+          lineId: prep.lineId,
+          status: 'open',
+          __v: input.version,
+          isDeleted: false,
+        },
         {
           $set: {
             bags,

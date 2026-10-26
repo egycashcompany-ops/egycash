@@ -81,7 +81,9 @@ export interface PlanWorld {
 export const loadPlanWorld = async (lines: readonly AtmPlanLineDoc[]): Promise<PlanWorld> => {
   const ids = [
     ...new Set(
-      lines.flatMap((l) => (l.kind === 'machine' && l.machineId !== null ? [String(l.machineId)] : [])),
+      lines.flatMap((l) =>
+        l.kind === 'machine' && l.machineId !== null ? [String(l.machineId)] : [],
+      ),
     ),
   ];
   const [machines, layouts, banks] = await Promise.all([
@@ -111,9 +113,7 @@ export const machinePlannable = (
   if (line.machineId === null) return false;
   const id = String(line.machineId);
   const machine = world.machines.get(id);
-  return (
-    machine !== undefined && machine.isActive && world.banks.get(id)?.bank === plan.bankCode
-  );
+  return machine !== undefined && machine.isActive && world.banks.get(id)?.bank === plan.bankCode;
 };
 
 /** §3.7 for one line of the plan; a cancelled line has none. */
@@ -215,7 +215,10 @@ export const receiptFigures = (lines: readonly AtmPlanLineDoc[]): AtmReceiptFigu
   rows: receiptRows(lines),
   egpTotalMinor: sumMinorUnits(lines.map((l) => l.egpTotalMinor)),
   machineCount: receiptMachineCount(
-    lines.map((l) => ({ kind: l.kind, machineId: l.machineId === null ? null : String(l.machineId) })),
+    lines.map((l) => ({
+      kind: l.kind,
+      machineId: l.machineId === null ? null : String(l.machineId),
+    })),
   ),
 });
 
@@ -277,9 +280,8 @@ export const toPlanDto = async (
     ),
     summary: {
       lines: live.length,
-      machines: new Set(
-        live.flatMap((l) => (l.machineId === null ? [] : [String(l.machineId)])),
-      ).size,
+      machines: new Set(live.flatMap((l) => (l.machineId === null ? [] : [String(l.machineId)])))
+        .size,
       spares: live.filter((l) => l.kind === 'spare').length,
       bags: live.reduce((sum, l) => sum + bagAllocation(l.slots).length, 0),
       byStatus,

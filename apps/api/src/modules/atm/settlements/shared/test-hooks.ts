@@ -9,6 +9,7 @@
 export type SettlementHookPoint =
   | 'layoutImport.afterRunInsert'
   | 'layoutImport.beforeRow'
+  | 'plan.add.beforeWrite'
   | 'plan.update.beforeWrite'
   | 'plan.issue.beforeWrite'
   | 'plan.reopen.beforeWrite'

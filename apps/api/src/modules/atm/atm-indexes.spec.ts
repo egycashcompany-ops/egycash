@@ -47,4 +47,24 @@ describe('atmIndexedModels', () => {
       expect(listed.get(collection), collection).toBe(true);
     }
   });
+
+  // Settlements phase 1 (docs/12-planning/atm-settlements-phase1.md §4.10): all ten are built at
+  // boot; the three operation records keep their rows out of the log.
+  it('lists the ten settlements collections, the operation records with their rows kept out', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    for (const collection of [
+      'atm_cassette_layouts',
+      'atm_cassette_layout_versions',
+      'atm_standard_loads',
+      'atm_replenishment_plans',
+      'atm_dispatch_routes',
+      'atm_layout_import_runs',
+      'atm_note_counters',
+    ]) {
+      expect(listed.get(collection), collection).toBe(true);
+    }
+    for (const collection of ['atm_plan_lines', 'atm_line_preparations', 'atm_route_assignments']) {
+      expect(listed.get(collection), collection).toBe(false);
+    }
+  });
 });

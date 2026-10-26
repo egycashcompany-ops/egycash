@@ -15,6 +15,8 @@
 // resource. Every legacy POST was unauthenticated (contad_app.js:632 …) — closed here by RBAC,
 // the port's one non-negotiable behaviour change (port doc T-auth).
 // The machine map and its owner-drawn zones sit here too (docs/12-planning/atm-map-zones.md).
+// Settlements & Review → Preparation → Control & Supplies, phase 1 (Al Baraka first), too
+// (docs/12-planning/atm-settlements-phase1.md).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildAtmMachinesRouter } from './machines/machine.routes';
@@ -26,6 +28,9 @@ import { buildAtmReportsRouter } from './reports/report.routes';
 import { buildAtmRegisterRouter } from './register/register.routes';
 import { buildAtmRegisterImportRouter } from './register/import/register-import.routes';
 import { buildAtmMapRouter } from './map/map.routes';
+import { buildAtmSettlementsRouter } from './settlements/settlements.routes';
+import { buildAtmPreparationRouter } from './settlements/preparation/preparation.routes';
+import { buildAtmControlRouter } from './settlements/control/control.routes';
 import { rotateRegisterCombinationKeys } from './register/register-secrets';
 import { registerAtmSettings } from './atm.settings';
 import { seedAtm } from './atm.seed';
@@ -206,6 +211,82 @@ const locatePermissions = declarePermissions(
   'atm.map',
 );
 
+// Settlements & Review's cassette layouts and standard loads (docs/12-planning/atm-settlements-phase1.md §7.1).
+const layoutPermissions = declarePermissions(
+  'atm',
+  'atmCassetteLayout',
+  { en: 'ATM cassette denominations', ar: 'فئات كاسيتات الماكينات' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Edit cassette denominations and standard loads',
+        ar: 'تعديل فئات الكاسيتات والحمولات القياسية',
+      },
+    },
+    {
+      action: 'import',
+      name: { en: 'Import a bank master workbook', ar: 'استيراد ملف Full list للبنك' },
+    },
+  ],
+  'atm.cassette-layouts',
+);
+
+// Settlements & Review's daily replenishment plan and its papers (docs/12-planning/atm-settlements-phase1.md §7.1).
+const planPermissions = declarePermissions(
+  'atm',
+  'atmSettlementPlan',
+  { en: 'ATM replenishment plans', ar: 'خطط تغذية الماكينات' },
+  ['view', 'print', 'export'],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Build, issue, reopen and cancel plan lines',
+        ar: 'إعداد سطور الخطة واعتمادها وإعادتها وإلغاؤها',
+      },
+    },
+  ],
+  'atm.settlement-plans',
+);
+
+// Preparation's bags and seals (docs/12-planning/atm-settlements-phase1.md §7.1).
+const preparationPermissions = declarePermissions(
+  'atm',
+  'atmPreparation',
+  { en: 'ATM bag and seal preparation', ar: 'تجهيز الشوالات والسيلزات' },
+  ['view'],
+  [
+    {
+      action: 'capture',
+      name: {
+        en: 'Record bag QR codes and cassette seals',
+        ar: 'تسجيل QR الشوالات وسيلزات الكاسيتات',
+      },
+    },
+  ],
+  'atm.preparation',
+);
+
+// Control & Supplies' dispatch data and crew lines (docs/12-planning/atm-settlements-phase1.md §7.1).
+const controlPermissions = declarePermissions(
+  'atm',
+  'atmControl',
+  { en: 'ATM control and supplies', ar: 'الرقابة والمستلزمات' },
+  ['view', 'print'],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Create crew lines and distribute the bags',
+        ar: 'إنشاء الخطوط وتوزيع الشوالات عليها',
+      },
+    },
+  ],
+  'atm.control',
+);
+
 registerAtmSettings();
 // Opt-in and silent when no mailbox is configured (the OCR-sidecar precedent): without the four
 // `ATM_MAIL_GRAPH_*` settings nothing registers and the poll task below does nothing at all.
@@ -222,6 +303,10 @@ export const atmPermissions: PermissionDef[] = [
   ...mapPermissions,
   ...zonePermissions,
   ...locatePermissions,
+  ...layoutPermissions,
+  ...planPermissions,
+  ...preparationPermissions,
+  ...controlPermissions,
 ];
 
 export const atmPages: PageDef[] = [
@@ -274,6 +359,34 @@ export const atmPages: PageDef[] = [
     route: '/atm/register/report',
     sortOrder: 60,
   },
+  {
+    id: 'atm.settlement-plans',
+    moduleId: 'atm',
+    name: { en: 'Replenishment plan', ar: 'خطة التغذية' },
+    route: '/atm/settlements/plans',
+    sortOrder: 70,
+  },
+  {
+    id: 'atm.cassette-layouts',
+    moduleId: 'atm',
+    name: { en: 'Cassette denominations', ar: 'فئات الكاسيتات' },
+    route: '/atm/settlements/layouts',
+    sortOrder: 75,
+  },
+  {
+    id: 'atm.preparation',
+    moduleId: 'atm',
+    name: { en: 'Bags and seals', ar: 'الشوالات والسيلزات' },
+    route: '/atm/preparation',
+    sortOrder: 80,
+  },
+  {
+    id: 'atm.control',
+    moduleId: 'atm',
+    name: { en: 'Dispatch data and lines', ar: 'بيانات التغذية والخطوط' },
+    route: '/atm/control',
+    sortOrder: 85,
+  },
 ];
 
 export const atmModule: ModuleManifest = {
@@ -295,6 +408,9 @@ export const atmModule: ModuleManifest = {
     // The import BEFORE the register: its prefix sits inside the register's.
     { prefix: '/atm/register/import', router: buildAtmRegisterImportRouter() },
     { prefix: '/atm/register', router: buildAtmRegisterRouter() },
+    { prefix: '/atm/settlements', router: buildAtmSettlementsRouter() },
+    { prefix: '/atm/preparation', router: buildAtmPreparationRouter() },
+    { prefix: '/atm/control', router: buildAtmControlRouter() },
   ],
   collections: [
     'atm_machines',
@@ -307,6 +423,16 @@ export const atmModule: ModuleManifest = {
     'atm_machine_locations',
     'atm_map_zone_sets',
     'atm_map_zones',
+    'atm_cassette_layouts',
+    'atm_cassette_layout_versions',
+    'atm_standard_loads',
+    'atm_replenishment_plans',
+    'atm_plan_lines',
+    'atm_note_counters',
+    'atm_line_preparations',
+    'atm_dispatch_routes',
+    'atm_route_assignments',
+    'atm_layout_import_runs',
   ],
   eventSubscriptions: [],
   scheduledTasks: [

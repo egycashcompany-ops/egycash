@@ -28,10 +28,15 @@ import { importRegisterWorkbook, listRegisterImportRuns } from './register-impor
 /** The owner's workbook is 4.7 MB; the cap is against a mistake, not a size. */
 export const REGISTER_IMPORT_MAX_MB = 20;
 
-const workbookUpload = (): RequestHandler => {
+/**
+ * The workbook upload, held in MEMORY: one file in field `file`, at most `maxMb` megabytes, the
+ * `TOO_LARGE` answer beyond it. Shared with the settlements master import, which passes its own
+ * cap (docs/12-planning/atm-settlements-phase1.md §6.3).
+ */
+export const workbookUpload = (maxMb: number): RequestHandler => {
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: REGISTER_IMPORT_MAX_MB * 1024 * 1024, files: 1 },
+    limits: { fileSize: maxMb * 1024 * 1024, files: 1 },
   }).single('file');
   return (req: Request, res: Response, next: NextFunction): void => {
     upload(req, res, (error: unknown) => {
@@ -41,20 +46,9 @@ const workbookUpload = (): RequestHandler => {
       }
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
         next(
-          new AppError(
-            ErrorCodes.VALIDATION_FAILED,
-            422,
-            `File exceeds the ${String(REGISTER_IMPORT_MAX_MB)} MB cap`,
-            {
-              details: [
-                {
-                  field: 'file',
-                  code: 'TOO_LARGE',
-                  message: `${String(REGISTER_IMPORT_MAX_MB)} MB`,
-                },
-              ],
-            },
-          ),
+          new AppError(ErrorCodes.VALIDATION_FAILED, 422, `File exceeds the ${String(maxMb)} MB cap`, {
+            details: [{ field: 'file', code: 'TOO_LARGE', message: `${String(maxMb)} MB` }],
+          }),
         );
         return;
       }
@@ -63,7 +57,8 @@ const workbookUpload = (): RequestHandler => {
   };
 };
 
-const noStore = (_req: Request, res: Response, next: NextFunction): void => {
+/** `Cache-Control: private, no-store` — the responses carry names and codes. */
+export const noStore = (_req: Request, res: Response, next: NextFunction): void => {
   res.setHeader('Cache-Control', 'private, no-store');
   next();
 };
@@ -75,7 +70,7 @@ export const buildAtmRegisterImportRouter = (): Router => {
     '/',
     authenticate,
     authorize('atmRegister.import'),
-    workbookUpload(),
+    workbookUpload(REGISTER_IMPORT_MAX_MB),
     asyncHandler(importRegisterWorkbook),
   );
   router.get(

@@ -30,6 +30,18 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // set's revision check is their guard, and their screens refetch.
   'atm.mapZone': { permission: 'atmMap.view' },
   'atm.machineLocation': { permission: 'atmMap.view' },
+  // Settlements & Review → Preparation → Control & Supplies (docs/12-planning/
+  // atm-settlements-phase1.md §6.11): each entity follows the key that reads its page.
+  'atm.cassetteLayout': { permission: 'atmCassetteLayout.view' },
+  'atm.standardLoad': { permission: 'atmCassetteLayout.view' },
+  'atm.settlementPlan': { permission: 'atmSettlementPlan.view' },
+  'atm.planLine': { permission: 'atmSettlementPlan.view' },
+  'atm.linePreparation': { permission: 'atmPreparation.view' },
+  'atm.dispatchRoute': { permission: 'atmControl.view' },
+  'atm.routeAssignment': { permission: 'atmControl.view' },
+  // Day signals (DS-26): no audit row of their own; each carries the plan's branch.
+  'atm.preparationDay': { permission: 'atmPreparation.view' },
+  'atm.controlDay': { permission: 'atmControl.view' },
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': { permission: 'goldBar.view' },
@@ -255,4 +267,7 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
     'one audit row per batch call (the register-import shape); the calling screen refetches itself',
   'atm.mapLinkResolution':
     'one audit row per batch call (the register-import shape); the calling screen refetches itself',
+  // One audit row per applied Full list import (docs/12-planning/atm-settlements-phase1.md §6.11).
+  'atm.layoutImport':
+    'one audit row per import run (the register-import shape); the importing screen refetches itself',
 };

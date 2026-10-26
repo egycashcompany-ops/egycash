@@ -1661,7 +1661,8 @@ const Sentence = ({
             className={cn(
               !wrap.includes(name) && 'whitespace-nowrap',
               'font-bold',
-              NUM,
+              // Figures in the figures' type; words — a memo's name, «منذ 41 يومًا» — in the line's.
+              (ltr || node !== undefined) && NUM,
               ink[name] ?? 'text-slate-900 dark:text-white',
             )}
           >

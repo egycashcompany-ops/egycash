@@ -673,6 +673,10 @@ describe('the fund’s alert lines (a–e)', () => {
     expect(date).toContain('dir="ltr"');
     expect(date).toContain('whitespace-nowrap');
     expect(text(element(licence, 'data-custody-alert-value="age"'))).toBe('منذ 39 يومًا');
+    // Words in the line's own type, figures in the figures' — as washing's line writes them.
+    expect(element(licence, 'data-custody-alert-value="age"')).not.toContain('tabular-nums');
+    expect(element(memo, 'data-custody-alert-value="memo"')).not.toContain('tabular-nums');
+    expect(date).toContain('tabular-nums');
     const over = element(html, 'data-custody-alert="fund-settleOver"');
     expect(text(over)).toContain(
       'التسويات المنتظرة (41,250.00 ج.م.) تتجاوز إجمالي العهدة الآن (−1,000.00 ج.م.)',

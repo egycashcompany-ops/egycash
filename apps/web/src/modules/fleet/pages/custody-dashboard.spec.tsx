@@ -3230,7 +3230,9 @@ describe('«والنسب باينه» — every share in Latin digits, left to r
       }
       expect(tag, `«${share}» sits in a left-to-right span`).toMatch(/^<span [^>]*dir="ltr"/u);
     }
-    expect(ofFund).toBe(1);
+    // «خلاص افصلهم»: «لوحة تحكم المصروفات» draws no fund card — the fund's «صُرف من … X%» stands on
+    // SCREEN 1's «لوحة تحكم العهدة» (`CustodyFundNow`), its one decimal pinned in custody-fund.spec.
+    expect(ofFund).toBe(0);
     // A car's share of all the custody spent, at the top of its «السجل»: one decimal, as designed.
     const log = draw(
       <CustodyCarLogBody car={dashboard.vehicles[1]!} spendTotal={dashboard.total} filters={{}} />,
@@ -3381,8 +3383,8 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
       const at = part.indexOf('<div');
       return (/class="([^"]*)"/u.exec(part.slice(at, part.indexOf('>', at)))?.[1] ?? '').split(' ');
     };
+    // «خلاص افصلهم»: five figures — the fund's own card heads SCREEN 1 «العهدة» now.
     expect([...html.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1])).toEqual([
-      'fund',
       'total',
       ...CUSTODY_KINDS,
     ]);
@@ -3422,8 +3424,7 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
         `<span class="block h-full rounded-full ${look.fill}" style="width:${custodySharePct(dashboard[kind], dashboard.total)}%"></span>`,
       );
     }
-    // The kinds' bars add up to the whole: four shares of one total. (The fund's bar, first, is
-    // what was spent of the fund — a share of another whole.)
+    // The kinds' bars add up to the whole: four shares of one total.
     const widths = [
       ...html
         .slice(html.indexOf('data-custody-figure="total"'))
@@ -3461,8 +3462,7 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
     // Not the boards' small `FigureChip` any more.
     expect(FIGURES).not.toContain('FigureChip');
     expect(html).not.toContain('dark:bg-[#111827]');
-    // Of nothing, no share and no bar — never «NaN%» nor a bar of «NaN%» width. The fund's bar is
-    // drawn, empty: nothing in it yet to spend.
+    // Of nothing, no share and no bar — never «NaN%» nor a bar of «NaN%» width.
     const none = draw(
       <CustodyFigures
         totals={{
@@ -3480,7 +3480,7 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
       />,
     );
     expect(none).not.toContain('data-custody-figure-share');
-    expect([...none.matchAll(/style="width:([^"]*)"/gu)].map((m) => m[1])).toEqual(['0%']);
+    expect([...none.matchAll(/style="width:([^"]*)"/gu)].map((m) => m[1])).toEqual([]);
     expect(html + none).not.toMatch(/NaN/u);
   });
 

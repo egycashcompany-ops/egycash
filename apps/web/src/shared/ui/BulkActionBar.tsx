@@ -10,15 +10,22 @@ export const BulkActionBar = ({
   onClear,
   children,
   className,
+  label,
 }: {
   count: number;
   onClear: () => void;
   /** The actions themselves — permission-gated by the caller. */
   children: ReactNode;
   className?: string;
+  /**
+   * What is ticked, in the screen's own words («تم اختيار 5 كروت»); the shared «محدد: 5» when
+   * absent, so every other table keeps its words.
+   */
+  label?: string;
 }): JSX.Element | null => {
   const t = useT();
   if (count === 0) return null;
+  const said = label ?? t('bulk.selected', { n: count });
   return (
     <div
       className={cn(
@@ -27,11 +34,9 @@ export const BulkActionBar = ({
         className,
       )}
       role="toolbar"
-      aria-label={t('bulk.selected', { n: count })}
+      aria-label={said}
     >
-      <span className="text-sm font-medium text-brand-800 dark:text-brand-200">
-        {t('bulk.selected', { n: count })}
-      </span>
+      <span className="text-sm font-medium text-brand-800 dark:text-brand-200">{said}</span>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
       <Button variant="ghost" size="sm" className="ms-auto" onClick={onClear}>
         {t('bulk.clear')}

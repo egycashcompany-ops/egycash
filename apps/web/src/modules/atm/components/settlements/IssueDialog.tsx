@@ -7,7 +7,7 @@ import { type AtmPlanLineDto, type AtmPlanLineIssueCode, type Locale } from '@ec
 import { useT } from '../../../../platform/localization/useT';
 import { formatNumber } from '../../../../shared/lib/format';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { issueText, lineCode } from '../../lib/settlement-view';
 
 /** An error the server reported for one of the lines sent (`details[i] = { field: 'lines[k]' }`). */
@@ -89,7 +89,7 @@ export const IssueDialog = ({
     </ul>
   );
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={t('atm.plan.issue.title')}
@@ -130,6 +130,6 @@ export const IssueDialog = ({
           </section>
         )}
       </div>
-    </Dialog>
+    </SettlementDialog>
   );
 };

@@ -27,7 +27,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
 import { formatBusinessDateTime, formatNumber } from '../../../../shared/lib/format';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { Field, Input, Select, Textarea } from '../../../../shared/ui/form';
 import { formatPaperDate } from '../../lib/settlement-dates';
 import { bagsText } from '../../lib/settlement-view';
@@ -333,7 +333,7 @@ export const LayoutEditor = ({
         </section>
       )}
 
-      <Dialog
+      <SettlementDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         title={t('atm.layouts.editor.save')}
@@ -373,7 +373,7 @@ export const LayoutEditor = ({
             </li>
           ))}
         </ul>
-      </Dialog>
+      </SettlementDialog>
     </div>
   );
 };

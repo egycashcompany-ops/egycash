@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { Field, Textarea } from '../../../../shared/ui/form';
 
 export const REASON_MAX = 300;
@@ -36,7 +36,7 @@ export const ReasonDialog = ({
   }, [open]);
   const trimmed = reason.trim();
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={title}
@@ -71,6 +71,6 @@ export const ReasonDialog = ({
           onChange={(e) => setReason(e.target.value)}
         />
       </Field>
-    </Dialog>
+    </SettlementDialog>
   );
 };

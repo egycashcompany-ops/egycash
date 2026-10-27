@@ -308,6 +308,12 @@ export const CassetteLayoutsPage = (): JSX.Element => {
 
       {context.isLoading ? (
         <LoadingState />
+      ) : ctx === undefined && context.error !== null ? (
+        <ErrorState
+          error={context.error}
+          description={settlementErrorText(context.error, t, locale)}
+          onRetry={() => void context.refetch()}
+        />
       ) : (
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
           <section aria-label={t('atm.layouts.title')} className="min-w-0 flex-1">

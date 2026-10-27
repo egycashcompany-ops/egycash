@@ -9505,6 +9505,7 @@ const en: Record<string, string> = {
   'atm.prep.notFound': 'No line of this day has this number.',
   'atm.prep.empty': 'No issued lines for this day.',
   'atm.prep.voidedSerial': 'This number was voided; the Note’s current number is {{serial}}.',
+  'atm.prep.codeLines': 'This machine has {{n}} lines on this day: {{list}}.',
   'atm.prep.instruction':
     'Scan each cassette’s seal in order, then the bag’s QR code. After each scan the cursor moves to the next field.',
   'atm.prep.cassetteRow': 'Cassette {{slot}} · {{d}} EGP · {{n}} notes',
@@ -18940,6 +18941,7 @@ const ar: Record<string, string> = {
   'atm.prep.notFound': 'لا يوجد سطر بهذا الرقم في هذا اليوم.',
   'atm.prep.empty': 'لا توجد سطور معتمدة لهذا اليوم.',
   'atm.prep.voidedSerial': 'هذا الرقم أُلغي؛ رقم النوت الحالي {{serial}}.',
+  'atm.prep.codeLines': 'لهذه الماكينة {{n}} سطور في هذا اليوم: {{list}}.',
   'atm.prep.instruction':
     'امسح سيلز كل كاسيت بالترتيب، ثم رمز QR الخاص بالشوال. بعد كل مسح ينتقل المؤشر إلى الخانة التالية.',
   'atm.prep.cassetteRow': 'كاسيت {{slot}} · فئة {{d}} · {{n}} ورقة',

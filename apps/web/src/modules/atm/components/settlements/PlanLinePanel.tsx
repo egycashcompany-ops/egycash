@@ -103,7 +103,6 @@ const CountInput = ({
   );
 };
 
-
 /** A profile as the select names it: its label, or its total. */
 export const standardLoadLabel = (load: AtmStandardLoadDto, locale: Locale): string =>
   load.label ?? formatEgp(load.egpTotalMinor, locale);

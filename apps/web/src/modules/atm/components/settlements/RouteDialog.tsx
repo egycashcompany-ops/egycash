@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { Field, Input } from '../../../../shared/ui/form';
 
 export const RouteDialog = ({
@@ -33,7 +33,7 @@ export const RouteDialog = ({
   }, [open]);
   const trimmed = name.trim();
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={title}
@@ -78,6 +78,6 @@ export const RouteDialog = ({
           />
         </Field>
       </div>
-    </Dialog>
+    </SettlementDialog>
   );
 };

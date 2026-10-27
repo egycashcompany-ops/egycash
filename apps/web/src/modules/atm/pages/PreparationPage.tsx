@@ -34,8 +34,9 @@ import { formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
-import { Dialog } from '../../../shared/ui/Dialog';
+import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Input, Select } from '../../../shared/ui/form';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -72,6 +73,7 @@ import {
   lineCode,
   preparationStatusKey,
   prepStateOf,
+  runLabel,
   settlementErrorText,
 } from '../lib/settlement-view';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
@@ -82,10 +84,23 @@ const REMEMBERED_FILTERS = ['bank'] as const;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const FIND_ID = 'prep-find';
 
+/** The day's lines of one machine (or spare) code, in run order. */
+export const linesOfCode = (
+  lines: readonly AtmPreparationLineDto[],
+  raw: string,
+): AtmPreparationLineDto[] => {
+  const value = cleanScannedValue(raw);
+  if (value === null) return [];
+  const code = normalizeAtmMachineCode(value);
+  return lines
+    .filter((l) => l.machineCode === code || l.spareCode === value)
+    .sort((a, b) => a.run - b.run);
+};
+
 /**
  * «المسلسل أو رقم الماكينة» → the line to open: a Note's serial — or a voided one, which resolves to
  * its line's current serial — else a machine (or spare) code, whose first line not yet prepared
- * opens when it has two runs.
+ * opens when it has two runs (the page then lists both, `atm.prep.codeLines`).
  */
 export const findLine = (
   lines: readonly AtmPreparationLineDto[],
@@ -100,8 +115,7 @@ export const findLine = (
     const byVoided = lines.find((l) => l.voidedSerials.includes(n));
     if (byVoided !== undefined) return { line: byVoided, voided: true };
   }
-  const code = normalizeAtmMachineCode(value);
-  const matches = lines.filter((l) => l.machineCode === code || l.spareCode === value);
+  const matches = linesOfCode(lines, value);
   const first = matches.find((l) => l.lineStatus === 'issued') ?? matches[0];
   return first === undefined ? null : { line: first, voided: false };
 };
@@ -186,10 +200,24 @@ export const PreparationPage = (): JSX.Element => {
       setFindNote(t('atm.prep.notFound'));
       return;
     }
+    // A code with more than one run lists them all (§9.6); the first not yet prepared is open.
+    const runs = hit.voided ? [] : linesOfCode(lines, find);
     setFindNote(
       hit.voided && hit.line.serial !== null
         ? t('atm.prep.voidedSerial', { serial: formatNumber(hit.line.serial, locale) })
-        : null,
+        : runs.length > 1 && runs.includes(hit.line)
+          ? t('atm.prep.codeLines', {
+              n: formatNumber(runs.length, locale),
+              list: runs
+                .map((l) =>
+                  [
+                    l.serial === null ? '—' : formatNumber(l.serial, locale),
+                    runLabel(l.run, t),
+                  ].join(' · '),
+                )
+                .join('، '),
+            })
+          : null,
     );
     setFind('');
     openLine(hit.line.lineId);
@@ -381,6 +409,20 @@ export const PreparationPage = (): JSX.Element => {
 
       {context.isLoading ? (
         <LoadingState />
+      ) : ctx === undefined && context.error !== null ? (
+        <ErrorState
+          error={context.error}
+          description={settlementErrorText(context.error, t, locale)}
+          onRetry={() => void context.refetch()}
+        />
+      ) : plan !== null && linesQuery.data === undefined && linesQuery.error !== null ? (
+        <ErrorState
+          error={linesQuery.error}
+          description={settlementErrorText(linesQuery.error, t, locale)}
+          onRetry={() => void linesQuery.refetch()}
+        />
+      ) : plan !== null && linesQuery.isLoading ? (
+        <LoadingState />
       ) : plan === null ? (
         <p
           data-prep-empty="true"
@@ -478,7 +520,7 @@ export const PreparationPage = (): JSX.Element => {
         </div>
       )}
 
-      <Dialog
+      <SettlementDialog
         open={guard.leaveOpen}
         onClose={guard.cancel}
         size="sm"
@@ -495,7 +537,7 @@ export const PreparationPage = (): JSX.Element => {
         }
       >
         <p className="text-sm text-slate-600 dark:text-slate-300">{t('atm.prep.leave.body')}</p>
-      </Dialog>
+      </SettlementDialog>
     </PageContainer>
   );
 };

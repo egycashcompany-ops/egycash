@@ -8,7 +8,7 @@ import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { formatBusinessDateTime, formatNumber } from '../../../../shared/lib/format';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 
 export const PrintReceiptDialog = ({
   open,
@@ -34,7 +34,7 @@ export const PrintReceiptDialog = ({
   const t = useT();
   const at = lastPrint === null ? '' : formatBusinessDateTime(lastPrint.at, locale);
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={t('atm.plan.action.printReceipt')}
@@ -67,6 +67,6 @@ export const PrintReceiptDialog = ({
           </p>
         )}
       </div>
-    </Dialog>
+    </SettlementDialog>
   );
 };

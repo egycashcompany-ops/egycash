@@ -18,7 +18,7 @@ import {
 import { useT } from '../../../../platform/localization/useT';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { Input } from '../../../../shared/ui/form';
 import {
   useCreateStandardLoad,
@@ -134,7 +134,7 @@ export const StandardLoadsDialog = ({
 
   const busy = create.isPending || update.isPending || remove.isPending;
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={t('atm.layouts.standardLoads.title')}
@@ -269,6 +269,6 @@ export const StandardLoadsDialog = ({
           {t('atm.layouts.standardLoads.add')}
         </Button>
       )}
-    </Dialog>
+    </SettlementDialog>
   );
 };

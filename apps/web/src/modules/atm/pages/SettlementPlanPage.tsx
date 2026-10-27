@@ -39,7 +39,7 @@ import { formatBusinessDateTime, formatNumber } from '../../../shared/lib/format
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
-import { Dialog } from '../../../shared/ui/Dialog';
+import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Select } from '../../../shared/ui/form';
 import { DownloadIcon, PrinterIcon } from '../../../shared/ui/icons';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -741,7 +741,7 @@ export const SettlementPlanPage = (): JSX.Element => {
         onConfirm={() => void printReceipt()}
         onClose={() => setReceiptOpen(false)}
       />
-      <Dialog
+      <SettlementDialog
         open={refreshFor !== null}
         onClose={() => setRefreshFor(null)}
         size="sm"
@@ -765,7 +765,7 @@ export const SettlementPlanPage = (): JSX.Element => {
         <p className="text-sm text-slate-600 dark:text-slate-300">
           {t('atm.plan.confirm.refreshManual')}
         </p>
-      </Dialog>
+      </SettlementDialog>
     </PageContainer>
   );
 };

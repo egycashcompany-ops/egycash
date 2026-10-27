@@ -25,7 +25,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
-import { PreparationPage, findLine } from './pages/PreparationPage';
+import { PreparationPage, findLine, linesOfCode } from './pages/PreparationPage';
 import { preparationContextKey, preparationLinesKey } from './api/settlements-queries';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
@@ -257,5 +257,13 @@ describe('«المسلسل أو رقم الماكينة»', () => {
 
   it('finds nothing for an unknown value', () => {
     expect(findLine([first], 'NOPE')).toBeNull();
+  });
+
+  it('lists every line of a code in run order — the page names them all (§9.6)', () => {
+    expect(linesOfCode([second, first, OPEN], 'BRKN9101\r').map((l) => l.lineId)).toEqual([
+      first.lineId,
+      second.lineId,
+    ]);
+    expect(linesOfCode([first], '')).toEqual([]);
   });
 });

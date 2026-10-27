@@ -14,7 +14,7 @@ import {
 import { useT } from '../../../../platform/localization/useT';
 import { formatNumber } from '../../../../shared/lib/format';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { Field, Select } from '../../../../shared/ui/form';
 import { LineListInput } from '../LineListInput';
 import { buildReplenishmentRows } from '../OpenReplenishmentsForm';
@@ -68,7 +68,7 @@ export const AddMachinesDialog = ({
   };
 
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={t('atm.plan.add.title')}
@@ -139,6 +139,6 @@ export const AddMachinesDialog = ({
           </div>
         )}
       </div>
-    </Dialog>
+    </SettlementDialog>
   );
 };

@@ -28,7 +28,7 @@ import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { Button } from '../../../shared/ui/Button';
-import { Dialog } from '../../../shared/ui/Dialog';
+import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { PrinterIcon } from '../../../shared/ui/icons';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
@@ -354,7 +354,7 @@ export const ControlPage = (): JSX.Element => {
         onClose={() => setEditing(null)}
       />
 
-      <Dialog
+      <SettlementDialog
         open={confirm !== null}
         onClose={() => setConfirm(null)}
         size="sm"
@@ -397,7 +397,7 @@ export const ControlPage = (): JSX.Element => {
                 ? t('atm.control.confirm.delete', { n: formatNumber(confirm.route.lines, locale) })
                 : ''}
         </p>
-      </Dialog>
+      </SettlementDialog>
     </PageContainer>
   );
 };

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { Field, Input } from '../../../../shared/ui/form';
 
 export const SpareUseDialog = ({
@@ -29,7 +29,7 @@ export const SpareUseDialog = ({
   }, [open, initialCode]);
   const trimmed = code.trim();
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={t('atm.plan.spareUse.title')}
@@ -60,6 +60,6 @@ export const SpareUseDialog = ({
           onChange={(e) => setCode(e.target.value)}
         />
       </Field>
-    </Dialog>
+    </SettlementDialog>
   );
 };

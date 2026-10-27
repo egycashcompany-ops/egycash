@@ -19,7 +19,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui/Button';
-import { Dialog } from '../../../../shared/ui/Dialog';
+import { SettlementDialog } from './SettlementDialog';
 import { Field, Input, Select } from '../../../../shared/ui/form';
 import { CloseIcon } from '../../../../shared/ui/icons';
 import { runLabel } from '../../lib/settlement-view';
@@ -95,7 +95,7 @@ export const SpareLineDialog = ({
   };
 
   return (
-    <Dialog
+    <SettlementDialog
       open={open}
       onClose={onClose}
       title={t('atm.plan.spare.title')}
@@ -216,6 +216,6 @@ export const SpareLineDialog = ({
           </p>
         )}
       </div>
-    </Dialog>
+    </SettlementDialog>
   );
 };

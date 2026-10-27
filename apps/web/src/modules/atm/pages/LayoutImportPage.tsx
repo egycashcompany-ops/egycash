@@ -31,10 +31,11 @@ import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { Dialog } from '../../../shared/ui/Dialog';
+import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { FileUpload } from '../../../shared/ui/FileUpload';
 import { Checkbox, Field, Select } from '../../../shared/ui/form';
 import { DownloadIcon } from '../../../shared/ui/icons';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -231,6 +232,12 @@ export const LayoutImportPage = (): JSX.Element => {
       <PageHeader title={t('atm.layoutImport.title')} />
       {context.isLoading ? (
         <LoadingState />
+      ) : ctx === undefined && context.error !== null ? (
+        <ErrorState
+          error={context.error}
+          description={settlementErrorText(context.error, t, locale)}
+          onRetry={() => void context.refetch()}
+        />
       ) : (
         <div className="space-y-6">
           {/* ── The upload ── */}
@@ -457,7 +464,7 @@ export const LayoutImportPage = (): JSX.Element => {
         </div>
       )}
 
-      <Dialog
+      <SettlementDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         size="sm"
@@ -477,7 +484,7 @@ export const LayoutImportPage = (): JSX.Element => {
             updated: formatNumber(estimate?.updated ?? 0, locale),
           })}
         </p>
-      </Dialog>
+      </SettlementDialog>
     </PageContainer>
   );
 };

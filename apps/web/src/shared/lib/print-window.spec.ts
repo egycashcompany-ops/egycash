@@ -135,7 +135,7 @@ describe('no printed page carries a script of its own', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('fleet, gold and IT print through the one door', () => {
+  it('fleet, gold, IT and ATM print through the one door', () => {
     for (const file of [
       'modules/fleet/lib/fleet-report-print.ts',
       'modules/fleet/lib/notice-render.ts',
@@ -147,9 +147,12 @@ describe('no printed page carries a script of its own', () => {
       // FR-19 — the line acknowledgment, on the device paper's shared parts.
       'modules/it/lib/mobile-line-receipt-print.ts',
       'modules/it/components/useAssetLabels.ts',
+      // The ATM settlement papers: the Notes, «بيان التغذية», «سيلزات» and the route sheets.
+      'modules/atm/lib/papers/settlement-print.ts',
     ]) {
       const code = all.find(([name]) => name === file)?.[1] ?? '';
-      expect(code, file).toMatch(/from '\.\.\/\.\.\/\.\.\/shared\/lib\/print-window'/u);
+      // One folder deeper for the ATM papers: the door is the same file, however far down.
+      expect(code, file).toMatch(/from '(?:\.\.\/){3,4}shared\/lib\/print-window'/u);
       expect(code, `${file} writes no document itself`).not.toContain('document.write(');
     }
   });

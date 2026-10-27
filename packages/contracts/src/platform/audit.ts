@@ -171,6 +171,16 @@ export const AUDIT_ACTIONS = [
   //     recorded: a short link's path is its token.
   'atmMapLocationSync',
   'atmMapLinkResolve',
+  // ATM settlements (docs/12-planning/atm-settlements-phase1.md §6.1). Layout, plan, preparation
+  // and route writes audit under the verbs that already exist; two acts are new:
+  //   · `atmLayoutImport`    — one row per applied Full list import, carrying the counts: the
+  //     `atmRegisterImport` shape, one decision over a whole file;
+  //   · `atmSettlementPrint` — one row per printed set (Notes, «بيان التغذية», «سيلزات», a route
+  //     sheet), with `[{ lineId, serial, version }]` of every printed line (and each preparation's
+  //     version on the seals and route sheets): a printed cash document is evidence of who printed
+  //     which Notes, from which state, and when.
+  'atmLayoutImport',
+  'atmSettlementPrint',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

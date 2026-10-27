@@ -141,12 +141,17 @@ const DATA_FILES = [
  * The owner's own printed papers, reproduced word for word («عاوز زيهم بالظبط»): a record of HIS
  * documents, like a quotation in a comment. Correcting «الاجمالى النهائى» would print a paper that
  * is not his. Only the printed words live in these files — every word the SCREENS say about the
- * papers is an i18n key, and the web's formal-arabic spec pins this list to exactly these two
+ * papers is an i18n key, and the web's formal-arabic spec pins this list to exactly these three
  * files and keeps every other paper file free of Arabic letters.
+ *
+ * The third is the ATM settlement papers' wording (docs/12-planning/atm-settlements-phase1.md §8.1):
+ * the Note «محضر جرد ماكينة الصراف الآلى», «بيان التغذية» and «سيلزات», as the bank's master prints
+ * them («إجمالى قيمة الماكينة», «اجمالى»).
  */
 export const VERBATIM_PAPERS = [
   'apps/web/src/modules/fleet/lib/custody-paper-wording.ts',
   'packages/contracts/src/modules/fleet-custody-paper-defaults.ts',
+  'apps/web/src/modules/atm/lib/papers/settlement-paper-wording.ts',
 ];
 
 const SKIP_DIRS = new Set([

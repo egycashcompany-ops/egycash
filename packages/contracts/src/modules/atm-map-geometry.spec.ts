@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ATM_MAP_ZONE_MAX_POINTS,
   type AtmMapLatLng,
+  inBox,
+  membershipZones,
   pointInPolygon,
   polygonAreaM2,
   polygonsOverlap,
@@ -15,6 +17,7 @@ import {
   segmentsIntersect,
   selfIntersects,
   zoneGeometryIssues,
+  zoneMembership,
 } from './atm-map-geometry.js';
 
 const ll = (lat: number, lng: number): AtmMapLatLng => ({ lat, lng });
@@ -273,5 +276,56 @@ describe('zoneGeometryIssues', () => {
   it('reports a zone under 100 m² as too small', () => {
     expect(zoneGeometryIssues(square(30, 31, 30.00009, 31.00009))).toEqual(['TOO_SMALL']);
     expect(zoneGeometryIssues(square(30, 31, 30.0001, 31.0001))).toEqual([]);
+  });
+});
+
+// ── Membership (moved from the web, docs/12-planning/atm-settlements-phase1.md §6.9) ────────────
+
+describe('zoneMembership (D-M7, DS-17)', () => {
+  const BRANCH = 'b1';
+  /** A square of side `size`° with its south-west corner at (lat, lng), counter-clockwise. */
+  const box = (lat: number, lng: number, size: number): AtmMapLatLng[] =>
+    square(lat, lng, lat + size, lng + size);
+  const zones = membershipZones([
+    { id: 'other-branch', branchId: 'b2', points: box(30, 31, 0.1) },
+    { id: 'first', branchId: BRANCH, points: box(30, 31, 0.1) },
+    { id: 'second', branchId: BRANCH, points: box(30.02, 31.02, 0.1) },
+  ]);
+
+  it('caches each zone box and keeps the list order', () => {
+    expect(zones.map((z) => z.id)).toEqual(['other-branch', 'first', 'second']);
+    expect(zones[1]?.box).toEqual({ south: 30, north: 30.1, west: 31, east: 31.1 });
+  });
+
+  it('counts the machine for the first zone in list order', () => {
+    const m = zoneMembership({ lat: 30.05, lng: 31.05, branchId: BRANCH }, zones);
+    expect(m).toEqual({ primary: 'first', all: ['first', 'second'] });
+  });
+
+  it('ignores the zones of another branch, even where they cover the point', () => {
+    const m = zoneMembership({ lat: 30.01, lng: 31.01, branchId: BRANCH }, zones);
+    expect(m.all).not.toContain('other-branch');
+    expect(m.primary).toBe('first');
+    expect(zoneMembership({ lat: 30.01, lng: 31.01, branchId: 'b3' }, zones)).toEqual({
+      primary: null,
+      all: [],
+    });
+  });
+
+  it('a point outside every zone belongs to none', () => {
+    expect(zoneMembership({ lat: 29, lng: 31, branchId: BRANCH }, zones)).toEqual({
+      primary: null,
+      all: [],
+    });
+  });
+
+  it('the box prefilter tolerates six-decimal rounding, and a point on the edge is inside', () => {
+    const [, first] = zones;
+    expect(first).toBeDefined();
+    expect(inBox(ll(30.1000005, 31.05), first!.box)).toBe(true);
+    expect(inBox(ll(30.1001, 31.05), first!.box)).toBe(false);
+    expect(zoneMembership({ lat: 30.1, lng: 31.05, branchId: BRANCH }, zones).all).toContain(
+      'first',
+    );
   });
 });

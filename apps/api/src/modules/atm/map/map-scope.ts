@@ -16,82 +16,22 @@
 //
 // Every read filter is an `$and` of these clauses, never an object spread: with a spread, a
 // narrowing that also sets `branchId` would overwrite the scope clause.
-import { Types } from 'mongoose';
-import { branchRepository } from '../../../platform/organization';
-import { NEVER_MATCH, orgScopeMatch } from '../../../shared/base/org-scope-match';
-import { ValidationError } from '../../../shared/errors';
+import { keyReachesBranch, scopeSelector, type AuthContext } from '../../../shared/types';
 import {
-  keyReachesBranch,
-  scopeSelector,
-  type AuthContext,
-  type ScopeSelector,
-} from '../../../shared/types';
-import { registerScopeBranches } from '../register/register.repository';
+  activeBranchIds,
+  branchScopeBranches,
+  branchScopeMatch,
+  narrowToBranch,
+  writableBranches,
+} from '../shared/branch-scope';
 
+// The rule itself moved to `shared/branch-scope.ts` (docs/12-planning/atm-settlements-phase1.md
+// §6.2), so the settlements pages run the same one; the map keeps its own names.
 /** DM-10: the register's rule for every map READ; `own` reads nothing. */
-export const mapScopeMatch = (s: ScopeSelector): Record<string, unknown> => {
-  if (s.scope === 'own') return { ...NEVER_MATCH };
-  const m = orgScopeMatch(s, { branch: 'branchId' }, { finerNarrowsToBranch: true });
-  // orgScopeMatch answers `{}` for organization AND for a department reach it cannot place
-  // (org-scope-match.ts). Only the first may read everything.
-  if (m === undefined || (Object.keys(m).length === 0 && s.scope !== 'organization')) {
-    return { ...NEVER_MATCH };
-  }
-  return m;
-};
-
-/**
- * The branches that match covers: 'all' | ids — `registerScopeBranches`, except that `own` covers
- * nothing here, and neither does a non-organization shape the register calls 'all' (the department
- * reach `mapScopeMatch` refuses). The two can therefore never disagree.
- */
-export const mapScopeBranches = (s: ScopeSelector): 'all' | string[] => {
-  if (s.scope === 'own') return [];
-  const branches = registerScopeBranches(s);
-  if (branches === 'all' && s.scope !== 'organization') return [];
-  return branches;
-};
-
-/**
- * DM-11: a browser branch may only narrow. Throws ValidationError OUT_OF_REACH. Returns `{}` when
- * `branchId` is undefined, else `{ branchId }`. `field` names where the branch came from.
- */
-export const narrowToBranch = (
-  s: ScopeSelector,
-  branchId: string | undefined,
-  field = 'query.branchId',
-): Record<string, unknown> => {
-  if (branchId === undefined) return {};
-  const reach = mapScopeBranches(s);
-  if (reach !== 'all' && !reach.includes(branchId)) {
-    throw new ValidationError([
-      { field, code: 'OUT_OF_REACH', message: 'the branch is outside your reach' },
-    ]);
-  }
-  return { branchId: new Types.ObjectId(branchId) };
-};
-
-/** The company's active branches — the list the top-bar validation reads (active-branch.ts). */
-export const activeBranchIds = async (): Promise<string[]> => {
-  const page = await branchRepository.list({ page: 1, pageSize: 200 });
-  return page.items.filter((branch) => branch.status === 'active').map((b) => String(b._id));
-};
-
-/**
- * Writes: the branches among `candidates` this key reaches. 'all' ONLY when
- * ctx.permissions[key] === 'organization' AND candidates === 'all'; otherwise an explicit list,
- * enumerated through keyReachesBranch over the candidates (or over the company's active branches
- * when candidates === 'all').
- */
-export const writableBranches = async (
-  ctx: AuthContext,
-  key: string,
-  candidates: 'all' | string[],
-): Promise<'all' | string[]> => {
-  if (candidates === 'all' && ctx.permissions[key] === 'organization') return 'all';
-  const pool = candidates === 'all' ? await activeBranchIds() : candidates;
-  return pool.filter((branchId) => keyReachesBranch(ctx, key, branchId));
-};
+export const mapScopeMatch = branchScopeMatch;
+/** The branches `mapScopeMatch` covers: 'all' | ids. */
+export const mapScopeBranches = branchScopeBranches;
+export { activeBranchIds, narrowToBranch, writableBranches };
 
 export type ZoneEditBranch =
   { branchId: string } | { branchId: null; blocked: 'chooseBranch' | 'branchNotEditable' };

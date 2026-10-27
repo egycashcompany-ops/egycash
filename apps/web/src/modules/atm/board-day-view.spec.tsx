@@ -313,6 +313,8 @@ describe.each([
       expect(markup).not.toContain('data-row-actions="hover"');
       expect(markup).not.toContain('sm:opacity-0');
       expect(markup).not.toContain('role="toolbar"');
+      // Pinned to the row's end: a laptop-wide board never scrolls them out of view.
+      expect(count(markup, 'sticky end-0')).toBeGreaterThan(1);
     });
 
     it('still hides close from a reader without the complete permission, on every view', () => {

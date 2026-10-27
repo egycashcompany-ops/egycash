@@ -32,6 +32,7 @@ import { useT } from '../../../platform/localization/useT';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
@@ -50,12 +51,7 @@ import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = [
-  'active',
-  'q',
-  'sort',
-  'size',
-] as const;
+const REMEMBERED_FILTERS = ['active', 'q', 'sort', 'size'] as const;
 
 /** The three things this page administers, in the order the legacy page presented them. */
 export const ATM_DATA_TABS = ['machines', 'bank', 'area'] as const;
@@ -255,75 +251,79 @@ export const DataEditPage = (): JSX.Element => {
   const query = tab === 'machines' ? machines : labels;
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('atm.dataEdit.title')}
-        breadcrumbs={[
-          { label: t('atm.overview.title'), to: '/atm' },
-          { label: t('atm.dataEdit.title') },
-        ]}
-        actions={
-          tab === 'machines' ? (
-            <Can permission="atmMachine.manage">
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  data-edit-action="bulk"
-                  onClick={() => setBulkOpen(true)}
-                >
-                  {t('atm.dataEdit.bulkTitle')}
-                </Button>
-                <Button
-                  size="sm"
-                  leftIcon={<PlusIcon className="h-4 w-4" />}
-                  data-edit-action="add-machine"
-                  onClick={() => setCreating(true)}
-                >
-                  {t('atm.dataEdit.addMachine')}
-                </Button>
-              </div>
-            </Can>
-          ) : (
-            <Can anyOf={['atmRefLabel.create', 'atmMachine.manage']}>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  leftIcon={<PlusIcon className="h-4 w-4" />}
-                  data-edit-action="add-label"
-                  onClick={() => setCreating(true)}
-                >
-                  {t(tab === 'bank' ? 'atm.dataEdit.addBank' : 'atm.dataEdit.addArea')}
-                </Button>
-              </div>
-            </Can>
-          )
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title, the tabs and the filters keep their
+          place, the pager keeps its place below, and only the table's rows scroll, under a head
+          that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('atm.dataEdit.title')}
+          breadcrumbs={[
+            { label: t('atm.overview.title'), to: '/atm' },
+            { label: t('atm.dataEdit.title') },
+          ]}
+          actions={
+            tab === 'machines' ? (
+              <Can permission="atmMachine.manage">
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    data-edit-action="bulk"
+                    onClick={() => setBulkOpen(true)}
+                  >
+                    {t('atm.dataEdit.bulkTitle')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    leftIcon={<PlusIcon className="h-4 w-4" />}
+                    data-edit-action="add-machine"
+                    onClick={() => setCreating(true)}
+                  >
+                    {t('atm.dataEdit.addMachine')}
+                  </Button>
+                </div>
+              </Can>
+            ) : (
+              <Can anyOf={['atmRefLabel.create', 'atmMachine.manage']}>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    leftIcon={<PlusIcon className="h-4 w-4" />}
+                    data-edit-action="add-label"
+                    onClick={() => setCreating(true)}
+                  >
+                    {t(tab === 'bank' ? 'atm.dataEdit.addBank' : 'atm.dataEdit.addArea')}
+                  </Button>
+                </div>
+              </Can>
+            )
+          }
+        />
 
-      <div
-        className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
-        role="tablist"
-      >
-        {ATM_DATA_TABS.map((key) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={tab === key}
-            type="button"
-            onClick={() => patch({ tab: key === 'machines' ? null : key, sort: null, q: null })}
-            className={`rounded-t-lg px-4 py-2 text-sm ${
-              tab === key
-                ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            {t(`atm.dataEdit.tab.${key}`)}
-          </button>
-        ))}
-      </div>
+        <div
+          className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
+          role="tablist"
+        >
+          {ATM_DATA_TABS.map((key) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={tab === key}
+              type="button"
+              onClick={() => patch({ tab: key === 'machines' ? null : key, sort: null, q: null })}
+              className={`rounded-t-lg px-4 py-2 text-sm ${
+                tab === key
+                  ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              {t(`atm.dataEdit.tab.${key}`)}
+            </button>
+          ))}
+        </div>
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={active !== '' || search !== ''}
           onClear={() => patch({ active: null, q: null })}
@@ -349,29 +349,33 @@ export const DataEditPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        {tab === 'machines' ? (
-          <DataTable
-            columns={machineColumns}
-            rows={machines.data?.items ?? []}
-            rowKey={(r) => r.id}
-            loading={machines.isLoading}
-            error={machines.isError ? machines.error : undefined}
-            onRetry={() => void machines.refetch()}
-            sort={sort}
-            onSortChange={changeSort}
-          />
-        ) : (
-          <DataTable
-            columns={labelColumns}
-            rows={labels.data?.items ?? []}
-            rowKey={(r) => r.id}
-            loading={labels.isLoading}
-            error={labels.isError ? labels.error : undefined}
-            onRetry={() => void labels.refetch()}
-            sort={sort}
-            onSortChange={changeSort}
-          />
-        )}
+        <div className={BOARD_TABLE_FILL}>
+          {tab === 'machines' ? (
+            <DataTable
+              columns={machineColumns}
+              rows={machines.data?.items ?? []}
+              rowKey={(r) => r.id}
+              loading={machines.isLoading}
+              error={machines.isError ? machines.error : undefined}
+              onRetry={() => void machines.refetch()}
+              sort={sort}
+              onSortChange={changeSort}
+              stickyHead
+            />
+          ) : (
+            <DataTable
+              columns={labelColumns}
+              rows={labels.data?.items ?? []}
+              rowKey={(r) => r.id}
+              loading={labels.isLoading}
+              error={labels.isError ? labels.error : undefined}
+              onRetry={() => void labels.refetch()}
+              sort={sort}
+              onSortChange={changeSort}
+              stickyHead
+            />
+          )}
+        </div>
 
         {query.data !== undefined && query.data.meta.totalItems > 0 && (
           <Pagination

@@ -33,6 +33,7 @@ import { formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
+import { BOARD_FRAME } from '../../../shared/ui/board-scroll';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -354,182 +355,201 @@ export const PreparationPage = (): JSX.Element => {
   }
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('atm.prep.title')}
-        figures={
-          <SettlementFigures
-            label={t('atm.prep.title')}
-            locale={locale}
-            figures={[
-              { key: 'prepared', label: t('atm.settlement.prep.prepared'), value: plan?.prepared },
-              { key: 'complete', label: t('atm.settlement.prep.complete'), value: plan?.complete },
-              { key: 'partial', label: t('atm.settlement.prep.partial'), value: plan?.partial },
-              { key: 'none', label: t('atm.settlement.prep.none'), value: plan?.none },
-            ]}
-          />
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title and the toolbar keep their place, and
+          only the lines — and the capture beside them — scroll. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('atm.prep.title')}
+          figures={
+            <SettlementFigures
+              label={t('atm.prep.title')}
+              locale={locale}
+              figures={[
+                {
+                  key: 'prepared',
+                  label: t('atm.settlement.prep.prepared'),
+                  value: plan?.prepared,
+                },
+                {
+                  key: 'complete',
+                  label: t('atm.settlement.prep.complete'),
+                  value: plan?.complete,
+                },
+                { key: 'partial', label: t('atm.settlement.prep.partial'), value: plan?.partial },
+                { key: 'none', label: t('atm.settlement.prep.none'), value: plan?.none },
+              ]}
+            />
+          }
+        />
 
-      <div className="mb-4 flex flex-wrap items-end gap-3" data-prep-toolbar="true">
-        <DayField
-          id="prep-day"
-          value={day}
-          onChange={(next) => guard.confirmLeave(() => patch({ date: next, line: null }))}
-        />
-        <Field label={t('atm.settlement.bank')} htmlFor="prep-bank">
-          <Select
-            id="prep-bank"
-            value={plan?.bankCode ?? ''}
-            disabled={plans.length === 0}
-            onChange={(e) => guard.confirmLeave(() => patch({ bank: e.target.value, line: null }))}
-          >
-            {plans.map((p) => (
-              <option key={p.planId} value={p.bankCode}>
-                {ATM_BANK_NAMES[p.bankCode][locale]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="min-w-64 space-y-1.5">
-          <label
-            htmlFor={FIND_ID}
-            className="block text-sm font-medium text-slate-700 dark:text-slate-200"
-          >
-            {t('atm.prep.find')}
-          </label>
-          <Input
-            id={FIND_ID}
-            dir="ltr"
-            autoComplete="off"
-            spellCheck={false}
-            value={find}
-            onChange={(e) => setFind(e.target.value)}
-            onFocus={(e) => e.currentTarget.select()}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter') return;
-              e.preventDefault();
-              onFind();
-            }}
+        <div className="flex flex-wrap items-end gap-3" data-prep-toolbar="true">
+          <DayField
+            id="prep-day"
+            value={day}
+            onChange={(next) => guard.confirmLeave(() => patch({ date: next, line: null }))}
           />
-          <p aria-live="polite" className="min-h-4 text-xs text-amber-700 dark:text-amber-400">
-            {findNote ?? ''}
-          </p>
-        </div>
-      </div>
-
-      {context.isLoading ? (
-        <LoadingState />
-      ) : ctx === undefined && context.error !== null ? (
-        <ErrorState
-          error={context.error}
-          description={settlementErrorText(context.error, t, locale)}
-          onRetry={() => void context.refetch()}
-        />
-      ) : plan !== null && linesQuery.data === undefined && linesQuery.error !== null ? (
-        <ErrorState
-          error={linesQuery.error}
-          description={settlementErrorText(linesQuery.error, t, locale)}
-          onRetry={() => void linesQuery.refetch()}
-        />
-      ) : plan !== null && linesQuery.isLoading ? (
-        <LoadingState />
-      ) : plan === null ? (
-        <p
-          data-prep-empty="true"
-          className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300"
-        >
-          {t('atm.prep.empty')}
-        </p>
-      ) : (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <section
-            aria-label={t('atm.prep.title')}
-            className="relative min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white lg:w-[440px] lg:shrink-0 dark:border-slate-800 dark:bg-slate-900"
-          >
-            <table className="w-full border-collapse text-sm" data-prep-lines="true">
-              <thead className="bg-slate-50 dark:bg-slate-800/60">
-                <tr className="text-xs text-slate-600 dark:text-slate-300">
-                  <th className="px-3 py-2.5 text-start">{t('atm.settlement.serial')}</th>
-                  <th className="px-3 py-2.5 text-start">{t('atm.settlement.machineCode')}</th>
-                  <th className="px-3 py-2.5 text-start">{t('atm.settlement.run')}</th>
-                  <th className="px-3 py-2.5 text-start">{t('atm.settlement.status')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => {
-                  const state = prepStateOf(line);
-                  return (
-                    <tr
-                      key={line.lineId}
-                      data-prep-line={line.lineId}
-                      tabIndex={0}
-                      aria-selected={line.lineId === selected?.lineId}
-                      onClick={() => openLine(line.lineId)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && e.target === e.currentTarget)
-                          openLine(line.lineId);
-                      }}
-                      className={cn(
-                        'cursor-pointer border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60',
-                        line.lineId === selected?.lineId && 'bg-brand-50/70 dark:bg-brand-950/40',
-                        state === 'cancelled' && 'text-slate-400',
-                      )}
-                    >
-                      <td className="px-3 py-2.5 tabular-nums">
-                        {line.serial === null ? '—' : formatNumber(line.serial, locale)}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span dir="ltr" className="font-medium">
-                          {lineCode(line)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <RunChip run={line.run} time={line.scheduleTime} locale={locale} />
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <Badge
-                          size="sm"
-                          tone={state === 'cancelled' ? 'neutral' : PREPARATION_STATUS_TONE[state]}
-                        >
-                          {state === 'cancelled'
-                            ? t('atm.settlement.status.cancelled')
-                            : t(preparationStatusKey(state))}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </section>
-          {selected !== null && form !== null && (
-            <section
-              aria-label={lineCode(selected)}
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+          <Field label={t('atm.settlement.bank')} htmlFor="prep-bank">
+            <Select
+              id="prep-bank"
+              value={plan?.bankCode ?? ''}
+              disabled={plans.length === 0}
+              onChange={(e) =>
+                guard.confirmLeave(() => patch({ bank: e.target.value, line: null }))
+              }
             >
-              <CapturePanel
-                line={selected}
-                form={form}
-                locale={locale}
-                readOnly={readOnly}
-                canCapture={ctx?.canCapture === true}
-                localDuplicates={duplicates}
-                arabicFields={arabic}
-                missing={missing}
-                busy={busy}
-                fieldRef={fieldRef}
-                onChange={onChange}
-                onAdvance={onAdvance}
-                onResolve={(id, choice) => setForm(resolveConflict(form, id, choice))}
-                onSave={() => void onSave()}
-                onPrepared={() => void onPrepared()}
-                onReopen={onReopen}
-              />
-            </section>
-          )}
+              {plans.map((p) => (
+                <option key={p.planId} value={p.bankCode}>
+                  {ATM_BANK_NAMES[p.bankCode][locale]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="min-w-64 space-y-1.5">
+            <label
+              htmlFor={FIND_ID}
+              className="block text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              {t('atm.prep.find')}
+            </label>
+            <Input
+              id={FIND_ID}
+              dir="ltr"
+              autoComplete="off"
+              spellCheck={false}
+              value={find}
+              onChange={(e) => setFind(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                onFind();
+              }}
+            />
+            <p aria-live="polite" className="min-h-4 text-xs text-amber-700 dark:text-amber-400">
+              {findNote ?? ''}
+            </p>
+          </div>
         </div>
-      )}
+
+        {context.isLoading ? (
+          <LoadingState />
+        ) : ctx === undefined && context.error !== null ? (
+          <ErrorState
+            error={context.error}
+            description={settlementErrorText(context.error, t, locale)}
+            onRetry={() => void context.refetch()}
+          />
+        ) : plan !== null && linesQuery.data === undefined && linesQuery.error !== null ? (
+          <ErrorState
+            error={linesQuery.error}
+            description={settlementErrorText(linesQuery.error, t, locale)}
+            onRetry={() => void linesQuery.refetch()}
+          />
+        ) : plan !== null && linesQuery.isLoading ? (
+          <LoadingState />
+        ) : plan === null ? (
+          <p
+            data-prep-empty="true"
+            className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300"
+          >
+            {t('atm.prep.empty')}
+          </p>
+        ) : (
+          // The height left is the lines' and the capture's: each scrolls on its own. The lines'
+          // head stays, opaque as `DataTable stickyHead` paints it; a phone scrolls as before.
+          <div className="flex flex-col gap-4 lg:min-h-[14rem] lg:flex-1 lg:flex-row">
+            <section
+              aria-label={t('atm.prep.title')}
+              className="relative min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white lg:w-[440px] lg:shrink-0 lg:overflow-auto dark:border-slate-800 dark:bg-slate-900"
+            >
+              <table className="w-full border-collapse text-sm" data-prep-lines="true">
+                <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
+                  <tr className="text-xs text-slate-600 dark:text-slate-300">
+                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.serial')}</th>
+                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.machineCode')}</th>
+                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.run')}</th>
+                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.status')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((line) => {
+                    const state = prepStateOf(line);
+                    return (
+                      <tr
+                        key={line.lineId}
+                        data-prep-line={line.lineId}
+                        tabIndex={0}
+                        aria-selected={line.lineId === selected?.lineId}
+                        onClick={() => openLine(line.lineId)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.target === e.currentTarget)
+                            openLine(line.lineId);
+                        }}
+                        className={cn(
+                          'cursor-pointer border-t border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60',
+                          line.lineId === selected?.lineId && 'bg-brand-50/70 dark:bg-brand-950/40',
+                          state === 'cancelled' && 'text-slate-400',
+                        )}
+                      >
+                        <td className="px-3 py-2.5 tabular-nums">
+                          {line.serial === null ? '—' : formatNumber(line.serial, locale)}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span dir="ltr" className="font-medium">
+                            {lineCode(line)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <RunChip run={line.run} time={line.scheduleTime} locale={locale} />
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge
+                            size="sm"
+                            tone={
+                              state === 'cancelled' ? 'neutral' : PREPARATION_STATUS_TONE[state]
+                            }
+                          >
+                            {state === 'cancelled'
+                              ? t('atm.settlement.status.cancelled')
+                              : t(preparationStatusKey(state))}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+            {selected !== null && form !== null && (
+              <section
+                aria-label={lineCode(selected)}
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white p-4 lg:min-h-0 lg:overflow-y-auto dark:border-slate-800 dark:bg-slate-900"
+              >
+                <CapturePanel
+                  line={selected}
+                  form={form}
+                  locale={locale}
+                  readOnly={readOnly}
+                  canCapture={ctx?.canCapture === true}
+                  localDuplicates={duplicates}
+                  arabicFields={arabic}
+                  missing={missing}
+                  busy={busy}
+                  fieldRef={fieldRef}
+                  onChange={onChange}
+                  onAdvance={onAdvance}
+                  onResolve={(id, choice) => setForm(resolveConflict(form, id, choice))}
+                  onSave={() => void onSave()}
+                  onPrepared={() => void onPrepared()}
+                  onReopen={onReopen}
+                />
+              </section>
+            )}
+          </div>
+        )}
+      </div>
 
       <SettlementDialog
         open={guard.leaveOpen}

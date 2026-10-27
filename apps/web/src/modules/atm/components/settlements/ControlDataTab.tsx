@@ -66,9 +66,12 @@ export const ControlDataTab = ({
     });
 
   return (
-    <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    // The board frame's scroll box (`shared/ui/board-scroll.ts`): on a computer the page hands it
+    // the height left and its rows scroll under a head that stays — opaque, as `DataTable
+    // stickyHead` paints it, since rows pass beneath. A phone scrolls sideways only, as before.
+    <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white lg:overflow-auto dark:border-slate-800 dark:bg-slate-900">
       <table className="w-full min-w-[72rem] border-collapse" data-control-lines="true">
-        <thead className="bg-slate-50 dark:bg-slate-800/60">
+        <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
           <tr>
             <th className={cn(TH, 'w-8')}>
               <span className="sr-only">{t('atm.control.column.seals')}</span>

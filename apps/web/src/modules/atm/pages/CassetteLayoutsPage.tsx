@@ -18,12 +18,14 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
+import { cn } from '../../../shared/lib/cn';
 import { foldIncludes } from '../../../shared/lib/fold';
 import { formatBusinessDateTime, formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { Field, Select } from '../../../shared/ui/form';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -204,168 +206,179 @@ export const CassetteLayoutsPage = (): JSX.Element => {
   }
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('atm.layouts.title')}
-        figures={
-          <SettlementFigures
-            label={t('atm.layouts.title')}
-            locale={locale}
-            figures={[
-              {
-                key: 'machines',
-                label: t('atm.layouts.figure.machines'),
-                value: dto?.figures.machines,
-              },
-              {
-                key: 'withLayout',
-                label: t('atm.layouts.figure.withLayout'),
-                value: dto?.figures.withLayout,
-              },
-              {
-                key: 'withoutLayout',
-                label: t('atm.layouts.figure.withoutLayout'),
-                value: dto?.figures.withoutLayout,
-              },
-            ]}
-          />
-        }
-        actions={
-          <>
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title, the last import and the filters keep
+          their place, and only the table's rows — and the editor beside them — scroll. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('atm.layouts.title')}
+          figures={
+            <SettlementFigures
+              label={t('atm.layouts.title')}
+              locale={locale}
+              figures={[
+                {
+                  key: 'machines',
+                  label: t('atm.layouts.figure.machines'),
+                  value: dto?.figures.machines,
+                },
+                {
+                  key: 'withLayout',
+                  label: t('atm.layouts.figure.withLayout'),
+                  value: dto?.figures.withLayout,
+                },
+                {
+                  key: 'withoutLayout',
+                  label: t('atm.layouts.figure.withoutLayout'),
+                  value: dto?.figures.withoutLayout,
+                },
+              ]}
+            />
+          }
+          actions={
+            <>
+              {canImport && (
+                <Link
+                  to="/atm/settlements/layouts/import"
+                  data-layouts-action="import"
+                  className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                >
+                  {t('atm.layouts.action.import')}
+                </Link>
+              )}
+              <Button variant="secondary" disabled={!ready} onClick={() => setLoadsOpen(true)}>
+                {t('atm.layouts.action.standardLoads')}
+              </Button>
+            </>
+          }
+        />
+
+        {last !== null && lastFigures !== null && (
+          <div
+            data-last-import="true"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+          >
+            <span>
+              {t('atm.layouts.lastImport', {
+                date: formatPaperDate(cairoDay(last.at)),
+                rows: formatNumber(lastFigures.rows, locale),
+                matched: formatNumber(lastFigures.matched, locale),
+                notFound: formatNumber(lastFigures.notFound, locale),
+                flags: formatNumber(lastFigures.review, locale),
+              })}
+            </span>
             {canImport && (
               <Link
                 to="/atm/settlements/layouts/import"
-                data-layouts-action="import"
-                className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                className="text-brand-600 hover:underline dark:text-brand-400"
               >
-                {t('atm.layouts.action.import')}
+                {t('atm.layouts.action.lastImport')}
               </Link>
             )}
-            <Button variant="secondary" disabled={!ready} onClick={() => setLoadsOpen(true)}>
-              {t('atm.layouts.action.standardLoads')}
-            </Button>
-          </>
-        }
-      />
+          </div>
+        )}
 
-      {last !== null && lastFigures !== null && (
-        <div
-          data-last-import="true"
-          className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-        >
-          <span>
-            {t('atm.layouts.lastImport', {
-              date: formatPaperDate(cairoDay(last.at)),
-              rows: formatNumber(lastFigures.rows, locale),
-              matched: formatNumber(lastFigures.matched, locale),
-              notFound: formatNumber(lastFigures.notFound, locale),
-              flags: formatNumber(lastFigures.review, locale),
-            })}
-          </span>
-          {canImport && (
-            <Link
-              to="/atm/settlements/layouts/import"
-              className="text-brand-600 hover:underline dark:text-brand-400"
+        <div className="flex flex-wrap items-end gap-3" data-layouts-filters="true">
+          <Field label={t('atm.settlement.bank')} htmlFor="layouts-bank">
+            <Select
+              id="layouts-bank"
+              value={bank ?? ''}
+              onChange={(e) => patch({ bank: e.target.value, machine: null })}
             >
-              {t('atm.layouts.action.lastImport')}
-            </Link>
-          )}
+              {banks.map((b) => (
+                <option key={b} value={b}>
+                  {ATM_BANK_NAMES[b][locale]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t('atm.settlement.status')} htmlFor="layouts-status">
+            <Select
+              id="layouts-status"
+              value={status}
+              onChange={(e) => patch({ status: e.target.value === 'all' ? null : e.target.value })}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {t(`atm.layouts.filter.${s}`)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <SearchInput
+            className="min-w-64"
+            value={query}
+            placeholder={t('atm.layouts.search')}
+            onChange={(text) => patch({ q: text })}
+          />
         </div>
-      )}
 
-      <div className="mb-4 flex flex-wrap items-end gap-3" data-layouts-filters="true">
-        <Field label={t('atm.settlement.bank')} htmlFor="layouts-bank">
-          <Select
-            id="layouts-bank"
-            value={bank ?? ''}
-            onChange={(e) => patch({ bank: e.target.value, machine: null })}
-          >
-            {banks.map((b) => (
-              <option key={b} value={b}>
-                {ATM_BANK_NAMES[b][locale]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={t('atm.settlement.status')} htmlFor="layouts-status">
-          <Select
-            id="layouts-status"
-            value={status}
-            onChange={(e) => patch({ status: e.target.value === 'all' ? null : e.target.value })}
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {t(`atm.layouts.filter.${s}`)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <SearchInput
-          className="min-w-64"
-          value={query}
-          placeholder={t('atm.layouts.search')}
-          onChange={(text) => patch({ q: text })}
-        />
+        {context.isLoading ? (
+          <LoadingState />
+        ) : ctx === undefined && context.error !== null ? (
+          <ErrorState
+            error={context.error}
+            description={settlementErrorText(context.error, t, locale)}
+            onRetry={() => void context.refetch()}
+          />
+        ) : (
+          // The height left is the table's and the editor's: each scrolls on its own, so the editor
+          // no longer needs to stick while the page scrolls past it.
+          <div className="flex flex-col gap-4 lg:min-h-[14rem] lg:flex-1 lg:flex-row">
+            <section
+              aria-label={t('atm.layouts.title')}
+              className={cn('min-w-0 flex-1', BOARD_TABLE_FILL)}
+            >
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(row) => row.machineId}
+                loading={ready && list.isLoading}
+                error={list.error}
+                onRetry={() => void list.refetch()}
+                onRowClick={(row) =>
+                  patch({ machine: row.machineId === machineId ? null : row.machineId })
+                }
+                rowClassName={(row) =>
+                  row.machineId === machineId ? 'bg-brand-50/70 dark:bg-brand-950/40' : undefined
+                }
+                dense
+                stickyHead
+              />
+            </section>
+            {machineId !== null && (
+              <aside
+                aria-label={t('atm.layouts.editor.title')}
+                className="w-full shrink-0 rounded-xl border border-slate-200 bg-white p-4 lg:min-h-0 lg:w-[460px] lg:overflow-y-auto dark:border-slate-800 dark:bg-slate-900"
+              >
+                <h2 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {t('atm.layouts.editor.title')}
+                </h2>
+                {detail.data === undefined && detail.error !== null ? (
+                  <ErrorState
+                    error={detail.error}
+                    description={settlementErrorText(detail.error, t, locale)}
+                    onRetry={() => void detail.refetch()}
+                  />
+                ) : detail.data === undefined ? (
+                  <LoadingState />
+                ) : (
+                  <LayoutEditor
+                    detail={detail.data}
+                    locale={locale}
+                    canManage={canManage}
+                    standardLoads={standardLoads}
+                    busy={save.isPending}
+                    error={saveError}
+                    onSave={onSave}
+                  />
+                )}
+              </aside>
+            )}
+          </div>
+        )}
       </div>
-
-      {context.isLoading ? (
-        <LoadingState />
-      ) : ctx === undefined && context.error !== null ? (
-        <ErrorState
-          error={context.error}
-          description={settlementErrorText(context.error, t, locale)}
-          onRetry={() => void context.refetch()}
-        />
-      ) : (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <section aria-label={t('atm.layouts.title')} className="min-w-0 flex-1">
-            <DataTable
-              columns={columns}
-              rows={rows}
-              rowKey={(row) => row.machineId}
-              loading={ready && list.isLoading}
-              error={list.error}
-              onRetry={() => void list.refetch()}
-              onRowClick={(row) =>
-                patch({ machine: row.machineId === machineId ? null : row.machineId })
-              }
-              rowClassName={(row) =>
-                row.machineId === machineId ? 'bg-brand-50/70 dark:bg-brand-950/40' : undefined
-              }
-              dense
-            />
-          </section>
-          {machineId !== null && (
-            <aside
-              aria-label={t('atm.layouts.editor.title')}
-              className="w-full shrink-0 rounded-xl border border-slate-200 bg-white p-4 lg:sticky lg:top-4 lg:w-[460px] dark:border-slate-800 dark:bg-slate-900"
-            >
-              <h2 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {t('atm.layouts.editor.title')}
-              </h2>
-              {detail.data === undefined && detail.error !== null ? (
-                <ErrorState
-                  error={detail.error}
-                  description={settlementErrorText(detail.error, t, locale)}
-                  onRetry={() => void detail.refetch()}
-                />
-              ) : detail.data === undefined ? (
-                <LoadingState />
-              ) : (
-                <LayoutEditor
-                  detail={detail.data}
-                  locale={locale}
-                  canManage={canManage}
-                  standardLoads={standardLoads}
-                  busy={save.isPending}
-                  error={saveError}
-                  onSave={onSave}
-                />
-              )}
-            </aside>
-          )}
-        </div>
-      )}
 
       {ready && branchId !== null && (
         <StandardLoadsDialog

@@ -1,6 +1,7 @@
 // The done pages' from/to day filter — legacy mohDate00/mohDate1000 (contad_app.js:936), default
 // today. URL-synced so a shared link shows the same day. Whatever the page puts in `trailing` — its
-// Excel and PDF — sits at the far end of the same row.
+// Excel and PDF — sits at the far end of the same row. No margin of its own: each page using it
+// stands it in the board frame (`shared/ui/board-scroll.ts`), whose gap spaces it.
 import { type ReactNode } from 'react';
 import { MAX_PAGE_SIZE, type PageMeta } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -22,7 +23,7 @@ export const DoneRangeBar = ({
 }): JSX.Element => {
   const t = useT();
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-3">
+    <div className="flex flex-wrap items-end gap-3">
       <Field label={t('atm.done.from')}>
         <Input type="date" value={from} onChange={(e) => onChange({ from: e.target.value, to })} />
       </Field>
@@ -52,7 +53,7 @@ export const DoneRangeCutShort = ({ meta }: { meta: PageMeta | undefined }): JSX
     <p
       role="status"
       data-done-cut-short="true"
-      className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+      className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
     >
       {t('atm.done.rangeTooLarge', {
         total: formatNumber(meta.totalItems, locale),

@@ -28,6 +28,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { FilterBar, FilterResetStyleContext } from '../../../shared/ui/FilterBar';
@@ -39,7 +40,12 @@ import { DARK_FILTER_BAR } from '../../../shared/ui/dark-filter-bar';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
-import { chosenSorts, clickChosenSort, readSorts, writeSorts } from '../../../shared/lib/table-sort';
+import {
+  chosenSorts,
+  clickChosenSort,
+  readSorts,
+  writeSorts,
+} from '../../../shared/lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import * as atmApi from '../api/atm-api';
 import { useAtmMachineDirectory, useAtmMachinesSummary } from '../api/atm-queries';
@@ -185,119 +191,132 @@ export const MachinesPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('atm.machines.title')}
-        figures={<MachineFigures counts={summary.data?.counts} locale={locale} />}
-        actions={
-          <Button
-            variant="secondary"
-            onClick={() => void exportCsv()}
-            loading={exporting}
-            disabled={list.data === undefined || list.data.meta.totalItems === 0}
-          >
-            <DownloadIcon className="h-4 w-4" />
-            {t('atm.machines.export')}
-          </Button>
-        }
-      />
-      {/* The vehicles registry's bar: one control per column, in the table's order, each with its
-          icon. Every dropdown takes several answers; within a column they are ORed, and the columns
-          are ANDed. */}
-      <div
-        data-machine-filters="true"
-        className={cn(DARK_FILTER_BAR, 'mb-4', '[&_[role=listbox]]:animate-menu-in')}
-      >
-        <FilterResetStyleContext.Provider value={RESET_LIKE_VEHICLES}>
-          <FilterBar
-            hasActiveFilters={filtered}
-            onClear={() => patch({ banks: null, codes: null, name: null, areas: null })}
-          >
-            <FilterWithIcon
-              icon={MACHINE_ICON.bank}
-              tone="text-violet-600 dark:text-violet-300"
-              className="w-36 shrink-0"
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title, its counts and the filter bar keep their
+          place, the pager keeps its place below, and only the table's rows scroll, under a head
+          that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('atm.machines.title')}
+          figures={<MachineFigures counts={summary.data?.counts} locale={locale} />}
+          actions={
+            <Button
+              variant="secondary"
+              onClick={() => void exportCsv()}
+              loading={exporting}
+              disabled={list.data === undefined || list.data.meta.totalItems === 0}
             >
-              <MultiSelect
-                clearable
-                className="w-full"
-                fullWidth
-                density="tight"
-                showSelectedValues
-                chips
-                label={t('atm.common.bank')}
-                options={bankOptions}
-                value={banks}
-                onChange={(next) => patch({ banks: next.length === 0 ? null : joinAtmNameList(next) })}
-              />
-            </FilterWithIcon>
-            <FilterWithIcon
-              icon={MACHINE_ICON.code}
-              tone="text-emerald-600 dark:text-emerald-400"
-              className="w-32 shrink-0"
-            >
-              <MachineCodeFilter
-                fullWidth
-                density="tight"
-                className="w-full"
-                label={t('atm.common.machineId')}
-                value={codes}
-                narrow={codeNarrow}
-                onChange={(next) => patch({ codes: next.length === 0 ? null : next.join(',') })}
-              />
-            </FilterWithIcon>
-            <FilterWithIcon
-              icon={MACHINE_ICON.name}
-              tone="text-sky-600 dark:text-sky-400"
-              className="w-44 shrink-0"
-            >
-              <DebouncedInput
-                aria-label={t('atm.common.machineName')}
-                placeholder={t('atm.common.machineName')}
-                value={name}
-                onValueChange={(next) => patch({ name: next === '' ? null : next })}
-                density="tight"
-              />
-            </FilterWithIcon>
-            <FilterWithIcon
-              icon={MACHINE_ICON.area}
-              tone="text-amber-700 dark:text-amber-300"
-              className="w-36 shrink-0"
-            >
-              <MultiSelect
-                clearable
-                className="w-full"
-                fullWidth
-                density="tight"
-                showSelectedValues
-                chips
-                label={t('atm.common.area')}
-                options={areaOptions}
-                value={areas}
-                onChange={(next) => patch({ areas: next.length === 0 ? null : joinAtmNameList(next) })}
-              />
-            </FilterWithIcon>
-          </FilterBar>
-        </FilterResetStyleContext.Provider>
-      </div>
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(row) => row.id}
-        loading={list.isLoading}
-        error={list.error}
-        onRetry={() => void list.refetch()}
-        sort={chosen}
-        onSortChange={(by) => patch({ sort: writeSorts(clickChosenSort(sortParam, by)) })}
-        empty={filtered ? t('atm.machines.emptyFiltered') : t('atm.machines.empty')}
-      />
-      {list.data !== undefined && list.data.meta.totalItems > 0 && (
-        <NumberedPager
-          meta={list.data.meta}
-          onPageChange={(next) => patch({ page: String(next) }, false)}
-          onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+              <DownloadIcon className="h-4 w-4" />
+              {t('atm.machines.export')}
+            </Button>
+          }
         />
-      )}
+        {/* The vehicles registry's bar: one control per column, in the table's order, each with its
+            icon. Every dropdown takes several answers; within a column they are ORed, and the columns
+            are ANDed. */}
+        <div
+          data-machine-filters="true"
+          className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}
+        >
+          <FilterResetStyleContext.Provider value={RESET_LIKE_VEHICLES}>
+            <FilterBar
+              hasActiveFilters={filtered}
+              onClear={() => patch({ banks: null, codes: null, name: null, areas: null })}
+            >
+              <FilterWithIcon
+                icon={MACHINE_ICON.bank}
+                tone="text-violet-600 dark:text-violet-300"
+                className="w-36 shrink-0"
+              >
+                <MultiSelect
+                  clearable
+                  className="w-full"
+                  fullWidth
+                  density="tight"
+                  showSelectedValues
+                  chips
+                  label={t('atm.common.bank')}
+                  options={bankOptions}
+                  value={banks}
+                  onChange={(next) =>
+                    patch({ banks: next.length === 0 ? null : joinAtmNameList(next) })
+                  }
+                />
+              </FilterWithIcon>
+              <FilterWithIcon
+                icon={MACHINE_ICON.code}
+                tone="text-emerald-600 dark:text-emerald-400"
+                className="w-32 shrink-0"
+              >
+                <MachineCodeFilter
+                  fullWidth
+                  density="tight"
+                  className="w-full"
+                  label={t('atm.common.machineId')}
+                  value={codes}
+                  narrow={codeNarrow}
+                  onChange={(next) => patch({ codes: next.length === 0 ? null : next.join(',') })}
+                />
+              </FilterWithIcon>
+              <FilterWithIcon
+                icon={MACHINE_ICON.name}
+                tone="text-sky-600 dark:text-sky-400"
+                className="w-44 shrink-0"
+              >
+                <DebouncedInput
+                  aria-label={t('atm.common.machineName')}
+                  placeholder={t('atm.common.machineName')}
+                  value={name}
+                  onValueChange={(next) => patch({ name: next === '' ? null : next })}
+                  density="tight"
+                />
+              </FilterWithIcon>
+              <FilterWithIcon
+                icon={MACHINE_ICON.area}
+                tone="text-amber-700 dark:text-amber-300"
+                className="w-36 shrink-0"
+              >
+                <MultiSelect
+                  clearable
+                  className="w-full"
+                  fullWidth
+                  density="tight"
+                  showSelectedValues
+                  chips
+                  label={t('atm.common.area')}
+                  options={areaOptions}
+                  value={areas}
+                  onChange={(next) =>
+                    patch({ areas: next.length === 0 ? null : joinAtmNameList(next) })
+                  }
+                />
+              </FilterWithIcon>
+            </FilterBar>
+          </FilterResetStyleContext.Provider>
+        </div>
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.id}
+            loading={list.isLoading}
+            error={list.error}
+            onRetry={() => void list.refetch()}
+            sort={chosen}
+            onSortChange={(by) => patch({ sort: writeSorts(clickChosenSort(sortParam, by)) })}
+            empty={filtered ? t('atm.machines.emptyFiltered') : t('atm.machines.empty')}
+            stickyHead
+          />
+        </div>
+        {list.data !== undefined && list.data.meta.totalItems > 0 && (
+          <NumberedPager
+            meta={list.data.meta}
+            onPageChange={(next) => patch({ page: String(next) }, false)}
+            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+          />
+        )}
+      </div>
     </PageContainer>
   );
 };

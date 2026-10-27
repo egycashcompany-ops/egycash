@@ -31,6 +31,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { useAppSelector } from '../../../store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { ChartIcon, DownloadIcon, PlusIcon, UploadIcon } from '../../../shared/ui/icons';
@@ -70,11 +71,9 @@ const REMEMBERED_FILTERS = [
   'size',
 ] as const;
 
-// The board frame of the Fleet boards (fleet/components/board-scroll.ts), restated here rather
-// than imported across modules: on a computer the page fills the screen, the header and filters
-// keep their place, the pager keeps its place below, and only the grid's rows scroll.
-const BOARD_FRAME = 'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto';
-const BOARD_FILL = 'lg:flex lg:min-h-[14rem] lg:flex-1 lg:flex-col';
+// The board frame (`shared/ui/board-scroll.ts`): on a computer the page fills the screen, the
+// header and filters keep their place, the pager keeps its place below, and only the grid's rows
+// scroll. The loading, failed and empty states sit in a panel the size the grid would take.
 const BOARD_PANEL =
   'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900';
 
@@ -178,49 +177,49 @@ export const RegisterPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
-      <PageHeader
-        title={t('atm.register.title')}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Can permission="atmRegisterReport.view">
-              <Link to="/atm/register/report" className={LINK_BUTTON}>
-                <ChartIcon className="h-4 w-4" />
-                {t('atm.register.openReport')}
-              </Link>
-            </Can>
-            <Can permission="atmRegister.import">
-              <Link to="/atm/register/import" className={LINK_BUTTON}>
-                <UploadIcon className="h-4 w-4" />
-                {t('atm.register.import')}
-              </Link>
-            </Can>
-            <Can permission="atmRegister.export">
-              <Button
-                size="sm"
-                variant="secondary"
-                loading={exporting}
-                leftIcon={<DownloadIcon className="h-4 w-4" />}
-                onClick={() => void runExport()}
-              >
-                {t('atm.register.export')}
-              </Button>
-            </Can>
-            <Can permission="atmRegister.create">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                // The branch list comes with the meta; a receipt cannot name a branch before it.
-                disabled={meta.data === undefined}
-                onClick={() => setDialog({ action: 'receive' })}
-              >
-                {t('atm.register.receive')}
-              </Button>
-            </Can>
-          </div>
-        }
-      />
-
       <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('atm.register.title')}
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <Can permission="atmRegisterReport.view">
+                <Link to="/atm/register/report" className={LINK_BUTTON}>
+                  <ChartIcon className="h-4 w-4" />
+                  {t('atm.register.openReport')}
+                </Link>
+              </Can>
+              <Can permission="atmRegister.import">
+                <Link to="/atm/register/import" className={LINK_BUTTON}>
+                  <UploadIcon className="h-4 w-4" />
+                  {t('atm.register.import')}
+                </Link>
+              </Can>
+              <Can permission="atmRegister.export">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  loading={exporting}
+                  leftIcon={<DownloadIcon className="h-4 w-4" />}
+                  onClick={() => void runExport()}
+                >
+                  {t('atm.register.export')}
+                </Button>
+              </Can>
+              <Can permission="atmRegister.create">
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  // The branch list comes with the meta; a receipt cannot name a branch before it.
+                  disabled={meta.data === undefined}
+                  onClick={() => setDialog({ action: 'receive' })}
+                >
+                  {t('atm.register.receive')}
+                </Button>
+              </Can>
+            </div>
+          }
+        />
+
         {noMapping && (
           <p
             role="status"
@@ -243,7 +242,7 @@ export const RegisterPage = (): JSX.Element => {
           }
         />
 
-        <div className={BOARD_FILL}>
+        <div className={BOARD_TABLE_FILL}>
           {list.isPending ? (
             <div className={BOARD_PANEL}>
               <LoadingState />

@@ -23,7 +23,7 @@ import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { Button } from '../../../shared/ui/Button';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
-import { RowActions } from '../../../shared/ui/RowActions';
+import { PINNED_ACTIONS, RowActions } from '../../../shared/ui/RowActions';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { EditIcon, LockIcon, TrashIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -141,6 +141,10 @@ export const MaintenancePage = (): JSX.Element => {
     key: 'actions',
     header: '',
     align: 'end',
+    // Pinned to the row's end: on a laptop the board is wider than the screen, and the buttons
+    // must stay in view without a sideways scroll.
+    className: PINNED_ACTIONS.cell,
+    headerClassName: PINNED_ACTIONS.head,
     render: (row) => (
       // Always painted: the row's buttons are the board's work, not a secondary action.
       <RowActions always>

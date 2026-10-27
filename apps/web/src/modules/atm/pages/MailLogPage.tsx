@@ -9,6 +9,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { StatusBadge, type Tone } from '../../../shared/ui/Badge';
 import { formatDateTime } from '../../../shared/lib/format';
 import { useAtmMailLog } from '../api/atm-queries';
@@ -76,19 +77,26 @@ export const MailLogPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader title={t('atm.mail.logTitle')} />
-      <DoneRangeBar from={from} to={to} onChange={setRange} />
-      <DataTable
-        columns={columns}
-        rows={list.data?.items ?? []}
-        rowKey={(row) => row.id}
-        loading={list.isLoading}
-        error={list.error}
-        onRetry={() => void list.refetch()}
-        empty={t('atm.mail.logEmpty')}
-        rowClassName={(row) => ROW_CLASS[row.status]}
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27): on a computer the title and the
+          day range keep their place, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader title={t('atm.mail.logTitle')} />
+        <DoneRangeBar from={from} to={to} onChange={setRange} />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={list.data?.items ?? []}
+            rowKey={(row) => row.id}
+            loading={list.isLoading}
+            error={list.error}
+            onRetry={() => void list.refetch()}
+            empty={t('atm.mail.logEmpty')}
+            rowClassName={(row) => ROW_CLASS[row.status]}
+            stickyHead
+          />
+        </div>
+      </div>
     </PageContainer>
   );
 };

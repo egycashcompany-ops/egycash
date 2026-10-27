@@ -815,6 +815,12 @@ export const AtmSettingKeys = {
    * `AtmRegisterBankLabelsSettingSchema`). Defaults to `ATM_DEFAULT_BANK_LABELS_SETTING`.
    */
   RegisterBankLabels: 'atm.register.bankLabels',
+  /**
+   * The banks the Settlements, Preparation and Control pages offer (docs/12-planning/
+   * atm-settlements-phase1.md DS-24, §7.4). Defaults to `['BRK']`: Al Baraka first (S-10); a bank is
+   * added once its import profile exists.
+   */
+  SettlementBanks: 'atm.settlements.banks',
 } as const;
 
 // ── Daily report (legacy /reports_atm) ──────────────────────────────────────────────────────────

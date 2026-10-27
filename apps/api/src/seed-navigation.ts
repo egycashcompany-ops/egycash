@@ -1101,6 +1101,37 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'chart',
         permission: 'atmRegisterReport.view',
       },
+      // Settlements & Review → Preparation → Control & Supplies (docs/12-planning/
+      // atm-settlements-phase1.md §7.3), each behind its page's view key. The import page nests
+      // under the layouts and has no row of its own.
+      {
+        en: 'Replenishment Plan',
+        ar: 'خطة التغذية',
+        route: '/atm/settlements/plans',
+        icon: 'receipt',
+        permission: 'atmSettlementPlan.view',
+      },
+      {
+        en: 'Cassette Denominations',
+        ar: 'فئات الكاسيتات',
+        route: '/atm/settlements/layouts',
+        icon: 'layers',
+        permission: 'atmCassetteLayout.view',
+      },
+      {
+        en: 'Bags and Seals',
+        ar: 'الشوالات والسيلزات',
+        route: '/atm/preparation',
+        icon: 'qr',
+        permission: 'atmPreparation.view',
+      },
+      {
+        en: 'Dispatch and Lines',
+        ar: 'بيانات التغذية والخطوط',
+        route: '/atm/control',
+        icon: 'truck',
+        permission: 'atmControl.view',
+      },
     ],
   },
   {

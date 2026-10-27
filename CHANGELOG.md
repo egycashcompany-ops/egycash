@@ -27,6 +27,27 @@ its entry here in the same PR.
   under «بيان تغذية/صيانة ماكينات الصراف الآلي عن يوم … / عن الفترة من … إلى …»
   ([ATM port §4a OD-1a, §10](docs/12-planning/atm-operations-port.md)).
 
+- **Settlements & Review, Preparation and Control & Supplies run the day's ATM replenishment in
+  ECMS, Al Baraka first.** «كل شوال بيشيل ٤ كاسيتات · موافق على مقترحاتك … ممكن تبدأ كدا توريلى
+  الشغل». `/atm/settlements/layouts` «فئات الكاسيتات» keeps each machine's cassettes (4–8 slots:
+  kind, denomination, currency) with their history and the bank's standard loads, and
+  `/atm/settlements/layouts/import` seeds them once from the bank's Full list with a differences
+  report. `/atm/settlements/plans` «خطة التغذية» builds ONE plan per bank per day: machine IDs
+  typed fill the standard counts, any line is edited by hand (several cassettes of a denomination
+  split evenly in hundreds), each line carries its run (1st/2nd/3rd) and time; the plan is issued
+  and prints «بيان التغذية», one numbered Note per line (with which cassette is in which bag — a
+  bag holds 4) and the seals sheet, and exports today's REP. TAPE / ATM_2 columns for Inventory and
+  the daily report. `/atm/preparation` «الشوالات والسيلزات» scans (or types) each cassette's seal
+  and the bag's QR — a repeated value warns, never blocks — and marks the line ready.
+  `/atm/control` «بيانات التغذية والخطوط» shows the data and seals, prints the handover to the ATM
+  vault, distributes the bags across crew lines (from the map's zones where they exist) and prints
+  one sheet per line. Only the banks in the setting `atm.settlements.banks` (default `['BRK']`) are
+  offered. Twelve new keys, seeded to super-admin only — `atmCassetteLayout.view/manage/import`,
+  `atmSettlementPlan.view/print/export/manage`, `atmPreparation.view/capture`,
+  `atmControl.view/print/manage` — so after the deploy an administrator grants them at branch or
+  organization scope (a department grant reads and never writes), then runs `db:sync-indexes` for
+  the ten new collections. Nothing existing is migrated; Excel stays the fallback for the pilot
+  ([settlements phase 1](docs/12-planning/atm-settlements-phase1.md), rollout §11.2).
 - **The company's mobile lines have their own page in IT.** «الـ 3 فايلات دول عبارة عن خطوط موبايل
   عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة». `/it/mobile-lines`
   «خطوط المحمول» lists every line with its network's logo beside it, its number, plan, SIM serial,

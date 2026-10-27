@@ -14,7 +14,12 @@ import { type AtmMaintenanceDto, type AtmReplenishmentDto, type Locale } from '@
 import { formatDate, formatDateTime } from '../../../shared/lib/format';
 import { type SortValue } from '../../../shared/lib/sort-rows';
 import { type TableSort } from '../../../shared/lib/table-sort';
-import { xlsxFilename } from '../../fleet/lib/fleet-xlsx';
+import {
+  columnLetter,
+  xlsxFilename,
+  type XlsxGridCell,
+  type XlsxGridSheet,
+} from '../../../shared/lib/xlsx-writer';
 import { formatDuration } from './operation-view';
 import { listSeparator } from './register-import-view';
 
@@ -300,3 +305,57 @@ export const statementLines = <T>(
   columns: readonly SheetColumn<T>[],
   empty: string,
 ): string[][] => rows.map((row) => columns.map((column) => column.text(row, empty)));
+
+/**
+ * The statement as a workbook sheet: the title in row 1, merged across the table and centred in
+ * bold, a blank row, then the «م» column and the table's header and rows — the printed page's
+ * shape, in a sheet that reads right to left.
+ *
+ * A GRID sheet of the shared writer (`shared/lib/xlsx-writer.ts`), the kind it carries for a
+ * sheet that does not start with «م» in A1 — so the table sheet every Fleet book is made of stays
+ * byte for byte what it was. Empty cells are written blank: in a sheet a blank is something a
+ * reader can filter on.
+ */
+export const statementSheet = ({
+  name,
+  title,
+  serialHeader,
+  header,
+  lines,
+}: {
+  name: string;
+  title: string;
+  serialHeader: string;
+  header: readonly string[];
+  lines: readonly (readonly string[])[];
+}): XlsxGridSheet => {
+  const width = header.length + 1;
+  const HEAD_ROW = 3;
+  const cells: XlsxGridCell[] = [
+    { row: 1, col: 1, value: title, style: 'group' },
+    ...[serialHeader, ...header].map((value, i): XlsxGridCell => ({
+      row: HEAD_ROW,
+      col: i + 1,
+      value,
+      style: 'head',
+    })),
+    ...lines.flatMap((line, r) =>
+      // The serial is generated — it numbers the sheet so a reader can point at a line.
+      [r + 1, ...line].map((value, c): XlsxGridCell => ({
+        row: HEAD_ROW + 1 + r,
+        col: c + 1,
+        value,
+        style: 'plain',
+      })),
+    ),
+  ];
+  return {
+    kind: 'grid',
+    name,
+    rightToLeft: true,
+    font: 'tahoma10',
+    columns: [{ index: 1, width: 5 }, ...header.map((_unused, i) => ({ index: i + 2, width: 18 }))],
+    merges: [`A1:${columnLetter(width)}1`],
+    cells,
+  };
+};

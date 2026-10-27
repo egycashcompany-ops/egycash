@@ -1,7 +1,8 @@
-// ATM module home at /atm — a card per ported legacy screen, plus the two efficiency register
-// screens whose source is the owner's workbook rather than a legacy page (sheets `ATMs` and
-// `Data Report`), each shown only when the caller holds the permission the screen is routed
-// behind (the fleet/operations owner rule: no forbidden cards, no card without a shipped screen).
+// ATM module home at /atm — a card per ported legacy screen, plus the efficiency register and
+// settlement screens whose source is the owner's workbooks rather than a legacy page (sheets
+// `ATMs`, `Data Report`, and the banks' daily Masters), each shown only when the caller holds the
+// permission the screen is routed behind (the fleet/operations owner rule: no forbidden cards, no
+// card without a shipped screen).
 // The unread-mail badge rides the mail card, which is the port of the counter every legacy ATM
 // page rendered in its nav (contad_app.js:266-268).
 import { type ComponentType, type SVGProps } from 'react';
@@ -15,9 +16,13 @@ import {
   ClipboardIcon,
   GridIcon,
   InboxIcon,
+  LayersIcon,
   PinIcon,
+  QrIcon,
+  ReceiptIcon,
   ShieldIcon,
   TagIcon,
+  TruckIcon,
   WrenchIcon,
 } from '../../../shared/ui/icons';
 
@@ -130,6 +135,39 @@ export const ATM_SHORTCUTS: Shortcut[] = [
     descKey: 'atm.cards.registerReport',
     icon: ChartIcon,
     permission: 'atmRegisterReport.view',
+  },
+  /**
+   * Settlements & Review → Preparation → Control & Supplies (docs/12-planning/
+   * atm-settlements-phase1.md §9.8) — the banks' daily Master workbooks, no legacy screen. Each card
+   * follows its nav row's key, which is its route's guard.
+   */
+  {
+    to: '/atm/settlements/plans',
+    titleKey: 'atm.nav.settlementPlan',
+    descKey: 'atm.cards.settlementPlan',
+    icon: ReceiptIcon,
+    permission: 'atmSettlementPlan.view',
+  },
+  {
+    to: '/atm/settlements/layouts',
+    titleKey: 'atm.nav.cassetteLayouts',
+    descKey: 'atm.cards.cassetteLayouts',
+    icon: LayersIcon,
+    permission: 'atmCassetteLayout.view',
+  },
+  {
+    to: '/atm/preparation',
+    titleKey: 'atm.nav.preparation',
+    descKey: 'atm.cards.preparation',
+    icon: QrIcon,
+    permission: 'atmPreparation.view',
+  },
+  {
+    to: '/atm/control',
+    titleKey: 'atm.nav.control',
+    descKey: 'atm.cards.control',
+    icon: TruckIcon,
+    permission: 'atmControl.view',
   },
 ];
 

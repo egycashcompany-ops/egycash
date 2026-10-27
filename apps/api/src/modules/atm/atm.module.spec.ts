@@ -1,8 +1,9 @@
 // The manifest guards (the operations.module.spec precedent): the module registers cleanly, and
 // its surfaces are exactly what the shipped slices claim. The pin-the-numbers block moves with
-// every slice: 30 permissions, 7 pages, 9 routes, 10 collections, 2 scheduled tasks (ATM Operations
-// port ATM-0…7, then the Efficiency register — docs/12-planning/atm-efficiency-register.md §7.2 —
-// then the machine map — docs/12-planning/atm-map-zones.md §7.2).
+// every slice: 42 permissions, 11 pages, 12 routes, 20 collections, 2 scheduled tasks (ATM
+// Operations port ATM-0…7, then the Efficiency register — docs/12-planning/atm-efficiency-register.md
+// §7.2 — then the machine map — docs/12-planning/atm-map-zones.md §7.2 — then settlements phase 1 —
+// docs/12-planning/atm-settlements-phase1.md §7.2).
 // The daily report added a route and NOTHING else — it rides the existing view grants (D7).
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
@@ -22,6 +23,12 @@ describe('atm module manifest (ATM Operations port)', () => {
   it('pins the current surface', () => {
     expect(atmModule.id).toBe('atm');
     expect(atmPermissions.map((p) => p.key).sort()).toEqual([
+      'atmCassetteLayout.import',
+      'atmCassetteLayout.manage',
+      'atmCassetteLayout.view',
+      'atmControl.manage',
+      'atmControl.print',
+      'atmControl.view',
       'atmMachine.locate',
       'atmMachine.manage',
       'atmMachine.moveArea',
@@ -35,6 +42,8 @@ describe('atm module manifest (ATM Operations port)', () => {
       'atmMaintenance.edit',
       'atmMaintenance.view',
       'atmMap.view',
+      'atmPreparation.capture',
+      'atmPreparation.view',
       'atmRefLabel.create',
       'atmRefLabel.edit',
       'atmRegister.create',
@@ -51,6 +60,10 @@ describe('atm module manifest (ATM Operations port)', () => {
       'atmReplenishment.delete',
       'atmReplenishment.edit',
       'atmReplenishment.view',
+      'atmSettlementPlan.export',
+      'atmSettlementPlan.manage',
+      'atmSettlementPlan.print',
+      'atmSettlementPlan.view',
       'atmZone.manage',
     ]);
     expect(atmPages.map((p) => p.id)).toEqual([
@@ -61,29 +74,46 @@ describe('atm module manifest (ATM Operations port)', () => {
       'atm.map',
       'atm.register',
       'atm.register-report',
+      'atm.settlement-plans',
+      'atm.cassette-layouts',
+      'atm.preparation',
+      'atm.control',
     ]);
     expect(atmModule.routes.map((r) => r.prefix).sort()).toEqual([
+      '/atm/control',
       '/atm/machines',
       '/atm/mail-tickets',
       '/atm/maintenances',
       '/atm/map',
+      '/atm/preparation',
       '/atm/ref-labels',
       '/atm/register',
       '/atm/register/import',
       '/atm/replenishments',
       '/atm/reports',
+      '/atm/settlements',
     ]);
     expect(atmModule.collections.sort()).toEqual([
+      'atm_cassette_layout_versions',
+      'atm_cassette_layouts',
+      'atm_dispatch_routes',
+      'atm_layout_import_runs',
+      'atm_line_preparations',
       'atm_machine_locations',
       'atm_machines',
       'atm_mail_tickets',
       'atm_maintenances',
       'atm_map_zone_sets',
       'atm_map_zones',
+      'atm_note_counters',
+      'atm_plan_lines',
       'atm_ref_labels',
       'atm_register_entries',
       'atm_register_import_runs',
+      'atm_replenishment_plans',
       'atm_replenishments',
+      'atm_route_assignments',
+      'atm_standard_loads',
     ]);
     expect((atmModule.scheduledTasks ?? []).map((t) => t.key)).toEqual([
       'atm.mailPoll',

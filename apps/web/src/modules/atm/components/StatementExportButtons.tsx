@@ -8,19 +8,21 @@
 //
 // ONE PAIR OF BUTTONS, ONE WORKBOOK WRITER, ONE REPORT FORM. The buttons are the IT registers'
 // (`RegisterExportButtons`: one file at a time, the spinner, the failure named); the workbook is
-// the app's own `.xlsx` writer and the printed page the company's report form, both under Fleet,
-// which needed them first — the IT registers reuse them the same way.
+// the app's own `.xlsx` writer (`shared/lib/xlsx-writer.ts`, a grid sheet: the title above the
+// table) and the printed page the company's report form under Fleet, which needed it first — the
+// IT registers reuse it the same way.
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { saveBlob } from '../../../shared/lib/api-client';
 import { openPrintDocument } from '../../../shared/lib/print-window';
-import { buildXlsx } from '../../fleet/lib/fleet-xlsx';
+import { buildXlsxBook } from '../../../shared/lib/xlsx-writer';
 import { buildFleetReportHtml } from '../../fleet/lib/fleet-report-print';
 import { RegisterExportButtons } from '../../it/components/RegisterExportButtons';
 import {
   statementFileName,
   statementLines,
+  statementSheet,
   statementTitle,
   type AtmOperationKind,
   type SheetColumn,
@@ -55,14 +57,16 @@ export const StatementExportButtons = <T,>({
 
   const excel = (): Promise<void> => {
     saveBlob(
-      buildXlsx({
-        name: sheetName,
-        title,
-        serialHeader: t('atm.export.serial'),
-        header,
-        // An empty cell is a filterable blank in a sheet.
-        rows: statementLines(rows, columns, ''),
-      }),
+      buildXlsxBook([
+        statementSheet({
+          name: sheetName,
+          title,
+          serialHeader: t('atm.export.serial'),
+          header,
+          // An empty cell is a filterable blank in a sheet.
+          lines: statementLines(rows, columns, ''),
+        }),
+      ]),
       statementFileName(t, kind, range),
     );
     return Promise.resolve();

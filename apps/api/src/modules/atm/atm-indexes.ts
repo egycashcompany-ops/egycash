@@ -25,6 +25,12 @@
 // §3.4): their keys are ids, never a K or S value, and building them here also brings each one into
 // being before its first insert, which otherwise happens inside the zone save's transaction.
 //
+// The settlements' ten collections joined too (docs/12-planning/atm-settlements-phase1.md §4.10):
+// layouts, their versions, standard loads, plans, routes, import runs and the Note counters in the
+// first group (ids, codes, dates and counter keys); plan lines, line preparations and route
+// assignments in the second — operation records holding counts and seals, whose duplicate report
+// is the collection and the counts only, the operation logs' rule.
+//
 // THE DEFINITIONS ARE READ FROM THE SCHEMAS (`schema.indexes()`), never restated here. ONE INDEX AT
 // A TIME, so a duplicate costs exactly its own index. DUPLICATES ARE REPORTED, NEVER RESOLVED — a
 // legacy `atm_machines` loaded by `npm run atm:import` may violate `ux_branch_code` (risk R-9); the
@@ -41,6 +47,16 @@ import { AtmMaintenanceModel } from './maintenances/maintenance.model';
 import { AtmMapZoneModel } from './map/zone.model';
 import { AtmMapZoneSetModel } from './map/zone-set.model';
 import { AtmMachineLocationModel } from './map/machine-location.model';
+import { AtmCassetteLayoutModel } from './settlements/layouts/cassette-layout.model';
+import { AtmCassetteLayoutVersionModel } from './settlements/layouts/cassette-layout-version.model';
+import { AtmStandardLoadModel } from './settlements/standard-loads/standard-load.model';
+import { AtmReplenishmentPlanModel } from './settlements/plans/plan.model';
+import { AtmPlanLineModel } from './settlements/plans/plan-line.model';
+import { AtmNoteCounterModel } from './settlements/plans/note-counter.model';
+import { AtmLinePreparationModel } from './settlements/preparation/line-preparation.model';
+import { AtmDispatchRouteModel } from './settlements/control/dispatch-route.model';
+import { AtmRouteAssignmentModel } from './settlements/control/route-assignment.model';
+import { AtmLayoutImportRunModel } from './settlements/import/layout-import-run.model';
 import { RETIRED_OPEN_OPERATION_INDEX_NAMES } from './shared/open-operation';
 
 export interface AtmIndexedModel {
@@ -56,6 +72,20 @@ export interface AtmIndexedModel {
   rowsInLog: boolean;
 }
 
+/**
+ * The indexes a collection must not carry any more — the open-operation rule's any-day form on the
+ * two operation logs (OD-1a). Read by collection name, so the list below stays one list.
+ */
+const retiredIndexes = (collection: string): readonly string[] => {
+  if (collection === AtmReplenishmentModel.collection.name) {
+    return [RETIRED_OPEN_OPERATION_INDEX_NAMES.replenishment];
+  }
+  if (collection === AtmMaintenanceModel.collection.name) {
+    return [RETIRED_OPEN_OPERATION_INDEX_NAMES.maintenance];
+  }
+  return [];
+};
+
 /** The collections whose indexes this step owns — listed, never discovered. */
 export const atmIndexedModels = (): AtmIndexedModel[] => [
   ...(
@@ -67,20 +97,29 @@ export const atmIndexedModels = (): AtmIndexedModel[] => [
       AtmMapZoneModel,
       AtmMapZoneSetModel,
       AtmMachineLocationModel,
+      AtmCassetteLayoutModel,
+      AtmCassetteLayoutVersionModel,
+      AtmStandardLoadModel,
+      AtmReplenishmentPlanModel,
+      AtmDispatchRouteModel,
+      AtmLayoutImportRunModel,
+      AtmNoteCounterModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model, rowsInLog: true })),
-  {
-    collection: AtmReplenishmentModel.collection.name,
-    model: AtmReplenishmentModel as unknown as Model<never>,
+  ...(
+    [
+      AtmReplenishmentModel,
+      AtmMaintenanceModel,
+      AtmPlanLineModel,
+      AtmLinePreparationModel,
+      AtmRouteAssignmentModel,
+    ] as unknown as Model<never>[]
+  ).map((model) => ({
+    collection: model.collection.name,
+    model,
     rowsInLog: false,
-    retired: [RETIRED_OPEN_OPERATION_INDEX_NAMES.replenishment],
-  },
-  {
-    collection: AtmMaintenanceModel.collection.name,
-    model: AtmMaintenanceModel as unknown as Model<never>,
-    rowsInLog: false,
-    retired: [RETIRED_OPEN_OPERATION_INDEX_NAMES.maintenance],
-  },
+    retired: retiredIndexes(model.collection.name),
+  })),
 ];
 
 /** Server-side options only — a rebuild stays byte-identical to the first build. */

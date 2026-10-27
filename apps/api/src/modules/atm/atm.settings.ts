@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   ATM_DEFAULT_BANK_LABELS_SETTING,
   AtmRegisterBankLabelsSettingSchema,
+  AtmBankCodeSchema,
   AtmRegisterBranchCodesSettingSchema,
   AtmSettingKeys,
   objectId,
@@ -58,6 +59,17 @@ export const registerAtmSettings = (): void => {
       'labels (BM → MISR); a bank left out falls back to its default.',
     schema: AtmRegisterBankLabelsSettingSchema,
     defaultValue: ATM_DEFAULT_BANK_LABELS_SETTING,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: AtmSettingKeys.SettlementBanks,
+    description:
+      'The banks the Settlements, Preparation and Control pages offer. Al Baraka first (S-10); a ' +
+      'bank is added once its import profile exists (docs/12-planning/atm-settlements-phase1.md ' +
+      '§7.4, DS-24).',
+    schema: z.array(AtmBankCodeSchema).max(6),
+    defaultValue: ['BRK'],
+    // Organization only: which banks the settlement pages offer is one fact about the company.
     allowedScopes: ['organization'],
   });
 };

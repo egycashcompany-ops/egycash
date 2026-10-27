@@ -159,6 +159,36 @@ export const ErrorCodes = {
   /** Approve on a location that is not waiting for review (422). */
   ATM_MAP_NOT_UNDER_REVIEW: 'ATM_MAP_NOT_UNDER_REVIEW',
 
+  // ── ATM settlements, preparation, control (docs/12-planning/atm-settlements-phase1.md §6.1) ───
+  /** DS-22: no work branch can be resolved (422); details carry CHOOSE_BRANCH or NO_BRANCH. */
+  ATM_WORK_BRANCH_REQUIRED: 'ATM_WORK_BRANCH_REQUIRED',
+  /** DS-24: the bank is not in `atm.settlements.banks` (422). */
+  ATM_SETTLEMENT_BANK_NOT_ENABLED: 'ATM_SETTLEMENT_BANK_NOT_ENABLED',
+  /** §5.1: a sheet or header is missing, or the master workbook is beyond a limit (422). */
+  ATM_LAYOUT_IMPORT_LAYOUT: 'ATM_LAYOUT_IMPORT_LAYOUT',
+  /** §5.2: the bank has no master import profile (422). */
+  ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK: 'ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK',
+  /** §5.4: the applied bytes are not the previewed bytes (409). */
+  ATM_LAYOUT_IMPORT_FILE_CHANGED: 'ATM_LAYOUT_IMPORT_FILE_CHANGED',
+  /** §5.4: another apply of this branch × bank is running (409). */
+  ATM_LAYOUT_IMPORT_RUNNING: 'ATM_LAYOUT_IMPORT_RUNNING',
+  /** A standard load is deleted while live layouts or draft lines point at it (409). */
+  ATM_STANDARD_LOAD_IN_USE: 'ATM_STANDARD_LOAD_IN_USE',
+  /** DS-1: a plan for this branch × bank × date already exists (409); the detail carries its id. */
+  ATM_PLAN_EXISTS: 'ATM_PLAN_EXISTS',
+  /** DS-30: more than 400 non-cancelled lines (422). */
+  ATM_PLAN_FULL: 'ATM_PLAN_FULL',
+  /** The action does not fit the line's status (409); the detail carries `{ status }`. */
+  ATM_PLAN_LINE_STATE: 'ATM_PLAN_LINE_STATE',
+  /** Reopening a line whose preparation holds a value, or changed since it was read (409). */
+  ATM_PLAN_LINE_HAS_CAPTURES: 'ATM_PLAN_LINE_HAS_CAPTURES',
+  /** Issue with line errors (422); details `{ field: 'lines[i]', code }`. */
+  ATM_PLAN_ISSUE_BLOCKED: 'ATM_PLAN_ISSUE_BLOCKED',
+  /** Saving captures on a prepared (or cancelled) line (409). */
+  ATM_PREPARATION_LOCKED: 'ATM_PREPARATION_LOCKED',
+  /** DS-16: mark prepared with values missing (422); details name bags or slots, never values. */
+  ATM_PREPARATION_INCOMPLETE: 'ATM_PREPARATION_INCOMPLETE',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

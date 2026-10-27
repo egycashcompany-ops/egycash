@@ -416,6 +416,7 @@ argument for the suite existing at all:
 | — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
 | — | Machine map and owner-drawn zones: `/atm/map`, `/atm/map/unlocated`, the location sync and the short-link resolver — [atm-map-zones.md](atm-map-zones.md) (no legacy counterpart: GAP, §1) | in progress (ships as one release) |
+| — | Settlements & Review → Preparation → Control & Supplies, phase 1 (Al Baraka only): `/atm/settlements/plans`, `/atm/settlements/layouts` (+ `/import`), `/atm/preparation`, `/atm/control`; the machine's cassette layout, the day's plan and its papers, the bag and seal capture, the crew lines — [atm-settlements-phase1.md](atm-settlements-phase1.md); suite `tests/integration/atm-settlements.spec.ts` | in progress (ships as one release) |
 
 ## 9. The Efficiency register and the data-edit split
 

@@ -13,8 +13,10 @@ import {
   statementFileName,
   statementFilterLine,
   statementLines,
+  statementSheet,
   statementTitle,
 } from './operation-sheet';
+import { buildXlsxBook } from '../../../shared/lib/xlsx-writer';
 
 const ar = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -188,5 +190,52 @@ describe('the statement', () => {
     expect(statementFileName(en, 'maintenance', { from: '2026-10-01', to: '2026-10-27' })).toBe(
       'ATM-maintenance-2026-10-01_2026-10-27.xlsx',
     );
+  });
+});
+
+describe('the statement as a workbook', () => {
+  // The writer STORES its parts, so the sheet's XML is plain text inside the zip.
+  const xml = async (blob: Blob): Promise<string> =>
+    new TextDecoder().decode(new Uint8Array(await blob.arrayBuffer()));
+  const sheet = statementSheet({
+    name: 'التغذيات',
+    title: 'بيان تغذية ماكينات الصراف الآلي عن يوم 27',
+    serialHeader: 'م',
+    header: ['البنك', 'الكود'],
+    lines: [
+      ['SYN NBE', '101'],
+      ['SYN CIB', ''],
+    ],
+  });
+
+  it('puts the title in row 1, merged across the serial and every column, the table from row 3', () => {
+    expect(sheet.merges).toEqual(['A1:C1']);
+    expect(sheet.rightToLeft).toBe(true);
+    expect(sheet.cells[0]).toEqual({
+      row: 1,
+      col: 1,
+      value: 'بيان تغذية ماكينات الصراف الآلي عن يوم 27',
+      style: 'group',
+    });
+    expect(sheet.cells.filter((cell) => cell.row === 3).map((cell) => cell.value)).toEqual([
+      'م',
+      'البنك',
+      'الكود',
+    ]);
+    expect(sheet.cells.filter((cell) => cell.row === 5).map((cell) => cell.value)).toEqual([
+      2,
+      'SYN CIB',
+      '',
+    ]);
+    expect(sheet.cells.some((cell) => cell.row === 2)).toBe(false);
+  });
+
+  it('is a sheet the shared writer writes: the title merged, right to left', async () => {
+    const book = await xml(buildXlsxBook([sheet]));
+    expect(book).toContain('<mergeCell ref="A1:C1"/>');
+    expect(book).toContain('<sheetView rightToLeft="1"');
+    expect(book).toContain('بيان تغذية ماكينات الصراف الآلي عن يوم 27');
+    expect(book).toContain('<row r="3">');
+    expect(book).not.toContain('<row r="2">');
   });
 });

@@ -137,10 +137,25 @@ describe('the race-proof index, declared on both operation logs', () => {
       'atm_replenishments',
     ]);
     expect(listed.every((entry) => !entry.rowsInLog)).toBe(true);
-    // The master and the register keep their report exactly as before.
+    // The settlements' operation records join them (docs/12-planning/atm-settlements-phase1.md
+    // §4.10): plan lines, line preparations and route assignments hold counts and seals. Every
+    // other collection — the master, the register — keeps its report exactly as before.
+    const rowsOut = [
+      'atm_line_preparations',
+      'atm_maintenances',
+      'atm_plan_lines',
+      'atm_replenishments',
+      'atm_route_assignments',
+    ];
     expect(
       atmIndexedModels()
-        .filter((entry) => !['atm_replenishments', 'atm_maintenances'].includes(entry.collection))
+        .filter((entry) => !entry.rowsInLog)
+        .map((entry) => entry.collection)
+        .sort(),
+    ).toEqual(rowsOut);
+    expect(
+      atmIndexedModels()
+        .filter((entry) => !rowsOut.includes(entry.collection))
         .every((entry) => entry.rowsInLog),
     ).toBe(true);
   });

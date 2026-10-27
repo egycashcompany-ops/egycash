@@ -83,7 +83,7 @@ export const MaintenanceDonePage = (): JSX.Element => {
       align: 'end',
       render: (row) =>
         can('atmMaintenance.complete') ? (
-          <RowActions>
+          <RowActions always>
             <Button
               size="icon"
               variant="ghost-warning"

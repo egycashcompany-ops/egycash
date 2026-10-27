@@ -87,7 +87,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
       align: 'end',
       render: (row) =>
         can('atmReplenishment.complete') ? (
-          <RowActions>
+          <RowActions always>
             <Button
               size="icon"
               variant="ghost-warning"

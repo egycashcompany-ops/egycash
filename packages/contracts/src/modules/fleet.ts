@@ -3962,6 +3962,19 @@ export interface FleetCustodyDashboardDto extends FleetCustodySummaryDto {
    */
   fuelByCompany: { companies: FleetCustodyFuelCompanyRowDto[]; none: FleetCustodyFuelGroupDto };
   alerts: FleetCustodyAlertsDto;
+  /**
+   * The same filtered receipts by where each stands against the memos — every state, zeros kept,
+   * each with its kinds. The three add up to `count` / `total`, and a kind's three to that kind's
+   * figure. Over no filter, `replenished` is the fund's Σ «استعاضة», `pending` the memos'
+   * `pendingTotal`, and `outside` Σ `/memos/outside`.
+   */
+  memoStates: Record<FleetCustodyMemoState, FleetCustodyMemoStateSpendDto>;
+}
+
+/** One memo state's share of the dashboard's spend, with each kind's share inside it. */
+export interface FleetCustodyMemoStateSpendDto extends FleetCustodyCountAmountDto {
+  /** Every kind, zeros kept. */
+  byKind: Record<FleetCustodySource, FleetCustodyCountAmountDto>;
 }
 
 // ── Licensing expenses (مصروفات التراخيص) ──────────────────────────────────────
@@ -4333,6 +4346,14 @@ export type SaveFleetCustodyPaperSettings = z.infer<typeof SaveFleetCustodyPaper
 export const FLEET_CUSTODY_MEMO_STATUSES = ['pending', 'replenished'] as const;
 export const FleetCustodyMemoStatusSchema = z.enum(FLEET_CUSTODY_MEMO_STATUSES);
 export type FleetCustodyMemoStatus = z.infer<typeof FleetCustodyMemoStatusSchema>;
+/**
+ * Where a custody receipt stands against the memos — the dashboard's split of the spend: on a
+ * replenished memo («تمت الاستعاضة»), on a memo still waiting («في مذكرات لم تُستعَض»), on no live
+ * memo («خارج المذكرات»). In this order.
+ */
+export const FLEET_CUSTODY_MEMO_STATES = ['replenished', 'pending', 'outside'] as const;
+export const FleetCustodyMemoStateSchema = z.enum(FLEET_CUSTODY_MEMO_STATES);
+export type FleetCustodyMemoState = z.infer<typeof FleetCustodyMemoStateSchema>;
 
 /** One receipt on a memo, with the cells his paper of that kind writes by hand. */
 export const FleetCustodyMemoLineSchema = z
@@ -4494,6 +4515,12 @@ export interface FleetCustodyMemoTotalsDto {
   total: number;
 }
 /**
+ * How many whole UTC days a custody receipt may wait in no memo before the dashboard calls it late
+ * («لم يدخل أي مذكرة منذ أكثر من 30 يومًا»): one dated before the UTC start of today less this many
+ * days. The owner's figure.
+ */
+export const FLEET_CUSTODY_STALE_DAYS = 30;
+/**
  * «إيصالات لم تدخل أي مذكرة بعد» — one per custody kind, in `FLEET_CUSTODY_SOURCES` order, zeros
  * kept.
  */
@@ -4501,6 +4528,13 @@ export interface FleetCustodyOutsideKindDto {
   kind: FleetCustodySource;
   count: number;
   total: number;
+  /** The oldest of those receipts' day, YYYY-MM-DD; `null` when there are none. */
+  oldest: string | null;
+  /**
+   * The ones among them older than `FLEET_CUSTODY_STALE_DAYS` — dated before the UTC start of
+   * today less that many days — and what they add up to, to the piastre. Zeros when none.
+   */
+  stale: { count: number; total: number };
 }
 export interface FleetCustodyMemoCandidateDto {
   id: string;

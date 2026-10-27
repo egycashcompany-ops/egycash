@@ -12,12 +12,16 @@
 // them is counted from these rows — nothing estimated, nothing shown that the rows do not hold.
 // «تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها»: each company's fuel (and the
 // receipts with none) also carries its fuel types, cut in the same pass over the same receipts.
+// And where each receipt stands against the memos (`memoStates`): replenished, on a memo still
+// waiting, or on none — the spend cards' bars, over the board's filters like every other figure.
 import {
+  FLEET_CUSTODY_MEMO_STATES,
   FLEET_CUSTODY_SOURCES,
   FLEET_FUEL_CARD_COMPANIES,
   FLEET_FUEL_TYPES,
   compareFleetVehicleCodes,
   type FleetCustodyAlertsDto,
+  type FleetCustodyCountAmountDto,
   type FleetCustodyDashboardDto,
   type FleetCustodyDoubleFuelDto,
   type FleetCustodyDriverRowDto,
@@ -25,6 +29,8 @@ import {
   type FleetCustodyFuelShareDto,
   type FleetCustodyFuelTypeRowDto,
   type FleetCustodyFuelTypeShareDto,
+  type FleetCustodyMemoState,
+  type FleetCustodyMemoStateSpendDto,
   type FleetCustodyMovementDto,
   type FleetCustodySource,
   type FleetCustodySummaryDto,
@@ -50,6 +56,8 @@ export interface CustodyDashboardRow {
   /** Whether the receipt has its photo. */
   hasImage: boolean;
   amount: number;
+  /** Where it stands against the memos — see `custodyMemoStateOf`. */
+  memoState: FleetCustodyMemoState;
 }
 
 /** The dashboard's own fields — the summary's are folded by the service, once, for both. */
@@ -177,6 +185,53 @@ const fuelGroup = (
 });
 
 /**
+ * A receipt against the memos: on none (`memoId` null) — or on one that is no live memo, which a
+ * delete never leaves behind — is «خارج المذكرات»; on a live memo, that memo's own state.
+ * `replenished` maps each live memo the receipts name to whether a «استعاضة» brought it back.
+ */
+export const custodyMemoStateOf = (
+  memoId: string | null,
+  replenished: ReadonlyMap<string, boolean>,
+): FleetCustodyMemoState => {
+  if (memoId === null) return 'outside';
+  const done = replenished.get(memoId);
+  return done === undefined ? 'outside' : done ? 'replenished' : 'pending';
+};
+
+/** Counts and whole piastres per memo state and kind — exact however many receipts add up. */
+type MemoStateCells = Record<
+  FleetCustodyMemoState,
+  Record<FleetCustodySource, { count: number; piastres: number }>
+>;
+
+const emptyMemoStateCells = (): MemoStateCells =>
+  Object.fromEntries(
+    FLEET_CUSTODY_MEMO_STATES.map((state) => [
+      state,
+      Object.fromEntries(FLEET_CUSTODY_SOURCES.map((kind) => [kind, { count: 0, piastres: 0 }])),
+    ]),
+  ) as MemoStateCells;
+
+/** Every state, every kind, zeros kept; each state's figure is its kinds' sum, to the piastre. */
+const memoStatesOf = (
+  cells: MemoStateCells,
+): Record<FleetCustodyMemoState, FleetCustodyMemoStateSpendDto> =>
+  Object.fromEntries(
+    FLEET_CUSTODY_MEMO_STATES.map((state) => {
+      let count = 0;
+      let piastres = 0;
+      const byKind = {} as Record<FleetCustodySource, FleetCustodyCountAmountDto>;
+      for (const kind of FLEET_CUSTODY_SOURCES) {
+        const cell = cells[state][kind];
+        count += cell.count;
+        piastres += cell.piastres;
+        byKind[kind] = { count: cell.count, amount: cell.piastres / 100 };
+      }
+      return [state, { count, amount: piastres / 100, byKind }];
+    }),
+  ) as Record<FleetCustodyMemoState, FleetCustodyMemoStateSpendDto>;
+
+/**
  * «تنبيهات وتدقيق العهدة» off the receipts in the set: a car fuelled from the fund more than once on
  * one day, receipts with no photo, and receipts that repeat another (the same car, day, kind and
  * amount — the extra copies only).
@@ -258,8 +313,13 @@ export const custodyDashboard = (
     for (const key of daysBetween(filter.from, filter.to)) buckets.set(key, emptyBucket(key));
   }
 
+  const memoStates = emptyMemoStateCells();
+
   for (const row of rows) {
     counts[row.source] += 1;
+    const state = memoStates[row.memoState][row.source];
+    state.count += 1;
+    state.piastres += cents(row.amount);
     const source = bySource.get(row.ref);
     if (source !== undefined) {
       source.count += 1;
@@ -401,5 +461,6 @@ export const custodyDashboard = (
       none: fuelGroup(noCompany, companyTypes.get(null)),
     },
     alerts: custodyAlerts(rows),
+    memoStates: memoStatesOf(memoStates),
   };
 };

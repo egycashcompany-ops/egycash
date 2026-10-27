@@ -207,6 +207,8 @@ const outside = (
     kind,
     count: counts[kind]?.[0] ?? 0,
     total: counts[kind]?.[1] ?? 0,
+    oldest: counts[kind] === undefined ? null : '2026-10-06',
+    stale: { count: 0, total: 0 },
   }));
 const REPLENISH_CANDIDATES: FleetCustodyReplenishCandidatesDto = {
   memos: MEMOS,

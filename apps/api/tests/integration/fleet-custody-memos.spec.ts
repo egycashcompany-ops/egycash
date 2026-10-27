@@ -12,18 +12,20 @@
 //   7. who may do what, over HTTP; 8. the audit trail; 9. rows from before memos existed.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   CreateFleetCustodyMemoSchema,
   DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES,
   UpdateFleetCustodyMemoSchema,
+  type FleetCustodyFundSummaryDto,
   type FleetCustodyMemoCandidatesDto,
   type FleetCustodyMemoDto,
   type FleetCustodyMemoRowDto,
   type FleetCustodyMemoTotalsDto,
   type FleetCustodyOutsideKindDto,
+  type FleetCustodyReplenishCandidatesDto,
   type FleetCustodySource,
   type FleetReceiptDto,
   type Paginated,
@@ -148,7 +150,10 @@ const mkReceipt = async (
   const kind = over.kind ?? 'tyres';
   const source = over.source ?? 'custody';
   const row = await FleetReceiptModel.create({
-    date: new Date(`${over.date ?? '2026-09-10'}T00:00:00.000Z`),
+    // A bare day is its UTC midnight; a whole ISO moment is kept to the hour.
+    date: new Date(
+      over.date?.includes('T') === true ? over.date : `${over.date ?? '2026-09-10'}T00:00:00.000Z`,
+    ),
     vehicleId: over.vehicleId ?? (await someCar()),
     driverEmployeeId: null,
     driverName: over.driverName ?? 'سائق',
@@ -508,10 +513,19 @@ describe('deleting a memo', () => {
     expect(await memoOf(r2)).toBeNull();
 
     const outside = await fleetCustodyMemoService.outside();
+    // Back outside — and, dated July, long past the 30 days: late as well.
     expect(outside.find((x) => x.kind === 'fuel')).toEqual({
       kind: 'fuel',
       count: fuelBefore.count + 2,
       total: Math.round((fuelBefore.total + 100) * 100) / 100,
+      oldest:
+        fuelBefore.oldest !== null && fuelBefore.oldest < '2026-07-01'
+          ? fuelBefore.oldest
+          : '2026-07-01',
+      stale: {
+        count: fuelBefore.stale.count + 2,
+        total: Math.round((fuelBefore.stale.total + 100) * 100) / 100,
+      },
     });
     const candidates = await fleetCustodyMemoService.candidates({ kind: 'fuel' });
     expect(candidates.receipts.map((x) => x.id)).toEqual(expect.arrayContaining([r1, r2]));
@@ -676,6 +690,120 @@ describe('a receipt’s piastres', () => {
       receipts: 3,
       total: 32.13,
     });
+  });
+});
+
+describe('«إيصالات لم تدخل أي مذكرة بعد» — the oldest day, and the receipts late past 30 days', () => {
+  const kindOf = async (
+    kind: FleetCustodySource,
+    now?: Date,
+  ): Promise<FleetCustodyOutsideKindDto> =>
+    (await fleetCustodyMemoService.outside(now)).find((row) => row.kind === kind)!;
+  const pounds = (value: number): number => Math.round(value * 100) / 100;
+
+  it('a receipt is late from 31 whole UTC days — never at 30, whatever the hour it was written', async () => {
+    const now = new Date('2031-01-15T10:00:00.000Z');
+    const before = await kindOf('wash', now);
+    await mkReceipt({ kind: 'wash', amount: 10, date: '2031-01-15T09:00:00.000Z' }); // today
+    await mkReceipt({ kind: 'wash', amount: 20, date: '2030-12-16T00:00:00.000Z' }); // 30 days
+    await mkReceipt({ kind: 'wash', amount: 40, date: '2030-12-16T23:30:00.000Z' }); // 30 days
+    await mkReceipt({ kind: 'wash', amount: 80.25, date: '2030-12-15T23:59:59.999Z' }); // 31 days
+    await mkReceipt({ kind: 'wash', amount: 160.5, date: '2030-12-15T00:00:00.000Z' }); // 31 days
+    // Never the fund's receipts in no memo: deleted, or paid with a card.
+    await mkReceipt({ kind: 'wash', amount: 999, date: '2030-01-01', isDeleted: true });
+    await mkReceipt({ kind: 'wash', amount: 999, date: '2030-01-01', source: 'card' });
+
+    const after = await kindOf('wash', now);
+    expect(after.count).toBe(before.count + 5);
+    expect(after.total).toBe(pounds(before.total + 310.75));
+    expect(after.stale).toEqual({
+      count: before.stale.count + 2,
+      total: pounds(before.stale.total + 240.75),
+    });
+    // A day on, the two written 30 days before are late too; today's is not.
+    expect((await kindOf('wash', new Date('2031-01-16T00:00:00.000Z'))).stale).toEqual({
+      count: before.stale.count + 4,
+      total: pounds(before.stale.total + 300.75),
+    });
+  });
+
+  it('names its oldest receipt’s day; a memo that takes it moves it on, and a delete brings it back', async () => {
+    const before = await kindOf('maintenance');
+    const ancient = await mkReceipt({
+      kind: 'maintenance',
+      amount: 55,
+      date: '1999-12-31T22:00:00.000Z',
+    });
+    const withIt = await kindOf('maintenance');
+    expect(withIt).toEqual({
+      kind: 'maintenance',
+      count: before.count + 1,
+      total: pounds(before.total + 55),
+      // The board's UTC day, however late in it.
+      oldest: '1999-12-31',
+      stale: { count: before.stale.count + 1, total: pounds(before.stale.total + 55) },
+    });
+    const memo = await createMemo({ kind: 'maintenance', lines: lines([ancient]) });
+    expect(await kindOf('maintenance')).toEqual(before);
+    // The soft delete frees it: outside, oldest and late again.
+    await fleetCustodyMemoService.remove(memo.id, actor);
+    expect(await kindOf('maintenance')).toEqual(withIt);
+    await createMemo({ kind: 'maintenance', lines: lines([ancient]) });
+    expect(await kindOf('maintenance')).toEqual(before);
+  });
+
+  const sameDayCase = async (): Promise<void> => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = new Date();
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const daysAgo = (n: number): string => new Date(today - n * DAY).toISOString().slice(0, 10);
+    const read = async (): Promise<Record<string, FleetCustodyOutsideKindDto[]>> => {
+      const get = (path: string) =>
+        request(app)
+          .get(`/api/v1/fleet/custody${path}`)
+          .set(...auth(tokens.viewer));
+      const [outside, summary, candidates] = await Promise.all([
+        get('/memos/outside'),
+        get('/fund/summary'),
+        get('/fund/replenish/candidates'),
+      ]);
+      return {
+        '/memos/outside': data<FleetCustodyOutsideKindDto[]>(outside),
+        '/fund/summary': data<FleetCustodyFundSummaryDto>(summary).outside,
+        '/fund/replenish/candidates': data<FleetCustodyReplenishCandidatesDto>(candidates).outside,
+      };
+    };
+    const before = await read();
+    const was = before['/memos/outside']!.find((row) => row.kind === 'fuel')!;
+    expect(before['/fund/summary']).toEqual(before['/memos/outside']);
+    expect(before['/fund/replenish/candidates']).toEqual(before['/memos/outside']);
+
+    await mkReceipt({ kind: 'fuel', amount: 7, date: daysAgo(30) });
+    await mkReceipt({ kind: 'fuel', amount: 11, date: daysAgo(31) });
+    for (const [where, rows] of Object.entries(await read())) {
+      expect(rows.map((row) => row.kind)).toEqual(['maintenance', 'fuel', 'tyres', 'wash']);
+      expect(
+        rows.find((row) => row.kind === 'fuel'),
+        where,
+      ).toEqual({
+        kind: 'fuel',
+        count: was.count + 2,
+        total: pounds(was.total + 18),
+        oldest: was.oldest !== null && was.oldest < daysAgo(31) ? was.oldest : daysAgo(31),
+        stale: { count: was.stale.count + 1, total: pounds(was.stale.total + 11) },
+      });
+    }
+  };
+
+  it('reaches «المذكرات», the fund’s figures and «استعاضة عهدة» alike, from today’s UTC day', async () => {
+    // One instant for the whole case: the reads run in-process, so the API's own `new Date()` is
+    // held still with the case's — no UTC midnight can fall between the seeding and the reads.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date() });
+    try {
+      await sameDayCase();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

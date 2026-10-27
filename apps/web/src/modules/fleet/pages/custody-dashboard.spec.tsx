@@ -55,6 +55,7 @@ import {
   custodyTrapFocus,
   type CustodyDashboardFilters,
 } from '../components/CustodyDashboard';
+import { CustodyFundNow } from '../components/CustodyDashboardFund';
 import {
   CUSTODY_RINGS,
   CustodyByKindSource,
@@ -167,6 +168,22 @@ const mount = (qc: QueryClient, node: JSX.Element, path = '/fleet/custody'): str
     </Provider>,
   );
 const draw = (node: JSX.Element): string => mount(client(), node);
+
+/** Each kind's count and amount in one memo state — every kind, zeros kept. */
+const kinds = (
+  over: Partial<Record<'maintenance' | 'fuel' | 'tyres' | 'wash', [number, number]>>,
+): FleetCustodyDashboardDto['memoStates']['outside']['byKind'] => {
+  const pair = (kind: 'maintenance' | 'fuel' | 'tyres' | 'wash') => ({
+    count: over[kind]?.[0] ?? 0,
+    amount: over[kind]?.[1] ?? 0,
+  });
+  return {
+    maintenance: pair('maintenance'),
+    fuel: pair('fuel'),
+    tyres: pair('tyres'),
+    wash: pair('wash'),
+  };
+};
 
 /** 12 October 2026, mid-morning UTC — the time chart's «today». */
 const NOW = Date.UTC(2026, 9, 12, 10);
@@ -292,6 +309,16 @@ const dashboard: FleetCustodyDashboardDto = {
     receiptsWithoutPhoto: 0,
     duplicateReceipts: 0,
   },
+  // By the memos' state: «صيانة» replenished, «كاوتش» waiting in a memo, fuel and washing in none.
+  memoStates: {
+    replenished: { count: 1, amount: 850, byKind: kinds({ maintenance: [1, 850] }) },
+    pending: { count: 1, amount: 1400, byKind: kinds({ tyres: [1, 1400] }) },
+    outside: {
+      count: 4,
+      amount: 2085.5,
+      byKind: kinds({ fuel: [3, 1965.5], wash: [1, 120] }),
+    },
+  },
 };
 
 /**
@@ -331,6 +358,11 @@ const nothing: FleetCustodyDashboardDto = {
     doubleFuel: [],
     receiptsWithoutPhoto: 0,
     duplicateReceipts: 0,
+  },
+  memoStates: {
+    replenished: { count: 0, amount: 0, byKind: kinds({}) },
+    pending: { count: 0, amount: 0, byKind: kinds({}) },
+    outside: { count: 0, amount: 0, byKind: kinds({}) },
   },
 };
 
@@ -718,8 +750,11 @@ describe('«لوحة تحكم» on the custody board', () => {
   it('draws the design’s sections in its order — and nothing the design tool added', () => {
     const html = body({ ...dashboard, alerts: alerting });
     const ids = [...html.matchAll(/data-custody-dashboard-section="(\w+)"/gu)].map((m) => m[1]);
+    // «العهدة الآن» first — its four cards shimmer here, their reads on their way (their own suite
+    // draws them) — then the filtered spend under its heading, in the design's order.
     expect(ids).toEqual([
       'alerts',
+      'fund',
       'kpis',
       'timeline',
       'byKindSource',
@@ -967,8 +1002,8 @@ describe('(2) the five figures and the three tiles', () => {
   it('leads with the total in emerald — «100% من المصروف الكلي» and the period’s days', () => {
     const html = kpis();
     const order = [...html.matchAll(/data-custody-kpi="(\w+)"/gu)].map((m) => m[1]);
-    // «إجمالي العهدة» first — the fund before what it paid for.
-    expect(order).toEqual(['fund', 'total', 'maintenance', 'fuel', 'tyres', 'wash']);
+    // Five: «إجمالي العهدة» moved up to «العهدة الآن», where no filter reaches it.
+    expect(order).toEqual(['total', 'maintenance', 'fuel', 'tyres', 'wash']);
     const total = card(html, 'total');
     expect(total).toContain('4,335.50');
     expect(text(total)).toContain('100% من المصروف الكلي');
@@ -1643,8 +1678,17 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
   it('draws every section in the design’s order — never the old card «لم يُخصم شيء من العهدة بعد»', () => {
     const html = body(nothing);
     const ids = [...html.matchAll(/data-custody-dashboard-section="(\w+)"/gu)].map((m) => m[1]);
-    // The banner keeps its own rules: nothing to warn about, no banner.
-    expect(ids).toEqual(['kpis', 'timeline', 'byKindSource', 'topCars', 'topDrivers', 'fuel']);
+    // The banner keeps its own rules: nothing to warn about, no banner. «العهدة الآن» is there
+    // whatever the spend — the fund is the fund.
+    expect(ids).toEqual([
+      'fund',
+      'kpis',
+      'timeline',
+      'byKindSource',
+      'topCars',
+      'topDrivers',
+      'fuel',
+    ]);
     expect(html).not.toContain(ar('fleet.custody.empty'));
     expect(html).not.toContain(ar('fleet.violations.report.empty'));
     expect(html).not.toMatch(/NaN|Infinity/u);
@@ -1670,28 +1714,30 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
     );
   });
 
-  it('writes the six figures and the three tiles at zero — the fund «0%» spent, a share of nothing «—»', () => {
+  it('writes the five figures and the three tiles at zero — the fund «0%» spent, a share of nothing «—»', () => {
     const html = draw(<CustodyKpis data={nothing} />);
     expect([...html.matchAll(/data-custody-kpi="(\w+)"/gu)].map((m) => m[1])).toEqual([
-      'fund',
       'total',
       'maintenance',
       'fuel',
       'tyres',
       'wash',
     ]);
-    // The fund is the fund: with money in it, it is written whole, and nothing spent yet of what
-    // was charged into it is «0%» («صُرف من إجمالي الشحن»).
-    const fund = card(html, 'fund');
+    // The fund is the fund, in «العهدة الآن»: with money in it, it is written whole, and nothing
+    // spent yet of what was charged into it is «0%» («صُرف من إجمالي الشحن»).
+    const fundNow = (data: FleetCustodyDashboardDto): string => {
+      const now = draw(<CustodyFundNow data={data} />);
+      return now.slice(now.indexOf('data-custody-fund-now="true"'));
+    };
+    const fund = fundNow(nothing);
     expect(fund).toContain('50,000.00');
     expect(fund).toMatch(/data-custody-fund-pct="true"[^>]*>0%</u);
     // Nothing charged into it yet («شحن العهدة»): «0.00 ج.م.», never «—» — and its share «—».
-    const empty = card(
-      draw(<CustodyKpis data={{ ...nothing, fundTotal: 0, fundCharged: 0 }} />),
-      'fund',
-    );
+    const empty = fundNow({ ...nothing, fundTotal: 0, fundCharged: 0 });
     expect(empty).toMatch(/data-custody-fund-value="true"[^>]*>0\.00</u);
     expect(empty).toMatch(/data-custody-fund-pct="true"[^>]*>—</u);
+    // Nothing spent: no bar of the memos' state on any card.
+    expect(html).not.toContain('data-custody-memo-state=');
     // The total and each kind: «0.00», their share of nothing «—», their count «0 حركات».
     expect(card(html, 'total')).toContain('0.00');
     expect(card(html, 'total')).toMatch(pct('—'));

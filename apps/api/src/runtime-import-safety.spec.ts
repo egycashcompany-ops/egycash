@@ -19,8 +19,18 @@
 // `ReferenceError` the first time an operator ran it, and this file stayed green throughout —
 // including when the broken import was put back to test it. An entrypoint runs ALONE, so it has
 // to be proved alone.
-import { execFileSync } from 'node:child_process';
+//
+// AND AWAITED, never `execFileSync`. Vitest runs one file's tests back to back with no turn of the
+// worker's event loop between them, so thirteen blocking subprocesses held the worker for their
+// whole sum. Past 60 s (a loaded machine: 64–71 s) the worker's own «onTaskUpdate» call to the
+// runner timed out before its answer could be read — «[vitest-worker]: Timeout calling
+// "onTaskUpdate"», and the whole api run exited 1 with every test green. Awaiting the subprocess
+// keeps the loop turning while it runs.
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { describe, it } from 'vitest';
+
+const execFileAsync = promisify(execFile);
 
 // The shared roots the entrypoints load. server/worker/seed themselves call main() at import —
 // which would connect to Mongo — so the graph is proved through the modules they are made of.
@@ -73,17 +83,18 @@ const RUNTIME_ROOTS = [
 describe('runtime import safety', () => {
   it.each(RUNTIME_ROOTS)(
     '%s loads on its own, outside a vitest run',
-    (root) => {
+    async (root) => {
       // The question is whether IMPORTING throws — not what exit code a module chose. The report CLI
       // runs `main()` at import and, with no database configured, prints its usage and sets a
       // non-zero code; that is correct behaviour and must not read as an import failure here.
       const script = `await import(${JSON.stringify(root)});\nprocess.exitCode = 0;`;
       try {
         // `--import tsx` resolves TypeScript exactly like the package scripts' tsx CLI does.
-        execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
-          stdio: 'pipe',
-          timeout: 120_000,
-        });
+        await execFileAsync(
+          process.execPath,
+          ['--import', 'tsx', '--input-type=module', '-e', script],
+          { timeout: 120_000 },
+        );
       } catch (error) {
         const stderr =
           error instanceof Error && 'stderr' in error

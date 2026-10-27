@@ -4084,6 +4084,56 @@ const en: Record<string, string> = {
   'fleet.custody.dashboard.carLog.ofSpend': 'of all custody spend',
   'fleet.custody.dashboard.carLog.movements': 'The car’s movements',
   'fleet.custody.dashboard.carLog.empty': 'This car has no movement under these filters.',
+  // «العهدة الآن» on «لوحة تحكم العهدة»: the fund over its whole history, its waiting money, its
+  // history, its alert lines; and «مصروفات العهدة حسب الفلاتر» with the spend by its memos' state.
+  'fleet.custody.dashboard.fund.heading': 'The custody fund now',
+  'fleet.custody.dashboard.fund.scope': 'Since the fund began — the filters do not change it',
+  'fleet.custody.dashboard.spend.heading': 'Custody spending by the filters',
+  'fleet.custody.dashboard.waiting.title': 'Spent and not replenished yet',
+  'fleet.custody.dashboard.waiting.note':
+    'It comes back to the fund when the custody is replenished.',
+  'fleet.custody.dashboard.waiting.inMemos': 'In memos not replenished yet',
+  'fleet.custody.dashboard.waiting.oldest': 'Oldest {{age}}',
+  'fleet.custody.dashboard.waiting.noOutside': 'No receipts',
+  'fleet.custody.dashboard.waiting.showMemos': 'View the memos',
+  'fleet.custody.dashboard.settle.title': 'Licence expenses not settled yet',
+  'fleet.custody.dashboard.settle.note': 'They come off the fund when the custody is settled.',
+  'fleet.custody.dashboard.settle.show': 'View the licence expenses',
+  'fleet.custody.dashboard.steps.title': 'The custody fund after each operation',
+  'fleet.custody.dashboard.steps.note':
+    'Every top-up, replenishment and settlement, and the receipts spent between them.',
+  'fleet.custody.dashboard.steps.capped': 'Last {{count}} operations',
+  'fleet.custody.dashboard.steps.after': 'after',
+  'fleet.custody.dashboard.steps.empty': 'No operation on the custody fund yet.',
+  'fleet.custody.dashboard.recent.title': 'Latest custody operations',
+  'fleet.custody.dashboard.recent.showLog': 'View the custody log',
+  'fleet.custody.dashboard.age.today': 'today',
+  'fleet.custody.dashboard.age.one': '1 day ago',
+  'fleet.custody.dashboard.age.two': '2 days ago',
+  'fleet.custody.dashboard.age.few': '{{count}} days ago',
+  'fleet.custody.dashboard.age.many': '{{count}} days ago',
+  'fleet.custody.dashboard.age.other': '{{count}} days ago',
+  'fleet.custody.dashboard.alerts.negative':
+    'The custody fund is below zero: {{amount}} — more was spent from it than was topped up.',
+  'fleet.custody.dashboard.alerts.stale.one':
+    '1 {{kind}} receipt ({{amount}}) has been in no memo for more than {{days}} days — dated {{date}}',
+  'fleet.custody.dashboard.alerts.stale.two':
+    '2 {{kind}} receipts ({{amount}}) have been in no memo for more than {{days}} days — the oldest dated {{date}}',
+  'fleet.custody.dashboard.alerts.stale.few':
+    '{{count}} {{kind}} receipts ({{amount}}) have been in no memo for more than {{days}} days — the oldest dated {{date}}',
+  'fleet.custody.dashboard.alerts.stale.many':
+    '{{count}} {{kind}} receipts ({{amount}}) have been in no memo for more than {{days}} days — the oldest dated {{date}}',
+  'fleet.custody.dashboard.alerts.stale.other':
+    '{{count}} {{kind}} receipts ({{amount}}) have been in no memo for more than {{days}} days — the oldest dated {{date}}',
+  'fleet.custody.dashboard.alerts.memo': '{{memo}} has not been replenished — {{age}}',
+  'fleet.custody.dashboard.alerts.licence':
+    'The {{part}} memo of {{date}} has not been settled — {{age}}',
+  'fleet.custody.dashboard.alerts.settleOver':
+    'The settlements waiting ({{total}}) are more than the custody fund holds now ({{fund}})',
+  'fleet.custody.dashboard.states.replenished': 'Replenished',
+  'fleet.custody.dashboard.states.pending': 'In memos not replenished',
+  'fleet.custody.dashboard.states.outside': 'In no memo',
+  'fleet.custody.dashboard.states.waitingLine': 'Not replenished: {{amount}}',
   // «العهدة · المذكرات · سجل العهدة»: the custody tabs, the counted nouns (one, two, few, many,
   // other) and the parts the memos and the ledger share.
   'fleet.custody.tabs.memos': 'Memos',
@@ -13625,6 +13675,54 @@ const ar: Record<string, string> = {
   'fleet.custody.dashboard.carLog.ofSpend': 'من إجمالي مصروفات العهدة',
   'fleet.custody.dashboard.carLog.movements': 'حركات السيارة',
   'fleet.custody.dashboard.carLog.empty': 'لا حركات لهذه السيارة حسب الفلاتر.',
+  // «العهدة الآن» on «لوحة تحكم العهدة»: the fund over its whole history, its waiting money, its
+  // history, its alert lines; and «مصروفات العهدة حسب الفلاتر» with the spend by its memos' state.
+  'fleet.custody.dashboard.fund.heading': 'العهدة الآن',
+  'fleet.custody.dashboard.fund.scope': 'من بداية العهدة، ولا تتأثر بالفلاتر',
+  'fleet.custody.dashboard.spend.heading': 'مصروفات العهدة حسب الفلاتر',
+  'fleet.custody.dashboard.waiting.title': 'مبالغ صُرفت ولم تُستعَض بعد',
+  'fleet.custody.dashboard.waiting.note': 'تعود إلى إجمالي العهدة عند «استعاضة العهدة».',
+  'fleet.custody.dashboard.waiting.inMemos': 'في مذكرات لم تُستعَض بعد',
+  'fleet.custody.dashboard.waiting.oldest': 'أقدمها {{age}}',
+  'fleet.custody.dashboard.waiting.noOutside': 'لا توجد إيصالات',
+  'fleet.custody.dashboard.waiting.showMemos': 'عرض المذكرات',
+  'fleet.custody.dashboard.settle.title': 'مصروفات تراخيص لم تُسوَّ بعد',
+  'fleet.custody.dashboard.settle.note': 'تُخصم من إجمالي العهدة عند «تسوية العهدة».',
+  'fleet.custody.dashboard.settle.show': 'عرض مصروفات التراخيص',
+  'fleet.custody.dashboard.steps.title': 'إجمالي العهدة بعد كل عملية',
+  'fleet.custody.dashboard.steps.note':
+    'كل عملية شحن واستعاضة وتسوية، ومصروفات الإيصالات بين العمليات.',
+  'fleet.custody.dashboard.steps.capped': 'آخر {{count}} عملية',
+  'fleet.custody.dashboard.steps.after': 'بعدها',
+  'fleet.custody.dashboard.steps.empty': 'لا توجد عمليات على العهدة بعد.',
+  'fleet.custody.dashboard.recent.title': 'آخر عمليات العهدة',
+  'fleet.custody.dashboard.recent.showLog': 'عرض سجل العهدة',
+  'fleet.custody.dashboard.age.today': 'اليوم',
+  'fleet.custody.dashboard.age.one': 'منذ يوم واحد',
+  'fleet.custody.dashboard.age.two': 'منذ يومين',
+  'fleet.custody.dashboard.age.few': 'منذ {{count}} أيام',
+  'fleet.custody.dashboard.age.many': 'منذ {{count}} يومًا',
+  'fleet.custody.dashboard.age.other': 'منذ {{count}} يوم',
+  'fleet.custody.dashboard.alerts.negative':
+    'إجمالي العهدة بالسالب: {{amount}} — صُرف من العهدة أكثر مما شُحن فيها.',
+  'fleet.custody.dashboard.alerts.stale.one':
+    'إيصال {{kind}} واحد ({{amount}}) لم يدخل أي مذكرة منذ أكثر من {{days}} يومًا — بتاريخ {{date}}',
+  'fleet.custody.dashboard.alerts.stale.two':
+    'إيصالا {{kind}} ({{amount}}) لم يدخلا أي مذكرة منذ أكثر من {{days}} يومًا — أقدمهما بتاريخ {{date}}',
+  'fleet.custody.dashboard.alerts.stale.few':
+    '{{count}} إيصالات {{kind}} ({{amount}}) لم تدخل أي مذكرة منذ أكثر من {{days}} يومًا — أقدمها بتاريخ {{date}}',
+  'fleet.custody.dashboard.alerts.stale.many':
+    '{{count}} إيصالًا من نوع {{kind}} ({{amount}}) لم تدخل أي مذكرة منذ أكثر من {{days}} يومًا — أقدمها بتاريخ {{date}}',
+  'fleet.custody.dashboard.alerts.stale.other':
+    '{{count}} إيصال {{kind}} ({{amount}}) لم تدخل أي مذكرة منذ أكثر من {{days}} يومًا — أقدمها بتاريخ {{date}}',
+  'fleet.custody.dashboard.alerts.memo': '{{memo}} لم تُستعَض {{age}}',
+  'fleet.custody.dashboard.alerts.licence': 'مذكرة {{part}} بتاريخ {{date}} لم تُسوَّ {{age}}',
+  'fleet.custody.dashboard.alerts.settleOver':
+    'التسويات المنتظرة ({{total}}) تتجاوز إجمالي العهدة الآن ({{fund}})',
+  'fleet.custody.dashboard.states.replenished': 'تمت الاستعاضة',
+  'fleet.custody.dashboard.states.pending': 'في مذكرات لم تُستعَض',
+  'fleet.custody.dashboard.states.outside': 'خارج المذكرات',
+  'fleet.custody.dashboard.states.waitingLine': 'لم تُستعَض: {{amount}}',
   // «العهدة · المذكرات · سجل العهدة»: the custody tabs, the counted nouns (one, two, few, many,
   // other) and the parts the memos and the ledger share.
   'fleet.custody.tabs.memos': 'المذكرات',

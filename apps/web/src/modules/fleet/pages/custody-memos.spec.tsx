@@ -121,10 +121,16 @@ const paged = (items: FleetCustodyMemoRowDto[]): Paginated<FleetCustodyMemoRowDt
 /** Twelve memos the filters match — more than the two rows on this page. */
 const TOTALS: FleetCustodyMemoTotalsDto = { count: 12, receipts: 140, total: 98_765.5 };
 const OUTSIDE: FleetCustodyOutsideKindDto[] = [
-  { kind: 'maintenance', count: 3, total: 5720 },
-  { kind: 'fuel', count: 8, total: 7876 },
-  { kind: 'tyres', count: 0, total: 0 },
-  { kind: 'wash', count: 4, total: 600 },
+  {
+    kind: 'maintenance',
+    count: 3,
+    total: 5720,
+    oldest: '2026-10-06',
+    stale: { count: 0, total: 0 },
+  },
+  { kind: 'fuel', count: 8, total: 7876, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
+  { kind: 'tyres', count: 0, total: 0, oldest: null, stale: { count: 0, total: 0 } },
+  { kind: 'wash', count: 4, total: 600, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
 ];
 const FUND: FleetCustodyFundSummaryDto = {
   fundTotal: 1000,

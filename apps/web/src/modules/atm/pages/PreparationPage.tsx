@@ -16,13 +16,12 @@
 //
 // THE DAY IS THE SERVER'S SUGGESTION (DS-25) — the earliest day from today with issued lines not yet
 // prepared — and is never remembered; `bank` is; `line` is a selection.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ATM_BANK_NAMES,
   cleanScannedValue,
   normalizeAtmMachineCode,
-  scannedValueWarnings,
   type AtmPreparationLineDto,
   type Locale,
 } from '@ecms/contracts';
@@ -51,17 +50,19 @@ import { BlockedNotice, DayField } from '../components/settlements/DayField';
 import { RunChip } from '../components/settlements/RunChip';
 import { SettlementFigures } from '../components/settlements/SettlementFigures';
 import {
+  advanceStep,
+  applyAdvance,
   fieldId,
   fieldOrder,
   isDirty,
   localDuplicates,
   mergeAfterConflict,
-  nextField,
   requiredMissing,
   resolveConflict,
   saveBodyOf,
   seedOnce,
   setFieldValue,
+  type AdvanceStep,
   type CaptureFieldId,
   type CaptureForm,
 } from '../lib/preparation-form';
@@ -229,23 +230,31 @@ export const PreparationPage = (): JSX.Element => {
   const onChange = (id: CaptureFieldId, value: string): void => {
     if (form !== null) setForm(setFieldValue(form, id, value));
   };
+  const saveButton = (): HTMLElement | null => document.getElementById(CAPTURE_SAVE_ID);
   const onAdvance = (id: CaptureFieldId): void => {
     if (form === null || selected === null) return;
     const cleaned = cleanScannedValue(form.values[id]) ?? '';
     setForm(setFieldValue(form, id, cleaned));
-    const hasArabic = cleaned !== '' && scannedValueWarnings(cleaned).includes('ARABIC_LETTERS');
+    const step = advanceStep(selected.preparation.bags, id, cleaned);
     setArabic((current) => {
       const next = new Set(current);
-      if (hasArabic) next.add(id);
+      if (step.kind === 'rescan') next.add(id);
       else next.delete(id);
       return next;
     });
-    // Arabic letters: the keyboard layout was wrong — stay, so the same field is scanned again.
-    if (hasArabic) return;
-    const next = nextField(fieldOrder(selected.preparation.bags), id);
-    if (next === null) document.getElementById(CAPTURE_SAVE_ID)?.focus();
-    else fields.current.get(fieldId(next))?.focus();
+    // Arabic letters: the keyboard layout was wrong — stay, the text selected, so the re-scan
+    // replaces it. Selected again after the commit: React writing a changed (cleaned) value moves
+    // the caret to the end.
+    if (step.kind === 'rescan') rescan.current = step;
+    applyAdvance(step, (f) => fields.current.get(f), saveButton);
   };
+  const rescan = useRef<AdvanceStep | null>(null);
+  useLayoutEffect(() => {
+    const step = rescan.current;
+    if (step === null) return;
+    rescan.current = null;
+    applyAdvance(step, (f) => fields.current.get(f), saveButton);
+  });
 
   const duplicates = useMemo(() => (form === null ? [] : localDuplicates(form.values)), [form]);
   const missing = useMemo(() => {
@@ -434,7 +443,7 @@ export const PreparationPage = (): JSX.Element => {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
           <section
             aria-label={t('atm.prep.title')}
-            className="min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white lg:w-[440px] lg:shrink-0 dark:border-slate-800 dark:bg-slate-900"
+            className="relative min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white lg:w-[440px] lg:shrink-0 dark:border-slate-800 dark:bg-slate-900"
           >
             <table className="w-full border-collapse text-sm" data-prep-lines="true">
               <thead className="bg-slate-50 dark:bg-slate-800/60">

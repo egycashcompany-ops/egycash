@@ -82,6 +82,7 @@ import {
   PLAN_STATE_TONE,
   blockedKey,
   blockedOf,
+  currentVersion,
   denominationMinor,
   formatEgp,
   lineCode,
@@ -294,7 +295,11 @@ export const SettlementPlanPage = (): JSX.Element => {
     const mutation = kind === 'reopen' ? reopen : cancel;
     setReasonError(null);
     mutation.mutate(
-      { planId: plan.id, lineId: line.id, body: { version: line.version, reason } },
+      {
+        planId: plan.id,
+        lineId: line.id,
+        body: { version: currentVersion(plan.lines, line), reason },
+      },
       {
         onSuccess: () => setReasonFor(null),
         onError: (error) => setReasonError(settlementErrorText(error, t, locale)),
@@ -309,7 +314,7 @@ export const SettlementPlanPage = (): JSX.Element => {
       {
         planId: plan.id,
         lineId: spareUseFor.id,
-        body: { version: spareUseFor.version, machineCode },
+        body: { version: currentVersion(plan.lines, spareUseFor), machineCode },
       },
       {
         onSuccess: () => setSpareUseFor(null),

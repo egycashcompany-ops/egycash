@@ -462,6 +462,7 @@ export const ATM_PLAN_LINE_WARNING_CODES = [
   'NOT_MULTIPLE_OF_100',
   'LAYOUT_CHANGED',
   'LAYOUT_CHANGED_AFTER_ISSUE',
+  'STANDARD_LOAD_CHANGED',
   'NO_TIME',
   'STANDARD_DENOMINATION_UNPLACED',
   'DIFFERS_FROM_STANDARD',
@@ -492,6 +493,9 @@ export interface AtmPlanLineIssueInput {
   hubLabel: string | null;
   layoutRevision: number | null;
   standardNotes: readonly AtmDenominationNotes[] | null;
+  /** The profile the counts came from, and whether the user chose it for the line (MONEY-2). */
+  standardLoadId: string | null;
+  standardLoadChosen: boolean;
 }
 
 /** What a line snapshots of its machine's layout (DS-29): the slots and the three labels. */
@@ -511,6 +515,12 @@ export interface AtmPlanLineIssueContext {
   /** Machine lines: the machine's current layout, or null when it has none. */
   layout: ({ revision: number } & AtmLayoutContent) | null;
   /**
+   * Machine lines: the profile a refresh fills a line from when the line did not choose its own
+   * (§6.5 S16 step 1) — the layout's standard load while it is live, else the bank's default; null
+   * when there is none.
+   */
+  refreshStandardLoadId: string | null;
+  /**
    * Machine lines: the machine is live and active and its register bank (DS-3) is still the
    * plan's. Ignored for a spare line.
    */
@@ -520,8 +530,12 @@ export interface AtmPlanLineIssueContext {
   today: string;
 }
 
-/** The slots (kind, denomination, currency by slot) and labels, comparable as one string. */
-const layoutContentKey = (content: AtmLayoutContent): string =>
+/**
+ * The slots (kind, denomination, currency by slot) and labels, comparable as one string — what a
+ * line copies of its layout and what LAYOUT_CHANGED compares (MONEY-3); the layout editor asks
+ * before a save only when it changes this (FIT-3).
+ */
+export const layoutContentKey = (content: AtmLayoutContent): string =>
   JSON.stringify([
     [...content.slots]
       .sort((a, b) => a.slot - b.slot)
@@ -584,6 +598,19 @@ export const planLineIssues = (
     ctx.replenishDate >= ctx.today
   ) {
     warning('LAYOUT_CHANGED_AFTER_ISSUE');
+  }
+  // The machine's standard load changed (a save that re-points it, which raises no LAYOUT_CHANGED):
+  // a draft that did not choose its own profile holds counts from another profile than a refresh
+  // would take now, so it offers the refresh. A line that chose its profile keeps it on a refresh.
+  if (
+    isMachine &&
+    line.status === 'draft' &&
+    ctx.layout !== null &&
+    !revisionMoved &&
+    !line.standardLoadChosen &&
+    line.standardLoadId !== ctx.refreshStandardLoadId
+  ) {
+    warning('STANDARD_LOAD_CHANGED');
   }
   if (line.scheduleTime === null) warning('NO_TIME');
   if (line.standardNotes !== null) {

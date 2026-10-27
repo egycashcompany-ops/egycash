@@ -219,6 +219,16 @@ describe('the data tab', () => {
     expect(html).toContain(t('atm.prep.duplicate.outsideReach'));
   });
 
+  it('clips the ⚠’s screen-reader text inside its scroll box — no page-wide scroll (LIVE-5)', () => {
+    // `sr-only` is `position: absolute`: an `overflow-x-auto` box clips it only when positioned.
+    expect(html).toContain('sr-only');
+    const scrollers = [...html.matchAll(/class="([^"]*\boverflow-x-auto\b[^"]*)"/g)].map(
+      (m) => m[1],
+    );
+    expect(scrollers.length).toBeGreaterThan(0);
+    for (const cls of scrollers) expect(cls?.split(' ')).toContain('relative');
+  });
+
   it('prints for the print key, and not without it', () => {
     expect(html).toContain('data-control-action="handover"');
     expect(html).toContain('data-control-action="routes"');

@@ -77,7 +77,10 @@ export const PageHeader = ({
         {aside !== undefined && <div className="min-w-0">{aside}</div>}
       </div>
     ) : null}
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    {/* The title line WRAPS: actions that do not fit beside the title (and its figures) go to a
+        line of their own, at its end, and wrap there — instead of squeezing the title to nothing
+        and running off the screen (a `shrink-0` action row cannot wrap). */}
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div
         className={
           figures === undefined
@@ -91,7 +94,9 @@ export const PageHeader = ({
         {figures}
       </div>
       {actions !== undefined && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ms-auto sm:justify-end">
+          {actions}
+        </div>
       )}
     </div>
   </div>

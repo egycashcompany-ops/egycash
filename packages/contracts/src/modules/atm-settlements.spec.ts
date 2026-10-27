@@ -459,6 +459,8 @@ describe('planLineIssues (§3.7)', () => {
       { denomination: 100, notes: 1300 },
       { denomination: 50, notes: 900 },
     ],
+    standardLoadId: 'load-1',
+    standardLoadChosen: false,
   });
   /** The machine's layout at `revision`, the content `clean()` copied unless `over` changes it. */
   const layoutAt = (
@@ -471,6 +473,7 @@ describe('planLineIssues (§3.7)', () => {
   const ctx = (over: Partial<AtmPlanLineIssueContext> = {}): AtmPlanLineIssueContext => ({
     otherLines: [],
     layout: layoutAt(3),
+    refreshStandardLoadId: 'load-1',
     machinePlannable: true,
     replenishDate: today,
     today,
@@ -555,6 +558,26 @@ describe('planLineIssues (§3.7)', () => {
     expect(codes(clean(), ctx({ layout: layoutAt(4) }))).toEqual([]);
     expect(codes({ ...clean(), status: 'issued' }, ctx({ layout: layoutAt(4) }))).toEqual([]);
     expect(codes({ ...clean(), status: 'prepared' }, ctx({ layout: layoutAt(9) }))).toEqual([]);
+  });
+
+  it('STANDARD_LOAD_CHANGED on a draft whose refresh would take another profile (FIT-3)', () => {
+    // The layout's standard load was re-pointed: the revision moved, the content did not.
+    const repointed = ctx({ layout: layoutAt(4), refreshStandardLoadId: 'load-2' });
+    expect(codes(clean(), repointed)).toEqual(['STANDARD_LOAD_CHANGED']);
+    // A line that chose its own profile keeps it on a refresh: nothing to offer.
+    expect(codes({ ...clean(), standardLoadChosen: true }, repointed)).toEqual([]);
+    // An issued line's counts are on its Note; only a draft is refreshed.
+    expect(codes({ ...clean(), status: 'issued' }, repointed)).toEqual([]);
+    // The content changed too: LAYOUT_CHANGED already offers the refresh, once.
+    const both = ctx({
+      layout: layoutAt(4, { typeLabel: 'BRK (T2)' }),
+      refreshStandardLoadId: 'load-2',
+    });
+    expect(codes(clean(), both)).toEqual(['LAYOUT_CHANGED']);
+    // A spare line has no machine to follow.
+    expect(codes({ ...clean(), kind: 'spare', machineId: null }, repointed)).not.toContain(
+      'STANDARD_LOAD_CHANGED',
+    );
   });
 
   it('STANDARD_DENOMINATION_UNPLACED when the profile carries a denomination no slot has', () => {

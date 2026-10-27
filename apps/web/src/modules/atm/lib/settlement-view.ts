@@ -26,6 +26,20 @@ import { type Tone } from '../../../shared/ui/Badge';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
+/**
+ * «تحديث من فئات الماكينة» is offered on a draft machine line whose machine changed since the line
+ * was filled: its slots or labels (`LAYOUT_CHANGED`), or the standard load a refresh would take
+ * (`STANDARD_LOAD_CHANGED` — a layout save that only re-points it, FIT-3).
+ */
+export const offersLayoutRefresh = (line: {
+  status: AtmPlanLineStatus;
+  kind: 'machine' | 'spare';
+  issues: readonly { code: string }[];
+}): boolean =>
+  line.status === 'draft' &&
+  line.kind === 'machine' &&
+  line.issues.some((i) => i.code === 'LAYOUT_CHANGED' || i.code === 'STANDARD_LOAD_CHANGED');
+
 /** «مسودة» / «معتمدة» / «جاهزة» / «ملغاة». */
 export const lineStatusKey = (status: AtmPlanLineStatus): string =>
   `atm.settlement.status.${status}`;
@@ -112,6 +126,28 @@ export const lineChips = (slots: readonly AtmPlanSlot[]): LineChip[] =>
       const [background, colour] = DENOMINATION_COLOURS[denomination] ?? OTHER_COLOURS;
       return { slot: s.slot, denomination, notes: s.notes, bag: s.bag, background, colour };
     });
+
+/**
+ * A bag's heading: «الشوال الثاني — الكاسيتات ٥ إلى ٨», or «الشوال الثاني — الكاسيت ٥» when it holds
+ * one cassette (a 5-cassette machine's second bag). The slot numbers in the UI's digits.
+ */
+export const bagSlotsText = (
+  bag: 1 | 2,
+  slots: readonly number[],
+  t: Translate,
+  locale: Locale,
+): string => {
+  const name = t(`atm.settlement.bag.${String(bag)}`);
+  const from = slots[0] ?? 0;
+  const to = slots[slots.length - 1] ?? 0;
+  return from === to
+    ? t('atm.settlement.bag.slot', { bag: name, slot: formatNumber(from, locale) })
+    : t('atm.settlement.bag.slots', {
+        bag: name,
+        from: formatNumber(from, locale),
+        to: formatNumber(to, locale),
+      });
+};
 
 /** «شوال واحد» / «شوالان (4 كاسيتات في الشوال)» — a line has one or two bags (S-6). */
 export const bagsText = (bags: number, t: Translate): string =>
@@ -203,8 +239,8 @@ export const settlementErrorText = (error: unknown, t: Translate, locale: Locale
       return t('atm.plan.error.issueBlocked');
     case ErrorCodes.ATM_STANDARD_LOAD_IN_USE:
       return t('atm.layouts.error.inUse', {
-        layouts: detailCount(error, 'layouts'),
-        draftLines: detailCount(error, 'draftLines'),
+        layouts: formatNumber(detailCount(error, 'layouts'), locale),
+        draftLines: formatNumber(detailCount(error, 'draftLines'), locale),
       });
     case ErrorCodes.ATM_LAYOUT_IMPORT_FILE_CHANGED:
       return t('atm.layoutImport.error.fileChanged');
@@ -227,6 +263,7 @@ export const settlementErrorText = (error: unknown, t: Translate, locale: Locale
   }
   const field = detailCode(error, [
     'SLOT_NOT_FILLABLE',
+    'DUPLICATE_IN_RUN',
     'CASSETTE_NOTES_MAX',
     'INVALID_SEAL',
     'DUPLICATE_NAME',
@@ -234,6 +271,8 @@ export const settlementErrorText = (error: unknown, t: Translate, locale: Locale
     'UNREADABLE',
   ]);
   if (field === 'SLOT_NOT_FILLABLE') return t('atm.plan.error.slotNotFillable');
+  // A draft moved onto a run its machine already has (§6.5 S16): the add dialog's own words.
+  if (field === 'DUPLICATE_IN_RUN') return t('atm.plan.refused.duplicateInRun');
   if (field === 'CASSETTE_NOTES_MAX') {
     return t('atm.plan.error.cassetteNotesMax', {
       max: formatNumber(ATM_CASSETTE_NOTES_MAX, locale),
@@ -249,6 +288,16 @@ export const settlementErrorText = (error: unknown, t: Translate, locale: Locale
 /** A 409 the page answers by re-reading what it shows (`STALE_DOCUMENT`, incl. a route `MOVED`). */
 export const isStale = (error: unknown): boolean =>
   error instanceof ApiError && error.code === ErrorCodes.STALE_DOCUMENT;
+
+/**
+ * The version a write from an open dialog sends: the record's CURRENT version in the query data,
+ * not the one the dialog kept when it opened. After a 409 the page re-reads (a Control move bumps a
+ * line's and a route's version — SEC-3), so a retry from the same dialog must send the new one.
+ */
+export const currentVersion = <T extends { id: string; version: number }>(
+  items: readonly T[] | null | undefined,
+  snapshot: T,
+): number => items?.find((item) => item.id === snapshot.id)?.version ?? snapshot.version;
 
 // ── Money (DS-28) ───────────────────────────────────────────────────────────
 

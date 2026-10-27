@@ -66,7 +66,7 @@ export const ControlDataTab = ({
     });
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <table className="w-full min-w-[72rem] border-collapse" data-control-lines="true">
         <thead className="bg-slate-50 dark:bg-slate-800/60">
           <tr>

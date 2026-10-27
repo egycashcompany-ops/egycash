@@ -41,7 +41,7 @@ export const PlanLinesTable = ({
 }): JSX.Element => {
   const t = useT();
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <table className="w-full min-w-[56rem] border-collapse" data-plan-lines="true">
         <thead className="bg-slate-50 dark:bg-slate-800/60">
           <tr>
@@ -123,7 +123,10 @@ export const PlanLinesTable = ({
                     {line.issues.length > 0 && (
                       <span
                         data-line-issues={line.id}
-                        title={t('atm.plan.issuesCount', { errors, warnings })}
+                        title={t('atm.plan.issuesCount', {
+                          errors: formatNumber(errors, locale),
+                          warnings: formatNumber(warnings, locale),
+                        })}
                         className={cn(
                           'inline-flex items-center gap-1 text-xs',
                           errors > 0
@@ -132,7 +135,12 @@ export const PlanLinesTable = ({
                         )}
                       >
                         <AlertIcon className="h-4 w-4" aria-hidden="true" />
-                        <span>{t('atm.plan.issuesCount', { errors, warnings })}</span>
+                        <span>
+                          {t('atm.plan.issuesCount', {
+                            errors: formatNumber(errors, locale),
+                            warnings: formatNumber(warnings, locale),
+                          })}
+                        </span>
                       </span>
                     )}
                   </span>

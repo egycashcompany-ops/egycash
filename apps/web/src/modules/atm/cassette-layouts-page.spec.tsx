@@ -25,7 +25,7 @@ import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { CassetteLayoutsPage } from './pages/CassetteLayoutsPage';
 import { LayoutImportPage, applyEstimate } from './pages/LayoutImportPage';
-import { versionDiff } from './components/settlements/LayoutEditor';
+import { layoutContentChanged, versionDiff } from './components/settlements/LayoutEditor';
 import { withKind } from './components/settlements/SlotEditor';
 import { duplicateTexts } from './components/settlements/DuplicateNote';
 import {
@@ -278,6 +278,24 @@ describe('the pure pieces', () => {
       ].join(' · '),
     );
     expect(versionDiff(newer, undefined, t)).toBe('');
+  });
+
+  it('layoutContentChanged: only slots or a label make the save ask first (FIT-3)', () => {
+    const layout = row(1).layout;
+    if (layout === null) throw new Error('fixture');
+    const same = {
+      slots: [...layout.slots].reverse(),
+      typeLabel: layout.typeLabel,
+      featuresLabel: layout.featuresLabel,
+      hubLabel: layout.hubLabel,
+    };
+    // Re-pointing the standard load or adding a reason leaves what a line copies as it was.
+    expect(layoutContentChanged(layout, same)).toBe(false);
+    expect(layoutContentChanged(layout, { ...same, hubLabel: 'HUB-T-2' })).toBe(true);
+    expect(
+      layoutContentChanged(layout, { ...same, slots: [w(1, 200), w(2, 100), w(3, 50), w(4, 20)] }),
+    ).toBe(true);
+    expect(layoutContentChanged(null, same)).toBe(true);
   });
 
   it('applyEstimate follows the mode (DS-7)', () => {

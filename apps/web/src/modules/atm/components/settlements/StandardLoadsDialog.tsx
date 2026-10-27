@@ -146,7 +146,7 @@ export const StandardLoadsDialog = ({
         </Button>
       }
     >
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[52rem] border-collapse text-sm" data-standard-loads="true">
           <thead>
             <tr className="text-xs text-slate-600 dark:text-slate-300">

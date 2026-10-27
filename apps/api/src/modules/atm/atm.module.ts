@@ -4,9 +4,10 @@
 // owner scoped (/atm_replenishment ±done, /atm_maintenance ±done, /mail_maintenance ±log,
 // /all_atm) plus /data_edit_atm, added to scope by the owner after approval. The Efficiency &
 // Investigations slice is here too (docs/12-planning/atm-efficiency-register.md): the machine
-// register and its Data Report, from the owner's workbook. The other legacy ATM sections (back
-// office, vaults, supplies, review, preparation) are NOT here — this manifest grows with those
-// slices exactly as Fleet's and Operations' did, never a second one.
+// register and its Data Report, from the owner's workbook. Settlements & Review, Preparation and
+// Control & Supplies are here too (phase 1, below); the other legacy ATM sections (back office,
+// vaults) are NOT — this manifest grows with those slices exactly as Fleet's and Operations' did,
+// never a second one.
 //
 // Legacy privilege strings → grants (port doc §7.3): atm-user = the operating bundle,
 // atm-user-review = view+complete on the done surfaces, atm-admin = everything incl. the mail

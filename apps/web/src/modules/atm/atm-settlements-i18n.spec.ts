@@ -168,3 +168,25 @@ describe('the five settlement pages’ headers', () => {
     expect(source).not.toMatch(/\.subtitle'/);
   });
 });
+
+describe('Arabic counts (LIVE-8)', () => {
+  // A number before a counted noun takes the dual (2), the plural (3–10) or the singular (11 and
+  // up), so a fixed «{{n}} سطور» or «{{n}} ماكينة» is wrong for most n. The settlement texts put a
+  // count after its label («سطور لم يكتمل تجهيزها: {{n}}») or in brackets instead. Note counts
+  // («{{n}} ورقة») are not listed: they are hundreds (S-4), and a hundred takes the singular.
+  const COUNTED =
+    /\{\{\w+\}\}\s*(?:سطور|سطرًا|سطر|ماكينات|ماكينة|شوالات|شوال|خطوط|خطًا|صفوف|صفًا|كاسيتات)/u;
+
+  it('never puts a count placeholder straight before a counted noun', () => {
+    expect(SETTLEMENT_KEYS.filter((key) => COUNTED.test(translate('ar', key)))).toEqual([]);
+  });
+
+  it('reads a route’s counts as labels, whatever the count', () => {
+    expect(translate('ar', 'atm.control.routeSummary', { leader: 'قائد', n: '٣', b: '٤' })).toBe(
+      'قائد · الماكينات: ٣ · الشوالات: ٤',
+    );
+    expect(translate('ar', 'atm.plan.issue.count', { n: '٢' })).toBe(
+      'عدد السطور التي ستُعتمد وتُعطى أرقامًا مسلسلة: ٢.',
+    );
+  });
+});

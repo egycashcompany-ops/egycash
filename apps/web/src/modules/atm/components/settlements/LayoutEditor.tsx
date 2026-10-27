@@ -3,8 +3,9 @@
 // it fills from (DS-8). Every save keeps a version, listed under «سجل التعديلات».
 //
 // A CHANGE APPLIES FROM THE MOMENT IT IS SAVED (GS-26): lines already on today's or a later plan
-// keep their snapshot and warn (`LAYOUT_CHANGED`, `LAYOUT_CHANGED_AFTER_ISSUE`), so the save first
-// lists those lines and asks.
+// keep their snapshot and warn (`LAYOUT_CHANGED`, `LAYOUT_CHANGED_AFTER_ISSUE`), so a save that
+// changes the slots or a label first lists those lines and asks. Re-pointing the standard load
+// alone asks nothing; the draft lines it moves warn `STANDARD_LOAD_CHANGED` and offer the refresh.
 //
 // THE RULES ARE THE CONTRACTS' (`layoutIssues`): what is wrong shows under its slot, and the save
 // stays disabled until nothing is — the server applies the same rules again.
@@ -14,6 +15,7 @@ import {
   ATM_LAYOUT_SLOTS_MAX,
   ATM_LAYOUT_SLOTS_MIN,
   bagAllocation,
+  layoutContentKey,
   layoutIssues,
   type AtmCassetteLayoutDetailDto,
   type AtmCassetteLayoutVersionDto,
@@ -103,6 +105,17 @@ const draftOf = (detail: AtmCassetteLayoutDetailDto): Draft => ({
 
 const textOrNull = (value: string): string | null => (value.trim() === '' ? null : value.trim());
 
+/**
+ * The save changes what a line copies — the slots or a label (the contracts' content rule,
+ * MONEY-3) — so the lines on today's or a later plan will show the changed-denominations warning,
+ * and the save asks first. A save that only re-points the standard load or adds a reason asks
+ * nothing: those lines show `STANDARD_LOAD_CHANGED` and offer the refresh instead.
+ */
+export const layoutContentChanged = (
+  layout: AtmCassetteLayoutDetailDto['layout'],
+  body: Pick<SaveAtmCassetteLayout, 'slots' | 'typeLabel' | 'featuresLabel' | 'hubLabel'>,
+): boolean => layout === null || layoutContentKey(body) !== layoutContentKey(layout);
+
 export const LayoutEditor = ({
   detail,
   locale,
@@ -161,7 +174,7 @@ export const LayoutEditor = ({
     reason: textOrNull(draft.reason),
   });
   const save = (): void => {
-    if (detail.affectedLines.length > 0) {
+    if (detail.affectedLines.length > 0 && layoutContentChanged(detail.layout, body())) {
       setConfirmOpen(true);
       return;
     }

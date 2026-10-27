@@ -218,7 +218,7 @@ const noteBoxes = (
       ...at('F', R(22), 'H', R(23)),
       inner: esc(NOTE_WORDS.egpOnly),
       pt: 24,
-      cls: 'end',
+      cls: 'right',
       rtl: true,
     },
     label(at('J', R(24), 'L', R(25)), NOTE_WORDS.contains, 22),
@@ -316,6 +316,8 @@ const notePage = (
   return `<section class="page"><div class="note" style="--k: ${String(scale)}; grid-template-rows: repeat(${String(rows)}, ${String(unit)}mm);">${noteBoxes(line, doc, words).map(boxHtml).join('')}</div></section>`;
 };
 
+// `.right`: the phrase sits at the RIGHT of its cell, beside the total, as the paper's F:H. The cell
+// is `dir="rtl"`, so its flex START is the right side (flex-end would push it left, onto the stamp box).
 export const NOTE_STYLE = `  .note { display: grid; width: ${String(NOTE_BLOCK_WIDTH_MM)}mm; grid-template-columns: ${NOTE_COLUMN_SHARES.map((s) => `${String(s)}fr`).join(' ')}; direction: ltr; }
   .note .x { position: relative; display: flex; align-items: center; justify-content: center; text-align: center; overflow: hidden; font-weight: 700; line-height: 1.05; padding: 0 0.5mm; }
   .note .bx { outline: 1.5px solid #000; outline-offset: -0.75px; }
@@ -323,7 +325,7 @@ export const NOTE_STYLE = `  .note { display: grid; width: ${String(NOTE_BLOCK_W
   .note .zeb { background: #d9d9d9; }
   .note .sig { align-items: flex-start; padding-top: 0.6mm; }
   .note .top { border-top: 1.5px solid #000; }
-  .note .end { justify-content: flex-end; padding-right: 1mm; }
+  .note .right { justify-content: flex-start; padding-right: 1mm; }
   .note .band { letter-spacing: 0; }
   .note .mk { position: absolute; top: 0.2mm; right: 0.8mm; font-size: 70%; }
   .note .pre { white-space: pre; }

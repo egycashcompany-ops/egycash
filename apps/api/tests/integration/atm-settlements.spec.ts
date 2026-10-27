@@ -2136,6 +2136,20 @@ describe('10. editing a draft (§6.5 S16, S17)', () => {
     expect(await layoutCodes(1)).toEqual([]);
     expect(await layoutCodes(2)).toEqual([]);
 
+    // FIT-3: the draft, filled from the bank's default, now offers the refresh to the layout's new
+    // profile (STANDARD_LOAD_CHANGED); the issued line's counts are on its Note — nothing to offer.
+    const loadCodes = async (run: 1 | 2): Promise<string[]> =>
+      lineOf(await getPlan(plan.id), code, run)
+        .issues.map((i) => i.code)
+        .filter((c) => c === 'STANDARD_LOAD_CHANGED');
+    expect(await loadCodes(2)).toEqual(['STANDARD_LOAD_CHANGED']);
+    expect(await loadCodes(1)).toEqual([]);
+    const refreshed = await okData<AtmPlanLineDto>(
+      patchLine(plan.id, lineOf(await getPlan(plan.id), code, 2), { refreshLayout: true }),
+    );
+    expect(refreshed.standardLoadId).toBe(PROFILE.alt);
+    expect(refreshed.issues.map((i) => i.code)).not.toContain('STANDARD_LOAD_CHANGED');
+
     // A label change still raises both.
     await okData(
       putLayout('alphaSettle', id, STD4, {

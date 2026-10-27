@@ -32,8 +32,12 @@ import {
   type SettlementPaperWords,
 } from './settlement-print';
 
-/** ID · LOC · run · Total · bag QR · TYPE · HUB, as shares of the table. */
-export const HANDOVER_COLUMN_SHARES = [9.8, 20.2, 8, 9.3, 28.6, 12.6, 11.5] as const;
+/**
+ * ID · LOC · run · Total · bag QR · TYPE · HUB, as shares of the table. The run column is 10 %
+ * (taken from LOC): «3 · 10:45 م» at 10 pt bold needs about 16 mm, more than the 8 % (15 mm, less the
+ * padding) first drawn, and the cell never wraps (the AM/PM marker must stay beside its time).
+ */
+export const HANDOVER_COLUMN_SHARES = [9.8, 18.2, 10, 9.3, 28.6, 12.6, 11.5] as const;
 /** The route sheet's bank column, taken from LOC's width. */
 const ROUTE_BANK_SHARE = 6;
 
@@ -57,7 +61,7 @@ const codeOf = (row: AtmHandoverPrintRowDto): string => {
 };
 
 const rowHtml = (row: AtmHandoverPrintRowDto, withBank: boolean): string =>
-  `<tr><td>${codeOf(row)}</td>${withBank ? `<td>${ltr(row.bankCode)}</td>` : ''}<td dir="rtl">${esc(row.machineName)}</td><td dir="rtl">${esc(runCompact(row.run, row.scheduleTime))}</td><td>${ltr(int(fromMinorUnits(row.egpTotalMinor)))}</td><td class="qrs">${qrCell(row)}</td><td dir="rtl">${esc(row.typeLabel)}</td><td dir="rtl">${esc(row.hubLabel)}</td></tr>`;
+  `<tr><td>${codeOf(row)}</td>${withBank ? `<td>${ltr(row.bankCode)}</td>` : ''}<td dir="rtl">${esc(row.machineName)}</td><td class="run" dir="rtl">${esc(runCompact(row.run, row.scheduleTime))}</td><td>${ltr(int(fromMinorUnits(row.egpTotalMinor)))}</td><td class="qrs">${qrCell(row)}</td><td dir="rtl">${esc(row.typeLabel)}</td><td dir="rtl">${esc(row.hubLabel)}</td></tr>`;
 
 const table = ({
   rows,
@@ -100,7 +104,8 @@ export const HANDOVER_STYLE = `  .sheet { width: 190mm; }
   .seals { width: 100%; border-collapse: collapse; table-layout: fixed; border: 2px solid #000; }
   .seals thead { display: table-header-group; }
   .seals th { background: #000; color: #fff; font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 10pt; font-weight: 700; height: 9mm; border: 1px solid #000; text-align: center; vertical-align: middle; }
-  .seals td { font-size: 10pt; font-weight: 700; height: 9mm; padding: 0 1mm; border-top: 1px solid #000; text-align: center; vertical-align: middle; overflow-wrap: anywhere; }
+  .seals td { font-size: 10pt; font-weight: 700; height: 9mm; padding: 0 1mm; border-top: 1px solid #000; text-align: center; vertical-align: middle; overflow-wrap: break-word; }
+  .seals td.run { white-space: nowrap; }
   .seals tr { break-inside: avoid; }
   .seals .qr { line-height: 1.2; }
   .foot { font-family: Arial, "Segoe UI", sans-serif; font-size: 12pt; font-weight: 700; text-align: center; margin-top: 6mm; }

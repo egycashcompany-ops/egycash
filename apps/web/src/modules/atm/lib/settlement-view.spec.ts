@@ -9,8 +9,10 @@ import { describe, expect, it } from 'vitest';
 import { translate } from '../../../platform/localization/i18n';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
+  bagSlotsText,
   bagsText,
   blockedOf,
+  currentVersion,
   denominationMinor,
   formatEgp,
   isStale,
@@ -21,6 +23,7 @@ import {
   lineCode,
   lineStatusKey,
   missingFieldLabel,
+  offersLayoutRefresh,
   planState,
   prepStateOf,
   preparationStatusKey,
@@ -178,6 +181,16 @@ describe('settlementErrorText', () => {
     expect(text(apiError(ErrorCodes.ATM_PREPARATION_LOCKED))).toBe(ar('atm.prep.error.locked'));
   });
 
+  it('a draft moved onto a run its machine already has reads as the add dialog does (FIT-2)', () => {
+    expect(
+      text(
+        apiError(ErrorCodes.BUSINESS_RULE_VIOLATION, [
+          { field: 'body.run', code: 'DUPLICATE_IN_RUN', message: 'DUPLICATE_IN_RUN' },
+        ]),
+      ),
+    ).toBe(ar('atm.plan.refused.duplicateInRun'));
+  });
+
   it('names what a refusal carried: the counts in use, the missing fields, the headers', () => {
     expect(
       text(
@@ -186,7 +199,7 @@ describe('settlementErrorText', () => {
           { field: 'draftLines', code: 'IN_USE', message: '2' },
         ]),
       ),
-    ).toBe(ar('atm.layouts.error.inUse', { layouts: 3, draftLines: 2 }));
+    ).toBe(ar('atm.layouts.error.inUse', { layouts: '٣', draftLines: '٢' }));
     expect(
       text(
         apiError(ErrorCodes.ATM_PREPARATION_INCOMPLETE, [
@@ -276,5 +289,56 @@ describe('a Preparation row’s state', () => {
     expect(prepStateOf(prep({ seal: 'S1', qr: 'Q1' }))).toBe('complete');
     expect(prepStateOf(prep({ status: 'prepared', seal: 'S1', qr: 'Q1' }))).toBe('prepared');
     expect(prepStateOf({ ...prep({}), lineStatus: 'cancelled' })).toBe('cancelled');
+  });
+});
+
+describe('currentVersion — a dialog retries with the re-read version (LIVE-2)', () => {
+  const snapshot = { id: 'line-1', version: 1, name: 'opened with' };
+  it('takes the version from the query data, not the snapshot the dialog kept', () => {
+    // A Control move bumped the line while the dialog was open; the 409 made the page re-read.
+    const reread = [
+      { id: 'line-0', version: 7, name: 'other' },
+      { id: 'line-1', version: 2, name: 'opened with' },
+    ];
+    expect(currentVersion(reread, snapshot)).toBe(2);
+  });
+  it('falls back to the snapshot when the record is not in the data', () => {
+    expect(currentVersion([], snapshot)).toBe(1);
+    expect(currentVersion(undefined, snapshot)).toBe(1);
+  });
+});
+
+describe('a bag’s heading (LIVE-8)', () => {
+  const t = (key: string, params?: Record<string, string | number>): string =>
+    translate('ar', key, params);
+  it('names its cassettes «من … إلى …» in the UI’s digits', () => {
+    expect(bagSlotsText(1, [1, 2, 3, 4], t, 'ar')).toBe('الشوال الأول — الكاسيتات ١ إلى ٤');
+  });
+  it('names a single cassette «الكاسيت ٥», never «الكاسيتات ٥ إلى ٥»', () => {
+    expect(bagSlotsText(2, [5], t, 'ar')).toBe('الشوال الثاني — الكاسيت ٥');
+    expect(bagSlotsText(2, [5], (k, p) => translate('en', k, p), 'en')).toBe(
+      `${translate('en', 'atm.settlement.bag.2')}: cassette 5`,
+    );
+  });
+});
+
+describe('offersLayoutRefresh — «تحديث من فئات الماكينة» (FIT-3)', () => {
+  const at = (
+    code: string,
+    status: 'draft' | 'issued' = 'draft',
+    kind: 'machine' | 'spare' = 'machine',
+  ) => ({
+    status,
+    kind,
+    issues: [{ code }],
+  });
+  it('on a draft machine line whose slots, labels or standard load changed', () => {
+    expect(offersLayoutRefresh(at('LAYOUT_CHANGED'))).toBe(true);
+    expect(offersLayoutRefresh(at('STANDARD_LOAD_CHANGED'))).toBe(true);
+  });
+  it('never on an issued line, a spare line, or another warning', () => {
+    expect(offersLayoutRefresh(at('STANDARD_LOAD_CHANGED', 'issued'))).toBe(false);
+    expect(offersLayoutRefresh(at('STANDARD_LOAD_CHANGED', 'draft', 'spare'))).toBe(false);
+    expect(offersLayoutRefresh(at('NO_TIME'))).toBe(false);
   });
 });

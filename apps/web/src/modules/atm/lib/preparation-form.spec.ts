@@ -3,6 +3,8 @@
 import { type AtmPlanSlot, type AtmPreparationLineDto } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import {
+  advanceStep,
+  applyAdvance,
   cleanScannedValue,
   fieldId,
   fieldOrder,
@@ -18,6 +20,7 @@ import {
   sealKeyAction,
   seedOnce,
   setFieldValue,
+  type CaptureFieldId,
 } from './preparation-form';
 import * as contracts from '@ecms/contracts';
 
@@ -113,6 +116,70 @@ describe('a key press', () => {
     expect(sealKeyAction({ key: 'Tab', shiftKey: true })).toBe('none');
     expect(sealKeyAction({ key: 'a' })).toBe('none');
     expect(sealKeyAction({ key: 'Backspace' })).toBe('none');
+  });
+});
+
+describe('Enter after a scan', () => {
+  /** A wedge field as the browser keeps it: typing replaces a full selection, else appends. */
+  const fakeField = (id: CaptureFieldId, log: { focused: CaptureFieldId | 'save' | null }) => {
+    const field = {
+      value: '',
+      selected: false,
+      focus: () => {
+        log.focused = id;
+      },
+      select: () => {
+        field.selected = true;
+      },
+      type: (text: string) => {
+        field.value = field.selected ? text : field.value + text;
+        field.selected = false;
+      },
+    };
+    return field;
+  };
+  const setup = () => {
+    const log: { focused: CaptureFieldId | 'save' | null } = { focused: 'seal:1' };
+    const ids: CaptureFieldId[] = ['seal:1', 'seal:2', 'seal:3', 'seal:4', 'qr:1'];
+    const fields = new Map(ids.map((id) => [id, fakeField(id, log)]));
+    const enter = (id: CaptureFieldId): void => {
+      const field = fields.get(id);
+      if (field === undefined) throw new Error(id);
+      field.value = cleanScannedValue(field.value) ?? '';
+      applyAdvance(
+        advanceStep(ONE_BAG, id, field.value),
+        (f) => fields.get(f),
+        () => ({
+          focus: () => {
+            log.focused = 'save';
+          },
+        }),
+      );
+    };
+    return { log, fields, enter };
+  };
+
+  it('moves to the next field, and to «حفظ» past the last', () => {
+    expect(advanceStep(ONE_BAG, 'seal:1', 'SEAL-T-0001')).toEqual({
+      kind: 'next',
+      field: 'seal:2',
+    });
+    expect(advanceStep(ONE_BAG, 'seal:4', 'SEAL-T-0004')).toEqual({ kind: 'next', field: 'qr:1' });
+    expect(advanceStep(ONE_BAG, 'qr:1', 'QR-T-0001')).toEqual({ kind: 'save' });
+  });
+
+  it('stays on a value with Arabic letters, its text SELECTED, so the re-scan replaces it', () => {
+    const { log, fields, enter } = setup();
+    const seal1 = fields.get('seal:1');
+    seal1?.type('س-12345');
+    enter('seal:1');
+    expect(log.focused).toBe('seal:1');
+    expect(seal1?.selected).toBe(true);
+    // The operator switches the layout and scans the same seal again.
+    seal1?.type('S-12345');
+    enter('seal:1');
+    expect(seal1?.value).toBe('S-12345');
+    expect(log.focused).toBe('seal:2');
   });
 });
 

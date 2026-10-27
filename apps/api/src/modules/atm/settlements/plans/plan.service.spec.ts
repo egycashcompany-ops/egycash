@@ -51,6 +51,7 @@ vi.mock('./plan-dto', async (importOriginal) => {
       ),
       layouts: new Map(lines.map((l) => [String(l.machineId), { revision: 1 }])),
       banks: new Map(lines.map((l) => [String(l.machineId), { bank: 'BRK', reason: null }])),
+      refreshLoads: new Map(),
     })),
     toPlanDto: vi.fn(async () => ({ id: 'plan' })),
   };

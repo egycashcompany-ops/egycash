@@ -27,6 +27,7 @@ import { keyReachesBranch, type AuthContext } from '../../../../shared/types';
 import { AtmMachineModel, type AtmMachineDoc } from '../../machines/machine.model';
 import { cairoDateString } from '../../shared/cairo-time';
 import { liveLayoutsByMachine } from '../layouts/layout.repository';
+import { liveStandardLoads, profileFor } from '../standard-loads/standard-load.service';
 import {
   AtmLinePreparationModel,
   type AtmLinePreparationDoc,
@@ -78,7 +79,15 @@ export interface PlanWorld {
   /** Each machine's live layout: its revision and the content a line copies (§3.7). */
   layouts: Map<string, { revision: number } & AtmLayoutContent>;
   banks: Map<string, MachineBank>;
+  /**
+   * Per machine, the profile a refresh fills a line from when the line did not choose its own: the
+   * layout's live standard load, else the bank's default (`profileFor`, §6.5 S16 step 1).
+   */
+  refreshLoads: Map<string, string | null>;
 }
+
+const scopeOf = (line: Pick<AtmPlanLineDoc, 'branchId' | 'bankCode'>): string =>
+  `${String(line.branchId)}:${line.bankCode}`;
 
 export const loadPlanWorld = async (lines: readonly AtmPlanLineDoc[]): Promise<PlanWorld> => {
   const ids = [
@@ -88,7 +97,9 @@ export const loadPlanWorld = async (lines: readonly AtmPlanLineDoc[]): Promise<P
       ),
     ),
   ];
-  const [machines, layouts, banks] = await Promise.all([
+  const machineLines = lines.filter((l) => l.kind === 'machine' && l.machineId !== null);
+  const scopes = [...new Map(machineLines.map((l) => [scopeOf(l), l])).values()];
+  const [machines, layouts, banks, loads] = await Promise.all([
     AtmMachineModel.find(
       { _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false },
       { isActive: 1 },
@@ -97,7 +108,20 @@ export const loadPlanWorld = async (lines: readonly AtmPlanLineDoc[]): Promise<P
       .exec(),
     liveLayoutsByMachine(ids),
     machineBanks(ids),
+    Promise.all(
+      scopes.map(
+        async (l) => [scopeOf(l), await liveStandardLoads(l.branchId, l.bankCode)] as const,
+      ),
+    ).then((pairs) => new Map(pairs)),
   ]);
+  const refreshLoads = new Map<string, string | null>();
+  for (const line of machineLines) {
+    const machineId = String(line.machineId);
+    const profile = profileFor(loads.get(scopeOf(line)) ?? [], [
+      layouts.get(machineId)?.standardLoadId,
+    ]);
+    refreshLoads.set(machineId, profile === null ? null : String(profile._id));
+  }
   return {
     today: cairoDateString(new Date()),
     machines: new Map(machines.map((m) => [String(m._id), m])),
@@ -114,6 +138,7 @@ export const loadPlanWorld = async (lines: readonly AtmPlanLineDoc[]): Promise<P
       ]),
     ),
     banks,
+    refreshLoads,
   };
 };
 
@@ -151,6 +176,8 @@ export const issuesOf = (
       hubLabel: line.hubLabel,
       layoutRevision: line.layoutRevision,
       standardNotes: line.standardNotes,
+      standardLoadId: line.standardLoadId === null ? null : String(line.standardLoadId),
+      standardLoadChosen: line.standardLoadChosen === true,
     },
     {
       otherLines: lines
@@ -163,6 +190,8 @@ export const issuesOf = (
           status: other.status,
         })),
       layout: machineId === null ? null : (world.layouts.get(machineId) ?? null),
+      refreshStandardLoadId:
+        machineId === null ? null : (world.refreshLoads.get(machineId) ?? null),
       machinePlannable: machinePlannable(line, plan, world),
       replenishDate: plan.replenishDate,
       today: world.today,

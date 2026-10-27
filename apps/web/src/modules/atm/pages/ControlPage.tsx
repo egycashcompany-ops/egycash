@@ -49,7 +49,7 @@ import { MenuButton } from '../components/settlements/MenuButton';
 import { RouteDialog } from '../components/settlements/RouteDialog';
 import { buildHandoverHtml, buildRoutesHtml } from '../lib/papers/handover-print';
 import { printSettlementPaper } from '../lib/papers/settlement-print';
-import { blockedKey, blockedOf, settlementErrorText } from '../lib/settlement-view';
+import { blockedKey, blockedOf, currentVersion, settlementErrorText } from '../lib/settlement-view';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -171,7 +171,10 @@ export const ControlPage = (): JSX.Element => {
       create.mutate({ branchId: day.branch.id, replenishDate: day.date, ...value }, done);
     } else {
       update.mutate(
-        { routeId: editing.route.id, body: { version: editing.route.version, ...value } },
+        {
+          routeId: editing.route.id,
+          body: { version: currentVersion(day.routes, editing.route), ...value },
+        },
         done,
       );
     }
@@ -196,7 +199,10 @@ export const ControlPage = (): JSX.Element => {
   };
   const deleteRoute = (route: AtmControlRouteDto): void => {
     setConfirm(null);
-    remove.mutate({ routeId: route.id, version: route.version }, { onError: fail });
+    remove.mutate(
+      { routeId: route.id, version: currentVersion(day?.routes, route) },
+      { onError: fail },
+    );
   };
   const runFromZones = (): void => {
     if (day === undefined || day.branch === null) return;

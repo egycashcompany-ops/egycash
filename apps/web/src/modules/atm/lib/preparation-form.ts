@@ -59,6 +59,50 @@ export const nextField = (
 };
 
 /**
+ * Where Enter (or a scanner's Tab) leaves the focus, given the field's CLEANED value: the next field,
+ * «حفظ» past the last one — or, when the value holds Arabic letters (the keyboard layout was
+ * wrong), the SAME field with its text selected, so the re-scan after switching the layout REPLACES
+ * the bad value instead of being appended to it. The field keeps the focus, so its `onFocus`
+ * (which selects) never fires again: the selection has to be made here.
+ */
+export type AdvanceStep =
+  | { kind: 'rescan'; field: CaptureFieldId }
+  | { kind: 'next'; field: CaptureFieldId }
+  | { kind: 'save' };
+
+export const advanceStep = (
+  bags: CaptureBags,
+  current: CaptureFieldId,
+  cleaned: string,
+): AdvanceStep => {
+  if (cleaned !== '' && scannedValueWarnings(cleaned).includes('ARABIC_LETTERS')) {
+    return { kind: 'rescan', field: current };
+  }
+  const next = nextField(fieldOrder(bags), current);
+  return next === null ? { kind: 'save' } : { kind: 'next', field: fieldId(next) };
+};
+
+/** The bit of an input `applyAdvance` touches — an `HTMLInputElement` on the page. */
+export interface AdvanceTarget {
+  focus(): void;
+  select?: () => void;
+}
+
+export const applyAdvance = (
+  step: AdvanceStep,
+  field: (id: CaptureFieldId) => AdvanceTarget | undefined,
+  save: () => AdvanceTarget | null,
+): void => {
+  if (step.kind === 'save') {
+    save()?.focus();
+    return;
+  }
+  const target = field(step.field);
+  target?.focus();
+  if (step.kind === 'rescan') target?.select?.();
+};
+
+/**
  * What a key press in a seal or QR field does: Enter, or the Tab a scanner appends, → `'next'` (the
  * caller calls `preventDefault`, cleans the value, runs the local checks and moves on). Shift+Tab is
  * a person going back and is left to the browser, as is every other key.

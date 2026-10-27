@@ -76,11 +76,19 @@ export const int = (value: number): string => GROUPED.format(value);
 
 export type PaperOrientation = 'portrait' | 'landscape';
 
+/**
+ * A flowing paper (the seals sheet, the route sheets) runs over as many sheets as it needs, so each
+ * sheet keeps a printable band at its top and bottom: an office laser cannot print the outer ~4 mm,
+ * and the header row and the last row would be cut. The sides need none — the table is 190 mm wide,
+ * centred on 210. A one-block paper (the Note, «بيان التغذية») is centred on its sheet: margin 0.
+ */
+export const FLOW_PAGE_MARGIN = '10mm 0';
+
 const shellStyle = (orientation: PaperOrientation, fixedPages: boolean): string => {
   const [width, height] = orientation === 'portrait' ? ['210mm', '297mm'] : ['297mm', '210mm'];
   return `${PAPER_FONT_CSS}
   * { box-sizing: border-box; }
-  @page { size: A4 ${orientation}; margin: 0; }
+  @page { size: A4 ${orientation}; margin: ${fixedPages ? '0' : FLOW_PAGE_MARGIN}; }
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { margin: 0; }
   body { font-family: ${STACK.cal}; color: #000; }

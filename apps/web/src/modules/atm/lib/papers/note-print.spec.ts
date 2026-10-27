@@ -2,7 +2,13 @@
 // `BRKN9001`, «ماكينة اختبار 1».
 import { type AtmNotePrintDto, type AtmPlanSlot } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
-import { NOTE_COLUMN_SHARES, buildNotesHtml, noteGeometry, noteRow } from './note-print';
+import {
+  NOTE_COLUMN_SHARES,
+  NOTE_STYLE,
+  buildNotesHtml,
+  noteGeometry,
+  noteRow,
+} from './note-print';
 import { NOTE_WORDS } from './settlement-paper-wording';
 import { settlementPaperWords } from './settlement-print';
 
@@ -88,6 +94,19 @@ describe('the Note’s words and fields', () => {
     }
     expect(html).toContain('إجمالى قيمة الماكينة');
     expect(html).toContain('ختم و إسم فنى التجهيز لتفريغ الماكينة');
+  });
+
+  it('aligns «جنية مصرى فقط لا غير» right in F:H, beside the total (LIVE-6)', () => {
+    const cell = boxes(html).find((c) => text(c.inner) === NOTE_WORDS.egpOnly);
+    expect(cell?.c1).toBe(F);
+    expect(cell?.cls).toBe(' right');
+    const tag = html.slice(html.lastIndexOf('<div', html.indexOf(NOTE_WORDS.egpOnly)));
+    expect(/^<div[^>]*>/u.exec(tag)?.[0]).toContain('dir="rtl"');
+    // In a dir="rtl" flex row the START is the right side; flex-end would be the left.
+    expect(NOTE_STYLE).toContain(
+      '.note .right { justify-content: flex-start; padding-right: 1mm; }',
+    );
+    expect(NOTE_STYLE).not.toContain('flex-end');
   });
 
   it('carries the serial, the REPLENISHMENT date as d/m/yyyy and the run band', () => {

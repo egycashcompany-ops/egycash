@@ -26,6 +26,7 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { SettlementPlanPage } from './pages/SettlementPlanPage';
+import { PlanLinePanel, schedulePatch } from './components/settlements/PlanLinePanel';
 import {
   settlementContextKey,
   settlementPlanKey,
@@ -293,9 +294,75 @@ describe('the lines table', () => {
     expect(html).toMatch(new RegExp(`data-plan-serial="${line(2).id}">—<`));
   });
 
+  it('positions its scroll box, so a header’s screen-reader text never widens the page (LIVE-5)', () => {
+    const html = render(context(), plan());
+    const scrollers = [...html.matchAll(/class="([^"]*\boverflow-x-auto\b[^"]*)"/g)].map(
+      (m) => m[1],
+    );
+    expect(scrollers.length).toBeGreaterThan(0);
+    for (const cls of scrollers) expect(cls?.split(' ')).toContain('relative');
+  });
+
+  it('counts a line’s issues in the page’s digits (LIVE-8)', () => {
+    const warned = line(2, {
+      status: 'draft',
+      serial: null,
+      issues: [{ code: 'NO_TIME', severity: 'warning' }],
+    });
+    const html = render(context(), plan({ lines: [line(1), warned] }));
+    expect(html).toContain(t('atm.plan.issuesCount', { errors: '٠', warnings: '١' }));
+    expect(html).not.toContain(t('atm.plan.issuesCount', { errors: 0, warnings: 1 }));
+  });
+
   it('offers a print checkbox only on lines that have a Note', () => {
     const html = render(context(), plan());
     const boxes = [...html.matchAll(/type="checkbox"/g)];
     expect(boxes).toHaveLength(1);
+  });
+});
+
+describe('the line panel’s run and time (FIT-2)', () => {
+  const panel = (l: AtmPlanLineDto, canManage: boolean): string =>
+    renderToStaticMarkup(
+      <Provider store={store()}>
+        <PlanLinePanel
+          line={l}
+          locale="ar"
+          canManage={canManage}
+          standardLoads={[]}
+          busy={false}
+          onPatch={() => undefined}
+          onRefreshLayout={() => undefined}
+          onDelete={() => undefined}
+          onReopen={() => undefined}
+          onCancel={() => undefined}
+          onSpareUse={() => undefined}
+        />
+      </Provider>,
+    );
+  const draft = line(2, { status: 'draft', serial: null, run: 2, scheduleTime: null });
+
+  it('a draft offers its run (1/2/3) and its time to a manage holder', () => {
+    const html = panel(draft, true);
+    expect(html).toContain(`data-line-schedule="${draft.id}"`);
+    const run = /<select[^>]*id="line-run"[^>]*>([\s\S]*?)<\/select>/u.exec(html)?.[1] ?? '';
+    expect([...run.matchAll(/<option value="(\d)"/gu)].map((m) => m[1])).toEqual(['1', '2', '3']);
+    expect(run).toContain('<option value="2" selected="">');
+    expect(html).toMatch(/<input[^>]*id="line-time"[^>]*type="time"/u);
+    expect(html).toContain(`>${t('atm.settlement.run')}<`);
+    expect(html).toContain(`>${t('atm.plan.add.times')}<`);
+  });
+
+  it('is not offered without manage, nor on an issued line', () => {
+    expect(panel(draft, false)).not.toContain('data-line-schedule');
+    expect(panel(line(1), true)).not.toContain('data-line-schedule');
+  });
+
+  it('sends a change only, the time as HH:mm or null', () => {
+    expect(schedulePatch(draft, { run: 2 })).toBeNull();
+    expect(schedulePatch(draft, { run: 3 })).toEqual({ run: 3 });
+    expect(schedulePatch(draft, { time: '' })).toBeNull();
+    expect(schedulePatch(draft, { time: '21:30' })).toEqual({ scheduleTime: '21:30' });
+    expect(schedulePatch(line(1), { time: '' })).toEqual({ scheduleTime: null });
   });
 });

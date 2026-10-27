@@ -10,9 +10,11 @@
 // 409 and the page re-reads it rather than overwriting it (§6.5).
 import { useEffect, useState } from 'react';
 import {
+  ATM_PLAN_RUNS,
   isPlanned,
   type AtmEgpDenomination,
   type AtmPlanLineDto,
+  type AtmPlanRun,
   type AtmPlanSlot,
   type AtmStandardLoadDto,
   type Locale,
@@ -26,12 +28,14 @@ import { Input, Select } from '../../../../shared/ui/form';
 import {
   DENOMINATION_COLOURS,
   LINE_STATUS_TONE,
+  bagSlotsText,
   denominationMinor,
   formatEgp,
   issueText,
   lineBags,
   lineCode,
   lineStatusKey,
+  offersLayoutRefresh,
   runLabel,
 } from '../../lib/settlement-view';
 import { formatTime12 } from '../../lib/settlement-dates';
@@ -50,6 +54,55 @@ export const stepNotes = (notes: number, direction: 1 | -1): number =>
       ? Math.floor(notes / NOTES_STEP) * NOTES_STEP + NOTES_STEP
       : Math.ceil(notes / NOTES_STEP) * NOTES_STEP - NOTES_STEP,
   );
+
+/**
+ * A draft's run or time, changed in place (S-5, §6.5 S16) — without deleting and re-adding the line,
+ * which would lose its counts. The patch only when the value changed; a cleared time is null.
+ */
+export const schedulePatch = (
+  line: Pick<AtmPlanLineDto, 'run' | 'scheduleTime'>,
+  change: { run: AtmPlanRun } | { time: string },
+): LinePatch | null => {
+  if ('run' in change) return change.run === line.run ? null : { run: change.run };
+  const scheduleTime = change.time.trim() === '' ? null : change.time.trim();
+  return scheduleTime === line.scheduleTime ? null : { scheduleTime };
+};
+
+/** The time box: commits on Enter or when it loses focus (a time input changes per segment). */
+const TimeInput = ({
+  id,
+  line,
+  disabled,
+  onPatch,
+}: {
+  id: string;
+  line: AtmPlanLineDto;
+  disabled: boolean;
+  onPatch: (patch: LinePatch) => void;
+}): JSX.Element => {
+  const [text, setText] = useState(line.scheduleTime ?? '');
+  useEffect(() => setText(line.scheduleTime ?? ''), [line.scheduleTime]);
+  const commit = (): void => {
+    const patch = schedulePatch(line, { time: text });
+    if (patch !== null) onPatch(patch);
+  };
+  return (
+    <Input
+      id={id}
+      type="time"
+      dir="ltr"
+      value={text}
+      disabled={disabled}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        commit();
+      }}
+    />
+  );
+};
 
 /** A count box that commits on Enter or when it loses focus, and only when the number changed. */
 const CountInput = ({
@@ -148,7 +201,6 @@ export const PlanLinePanel = ({
 
   const errors = line.issues.filter((i) => i.severity === 'error');
   const warnings = line.issues.filter((i) => i.severity === 'warning');
-  const layoutChanged = line.issues.some((i) => i.code === 'LAYOUT_CHANGED');
 
   return (
     <div className="space-y-4" data-line-panel={line.id}>
@@ -186,16 +238,10 @@ export const PlanLinePanel = ({
       </div>
 
       {bags.map((bag) => {
-        const from = bag.slots[0] ?? 0;
-        const to = bag.slots[bag.slots.length - 1] ?? 0;
         return (
           <section key={bag.bag} className="space-y-2" data-line-bag={bag.bag}>
             <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {t('atm.settlement.bag.slots', {
-                bag: t(`atm.settlement.bag.${String(bag.bag)}`),
-                from: formatNumber(from, locale),
-                to: formatNumber(to, locale),
-              })}
+              {bagSlotsText(bag.bag, bag.slots, t, locale)}
             </h3>
             {bag.slots.map((n) => {
               const slot = slotOf(n);
@@ -262,6 +308,37 @@ export const PlanLinePanel = ({
       )}
 
       {editable && (
+        <div className="flex flex-wrap items-end gap-3" data-line-schedule={line.id}>
+          <label className="block space-y-1.5" htmlFor="line-run">
+            <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t('atm.settlement.run')}
+            </span>
+            <Select
+              id="line-run"
+              value={String(line.run)}
+              disabled={busy}
+              onChange={(e) => {
+                const patch = schedulePatch(line, { run: Number(e.target.value) as AtmPlanRun });
+                if (patch !== null) onPatch(patch);
+              }}
+            >
+              {ATM_PLAN_RUNS.map((n) => (
+                <option key={n} value={String(n)}>
+                  {runLabel(n, t)}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="block space-y-1.5" htmlFor="line-time">
+            <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t('atm.plan.add.times')}
+            </span>
+            <TimeInput id="line-time" line={line} disabled={busy} onPatch={onPatch} />
+          </label>
+        </div>
+      )}
+
+      {editable && (
         <label className="block space-y-1.5" htmlFor="line-standard-load">
           <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">
             {t('atm.plan.panel.standardLoad')}
@@ -321,7 +398,7 @@ export const PlanLinePanel = ({
 
       {canManage && (
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-          {line.status === 'draft' && line.kind === 'machine' && layoutChanged && (
+          {offersLayoutRefresh(line) && (
             <Button variant="secondary" size="sm" disabled={busy} onClick={onRefreshLayout}>
               {t('atm.plan.action.refreshLayout')}
             </Button>

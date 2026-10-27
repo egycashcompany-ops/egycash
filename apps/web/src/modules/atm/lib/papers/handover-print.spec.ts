@@ -6,8 +6,9 @@ import {
   type AtmRoutesPrintDto,
 } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
-import { buildHandoverHtml, buildRoutesHtml } from './handover-print';
+import { HANDOVER_COLUMN_SHARES, buildHandoverHtml, buildRoutesHtml } from './handover-print';
 import { SEALS_WORDS } from './settlement-paper-wording';
+import { FLOW_PAGE_MARGIN } from './settlement-print';
 
 const row = (over: Partial<AtmHandoverPrintRowDto> = {}): AtmHandoverPrintRowDto => ({
   serial: 1027,
@@ -101,8 +102,25 @@ describe('«سيلزات»', () => {
     expect(SEALS_WORDS.supervisor).toBe(`توقيع المشرف / ${'.'.repeat(54)}`);
     expect(html).toContain('تم تسليم الخزينة الماكينات الموضحة اعلاه .');
     expect(html).toContain(`توقيع المشرف / ${'.'.repeat(54)}<`);
-    expect(html).toContain('@page { size: A4 portrait; margin: 0; }');
     expect(html).not.toMatch(/<script\b/iu);
+  });
+
+  it('flows over its sheets with a printable band at the top and bottom of each (LIVE-3)', () => {
+    const html = buildHandoverHtml(handover());
+    expect(FLOW_PAGE_MARGIN).toBe('10mm 0');
+    expect(html).toContain(`@page { size: A4 portrait; margin: ${FLOW_PAGE_MARGIN}; }`);
+    expect(html).not.toContain('@page { size: A4 portrait; margin: 0; }');
+  });
+
+  it('never wraps the compact run, and breaks only between words (LIVE-7)', () => {
+    const html = buildHandoverHtml(handover());
+    expect(html).toMatch(/<td class="run" dir="rtl">[^<]*<\/td>/u);
+    expect(html).toContain('.seals td.run { white-space: nowrap; }');
+    expect(html).toContain('overflow-wrap: break-word;');
+    expect(html).not.toContain('overflow-wrap: anywhere');
+    // «3 · 10:45 م» at 10 pt bold is ~16 mm: the run column is 10 % of the 190 mm table.
+    expect(HANDOVER_COLUMN_SHARES[2]).toBeGreaterThanOrEqual(10);
+    expect(HANDOVER_COLUMN_SHARES.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
   });
 });
 
@@ -141,6 +159,7 @@ describe('the route sheets', () => {
 
   it('prints each route on its own page under its title line', () => {
     expect(html.match(/<section class="page flow">/gu)).toHaveLength(2);
+    expect(html).toContain(`@page { size: A4 portrait; margin: ${FLOW_PAGE_MARGIN}; }`);
     expect(html).toContain('كشف خط خط اختبار 1 · قائد اختبار · 27/10/2026');
     expect(html).toContain('كشف خط خط اختبار 2 · 27/10/2026');
   });

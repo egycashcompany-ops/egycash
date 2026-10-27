@@ -9503,6 +9503,7 @@ const en: Record<string, string> = {
   'atm.prep.title': 'Bags and seals',
   'atm.prep.find': 'Serial or machine ID',
   'atm.prep.notFound': 'No line of this day has this number.',
+  'atm.prep.empty': 'No issued lines for this day.',
   'atm.prep.voidedSerial': 'This number was voided; the Note’s current number is {{serial}}.',
   'atm.prep.instruction':
     'Scan each cassette’s seal in order, then the bag’s QR code. After each scan the cursor moves to the next field.',
@@ -9541,6 +9542,7 @@ const en: Record<string, string> = {
   'atm.control.action.printRoutes': 'Print the line sheets',
   'atm.control.tab.data': 'Data and seals',
   'atm.control.tab.routes': 'Distribute over lines',
+  'atm.control.empty': 'No issued lines for this day.',
   'atm.control.column.type': 'Type',
   'atm.control.column.qr1': 'First bag QR',
   'atm.control.column.qr2': 'Second bag QR',
@@ -9569,6 +9571,7 @@ const en: Record<string, string> = {
   'atm.control.newRoute': '+ New line',
   'atm.control.route.name': 'Line name',
   'atm.control.route.leader': 'Leader (optional)',
+  'atm.control.route.create': 'New line',
   'atm.control.fromZones': 'Create lines from the zones',
   'atm.control.fromZonesResult':
     '{{routes}} lines created and {{assigned}} lines distributed. {{left}} remain without a zone or a location.',
@@ -18935,6 +18938,7 @@ const ar: Record<string, string> = {
   'atm.prep.title': 'الشوالات والسيلزات',
   'atm.prep.find': 'المسلسل أو رقم الماكينة',
   'atm.prep.notFound': 'لا يوجد سطر بهذا الرقم في هذا اليوم.',
+  'atm.prep.empty': 'لا توجد سطور معتمدة لهذا اليوم.',
   'atm.prep.voidedSerial': 'هذا الرقم أُلغي؛ رقم النوت الحالي {{serial}}.',
   'atm.prep.instruction':
     'امسح سيلز كل كاسيت بالترتيب، ثم رمز QR الخاص بالشوال. بعد كل مسح ينتقل المؤشر إلى الخانة التالية.',
@@ -18971,6 +18975,7 @@ const ar: Record<string, string> = {
   'atm.control.action.printRoutes': 'طباعة كشوف الخطوط',
   'atm.control.tab.data': 'البيانات والسيلزات',
   'atm.control.tab.routes': 'توزيع الخطوط',
+  'atm.control.empty': 'لا توجد سطور معتمدة لهذا اليوم.',
   'atm.control.column.type': 'النوع',
   'atm.control.column.qr1': 'QR الشوال الأول',
   'atm.control.column.qr2': 'QR الشوال الثاني',
@@ -18999,6 +19004,7 @@ const ar: Record<string, string> = {
   'atm.control.newRoute': '+ خط جديد',
   'atm.control.route.name': 'اسم الخط',
   'atm.control.route.leader': 'القائد (اختياري)',
+  'atm.control.route.create': 'خط جديد',
   'atm.control.fromZones': 'إنشاء الخطوط من القطاعات',
   'atm.control.fromZonesResult':
     'أُنشئ {{routes}} خطًا ووُزِّعت {{assigned}} سطور. بقيت {{left}} بلا قطاع أو بلا موقع.',

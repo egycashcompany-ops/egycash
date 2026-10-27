@@ -146,3 +146,25 @@ describe('the settlement pages’ and papers’ translations', () => {
     ).toBe('الشوال الأول — الكاسيتات 1 إلى 4');
   });
 });
+
+describe('the five settlement pages’ headers', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const PAGES = [
+    'SettlementPlanPage',
+    'CassetteLayoutsPage',
+    'LayoutImportPage',
+    'PreparationPage',
+    'ControlPage',
+  ];
+
+  it.each(PAGES)('%s passes PageHeader a title and no subtitle (owner rule)', (page) => {
+    const source = readFileSync(resolve(here, `./pages/${page}.tsx`), 'utf8');
+    const headers = [...source.matchAll(/<PageHeader\b[^>]*?(?:\/>|>)/gs)].map((m) => m[0]);
+    expect(headers.length).toBeGreaterThan(0);
+    for (const header of headers) {
+      expect(header).toMatch(/title=\{t\('atm\.[a-zA-Z]+\.title'\)\}/);
+      expect(header).not.toMatch(/description|subtitle/);
+    }
+    expect(source).not.toMatch(/\.subtitle'/);
+  });
+});

@@ -2,18 +2,30 @@
 import {
   ATM_PLAN_LINE_ERROR_CODES,
   ATM_PLAN_LINE_WARNING_CODES,
+  ErrorCodes,
   type AtmPlanSlot,
 } from '@ecms/contracts';
 import { describe, expect, it } from 'vitest';
 import { translate } from '../../../platform/localization/i18n';
+import { ApiError } from '../../../shared/lib/api-client';
 import {
   bagsText,
+  blockedOf,
+  denominationMinor,
+  formatEgp,
+  isStale,
   issueText,
+  lastImportFigures,
+  lineBags,
   lineChips,
+  lineCode,
   lineStatusKey,
+  missingFieldLabel,
   planState,
+  prepStateOf,
   preparationStatusKey,
   runLabel,
+  settlementErrorText,
 } from './settlement-view';
 
 const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -92,5 +104,173 @@ describe('the words', () => {
     expect(ar(lineStatusKey('prepared'))).toBe('جاهزة');
     expect(en(lineStatusKey('issued'))).toBe('Issued');
     expect(ar(preparationStatusKey('partial'))).toBe('ناقصة');
+  });
+});
+
+const apiError = (
+  code: string,
+  details: { field?: string; code: string; message: string }[] = [],
+  status = 409,
+): ApiError => new ApiError(code, 'server sentence', status, details);
+
+describe('a line’s code and bags', () => {
+  it('lineCode: the machine, else the spare, else «—»', () => {
+    expect(lineCode({ machineCode: '1001', spareCode: null })).toBe('1001');
+    expect(lineCode({ machineCode: null, spareCode: 'SP1' })).toBe('SP1');
+    expect(lineCode({ machineCode: null, spareCode: null })).toBe('—');
+  });
+
+  it('lineBags: a draft is cut as the issue will cut it; an issued line keeps its own bags', () => {
+    const draft = [1, 2, 3, 4, 5, 6].map((n) => slot(n, 'withdrawal', 100, 1000));
+    expect(lineBags(draft)).toEqual([
+      { bag: 1, slots: [1, 2, 3, 4] },
+      { bag: 2, slots: [5, 6] },
+    ]);
+    const issued = draft.map((s, i) => ({ ...s, bag: (i < 4 ? 1 : 2) as 1 | 2 }));
+    expect(lineBags(issued)).toEqual([
+      { bag: 1, slots: [1, 2, 3, 4] },
+      { bag: 2, slots: [5, 6] },
+    ]);
+    expect(lineBags([slot(1, 'empty', null, 0, null), slot(2, 'withdrawal', 200, 10)])).toEqual([
+      { bag: 1, slots: [2] },
+    ]);
+  });
+});
+
+describe('money on the screens (DS-28)', () => {
+  it('converts minor units once', () => {
+    expect(formatEgp(80_000_000, 'en')).toContain('800,000');
+    expect(denominationMinor(200, 4000)).toBe(80_000_000);
+  });
+});
+
+describe('a blocked work branch', () => {
+  it('reads S1’s two reasons off a 422 ATM_WORK_BRANCH_REQUIRED', () => {
+    const choose = apiError(ErrorCodes.ATM_WORK_BRANCH_REQUIRED, [
+      { field: 'branch', code: 'CHOOSE_BRANCH', message: 'CHOOSE_BRANCH' },
+    ]);
+    const none = apiError(ErrorCodes.ATM_WORK_BRANCH_REQUIRED, [
+      { field: 'branch', code: 'NO_BRANCH', message: 'NO_BRANCH' },
+    ]);
+    expect(blockedOf(choose)).toBe('chooseBranch');
+    expect(blockedOf(none)).toBe('noBranch');
+    expect(blockedOf(apiError(ErrorCodes.STALE_DOCUMENT))).toBeNull();
+    expect(blockedOf(null)).toBeNull();
+  });
+});
+
+describe('settlementErrorText', () => {
+  const text = (error: unknown): string => settlementErrorText(error, ar, 'ar');
+
+  it('words every named code of §6.1 the pages meet', () => {
+    expect(text(apiError(ErrorCodes.ATM_PLAN_EXISTS))).toBe(ar('atm.plan.error.exists'));
+    expect(text(apiError(ErrorCodes.ATM_PLAN_FULL))).toBe(ar('atm.plan.error.full'));
+    expect(text(apiError(ErrorCodes.ATM_PLAN_LINE_STATE))).toBe(ar('atm.plan.error.lineState'));
+    expect(text(apiError(ErrorCodes.ATM_PLAN_LINE_HAS_CAPTURES))).toBe(
+      ar('atm.plan.error.hasCaptures'),
+    );
+    expect(text(apiError(ErrorCodes.ATM_LAYOUT_IMPORT_FILE_CHANGED))).toBe(
+      ar('atm.layoutImport.error.fileChanged'),
+    );
+    expect(text(apiError(ErrorCodes.ATM_LAYOUT_IMPORT_RUNNING))).toBe(
+      ar('atm.layoutImport.error.running'),
+    );
+    expect(text(apiError(ErrorCodes.ATM_PREPARATION_LOCKED))).toBe(ar('atm.prep.error.locked'));
+  });
+
+  it('names what a refusal carried: the counts in use, the missing fields, the headers', () => {
+    expect(
+      text(
+        apiError(ErrorCodes.ATM_STANDARD_LOAD_IN_USE, [
+          { field: 'layouts', code: 'IN_USE', message: '3' },
+          { field: 'draftLines', code: 'IN_USE', message: '2' },
+        ]),
+      ),
+    ).toBe(ar('atm.layouts.error.inUse', { layouts: 3, draftLines: 2 }));
+    expect(
+      text(
+        apiError(ErrorCodes.ATM_PREPARATION_INCOMPLETE, [
+          { field: 'bags[0].qr', code: 'REQUIRED', message: 'REQUIRED' },
+          { field: 'seals[slot=3]', code: 'REQUIRED', message: 'REQUIRED' },
+        ]),
+      ),
+    ).toBe(ar('atm.prep.error.incomplete', { list: 'QR الشوال الأول، سيلز الكاسيت 3' }));
+    expect(
+      text(
+        apiError(ErrorCodes.ATM_LAYOUT_IMPORT_LAYOUT, [
+          { field: 'Full list', code: 'MISSING_HEADER', message: 'Denom1' },
+        ]),
+      ),
+    ).toBe(ar('atm.layoutImport.error.layout', { names: 'Denom1' }));
+    expect(
+      text(
+        apiError(ErrorCodes.ATM_LAYOUT_IMPORT_LAYOUT, [
+          { field: 'file', code: 'TOO_LARGE', message: 'entries' },
+        ]),
+      ),
+    ).toBe(ar('atm.layoutImport.error.tooLarge'));
+  });
+
+  it('words the field codes, and leaves everything else to the shared wording', () => {
+    const field = (code: string): ApiError =>
+      apiError('VALIDATION_FAILED', [{ field: 'x', code, message: code }], 400);
+    expect(text(field('SLOT_NOT_FILLABLE'))).toBe(ar('atm.plan.error.slotNotFillable'));
+    expect(text(field('INVALID_SEAL'))).toBe(ar('atm.prep.error.invalidSeal'));
+    expect(text(field('DUPLICATE_NAME'))).toBe(ar('atm.control.error.duplicateName'));
+    const moved = apiError(ErrorCodes.STALE_DOCUMENT, [
+      { field: 'moves[0]', code: 'MOVED', message: 'MOVED' },
+    ]);
+    expect(text(moved)).toBe(ar('atm.control.error.moved'));
+    expect(isStale(moved)).toBe(true);
+    expect(text(apiError(ErrorCodes.STALE_DOCUMENT))).not.toBe('server sentence');
+  });
+
+  it('missingFieldLabel reads the server’s field names', () => {
+    expect(missingFieldLabel('bags[1].qr', ar)).toBe('QR الشوال الثاني');
+    expect(missingFieldLabel('seals[slot=5]', ar)).toBe('سيلز الكاسيت 5');
+  });
+});
+
+describe('the last import’s strip', () => {
+  it('counts rows, matches, the missing and what needs a person, from outcome counts only', () => {
+    expect(
+      lastImportFigures({
+        new: 5,
+        same: 50,
+        changed: 2,
+        changedManual: 1,
+        notFound: 40,
+        archived: 4,
+        noRegisterBank: 3,
+        otherBank: 1,
+        duplicateInFile: 0,
+        invalid: 2,
+        created: 5,
+        updated: 2,
+        conflicts: 0,
+      }),
+    ).toEqual({ rows: 108, matched: 66, notFound: 40, review: 11 });
+  });
+});
+
+describe('a Preparation row’s state', () => {
+  const prep = (
+    over: Partial<{ status: 'open' | 'prepared'; qr: string | null; seal: string | null }>,
+  ) => ({
+    lineStatus: 'issued' as const,
+    preparation: {
+      status: over.status ?? ('open' as const),
+      bags: [{ qr: over.qr ?? null }],
+      seals: [{ value: over.seal ?? null }],
+    },
+    progress: { captured: (over.qr ? 1 : 0) + (over.seal ? 1 : 0), required: 2 },
+  });
+
+  it('none → partial → complete → prepared, and cancelled says so', () => {
+    expect(prepStateOf(prep({}))).toBe('none');
+    expect(prepStateOf(prep({ seal: 'S1' }))).toBe('partial');
+    expect(prepStateOf(prep({ seal: 'S1', qr: 'Q1' }))).toBe('complete');
+    expect(prepStateOf(prep({ status: 'prepared', seal: 'S1', qr: 'Q1' }))).toBe('prepared');
+    expect(prepStateOf({ ...prep({}), lineStatus: 'cancelled' })).toBe('cancelled');
   });
 });

@@ -54,6 +54,14 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // `q`: the list's search; `branch`: handed over by the map's links and checked against the
   // screen's own context, never remembered (§7.5).
   ['modules/atm/pages/UnlocatedMachinesPage.tsx', ['q', 'branch']],
+  // `date` opens on tomorrow (docs/12-planning/atm-settlements-phase1.md DS-25); `line` is a
+  // selection.
+  ['modules/atm/pages/SettlementPlanPage.tsx', ['date', 'line']],
+  // `q`: the list's search, as `UnlocatedMachinesPage.tsx`; `machine`: a link that opens one
+  // machine's editor (settlements §9.8).
+  ['modules/atm/pages/CassetteLayoutsPage.tsx', ['q', 'machine']],
+  // `date` is the server's suggested day (DS-25); `line` is a selection.
+  ['modules/atm/pages/PreparationPage.tsx', ['date', 'line']],
   ['modules/atm/pages/MaintenancePage.tsx', []],
   ['modules/atm/pages/RegisterPage.tsx', []],
   ['modules/atm/pages/ReplenishmentsPage.tsx', []],
@@ -156,6 +164,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
 /** Screens whose query state must not survive a visit. Every reason is a fact about the code. */
 const EXCLUDED: readonly (readonly [string, string])[] = [
   ['modules/atm/pages/DailyReportPage.tsx', '`date` opens on cairoToday() \u2014 the day the report IS'],
+  ['modules/atm/pages/ControlPage.tsx', '`date` is the server\u2019s suggested day \u2014 the day being dispatched (DS-25); `tab` is a view'],
   ['modules/atm/pages/MailLogPage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
   ['modules/atm/pages/MaintenanceDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
   ['modules/atm/pages/ReplenishmentsDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
@@ -186,6 +195,7 @@ const MIGRATION_PENDING: readonly string[] = [];
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
+  ['modules/atm/pages/LayoutImportPage.tsx', 'an upload form: the bank select picks the file\u2019s profile and the table previews one upload; nothing narrows a stored list'],
   ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
   ['modules/atm/pages/MailTicketsPage.tsx'],
   ['modules/atm/pages/RegisterImportPage.tsx'],

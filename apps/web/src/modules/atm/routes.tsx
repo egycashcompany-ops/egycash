@@ -28,6 +28,15 @@
 // The machine map (docs/12-planning/atm-map-zones.md §8.1) — no legacy screen:
 //   /atm/map                   atmMap.view             (the map, and its zone edit mode)
 //   /atm/map/unlocated         atmMap.view + atmMachine.locate (machines without a location)
+//
+// Settlements & Review → Preparation → Control & Supplies, phase 1 (docs/12-planning/
+// atm-settlements-phase1.md §9.1) — no legacy screen; the source is the banks' daily Master
+// workbooks (sheets `REP. TAPE`, `Print`, `بيان التغذية`, `سيلزات`):
+//   /atm/settlements/plans           atmSettlementPlan.view   (the day's plan, its papers)
+//   /atm/settlements/layouts         atmCassetteLayout.view   (each machine's cassettes)
+//   /atm/settlements/layouts/import  atmCassetteLayout.import (the bank's Full list seed import)
+//   /atm/preparation                 atmPreparation.view      (bag QRs and cassette seals)
+//   /atm/control                     atmControl.view          (the handover, the crew lines)
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -47,6 +56,11 @@ import { RegisterReportPage } from './pages/RegisterReportPage';
 import { RegisterImportPage } from './pages/RegisterImportPage';
 import { MachineMapPage } from './pages/MachineMapPage';
 import { UnlocatedMachinesPage } from './pages/UnlocatedMachinesPage';
+import { SettlementPlanPage } from './pages/SettlementPlanPage';
+import { CassetteLayoutsPage } from './pages/CassetteLayoutsPage';
+import { LayoutImportPage } from './pages/LayoutImportPage';
+import { PreparationPage } from './pages/PreparationPage';
+import { ControlPage } from './pages/ControlPage';
 
 /** Every key that leads to the data-edit page (spec §7.3) — the route guard is any-of. */
 const DATA_EDIT_KEYS = [
@@ -175,6 +189,46 @@ export default function AtmRoutes(): JSX.Element {
           element={
             <RequirePermission permission="atmRegister.import">
               <RegisterImportPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="settlements/plans"
+          element={
+            <RequirePermission permission="atmSettlementPlan.view">
+              <SettlementPlanPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="settlements/layouts"
+          element={
+            <RequirePermission permission="atmCassetteLayout.view">
+              <CassetteLayoutsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="settlements/layouts/import"
+          element={
+            <RequirePermission permission="atmCassetteLayout.import">
+              <LayoutImportPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="preparation"
+          element={
+            <RequirePermission permission="atmPreparation.view">
+              <PreparationPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="control"
+          element={
+            <RequirePermission permission="atmControl.view">
+              <ControlPage />
             </RequirePermission>
           }
         />

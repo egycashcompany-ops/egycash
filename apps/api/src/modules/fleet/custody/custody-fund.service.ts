@@ -13,6 +13,10 @@
 // count is checked: a memo replenished once (`markReplenished`), a licensing memo settled once
 // (`markSettled`). Anything short aborts everything — no operation, no memo marked, no record
 // settled.
+//
+// A «استعاضة» is recorded HELD: its letter is printed and its memos are taken, but its money is not
+// in the fund until «تأكيد التحويل» names the day it arrived — or it is cancelled and its memos are
+// free again (`custody-fund-hold.ts`, under the same lock).
 import { Types, type ClientSession } from 'mongoose';
 import {
   FLEET_LICENSE_EXPENSE_KINDS,
@@ -68,6 +72,9 @@ import {
   type LedgerReceiptGroup,
 } from './custody-ledger';
 import {
+  cancellationDtoOf,
+  operationStatusOf,
+  transferDtoOf,
   type FleetCustodyOperationDoc,
   type FleetCustodyOperationMemoDoc,
   type FleetCustodyOperationPartDoc,
@@ -78,10 +85,10 @@ import { fleetCustodyOperationRepository } from './custody-operation.repository'
 export const CUSTODY_FUND_LOCK = 'custodyFund';
 
 /** Create the lock document if it is missing — OUTSIDE the transaction, which only `$inc`s it. */
-const ensureFundLock = (): Promise<void> => ensureCustodyCounter(CUSTODY_FUND_LOCK);
+export const ensureFundLock = (): Promise<void> => ensureCustodyCounter(CUSTODY_FUND_LOCK);
 
 /** Take the fund for this transaction: a write every concurrent operation also makes. */
-const lockFund = async (session: ClientSession): Promise<void> => {
+export const lockFund = async (session: ClientSession): Promise<void> => {
   const result = await FleetCustodyCounterModel.updateOne(
     { key: CUSTODY_FUND_LOCK },
     { $inc: { seq: 1 } },
@@ -92,12 +99,16 @@ const lockFund = async (session: ClientSession): Promise<void> => {
   }
 };
 
-const operationRef = (id: string) => ({
+export const operationRef = (id: string) => ({
   moduleId: 'fleet',
   entityType: 'custodyOperation',
   entityId: id,
 });
-const memoRef = (id: string) => ({ moduleId: 'fleet', entityType: 'custodyMemo', entityId: id });
+export const memoRef = (id: string) => ({
+  moduleId: 'fleet',
+  entityType: 'custodyMemo',
+  entityId: id,
+});
 const licenseExpenseRef = (id: string) => ({
   moduleId: 'fleet',
   entityType: 'licenseExpense',
@@ -126,6 +137,9 @@ export const toCustodyOperationDto = (
 ): FleetCustodyOperationDto => ({
   id: String(doc._id),
   kind: doc.kind,
+  status: operationStatusOf(doc),
+  transfer: transferDtoOf(doc),
+  cancellation: cancellationDtoOf(doc),
   date: dayKey(doc.date),
   from: dayOrNull(doc.from),
   to: dayOrNull(doc.to),
@@ -164,6 +178,9 @@ export const toCustodyOperationDto = (
 /** What the audit trail keeps of an operation. */
 const snapshot = (doc: FleetCustodyOperationDoc) => ({
   kind: doc.kind,
+  status: operationStatusOf(doc),
+  transfer: transferDtoOf(doc),
+  cancellation: cancellationDtoOf(doc),
   date: dayKey(doc.date),
   from: dayOrNull(doc.from),
   to: dayOrNull(doc.to),
@@ -272,8 +289,16 @@ class FleetCustodyFundService {
       charged: terms.charged,
       spent: terms.spent,
       replenished: terms.replenished,
+      held: terms.held,
+      cancelled: terms.cancelled,
       settled: terms.settled,
-      operations: terms.charged.count + terms.replenished.count + terms.settled.count,
+      // The ledger's operation rows — a held and a cancelled replenishment are rows too.
+      operations:
+        terms.charged.count +
+        terms.replenished.count +
+        terms.held.count +
+        terms.cancelled.count +
+        terms.settled.count,
       memos,
       outside,
     };
@@ -304,7 +329,7 @@ class FleetCustodyFundService {
     return toCustodyOperationDto(doc, ledgerPlaceOf(await this.ledgerRows(), String(doc._id)));
   }
 
-  /** «استعاضة عهدة» offers the memos not replenished yet, oldest first. */
+  /** «استعاضة عهدة» offers the memos no replenishment has taken — held ones are taken — oldest first. */
   async replenishCandidates(): Promise<FleetCustodyReplenishCandidatesDto> {
     const [memos, outside, terms] = await Promise.all([
       fleetCustodyMemoService.pendingRows(),
@@ -363,6 +388,9 @@ class FleetCustodyFundService {
       return fleetCustodyOperationRepository.create(
         {
           kind: 'charge',
+          status: 'done',
+          transfer: null,
+          cancellation: null,
           date,
           from: null,
           to: null,
@@ -383,8 +411,9 @@ class FleetCustodyFundService {
   }
 
   /**
-   * «استعاضة عهدة» — the memos come back into the fund with what their receipts add up to now, and
-   * are frozen from then on. A memo already replenished refuses the whole letter (409).
+   * «استعاضة عهدة» — the letter takes the memos with what their receipts add up to now, and they
+   * are frozen from then on. It is recorded HELD: the fund does not move until «تأكيد التحويل».
+   * A memo another replenishment already took — held or transferred — refuses the whole letter (409).
    */
   async replenish(
     input: CreateFleetCustodyReplenishment,
@@ -400,11 +429,13 @@ class FleetCustodyFundService {
       const found = new Set(memos.map((memo) => String(memo._id)));
       const missing = input.memoIds.find((id) => !found.has(new Types.ObjectId(id).toString()));
       if (missing !== undefined) throw new NotFoundError(`custody memo ${missing} not found`);
-      const done = memos.find((memo) => memo.replenishmentId != null);
-      if (done !== undefined) {
-        const day = dayOrNull(done.replenishedAt);
+      const taken = memos.find((memo) => memo.replenishmentId != null);
+      if (taken !== undefined) {
+        const day = dayOrNull(taken.replenishedAt);
         throw new ConflictError(
-          `custody memo ${done.no} was already replenished${day === null ? '' : ` on ${day}`}`,
+          taken.replenishmentHeld === true
+            ? `custody memo ${taken.no} is already held by a replenishment${day === null ? '' : ` of ${day}`} waiting for its transfer`
+            : `custody memo ${taken.no} was already replenished${day === null ? '' : ` on ${day}`}`,
         );
       }
       const totals = await readMemoTotals(memos, session);
@@ -435,6 +466,10 @@ class FleetCustodyFundService {
         {
           _id: operationId,
           kind: 'replenish',
+          // Its money waits for «تأكيد التحويل».
+          status: 'held',
+          transfer: null,
+          cancellation: null,
           date,
           from: period.from,
           to: period.to,
@@ -456,6 +491,7 @@ class FleetCustodyFundService {
         date,
         by,
         session,
+        { held: true },
       );
       if (marked !== ids.length) {
         throw new ConflictError('a custody memo was replenished or deleted meanwhile — try again');
@@ -470,6 +506,7 @@ class FleetCustodyFundService {
         changes: [
           { field: 'replenishmentId', old: null, new: String(operationId) },
           { field: 'replenishedAt', old: null, new: dayKey(date) },
+          { field: 'replenishmentHeld', old: false, new: true },
         ],
       });
     }
@@ -535,6 +572,9 @@ class FleetCustodyFundService {
         {
           _id: operationId,
           kind: 'settle',
+          status: 'done',
+          transfer: null,
+          cancellation: null,
           date,
           from: period.from,
           to: period.to,

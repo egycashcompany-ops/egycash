@@ -16,6 +16,10 @@
 //   /fleet/accidents          fleetAccident.view           FW-8
 //   /fleet/violations         fleetViolation.view          FW-9
 //   /fleet/licensing          fleetLicensing.view          التراخيص
+//   /fleet/vehicle-contracts  fleetVehicleContract.view    عقود توريد السيارات
+//   /fleet/vehicle-contracts/new fleetVehicleContract.create عقد جديد
+//   /fleet/vehicle-contracts/:id fleetVehicleContract.view  العقد
+//   /fleet/vehicle-contracts/:id/edit fleetVehicleContract.edit تعديل العقد
 //   /fleet/notices (+/:tpl)   fleetNotice.view             الإخطارات
 //   /fleet/notices/setup/:tpl fleetNotice.view             إعداد النماذج
 //   /fleet/license-expenses   fleetLicenseExpense.view     مصروفات التراخيص
@@ -24,13 +28,17 @@
 //   /fleet/dealership         fleetDealership.view         التوكيل
 //   /fleet/fuel-cards         fleetFuelCard.view           بطاقات الوقود
 //   /fleet/fuel-cards/charging fleetFuelCharge.view        شحن الكروت
+//   /fleet/fuel-cards/reconcile fleetFuelCharge.view       مطابقة أرصدة الكروت
 //   /fleet/receipts           fleetReceipt.view            خصم الإيصالات
-//   /fleet/custody            fleetCustody.view            العهدة
+//   /fleet/custody            fleetCustody.view            العهدة — opens «سجل العهدة»; old board links
+//                                                          go on to «مصروفات العهدة» (CustodyEntry)
 //   /fleet/custody/memos      fleetCustody.view            المذكرات
 //   /fleet/custody/memos/new (+/:kind) fleetCustody.view + fleetReceipt.create  مذكرة جديدة
 //   /fleet/custody/memos/:id  fleetCustody.view + fleetReceipt.edit              تعديل المذكرة
 //   /fleet/custody/memos/setup (+/:paper) fleetCustody.view + fleetReceipt.edit إعداد المذكرات
 //   /fleet/custody/log        fleetCustody.view            سجل العهدة
+//   /fleet/custody/dashboard  fleetCustody.view            لوحة تحكم العهدة
+//   /fleet/custody-expenses   fleetCustody.view            مصروفات العهدة (CustodyPage)
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
 //   /fleet/settings           fleetMaintenanceRule.manage  FW-10
 import { Route, Routes } from 'react-router-dom';
@@ -61,12 +69,18 @@ import { NoticeSetupPage } from './pages/NoticeSetupPage';
 import { DealershipPage } from './pages/DealershipPage';
 import { FuelCardsPage } from './pages/FuelCardsPage';
 import { FuelChargingPage } from './pages/FuelChargingPage';
+import { FuelReconcilePage } from './pages/FuelReconcilePage';
 import { ReceiptsPage } from './pages/ReceiptsPage';
 import { CustodyPage } from './pages/CustodyPage';
 import { CustodyMemosPage } from './pages/CustodyMemosPage';
 import { CustodyMemoEditorPage } from './pages/CustodyMemoEditorPage';
 import { CustodyPapersSetupPage } from './pages/CustodyPapersSetupPage';
 import { CustodyLedgerPage } from './pages/CustodyLedgerPage';
+import { CustodyFundDashboardPage } from './pages/CustodyFundDashboardPage';
+import { CustodyEntry } from './components/CustodyEntry';
+import { VehicleContractsPage } from './pages/VehicleContractsPage';
+import { VehicleContractPage } from './pages/VehicleContractPage';
+import { VehicleContractEditorPage } from './pages/VehicleContractEditorPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
 
@@ -184,6 +198,40 @@ export default function FleetRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
+          {/* «عقود توريد السيارات»: the list, a new contract, one contract, and its edit — each
+              behind its own grant of the screen. Static segments outrank `:id`. */}
+          <Route
+            path="vehicle-contracts"
+            element={
+              <RequirePermission permission="fleetVehicleContract.view">
+                <VehicleContractsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vehicle-contracts/new"
+            element={
+              <RequirePermission permission="fleetVehicleContract.create">
+                <VehicleContractEditorPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vehicle-contracts/:id"
+            element={
+              <RequirePermission permission="fleetVehicleContract.view">
+                <VehicleContractPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vehicle-contracts/:id/edit"
+            element={
+              <RequirePermission permission="fleetVehicleContract.edit">
+                <VehicleContractEditorPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="notices"
             element={
@@ -249,6 +297,14 @@ export default function FleetRoutes(): JSX.Element {
             }
           />
           <Route
+            path="fuel-cards/reconcile"
+            element={
+              <RequirePermission permission="fleetFuelCharge.view">
+                <FuelReconcilePage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="receipts"
             element={
               <RequirePermission permission="fleetReceipt.view">
@@ -256,11 +312,13 @@ export default function FleetRoutes(): JSX.Element {
               </RequirePermission>
             }
           />
+          {/* «العهدة» opens on «سجل العهدة»; an old board link (its filters, or `?fund=`) goes on to
+              the screen that now holds it — see `custodyEntryTarget`. */}
           <Route
             path="custody"
             element={
               <RequirePermission permission="fleetCustody.view">
-                <CustodyPage />
+                <CustodyEntry />
               </RequirePermission>
             }
           />
@@ -321,6 +379,23 @@ export default function FleetRoutes(): JSX.Element {
             element={
               <RequirePermission permission="fleetCustody.view">
                 <CustodyLedgerPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="custody/dashboard"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <CustodyFundDashboardPage />
+              </RequirePermission>
+            }
+          />
+          {/* «مصروفات العهدة»: what the fund paid, read on the fund's own grant. */}
+          <Route
+            path="custody-expenses"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <CustodyPage />
               </RequirePermission>
             }
           />

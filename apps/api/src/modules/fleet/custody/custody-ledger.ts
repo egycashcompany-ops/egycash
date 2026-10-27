@@ -7,30 +7,52 @@
 // history in whole piastres — a filter picks rows out of the fold, it never changes a row's
 // «بعدها». The last row's «بعدها» is the fund (`readCustodyFundTerms().fundTotal`).
 //
+// A «استعاضة» waiting for its transfer (`held`) and a cancelled one stay on their letter's day as a
+// row of their own, but count nothing: `before === after`, and `amount` is what the row would add.
+// A transferred one sits on its transfer's day (`letterDate` keeps the letter's), ordered within
+// that day by when the transfer was confirmed. An operation stored before the statuses is `done`
+// on its letter's day, ordered by when it was recorded — exactly as before.
+//
 // Pure: the service reads the operations and the receipts (already grouped per day, kind and memo
 // in the database) and hands them here.
 import {
   FLEET_CUSTODY_SOURCES,
   FLEET_LICENSE_EXPENSE_KINDS,
   parseFleetSort,
+  type FleetCustodyCancellationDto,
   type FleetCustodyKindSpendDto,
   type FleetCustodyLedgerOp,
   type FleetCustodyLedgerRowDto,
   type FleetCustodyLedgerTotalsDto,
   type FleetCustodyOperationKind,
+  type FleetCustodyOperationStatus,
   type FleetCustodySource,
+  type FleetCustodyTransferDto,
   type FleetLicenseExpenseKind,
   type ListFleetCustodyLedgerQuery,
   type Paginated,
 } from '@ecms/contracts';
-import { type FleetCustodyOperationDoc } from './custody-operation.model';
+import {
+  cancellationDtoOf,
+  operationStatusOf,
+  transferDtoOf,
+  type FleetCustodyOperationDoc,
+} from './custody-operation.model';
 
 /** An operation, as the fold reads it. */
 export interface LedgerOperation {
   id: string;
   kind: FleetCustodyOperationKind;
-  /** YYYY-MM-DD. */
+  /** Absent: `done`. */
+  status?: FleetCustodyOperationStatus | undefined;
+  /** YYYY-MM-DD — where the row sits: the transfer's day once transferred, else the letter's. */
   day: string;
+  /** The letter's day, YYYY-MM-DD — only on a transferred replenishment (`day` is the transfer's). */
+  letterDay?: string | null | undefined;
+  /** Full ISO: the order within `day` — when it was recorded, or its transfer confirmed. */
+  at?: string | undefined;
+  transfer?: FleetCustodyTransferDto | null | undefined;
+  cancellation?: FleetCustodyCancellationDto | null | undefined;
   from: string | null;
   to: string | null;
   /** Positive, in EGP; the sign is the kind's. */
@@ -64,21 +86,34 @@ const fromPiastres = (piastres: number): number => (piastres === 0 ? 0 : piastre
 const dayOf = (date: Date): string => date.toISOString().slice(0, 10);
 
 /** A stored operation as the fold reads it. */
-export const ledgerOperationOf = (doc: FleetCustodyOperationDoc): LedgerOperation => ({
-  id: String(doc._id),
-  kind: doc.kind,
-  day: dayOf(doc.date),
-  from: doc.from == null ? null : dayOf(doc.from),
-  to: doc.to == null ? null : dayOf(doc.to),
-  amount: doc.amount,
-  reason: doc.reason ?? '',
-  memoKinds: (doc.memos ?? []).map((memo) => memo.kind),
-  parts: (doc.parts ?? []).map((part) => ({ part: part.part, cars: part.cars })),
-});
+export const ledgerOperationOf = (doc: FleetCustodyOperationDoc): LedgerOperation => {
+  const status = operationStatusOf(doc);
+  const transfer = status === 'done' ? transferDtoOf(doc) : null;
+  return {
+    id: String(doc._id),
+    kind: doc.kind,
+    status,
+    day: transfer === null ? dayOf(doc.date) : transfer.date,
+    letterDay: transfer === null ? null : dayOf(doc.date),
+    at: transfer === null ? doc.createdAt.toISOString() : transfer.at,
+    transfer,
+    cancellation: status === 'cancelled' ? cancellationDtoOf(doc) : null,
+    from: doc.from == null ? null : dayOf(doc.from),
+    to: doc.to == null ? null : dayOf(doc.to),
+    amount: doc.amount,
+    reason: doc.reason ?? '',
+    memoKinds: (doc.memos ?? []).map((memo) => memo.kind),
+    parts: (doc.parts ?? []).map((part) => ({ part: part.part, cars: part.cars })),
+  };
+};
 
-/** What an operation does to the fund, in piastres: a charge and a replenishment add. */
+/** What an operation would do to the fund, in piastres: a charge and a replenishment add. */
 const signedPiastres = (op: LedgerOperation): number =>
   op.kind === 'settle' ? -toPiastres(op.amount) : toPiastres(op.amount);
+
+/** What it does: only a `done` operation moves the fund — a held or cancelled one adds nothing. */
+const countedPiastres = (op: LedgerOperation): number =>
+  (op.status ?? 'done') === 'done' ? signedPiastres(op) : 0;
 
 interface SpendRun {
   from: string;
@@ -106,14 +141,17 @@ const blankRow = (
   date: string,
   signed: number,
   before: number,
+  counted: number = signed,
 ): FleetCustodyLedgerRowDto => ({
   id,
   op,
+  status: 'done',
   date,
   dateTo: null,
+  letterDate: null,
   amount: fromPiastres(signed),
   before: fromPiastres(before),
-  after: fromPiastres(before + signed),
+  after: fromPiastres(before + counted),
   latest: false,
   reason: null,
   from: null,
@@ -123,10 +161,18 @@ const blankRow = (
   receipts: null,
   byKind: null,
   memoNos: null,
+  transfer: null,
+  cancellation: null,
 });
 
 const operationRow = (op: LedgerOperation, before: number): FleetCustodyLedgerRowDto => {
-  const row = blankRow(op.id, op.kind, op.day, signedPiastres(op), before);
+  const row = {
+    ...blankRow(op.id, op.kind, op.day, signedPiastres(op), before, countedPiastres(op)),
+    status: op.status ?? 'done',
+    letterDate: op.letterDay ?? null,
+    transfer: op.transfer ?? null,
+    cancellation: op.cancellation ?? null,
+  };
   if (op.kind === 'charge') return { ...row, reason: op.reason };
   const period = { from: op.from, to: op.to };
   if (op.kind === 'replenish') {
@@ -159,15 +205,17 @@ const spendRow = (run: SpendRun, before: number): FleetCustodyLedgerRowDto => ({
 });
 
 /**
- * The whole ledger, oldest first. `ops` in the order they happened (day, then recorded); the
+ * The whole ledger, oldest first. `ops` in the order they were recorded (day, then recorded); the
  * receipt groups in any order.
  */
 export const foldCustodyLedger = (
   ops: readonly LedgerOperation[],
   groups: readonly LedgerReceiptGroup[],
 ): FleetCustodyLedgerRowDto[] => {
-  // Stable: operations of one day keep the order they were recorded in.
-  const operations = [...ops].sort((a, b) => a.day.localeCompare(b.day));
+  // By day, then by `at` within it; stable, so operations with no `at` keep the order given.
+  const operations = [...ops].sort(
+    (a, b) => a.day.localeCompare(b.day) || (a.at ?? '').localeCompare(b.at ?? ''),
+  );
   const receipts = [...groups].sort((a, b) => a.day.localeCompare(b.day));
   const rows: FleetCustodyLedgerRowDto[] = [];
   let fund = 0;
@@ -205,7 +253,7 @@ export const foldCustodyLedger = (
     spendUntil(op.day);
     closeRun();
     rows.push(operationRow(op, fund));
-    fund += signedPiastres(op);
+    fund += countedPiastres(op);
   }
   spendUntil(null);
   closeRun();

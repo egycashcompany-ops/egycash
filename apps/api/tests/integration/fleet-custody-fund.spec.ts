@@ -7,7 +7,8 @@
 //   01/09  شحن العهدة       +100,000.00                                   → 100,000.00
 //   01/09–28/09  receipts  −82,508.00 (كاوتش 2,650 · وقود 49,844 · صيانة 29,414 · غسيل 600)
 //                                                                          →  17,492.00
-//   29/09  استعاضة العهدة   +81,908.00 (memos 1–5)                         →  99,400.00
+//   29/09  استعاضة العهدة   (memos 1–5, 81,908.00) — HELD: the fund waits    →  17,492.00
+//   01/10  تأكيد التحويل    +81,908.00 (letter 29/09, ref TRF-2026-4471)    →  99,400.00
 //   05/10  شحن العهدة       +200,000.00                                   → 299,400.00
 //   05/10  تسوية العهدة     −124,139.46 (3 licensing memos)                → 175,260.54
 //   06/10–18/10  receipts  −15,286.00 in no memo yet                      → 159,974.54
@@ -20,6 +21,7 @@ import request from 'supertest';
 import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
+  ConfirmFleetCustodyTransferSchema,
   CreateFleetCustodyChargeSchema,
   CreateFleetCustodyMemoSchema,
   CreateFleetCustodyReplenishmentSchema,
@@ -30,11 +32,13 @@ import {
   ListFleetLicenseExpensesQuerySchema,
   SaveFleetCustodyPaperSettingsSchema,
   UpdateFleetLicenseExpenseSchema,
+  UpdateFleetReceiptSchema,
   type FleetCustodyCountAmountDto,
   type FleetCustodyDashboardDto,
   type FleetCustodyFundSummaryDto,
   type FleetCustodyLedgerRowDto,
   type FleetCustodyLedgerTotalsDto,
+  type FleetCustodyMovementDto,
   type FleetCustodyOperationDto,
   type FleetCustodyReplenishCandidatesDto,
   type FleetCustodySettleCandidatesDto,
@@ -57,6 +61,8 @@ import { FleetCustodyOperationModel } from '../../src/modules/fleet/custody/cust
 import { fleetCustodyMemoService } from '../../src/modules/fleet/custody/custody-memo.service';
 import { fleetCustodyPapersService } from '../../src/modules/fleet/custody/custody-papers.service';
 import { fleetCustodyFundService } from '../../src/modules/fleet/custody/custody-fund.service';
+import { fleetCustodyHoldService } from '../../src/modules/fleet/custody/custody-fund-hold';
+import { fleetReceiptService } from '../../src/modules/fleet/receipts/receipt.service';
 import { readCustodyFundTerms } from '../../src/modules/fleet/custody/custody-fund';
 import { custodyStaleCutoff } from '../../src/modules/fleet/custody/custody-memo-rules';
 import { FleetLicenseExpenseModel } from '../../src/modules/fleet/license-expenses/license-expense.model';
@@ -202,6 +208,28 @@ const replenish = (raw: Record<string, unknown>) =>
   fleetCustodyFundService.replenish(CreateFleetCustodyReplenishmentSchema.parse(raw), ACTOR);
 const settle = (raw: Record<string, unknown>) =>
   fleetCustodyFundService.settle(CreateFleetCustodySettlementSchema.parse(raw), ACTOR);
+const confirm = (id: string, raw: Record<string, unknown>) =>
+  fleetCustodyHoldService.confirmTransfer(id, ConfirmFleetCustodyTransferSchema.parse(raw), ACTOR);
+/** A receipt edit as the receipts dialog sends it — the whole receipt back, with `over`. */
+const editReceipt = async (id: string, over: Record<string, unknown>) => {
+  const { doc } = await fleetReceiptService.get(id);
+  return fleetReceiptService.update(
+    id,
+    UpdateFleetReceiptSchema.parse({
+      date: doc.date.toISOString(),
+      vehicleId: String(doc.vehicleId),
+      driverEmployeeId: null,
+      driverName: doc.driverName ?? null,
+      kind: doc.kind,
+      cardId: null,
+      fuelType: doc.fuelType ?? null,
+      amount: doc.amount,
+      version: doc.__v,
+      ...over,
+    }),
+    ACTOR,
+  );
+};
 const memo = async (kind: FleetCustodySource, receiptIds: string[], name = '') =>
   fleetCustodyMemoService.create(
     CreateFleetCustodyMemoSchema.parse({
@@ -290,6 +318,8 @@ describe('«إجمالي العهدة» — the formula, before and as the lette
       charged: { count: 0, amount: 0 },
       spent: { count: 0, amount: 0 },
       replenished: { count: 0, amount: 0, memos: 0 },
+      held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+      cancelled: { count: 0, amount: 0 },
       settled: { count: 0, amount: 0, parts: 0 },
       fundTotal: 0,
     });
@@ -307,6 +337,9 @@ describe('«إجمالي العهدة» — the formula, before and as the lette
     ids.charge1 = first.id;
     expect(first).toMatchObject({
       kind: 'charge',
+      status: 'done',
+      transfer: null,
+      cancellation: null,
       date: '2026-09-01',
       from: null,
       to: null,
@@ -451,11 +484,14 @@ describe('«استعاضة عهدة»', () => {
     }
   });
 
-  it('brings the memos back with their totals, marks them with the letter’s day, and the fund rises', async () => {
+  it('takes the memos with their totals and the letter’s day — HELD: the fund waits for the transfer', async () => {
     const op = await replenish({ date: '2026-09-29', memoIds: [...ids.memos].reverse() });
     ids.replenish = op.id;
     expect(op).toMatchObject({
       kind: 'replenish',
+      status: 'held',
+      transfer: null,
+      cancellation: null,
       date: '2026-09-29',
       // No period typed: whole months over the memos' periods.
       from: '2026-09-01',
@@ -467,7 +503,8 @@ describe('«استعاضة عهدة»', () => {
       chargedTotal: 100000,
       // «عهده اداره الحركه ( 100,000 )» — everything charged into the fund.
       letterFigure: 100000,
-      ledger: { before: 17492, after: 99400 },
+      // A row of its own, adding nothing yet.
+      ledger: { before: 17492, after: 17492 },
     });
     // The memos by number, as they were, whatever order they were picked in.
     expect(op.memos.map((row) => [row.no, row.kind, row.name, row.receipts, row.amount])).toEqual([
@@ -481,12 +518,47 @@ describe('«استعاضة عهدة»', () => {
     expect(op.signatures).toEqual((await fleetCustodyPapersService.getSettings()).papers.replenish);
     for (const memoId of ids.memos) {
       const row = await fleetCustodyMemoService.get(memoId);
-      expect(row.replenishment).toEqual({ id: op.id, date: '2026-09-29' });
+      expect(row.replenishment).toEqual({ id: op.id, date: '2026-09-29', held: true });
     }
-    expect(await fundNow()).toBe(99400);
+    expect(await fundNow()).toBe(17492);
   });
 
-  it('freezes a replenished memo: no edit, no delete (422)', async () => {
+  it('counts it apart — `held`, not in the fund — and its receipts still wait on the dashboard', async () => {
+    const fund = await fleetCustodyFundService.summary();
+    expect(fund).toMatchObject({
+      fundTotal: 17492,
+      replenished: { count: 0, amount: 0, memos: 0 },
+      held: { count: 1, amount: 81908, memos: 5, receipts: 12 },
+      cancelled: { count: 0, amount: 0 },
+      // The charge and the held letter: two rows of «سجل العهدة».
+      operations: 2,
+      memos: { count: 5, pending: 0, pendingTotal: 0 },
+    });
+    expect(await ledgerAll({ op: 'replenish' })).toMatchObject([
+      { id: ids.replenish, status: 'held', date: '2026-09-29', before: 17492, after: 17492 },
+    ]);
+    const res = await request(app)
+      .get('/api/v1/fleet/custody/dashboard')
+      .set('Authorization', `Bearer ${viewerToken}`);
+    const states = data<FleetCustodyDashboardDto>(res).memoStates;
+    expect(states.pending.amount).toBe(sum([fund.memos.pendingTotal, fund.held.amount]));
+    expect(states.replenished).toMatchObject({ count: 0, amount: 0 });
+    // Not offered to another replenishment.
+    expect((await fleetCustodyFundService.replenishCandidates()).memos).toEqual([]);
+  });
+
+  it('locks its receipts like a replenished memo’s — their link says held, with no day yet', async () => {
+    const receipt = (await fleetCustodyMemoService.get(ids.memos[0]!)).lines[0]!.receiptId;
+    expect((await fleetReceiptService.get(receipt)).memo).toMatchObject({
+      replenishedAt: null,
+      held: true,
+    });
+    await expect(editReceipt(receipt, { amount: 501 })).rejects.toMatchObject({ httpStatus: 422 });
+    const driver = await editReceipt(receipt, { driverName: 'سائق آخر' });
+    expect(driver.doc).toMatchObject({ driverName: 'سائق آخر', amount: 500 });
+  });
+
+  it('freezes a held memo: no edit, no delete (422)', async () => {
     const one = await fleetCustodyMemoService.get(ids.memos[0]!);
     await expect(
       fleetCustodyMemoService.update(
@@ -510,7 +582,7 @@ describe('«استعاضة عهدة»', () => {
     });
   });
 
-  it('refuses a memo already replenished (409) — and the whole letter with it', async () => {
+  it('refuses a memo another replenishment holds (409) — and the whole letter with it', async () => {
     const wash = await memo('wash', ids.wash, 'غسيل سبتمبر');
     const operations = await FleetCustodyOperationModel.countDocuments().exec();
     const fund = await fundNow();
@@ -528,6 +600,86 @@ describe('«استعاضة عهدة»', () => {
     });
     // The washing memo stays pending for the cases below.
     ids.memos.push(wash.id);
+  });
+});
+
+describe('«تأكيد التحويل» — the held money arrives', () => {
+  const post = (id: string, verb: 'transfer' | 'cancel', body: Record<string, unknown>) =>
+    request(app)
+      .post(`/api/v1/fleet/custody/fund/operations/${id}/${verb}`)
+      .set('Authorization', `Bearer ${writerToken}`)
+      .send(body);
+
+  it('needs its day, never before the letter’s, and only on a replenishment', async () => {
+    expect((await post(ids.replenish, 'transfer', { reference: 'x' })).status, 'no day').toBe(400);
+    const early = await post(ids.replenish, 'transfer', { date: '2026-09-28' });
+    expect(early.status, 'before the letter').toBe(422);
+    expect((await post(ids.charge1, 'transfer', { date: '2026-10-01' })).status, 'a charge').toBe(
+      422,
+    );
+    const unknown = await post(new Types.ObjectId().toString(), 'transfer', {
+      date: '2026-10-01',
+    });
+    expect(unknown.status).toBe(404);
+    expect(await fundNow()).toBe(17492);
+  });
+
+  it('adds the letter’s figure to the fund from the transfer’s day — nothing printed changes', async () => {
+    const res = await post(ids.replenish, 'transfer', {
+      date: '2026-10-01',
+      reference: 'TRF-2026-4471',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const op = data<FleetCustodyOperationDto>(res);
+    expect(op).toMatchObject({
+      id: ids.replenish,
+      status: 'done',
+      // The letter as printed.
+      date: '2026-09-29',
+      amount: 81908,
+      fundBefore: 17492,
+      chargedTotal: 100000,
+      letterFigure: 100000,
+      cancellation: null,
+      ledger: { before: 17492, after: 99400 },
+    });
+    expect(op.transfer).toMatchObject({
+      date: '2026-10-01',
+      reference: 'TRF-2026-4471',
+      note: '',
+      // The writer's name, as the account reads it.
+      byName: 'م م',
+    });
+    expect(Number.isNaN(Date.parse(op.transfer?.at ?? ''))).toBe(false);
+    expect(await fundNow()).toBe(99400);
+    expect(await ledgerAll({ op: 'replenish' })).toMatchObject([
+      { status: 'done', date: '2026-10-01', letterDate: '2026-09-29', before: 17492, after: 99400 },
+    ]);
+    // The five the letter took — the washing memo made since waits for a letter of its own.
+    for (const memoId of ids.memos.slice(0, 5)) {
+      const row = await fleetCustodyMemoService.get(memoId);
+      expect(row.replenishment).toEqual({ id: op.id, date: '2026-10-01', held: false });
+    }
+    expect((await fleetCustodyMemoService.get(ids.memos[5]!)).replenishment).toBeNull();
+    const receipt = (await fleetCustodyMemoService.get(ids.memos[0]!)).lines[0]!.receiptId;
+    expect((await fleetReceiptService.get(receipt)).memo).toMatchObject({
+      replenishedAt: '2026-10-01',
+      held: false,
+    });
+    expect(await fleetCustodyFundService.summary()).toMatchObject({
+      replenished: { count: 1, amount: 81908, memos: 5 },
+      held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+      operations: 2,
+    });
+  });
+
+  it('moves once: a second confirm, or a cancel after it, is 409 and changes nothing', async () => {
+    expect((await post(ids.replenish, 'transfer', { date: '2026-10-02' })).status).toBe(409);
+    expect((await post(ids.replenish, 'cancel', {})).status).toBe(409);
+    expect((await fleetCustodyFundService.operation(ids.replenish)).transfer?.date).toBe(
+      '2026-10-01',
+    );
+    expect(await fundNow()).toBe(99400);
   });
 });
 
@@ -720,7 +872,8 @@ describe('«سجل العهدة» — his scenario, row for row', () => {
       ['spend', '2026-10-06', '2026-10-18', -15286, 159974.54],
       ['settle', '2026-10-05', null, -124139.46, 175260.54],
       ['charge', '2026-10-05', null, 200000, 299400],
-      ['replenish', '2026-09-29', null, 81908, 99400],
+      // On the transfer's day; its letter's day kept.
+      ['replenish', '2026-10-01', null, 81908, 99400],
       ['spend', '2026-09-01', '2026-09-28', -82508, 17492],
       ['charge', '2026-09-01', null, 100000, 100000],
     ]);
@@ -738,7 +891,10 @@ describe('«سجل العهدة» — his scenario, row for row', () => {
       },
     });
     expect(rows[0]?.byKind?.tyres).toEqual({ count: 2, amount: 1690, outside: 2 });
-    expect(rows[3]).toMatchObject({ memos: { count: 5, kinds: ['maintenance', 'fuel', 'tyres'] } });
+    expect(rows[3]).toMatchObject({
+      letterDate: '2026-09-29',
+      memos: { count: 5, kinds: ['maintenance', 'fuel', 'tyres'] },
+    });
     expect(rows[1]?.licence).toEqual({
       renewal: { count: 3, cars: 15 },
       extension: { count: 0, cars: 0 },
@@ -757,14 +913,14 @@ describe('«سجل العهدة» — his scenario, row for row', () => {
       ['charge', 299400],
     ]);
     expect((res.body as { meta: { totalItems: number } }).meta.totalItems).toBe(3);
-    const window = await ledgerAll({ from: '2026-09-20', to: '2026-09-30' });
+    const window = await ledgerAll({ from: '2026-09-20', to: '2026-10-01' });
     expect(window.map((row) => row.op)).toEqual(['replenish', 'spend']);
     const summary = await request(app)
       .get('/api/v1/fleet/custody/fund/ledger/summary')
       .query({ from: '2026-10-01' })
       .set('Authorization', `Bearer ${viewerToken}`);
     expect(summary.status).toBe(200);
-    expect(data<FleetCustodyLedgerTotalsDto>(summary)).toEqual({ operations: 2, spendLines: 1 });
+    expect(data<FleetCustodyLedgerTotalsDto>(summary)).toEqual({ operations: 3, spendLines: 1 });
   });
 
   it('places each operation in the fund, and the fund summary adds up', async () => {
@@ -781,6 +937,8 @@ describe('«سجل العهدة» — his scenario, row for row', () => {
       charged: { count: 2, amount: 300000 },
       spent: { count: 19, amount: 97794 },
       replenished: { count: 1, amount: 81908, memos: 5 },
+      held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+      cancelled: { count: 0, amount: 0 },
       settled: { count: 1, amount: 124139.46, parts: 3 },
       operations: 4,
       // Memo 6 (washing) waits for its replenishment.
@@ -838,7 +996,8 @@ describe('the dashboard’s spend against the memos — «تمت الاستعا�
   const matchesFund = async (): Promise<void> => {
     const [whole, fund] = await Promise.all([board(), fleetCustodyFundService.summary()]);
     expect(whole.memoStates.replenished.amount).toBe(fund.replenished.amount);
-    expect(whole.memoStates.pending.amount).toBe(fund.memos.pendingTotal);
+    // A held replenishment's money is not back yet: its receipts still wait.
+    expect(whole.memoStates.pending.amount).toBe(sum([fund.memos.pendingTotal, fund.held.amount]));
     expect(whole.memoStates.outside.amount).toBe(sum(fund.outside.map((row) => row.total)));
     expect(whole.memoStates.outside.count).toBe(fund.outside.reduce((n, row) => n + row.count, 0));
     addsUp(whole, 'no filter');
@@ -916,14 +1075,26 @@ describe('the dashboard’s spend against the memos — «تمت الاستعا�
     }
   });
 
-  it('moves a receipt as its memo moves: outside → waiting → back on a delete → replenished', async () => {
+  it('moves a receipt as its memo moves: outside → waiting → back on a delete → held → replenished', async () => {
     const fuel = ids.october[2]!; // 06/10, fuel 7,876.00 — in no memo
     const states = async () => (await board({ source: 'fuel', from: '2026-10-01' })).memoStates;
+    /** «كل الحركات» names the receipt's memo under «من» — read as a custody viewer alone. */
+    const movementMemo = async () => {
+      const res = await request(app)
+        .get('/api/v1/fleet/custody/movements')
+        .query({ source: 'fuel', from: '2026-10-01', pageSize: 100 })
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(res.status).toBe(200);
+      const row = data<FleetCustodyMovementDto[]>(res).find((one) => one.id === fuel);
+      expect(row, 'the receipt is on the page').toBeDefined();
+      return row?.memo;
+    };
     expect(await states()).toMatchObject({
       replenished: { count: 0 },
       pending: { count: 0 },
       outside: { count: 1, amount: 7876 },
     });
+    expect(await movementMemo()).toBeNull();
 
     const waiting = await memo('fuel', [fuel]);
     expect(await states()).toMatchObject({
@@ -931,23 +1102,59 @@ describe('the dashboard’s spend against the memos — «تمت الاستعا�
       pending: { count: 1, amount: 7876, byKind: { fuel: pair(1, 7876) } },
       outside: { count: 0, amount: 0 },
     });
+    expect(await movementMemo()).toEqual({
+      id: waiting.id,
+      no: waiting.no,
+      replenishedAt: null,
+      held: false,
+    });
     await matchesFund();
 
-    // A soft delete frees the receipt: outside again.
+    // A soft delete frees the receipt: outside again, and in no memo.
     await fleetCustodyMemoService.remove(waiting.id, ACTOR);
     expect(await states()).toMatchObject({
       pending: { count: 0 },
       outside: { count: 1, amount: 7876 },
     });
+    expect(await movementMemo()).toBeNull();
 
+    // Held: its money is not back yet, so it still waits.
     const again = await memo('fuel', [fuel]);
-    await replenish({ memoIds: [again.id] });
+    const op = await replenish({ date: '2026-10-09', memoIds: [again.id] });
+    expect(await states()).toMatchObject({
+      replenished: { count: 0, amount: 0 },
+      pending: { count: 1, amount: 7876, byKind: { fuel: pair(1, 7876) } },
+      outside: { count: 0, amount: 0 },
+    });
+    expect(await movementMemo()).toEqual({
+      id: again.id,
+      no: again.no,
+      replenishedAt: null,
+      held: true,
+    });
+    await matchesFund();
+
+    await confirm(op.id, { date: '2026-10-10' });
     expect(await states()).toMatchObject({
       replenished: { count: 1, amount: 7876, byKind: { fuel: pair(1, 7876) } },
       pending: { count: 0, amount: 0 },
       outside: { count: 0, amount: 0 },
     });
+    expect(await movementMemo()).toEqual({
+      id: again.id,
+      no: again.no,
+      replenishedAt: '2026-10-10',
+      held: false,
+    });
     await matchesFund();
+
+    // The figures and the dashboard carry no row's memo — only «كل الحركات» joins it.
+    for (const path of ['summary', 'dashboard']) {
+      const res = await request(app)
+        .get(`/api/v1/fleet/custody/${path}`)
+        .set('Authorization', `Bearer ${viewerToken}`);
+      expect(JSON.stringify(res.body), path).not.toContain('"memo":');
+    }
   });
 });
 
@@ -1101,6 +1308,8 @@ describe('the routes and their grants', () => {
       ['/charge', { amount: 5 }],
       ['/replenish', { memoIds: [ids.memos[0]] }],
       ['/settle', { parts: [{ expenseId: ids.lx.lx4, part: 'extension' }] }],
+      [`/operations/${ids.replenish}/transfer`, { date: '2026-10-01' }],
+      [`/operations/${ids.replenish}/cancel`, {}],
     ] as const) {
       for (const token of [viewerToken, receiptOnlyToken]) {
         const res = await request(app)
@@ -1170,7 +1379,7 @@ describe('the routes and their grants', () => {
 });
 
 describe('the audit trail', () => {
-  it('records each operation, each replenished memo and each settled record', async () => {
+  it('records each operation, each memo held then transferred, and each settled record', async () => {
     const operations = await AuditLogModel.find({
       'entityRef.entityType': 'custodyOperation',
       action: 'create',
@@ -1178,17 +1387,39 @@ describe('the audit trail', () => {
       .lean()
       .exec();
     expect(operations.length).toBe(await FleetCustodyOperationModel.countDocuments().exec());
-    const memoChange = await AuditLogModel.findOne({
+    const memoChanges = await AuditLogModel.find({
       'entityRef.entityType': 'custodyMemo',
       'entityRef.entityId': ids.memos[0],
       action: 'statusChange',
     })
+      .sort({ _id: 1 })
       .lean()
       .exec();
-    expect(memoChange?.changes).toEqual([
-      { field: 'replenishmentId', old: null, new: ids.replenish },
-      { field: 'replenishedAt', old: null, new: '2026-09-29' },
+    expect(memoChanges.map((row) => row.changes)).toEqual([
+      [
+        { field: 'replenishmentId', old: null, new: ids.replenish },
+        { field: 'replenishedAt', old: null, new: '2026-09-29' },
+        { field: 'replenishmentHeld', old: false, new: true },
+      ],
+      [
+        { field: 'replenishedAt', old: '2026-09-29', new: '2026-10-01' },
+        { field: 'replenishmentHeld', old: true, new: false },
+      ],
     ]);
+    const transferred = await AuditLogModel.find({
+      'entityRef.entityType': 'custodyOperation',
+      'entityRef.entityId': ids.replenish,
+      action: 'statusChange',
+    })
+      .lean()
+      .exec();
+    expect(transferred).toHaveLength(1);
+    expect(transferred[0]?.changes[0]).toEqual({ field: 'status', old: 'held', new: 'done' });
+    expect(transferred[0]?.changes[1]).toMatchObject({
+      field: 'transfer',
+      old: null,
+      new: { date: '2026-10-01', reference: 'TRF-2026-4471', byName: 'م م' },
+    });
     const settled = await AuditLogModel.findOne({
       'entityRef.entityType': 'licenseExpense',
       'entityRef.entityId': ids.lx.lx1,

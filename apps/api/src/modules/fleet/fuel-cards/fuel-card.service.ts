@@ -33,6 +33,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
+import { actorNamesOf } from '../fleet-actor-name';
 import { fleetFuelCardMovementRepository, fleetFuelCardRepository } from './fuel-card.repository';
 import {
   FleetFuelCardMovementModel,
@@ -41,7 +42,13 @@ import {
 } from './fuel-card.model';
 import { resolveFuelCardDocsCategoryId } from './fuel-card-files';
 
-const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'fuelCard', entityId: id });
+/** A card's audit ref — the realtime entity `fleet.fuelCard` the cards and charging screens follow. */
+export const fuelCardEntityRef = (id: string) => ({
+  moduleId: 'fleet',
+  entityType: 'fuelCard',
+  entityId: id,
+});
+const entityRef = fuelCardEntityRef;
 const piastres = (egp: number): number => Math.round(egp * 100);
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -89,6 +96,7 @@ export const toFuelMovementDto = (
   doc: FleetFuelCardMovementDoc,
   counterpartNumber: string | null,
   receiptCar: ReceiptCar | null = null,
+  byName: string | null = null,
 ): FleetFuelCardMovementDto => ({
   id: String(doc._id),
   cardId: String(doc.cardId),
@@ -101,6 +109,17 @@ export const toFuelMovementDto = (
   receiptVehicleCode: doc.kind === 'receipt' ? (receiptCar?.vehicleCode ?? null) : null,
   at: doc.at.toISOString(),
   createdAt: doc.createdAt.toISOString(),
+  byName,
+  // Absent on every line but the two sheet kinds — read as none.
+  sheet:
+    doc.reconciliation == null
+      ? null
+      : {
+          reconciliationId: String(doc.reconciliation.reconciliationId),
+          fileName: doc.reconciliation.fileName,
+          sheetBalance: doc.reconciliation.sheetBalance,
+          systemBalance: doc.reconciliation.systemBalance,
+        },
 });
 
 /** The password never enters the audit trail. */
@@ -608,6 +627,13 @@ class FleetFuelCardService {
         .lean<FleetFuelCardMovementDoc>()
         .exec();
       if (line === null) throw new NotFoundError();
+      // A company sheet's ✓ / ✗ is the record of what was decided against that sheet — it is
+      // never changed or removed (and must not fall into the transfer grant below).
+      if (line.kind === 'sheetAdjust' || line.kind === 'sheetReject') {
+        throw new ValidationError([
+          { field: 'params.id', code: 'INVALID', message: 'a sheet line is not changed here' },
+        ]);
+      }
       if (line.kind === 'receipt') {
         throw new ValidationError([
           {
@@ -728,12 +754,14 @@ class FleetFuelCardService {
   /**
    * One card's log, with the other card of every transfer and the car of every receipt line —
    * «كارت اخر»: a card may pay for another car's fuel, and its log names that car. A receipt
-   * deleted since still names its car: its two lines stay on the log.
+   * deleted since still names its car: its two lines stay on the log. «بواسطة»: who made each
+   * line, by name as the account reads today (resolved here; no line is changed).
    */
   async movements(query: ListFleetFuelCardMovementsQuery): Promise<
     Paginated<FleetFuelCardMovementDoc> & {
       numbers: Map<string, string>;
       receiptCars: Map<string, ReceiptCar>;
+      names: Map<string, string>;
     }
   > {
     const page = await fleetFuelCardMovementRepository.list({
@@ -758,15 +786,17 @@ class FleetFuelCardService {
         ),
       ),
     ];
-    const [cards, receipts] = await Promise.all([
+    const [cards, receipts, names] = await Promise.all([
       fleetFuelCardRepository.findByIdsSystem(counterparts),
       fleetReceiptRepository.findByIdsSystem(receiptIds),
+      actorNamesOf(page.items.map((doc) => (doc.createdBy == null ? null : String(doc.createdBy)))),
     ]);
     const codes = await fleetVehicleRepository.codesByIds([
       ...new Set(receipts.map((receipt) => String(receipt.vehicleId))),
     ]);
     return {
       ...page,
+      names,
       numbers: new Map(cards.map((card) => [String(card._id), card.number])),
       receiptCars: new Map(
         receipts.map((receipt) => [

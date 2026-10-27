@@ -159,6 +159,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'fleet.noticeSettings': { permission: 'fleetNotice.view' },
   'fleet.licenseExpense': { permission: 'fleetLicenseExpense.view' },
   'fleet.licenseExpenseSettings': { permission: 'fleetLicenseExpense.view' },
+  // A supply contract, its deliveries and its attachments (Files rows owned by `vehicleContract`)
+  // are one row of «عقود توريد السيارات», read under that screen's own grant.
+  'fleet.vehicleContract': { permission: 'fleetVehicleContract.view' },
   'fleet.dealershipInvoice': { permission: 'fleetDealership.view' },
   'fleet.fuelCard': { permission: 'fleetFuelCard.view' },
   'fleet.receipt': { permission: 'fleetReceipt.view' },

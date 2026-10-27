@@ -132,12 +132,21 @@ describe('a receipt names the custody memo it is a line of («المذكرات»
   });
 
   it('on a memo: its id, number and replenishment day, as the joins found them', () => {
-    const memo = { id: new Types.ObjectId().toString(), no: 7, replenishedAt: '2026-10-05' };
+    const memo = {
+      id: new Types.ObjectId().toString(),
+      no: 7,
+      replenishedAt: '2026-10-05',
+      held: false,
+    };
     expect(toReceiptDto(joins({ memo })).memo).toEqual(memo);
     expect(toReceiptDto(joins({ memo: { ...memo, replenishedAt: null } })).memo).toEqual({
       ...memo,
       replenishedAt: null,
     });
+    // On a replenishment held for its transfer: no replenishment day yet, and it says so.
+    expect(
+      toReceiptDto(joins({ memo: { ...memo, replenishedAt: null, held: true } })).memo,
+    ).toEqual({ ...memo, replenishedAt: null, held: true });
   });
 
   it('the receipt service asks the memo before an edit or a delete, inside the transaction', () => {
@@ -193,6 +202,36 @@ describe('a card’s log names the car a receipt line paid for', () => {
       receiptVehicleId: null,
       receiptVehicleCode: null,
     });
+  });
+
+  it('«بواسطة»: the name the log resolved for the line; none when it has none', () => {
+    expect(toFuelMovementDto(line('charge'), null, null, 'سامح علي').byName).toBe('سامح علي');
+    expect(toFuelMovementDto(line('charge'), null).byName).toBeNull();
+  });
+
+  it('a sheet line names its sheet; every other line — and a line older than the field — none', () => {
+    const reconciliationId = new Types.ObjectId();
+    const sheetLine = {
+      ...line('sheetAdjust'),
+      reconciliation: {
+        reconciliationId,
+        fileName: 'أرصدة وطنية.xlsx',
+        sheetBalance: 2031.97,
+        systemBalance: 2000,
+        sheetRow: 2,
+      },
+    } as FleetFuelCardMovementDoc;
+    expect(toFuelMovementDto(sheetLine, null).sheet).toEqual({
+      reconciliationId: String(reconciliationId),
+      fileName: 'أرصدة وطنية.xlsx',
+      sheetBalance: 2031.97,
+      systemBalance: 2000,
+    });
+    // `line()` carries no `reconciliation` at all — a document written before it existed.
+    for (const kind of ['charge', 'transferIn', 'transferOut', 'receipt'] as const) {
+      expect(toFuelMovementDto(line(kind), null).sheet).toBeNull();
+    }
+    expect(toFuelMovementDto({ ...line('charge'), reconciliation: null }, null).sheet).toBeNull();
   });
 });
 

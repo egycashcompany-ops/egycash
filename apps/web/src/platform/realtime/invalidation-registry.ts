@@ -355,6 +355,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['fleet', 'custody'],
   ],
   'fleet.licenseExpenseSettings': [['fleet', 'licenseExpenses']],
+  // «عقود توريد السيارات» alone: a contract, a delivery or an attachment moves nothing else.
+  'fleet.vehicleContract': [['fleet', 'vehicleContracts']],
   // The dealership board alone: an invoice is saved as entered and moves nothing else — not the
   // custody ledger, not a fuel card.
   'fleet.dealershipInvoice': [['fleet', 'dealership']],

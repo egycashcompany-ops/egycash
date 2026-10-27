@@ -16,19 +16,25 @@
 //      before it meets the sheet and parses the sheet straight from the stream;
 //   3. that reduced zip is streamed, row by row, and the loop stops at the `END` sentinel.
 //
-// Both libraries are CommonJS and are loaded with `await import` at the point of use — never at
-// module scope, where they would sit in the API's boot path (workforce-import/read-workbook.ts
-// learned that with a production outage) — and both are `external` in tsup.config.ts.
+// Steps 1–2 are `shared/xlsx/one-sheet-zip.ts` (shared with the fleet's fuel-card sheet, so the
+// no-spill rule lives in one place). Both libraries are CommonJS and are loaded with `await import`
+// at the point of use — never at module scope, where they would sit in the API's boot path
+// (workforce-import/read-workbook.ts learned that with a production outage) — and both are
+// `external` in tsup.config.ts.
 //
 // What leaves this file is cells, not values a person would type into a log: the caller (parse-
 // rows.ts) turns them into register fields. Errors name an entry path, a column letter or a limit
 // — never a cell's content.
-import path from 'node:path';
 import { Readable } from 'node:stream';
 import { ErrorCodes, type ApiErrorDetail } from '@ecms/contracts';
-// Type-only: erased at build, so JSZip itself is still loaded only by the `await import` below.
-import type { JSZipObject } from 'jszip';
 import { AppError } from '../../../../shared/errors';
+import {
+  attributes,
+  reduceToOneSheet,
+  startTags,
+  type OneSheetZipErrors,
+  type ReducedOneSheetWorkbook,
+} from '../../../../shared/xlsx/one-sheet-zip';
 import { EMPTY_CELL, unwrapCellValue, type RawCell } from './cell-convert';
 import {
   REGISTER_COLUMN_COUNT,
@@ -69,20 +75,6 @@ export const REGISTER_WORKBOOK_LIMITS: RegisterWorkbookLimits = {
   timeMs: 60_000,
 };
 
-const WORKBOOK_PATH = 'xl/workbook.xml';
-const RELS_PATH = 'xl/_rels/workbook.xml.rels';
-const STYLES_PATH = 'xl/styles.xml';
-const SHARED_STRINGS_PATH = 'xl/sharedStrings.xml';
-/** The worksheet paths ExcelJS's streaming reader recognises. */
-const READER_SHEET_PATH = /^xl\/worksheets\/sheet\d+\.xml$/;
-/**
- * A workbook with no text cell at all has no shared-strings part; the reader would then spill the
- * sheet to disk while it waits for one. An empty table makes it read the sheet from the stream.
- */
-const EMPTY_SHARED_STRINGS =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-  '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"/>';
-
 // ── Errors (codes, paths and letters — never a cell value) ─────────────────────────────────────
 
 const UNREADABLE = 'not a readable .xlsx workbook';
@@ -106,147 +98,20 @@ const noRegisterSheet = (): AppError =>
     { field: 'file', code: 'MISSING_SHEET', message: REGISTER_SHEET_NAME },
   ]);
 
+const REGISTER_ZIP_ERRORS: OneSheetZipErrors = {
+  unreadable: unreadableWorkbook,
+  tooLarge,
+  missingSheet: noRegisterSheet,
+};
+
 // ── Zip: five entries, inflated under caps, re-zipped in reading order ─────────────────────────
+//
+// The in-memory reducer and its linear XML scans live in `shared/xlsx/one-sheet-zip.ts`, shared
+// with the fleet's fuel-card sheet; the scans are re-exported here for this file's spec.
 
-/**
- * Inflate one entry, counting bytes as they arrive. Past the cap (or the deadline) the stream is
- * paused and dropped, so the overshoot is at most the chunk in flight.
- */
-const inflateCapped = (
-  file: JSZipObject,
-  cap: number,
-  entryPath: string,
-  deadline: number,
-): Promise<Buffer> =>
-  new Promise((resolve, reject) => {
-    const stream = file.nodeStream('nodebuffer');
-    const chunks: Buffer[] = [];
-    let total = 0;
-    let settled = false;
-    const stop = (error: AppError): void => {
-      if (settled) return;
-      settled = true;
-      stream.removeAllListeners('data');
-      stream.pause();
-      (stream as { destroy?: () => void }).destroy?.();
-      reject(error);
-    };
-    stream.on('data', (chunk: Buffer) => {
-      total += chunk.length;
-      if (total > cap) {
-        stop(tooLarge(entryPath));
-        return;
-      }
-      if (Date.now() > deadline) {
-        stop(tooLarge('time'));
-        return;
-      }
-      chunks.push(chunk);
-    });
-    stream.on('error', () => stop(unreadableWorkbook()));
-    stream.on('end', () => {
-      if (settled) return;
-      settled = true;
-      resolve(Buffer.concat(chunks));
-    });
-  });
+export { attributes, startTags };
 
-const decodeXml = (s: string): string =>
-  s
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-
-// THE SCANS BELOW ARE LINEAR, BY HAND (review finding SEC-2). The workbook and its rels are inflated
-// up to 2 MB each, and a backtracking pattern over them — `<sheet\b[^>]*>` retried from every `<`
-// of a part that never closes its tags — is quadratic: a sub-2 KB upload held the event loop for
-// minutes, and no deadline can interrupt a running regex. So each part is walked once, tag by tag,
-// and a tag's attributes once, name by name; every step moves forward.
-
-/** The attributes of one start tag, by name (both quote styles), in one forward pass. */
-export const attributes = (tag: string): Map<string, string> => {
-  const out = new Map<string, string>();
-  const name = /[\w:.-]+/y;
-  const equals = /\s*=\s*/y;
-  let at = 0;
-  while (at < tag.length) {
-    name.lastIndex = at;
-    const found = name.exec(tag);
-    if (found === null) {
-      at += 1;
-      continue;
-    }
-    at = name.lastIndex;
-    equals.lastIndex = at;
-    if (equals.exec(tag) === null) continue;
-    const open = equals.lastIndex;
-    const quote = tag.charAt(open);
-    if (quote !== '"' && quote !== "'") {
-      at = open;
-      continue;
-    }
-    const close = tag.indexOf(quote, open + 1);
-    if (close === -1) break;
-    out.set(found[0], decodeXml(tag.slice(open + 1, close)));
-    at = close + 1;
-  }
-  return out;
-};
-
-const TAG_NAME = /^<(?:[\w.-]+:)?([\w.-]+)/;
-
-/** Every start tag `<[prefix:]localName …>` of a part, in one forward pass. */
-export const startTags = (xml: string, localName: string): string[] => {
-  const out: string[] = [];
-  let from = 0;
-  for (;;) {
-    const open = xml.indexOf('<', from);
-    if (open === -1) break;
-    const close = xml.indexOf('>', open);
-    if (close === -1) break;
-    // A `<` inside an unclosed tag starts a new one; the scan back never passes `open`.
-    const tag = xml.slice(xml.lastIndexOf('<', close), close + 1);
-    if (TAG_NAME.exec(tag)?.[1] === localName) out.push(tag);
-    from = close + 1;
-  }
-  return out;
-};
-
-/** The deadline is checked between the steps no chunk counter sees (SEC-2). */
-const beforeDeadline = (deadline: number): void => {
-  if (Date.now() > deadline) throw tooLarge('time');
-};
-
-/** The zip path of the worksheet the workbook names `ATMs`, through its relationship id. */
-const registerSheetPath = (workbookXml: string, relsXml: string): string | null => {
-  let relationshipId: string | null = null;
-  for (const tag of startTags(workbookXml, 'sheet')) {
-    const attrs = attributes(tag);
-    if (attrs.get('name') !== REGISTER_SHEET_NAME) continue;
-    for (const [name, value] of attrs) if (/(^|:)id$/.test(name)) relationshipId = value;
-    break;
-  }
-  if (relationshipId === null) return null;
-  for (const tag of startTags(relsXml, 'Relationship')) {
-    const attrs = attributes(tag);
-    if (attrs.get('Id') !== relationshipId) continue;
-    const target = attrs.get('Target');
-    if (target === undefined || target === '') return null;
-    return target.startsWith('/')
-      ? path.posix.normalize(target.slice(1))
-      : path.posix.normalize(`xl/${target}`);
-  }
-  return null;
-};
-
-export interface ReducedRegisterWorkbook {
-  /** rels, workbook, styles, shared strings, then the ATMs sheet — nothing else, STORE only. */
-  buffer: Buffer;
-  /** Excel's 1904 date system flag (`<workbookPr date1904="1">`). */
-  date1904: boolean;
-}
+export type ReducedRegisterWorkbook = ReducedOneSheetWorkbook;
 
 /**
  * Steps 1–2 of §6.2: open the upload in memory, inflate exactly five entries under their caps,
@@ -256,78 +121,8 @@ export const reduceRegisterWorkbook = async (
   upload: Buffer,
   limits: RegisterWorkbookLimits = REGISTER_WORKBOOK_LIMITS,
   deadline: number = Date.now() + limits.timeMs,
-): Promise<ReducedRegisterWorkbook> => {
-  const { default: JSZip } = await import('jszip');
-  let zip: InstanceType<typeof JSZip>;
-  try {
-    zip = await JSZip.loadAsync(upload);
-  } catch {
-    throw unreadableWorkbook();
-  }
-  const entry = (entryPath: string): JSZipObject | null => {
-    const file = zip.file(entryPath);
-    return file === null || file.dir ? null : file;
-  };
-
-  const workbookFile = entry(WORKBOOK_PATH);
-  const relsFile = entry(RELS_PATH);
-  if (workbookFile === null || relsFile === null) throw unreadableWorkbook();
-  const workbookXml = await inflateCapped(
-    workbookFile,
-    limits.workbookBytes,
-    WORKBOOK_PATH,
-    deadline,
-  );
-  const relsXml = await inflateCapped(relsFile, limits.relsBytes, RELS_PATH, deadline);
-  beforeDeadline(deadline);
-
-  const workbookText = workbookXml.toString('utf8');
-  const sheetPath = registerSheetPath(workbookText, relsXml.toString('utf8'));
-  beforeDeadline(deadline);
-  const sheetFile = sheetPath === null ? null : entry(sheetPath);
-  if (sheetPath === null || sheetFile === null) throw noRegisterSheet();
-
-  const stylesFile = entry(STYLES_PATH);
-  const styles =
-    stylesFile === null
-      ? null
-      : await inflateCapped(stylesFile, limits.stylesBytes, STYLES_PATH, deadline);
-  const sharedStringsFile = entry(SHARED_STRINGS_PATH);
-  const sharedStrings =
-    sharedStringsFile === null
-      ? Buffer.from(EMPTY_SHARED_STRINGS, 'utf8')
-      : await inflateCapped(
-          sharedStringsFile,
-          limits.sharedStringsBytes,
-          SHARED_STRINGS_PATH,
-          deadline,
-        );
-  const sheet = await inflateCapped(sheetFile, limits.sheetBytes, sheetPath, deadline);
-  beforeDeadline(deadline);
-
-  // JSZip writes entries in insertion order, so the sheet arrives after the shared strings. The
-  // ORIGINAL path is kept when the reader recognises it; any other spelling gets the reader's own
-  // (this zip holds one worksheet, so which number it carries changes nothing).
-  // `createFolders: false` — exactly these entries, no directory records beside them.
-  const reduced = new JSZip();
-  const only = { createFolders: false };
-  reduced.file(RELS_PATH, relsXml, only);
-  reduced.file(WORKBOOK_PATH, workbookXml, only);
-  if (styles !== null) reduced.file(STYLES_PATH, styles, only);
-  reduced.file(SHARED_STRINGS_PATH, sharedStrings, only);
-  reduced.file(
-    READER_SHEET_PATH.test(sheetPath) ? sheetPath : 'xl/worksheets/sheet1.xml',
-    sheet,
-    only,
-  );
-  const buffer = await reduced.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
-  const date1904 = startTags(workbookText, 'workbookPr').some((tag) =>
-    [...attributes(tag)].some(
-      ([name, value]) => /(^|:)date1904$/.test(name) && (value === '1' || value === 'true'),
-    ),
-  );
-  return { buffer, date1904 };
-};
+): Promise<ReducedRegisterWorkbook> =>
+  reduceToOneSheet(upload, { name: REGISTER_SHEET_NAME }, limits, deadline, REGISTER_ZIP_ERRORS);
 
 // ── The sheet: row 1 binds, row 2 is the SUM band, row 3 on is data until `END` ─────────────────
 

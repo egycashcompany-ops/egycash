@@ -372,7 +372,7 @@ describe('a receipt a custody memo holds — the bin stays in the box, faded', (
         cardId: null,
         cardCompany: null,
         cardNumber: null,
-        memo: { id: 'm-7', no: 7, replenishedAt: null },
+        memo: { id: 'm-7', no: 7, replenishedAt: null, held: false },
       }),
     ];
     qc.setQueryData(

@@ -153,12 +153,19 @@ export const buildApp = (): Express => {
   // and nowhere else — that host may put PICTURES on the page and can do nothing else: no script,
   // no styles, no frames, no requests the app makes to it. Leaflet itself is bundled from
   // node_modules and served same-origin, so no external script host is involved.
+  //
+  // `frame-src` is what lets a PDF the app fetched show inside the page — a vehicle supply
+  // contract's pages, IT's receipt preview. The bytes are fetched with the session and handed to an
+  // `<iframe>` as a `blob:` URL; without an explicit `frame-src` the browser falls back to
+  // `default-src 'self'`, which does not cover `blob:`, and refuses the frame with no visible error.
+  // Same-origin and `blob:` only: no remote page can be framed.
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
           'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
+          'frame-src': ["'self'", 'blob:'],
         },
       },
     }),

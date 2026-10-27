@@ -4,15 +4,18 @@
 // October's receipts in no memo yet.
 import { describe, expect, it } from 'vitest';
 import { ListFleetCustodyLedgerQuerySchema } from '@ecms/contracts';
+import { Types } from 'mongoose';
 import {
   custodyLedgerTotals,
   filterCustodyLedger,
   foldCustodyLedger,
+  ledgerOperationOf,
   ledgerPlaceOf,
   pageCustodyLedger,
   type LedgerOperation,
   type LedgerReceiptGroup,
 } from './custody-ledger';
+import { type FleetCustodyOperationDoc } from './custody-operation.model';
 
 const op = (
   id: string,
@@ -252,6 +255,227 @@ describe('the ledger page — filters pick rows, never change them', () => {
     expect(custodyLedgerTotals(rows, { from: new Date('2026-10-06T00:00:00Z') })).toEqual({
       operations: 0,
       spendLines: 1,
+    });
+  });
+});
+
+// ── «استعاضة معلّقة لحين التحويل» ──────────────────────────────────────────────────────────────
+
+const day = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
+const TRANSFER = {
+  date: '2026-10-01',
+  reference: 'TRF-2026-4471',
+  note: '',
+  byName: 'أحمد علي',
+  at: '2026-10-01T09:00:00.000Z',
+};
+
+/** His 29/09 replenishment, as the fold reads it in each of its three states. */
+const replenish = (status: 'held' | 'done' | 'cancelled'): LedgerOperation => ({
+  ...(OPS[1] as LedgerOperation),
+  status,
+  at: '2026-09-29T08:00:00.000Z',
+  ...(status === 'done'
+    ? { day: '2026-10-01', letterDay: '2026-09-29', at: TRANSFER.at, transfer: TRANSFER }
+    : {}),
+  ...(status === 'cancelled'
+    ? { cancellation: { reason: '', byName: null, at: '2026-09-30T10:00:00.000Z' } }
+    : {}),
+});
+const withReplenish = (status: 'held' | 'done' | 'cancelled'): LedgerOperation[] =>
+  OPS.map((one) => (one.id === 'replenish-1' ? replenish(status) : one));
+
+describe('foldCustodyLedger — a replenishment held for its transfer', () => {
+  it('sits on its letter’s day and adds nothing: before === after, `amount` what it would add', () => {
+    const rows = foldCustodyLedger(withReplenish('held'), RECEIPTS);
+    const held = rows.find((row) => row.id === 'replenish-1');
+    expect(held).toMatchObject({
+      status: 'held',
+      date: '2026-09-29',
+      letterDate: null,
+      amount: 81908,
+      before: 17492,
+      after: 17492,
+      transfer: null,
+      cancellation: null,
+    });
+    // Everything after it is 81,908 lower than with the money in.
+    expect(rows.map((row) => row.after)).toEqual([
+      100000, 17492, 17492, 217492, 93352.54, 78066.54,
+    ]);
+    expect(ledgerPlaceOf(rows, 'replenish-1')).toEqual({ before: 17492, after: 17492 });
+  });
+
+  it('is «الآن» when it is the last row, still adding nothing', () => {
+    const rows = foldCustodyLedger(
+      [
+        op('c', 'charge', '2026-09-01', 1000),
+        { ...op('r', 'replenish', '2026-09-02', 400), status: 'held' },
+      ],
+      [],
+    );
+    expect(rows.at(-1)).toMatchObject({ id: 'r', latest: true, before: 1000, after: 1000 });
+  });
+
+  it('still closes the open «صرف» run, like every operation', () => {
+    const rows = foldCustodyLedger(withReplenish('held'), RECEIPTS);
+    expect(rows.map((row) => row.id).slice(0, 3)).toEqual([
+      'charge-1',
+      'spend:2026-09-01:2026-09-28',
+      'replenish-1',
+    ]);
+  });
+});
+
+describe('foldCustodyLedger — a transferred replenishment', () => {
+  it('sits on the transfer’s day with its letter’s day kept — the sample’s six «بعدها»', () => {
+    const rows = foldCustodyLedger(withReplenish('done'), RECEIPTS);
+    expect(rows.map((row) => [row.op, row.date, row.after])).toEqual([
+      ['charge', '2026-09-01', 100000],
+      ['spend', '2026-09-01', 17492],
+      ['replenish', '2026-10-01', 99400],
+      ['charge', '2026-10-05', 299400],
+      ['settle', '2026-10-05', 175260.54],
+      ['spend', '2026-10-06', 159974.54],
+    ]);
+    expect(rows[2]).toMatchObject({
+      status: 'done',
+      letterDate: '2026-09-29',
+      before: 17492,
+      transfer: TRANSFER,
+      cancellation: null,
+    });
+  });
+
+  it('orders a day by when each was recorded — a transfer by when it was confirmed', () => {
+    const charge = (at: string) => ({ ...op('c', 'charge', '2026-10-01', 10), at });
+    const transferred = { ...replenish('done'), amount: 100 };
+    const before = foldCustodyLedger([charge('2026-10-01T08:00:00.000Z'), transferred], []);
+    expect(before.map((row) => [row.id, row.after])).toEqual([
+      ['c', 10],
+      ['replenish-1', 110],
+    ]);
+    // Recorded after the transfer was confirmed: after it, whatever order they came in.
+    const after = foldCustodyLedger([charge('2026-10-01T10:00:00.000Z'), transferred], []);
+    expect(after.map((row) => [row.id, row.before])).toEqual([
+      ['replenish-1', 0],
+      ['c', 100],
+    ]);
+  });
+});
+
+describe('foldCustodyLedger — a cancelled replenishment', () => {
+  it('stays on its letter’s day as a row, and never counts', () => {
+    const rows = foldCustodyLedger(withReplenish('cancelled'), RECEIPTS);
+    expect(rows.find((row) => row.id === 'replenish-1')).toMatchObject({
+      status: 'cancelled',
+      date: '2026-09-29',
+      amount: 81908,
+      before: 17492,
+      after: 17492,
+      cancellation: { reason: '', byName: null, at: '2026-09-30T10:00:00.000Z' },
+    });
+    expect(rows.at(-1)?.after).toBe(78066.54);
+  });
+
+  it('is an operation like the others: «العملية» keeps all three states, and they are counted', () => {
+    const rows = foldCustodyLedger(
+      [
+        ...withReplenish('done'),
+        { ...replenish('held'), id: 'replenish-2', day: '2026-10-07', at: '2026-10-07T08:00:00Z' },
+        {
+          ...replenish('cancelled'),
+          id: 'replenish-3',
+          day: '2026-10-07',
+          at: '2026-10-07T09:00Z',
+        },
+      ],
+      RECEIPTS,
+    );
+    expect(
+      filterCustodyLedger(rows, { op: ['replenish'] }).map((row) => [row.id, row.status]),
+    ).toEqual([
+      ['replenish-1', 'done'],
+      ['replenish-2', 'held'],
+      ['replenish-3', 'cancelled'],
+    ]);
+    expect(custodyLedgerTotals(rows, {})).toEqual({ operations: 6, spendLines: 3 });
+  });
+});
+
+describe('ledgerOperationOf — a stored operation', () => {
+  const stored = (over: Partial<FleetCustodyOperationDoc> = {}): FleetCustodyOperationDoc =>
+    ({
+      _id: new Types.ObjectId('64b000000000000000000001'),
+      kind: 'replenish',
+      date: day('2026-09-29'),
+      from: day('2026-09-01'),
+      to: day('2026-09-30'),
+      amount: 81908,
+      reason: '',
+      memos: [],
+      parts: [],
+      createdAt: new Date('2026-09-29T08:00:00.000Z'),
+      ...over,
+    }) as unknown as FleetCustodyOperationDoc;
+
+  it('reads a row from before the statuses exactly as before: done, on its letter’s day', () => {
+    expect(ledgerOperationOf(stored())).toMatchObject({
+      status: 'done',
+      day: '2026-09-29',
+      letterDay: null,
+      at: '2026-09-29T08:00:00.000Z',
+      transfer: null,
+      cancellation: null,
+    });
+    // His four operations stored before the statuses, in the order they were recorded.
+    const legacy = OPS.map((one, i) =>
+      ledgerOperationOf(
+        stored({
+          _id: new Types.ObjectId(`64b00000000000000000000${i + 2}`),
+          kind: one.kind,
+          date: day(one.day),
+          amount: one.amount,
+          createdAt: new Date(day(one.day).getTime() + i * 1000),
+        }),
+      ),
+    );
+    const figures = (rows: ReturnType<typeof foldCustodyLedger>) =>
+      rows.map((row) => [row.op, row.status, row.date, row.amount, row.before, row.after]);
+    expect(figures(foldCustodyLedger(legacy, RECEIPTS))).toEqual(
+      figures(foldCustodyLedger(OPS, RECEIPTS)),
+    );
+  });
+
+  it('moves a transferred one to the transfer’s day, ordered by the confirmation', () => {
+    const transfer = {
+      date: day('2026-10-01'),
+      reference: 'TRF-2026-4471',
+      note: '',
+      by: null,
+      byName: null,
+      at: new Date('2026-10-01T09:00:00.000Z'),
+    };
+    expect(ledgerOperationOf(stored({ status: 'done', transfer }))).toMatchObject({
+      status: 'done',
+      day: '2026-10-01',
+      letterDay: '2026-09-29',
+      at: '2026-10-01T09:00:00.000Z',
+      transfer: { date: '2026-10-01', reference: 'TRF-2026-4471', byName: null },
+    });
+  });
+
+  it('keeps a held or cancelled one on its letter’s day', () => {
+    expect(ledgerOperationOf(stored({ status: 'held', transfer: null }))).toMatchObject({
+      status: 'held',
+      day: '2026-09-29',
+      letterDay: null,
+    });
+    const cancellation = { reason: 'خطأ', by: null, byName: null, at: day('2026-09-30') };
+    expect(ledgerOperationOf(stored({ status: 'cancelled', cancellation }))).toMatchObject({
+      status: 'cancelled',
+      day: '2026-09-29',
+      cancellation: { reason: 'خطأ', byName: null, at: '2026-09-30T00:00:00.000Z' },
     });
   });
 });

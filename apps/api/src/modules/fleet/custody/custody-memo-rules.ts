@@ -140,9 +140,10 @@ const piastres = (value: number): number => Math.round(value * 100);
  *   - on a memo not replenished yet: its kind and what paid for it stay (`kindOrSource`) — the
  *     memo is one kind of the fund's papers; the amount, the day and the car may change, and the
  *     memo's total follows;
- *   - on a replenished memo: its kind, what paid, the day, the car and the amount all stay
- *     (`locked`) — the money already came back into the fund on that figure. The driver, the
- *     photo, the odometer, the fuel type and the company stay editable.
+ *   - on a memo a replenishment took (`memo.replenished` — held, waiting for its transfer, or
+ *     transferred): its kind, what paid, the day, the car and the amount all stay (`locked`) — the
+ *     replenishment's letter froze that figure, and the transfer brings back exactly it. The
+ *     driver, the photo, the odometer, the fuel type and the company stay editable.
  */
 export const receiptChangeVerdict = (
   live: ReceiptMemoFacts,

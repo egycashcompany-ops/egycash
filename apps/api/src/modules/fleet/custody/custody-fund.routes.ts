@@ -4,10 +4,13 @@
 // Reading rides the custody screen's own grant. Moving the fund is custody money, so a letter needs
 // that grant AND the custody receipts' («إيصالات العهدة») create grant — both `authorize` calls must
 // pass. No new permission key, and no licensing grant: the settlement's candidates (each with its
-// whole licensing record, for the eye preview) are served here, under the custody grant.
+// whole licensing record, for the eye preview) are served here, under the custody grant. A held
+// replenishment's «تأكيد التحويل» and its cancel ride the same two grants that made it.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  CancelFleetCustodyReplenishmentSchema,
+  ConfirmFleetCustodyTransferSchema,
   CreateFleetCustodyChargeSchema,
   CreateFleetCustodyReplenishmentSchema,
   CreateFleetCustodySettlementSchema,
@@ -19,7 +22,9 @@ import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
+  cancelCustodyReplenishment,
   chargeCustody,
+  confirmCustodyTransfer,
   custodyFundSummary,
   custodyLedgerSummary,
   custodyReplenishCandidates,
@@ -98,6 +103,22 @@ export const buildFleetCustodyFundRouter = (): Router => {
     authorize('fleetReceipt.create'),
     validate({ body: CreateFleetCustodySettlementSchema }),
     asyncHandler(settleCustody),
+  );
+  router.post(
+    '/operations/:id/transfer',
+    authenticate,
+    authorize('fleetCustody.view'),
+    authorize('fleetReceipt.create'),
+    validate({ params: IdParamSchema, body: ConfirmFleetCustodyTransferSchema }),
+    asyncHandler(confirmCustodyTransfer),
+  );
+  router.post(
+    '/operations/:id/cancel',
+    authenticate,
+    authorize('fleetCustody.view'),
+    authorize('fleetReceipt.create'),
+    validate({ params: IdParamSchema, body: CancelFleetCustodyReplenishmentSchema }),
+    asyncHandler(cancelCustodyReplenishment),
   );
   return router;
 };

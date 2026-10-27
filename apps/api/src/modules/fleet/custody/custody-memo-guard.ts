@@ -20,7 +20,10 @@ interface HeldReceipt extends ReceiptMemoFacts {
 interface MemoState {
   no: number;
   replenishedAt: Date | null;
+  /** Taken by a replenishment — held or transferred: the memo is frozen. */
   replenished: boolean;
+  /** That replenishment still waits for its transfer. */
+  held: boolean;
 }
 
 /** The live memo holding the receipt — locked first — or `null` when it is on none. */
@@ -31,20 +34,33 @@ const holdingMemo = async (
   if (receipt.memoId == null) return null;
   await fleetCustodyMemoRepository.lockForReceipt(String(receipt.memoId), session);
   const memo = await FleetCustodyMemoModel.findOne({ _id: receipt.memoId, isDeleted: false })
-    .select({ no: 1, replenishmentId: 1, replenishedAt: 1 })
+    .select({ no: 1, replenishmentId: 1, replenishedAt: 1, replenishmentHeld: 1 })
     .session(session)
-    .lean<{ no: number; replenishmentId?: Types.ObjectId | null; replenishedAt?: Date | null }>()
+    .lean<{
+      no: number;
+      replenishmentId?: Types.ObjectId | null;
+      replenishedAt?: Date | null;
+      replenishmentHeld?: boolean;
+    }>()
     .exec();
   if (memo === null) return null;
+  const replenished = memo.replenishmentId != null;
   return {
     no: memo.no,
     replenishedAt: memo.replenishedAt ?? null,
-    replenished: memo.replenishmentId != null,
+    replenished,
+    held: replenished && memo.replenishmentHeld === true,
   };
 };
 
-const replenishedOn = (memo: MemoState): string =>
-  memo.replenishedAt === null ? '' : ` on ${dayKey(memo.replenishedAt)}`;
+/** «replenished on X», or — while its replenishment waits for the transfer — «held since X». */
+const takenBy = (memo: MemoState): string => {
+  const day = memo.replenishedAt === null ? '' : dayKey(memo.replenishedAt);
+  if (memo.held) {
+    return `held by a replenishment${day === '' ? '' : ` of ${day}`} waiting for its transfer`;
+  }
+  return `replenished${day === '' ? '' : ` on ${day}`}`;
+};
 
 /** Refuses (422) a change the memo holding `live` does not allow — see `receiptChangeVerdict`. */
 export const assertReceiptChangeAllowed = async (
@@ -61,11 +77,11 @@ export const assertReceiptChangeAllowed = async (
     );
   }
   throw new BusinessRuleError(
-    `this receipt is on custody memo ${memo.no}, replenished${replenishedOn(memo)} — its amount, date, car, kind and payment can no longer change`,
+    `this receipt is on custody memo ${memo.no}, ${takenBy(memo)} — its amount, date, car, kind and payment can no longer change`,
   );
 };
 
-/** Refuses (422) deleting a receipt that is on a memo — pending or replenished. */
+/** Refuses (422) deleting a receipt that is on a memo — pending, held or replenished. */
 export const assertReceiptRemovable = async (
   live: HeldReceipt,
   session: ClientSession,
@@ -74,7 +90,7 @@ export const assertReceiptRemovable = async (
   if (memo === null) return;
   if (memo.replenished) {
     throw new BusinessRuleError(
-      `this receipt is on custody memo ${memo.no}, replenished${replenishedOn(memo)} — it can no longer be deleted`,
+      `this receipt is on custody memo ${memo.no}, ${takenBy(memo)} — it can no longer be deleted`,
     );
   }
   throw new BusinessRuleError(

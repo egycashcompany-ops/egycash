@@ -21,6 +21,7 @@ import {
   type FleetCustodyMemoLine,
   type FleetCustodyMemoLineDto,
   type FleetCustodyMemoRowDto,
+  type FleetCustodyMemoStatus,
   type FleetCustodyMemoSummaryQuery,
   type FleetCustodyMemoTotalsDto,
   type FleetCustodyOutsideKindDto,
@@ -109,7 +110,9 @@ export const toCustodyMemoRowDto = (
       ? null
       : {
           id: String(doc.replenishmentId),
+          // The letter's day while held, the transfer's once transferred (legacy: the letter's).
           date: dayKey(doc.replenishedAt ?? doc.updatedAt),
+          held: doc.replenishmentHeld === true,
         },
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
@@ -134,14 +137,24 @@ const snapshot = (doc: FleetCustodyMemoDoc) => ({
       note: line.note,
     })),
   replenishmentId: stringOrNull(doc.replenishmentId),
+  replenishmentHeld: doc.replenishmentHeld === true,
 });
+
+/**
+ * «المذكرات»'s status filter: no replenishment yet; taken by one still waiting for its transfer;
+ * replenished — a memo from before the hold has no `replenishmentHeld` and is replenished.
+ */
+const STATUS_CLAUSES: Record<FleetCustodyMemoStatus, FilterQuery<FleetCustodyMemoDoc>> = {
+  pending: { replenishmentId: null },
+  held: { replenishmentId: { $ne: null }, replenishmentHeld: true },
+  replenished: { replenishmentId: { $ne: null }, replenishmentHeld: { $ne: true } },
+};
 
 /** «المذكرات»'s filters as one database filter — the list's and its figures' alike. */
 const memoFilter = (query: FleetCustodyMemoSummaryQuery): FilterQuery<FleetCustodyMemoDoc> => {
   const clauses: FilterQuery<FleetCustodyMemoDoc>[] = [];
   if (query.kind !== undefined) clauses.push({ kind: { $in: [...query.kind] } });
-  if (query.status === 'pending') clauses.push({ replenishmentId: null });
-  if (query.status === 'replenished') clauses.push({ replenishmentId: { $ne: null } });
+  if (query.status !== undefined) clauses.push(STATUS_CLAUSES[query.status]);
   // The period OVERLAPS the filter's: it ends on or after `from`, and starts by the end of `to`.
   if (query.from !== undefined) clauses.push({ to: { $gte: utcDay(query.from) } });
   if (query.to !== undefined) clauses.push({ from: { $lt: dayAfter(query.to) } });
@@ -360,7 +373,7 @@ class FleetCustodyMemoService {
 
   // ── For «استعاضة عهدة» (custody-fund.service.ts) ──────────────────────────
 
-  /** The live memos not replenished yet, oldest `no` first, with their live totals. */
+  /** The live memos no replenishment has taken (held ones are taken), oldest `no` first. */
   async pendingRows(): Promise<FleetCustodyMemoRowDto[]> {
     const docs = await FleetCustodyMemoModel.find({ isDeleted: false, replenishmentId: null })
       .sort({ no: 1 })
@@ -370,7 +383,10 @@ class FleetCustodyMemoService {
     return docs.map((doc) => toCustodyMemoRowDto(doc, totals.get(String(doc._id))));
   }
 
-  /** How many live memos there are, how many wait for a «استعاضة», and what those add up to. */
+  /**
+   * How many live memos there are, how many wait for a «استعاضة» (none has taken them — a held one
+   * is counted in the fund's `held`), and what those add up to.
+   */
   async counts(): Promise<{ count: number; pending: number; pendingTotal: number }> {
     const docs = await FleetCustodyMemoModel.find({ isDeleted: false })
       .select({ _id: 1, replenishmentId: 1 })
@@ -535,7 +551,7 @@ class FleetCustodyMemoService {
   /**
    * The whole memo again. Its kind stays (422 on a change); `date` absent keeps the stored day;
    * `from` / `to` absent or null are worked out from the lines again. The signatures stay the ones
-   * it was made with. A replenished memo is frozen (422).
+   * it was made with. A memo a replenishment took — held or transferred — is frozen (422).
    */
   async update(
     id: string,
@@ -602,7 +618,7 @@ class FleetCustodyMemoService {
 
   /**
    * Soft delete: the row stays (`isDeleted`, `deletedBy`), its receipts go back to «لم تدخل أي مذكرة
-   * بعد», and its number is never handed out again. A replenished memo stays (422).
+   * بعد», and its number is never handed out again. A memo a replenishment took stays (422).
    */
   async remove(id: string, by: string): Promise<void> {
     const before = await fleetCustodyMemoRepository.getById(id);

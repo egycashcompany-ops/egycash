@@ -6,10 +6,12 @@
 // same pass: the period's days, the fund's fuel by «الشركة» with «بدون شركة» kept apart, and the
 // alerts banner — all counted, none guessed.
 import { describe, expect, it } from 'vitest';
+import { type FleetCustodyMemoStatus } from '@ecms/contracts';
 import {
   custodyDashboard,
   custodyGranularity,
   custodyMemoStateOf,
+  custodyMemoStatusOf,
   custodyPeriodDays,
   type CustodyDashboardRow,
 } from './custody-dashboard';
@@ -495,9 +497,10 @@ describe('custodyDashboard', () => {
 });
 
 describe('custodyMemoStateOf — a receipt against the memos', () => {
-  const memos = new Map([
-    ['m-replenished', true],
-    ['m-pending', false],
+  const memos = new Map<string, FleetCustodyMemoStatus>([
+    ['m-replenished', 'replenished'],
+    ['m-pending', 'pending'],
+    ['m-held', 'held'],
   ]);
 
   it('is outside on no memo, else its live memo’s own state', () => {
@@ -506,9 +509,30 @@ describe('custodyMemoStateOf — a receipt against the memos', () => {
     expect(custodyMemoStateOf('m-pending', memos)).toBe('pending');
   });
 
+  it('counts a memo held for its transfer as still waiting — its money is not back yet', () => {
+    expect(custodyMemoStateOf('m-held', memos)).toBe('pending');
+  });
+
   it('is outside on a memo that is no live memo — never guessed into a waiting one', () => {
     expect(custodyMemoStateOf('m-deleted', memos)).toBe('outside');
     expect(custodyMemoStateOf('m-pending', new Map())).toBe('outside');
+  });
+});
+
+describe('custodyMemoStatusOf — a memo’s status from its stored replenishment', () => {
+  const op = { toString: () => 'op' };
+
+  it('is pending with no replenishment, held while it waits, replenished once transferred', () => {
+    expect(custodyMemoStatusOf({ replenishmentId: null })).toBe('pending');
+    expect(custodyMemoStatusOf({})).toBe('pending');
+    expect(custodyMemoStatusOf({ replenishmentId: op, replenishmentHeld: true })).toBe('held');
+    expect(custodyMemoStatusOf({ replenishmentId: op, replenishmentHeld: false })).toBe(
+      'replenished',
+    );
+  });
+
+  it('reads a memo from before the hold (no `replenishmentHeld`) as replenished', () => {
+    expect(custodyMemoStatusOf({ replenishmentId: op })).toBe('replenished');
   });
 });
 

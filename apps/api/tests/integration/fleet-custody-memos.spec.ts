@@ -8,7 +8,8 @@
 //   4. a delete is soft — the row stays, its receipts come back, its number is never reused;
 //   5. the editor's candidates, with «المأمورية» suggested from the roster, the crew, the car;
 //   6. the receipts screen: a receipt on a memo keeps its kind and payment and stays; once the
-//      memo is replenished its amount, date and car stay too — a driver change still goes through;
+//      memo is replenished — or held for its replenishment's transfer — its amount, date and car
+//      stay too, and a driver change still goes through;
 //   7. who may do what, over HTTP; 8. the audit trail; 9. rows from before memos existed.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
@@ -176,8 +177,12 @@ const createMemo = (body: Record<string, unknown>) =>
 const memoOf = async (receiptId: string) =>
   (await FleetReceiptModel.findById(receiptId).lean().exec())?.memoId ?? null;
 
-/** What a «استعاضة عهدة» does to its memos — the fund's own call, in a transaction of its own. */
-const replenish = async (memoId: string, day: string): Promise<number> => {
+/**
+ * What a «استعاضة عهدة» does to its memos — the fund's own call, in a transaction of its own.
+ * `held`: the replenishment waits for its transfer (every new one does); without it, a memo as a
+ * transferred replenishment leaves it.
+ */
+const replenish = async (memoId: string, day: string, held = false): Promise<number> => {
   const session = await FleetCustodyMemoModel.startSession();
   try {
     let marked = 0;
@@ -188,6 +193,7 @@ const replenish = async (memoId: string, day: string): Promise<number> => {
         new Date(`${day}T00:00:00.000Z`),
         actor,
         session,
+        { held },
       );
     });
     return marked;
@@ -657,17 +663,53 @@ describe('the list and its figures', () => {
       .set(...auth(tokens.viewer));
     expect(data<FleetCustodyMemoRowDto[]>(pending).map((row) => row.no)).toEqual([jan.no]);
 
+    // A third memo held for its replenishment's transfer: «في انتظار التحويل», apart from both.
+    const d = await mkReceipt({ kind: 'wash', amount: 7, date: '2025-02-20' });
+    const held = await createMemo({ kind: 'wash', lines: lines([d]) });
+    expect(await replenish(held.id, '2025-02-25', true)).toBe(1);
+    const byStatus = async (status: string) =>
+      data<FleetCustodyMemoRowDto[]>(
+        await request(app)
+          .get(MEMOS)
+          .query({ from: '2025-01-01', to: '2025-02-28', status })
+          .set(...auth(tokens.viewer)),
+      ).map((row) => row.no);
+    expect(await byStatus('pending')).toEqual([jan.no]);
+    expect(await byStatus('held')).toEqual([held.no]);
+    expect(await byStatus('replenished')).toEqual([feb.no]);
+    expect((await fleetCustodyMemoService.get(held.id)).replenishment).toMatchObject({
+      date: '2025-02-25',
+      held: true,
+    });
+    const heldTotals = await request(app)
+      .get(`${MEMOS}/summary`)
+      .query({ from: '2025-01-01', to: '2025-02-28', status: 'held' })
+      .set(...auth(tokens.viewer));
+    expect(data<FleetCustodyMemoTotalsDto>(heldTotals)).toEqual({
+      count: 1,
+      receipts: 1,
+      total: 7,
+    });
+
     const asc = await request(app)
       .get(MEMOS)
       .query({ from: '2025-01-01', to: '2025-02-28', sort: 'no:asc' })
       .set(...auth(tokens.viewer));
-    expect(data<FleetCustodyMemoRowDto[]>(asc).map((row) => row.no)).toEqual([jan.no, feb.no]);
+    expect(data<FleetCustodyMemoRowDto[]>(asc).map((row) => row.no)).toEqual([
+      jan.no,
+      feb.no,
+      held.no,
+    ]);
 
     const summary = await request(app)
       .get(`${MEMOS}/summary`)
       .query({ from: '2025-01-01', to: '2025-02-28' })
       .set(...auth(tokens.viewer));
-    expect(data<FleetCustodyMemoTotalsDto>(summary)).toEqual({ count: 2, receipts: 3, total: 5.3 });
+    expect(data<FleetCustodyMemoTotalsDto>(summary)).toEqual({
+      count: 3,
+      receipts: 4,
+      total: 12.3,
+    });
   });
 });
 
@@ -838,7 +880,7 @@ describe('the receipts screen, for a receipt on a memo', () => {
     const r = await mkReceipt({ kind: 'tyres', amount: 500 });
     const memo = await createMemo({ kind: 'tyres', lines: lines([r]) });
     const receipt = await read(r);
-    expect(receipt.memo).toEqual({ id: memo.id, no: memo.no, replenishedAt: null });
+    expect(receipt.memo).toEqual({ id: memo.id, no: memo.no, replenishedAt: null, held: false });
 
     const amount = await patch(r, receipt, { amount: 650 });
     expect(amount.status, JSON.stringify(amount.body)).toBe(200);
@@ -860,7 +902,12 @@ describe('the receipts screen, for a receipt on a memo', () => {
     // Once only.
     expect(await replenish(memo.id, '2026-05-02')).toBe(0);
     const receipt = await read(r);
-    expect(receipt.memo).toEqual({ id: memo.id, no: memo.no, replenishedAt: '2026-05-01' });
+    expect(receipt.memo).toEqual({
+      id: memo.id,
+      no: memo.no,
+      replenishedAt: '2026-05-01',
+      held: false,
+    });
 
     for (const over of [
       { amount: 901 },
@@ -898,6 +945,43 @@ describe('the receipts screen, for a receipt on a memo', () => {
       ).status,
     ).toBe(422);
     expect((await FleetCustodyMemoModel.findById(memo.id).lean().exec())?.isDeleted).toBe(false);
+  });
+
+  it('a memo held for its transfer: locked like a replenished one, its link held with no day yet', async () => {
+    const r = await mkReceipt({ kind: 'wash', amount: 75, date: '2026-04-06' });
+    const memo = await createMemo({ kind: 'wash', lines: lines([r]) });
+    expect(await replenish(memo.id, '2026-05-03', true)).toBe(1);
+    // Taken: no other replenishment can mark it.
+    expect(await replenish(memo.id, '2026-05-04', true)).toBe(0);
+    const receipt = await read(r);
+    expect(receipt.memo).toEqual({ id: memo.id, no: memo.no, replenishedAt: null, held: true });
+
+    for (const over of [{ amount: 76 }, { date: '2026-04-07T00:00:00.000Z' }, { kind: 'tyres' }]) {
+      const res = await patch(r, receipt, over);
+      expect(res.status, JSON.stringify(over)).toBe(422);
+      expect(JSON.stringify(res.body), JSON.stringify(over)).toContain('waiting for its transfer');
+    }
+    const removed = await request(app)
+      .delete(`/api/v1/fleet/receipts/${r}`)
+      .set(...auth(tokens.clerk));
+    expect(removed.status).toBe(422);
+    const driver = await patch(r, receipt, { driverName: 'سائق آخر' });
+    expect(driver.status, JSON.stringify(driver.body)).toBe(200);
+
+    const current = await fleetCustodyMemoService.get(memo.id);
+    const edit = await request(app)
+      .patch(`${MEMOS}/${memo.id}`)
+      .set(...auth(tokens.editor))
+      .send({ kind: 'wash', lines: lines([r]), version: current.version });
+    expect(edit.status).toBe(422);
+    expect(JSON.stringify(edit.body)).toContain('waiting for its transfer');
+    expect(
+      (
+        await request(app)
+          .delete(`${MEMOS}/${memo.id}`)
+          .set(...auth(tokens.deleter))
+      ).status,
+    ).toBe(422);
   });
 
   it('a pending memo’s worked-out period follows a line moved to another day', async () => {

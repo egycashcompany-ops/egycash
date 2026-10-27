@@ -18,9 +18,9 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
   }
 
   /**
-   * A replenished memo is frozen — riding inside the same atomic write as every edit and delete,
-   * so a «استعاضة» landing a moment earlier cannot be overtaken by a request that read the memo
-   * before it.
+   * A memo a replenishment took is frozen — held or transferred alike — riding inside the same
+   * atomic write as every edit and delete, so a «استعاضة» landing a moment earlier cannot be
+   * overtaken by a request that read the memo before it.
    */
   protected override writeConditions(): FilterQuery<FleetCustodyMemoDoc> {
     return { replenishmentId: null };
@@ -73,31 +73,40 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
     return new Map(rows.map((row) => [String(row._id), row.no]));
   }
 
-  /** id → the receipts screen's link («مذكرة … رقم N», and its replenishment's day). */
+  /**
+   * id → the receipts screen's link («مذكرة … رقم N»): the day its replenishment brought the money
+   * back — none while pending, and none while held (`held`: the transfer is not confirmed yet).
+   */
   async linksByIds(ids: readonly string[]): Promise<Map<string, FleetReceiptMemoLinkDto>> {
     const valid = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
     if (valid.length === 0) return new Map();
     const rows = await this.model
       .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
-      .select({ no: 1, replenishmentId: 1, replenishedAt: 1 })
+      .select({ no: 1, replenishmentId: 1, replenishedAt: 1, replenishmentHeld: 1 })
       .lean<
         {
           _id: Types.ObjectId;
           no: number;
           replenishmentId?: Types.ObjectId | null;
           replenishedAt?: Date | null;
+          replenishmentHeld?: boolean;
         }[]
       >()
       .exec();
     return new Map(
-      rows.map((row) => [
-        String(row._id),
-        {
-          id: String(row._id),
-          no: row.no,
-          replenishedAt: row.replenishmentId == null ? null : dayOf(row.replenishedAt ?? null),
-        },
-      ]),
+      rows.map((row) => {
+        const held = row.replenishmentId != null && row.replenishmentHeld === true;
+        return [
+          String(row._id),
+          {
+            id: String(row._id),
+            no: row.no,
+            replenishedAt:
+              row.replenishmentId == null || held ? null : dayOf(row.replenishedAt ?? null),
+            held,
+          },
+        ];
+      }),
     );
   }
 
@@ -128,9 +137,10 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
   }
 
   /**
-   * Mark memos as brought back by one «استعاضة عهدة» — only live ones not replenished yet. Returns
-   * how many were marked; the caller compares it with how many it asked for and aborts its
-   * transaction on a shortfall. `__v` moves, so an edit dialog open on the memo goes stale.
+   * Mark memos as taken by one «استعاضة عهدة» — only live ones no replenishment holds yet. `held`:
+   * the replenishment waits for its transfer, and `date` is its letter's day. Returns how many were
+   * marked; the caller compares it with how many it asked for and aborts its transaction on a
+   * shortfall. `__v` moves, so an edit dialog open on the memo goes stale.
    */
   async markReplenished(
     ids: readonly string[],
@@ -138,6 +148,7 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
     date: Date,
     by: string | null,
     session: ClientSession,
+    { held = false }: { held?: boolean } = {},
   ): Promise<number> {
     const valid = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
     if (valid.length === 0) return 0;
@@ -152,6 +163,79 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
           $set: {
             replenishmentId: operationId,
             replenishedAt: date,
+            replenishmentHeld: held,
+            updatedBy: by === null ? null : new Types.ObjectId(by),
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount;
+  }
+
+  /** The live memos `operationId` holds while it waits for its transfer, among `ids`. */
+  private heldBy(
+    ids: readonly string[],
+    operationId: Types.ObjectId,
+  ): FilterQuery<FleetCustodyMemoDoc> {
+    const valid = [...new Set(ids.map((id) => id.toLowerCase()))].filter((id) =>
+      Types.ObjectId.isValid(id),
+    );
+    return {
+      _id: { $in: valid.map((id) => new Types.ObjectId(id)) },
+      isDeleted: false,
+      replenishmentId: operationId,
+      replenishmentHeld: true,
+    };
+  }
+
+  /**
+   * «تأكيد التحويل»: the memos a held replenishment took are replenished from the transfer's day —
+   * only those it still holds. Returns how many moved; the caller checks the count.
+   */
+  async markTransferred(
+    ids: readonly string[],
+    operationId: Types.ObjectId,
+    day: Date,
+    by: string | null,
+    session: ClientSession,
+  ): Promise<number> {
+    const result = await this.model
+      .updateMany(
+        this.heldBy(ids, operationId),
+        {
+          $set: {
+            replenishmentHeld: false,
+            replenishedAt: day,
+            updatedBy: by === null ? null : new Types.ObjectId(by),
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount;
+  }
+
+  /**
+   * «إلغاء الاستعاضة المعلّقة»: the memos a held replenishment took are free again — back to «لم
+   * تُستعَض بعد», editable, and offered to the next replenishment. Returns how many were freed.
+   */
+  async releaseHeld(
+    ids: readonly string[],
+    operationId: Types.ObjectId,
+    by: string | null,
+    session: ClientSession,
+  ): Promise<number> {
+    const result = await this.model
+      .updateMany(
+        this.heldBy(ids, operationId),
+        {
+          $set: {
+            replenishmentId: null,
+            replenishedAt: null,
+            replenishmentHeld: false,
             updatedBy: by === null ? null : new Types.ObjectId(by),
           },
           $inc: { __v: 1 },
@@ -163,16 +247,23 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
   }
 }
 
-/** A replenished memo can no longer be changed or deleted (422). */
+/**
+ * A memo a replenishment took can no longer be changed or deleted (422) — while it waits for the
+ * transfer, and after.
+ */
 export const assertCustodyMemoWritable = (
-  memo: Pick<FleetCustodyMemoDoc, 'no' | 'replenishmentId' | 'replenishedAt'>,
+  memo: Pick<FleetCustodyMemoDoc, 'no' | 'replenishmentId' | 'replenishedAt' | 'replenishmentHeld'>,
 ): void => {
-  if (memo.replenishmentId != null) {
-    const day = dayOf(memo.replenishedAt ?? null);
+  if (memo.replenishmentId == null) return;
+  const day = dayOf(memo.replenishedAt ?? null);
+  if (memo.replenishmentHeld === true) {
     throw new BusinessRuleError(
-      `custody memo ${memo.no} was replenished${day === null ? '' : ` on ${day}`} — it can no longer be changed or deleted`,
+      `custody memo ${memo.no} is held by a replenishment${day === null ? '' : ` of ${day}`} waiting for its transfer — it cannot be changed or deleted unless that replenishment is cancelled`,
     );
   }
+  throw new BusinessRuleError(
+    `custody memo ${memo.no} was replenished${day === null ? '' : ` on ${day}`} — it can no longer be changed or deleted`,
+  );
 };
 
 export const fleetCustodyMemoRepository = new FleetCustodyMemoRepository();

@@ -22,6 +22,12 @@ export type XlsxCell = string | number;
 export interface XlsxSheet {
   /** The sheet's name — Arabic, and what the reader sees on the tab. */
   name: string;
+  /**
+   * A heading written ABOVE the table — bold, centred across its columns, one blank line under it
+   * — for a sheet that is a statement of something rather than a dump («مكتوب فوقه عنوان بيان
+   * تغذية ماكينات الصراف الآلي عن يوم …», the ATM boards). Omitted, the header is row 1 as always.
+   */
+  title?: string;
   header: readonly string[];
   rows: readonly (readonly XlsxCell[])[];
   /**
@@ -102,17 +108,23 @@ const cellXml = (value: XlsxCell, col: number, row: number, style: number): stri
 };
 
 /** Style ids, in the order `styles.xml` below declares them. */
-const S = { body: 0, head: 1, total: 2, money: 3, moneyTotal: 4, plain: 5 } as const;
+const S = { body: 0, head: 1, total: 2, money: 3, moneyTotal: 4, plain: 5, title: 6 } as const;
 
 const sheetXml = (sheet: XlsxSheet): string => {
   const head = [sheet.serialHeader, ...sheet.header];
   // Shifted by one, because column 0 is the serial the caller does not pass.
   const money = new Set((sheet.moneyColumns ?? []).map((index) => index + 1));
-  const rows: string[] = [
-    `<row r="1">${head.map((h, i) => cellXml(h, i, 1, S.head)).join('')}</row>`,
-  ];
+  // A title takes row 1 and leaves row 2 blank; everything below moves down by those two rows.
+  const top = sheet.title === undefined ? 0 : 2;
+  const rows: string[] = [];
+  if (sheet.title !== undefined) {
+    rows.push(`<row r="1" ht="24" customHeight="1">${cellXml(sheet.title, 0, 1, S.title)}</row>`);
+  }
+  rows.push(
+    `<row r="${String(top + 1)}">${head.map((h, i) => cellXml(h, i, top + 1, S.head)).join('')}</row>`,
+  );
   sheet.rows.forEach((row, i) => {
-    const n = i + 2;
+    const n = i + 2 + top;
     // The serial is GENERATED — it numbers the sheet so a reader can point at a line, and it is
     // never a row id: re-sort the screen and the same fine gets a different «م».
     const cells = [i + 1, ...row]
@@ -121,7 +133,7 @@ const sheetXml = (sheet: XlsxSheet): string => {
     rows.push(`<row r="${String(n)}">${cells}</row>`);
   });
   if (sheet.totals !== undefined) {
-    const n = sheet.rows.length + 2;
+    const n = sheet.rows.length + 2 + top;
     const cells = ['', ...sheet.totals]
       .map((cell, c) => cellXml(cell, c, n, money.has(c) ? S.moneyTotal : S.total))
       .join('');
@@ -131,7 +143,7 @@ const sheetXml = (sheet: XlsxSheet): string => {
   // and no fill — because a grid drawn round a person's name would read as another table.
   if (sheet.trailer !== undefined) {
     // The last row the table used, plus the blank one.
-    let n = sheet.rows.length + (sheet.totals === undefined ? 1 : 2) + 2;
+    let n = sheet.rows.length + (sheet.totals === undefined ? 1 : 2) + 2 + top;
     for (const line of sheet.trailer) {
       const cells = line.map((cell, c) => cellXml(cell, c, n, S.plain)).join('');
       rows.push(`<row r="${String(n)}">${cells}</row>`);
@@ -141,7 +153,12 @@ const sheetXml = (sheet: XlsxSheet): string => {
   // `rightToLeft` on the VIEW, so column A is on the right where an Arabic reader expects it —
   // the sheet reads the way the screen it came from reads.
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="16"/><cols><col min="1" max="1" width="5" customWidth="1"/><col min="2" max="${String(head.length)}" width="18" customWidth="1"/></cols><sheetData>${rows.join('')}</sheetData></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="16"/><cols><col min="1" max="1" width="5" customWidth="1"/><col min="2" max="${String(head.length)}" width="18" customWidth="1"/></cols><sheetData>${rows.join('')}</sheetData>${
+    // The title spans the table's own width, so it centres over the columns it heads.
+    sheet.title === undefined
+      ? ''
+      : `<mergeCells count="1"><mergeCell ref="${ref(0, 1)}:${ref(head.length - 1, 1)}"/></mergeCells>`
+  }</worksheet>`;
 };
 
 // ONE WORKBOOK, SEVERAL SHEETS — sheet n is `sheetN.xml`, relationship `rIdN`, and the styles take
@@ -151,11 +168,11 @@ const WORKBOOK = (
 ): string => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${names.map((name, i) => `<sheet name="${esc(name)}" sheetId="${String(i + 1)}" r:id="rId${String(i + 1)}"/>`).join('')}</sheets></workbook>`;
 
-// Three formats, in the order `S` names them: the body, the bold header on its fill, and the bold
-// total. Excel requires the two zero-index built-ins (`fonts[0]`, `fills[0]`, `fills[1]`) to be
+// The formats, in the order `S` names them: the body, the bold header on its fill, the bold total,
+// the two money formats, the plain signature line, and the larger bold title. Excel requires the two zero-index built-ins (`fonts[0]`, `fills[0]`, `fills[1]`) to be
 // present and in that order, whether or not anything uses them.
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFECECF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFECECF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
 const CONTENT_TYPES = (
   count: number,

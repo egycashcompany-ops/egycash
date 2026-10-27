@@ -12,8 +12,8 @@
 //   3. **Dry-run counts without writing**, so an operator sees the shape of a deployment — and its
 //      unresolved rows — before committing to it.
 //
-// One thing it cannot write: a SECOND open operation for one machine. The owner's rule (port doc
-// OD-1) put a partial unique index on each operation log, and legacy history predates it. The
+// One thing it cannot write: a SECOND open operation for one machine on one day. The owner's rule
+// (port doc OD-1) put a partial unique index on each operation log, and legacy history predates it. The
 // importer is exempt from the rule's service check (history is written as it was), and a row the
 // index refuses is reported as `openDuplicate` with its legacy `_id` — never a crashed run. Where
 // the index is ABSENT (the boot skipped it over duplicates already stored) nothing can refuse
@@ -132,8 +132,8 @@ const hasOpenOperationIndex = async (
 /**
  * The operation logs' write — `writeRows`, plus the owner's rule (OD-1). The importer is EXEMPT
  * from the rule's service check: it is history, written as it was, and it neither refuses, closes
- * nor merges a legacy row. But the partial unique index admits one OPEN row per machine code, and
- * the legacy had no such guard, so a second open row is refused by the database. That refusal is
+ * nor merges a legacy row. But the partial unique index admits one OPEN row per machine code and
+ * day, and the legacy had no such guard, so a second open row is refused by the database. That refusal is
  * REPORTED — never a crash of the whole run (the bulk write is unordered, so every other row still
  * lands).
  *

@@ -7,6 +7,7 @@ import { type BaseDocFields } from '../../../shared/base/base.model';
 import { type ScopeSelector } from '../../../shared/types';
 import { type Paginated } from '@ecms/contracts';
 import { cairoDayRange, cairoShiftWindow } from './cairo-time';
+import { codesBlockedByMove } from './open-operation';
 import { boardNames, storedSpellingsOf } from './board-filter';
 
 /** The lifecycle fields both operation kinds carry. */
@@ -19,6 +20,8 @@ export interface AtmOperationLogFields extends BaseDocFields {
   zone: string;
   area: string;
   openedAt: Date;
+  /** The Cairo day of `openedAt` — see `openDayOf` (shared/open-operation.ts). */
+  openDay: string | null;
   closedAt: Date | null;
   leaderName: string | null;
   openedById: Types.ObjectId | null;
@@ -35,6 +38,27 @@ export interface OpenListParams {
   scope: ScopeSelector;
 }
 
+/**
+ * Pure: the distinct (branch, area, shift window) groups of a set of rows — one leader cascade per
+ * group, for the bulk edit's «الوردية» box, so ten checked rows of one area and shift cost one
+ * write, not ten. Keyed by the window's start, which names the shift exactly.
+ */
+export const leaderCascadeGroups = <
+  R extends Pick<AtmOperationLogFields, 'branchId' | 'area' | 'openedAt'>,
+>(
+  rows: readonly R[],
+): R[] => {
+  const seen = new Set<string>();
+  const groups: R[] = [];
+  for (const row of rows) {
+    const key = `${String(row.branchId)}|${row.area}|${String(cairoShiftWindow(row.openedAt).start.getTime())}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    groups.push(row);
+  }
+  return groups;
+};
+
 export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends BaseRepository<T> {
   /**
    * The open board (contad_app.js:263 / :1100): open rows, optionally narrowed by bank and area,
@@ -42,9 +66,9 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
    *
    * One deliberate deviation, decision D4: the legacy floor `open_time >= today 00:00` made any
    * open row with a PAST open date invisible on every screen forever — it could never be closed
-   * again. Open is open here; the client still renders non-today rows as the grey carried-over
-   * group (no timer, the visible legacy behaviour) — and, since the owner's rule made an open row
-   * of any day block its machine (OD-1), with the close control the legacy group lacked (D4).
+   * again. Open is open here; the client picks the day it shows (today by default, then tomorrow,
+   * everything scheduled ahead, or earlier days left open — 2026-10-27), and an earlier day's row
+   * keeps the close control the legacy grey group lacked (D4).
    *
    * A requested bank or area matches every stored spelling of it that differs only by
    * surrounding spaces (`board-filter.ts`) — resolved to those spellings first, so the page itself
@@ -75,35 +99,51 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
 
   /**
    * The owner's rule (shared/open-operation.ts): which of these machine codes already have an
-   * OPEN operation of this kind. COMPANY-WIDE and therefore unscoped on purpose — a code open in
-   * a branch the caller cannot read still blocks — so it answers with codes only, never a row:
-   * nothing about the other branch can leave through it.
+   * OPEN operation of this kind ON `day` (a Cairo calendar day). COMPANY-WIDE and therefore
+   * unscoped on purpose — a code open in a branch the caller cannot read still blocks — so it
+   * answers with codes only, never a row: nothing about the other branch can leave through it.
+   *
+   * Asked by the open time's day RANGE, not by the stored `openDay`, so a row written before that
+   * field existed blocks its day all the same. `exceptIds` leaves rows out — a write never blocks
+   * itself (a reopen, an edit moving its own rows).
    */
-  async openMachineCodes(machineCodes: readonly string[]): Promise<Set<string>> {
+  async openMachineCodes(
+    machineCodes: readonly string[],
+    day: string,
+    exceptIds: readonly string[] = [],
+  ): Promise<Set<string>> {
     const wanted = [...new Set(machineCodes)].filter((code) => code !== '');
     if (wanted.length === 0) return new Set();
+    const { start, end } = cairoDayRange(day);
+    const filter: Record<string, unknown> = {
+      isDeleted: false,
+      closedAt: null,
+      machineCode: { $in: wanted },
+      openedAt: { $gte: start, $lt: end },
+    };
+    const except = exceptIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (except.length > 0) filter._id = { $nin: except };
     const open = (await this.model
-      .distinct('machineCode', {
-        isDeleted: false,
-        closedAt: null,
-        machineCode: { $in: wanted },
-      } as FilterQuery<T>)
+      .distinct('machineCode', filter as FilterQuery<T>)
       .exec()) as string[];
     return new Set(open);
   }
 
   /**
-   * The same question for one code, not counting `exceptId` — a reopen never blocks itself. An
-   * empty code identifies no machine, so it never blocks: the same exclusion `openMachineCodes`
-   * makes and the index's partial filter (`machineCode: { $gt: '' }`) encodes.
+   * The same question for one code on one day, not counting `exceptId` — a reopen never blocks
+   * itself. An empty code identifies no machine, so it never blocks: the same exclusion
+   * `openMachineCodes` makes and the index's partial filter (`machineCode: { $gt: '' }`) encodes.
    */
-  async hasOpenOperation(machineCode: string, exceptId?: string): Promise<boolean> {
+  async hasOpenOperation(machineCode: string, day: string, exceptId?: string): Promise<boolean> {
     if (machineCode === '') return false;
-    const filter: Record<string, unknown> = { isDeleted: false, closedAt: null, machineCode };
-    if (exceptId !== undefined && Types.ObjectId.isValid(exceptId)) {
-      filter._id = { $ne: new Types.ObjectId(exceptId) };
-    }
-    return (await this.model.exists(filter as FilterQuery<T>).exec()) !== null;
+    const open = await this.openMachineCodes(
+      [machineCode],
+      day,
+      exceptId === undefined ? [] : [exceptId],
+    );
+    return open.has(machineCode);
   }
 
   /** The stored spellings of `field` among the open rows in scope, for `storedSpellingsOf`. */
@@ -229,6 +269,52 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
       .find(this.baseFilter(meta.scope, { _id: { $in: objectIds } } as FilterQuery<T>))
       .lean<T[]>()
       .exec();
+  }
+
+  /**
+   * The owner's per-day rule for the bulk edit of the open time: which of the checked rows' machine
+   * codes would be open twice on `day` once every checked row is moved there. Read under the
+   * caller's scope (they can only move rows they can see); the "open elsewhere" half is the rule's
+   * own company-wide question, the checked rows left out of it. Codes only.
+   */
+  async codesBlockedOnDay(
+    ids: readonly string[],
+    day: string,
+    scope: ScopeSelector,
+  ): Promise<string[]> {
+    const objectIds = ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (objectIds.length === 0) return [];
+    const rows = await this.model
+      .find(this.baseFilter(scope, { _id: { $in: objectIds } } as FilterQuery<T>))
+      .select({ machineCode: 1, closedAt: 1 })
+      .lean<{ machineCode: string; closedAt: Date | null }[]>()
+      .exec();
+    const open = rows.filter((row) => row.closedAt === null).map((row) => row.machineCode);
+    return codesBlockedByMove(rows, await this.openMachineCodes(open, day, ids));
+  }
+
+  /**
+   * The bulk edit's cascade: the leader over every open row sharing a checked row's branch, area
+   * and shift — one `cascadeLeader` per distinct group (`leaderCascadeGroups`).
+   */
+  async cascadeLeaderOverRows(
+    rows: readonly T[],
+    leaderName: string | null,
+    by: string,
+  ): Promise<number> {
+    let touched = 0;
+    for (const row of leaderCascadeGroups(rows)) {
+      touched += await this.cascadeLeader({
+        branchId: row.branchId,
+        area: row.area,
+        openedAt: row.openedAt,
+        leaderName,
+        by,
+      });
+    }
+    return touched;
   }
 
   /**

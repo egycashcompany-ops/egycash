@@ -11,6 +11,22 @@ its entry here in the same PR.
 
 ### Added
 
+- **The ATM boards show one day at a time, and every ATM operation table goes to Excel and PDF.**
+  «هنا يظهر فقط الماكينات اللى المفروض يتغذى أو يتعمله صيانه في اليوم دا مش عموماً».
+  `/atm/replenishments` and `/atm/maintenance` open on today's operations only; a switch beside the
+  table shows tomorrow, everything scheduled ahead, and the earlier days left open and never
+  closed — each with its count. Every column sorts; one red reset clears the bank and area filters
+  (the day view stays, as on the Fleet day boards); only the bank, the code, the machine name and
+  the schedule time (maintenance: the open time) take a text selection, so a drag or Ctrl+A copies
+  exactly those, a tab between columns; the header's «select all» appears only on F8 — focused, so
+  Space checks it — and goes again at the next click or key. The leader field of both edit dialogs
+  carries a «الوردية» box, ticked by default: ticked, the leader goes over the whole shift as before
+  (and, on a checked set, over each checked row's area and shift); unticked, it is written on the
+  rows in the dialog only. The two boards and the two done pages (now read whole, past the first
+  hundred rows) export the table as it stands — day, filters and order applied — to Excel and PDF
+  under «بيان تغذية/صيانة ماكينات الصراف الآلي عن يوم … / عن الفترة من … إلى …»
+  ([ATM port §4a OD-1a, §10](docs/12-planning/atm-operations-port.md)).
+
 - **The company's mobile lines have their own page in IT.** «الـ 3 فايلات دول عبارة عن خطوط موبايل
   عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة». `/it/mobile-lines`
   «خطوط المحمول» lists every line with its network's logo beside it, its number, plan, SIM serial,
@@ -129,6 +145,16 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **A machine is refused only when it is already open THAT DAY.** «خلى الرفض دا … يحصل فقط إذا كانت
+  الماكينات مفتوحه في نفس اليوم ولم تُغلق ! مش يرفضها لو مفتوحه أمبارح ومتقفلتش». The owner's rule
+  (OD-1) is now per Cairo day: a replenishment or maintenance left open yesterday no longer blocks
+  today's open, a reopen or a mail accept — a second open on the SAME day still does. The rule now
+  also holds an edit that moves an open operation's time onto a day its machine is already open on
+  (409, said in words on the dialog). Each operation stores its day (`openDay`); the race-proof
+  index is now unique on `{ machineCode, openDay }` (`ux_open_*_per_code_day`), and the boot DROPS
+  the rule's first, any-day index (`ux_open_*_per_code`) — an index, never a document. The mail
+  screen's «Duplicate» flag asks the same question of the ticket's received day.
 
 - **The IT acknowledgment names what is handed over by its category, not always «جهاز».** «عايز
   كلمة جهاز تبقى متغيرة … حسب (الفئة)» — «بأنني قد استلمت شاشة Dell / P2419H», «… ماوس …», «… لاب

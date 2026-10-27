@@ -143,10 +143,10 @@ describe('the open forms name the codes they did not open', () => {
 
   it('prints the Arabic in the formal register the catalog is held to', () => {
     expect(translate('ar', 'atm.replenishments.alreadyOpenCodes', { codes: '99990001' })).toBe(
-      'لم تُفتح لأن للماكينة تغذية مفتوحة بالفعل أو لأن الكود مُدخل مرتين: 99990001',
+      'لم تُفتح لأن للماكينة تغذية مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: 99990001',
     );
     expect(translate('ar', 'atm.maintenance.alreadyOpenCodes', { codes: '99990001' })).toBe(
-      'لم تُفتح لأن للماكينة صيانة مفتوحة بالفعل أو لأن الكود مُدخل مرتين: 99990001',
+      'لم تُفتح لأن للماكينة صيانة مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: 99990001',
     );
   });
 
@@ -171,8 +171,8 @@ describe('a done page words a refused reopen itself', () => {
       }
       expect(translate('ar', reopenRefusalKey(kind), { code: '99990001' })).toBe(
         kind === 'replenishment'
-          ? 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 تغذية مفتوحة أخرى بالفعل.'
-          : 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 صيانة مفتوحة أخرى بالفعل.',
+          ? 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 تغذية مفتوحة أخرى في نفس اليوم.'
+          : 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 صيانة مفتوحة أخرى في نفس اليوم.',
       );
     },
   );

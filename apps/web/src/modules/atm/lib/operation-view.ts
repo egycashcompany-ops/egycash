@@ -1,8 +1,8 @@
-// Pure view logic for the operation grids — the two-group split and the live timer, ported from
-// the legacy templates and kept out of the components so the behaviour is testable.
+// Pure view logic for the operation grids — the Cairo day and the live timer, ported from the
+// legacy templates and kept out of the components so the behaviour is testable. Which day a board
+// shows is `board-day.ts`.
 import { ATM_TIMER_THRESHOLD_HOURS, ErrorCodes, type Locale } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
-import { type TableSelection } from '../../../shared/ui/useTableSelection';
 import { listSeparator } from './register-import-view';
 
 const CAIRO_TZ = 'Africa/Cairo';
@@ -14,31 +14,9 @@ const cairoDayFormatter = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
-/** `YYYY-MM-DD` of the Cairo calendar day an instant falls on — the grouping day. */
+/** `YYYY-MM-DD` of the Cairo calendar day an instant falls on — the day a board shows it on. */
 export const cairoDay = (isoInstant: string | Date): string =>
   cairoDayFormatter.format(typeof isoInstant === 'string' ? new Date(isoInstant) : isoInstant);
-
-/**
- * The legacy open grid renders TWO groups (atm_replenishment.ejs:1013 / :1086): rows opened
- * TODAY — live timer, white — and open rows of any OTHER day — grey, no timer. The comparison is
- * by calendar day of the open time. The legacy grey group had no close control; since the owner's
- * rule (port doc OD-1) an open row of ANY day blocks its machine, so both groups can be closed and
- * checked (D4).
- */
-export const isOpenedToday = (openedAt: string, now: Date = new Date()): boolean =>
-  cairoDay(openedAt) === cairoDay(now);
-
-/**
- * One selection over a board's two groups: the bulk bar acts on every checked row, whichever
- * group it sits in, while each table's "select all" reaches only its OWN rows.
- */
-export const groupSelection = (
-  selection: TableSelection,
-  groupIds: readonly string[],
-): TableSelection => ({
-  ...selection,
-  toggleAll: (checked) => selection.toggleMany(groupIds, checked),
-});
 
 /** Whole seconds since open — the "Taken Time" the timer cell counts up. */
 export const elapsedSeconds = (openedAt: string, now: Date = new Date()): number =>

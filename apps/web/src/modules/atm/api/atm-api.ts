@@ -138,6 +138,7 @@ export const updateReplenishment = (
     scheduleTime?: string | null;
     openedAt?: string;
     leaderName?: string | null;
+    cascadeLeader?: boolean;
     version: number;
   },
 ): Promise<AtmReplenishmentDto> => patch<AtmReplenishmentDto>(`/atm/replenishments/${id}`, body);
@@ -195,6 +196,7 @@ export const updateMaintenance = (
     notes?: string | null;
     openedAt?: string;
     leaderName?: string | null;
+    cascadeLeader?: boolean;
     version: number;
   },
 ): Promise<AtmMaintenanceDto> => patch<AtmMaintenanceDto>(`/atm/maintenances/${id}`, body);

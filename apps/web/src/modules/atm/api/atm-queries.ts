@@ -273,10 +273,16 @@ export const useOpenAtmReplenishmentsList = (filters: AtmBoardFilters, enabled =
 export const useAtmReplenishmentFacets = (banks: readonly string[]) =>
   useQuery(atmBoardFacetsQueries.replenishments(banks));
 
-export const useDoneAtmReplenishments = (params: AtmListParams) =>
+/**
+ * Every replenishment closed in a day range — WHOLE, like the boards (`lib/whole-board.ts`). The
+ * page has no pager and asked for one page of a hundred, so on a busy range the rest were simply
+ * not there; its sort and its Excel/PDF (2026-10-27) are about every closed row of the range.
+ */
+export const useDoneAtmReplenishments = (range: { from: string; to: string }) =>
   useQuery({
-    queryKey: listKey(MODULE, 'replenishments', { kind: 'done', ...params }),
-    queryFn: () => api.listDoneReplenishments(params),
+    queryKey: listKey(MODULE, 'replenishments', { kind: 'done', whole: true, ...range }),
+    queryFn: () =>
+      fetchWholeBoard((page, pageSize) => api.listDoneReplenishments({ ...range, page, pageSize })),
   });
 
 const invalidateReplenishments = (client: ReturnType<typeof useQueryClient>) =>
@@ -302,8 +308,9 @@ export const useCloseAtmReplenishments = () => {
 };
 
 /**
- * A reopen the owner's rule refused (port doc OD-1: the machine already has another open
- * operation of that kind) is worded by its done page, in the reader's language. Every OTHER
+ * A reopen — or an edit moving the open time — the owner's rule refused (port doc OD-1: the
+ * machine already has another open operation of that kind that day) is worded by its own screen,
+ * in the reader's language. Every OTHER
  * failure still gets the global toast exactly as before — declaring `onError` is what opts a hook
  * out of it (`shared/lib/query-client.ts`), so the hook raises that same toast for the rest.
  */
@@ -335,10 +342,14 @@ export const useUpdateAtmReplenishment = () => {
         scheduleTime?: string | null;
         openedAt?: string;
         leaderName?: string | null;
+        cascadeLeader?: boolean;
         version: number;
       };
     }) => api.updateReplenishment(id, body),
     onSuccess: () => invalidateReplenishments(client),
+    // An edit moving the open time onto a day the machine is already open on is the rule's
+    // refusal (OD-1): the dialog words it, so it raises no second toast.
+    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -347,6 +358,9 @@ export const useBulkUpdateAtmReplenishments = () => {
   return useMutation({
     mutationFn: (body: BulkUpdateAtmReplenishments) => api.bulkUpdateReplenishments(body),
     onSuccess: () => invalidateReplenishments(client),
+    // An edit moving the open time onto a day the machine is already open on is the rule's
+    // refusal (OD-1): the dialog words it, so it raises no second toast.
+    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -366,10 +380,12 @@ export const useOpenAtmMaintenancesList = (filters: AtmBoardFilters, enabled = t
 export const useAtmMaintenanceFacets = (banks: readonly string[]) =>
   useQuery(atmBoardFacetsQueries.maintenances(banks));
 
-export const useDoneAtmMaintenances = (params: AtmListParams) =>
+/** Every maintenance closed in a day range — whole, as `useDoneAtmReplenishments`. */
+export const useDoneAtmMaintenances = (range: { from: string; to: string }) =>
   useQuery({
-    queryKey: listKey(MODULE, 'maintenances', { kind: 'done', ...params }),
-    queryFn: () => api.listDoneMaintenances(params),
+    queryKey: listKey(MODULE, 'maintenances', { kind: 'done', whole: true, ...range }),
+    queryFn: () =>
+      fetchWholeBoard((page, pageSize) => api.listDoneMaintenances({ ...range, page, pageSize })),
   });
 
 export const useAtmMaintenanceLeaderOptions = (enabled = true) =>
@@ -425,10 +441,14 @@ export const useUpdateAtmMaintenance = () => {
         notes?: string | null;
         openedAt?: string;
         leaderName?: string | null;
+        cascadeLeader?: boolean;
         version: number;
       };
     }) => api.updateMaintenance(id, body),
     onSuccess: () => invalidateMaintenances(client),
+    // An edit moving the open time onto a day the machine is already open on is the rule's
+    // refusal (OD-1): the dialog words it, so it raises no second toast.
+    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -437,6 +457,9 @@ export const useBulkUpdateAtmMaintenances = () => {
   return useMutation({
     mutationFn: (body: BulkUpdateAtmMaintenances) => api.bulkUpdateMaintenances(body),
     onSuccess: () => invalidateMaintenances(client),
+    // An edit moving the open time onto a day the machine is already open on is the rule's
+    // refusal (OD-1): the dialog words it, so it raises no second toast.
+    onError: toastUnlessAlreadyOpen,
   });
 };
 

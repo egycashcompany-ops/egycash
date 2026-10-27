@@ -494,9 +494,10 @@ export interface OpenAtmReplenishmentsResultDto {
   opened: AtmReplenishmentDto[];
   unknownCodes: string[];
   /**
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»): one entry per submitted line that
-   * was NOT opened because its machine already has an open replenishment — anywhere in the
-   * company — or because the same code appeared earlier in this batch (that earlier line opened).
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per day since 2026-10-27): one entry
+   * per submitted line that was NOT opened because its machine already has an open replenishment
+   * ON THE BATCH'S DAY — anywhere in the company — or because the same code appeared earlier in
+   * this batch (that earlier line opened).
    * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
    * where the open operation is.
    */
@@ -514,18 +515,31 @@ export const UpdateAtmReplenishmentSchema = z
      * the legacy's own precedence (:854-859), preserved.
      */
     leaderName: z.string().nullable().optional(),
+    /**
+     * The dialog's «الوردية» box (2026-10-27): ticked — the default, and what an absent value
+     * means — the leader cascades over the shift exactly as above; unticked, it is written on THIS
+     * row only, whether or not the open time moves in the same submit.
+     */
+    cascadeLeader: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict();
 export type UpdateAtmReplenishment = z.infer<typeof UpdateAtmReplenishmentSchema>;
 
-/** Checked-rows edit (contad_app.js:870-889): schedule/open time on all, leader on all if changed. */
+/**
+ * Checked-rows edit (contad_app.js:870-889): schedule/open time on all, leader on all if changed.
+ * `cascadeLeader: true` (the dialog's «الوردية» box, ticked) also carries the leader over the
+ * shift of EVERY checked row — each one's area and shift window, as the single edit does, and
+ * under its rule: not when the open time is moved in the same submit. Absent or false: the
+ * checked rows only, the legacy's own asymmetry.
+ */
 export const BulkUpdateAtmReplenishmentsSchema = z
   .object({
     ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS),
     scheduleTime: z.string().nullable().optional(),
     openedAt: z.coerce.date().optional(),
     leaderName: z.string().nullable().optional(),
+    cascadeLeader: z.boolean().optional(),
   })
   .strict();
 export type BulkUpdateAtmReplenishments = z.infer<typeof BulkUpdateAtmReplenishmentsSchema>;
@@ -611,6 +625,8 @@ export const UpdateAtmMaintenanceSchema = z
     openedAt: z.coerce.date().optional(),
     /** Cascades by area+shift like replenishment, but with NO time-unchanged guard (:2019-2032). */
     leaderName: z.string().nullable().optional(),
+    /** The «الوردية» box, as on `UpdateAtmReplenishmentSchema`: false = this row only. */
+    cascadeLeader: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -625,6 +641,8 @@ export const BulkUpdateAtmMaintenancesSchema = z
   .object({
     ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS),
     leaderName: z.string().nullable(),
+    /** True: the leader also cascades over each checked row's area and shift (no time guard here). */
+    cascadeLeader: z.boolean().optional(),
   })
   .strict();
 export type BulkUpdateAtmMaintenances = z.infer<typeof BulkUpdateAtmMaintenancesSchema>;

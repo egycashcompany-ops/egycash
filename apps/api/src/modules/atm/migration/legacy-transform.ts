@@ -11,6 +11,7 @@ import {
   type AtmMailTicketStatus,
 } from '@ecms/contracts';
 import { reinterpretUtcPartsAsCairo } from '../shared/cairo-time';
+import { openDayOf } from '../shared/open-operation';
 
 /**
  * How a legacy deployment wrote its open times.
@@ -132,6 +133,8 @@ export interface ImportedOperation {
   zone: string;
   area: string;
   openedAt: Date;
+  /** The Cairo day of `openedAt` — the per-day rule's key (shared/open-operation.ts). */
+  openDay: string;
   closedAt: Date | null;
   leaderName: string | null;
   openedByName: string | null;
@@ -166,6 +169,7 @@ const operationBase = (
   // are all defined by it. Skipped and REPORTED rather than invented.
   if (openedAtRaw === null) return null;
   const deleted = Number(doc.deleted ?? 0) === 1;
+  const openedAt = repairLegacyInstant(openedAtRaw, openMode) as Date;
   // `end` is not carried: the open state IS `closedAt === null` (port doc G3). A legacy row with
   // end:1 and no close_time — reopened, then re-closed by a crash — imports as OPEN, which is
   // what its own close_time says.
@@ -178,7 +182,8 @@ const operationBase = (
     machineName: str(doc.name),
     zone: str(doc.zone),
     area: str(doc.area),
-    openedAt: repairLegacyInstant(openedAtRaw, openMode) as Date,
+    openedAt,
+    openDay: openDayOf(openedAt),
     // Close times were ALWAYS true instants — both paths wrote `new Date()`/moment-tz UTC
     // (contad_app.js:782, :1964) — so they are never repaired.
     closedAt: asDate(doc.close_time),
@@ -231,26 +236,31 @@ export const maintenanceFromLegacy = (
 
 // ── The owner's rule vs. history (port doc OD-1) ────────────────────────────────────────────────
 //
-// Since 2026-10-13 a machine has at most ONE open replenishment and ONE open maintenance, held by
-// a partial unique index per collection. The legacy had no such guard, so a deployment's history
-// can hold two open rows for one machine. The importer is EXEMPT from the rule's service check —
-// it writes history as it was and decides nothing — but it cannot make the index accept a second
+// Since 2026-10-13 a machine has at most ONE open replenishment and ONE open maintenance — per
+// Cairo day since 2026-10-27 — held by a partial unique index per collection on
+// `{ machineCode, openDay }`. The legacy had no such guard, so a deployment's history can hold two
+// open rows for one machine on one day. The importer is EXEMPT from the rule's service check — it
+// writes history as it was and decides nothing — but it cannot make the index accept a second
 // open row. These two helpers are how it reports that instead of crashing.
 
 /**
  * Pure: the rows the open-operation index would refuse WITHIN one deployment's list — every open,
- * live row whose code an earlier open, live row already holds. A dry run's prediction; the real
- * run reports what the index actually refused (which also counts rows already in ECMS).
+ * live row whose code AND day an earlier open, live row already holds. A dry run's prediction; the
+ * real run reports what the index actually refused (which also counts rows already in ECMS).
  */
 export const openDuplicateRowIds = (
-  rows: readonly Pick<ImportedOperation, '_id' | 'machineCode' | 'closedAt' | 'isDeleted'>[],
+  rows: readonly Pick<
+    ImportedOperation,
+    '_id' | 'machineCode' | 'openDay' | 'closedAt' | 'isDeleted'
+  >[],
 ): string[] => {
   const held = new Set<string>();
   const refused: string[] = [];
   for (const row of rows) {
     if (row.closedAt !== null || row.isDeleted || row.machineCode === '') continue;
-    if (held.has(row.machineCode)) refused.push(String(row._id));
-    else held.add(row.machineCode);
+    const key = `${row.machineCode}|${row.openDay}`;
+    if (held.has(key)) refused.push(String(row._id));
+    else held.add(key);
   }
   return refused;
 };

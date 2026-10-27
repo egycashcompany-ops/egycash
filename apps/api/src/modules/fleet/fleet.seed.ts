@@ -13,6 +13,7 @@ import { ensureDealershipDocsCategory } from './dealership/dealership-files';
 import { ensureNoticeDocsCategory } from './notices/notice-files';
 import { ensureReceiptDocsCategory } from './receipts/receipt-files';
 import { ensureFuelCardDocsCategory } from './fuel-cards/fuel-card-files';
+import { ensureVehicleContractDocsCategory } from './vehicle-contracts/vehicle-contract-files';
 import { runFleetMigrations } from './fleet.migration';
 import { ensureCustodyMemoCounter } from './custody/custody-memo.service';
 
@@ -32,6 +33,7 @@ export const seedFleet = async (): Promise<void> => {
   await ensureReceiptDocsCategory();
   await ensureFuelCardDocsCategory();
   await ensureNoticeDocsCategory();
+  await ensureVehicleContractDocsCategory();
 
   await fleetCatalogItemService.ensure({
     kind: 'workType',

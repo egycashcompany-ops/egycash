@@ -57,7 +57,7 @@ describe('the seeded navigation catalog', () => {
     //
     // So adding a row fails HERE first, on the author's machine, naming the number to change —
     // rather than eight minutes into CI in the one suite that cannot run without a mongod.
-    expect(rows).toHaveLength(130);
+    expect(rows).toHaveLength(133);
   });
 
   it('offers the machine map right after the machine list, behind its own key', () => {
@@ -121,6 +121,43 @@ describe('the Fleet rail reads as the work the company actually does', () => {
     expect(iconOf('/fleet/vehicles')).toBe('truck');
     expect(iconOf('/fleet/drivers')).toBe('users');
     expect(iconOf('/fleet')).toBe('home');
+  });
+
+  // Batch 2 adds three screens, each directly under the screen its work starts from, behind the
+  // grant that screen's own data answers to. `syncNavigationCatalog` places a new row halfway
+  // between its stored neighbours, so the position declared here is the position a live
+  // installation gets — and no existing row is rewritten.
+  const routes = (fleet?.apps ?? []).map((app) => app.route);
+  const rowOf = (route: string) => fleet?.apps.find((app) => app.route === route);
+  const placedAfter = (route: string, anchor: string) => {
+    expect(routes.indexOf(anchor), `${anchor} is still on the rail`).toBeGreaterThan(-1);
+    expect(routes.indexOf(route), `${route} sits right after ${anchor}`).toBe(
+      routes.indexOf(anchor) + 1,
+    );
+  };
+
+  it('lists the custody expenses right under the custody fund, on the fund’s own grant', () => {
+    // «مصروفات العهدة» is what the fund paid, read from the same ledger — no new key to hand out.
+    placedAfter('/fleet/custody-expenses', '/fleet/custody');
+    expect(rowOf('/fleet/custody-expenses')?.ar).toBe('مصروفات العهدة');
+    expect(iconOf('/fleet/custody-expenses')).toBe('tag');
+    expect(rowOf('/fleet/custody-expenses')?.permission).toBe('fleetCustody.view');
+  });
+
+  it('lists the card-sheet reconciliation right under the card charging, on its grant', () => {
+    // Matching the company's sheet against the cards' balances is part of moving card money.
+    placedAfter('/fleet/fuel-cards/reconcile', '/fleet/fuel-cards/charging');
+    expect(rowOf('/fleet/fuel-cards/reconcile')?.ar).toBe('مطابقة أرصدة الكروت');
+    expect(iconOf('/fleet/fuel-cards/reconcile')).toBe('link');
+    expect(rowOf('/fleet/fuel-cards/reconcile')?.permission).toBe('fleetFuelCharge.view');
+  });
+
+  it('lists the vehicle supply contracts right under the licensing, behind their own key', () => {
+    // A screen of its own grants (`fleetVehicleContract.*`), given to no role by default.
+    placedAfter('/fleet/vehicle-contracts', '/fleet/licensing');
+    expect(rowOf('/fleet/vehicle-contracts')?.ar).toBe('عقود توريد السيارات');
+    expect(iconOf('/fleet/vehicle-contracts')).toBe('offer');
+    expect(rowOf('/fleet/vehicle-contracts')?.permission).toBe('fleetVehicleContract.view');
   });
 
   it('corrects a live installation only while it still wears the old default', () => {

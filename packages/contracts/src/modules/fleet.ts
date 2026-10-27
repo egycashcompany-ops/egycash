@@ -1053,8 +1053,9 @@ export type FleetNoAlarmReason =
    */
   | 'baselineAboveReading'
   /**
-   * The baseline sits BELOW a reading the odometer chain already held on the day that counter was
-   * taken — the check-in day for an entry counter, the check-out day for an exit one.
+   * The baseline sits BELOW a reading the odometer chain already held when that counter was taken
+   * — judged at the check-in day for an entry counter, the check-out day for an exit one. Which
+   * readings of that day take part is the projection's rule, not this type's.
    *
    * A counter cannot be lower than one recorded before it was read — an odometer does not run
    * backwards. So this pair is not two readings of one instrument, and the distance between them
@@ -1067,6 +1068,71 @@ export type FleetNoAlarmReason =
    */
   | 'baselineBelowChain';
 
+/**
+ * Which number of the baseline visit the cycle is measured from: its exit counter («عداد الخروج
+ * من الصيانة»), its entry counter («العداد عند الصيانة»), or — for a visit that wrote neither —
+ * the odometer reading on or before its check-out day, standing in for one.
+ */
+export const FLEET_ALARM_COUNTER_SOURCES = ['exit', 'entry', 'reading'] as const;
+export type FleetAlarmCounterSource = (typeof FLEET_ALARM_COUNTER_SOURCES)[number];
+
+/** One point of the odometer chain: a reading and its day (the format of `lastServiceAt`). */
+export interface FleetAlarmChainPointDto {
+  reading: number;
+  date: string;
+}
+
+/**
+ * The service the cycle is measured FROM, as the alarm actually used it — so a screen can say why
+ * a figure is what it is, or why there is none, without recomputing anything.
+ */
+export interface FleetAlarmBaselineDto {
+  /** The visit — always `FleetMaintenanceAlarmDto.lastServiceVisitId`. */
+  visitId: string;
+  /** Its check-in and check-out days; `outDate` is always `lastServiceAt`. */
+  inDate: string;
+  outDate: string;
+  /** The visit's two counters exactly as stored; `null` when not written. */
+  entryCounter: number | null;
+  exitCounter: number | null;
+  /** Which number was used (`counter`). */
+  source: FleetAlarmCounterSource;
+  /** The number actually measured from; `null` when the stand-in reading does not exist either. */
+  counter: number | null;
+  /** The day `counter` belongs to: the check-out day for `exit` and `reading`, check-in for `entry`. */
+  counterDate: string;
+  /** The highest chain reading the counter was judged against; `null` when there was none. */
+  judgedAgainst: FleetAlarmChainPointDto | null;
+  /**
+   * The exit counter, when it was written and NOT used because a reading contradicts it — below
+   * the chain, or above the latest reading — and the entry counter stood on its own. `null` when
+   * the exit counter was used, was never written, or there was nothing to fall back to.
+   */
+  exitSetAside: {
+    because: 'belowChain' | 'aboveReading';
+    conflict: FleetAlarmChainPointDto;
+  } | null;
+}
+
+/** Why a newer visit does not count: it is still open, or its work type does not count. */
+export type FleetAlarmUncountedWhy = 'open' | 'notCounting';
+
+/** The car's newest visit, when the alarm cannot measure from it — so a screen can say why. */
+export interface FleetAlarmUncountedVisitDto {
+  visitId: string;
+  inDate: string;
+  /** `null` while the visit is still open. */
+  outDate: string | null;
+  why: FleetAlarmUncountedWhy;
+}
+
+/**
+ * Invariants, held by the projection and pinned by its tests:
+ * - `baseline === null` ⇔ `lastServiceVisitId === null`;
+ * - `baseline.visitId === lastServiceVisitId` and `baseline.outDate === lastServiceAt`;
+ * - `latestReadingAt === null` ⇔ `latestReading === null`;
+ * - when the alarm is computed, `sinceServiceKm === latestReading − baseline.counter`.
+ */
 export interface FleetMaintenanceAlarmDto {
   vehicleId: string;
   code: string;
@@ -1113,6 +1179,17 @@ export interface FleetMaintenanceAlarmDto {
    * the alarm actually used.
    */
   latestReading: number | null;
+  /** The day of `latestReading` (the format of `lastServiceAt`); `null` exactly when it is. */
+  latestReadingAt: string | null;
+  /** The odometer-log row `latestReading` came from; `null` when there is none. */
+  latestReadingLogId: string | null;
+  /** The service the cycle is measured from, as used; `null` exactly when `lastServiceVisitId` is. */
+  baseline: FleetAlarmBaselineDto | null;
+  /**
+   * The car's newest visit when it is not the baseline and does not count — still open, or its
+   * work type does not count; `null` otherwise.
+   */
+  newerUncountedVisit: FleetAlarmUncountedVisitDto | null;
 }
 
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────
@@ -3483,11 +3560,18 @@ export interface FleetFuelTransferResultDto {
   amount: number;
 }
 
+/**
+ * A card log's line kinds. The first four keep their order; the last two are written only by
+ * «مطابقة أرصدة الكروت»: `sheetAdjust` sets the balance to the company's sheet (✓), and
+ * `sheetReject` records, with amount 0, that the sheet's figure was refused (✗).
+ */
 export const FLEET_FUEL_MOVEMENT_KINDS = [
   'charge',
   'transferIn',
   'transferOut',
   'receipt',
+  'sheetAdjust',
+  'sheetReject',
 ] as const;
 export const FleetFuelMovementKindSchema = z.enum(FLEET_FUEL_MOVEMENT_KINDS);
 export type FleetFuelMovementKind = z.infer<typeof FleetFuelMovementKindSchema>;
@@ -3510,6 +3594,10 @@ export interface FleetFuelCardMovementDto {
   receiptVehicleCode: string | null;
   at: string;
   createdAt: string;
+  /** Who made the line, resolved when read; `null` when unknown. */
+  byName: string | null;
+  /** The sheet a `sheetAdjust` / `sheetReject` line came from; `null` on every other line. */
+  sheet: FleetFuelMovementSheetDto | null;
 }
 
 export const ListFleetFuelCardMovementsQuerySchema = PaginationQuerySchema.extend({
@@ -3528,6 +3616,128 @@ export const UpdateFleetFuelCardMovementSchema = z
   })
   .strict();
 export type UpdateFleetFuelCardMovement = z.infer<typeof UpdateFleetFuelCardMovementSchema>;
+
+// ── «مطابقة أرصدة الكروت» — the company's balance sheet against the cards ───────────────────
+//
+// The company sends a sheet of its cards' balances; reading it stores a session and compares it
+// with the cards, writing nothing. A decision on chosen cards then either sets each balance to
+// the sheet's figure (`apply`, ✓) or records that the figure was refused (`reject`, ✗) — from the
+// stored session only, never from the request body.
+
+/** The sheet's three columns, by header text (any order, any case). */
+export const FLEET_FUEL_SHEET_COLUMNS = ['Card Number', 'Card Name', 'Card Balance'] as const;
+/** The largest sheet accepted, in MB. */
+export const FLEET_FUEL_SHEET_MAX_MB = 10;
+/** What each company's card names start with on its sheet. */
+export const FLEET_FUEL_SHEET_NAME_PREFIX: Record<FleetFuelCardCompany, string> = {
+  wataniya: 'EGYCASH-',
+  chillout: 'EGYCASHTCS-',
+};
+/** The most cards one decision may name. */
+export const FLEET_FUEL_RECONCILE_MAX_CARDS = 500;
+
+export const FLEET_FUEL_RECONCILE_DECISIONS = ['apply', 'reject'] as const;
+export const FleetFuelReconcileDecisionSchema = z.enum(FLEET_FUEL_RECONCILE_DECISIONS);
+export type FleetFuelReconcileDecision = z.infer<typeof FleetFuelReconcileDecisionSchema>;
+
+/**
+ * Rows that are never decided: one name with differing numbers or balances on the sheet, a name
+ * two live cards share, a balance that cannot be read, a row with no name.
+ */
+export const FLEET_FUEL_SHEET_CONFLICTS = [
+  'sheetRowsDiffer',
+  'systemNameTwice',
+  'badBalance',
+  'noName',
+] as const;
+export type FleetFuelSheetConflict = (typeof FLEET_FUEL_SHEET_CONFLICTS)[number];
+
+/** The multipart text field beside `file`. */
+export const UploadFleetFuelSheetSchema = z
+  .object({ company: FleetFuelCardCompanySchema })
+  .strict();
+export type UploadFleetFuelSheet = z.infer<typeof UploadFleetFuelSheetSchema>;
+
+/** ✓ or ✗ on chosen cards of one session — each card once, however its id is spelled. */
+export const DecideFleetFuelReconcileSchema = z
+  .object({
+    decision: FleetFuelReconcileDecisionSchema,
+    cardIds: z
+      .array(objectId())
+      .min(1)
+      .max(FLEET_FUEL_RECONCILE_MAX_CARDS)
+      .refine((ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length, {
+        message: 'a card is named twice',
+      }),
+  })
+  .strict();
+export type DecideFleetFuelReconcile = z.infer<typeof DecideFleetFuelReconcileSchema>;
+
+/** One sheet row as read: its 1-based row number, the number as printed (masked), name, balance. */
+export interface FleetFuelSheetRowDto {
+  row: number;
+  number: string;
+  name: string;
+  balance: number;
+}
+/** A card matched to its sheet row. */
+export interface FleetFuelReconcileLineDto {
+  card: FleetFuelCardDto;
+  sheet: FleetFuelSheetRowDto;
+  /** Sheet − system, to the piastre. */
+  difference: number;
+  /** The last four digits agree, or the sheet's number shows fewer than four. */
+  numberMatches: boolean;
+}
+/** A row the sheet repeats identically — counted once, `times` in all. */
+export interface FleetFuelSheetDuplicateDto extends FleetFuelSheetRowDto {
+  times: number;
+}
+export interface FleetFuelSheetConflictDto {
+  reason: FleetFuelSheetConflict;
+  name: string;
+  /** The card the name matches, when exactly one does. */
+  cardId: string | null;
+  /** `balance` is `null` when it could not be read. */
+  rows: { row: number; number: string; balance: number | null }[];
+}
+/** POST /fleet/fuel-cards/reconcile — the stored session and its comparison; no balance written. */
+export interface FleetFuelReconcileDto {
+  id: string;
+  company: FleetFuelCardCompany;
+  fileName: string;
+  fileSha256: string;
+  /** The sheet's data rows. */
+  rows: number;
+  /** When the sheet was read (ISO); a card changed after it can no longer be decided. */
+  readAt: string;
+  /** The company whose name prefix every row carries; `null` when they do not all agree. */
+  sheetCompany: FleetFuelCardCompany | null;
+  /** Largest |difference| first, then by name. */
+  differs: FleetFuelReconcileLineDto[];
+  equal: FleetFuelReconcileLineDto[];
+  sheetOnly: FleetFuelSheetRowDto[];
+  systemOnly: FleetFuelCardDto[];
+  duplicates: FleetFuelSheetDuplicateDto[];
+  conflicts: FleetFuelSheetConflictDto[];
+}
+/** One card's answer to a decision. */
+export interface FleetFuelReconcileResultDto {
+  cardId: string;
+  decision: FleetFuelReconcileDecision;
+  /** The card's balance after it. */
+  balance: number;
+  at: string;
+  byName: string | null;
+}
+/** The sheet behind a `sheetAdjust` / `sheetReject` log line. */
+export interface FleetFuelMovementSheetDto {
+  reconciliationId: string;
+  fileName: string;
+  sheetBalance: number;
+  /** The card's balance when the sheet was read. */
+  systemBalance: number;
+}
 
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ───────────────────
 //
@@ -3711,8 +3921,8 @@ export interface FleetReceiptDto {
    * The custody memo («المذكرات») this receipt is a line of — `null` while it is in none («لم تدخل
    * أي مذكرة بعد»), and always on a card receipt. The receipts screen shows it and locks what the
    * memo holds: on a memo, the receipt's kind and source stay and it cannot be deleted; once that
-   * memo is replenished (`replenishedAt`, the replenishment's day, YYYY-MM-DD), its amount, date
-   * and car stay too.
+   * memo is taken by a replenishment — held (`held`) or transferred (`replenishedAt`, the transfer's
+   * day, YYYY-MM-DD) — its amount, date and car stay too.
    */
   memo: FleetReceiptMemoLinkDto | null;
   version: number;
@@ -3724,8 +3934,13 @@ export interface FleetReceiptDto {
 export interface FleetReceiptMemoLinkDto {
   id: string;
   no: number;
-  /** The day its replenishment («استعاضة») was recorded, YYYY-MM-DD; `null` while still pending. */
+  /**
+   * The day its replenishment («استعاضة») brought the money back into the fund, YYYY-MM-DD — the
+   * transfer day (a legacy replenishment's letter day); `null` while pending, and while held.
+   */
   replenishedAt: string | null;
+  /** On a replenishment still waiting for its transfer («في انتظار التحويل»). */
+  held: boolean;
 }
 
 /** The figures between the filters and the table on the receipts screen. */
@@ -3802,8 +4017,9 @@ export interface FleetCustodySummaryDto {
   vehicles: FleetCustodyVehicleRowDto[];
   /**
    * «إجمالي العهدة» — the fund itself, in EGP, to the piastre: Σ «شحن العهدة» − Σ custody receipts
-   * + Σ «استعاضة عهدة» − Σ «تسوية عهدة». It may be negative (more was spent than was ever charged
-   * into it). It is the fund, not a sum of the movements: no filter changes it.
+   * + Σ «استعاضة عهدة» (transferred or legacy; a held or cancelled one adds nothing) − Σ «تسوية
+   * عهدة». It may be negative (more was spent than was ever charged into it). It is the fund, not a
+   * sum of the movements: no filter changes it.
    */
   fundTotal: number;
   /** Σ «شحن العهدة» — everything ever charged into the fund. Unfiltered, like `fundTotal`. */
@@ -3830,6 +4046,11 @@ export interface FleetCustodyMovementDto {
   /** Kept for the readers that print it; a receipt has none, so it is always `null`. */
   detail: string | null;
   amount: number;
+  /**
+   * The custody memo this receipt is a line of — exactly `FleetReceiptDto.memo`; `null` while in
+   * none (or its memo was deleted). «كل الحركات» shows it under «من».
+   */
+  memo: FleetReceiptMemoLinkDto | null;
 }
 
 /** One stretch of «المصروف عبر الزمن» — a month (`YYYY-MM`), or a day (`YYYY-MM-DD`). */
@@ -3965,8 +4186,9 @@ export interface FleetCustodyDashboardDto extends FleetCustodySummaryDto {
   /**
    * The same filtered receipts by where each stands against the memos — every state, zeros kept,
    * each with its kinds. The three add up to `count` / `total`, and a kind's three to that kind's
-   * figure. Over no filter, `replenished` is the fund's Σ «استعاضة», `pending` the memos'
-   * `pendingTotal`, and `outside` Σ `/memos/outside`.
+   * figure. Over no filter, `replenished` is the fund's Σ «استعاضة» (transferred and legacy),
+   * `pending` the memos' `pendingTotal` + the fund's `held.amount` (held money is not back yet —
+   * `FLEET_CUSTODY_MEMO_STATE_OF_STATUS`), and `outside` Σ `/memos/outside`.
    */
   memoStates: Record<FleetCustodyMemoState, FleetCustodyMemoStateSpendDto>;
 }
@@ -4342,8 +4564,11 @@ export type SaveFleetCustodyPaperSettings = z.infer<typeof SaveFleetCustodyPaper
 
 // Memos
 
-/** «لم تُستعَض بعد» / «تمت الاستعاضة». */
-export const FLEET_CUSTODY_MEMO_STATUSES = ['pending', 'replenished'] as const;
+/**
+ * «لم تُستعَض بعد» / «في انتظار التحويل» / «تمت الاستعاضة» — in the filter's order. `held`: taken by
+ * a replenishment whose transfer is not confirmed yet.
+ */
+export const FLEET_CUSTODY_MEMO_STATUSES = ['pending', 'held', 'replenished'] as const;
 export const FleetCustodyMemoStatusSchema = z.enum(FLEET_CUSTODY_MEMO_STATUSES);
 export type FleetCustodyMemoStatus = z.infer<typeof FleetCustodyMemoStatusSchema>;
 /**
@@ -4354,6 +4579,14 @@ export type FleetCustodyMemoStatus = z.infer<typeof FleetCustodyMemoStatusSchema
 export const FLEET_CUSTODY_MEMO_STATES = ['replenished', 'pending', 'outside'] as const;
 export const FleetCustodyMemoStateSchema = z.enum(FLEET_CUSTODY_MEMO_STATES);
 export type FleetCustodyMemoState = z.infer<typeof FleetCustodyMemoStateSchema>;
+/**
+ * Where a memo of each status puts its receipts in the dashboard's split: a held memo's money is
+ * not back in the fund yet, so it counts as still waiting.
+ */
+export const FLEET_CUSTODY_MEMO_STATE_OF_STATUS: Record<
+  FleetCustodyMemoStatus,
+  FleetCustodyMemoState
+> = { pending: 'pending', held: 'pending', replenished: 'replenished' };
 
 /** One receipt on a memo, with the cells his paper of that kind writes by hand. */
 export const FleetCustodyMemoLineSchema = z
@@ -4482,8 +4715,12 @@ export interface FleetCustodyMemoRowDto {
   receipts: number;
   /** Live from its receipts, to the piastre. */
   total: number;
-  /** The «استعاضة عهدة» that brought it back (`date` YYYY-MM-DD); `null` while pending. */
-  replenishment: { id: string; date: string } | null;
+  /**
+   * The «استعاضة عهدة» that took it; `null` while pending. `held` while its transfer is not
+   * confirmed. `date` (YYYY-MM-DD) is the letter day while held, the transfer day once transferred
+   * (a legacy replenishment's letter day).
+   */
+  replenishment: { id: string; date: string; held: boolean } | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -4568,6 +4805,43 @@ export interface FleetCustodyMemoCandidatesDto {
 export const FLEET_CUSTODY_OPERATION_KINDS = ['charge', 'replenish', 'settle'] as const;
 export const FleetCustodyOperationKindSchema = z.enum(FLEET_CUSTODY_OPERATION_KINDS);
 export type FleetCustodyOperationKind = z.infer<typeof FleetCustodyOperationKindSchema>;
+/**
+ * A replenishment is `held` until «تأكيد التحويل» makes it `done` — or it is `cancelled`, and its
+ * memos are free again. A charge and a settlement are always `done`; so is a stored operation
+ * that predates the statuses.
+ */
+export const FLEET_CUSTODY_OPERATION_STATUSES = ['held', 'done', 'cancelled'] as const;
+export const FleetCustodyOperationStatusSchema = z.enum(FLEET_CUSTODY_OPERATION_STATUSES);
+export type FleetCustodyOperationStatus = z.infer<typeof FleetCustodyOperationStatusSchema>;
+/** «تأكيد التحويل» — only the day is required. */
+export const ConfirmFleetCustodyTransferSchema = z
+  .object({ date: z.coerce.date(), reference: custodyText(120), note: custodyText(500) })
+  .strict();
+export type ConfirmFleetCustodyTransfer = z.infer<typeof ConfirmFleetCustodyTransferSchema>;
+/** «إلغاء الاستعاضة المعلّقة» — nothing required. */
+export const CancelFleetCustodyReplenishmentSchema = z
+  .object({ reason: custodyText(500) })
+  .strict();
+export type CancelFleetCustodyReplenishment = z.infer<typeof CancelFleetCustodyReplenishmentSchema>;
+/** A held replenishment's confirmed transfer. */
+export interface FleetCustodyTransferDto {
+  /** YYYY-MM-DD — the day the money entered the fund. */
+  date: string;
+  /** '' when none. */
+  reference: string;
+  note: string;
+  byName: string | null;
+  /** Full ISO — when it was confirmed. */
+  at: string;
+}
+/** A held replenishment's cancellation. */
+export interface FleetCustodyCancellationDto {
+  /** '' when none was given. */
+  reason: string;
+  byName: string | null;
+  /** Full ISO. */
+  at: string;
+}
 /** The ledger's rows: the three operations, and the receipts the fund paid («صرف»). */
 export const FLEET_CUSTODY_LEDGER_OPS = ['charge', 'replenish', 'settle', 'spend'] as const;
 export const FleetCustodyLedgerOpSchema = z.enum(FLEET_CUSTODY_LEDGER_OPS);
@@ -4666,6 +4940,12 @@ export interface FleetCustodySettledPartDto {
 export interface FleetCustodyOperationDto {
   id: string;
   kind: FleetCustodyOperationKind;
+  /** Only a replenishment is ever `held` or `cancelled`. */
+  status: FleetCustodyOperationStatus;
+  /** A transferred replenishment's transfer; `null` on the rest (a legacy one included). */
+  transfer: FleetCustodyTransferDto | null;
+  /** A cancelled replenishment's cancellation; `null` on the rest. */
+  cancellation: FleetCustodyCancellationDto | null;
   /** YYYY-MM-DD, all three; the period is `null` when none was given. */
   date: string;
   from: string | null;
@@ -4722,12 +5002,25 @@ export interface FleetCustodyLedgerRowDto {
   /** The operation's id, or `spend:<from>:<to>`. */
   id: string;
   op: FleetCustodyLedgerOp;
-  /** YYYY-MM-DD; a «صرف» row runs from `date` to `dateTo` (its first and last day). */
+  /** The operation's status; `'done'` on a «صرف» row. */
+  status: FleetCustodyOperationStatus;
+  /**
+   * YYYY-MM-DD; a «صرف» row runs from `date` to `dateTo` (its first and last day). A transferred
+   * replenishment sits on its transfer day; a held or cancelled one on its letter day.
+   */
   date: string;
   dateTo: string | null;
-  /** Signed: a charge and a replenishment +, a settlement and spending −. */
+  /** The letter's day — set only on a transferred replenishment, whose `date` is the transfer day. */
+  letterDate: string | null;
+  /**
+   * Signed: a charge and a replenishment +, a settlement and spending −. On a held or cancelled
+   * row it is what the row would add — it adds nothing.
+   */
   amount: number;
-  /** The running «إجمالي العهدة» over the WHOLE history, whatever the filters. */
+  /**
+   * The running «إجمالي العهدة» over the WHOLE history, whatever the filters. `before === after`
+   * on a held or cancelled row.
+   */
   before: number;
   after: number;
   /** The last row of the whole history («الآن»). */
@@ -4745,6 +5038,10 @@ export interface FleetCustodyLedgerRowDto {
   receipts: number | null;
   byKind: Record<FleetCustodySource, FleetCustodyKindSpendDto> | null;
   memoNos: number[] | null;
+  /** A transferred replenishment's transfer; `null` on the rest. */
+  transfer: FleetCustodyTransferDto | null;
+  /** A cancelled replenishment's cancellation; `null` on the rest. */
+  cancellation: FleetCustodyCancellationDto | null;
 }
 export interface FleetCustodyLedgerTotalsDto {
   operations: number;
@@ -4760,15 +5057,24 @@ export interface FleetCustodyFundSummaryDto {
   charged: FleetCustodyCountAmountDto;
   /** `count` = receipts. */
   spent: FleetCustodyCountAmountDto;
+  /** Transferred replenishments, and legacy ones — what came back into the fund. */
   replenished: FleetCustodyCountAmountDto & { memos: number };
+  /** Replenishments waiting for their transfer — not in `fundTotal`. */
+  held: FleetCustodyCountAmountDto & { memos: number; receipts: number };
+  /** Cancelled replenishments — never in `fundTotal`. */
+  cancelled: FleetCustodyCountAmountDto;
   settled: FleetCustodyCountAmountDto & { parts: number };
-  /** `charged.count + replenished.count + settled.count`. */
+  /**
+   * `charged.count + replenished.count + held.count + cancelled.count + settled.count` — the
+   * ledger's operation rows.
+   */
   operations: number;
+  /** `pending` / `pendingTotal`: the memos no replenishment has taken — held ones are in `held`. */
   memos: { count: number; pending: number; pendingTotal: number };
   outside: FleetCustodyOutsideKindDto[];
 }
 export interface FleetCustodyReplenishCandidatesDto {
-  /** The memos not replenished yet, oldest `no` first. */
+  /** The memos no replenishment has taken yet (neither held nor transferred), oldest `no` first. */
   memos: FleetCustodyMemoRowDto[];
   outside: FleetCustodyOutsideKindDto[];
   fundTotal: number;

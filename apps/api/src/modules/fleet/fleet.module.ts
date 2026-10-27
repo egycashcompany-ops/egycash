@@ -28,10 +28,12 @@ import { buildFleetCustodyRouter } from './custody/custody.routes';
 import { buildFleetCustodyMemosRouter } from './custody/custody-memo.routes';
 import { buildFleetCustodyPaperSettingsRouter } from './custody/custody-papers.routes';
 import { buildFleetCustodyFundRouter } from './custody/custody-fund.routes';
+import { buildFleetVehicleContractsRouter } from './vehicle-contracts/vehicle-contract.routes';
 import { receiptFileAuthorizer } from './receipts/receipt-files';
 import { fuelCardFileAuthorizer } from './fuel-cards/fuel-card-files';
 import { noticeFileAuthorizer } from './notices/notice-files';
 import { dealershipFileAuthorizer } from './dealership/dealership-files';
+import { vehicleContractFileAuthorizer } from './vehicle-contracts/vehicle-contract-files';
 import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
 import { buildFleetViolationsRouter } from './violations/violation.routes';
@@ -323,6 +325,21 @@ const licenseExpensePermissions = declarePermissions(
   'fleet.license-expenses',
 );
 
+/**
+ * Vehicle supply contracts (عقود توريد السيارات) — what the company agreed to buy, and the cars
+ * that have arrived against it. The screen's own grants, as licensing and its expenses have.
+ * `receive` is separate from `edit` for the reason licensing separates `mark`: recording that cars
+ * arrived is the act of whoever received them, not a correction of the contract's terms.
+ */
+const vehicleContractPermissions = declarePermissions(
+  'fleet',
+  'fleetVehicleContract',
+  { en: 'vehicle supply contracts', ar: 'عقود توريد السيارات' },
+  ['view', 'create', 'edit', 'delete'],
+  [{ action: 'receive', name: { en: 'Record vehicle deliveries', ar: 'تسجيل استلام السيارات' } }],
+  'fleet.vehicle-contracts',
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
@@ -337,6 +354,7 @@ export const fleetPermissions: PermissionDef[] = [
   ...licensingPermissions,
   ...noticePermissions,
   ...licenseExpensePermissions,
+  ...vehicleContractPermissions,
   ...dealershipPermissions,
   ...fuelCardPermissions,
   ...fuelChargePermissions,
@@ -413,6 +431,13 @@ export const fleetPages: PageDef[] = [
     name: { en: 'Licensing', ar: 'التراخيص' },
     route: '/fleet/licensing',
     sortOrder: 85,
+  },
+  {
+    id: 'fleet.vehicle-contracts',
+    moduleId: 'fleet',
+    name: { en: 'Vehicle supply contracts', ar: 'عقود توريد السيارات' },
+    route: '/fleet/vehicle-contracts',
+    sortOrder: 85.5,
   },
   {
     id: 'fleet.license-expenses',
@@ -503,6 +528,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/licensing', router: buildFleetLicensingRouter() },
     { prefix: '/fleet/notices', router: buildFleetNoticesRouter() },
     { prefix: '/fleet/license-expenses', router: buildFleetLicenseExpensesRouter() },
+    { prefix: '/fleet/vehicle-contracts', router: buildFleetVehicleContractsRouter() },
     { prefix: '/fleet/dealership', router: buildFleetDealershipRouter() },
     { prefix: '/fleet/fuel-cards', router: buildFleetFuelCardsRouter() },
     { prefix: '/fleet/receipts', router: buildFleetReceiptsRouter() },
@@ -536,11 +562,13 @@ export const fleetModule: ModuleManifest = {
     'fleet_dealership_invoices',
     'fleet_fuel_cards',
     'fleet_fuel_card_movements',
+    'fleet_fuel_card_reconciliations',
     'fleet_receipts',
     'fleet_custody_memos',
     'fleet_custody_operations',
     'fleet_custody_paper_settings',
     'fleet_custody_counters',
+    'fleet_vehicle_contracts',
   ],
   // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
   // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is
@@ -552,6 +580,7 @@ export const fleetModule: ModuleManifest = {
     receiptFileAuthorizer,
     fuelCardFileAuthorizer,
     noticeFileAuthorizer,
+    vehicleContractFileAuthorizer,
   ],
   eventSubscriptions: [
     {

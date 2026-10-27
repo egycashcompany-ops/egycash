@@ -104,7 +104,7 @@ const SAYS_EVERY_FAILURE: SaidByScreen = () => true;
  * sentence (a 409 DUPLICATE, a 422) under it. So the hook raises that same global toast only for
  * what its screen does not say (`said`), worded exactly as the global one.
  */
-const toastUnlessSaid =
+export const toastUnlessSaid =
   (said: SaidByScreen) =>
   (error: unknown): void => {
     if (!said(error)) toast.error(errorMessage(error, store.getState().locale.locale));

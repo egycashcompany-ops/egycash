@@ -61,6 +61,7 @@ export * from './modules/hr-contract.js';
 export * from './modules/fleet.js';
 export * from './modules/fleet-custody-paper-defaults.js';
 export * from './modules/fleet-odometer-bracket.js';
+export * from './modules/fleet-vehicle-contracts.js';
 export * from './modules/it.js';
 export * from './modules/operations.js';
 export * from './modules/gold.js';

@@ -33,7 +33,7 @@ let app: Express;
  * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
  * database, so adding a row fails there first — on the author's machine, naming the number.
  */
-const SEEDED_APPLICATIONS = 130;
+const SEEDED_APPLICATIONS = 133;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -161,6 +161,11 @@ describe('seed → password login (regression)', () => {
     // FW-7's standing-crew board, beside the day it is planned into. Named as well as counted:
     // the totals below move whenever ANY row lands, so only this says which one it was.
     expect(routes).toContain('/fleet/fixed-roster');
+    // Batch 2's three Fleet rows: the custody expenses beside the fund, the card-sheet
+    // reconciliation beside the card charging, and the vehicle supply contracts beside licensing.
+    expect(routes).toContain('/fleet/custody-expenses');
+    expect(routes).toContain('/fleet/fuel-cards/reconcile');
+    expect(routes).toContain('/fleet/vehicle-contracts');
     expect(routes).toContain('/organization/branches');
     expect(routes).toContain('/organization/applications');
     expect(routes).toContain('/contracts');
@@ -265,8 +270,8 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/notification-rules');
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
-    // 38 (HR) + 21 (Fleet) + 15 (Operations) + 6 (Organization) + 15 (IT) + 12 (Gold Vault)
-    //   + 13 (ATM) + 10 (Administration) = 130. Re-counted from `seed-navigation.ts`, because an
+    // 38 (HR) + 24 (Fleet) + 15 (Operations) + 6 (Organization) + 15 (IT) + 12 (Gold Vault)
+    //   + 13 (ATM) + 10 (Administration) = 133. Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had
     //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
     //   above it was written about. A breakdown that does not sum to the constant is worse than

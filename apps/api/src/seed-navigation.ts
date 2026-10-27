@@ -503,6 +503,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetLicensing.view',
       },
       {
+        en: 'Vehicle Supply Contracts',
+        ar: 'عقود توريد السيارات',
+        route: '/fleet/vehicle-contracts',
+        // What the supplier offered and the company signed — the offer glyph, worn by no other
+        // Fleet row.
+        icon: 'offer',
+        permission: 'fleetVehicleContract.view',
+      },
+      {
         en: 'Licensing Expenses',
         ar: 'مصروفات التراخيص',
         route: '/fleet/license-expenses',
@@ -546,6 +555,14 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetFuelCharge.view',
       },
       {
+        en: 'Fuel Card Reconciliation',
+        ar: 'مطابقة أرصدة الكروت',
+        route: '/fleet/fuel-cards/reconcile',
+        // The sheet ↔ the system — the link glyph, worn by no other Fleet row.
+        icon: 'link',
+        permission: 'fleetFuelCharge.view',
+      },
+      {
         en: 'Custody Receipts',
         ar: 'خصم الإيصالات',
         route: '/fleet/receipts',
@@ -560,6 +577,14 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         route: '/fleet/custody',
         // The fund is a pile everything else here stacks onto — the layers glyph.
         icon: 'layers',
+        permission: 'fleetCustody.view',
+      },
+      {
+        en: 'Custody Expenses',
+        ar: 'مصروفات العهدة',
+        route: '/fleet/custody-expenses',
+        // What the fund paid, kind by kind — a price tag; no other Fleet row wears it.
+        icon: 'tag',
         permission: 'fleetCustody.view',
       },
       {

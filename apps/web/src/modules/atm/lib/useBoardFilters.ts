@@ -33,6 +33,11 @@ export interface BoardFilterState {
   settling: boolean;
   /** Either filter narrows the board — an empty board then says so. */
   filtered: boolean;
+  /**
+   * Clear both filters at once — the board's reset («عايز يكون في Reset للفلتر»). The day view is
+   * not a filter and stays where it is, as on the Fleet day boards.
+   */
+  reset: () => void;
 }
 
 export const useBoardFilters = (
@@ -62,6 +67,10 @@ export const useBoardFilters = (
       setPending(areas.length > 0 ? pendingBankChange(banks, next) : null);
     },
     setAreas: (next) => setSp(withBoardFilter(sp, 'areas', next)),
+    reset: () => {
+      setPending(null);
+      setSp(withBoardFilter(withBoardFilter(sp, 'banks', []), 'areas', []), { replace: true });
+    },
     ...lists,
     settling: prune.kind !== 'none',
     filtered: banks.length > 0 || areas.length > 0,

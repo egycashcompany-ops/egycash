@@ -438,6 +438,54 @@ describe('atm replenishments — open, time, close', () => {
     expect(smouha.every((r) => r.leaderName === 'Ahmed')).toBe(true);
   });
 
+  it('with the «الوردية» box unticked, a changed leader lands on that row ONLY', async () => {
+    const list = await request(app)
+      .get('/api/v1/atm/replenishments?pageSize=100')
+      .set('Authorization', `Bearer ${alexToken}`);
+    const target = items<AtmReplenishmentDto>(list).find((r) => r.id === openedId);
+    const res = await request(app)
+      .patch(`/api/v1/atm/replenishments/${openedId}`)
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ leaderName: 'Mahmoud', cascadeLeader: false, version: target?.version });
+    expect(res.status).toBe(200);
+    expect(data<AtmReplenishmentDto>(res).leaderName).toBe('Mahmoud');
+
+    const after = await request(app)
+      .get('/api/v1/atm/replenishments?pageSize=100')
+      .set('Authorization', `Bearer ${alexToken}`);
+    const byId = new Map(items<AtmReplenishmentDto>(after).map((r) => [r.id, r.leaderName]));
+    expect(byId.get(openedId)).toBe('Mahmoud');
+    // The other Smouha row of the same shift keeps the leader the cascade gave it.
+    for (const id of openedIds.filter((x) => x !== openedId)) expect(byId.get(id)).toBe('Ahmed');
+  });
+
+  it('the bulk edit with the box ticked carries the leader over each checked row’s shift; unticked, the checked rows only', async () => {
+    const others = openedIds.filter((x) => x !== openedId);
+    const shiftWide = await request(app)
+      .patch('/api/v1/atm/replenishments/bulk')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: [openedId], leaderName: 'Karim', cascadeLeader: true });
+    expect(shiftWide.status).toBe(200);
+    const read = async (): Promise<Map<string, string | null>> => {
+      const list = await request(app)
+        .get('/api/v1/atm/replenishments?pageSize=100')
+        .set('Authorization', `Bearer ${alexToken}`);
+      return new Map(items<AtmReplenishmentDto>(list).map((r) => [r.id, r.leaderName]));
+    };
+    let leaders = await read();
+    expect(leaders.get(openedId)).toBe('Karim');
+    for (const id of others) expect(leaders.get(id)).toBe('Karim');
+
+    const checkedOnly = await request(app)
+      .patch('/api/v1/atm/replenishments/bulk')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: [openedId], leaderName: 'Omar' });
+    expect(checkedOnly.status).toBe(200);
+    leaders = await read();
+    expect(leaders.get(openedId)).toBe('Omar');
+    for (const id of others) expect(leaders.get(id)).toBe('Karim');
+  });
+
   it('closes the checked set, stamping the closer, and reopens from the done page', async () => {
     const close = await request(app)
       .post('/api/v1/atm/replenishments/close')
@@ -546,6 +594,61 @@ describe('atm maintenance — the differences from replenishment', () => {
       mailTicketId: null,
     });
     maintenanceId = body.opened[0]?.id as string;
+  });
+
+  it('the «الوردية» box on maintenance: ticked cascades over the shift, unticked writes the row only', async () => {
+    const list = async (): Promise<AtmMaintenanceDto[]> =>
+      items<AtmMaintenanceDto>(
+        await request(app)
+          .get('/api/v1/atm/maintenances?pageSize=100')
+          .set('Authorization', `Bearer ${alexToken}`),
+      );
+    const mine = (await list()).filter((m) => ['101', '102'].includes(m.machineCode));
+    expect(mine).toHaveLength(2);
+    // Pin both into the day shift, so the window is the same whatever time CI runs.
+    for (const row of mine) {
+      const pin = await request(app)
+        .patch(`/api/v1/atm/maintenances/${row.id}`)
+        .set('Authorization', `Bearer ${alexToken}`)
+        .send({
+          openedAt: cairoWallClockUtc(cairoDateString(new Date()), 10),
+          version: row.version,
+        });
+      expect(pin.status, JSON.stringify(pin.body)).toBe(200);
+    }
+    const [first, second] = mine as [AtmMaintenanceDto, AtmMaintenanceDto];
+    const bulk = await request(app)
+      .patch('/api/v1/atm/maintenances/bulk')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: [first.id], leaderName: 'Tarek', cascadeLeader: true });
+    expect(bulk.status).toBe(200);
+    let leaders = new Map((await list()).map((m) => [m.id, m.leaderName]));
+    expect(leaders.get(first.id)).toBe('Tarek');
+    expect(leaders.get(second.id)).toBe('Tarek');
+
+    // The answer carries the rows as stored after the cascade — a version the next edit can use.
+    const answered = items<AtmMaintenanceDto>(bulk).find((m) => m.id === first.id);
+    expect(answered?.version).toBe((await list()).find((m) => m.id === first.id)?.version);
+
+    // An empty leader with the box ticked clears the CHECKED rows only — never the whole shift.
+    const emptied = await request(app)
+      .patch('/api/v1/atm/maintenances/bulk')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: [first.id], leaderName: null, cascadeLeader: true });
+    expect(emptied.status).toBe(200);
+    leaders = new Map((await list()).map((m) => [m.id, m.leaderName]));
+    expect(leaders.get(first.id)).toBeNull();
+    expect(leaders.get(second.id)).toBe('Tarek');
+
+    const current = (await list()).find((m) => m.id === first.id);
+    const single = await request(app)
+      .patch(`/api/v1/atm/maintenances/${first.id}`)
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ leaderName: 'Yasser', cascadeLeader: false, version: current?.version });
+    expect(single.status).toBe(200);
+    leaders = new Map((await list()).map((m) => [m.id, m.leaderName]));
+    expect(leaders.get(first.id)).toBe('Yasser');
+    expect(leaders.get(second.id)).toBe('Tarek');
   });
 
   it('REFUSES to close without a real employee — the required assignee', async () => {

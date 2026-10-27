@@ -8434,12 +8434,38 @@ const en: Record<string, string> = {
   'atm.common.deleteBody': 'Delete {{count}} operation(s)? They disappear from every screen.',
   'atm.common.unknownCodes': 'Unknown machine codes: {{codes}}',
   'atm.common.emptyFiltered': 'No open operation matches the chosen bank or area.',
+  'atm.common.shift': 'Shift',
+  'atm.common.leaderShiftHint':
+    'Changing the leader applies to every open operation of the same area in the same shift.',
+  'atm.common.leaderShiftManyHint':
+    'Changing the leader applies to the selected operations and to every open operation of the same area in the same shift as each of them.',
+  'atm.common.leaderRowOnlyHint': 'Changing the leader applies to this operation only.',
+  'atm.common.leaderSelectedOnlyHint': 'Changing the leader applies to the selected operations only.',
+  'atm.common.moveAlreadyOpen':
+    'Not saved — the new open time would give a machine two open operations on the same day.',
+  'atm.board.day.label': 'Day shown',
+  'atm.board.day.today': 'Today',
+  'atm.board.day.tomorrow': 'Tomorrow',
+  'atm.board.day.upcoming': 'All scheduled',
+  'atm.board.day.earlier': 'Earlier, not closed',
+  'atm.export.department': 'ATM Department',
+  'atm.export.serial': 'No.',
+  'atm.export.empty': 'No operations in this statement.',
+  'atm.export.repTitleDay': 'ATM replenishment statement for {{day}}',
+  'atm.export.repTitleRange': 'ATM replenishment statement from {{from}} to {{to}}',
+  'atm.export.maintTitleDay': 'ATM maintenance statement for {{day}}',
+  'atm.export.maintTitleRange': 'ATM maintenance statement from {{from}} to {{to}}',
+  'atm.export.banksAre': 'Bank: {{names}}',
+  'atm.export.areasAre': 'Area: {{names}}',
+  'atm.export.repFile': 'ATM-replenishments',
+  'atm.export.maintFile': 'ATM-maintenance',
 
   'atm.replenishments.title': 'Replenishments',
   'atm.replenishments.scheduleTime': 'Schedule Time',
-  'atm.replenishments.todayGroup': 'Today',
-  'atm.replenishments.carriedGroup': 'Other days (no timer)',
-  'atm.replenishments.emptyToday': 'No open replenishments.',
+  'atm.replenishments.empty.today': 'No replenishments for today.',
+  'atm.replenishments.empty.tomorrow': 'No replenishments scheduled for tomorrow.',
+  'atm.replenishments.empty.upcoming': 'No replenishments scheduled ahead.',
+  'atm.replenishments.empty.earlier': 'No replenishments left open from earlier days.',
   'atm.replenishments.closed': 'Closed.',
   'atm.replenishments.closeTitle': 'Close replenishments',
   'atm.replenishments.closeBody': 'Close {{count}} operation(s) now, recorded under your name?',
@@ -8451,25 +8477,25 @@ const en: Record<string, string> = {
   'atm.replenishments.openAction': 'Open replenishments',
   'atm.replenishments.openedCount': '{{count}} operation(s) opened.',
   'atm.replenishments.alreadyOpenCodes':
-    'Not opened — the machine already has an open replenishment, or the code was entered twice: {{codes}}',
+    'Not opened — the machine already has an open replenishment that day, or the code was entered twice: {{codes}}',
   'atm.replenishments.editTitle': 'Edit {{code}}',
   'atm.replenishments.editManyTitle': 'Edit {{count}} selected operations',
-  'atm.replenishments.leaderCascadeHint':
-    'Changing the leader applies to every open operation of the same area in the same shift.',
 
   'atm.done.from': 'From',
   'atm.done.to': 'To',
   'atm.done.repTitle': 'Replenishments Done',
   'atm.done.maintTitle': 'Maintenance Done',
   'atm.done.empty': 'Nothing closed in this range.',
+  'atm.done.rangeTooLarge':
+    'This range holds {{total}} operations and only the first {{shown}} are shown. Choose a shorter range to see them all and export them.',
   'atm.done.reopen': 'Reopen',
   'atm.done.reopened': 'Reopened — back on the live page.',
   'atm.done.reopenTitle': 'Reopen operation',
   'atm.done.reopenBody': 'Reopen the operation for machine {{code}}?',
   'atm.done.reopenAlreadyOpenRep':
-    'This operation cannot be reopened: machine {{code}} already has another open replenishment.',
+    'This operation cannot be reopened: machine {{code}} already has another open replenishment that day.',
   'atm.done.reopenAlreadyOpenMaint':
-    'This operation cannot be reopened: machine {{code}} already has another open maintenance.',
+    'This operation cannot be reopened: machine {{code}} already has another open maintenance that day.',
 
   'atm.maintenance.title': 'Maintenance',
   'atm.maintenance.serviceType': 'Service',
@@ -8482,8 +8508,11 @@ const en: Record<string, string> = {
   'atm.maintenance.openAction': 'Open maintenance',
   'atm.maintenance.openedCount': '{{count}} operation(s) opened.',
   'atm.maintenance.alreadyOpenCodes':
-    'Not opened — the machine already has an open maintenance, or the code was entered twice: {{codes}}',
-  'atm.maintenance.emptyToday': 'No open maintenance.',
+    'Not opened — the machine already has an open maintenance that day, or the code was entered twice: {{codes}}',
+  'atm.maintenance.empty.today': 'No maintenance for today.',
+  'atm.maintenance.empty.tomorrow': 'No maintenance scheduled for tomorrow.',
+  'atm.maintenance.empty.upcoming': 'No maintenance scheduled ahead.',
+  'atm.maintenance.empty.earlier': 'No maintenance left open from earlier days.',
   'atm.maintenance.closed': 'Closed.',
   'atm.maintenance.closeTitle': 'Close maintenance',
   'atm.maintenance.closeBody': 'Close {{count}} operation(s)? Assigning an employee is required.',
@@ -8494,8 +8523,6 @@ const en: Record<string, string> = {
   'atm.maintenance.fromMail': 'Mail',
   'atm.maintenance.editTitle': 'Edit {{code}}',
   'atm.maintenance.editManyTitle': 'Edit {{count}} selected operations',
-  'atm.maintenance.leaderCascadeHint':
-    'Changing the leader applies to every open operation of the same area in the same shift.',
 
   'atm.mail.title': 'Maintenance Mail',
   'atm.mail.subtitle':
@@ -17950,12 +17977,38 @@ const ar: Record<string, string> = {
   'atm.common.deleteBody': 'حذف {{count}} عملية؟ ستختفي من كل الشاشات.',
   'atm.common.unknownCodes': 'أكواد غير معروفة: {{codes}}',
   'atm.common.emptyFiltered': 'لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة.',
+  'atm.common.shift': 'الوردية',
+  'atm.common.leaderShiftHint':
+    'تغيير القائد يسري على كل العمليات المفتوحة لنفس المنطقة في نفس الوردية.',
+  'atm.common.leaderShiftManyHint':
+    'تغيير القائد يسري على العمليات المحددة وعلى كل العمليات المفتوحة لنفس المنطقة في نفس الوردية لكلٍّ منها.',
+  'atm.common.leaderRowOnlyHint': 'تغيير القائد يسري على هذه العملية فقط.',
+  'atm.common.leaderSelectedOnlyHint': 'تغيير القائد يسري على العمليات المحددة فقط.',
+  'atm.common.moveAlreadyOpen':
+    'لم يُحفظ التعديل لأن وقت الفتح الجديد يجعل للماكينة عمليتين مفتوحتين في نفس اليوم.',
+  'atm.board.day.label': 'اليوم المعروض',
+  'atm.board.day.today': 'اليوم',
+  'atm.board.day.tomorrow': 'غدًا',
+  'atm.board.day.upcoming': 'كل المجدول',
+  'atm.board.day.earlier': 'أيام سابقة لم تُغلق',
+  'atm.export.department': 'إدارة الصراف الآلي',
+  'atm.export.serial': 'م',
+  'atm.export.empty': 'لا توجد عمليات في هذا البيان.',
+  'atm.export.repTitleDay': 'بيان تغذية ماكينات الصراف الآلي عن يوم {{day}}',
+  'atm.export.repTitleRange': 'بيان تغذية ماكينات الصراف الآلي عن الفترة من {{from}} إلى {{to}}',
+  'atm.export.maintTitleDay': 'بيان صيانة ماكينات الصراف الآلي عن يوم {{day}}',
+  'atm.export.maintTitleRange': 'بيان صيانة ماكينات الصراف الآلي عن الفترة من {{from}} إلى {{to}}',
+  'atm.export.banksAre': 'البنك: {{names}}',
+  'atm.export.areasAre': 'المنطقة: {{names}}',
+  'atm.export.repFile': 'بيان-تغذية-الماكينات',
+  'atm.export.maintFile': 'بيان-صيانة-الماكينات',
 
   'atm.replenishments.title': 'التغذيات',
   'atm.replenishments.scheduleTime': 'توقيت التغذية',
-  'atm.replenishments.todayGroup': 'اليوم',
-  'atm.replenishments.carriedGroup': 'أيام أخرى (بدون عدّاد)',
-  'atm.replenishments.emptyToday': 'لا توجد تغذيات مفتوحة.',
+  'atm.replenishments.empty.today': 'لا توجد تغذيات لليوم.',
+  'atm.replenishments.empty.tomorrow': 'لا توجد تغذيات مجدولة للغد.',
+  'atm.replenishments.empty.upcoming': 'لا توجد تغذيات مجدولة قادمة.',
+  'atm.replenishments.empty.earlier': 'لا توجد تغذيات مفتوحة من أيام سابقة.',
   'atm.replenishments.closed': 'تم الإغلاق.',
   'atm.replenishments.closeTitle': 'إغلاق تغذيات',
   'atm.replenishments.closeBody': 'إغلاق {{count}} عملية الآن باسمك؟',
@@ -17967,25 +18020,25 @@ const ar: Record<string, string> = {
   'atm.replenishments.openAction': 'فتح التغذيات',
   'atm.replenishments.openedCount': 'تم فتح {{count}} عملية.',
   'atm.replenishments.alreadyOpenCodes':
-    'لم تُفتح لأن للماكينة تغذية مفتوحة بالفعل أو لأن الكود مُدخل مرتين: {{codes}}',
+    'لم تُفتح لأن للماكينة تغذية مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: {{codes}}',
   'atm.replenishments.editTitle': 'تعديل {{code}}',
   'atm.replenishments.editManyTitle': 'تعديل {{count}} عملية محددة',
-  'atm.replenishments.leaderCascadeHint':
-    'تغيير القائد يسري على كل العمليات المفتوحة لنفس المنطقة في نفس الوردية.',
 
   'atm.done.from': 'من',
   'atm.done.to': 'إلى',
   'atm.done.repTitle': 'التغذيات المنتهية',
   'atm.done.maintTitle': 'الصيانات المنتهية',
   'atm.done.empty': 'لا توجد عمليات مغلقة في هذا المدى.',
+  'atm.done.rangeTooLarge':
+    'تضم هذه الفترة {{total}} عملية، ويُعرض منها أول {{shown}} فقط. اختر فترة أقصر لعرضها كاملة وتصديرها.',
   'atm.done.reopen': 'إعادة فتح',
   'atm.done.reopened': 'أُعيد فتحها — عادت للصفحة الحية.',
   'atm.done.reopenTitle': 'إعادة فتح عملية',
   'atm.done.reopenBody': 'إعادة فتح عملية الماكينة {{code}}؟',
   'atm.done.reopenAlreadyOpenRep':
-    'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} تغذية مفتوحة أخرى بالفعل.',
+    'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} تغذية مفتوحة أخرى في نفس اليوم.',
   'atm.done.reopenAlreadyOpenMaint':
-    'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} صيانة مفتوحة أخرى بالفعل.',
+    'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} صيانة مفتوحة أخرى في نفس اليوم.',
 
   'atm.maintenance.title': 'الصيانات',
   'atm.maintenance.serviceType': 'نوع الخدمة',
@@ -17998,8 +18051,11 @@ const ar: Record<string, string> = {
   'atm.maintenance.openAction': 'فتح الصيانات',
   'atm.maintenance.openedCount': 'تم فتح {{count}} عملية.',
   'atm.maintenance.alreadyOpenCodes':
-    'لم تُفتح لأن للماكينة صيانة مفتوحة بالفعل أو لأن الكود مُدخل مرتين: {{codes}}',
-  'atm.maintenance.emptyToday': 'لا توجد صيانات مفتوحة.',
+    'لم تُفتح لأن للماكينة صيانة مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: {{codes}}',
+  'atm.maintenance.empty.today': 'لا توجد صيانات لليوم.',
+  'atm.maintenance.empty.tomorrow': 'لا توجد صيانات مجدولة للغد.',
+  'atm.maintenance.empty.upcoming': 'لا توجد صيانات مجدولة قادمة.',
+  'atm.maintenance.empty.earlier': 'لا توجد صيانات مفتوحة من أيام سابقة.',
   'atm.maintenance.closed': 'تم الإغلاق.',
   'atm.maintenance.closeTitle': 'إغلاق صيانة',
   'atm.maintenance.closeBody': 'إغلاق {{count}} عملية؟ تعيين موظف إلزامي.',
@@ -18009,8 +18065,6 @@ const ar: Record<string, string> = {
   'atm.maintenance.fromMail': 'بريد',
   'atm.maintenance.editTitle': 'تعديل {{code}}',
   'atm.maintenance.editManyTitle': 'تعديل {{count}} عملية محددة',
-  'atm.maintenance.leaderCascadeHint':
-    'تغيير القائد يسري على كل العمليات المفتوحة لنفس المنطقة في نفس الوردية.',
 
   'atm.mail.title': 'رسائل الصيانة',
   'atm.mail.subtitle':

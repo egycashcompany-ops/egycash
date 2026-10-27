@@ -116,6 +116,16 @@ describe('replenishmentFromLegacy', () => {
     ).toBe(90 * 60_000);
   });
 
+  it('stores the Cairo day of the REPAIRED open time — the per-day rule’s key', () => {
+    // 2026-01-15 23:30 Cairo, labelled UTC: the repaired instant is 21:30Z, still the 15th in Cairo.
+    const late = { ...doc, open_time: new Date('2026-01-15T23:30:00.000Z') };
+    expect(replenishmentFromLegacy(late, BRANCH, MACHINE, 'cairo-labelled', NOW)?.openDay).toBe(
+      '2026-01-15',
+    );
+    // Read honestly instead, 23:30Z is already 01:30 on the 16th in Cairo.
+    expect(replenishmentFromLegacy(late, BRANCH, MACHINE, 'utc', NOW)?.openDay).toBe('2026-01-16');
+  });
+
   it('carries the schedule text and both name snapshots', () => {
     const row = replenishmentFromLegacy(doc, BRANCH, MACHINE, 'utc', NOW);
     expect(row).toMatchObject({
@@ -235,15 +245,22 @@ describe('refLabelNamesFromLegacy', () => {
 describe('openDuplicateRowIds — the dry run’s prediction', () => {
   const row = (
     machineCode: string,
-    over: { closedAt?: Date | null; isDeleted?: boolean } = {},
-  ): { _id: Types.ObjectId; machineCode: string; closedAt: Date | null; isDeleted: boolean } => ({
+    over: { closedAt?: Date | null; isDeleted?: boolean; openDay?: string } = {},
+  ): {
+    _id: Types.ObjectId;
+    machineCode: string;
+    openDay: string;
+    closedAt: Date | null;
+    isDeleted: boolean;
+  } => ({
     _id: id(),
     machineCode,
+    openDay: over.openDay ?? '2026-01-15',
     closedAt: over.closedAt ?? null,
     isDeleted: over.isDeleted ?? false,
   });
 
-  it('names every open live row whose code an earlier open live row already holds', () => {
+  it('names every open live row whose code AND day an earlier open live row already holds', () => {
     const first = row('101');
     const second = row('101');
     const third = row('101');
@@ -251,6 +268,15 @@ describe('openDuplicateRowIds — the dry run’s prediction', () => {
       String(second._id),
       String(third._id),
     ]);
+  });
+
+  it('lets one machine stay open on two different days — the rule is per day', () => {
+    expect(
+      openDuplicateRowIds([
+        row('101', { openDay: '2026-01-14' }),
+        row('101', { openDay: '2026-01-15' }),
+      ]),
+    ).toEqual([]);
   });
 
   it('ignores closed, deleted and code-less rows — the index does not cover them', () => {

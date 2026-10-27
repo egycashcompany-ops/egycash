@@ -70,6 +70,13 @@ export interface DataTableProps<T> {
    * table is selectable (RW17). Its presence is what makes the table selectable.
    */
   selection?: TableSelection;
+  /**
+   * Show the head's «select all» box. On by default — every selectable table has it. A screen
+   * that keeps it out of reach until asked for (the ATM boards: «شيل الـ Select all من فوق
+   * الجدول … خليها تظهر فقط عند الضغط على F8») passes false and the head keeps an empty cell, so
+   * the columns stay where they were; the row boxes are untouched.
+   */
+  selectAll?: boolean;
   /** Drop the table's own border/rounding/background when it sits inside a ListView surface. */
   embedded?: boolean;
   /**
@@ -164,6 +171,7 @@ export const DataTable = <T,>({
   onSortChange,
   onRowClick,
   selection,
+  selectAll = true,
   embedded = false,
   hoverable = false,
   dense = false,
@@ -336,16 +344,19 @@ export const DataTable = <T,>({
           >
             {isSelectable && (
               <th className="w-10 px-4 py-3">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  checked={allSelected}
-                  ref={(el) => {
-                    if (el !== null) el.indeterminate = someSelected && !allSelected;
-                  }}
-                  onChange={(e) => toggleAll?.(e.target.checked)}
-                  aria-label="select all"
-                />
+                {selectAll && (
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el !== null) el.indeterminate = someSelected && !allSelected;
+                    }}
+                    onChange={(e) => toggleAll?.(e.target.checked)}
+                    aria-label="select all"
+                    data-table-select-all="true"
+                  />
+                )}
               </th>
             )}
             {columns.map((c) => {

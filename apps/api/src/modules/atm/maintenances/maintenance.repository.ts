@@ -3,9 +3,9 @@ import { AtmOperationLogRepository } from '../shared/operation-log.repository';
 import { AtmMaintenanceModel, type AtmMaintenanceDoc } from './maintenance.model';
 
 // The mail `duplication` question is the shared `openMachineCodes`/`hasOpenOperation` now: "does
-// this machine have an OPEN maintenance?" — any day, any branch. The legacy asked "opened TODAY,
-// in this deployment" (contad_app.js:2674); the owner's rule (port doc OD-1) made the flag
-// exactly what accept refuses, so the two can no longer disagree.
+// this machine have an OPEN maintenance on the ticket's day?" — any branch. The legacy asked
+// "opened TODAY, in this deployment" (contad_app.js:2674); the owner's rule (port doc OD-1) made
+// the flag exactly what accept refuses, so the two can no longer disagree.
 class AtmMaintenanceRepository extends AtmOperationLogRepository<AtmMaintenanceDoc> {
   constructor() {
     super(AtmMaintenanceModel, { branchField: 'branchId' });

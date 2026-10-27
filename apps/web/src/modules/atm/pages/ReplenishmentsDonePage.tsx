@@ -5,9 +5,13 @@
 // (:462 → contad_app.js:1032); here it is a visible action with a confirm — same capability,
 // same data effect (`closedAt` cleared, closer kept), an affordance change recorded in the port
 // doc rather than a hidden gesture carried for its own sake.
-import { useMemo, useState } from 'react';
+//
+// Read WHOLE — every row closed in the range, not the first hundred — so every column sorts in the
+// browser and the table leaves as Excel and PDF, «بيان تغذية ماكينات الصراف الآلي عن يوم … / عن
+// الفترة من … إلى …» of the days it closed on (2026-10-27).
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type AtmReplenishmentDto } from '@ecms/contracts';
+import { type AtmReplenishmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -16,16 +20,19 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatDateTime } from '../../../shared/lib/format';
+import { hasError } from '../../../shared/lib/errors';
 import { useDoneAtmReplenishments, useReopenAtmReplenishment } from '../api/atm-queries';
 import {
   cairoToday,
-  formatDuration,
+  doneRange,
   isAlreadyOpenRefusal,
   reopenRefusalKey,
 } from '../lib/operation-view';
+import { replenishmentColumns } from '../lib/operation-sheet';
+import { useReaderOrder } from '../lib/useBoardView';
+import { StatementExportButtons } from '../components/StatementExportButtons';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
-import { DoneRangeBar } from '../components/DoneRangeBar';
+import { DoneRangeBar, DoneRangeCutShort, doneRangeWhole } from '../components/DoneRangeBar';
 
 export const ReplenishmentsDonePage = (): JSX.Element => {
   const t = useT();
@@ -33,10 +40,8 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
 
-  const from = sp.get('from') ?? cairoToday();
-  const to = sp.get('to') ?? from;
-  const params = useMemo(() => ({ from, to, pageSize: MAX_PAGE_SIZE }), [from, to]);
-  const list = useDoneAtmReplenishments(params);
+  const { from, to } = doneRange(sp.get('from'), sp.get('to'), cairoToday());
+  const list = useDoneAtmReplenishments({ from, to });
   const reopen = useReopenAtmReplenishment();
   const [reopening, setReopening] = useState<AtmReplenishmentDto | null>(null);
 
@@ -54,7 +59,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
       toast.success(t('atm.done.reopened'));
       setReopening(null);
     } catch (error) {
-      // The owner's rule (port doc OD-1): the machine already has another open replenishment.
+      // The owner's rule (port doc OD-1): the machine already has another open replenishment that day.
       // Say so and close the dialog — trying again cannot succeed until that one is closed.
       if (isAlreadyOpenRefusal(error)) {
         toast.error(t(reopenRefusalKey('replenishment'), { code: reopening.machineCode }));
@@ -65,33 +70,16 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
     }
   };
 
+  // The table is the sheet's columns, in its order, sortable, with the reopen at the end.
+  const sheetColumns = replenishmentColumns(t, locale, 'done');
+  const order = useReaderOrder([sp, setSp], list.data?.items ?? [], sheetColumns);
   const columns: Column<AtmReplenishmentDto>[] = [
-    { key: 'bank', header: t('atm.common.bank'), render: (row) => row.bankName },
-    { key: 'code', header: t('atm.common.machineId'), render: (row) => row.machineCode },
-    { key: 'name', header: t('atm.common.machineName'), render: (row) => row.machineName },
-    {
-      key: 'schedule',
-      header: t('atm.replenishments.scheduleTime'),
-      render: (row) => row.scheduleTime ?? '—',
-    },
-    { key: 'area', header: t('atm.common.area'), render: (row) => row.area },
-    {
-      key: 'opened',
-      header: t('atm.common.openTime'),
-      render: (row) => formatDateTime(row.openedAt, locale),
-    },
-    {
-      key: 'closed',
-      header: t('atm.common.closeTime'),
-      render: (row) => (row.closedAt === null ? '—' : formatDateTime(row.closedAt, locale)),
-    },
-    {
-      key: 'duration',
-      header: t('atm.common.takenTime'),
-      render: (row) => (row.closedAt === null ? '—' : formatDuration(row.openedAt, row.closedAt)),
-    },
-    { key: 'leader', header: t('atm.common.leader'), render: (row) => row.leaderName ?? '—' },
-    { key: 'closedBy', header: t('atm.common.closedBy'), render: (row) => row.closedByName ?? '—' },
+    ...sheetColumns.map((column) => ({
+      key: column.key,
+      header: column.header,
+      sortable: true,
+      render: (row: AtmReplenishmentDto) => column.text(row, '—'),
+    })),
     {
       key: 'actions',
       header: '',
@@ -115,15 +103,37 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader title={t('atm.done.repTitle')} />
-      <DoneRangeBar from={from} to={to} onChange={setRange} />
+      <DoneRangeBar
+        from={from}
+        to={to}
+        onChange={setRange}
+        trailing={
+          // Only once the rows on screen are the answer — never «nothing» while loading or failed.
+          // And only for a range read whole: a part titled as the period would misstate it.
+          list.isLoading || hasError(list.error) || !doneRangeWhole(list.data?.meta) ? undefined : (
+            <StatementExportButtons
+              kind="replenishment"
+              name="atm-replenishments-done"
+              sheetName={t('atm.done.repTitle')}
+              range={{ from, to }}
+              rows={order.rows}
+              columns={sheetColumns}
+              filterLine=""
+            />
+          )
+        }
+      />
+      <DoneRangeCutShort meta={list.data?.meta} />
       <DataTable
         columns={columns}
-        rows={list.data?.items ?? []}
+        rows={order.rows}
         rowKey={(row) => row.id}
         loading={list.isLoading}
         error={list.error}
         onRetry={() => void list.refetch()}
         empty={t('atm.done.empty')}
+        sort={order.sorts}
+        onSortChange={order.changeSort}
       />
       <ConfirmActionDialog
         open={reopening !== null}

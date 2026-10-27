@@ -1,4 +1,4 @@
-// The owner's rule (2026-10-13, port doc OD-1) in its pure parts: which lines of a batch open,
+// The owner's rule (2026-10-13, per day since 2026-10-27 — port doc OD-1) in its pure parts: which lines of a batch open,
 // what counts as the rule's refusal, and that both operation schemas declare the index that makes
 // it race-proof — with the partial filter the service check's own "open" query matches.
 import { describe, expect, it } from 'vitest';
@@ -7,14 +7,19 @@ import { ConflictError, StaleDocumentError } from '../../../shared/errors';
 import { AtmReplenishmentModel } from '../replenishments/replenishment.model';
 import { AtmMaintenanceModel } from '../maintenances/maintenance.model';
 import { atmIndexBuildPlan, atmIndexedModels } from '../atm-indexes';
+import { leaderCascadeGroups } from './operation-log.repository';
 import {
   OPEN_OPERATION_INDEX_NAMES,
+  RETIRED_OPEN_OPERATION_INDEX_NAMES,
   alreadyOpenError,
+  codesBlockedByMove,
   decideOpenLines,
   isAlreadyOpenError,
   isOpenOperationDuplicate,
+  openDayOf,
   openOperationPartialFilter,
 } from './open-operation';
+import { Types } from 'mongoose';
 
 const known = (...codes: string[]) => {
   const set = new Set(codes);
@@ -69,7 +74,7 @@ describe('the refusal and the race', () => {
     const error = alreadyOpenError('replenishment', '101');
     expect(error.httpStatus).toBe(409);
     expect(error.code).toBe(ErrorCodes.ATM_OPERATION_ALREADY_OPEN);
-    expect(error.message).toBe('machine 101 already has an open replenishment');
+    expect(error.message).toBe('machine 101 already has an open replenishment that day');
     expect(isAlreadyOpenError(error)).toBe(true);
     expect(isAlreadyOpenError(new ConflictError())).toBe(false);
     expect(isAlreadyOpenError(new StaleDocumentError())).toBe(false);
@@ -91,20 +96,33 @@ describe('the race-proof index, declared on both operation logs', () => {
     ['replenishment', AtmReplenishmentModel],
     ['maintenance', AtmMaintenanceModel],
   ] as const)(
-    '%s: unique on the code, over open live rows with a non-empty code',
+    '%s: unique on the code AND day, over open live rows with a non-empty code and a stored day',
     (kind, model) => {
       const plan = atmIndexBuildPlan(model.schema.indexes());
       const entry = plan.find((p) => p.options['name'] === OPEN_OPERATION_INDEX_NAMES[kind]);
       expect(entry).toBeDefined();
-      expect(entry?.keys).toEqual({ machineCode: 1 });
+      expect(entry?.keys).toEqual({ machineCode: 1, openDay: 1 });
       expect(entry?.unique).toBe(true);
       expect(entry?.options['partialFilterExpression']).toEqual({
         closedAt: null,
         isDeleted: false,
         machineCode: { $gt: '' },
+        openDay: { $gt: '' },
       });
+      // The any-day index of the rule's first form is no longer declared — the boot drops it.
+      expect(plan.some((p) => p.options['name'] === RETIRED_OPEN_OPERATION_INDEX_NAMES[kind])).toBe(
+        false,
+      );
     },
   );
+
+  it('lists the retired index on each operation log for the boot to drop', () => {
+    const retired = Object.fromEntries(
+      atmIndexedModels().map((entry) => [entry.collection, entry.retired ?? []]),
+    );
+    expect(retired['atm_replenishments']).toEqual(['ux_open_replenishment_per_code']);
+    expect(retired['atm_maintenances']).toEqual(['ux_open_maintenance_per_code']);
+  });
 
   it('hands every schema its own filter object', () => {
     expect(openOperationPartialFilter()).not.toBe(openOperationPartialFilter());
@@ -140,5 +158,57 @@ describe('the race-proof index, declared on both operation logs', () => {
         .filter((entry) => !rowsOut.includes(entry.collection))
         .every((entry) => entry.rowsInLog),
     ).toBe(true);
+  });
+});
+
+describe('the day an operation belongs to', () => {
+  it('is the Cairo calendar day of the open time, not the UTC one', () => {
+    // 23:30Z on the 26th is 01:30 (EET) or 02:30 (EEST) on the 27th in Cairo.
+    expect(openDayOf(new Date('2026-10-26T23:30:00.000Z'))).toBe('2026-10-27');
+    expect(openDayOf(new Date('2026-10-27T09:00:00.000Z'))).toBe('2026-10-27');
+  });
+});
+
+describe('codesBlockedByMove — the bulk edit of the open time', () => {
+  const row = (machineCode: string, closedAt: Date | null = null) => ({ machineCode, closedAt });
+
+  it('blocks a code two moved open rows share — one instant, one day', () => {
+    expect(codesBlockedByMove([row('101'), row('102'), row('101')], new Set())).toEqual(['101']);
+  });
+
+  it('blocks a code already open that day in a row not being moved', () => {
+    expect(codesBlockedByMove([row('101'), row('102')], new Set(['102']))).toEqual(['102']);
+  });
+
+  it('ignores closed rows and empty codes — the rule covers neither', () => {
+    expect(
+      codesBlockedByMove([row('101', new Date()), row('101'), row(''), row('')], new Set()),
+    ).toEqual([]);
+  });
+
+  it('names each code once', () => {
+    expect(codesBlockedByMove([row('101'), row('101'), row('101')], new Set(['101']))).toEqual([
+      '101',
+    ]);
+  });
+});
+
+describe('leaderCascadeGroups — one cascade per branch, area and shift', () => {
+  const branch = new Types.ObjectId();
+  const at = (iso: string, area = 'Smouha', branchId = branch) => ({
+    branchId,
+    area,
+    openedAt: new Date(iso),
+  });
+
+  it('keeps the first row of each group and drops the rest', () => {
+    const rows = [
+      at('2026-10-27T08:00:00.000Z'), // 10:00 Cairo — day shift
+      at('2026-10-27T10:00:00.000Z'), // 12:00 — the same day shift
+      at('2026-10-27T15:00:00.000Z'), // 17:00 — the night shift
+      at('2026-10-27T08:00:00.000Z', 'Miami'), // another area
+      at('2026-10-27T08:00:00.000Z', 'Smouha', new Types.ObjectId()), // another branch
+    ];
+    expect(leaderCascadeGroups(rows)).toEqual([rows[0], rows[2], rows[3], rows[4]]);
   });
 });

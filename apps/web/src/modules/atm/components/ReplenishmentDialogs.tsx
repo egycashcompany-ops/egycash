@@ -2,22 +2,90 @@
 // (atm_replenishment.ejs:1219-1283): schedule time, open time, leader — and states the cascade
 // rule the legacy applied silently: changing the LEADER on a single row renames the leader on
 // every open replenishment of the same area in the same shift (contad_app.js:854-868), and only
-// when the open time is not being moved in the same submit. On a checked set, the change applies
-// to the checked rows only (:870-889).
-import { useEffect, useState, type FormEvent } from 'react';
+// when the open time is not being moved in the same submit. On a checked set, the legacy changed
+// the checked rows only (:870-889).
+//
+// «الوردية» (2026-10-27): «يكون في Check Box بجانب عنوان المجال اسمة مثلاً شيفت. الطبيعي بتاعه
+// انه يبقي متعلم ودا اللى هينفذ الحالي … بس لو شيلت من عليه الـ Check يغير القائد للى معمول عليهم
+// Select فقط». Ticked — the default — the leader goes over the shift: the single row's cascade
+// as above, and on a checked set over each checked row's area and shift too (the owner's answer).
+// Unticked, it is written on the row or rows in the dialog and nowhere else.
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { type AtmReplenishmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Field, Input } from '../../../shared/ui/form';
+import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useBulkUpdateAtmReplenishments, useUpdateAtmReplenishment } from '../api/atm-queries';
+import { isAlreadyOpenRefusal } from '../lib/operation-view';
 
 /** Instant → the value a `datetime-local` input edits (LOCAL wall clock, minute precision). */
 export const toLocalInputValue = (iso: string): string => {
   const date = new Date(iso);
   const pad = (v: number): string => String(v).padStart(2, '0');
   return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+/**
+ * The leader field with its «الوردية» box beside the label — ticked by default, which is the
+ * shift cascade; unticked, the rows in the dialog only. The hint under it says which, in words.
+ * Shared by the two kinds' edit dialogs.
+ */
+export const LeaderField = ({
+  value,
+  onChange,
+  shiftWide,
+  onShiftWideChange,
+  many,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  shiftWide: boolean;
+  onShiftWideChange: (next: boolean) => void;
+  /** The dialog edits a checked set rather than one row — the hint says «the selected». */
+  many: boolean;
+}): JSX.Element => {
+  const t = useT();
+  const id = useId();
+  const hint = shiftWide
+    ? t(many ? 'atm.common.leaderShiftManyHint' : 'atm.common.leaderShiftHint')
+    : t(many ? 'atm.common.leaderSelectedOnlyHint' : 'atm.common.leaderRowOnlyHint');
+  return (
+    <div className="space-y-1.5">
+      {/* The box right beside the label — «Check Box بجانب عنوان المجال». */}
+      <div className="flex items-center gap-4">
+        <label
+          htmlFor={id}
+          className="block text-sm font-medium text-slate-700 dark:text-slate-200"
+        >
+          {t('atm.common.leader')}
+        </label>
+        <Checkbox
+          label={t('atm.common.shift')}
+          checked={shiftWide}
+          onChange={(e) => onShiftWideChange(e.target.checked)}
+          data-leader-shift="true"
+        />
+      </div>
+      <Field hint={hint}>
+        <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
+      </Field>
+    </div>
+  );
+};
+
+/** Pure: do two of these OPEN rows belong to one machine? */
+export const repeatsAnOpenMachine = (
+  rows: readonly { machineCode: string; closedAt: string | null }[],
+): boolean => {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (row.closedAt !== null) continue;
+    if (seen.has(row.machineCode)) return true;
+    seen.add(row.machineCode);
+  }
+  return false;
 };
 
 export const ConfirmActionDialog = ({
@@ -72,12 +140,14 @@ export const EditReplenishmentDialog = ({
   const [scheduleTime, setScheduleTime] = useState('');
   const [openedAt, setOpenedAt] = useState('');
   const [leaderName, setLeaderName] = useState('');
+  const [shiftWide, setShiftWide] = useState(true);
 
   useEffect(() => {
     if (!open) return;
     setScheduleTime(single?.scheduleTime ?? '');
     setOpenedAt(single === null ? '' : toLocalInputValue(single.openedAt));
     setLeaderName(single?.leaderName ?? '');
+    setShiftWide(true);
   }, [open, single]);
 
   const submit = async (event: FormEvent): Promise<void> => {
@@ -90,21 +160,34 @@ export const EditReplenishmentDialog = ({
             scheduleTime: scheduleTime === '' ? null : scheduleTime,
             ...(openedAt === '' ? {} : { openedAt: new Date(openedAt).toISOString() }),
             leaderName: leaderName === '' ? null : leaderName,
+            cascadeLeader: shiftWide,
             version: single.version,
           },
         });
       } else {
+        // The move gives every checked row ONE open time: two open rows of one machine would
+        // then share a day, which the per-day rule refuses. Say so before anything is sent — a
+        // large selection goes in several requests, and a refusal in a later one would leave the
+        // earlier ones saved under a «not saved» message.
+        if (openedAt !== '' && repeatsAnOpenMachine(rows)) {
+          toast.error(t('atm.common.moveAlreadyOpen'));
+          return;
+        }
         await updateMany.mutateAsync({
           ids: rows.map((row) => row.id),
           ...(scheduleTime === '' ? {} : { scheduleTime }),
           ...(openedAt === '' ? {} : { openedAt: new Date(openedAt) }),
-          ...(leaderName === '' ? {} : { leaderName }),
+          ...(leaderName === '' ? {} : { leaderName, cascadeLeader: shiftWide }),
         });
       }
       toast.success(t('atm.common.saved'));
       onClose();
-    } catch {
-      toast.error(t('atm.common.actionFailed'));
+    } catch (error) {
+      // The per-day rule (port doc OD-1): moving the open time onto a day the machine is already
+      // open on is refused — say so, rather than a bare «failed».
+      toast.error(
+        t(isAlreadyOpenRefusal(error) ? 'atm.common.moveAlreadyOpen' : 'atm.common.actionFailed'),
+      );
     }
   };
 
@@ -130,12 +213,13 @@ export const EditReplenishmentDialog = ({
             onChange={(e) => setOpenedAt(e.target.value)}
           />
         </Field>
-        <Field
-          label={t('atm.common.leader')}
-          hint={single !== null ? t('atm.replenishments.leaderCascadeHint') : undefined}
-        >
-          <Input value={leaderName} onChange={(e) => setLeaderName(e.target.value)} />
-        </Field>
+        <LeaderField
+          value={leaderName}
+          onChange={setLeaderName}
+          shiftWide={shiftWide}
+          onShiftWideChange={setShiftWide}
+          many={single === null}
+        />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('atm.common.cancel')}

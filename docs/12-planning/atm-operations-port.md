@@ -70,6 +70,10 @@ ECMS" means.
   on both boards (bulk close, edit and delete span both groups; each table's "select all" stays in
   its own group). Without it the only ways out were deleting the record or moving its open time
   to today — losing or falsifying it. The server's close always accepted any open row.
+  **Amended again 2026-10-27:** the boards no longer draw two groups at once — they show ONE day
+  view (§10), today's by default; the earlier days left open are the «أيام سابقة لم تُغلق» view,
+  and its rows keep the close control and the checkbox. With OD-1 narrowed to the day such a row no
+  longer blocks today's open, but it is still open and still needs a place to be closed.
 - **D5 — mail `duplication` computed at read, not written back during GET.** The legacy GET
   recomputed AND wrote it per render (contad_app.js:2674-2698); the screen shows the same live
   answer either way. The ingest-time value stays on the row for parity. (What it MEANS changed
@@ -192,8 +196,12 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
 | # | Date | The owner's words | Legacy | Port |
 | --- | --- | --- | --- | --- |
 | OD-1 | 2026-10-13 | «في ملحوظه مهمه جداً .. إن مينفعش أضيف ماكينة مرتين سواء فى عملية التغذية أو الصيانة» | No duplicate guard anywhere: the replenishment open (contad_app.js:637-768) and the maintenance open (:1896-1957) inserted one row per submitted line, so a pasted-twice code, a second paste later in the day, or a mail accepted for a machine already in maintenance each opened a second live row | **A machine has at most ONE open replenishment and at most ONE open maintenance** (open = `closedAt: null`, not deleted). The two kinds are independent; after a close the machine may open again. Enforced on every path that creates or re-opens an open row, with a partial unique index per collection behind it |
+| OD-1a | 2026-10-27 | «خلى الرفض دا "لم تُفتح لأن للماكينة تغذية مفتوحة بالفعل أو لأن الكود مُدخل مرتين" يحصل فقط إذا كانت الماكينات مفتوحه في نفس اليوم ولم تُغلق ! مش يرفضها لو مفتوحه أمبارح ومتقفلتش» | — (OD-1 itself overrode the legacy) | **OD-1 is per Cairo day.** A machine has at most one open replenishment and at most one open maintenance ON ONE DAY — the Cairo calendar day of the open time, the day the boards show it on. One left open on an earlier day does not block a new open, a reopen or a mail accept; a second one on the same day still does. Moving an open operation's time onto a day its machine is already open on is refused too (new: the edits) |
 
-**OD-1 in detail** (`apps/api/src/modules/atm/shared/open-operation.ts`):
+**OD-1 in detail** (`apps/api/src/modules/atm/shared/open-operation.ts`). Since OD-1a every
+"open" below means "open on that day": the day is `openDayOf(openedAt)` (Cairo); the service checks
+ask by the open time's own day range, so a row stored before the day was (`openDay: null`) blocks
+its day all the same.
 
 - **Identity is the machine code, company-wide.** The normalized `machineCode` — the identity the
   mail matcher already uses (§6) — so an operation open in ANOTHER branch blocks too, including a
@@ -205,7 +213,11 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
   `alreadyOpenCodes` (one entry per refused line, beside `unknownCodes`); the other lines open.
 - **The reopens** (`POST /atm/replenishments/:id/reopen`, `POST /atm/maintenances/:id/reopen`) answer
   **409 `ATM_OPERATION_ALREADY_OPEN`** when the machine already has ANOTHER open operation of that
-  kind.
+  kind on the reopened row's own day; a reopen writes the row's `openDay`.
+- **The edits that move the open time** (OD-1a — `PATCH /atm/replenishments/:id`, `/bulk`, `PATCH
+  /atm/maintenances/:id`) answer the same 409 when an OPEN row would land on a day its machine is
+  already open on; the bulk edit sets one instant on every checked row, so two checked rows of one
+  machine are refused too, before anything is written (`codesBlockedByMove`).
 - **The mail accept** (`POST /atm/mail-tickets/accept` → `maintenance.service.openFromMail`) does not
   accept a ticket whose machine already has an open maintenance — including one accepted earlier in
   the same selection. The ticket stays pending; `data` is still the array of accepted tickets
@@ -216,10 +228,17 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
   the selected mails painted «Duplicate» and says they will stay pending.
 - **The mail `duplication` flag changed meaning** (D5 is otherwise unchanged): it was "an open
   maintenance opened TODAY in this branch" (contad_app.js:2674); it is now "this machine has an
-  open maintenance" — any day, any branch — on the pending screen AND as the ingest-time value the
-  log stores. What the screen paints is exactly what accept refuses.
-- **Concurrency.** `ux_open_replenishment_per_code` / `ux_open_maintenance_per_code`: unique on
-  `{ machineCode }` where `closedAt: null`, `isDeleted: false` and the code is a non-empty string
+  open maintenance ON THE TICKET'S DAY" — the day it was received, which is the day accept opens it
+  on (D6) — in any branch, on the pending screen AND as the ingest-time value the log stores. What
+  the screen paints is exactly what accept refuses.
+- **Concurrency.** `ux_open_replenishment_per_code_day` / `ux_open_maintenance_per_code_day` (since
+  OD-1a): unique on `{ machineCode, openDay }` where `closedAt: null`, `isDeleted: false`, the code
+  is a non-empty string and `openDay` is a stored day — every write that sets the open time writes
+  it. The first form's `ux_open_*_per_code` (unique on the code alone) is DROPPED at boot by name
+  (`RETIRED_OPEN_OPERATION_INDEX_NAMES`, `atm-indexes.ts`): kept, it would refuse a machine left open
+  yesterday. A row stored before `openDay` existed is outside the index and held by the service
+  check alone, which reads its open time; nothing is backfilled. Under the first form, the index ran
+  where `closedAt: null`, `isDeleted: false` and the code is a non-empty string
   (an empty code — only a raw legacy import could write one — identifies no machine, and the
   service check ignores it exactly as the index does). A race past the service check lands on the index and is mapped to the same refusal — a reported
   line, a refused ticket or a 409 — never a 500 and never a half-written line. Both are built at
@@ -233,9 +252,9 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
   opened on an earlier day — an overnight operation, a mail received yesterday and accepted today
   (D6), a back-dated open, a reopened older row, an imported stale row — blocks its machine like
   any open row, so both boards give it the close button and the checkbox.
-- **Paths that cannot open a row and need no guard:** close, the single and bulk edits (they set
-  schedule, open time, notes, service or leader — never `closedAt` or the code), the leader
-  cascade, soft delete; no restore path exists.
+- **Paths that cannot open a row and need no guard:** close, the leader cascade, soft delete; the
+  edits when they leave the open time's day alone (since OD-1a an edit that moves it is guarded,
+  above); no restore path exists.
 - **The legacy importer is exempt** (§7): it writes history as it was. A second open row it carries
   is refused by the index and REPORTED (`openDuplicate`, `openDuplicateIds`), never a crashed run;
   where the index is absent the report says so (`openIndexMissing`) and the duplicate lands (§7).
@@ -393,6 +412,7 @@ argument for the suite existing at all:
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |
 | — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
+| — | OD-1a: the rule per Cairo day, the edits guarded, the any-day index dropped (§4a); the boards one day at a time, sort, reset, copy columns, F8, the «الوردية» box, Excel/PDF on the four tables (§10) | delivered |
 | — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
 | — | Machine map and owner-drawn zones: `/atm/map`, `/atm/map/unlocated`, the location sync and the short-link resolver — [atm-map-zones.md](atm-map-zones.md) (no legacy counterpart: GAP, §1) | in progress (ships as one release) |
@@ -434,4 +454,52 @@ Operations' hands — gated, never deleted:
   keys to existing roles, and removing `manage` from them, is an administrator's step (register spec
   §12.2); until then a manage-only holder still opens the page by URL through the route guard, but
   the sidebar row now needs `atmRefLabel.create`.
+
+## 10. The boards, one day at a time — and the four tables as files (2026-10-27)
+
+The owner's requests of 2026-10-27 for `/atm/replenishments` and `/atm/maintenance` (and, for the
+files, their done pages), each with what was asked and what settled the open points (the owner's
+answers in the same conversation):
+
+- **One day at a time.** «هنا يظهر فقط الماكينات اللى المفروض يتغذى أو يتعمله صيانه في اليوم دا مش
+  عموماً · وتعمل زرار Toggle يظهر اللى … اليوم اللى بعده أو متجدول في المستقبل عموماً». The boards
+  open on TODAY's rows (the Cairo day of the open time — a force date opens at 06:00 of its day, a
+  maintenance at its datetime) with the live timer. A switch above the table shows «غدًا»,
+  «كل المجدول» (every day after today, tomorrow included) and «أيام سابقة لم تُغلق» (the owner's
+  answer for rows left open on an earlier day), each with its count. `?day=` carries the view;
+  it is not remembered across visits — the board opens on today, as asked. The board is still
+  read whole (D8); the view only picks the rows (`apps/web/src/modules/atm/lib/board-day.ts`).
+- **Copy columns.** «مش عايز كل الأعمدة تبقي Selectable عايز بس البنك والكود واسم الماكينة وتوقيت
+  التغذية». The table is `select-none`; bank, code, name and the schedule time — on maintenance the
+  open time, its "when" (the owner's answer) — are `select-text`. Chromium then copies a drag across
+  rows as exactly those cells, a tab between columns and a line per row; Ctrl+A outside a field
+  selects the table's rows the same way (`lib/board-copy.ts`).
+- **«Select all» on F8.** «شيل الـ Select all من فوق الجدول … خليها تظهر فقط عند الضغط على F8 …
+  بس تختفى لو مدوستش عليها ودوست على اى حاجة تانية». The head's box is drawn only after F8 and goes
+  again at the next key or press anywhere but on it — F8 also gives it the focus, and Space or Enter
+  on it is using it, so it works without a mouse; the row boxes stay, and checking rows or the
+  revealed box shows the bulk bar exactly as before (the owner's answer: «F8 يظهر تحديد الكل بس»).
+  The shared `DataTable` gained `selectAll` (default on) for it (`lib/select-all-reveal.ts`).
+- **Sort and reset.** Every text column sorts in the browser — the board is whole — through the
+  shared `table-sort` (`?sort=`, remembered) and `sort-rows` (moved from Fleet to `shared/lib`, as
+  `table-sort` was); the server's order (area) breaks ties. One red reset, the ATM machine list's,
+  clears the bank and area filters; the day view is not a filter and stays, the Fleet day boards'
+  rule. Excel and PDF are offered once the rows on screen are the answer — never while the board
+  loads, fails or settles a bank change.
+- **The «الوردية» box.** «يكون في Check Box بجانب عنوان المجال اسمة مثلاً شيفت. الطبيعي بتاعه انه
+  يبقي متعلم ودا اللى هينفذ الحالي … بس لو شيلت من عليه الـ Check يغير القائد للى معمول عليهم Select
+  فقط». Beside the leader label in both edit dialogs, ticked on open. `cascadeLeader` on the edit
+  requests: the single edit defaults to true (the legacy cascade, unchanged — on replenishment still
+  not when the open time moves in the same submit), the bulk edit to false (the legacy asymmetry).
+  Ticked on a checked set it now ALSO carries the leader over each checked row's area and shift (the
+  owner's answer), one cascade per distinct group; unticked, the leader is written on the rows in
+  the dialog only.
+- **Excel and PDF on the four tables.** «عايز إنه يقدر يخرج الجدول في شكل Excel و PDF مكتوب فوقه عنوان
+  بيان "تغذية/صيانة" ماكينات الصراف الآلي "عن يوم/عن الفترة من إلي"». The table as it stands — the
+  day view, the filters and the reader's order applied — under «بيان تغذية/صيانة ماكينات الصراف الآلي
+  عن يوم …» or «… عن الفترة من … إلى …» (the board's day or the days its rows span; on a done page
+  the closed range). The workbook is the app's own writer (`fleet-xlsx`, which gained an optional
+  title row), the PDF the company's report form under «إدارة الصراف الآلي» with the filters in force
+  printed under the title; the buttons are the IT registers'. The done pages now read their range
+  WHOLE, as the boards do: they asked for one page of a hundred and had no pager.
 

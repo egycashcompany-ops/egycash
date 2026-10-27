@@ -1,9 +1,13 @@
 // /atm/maintenance/done — the legacy /atm_maintenance_done page (atm_maintenance_done.ejs) by
 // parity: the replenishment done page's shape plus the maintenance facts (service, notes,
 // reference), with the same visible reopen the done icon's double-click performed.
-import { useMemo, useState } from 'react';
+//
+// Read WHOLE — every row closed in the range, not the first hundred — so every column sorts in the
+// browser and the table leaves as Excel and PDF, «بيان صيانة ماكينات الصراف الآلي عن يوم … / عن
+// الفترة من … إلى …» of the days it closed on (2026-10-27).
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type AtmMaintenanceDto } from '@ecms/contracts';
+import { type AtmMaintenanceDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -12,16 +16,19 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatDateTime } from '../../../shared/lib/format';
+import { hasError } from '../../../shared/lib/errors';
 import { useDoneAtmMaintenances, useReopenAtmMaintenance } from '../api/atm-queries';
 import {
   cairoToday,
-  formatDuration,
+  doneRange,
   isAlreadyOpenRefusal,
   reopenRefusalKey,
 } from '../lib/operation-view';
+import { maintenanceColumns } from '../lib/operation-sheet';
+import { useReaderOrder } from '../lib/useBoardView';
+import { StatementExportButtons } from '../components/StatementExportButtons';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
-import { DoneRangeBar } from '../components/DoneRangeBar';
+import { DoneRangeBar, DoneRangeCutShort, doneRangeWhole } from '../components/DoneRangeBar';
 
 export const MaintenanceDonePage = (): JSX.Element => {
   const t = useT();
@@ -29,10 +36,8 @@ export const MaintenanceDonePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
 
-  const from = sp.get('from') ?? cairoToday();
-  const to = sp.get('to') ?? from;
-  const params = useMemo(() => ({ from, to, pageSize: MAX_PAGE_SIZE }), [from, to]);
-  const list = useDoneAtmMaintenances(params);
+  const { from, to } = doneRange(sp.get('from'), sp.get('to'), cairoToday());
+  const list = useDoneAtmMaintenances({ from, to });
   const reopen = useReopenAtmMaintenance();
   const [reopening, setReopening] = useState<AtmMaintenanceDto | null>(null);
 
@@ -50,7 +55,7 @@ export const MaintenanceDonePage = (): JSX.Element => {
       toast.success(t('atm.done.reopened'));
       setReopening(null);
     } catch (error) {
-      // The owner's rule (port doc OD-1): the machine already has another open maintenance.
+      // The owner's rule (port doc OD-1): the machine already has another open maintenance that day.
       // Say so and close the dialog — trying again cannot succeed until that one is closed.
       if (isAlreadyOpenRefusal(error)) {
         toast.error(t(reopenRefusalKey('maintenance'), { code: reopening.machineCode }));
@@ -61,39 +66,16 @@ export const MaintenanceDonePage = (): JSX.Element => {
     }
   };
 
+  // The table is the sheet's columns, in its order, sortable, with the reopen at the end.
+  const sheetColumns = maintenanceColumns(t, locale, 'done');
+  const order = useReaderOrder([sp, setSp], list.data?.items ?? [], sheetColumns);
   const columns: Column<AtmMaintenanceDto>[] = [
-    { key: 'bank', header: t('atm.common.bank'), render: (row) => row.bankName },
-    { key: 'code', header: t('atm.common.machineId'), render: (row) => row.machineCode },
-    { key: 'name', header: t('atm.common.machineName'), render: (row) => row.machineName },
-    {
-      key: 'service',
-      header: t('atm.maintenance.serviceType'),
-      render: (row) => row.serviceType ?? '—',
-    },
-    { key: 'area', header: t('atm.common.area'), render: (row) => row.area },
-    {
-      key: 'opened',
-      header: t('atm.common.openTime'),
-      render: (row) => formatDateTime(row.openedAt, locale),
-    },
-    {
-      key: 'closed',
-      header: t('atm.common.closeTime'),
-      render: (row) => (row.closedAt === null ? '—' : formatDateTime(row.closedAt, locale)),
-    },
-    {
-      key: 'duration',
-      header: t('atm.common.takenTime'),
-      render: (row) => (row.closedAt === null ? '—' : formatDuration(row.openedAt, row.closedAt)),
-    },
-    { key: 'notes', header: t('atm.maintenance.notes'), render: (row) => row.notes ?? '—' },
-    {
-      key: 'reference',
-      header: t('atm.maintenance.referenceNumber'),
-      render: (row) => row.referenceNumber ?? '—',
-    },
-    { key: 'leader', header: t('atm.common.leader'), render: (row) => row.leaderName ?? '—' },
-    { key: 'closedBy', header: t('atm.common.closedBy'), render: (row) => row.closedByName ?? '—' },
+    ...sheetColumns.map((column) => ({
+      key: column.key,
+      header: column.header,
+      sortable: true,
+      render: (row: AtmMaintenanceDto) => column.text(row, '—'),
+    })),
     {
       key: 'actions',
       header: '',
@@ -117,15 +99,37 @@ export const MaintenanceDonePage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader title={t('atm.done.maintTitle')} />
-      <DoneRangeBar from={from} to={to} onChange={setRange} />
+      <DoneRangeBar
+        from={from}
+        to={to}
+        onChange={setRange}
+        trailing={
+          // Only once the rows on screen are the answer — never «nothing» while loading or failed.
+          // And only for a range read whole: a part titled as the period would misstate it.
+          list.isLoading || hasError(list.error) || !doneRangeWhole(list.data?.meta) ? undefined : (
+            <StatementExportButtons
+              kind="maintenance"
+              name="atm-maintenance-done"
+              sheetName={t('atm.done.maintTitle')}
+              range={{ from, to }}
+              rows={order.rows}
+              columns={sheetColumns}
+              filterLine=""
+            />
+          )
+        }
+      />
+      <DoneRangeCutShort meta={list.data?.meta} />
       <DataTable
         columns={columns}
-        rows={list.data?.items ?? []}
+        rows={order.rows}
         rowKey={(row) => row.id}
         loading={list.isLoading}
         error={list.error}
         onRetry={() => void list.refetch()}
         empty={t('atm.done.empty')}
+        sort={order.sorts}
+        onSortChange={order.changeSort}
       />
       <ConfirmActionDialog
         open={reopening !== null}

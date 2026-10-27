@@ -3,9 +3,10 @@
 // from it) or rejected; both are terminal, and the log page is the record of who decided what —
 // now WITH when (`actionAt`, GAP G1).
 //
-// The owner's rule (2026-10-13, port doc OD-1) reaches this screen twice: a ticket whose machine
-// already has an open maintenance is NOT accepted (it stays pending and the answer says so), and
-// the `duplication` flag the screen paints is that very condition — any day, any branch.
+// The owner's rule (2026-10-13, per day since 2026-10-27 — port doc OD-1) reaches this screen
+// twice: a ticket whose machine already has an open maintenance ON THE TICKET'S DAY (the day it was
+// received, the day accept opens it on — D6) is NOT accepted (it stays pending and the answer says
+// so), and the `duplication` flag the screen paints is that very condition — any branch.
 import {
   type AtmMailAcceptRefusalDto,
   type DecideAtmMailTickets,
@@ -17,7 +18,7 @@ import { auditService } from '../../../platform/audit';
 import { type AuthContext, type ScopeSelector, scopeSelector } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { actorName } from '../shared/atm-context';
-import { isAlreadyOpenError } from '../shared/open-operation';
+import { isAlreadyOpenError, openDayOf } from '../shared/open-operation';
 import { cairoDateString } from '../shared/cairo-time';
 import { atmMaintenanceService } from '../maintenances/maintenance.service';
 import { atmMaintenanceRepository } from '../maintenances/maintenance.repository';
@@ -78,8 +79,8 @@ class AtmMailTicketService {
    * selection are skipped, which is what the legacy's `status:0`-only screen guaranteed by
    * construction.
    *
-   * A ticket whose machine already has an open maintenance — anywhere, including one accepted
-   * earlier in this same selection — is REFUSED (the owner's rule, OD-1): nothing is written, the
+   * A ticket whose machine already has an open maintenance on the ticket's day — anywhere,
+   * including one accepted earlier in this same selection — is REFUSED (the owner's rule, OD-1): nothing is written, the
    * ticket stays pending, and it is named in `refused` so the screen can say which and why.
    */
   async accept(
@@ -183,15 +184,27 @@ class AtmMailTicketService {
   }
 
   /**
-   * Live duplication for a set of tickets: "this machine has an OPEN maintenance" — any day, any
-   * branch (OD-1), one query for the whole page. A code only goes in and a yes/no comes out, so a
-   * maintenance in a branch the reader cannot see flags the row without describing anything.
+   * Live duplication for a set of tickets: "this machine has an OPEN maintenance on the ticket's
+   * day" — the Cairo day it was received, which is the day accept would open it on (D6) — in any
+   * branch (OD-1). One query per distinct day on the page. A code only goes in and a yes/no comes
+   * out, so a maintenance in a branch the reader cannot see flags the row without describing
+   * anything.
    */
   async duplicationFor(tickets: readonly AtmMailTicketDoc[]): Promise<Map<string, boolean>> {
-    const open = await atmMaintenanceRepository.openMachineCodes(
-      tickets.map((ticket) => ticket.machineCode),
-    );
-    return new Map(tickets.map((ticket) => [String(ticket._id), open.has(ticket.machineCode)]));
+    const byDay = new Map<string, AtmMailTicketDoc[]>();
+    for (const ticket of tickets) {
+      const day = openDayOf(ticket.receivedAt);
+      byDay.set(day, [...(byDay.get(day) ?? []), ticket]);
+    }
+    const answer = new Map<string, boolean>();
+    for (const [day, group] of byDay) {
+      const open = await atmMaintenanceRepository.openMachineCodes(
+        group.map((ticket) => ticket.machineCode),
+        day,
+      );
+      for (const ticket of group) answer.set(String(ticket._id), open.has(ticket.machineCode));
+    }
+    return answer;
   }
 }
 

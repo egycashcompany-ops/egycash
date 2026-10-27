@@ -67,15 +67,16 @@ import {
   type CaptureForm,
 } from '../lib/preparation-form';
 import {
-  PREPARATION_STATUS_TONE,
   blockedKey,
   blockedOf,
   isStale,
   lineCode,
+  PREPARATION_STATUS_TONE,
   preparationStatusKey,
   prepStateOf,
   runLabel,
   settlementErrorText,
+  settlementErrorToast,
 } from '../lib/settlement-view';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 
@@ -286,7 +287,8 @@ export const PreparationPage = (): JSX.Element => {
     if (line !== undefined) setForm(mergeAfterConflict(local, line));
   };
   const refused = (local: CaptureForm) => (error: unknown) => {
-    toast.error(settlementErrorText(error, t, locale));
+    const words = settlementErrorToast(error, t, locale);
+    toast.error(words.title, words.description);
     if (isStale(error)) void merge(local);
   };
 

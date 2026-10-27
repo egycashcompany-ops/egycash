@@ -77,15 +77,17 @@ export const PageHeader = ({
         {aside !== undefined && <div className="min-w-0">{aside}</div>}
       </div>
     ) : null}
-    {/* The title line WRAPS: actions that do not fit beside the title (and its figures) go to a
-        line of their own, at its end, and wrap there — instead of squeezing the title to nothing
-        and running off the screen (a `shrink-0` action row cannot wrap). */}
+    {/* The title line WRAPS: actions that do not fit beside the whole title go to a line of their
+        own, at its end, and wrap there — instead of squeezing the title to nothing and running off
+        the screen (a `shrink-0` action row cannot wrap). The title column claims only the title's
+        own width (`flex-1` from 0, its minimum is its content, capped at the line): figures wrap
+        under the title before the actions move, so a header that fit before looks the same. */}
     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div
         className={
           figures === undefined
-            ? 'min-w-0'
-            : 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2'
+            ? 'min-w-0 sm:min-w-[auto] sm:max-w-full sm:flex-1'
+            : 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:min-w-[auto] sm:max-w-full sm:flex-1'
         }
       >
         <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">

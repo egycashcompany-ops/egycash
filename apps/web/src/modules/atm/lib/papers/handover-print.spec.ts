@@ -122,6 +122,13 @@ describe('«سيلزات»', () => {
     expect(HANDOVER_COLUMN_SHARES[2]).toBeGreaterThanOrEqual(10);
     expect(HANDOVER_COLUMN_SHARES.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
   });
+
+  it('breaks a machine type wider than its column after «)», never mid-word (R4-1)', () => {
+    const html = buildHandoverHtml(handover({ rows: [row({ typeLabel: 'BRK(DN)recycle' })] }));
+    expect(html).toContain('<td dir="rtl">BRK(DN)<wbr>recycle</td>');
+    // The break chance is markup only: the cell still reads as the label.
+    expect(bodyRows(html)[0]).toContain('BRK(DN)recycle');
+  });
 });
 
 describe('the route sheets', () => {

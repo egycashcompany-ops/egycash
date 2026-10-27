@@ -149,7 +149,39 @@ export const bagSlotsText = (
       });
 };
 
-/** «شوال واحد» / «شوالان (4 كاسيتات في الشوال)» — a line has one or two bags (S-6). */
+// ── Toasts ───────────────────────────────────────────────────────────────────
+
+/** About what one line of the shared toast's title holds (a 384 px card, 14 px text). */
+export const TOAST_TITLE_MAX = 40;
+
+export interface SettlementToast {
+  title: string;
+  description?: string;
+}
+
+/**
+ * A settlements sentence as a toast. The shared Toaster shows its title on ONE line and cuts the
+ * rest — only the description wraps — so a sentence longer than that line goes in the description,
+ * under a short title of its own (the map's convention, docs/12-planning/atm-map-zones.md §8.10).
+ * Otherwise «…يُرجى التحديث والمحاولة» would lose exactly the instruction.
+ */
+export const toastWords = (
+  text: string,
+  kind: 'failed' | 'notice' | 'done',
+  t: Translate,
+): SettlementToast =>
+  text.length <= TOAST_TITLE_MAX
+    ? { title: text }
+    : { title: t(`atm.settlement.toast.${kind}`), description: text };
+
+/** A refused request as a toast: {@link settlementErrorText} under a short title when it is long. */
+export const settlementErrorToast = (
+  error: unknown,
+  t: Translate,
+  locale: Locale,
+): SettlementToast => toastWords(settlementErrorText(error, t, locale), 'failed', t);
+
+/** «شوال واحد» / «شوالان (٤ كاسيتات في الشوال)» — a line has one or two bags (S-6). */
 export const bagsText = (bags: number, t: Translate): string =>
   t(bags > 1 ? 'atm.settlement.bags.two' : 'atm.settlement.bags.one');
 

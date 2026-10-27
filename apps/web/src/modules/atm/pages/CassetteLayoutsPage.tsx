@@ -48,6 +48,7 @@ import {
   blockedOf,
   lastImportFigures,
   settlementErrorText,
+  toastWords,
 } from '../lib/settlement-view';
 
 /** Remembered across visits: the bank and the status chip. `q` and `machine` are not filters. */
@@ -116,7 +117,8 @@ export const CassetteLayoutsPage = (): JSX.Element => {
         onError: (error) => {
           const text = settlementErrorText(error, t, locale);
           setSaveError(text);
-          toast.error(text);
+          const words = toastWords(text, 'failed', t);
+          toast.error(words.title, words.description);
         },
       },
     );

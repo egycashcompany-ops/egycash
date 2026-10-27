@@ -49,7 +49,14 @@ import { MenuButton } from '../components/settlements/MenuButton';
 import { RouteDialog } from '../components/settlements/RouteDialog';
 import { buildHandoverHtml, buildRoutesHtml } from '../lib/papers/handover-print';
 import { printSettlementPaper } from '../lib/papers/settlement-print';
-import { blockedKey, blockedOf, currentVersion, settlementErrorText } from '../lib/settlement-view';
+import {
+  blockedKey,
+  blockedOf,
+  currentVersion,
+  settlementErrorText,
+  settlementErrorToast,
+  toastWords,
+} from '../lib/settlement-view';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -72,7 +79,8 @@ export const ControlPage = (): JSX.Element => {
     setSp(next, { replace: true });
   };
   const fail = (error: unknown): void => {
-    toast.error(settlementErrorText(error, t, locale));
+    const words = settlementErrorToast(error, t, locale);
+    toast.error(words.title, words.description);
   };
 
   const dateParam = sp.get('date');
@@ -110,7 +118,10 @@ export const ControlPage = (): JSX.Element => {
         load: async () => (await print.mutateAsync(body)) as T,
         compose,
       });
-      if (dto === null) toast.error(t('atm.paper.popupBlocked'));
+      if (dto === null) {
+        const words = toastWords(t('atm.paper.popupBlocked'), 'failed', t);
+        toast.error(words.title, words.description);
+      }
     } catch (error) {
       fail(error);
     }
@@ -209,14 +220,18 @@ export const ControlPage = (): JSX.Element => {
     fromZones.mutate(
       { branchId: day.branch.id, replenishDate: day.date },
       {
-        onSuccess: (result) =>
-          toast.success(
+        onSuccess: (result) => {
+          const words = toastWords(
             t('atm.control.fromZonesResult', {
               routes: formatNumber(result.routesCreated, locale),
               assigned: formatNumber(result.assigned, locale),
               left: formatNumber(result.unlocated + result.outsideZones, locale),
             }),
-          ),
+            'done',
+            t,
+          );
+          toast.success(words.title, words.description);
+        },
         onError: fail,
       },
     );

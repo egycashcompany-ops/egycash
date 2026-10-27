@@ -60,8 +60,15 @@ const codeOf = (row: AtmHandoverPrintRowDto): string => {
   return code === null ? '—' : ltr(code);
 };
 
+/**
+ * The machine type, with a line-break chance after each «)»: a label such as `BRK(DN)recycle` is one
+ * word wider than its column, and `overflow-wrap: break-word` would split it mid-word («recycl» /
+ * «e»). It breaks as `BRK(DN)` / `recycle` instead.
+ */
+const typeCell = (label: string | null): string => esc(label).replaceAll(')', ')<wbr>');
+
 const rowHtml = (row: AtmHandoverPrintRowDto, withBank: boolean): string =>
-  `<tr><td>${codeOf(row)}</td>${withBank ? `<td>${ltr(row.bankCode)}</td>` : ''}<td dir="rtl">${esc(row.machineName)}</td><td class="run" dir="rtl">${esc(runCompact(row.run, row.scheduleTime))}</td><td>${ltr(int(fromMinorUnits(row.egpTotalMinor)))}</td><td class="qrs">${qrCell(row)}</td><td dir="rtl">${esc(row.typeLabel)}</td><td dir="rtl">${esc(row.hubLabel)}</td></tr>`;
+  `<tr><td>${codeOf(row)}</td>${withBank ? `<td>${ltr(row.bankCode)}</td>` : ''}<td dir="rtl">${esc(row.machineName)}</td><td class="run" dir="rtl">${esc(runCompact(row.run, row.scheduleTime))}</td><td>${ltr(int(fromMinorUnits(row.egpTotalMinor)))}</td><td class="qrs">${qrCell(row)}</td><td dir="rtl">${typeCell(row.typeLabel)}</td><td dir="rtl">${esc(row.hubLabel)}</td></tr>`;
 
 const table = ({
   rows,

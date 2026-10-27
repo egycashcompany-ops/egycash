@@ -29,6 +29,9 @@ import {
   preparationStatusKey,
   runLabel,
   settlementErrorText,
+  settlementErrorToast,
+  TOAST_TITLE_MAX,
+  toastWords,
 } from './settlement-view';
 
 const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -81,7 +84,7 @@ describe('lineChips', () => {
 describe('the words', () => {
   it('bagsText: one bag or two', () => {
     expect(bagsText(1, ar)).toBe('شوال واحد');
-    expect(bagsText(2, ar)).toBe('شوالان (4 كاسيتات في الشوال)');
+    expect(bagsText(2, ar)).toBe('شوالان (٤ كاسيتات في الشوال)');
     expect(bagsText(2, en)).toBe('Two bags (4 cassettes per bag)');
   });
 
@@ -340,5 +343,31 @@ describe('offersLayoutRefresh — «تحديث من فئات الماكينة» 
     expect(offersLayoutRefresh(at('STANDARD_LOAD_CHANGED', 'issued'))).toBe(false);
     expect(offersLayoutRefresh(at('STANDARD_LOAD_CHANGED', 'draft', 'spare'))).toBe(false);
     expect(offersLayoutRefresh(at('NO_TIME'))).toBe(false);
+  });
+});
+
+describe('toasts (R4-4)', () => {
+  // The shared Toaster shows the title on ONE line and cuts the rest; only the description wraps.
+  it('keeps a short sentence as the title', () => {
+    expect(toastWords('حُفظ.', 'done', ar)).toEqual({ title: 'حُفظ.' });
+  });
+
+  it('puts a long sentence in the description, under a short title', () => {
+    for (const t of [ar, en]) {
+      const stale = settlementErrorToast(apiError(ErrorCodes.STALE_DOCUMENT), t, 'ar');
+      const sentence = settlementErrorText(apiError(ErrorCodes.STALE_DOCUMENT), t, 'ar');
+      expect(sentence.length).toBeGreaterThan(TOAST_TITLE_MAX);
+      expect(stale).toEqual({ title: t('atm.settlement.toast.failed'), description: sentence });
+    }
+  });
+
+  it('gives every short title room on that one line', () => {
+    for (const t of [ar, en]) {
+      for (const kind of ['failed', 'notice', 'done'] as const) {
+        const title = t(`atm.settlement.toast.${kind}`);
+        expect(title).not.toBe(`atm.settlement.toast.${kind}`);
+        expect(title.length).toBeLessThanOrEqual(TOAST_TITLE_MAX);
+      }
+    }
   });
 });

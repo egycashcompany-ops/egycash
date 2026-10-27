@@ -43,4 +43,19 @@ describe('the page header’s title line', () => {
     expect(actions).toContain('sm:ms-auto');
     expect(actions).toContain('sm:justify-end');
   });
+
+  it('lets the title column claim only the title, so figures wrap before the actions move (R4-2)', () => {
+    const plain = renderToStaticMarkup(
+      <PageHeader title="Title" actions={<button type="button">Action</button>} />,
+    );
+    const titleColumn = (markup: string): string[] =>
+      (/<div class="([^"]*)"><h1 /u.exec(markup)?.[1] ?? '').split(' ');
+    for (const column of [titleColumn(html), titleColumn(plain)]) {
+      // Grows from 0 and never shrinks below the title itself (capped at the line), so only the
+      // title — not the title plus every figure on one line — decides whether the actions wrap.
+      expect(column).toContain('sm:flex-1');
+      expect(column).toContain('sm:min-w-[auto]');
+      expect(column).toContain('sm:max-w-full');
+    }
+  });
 });

@@ -79,15 +79,17 @@ import { buildRepTapeXlsx } from '../lib/papers/rep-tape-xlsx';
 import { printSettlementPaper } from '../lib/papers/settlement-print';
 import { cairoTomorrow } from '../lib/settlement-dates';
 import {
-  PLAN_STATE_TONE,
   blockedKey,
   blockedOf,
   currentVersion,
   denominationMinor,
   formatEgp,
   lineCode,
+  PLAN_STATE_TONE,
   planState,
   settlementErrorText,
+  settlementErrorToast,
+  toastWords,
 } from '../lib/settlement-view';
 
 /** Remembered across visits: the bank. The day opens on tomorrow (DS-25); `line` is a selection. */
@@ -120,7 +122,8 @@ export const SettlementPlanPage = (): JSX.Element => {
     setSp(next, { replace: true });
   };
   const fail = (error: unknown): void => {
-    toast.error(settlementErrorText(error, t, locale));
+    const words = settlementErrorToast(error, t, locale);
+    toast.error(words.title, words.description);
   };
 
   // ── The context, the bank and the day, then the plan ────────────────────────────────────────
@@ -205,7 +208,8 @@ export const SettlementPlanPage = (): JSX.Element => {
         onError: (error) => {
           // Somebody created it meanwhile: say so and open theirs.
           if (error instanceof ApiError && error.code === ErrorCodes.ATM_PLAN_EXISTS) {
-            toast.info(t('atm.plan.error.exists'));
+            const words = toastWords(t('atm.plan.error.exists'), 'notice', t);
+            toast.info(words.title, words.description);
             void planQuery.refetch();
             return;
           }
@@ -279,7 +283,8 @@ export const SettlementPlanPage = (): JSX.Element => {
                   : [{ lineId: line.id, code: d.code as AtmPlanLineIssueCode }];
               }),
             );
-            toast.error(t('atm.plan.error.issueBlocked'));
+            const words = toastWords(t('atm.plan.error.issueBlocked'), 'failed', t);
+            toast.error(words.title, words.description);
             return;
           }
           fail(error);
@@ -356,7 +361,10 @@ export const SettlementPlanPage = (): JSX.Element => {
         load: async () => (await print.mutateAsync({ planId, body })) as T,
         compose,
       });
-      if (dto === null) toast.error(t('atm.paper.popupBlocked'));
+      if (dto === null) {
+        const words = toastWords(t('atm.paper.popupBlocked'), 'failed', t);
+        toast.error(words.title, words.description);
+      }
       return dto;
     } catch (error) {
       fail(error);
@@ -380,12 +388,15 @@ export const SettlementPlanPage = (): JSX.Element => {
     const added = dto.serials.filter((s) => !before.has(s)).length;
     const removed = dto.previous.serials.filter((s) => !now.has(s)).length;
     if (added + removed > 0) {
-      toast.info(
+      const words = toastWords(
         t('atm.plan.print.changedSince', {
           added: formatNumber(added, locale),
           removed: formatNumber(removed, locale),
         }),
+        'notice',
+        t,
       );
+      toast.info(words.title, words.description);
     }
   };
   const onPrintReceipt = (): void => {

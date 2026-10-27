@@ -52,6 +52,7 @@ import {
   blockedOf,
   lastImportFigures,
   settlementErrorText,
+  toastWords,
 } from '../lib/settlement-view';
 
 const XLSX = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -141,18 +142,24 @@ export const LayoutImportPage = (): JSX.Element => {
           show(applied);
           const counts = applied.applyCounts;
           if (counts === null) return;
-          toast.success(
+          const done = toastWords(
             t('atm.layoutImport.result', {
               created: formatNumber(counts.created, locale),
               updated: formatNumber(counts.updated, locale),
             }),
+            'done',
+            t,
           );
+          toast.success(done.title, done.description);
           if (counts.conflicts > 0) {
-            toast.warning(
+            const notice = toastWords(
               t('atm.layoutImport.conflicts', {
                 conflicts: formatNumber(counts.conflicts, locale),
               }),
+              'notice',
+              t,
             );
+            toast.warning(notice.title, notice.description);
           }
         },
         onError: (e) => setError(settlementErrorText(e, t, locale)),

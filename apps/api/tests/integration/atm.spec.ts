@@ -626,6 +626,20 @@ describe('atm maintenance — the differences from replenishment', () => {
     expect(leaders.get(first.id)).toBe('Tarek');
     expect(leaders.get(second.id)).toBe('Tarek');
 
+    // The answer carries the rows as stored after the cascade — a version the next edit can use.
+    const answered = items<AtmMaintenanceDto>(bulk).find((m) => m.id === first.id);
+    expect(answered?.version).toBe((await list()).find((m) => m.id === first.id)?.version);
+
+    // An empty leader with the box ticked clears the CHECKED rows only — never the whole shift.
+    const emptied = await request(app)
+      .patch('/api/v1/atm/maintenances/bulk')
+      .set('Authorization', `Bearer ${alexToken}`)
+      .send({ ids: [first.id], leaderName: null, cascadeLeader: true });
+    expect(emptied.status).toBe(200);
+    leaders = new Map((await list()).map((m) => [m.id, m.leaderName]));
+    expect(leaders.get(first.id)).toBeNull();
+    expect(leaders.get(second.id)).toBe('Tarek');
+
     const current = (await list()).find((m) => m.id === first.id);
     const single = await request(app)
       .patch(`/api/v1/atm/maintenances/${first.id}`)

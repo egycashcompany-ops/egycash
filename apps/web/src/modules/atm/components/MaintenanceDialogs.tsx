@@ -149,10 +149,11 @@ export const EditMaintenanceDialog = ({
       } else {
         // The legacy checked-set maintenance edit writes the leader and nothing else
         // (contad_app.js:2042-2050; its schedule write never landed — port doc T6).
+        // An empty field clears the CHECKED rows' leader, as it always did — it never goes over
+        // their shifts, whatever the box says.
         await updateMany.mutateAsync({
           ids: rows.map((row) => row.id),
-          leaderName: leaderName === '' ? null : leaderName,
-          cascadeLeader: shiftWide,
+          ...(leaderName === '' ? { leaderName: null } : { leaderName, cascadeLeader: shiftWide }),
         });
       }
       toast.success(t('atm.common.saved'));

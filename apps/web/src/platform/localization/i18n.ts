@@ -8486,6 +8486,8 @@ const en: Record<string, string> = {
   'atm.done.repTitle': 'Replenishments Done',
   'atm.done.maintTitle': 'Maintenance Done',
   'atm.done.empty': 'Nothing closed in this range.',
+  'atm.done.rangeTooLarge':
+    'This range holds {{total}} operations and only the first {{shown}} are shown. Choose a shorter range to see them all and export them.',
   'atm.done.reopen': 'Reopen',
   'atm.done.reopened': 'Reopened — back on the live page.',
   'atm.done.reopenTitle': 'Reopen operation',
@@ -18027,6 +18029,8 @@ const ar: Record<string, string> = {
   'atm.done.repTitle': 'التغذيات المنتهية',
   'atm.done.maintTitle': 'الصيانات المنتهية',
   'atm.done.empty': 'لا توجد عمليات مغلقة في هذا المدى.',
+  'atm.done.rangeTooLarge':
+    'تضم هذه الفترة {{total}} عملية، ويُعرض منها أول {{shown}} فقط. اختر فترة أقصر لعرضها كاملة وتصديرها.',
   'atm.done.reopen': 'إعادة فتح',
   'atm.done.reopened': 'أُعيد فتحها — عادت للصفحة الحية.',
   'atm.done.reopenTitle': 'إعادة فتح عملية',

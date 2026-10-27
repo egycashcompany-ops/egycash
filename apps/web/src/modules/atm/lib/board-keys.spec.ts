@@ -65,4 +65,14 @@ describe('Ctrl+A on a board', () => {
     expect(isTypingTarget({ tagName: 'DIV', isContentEditable: true })).toBe(true);
     expect(isTypingTarget({ tagName: 'TD' })).toBe(false);
   });
+
+  it('a ticked row’s box does not own it — Ctrl+A right after a tick still selects the board', () => {
+    for (const type of ['checkbox', 'radio', 'button']) {
+      expect(isTypingTarget({ tagName: 'INPUT', type })).toBe(false);
+      expect(isSelectAllPress(press({ target: { tagName: 'INPUT', type } }))).toBe(true);
+    }
+    for (const type of ['text', 'search', 'date', 'datetime-local']) {
+      expect(isTypingTarget({ tagName: 'INPUT', type })).toBe(true);
+    }
+  });
 });

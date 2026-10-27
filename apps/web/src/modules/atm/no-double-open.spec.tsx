@@ -31,6 +31,7 @@ import {
   reopenRefusalKey,
 } from './lib/operation-view';
 import { OpenRefusalNotice } from './components/OpenRefusalNotice';
+import { repeatsAnOpenMachine } from './components/ReplenishmentDialogs';
 import { AcceptRefusalNotice } from './pages/MailTicketsPage';
 import { useReopenAtmMaintenance, useReopenAtmReplenishment } from './api/atm-queries';
 import type * as AtmApiModule from './api/atm-api';
@@ -279,5 +280,22 @@ describe('the accept confirm says which selected mails will be refused, before t
     expect(translate('ar', 'atm.mail.acceptBodyFlagged', { count: 2 })).toBe(
       'باستثناء 2 منها، إذ إن لماكيناتها صيانة مفتوحة بالفعل (الصفوف المميزة)، فلن تُقبل وستبقى معلقة.',
     );
+  });
+});
+
+describe('a bulk move of the open time is refused before it is sent when it would double a machine', () => {
+  it('is two OPEN rows of one machine — they would share the day the rule allows once', () => {
+    const open = (machineCode: string) => ({ machineCode, closedAt: null });
+    expect(repeatsAnOpenMachine([open('99990001'), open('99990002')])).toBe(false);
+    expect(repeatsAnOpenMachine([open('99990001'), open('99990002'), open('99990001')])).toBe(true);
+  });
+
+  it('a closed row does not count — the rule holds open rows only', () => {
+    expect(
+      repeatsAnOpenMachine([
+        { machineCode: '99990001', closedAt: null },
+        { machineCode: '99990001', closedAt: '2026-10-27T10:00:00.000Z' },
+      ]),
+    ).toBe(false);
   });
 });

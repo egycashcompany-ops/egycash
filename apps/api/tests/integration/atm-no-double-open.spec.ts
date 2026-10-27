@@ -297,6 +297,31 @@ describe('the race-proof index exists after boot', () => {
     },
   );
 
+  it.each(['atm_replenishments', 'atm_maintenances'])(
+    '%s carries the index the rule’s day question runs on — not a scan of the log',
+    async (collection) => {
+      const indexes = await mongoose.connection.db?.collection(collection).listIndexes().toArray();
+      const index = indexes?.find((entry) => entry.name === 'ix_open_code_opened');
+      expect(index?.key).toEqual({ machineCode: 1, openedAt: 1 });
+      expect(index?.partialFilterExpression).toEqual({ closedAt: null, isDeleted: false });
+      // The repository's own question (operation-log.repository.ts `openMachineCodes`).
+      const question = {
+        isDeleted: false,
+        closedAt: null,
+        machineCode: { $in: ['5001'] },
+        openedAt: {
+          $gte: new Date('2026-10-27T00:00:00Z'),
+          $lt: new Date('2026-10-28T00:00:00Z'),
+        },
+      };
+      const plan =
+        collection === 'atm_replenishments'
+          ? await AtmReplenishmentModel.find(question).explain('queryPlanner')
+          : await AtmMaintenanceModel.find(question).explain('queryPlanner');
+      expect(JSON.stringify(plan)).toContain('ix_open_code_opened');
+    },
+  );
+
   it('drops the any-day index of the rule’s first form, and nothing else', async () => {
     const collection = AtmMaintenanceModel.collection;
     // A database that ran the first form carries it.
@@ -664,8 +689,16 @@ describe('company-wide, without describing the other branch', () => {
 
 describe('per day — an operation left open on an earlier day does not block', () => {
   const DAY = 24 * 3600 * 1000;
-  const dayAt = (offsetDays: number): string =>
-    cairoDateString(new Date(Date.now() + offsetDays * DAY));
+  // Calendar arithmetic on the Cairo date, never «now ± 24h»: on the day Egypt leaves summer time
+  // the day has 25 hours, and now − 24h can still be today.
+  const dayAt = (offsetDays: number): string => {
+    const [y, m, d] = cairoDateString(new Date()).split('-').map(Number) as [
+      number,
+      number,
+      number,
+    ];
+    return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
+  };
   const openRepsOn = (codes: string[], forceDate: string): request.Test =>
     post(alexToken, '/atm/replenishments/open', {
       rows: codes.map((machineCode) => ({ machineCode, scheduleTime: null })),
@@ -685,6 +718,8 @@ describe('per day — an operation left open on an earlier day does not block', 
       { machineCode: '5105', name: 'SYN 5105' },
       { machineCode: '5106', name: 'SYN 5106' },
       { machineCode: '5107', name: 'SYN 5107' },
+      { machineCode: '5108', name: 'SYN 5108' },
+      { machineCode: '5109', name: 'SYN 5109' },
     ]);
   });
 
@@ -799,6 +834,26 @@ describe('per day — an operation left open on an earlier day does not block', 
     });
     expect(free.status, JSON.stringify(free.body)).toBe(200);
     expect((await AtmReplenishmentModel.findById(ahead.id).lean().exec())?.openDay).toBe(dayAt(2));
+  });
+
+  it('a bulk move the index refuses half-way writes NOTHING — one transaction, never a partial move', async () => {
+    // A then B, so the move reaches A before the row B collides on.
+    const a = repResult(await openRepsOn(['5108'], dayAt(-1))).opened[0] as AtmReplenishmentDto;
+    const b = repResult(await openRepsOn(['5109'], dayAt(-1))).opened[0] as AtmReplenishmentDto;
+    const holder = repResult(await openRepsOn(['5109'], dayAt(3))).opened[0] as AtmReplenishmentDto;
+    expect(holder).toBeDefined();
+    // As if a concurrent open landed between the rule's check and the write.
+    vi.spyOn(atmReplenishmentRepository, 'codesBlockedOnDay').mockResolvedValue([]);
+    const res = await patch('/atm/replenishments/bulk', {
+      ids: [a.id, b.id],
+      openedAt: cairoWallClockUtc(dayAt(3), 10).toISOString(),
+    });
+    expect(res.status).toBe(409);
+    expect(refusedCode(res)).toBe(ErrorCodes.ATM_OPERATION_ALREADY_OPEN);
+    const storedA = await AtmReplenishmentModel.findById(a.id).lean().exec();
+    expect(storedA?.openedAt.toISOString(), 'A rolled back with B').toBe(a.openedAt);
+    expect(storedA?.openDay).toBe(dayAt(-1));
+    expect(storedA?.__v).toBe(a.version);
   });
 
   it('maintenance: an edit moving an open row onto a taken day is refused too', async () => {

@@ -22,12 +22,17 @@ import { RowActions } from '../../../shared/ui/RowActions';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { hasError } from '../../../shared/lib/errors';
 import { useDoneAtmReplenishments, useReopenAtmReplenishment } from '../api/atm-queries';
-import { cairoToday, isAlreadyOpenRefusal, reopenRefusalKey } from '../lib/operation-view';
+import {
+  cairoToday,
+  doneRange,
+  isAlreadyOpenRefusal,
+  reopenRefusalKey,
+} from '../lib/operation-view';
 import { replenishmentColumns } from '../lib/operation-sheet';
 import { useReaderOrder } from '../lib/useBoardView';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
-import { DoneRangeBar } from '../components/DoneRangeBar';
+import { DoneRangeBar, DoneRangeCutShort, doneRangeWhole } from '../components/DoneRangeBar';
 
 export const ReplenishmentsDonePage = (): JSX.Element => {
   const t = useT();
@@ -35,8 +40,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
 
-  const from = sp.get('from') ?? cairoToday();
-  const to = sp.get('to') ?? from;
+  const { from, to } = doneRange(sp.get('from'), sp.get('to'), cairoToday());
   const list = useDoneAtmReplenishments({ from, to });
   const reopen = useReopenAtmReplenishment();
   const [reopening, setReopening] = useState<AtmReplenishmentDto | null>(null);
@@ -105,7 +109,8 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
         onChange={setRange}
         trailing={
           // Only once the rows on screen are the answer — never «nothing» while loading or failed.
-          list.isLoading || hasError(list.error) ? undefined : (
+          // And only for a range read whole: a part titled as the period would misstate it.
+          list.isLoading || hasError(list.error) || !doneRangeWhole(list.data?.meta) ? undefined : (
             <StatementExportButtons
               kind="replenishment"
               name="atm-replenishments-done"
@@ -118,6 +123,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
           )
         }
       />
+      <DoneRangeCutShort meta={list.data?.meta} />
       <DataTable
         columns={columns}
         rows={order.rows}

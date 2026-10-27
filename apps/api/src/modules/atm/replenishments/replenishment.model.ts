@@ -67,6 +67,14 @@ const replenishmentSchema = new Schema<AtmReplenishmentDoc>(
 replenishmentSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 replenishmentSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 replenishmentSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
+// The per-day rule's QUESTION — "is this code open on that day?" — asks by the open time's day range
+// (so a row stored before `openDay` existed still counts), which the unique index below cannot
+// answer: its filter needs `openDay`. This one is what that company-wide query runs on, instead of
+// a scan of the whole log (`openMachineCodes`, shared/operation-log.repository.ts).
+replenishmentSchema.index(
+  { machineCode: 1, openedAt: 1 },
+  { name: 'ix_open_code_opened', partialFilterExpression: { closedAt: null, isDeleted: false } },
+);
 // The owner's rule (2026-10-13, narrowed to the day 2026-10-27 — port doc OD-1): at most ONE open
 // replenishment per machine code PER DAY, company-wide — the race-proof half of the service check
 // (replenishment.service.ts). Built at boot by atm-indexes.ts, which also drops the rule's

@@ -59,6 +59,25 @@ export const formatDuration = (openedAt: string, closedAt: string): string => {
 /** Today's Cairo date string — the done pages' default range and the open form's default date. */
 export const cairoToday = (): string => cairoDay(new Date());
 
+const present = (value: string | null): string | null =>
+  value === null || value === '' ? null : value;
+
+/**
+ * The done pages' range, from their URL. The server's own ladder first — a bound absent or cleared
+ * takes the other, both = today (replenishment.service.ts `listDone`) — then IN ORDER: a «إلى»
+ * before «من» reads the days between instead of nothing, and the statement's title names the
+ * period the table actually shows rather than «من … إلى —».
+ */
+export const doneRange = (
+  fromParam: string | null,
+  toParam: string | null,
+  today: string,
+): { from: string; to: string } => {
+  const from = present(fromParam) ?? present(toParam) ?? today;
+  const to = present(toParam) ?? present(fromParam) ?? today;
+  return from <= to ? { from, to } : { from: to, to: from };
+};
+
 // ── The owner's rule: a machine is never open twice (port doc OD-1) ─────────────────────────────
 
 export type AtmOperationKind = 'replenishment' | 'maintenance';

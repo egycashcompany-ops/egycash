@@ -11,7 +11,7 @@
 // live timer, the row's buttons. That is what keeps a file from drifting away from the screen it
 // was taken from.
 import { type AtmMaintenanceDto, type AtmReplenishmentDto, type Locale } from '@ecms/contracts';
-import { formatDate, formatDateTime } from '../../../shared/lib/format';
+import { formatBusinessDateTime, formatDate } from '../../../shared/lib/format';
 import { type SortValue } from '../../../shared/lib/sort-rows';
 import { type TableSort } from '../../../shared/lib/table-sort';
 import {
@@ -44,8 +44,13 @@ export interface SheetColumn<T> {
 const orEmpty = (value: string | null, empty: string): string =>
   value === null || value.trim() === '' ? empty : value;
 
+/**
+ * An open or close time on the CAIRO clock, whatever the reader's machine is set to: the views,
+ * the statement's title and the server's per-day rule all count by the Cairo day, and a row in
+ * «اليوم» must not print yesterday's date beside it on a laptop set to another zone.
+ */
 const instant = (iso: string | null, locale: Locale, empty: string): string =>
-  iso === null ? empty : formatDateTime(iso, locale);
+  iso === null ? empty : formatBusinessDateTime(iso, locale);
 
 /** The columns both kinds open with: bank, code, name — the machine. */
 const machineColumns = <T extends AtmOperationRow>(
@@ -183,8 +188,27 @@ export const maintenanceColumns = (
 
 // ── The order ─────────────────────────────────────────────────────────────────────────────────
 
-/** A code of digits orders as a number — 987 before 1234 — any other code as text. */
-const codeValue = (code: string): SortValue => (/^\d+$/.test(code) ? Number(code) : code);
+/**
+ * ONE TYPE PER COLUMN, so the order is a total one: a code of digits is padded to a fixed width,
+ * which orders it as a number — 987 before 1234 — while staying text beside a code such as
+ * «1001A». Mixing numbers and strings would make the comparison circular (9 < 100 < «10A» < 9)
+ * and the result depend on the order the rows arrived in.
+ */
+export const codeSortValue = (code: string): SortValue =>
+  /^\d+$/.test(code) ? code.padStart(24, '0') : code;
+
+const ARABIC_DIGITS = /[٠-٩]/g;
+
+/**
+ * A schedule is free text — «9:30», «10:00», «٨٫١٥» — so a time at its start is read as one and
+ * written zero-padded («09:30»), which orders as the clock does; anything else stays as typed.
+ */
+export const scheduleSortValue = (value: string | null): SortValue => {
+  if (value === null || value.trim() === '') return null;
+  const latin = value.trim().replace(ARABIC_DIGITS, (d) => String(d.charCodeAt(0) - 0x0660));
+  const time = /^(\d{1,2})\s*[:.٫]\s*(\d{2})/.exec(latin);
+  return time === null ? value : `${(time[1] as string).padStart(2, '0')}:${time[2] as string}`;
+};
 const textValue = (value: string | null | undefined): SortValue =>
   value === null || value === undefined || value.trim() === '' ? null : value;
 const timeValue = (iso: string | null): SortValue =>
@@ -200,7 +224,7 @@ export const operationSortValue = (row: AtmOperationRow, key: string): SortValue
     case 'bank':
       return textValue(row.bankName);
     case 'code':
-      return codeValue(row.machineCode);
+      return codeSortValue(row.machineCode);
     case 'name':
       return textValue(row.machineName);
     case 'area':
@@ -220,7 +244,7 @@ export const operationSortValue = (row: AtmOperationRow, key: string): SortValue
     case 'closedBy':
       return textValue(row.closedByName);
     case 'schedule':
-      return 'scheduleTime' in row ? textValue(row.scheduleTime) : null;
+      return 'scheduleTime' in row ? scheduleSortValue(row.scheduleTime) : null;
     case 'service':
       return 'serviceType' in row ? textValue(row.serviceType) : null;
     case 'notes':

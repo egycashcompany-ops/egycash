@@ -85,6 +85,7 @@ const KEYS = [
   'atm.done.repTitle',
   'atm.done.maintTitle',
   'atm.done.empty',
+  'atm.done.rangeTooLarge',
   'atm.done.reopen',
   'atm.done.reopened',
   'atm.done.reopenTitle',

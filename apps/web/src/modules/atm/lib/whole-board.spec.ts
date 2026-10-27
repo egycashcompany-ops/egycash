@@ -3,7 +3,13 @@
 // page count, or a board that never holds still, cannot loop.
 import { describe, expect, it } from 'vitest';
 import { MAX_PAGE_SIZE, type Paginated } from '@ecms/contracts';
-import { MAX_BOARD_PAGES, MAX_BOARD_WALKS, boardPageCount, fetchWholeBoard } from './whole-board';
+import {
+  MAX_BOARD_PAGES,
+  MAX_BOARD_WALKS,
+  boardPageCount,
+  fetchWholeBoard,
+  isBoardCutShort,
+} from './whole-board';
 
 type Row = { id: string };
 
@@ -123,5 +129,13 @@ describe('fetchWholeBoard', () => {
     const liar = server(rows(5), 10_000);
     await fetchWholeBoard(liar.fetchPage);
     expect(liar.calls).toHaveLength(MAX_BOARD_PAGES);
+  });
+});
+
+describe('a board cut short by the request bound', () => {
+  it('is one with more pages than the walk may read — and only that', () => {
+    expect(isBoardCutShort({ totalPages: MAX_BOARD_PAGES + 1 })).toBe(true);
+    expect(isBoardCutShort({ totalPages: MAX_BOARD_PAGES })).toBe(false);
+    expect(isBoardCutShort({ totalPages: 0 })).toBe(false);
   });
 });

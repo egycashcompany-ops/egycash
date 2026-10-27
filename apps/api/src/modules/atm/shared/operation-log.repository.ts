@@ -1,7 +1,7 @@
 // The query/write surface replenishments and maintenances SHARE — one lifecycle, two collections
 // (legacy `atm_rep_log` / `atm_maint_log` differ only in their extra fields). Everything here is
 // a port of a specific legacy query, cited inline.
-import { Types, type FilterQuery, type UpdateQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery, type UpdateQuery } from 'mongoose';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { type BaseDocFields } from '../../../shared/base/base.model';
 import { type ScopeSelector } from '../../../shared/types';
@@ -111,6 +111,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     machineCodes: readonly string[],
     day: string,
     exceptIds: readonly string[] = [],
+    session: ClientSession | null = null,
   ): Promise<Set<string>> {
     const wanted = [...new Set(machineCodes)].filter((code) => code !== '');
     if (wanted.length === 0) return new Set();
@@ -127,6 +128,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     if (except.length > 0) filter._id = { $nin: except };
     const open = (await this.model
       .distinct('machineCode', filter as FilterQuery<T>)
+      .session(session)
       .exec()) as string[];
     return new Set(open);
   }
@@ -250,7 +252,7 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   async updateManyByIds(
     ids: readonly string[],
     set: UpdateQuery<T>['$set'],
-    meta: { by: string; scope: ScopeSelector; onlyOpen?: boolean },
+    meta: { by: string; scope: ScopeSelector; onlyOpen?: boolean; session?: ClientSession },
   ): Promise<T[]> {
     const objectIds = ids
       .filter((id) => Types.ObjectId.isValid(id))
@@ -260,13 +262,31 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     if (meta.onlyOpen === true) (extra as Record<string, unknown>).closedAt = null;
     const filter = this.baseFilter(meta.scope, extra);
     await this.model
-      .updateMany(filter, {
-        $set: { ...set, updatedBy: new Types.ObjectId(meta.by) },
-        $inc: { __v: 1 },
-      } as UpdateQuery<T>)
+      .updateMany(
+        filter,
+        {
+          $set: { ...set, updatedBy: new Types.ObjectId(meta.by) },
+          $inc: { __v: 1 },
+        } as UpdateQuery<T>,
+        meta.session === undefined ? {} : { session: meta.session },
+      )
       .exec();
+    return this.findByIds(ids, meta.scope, meta.session ?? null);
+  }
+
+  /** The rows of `ids` the caller's scope reaches, as stored now — a bulk write's answer. */
+  async findByIds(
+    ids: readonly string[],
+    scope: ScopeSelector,
+    session: ClientSession | null = null,
+  ): Promise<T[]> {
+    const objectIds = ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (objectIds.length === 0) return [];
     return this.model
-      .find(this.baseFilter(meta.scope, { _id: { $in: objectIds } } as FilterQuery<T>))
+      .find(this.baseFilter(scope, { _id: { $in: objectIds } } as FilterQuery<T>))
+      .session(session)
       .lean<T[]>()
       .exec();
   }
@@ -274,13 +294,16 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   /**
    * The owner's per-day rule for the bulk edit of the open time: which of the checked rows' machine
    * codes would be open twice on `day` once every checked row is moved there. Read under the
-   * caller's scope (they can only move rows they can see); the "open elsewhere" half is the rule's
-   * own company-wide question, the checked rows left out of it. Codes only.
+   * caller's scope — the rows the scoped write will actually move; the "open elsewhere" half is the
+   * rule's own company-wide question, with exactly THOSE rows left out of it. A checked id the write
+   * will not touch (outside the edit scope) stays in it: it is still open where it is. Codes only.
+   * Pass the bulk write's `session` so the check and the write are one transaction.
    */
   async codesBlockedOnDay(
     ids: readonly string[],
     day: string,
     scope: ScopeSelector,
+    session: ClientSession | null = null,
   ): Promise<string[]> {
     const objectIds = ids
       .filter((id) => Types.ObjectId.isValid(id))
@@ -289,10 +312,12 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
     const rows = await this.model
       .find(this.baseFilter(scope, { _id: { $in: objectIds } } as FilterQuery<T>))
       .select({ machineCode: 1, closedAt: 1 })
-      .lean<{ machineCode: string; closedAt: Date | null }[]>()
+      .session(session)
+      .lean<{ _id: Types.ObjectId; machineCode: string; closedAt: Date | null }[]>()
       .exec();
     const open = rows.filter((row) => row.closedAt === null).map((row) => row.machineCode);
-    return codesBlockedByMove(rows, await this.openMachineCodes(open, day, ids));
+    const moved = rows.map((row) => String(row._id));
+    return codesBlockedByMove(rows, await this.openMachineCodes(open, day, moved, session));
   }
 
   /**

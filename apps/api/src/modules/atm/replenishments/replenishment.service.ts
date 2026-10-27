@@ -23,6 +23,7 @@ import {
   openDayOf,
 } from '../shared/open-operation';
 import { cairoDateString, cairoWallClockUtc } from '../shared/cairo-time';
+import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { atmMachineRepository } from '../machines/machine.repository';
 import { atmReplenishmentRepository } from './replenishment.repository';
 import { type AtmReplenishmentDoc } from './replenishment.model';
@@ -307,8 +308,9 @@ class AtmReplenishmentService {
    * edit's own rule: not when the open time is moved in the same submit.
    *
    * Moving the open time sets ONE instant on every checked row, so the per-day rule (OD-1) is
-   * asked first: refused with 409, nothing written, when two checked open rows are the same
-   * machine or one's machine is already open on the new day in a row not checked.
+   * asked first, in the same transaction as the move: refused with 409, nothing written, when two
+   * checked open rows are the same machine or one's machine is already open on the new day in a
+   * row not being moved.
    */
   async bulkUpdate(
     input: BulkUpdateAtmReplenishments,
@@ -325,31 +327,42 @@ class AtmReplenishmentService {
     if (Object.keys(set).length === 0) {
       throw new BusinessRuleError('لا يوجد تعديل مطلوب.');
     }
-    if (input.openedAt !== undefined) {
-      const blocked = await atmReplenishmentRepository.codesBlockedOnDay(
-        input.ids,
-        openDayOf(input.openedAt),
-        scope,
-      );
-      if (blocked.length > 0) throw alreadyOpenError('replenishment', blocked.join(', '));
-    }
+    const write = { by: ctx.userId, scope };
     let rows: AtmReplenishmentDoc[];
-    try {
-      rows = await atmReplenishmentRepository.updateManyByIds(input.ids, set, {
-        by: ctx.userId,
-        scope,
-      });
-    } catch (error) {
-      if (isOpenOperationDuplicate(error))
-        throw alreadyOpenError('replenishment', 'one of the checked machines');
-      throw error;
+    if (input.openedAt === undefined) {
+      rows = await atmReplenishmentRepository.updateManyByIds(input.ids, set, write);
+    } else {
+      // ONE TRANSACTION for the rule's check and the move: `updateMany` is not atomic across
+      // documents, so a duplicate the index refuses half-way would otherwise leave the rows before
+      // it moved while the answer says nothing was. Refused, the whole move is rolled back.
+      const day = openDayOf(input.openedAt);
+      try {
+        rows = await unitOfWork(async (session) => {
+          const blocked = await atmReplenishmentRepository.codesBlockedOnDay(
+            input.ids,
+            day,
+            scope,
+            session,
+          );
+          if (blocked.length > 0) throw alreadyOpenError('replenishment', blocked.join(', '));
+          return atmReplenishmentRepository.updateManyByIds(input.ids, set, { ...write, session });
+        });
+      } catch (error) {
+        if (isOpenOperationDuplicate(error)) {
+          throw alreadyOpenError('replenishment', 'one of the checked machines');
+        }
+        throw error;
+      }
     }
+    // A leader on the checked rows only — never a cascade of «no leader» over a whole shift.
     if (
       input.cascadeLeader === true &&
-      input.leaderName !== undefined &&
+      typeof input.leaderName === 'string' &&
       input.openedAt === undefined
     ) {
       await atmReplenishmentRepository.cascadeLeaderOverRows(rows, input.leaderName, ctx.userId);
+      // The cascade wrote these rows again: answer with them as stored now (their version moved).
+      rows = await atmReplenishmentRepository.findByIds(input.ids, scope);
     }
     for (const row of rows) {
       await auditService.record({

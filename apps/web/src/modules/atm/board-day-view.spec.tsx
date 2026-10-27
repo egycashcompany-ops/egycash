@@ -35,6 +35,8 @@ import { ReplenishmentsPage } from './pages/ReplenishmentsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { LeaderField } from './components/ReplenishmentDialogs';
 import { atmBoardKeys } from './api/atm-queries';
+import { addDays } from './lib/board-day';
+import { cairoToday } from './lib/operation-view';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -48,8 +50,12 @@ const t = (key: string): string => translate('ar', key);
 const DAY = 24 * 3600 * 1000;
 const NOW = new Date().toISOString();
 const THREE_DAYS_AGO = new Date(Date.now() - 3 * DAY).toISOString();
-const TOMORROW = new Date(Date.now() + DAY).toISOString();
-const IN_FIVE_DAYS = new Date(Date.now() + 5 * DAY).toISOString();
+// Days ahead by the CALENDAR, at Cairo noon: now + 24 h is still today on the 25-hour day Cairo
+// leaves summer time.
+const cairoNoonIn = (days: number): string =>
+  new Date(`${addDays(cairoToday(), days)}T12:00:00+02:00`).toISOString();
+const TOMORROW = cairoNoonIn(1);
+const IN_FIVE_DAYS = cairoNoonIn(5);
 
 const common = (id: string, code: string, openedAt: string) => ({
   id,

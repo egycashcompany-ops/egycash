@@ -6,6 +6,7 @@ import { type AtmMaintenanceDto, type AtmReplenishmentDto } from '@ecms/contract
 import { translate } from '../../../platform/localization/i18n';
 import { sortRows } from '../../../shared/lib/sort-rows';
 import {
+  codeSortValue,
   knownSorts,
   maintenanceColumns,
   operationSortValue,
@@ -14,6 +15,7 @@ import {
   statementFilterLine,
   statementLines,
   statementSheet,
+  scheduleSortValue,
   statementTitle,
 } from './operation-sheet';
 import { buildXlsxBook } from '../../../shared/lib/xlsx-writer';
@@ -141,6 +143,37 @@ describe('the order', () => {
     const rows = [rep('a', '1234'), rep('b', '987'), rep('c', 'ABC')];
     const ordered = sortRows(rows, [{ by: 'code', dir: 'asc' }], operationSortValue);
     expect(ordered.map((r) => r.machineCode).slice(0, 2)).toEqual(['987', '1234']);
+  });
+
+  it('is one order whatever the rows arrived in — a code of digits beside one with letters', () => {
+    const codes = ['9', '100', '10A', '987', 'ABC', '1234'];
+    const want = sortRows(
+      codes.map((code, i) => rep(String(i), code)),
+      [{ by: 'code', dir: 'asc' }],
+      operationSortValue,
+    ).map((r) => r.machineCode);
+    for (const shuffled of [[...codes].reverse(), ['10A', '9', 'ABC', '1234', '100', '987']]) {
+      const got = sortRows(
+        shuffled.map((code, i) => rep(String(i), code)),
+        [{ by: 'code', dir: 'asc' }],
+        operationSortValue,
+      ).map((r) => r.machineCode);
+      expect(got).toEqual(want);
+    }
+    expect(want.slice(0, 4)).toEqual(['9', '100', '987', '1234']);
+    // Every value of the column is text, so no comparison mixes a number with a word.
+    expect(codes.map(codeSortValue).every((v) => typeof v === 'string')).toBe(true);
+  });
+
+  it('a schedule by the clock — «9:00» before «10:30» — Arabic digits and «٫» included', () => {
+    const rows = ['10:30', '9:00', '11:00', '٨٫١٥'].map((time, i) =>
+      rep(String(i), String(i), { scheduleTime: time }),
+    );
+    const ordered = sortRows(rows, [{ by: 'schedule', dir: 'asc' }], operationSortValue);
+    expect(ordered.map((r) => r.scheduleTime)).toEqual(['٨٫١٥', '9:00', '10:30', '11:00']);
+    expect(scheduleSortValue('9.05 ص')).toBe('09:05');
+    expect(scheduleSortValue('بعد الظهر')).toBe('بعد الظهر');
+    expect(scheduleSortValue('  ')).toBeNull();
   });
 
   it('a blank sorts last in either direction', () => {

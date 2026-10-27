@@ -389,13 +389,18 @@ class AtmMaintenanceService {
     input: BulkUpdateAtmMaintenances,
     ctx: AuthContext,
   ): Promise<AtmMaintenanceDoc[]> {
-    const rows = await atmMaintenanceRepository.updateManyByIds(
+    const scope = scopeSelector(ctx, 'atmMaintenance.edit');
+    let rows = await atmMaintenanceRepository.updateManyByIds(
       input.ids,
       { leaderName: input.leaderName },
-      { by: ctx.userId, scope: scopeSelector(ctx, 'atmMaintenance.edit') },
+      { by: ctx.userId, scope },
     );
-    if (input.cascadeLeader === true) {
+    // A leader goes over the shift; «no leader» stays on the checked rows — an empty field must
+    // never clear the leader of every open maintenance in those areas and shifts.
+    if (input.cascadeLeader === true && input.leaderName !== null) {
       await atmMaintenanceRepository.cascadeLeaderOverRows(rows, input.leaderName, ctx.userId);
+      // The cascade wrote these rows again: answer with them as stored now (their version moved).
+      rows = await atmMaintenanceRepository.findByIds(input.ids, scope);
     }
     for (const row of rows) {
       await auditService.record({

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cairoDay,
+  doneRange,
   elapsedSeconds,
   formatDuration,
   formatElapsed,
@@ -11,6 +12,27 @@ describe('cairoDay — the day a board shows a row on', () => {
   it('is the Cairo calendar day, not the UTC day', () => {
     // 23:30 UTC on Jan 14 is 01:30 Cairo on Jan 15 (UTC+2).
     expect(cairoDay('2026-01-14T23:30:00.000Z')).toBe('2026-01-15');
+  });
+});
+
+describe('doneRange — the done pages’ period, from their URL', () => {
+  const today = '2026-10-27';
+  it('is today with no bound, and one bound serves as both — the server’s ladder', () => {
+    expect(doneRange(null, null, today)).toEqual({ from: today, to: today });
+    expect(doneRange('2026-10-20', null, today)).toEqual({ from: '2026-10-20', to: '2026-10-20' });
+    expect(doneRange(null, '2026-10-20', today)).toEqual({ from: '2026-10-20', to: '2026-10-20' });
+  });
+
+  it('a bound cleared in its field counts as absent, not as «—»', () => {
+    expect(doneRange('2026-10-20', '', today)).toEqual({ from: '2026-10-20', to: '2026-10-20' });
+    expect(doneRange('', '', today)).toEqual({ from: today, to: today });
+  });
+
+  it('a «to» before the «from» reads the days between', () => {
+    expect(doneRange('2026-10-25', '2026-10-20', today)).toEqual({
+      from: '2026-10-20',
+      to: '2026-10-25',
+    });
   });
 });
 

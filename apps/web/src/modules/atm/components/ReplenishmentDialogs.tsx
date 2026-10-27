@@ -75,6 +75,19 @@ export const LeaderField = ({
   );
 };
 
+/** Pure: do two of these OPEN rows belong to one machine? */
+export const repeatsAnOpenMachine = (
+  rows: readonly { machineCode: string; closedAt: string | null }[],
+): boolean => {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (row.closedAt !== null) continue;
+    if (seen.has(row.machineCode)) return true;
+    seen.add(row.machineCode);
+  }
+  return false;
+};
+
 export const ConfirmActionDialog = ({
   open,
   title,
@@ -152,6 +165,14 @@ export const EditReplenishmentDialog = ({
           },
         });
       } else {
+        // The move gives every checked row ONE open time: two open rows of one machine would
+        // then share a day, which the per-day rule refuses. Say so before anything is sent — a
+        // large selection goes in several requests, and a refusal in a later one would leave the
+        // earlier ones saved under a «not saved» message.
+        if (openedAt !== '' && repeatsAnOpenMachine(rows)) {
+          toast.error(t('atm.common.moveAlreadyOpen'));
+          return;
+        }
         await updateMany.mutateAsync({
           ids: rows.map((row) => row.id),
           ...(scheduleTime === '' ? {} : { scheduleTime }),

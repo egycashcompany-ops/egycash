@@ -18,15 +18,38 @@ export const COPY_TABLE_CLASS = 'select-none';
 
 interface TypingTarget {
   tagName?: string;
+  type?: string;
   isContentEditable?: boolean;
 }
 
-/** Pure: a key press a field owns — Ctrl+A in the codes box selects its text, not the board. */
+/** The input types that hold text a reader selects — a checkbox or a button holds none. */
+const TEXT_INPUT_TYPES = new Set([
+  '',
+  'text',
+  'search',
+  'email',
+  'number',
+  'tel',
+  'url',
+  'password',
+  'date',
+  'datetime-local',
+  'month',
+  'time',
+  'week',
+]);
+
+/**
+ * Pure: a key press a field owns — Ctrl+A in the codes box selects its text, not the board. A
+ * checkbox does not own it: right after ticking a row the focus is on that box, and Ctrl+A there
+ * must still select the board's rows rather than the whole page.
+ */
 export const isTypingTarget = (target: unknown): boolean => {
   if (typeof target !== 'object' || target === null) return false;
   const el = target as TypingTarget;
   const tag = (el.tagName ?? '').toUpperCase();
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+  if (tag === 'INPUT') return TEXT_INPUT_TYPES.has((el.type ?? '').toLowerCase());
+  return tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
 };
 
 /** Pure: is this press the board's «select all»? By the physical key, so it works on an Arabic layout. */

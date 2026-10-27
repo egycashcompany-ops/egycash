@@ -230,7 +230,7 @@ const LedgerFundNow = ({ fund }: { fund: FleetCustodyFundSummaryDto }): JSX.Elem
         </span>
       </span>
       <span className="mt-1.5 whitespace-nowrap border-t border-slate-200 pt-1.5 text-[11px] text-slate-600 dark:border-[#1c273b] dark:text-slate-400">
-        {t('fleet.custody.ledger.tiles.formula')}
+        {t('fleet.custody.ledger.tiles.formulaRequests')}
       </span>
     </div>
   );
@@ -256,15 +256,17 @@ export const LedgerFigures = ({
     <section
       data-ledger-figures="true"
       data-ledger-figures-look={look}
-      aria-label={look === 'dashboard' ? t('fleet.custody.ledger.tiles.formula') : undefined}
+      aria-label={
+        look === 'dashboard' ? t('fleet.custody.ledger.tiles.formulaRequests') : undefined
+      }
       className={LEDGER_FIGURES_GRID[look]}
     >
       <Term
         term="charged"
-        label={t('fleet.custody.ledger.tiles.charged')}
+        label={t('fleet.custody.ledger.tiles.requested')}
         value={fund.charged.amount}
         sign="+"
-        note={t(`fleet.custody.ledger.tiles.chargedNote.${kit.form(fund.charged.count)}`, {
+        note={t(`fleet.custody.ledger.tiles.requestedNote.${kit.form(fund.charged.count)}`, {
           count: COUNT.format(fund.charged.count),
         })}
         icon={CUSTODY_OPS.charge.icon}

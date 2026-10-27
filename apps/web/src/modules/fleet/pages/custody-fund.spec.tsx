@@ -1,9 +1,11 @@
-// «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد». The fund, first
-// among the board's figures («الإحصائيات») and first in the KPI row of «لوحة تحكم», in its own calm
-// slate, a wallet on its tile. The fund is real: Σ «شحن» − Σ the receipts + Σ «استعاضة» − Σ «تسوية»,
-// and it may be NEGATIVE — written «−X» in red, never clamped to 0. Under it «صُرف من إجمالي
-// الشحن X%» — every receipt the fund paid over everything charged into it (`fundSpent /
-// fundCharged`), «—» while nothing is charged. Proven against what the components produce.
+// «إجمالي العهدة» — «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد». The fund's card
+// (`CustodyFundCard`), in its own calm slate, a wallet on its tile. The fund is real: Σ «طلب عهدة» −
+// Σ the receipts + Σ «استعاضة» − Σ «تسوية», and it may be NEGATIVE — written «−X» in red, never
+// clamped to 0. Under it «صُرف من إجمالي طلبات العهدة X%» — every receipt the fund paid over
+// everything requested into it (`fundSpent / fundCharged`), «—» while nothing is requested.
+// «خلاص افصلهم»: the card is the last tile of «العهدة الآن» on «لوحة تحكم العهدة», and the head of
+// SCREEN 1 shows the fund as a strip of its own (custody-split.spec.tsx); the board «مصروفات العهدة»
+// draws five figures — the spend only. Proven against what the components produce.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +35,7 @@ import {
 } from '../components/CustodyFigures';
 import { CustodyDashboardContent, CustodyKpis } from '../components/CustodyDashboard';
 import { CustodyFundNow } from '../components/CustodyDashboardFund';
+import { CustodyFundDashboard } from '../components/CustodyFundDashboard';
 import { CUSTODY_FUND, CUSTODY_KIND, CUSTODY_KINDS } from '../components/CustodyKinds';
 import { CAIRO, CARD_SURFACE } from '../components/custody-dashboard-parts';
 import { NUM } from '../components/FuelCardBoard';
@@ -143,13 +146,16 @@ const atStart: FleetCustodySummaryDto = {
   fundSpent: 4335.5,
 };
 
-/** One figure's markup on the board, up to the next figure. */
-const figure = (html: string, id: string): string => {
-  const at = html.indexOf(`data-custody-figure="${id}"`);
-  expect(at, id).toBeGreaterThan(-1);
-  const next = html.indexOf('data-custody-figure="', at + 10);
-  return html.slice(at, next === -1 ? undefined : html.lastIndexOf('<', next));
-};
+/** The fund's card with its bar (`board`), fed a summary's three unfiltered figures. */
+const fundCard = (totals: FleetCustodySummaryDto): string =>
+  mount(
+    <CustodyFundCard
+      fundTotal={totals.fundTotal}
+      charged={totals.fundCharged}
+      spent={totals.fundSpent}
+      board
+    />,
+  );
 
 /** Every kind at zero — a memo state's split, where this suite reads none of it. */
 const noKinds = (): FleetCustodyDashboardDto['memoStates']['outside']['byKind'] => ({
@@ -196,7 +202,7 @@ const fundNow = (data: FleetCustodyDashboardDto): string => {
   return html.slice(html.indexOf('data-custody-fund-now="true"'));
 };
 
-describe('«صُرف من إجمالي الشحن X%» — what was spent of all that was charged', () => {
+describe('«صُرف من إجمالي طلبات العهدة X%» — what was spent of all that was requested', () => {
   it('writes one decimal under ten per cent, whole from there', () => {
     expect(custodySpentOfFund(4335.5, 50_000)).toBe('8.7%');
     expect(custodySpentOfFund(4970, 50_000)).toBe('9.9%');
@@ -251,23 +257,50 @@ describe('«صُرف من إجمالي الشحن X%» — what was spent of all
   });
 });
 
-describe('«إجمالي العهدة» on the board — «الإحصائيات»', () => {
-  it('comes first, before «إجمالي مصروفات العهدة»', () => {
+describe('«الإحصائيات» on «مصروفات العهدة» — five figures, the fund heads SCREEN 1', () => {
+  it('draws the spend and its four kinds — no fund card any more', () => {
     const html = mount(<CustodyFigures totals={summary} />);
     expect([...html.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1])).toEqual([
-      'fund',
       'total',
       ...CUSTODY_KINDS,
     ]);
-    expect(ar('fleet.custody.fund.title')).toBe('إجمالي العهدة');
-    expect(text(figure(html, 'fund'))).toContain(ar('fleet.custody.fund.title'));
+    expect(html).not.toContain('data-custody-fund=');
+    expect(html).not.toContain(ar('fleet.custody.fund.title'));
   });
 
-  it('shows the fund, «ج.م.» apart, and «صُرف من إجمالي الشحن 8.7%» over a bar of the same share', () => {
-    const fund = figure(mount(<CustodyFigures totals={summary} />), 'fund');
-    // The line's words: what was spent of everything charged in — «صُرف منها» (of the fund) no more.
+  it('lays the five out one to a row on a phone, two from `sm`, all five in one row from `xl` — «ج.م.» never cut off', () => {
+    const html = mount(<CustodyFigures totals={summary} />);
+    const grid = classesOf(html, 'data-custody-figures="true"');
+    expect(grid.filter((c) => /grid-cols-/u.test(c))).toEqual([
+      'grid-cols-1',
+      'sm:grid-cols-2',
+      'xl:grid-cols-5',
+    ]);
+    expect(grid).toEqual(
+      expect.arrayContaining([
+        'grid',
+        'xl:[&amp;_.text-2xl]:text-xl',
+        'min-[1800px]:[&amp;_.text-2xl]:text-2xl',
+        '[&amp;_.items-baseline]:flex-wrap',
+      ]),
+    );
+    expect(grid.join(' ')).not.toMatch(/col-span/u);
+  });
+});
+
+describe('«إجمالي العهدة» — the fund’s card', () => {
+  it('is titled «إجمالي العهدة»', () => {
+    expect(ar('fleet.custody.fund.title')).toBe('إجمالي العهدة');
+    expect(text(fundCard(summary))).toContain(ar('fleet.custody.fund.title'));
+  });
+
+  it('shows the fund, «ج.م.» apart, and «صُرف من إجمالي طلبات العهدة 8.7%» over a bar of the same share', () => {
+    const fund = fundCard(summary);
+    // The line's words: what was spent of everything requested in — «صُرف منها» (of the fund) no
+    // more; the old «الشحن» words stay in the file, unused.
+    expect(ar('fleet.custody.fund.spentOfRequests')).toBe('صُرف من إجمالي طلبات العهدة');
+    expect(translate('en', 'fleet.custody.fund.spentOfRequests')).toBe('Spent of all requests');
     expect(ar('fleet.custody.fund.spent')).toBe('صُرف من إجمالي الشحن');
-    expect(translate('en', 'fleet.custody.fund.spent')).toBe('Spent of all top-ups');
     expect(ar('fleet.custody.fund.spentTitle')).toBe(
       'مصروفات الإيصالات ÷ إجمالي ما شُحن في العهدة',
     );
@@ -275,7 +308,7 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     expect(fund).toContain(
       `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">50,000.00</span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,
     );
-    expect(text(fund)).toContain(`${ar('fleet.custody.fund.spent')} 8.7%`);
+    expect(text(fund)).toContain(`${ar('fleet.custody.fund.spentOfRequests')} 8.7%`);
     // What the share means, on hover.
     expect(fund).toContain(`title="${ar('fleet.custody.fund.spentTitle')}"`);
     // The share left to right, in Latin digits, on its own chip.
@@ -290,28 +323,25 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
   it('takes the share from everything spent over everything charged — never from the filtered sums', () => {
     // The board's filters narrow «إجمالي مصروفات العهدة» (`total`); the fund's share is the whole
     // fund's: 20,000 of 50,000 charged.
-    const fund = figure(
-      mount(<CustodyFigures totals={{ ...summary, total: 120, fundSpent: 20_000 }} />),
-      'fund',
-    );
-    expect(text(fund)).toContain(`${ar('fleet.custody.fund.spent')} 40%`);
+    const fund = fundCard({ ...summary, total: 120, fundSpent: 20_000 });
+    expect(text(fund)).toContain(`${ar('fleet.custody.fund.spentOfRequests')} 40%`);
     expect(fund).toContain('style="width:40%"');
   });
 
   it('writes a fund below zero «−X» in red — never clamped to 0', () => {
-    const fund = figure(mount(<CustodyFigures totals={atStart} />), 'fund');
+    const fund = fundCard(atStart);
     expect(fund).toContain(
       `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}"><span dir="ltr" data-custody-fund-negative="true" title="${ar('fleet.custody.fund.negativeTitle')}" class="${CUSTODY_NEGATIVE_INK}">−4,335.50</span></span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,
     );
     expect(CUSTODY_NEGATIVE_INK).toBe('text-red-600 dark:text-red-400');
     // The minus is the minus sign, not a hyphen; the share «—»: nothing was charged yet.
     expect(text(fund)).toBe(
-      `${ar('fleet.custody.fund.title')} −4,335.50 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+      `${ar('fleet.custody.fund.title')} −4,335.50 ج.م. ${ar('fleet.custody.fund.spentOfRequests')} —`,
     );
     expect(fund).toContain('style="width:0%"');
     expect(fund).not.toMatch(/NaN|Infinity|-4,335/u);
     // A positive fund wears no red.
-    expect(figure(mount(<CustodyFigures totals={summary} />), 'fund')).not.toContain('red-');
+    expect(fundCard(summary)).not.toContain('red-');
     // …and the dashboard's card in «العهدة الآن», the same component.
     const card = fundNow(dashboard({ fundTotal: -124_139.46, fundCharged: 300_000 }));
     expect(card).toContain('data-custody-fund-negative="true"');
@@ -319,7 +349,7 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
   });
 
   it('wears its own calm slate — the dashboard’s card, no kind’s colour and not the total’s emerald', () => {
-    const fund = figure(mount(<CustodyFigures totals={summary} />), 'fund');
+    const fund = fundCard(summary);
     expect(classesOf(fund, 'data-custody-fund="true"')).toEqual(
       expect.arrayContaining([
         ...CARD_SURFACE.split(' '),
@@ -353,12 +383,12 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
   });
 
   it('shows «0.00 ج.م.» while the fund holds nothing — its share «—», its bar empty', () => {
-    const fund = figure(mount(<CustodyFigures totals={empty} />), 'fund');
+    const fund = fundCard(empty);
     expect(fund).toContain(
       `<span data-custody-fund-value="true" class="text-2xl font-black tracking-tight text-slate-900 dark:text-white ${esc(NUM)}">0.00</span><span class="text-xs ${CUSTODY_FUND.unit}">ج.م.</span>`,
     );
     expect(text(fund)).toBe(
-      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spentOfRequests')} —`,
     );
     expect(fund).toMatch(/<span dir="ltr" data-custody-fund-pct="true" class="[^"]*">—<\/span>/u);
     // The bar is drawn, and empty.
@@ -367,42 +397,35 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
       `<span class="block h-full rounded-full ${CUSTODY_FUND.fill}" style="width:0%"></span>`,
     );
     expect(fund).not.toMatch(/NaN|Infinity/u);
-    // Nothing points anywhere: «شحن العهدة» fills the fund, no settings screen does.
+    // Nothing points anywhere: «طلب عهدة» fills the fund, no settings screen does.
     expect(fund).not.toContain('href=');
     expect(fund).not.toContain('<a ');
     expect(text(fund)).not.toContain('إعدادات الحركة');
   });
 
   it('reads an answer with no fund at all as 0 — no «ليس رقمًا», no «NaN%»', () => {
-    // An older server's summary, without the fields: the board's tile reads «0.00 ج.م.».
+    // An older server's summary, without the fields: the card reads «0.00 ج.م.».
     const older: Partial<FleetCustodySummaryDto> = { ...summary };
     delete older.fundTotal;
     delete older.fundCharged;
     delete older.fundSpent;
     expect('fundTotal' in older).toBe(false);
-    const fund = figure(mount(<CustodyFigures totals={older as FleetCustodySummaryDto} />), 'fund');
+    const fund = fundCard(older as FleetCustodySummaryDto);
     expect(text(fund)).toBe(
-      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spentOfRequests')} —`,
     );
     expect(fund).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
     expect(fund).toContain('style="width:0%"');
     // …and so does an older server's `null`, and a value that is no amount at all.
     for (const odd of [null, Number.NaN, Infinity]) {
-      const tile = figure(
-        mount(
-          <CustodyFigures
-            totals={{
-              ...summary,
-              fundTotal: odd as unknown as number,
-              fundCharged: odd as unknown as number,
-              fundSpent: odd as unknown as number,
-            }}
-          />,
-        ),
-        'fund',
-      );
+      const tile = fundCard({
+        ...summary,
+        fundTotal: odd as unknown as number,
+        fundCharged: odd as unknown as number,
+        fundSpent: odd as unknown as number,
+      });
       expect(text(tile), String(odd)).toBe(
-        `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+        `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spentOfRequests')} —`,
       );
       expect(tile, String(odd)).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
       expect(tile, String(odd)).toContain('style="width:0%"');
@@ -416,60 +439,23 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
       }),
     );
     expect(text(card)).toBe(
-      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spentOfRequests')} —`,
     );
     expect(card).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
   });
 
-  it('lays the six out one to a row on a phone, two from `sm`, three from `xl`, all six in one row from 1,680px — «ج.م.» never cut off', () => {
-    const html = mount(<CustodyFigures totals={summary} />);
-    const grid = classesOf(html, 'data-custody-figures="true"');
-    expect(grid).toEqual(
-      expect.arrayContaining([
-        'grid',
-        'grid-cols-1',
-        'sm:grid-cols-2',
-        'xl:grid-cols-3',
-        '[&amp;_.items-baseline]:flex-wrap',
-      ]),
-    );
-    expect(grid.join(' ')).not.toMatch(/col-span/u);
-    // Not three from `lg`: the side bar opens there, and a third of a 1,024px board is about 232px
-    // — a sum in the millions ran under its icon («2,500,000.00» lost its «2»). Two until `xl`.
-    expect(grid).not.toContain('lg:grid-cols-3');
-    // «هتضيف بس فى الاول قبل إجمالي مصروفات العهدة»: one row of six from 1,680px, as the five
-    // were — not from `2xl`, where a sixth beside the side bar is 195px and a sum in the millions
-    // ran under its icon; the sums a size down there and back up as the room grows.
-    expect(grid.filter((c) => /grid-cols-/u.test(c))).toEqual([
-      'grid-cols-1',
-      'sm:grid-cols-2',
-      'xl:grid-cols-3',
-      'min-[1680px]:grid-cols-6',
-    ]);
-    expect(grid).toEqual(
-      expect.arrayContaining([
-        'min-[1680px]:[&amp;_.text-2xl]:text-lg',
-        'min-[1800px]:[&amp;_.text-2xl]:text-xl',
-        'min-[2100px]:[&amp;_.text-2xl]:text-2xl',
-      ]),
-    );
-  });
-
   it('reads a spend past all that was charged as it is — «120%», the bar full', () => {
-    const fund = figure(
-      mount(<CustodyFigures totals={{ ...summary, fundSpent: 60_000, fundCharged: 50_000 }} />),
-      'fund',
-    );
-    expect(text(fund)).toContain(`${ar('fleet.custody.fund.spent')} 120%`);
+    const fund = fundCard({ ...summary, fundSpent: 60_000, fundCharged: 50_000 });
+    expect(text(fund)).toContain(`${ar('fleet.custody.fund.spentOfRequests')} 120%`);
     expect(fund).toContain('style="width:100%"');
   });
 });
 
-describe('«إجمالي العهدة» on «لوحة تحكم» — the last tile of «العهدة الآن»', () => {
+describe('«إجمالي العهدة» on «لوحة تحكم العهدة» — the last tile of «العهدة الآن»', () => {
   it('ends the fund’s formula in the dashboard’s own figure, with no bar — and leaves the spend’s row', () => {
     const fund = fundNow(dashboard());
     expect(text(fund)).toContain(
-      `${ar('fleet.custody.fund.title')} 50,000.00 ج.م. ${ar('fleet.custody.fund.spent')} 8.7%`,
+      `${ar('fleet.custody.fund.title')} 50,000.00 ج.م. ${ar('fleet.custody.fund.spentOfRequests')} 8.7%`,
     );
     // Cairo, as every figure of the dashboard; never the board's monospace beside it.
     const value = classesOf(fund, 'data-custody-fund-value="true"');
@@ -509,13 +495,17 @@ describe('«إجمالي العهدة» on «لوحة تحكم» — the last ti
     // Five spend cards shimmering at their own height — the memos' bars in them (N7).
     expect(loading.match(/ h-\[266px\]/gu)).toHaveLength(5);
     expect(loading).toContain('data-custody-dashboard-loading="true"');
-    // Over them, «العهدة الآن» is never a shimmer of the filtered answer: its own cards, each on its
-    // own read, at the heights they land at — the formula's five tiles and its two rows of cards.
-    expect(loading).toContain('data-custody-dashboard-heading="fund"');
-    expect(loading.match(/min-h-\[124px\]/gu)).toHaveLength(5);
-    expect(loading.match(/min-h-\[475px\]/gu)).toHaveLength(2);
-    expect(loading.match(/min-h-\[542px\]/gu)).toHaveLength(2);
-    expect([...loading.matchAll(/data-custody-card-loading="(\w+)"/gu)].map((m) => m[1])).toEqual([
+    // «لوحة تحكم المصروفات» has no fund part any more: «العهدة الآن» is SCREEN 1's.
+    expect(loading).not.toContain('data-custody-dashboard-heading="fund"');
+    expect(loading).not.toContain('data-custody-card-loading');
+    // There, «العهدة الآن» is its own cards, each on its own read, at the heights they land at —
+    // the formula's five tiles and its two rows of cards.
+    const fundTab = mount(<CustodyFundDashboard />);
+    expect(fundTab).toContain('data-custody-dashboard-heading="fund"');
+    expect(fundTab.match(/min-h-\[124px\]/gu)).toHaveLength(5);
+    expect(fundTab.match(/min-h-\[475px\]/gu)).toHaveLength(2);
+    expect(fundTab.match(/min-h-\[542px\]/gu)).toHaveLength(2);
+    expect([...fundTab.matchAll(/data-custody-card-loading="(\w+)"/gu)].map((m) => m[1])).toEqual([
       'formula',
       'formula',
       'formula',
@@ -535,24 +525,21 @@ describe('«إجمالي العهدة» on «لوحة تحكم» — the last ti
   it('shows «0.00 ج.م.» while the fund holds nothing, its share «—», with no bar', () => {
     const card = fundNow(dashboard({ fundTotal: 0, fundCharged: 0, fundSpent: 0 }));
     expect(text(card)).toBe(
-      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
+      `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spentOfRequests')} —`,
     );
     expect(card).toMatch(/data-custody-fund-value="true"[^>]*>0\.00</u);
     expect(card).not.toContain('style="width:');
     expect(card).not.toMatch(/NaN|Infinity/u);
   });
 
-  it('is one component, drawn by both, fed the unfiltered figures', () => {
-    const figures = read('../components/CustodyFigures.tsx');
-    expect(figures).toMatch(
-      /<CustodyFundCard\s+fundTotal=\{totals\.fundTotal\}\s+charged=\{totals\.fundCharged\}\s+spent=\{totals\.fundSpent\}\s+board\s+\/>/u,
-    );
+  it('is one component, fed the unfiltered figures — the board draws it no more', () => {
+    expect(read('../components/CustodyFigures.tsx')).not.toMatch(/<CustodyFundCard\b/u);
     expect(read('../components/CustodyDashboardFund.tsx')).toMatch(
       /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
     );
     expect(read('../components/CustodyDashboard.tsx')).not.toContain('<CustodyFundCard');
     // A spent total of nothing over what was charged: «0%», not a dash.
     const zero = mount(<CustodyFundCard fundTotal={50_000} charged={50_000} spent={0} />);
-    expect(text(zero)).toContain(`${ar('fleet.custody.fund.spent')} 0%`);
+    expect(text(zero)).toContain(`${ar('fleet.custody.fund.spentOfRequests')} 0%`);
   });
 });

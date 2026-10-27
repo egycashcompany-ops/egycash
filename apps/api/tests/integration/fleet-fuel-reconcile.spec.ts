@@ -547,6 +547,11 @@ describe('the card log', () => {
       ['charge', 'سامح علي', true],
       ['charge', null, true],
     ]);
+    // No default: an ordinary line is written without the field at all (nothing to backfill).
+    const raw = await FleetFuelCardMovementModel.collection
+      .find({ cardId: a._id }, { sort: { at: -1 } })
+      .toArray();
+    expect(raw.map((doc) => 'reconciliation' in doc)).toEqual([true, false, false]);
     const sheetLine = lines[0]?.id ?? '';
     const patched = await request(app)
       .patch(`${CARDS}/movements/${sheetLine}`)

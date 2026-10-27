@@ -2312,8 +2312,15 @@ describe('the alarm projection has two permission doors and one answer', () => {
           'lastServiceAt',
           'lastServiceVisitId',
           // The reading `sinceServiceKm` was measured FROM, carried so the screens that show
-          // «أعلى قراءة عدّاد» cannot disagree with the alarm about where a car is.
+          // «أعلى قراءة عدّاد» cannot disagree with the alarm about where a car is — with its day
+          // and the log row it came from, so the odometer board marks that very row.
           'latestReading',
+          'latestReadingAt',
+          'latestReadingLogId',
+          // The service as the alarm USED it — which counter, judged against which reading — and
+          // a newer visit that does not count, so «—» can say why without a second query.
+          'baseline',
+          'newerUncountedVisit',
           'level',
           'noAlarmReason',
           'remainingKm',
@@ -2321,10 +2328,26 @@ describe('the alarm projection has two permission doors and one answer', () => {
           'vehicleId',
         ].sort(),
       );
+      // The invariants the DTO documents, over every car the suite has made so far.
+      const baseline = row.baseline as {
+        visitId: string;
+        outDate: string;
+        counter: number | null;
+      } | null;
+      expect(baseline === null).toBe(row.lastServiceVisitId === null);
+      if (baseline !== null) {
+        expect(baseline.visitId).toBe(row.lastServiceVisitId);
+        expect(baseline.outDate).toBe(row.lastServiceAt);
+      }
+      expect(row.latestReadingAt === null).toBe(row.latestReading === null);
+      expect(row.latestReadingLogId === null).toBe(row.latestReading === null);
       // The reason travels with the figures, and agrees with them: a stated reason means the
       // calculation did not run, so there are no numbers — and vice versa.
       if (row.noAlarmReason === null) {
         expect(row.sinceServiceKm).not.toBeNull();
+        expect(row.sinceServiceKm).toBe(
+          (row.latestReading as number) - (baseline?.counter as number),
+        );
       } else {
         expect(row.level).toBe('none');
         expect(row.sinceServiceKm).toBeNull();
@@ -3038,8 +3061,9 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     // Before the first reading there is no lower bound at all; after the last, no upper one.
     expect((await on('2026-08-01')).lowerBound).toBeNull();
     expect((await on('2026-12-01')).upperBound).toBeNull();
-    // The day a reading was taken belongs to the LOWER side — the same boundary the alarm's
-    // same-day rule draws, from the other number.
+    // The day a reading was taken belongs to the LOWER side — the boundary check-in/out and the
+    // dialogs enforce. (The alarm judges a workshop counter against the days BEFORE its own, R4:
+    // the register keeps no time of day. That is a projection rule and does not move this one.)
     expect((await on('2026-09-01')).lowerBound).toBe(100_000);
   });
 

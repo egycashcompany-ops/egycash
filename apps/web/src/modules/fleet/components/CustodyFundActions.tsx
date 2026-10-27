@@ -66,8 +66,8 @@ export const CUSTODY_OPS: Record<CustodyFundOp, CustodyOpLook> = {
     accent: 'border-l-4 border-l-sky-500 hover:border-l-sky-500 dark:border-l-sky-500',
   },
   charge: {
-    label: 'fleet.custody.actions.charge',
-    short: 'fleet.custody.actions.chargeShort',
+    label: 'fleet.custody.actions.request',
+    short: 'fleet.custody.actions.requestShort',
     // A plus in a circle — money added to the fund.
     icon: ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8v8', 'M8 12h8'],
     tone: 'text-teal-600 dark:text-teal-400',

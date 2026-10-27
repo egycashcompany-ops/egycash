@@ -1,6 +1,7 @@
-// العهدة — «شاشه العهده اللى فيها التجميعه بتاعت مصروفات العهده»: everything the custody fund paid,
-// summed per source and per car, with every movement under it. A VIEW over the receipts
-// («خصم الإيصالات») — صيانة, وقود, كاوتش, غسيل — never a copy. «التوكيل لما بسجل فاتوره … ولا تنقص
+// «مصروفات العهدة» (`/fleet/custody-expenses`, SCREEN 2) — «شاشه العهده اللى فيها التجميعه بتاعت
+// مصروفات العهده»: everything the custody fund paid, summed per source and per car, with every
+// movement under it. A VIEW over the receipts («خصم الإيصالات») — صيانة, وقود, كاوتش, غسيل — never a
+// copy. «التوكيل لما بسجل فاتوره … ولا تنقص
 // من العهدة وملهاش علاقة ب حاجة»: a dealership invoice is no custody movement, and «صيانة» stands
 // where التوكيل stood.
 //
@@ -47,6 +48,13 @@
 // «انت مش كنت خليت الارقام بتاعت التوكيل و الوقود وكدا بيكون جمبهم نقط الوان غيرتها ليه»: the
 // kind's colour stays beside its numbers — a small dot of it before every sum that is not zero (a
 // car's and the foot's) and before each kind's heading (`KIND_HEAD_DOT`). A spec fails without them.
+//
+// «خلاص افصلهم»: the fund itself is SCREEN 1 «العهدة» now — its head, its three actions and their
+// dialogs, «سجل العهدة», «المذكرات» and «لوحة تحكم العهدة». This board, a menu row of its own, keeps
+// what the fund PAID: no tabs and no fund buttons; five figures behind «الإحصائيات» (the fund's own
+// card heads SCREEN 1); «لوحة تحكم المصروفات», the spend's half of the dashboard; in «كل الحركات» a
+// receipt that is a line of a custody memo carries that memo's chip under «من»; and the Excel / PDF
+// files titled «مصروفات العهدة». The file and its export keep their names (`CustodyPage`).
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -79,9 +87,7 @@ import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { CustodyFigures } from '../components/CustodyFigures';
 import { CUSTODY_KIND, CustodyKindBadge } from '../components/CustodyKinds';
 import { CustodyDashboard } from '../components/CustodyDashboard';
-import { CustodyTabs } from '../components/CustodyTabs';
-import { CustodyFundActions, useFundParam } from '../components/CustodyFundActions';
-import { CustodyFundDialogs } from '../components/CustodyFundDialogs';
+import { ReceiptMemoChip } from '../components/ReceiptMemoChip';
 import {
   CustodyCarLog,
   custodyCarKey,
@@ -295,11 +301,8 @@ export const CustodyPage = (): JSX.Element => {
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   // The figures open from the toolbar, closed on the way in.
   const [statsOpen, setStatsOpen] = useState(false);
-  // «لوحة تحكم» — over the whole screen, read only while open.
+  // «لوحة تحكم المصروفات» — over the whole screen, read only while open.
   const [dashOpen, setDashOpen] = useState(false);
-  // The fund's dialogs, as the toolbar opens them (`?fund=`) — the dashboard's «استعاضة العهدة» and
-  // «تسوية العهدة» too.
-  const [, setFund] = useFundParam();
   // A car's «السجل» from «ملخص لكل سيارة», and the button that opened it.
   const [carLog, setCarLog] = useState<CustodyOpenCarLog | null>(null);
   const clearFilters = (): void =>
@@ -493,11 +496,26 @@ export const CustodyPage = (): JSX.Element => {
       header: t('fleet.custody.columns.from'),
       sortable: true,
       // «هادية»: in the row's plain ink — every movement is a receipt; the kind's pill says which.
-      render: (row) => (
-        <span data-custody-from={row.ref} className={CALM_FROM}>
-          {t(`fleet.custody.from.${row.ref}`)}
-        </span>
-      ),
+      // A receipt that is a line of a custody memo carries that memo's chip under it, «مذكرة رقم 5»
+      // (the receipts screen's own chip and rule: a link for whoever may open the memo).
+      render: (row) => {
+        const from = (
+          <span data-custody-from={row.ref} className={CALM_FROM}>
+            {t(`fleet.custody.from.${row.ref}`)}
+          </span>
+        );
+        return row.memo === null ? (
+          from
+        ) : (
+          <span
+            className="inline-flex flex-col items-center gap-1"
+            data-custody-memo-link={row.memo.no}
+          >
+            {from}
+            <ReceiptMemoChip memo={row.memo} />
+          </span>
+        );
+      },
     },
     {
       key: 'amount',
@@ -533,7 +551,7 @@ export const CustodyPage = (): JSX.Element => {
   const writeSheet = async (): Promise<void> => {
     const all = await allRows();
     saveSheet({
-      name: t('fleet.nav.custody'),
+      name: t('fleet.nav.custodyExpenses'),
       serialHeader: t('fleet.violations.report.serial'),
       header,
       rows: all.map((row) => line(row, '')),
@@ -556,7 +574,7 @@ export const CustodyPage = (): JSX.Element => {
     const all = await allRows();
     try {
       printFleetReport({
-        title: t('fleet.nav.custody'),
+        title: t('fleet.nav.custodyExpenses'),
         department: t('fleet.violations.report.department'),
         subtitle: '',
         header,
@@ -633,8 +651,6 @@ export const CustodyPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
-      {/* «العهدة · المذكرات · سجل العهدة» — the board is the first of three tabs. */}
-      <CustodyTabs />
       <div className={BOARD_FRAME}>
         {/* «زى شاشة السيارات و السواقيين»: no page title — the board opens on its toolbar. */}
         <div className="flex items-center justify-between gap-2" data-custody-toolbar="true">
@@ -685,7 +701,7 @@ export const CustodyPage = (): JSX.Element => {
               className={PRESS_BUTTON}
             >
               <BoardIcon d={PATH.trend} className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              {t('fleet.custody.dashboard.open')}
+              {t('fleet.custody.dashboard.spendOpen')}
             </button>
             {/* Not offered when the list failed: the file behind it would be empty or short. */}
             {!isError && (
@@ -737,13 +753,6 @@ export const CustodyPage = (): JSX.Element => {
                 </button>
               </div>
             )}
-            {/* «زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين»: the fund's three
-                actions, each opening its own dialog through the address (`?fund=<op>`) — one framed
-                group, the export pair's frame, each with its own coloured icon; on a phone each says
-                its one word. «عاوز دول قبل الاكسيل والبى دى اف» — the leftmost of the row, the files
-                beside it. Drawn only for a reader who may write custody money (`fleetReceipt.create`);
-                the same group stands on «سجل العهدة». */}
-            <CustodyFundActions />
           </span>
         </div>
 
@@ -801,16 +810,11 @@ export const CustodyPage = (): JSX.Element => {
             </FilterWithIcon>
           </FilterBar>
         </div>
-        {/* The dialog the address names (`?fund=settle|replenish|charge`), outside the toolbar — one
-            at a time, opened fresh, and closed by taking `fund` out of the address. */}
-        <CustodyFundDialogs />
 
         {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the money boards. */}
         {statsOpen && summary.data !== undefined && <CustodyFigures totals={summary.data} />}
-        {/* The board's own `filters`: the dashboard asks exactly what the figures ask, and what it
-            changes it changes HERE — clearing them, «المصدر» = صيانة, a receipts line's «من» /
-            «إلى» (it stays open over them); its «استعاضة العهدة» / «تسوية العهدة» close it and
-            open the board's own dialog. */}
+        {/* The board's own `filters`: «لوحة تحكم المصروفات» asks exactly what the figures ask, and
+            what it changes it changes HERE — clearing them, «المصدر» = صيانة. */}
         <CustodyDashboard
           open={dashOpen}
           onClose={() => setDashOpen(false)}
@@ -820,11 +824,6 @@ export const CustodyPage = (): JSX.Element => {
             patch({ source: 'maintenance' });
             setDashOpen(false);
           }}
-          onFundAction={(op) => {
-            setDashOpen(false);
-            setFund(op);
-          }}
-          onShowPeriod={(periodFrom, periodTo) => patch({ from: periodFrom, to: periodTo })}
         />
         {/* A car's «السجل»: its line as the summary holds it now, its share of what the fund paid
             over the same filters (not of the fund itself, `fundTotal`), the board's own filters.

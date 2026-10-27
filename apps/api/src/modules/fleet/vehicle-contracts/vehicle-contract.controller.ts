@@ -13,6 +13,7 @@ import { authContext } from '../../../platform/auth';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { ValidationError } from '../../../shared/errors';
 import { uploadFileName } from '../upload-file-name';
+import { fleetVehicleContractAttachments as attachments } from './vehicle-contract-attachments';
 import { fleetVehicleContractService as service } from './vehicle-contract.service';
 
 type IdParam = { id: string };
@@ -74,7 +75,7 @@ export const deleteVehicleContractDelivery = async (req: Request, res: Response)
 
 export const orderVehicleContractFiles = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<OrderFleetVehicleContractFiles, never, IdParam>(req);
-  ok(res, await service.orderFiles(params.id, body));
+  ok(res, await attachments.orderFiles(params.id, body));
 };
 
 export const uploadVehicleContractFile = async (req: Request, res: Response): Promise<void> => {
@@ -87,7 +88,7 @@ export const uploadVehicleContractFile = async (req: Request, res: Response): Pr
   }
   // Multer reads the part's name as latin1; an Arabic «صفحة 1.png» is turned back here (D8), and
   // that decoded name is what the Files service stores, shows and searches.
-  const file = await service.addFile(authContext(req), params.id, {
+  const file = await attachments.addFile(authContext(req), params.id, {
     originalName: uploadFileName(uploaded.originalname),
     mime: uploaded.mimetype,
     size: uploaded.size,
@@ -98,7 +99,7 @@ export const uploadVehicleContractFile = async (req: Request, res: Response): Pr
 
 export const getVehicleContractFile = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, FileParam>(req);
-  const file = await service.readFile(authContext(req), params.id, params.fileId);
+  const file = await attachments.readFile(authContext(req), params.id, params.fileId);
   res.setHeader('Content-Type', file.mime);
   res.setHeader(
     'Content-Disposition',
@@ -110,6 +111,6 @@ export const getVehicleContractFile = async (req: Request, res: Response): Promi
 
 export const deleteVehicleContractFile = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, FileParam>(req);
-  await service.removeFile(authContext(req), params.id, params.fileId);
+  await attachments.removeFile(authContext(req), params.id, params.fileId);
   noContent(res);
 };

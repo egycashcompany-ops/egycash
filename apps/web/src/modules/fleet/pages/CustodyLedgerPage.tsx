@@ -1,17 +1,18 @@
-// «سجل العهدة» — «فين الهيستورى بتاع كل حاجه من دول»: the fund's own history. Every «شحن العهدة»,
+// «سجل العهدة» — «فين الهيستورى بتاع كل حاجه من دول»: the fund's own history. Every «طلب عهدة»,
 // «استعاضة العهدة» and «تسوية العهدة», with «إجمالي العهدة» after it; between two of them, the
 // receipts the fund paid, summed into one muted line («97 إيصالًا صُرفت من العهدة»). The last line of
 // the whole history carries «الآن»: its «بعدها» IS the fund.
 //
-// Over the table, the fund's formula as tiles — «إجمالي الشحن» − «مصروفات الإيصالات» + «إجمالي
+// Over the table, the fund's formula as tiles — «إجمالي طلبات العهدة» − «مصروفات الإيصالات» + «إجمالي
 // الاستعاضة» − «إجمالي التسوية» = «إجمالي العهدة — الآن» — over the WHOLE history, whatever the
 // filters (a fund below zero in red); the same tiles stand on «لوحة تحكم العهدة» as «العهدة الآن»
 // (`LedgerFigures`). The filters choose the lines, never what is after them: a line's «بعدها» is
 // its place in the whole history.
 //
 // An operation's eye opens its drawer (`?open=<id>`) — what it carried and its letter; its printer
-// opens the same drawer at the letter (`&letter=1`). A receipts line's eye goes to «العهدة» over its
-// days. The toolbar carries the fund's three actions, as «العهدة» does; their dialogs open here too.
+// opens the same drawer at the letter (`&letter=1`). A receipts line's eye goes to «مصروفات العهدة»
+// over its days. «سجل العهدة» is the first tab of SCREEN 1 «العهدة»: the fund's head over it
+// (`CustodyFundHeader`) carries the fund now, its three actions and their dialogs.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -42,9 +43,8 @@ import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { CustodyTabs } from '../components/CustodyTabs';
-import { CustodyFundActions, useOverlayHistory } from '../components/CustodyFundActions';
-import { CustodyFundDialogs } from '../components/CustodyFundDialogs';
+import { CustodyFundHeader } from '../components/CustodyFundHeader';
+import { useOverlayHistory } from '../components/CustodyFundActions';
 import { CustodyOperationDrawer, useLedgerWordsKit } from '../components/CustodyOperationDrawer';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { NUM, ymd } from '../components/FuelCardBoard';
@@ -124,7 +124,7 @@ const LedgerDate = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => 
   );
 };
 
-/** The receipts of a line, on «العهدة» over its days. */
+/** The receipts of a line, on «مصروفات العهدة» over its days. */
 const spendLink = (row: FleetCustodyLedgerRowDto): string =>
   custodyPeriodLink(row.date, row.dateTo ?? row.date);
 
@@ -140,8 +140,8 @@ const LedgerActions = ({
     <span className={ACTION_GROUP} data-row-actions="custody-ledger">
       <Link
         to={spendLink(row)}
-        title={t('fleet.custody.ledger.viewReceipts')}
-        aria-label={t('fleet.custody.ledger.viewReceipts')}
+        title={t('fleet.custody.ledger.viewExpenses')}
+        aria-label={t('fleet.custody.ledger.viewExpenses')}
         className={actionTone('view')}
         data-ledger-receipts={row.id}
       >
@@ -478,7 +478,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
               ? []
               : [
                   {
-                    label: t('fleet.custody.ledger.tiles.charged'),
+                    label: t('fleet.custody.ledger.tiles.requested'),
                     value: reportMoney(summary.charged.amount),
                   },
                   {
@@ -552,7 +552,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
-      <CustodyTabs />
+      <CustodyFundHeader />
       <div className={BOARD_FRAME} data-custody-ledger="true">
         <div
           className="flex flex-wrap items-center justify-between gap-2"
@@ -576,7 +576,6 @@ export const CustodyLedgerPage = (): JSX.Element => {
                 onPdf={() => void printSheet()}
               />
             )}
-            <CustodyFundActions />
           </span>
         </div>
 
@@ -666,7 +665,6 @@ export const CustodyLedgerPage = (): JSX.Element => {
           )}
         </section>
       </div>
-      <CustodyFundDialogs />
       {openId !== '' && (
         <CustodyOperationDrawer
           key={openId}

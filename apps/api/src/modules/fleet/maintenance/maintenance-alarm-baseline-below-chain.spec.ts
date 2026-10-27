@@ -4,7 +4,8 @@
 // nothing had ever compared it with the odometer chain — different collections, different
 // endpoints, no shared transaction, no reference. The bracket is the one comparison that needs no
 // new data: a counter measured on the day the car left the workshop cannot be lower than a
-// reading the chain already held BY that day, because an odometer does not run backwards.
+// reading the chain already held BEFORE that day, because an odometer does not run backwards.
+// (Which readings form that bound is the projection's question — see the same-day rule below.)
 //
 // So this guard says one thing only: these two numbers are not on the same sequence. It does NOT
 // say which of them is untrue — the workshop's counter remains the authoritative record of what
@@ -123,41 +124,39 @@ describe('guard order — the durable problem is named before the temporary one'
   });
 });
 
-describe('the same-day rule, DERIVED from the bracket rather than chosen', () => {
-  // A reading dated exactly on `outDate` satisfies `date <= outDate`, so it belongs to the
-  // bracket's LOWER bound. The invariant therefore requires `exitOdometer >= it` — which means
-  // every same-day reading the invariant PERMITS yields `reading - baseline <= 0`.
+describe('the same-day rule (R4): a reading of the counter’s own day is not its bound', () => {
+  // The register keeps no time of day. A reading dated on the service day may have been taken
+  // before the counter or after it — the car came back and was driven — so the projection judges a
+  // counter only against readings dated BEFORE its day (`lowerBoundsAt(…, { includeDay: false })`),
+  // and the rule here is handed that bound. Car 295: 22,790 in on 6 October, refused by a 22,830
+  // logged for the same day after the car came back.
   //
-  // A same-day reading can therefore never describe positive distance since the service. It is,
-  // by the invariant's own classification, evidence about the cycle BEFORE it. That is why
-  // `latestReadingDate <= baselineDate` stays as it is: `<` would admit only readings whose
-  // contribution is zero or negative, replacing an honest "waiting for a reading after the
-  // service" with a measured nothing.
-  const sameDay = (reading: number) =>
+  // What did NOT move: `latestReadingDate <= baselineDate`. A same-day reading still says nothing
+  // about the distance since the service, so as the LATEST reading it is answered «waiting for a
+  // reading after the service» — whatever its value — rather than measured.
+  const PRIOR = EXIT - 5000; // the chain the day before
+  const sameDay = (reading: number, bound: number | null = PRIOR) =>
     run({
       latestReading: reading,
       latestReadingDate: D(SERVICE_DAY),
-      baselineLowerBound: reading,
+      baselineLowerBound: bound,
     });
 
-  it('every same-day reading the invariant permits sits at or below the baseline', () => {
-    for (const reading of [EXIT - 5000, EXIT - 1, EXIT]) {
-      expect(reading, 'permitted by the bracket').toBeLessThanOrEqual(EXIT);
-      expect(reading - EXIT, 'so its contribution cannot be positive').toBeLessThanOrEqual(0);
-    }
-  });
-
-  it('and each is answered `readingOlderThanService`, not a measured zero', () => {
-    for (const reading of [EXIT - 5000, EXIT - 1, EXIT]) {
+  it('a same-day reading, at any value, is answered `readingOlderThanService`', () => {
+    for (const reading of [EXIT - 5000, EXIT - 1, EXIT, EXIT + 1, EXIT + 5000]) {
       expect(sameDay(reading).noAlarmReason, String(reading)).toBe('readingOlderThanService');
       expect(sameDay(reading).sinceServiceKm).toBeNull();
     }
   });
 
-  it('a same-day reading ABOVE the baseline is exactly what the bracket forbids', () => {
-    // The only way a same-day reading could contribute a positive distance is by violating the
-    // lower bound — so it is caught as a data fault, not admitted as a cycle.
-    expect(sameDay(EXIT + 5000).noAlarmReason).toBe('baselineBelowChain');
+  it('the bound the day before still refuses a counter beneath it', () => {
+    expect(sameDay(EXIT + 5000, EXIT + 1).noAlarmReason).toBe('baselineBelowChain');
+  });
+
+  it('what R4 changed is the bound handed in: the same-day reading as the bound refuses it', () => {
+    // The rule before R4, pinned through the rule itself: the same-day 105,000 as the lower bound
+    // would call 100,000 «below the chain». The projection no longer hands it that bound.
+    expect(sameDay(EXIT + 5000, EXIT + 5000).noAlarmReason).toBe('baselineBelowChain');
   });
 
   it('the day AFTER is where a real cycle begins', () => {

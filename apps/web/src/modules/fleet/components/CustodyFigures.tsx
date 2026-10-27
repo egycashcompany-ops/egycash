@@ -12,10 +12,11 @@
 // once — `custodyShare` and `CustodyShare` — and «لوحة تحكم» writes every one of its shares with
 // them, so «45%» reads the same on a tile, a card, a ranked line and a table.
 //
-// «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: six figures now — the fund itself
-// first («إجمالي العهدة», `CustodyFundCard`), then everything it paid for. The board and «لوحة تحكم»
-// draw the same card, the board's with the bar of what was spent of all that was charged into it.
-// The fund is real now (شحن − مصروفات + استعاضة − تسوية) and may be below zero: written «−X» in red.
+// «عاوز ازود اجمالى العهده فى الاحصايات و تكون فى الداس بورد»: the fund itself («إجمالي العهدة»,
+// `CustodyFundCard`) — real (طلبات − مصروفات + استعاضة − تسوية) and maybe below zero, written «−X» in
+// red. «خلاص افصلهم»: it heads SCREEN 1 «العهدة» now, so the board — SCREEN 2 «مصروفات العهدة» —
+// draws five figures again, everything the fund paid and each kind of it; the card is still drawn
+// by «العهدة الآن» on «لوحة تحكم العهدة».
 import { type FleetCustodySummaryDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -152,14 +153,14 @@ const TILE_RULE = 'mt-3 border-t border-slate-100 pt-2 text-xs dark:border-[#1c2
 const TILE_FOOT = cn(TILE_RULE, 'flex items-center justify-between gap-2');
 
 /**
- * «إجمالي العهدة» — the fund: Σ «شحن» − Σ the receipts + Σ «استعاضة» − Σ «تسوية», always a sum,
- * never «—». Below zero it is written «−X» in red — it is never clamped to 0. The spend's own card
- * in the fund's slate (`CUSTODY_FUND`), a wallet on its tile. Under it, «صُرف من إجمالي الشحن X%»:
- * every receipt the fund paid over everything charged into it (`fundSpent / fundCharged`; no filter
- * changes either), with its meaning in the tooltip, and «—» while nothing is charged. On the board
- * (`board`) a bar draws that share, as each kind's tile draws its own, and the figure is in the
- * boards' monospace, as its tiles write theirs; on «لوحة تحكم» it takes the dashboard's own figure
- * (`figure`, Cairo), with no bar, as its other cards.
+ * «إجمالي العهدة» — the fund: Σ «طلب عهدة» − Σ the receipts + Σ «استعاضة» − Σ «تسوية», always a
+ * sum, never «—». Below zero it is written «−X» in red — it is never clamped to 0. The spend's own
+ * card in the fund's slate (`CUSTODY_FUND`), a wallet on its tile. Under it, «صُرف من إجمالي طلبات
+ * العهدة X%»: every receipt the fund paid over everything requested into it (`fundSpent /
+ * fundCharged`; no filter changes either), with its meaning in the tooltip, and «—» while nothing is
+ * requested. With `board` a bar draws that share, as each kind's tile draws its own, and the figure
+ * is in the boards' monospace; on «لوحة تحكم العهدة» it takes the dashboard's own figure (`figure`,
+ * Cairo), with no bar, as its other cards.
  */
 export const CustodyFundCard = ({
   fundTotal,
@@ -231,7 +232,7 @@ export const CustodyFundCard = ({
           title={t('fleet.custody.fund.spentTitle')}
           className="text-slate-600 dark:text-slate-400"
         >
-          {t('fleet.custody.fund.spent')}{' '}
+          {t('fleet.custody.fund.spentOfRequests')}{' '}
           <span
             dir="ltr"
             data-custody-fund-pct="true"
@@ -268,26 +269,13 @@ export const CustodyFigures = ({ totals }: { totals: FleetCustodySummaryDto }): 
   return (
     <section
       data-custody-figures="true"
-      // «هتضيف بس فى الاول قبل إجمالي مصروفات العهدة»: the fund joins the front of the row the board
-      // already had — all six in ONE row from 1,680px, as the five were, the sums a size down there
-      // (`text-lg`, back to `text-xl` from 1,800px and `text-2xl` from 2,100px) so a sum in the
-      // millions still clears its icon beside the side bar (measured: at 1,536px a sixth is 195px and
-      // «2,345,678.90» ran under its icon). Narrower: one to a row on a phone,
-      // two from `sm`, and from `xl` two rows of three — not three from `lg`, where the side bar
-      // (240px) opens and a third of a 1,024px board left a tile about 232px wide. Should a sum still
-      // not fit, «ج.م.» goes under it rather than off the tile.
-      className="grid shrink-0 animate-drop-in grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1680px]:grid-cols-6 min-[1680px]:[&_.text-2xl]:text-lg min-[1800px]:[&_.text-2xl]:text-xl min-[2100px]:[&_.text-2xl]:text-2xl [&_.items-baseline]:flex-wrap"
+      // Five in ONE row from `xl`, as they were before the fund joined them, the sums a size down
+      // there (`text-xl`, back to `text-2xl` from 1,800px); narrower, one to a row on a phone and two
+      // from `sm`. Should a sum still not fit, «ج.م.» goes under it rather than off the tile.
+      className="grid shrink-0 animate-drop-in grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5 xl:[&_.text-2xl]:text-xl min-[1800px]:[&_.text-2xl]:text-2xl [&_.items-baseline]:flex-wrap"
     >
       {/* Each card fills its cell (`h-full`). Spans inside the card, so the card is one box to
           whatever reads its markup. */}
-      <div data-custody-figure="fund">
-        <CustodyFundCard
-          fundTotal={totals.fundTotal}
-          charged={totals.fundCharged}
-          spent={totals.fundSpent}
-          board
-        />
-      </div>
       <div data-custody-figure="total">
         <div
           className={cn(

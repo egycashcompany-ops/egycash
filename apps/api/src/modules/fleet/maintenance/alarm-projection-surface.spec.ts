@@ -69,6 +69,34 @@ describe('the alarm projection takes no arguments', () => {
   });
 });
 
+describe('the projection judges each counter before its own day, through the one rule', () => {
+  const body = engine.slice(engine.indexOf('export const computeAlarms'));
+  const chooser = readFileSync(join(HERE, 'measure-from-visit.ts'), 'utf8');
+
+  it('three bound questions: the two counters cut BEFORE their day (R4), the stand-in keeps it', () => {
+    expect(body.match(/fleetOdometerRepository\.lowerBoundsAt\(/g)).toHaveLength(3);
+    expect(body.match(/\{ includeDay: false \}/g), 'exit and entry counters').toHaveLength(2);
+  });
+
+  it('the counter is chosen by `measureFromVisit`, handed `computeAlarm` itself', () => {
+    expect(body).toMatch(/measureFromVisit\(\s*computeAlarm,/);
+  });
+
+  it('and the chooser holds no rule of its own, nor an import cycle back to it', () => {
+    expect(chooser).toContain(
+      "import type { AlarmInput, AlarmResult } from './maintenance-alarm';",
+    );
+    expect(chooser, 'the rule is not imported as a value').not.toMatch(
+      /import \{[^}]*\bcomputeAlarm\b[^}]*\} from '\.\/maintenance-alarm'/,
+    );
+    expect(chooser, 'no threshold is compared there').not.toMatch(/(?:redKm|yellowKm)\s*(?:<|>)/);
+  });
+
+  it('and it only reads', () => {
+    expect(body, 'nothing is written').not.toMatch(/updateOne|updateMany|insert|save\(|deleteOne/);
+  });
+});
+
 describe('`spareParts` is described the way it actually behaves', () => {
   it('the write paths that exist are acknowledged, not denied', () => {
     // The claims that were false: "Never written any more" and "nothing writes to it any more".

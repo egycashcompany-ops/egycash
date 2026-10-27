@@ -1,5 +1,6 @@
-// «استعاضة العهدة», «تسوية العهدة», «شحن العهدة» — the fund's three dialogs, as the approved samples
-// draw them, on the API's real answers.
+// «استعاضة العهدة», «تسوية العهدة», «طلب عهدة» (was «شحن العهدة») — the fund's three dialogs, as the
+// approved samples draw them, on the API's real answers. They open on SCREEN 1 «العهدة» — the head
+// over «سجل العهدة», «المذكرات» and «لوحة تحكم العهدة» mounts them once.
 //
 // The suite has no DOM, so nothing here clicks. The dialogs are rendered to markup against a seeded
 // query cache, and a press, a tick or a typed amount is played INSIDE the render that draws its
@@ -222,6 +223,8 @@ const FUND: FleetCustodyFundSummaryDto = {
   spent: { count: 97, amount: 82508 },
   replenished: { count: 0, amount: 0, memos: 0 },
   settled: { count: 0, amount: 0, parts: 0 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  cancelled: { count: 0, amount: 0 },
   operations: 1,
   memos: { count: 5, pending: 5, pendingTotal: 81908 },
   outside: outside({ wash: [4, 600] }),
@@ -282,6 +285,9 @@ const SETTLE_CANDIDATES: FleetCustodySettleCandidatesDto = {
 const operation = (over: Partial<FleetCustodyOperationDto>): FleetCustodyOperationDto => ({
   id: 'op-1',
   kind: 'replenish',
+  status: 'done',
+  transfer: null,
+  cancellation: null,
   date: '2026-09-29',
   from: '2026-09-01',
   to: '2026-09-30',
@@ -330,7 +336,7 @@ const client = (seed: { fund?: FleetCustodyFundSummaryDto } = {}): QueryClient =
 
 const render = (
   node: ReactNode,
-  { qc = client(), path = '/fleet/custody', permissions = WRITER } = {},
+  { qc = client(), path = '/fleet/custody/log', permissions = WRITER } = {},
 ): string =>
   renderToStaticMarkup(
     <Provider
@@ -798,9 +804,9 @@ describe('«تسوية العهدة»', () => {
   });
 });
 
-// ── «شحن العهدة» ─────────────────────────────────────────────────────────────────────────────
+// ── «طلب عهدة» ───────────────────────────────────────────────────────────────────────────────
 
-describe('«شحن العهدة»', () => {
+describe('«طلب عهدة»', () => {
   const dialog = (onClose: () => void = () => undefined): string =>
     render(<CustodyChargeDialog open onClose={onClose} />);
   const typeAmount = (raw: string): Step => ({
@@ -816,6 +822,15 @@ describe('«شحن العهدة»', () => {
   it('opens on today, an empty amount and no reason', () => {
     const html = dialog();
     expect(html).toContain('data-memo-charge="true"');
+    // «شحن العهدة» is «طلب عهدة» now: its title, its section and the change it makes; its paper
+    // stays «صرف عهدة».
+    expect(html).toContain(ar('fleet.custody.actions.request'));
+    expect(ar('fleet.custody.actions.request')).toBe('طلب عهدة');
+    expect(html).toContain(ar('fleet.custody.fundForm.request.section'));
+    expect(ar('fleet.custody.fundForm.request.section')).toBe('بيانات الطلب');
+    expect(text(html)).toContain(ar('fleet.custody.fundForm.request.change'));
+    expect(ar('fleet.custody.fundForm.request.change')).toBe('مبلغ الطلب');
+    expect(html).not.toContain(ar('fleet.custody.actions.charge'));
     expect(element(html, 'data-memo-charge-date="true"')).toContain('value="2026-09-29"');
     expect(html).not.toContain('data-missing-fields');
   });
@@ -869,8 +884,9 @@ describe('«شحن العهدة»', () => {
     ]);
     expect(closed).toHaveBeenCalledTimes(1);
     expect(raised).toEqual([
-      { variant: 'success', title: ar('fleet.custody.fundForm.charge.done') },
+      { variant: 'success', title: ar('fleet.custody.fundForm.request.done') },
     ]);
+    expect(ar('fleet.custody.fundForm.request.done')).toBe('سُجِّل طلب العهدة.');
   });
 
   it('«حفظ وطباعة الخطاب»: one tab, one charge, his «صرف عهدة» letter', async () => {
@@ -914,12 +930,12 @@ describe('`?fund=` opens one dialog, for a reader who may write custody money', 
   it('nothing without `fleetReceipt.create`, and nothing for an unknown `fund`', () => {
     expect(
       render(<CustodyFundDialogs />, {
-        path: '/fleet/custody?fund=charge',
+        path: '/fleet/custody/log?fund=charge',
         permissions: ['fleetCustody.view'],
       }),
     ).toBe('');
-    expect(render(<CustodyFundDialogs />, { path: '/fleet/custody?fund=refund' })).toBe('');
-    expect(render(<CustodyFundDialogs />, { path: '/fleet/custody' })).toBe('');
+    expect(render(<CustodyFundDialogs />, { path: '/fleet/custody/log?fund=refund' })).toBe('');
+    expect(render(<CustodyFundDialogs />, { path: '/fleet/custody/log' })).toBe('');
   });
 });
 
@@ -982,7 +998,7 @@ describe.skipIf(!merged)('the dialogs read as the approved samples do', () => {
     expect(list).toContain('و19 سيارة أخرى');
   });
 
-  it('«شحن العهدة»: an empty press names «المبلغ»', () => {
+  it('«طلب عهدة»: an empty press names «المبلغ»', () => {
     steps.push({ attr: 'data-memo-charge-save', run: (p) => (p.onClick as () => void)() });
     const html = render(<CustodyChargeDialog open onClose={() => undefined} />);
     expect(text(element(html, 'data-missing-fields="true"'))).toContain('المبلغ');

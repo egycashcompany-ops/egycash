@@ -26,7 +26,11 @@ const id = () => new Types.ObjectId();
 const TYPE_A = id();
 const TYPE_B = id();
 
-const line = (count: number, unitPrice: number | null, typeId = TYPE_A): FleetVehicleContractLineDoc => ({
+const line = (
+  count: number,
+  unitPrice: number | null,
+  typeId = TYPE_A,
+): FleetVehicleContractLineDoc => ({
   _id: id(),
   typeId,
   count,
@@ -86,7 +90,17 @@ describe('figuresOf — counted from the live deliveries only', () => {
     const b = line(11, 5_400_000, TYPE_B);
     const doc = contract(
       [a, b],
-      [delivery('2026-10-05', [[a, 8]]), delivery('2026-10-06', [[a, 3], [b, 4]], true)],
+      [
+        delivery('2026-10-05', [[a, 8]]),
+        delivery(
+          '2026-10-06',
+          [
+            [a, 3],
+            [b, 4],
+          ],
+          true,
+        ),
+      ],
     );
     const figures = figuresOf(doc);
     expect(figures.contracted).toBe(33);
@@ -118,7 +132,9 @@ describe('the deliveries in order — «الاستلام الأول» renumbers 
     expect(liveDeliveries(doc).map((d) => d._id)).toEqual([first._id, sameDay._id, late._id]);
 
     const dto = toVehicleContractDto(doc, new Map(), '2026-10-19');
-    expect(dto.deliveries.map((d) => [d.no, d.date, d.total, d.receivedAfter, d.remainingAfter])).toEqual([
+    expect(
+      dto.deliveries.map((d) => [d.no, d.date, d.total, d.receivedAfter, d.remainingAfter]),
+    ).toEqual([
       [1, '2026-10-04', 4, 4, 18],
       [2, '2026-10-04', 1, 5, 17],
       [3, '2026-10-09', 2, 7, 15],
@@ -129,7 +145,10 @@ describe('the deliveries in order — «الاستلام الأول» renumbers 
 describe('deliveryOver — «أكثر من المتبقي»', () => {
   const a = line(10, null);
   const b = line(5, null, TYPE_B);
-  const earlier = delivery('2026-10-05', [[a, 6], [b, 5]]);
+  const earlier = delivery('2026-10-05', [
+    [a, 6],
+    [b, 5],
+  ]);
   const doc = contract([a, b], [earlier]);
 
   it('refuses a count above what is still owed on its line, naming the index and the left', () => {
@@ -161,9 +180,9 @@ describe('deliveryOver — «أكثر من المتبقي»', () => {
   });
 
   it('flags a line this contract does not hold', () => {
-    expect(unknownDeliveryLines(doc, [{ lineId: String(a._id) }, { lineId: String(id()) }])).toEqual([
-      expect.objectContaining({ field: 'counts.1.lineId', code: 'UNKNOWN_LINE' }),
-    ]);
+    expect(
+      unknownDeliveryLines(doc, [{ lineId: String(a._id) }, { lineId: String(id()) }]),
+    ).toEqual([expect.objectContaining({ field: 'counts.1.lineId', code: 'UNKNOWN_LINE' })]);
   });
 });
 
@@ -171,7 +190,15 @@ describe('lineEditRefusal — what an edit of the lines may not do', () => {
   const a = line(10, null);
   const b = line(5, null, TYPE_B);
   const c = line(3, null);
-  const doc = contract([a, b, c], [delivery('2026-10-05', [[a, 6], [b, 2]])]);
+  const doc = contract(
+    [a, b, c],
+    [
+      delivery('2026-10-05', [
+        [a, 6],
+        [b, 2],
+      ]),
+    ],
+  );
 
   it('accepts a raise, a new line, and dropping a line nothing arrived on', () => {
     expect(
@@ -222,7 +249,11 @@ describe('alarmOf — «إنذار التوريد»', () => {
   const today = '2026-10-19';
   const at = (deadline: string | null, owed = true) => {
     const a = line(4, null);
-    const doc = contract([a], owed ? [delivery('2026-10-05', [[a, 1]])] : [delivery('2026-10-05', [[a, 4]])], deadline);
+    const doc = contract(
+      [a],
+      owed ? [delivery('2026-10-05', [[a, 1]])] : [delivery('2026-10-05', [[a, 4]])],
+      deadline,
+    );
     return alarmOf(doc, today);
   };
 
@@ -250,7 +281,16 @@ describe('alarmOf — «إنذار التوريد»', () => {
   it('names the cars still owed and the lines they are on', () => {
     const a = line(4, null);
     const b = line(2, null, TYPE_B);
-    const doc = contract([a, b], [delivery('2026-10-05', [[a, 4], [b, 1]])], '2026-10-24');
+    const doc = contract(
+      [a, b],
+      [
+        delivery('2026-10-05', [
+          [a, 4],
+          [b, 1],
+        ]),
+      ],
+      '2026-10-24',
+    );
     expect(alarmOf(doc, today)).toEqual({
       level: 'red',
       days: 5,

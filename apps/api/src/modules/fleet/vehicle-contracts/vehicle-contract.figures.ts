@@ -147,7 +147,8 @@ export const deliveryOver = (
     const line = lines.get(idKey(entry.lineId));
     if (line === undefined) return; // an unknown line is `unknownDeliveryLines`' refusal
     const left = Math.max(0, line.count - (received.get(idKey(entry.lineId)) ?? 0));
-    if (entry.count > left) over.push({ index, lineId: idKey(entry.lineId), count: entry.count, left });
+    if (entry.count > left)
+      over.push({ index, lineId: idKey(entry.lineId), count: entry.count, left });
   });
   return over;
 };

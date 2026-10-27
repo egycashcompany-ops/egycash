@@ -82,7 +82,7 @@ export const periodPhrase = (
 export const chargeTitle = (reason: string | null, kit: LedgerWordsKit): string => {
   const typed = (reason ?? '').trim();
   return typed === ''
-    ? kit.t('fleet.custody.actions.charge')
+    ? kit.t('fleet.custody.actions.request')
     : kit.t(`${LEDGER}.detail.chargeFor`, { reason: typed });
 };
 

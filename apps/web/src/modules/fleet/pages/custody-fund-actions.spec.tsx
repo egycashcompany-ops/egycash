@@ -1,13 +1,12 @@
 // «المفروض هيكون فى زرار تسوية العهدة و استعاضة العهدة و شحن العهدة كل واحد هيعمل اكشن معين حط
-// الزراير وانا هبقى اقولك هنعمل فى كل واحد ايه»: the fund's three actions on the custody board's
-// toolbar — «تسوية العهدة», «استعاضة العهدة», «شحن العهدة», in that order, one framed group at the
-// row's far left with the Excel/PDF pair beside it («عاوز دول قبل الاكسيل والبى دى اف»: read left to
-// right they come first, so in the right-to-left markup they come last).
+// الزراير وانا هبقى اقولك هنعمل فى كل واحد ايه»: the fund's three actions — «تسوية العهدة»,
+// «استعاضة العهدة», «طلب عهدة» (was «شحن العهدة»), in that order, one framed group. «خلاص افصلهم»:
+// they stand in the head of SCREEN 1 «العهدة» (`CustodyFundHeader`), at the far left of the fund's
+// own bar, over each of its three tabs — never on the board «مصروفات العهدة» any more.
 //
-// The three now each open their own dialog: the board mounts `CustodyFundActions`, which draws the
-// same group; a press writes `?fund=<op>` into the address (`useFundParam`), and the board's
-// `CustodyFundDialogs` draws the dialog the address names. A reader who may not write custody money
-// («إيصالات العهدة» — `fleetReceipt.create`) sees no group and no dialog at all. Nothing says
+// Each opens its own dialog: a press writes `?fund=<op>` into the address (`useFundParam`), and the
+// head's `CustodyFundDialogs` draws the dialog the address names. A reader who may not write custody
+// money («إيصالات العهدة» — `fleetReceipt.create`) sees no group and no dialog at all. Nothing says
 // «سيُفعَّل هذا الإجراء قريبًا.» any more: the toast and its words are gone.
 //
 // The suite has no DOM, so nothing here clicks: the page is rendered to markup, and each button's
@@ -105,6 +104,9 @@ vi.mock('react-dom', async () => {
 });
 
 const { CustodyPage } = await import('./CustodyPage');
+const { CustodyLedgerPage } = await import('./CustodyLedgerPage');
+const { CustodyMemosPage } = await import('./CustodyMemosPage');
+const { CustodyFundDashboardPage } = await import('./CustodyFundDashboardPage');
 const {
   CUSTODY_FUND_ORDER,
   CUSTODY_OPS,
@@ -116,7 +118,9 @@ const {
 const { PILL_FRAME } = await import('../components/custody-board-looks');
 
 const ar = (key: string): string => translate('ar', key);
-const PAGE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'CustodyPage.tsx'), 'utf8');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const PAGE = readFileSync(join(HERE, 'CustodyPage.tsx'), 'utf8');
+const HEAD = readFileSync(join(HERE, '../components/CustodyFundHeader.tsx'), 'utf8');
 
 const me = (permissions: readonly string[] = ['fleetCustody.view']): MeDto =>
   ({
@@ -151,7 +155,7 @@ const storeFor = (permissions?: readonly string[]) =>
 /** The group alone, at `path`, for a reader holding `permissions`. */
 const group = (
   permissions: readonly string[] = ['fleetCustody.view', 'fleetReceipt.create'],
-  path = '/fleet/custody?from=2026-09-01&page=3',
+  path = '/fleet/custody/log?from=2026-09-01&page=3',
 ): string =>
   renderToStaticMarkup(
     <Provider store={storeFor(permissions)}>
@@ -164,8 +168,8 @@ const group = (
 /** May open the fund's dialogs: the custody grant and the receipts' create. */
 const WRITER = ['fleetCustody.view', 'fleetReceipt.create'] as const;
 
-/** The custody board at `path`, for a reader holding `permissions`. */
-const board = (permissions: readonly string[] = WRITER, path = '/fleet/custody'): string => {
+/** The custody screens at `path` — «سجل العهدة» by default — for a reader holding `permissions`. */
+const board = (permissions: readonly string[] = WRITER, path = '/fleet/custody/log'): string => {
   const store = storeFor(permissions);
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
@@ -175,7 +179,10 @@ const board = (permissions: readonly string[] = WRITER, path = '/fleet/custody')
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route path="/fleet/custody" element={<CustodyPage />} />
+            <Route path="/fleet/custody/log" element={<CustodyLedgerPage />} />
+            <Route path="/fleet/custody/memos" element={<CustodyMemosPage />} />
+            <Route path="/fleet/custody/dashboard" element={<CustodyFundDashboardPage />} />
+            <Route path="/fleet/custody-expenses" element={<CustodyPage />} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -198,8 +205,8 @@ const classesOf = (html: string, attr: string): string => {
 };
 
 const ORDER = ['settle', 'replenish', 'charge'] as const;
-const LABELS = ['تسوية العهدة', 'استعاضة العهدة', 'شحن العهدة'];
-const SHORT = ['تسوية', 'استعاضة', 'شحن'];
+const LABELS = ['تسوية العهدة', 'استعاضة العهدة', 'طلب عهدة'];
+const SHORT = ['تسوية', 'استعاضة', 'طلب'];
 
 /** Each fund action's button, as it is drawn: its opening tag and what is inside it. */
 const actionButtons = (html: string): { key: string; tag: string; inside: string }[] =>
@@ -209,7 +216,7 @@ const actionButtons = (html: string): { key: string; tag: string; inside: string
     inside: html.slice(m.index + m[0].length, html.indexOf('</button>', m.index)),
   }));
 
-describe('«تسوية العهدة» «استعاضة العهدة» «شحن العهدة» — the fund’s three actions', () => {
+describe('«تسوية العهدة» «استعاضة العهدة» «طلب عهدة» — the fund’s three actions', () => {
   it('draws the three with their Arabic words, in the owner’s order', () => {
     const buttons = actionButtons(board());
     expect(buttons.map((b) => b.key)).toEqual([...ORDER]);
@@ -220,7 +227,11 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
       ),
     ).toEqual(LABELS);
     expect(buttons.map((b) => /title="([^"]*)"/u.exec(b.tag)?.[1])).toEqual(LABELS);
-    expect(ORDER.map((key) => ar(`fleet.custody.actions.${key}`))).toEqual(LABELS);
+    expect(ORDER.map((key) => ar(CUSTODY_OPS[key].label))).toEqual(LABELS);
+    // «شحن العهدة» is «طلب عهدة» now — new keys; the old ones stay in the file, unused.
+    expect(CUSTODY_OPS.charge.label).toBe('fleet.custody.actions.request');
+    expect(CUSTODY_OPS.charge.short).toBe('fleet.custody.actions.requestShort');
+    expect(ar('fleet.custody.actions.charge')).toBe('شحن العهدة');
     for (const b of buttons) expect(b.tag, b.key).toContain('type="button"');
   });
 
@@ -233,7 +244,7 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
     expect(
       buttons.map((b) => text(/<span class="sm:hidden">(.*?)<\/span>/u.exec(b.inside)?.[1] ?? '')),
     ).toEqual(SHORT);
-    expect(ORDER.map((key) => ar(`fleet.custody.actions.${key}Short`))).toEqual(SHORT);
+    expect(ORDER.map((key) => ar(CUSTODY_OPS[key].short))).toEqual(SHORT);
     for (const b of buttons) {
       // Nothing of the label outside its two spans: no word left to show at every width.
       const bare = b.inside
@@ -242,70 +253,70 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
       expect(text(bare), b.key).toBe('');
     }
     // English too, one word each.
-    expect(ORDER.map((key) => translate('en', `fleet.custody.actions.${key}Short`))).toEqual([
+    expect(ORDER.map((key) => translate('en', CUSTODY_OPS[key].short))).toEqual([
       'Settle',
       'Replenish',
-      'Top up',
+      'Request',
     ]);
   });
 
-  it('sits at the row’s far left as one framed group, the Excel/PDF pair beside it', () => {
+  it('sits at the far left of the fund’s bar, after the fund now — one framed group', () => {
     const html = board();
-    const stats = html.indexOf('data-custody-stats-toggle="true"');
-    const dashboard = html.indexOf('data-custody-dashboard-open="true"');
+    const bar = html.indexOf('data-custody-fund-bar="true"');
+    const now = html.indexOf('data-custody-fund-now="head"', bar);
     const group = html.indexOf('data-custody-fund-actions="true"');
-    const excel = html.indexOf('data-export="custody"');
-    const pdf = html.indexOf('data-print="custody"');
-    expect(stats).toBeGreaterThan(-1);
-    expect(dashboard).toBeGreaterThan(stats);
-    // Right to left: «الإحصائيات», «لوحة تحكم», Excel/PDF, then the three — the leftmost.
-    expect(excel, 'the files after «لوحة تحكم»').toBeGreaterThan(dashboard);
-    expect(pdf).toBeGreaterThan(excel);
-    expect(group, 'the three after the files').toBeGreaterThan(pdf);
-    // All three inside the group…
-    const start = html.lastIndexOf('<div', group);
-    const end = html.indexOf('</div>', group);
-    const inside = html.slice(start, end);
+    const tabs = html.indexOf('data-custody-tabs="true"');
+    expect(bar).toBeGreaterThan(-1);
+    // Right to left: the fund now, then the three — the bar's last child — then the tabs under it.
+    expect(group, 'the three after the fund now').toBeGreaterThan(now);
+    expect(tabs, 'the tabs under the bar').toBeGreaterThan(group);
+    const groupEnd = html.indexOf('</div>', group);
+    expect(html.slice(groupEnd + '</div>'.length), 'nothing after it in the bar').toMatch(
+      /^<\/section>/u,
+    );
+    // All three inside the group, framed as the export pairs are.
+    const inside = html.slice(html.lastIndexOf('<div', group), groupEnd);
     expect([...inside.matchAll(/data-custody-fund-action="(\w+)"/gu)].map((m) => m[1])).toEqual([
       ...ORDER,
     ]);
-    // …the group the last thing in the row, right after the export pair's frame closes…
-    const toolbar = html.slice(html.indexOf('data-custody-toolbar="true"'));
-    const pairEnd = toolbar.indexOf('</div>', toolbar.indexOf('data-print="custody"'));
-    const between = toolbar.slice(
-      pairEnd + '</div>'.length,
-      toolbar.indexOf('data-custody-fund-actions="true"'),
-    );
-    expect(between).toMatch(/^<div $/u);
-    const groupEnd = toolbar.indexOf('</div>', toolbar.indexOf('data-custody-fund-actions="true"'));
-    expect(toolbar.slice(groupEnd + '</div>'.length), 'nothing after it in the row').toMatch(
-      /^<\/span><\/div>/u,
-    );
-    // …and framed as the export pair is.
-    const pairStart = toolbar.lastIndexOf('<div', toolbar.indexOf('data-export="custody"'));
-    expect(classesOf(html, 'data-custody-fund-actions="true"')).toBe(
-      /class="([^"]*)"/u.exec(toolbar.slice(pairStart))?.[1],
-    );
+    expect(classesOf(html, 'data-custody-fund-actions="true"')).toBe(PILL_FRAME);
+    // Not in the log's own toolbar any more: once on the screen, in its head.
+    expect(html.match(/data-custody-fund-actions="true"/gu)).toHaveLength(1);
+    const toolbar = html.slice(html.indexOf('data-ledger-toolbar="true"'));
+    expect(toolbar).not.toContain('data-custody-fund-action');
   });
 
-  it('opens its dialog on a press — `?fund=<op>` on the board’s own address, no toast', () => {
+  it.each(['/fleet/custody/log', '/fleet/custody/memos', '/fleet/custody/dashboard'])(
+    'stands in the head of %s — and never on «مصروفات العهدة»',
+    (path) => {
+      const html = board(WRITER, path);
+      expect(html.match(/data-custody-fund-actions="true"/gu), path).toHaveLength(1);
+      expect(actionButtons(html).map((b) => b.key), path).toEqual([...ORDER]);
+      const board2 = board(WRITER, '/fleet/custody-expenses');
+      expect(board2).not.toContain('data-custody-fund-actions');
+      expect(board2).not.toContain('data-custody-fund-action=');
+    },
+  );
+
+  it('opens its dialog on a press — `?fund=<op>` on the page’s own address, no toast', () => {
     pressed.clear();
     raised.length = 0;
     asked.length = 0;
-    board(WRITER, '/fleet/custody?from=2026-09-01&source=fuel&page=2');
+    board(WRITER, '/fleet/custody/log?from=2026-09-01&op=charge&page=2');
     expect([...pressed.keys()]).toEqual([...ORDER]);
     for (const key of ORDER) pressed.get(key)?.();
-    // The board's filters and page stay as they were; only `fund` joins them.
+    // The log's filters and page stay as they were; only `fund` joins them.
     expect(asked).toEqual([
-      'from=2026-09-01&source=fuel&page=2&fund=settle',
-      'from=2026-09-01&source=fuel&page=2&fund=replenish',
-      'from=2026-09-01&source=fuel&page=2&fund=charge',
+      'from=2026-09-01&op=charge&page=2&fund=settle',
+      'from=2026-09-01&op=charge&page=2&fund=replenish',
+      'from=2026-09-01&op=charge&page=2&fund=charge',
     ]);
     expect(raised).toEqual([]);
-    // «سيُفعَّل هذا الإجراء قريبًا.» is gone — from the board and from both dictionaries.
+    // «سيُفعَّل هذا الإجراء قريبًا.» is gone — from the screens and from both dictionaries.
     expect(PAGE).not.toContain('actions.soon');
     expect(PAGE).not.toContain('FUND_ACTIONS');
-    expect(PAGE.match(/<CustodyFundActions \/>/gu)).toHaveLength(1);
+    expect(PAGE).not.toContain('CustodyFundActions');
+    expect(HEAD.match(/<CustodyFundActions \/>/gu)).toHaveLength(1);
     for (const locale of ['ar', 'en'] as const) {
       expect(translate(locale, 'fleet.custody.actions.soon'), locale).toBe(
         'fleet.custody.actions.soon',
@@ -318,18 +329,28 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
     ['replenish', 'data-memo-replenish="true"'],
     ['charge', 'data-memo-charge="true"'],
   ])('draws the «%s» dialog where the address says `?fund=` — and only that one', (op, panel) => {
-    const html = board(WRITER, `/fleet/custody?fund=${op}`);
+    const html = board(WRITER, `/fleet/custody/log?fund=${op}`);
     expect(html).toContain(panel);
     expect(html.match(/data-memo-(?:settle|replenish|charge)="true"/gu)).toHaveLength(1);
-    // Outside the toolbar: after the filter bar, never inside the row of buttons.
-    const toolbar = html.indexOf('data-custody-toolbar="true"');
-    const filters = html.indexOf('data-custody-filter-bar="true"');
-    expect(filters).toBeGreaterThan(toolbar);
-    expect(html.indexOf(panel)).toBeGreaterThan(filters);
+    // In the head, outside its bar: after the tabs, before the log's own toolbar.
+    const bar = html.indexOf('data-custody-fund-bar="true"');
+    const tabs = html.indexOf('data-custody-tabs="true"');
+    const toolbar = html.indexOf('data-ledger-toolbar="true"');
+    expect(tabs).toBeGreaterThan(bar);
+    expect(html.indexOf(panel)).toBeGreaterThan(tabs);
+    expect(html.indexOf(panel)).toBeLessThan(toolbar);
+  });
+
+  it('opens no dialog on «مصروفات العهدة» — the fund’s dialogs are SCREEN 1’s', () => {
+    const html = board(WRITER, '/fleet/custody-expenses?fund=charge');
+    expect(html).toContain('data-custody-toolbar="true"');
+    expect(html).not.toMatch(/data-memo-(?:settle|replenish|charge)="true"/u);
+    expect(PAGE).not.toContain('CustodyFundDialogs');
+    expect(PAGE).not.toContain('useFundParam');
   });
 
   it('opens no dialog without `?fund=`, nor for a `fund` it does not know', () => {
-    for (const path of ['/fleet/custody', '/fleet/custody?fund=refund']) {
+    for (const path of ['/fleet/custody/log', '/fleet/custody/log?fund=refund']) {
       expect(board(WRITER, path), path).not.toMatch(
         /data-memo-(?:settle|replenish|charge)="true"/u,
       );
@@ -341,13 +362,14 @@ describe('«تسوية العهدة» «استعاضة العهدة» «شحن �
       ['fleetCustody.view'],
       ['fleetCustody.view', 'fleetReceipt.edit', 'fleetReceipt.delete'],
     ]) {
-      const html = board(permissions, '/fleet/custody?fund=charge');
+      const html = board(permissions, '/fleet/custody/log?fund=charge');
       expect(html, permissions.join()).not.toContain('data-custody-fund-actions');
       expect(html, permissions.join()).not.toContain('data-custody-fund-action=');
       expect(html, permissions.join()).not.toMatch(/data-memo-(?:settle|replenish|charge)="true"/u);
-      // The rest of the toolbar is all there.
-      expect(html).toContain('data-export="custody"');
-      expect(html).toContain('data-custody-dashboard-open="true"');
+      // The rest of the head and the log's toolbar are all there.
+      expect(html).toContain('data-custody-fund-bar="true"');
+      expect(html).toContain('data-custody-tabs="true"');
+      expect(html).toContain('data-export="custody-ledger"');
     }
   });
 });
@@ -370,7 +392,7 @@ describe('`CustodyFundActions` — the three, each opening its own dialog', () =
     for (const b of buttons) expect(b.tag, b.key).toContain('type="button"');
     expect(classesOf(html, 'data-custody-fund-actions="true"')).toBe(PILL_FRAME);
     // The board's own export pair wears the very same frame.
-    const page = board();
+    const page = board(WRITER, '/fleet/custody-expenses');
     const pair = page.lastIndexOf('<div', page.indexOf('data-export="custody"'));
     expect(/class="([^"]*)"/u.exec(page.slice(pair))?.[1]).toBe(PILL_FRAME);
     // Each its own colour, as before.
@@ -419,11 +441,11 @@ describe('`CustodyFundActions` — the three, each opening its own dialog', () =
       );
       return open;
     };
-    expect(read('/fleet/custody?fund=replenish')).toBe('replenish');
+    expect(read('/fleet/custody/memos?fund=replenish')).toBe('replenish');
     expect(read('/fleet/custody/log?fund=settle&op=charge')).toBe('settle');
-    expect(read('/fleet/custody?fund=charge')).toBe('charge');
-    expect(read('/fleet/custody?fund=delete')).toBeNull();
-    expect(read('/fleet/custody')).toBeNull();
+    expect(read('/fleet/custody/dashboard?fund=charge')).toBe('charge');
+    expect(read('/fleet/custody/log?fund=delete')).toBeNull();
+    expect(read('/fleet/custody/log')).toBeNull();
     expect(isCustodyFundOp('settle')).toBe(true);
     expect(isCustodyFundOp('spend')).toBe(false);
     expect(isCustodyFundOp(null)).toBe(false);

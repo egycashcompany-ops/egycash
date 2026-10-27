@@ -6,13 +6,14 @@
 // owner's design, section by section and in its order — the board's filters (read only), the
 // alerts, five figures and three tiles, the time chart beside the rings of kind and source, the
 // cars, the drivers and the fuel — in its dark theme and in the light map that came with it, as
-// `dark:` variants over the `dark` class the app stamps on <html>. Since «عاوز ازود اجمالى العهده
-// فى الاحصايات و تكون فى الداس بورد», the fund («إجمالي العهدة») is on it too — and since the memos
-// and the fund's own operations, it heads a section of its own, «العهدة الآن» (`CustodyDashboardFund`):
-// the fund over its whole history, whatever the filters — the formula as five tiles, the money
-// waiting for «استعاضة العهدة» and for «تسوية العهدة», the fund after every operation and the
-// newest of them — with its own lines in the alerts. Under it, «مصروفات العهدة حسب الفلاتر»: the
-// five spend figures (each with its memos' state), the tiles and the charts, as before.
+// `dark:` variants over the `dark` class the app stamps on <html>.
+//
+// «خلاص افصلهم»: this is «لوحة تحكم المصروفات» now, the dashboard of SCREEN 2 «مصروفات العهدة» —
+// the spend only. The fund's part («العهدة الآن», the money waiting for «استعاضة العهدة» and for
+// «تسوية العهدة», the fund after every operation and the newest of them, with the fund's own lines in
+// the alerts) is the third tab of SCREEN 1 «العهدة», «لوحة تحكم العهدة» (`CustodyFundDashboard`).
+// Here: the board's filters, the spend's alerts under their own heading, the five spend figures
+// (each with its memos' state), the tiles and the charts, as before.
 //
 // «عاوزك تشيل من الداش بورد الجدول اللى فى العربيات والسجل يكون برا زى ما هو … وسجل كل الحركات
 // برضو»: the design's last two tables — «ملخص لكل سيارة» and «سجل كل الحركات» — are not drawn here.
@@ -74,16 +75,8 @@ import {
   type CustodyDashboardFilters,
 } from './custody-dashboard-parts';
 import {
-  CUSTODY_FUND_ROW,
   CustodyFundAlertLines,
-  CustodyFundNow,
-  CustodyFundSteps,
   CustodyMemoStateBar,
-  CustodyRecentOps,
-  CustodySectionHeading,
-  CustodySettleCard,
-  CustodyWaitingCard,
-  useCustodyFundAlerts,
   type CustodyFundSectionActions,
 } from './CustodyDashboardFund';
 import { custodyMemoStateParts, type CustodyFundAlert } from '../lib/custody-dashboard-fund';
@@ -96,7 +89,7 @@ export {
 } from './custody-dashboard-parts';
 
 /** What the dashboard can ask of the board behind it — each optional, the dashboard draws without. */
-export interface CustodyDashboardActions extends CustodyFundSectionActions {
+export interface CustodyDashboardActions {
   /** «إعادة ضبط الفلاتر»: clears the board's own filters; the dashboard follows them. */
   onClearFilters?: (() => void) | undefined;
   /** «عرض حركات الصيانة»: the board's «المصدر» set to «صيانة», the dashboard closed. */
@@ -206,16 +199,20 @@ const Emphasised = ({
  * duplicated ones. A dealership bill is not custody money, so none waits here. Under them, the
  * fund's own lines (`fundLines`, a–e): the fund below zero, receipts in no memo for more than 30
  * days, a memo not replenished or a licensing memo not settled for as long, and settlements waiting
- * past what the fund holds — each with the way to deal with it. Drawn when either has a line.
+ * past what the fund holds — each with the way to deal with it. Drawn when either has a line. Its
+ * heading is the fund's («تنبيهات وتدقيق العهدة الفوري:») unless `title` says otherwise — the spend's
+ * own dashboard heads its lines «تنبيهات وتدقيق المصروفات».
  */
 export const CustodyAlerts = ({
   alerts,
   fundLines = [],
   onFundAction,
+  title,
 }: {
   alerts: FleetCustodyAlertsDto;
   fundLines?: readonly CustodyFundAlert[];
   onFundAction?: CustodyFundSectionActions['onFundAction'];
+  title?: string | undefined;
 }): JSX.Element | null => {
   const t = useT();
   const { phrase } = useCount();
@@ -277,7 +274,7 @@ export const CustodyAlerts = ({
               id={titleId}
               className="font-bold text-amber-900 dark:font-semibold dark:text-amber-200"
             >
-              {t('fleet.custody.dashboard.alerts.title')}
+              {title ?? t('fleet.custody.dashboard.alerts.title')}
             </span>
             {items.map((item, i) => (
               <span key={i} className="flex items-center gap-x-4">
@@ -638,51 +635,11 @@ export const CustodyKpis = ({ data }: { data: FleetCustodyDashboardDto }): JSX.E
 
 // ── The body ──────────────────────────────────────────────────────────────────────────────────
 
-/** No row alert yet — the filtered answer still on its way; the fund's own lines say theirs. */
-const NO_ROW_ALERTS: FleetCustodyAlertsDto = {
-  doubleFuel: [],
-  receiptsWithoutPhoto: 0,
-  duplicateReceipts: 0,
-};
-
 /**
- * «العهدة الآن» — the fund over its whole history, whatever the filters: the banner with its lines
- * (and the filtered rows' own, once their answer is in), the formula, the money waiting, the fund
- * after each operation and the newest of them. It never waits for the filtered answer, and is never
- * swapped for a shimmer when the filters change: each card reads, loads and fails on its own.
+ * Every section of an answer over the board's filters, in the design's order — the spend's alerts
+ * under their own heading, the figures and tiles, the time chart beside the rings of kind and
+ * source, then the cars, the drivers and the fuel. The cars' table and the log are the board's own.
  */
-const CustodyFundPart = ({
-  data,
-  onFundAction,
-  onShowPeriod,
-  now,
-}: {
-  data: FleetCustodyDashboardDto | undefined;
-  now?: number | undefined;
-} & CustodyFundSectionActions): JSX.Element => {
-  const today = now === undefined ? {} : { now };
-  const fundLines = useCustodyFundAlerts(data?.fundTotal, now);
-  return (
-    <>
-      <CustodyAlerts
-        alerts={data?.alerts ?? NO_ROW_ALERTS}
-        fundLines={fundLines}
-        onFundAction={onFundAction}
-      />
-      <CustodyFundNow data={data} />
-      <div className={CUSTODY_FUND_ROW}>
-        <CustodyWaitingCard onFundAction={onFundAction} {...today} />
-        <CustodySettleCard onFundAction={onFundAction} {...today} />
-      </div>
-      <div className={CUSTODY_FUND_ROW}>
-        <CustodyFundSteps onShowPeriod={onShowPeriod} />
-        <CustodyRecentOps onShowPeriod={onShowPeriod} />
-      </div>
-    </>
-  );
-};
-
-/** «مصروفات العهدة حسب الفلاتر» — its heading, and every section of it over the board's filters. */
 const CustodySpendPart = ({
   data,
   filters,
@@ -694,13 +651,15 @@ const CustodySpendPart = ({
   onShowMaintenance?: (() => void) | undefined;
   now?: number | undefined;
 }): JSX.Element => {
+  const t = useT();
   const today = now === undefined ? {} : { now };
   return (
     <>
-      <div className="space-y-4 pt-2">
-        <SpendHeading />
-        <CustodyKpis data={data} />
-      </div>
+      <CustodyAlerts
+        alerts={data.alerts}
+        title={t('fleet.custody.dashboard.alerts.spendTitle')}
+      />
+      <CustodyKpis data={data} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         <CustodyTimeline data={data} filters={filters} {...today} />
         <CustodyByKindSource data={data} onShowMaintenance={onShowMaintenance} filters={filters} />
@@ -714,24 +673,16 @@ const CustodySpendPart = ({
   );
 };
 
-const SpendHeading = (): JSX.Element => {
-  const t = useT();
-  return <CustodySectionHeading name="spend" title={t('fleet.custody.dashboard.spend.heading')} />;
-};
-
 /**
- * The filtered part while its answer is on its way: its heading, and the frame of its sections at
- * their heights at 1,536px on the owner's scenario — nothing jumps when the answer lands.
+ * The sections while the answer is on its way: their frame at their heights at 1,536px on the
+ * owner's scenario — nothing jumps when the answer lands.
  */
 const SpendSkeleton = (): JSX.Element => (
   <div className="space-y-6" data-custody-dashboard-loading="true">
-    <div className="space-y-4 pt-2">
-      <SpendHeading />
-      <div className={KPI_GRID}>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-[266px] rounded-2xl" />
-        ))}
-      </div>
+    <div className={KPI_GRID}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <Skeleton key={i} className="h-[266px] rounded-2xl" />
+      ))}
     </div>
     <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
       {[0, 1, 2].map((i) => (
@@ -751,12 +702,10 @@ const SpendSkeleton = (): JSX.Element => (
 );
 
 /**
- * What fills the modal for each face of the query. Two scopes, kept visibly apart: «العهدة الآن» —
- * the fund over its whole history, whatever the filters (its heading says so) — drawn whatever the
- * filtered answer's face, then «مصروفات العهدة حسب الفلاتر», every section of it filtered as it
- * always was: its frame shimmering while the answer is on its way, its error with a retry. Every
- * section, whatever the answer holds: with no movement, each at zero with its line
- * (`CustodyNoMovements`), the banner by its own rules.
+ * What fills the modal for each face of the query: every section over the board's filters, its
+ * frame shimmering while the answer is on its way, its error with a retry. Every section, whatever
+ * the answer holds: with no movement, each at zero with its line (`CustodyNoMovements`), the banner
+ * by its own rules.
  */
 export const CustodyDashboardContent = ({
   view,
@@ -765,8 +714,6 @@ export const CustodyDashboardContent = ({
   onRetry,
   filters = {},
   onShowMaintenance,
-  onFundAction,
-  onShowPeriod,
   now,
 }: {
   view: CustodyDashboardView;
@@ -778,36 +725,28 @@ export const CustodyDashboardContent = ({
    * حركات بعد.» — and the time chart frames the months they name.
    */
   filters?: CustodyDashboardFilters;
-  /** Today, for the time chart's frame and the fund's ages — fixed by the specs. */
+  /** Today, for the time chart's frame — fixed by the specs. */
   now?: number;
-} & CustodyDashboardActions): JSX.Element => {
+} & Pick<CustodyDashboardActions, 'onShowMaintenance'>): JSX.Element => {
   const answer = view === 'ready' ? data : undefined;
   const today = now === undefined ? {} : { now };
-  return (
-    <div className="space-y-6" data-custody-dashboard-body="true">
-      <CustodyFundPart
-        data={answer}
-        onFundAction={onFundAction}
-        onShowPeriod={onShowPeriod}
-        {...today}
-      />
-      {answer !== undefined ? (
+  if (answer !== undefined) {
+    return (
+      <div className="space-y-6" data-custody-dashboard-body="true">
         <CustodySpendPart
           data={answer}
           filters={filters}
           onShowMaintenance={onShowMaintenance}
           {...today}
         />
-      ) : view === 'loading' ? (
-        <SpendSkeleton />
-      ) : (
-        <div className="space-y-4 pt-2">
-          <SpendHeading />
-          <div className={cn(CARD, 'rounded-2xl')} data-custody-dashboard-error="true">
-            <ErrorState error={error} onRetry={onRetry} />
-          </div>
-        </div>
-      )}
+      </div>
+    );
+  }
+  return view === 'loading' ? (
+    <SpendSkeleton />
+  ) : (
+    <div className={cn(CARD, 'rounded-2xl')} data-custody-dashboard-error="true">
+      <ErrorState error={error} onRetry={onRetry} />
     </div>
   );
 };
@@ -820,16 +759,14 @@ export const CustodyDashboardBody = ({
   data,
   filters = {},
   onShowMaintenance,
-  onFundAction,
-  onShowPeriod,
   now,
 }: {
   data: FleetCustodyDashboardDto;
   /** The board's filters — the time chart's frame and the words of the line, with no movement. */
   filters?: CustodyDashboardFilters;
-  /** Today, for the time chart's frame and the fund's ages — fixed by the specs. */
+  /** Today, for the time chart's frame — fixed by the specs. */
   now?: number;
-} & CustodyDashboardActions): JSX.Element => (
+} & Pick<CustodyDashboardActions, 'onShowMaintenance'>): JSX.Element => (
   <CustodyDashboardContent
     view="ready"
     data={data}
@@ -837,8 +774,6 @@ export const CustodyDashboardBody = ({
     onRetry={() => undefined}
     filters={filters}
     onShowMaintenance={onShowMaintenance}
-    onFundAction={onFundAction}
-    onShowPeriod={onShowPeriod}
     {...(now === undefined ? {} : { now })}
   />
 );
@@ -857,8 +792,6 @@ export const CustodyDashboard = ({
   filters,
   onClearFilters,
   onShowMaintenance,
-  onFundAction,
-  onShowPeriod,
 }: {
   open: boolean;
   onClose: () => void;
@@ -952,7 +885,7 @@ export const CustodyDashboard = ({
               aria-hidden="true"
               className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400"
             />
-            {t('fleet.custody.dashboard.title')}
+            {t('fleet.custody.dashboard.spendTitle')}
           </h2>
           <button
             ref={closeButton}
@@ -983,8 +916,6 @@ export const CustodyDashboard = ({
               onRetry={() => void query.refetch()}
               filters={filters}
               onShowMaintenance={onShowMaintenance}
-              onFundAction={onFundAction}
-              onShowPeriod={onShowPeriod}
             />
           </div>
         </div>

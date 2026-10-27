@@ -1,18 +1,19 @@
-// «العهدة الآن» on «لوحة تحكم العهدة» — the fund over its whole history, whatever the board's
-// filters (its heading says so: «من بداية العهدة، ولا تتأثر بالفلاتر»), above the filtered spend:
+// «العهدة الآن» on «لوحة تحكم العهدة» — the third tab of SCREEN 1 «العهدة» (`CustodyFundDashboard`):
+// the fund over its whole history (its heading says so: «من بداية العهدة»):
 //
-//   N1  the formula as five tiles — «إجمالي الشحن» − «مصروفات الإيصالات» + «إجمالي الاستعاضة» −
-//       «إجمالي التسوية» = «إجمالي العهدة» — the ledger's own tiles (`LedgerFigures`), the fund the
-//       board's own card; each tile opens «سجل العهدة» over its operation.
+//   N1  the formula as five tiles — «إجمالي طلبات العهدة» − «مصروفات الإيصالات» + «إجمالي الاستعاضة»
+//       − «إجمالي التسوية» = «إجمالي العهدة» — the ledger's own tiles (`LedgerFigures`), the fund its
+//       own card; each tile opens «سجل العهدة» over its operation.
 //   N2  «مبالغ صُرفت ولم تُستعَض بعد» — what «استعاضة العهدة» would bring back: the memos waiting and
 //       the receipts in no memo yet, kind by kind with the age of the oldest.
 //   N3  «مصروفات تراخيص لم تُسوَّ بعد» — what «تسوية العهدة» would take out: the licensing memos waiting.
 //   N4  «إجمالي العهدة بعد كل عملية» — the fund after every line of «سجل العهدة», as a step line.
 //   N5  «آخر عمليات العهدة» — its newest lines, in the log's own words.
-//   N7  the filtered spend split by its memos' state, a thin bar on each spend card.
+//   N7  the filtered spend split by its memos' state, a thin bar on each spend card of «لوحة تحكم
+//       المصروفات» (SCREEN 2 «مصروفات العهدة»).
 //
 // Plus the fund's lines in the alerts banner (a–e). Every number is one the API sends, through the
-// hooks «العهدة» and «سجل العهدة» already read (all under `fleetKeys.custody`, so a «شحن», a
+// hooks «العهدة» and «سجل العهدة» already read (all under `fleetKeys.custody`, so a «طلب عهدة», a
 // «استعاضة», a «تسوية», a memo or a receipt refreshes them). Each card loads and fails on its own —
 // its own shimmer, its own error with a retry — and the body never waits for it.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -277,7 +278,7 @@ const FundOpButton = ({
     </>
   );
   return onFundAction === undefined ? (
-    <Link to={`/fleet/custody?fund=${op}`} data-custody-fund-open={op} className={className}>
+    <Link to={`/fleet/custody/log?fund=${op}`} data-custody-fund-open={op} className={className}>
       {inner}
     </Link>
   ) : (
@@ -417,7 +418,7 @@ export const CustodyFundNow = ({
         name="fund"
         id={headingId}
         title={t(`${D}.fund.heading`)}
-        chip={t(`${D}.fund.scope`)}
+        chip={t(`${D}.fund.scopeSince`)}
       />
       {fund.data !== undefined ? (
         <LedgerFigures fund={fund.data} look="dashboard" fundCard={card} />
@@ -705,7 +706,12 @@ export const CustodyWaitingCard = ({
         ) : (
           <span />
         )}
-        <FootLink to="/fleet/custody/memos">{t(`${D}.waiting.showMemos`)}</FootLink>
+        {/* The memos, and the receipts themselves on «مصروفات العهدة». */}
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <FootLink to="/fleet/custody/memos">{t(`${D}.waiting.showMemos`)}</FootLink>
+          <span aria-hidden="true" className="h-3.5 w-px bg-slate-200 dark:bg-[#1c273b]" />
+          <FootLink to="/fleet/custody-expenses">{t(`${D}.waiting.showExpenses`)}</FootLink>
+        </span>
       </div>
     </section>
   );
@@ -1107,7 +1113,7 @@ export const CustodyFundSteps = ({
               className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400"
             />
           </h3>
-          <p className={NOTE}>{t(`${D}.steps.note`)}</p>
+          <p className={NOTE}>{t(`${D}.steps.noteRequests`)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {capped && (

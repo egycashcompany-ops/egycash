@@ -93,7 +93,9 @@ export const toVehicleContractDto = (
       };
     }),
     deliveries,
-    files: (doc.files ?? []).filter((link) => link.isDeleted !== true).map(toVehicleContractFileDto),
+    files: (doc.files ?? [])
+      .filter((link) => link.isDeleted !== true)
+      .map(toVehicleContractFileDto),
     contracted: figures.contracted,
     received: figures.received,
     remaining: figures.remaining,

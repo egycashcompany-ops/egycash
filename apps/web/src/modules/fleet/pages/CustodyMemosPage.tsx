@@ -53,7 +53,7 @@ import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { FleetPager } from '../components/FleetPager';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { CustodyKindBadge } from '../components/CustodyKinds';
-import { CustodyTabs } from '../components/CustodyTabs';
+import { CustodyFundHeader } from '../components/CustodyFundHeader';
 import { CustodyMemoPaperView, usePrintOutcome } from '../components/CustodyMemoPaperView';
 import { LockedRowAction } from '../components/LockedRowAction';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
@@ -622,7 +622,7 @@ export const CustodyMemosPage = (): JSX.Element => {
   const sum = figures === undefined ? null : formatMoneyParts(figures.total, 'EGP', locale);
   return (
     <PageContainer fullHeight>
-      <CustodyTabs />
+      <CustodyFundHeader />
       <div className={BOARD_FRAME} data-custody-memos="true">
         <div
           className="flex flex-wrap items-center justify-between gap-2"

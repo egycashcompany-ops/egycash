@@ -1,7 +1,8 @@
-// «مكان اشوف فيه المذكرات» / «فين الهيستورى بتاع كل حاجه من دول»: three tabs over the custody screen —
-// «العهدة», «المذكرات», «سجل العهدة» — each its own address, the active one in the site's purple, the
-// memos' and the operations' counts beside theirs once the fund's summary has said them. Rendered
-// to markup against a seeded cache, as every Fleet screen spec.
+// «مكان اشوف فيه المذكرات» / «فين الهيستورى بتاع كل حاجه من دول» / «خلاص افصلهم»: three tabs on
+// SCREEN 1 «العهدة» — «سجل العهدة», «المذكرات», «لوحة تحكم العهدة» — each its own address, the
+// active one in the site's purple, the operations' and the memos' counts beside theirs once the
+// fund's summary has said them. The board «مصروفات العهدة» (SCREEN 2) has none. Rendered to markup
+// against a seeded cache, as every Fleet screen spec.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +51,8 @@ const fund: FleetCustodyFundSummaryDto = {
   spent: { count: 152, amount: 97_794 },
   replenished: { count: 1, amount: 81_908, memos: 5 },
   settled: { count: 1, amount: 124_139.46, parts: 3 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  cancelled: { count: 0, amount: 0 },
   operations: 4,
   memos: { count: 6, pending: 1, pendingTotal: 600 },
   outside: [
@@ -101,30 +104,34 @@ const text = (part: string): string =>
     .replace(/\s+/gu, ' ')
     .trim();
 
-describe('«العهدة · المذكرات · سجل العهدة»', () => {
+describe('«سجل العهدة · المذكرات · لوحة تحكم العهدة»', () => {
   it('links the three addresses, in that order, inside one tab list', () => {
-    const html = draw('/fleet/custody', fund);
+    const html = draw('/fleet/custody/log', fund);
     expect(html).toContain('data-custody-tabs="true"');
     expect(html).toMatch(/<nav role="tablist" aria-label="[^"]+"/u);
     const found = tabs(html);
-    expect(Object.keys(found)).toEqual(['board', 'memos', 'log']);
-    expect(found.board).toContain('href="/fleet/custody"');
-    expect(found.memos).toContain('href="/fleet/custody/memos"');
+    expect(Object.keys(found)).toEqual(['log', 'memos', 'dashboard']);
     expect(found.log).toContain('href="/fleet/custody/log"');
+    expect(found.memos).toContain('href="/fleet/custody/memos"');
+    expect(found.dashboard).toContain('href="/fleet/custody/dashboard"');
     for (const tag of Object.values(found)) expect(tag).toContain('role="tab"');
-    // Its words: the board's own name, then the two new tabs'.
+    // No tab leads to the board any more: it is a menu row of its own.
+    expect(html).not.toContain('href="/fleet/custody"');
+    expect(html).not.toContain('href="/fleet/custody-expenses"');
     const words = [...html.matchAll(/data-custody-tab="\w+"[^>]*>([\s\S]*?)<\/a>/gu)].map((m) =>
       text((m[1] ?? '').replace(/<span data-custody-tab-count[\s\S]*?<\/span>/u, '')),
     );
     expect(words).toEqual([
-      ar('fleet.nav.custody'),
-      ar('fleet.custody.tabs.memos'),
       ar('fleet.custody.tabs.ledger'),
+      ar('fleet.custody.tabs.memos'),
+      ar('fleet.custody.dashboard.title'),
     ]);
+    expect(words[2]).toBe('لوحة تحكم العهدة');
   });
 
   it.each([
-    ['/fleet/custody', 'board'],
+    ['/fleet/custody/dashboard', 'dashboard'],
+    ['/fleet/custody/dashboard/', 'dashboard'],
     ['/fleet/custody/memos', 'memos'],
     ['/fleet/custody/memos/new/tyres', 'memos'],
     ['/fleet/custody/memos/setup/fuel', 'memos'],
@@ -137,46 +144,74 @@ describe('«العهدة · المذكرات · سجل العهدة»', () => {
       expect(tag.includes('bg-brand-600'), `${path} ${key}`).toBe(on);
       expect(tag, `${path} ${key}`).toContain(`aria-selected="${on}"`);
     }
-    // The board's tab is the board's alone: a memo's page does not light it too.
+    // One tab at a time: a memo's page does not light the log too.
     expect(Object.values(found).filter((tag) => tag.includes('bg-brand-600'))).toHaveLength(1);
   });
 
+  it('lights no tab off its three pages — the board «مصروفات العهدة» has none', () => {
+    for (const path of ['/fleet/custody', '/fleet/custody-expenses']) {
+      const found = tabs(draw(path, fund));
+      expect(Object.values(found).filter((tag) => tag.includes('bg-brand-600')), path).toEqual([]);
+    }
+  });
+
   it('counts the memos and the operations from the fund’s summary', () => {
-    const html = draw('/fleet/custody', fund);
+    const html = draw('/fleet/custody/log', fund);
     const count = (key: string): string | undefined =>
       new RegExp(`data-custody-tab-count="${key}"[^>]*>([^<]*)<`, 'u').exec(html)?.[1];
     expect(count('memos')).toBe('6');
     expect(count('log')).toBe('4');
-    expect(html).not.toContain('data-custody-tab-count="board"');
+    expect(html).not.toContain('data-custody-tab-count="dashboard"');
     // Latin digits, grouped, as every figure.
-    const many = draw('/fleet/custody', { ...fund, operations: 1234 });
+    const many = draw('/fleet/custody/log', { ...fund, operations: 1234 });
     expect(many).toMatch(/data-custody-tab-count="log"[^>]*>1,234</u);
   });
 
   it('says no count while the summary is on its way — never a «0» that is not true', () => {
     const html = draw('/fleet/custody/memos');
     expect(html).not.toContain('data-custody-tab-count');
-    expect(Object.keys(tabs(html))).toEqual(['board', 'memos', 'log']);
+    expect(Object.keys(tabs(html))).toEqual(['log', 'memos', 'dashboard']);
   });
 
   it('reads which tab an address is on', () => {
-    expect(custodyTabOf('/fleet/custody')).toBe('board');
-    expect(custodyTabOf('/fleet/custody/')).toBe('board');
+    expect(custodyTabOf('/fleet/custody/log')).toBe('log');
+    expect(custodyTabOf('/fleet/custody/log/')).toBe('log');
     expect(custodyTabOf('/fleet/custody/memos')).toBe('memos');
     expect(custodyTabOf('/fleet/custody/memos/650000000000000000000001')).toBe('memos');
-    expect(custodyTabOf('/fleet/custody/log')).toBe('log');
+    expect(custodyTabOf('/fleet/custody/dashboard')).toBe('dashboard');
+    expect(custodyTabOf('/fleet/custody')).toBeNull();
+    expect(custodyTabOf('/fleet/custody/')).toBeNull();
+    expect(custodyTabOf('/fleet/custody-expenses')).toBeNull();
     expect(custodyTabOf('/fleet/custody/memosx')).toBeNull();
     expect(custodyTabOf('/fleet/receipts')).toBeNull();
   });
 
-  it('opens each of the three pages — the board, the memos, the log — on the same tabs', () => {
-    for (const page of ['CustodyPage.tsx', 'CustodyMemosPage.tsx', 'CustodyLedgerPage.tsx']) {
+  it('opens each of the three pages — the log, the memos, the fund dashboard — under the fund’s head', () => {
+    for (const page of [
+      'CustodyLedgerPage.tsx',
+      'CustodyMemosPage.tsx',
+      'CustodyFundDashboardPage.tsx',
+    ]) {
       const source = read(page);
-      expect(source, page).toContain("import { CustodyTabs } from '../components/CustodyTabs';");
-      expect(source.match(/<CustodyTabs \/>/gu), page).toHaveLength(1);
-      // First in the page, over its board.
-      expect(source.indexOf('<CustodyTabs />'), page).toBeLessThan(source.indexOf('BOARD_FRAME}'));
+      expect(source, page).toContain(
+        "import { CustodyFundHeader } from '../components/CustodyFundHeader';",
+      );
+      expect(source.match(/<CustodyFundHeader \/>/gu), page).toHaveLength(1);
+      // The head draws the tabs; no page draws them a second time.
+      expect(source, page).not.toContain('<CustodyTabs />');
     }
+    // First in the page, over its board.
+    for (const page of ['CustodyLedgerPage.tsx', 'CustodyMemosPage.tsx']) {
+      const source = read(page);
+      expect(source.indexOf('<CustodyFundHeader />'), page).toBeLessThan(
+        source.indexOf('BOARD_FRAME}'),
+      );
+    }
+    expect(read('../components/CustodyFundHeader.tsx').match(/<CustodyTabs \/>/gu)).toHaveLength(1);
+    // The board «مصروفات العهدة» draws neither the head nor the tabs.
+    const board = read('CustodyPage.tsx');
+    expect(board).not.toContain('CustodyTabs');
+    expect(board).not.toContain('CustodyFundHeader');
   });
 
   it('routes every custody address behind the custody grant — writes behind the receipts’ too', () => {
@@ -190,11 +225,17 @@ describe('«العهدة · المذكرات · سجل العهدة»', () => {
         gates: [...element.matchAll(/<RequirePermission permission="([^"]+)">/gu)].map(
           (m) => m[1] ?? '',
         ),
-        page: /<(Custody\w*Page) $/u.exec(element)?.[1] ?? '',
+        page: /<(Custody\w*(?:Page|Entry)) $/u.exec(element)?.[1] ?? '',
       };
     };
     const VIEW = 'fleetCustody.view';
-    expect(routed('custody')).toEqual({ gates: [VIEW], page: 'CustodyPage' });
+    // «العهدة» redirects (to «سجل العهدة», or an old board link to «مصروفات العهدة»).
+    expect(routed('custody')).toEqual({ gates: [VIEW], page: 'CustodyEntry' });
+    expect(routed('custody/dashboard')).toEqual({
+      gates: [VIEW],
+      page: 'CustodyFundDashboardPage',
+    });
+    expect(routed('custody-expenses')).toEqual({ gates: [VIEW], page: 'CustodyPage' });
     expect(routed('custody/memos')).toEqual({ gates: [VIEW], page: 'CustodyMemosPage' });
     for (const path of ['custody/memos/new', 'custody/memos/new/:kind']) {
       expect(routed(path), path).toEqual({
@@ -213,13 +254,16 @@ describe('«العهدة · المذكرات · سجل العهدة»', () => {
     expect(routed('custody/log')).toEqual({ gates: [VIEW], page: 'CustodyLedgerPage' });
     // Each page imported from its own file.
     for (const page of [
+      'CustodyPage',
       'CustodyMemosPage',
       'CustodyMemoEditorPage',
       'CustodyPapersSetupPage',
       'CustodyLedgerPage',
+      'CustodyFundDashboardPage',
     ]) {
       expect(routes, page).toContain(`import { ${page} } from './pages/${page}';`);
     }
+    expect(routes).toContain("import { CustodyEntry } from './components/CustodyEntry';");
   });
 
   it('keeps its purple in its own file — `CustodyPage.tsx` stays free of it', () => {

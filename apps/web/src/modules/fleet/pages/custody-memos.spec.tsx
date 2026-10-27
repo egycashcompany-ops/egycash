@@ -111,7 +111,7 @@ const ROWS: FleetCustodyMemoRowDto[] = [
     to: '2026-09-27',
     receipts: 6,
     total: 960,
-    replenishment: { id: '660000000000000000000001', date: '2026-09-29' },
+    replenishment: { id: '660000000000000000000001', date: '2026-09-29', held: false },
   }),
 ];
 const paged = (items: FleetCustodyMemoRowDto[]): Paginated<FleetCustodyMemoRowDto> => ({
@@ -138,6 +138,8 @@ const FUND: FleetCustodyFundSummaryDto = {
   spent: { count: 10, amount: 99_000 },
   replenished: { count: 0, amount: 0, memos: 0 },
   settled: { count: 0, amount: 0, parts: 0 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  cancelled: { count: 0, amount: 0 },
   operations: 1,
   memos: { count: 6, pending: 1, pendingTotal: 600 },
   outside: OUTSIDE,

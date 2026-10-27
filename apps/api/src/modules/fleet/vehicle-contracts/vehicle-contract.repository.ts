@@ -146,7 +146,9 @@ class FleetVehicleContractRepository extends BaseRepository<FleetVehicleContract
   }
 
   /** «الإحصائيات» over EVERY contract `filter` matches — never over a page. */
-  async totals(filter: FilterQuery<FleetVehicleContractDoc>): Promise<FleetVehicleContractTotalsDto> {
+  async totals(
+    filter: FilterQuery<FleetVehicleContractDoc>,
+  ): Promise<FleetVehicleContractTotalsDto> {
     const pipeline: PipelineStage[] = [
       { $match: this.baseFilter(undefined, filter) },
       {

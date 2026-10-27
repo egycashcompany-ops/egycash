@@ -87,9 +87,9 @@ export const custodyLedgerTarget = (
     ? { kind: 'period', from: row.date, to: row.dateTo ?? row.date }
     : { kind: 'operation', to: `/fleet/custody/log?open=${encodeURIComponent(row.id)}` };
 
-/** The receipts of a period on «العهدة» — the board over those days. */
+/** The receipts of a period on «مصروفات العهدة» — the board over those days. */
 export const custodyPeriodLink = (from: string, to: string): string =>
-  `/fleet/custody?from=${from}&to=${to}`;
+  `/fleet/custody-expenses?from=${from}&to=${to}`;
 
 // ── The fund's alert lines ──────────────────────────────────────────────────────────────────────
 

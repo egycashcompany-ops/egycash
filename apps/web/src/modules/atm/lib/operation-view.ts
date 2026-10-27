@@ -126,3 +126,15 @@ export const acceptConfirmBody = (
 export const refusedMachineCodes = (refused: readonly { machineCode: string }[]): string[] => [
   ...new Set(refused.map((row) => row.machineCode)),
 ];
+
+// ── A row's own buttons, over the checked rows ───────────────────────────────────────────────────
+
+/**
+ * The rows one row's close, edit or delete acts on — «تتشال الأزرار ولو أنا معلم على 5 مثلاً ..
+ * فلو دوست على أى واحده فيهم تقفيل يقفلهم .. ولو حذف يحذفهم .. ولو تعديل يعدل فى كله»
+ * (2026-10-27). The boards have no bulk bar: a button on a CHECKED row acts on every checked row,
+ * a button on an unchecked row on that row alone — a click elsewhere never sweeps the selection
+ * into it. The confirmation names the count either way.
+ */
+export const actionTargets = <T extends { id: string }>(row: T, checked: readonly T[]): T[] =>
+  checked.some((one) => one.id === row.id) ? [...checked] : [row];

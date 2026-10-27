@@ -269,7 +269,7 @@ describe.each([
 
     it('lets only the copy columns take a text selection', () => {
       const board = table(renderBoard(kind, rows, keys));
-      expect(board.startsWith('<div class="select-none" data-board-view="today"')).toBe(true);
+      expect(board).toMatch(/^<div class="select-none [^"]*" data-board-view="today"/);
       // Every body cell of a copy column says so; the cells of the others do not.
       expect(count(board, 'select-text')).toBe(copyHeaders.length);
       for (const header of [...copyHeaders, ...plainHeaders]) expect(board).toContain(t(header));
@@ -294,6 +294,25 @@ describe.each([
       const narrowed = renderBoard(kind, rows, keys, 'banks=SYN+OTHER');
       expect(narrowed).toContain('data-board-reset');
       expect(narrowed).not.toContain('data-export="');
+    });
+
+    it('keeps the form and the filters in place: only the table scrolls, under a head that stays', () => {
+      const markup = renderBoard(kind, rows, keys);
+      const board = table(markup);
+      // The page is the board frame, the table's wrapper takes the height left…
+      expect(markup).toContain('flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto');
+      expect(board).toMatch(/^<div class="select-none lg:flex lg:min-h-\[14rem\] lg:flex-1/);
+      // …and the table is what scrolls, its head sticking.
+      expect(board).toContain('h-full overflow-auto');
+      expect(board).toContain('<thead class="sticky top-0 z-10">');
+    });
+
+    it('paints the row’s buttons all the time — not only under the pointer — and has no bulk bar', () => {
+      const markup = renderBoard(kind, rows, keys);
+      expect(markup).toContain('data-row-actions="always"');
+      expect(markup).not.toContain('data-row-actions="hover"');
+      expect(markup).not.toContain('sm:opacity-0');
+      expect(markup).not.toContain('role="toolbar"');
     });
 
     it('still hides close from a reader without the complete permission, on every view', () => {

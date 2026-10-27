@@ -13,22 +13,29 @@
 //     keyboard user never chases an invisible button.
 //
 // Requires the row to be a `group` — `DataTable` marks every row as one.
+//
+// `always` paints them on every row, all the time — for a board whose row buttons ARE its work
+// (the ATM open boards: «خلى زراير إغلاق والتعديل والحذف ظاهرين على طول مش بهوفر», 2026-10-27).
 import { type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 export const RowActions = ({
   children,
   className,
+  always = false,
 }: {
   children: ReactNode;
   className?: string;
+  /** Shown on every row at all times, not only under the pointer. */
+  always?: boolean;
 }): JSX.Element => (
   <span
     className={cn(
       'flex items-center gap-0.5 transition-opacity',
-      'sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100',
+      !always && 'sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100',
       className,
     )}
+    data-row-actions={always ? 'always' : 'hover'}
   >
     {children}
   </span>

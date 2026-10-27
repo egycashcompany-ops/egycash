@@ -68,6 +68,12 @@ export const ControlRoutesTab = ({
   // Only a line that travels can be distributed: a cancelled line stays off the routes.
   const live = useMemo(() => day.lines.filter((l) => l.lineStatus !== 'cancelled'), [day.lines]);
   const routes = [...day.routes].sort((a, b) => a.order - b.order);
+  // A line is on a route only when that route is one of the day's live routes: an assignment left
+  // on a deleted route is «لم يُوزّع بعد», never on no list at all. Its move still sends the
+  // `from` the server holds.
+  const liveRouteIds = new Set(routes.map((r) => r.id));
+  const routeOf = (line: ControlLine): string | null =>
+    line.routeId !== null && liveRouteIds.has(line.routeId) ? line.routeId : null;
 
   const moveTo = (lines: readonly ControlLine[], to: string): void => {
     const target = to === '' ? null : to;
@@ -128,7 +134,7 @@ export const ControlRoutesTab = ({
         {t('atm.control.moveTo')}
         <Select
           density="tight"
-          value={line.routeId ?? ''}
+          value={routeOf(line) ?? ''}
           disabled={busy}
           onChange={(e) => moveTo([line], e.target.value)}
         >
@@ -157,7 +163,7 @@ export const ControlRoutesTab = ({
     );
   };
 
-  const unassigned = live.filter((l) => l.routeId === null);
+  const unassigned = live.filter((l) => routeOf(l) === null);
 
   return (
     <div className="space-y-4" data-control-routes="true">

@@ -84,6 +84,11 @@ export interface AtmPlanLineDoc extends BaseDocFields {
   countsSource: 'standard' | 'manual';
   /** The profile the counts came from. */
   standardLoadId: Types.ObjectId | null;
+  /**
+   * The user chose that profile for the line (S15, S16 step 2); false when it came from the layout
+   * or the bank default, so a refresh follows the layout's profile again (S16 step 1).
+   */
+  standardLoadChosen: boolean;
   /** What that profile gave (DS-8). */
   standardNotes: AtmDenominationNotes[] | null;
   /** `lineEgpTotalMinor(slots)`, stored (DS-28). */
@@ -159,6 +164,7 @@ const planLineSchema = new Schema<AtmPlanLineDoc>(
     slots: { type: [planSlotSchema], required: true },
     countsSource: { type: String, required: true, enum: ['standard', 'manual'] },
     standardLoadId: { type: Schema.Types.ObjectId, default: null },
+    standardLoadChosen: { type: Boolean, default: false },
     standardNotes: { type: [standardNotesSchema], default: null },
     egpTotalMinor: { type: Number, required: true, min: 0 },
     issuedAt: { type: Date, default: null },

@@ -16,6 +16,7 @@
 // AUDITS are built inside the transaction callback — fresh on every attempt, because
 // `withTransaction` may run it more than once — and recorded once, after the commit.
 import {
+  ATM_CASSETTE_NOTES_MAX,
   ATM_PLAN_LINES_MAX,
   ErrorCodes,
   bagAllocation,
@@ -146,14 +147,23 @@ const planSlotsFrom = (
 const plainNotes = (notes: readonly AtmDenominationNotes[]): AtmDenominationNotes[] =>
   notes.map((n) => ({ denomination: n.denomination, notes: n.notes }));
 
-/** The counts a profile gives (S-3, DS-8). */
+/**
+ * The counts a profile gives (S-3, DS-8). `chosen`: the user picked this profile for the line (S15
+ * `standardLoadId`, S16 step 2); otherwise it was inherited from the layout or the bank default,
+ * and a refresh takes the layout's again (§6.5 S16 step 1).
+ */
 const filledFrom = (
   slots: readonly AtmCassetteSlot[],
   profile: AtmStandardLoadDoc | null,
-): Pick<AtmPlanLineDoc, 'slots' | 'countsSource' | 'standardLoadId' | 'standardNotes'> => ({
+  chosen = false,
+): Pick<
+  AtmPlanLineDoc,
+  'slots' | 'countsSource' | 'standardLoadId' | 'standardLoadChosen' | 'standardNotes'
+> => ({
   slots: planSlotsFrom(slots, fillFromStandard(slots, profile).notes),
   countsSource: 'standard',
   standardLoadId: profile === null ? null : profile._id,
+  standardLoadChosen: chosen && profile !== null,
   standardNotes: profile === null ? null : plainNotes(profile.notes),
 });
 
@@ -170,6 +180,21 @@ const applyDenominationNotes = (
       `body.denominationNotes.${String(i)}.denomination`,
       'UNKNOWN_SLOT',
       'no planned cassette of the line carries this denomination',
+    );
+  }
+  // The even split must leave every cassette within the per-cassette cap (DS-30), as a count typed
+  // into one cassette is (`SlotNotes`); the schema bounds only the total.
+  const over = entries.findIndex((e) =>
+    slots.some(
+      (s) =>
+        s.denomination === e.denomination && (fill.notes.get(s.slot) ?? 0) > ATM_CASSETTE_NOTES_MAX,
+    ),
+  );
+  if (over !== -1) {
+    throw fieldError(
+      `body.denominationNotes.${String(over)}.notes`,
+      'CASSETTE_NOTES_MAX',
+      `a cassette holds at most ${String(ATM_CASSETTE_NOTES_MAX)} notes`,
     );
   }
   return slots.map((s) =>
@@ -703,7 +728,7 @@ class AtmSettlementPlanService {
         );
       }
     }
-    const filled = filledFrom(slots, profile);
+    const filled = filledFrom(slots, profile, profile !== null);
     let lineSlots = filled.slots;
     let manual = false;
     if (input.denominationNotes !== undefined && input.denominationNotes.length > 0) {
@@ -735,6 +760,7 @@ class AtmSettlementPlanService {
       slots: lineSlots,
       countsSource: manual ? 'manual' : 'standard',
       standardLoadId: filled.standardLoadId,
+      standardLoadChosen: filled.standardLoadChosen,
       standardNotes: filled.standardNotes,
       egpTotalMinor: lineEgpTotalMinor(lineSlots),
       ...blankLineFields,
@@ -763,7 +789,8 @@ class AtmSettlementPlanService {
     const next: AtmPlanLineDoc = { ...line, slots: plainPlanSlots(line.slots) };
     const loads = await liveStandardLoads(plan.branchId, plan.bankCode);
 
-    // 1. refreshLayout: the machine and the layout again, then the counts from the line's profile.
+    // 1. refreshLayout: the machine and the layout again, then the counts from the profile the user
+    //    chose for the line, else the layout's (which may have moved), else the bank default.
     if (patch.refreshLayout === true) {
       if (line.kind !== 'machine' || line.machineId === null) {
         throw fieldError(
@@ -792,11 +819,17 @@ class AtmSettlementPlanService {
         featuresLabel: layout.featuresLabel,
         hubLabel: layout.hubLabel,
         layoutRevision: layout.revision,
-        ...filledFrom(
-          layout.slots,
-          profileFor(loads, [line.standardLoadId, layout.standardLoadId]),
-        ),
       });
+      const chosen =
+        line.standardLoadChosen === true
+          ? loads.find((l) => String(l._id) === String(line.standardLoadId))
+          : undefined;
+      Object.assign(
+        next,
+        chosen === undefined
+          ? filledFrom(layout.slots, profileFor(loads, [layout.standardLoadId]))
+          : filledFrom(layout.slots, chosen, true),
+      );
     }
 
     // 2. standardLoadId: a profile, or null for the layout's or the bank's default.
@@ -818,7 +851,7 @@ class AtmSettlementPlanService {
             : null;
         profile = profileFor(loads, [layout?.standardLoadId]);
       }
-      Object.assign(next, filledFrom(next.slots, profile));
+      Object.assign(next, filledFrom(next.slots, profile, patch.standardLoadId !== null));
     }
 
     // 3. Totals per denomination; 4. single slots.
@@ -886,6 +919,7 @@ class AtmSettlementPlanService {
               slots: next.slots,
               countsSource: next.countsSource,
               standardLoadId: next.standardLoadId,
+              standardLoadChosen: next.standardLoadChosen,
               standardNotes: next.standardNotes,
               egpTotalMinor: next.egpTotalMinor,
               updatedBy: by,
@@ -1042,7 +1076,15 @@ class AtmSettlementPlanService {
           { session },
         ).exec();
         if (moved.matchedCount !== 1) throw new StaleDocumentError();
-        await AtmLinePreparationModel.create(
+        // A re-issued line's preparation continues above the voided one's version (§6.8): a
+        // capture, «تم التجهيز» or reopen sent with a version read from the voided preparation
+        // can then never match the new one, though both are found by the line (P3–P5).
+        const voided = await AtmLinePreparationModel.findOne({ lineId: line._id }, { __v: 1 })
+          .sort({ __v: -1 })
+          .session(session)
+          .lean<{ _id: Types.ObjectId; __v: number }>()
+          .exec();
+        const [created] = await AtmLinePreparationModel.create(
           [
             {
               lineId: line._id,
@@ -1064,6 +1106,13 @@ class AtmSettlementPlanService {
           ],
           { session },
         );
+        if (voided !== null && created !== undefined) {
+          await AtmLinePreparationModel.updateOne(
+            { _id: created._id },
+            { $set: { __v: voided.__v + 1 } },
+            { session },
+          ).exec();
+        }
         pending.push({
           entityRef: lineRef(String(line._id)),
           action: 'statusChange',
@@ -1137,12 +1186,25 @@ class AtmSettlementPlanService {
     const audits = await unitOfWork(async (session) => {
       const pending: PendingAudit[] = [];
       const now = new Date();
+      // The print count as stored now: a Note print does not move the line's version, so one that
+      // committed since the read above must still reach the voided serial's record. The write is
+      // filtered on it, so a print committing meanwhile conflicts and the attempt is retried.
+      const stored = await AtmPlanLineModel.findOne(
+        { _id: line._id, isDeleted: false },
+        { notePrintCount: 1 },
+      )
+        .session(session)
+        .lean<Pick<AtmPlanLineDoc, 'notePrintCount'>>()
+        .exec();
+      if (stored === null) throw new StaleDocumentError();
+      const printCount = stored.notePrintCount;
       const moved = await AtmPlanLineModel.updateOne(
         {
           _id: line._id,
           planId: line.planId,
           status: 'issued',
           __v: input.version,
+          notePrintCount: printCount,
           isDeleted: false,
         },
         {
@@ -1157,7 +1219,7 @@ class AtmSettlementPlanService {
           $push: {
             voidedSerials: {
               serial,
-              printCount: line.notePrintCount,
+              printCount,
               at: now,
               byName: name,
               reason: input.reason,

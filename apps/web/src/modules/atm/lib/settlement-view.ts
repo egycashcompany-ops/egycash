@@ -5,6 +5,7 @@
 // ONE WORD PER CONCEPT (DS-32): a slot is «كاسيت», a bag «شوال», a cassette seal «سيلز». Every word
 // here is an i18n key — the papers' words live in `papers/settlement-paper-wording.ts`, not here.
 import {
+  ATM_CASSETTE_NOTES_MAX,
   ATM_LAYOUT_IMPORT_OUTCOMES,
   ErrorCodes,
   bagAllocation,
@@ -20,7 +21,7 @@ import {
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatMoney } from '../../../shared/lib/format';
+import { formatMoney, formatNumber } from '../../../shared/lib/format';
 import { type Tone } from '../../../shared/ui/Badge';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -226,12 +227,18 @@ export const settlementErrorText = (error: unknown, t: Translate, locale: Locale
   }
   const field = detailCode(error, [
     'SLOT_NOT_FILLABLE',
+    'CASSETTE_NOTES_MAX',
     'INVALID_SEAL',
     'DUPLICATE_NAME',
     'MOVED',
     'UNREADABLE',
   ]);
   if (field === 'SLOT_NOT_FILLABLE') return t('atm.plan.error.slotNotFillable');
+  if (field === 'CASSETTE_NOTES_MAX') {
+    return t('atm.plan.error.cassetteNotesMax', {
+      max: formatNumber(ATM_CASSETTE_NOTES_MAX, locale),
+    });
+  }
   if (field === 'INVALID_SEAL') return t('atm.prep.error.invalidSeal');
   if (field === 'DUPLICATE_NAME') return t('atm.control.error.duplicateName');
   if (field === 'MOVED') return t('atm.control.error.moved');

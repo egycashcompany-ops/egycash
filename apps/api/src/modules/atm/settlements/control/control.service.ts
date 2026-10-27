@@ -260,6 +260,10 @@ class AtmControlService {
     });
 
     const live = lines.filter((l) => l.status !== 'cancelled');
+    const routes = await this.routesOfDay(branchId, date);
+    // A line counts as distributed only on a LIVE route of the day: an assignment left on a deleted
+    // route (C3/C5 race, SEC-2) would otherwise hide its bags from every sheet and from this count.
+    const liveRouteIds = new Set(routes.map((r) => r.id));
     return {
       branch: { id: branchId, name: await branchNameOf(branchId) },
       date,
@@ -278,8 +282,8 @@ class AtmControlService {
         };
       }),
       lines: dayLines,
-      routes: await this.routesOfDay(branchId, date),
-      unassigned: live.filter((l) => !routeOf.has(String(l._id))).length,
+      routes,
+      unassigned: live.filter((l) => !liveRouteIds.has(routeOf.get(String(l._id)) ?? '')).length,
     };
   }
 
@@ -567,6 +571,17 @@ class AtmControlService {
           }
         }
         for (const [i, move] of input.moves.entries()) {
+          // The line is still issued or prepared, and written, so an S19 reopen or S20 cancel
+          // committed since step 1 is refused here and one in flight conflicts with this move.
+          if (!(await this.holdLine(asId(move.lineId), branchId, date, session))) {
+            throw new ValidationError([
+              {
+                field: `moves[${String(i)}]`,
+                code: 'LINE_STATE',
+                message: 'not a line of this day',
+              },
+            ]);
+          }
           pending.push(...(await this.applyMove(move, i, branchId, date, by, session)));
         }
         return pending;
@@ -580,6 +595,30 @@ class AtmControlService {
       signalControlDay(planId, String(branchId));
     }
     return this.routesOfDay(String(branchId), date);
+  }
+
+  /**
+   * Inside a C3/C6 transaction: bumps the line's version when it is still an issued or prepared
+   * line of this branch-day (SEC-3); false when it no longer is.
+   */
+  private async holdLine(
+    lineId: Types.ObjectId,
+    branchId: Types.ObjectId,
+    date: string,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const held = await AtmPlanLineModel.updateOne(
+      {
+        _id: lineId,
+        branchId,
+        replenishDate: date,
+        status: { $in: ['issued', 'prepared'] },
+        isDeleted: false,
+      },
+      { $inc: { __v: 1 } },
+      { session },
+    ).exec();
+    return held.matchedCount === 1;
   }
 
   /** One move inside C6's transaction: `from` must still hold; upsert, or remove when `to` is null. */
@@ -722,6 +761,7 @@ class AtmControlService {
     }
 
     // 5. One transaction: reuse or create each zone's route, then assign with `from: null`.
+    await runSettlementHook('control.zones.beforeWrite');
     const by = asId(ctx.userId);
     let outcome: { audits: PendingAudit[]; routesCreated: number; assignedCount: number };
     try {
@@ -743,6 +783,7 @@ class AtmControlService {
           const zoneLines = byZone.get(String(zone._id));
           if (zoneLines === undefined) continue;
           let routeId = existing.find((r) => String(r.zoneId) === String(zone._id))?._id;
+          const reused = routeId !== undefined;
           if (routeId === undefined) {
             if (count >= ATM_ROUTES_PER_DAY_MAX) {
               throw new BusinessRuleError(
@@ -785,6 +826,8 @@ class AtmControlService {
               .session(session)
               .exec();
             if (taken !== null) continue;
+            // A line reopened or cancelled since step 2 is skipped (SEC-3).
+            if (!(await this.holdLine(line._id, branchId, date, session))) continue;
             await AtmRouteAssignmentModel.create(
               [
                 {
@@ -804,6 +847,17 @@ class AtmControlService {
               action: 'create',
               changes: [{ field: 'routeId', old: null, new: String(routeId) }],
             });
+          }
+          // A reused route is written too, as C6 writes its targets (§6.9): a C5 delete committed
+          // since this transaction read it conflicts (the attempt is retried and finds it gone),
+          // so no line is left on a deleted route (SEC-2).
+          if (reused) {
+            const touched = await AtmDispatchRouteModel.updateOne(
+              { _id: routeId, branchId, replenishDate: date, isDeleted: false },
+              { $inc: { __v: 1 } },
+              { session },
+            ).exec();
+            if (touched.matchedCount !== 1) throw new StaleDocumentError();
           }
         }
         return { audits, routesCreated, assignedCount };

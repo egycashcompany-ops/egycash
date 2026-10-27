@@ -171,6 +171,11 @@ export const serverValues = (line: AtmPreparationLineDto): Record<CaptureFieldId
 /** One open line's form: the values it was seeded from, and the user's. */
 export interface CaptureForm {
   lineId: string;
+  /**
+   * The preparation the values were captured for. A line reopened and issued again gets a NEW
+   * preparation (another Note, another bag): a form of the old one is dropped, never merged.
+   */
+  preparationId: string;
   /** The preparation version `base` came from — what a save carries. */
   version: number;
   /** The server's values when the form was seeded or last merged. */
@@ -186,18 +191,24 @@ export const isDirty = (form: CaptureForm): boolean =>
   (Object.keys(form.values) as CaptureFieldId[]).some((id) => form.values[id] !== form.base[id]);
 
 /**
- * The form for `line`: a fresh one when another line is opened (or none was), the CURRENT one when
- * it holds unsaved values — a refetch never overwrites them — and otherwise re-read from the
- * server, so a clean form shows what a colleague captured meanwhile.
+ * The form for `line`: a fresh one when another line is opened (or none was) or the line's
+ * preparation was replaced (reopened and issued again), the CURRENT one when it holds unsaved
+ * values — a refetch never overwrites them — and otherwise re-read from the server, so a clean form
+ * shows what a colleague captured meanwhile.
  */
 export const seedOnce = (current: CaptureForm | null, line: AtmPreparationLineDto): CaptureForm => {
-  if (current !== null && current.lineId === line.lineId) {
+  if (
+    current !== null &&
+    current.lineId === line.lineId &&
+    current.preparationId === line.preparation.id
+  ) {
     if (isDirty(current) || current.conflicts.length > 0) return current;
     if (current.version === line.preparation.version) return current;
   }
   const base = serverValues(line);
   return {
     lineId: line.lineId,
+    preparationId: line.preparation.id,
     version: line.preparation.version,
     base,
     values: base,
@@ -224,6 +235,8 @@ export const mergeAfterConflict = (
   local: CaptureForm,
   fresh: AtmPreparationLineDto,
 ): CaptureForm => {
+  // Values typed for a preparation that was replaced belong to a voided Note's bag: start afresh.
+  if (local.preparationId !== fresh.preparation.id) return seedOnce(null, fresh);
   const server = serverValues(fresh);
   const values: Partial<Record<CaptureFieldId, string>> = {};
   const conflicts: { field: CaptureFieldId; server: string }[] = [];
@@ -239,6 +252,7 @@ export const mergeAfterConflict = (
   }
   return {
     lineId: fresh.lineId,
+    preparationId: fresh.preparation.id,
     version: fresh.preparation.version,
     base: server,
     values: values as Record<CaptureFieldId, string>,

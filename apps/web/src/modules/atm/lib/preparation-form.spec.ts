@@ -206,6 +206,25 @@ describe('the local values survive a refetch and a 409', () => {
     expect(other.lineId).toBe('line-2');
   });
 
+  it('a form of a preparation that was replaced (reopened, issued again) is dropped, even unsaved', () => {
+    // The same line and version, another preparation: the values were scanned for a voided Note.
+    const reissued = (version: number): AtmPreparationLineDto => {
+      const base = line(version, {});
+      return { ...base, serial: 8, preparation: { ...base.preparation, id: 'prep-2' } };
+    };
+    const typed = setFieldValue(seedOnce(null, line(1, {})), 'seal:1', 'SEAL-T-0001');
+    expect(isDirty(typed)).toBe(true);
+    const after = seedOnce(typed, reissued(1));
+    expect(after).not.toBe(typed);
+    expect(after).toMatchObject({ preparationId: 'prep-2', version: 1, conflicts: [] });
+    expect(after.values['seal:1']).toBe('');
+    expect(isDirty(after)).toBe(false);
+    // A 409 answered with the new preparation starts afresh too; nothing typed is carried over.
+    const merged = mergeAfterConflict(typed, reissued(4));
+    expect(merged).toMatchObject({ preparationId: 'prep-2', version: 4, conflicts: [] });
+    expect(isDirty(merged)).toBe(false);
+  });
+
   it('mergeAfterConflict re-applies the user’s values onto the new version', () => {
     const form = setFieldValue(seedOnce(null, line(1, {})), 'seal:1', 'SEAL-T-0001');
     // Meanwhile someone saved slot 2 and the QR.

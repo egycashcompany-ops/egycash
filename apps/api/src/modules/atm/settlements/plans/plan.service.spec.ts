@@ -163,6 +163,8 @@ describe('issue (S18)', () => {
       return chain({ matchedCount: 1 });
     }) as never);
     vi.spyOn(AtmLinePreparationModel, 'create').mockResolvedValue([] as never);
+    // No voided preparation: a first issue (SEC-1's version floor is the integration suite's).
+    vi.spyOn(AtmLinePreparationModel, 'findOne').mockReturnValue(chain(null));
   });
 
   afterEach(() => {

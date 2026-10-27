@@ -12,6 +12,7 @@ import {
   receiptRows,
   sumMinorUnits,
   ATM_PLAN_LINE_STATUSES,
+  type AtmLayoutContent,
   type AtmPlanLineDto,
   type AtmPlanLineIssue,
   type AtmPlanLineStatus,
@@ -74,7 +75,8 @@ export const bySerial = byPlanOrder;
 export interface PlanWorld {
   today: string;
   machines: Map<string, Pick<AtmMachineDoc, '_id' | 'isActive'>>;
-  layouts: Map<string, { revision: number }>;
+  /** Each machine's live layout: its revision and the content a line copies (§3.7). */
+  layouts: Map<string, { revision: number } & AtmLayoutContent>;
   banks: Map<string, MachineBank>;
 }
 
@@ -99,7 +101,18 @@ export const loadPlanWorld = async (lines: readonly AtmPlanLineDoc[]): Promise<P
   return {
     today: cairoDateString(new Date()),
     machines: new Map(machines.map((m) => [String(m._id), m])),
-    layouts: new Map([...layouts].map(([id, doc]) => [id, { revision: doc.revision }])),
+    layouts: new Map(
+      [...layouts].map(([id, doc]) => [
+        id,
+        {
+          revision: doc.revision,
+          slots: doc.slots,
+          typeLabel: doc.typeLabel,
+          featuresLabel: doc.featuresLabel,
+          hubLabel: doc.hubLabel,
+        },
+      ]),
+    ),
     banks,
   };
 };
@@ -134,6 +147,8 @@ export const issuesOf = (
       status: line.status,
       slots: line.slots,
       typeLabel: line.typeLabel,
+      featuresLabel: line.featuresLabel,
+      hubLabel: line.hubLabel,
       layoutRevision: line.layoutRevision,
       standardNotes: line.standardNotes,
     },

@@ -451,6 +451,8 @@ describe('planLineIssues (§3.7)', () => {
     status: 'draft',
     slots: withNotes(mix(200, 200, 100, 50), [2100, 2100, 1300, 900]),
     typeLabel: 'BRK (T1)',
+    featuresLabel: null,
+    hubLabel: null,
     layoutRevision: 3,
     standardNotes: [
       { denomination: 200, notes: 4200 },
@@ -458,9 +460,17 @@ describe('planLineIssues (§3.7)', () => {
       { denomination: 50, notes: 900 },
     ],
   });
+  /** The machine's layout at `revision`, the content `clean()` copied unless `over` changes it. */
+  const layoutAt = (
+    revision: number,
+    over: Partial<NonNullable<AtmPlanLineIssueContext['layout']>> = {},
+  ): NonNullable<AtmPlanLineIssueContext['layout']> => {
+    const { slots, typeLabel, featuresLabel, hubLabel } = clean();
+    return { revision, slots, typeLabel, featuresLabel, hubLabel, ...over };
+  };
   const ctx = (over: Partial<AtmPlanLineIssueContext> = {}): AtmPlanLineIssueContext => ({
     otherLines: [],
-    layout: { revision: 3 },
+    layout: layoutAt(3),
     machinePlannable: true,
     replenishDate: today,
     today,
@@ -524,16 +534,27 @@ describe('planLineIssues (§3.7)', () => {
     expect(codes(clean(), ctx({ replenishDate: '2026-11-01' }))).toEqual(['PAST_DATE']);
   });
 
-  it('LAYOUT_CHANGED on a draft by revision alone (a label-only change bumps it)', () => {
-    expect(codes(clean(), ctx({ layout: { revision: 4 } }))).toEqual(['LAYOUT_CHANGED']);
+  it('LAYOUT_CHANGED on a draft when the revision moved with a label or a slot', () => {
+    expect(codes(clean(), ctx({ layout: layoutAt(4, { hubLabel: 'منطقة تجريبية 2' }) }))).toEqual([
+      'LAYOUT_CHANGED',
+    ]);
+    const slots = mix(200, 100, 100, 50);
+    expect(codes(clean(), ctx({ layout: layoutAt(4, { slots }) }))).toEqual(['LAYOUT_CHANGED']);
   });
 
   it('LAYOUT_CHANGED_AFTER_ISSUE on an issued line dated today, never on one dated yesterday', () => {
     const issued = { ...clean(), status: 'issued' as const };
-    expect(codes(issued, ctx({ layout: { revision: 4 } }))).toEqual(['LAYOUT_CHANGED_AFTER_ISSUE']);
-    expect(codes(issued, ctx({ layout: { revision: 4 }, replenishDate: '2026-11-01' }))).toEqual([
+    const changed = layoutAt(4, { typeLabel: 'BRK (T2)' });
+    expect(codes(issued, ctx({ layout: changed }))).toEqual(['LAYOUT_CHANGED_AFTER_ISSUE']);
+    expect(codes(issued, ctx({ layout: changed, replenishDate: '2026-11-01' }))).toEqual([
       'PAST_DATE',
     ]);
+  });
+
+  it('a revision that moved with the same slots and labels (a standard load re-pointed) raises neither', () => {
+    expect(codes(clean(), ctx({ layout: layoutAt(4) }))).toEqual([]);
+    expect(codes({ ...clean(), status: 'issued' }, ctx({ layout: layoutAt(4) }))).toEqual([]);
+    expect(codes({ ...clean(), status: 'prepared' }, ctx({ layout: layoutAt(9) }))).toEqual([]);
   });
 
   it('STANDARD_DENOMINATION_UNPLACED when the profile carries a denomination no slot has', () => {

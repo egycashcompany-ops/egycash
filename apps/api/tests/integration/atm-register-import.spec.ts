@@ -573,6 +573,17 @@ describe('preview and refusals', () => {
     expect(runs[0]).not.toHaveProperty('rows');
     expect(res.headers['cache-control']).toBe('private, no-store');
   });
+
+  it('12b — the upload cap bounds the text fields too: too many is 422 TOO_LARGE (SEC-5)', async () => {
+    const file = await workbook([alexOpen({ machineCode: 99991202 })]);
+    let req = request(app)
+      .post('/api/v1/atm/register/import')
+      .set('Authorization', `Bearer ${importerToken}`);
+    for (let i = 0; i < 11; i += 1) req = req.field(`pad${String(i)}`, 'x');
+    const res = await req.attach('file', file, 'register-test.xlsx');
+    expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(422);
+    expect(errorDetails(res).map((d) => d.code)).toEqual(['TOO_LARGE']);
+  });
 });
 
 describe('categories, idempotency, coupling', () => {

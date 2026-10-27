@@ -9382,6 +9382,8 @@ const en: Record<string, string> = {
     'Preparation already recorded seals for this line; cancel it instead.',
   'atm.plan.error.slotNotFillable':
     'Notes can only be set on Egyptian-pound withdrawal or recycle cassettes.',
+  'atm.plan.error.cassetteNotesMax':
+    'A cassette holds at most {{max}} notes; check the total typed.',
   'atm.plan.error.issueBlocked': 'Some lines have errors that block issue; check the marked lines.',
   'atm.plan.error.bankNotEnabled': 'This bank is not enabled on the settlement pages.',
   'atm.layouts.title': 'Cassette denominations',
@@ -18822,6 +18824,8 @@ const ar: Record<string, string> = {
   'atm.plan.error.hasCaptures': 'سجّل التجهيز سيلزات لهذا السطر؛ ألغِ السطر بدلًا من إعادته.',
   'atm.plan.error.slotNotFillable':
     'لا يُحدَّد عدد الورق إلا لكاسيتات السحب أو الريسايكل بالجنيه المصري.',
+  'atm.plan.error.cassetteNotesMax':
+    'لا يتسع الكاسيت لأكثر من {{max}} ورقة؛ راجع الإجمالي المُدخل.',
   'atm.plan.error.issueBlocked': 'في بعض السطور أخطاء تمنع الاعتماد؛ راجع السطور المعلَّمة.',
   'atm.plan.error.bankNotEnabled': 'هذا البنك غير مفعّل في صفحات التسويات.',
   'atm.layouts.title': 'فئات الكاسيتات',

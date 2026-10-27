@@ -488,8 +488,18 @@ export interface AtmPlanLineIssueInput {
   status: AtmPlanLineStatus;
   slots: readonly AtmPlanSlot[];
   typeLabel: string | null;
+  featuresLabel: string | null;
+  hubLabel: string | null;
   layoutRevision: number | null;
   standardNotes: readonly AtmDenominationNotes[] | null;
+}
+
+/** What a line snapshots of its machine's layout (DS-29): the slots and the three labels. */
+export interface AtmLayoutContent {
+  slots: readonly AtmCassetteSlot[];
+  typeLabel: string | null;
+  featuresLabel: string | null;
+  hubLabel: string | null;
 }
 
 export interface AtmPlanLineIssueContext {
@@ -499,7 +509,7 @@ export interface AtmPlanLineIssueContext {
     'kind' | 'machineId' | 'run' | 'scheduleTime' | 'status'
   >[];
   /** Machine lines: the machine's current layout, or null when it has none. */
-  layout: { revision: number } | null;
+  layout: ({ revision: number } & AtmLayoutContent) | null;
   /**
    * Machine lines: the machine is live and active and its register bank (DS-3) is still the
    * plan's. Ignored for a spare line.
@@ -509,6 +519,17 @@ export interface AtmPlanLineIssueContext {
   /** 'YYYY-MM-DD', the Cairo calendar day. */
   today: string;
 }
+
+/** The slots (kind, denomination, currency by slot) and labels, comparable as one string. */
+const layoutContentKey = (content: AtmLayoutContent): string =>
+  JSON.stringify([
+    [...content.slots]
+      .sort((a, b) => a.slot - b.slot)
+      .map((s) => [s.slot, s.kind, s.denomination ?? null, s.currency ?? null]),
+    content.typeLabel,
+    content.featuresLabel,
+    content.hubLabel,
+  ]);
 
 /**
  * §3.7: a line's errors (they block issue) then its warnings (shown and confirmed, never blocking),
@@ -548,8 +569,14 @@ export const planLineIssues = (
   for (const s of line.slots) {
     if (s.notes % ATM_NOTES_ROUNDING !== 0) warning('NOT_MULTIPLE_OF_100', s.slot);
   }
+  // The layout changed: its revision moved AND its slots or a label differ from the line's copy. A
+  // save that only re-points the layout's standard load moves the revision and changes nothing a
+  // Note prints, so it raises neither warning.
   const revisionMoved =
-    isMachine && ctx.layout !== null && line.layoutRevision !== ctx.layout.revision;
+    isMachine &&
+    ctx.layout !== null &&
+    line.layoutRevision !== ctx.layout.revision &&
+    layoutContentKey(line) !== layoutContentKey(ctx.layout);
   if (revisionMoved && line.status === 'draft') warning('LAYOUT_CHANGED');
   if (
     revisionMoved &&

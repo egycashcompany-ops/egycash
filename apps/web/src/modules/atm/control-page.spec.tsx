@@ -166,6 +166,21 @@ describe('the routes tab', () => {
     expect(html).not.toContain(`data-route-item="${line(3).lineId}"`);
   });
 
+  it('a line whose route is not a live route of the day is «لم يُوزّع بعد», never on no list', () => {
+    const GONE = '66b000000000000000000039';
+    const dto = day({ lines: [line(1, { routeId: ROUTE }), line(2, { routeId: GONE })] });
+    const html = render(dto, 'routes');
+    const start = html.indexOf('data-route-group="unassigned"');
+    const group = html.slice(start, html.indexOf('</section>', start));
+    expect(group).toContain(`data-route-item="${line(2).lineId}"`);
+    expect(group).toContain(t('atm.control.unassigned', { n: '١' }));
+    const data = render(dto, 'data');
+    const row = data.indexOf(`data-control-line="${line(2).lineId}"`);
+    expect(data.slice(row, data.indexOf('</tr>', row))).toContain(
+      t('atm.control.unassignedOption'),
+    );
+  });
+
   it('names the route with its leader, machines and bags', () => {
     expect(render(day(), 'routes')).toContain(
       t('atm.control.routeSummary', { leader: 'قائد تجريبي', n: '١', b: '١' }),

@@ -29,14 +29,39 @@ import { importRegisterWorkbook, listRegisterImportRuns } from './register-impor
 export const REGISTER_IMPORT_MAX_MB = 20;
 
 /**
- * The workbook upload, held in MEMORY: one file in field `file`, at most `maxMb` megabytes, the
- * `TOO_LARGE` answer beyond it. Shared with the settlements master import, which passes its own
- * cap (docs/12-planning/atm-settlements-phase1.md §6.3).
+ * The text fields an upload may carry besides its file: the settlements import sends at most seven
+ * (`LayoutImportFieldsSchema`, whose largest, `previewRevisions`, is ≤ 200 000 characters of
+ * ASCII JSON), the register import three. busboy's defaults are no count limit and 1 MB a field,
+ * all buffered before the controller runs, so the cap must bound the fields too (SEC-5).
+ */
+export const UPLOAD_FIELDS_MAX = 10;
+export const UPLOAD_FIELD_BYTES_MAX = 256 * 1024;
+
+/** The multer limits whose breach is the cap's 422 `TOO_LARGE`, not a server error. */
+const OVER_CAP: ReadonlySet<string> = new Set([
+  'LIMIT_FILE_SIZE',
+  'LIMIT_FIELD_COUNT',
+  'LIMIT_FIELD_VALUE',
+  'LIMIT_FIELD_KEY',
+  'LIMIT_PART_COUNT',
+]);
+
+/**
+ * The workbook upload, held in MEMORY: one file in field `file`, at most `maxMb` megabytes, and at
+ * most `UPLOAD_FIELDS_MAX` text fields of `UPLOAD_FIELD_BYTES_MAX` each; the `TOO_LARGE` answer
+ * beyond any of them. Shared with the settlements master import, which passes its own cap
+ * (docs/12-planning/atm-settlements-phase1.md §6.3).
  */
 export const workbookUpload = (maxMb: number): RequestHandler => {
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: maxMb * 1024 * 1024, files: 1 },
+    limits: {
+      fileSize: maxMb * 1024 * 1024,
+      files: 1,
+      fields: UPLOAD_FIELDS_MAX,
+      fieldSize: UPLOAD_FIELD_BYTES_MAX,
+      parts: UPLOAD_FIELDS_MAX + 1,
+    },
   }).single('file');
   return (req: Request, res: Response, next: NextFunction): void => {
     upload(req, res, (error: unknown) => {
@@ -44,14 +69,23 @@ export const workbookUpload = (maxMb: number): RequestHandler => {
         next();
         return;
       }
-      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      if (error instanceof multer.MulterError && OVER_CAP.has(error.code)) {
+        const file = error.code === 'LIMIT_FILE_SIZE';
         next(
           new AppError(
             ErrorCodes.VALIDATION_FAILED,
             422,
-            `File exceeds the ${String(maxMb)} MB cap`,
+            file
+              ? `File exceeds the ${String(maxMb)} MB cap`
+              : 'The request exceeds the upload cap',
             {
-              details: [{ field: 'file', code: 'TOO_LARGE', message: `${String(maxMb)} MB` }],
+              details: [
+                {
+                  field: file ? 'file' : 'body',
+                  code: 'TOO_LARGE',
+                  message: file ? `${String(maxMb)} MB` : error.code,
+                },
+              ],
             },
           ),
         );

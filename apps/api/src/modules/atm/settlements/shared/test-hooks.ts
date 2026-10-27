@@ -16,7 +16,8 @@ export type SettlementHookPoint =
   | 'print.notes.beforeWrite'
   | 'preparation.save.beforeWrite'
   | 'preparation.prepared.beforeWrite'
-  | 'control.assign.beforeWrite';
+  | 'control.assign.beforeWrite'
+  | 'control.zones.beforeWrite';
 
 const hooks = new Map<SettlementHookPoint, () => Promise<void>>();
 

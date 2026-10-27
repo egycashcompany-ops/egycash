@@ -837,6 +837,7 @@ const HOOK_POINTS: SettlementHookPoint[] = [
   'preparation.save.beforeWrite',
   'preparation.prepared.beforeWrite',
   'control.assign.beforeWrite',
+  'control.zones.beforeWrite',
 ];
 
 afterEach(() => {
@@ -1336,6 +1337,25 @@ describe('3–5. the Full list seed import (S-1, §5)', () => {
     expect(out.status).toBe(400);
     expect(detailCodes(out)).toEqual(['OUT_OF_REACH']);
     expect((await importBook('noKeys', book, importFields())).status).toBe(403);
+  });
+
+  it('5 — the upload cap bounds the text fields too: one too large, or too many, is 422 TOO_LARGE (SEC-5)', async () => {
+    // busboy alone would buffer up to 1 MB a field and any number of fields before the schema ran.
+    const tooLarge = await importBook(
+      'alphaSettle',
+      book,
+      importFields({ previewRevisions: 'x'.repeat(300 * 1024) }),
+    );
+    expect(tooLarge.status, JSON.stringify(tooLarge.body).slice(0, 300)).toBe(422);
+    expect(detailCodes(tooLarge)).toEqual(['TOO_LARGE']);
+    const pads = Object.fromEntries(
+      Array.from({ length: 12 }, (_, i) => [`pad${String(i)}`, 'x'] as const),
+    );
+    const tooMany = await importBook('alphaSettle', book, importFields(pads));
+    expect(tooMany.status, JSON.stringify(tooMany.body).slice(0, 300)).toBe(422);
+    expect(detailCodes(tooMany)).toEqual(['TOO_LARGE']);
+    // What the page sends (an apply carries seven fields) stays inside the cap.
+    expect((await importBook('alphaSettle', book, importFields())).status).toBe(200);
   });
 });
 
@@ -1922,6 +1942,54 @@ describe('10. editing a draft (§6.5 S16, S17)', () => {
     expect((await patchLine(planId, dep, { notes: [{ slot: 9, notes: 100 }] })).status).toBe(400);
   });
 
+  it('a typed total whose even split overfills a cassette is refused on its field; a spare too (MONEY-1)', async () => {
+    const line = lineOf(await getPlan(planId), 'BRKN9001');
+    // Two 200 cassettes: 300 000 would put 150 000 in each, over the per-cassette cap.
+    const over = await patchLine(planId, line, {
+      denominationNotes: [{ denomination: 200, notes: 300_000 }],
+    });
+    expect(over.status).toBe(400);
+    expect(detailsOf(over)).toEqual([
+      expect.objectContaining({
+        field: 'body.denominationNotes.0.notes',
+        code: 'CASSETTE_NOTES_MAX',
+      }),
+    ]);
+    expect(lineOf(await getPlan(planId), 'BRKN9001')).toMatchObject({
+      version: line.version,
+      egpTotalMinor: line.egpTotalMinor,
+    });
+    const full = await okData<AtmPlanLineDto>(
+      patchLine(planId, line, { denominationNotes: [{ denomination: 200, notes: 200_000 }] }),
+    );
+    expect(full.slots.filter((s) => s.denomination === 200).map((s) => s.notes)).toEqual([
+      100_000, 100_000,
+    ]);
+    // A spare set with one 100 cassette: the same refusal, never a server error.
+    const spare = await call(
+      'post',
+      `/atm/settlements/plans/${planId}/spare-lines`,
+      'alphaSettle',
+      {
+        run: 1,
+        scheduleTime: '09:00',
+        spareCode: 'SP-T9',
+        typeLabel: 'BRK (S2)',
+        slots: [W(1, 100)],
+        standardLoadId: null,
+        denominationNotes: [{ denomination: 100, notes: 800_000 }],
+      },
+    );
+    expect(spare.status, JSON.stringify(spare.body).slice(0, 300)).toBe(400);
+    expect(detailsOf(spare)).toEqual([
+      expect.objectContaining({
+        field: 'body.denominationNotes.0.notes',
+        code: 'CASSETTE_NOTES_MAX',
+      }),
+    ]);
+    expect((await getPlan(planId)).lines.some((l) => l.kind === 'spare')).toBe(false);
+  });
+
   it("refreshLayout takes the machine's new layout and refills from the line's profile", async () => {
     const before = await layoutDetail('alphaSettle', machine.A1 ?? '');
     await okData(
@@ -1989,6 +2057,96 @@ describe('10. editing a draft (§6.5 S16, S17)', () => {
         action: 'delete',
       }),
     ).toHaveLength(1);
+  });
+
+  it('refreshLayout follows the profile the layout points at now, unless one was chosen for the line (MONEY-2)', async () => {
+    const code = 'BRKN9401';
+    const id = await brkMachine('AREF', code);
+    const labels = { typeLabel: 'BRK (S2)' };
+    await okData(putLayout('alphaSettle', id, STD4, labels));
+    const plan = await buildPlan(day(26), [{ run: 1, rows: [[code, '01:00']] }]);
+    let line = lineOf(plan, code);
+    // Added with the bank default (the layout names no profile yet).
+    expect(line.standardLoadId).toBe(PROFILE.def);
+    expect(line.slots.map((s) => s.notes)).toEqual([2000, 2000, 2000, 1000]);
+
+    const save = async (typeLabel: string): Promise<void> => {
+      const detail = await layoutDetail('alphaSettle', id);
+      await okData(
+        putLayout('alphaSettle', id, STD4, {
+          version: detail.layout?.version ?? 0,
+          typeLabel,
+          standardLoadId: PROFILE.alt,
+        }),
+      );
+    };
+    // The machine moves to the other profile, and its type changes: «تحديث من فئات الماكينة».
+    await save('BRK (S3)');
+    line = lineOf(await getPlan(plan.id), code);
+    expect(line.issues.map((i) => i.code)).toContain('LAYOUT_CHANGED');
+    line = await okData<AtmPlanLineDto>(patchLine(plan.id, line, { refreshLayout: true }));
+    expect(line).toMatchObject({
+      standardLoadId: PROFILE.alt,
+      countsSource: 'standard',
+      typeLabel: 'BRK (S3)',
+    });
+    expect(line.slots.map((s) => s.notes)).toEqual([1000, 1000, 1000, 600]);
+    expect(line.issues.map((i) => i.code)).not.toContain('LAYOUT_CHANGED');
+
+    // A profile the user chose for the line survives the next refresh.
+    line = await okData<AtmPlanLineDto>(patchLine(plan.id, line, { standardLoadId: PROFILE.def }));
+    await save('BRK (S4)');
+    line = await okData<AtmPlanLineDto>(
+      patchLine(plan.id, lineOf(await getPlan(plan.id), code), { refreshLayout: true }),
+    );
+    expect(line).toMatchObject({ standardLoadId: PROFILE.def, typeLabel: 'BRK (S4)' });
+    expect(line.slots.map((s) => s.notes)).toEqual([2000, 2000, 2000, 1000]);
+    // «الافتراضية» (null) hands the line back to the layout's profile.
+    line = await okData<AtmPlanLineDto>(patchLine(plan.id, line, { standardLoadId: null }));
+    expect(line.standardLoadId).toBe(PROFILE.alt);
+  });
+
+  it('a layout save that only re-points its standard load raises neither layout warning (MONEY-3)', async () => {
+    const code = 'BRKN9402';
+    const id = await brkMachine('ASTD', code);
+    const labels = { typeLabel: 'BRK (S2)', hubLabel: 'منطقة تجريبية 1' };
+    await okData(putLayout('alphaSettle', id, STD4, labels));
+    const plan = await buildPlan(day(29), [
+      { run: 1, rows: [[code, '01:00']] },
+      { run: 2, rows: [[code, '20:00']] },
+    ]);
+    await okData(issue(plan.id, [lineOf(plan, code, 1)]));
+    const layoutCodes = async (run: 1 | 2): Promise<string[]> =>
+      lineOf(await getPlan(plan.id), code, run)
+        .issues.map((i) => i.code)
+        .filter((c) => c.startsWith('LAYOUT_CHANGED'));
+
+    let detail = await layoutDetail('alphaSettle', id);
+    await okData(
+      putLayout('alphaSettle', id, STD4, {
+        ...labels,
+        version: detail.layout?.version ?? 0,
+        standardLoadId: PROFILE.alt,
+      }),
+    );
+    detail = await layoutDetail('alphaSettle', id);
+    // The change is kept in the layout's history all the same.
+    expect(detail.layout).toMatchObject({ revision: 2, standardLoadId: PROFILE.alt });
+    expect(detail.versions).toHaveLength(2);
+    expect(await layoutCodes(1)).toEqual([]);
+    expect(await layoutCodes(2)).toEqual([]);
+
+    // A label change still raises both.
+    await okData(
+      putLayout('alphaSettle', id, STD4, {
+        ...labels,
+        typeLabel: 'BRK (S5)',
+        version: detail.layout?.version ?? 0,
+        standardLoadId: PROFILE.alt,
+      }),
+    );
+    expect(await layoutCodes(1)).toEqual(['LAYOUT_CHANGED_AFTER_ISSUE']);
+    expect(await layoutCodes(2)).toEqual(['LAYOUT_CHANGED']);
   });
 });
 
@@ -2321,6 +2479,51 @@ describe('12. reopen and cancel (§6.5 S19, S20)', () => {
     expect(errorCode(await lineAction(planId, cancelled, 'reopen', 'مرة أخرى'))).toBe(
       'ATM_PLAN_LINE_STATE',
     );
+  });
+
+  it('a capture or «تم التجهيز» from the form of a voided preparation answers 409 once the line is issued again (SEC-1)', async () => {
+    const plan = await buildPlan(day(27), [{ run: 1, rows: [['BRKN9001', '01:00']] }]);
+    let line = lineOf(await issueAll(plan.id), 'BRKN9001');
+    // Preparation's form saves once with nothing scanned, so the line can still be reopened.
+    const first = await prepOf(plan.id, line.id);
+    const stale = (await okData<{ line: AtmPreparationLineDto }>(savePrep(first, {}))).line;
+    line = lineOf(await getPlan(plan.id), 'BRKN9001');
+    await okData(lineAction(plan.id, line, 'reopen', 'تعديل العدد'));
+    await issueAll(plan.id);
+    const fresh = await prepOf(plan.id, line.id);
+    expect(fresh.preparation.id).not.toBe(stale.preparation.id);
+    expect(fresh.serial).not.toBe(stale.serial);
+    // A colleague scans the new bag once: every value, as for «تم التجهيز».
+    const qrs = Object.fromEntries(
+      fresh.preparation.bags.map((b) => [b.bag, `QR-T-27${String(b.bag)}`]),
+    );
+    const seals = Object.fromEntries(
+      fresh.preparation.seals.map((x) => [x.slot, `SEAL-T-27${String(x.slot)}`]),
+    );
+    await okData(savePrep(fresh, { qrs, seals }));
+
+    // The stale form, whose version the new preparation would otherwise reach, writes nothing.
+    const save = await savePrep(stale, { seals: { 1: 'SEAL-T-2799' } });
+    expect(save.status, JSON.stringify(save.body)).toBe(409);
+    const mark = await call('post', `/atm/preparation/lines/${line.id}/prepared`, 'alphaPrep', {
+      version: stale.preparation.version,
+    });
+    expect(mark.status, JSON.stringify(mark.body)).toBe(409);
+    const now = await prepOf(plan.id, line.id);
+    expect(now.preparation.status).toBe('open');
+    expect(now.preparation.seals.find((x) => x.slot === 1)?.value).toBe('SEAL-T-271');
+  });
+
+  it('a Note printed while a reopen is in flight is counted in the voided serial (SEC-4, interleaved)', async () => {
+    const plan = await buildPlan(day(28), [{ run: 1, rows: [['BRKN9002', '02:00']] }]);
+    const line = lineOf(await issueAll(plan.id), 'BRKN9002');
+    setSettlementHookForTests('plan.reopen.beforeWrite', async () => {
+      await okData(printPlan(plan.id, { kind: 'notes', lineIds: [line.id] }));
+    });
+    const reopened = await okData<AtmPlanLineDto>(lineAction(plan.id, line, 'reopen', 'تعديل'));
+    expect(reopened.voidedSerials).toEqual([
+      expect.objectContaining({ serial: line.serial, printCount: 1 }),
+    ]);
   });
 });
 
@@ -3178,6 +3381,116 @@ describe('16. Control & Supplies — the day, crew lines and their sheets (§6.9
   it('the zones button needs the map reaching the branch', async () => {
     expect((await fromZones(day(14), 'alphaCtlNoMap')).status).toBe(403);
     expect((await fromZones(day(14), 'alphaCtlOwnMap')).status).toBe(403);
+  });
+
+  it('the zones button skips a line reopened meanwhile; a move refuses one (SEC-3, interleaved)', async () => {
+    const plan = await buildPlan(day(24), [
+      {
+        run: 1,
+        rows: [
+          ['BRKN9001', '01:00'],
+          ['BRKN9003', '03:00'],
+          ['BRKN9004', '04:00'],
+        ],
+      },
+    ]);
+    await issueAll(plan.id);
+    const idOf = (code: string): string => lineOf(plan, code).id;
+    const reopen = (code: string) => async (): Promise<void> => {
+      await okData(lineAction(plan.id, lineOf(await getPlan(plan.id), code), 'reopen', 'تعديل'));
+    };
+    const liveOf = (code: string) =>
+      AtmRouteAssignmentModel.findOne({ lineId: oid(idOf(code)), isDeleted: false })
+        .lean()
+        .exec();
+
+    // 9001 and 9003 are in zone 1; 9001 is reopened after the zones button read the lines.
+    setSettlementHookForTests('control.zones.beforeWrite', reopen('BRKN9001'));
+    const zones = await okData<AtmRoutesFromZonesResultDto>(fromZones(day(24)));
+    expect(zones.assigned).toBe(1);
+    expect(await liveOf('BRKN9001')).toBeNull();
+    expect(await liveOf('BRKN9003')).not.toBeNull();
+
+    // A move of the unassigned 9004 racing its reopen: refused, the draft keeps no assignment.
+    const target = await okData<AtmControlRouteDto>(createRoute('Line SEC-3', day(24)));
+    setSettlementHookForTests('control.assign.beforeWrite', reopen('BRKN9004'));
+    const moved = await assign([{ lineId: idOf('BRKN9004'), from: null, to: target.id }], day(24));
+    expect(moved.status, JSON.stringify(moved.body)).toBe(400);
+    expect(detailCodes(moved)).toEqual(['LINE_STATE']);
+    expect(lineById(await getPlan(plan.id), idOf('BRKN9004')).status).toBe('draft');
+    expect(await liveOf('BRKN9004')).toBeNull();
+  });
+
+  it('the zones button racing a route delete leaves no line on the deleted route (SEC-2, interleaved)', async () => {
+    const date = day(22);
+    const plan = await buildPlan(date, [{ run: 1, rows: [['BRKN9001', '01:00']] }]);
+    await issueAll(plan.id);
+    const lineId = lineOf(plan, 'BRKN9001').id;
+    expect((await okData<AtmRoutesFromZonesResultDto>(fromZones(date))).assigned).toBe(1);
+    const zoneRoute = (await dayOf(date)).routes[0] as AtmControlRouteDto;
+    // Back to «لم يُوزّع بعد», so the next zones call reuses the zone's route.
+    await okData(assign([{ lineId, from: zoneRoute.id, to: null }], date));
+    const routeNow = (await dayOf(date)).routes.find((r) => r.id === zoneRoute.id);
+
+    // A second Control user deletes that route while the zones call's transaction is open.
+    const original = AtmRouteAssignmentModel.exists.bind(AtmRouteAssignmentModel);
+    let deleted = false;
+    const spy = vi.spyOn(AtmRouteAssignmentModel, 'exists').mockImplementation(((
+      ...args: Parameters<typeof original>
+    ) => {
+      const query = original(...args);
+      const exec = query.exec.bind(query);
+      (query as unknown as { exec: () => Promise<unknown> }).exec = async () => {
+        if (!deleted) {
+          deleted = true;
+          const res = await call(
+            'delete',
+            `/atm/control/routes/${zoneRoute.id}?version=${String(routeNow?.version)}`,
+            'alphaCtl',
+          );
+          expect(res.status).toBe(204);
+        }
+        return exec();
+      };
+      return query;
+    }) as never);
+    let res: request.Response;
+    try {
+      res = await fromZones(date);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(deleted).toBe(true);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const live = await AtmRouteAssignmentModel.findOne({ lineId: oid(lineId), isDeleted: false })
+      .lean()
+      .exec();
+    const route = await AtmDispatchRouteModel.findById(live?.routeId).lean().exec();
+    expect(route?.isDeleted).toBe(false);
+    const dto = await dayOf(date);
+    expect(dto.routes.map((r) => r.id)).toContain(String(live?.routeId));
+    expect(dto.unassigned).toBe(0);
+  });
+
+  it('a line left on a route that is not live counts as «لم يُوزّع بعد» and can be moved (SEC-2)', async () => {
+    const date = day(23);
+    const plan = await buildPlan(date, [{ run: 1, rows: [['BRKN9002', '02:00']] }]);
+    await issueAll(plan.id);
+    const lineId = lineOf(plan, 'BRKN9002').id;
+    const gone = await okData<AtmControlRouteDto>(createRoute('Line Gone', date));
+    await okData(assign([{ lineId, from: null, to: gone.id }], date));
+    expect((await dayOf(date)).unassigned).toBe(0);
+    // The state the C3/C5 race used to leave: the route deleted, its assignment still live.
+    await AtmDispatchRouteModel.updateOne({ _id: oid(gone.id) }, { $set: { isDeleted: true } });
+    const dto = await dayOf(date);
+    expect(dto.routes.map((r) => r.id)).not.toContain(gone.id);
+    expect(dto.unassigned).toBe(1);
+    // A move from what the server holds puts it on a live route.
+    const next = await okData<AtmControlRouteDto>(createRoute('Line Next', date));
+    await okData(assign([{ lineId, from: gone.id, to: next.id }], date));
+    const after = await dayOf(date);
+    expect(after.unassigned).toBe(0);
+    expect(after.lines.find((l) => l.lineId === lineId)?.routeId).toBe(next.id);
   });
 
   it("prints: «سيلزات» with the prepared lines' QRs; one sheet per route, cancelled lines absent", async () => {

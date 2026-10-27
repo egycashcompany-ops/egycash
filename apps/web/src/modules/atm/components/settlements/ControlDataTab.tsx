@@ -182,9 +182,9 @@ export const ControlDataTab = ({
                     </Badge>
                   </td>
                   <td className={TD}>
-                    {line.routeId === null
-                      ? t('atm.control.unassignedOption')
-                      : (routeName.get(line.routeId) ?? '—')}
+                    {/* A route that is not live (deleted) holds nothing: the line is unassigned. */}
+                    {(line.routeId === null ? undefined : routeName.get(line.routeId)) ??
+                      t('atm.control.unassignedOption')}
                   </td>
                 </tr>
                 {expanded && (

@@ -215,6 +215,10 @@ describe('settlementErrorText', () => {
     const field = (code: string): ApiError =>
       apiError('VALIDATION_FAILED', [{ field: 'x', code, message: code }], 400);
     expect(text(field('SLOT_NOT_FILLABLE'))).toBe(ar('atm.plan.error.slotNotFillable'));
+    // A typed total whose even split overfills a cassette (MONEY-1).
+    expect(text(field('CASSETTE_NOTES_MAX'))).toBe(
+      ar('atm.plan.error.cassetteNotesMax', { max: '١٠٠٬٠٠٠' }),
+    );
     expect(text(field('INVALID_SEAL'))).toBe(ar('atm.prep.error.invalidSeal'));
     expect(text(field('DUPLICATE_NAME'))).toBe(ar('atm.control.error.duplicateName'));
     const moved = apiError(ErrorCodes.STALE_DOCUMENT, [

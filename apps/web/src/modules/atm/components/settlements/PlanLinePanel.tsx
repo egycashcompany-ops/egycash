@@ -39,6 +39,18 @@ import { formatTime12 } from '../../lib/settlement-dates';
 /** The patch a change sends; the panel adds the version. */
 export type LinePatch = Omit<UpdateAtmPlanLine, 'version'>;
 
+/** The count box's step (§9.4): notes go into cassettes in hundreds (S-4, DS-12). */
+const NOTES_STEP = 100;
+
+/** One step of the notes box: to the next hundred up or down, never below 0. */
+export const stepNotes = (notes: number, direction: 1 | -1): number =>
+  Math.max(
+    0,
+    direction === 1
+      ? Math.floor(notes / NOTES_STEP) * NOTES_STEP + NOTES_STEP
+      : Math.ceil(notes / NOTES_STEP) * NOTES_STEP - NOTES_STEP,
+  );
+
 /** A count box that commits on Enter or when it loses focus, and only when the number changed. */
 const CountInput = ({
   value,
@@ -77,11 +89,20 @@ const CountInput = ({
         if (e.key === 'Enter') {
           e.preventDefault();
           commit();
+          return;
         }
+        // The step is 100 notes (§9.4): the arrows move the box by a hundred, saved on Enter or
+        // when the box loses focus, like a typed number.
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        const current = Number(text);
+        const base = text.trim() === '' || !Number.isSafeInteger(current) ? value : current;
+        setText(String(stepNotes(base, e.key === 'ArrowUp' ? 1 : -1)));
       }}
     />
   );
 };
+
 
 /** A profile as the select names it: its label, or its total. */
 export const standardLoadLabel = (load: AtmStandardLoadDto, locale: Locale): string =>

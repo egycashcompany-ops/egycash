@@ -77,7 +77,12 @@ const row = (n: number, over: Partial<AtmCassetteLayoutRowDto> = {}): AtmCassett
   layout: {
     version: 2,
     revision: 2,
-    slots: [w(1, 200), w(2, 100), w(3, 50), { slot: 4, kind: 'recycle', denomination: 20, currency: 'EGP' }],
+    slots: [
+      w(1, 200),
+      w(2, 100),
+      w(3, 50),
+      { slot: 4, kind: 'recycle', denomination: 20, currency: 'EGP' },
+    ],
     typeLabel: 'SYN (S2)',
     featuresLabel: 'Withdrawall',
     hubLabel: 'HUB-T',
@@ -141,7 +146,10 @@ const store = () =>
     preloadedState: {
       locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
       auth: {
-        me: { id: 'u1', permissions: { 'atmCassetteLayout.view': 'organization' } } as unknown as MeDto,
+        me: {
+          id: 'u1',
+          permissions: { 'atmCassetteLayout.view': 'organization' },
+        } as unknown as MeDto,
         status: 'signedIn' as const,
       },
       ui: { theme: 'light' as const, sidebarOpen: false },
@@ -160,7 +168,11 @@ const renderAt = (url: string, node: JSX.Element, fill: (qc: QueryClient) => voi
   );
 };
 
-const layouts = (ctx: AtmSettlementContextDto, list: AtmCassetteLayoutsDto, url = '/atm/settlements/layouts'): string =>
+const layouts = (
+  ctx: AtmSettlementContextDto,
+  list: AtmCassetteLayoutsDto,
+  url = '/atm/settlements/layouts',
+): string =>
   renderAt(url, <CassetteLayoutsPage />, (qc) => {
     qc.setQueryData(settlementContextKey('layouts'), ctx);
     qc.setQueryData(cassetteLayoutsKey({ bankCode: 'BRK', branchId: BRANCH }), list);
@@ -194,18 +206,30 @@ describe('the layouts page', () => {
     expect(html).toContain('data-layouts-action="import"');
     expect(html).toContain('data-last-import');
     expect(html).toContain(
-      t('atm.layouts.lastImport', { date: '26/10/2026', rows: '٤', matched: '١', notFound: '٢', flags: '١' }),
+      t('atm.layouts.lastImport', {
+        date: '26/10/2026',
+        rows: '٤',
+        matched: '١',
+        notFound: '٢',
+        flags: '١',
+      }),
     );
     const noImport = layouts(context('layouts'), { ...LIST, can: { manage: true, import: false } });
     expect(noImport).not.toContain('data-layouts-action="import"');
   });
 
   it('opens a machine’s editor from `?machine=`, with its slots and its history', () => {
-    const html = layouts(context('layouts'), LIST, `/atm/settlements/layouts?machine=${DETAIL.machineId}`);
+    const html = layouts(
+      context('layouts'),
+      LIST,
+      `/atm/settlements/layouts?machine=${DETAIL.machineId}`,
+    );
     expect(html).toContain(`data-layout-editor="${DETAIL.machineId}"`);
     expect([...html.matchAll(/data-slot-editor="/g)]).toHaveLength(4);
     expect(html).toContain('data-layout-history');
-    expect(html).toContain(t('atm.layouts.editor.historyDiff', { slot: 3, before: '100', after: '50' }));
+    expect(html).toContain(
+      t('atm.layouts.editor.historyDiff', { slot: 3, before: '100', after: '50' }),
+    );
     expect(html).toContain(t('atm.layouts.editor.save'));
   });
 });
@@ -275,9 +299,21 @@ describe('the pure pieces', () => {
   });
 
   it('withKind clears what the new kind cannot hold', () => {
-    expect(withKind(w(1, 200), 'empty')).toEqual({ slot: 1, kind: 'empty', denomination: null, currency: null });
-    expect(withKind(w(1, 200), 'deposit')).toEqual({ slot: 1, kind: 'deposit', denomination: null, currency: 'EGP' });
-    expect(withKind({ slot: 2, kind: 'empty', denomination: null, currency: null }, 'recycle')).toEqual({
+    expect(withKind(w(1, 200), 'empty')).toEqual({
+      slot: 1,
+      kind: 'empty',
+      denomination: null,
+      currency: null,
+    });
+    expect(withKind(w(1, 200), 'deposit')).toEqual({
+      slot: 1,
+      kind: 'deposit',
+      denomination: null,
+      currency: 'EGP',
+    });
+    expect(
+      withKind({ slot: 2, kind: 'empty', denomination: null, currency: null }, 'recycle'),
+    ).toEqual({
       slot: 2,
       kind: 'recycle',
       denomination: null,

@@ -1,7 +1,7 @@
 // A button that opens a short menu of actions (the Topbar's menu, `platform/layout/Topbar.tsx`):
 // «طباعة النوتس» with its three choices, Control's handover per bank, a route's options (§9.4,
 // §9.7). Each item is a real button, so a print item's click is the user's click — the print tab
-// is opened inside it (§8).
+// is opened inside it (§8). Escape closes the menu and gives the focus back to its button (§9.10).
 import { useRef, useState, type ReactNode } from 'react';
 import { cn } from '../../../../shared/lib/cn';
 import { useOnClickOutside } from '../../../../shared/lib/useOnClickOutside';
@@ -38,7 +38,16 @@ export const MenuButton = ({
   const ref = useRef<HTMLDivElement>(null);
   useOnClickOutside(ref, () => setOpen(false), open);
   return (
-    <div className="relative" ref={ref}>
+    <div
+      className="relative"
+      ref={ref}
+      onKeyDown={(e) => {
+        if (!open || e.key !== 'Escape') return;
+        e.stopPropagation();
+        setOpen(false);
+        ref.current?.querySelector<HTMLButtonElement>('button[aria-haspopup]')?.focus();
+      }}
+    >
       <Button
         variant={variant}
         size={size}

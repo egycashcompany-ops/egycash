@@ -114,7 +114,11 @@ const plan = (
       bags: 2,
       byStatus: { draft: 1, issued: 1, prepared: 0, cancelled: 0 },
       notPrinted: 1,
-      receipt: { rows: [{ denomination: 200, notes: 1000 }], egpTotalMinor: 30_000_000, machineCount: 1 },
+      receipt: {
+        rows: [{ denomination: 200, notes: 1000 }],
+        egpTotalMinor: 30_000_000,
+        machineCount: 1,
+      },
       all: {
         rows: [
           { denomination: 200, notes: 2000 },

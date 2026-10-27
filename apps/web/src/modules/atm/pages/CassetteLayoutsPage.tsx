@@ -26,6 +26,7 @@ import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Field, Select } from '../../../shared/ui/form';
 import { SearchInput } from '../../../shared/ui/SearchInput';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -334,7 +335,13 @@ export const CassetteLayoutsPage = (): JSX.Element => {
               <h2 className="mb-3 text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {t('atm.layouts.editor.title')}
               </h2>
-              {detail.data === undefined ? (
+              {detail.data === undefined && detail.error !== null ? (
+                <ErrorState
+                  error={detail.error}
+                  description={settlementErrorText(detail.error, t, locale)}
+                  onRetry={() => void detail.refetch()}
+                />
+              ) : detail.data === undefined ? (
                 <LoadingState />
               ) : (
                 <LayoutEditor

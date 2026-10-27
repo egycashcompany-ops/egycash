@@ -410,7 +410,9 @@ export const LayoutImportPage = (): JSX.Element => {
                 </Button>
               </div>
 
-              {ctx?.can.importLayouts === true && (
+              {/* An applied result is spent: its revisions are the ones just written, so a second
+                  apply would only conflict — a new preview starts the next one. */}
+              {ctx?.can.importLayouts === true && result.applyCounts === null && (
                 <div
                   data-import-apply="true"
                   className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"

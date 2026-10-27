@@ -21,7 +21,11 @@ import {
   round6 as roundCoordinate,
   selfIntersects,
   segmentsIntersect,
+  zoneMembership,
   type AtmMapLatLng,
+  type LatLngBox,
+  type Membership,
+  type MembershipZone,
 } from '@ecms/contracts';
 
 export {
@@ -33,6 +37,16 @@ export {
   selfIntersects,
   zoneGeometryIssues,
   type AtmMapLatLng,
+} from '@ecms/contracts';
+// MEMBERSHIP MOVED TO THE CONTRACTS (docs/12-planning/atm-settlements-phase1.md DS-17, §6.9), so
+// the map and Control & Supplies' «إنشاء الخطوط من القطاعات» run the same rule. Re-exported under
+// the same names: no map file changed.
+export {
+  membershipZones,
+  zoneMembership,
+  type LatLngBox,
+  type Membership,
+  type MembershipZone,
 } from '@ecms/contracts';
 
 /** Inside DM-35's box — where the company's machines are; a point outside carries `outsideEgypt`. */
@@ -97,13 +111,6 @@ export const alongEdge = (a: AtmMapLatLng, b: AtmMapLatLng, t: number): AtmMapLa
 
 // ── Membership (D-M7, DM-9) ─────────────────────────────────────────────────────────────────────
 
-export interface LatLngBox {
-  south: number;
-  north: number;
-  west: number;
-  east: number;
-}
-
 export const boxOf = (points: readonly AtmMapLatLng[]): LatLngBox => {
   const box = { south: Infinity, north: -Infinity, west: Infinity, east: -Infinity };
   for (const p of points) {
@@ -118,54 +125,7 @@ export const boxOf = (points: readonly AtmMapLatLng[]): LatLngBox => {
 export const boxesMeet = (a: LatLngBox, b: LatLngBox): boolean =>
   a.west <= b.east && b.west <= a.east && a.south <= b.north && b.south <= a.north;
 
-const inBox = (p: AtmMapLatLng, box: LatLngBox): boolean =>
-  p.lat >= box.south - 1e-6 &&
-  p.lat <= box.north + 1e-6 &&
-  p.lng >= box.west - 1e-6 &&
-  p.lng <= box.east + 1e-6;
-
-/** A zone of one branch, with its bounding box cached for the prefilter (§8.4). */
-export interface MembershipZone extends GeometryZone {
-  branchId: string;
-  box: LatLngBox;
-}
-
-/** Cache each zone's bounding box once; the list order is kept — it is the priority (D-M7). */
-export const membershipZones = (
-  zones: readonly { id: string; branchId: string; points: readonly AtmMapLatLng[] }[],
-): MembershipZone[] =>
-  zones.map((zone) => ({
-    id: zone.id,
-    branchId: zone.branchId,
-    points: zone.points,
-    box: boxOf(zone.points),
-  }));
-
-export interface Membership {
-  /** The zone the machine counts for: the first in list order that contains it. */
-  primary: string | null;
-  /** Every zone of its branch that contains it, in list order. */
-  all: string[];
-}
-
 export const NO_MEMBERSHIP: Membership = { primary: null, all: [] };
-
-/**
- * Which zones of the machine's own branch contain it, in list order (`zonesOfBranchInOrder` is the
- * branch's list; a zone of another branch is skipped all the same).
- */
-export const zoneMembership = (
-  point: { lat: number; lng: number; branchId: string },
-  zonesOfBranchInOrder: readonly MembershipZone[],
-): Membership => {
-  const all: string[] = [];
-  for (const zone of zonesOfBranchInOrder) {
-    if (zone.branchId !== point.branchId) continue;
-    if (!inBox(point, zone.box)) continue;
-    if (pointInPolygon(point, zone.points)) all.push(zone.id);
-  }
-  return { primary: all[0] ?? null, all };
-};
 
 /** Every located point's membership, keyed by machine id; a point without coordinates has none. */
 export const membershipOf = (

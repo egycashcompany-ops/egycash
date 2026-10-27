@@ -52,6 +52,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['atm', 'registerEntries'],
     ['atm', 'mapPoints'],
     ['atm', 'mapLocationSummary'],
+    ['atm', 'cassetteLayouts'],
   ],
   'atm.refLabel': [
     ['atm', 'refLabels'],
@@ -81,6 +82,38 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['atm', 'mapLocationSummary'],
     ['atm', 'mapLocation'],
   ],
+  // Settlements & Review → Preparation → Control & Supplies (docs/12-planning/atm-settlements-
+  // phase1.md §6.11) — the families their own write hooks invalidate (`settlements-queries.ts`). A
+  // layout change raises `LAYOUT_CHANGED` on plan lines, so the plan listens to it; a capture moves
+  // a line's `preparationStatus`, so the plan listens to that too. The two day signals carry the
+  // plan's branch, so branch-scoped Preparation and Control users hear them (DS-26). The Full list
+  // import (`atm.layoutImport`) is server-excluded: the importing screen refetches itself.
+  'atm.cassetteLayout': [
+    ['atm', 'cassetteLayouts'],
+    ['atm', 'cassetteLayout'],
+    ['atm', 'settlementPlan'],
+  ],
+  'atm.standardLoad': [['atm', 'standardLoads']],
+  'atm.settlementPlan': [['atm', 'settlementPlan']],
+  'atm.planLine': [
+    ['atm', 'settlementPlan'],
+    ['atm', 'preparationLines'],
+    ['atm', 'preparationContext'],
+    ['atm', 'controlDay'],
+  ],
+  'atm.linePreparation': [
+    ['atm', 'preparationLines'],
+    ['atm', 'preparationContext'],
+    ['atm', 'controlDay'],
+    ['atm', 'settlementPlan'],
+  ],
+  'atm.preparationDay': [
+    ['atm', 'preparationLines'],
+    ['atm', 'preparationContext'],
+  ],
+  'atm.controlDay': [['atm', 'controlDay']],
+  'atm.dispatchRoute': [['atm', 'controlDay']],
+  'atm.routeAssignment': [['atm', 'controlDay']],
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': goldStockSweep,

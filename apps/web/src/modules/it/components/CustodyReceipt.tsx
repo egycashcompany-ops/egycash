@@ -71,9 +71,13 @@ export const DEVICE_RECEIPTS: ReceiptStore = {
   fetchSignedCopy: api.fetchReceiptSignedCopy,
 };
 
-/** A paper the printer can say something about: whether its national ID line was left blank. */
+/**
+ * A paper the printer can say something about: whether its national ID line was left blank. The
+ * consumables memo (FR-20) has no national ID line at all, so it says nothing either way.
+ */
 interface PrintablePaper {
-  nationalIdVisible: boolean;
+  employeeName: string | null;
+  nationalIdVisible?: boolean;
 }
 
 /**
@@ -101,7 +105,9 @@ export const usePaperPrinter = <P extends PrintablePaper>(
       if (paper === null) toast.error(t('it.custody.receipt.popupBlocked'));
       // The paper printed, with its national ID line left for the pen: say why, once, so a blank
       // line is never mistaken for HR not having the number.
-      else if (!paper.nationalIdVisible) toast.info(t('it.custody.receipt.nationalIdWithheld'));
+      else if (paper.nationalIdVisible === false) {
+        toast.info(t('it.custody.receipt.nationalIdWithheld'));
+      }
       return paper;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'));

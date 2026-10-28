@@ -1,0 +1,76 @@
+{
+  "source": "جرد الأجهزة.xlsx — الصفحة الأولى، صف «إجمالي»: رصيد المستهلكات لدى قطاع تكنولوجيا المعلومات، بعد مراجعة المالك (2026-10-28)",
+  "branch": "المهندسين",
+  "items": [
+    {
+      "key": "جرد الأجهزة — SSD",
+      "name": "SSD",
+      "type": "storage",
+      "unit": "قطعة",
+      "qty": 3
+    },
+    {
+      "key": "جرد الأجهزة — Ram 8giga",
+      "name": "RAM 8 GB",
+      "type": "memory",
+      "unit": "قطعة",
+      "qty": 5
+    },
+    {
+      "key": "جرد الأجهزة — Keyboard",
+      "name": "Keyboard",
+      "type": "keyboards",
+      "unit": "قطعة",
+      "qty": 23
+    },
+    {
+      "key": "جرد الأجهزة — Mouse",
+      "name": "Mouse",
+      "type": "mice",
+      "unit": "قطعة",
+      "qty": 13
+    },
+    {
+      "key": "جرد الأجهزة — Patchcord 1m",
+      "name": "Patch Cord 1 m",
+      "type": "cables",
+      "unit": "قطعة",
+      "qty": 21
+    },
+    {
+      "key": "جرد الأجهزة — Patchcord 3m",
+      "name": "Patch Cord 3 m",
+      "type": "cables",
+      "unit": "قطعة",
+      "qty": 24
+    },
+    {
+      "key": "جرد الأجهزة — Power Cable",
+      "name": "Power Cable",
+      "type": "cables",
+      "unit": "قطعة",
+      "qty": 5
+    },
+    {
+      "key": "جرد الأجهزة — HDMI 10M",
+      "name": "HDMI Cable 10 m",
+      "type": "cables",
+      "unit": "قطعة",
+      "qty": 2
+    },
+    {
+      "key": "جرد الأجهزة — HDMI 3M",
+      "name": "HDMI Cable 3 m",
+      "type": "cables",
+      "unit": "قطعة",
+      "qty": 11
+    },
+    {
+      "key": "جرد الأجهزة — HDMI 1M",
+      "name": "HDMI Cable 1 m",
+      "type": "cables",
+      "unit": "قطعة",
+      "qty": 1
+    }
+  ]
+}

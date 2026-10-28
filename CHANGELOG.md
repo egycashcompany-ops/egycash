@@ -11,6 +11,36 @@ its entry here in the same PR.
 
 ### Added
 
+- **The IT asset register says who holds each asset, and filters by name.** «وعايز فى شاشة الأصول
+  /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر زود بعد
+  الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة». `/it/assets` shows «المستلِم» after
+  the status — the holder's name, linked to their IT page, and their code — and a name filter you
+  can type into between the status and the category. The Excel/PDF carry the holder too.
+- **The custody register's files carry the serial, and the register filters by every column.**
+  «وكمان فى شاشة عهد الأصول /it/custody عايزك تزود سيريال الأصول لما أعمل Extract وزود الفلتر بتاع
+  الجدول ببيانات الجدول». The Excel/PDF gain «الرقم التسلسلي»; the filter bar follows the table's
+  columns: the item (code, name or serial), category, hand-over dates, overdue, status, branch,
+  holder, return dates and the receipt (signed / awaiting the signature / none).
+- **IT consumables: each branch's stock, what was issued to whom, the scrap, and a printed memo.**
+  «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات … وأقدر أحدد عندي Stock إيه من كل واحده
+  وإيه الهالك وأتبدل لمين واطبعله مذكره ولو حاجة بتتركب فى حاجة تانية … أقدر أذكر الجهاز اللى أتركب
+  عليه من اللأصول». `/it/consumables` «المستهلكات» (under «خطوط المحمول») keeps inks, cables, adapters,
+  mice, keyboards, memory, drives and flash drives per branch: each item's balance, issued and
+  scrapped, flagged at its minimum. Stock moves only by «توريد», «صرف», «هالك» and «مرتجع», each kept
+  in «حركات المستهلكات» (filters, Excel, PDF). «صرف لموظف» gives a current employee one or more items
+  — new, or in place of a damaged one (counted as scrap) — optionally naming the asset each went
+  into, and prints «مذكرة صرف مستهلكات» (EGYCASH-IT-CON-0001…) on the acknowledgment's letterhead,
+  with both signatures; it can be reprinted and its signed copy filed. Asset and employee pages list
+  their consumables. The types are a catalog list on `/it/catalogs`, seeded with nine. Same grants as
+  the assets; no new key ([IT design §2.11, FR-20](docs/12-planning/it-module-design.md)).
+- **97 Lenovo all-in-ones for October, the specifications of 38 devices, and the consumables'
+  opening stock, entered once by the deploy.** From «SN ايجي كاش» and «جرد الأجهزة», as reviewed
+  with the owner («موافق على كل اقتراحاتك، طبّق الأربعة ودخّل الأرصدة»): 97 new «Lenovo ThinkCentre
+  neo 50a 24» in «أكتوبر», in stock, copying the live one's category, make, model, specifications
+  and accessories (the two already registered at the head office stay; one short serial waits for
+  the owner); processor, memory and storage added to 38 registered devices only where empty, a typed
+  value kept; and ten items' counted balances received into the «المهندسين» store. Each runs once,
+  after the steps it depends on.
 - **A maintenance mail accepted or rejected by mistake goes back to pending, and both mail pages
   filter, with their buttons on the rows.** «هنا /atm/mail-tickets/log وهنا /atm/mail-tickets عايز
   فلتر وعايز Action Buttons — في /atm/mail-tickets يكون 2 قبول ورفض — في /atm/mail-tickets/log
@@ -269,6 +299,13 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **The device acknowledgment agrees with what it hands over.** A screen or a printer now reads
+  «ومواصفاتها … لاستخدامها … بالحفاظ عليها … بردها»; a device, a laptop or a mouse reads as before
+  («شوف أنت الأنسب وأعمله»).
+- **A mobile line someone holds can move branch.** «عايزك تفتح إنى أعدل الفرع عادي لخط من خطوط
+  الموبايل لأن ممكن القائد يغير الفرع بتاعه». Editing the branch of a handed-over line now moves the
+  line with its current holder and their acknowledgment, so the new branch sees and reprints them.
 
 - **The Data Report's numbers rise with each machine added on `/atm/data-edit`, and data-edit's add
   answers differently.** «عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا /atm/register بحيث شغل

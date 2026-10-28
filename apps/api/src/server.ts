@@ -36,6 +36,10 @@ import { startDealershipBackfillGoLive } from './modules/fleet/go-live/dealershi
 import { startItAssetRestartGoLive } from './modules/it/go-live/asset-restart';
 import { startItInventoryGoLive } from './modules/it/go-live/inventory';
 import { startItMobileLinesGoLive } from './modules/it/go-live/mobile-lines';
+import { startItAioOctoberGoLive } from './modules/it/go-live/aio-october';
+import { startItAssetSpecsGoLive } from './modules/it/go-live/asset-specs';
+import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-types';
+import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -107,6 +111,18 @@ const main = async (): Promise<void> => {
   // networks' files, reviewed with the owner: every line registered, handed to its employee or its
   // car, suspended or in stock — once (see the file).
   startItMobileLinesGoLive();
+  // «هبعتلك سيريلات أجهزة عايز أرفعها بنفس مواصفات Lenovo ThinkCentre neo 50a 24 … بس هيكون فى فرع
+  // أكتوبر ومش متسلم لحد» — the 97 serials the review kept, each a new asset in the October branch's
+  // stock; and «وتزودها على السيستم» — the processor, memory and storage of the IT team's sheet
+  // added to the devices on the register that lack them. Once each, after the inventory (see each
+  // file).
+  startItAioOctoberGoLive();
+  startItAssetSpecsGoLive();
+  // «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — the consumables' types the owner
+  // named, once; then his approved count («دخّل الأرصدة») entered in the head office's store, once,
+  // after the types it is filed under — started second, so it waits for them (see each file).
+  startItConsumableTypesGoLive();
+  startItConsumablesOpeningGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

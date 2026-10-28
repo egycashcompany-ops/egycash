@@ -8611,6 +8611,97 @@ const en: Record<string, string> = {
   'atm.dataEdit.labelSaved': 'Saved.',
   'atm.dataEdit.bulkTitle': 'Bulk add / delete',
   'atm.dataEdit.lineAlignHint': 'One name per line, aligned with the codes beside it.',
+  // The four tabs, the spellings' unmapped callout, bilingual areas, and what an add recorded in
+  // the register (DEC-35 … DEC-38).
+  'atm.dataEdit.tab.bankLabel': 'Operations bank names',
+  'atm.dataEdit.addSpelling': 'Add bank name',
+  'atm.dataEdit.editSpelling': 'Edit bank name',
+  'atm.dataEdit.notLinked': 'Not linked to a bank',
+  'atm.dataEdit.spellingBankHint':
+    'Machines that carry this name count for this bank in the register and the reports.',
+  'atm.dataEdit.spellingIsBankLabel':
+    "This name is already a catalog bank's own Operations name; it needs no second entry.",
+  'atm.dataEdit.unmappedTitle': 'Bank names on machines that are not linked to a bank',
+  'atm.dataEdit.unmappedBody':
+    'A machine added with one of these names works for Operations but is not recorded in the register. Link each name to its bank.',
+  'atm.dataEdit.linkToBank': 'Link to a bank',
+  'atm.dataEdit.labelsUnscoped':
+    'This list shows every branch you can reach, because no single branch is chosen. Choose a branch in the top bar to list and add the names of one branch.',
+  'atm.dataEdit.storedName': 'Name stored on machines',
+  'atm.dataEdit.nameAr': 'Name in Arabic',
+  'atm.dataEdit.nameEn': 'Name in English',
+  'atm.dataEdit.displayNameHint': 'Shown in the lists only; machines keep the stored name.',
+  'atm.dataEdit.storedAs': 'Saved on machines as: {{name}}',
+  'atm.dataEdit.renameKeepsMachines': 'Existing machines keep the old name.',
+  'atm.dataEdit.areaExists':
+    'An area with this name already exists. If it is the same area, add the other language to it from "Edit".',
+  'atm.dataEdit.origin.title': 'Source',
+  'atm.dataEdit.origin.backfill': 'From existing data',
+  'atm.dataEdit.origin.auto': 'Added automatically',
+  'atm.dataEdit.notRegisterMapped':
+    'This branch has no EGYCASH code: machines added here work for Operations but are not recorded in the register.',
+  'atm.dataEdit.machineReactivated': 'The archived machine is back at work.',
+  'atm.dataEdit.register.recorded': 'Recorded in the register — data incomplete.',
+  'atm.dataEdit.register.linked': 'Linked to its register entry.',
+  'atm.dataEdit.register.branchUnmapped': 'For Operations only: the branch has no EGYCASH code.',
+  'atm.dataEdit.register.placeholderCode':
+    'For Operations only: a placeholder code is not recorded in the register.',
+  'atm.dataEdit.register.noBank':
+    'The bank name is not linked to a bank — not recorded in the register.',
+  'atm.dataEdit.error.activeElsewhere':
+    "This machine ID is active in another branch's Operations list; it was not added.",
+  'atm.dataEdit.error.openElsewhere':
+    'This machine ID has an open register period in another branch; it was not added.',
+  'atm.dataEdit.error.bankInactive':
+    'This bank is archived in the bank catalog; no new machines can be added to it.',
+  'atm.dataEdit.machinesRecorded':
+    '{{count}} machine(s) recorded in the register — data incomplete.',
+  'atm.dataEdit.machinesLinked': '{{count}} machine(s) linked to their register entries.',
+  'atm.dataEdit.machinesReactivated': 'Back at work from the archive: {{codes}}',
+  'atm.dataEdit.machinesRefused.activeElsewhere': 'Not added — active in another branch: {{codes}}',
+  'atm.dataEdit.machinesRefused.openElsewhere':
+    'Not added — open in the register in another branch: {{codes}}',
+  'atm.dataEdit.notRecorded.branchUnmapped':
+    'Not recorded in the register (the branch has no EGYCASH code): {{codes}}',
+  'atm.dataEdit.notRecorded.placeholderCode':
+    'Not recorded in the register (placeholder codes): {{codes}}',
+  'atm.dataEdit.notRecorded.noBank':
+    'Not recorded in the register (the bank name is not linked to a bank): {{codes}}',
+
+  // ── The bank catalog (DEC-35): its dialog, on data-edit and in the register ──
+  'atm.bankCatalog.add': 'Add bank',
+  'atm.bankCatalog.edit': 'Edit bank',
+  'atm.bankCatalog.code': 'Code',
+  'atm.bankCatalog.codeHint':
+    'Capital English letters and digits, 2 to 10, starting with a letter. It cannot be changed after saving.',
+  'atm.bankCatalog.codeInvalid':
+    'Use capital English letters and digits, starting with a letter (2 to 10).',
+  'atm.bankCatalog.codeFixed':
+    'The code is stored on every record of the bank and cannot be changed.',
+  'atm.bankCatalog.nameAr': 'Name in Arabic',
+  'atm.bankCatalog.nameEn': 'Name in English',
+  'atm.bankCatalog.opsLabel': 'Name in Operations',
+  'atm.bankCatalog.opsLabelHint':
+    'The bank name written on machines received from this bank. Left empty, the code is used.',
+  'atm.bankCatalog.opsLabelChanged':
+    'Existing machines keep the old name, and it still counts for this bank.',
+  'atm.bankCatalog.color': 'Colour',
+  'atm.bankCatalog.colorHint': 'Used in the Data Report charts and on the map.',
+  'atm.bankCatalog.isActive': 'Active',
+  'atm.bankCatalog.activeHint':
+    'An archived bank is no longer offered for new receipts and machines; its machines and counts stay.',
+  'atm.bankCatalog.settlementsWarning':
+    'This bank is enabled for settlements. Archiving does not remove it from them; an administrator edits that setting.',
+  'atm.bankCatalog.added': 'Bank added.',
+  'atm.bankCatalog.saved': 'Bank saved.',
+  'atm.bankCatalog.error.ATM_BANK_CODE_TAKEN': 'A bank with this code already exists.',
+  'atm.bankCatalog.error.ATM_BANK_LABEL_TAKEN': 'This Operations name already belongs to a bank.',
+  'atm.bankCatalog.error.ATM_BANK_NAME_TAKEN':
+    'A bank with this Arabic or English name already exists.',
+  'atm.bankCatalog.title': 'Banks',
+  'atm.bankCatalog.intro':
+    "The banks of the whole company. A bank added here appears in the register, the Data Report, settlements and the map, like the workbook's six.",
+  'atm.bankCatalog.archivedOption': '{{name}} (archived)',
 
   'atm.nav.dailyReport': 'Daily Report',
   'atm.cards.dailyReport': "Today's open and total operations per bank.",
@@ -8653,6 +8744,7 @@ const en: Record<string, string> = {
   'atm.register.filter.allAreas': 'All areas',
   'atm.register.filter.search': 'Search by ATM ID, name or serial',
   'atm.register.filter.withIssues': 'Only rows with import notes',
+  'atm.register.filter.incomplete': 'Data incomplete only',
   'atm.register.status.pending': 'No start date',
   'atm.register.status.open': 'In operation',
   'atm.register.status.ended': 'Handed back',
@@ -8668,6 +8760,13 @@ const en: Record<string, string> = {
   'atm.register.combinationSet': 'Recorded',
   'atm.register.combinationUnset': 'Not recorded',
   'atm.register.issues': '{{count}} import note(s)',
+  // «بيانات ناقصة» (DEC-37) and the Operations receipts behind it (DEC-36).
+  'atm.register.incomplete': 'Data incomplete',
+  'atm.register.incompleteMissing': 'Still empty: {{fields}}',
+  'atm.register.incompleteNoGaps':
+    'Every expected field is filled; untick the mark once the entry has been reviewed.',
+  'atm.register.source.operations':
+    'Recorded by Operations when the machine was added on "Machine Data".',
   'atm.register.actions': 'Actions',
   'atm.register.action.edit': 'Edit',
   'atm.register.action.receivePending': 'Record receipt',
@@ -8698,6 +8797,8 @@ const en: Record<string, string> = {
   'atm.register.form.deleteTitle': 'Delete entry',
   'atm.register.form.deleteBody':
     "Delete this entry recorded by mistake? If it is the machine's only open period, the machine is archived in the Operations list.",
+  'atm.register.form.deleteBodyOperations':
+    'Delete this entry? Operations recorded it when they added the machine on "Machine Data". If it is the machine\'s only open period, the machine is archived in the Operations list and leaves their open forms.',
   'atm.register.form.linkTitle': 'Link machine {{code}} to the Operations list',
   'atm.register.form.linkBody':
     'The machine is linked to, reactivated in or added to the Operations list of its branch, as on receipt.',
@@ -8707,6 +8808,23 @@ const en: Record<string, string> = {
   'atm.register.form.opsBankLabelAuto': 'Automatic ({{label}})',
   'atm.register.form.startDateHint': 'Leave empty to record the machine without a start date.',
   'atm.register.form.areaRequired': 'The area is required when the start date is set.',
+  'atm.register.form.newAreaHint': "A new area — it will be added to the branch's list.",
+  'atm.register.form.areaExistsPicked':
+    'This branch already has an area with this name, so it has been put in the area field.',
+  'atm.register.form.dataIncompleteHint':
+    'Keep it ticked until the entry is complete, and untick it once you have reviewed it.',
+  'atm.register.form.operationsNote':
+    'Operations recorded this machine when they added it on "Machine Data", with the add day as its start date. Complete its data, correct the start date if needed, then untick "Data incomplete".',
+  // A refused bank or Operations name (DEC-35; DEC-25 now enforced by the server).
+  'atm.register.refusal.bankCode.UNKNOWN': 'This bank is not in the bank catalog.',
+  'atm.register.refusal.bankCode.INACTIVE':
+    'This bank is archived in the bank catalog; it cannot be chosen for a new receipt.',
+  'atm.register.refusal.opsBankLabel.UNKNOWN':
+    'This bank name is not one of the active Operations names of this branch.',
+  'atm.register.refusal.opsBankLabel.UNMAPPED':
+    'This bank name is not linked to a bank yet. Link it on "Machine Data" first.',
+  'atm.register.refusal.opsBankLabel.OTHER_BANK':
+    'This bank name belongs to another bank. Choose a name of the selected bank.',
   'atm.register.form.combinationKeep': 'Leave empty to keep the recorded value.',
   'atm.register.form.combinationClear': 'Clear the recorded value',
   'atm.register.form.codeLocked':
@@ -9300,6 +9418,9 @@ const en: Record<string, string> = {
   'atm.registerSettings.saved': 'Saved.',
   'atm.registerSettings.readOnly':
     'Only an administrator with the settings permission can change these values.',
+  'atm.registerSettings.bankLabelsHint':
+    'Banks and their names in Operations are kept in the bank catalog ("Banks" in the ATM Register). This list is what the preview uses.',
+  'atm.registerSettings.manageBanks': 'Manage banks',
 
   // ── ATM Settlements & Review → Preparation → Control & Supplies, phase 1 ──
   // (docs/12-planning/atm-settlements-phase1.md §9.9)
@@ -18154,6 +18275,89 @@ const ar: Record<string, string> = {
   'atm.dataEdit.bulkTitle': 'إضافة / حذف بالجملة',
   'atm.dataEdit.lineAlignHint':
     'اسم في كل سطر، مقابل الكود الذي بجواره.',
+  // The four tabs, the spellings' unmapped callout, bilingual areas, and what an add recorded in
+  // the register (DEC-35 … DEC-38).
+  'atm.dataEdit.tab.bankLabel': 'أسماء البنوك في التشغيل',
+  'atm.dataEdit.addSpelling': 'إضافة اسم بنك',
+  'atm.dataEdit.editSpelling': 'تعديل اسم البنك',
+  'atm.dataEdit.notLinked': 'غير مربوط ببنك',
+  'atm.dataEdit.spellingBankHint':
+    'الماكينات التي تحمل هذا الاسم تُحسب لهذا البنك في السجل والتقارير.',
+  'atm.dataEdit.spellingIsBankLabel':
+    'هذا الاسم هو اسم التشغيل لبنك في دليل البنوك، فلا يحتاج إلى إضافة ثانية.',
+  'atm.dataEdit.unmappedTitle': 'أسماء بنوك على الماكينات غير مربوطة ببنك',
+  'atm.dataEdit.unmappedBody':
+    'الماكينة التي تُضاف بأحد هذه الأسماء تعمل في التشغيل، ولا تُسجَّل في السجل. اربط كل اسم ببنكه.',
+  'atm.dataEdit.linkToBank': 'ربط ببنك',
+  'atm.dataEdit.labelsUnscoped':
+    'تعرض هذه القائمة كل الفروع المتاحة لك، لأنه لم يُحدَّد فرع واحد. اختر فرعًا من القائمة العلوية لعرض أسماء فرع واحد والإضافة إليه.',
+  'atm.dataEdit.storedName': 'الاسم المحفوظ على الماكينات',
+  'atm.dataEdit.nameAr': 'الاسم بالعربية',
+  'atm.dataEdit.nameEn': 'الاسم بالإنجليزية',
+  'atm.dataEdit.displayNameHint': 'يظهر في القوائم فقط، وتحتفظ الماكينات بالاسم المحفوظ.',
+  'atm.dataEdit.storedAs': 'يُحفظ على الماكينات باسم: {{name}}',
+  'atm.dataEdit.renameKeepsMachines': 'الماكينات الحالية تحتفظ بالاسم القديم.',
+  'atm.dataEdit.areaExists':
+    'توجد منطقة بهذا الاسم. إن كانت المنطقة نفسها، فأضف إليها الاسم باللغة الأخرى من «تعديل».',
+  'atm.dataEdit.origin.title': 'المصدر',
+  'atm.dataEdit.origin.backfill': 'من البيانات الحالية',
+  'atm.dataEdit.origin.auto': 'أُضيفت تلقائيًا',
+  'atm.dataEdit.notRegisterMapped':
+    'هذا الفرع غير مربوط بكود EGYCASH: تعمل الماكينات المضافة هنا في التشغيل، ولا تُسجَّل في السجل.',
+  'atm.dataEdit.machineReactivated': 'أُعيدت الماكينة المؤرشفة للعمل.',
+  'atm.dataEdit.register.recorded': 'سُجلت في السجل — بيانات ناقصة.',
+  'atm.dataEdit.register.linked': 'رُبطت بسجلها.',
+  'atm.dataEdit.register.branchUnmapped': 'للتشغيل فقط: الفرع غير مربوط بكود EGYCASH.',
+  'atm.dataEdit.register.placeholderCode': 'للتشغيل فقط: الكود المؤقت لا يُسجَّل في السجل.',
+  'atm.dataEdit.register.noBank': 'اسم البنك غير مربوط ببنك — لم تُسجَّل في السجل.',
+  'atm.dataEdit.error.activeElsewhere': 'رقم الماكينة نشط في قائمة التشغيل لفرع آخر، فلم تُضَف.',
+  'atm.dataEdit.error.openElsewhere':
+    'لرقم الماكينة فترة تشغيل مفتوحة في السجل لفرع آخر، فلم تُضَف.',
+  'atm.dataEdit.error.bankInactive':
+    'هذا البنك مؤرشف في دليل البنوك، فلا تُضاف إليه ماكينات جديدة.',
+  'atm.dataEdit.machinesRecorded': 'تم تسجيل {{count}} ماكينة في السجل — بيانات ناقصة.',
+  'atm.dataEdit.machinesLinked': 'تم ربط {{count}} ماكينة بسجلها.',
+  'atm.dataEdit.machinesReactivated': 'أُعيدت للعمل من الأرشيف: {{codes}}',
+  'atm.dataEdit.machinesRefused.activeElsewhere': 'لم تُضَف لأنها نشطة في فرع آخر: {{codes}}',
+  'atm.dataEdit.machinesRefused.openElsewhere':
+    'لم تُضَف لأن لها فترة مفتوحة في السجل لفرع آخر: {{codes}}',
+  'atm.dataEdit.notRecorded.branchUnmapped':
+    'لم تُسجَّل في السجل (الفرع غير مربوط بكود EGYCASH): {{codes}}',
+  'atm.dataEdit.notRecorded.placeholderCode': 'لم تُسجَّل في السجل (أكواد مؤقتة): {{codes}}',
+  'atm.dataEdit.notRecorded.noBank': 'لم تُسجَّل في السجل (اسم البنك غير مربوط ببنك): {{codes}}',
+
+  // ── The bank catalog (DEC-35): its dialog, on data-edit and in the register ──
+  'atm.bankCatalog.add': 'إضافة بنك',
+  'atm.bankCatalog.edit': 'تعديل البنك',
+  'atm.bankCatalog.code': 'الكود',
+  'atm.bankCatalog.codeHint':
+    'حروف إنجليزية كبيرة وأرقام، من حرفين إلى عشرة، تبدأ بحرف. لا يمكن تغييره بعد الحفظ.',
+  'atm.bankCatalog.codeInvalid':
+    'استخدم حروفًا إنجليزية كبيرة وأرقامًا تبدأ بحرف، من حرفين إلى عشرة.',
+  'atm.bankCatalog.codeFixed': 'الكود محفوظ على كل سجلات البنك، ولا يمكن تغييره.',
+  'atm.bankCatalog.nameAr': 'الاسم بالعربية',
+  'atm.bankCatalog.nameEn': 'الاسم بالإنجليزية',
+  'atm.bankCatalog.opsLabel': 'الاسم في التشغيل',
+  'atm.bankCatalog.opsLabelHint':
+    'اسم البنك الذي يُكتب على الماكينات المستلمة منه. إذا تُرك فارغًا يُستخدم الكود.',
+  'atm.bankCatalog.opsLabelChanged':
+    'تحتفظ الماكينات الحالية بالاسم القديم، ويظل يُحسب لهذا البنك.',
+  'atm.bankCatalog.color': 'اللون',
+  'atm.bankCatalog.colorHint': 'يُستخدم في رسوم تقرير البيانات وعلى الخريطة.',
+  'atm.bankCatalog.isActive': 'نشط',
+  'atm.bankCatalog.activeHint':
+    'البنك المؤرشف لا يُعرض للاستلامات والماكينات الجديدة، وتبقى ماكيناته وأعداده كما هي.',
+  'atm.bankCatalog.settlementsWarning':
+    'هذا البنك مفعَّل في التسويات، والأرشفة لا تُزيله منها؛ يعدّل مدير النظام ذلك الإعداد.',
+  'atm.bankCatalog.added': 'تمت إضافة البنك.',
+  'atm.bankCatalog.saved': 'تم حفظ البنك.',
+  'atm.bankCatalog.error.ATM_BANK_CODE_TAKEN': 'يوجد بنك بهذا الكود.',
+  'atm.bankCatalog.error.ATM_BANK_LABEL_TAKEN': 'اسم التشغيل هذا مستخدم لبنك آخر.',
+  'atm.bankCatalog.error.ATM_BANK_NAME_TAKEN': 'يوجد بنك بهذا الاسم العربي أو الإنجليزي.',
+  'atm.bankCatalog.title': 'البنوك',
+  'atm.bankCatalog.intro':
+    'بنوك الشركة كلها. البنك المضاف هنا يظهر في السجل وتقرير البيانات والتسويات والخريطة، مثل البنوك الستة في الملف.',
+  'atm.bankCatalog.archivedOption': '{{name}} (مؤرشف)',
 
   'atm.nav.dailyReport': 'تقرير اليوم',
   'atm.cards.dailyReport': 'المفتوح والإجمالي لكل بنك اليوم.',
@@ -18196,6 +18400,7 @@ const ar: Record<string, string> = {
   'atm.register.filter.allAreas': 'كل المناطق',
   'atm.register.filter.search': 'ابحث برقم الماكينة أو الاسم أو الرقم التسلسلي',
   'atm.register.filter.withIssues': 'الصفوف ذات ملاحظات الاستيراد فقط',
+  'atm.register.filter.incomplete': 'بيانات ناقصة فقط',
   'atm.register.status.pending': 'بدون تاريخ بدء',
   'atm.register.status.open': 'قيد التشغيل',
   'atm.register.status.ended': 'تم التسليم',
@@ -18211,6 +18416,11 @@ const ar: Record<string, string> = {
   'atm.register.combinationSet': 'مسجّل',
   'atm.register.combinationUnset': 'غير مسجّل',
   'atm.register.issues': '{{count}} ملاحظة استيراد',
+  // «بيانات ناقصة» (DEC-37) and the Operations receipts behind it (DEC-36).
+  'atm.register.incomplete': 'بيانات ناقصة',
+  'atm.register.incompleteMissing': 'لم يُملأ بعد: {{fields}}',
+  'atm.register.incompleteNoGaps': 'جميع الحقول المتوقعة مملوءة؛ أزِل العلامة بعد مراجعة السجل.',
+  'atm.register.source.operations': 'أضافها التشغيل من صفحة «إضافة البيانات».',
   'atm.register.actions': 'الإجراءات',
   'atm.register.action.edit': 'تعديل',
   'atm.register.action.receivePending': 'تسجيل الاستلام',
@@ -18241,6 +18451,8 @@ const ar: Record<string, string> = {
   'atm.register.form.deleteTitle': 'حذف السجل',
   'atm.register.form.deleteBody':
     'هل تريد حذف هذا السجل المُدخل بالخطأ؟ إذا كان فترة التشغيل المفتوحة الوحيدة للماكينة فستُؤرشف في قائمة التشغيل.',
+  'atm.register.form.deleteBodyOperations':
+    'هل تريد حذف هذا السجل؟ سجّله التشغيل عند إضافة الماكينة من صفحة «إضافة البيانات». إذا كان فترة التشغيل المفتوحة الوحيدة للماكينة فستُؤرشف في قائمة التشغيل وتختفي من نماذج التشغيل المفتوحة.',
   'atm.register.form.linkTitle': 'ربط الماكينة {{code}} بقائمة التشغيل',
   'atm.register.form.linkBody':
     'تُربط الماكينة بقائمة التشغيل لفرعها أو يُعاد تفعيلها فيها أو تُضاف إليها، كما عند الاستلام.',
@@ -18249,6 +18461,22 @@ const ar: Record<string, string> = {
   'atm.register.form.opsBankLabelAuto': 'تلقائي ({{label}})',
   'atm.register.form.startDateHint': 'اتركه فارغًا لتسجيل الماكينة دون تاريخ بدء.',
   'atm.register.form.areaRequired': 'المنطقة مطلوبة عند إدخال تاريخ البدء.',
+  'atm.register.form.newAreaHint': 'منطقة جديدة — ستُضاف إلى قائمة الفرع.',
+  'atm.register.form.areaExistsPicked': 'توجد منطقة بهذا الاسم في هذا الفرع، فوُضعت في خانة المنطقة.',
+  'atm.register.form.dataIncompleteHint':
+    'أبقِ العلامة حتى تُستكمل بيانات السجل، ثم أزِلها بعد مراجعته.',
+  'atm.register.form.operationsNote':
+    'سجّل التشغيل هذه الماكينة عند إضافتها من صفحة «إضافة البيانات»، وتاريخ البدء هو يوم الإضافة. استكمل بيانات الماكينة، وصحّح تاريخ البدء إن لزم، ثم أزِل علامة «بيانات ناقصة».',
+  // A refused bank or Operations name (DEC-35; DEC-25 now enforced by the server).
+  'atm.register.refusal.bankCode.UNKNOWN': 'هذا البنك غير موجود في قائمة البنوك.',
+  'atm.register.refusal.bankCode.INACTIVE':
+    'هذا البنك مؤرشف في قائمة البنوك، ولا يمكن اختياره لاستلام جديد.',
+  'atm.register.refusal.opsBankLabel.UNKNOWN':
+    'اسم البنك هذا ليس من أسماء التشغيل النشطة في هذا الفرع.',
+  'atm.register.refusal.opsBankLabel.UNMAPPED':
+    'اسم البنك هذا غير مربوط ببنك بعد؛ اربطه أولًا من صفحة «إضافة البيانات».',
+  'atm.register.refusal.opsBankLabel.OTHER_BANK':
+    'اسم البنك هذا تابع لبنك آخر؛ اختر اسمًا من أسماء البنك المحدد.',
   'atm.register.form.combinationKeep': 'اتركه فارغًا للإبقاء على القيمة المسجّلة.',
   'atm.register.form.combinationClear': 'مسح القيمة المسجّلة',
   'atm.register.form.codeLocked': 'لا يمكن تغيير رقم الماكينة بعد ربطها بقائمة التشغيل.',
@@ -18828,6 +19056,9 @@ const ar: Record<string, string> = {
   'atm.registerSettings.save': 'حفظ',
   'atm.registerSettings.saved': 'تم الحفظ.',
   'atm.registerSettings.readOnly': 'لا يغيّر هذه القيم إلا مدير لديه صلاحية الإعدادات.',
+  'atm.registerSettings.bankLabelsHint':
+    'تُدار البنوك وأسماؤها في التشغيل من قائمة البنوك («البنوك» في سجل الماكينات)، وهذه القائمة هي ما تستخدمه المعاينة.',
+  'atm.registerSettings.manageBanks': 'إدارة البنوك',
 
   // ── ATM Settlements & Review → Preparation → Control & Supplies, phase 1 ──
   // (docs/12-planning/atm-settlements-phase1.md §9.9)

@@ -11,6 +11,36 @@ its entry here in the same PR.
 
 ### Added
 
+- **Banks and areas are one list across the ATM pages, in Arabic and English, and a machine added
+  on data-edit lands in the register.** «وبالنسبة لإضافة الماكينات /atm/data-edit البنوك والمناطق
+  مش مسمعه !! من /atm/register · مع العلم عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا
+  /atm/register بحيث شغل العمليات ميعطلش ويبقى بتاع الكفاءة والتحقيقات يكمل بياناتها براحته وبرضو
+  يقدروا يضيفوا مناطق وبنوك (عربي وأنجليزي)». The register's six fixed banks became a company-wide
+  bank catalog, seeded with the same six. A bank added there — its code, Arabic and English names,
+  the name Operations type, and a colour — is a full bank: register receipts, the Data Report (after
+  BRK and after NXT), the settlements once enabled, and the map all use it. Banks are added and
+  edited from the register's new «البنوك» button and data-edit's «البنوك» tab, under two new keys,
+  `atmBank.create` / `atmBank.edit`, which work only when held at organization scope. After the
+  deploy only super-admin holds them, so an administrator grants them. A bank is archived, never
+  deleted.
+  `/atm/data-edit` now has four tabs: machines; banks; «أسماء البنوك في التشغيل» — each branch's
+  spellings such as NBE FOREX, linked to their bank, with the machines' unlinked bank texts listed
+  to link; and areas, each with an Arabic and an English name. Every area on an active machine or an
+  open or pending register entry now shows there, listed automatically after each save and once at
+  the deploy; a name Operations deleted, archived or renamed — a rename made before this release
+  included, found in the audit trail — is never listed again. A new area entered in both languages is stored on machines under its English name
+  («الإنجليزي تمام»). Efficiency add areas from the register form's «+ منطقة» with the register keys
+  they already hold.
+  A machine added on data-edit, single or bulk, is recorded in the register as an OPEN entry dated
+  the day it was added, linked to it and marked «بيانات ناقصة», for Efficiency to complete at their
+  pace. The register has a «بيانات ناقصة فقط» filter, a badge on those rows listing what is still
+  empty, and a box on the edit form to clear the mark; the export gains a `Data incomplete` column.
+  Nothing is recorded, and the machine still works for Operations, when the branch has no EGYCASH
+  code or the bank text is not linked to a bank yet. Machines already in the Operations list are not
+  moved into the register: Efficiency receive those by hand, and the receipt links the machine
+  ([register spec §1.3, DEC-35–DEC-41](docs/12-planning/atm-efficiency-register.md),
+  [ATM port §9](docs/12-planning/atm-operations-port.md)).
+
 - **The ATM boards show one day at a time, and every ATM operation table goes to Excel and PDF.**
   «هنا يظهر فقط الماكينات اللى المفروض يتغذى أو يتعمله صيانه في اليوم دا مش عموماً».
   `/atm/replenishments` and `/atm/maintenance` open on today's operations only; a switch beside the
@@ -166,6 +196,31 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **The Data Report's numbers rise with each machine added on `/atm/data-edit`, and data-edit's add
+  answers differently.** «عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا /atm/register بحيث شغل
+  العمليات ميعطلش». Each add in a mapped branch whose bank is known opens a register entry from that
+  day. It counts in the Data Report at once, and the settlements find its bank, so it is no longer
+  refused there as having none. The import's 57-number check still compares the workbook's six banks
+  only. A code archived in the branch is brought back to work with the form's name and area,
+  instead of being refused as already registered (a bulk add lists it as brought back); its bank is
+  the bank of the register entry it is linked to or receives, when that entry has one, so the
+  machine and the register never name two different banks. A code that
+  is active, or has an open register period, in another branch is now refused, and nothing is
+  written. Before, data-edit added it, and the mail reader then stopped matching that code. Adding a
+  machine needs `atmMachine.manage` over the branch it lands in, and an archived bank cannot be
+  chosen for a new machine. Deleting a machine by its code (how a mistyped code is fixed) needs the
+  same reach, and also removes the register entry its add wrote while Efficiency has not touched
+  it, so the code is free again in every branch; an entry Efficiency already edited stays. The register refuses a bank code the catalog does not have, an archived
+  bank on a new receipt, and an Operations bank name that belongs to another bank or to none
+  (DEC-25 now holds on the server too). The setting `atm.register.bankLabels` is retired: each bank's
+  Operations name lives in the catalog, a stored label carried over at the first boot, and the
+  import page's settings card shows the catalog instead of editing it. `atm.settlements.banks` takes
+  any catalog code, up to 50, and a standard load is refused for a bank that is not in the catalog
+  or not enabled for settlements. Deleting a register entry Operations recorded archives its machine, as
+  for any receipt; the delete dialog says so
+  ([register spec DEC-36, DEC-41, R-14–R-19](docs/12-planning/atm-efficiency-register.md),
+  [settlements DS-24](docs/12-planning/atm-settlements-phase1.md)).
 
 - **A machine is refused only when it is already open THAT DAY.** «خلى الرفض دا … يحصل فقط إذا كانت
   الماكينات مفتوحه في نفس اليوم ولم تُغلق ! مش يرفضها لو مفتوحه أمبارح ومتقفلتش». The owner's rule

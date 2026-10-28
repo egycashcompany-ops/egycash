@@ -10,7 +10,13 @@
 //   · DEC-29: a department-, section- or own-scoped grant reads within its branch and writes,
 //     reveals and sees nothing secret — and outside its branch it sees nothing at all;
 //   · the Data Report's numbers, including the regressions the spec names (an NXT handover, an
-//     Alexandria NXT counted under NXT and never HDB, an Alexandria HDB counted once).
+//     Alexandria NXT counted under NXT and never HDB, an Alexandria HDB counted once);
+//   · the bank catalog (DEC-35): a bank added at runtime is a full register bank — offered by the
+//     meta, received with its own Operations label, counted in the report after the sheet's six —
+//     an unknown or archived bank is refused for a NEW value, and an override must be a spelling OF
+//     THE ENTRY'S BANK (DEC-25, enforced on the server now);
+//   · «بيانات ناقصة» (DEC-37): a stored flag Efficiency sets and clears, filtered and exported, and
+//     audited.
 //
 // Every machine code, key code and combination below is synthetic. No value of the owner's
 // workbook appears in this file.
@@ -26,7 +32,10 @@ import {
   platformPermissions,
   realtimeTopic,
   topicRoom,
+  type AtmBankDto,
+  type AtmRegisterBranchOptionsDto,
   type AtmRegisterEntryDto,
+  type AtmRegisterMetaDto,
   type AtmRegisterReportDto,
   type AtmRegisterRevealDto,
   type AtmRegisterWriteResultDto,
@@ -187,13 +196,19 @@ const masterOf = async (branchId: string, machineCode: string): Promise<AtmMachi
     .exec();
 
 /** Admin adds an Operations machine in a branch, through the existing data-edit route. */
+/**
+ * An Operations machine with NO register entry — the state `npm run atm:import` (or a data-edit add
+ * before DEC-36) left it in. Inserted directly: a data-edit add now records an open receipt itself
+ * (atm-data-edit-register.spec.ts), and these scenarios are about a master the register meets.
+ */
 const addMachine = async (
   branchId: string,
   body: { machineCode: string; name: string; bankName: string; area: string },
 ): Promise<string> => {
-  const res = await call('post', '/atm/machines', adminToken, body, branchId);
-  expect(res.status, JSON.stringify(res.body)).toBe(201);
-  return data<{ id: string }>(res).id;
+  const [doc] = await AtmMachineModel.create([
+    { branchId: new Types.ObjectId(branchId), zone: '', isActive: true, ...body },
+  ]);
+  return String(doc?._id);
 };
 
 /** An entry written as the IMPORT writes it (WP-B) — straight into the collection. */
@@ -769,7 +784,7 @@ describe('secrets (D3, DEC-7)', () => {
     expect(data<AtmRegisterRevealDto>(reveal).safeCombination).toBe(COMBO_2);
   });
 
-  it('19 — EXPORT: BOM, public columns only, Status last, audited; refused without the key', async () => {
+  it('19 — EXPORT: BOM, public columns only, Status then Data incomplete last, audited; refused without the key', async () => {
     const res = await call('get', '/atm/register/entries/export', effOrgToken);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/csv');
@@ -784,7 +799,7 @@ describe('secrets (D3, DEC-7)', () => {
     ]) {
       expect(header).not.toContain(secretHeader);
     }
-    expect(header.split(',').at(-1)).toBe('Status');
+    expect(header.split(',').slice(-2)).toEqual(['Status', 'Data incomplete']);
     expect(res.text).toContain('99990013');
     for (const secret of [COMBO, COMBO_2, 'SUP-FAKE-9911', NOTE])
       expect(res.text).not.toContain(secret);
@@ -831,13 +846,16 @@ describe('the Data Report (D7)', () => {
       throw new Error('Alexandria not shown');
     // Section 3, Alexandria: NBE +2, HDB +1, NXT +1 — the NXT counted under NXT, never HDB; the
     // HDB counted once; the handed-over NXT and the pending NBE nowhere.
-    expect(alexAfter.NBE - alexBefore.NBE).toBe(2);
-    expect(alexAfter.HDB - alexBefore.HDB).toBe(1);
-    expect(alexAfter.NXT - alexBefore.NXT).toBe(1);
-    expect(alexAfter.BM - alexBefore.BM).toBe(0);
-    expect(alexAfter.CIB - alexBefore.CIB).toBe(0);
-    expect(alexAfter.BRK - alexBefore.BRK).toBe(0);
-    expect(after.counts.section1.NXT - before.counts.section1.NXT).toBe(1);
+    // The catalog folds every bank (DEC-40); a seed's cell is always there, so `?? NaN` only makes
+    // a missing one fail loudly instead of reading as 0.
+    const cell = (row: Record<string, number>, bank: string): number => row[bank] ?? NaN;
+    expect(cell(alexAfter, 'NBE') - cell(alexBefore, 'NBE')).toBe(2);
+    expect(cell(alexAfter, 'HDB') - cell(alexBefore, 'HDB')).toBe(1);
+    expect(cell(alexAfter, 'NXT') - cell(alexBefore, 'NXT')).toBe(1);
+    expect(cell(alexAfter, 'BM') - cell(alexBefore, 'BM')).toBe(0);
+    expect(cell(alexAfter, 'CIB') - cell(alexBefore, 'CIB')).toBe(0);
+    expect(cell(alexAfter, 'BRK') - cell(alexBefore, 'BRK')).toBe(0);
+    expect(cell(after.counts.section1, 'NXT') - cell(before.counts.section1, 'NXT')).toBe(1);
     expect(after.counts.section1.total - before.counts.section1.total).toBe(5);
     expect(after.counts.section2.total - before.counts.section2.total).toBe(5);
     expect(
@@ -1301,5 +1319,257 @@ describe('key rotation (DEC-33)', () => {
       settings.PLATFORM_ENCRYPTION_ACTIVE_KEY = active;
       cryptoService.resetKeyRing();
     }
+  });
+});
+
+describe('the bank catalog in the register (DEC-35, DEC-40)', () => {
+  const addBank = async (body: Record<string, unknown>): Promise<AtmBankDto> => {
+    const res = await call('post', '/atm/banks', adminToken, body);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<AtmBankDto>(res);
+  };
+  const patchBank = async (code: string, body: Record<string, unknown>): Promise<void> => {
+    const listed = data<AtmBankDto[]>(await call('get', '/atm/banks', adminToken));
+    const bank = listed.find((row) => row.code === code);
+    if (bank === undefined) throw new Error(`no bank ${code}`);
+    const res = await call('patch', `/atm/banks/${code}`, adminToken, {
+      ...body,
+      version: bank.version,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  };
+  const fieldError = (res: request.Response): { field: string; code: string } | undefined =>
+    (res.body as { error?: { details?: { field: string; code: string }[] } }).error?.details?.[0];
+
+  it('33 — the meta lists the CATALOG: every bank, in order, with its state; a bank added at runtime is there', async () => {
+    await addBank({
+      code: 'QNB',
+      name: { ar: 'بنك قطر الوطني', en: 'QNB Al Ahli' },
+      opsLabel: 'QNB ALAHLI',
+    });
+    const res = await call('get', '/atm/register/meta', effOrgToken);
+    expect(res.status).toBe(200);
+    const banks = data<AtmRegisterMetaDto>(res).banks;
+    expect(banks.map((b) => b.code)).toEqual(['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT', 'QNB']);
+    expect(banks.find((b) => b.code === 'BM')).toEqual({
+      code: 'BM',
+      name: { ar: 'بنك مصر', en: 'Banque Misr' },
+      opsLabel: 'MISR',
+      color: '#AC2100',
+      isActive: true,
+      sortOrder: 20,
+      isSeed: true,
+    });
+    expect(banks.find((b) => b.code === 'QNB')).toMatchObject({
+      opsLabel: 'QNB ALAHLI',
+      isActive: true,
+      sortOrder: 70,
+      isSeed: false,
+    });
+  });
+
+  it('34 — a receipt with the new bank creates the master with ITS label, and the report counts it after BRK', async () => {
+    const before = await report(effOrgToken);
+    const result = await receive(effOrgToken, { machineCode: '99990340', bankCode: 'QNB' });
+    expect(result.master.action).toBe('create');
+    expect(result.entry.effectiveOpsBankLabel).toBe('QNB ALAHLI');
+    expect(result.entry.opsBankLabel).toBeNull();
+    // A bank with no ID format never warns about the code's shape (D6 stays the six's).
+    expect(result.warnings).not.toContain('idFormat');
+    expect((await masterOf(alexBranchId, '99990340'))?.bankName).toBe('QNB ALAHLI');
+
+    const after = await report(effOrgToken);
+    expect(after.section1Banks).toEqual(['NXT', 'NBE', 'BM', 'CIB', 'HDB', 'BRK', 'QNB']);
+    expect(after.section3Banks).toEqual(['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT', 'QNB']);
+    expect(after.banks.find((b) => b.code === 'QNB')).toEqual({
+      code: 'QNB',
+      name: { ar: 'بنك قطر الوطني', en: 'QNB Al Ahli' },
+      color: '#7030A0',
+      isActive: true,
+      isSeed: false,
+    });
+    expect((after.counts.section1.QNB ?? 0) - (before.counts.section1.QNB ?? 0)).toBe(1);
+    expect(after.counts.section1.total - before.counts.section1.total).toBe(1);
+    expect(after.counts.section2.total - before.counts.section2.total).toBe(1);
+    expect(after.counts.section3['EGYCASH-4']?.QNB).toBe(1);
+  });
+
+  it('35 — an unknown or ARCHIVED bank is 400 for a new value; an entry keeps an archived bank it already has', async () => {
+    const unknown = await call(
+      'post',
+      '/atm/register/entries',
+      effOrgToken,
+      receipt({ machineCode: '99990350', bankCode: 'ZZZ' }),
+    );
+    expect(unknown.status).toBe(400);
+    expect(fieldError(unknown)).toMatchObject({ field: 'body.bankCode', code: 'UNKNOWN' });
+
+    const pending = await receive(effOrgToken, {
+      machineCode: '99990351',
+      bankCode: 'QNB',
+      startDate: undefined,
+    });
+    const open = data<AtmRegisterEntryDto[]>(
+      await call('get', '/atm/register/entries?search=99990340&statuses=open', effOrgToken),
+    )[0];
+    if (open === undefined) throw new Error('no open QNB entry');
+    await patchBank('QNB', { isActive: false });
+    try {
+      const archived = await call(
+        'post',
+        '/atm/register/entries',
+        effOrgToken,
+        receipt({ machineCode: '99990352', bankCode: 'QNB' }),
+      );
+      expect(archived.status).toBe(400);
+      expect(fieldError(archived)).toMatchObject({ field: 'body.bankCode', code: 'INACTIVE' });
+
+      // The entry's own bank is not re-judged: an edit that leaves it alone is saved…
+      const kept = await call('patch', `/atm/register/entries/${open.id}`, effOrgToken, {
+        name: 'QNB ATM renamed',
+        bankCode: 'QNB',
+        version: open.version,
+      });
+      expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+      // …and a pending entry recorded with it is received with it.
+      const received = await call(
+        'post',
+        `/atm/register/entries/${pending.entry.id}/receive`,
+        effOrgToken,
+        { startDate: '2026-09-02', area: 'Smouha', version: pending.entry.version },
+      );
+      expect(received.status, JSON.stringify(received.body)).toBe(200);
+
+      // Moving another entry TO the archived bank is a new value: refused.
+      const nbe = await receive(effOrgToken, { machineCode: '99990353' });
+      const moved = await call('patch', `/atm/register/entries/${nbe.entry.id}`, effOrgToken, {
+        bankCode: 'QNB',
+        version: nbe.entry.version,
+      });
+      expect(moved.status).toBe(400);
+      expect(fieldError(moved)).toMatchObject({ field: 'body.bankCode', code: 'INACTIVE' });
+
+      // Archived but still in operation: the report keeps counting and showing it.
+      const counted = await report(effOrgToken);
+      expect(counted.section1Banks).toContain('QNB');
+      expect(counted.banks.find((b) => b.code === 'QNB')?.isActive).toBe(false);
+    } finally {
+      await patchBank('QNB', { isActive: true });
+    }
+  });
+
+  it('36 — an override must be a spelling OF THE ENTRY’S BANK: another bank’s or an unmapped one is 400', async () => {
+    const alex = new Types.ObjectId(alexBranchId);
+    await AtmRefLabelModel.create([
+      { branchId: alex, kind: 'bank', name: 'NBE FOREX', bankCode: 'NBE' },
+      { branchId: alex, kind: 'bank', name: 'MISR ALT', bankCode: 'BM' },
+      { branchId: alex, kind: 'bank', name: 'RAW TEXT', bankCode: null },
+    ]);
+    const options = data<AtmRegisterBranchOptionsDto>(
+      await call('get', `/atm/register/branch-options?branchId=${alexBranchId}`, effOrgToken),
+    );
+    expect(options.bankVariants).toEqual([
+      { name: 'MISR ALT', bankCode: 'BM' },
+      { name: 'NBE FOREX', bankCode: 'NBE' },
+    ]);
+
+    const other = await call(
+      'post',
+      '/atm/register/entries',
+      effOrgToken,
+      receipt({ machineCode: '99990360', opsBankLabel: 'MISR ALT' }),
+    );
+    expect(other.status).toBe(400);
+    expect(fieldError(other)).toMatchObject({ field: 'body.opsBankLabel', code: 'OTHER_BANK' });
+    const unmapped = await call(
+      'post',
+      '/atm/register/entries',
+      effOrgToken,
+      receipt({ machineCode: '99990360', opsBankLabel: 'RAW TEXT' }),
+    );
+    expect(unmapped.status).toBe(400);
+    expect(fieldError(unmapped)).toMatchObject({ field: 'body.opsBankLabel', code: 'UNMAPPED' });
+
+    const forex = await receive(effOrgToken, {
+      machineCode: '99990360',
+      opsBankLabel: 'NBE FOREX',
+    });
+    expect((await masterOf(alexBranchId, '99990360'))?.bankName).toBe('NBE FOREX');
+
+    const wrong = await call('patch', `/atm/register/entries/${forex.entry.id}`, effOrgToken, {
+      opsBankLabel: 'MISR ALT',
+      version: forex.entry.version,
+    });
+    expect(wrong.status).toBe(400);
+    expect(fieldError(wrong)).toMatchObject({ field: 'body.opsBankLabel', code: 'OTHER_BANK' });
+    const both = await call('patch', `/atm/register/entries/${forex.entry.id}`, effOrgToken, {
+      bankCode: 'BM',
+      opsBankLabel: 'MISR ALT',
+      version: forex.entry.version,
+    });
+    expect(both.status, JSON.stringify(both.body)).toBe(200);
+    expect((await masterOf(alexBranchId, '99990360'))?.bankName).toBe('MISR ALT');
+  });
+});
+
+describe('«بيانات ناقصة» (DEC-37)', () => {
+  it('37 — Efficiency sets and clears the flag; the list filters on it, the export carries it, the audit shows it', async () => {
+    const flagged = await receive(effOrgToken, { machineCode: '99990370' });
+    const plain = await receive(effOrgToken, { machineCode: '99990371' });
+    expect(flagged.entry.dataIncomplete).toBe(false);
+    expect(flagged.entry.source).toBe('manual');
+
+    // A holder whose edit key does not reach the branch cannot touch it.
+    const outside = await call('patch', `/atm/register/entries/${flagged.entry.id}`, tantaToken, {
+      dataIncomplete: true,
+      version: flagged.entry.version,
+    });
+    expect(outside.status).toBe(404);
+
+    const set = await call('patch', `/atm/register/entries/${flagged.entry.id}`, effOrgToken, {
+      dataIncomplete: true,
+      version: flagged.entry.version,
+    });
+    expect(set.status, JSON.stringify(set.body)).toBe(200);
+    const setEntry = data<AtmRegisterWriteResultDto>(set).entry;
+    expect(setEntry.dataIncomplete).toBe(true);
+
+    const only = data<AtmRegisterEntryDto[]>(
+      await call('get', '/atm/register/entries?incomplete=true&pageSize=100', effOrgToken),
+    );
+    expect(only.map((e) => e.machineCode)).toEqual(['99990370']);
+    const rest = data<AtmRegisterEntryDto[]>(
+      await call(
+        'get',
+        '/atm/register/entries?incomplete=false&search=9999037&pageSize=100',
+        effOrgToken,
+      ),
+    );
+    expect(rest.map((e) => e.machineCode)).toEqual(['99990371']);
+    expect(rest.every((e) => !e.dataIncomplete)).toBe(true);
+
+    const csv = await call('get', '/atm/register/entries/export?incomplete=true', effOrgToken);
+    expect(csv.status).toBe(200);
+    const lines = csv.text.slice(1).trim().split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain('99990370');
+    expect(lines[1]?.endsWith(',yes')).toBe(true);
+    const all = await call('get', '/atm/register/entries/export?search=99990371', effOrgToken);
+    expect(all.text.trim().split('\n').at(-1)?.endsWith(',no')).toBe(true);
+
+    const cleared = await call('patch', `/atm/register/entries/${flagged.entry.id}`, effOrgToken, {
+      dataIncomplete: false,
+      version: setEntry.version,
+    });
+    expect(cleared.status).toBe(200);
+    expect(data<AtmRegisterWriteResultDto>(cleared).entry.dataIncomplete).toBe(false);
+    const diffs = (await auditRows(flagged.entry.id, 'update')).flatMap(
+      (row) => (row as { changes: { field: string; old: unknown; new: unknown }[] }).changes,
+    );
+    expect(diffs.filter((c) => c.field === 'dataIncomplete')).toEqual([
+      { field: 'dataIncomplete', old: false, new: true },
+      { field: 'dataIncomplete', old: true, new: false },
+    ]);
+    expect(plain.entry.dataIncomplete).toBe(false);
   });
 });

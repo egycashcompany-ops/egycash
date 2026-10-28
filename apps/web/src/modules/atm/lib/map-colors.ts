@@ -1,15 +1,11 @@
 // The machine map's colours (docs/12-planning/atm-map-zones.md §8.5, §8.9): the twelve zone colours
-// of the approved mockup, the bank colours of the Data Report, and the two contrast rules that
-// decide which of them get a dark ring.
+// of the approved mockup and the contrast rule that decides which colours get a dark ring. The
+// bank colours are the catalog's now (DEC-35) — `lib/bank-catalog.ts` reads them, and decides a
+// bank dot's ring with `needsCasing` below rather than a list of the six.
 //
 // Grey `#6b7280` is reserved for «بلا قطاع» / «بنك غير محدد» and red for errors; no palette colour is
 // either, so a grey dot always means "no zone" and never "a grey zone".
-import {
-  ATM_BANK_REPORT_COLORS,
-  ATM_MAP_ZONE_PALETTE,
-  type AtmBankCode,
-  type AtmMapZonePaletteKey,
-} from '@ecms/contracts';
+import { ATM_MAP_ZONE_PALETTE, type AtmMapZonePaletteKey } from '@ecms/contracts';
 import { boxOf, boxesMeet, type LatLngBox } from './map-geometry';
 
 /** The map's own background (OSM land), which every contrast here is measured against. */
@@ -82,11 +78,3 @@ export const contrastRatio = (a: string, b: string): number => {
 
 /** A colour under 3:1 against the map gets a dark casing (non-text contrast, WCAG 1.4.11). */
 export const needsCasing = (hex: string): boolean => contrastRatio(hex, MAP_BACKGROUND) < 3;
-
-/** A machine's dot in colour-by-bank: the Data Report's colour, or grey without a bank (DM-17). */
-export const bankColor = (code: AtmBankCode | null): string =>
-  code === null ? NO_ZONE_GREY : ATM_BANK_REPORT_COLORS[code];
-
-/** The three pale bank colours, whose dots get a dark ring (§8.9). */
-export const paleBank = (code: AtmBankCode | null): boolean =>
-  code === 'CIB' || code === 'HDB' || code === 'BRK';

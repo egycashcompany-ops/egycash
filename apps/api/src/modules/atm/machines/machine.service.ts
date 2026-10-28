@@ -14,11 +14,22 @@
 // administrator's (`atmMachine.manage`); Operations keep the legacy «نقل ماكينة لمنطقة» as its own
 // area-only write, `moveArea` (DEC-3). Every AREA write — `update`, `reassignArea`, `moveArea` —
 // carries the area onto the machine's OPEN register entries in the same transaction (DEC-4); a
-// name or bank edit does not flow back into the register (the register's bank is an enum the
-// Operations label cannot be mapped back to). Audit rows are recorded once, after commit.
+// name or bank edit does not flow back into the register (DEC-4 is unchanged: an edit is a
+// correction of the master, not a receipt). Audit rows are recorded once, after commit.
+//
+// An ADD is recorded in the register (DEC-36, the owner's call): an OPEN receipt dated the add day,
+// linked and flagged «بيانات ناقصة» — `register/operations-intake.ts`, one unit per machine. Since
+// the add now writes the company-wide register, `manage` must reach the acting branch
+// (`manageActsInBranch`), a code active or open in another branch is refused (the mail matcher
+// needs one active machine per code, DEC-9; one open period per code, D6), and an ARCHIVED code
+// here is brought back to work instead of answering 409 (critic gap 1 — a machine handed back and
+// returned could not be re-added by Operations). Every area a machine write leaves on an active
+// machine gets a data-edit label after commit (DEC-38, `ensureAreaLabels`).
 import {
   ATM_MACHINE_SORT_FIELDS,
   normalizeAtmMachineCode,
+  type AtmMachineBulkRefusal,
+  type AtmMachineRegisterReason,
   type AtmMachinesSummaryDto,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
@@ -34,7 +45,7 @@ import { auditService } from '../../../platform/audit';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { hasPermission, keyReachesBranch, scopeSelector } from '../../../shared/types';
-import { ConflictError, NotFoundError } from '../../../shared/errors';
+import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import {
   ensureMachineVersioned,
@@ -42,7 +53,16 @@ import {
   syncMasterAreaToEntries,
   type PendingAudit,
 } from '../register/register-coupling';
-import { resolveAtmBranchId } from '../shared/atm-context';
+import { ensureAreaLabels } from '../catalogs/area-labels';
+import {
+  IntakeRefusal,
+  recordOperationsIntake,
+  removeUntouchedIntakeStubs,
+  resolveIntakeBank,
+  type OperationsIntakeResult,
+} from '../register/operations-intake';
+import { resolveRegisterSettings } from '../register/register-settings';
+import { manageActsInBranch, resolveAtmBranchId } from '../shared/atm-context';
 import { boardNames, storedSpellingsOf } from '../shared/board-filter';
 import {
   allOf,
@@ -97,6 +117,49 @@ const writeMaster = async (
 const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
   for (const audit of audits) await auditService.record(audit);
 };
+
+/**
+ * After a master write COMMITTED: its audits, then — when it left an active machine on an area it
+ * did not carry before (moved, or brought back from the archive) — that area's data-edit label
+ * (DEC-38; best effort, never fails the write).
+ */
+const settleMasterWrite = async (
+  before: AtmMachineDoc,
+  updated: AtmMachineDoc,
+  audits: readonly PendingAudit[],
+  actorId: string,
+): Promise<void> => {
+  await recordAll(audits);
+  if (updated.isActive && (updated.area !== before.area || !before.isActive)) {
+    await ensureAreaLabels([{ branchId: updated.branchId, area: updated.area }], {
+      actorId,
+      origin: 'machine',
+    });
+  }
+};
+
+/** The data-edit add's branch: the acting one, and `manage` must reach it (DEC-39). */
+const addBranchOf = async (ctx: AuthContext): Promise<string> => {
+  const branchId = await resolveAtmBranchId(ctx);
+  if (!manageActsInBranch(ctx, branchId)) {
+    throw new ForbiddenError('atmMachine.manage does not reach this branch');
+  }
+  return branchId;
+};
+
+export interface AtmMachineBulkCreateResult {
+  created: AtmMachineDoc[];
+  skippedCodes: string[];
+  reactivatedCodes: string[];
+  refused: { machineCode: string; reason: AtmMachineBulkRefusal }[];
+  register: {
+    created: string[];
+    received: string[];
+    linked: string[];
+    existing: string[];
+    notRecorded: { machineCode: string; reason: AtmMachineRegisterReason }[];
+  };
+}
 
 /**
  * The stored spellings the chosen bank and area names stand for, over every machine in the
@@ -163,84 +226,114 @@ class AtmMachineService {
     };
   }
 
+  /**
+   * The legacy bulk paste (:2412-2466): one bank and one area for the batch. A code already ACTIVE
+   * in the branch is skipped and named (`skippedCodes`), as the legacy skipped it; an archived one is
+   * brought back with the batch's data (`reactivatedCodes`); one active or open in another branch is
+   * refused (`refused`). Each row is its own unit, so one refusal does not undo the rest; the
+   * settings, the catalog and the bank are read once for the batch.
+   */
   async bulkCreate(
     input: BulkCreateAtmMachines,
     ctx: AuthContext,
-  ): Promise<{ created: AtmMachineDoc[]; skippedCodes: string[] }> {
-    const branchId = await resolveAtmBranchId(ctx);
-    const created: AtmMachineDoc[] = [];
-    const skippedCodes: string[] = [];
+  ): Promise<AtmMachineBulkCreateResult> {
+    const branchId = await addBranchOf(ctx);
+    const settings = await resolveRegisterSettings();
+    const bank = await resolveIntakeBank(branchId, input.bankName, settings.catalog);
+    const result: AtmMachineBulkCreateResult = {
+      created: [],
+      skippedCodes: [],
+      reactivatedCodes: [],
+      refused: [],
+      register: { created: [], received: [], linked: [], existing: [], notRecorded: [] },
+    };
     const seen = new Set<string>();
     for (const row of input.machines) {
       const machineCode = normalizeAtmMachineCode(row.machineCode);
       if (machineCode === '' || seen.has(machineCode)) continue;
       seen.add(machineCode);
-      // Existing (active OR deactivated, but not soft-deleted) → skip, as legacy `findOne` did
-      // (:2429). The unique index is the racproof backstop; the read keeps the skip a skip
-      // rather than a 409.
-      const existing = await atmMachineRepository.findOne({
-        branchId: new Types.ObjectId(branchId),
-        machineCode,
-      } as FilterQuery<AtmMachineDoc>);
-      if (existing !== null) {
-        skippedCodes.push(machineCode);
+      // ACTIVE here → skip, as legacy `findOne` did (:2429). The read keeps the skip a skip; a
+      // concurrent add of the same code is caught below as the same skip.
+      if ((await atmMachineRepository.findActiveByCode(branchId, machineCode)) !== null) {
+        result.skippedCodes.push(machineCode);
         continue;
       }
-      const doc = await atmMachineRepository.create(
-        {
-          branchId: new Types.ObjectId(branchId),
-          bankName: input.bankName,
-          machineCode,
-          name: row.name,
-          zone: '',
-          area: input.area,
-          isActive: true,
-        },
-        { by: ctx.userId },
-      );
-      await auditService.record({
-        entityRef: entityRef(String(doc._id)),
-        action: 'create',
-        changes: diffChanges({}, snapshot(doc)),
-      });
-      created.push(doc);
+      let added: OperationsIntakeResult;
+      try {
+        added = await recordOperationsIntake(
+          {
+            branchId,
+            machineCode,
+            name: row.name,
+            area: input.area,
+            bankName: input.bankName,
+            bank,
+          },
+          ctx,
+          settings,
+        );
+      } catch (error) {
+        if (error instanceof IntakeRefusal && error.reason !== 'activeHere') {
+          result.refused.push({ machineCode, reason: error.reason });
+          continue;
+        }
+        if (error instanceof ConflictError) {
+          result.skippedCodes.push(machineCode);
+          continue;
+        }
+        throw error;
+      }
+      if (added.reactivated) result.reactivatedCodes.push(machineCode);
+      else result.created.push(added.machine);
+      const { action, reason } = added.register;
+      if (action === 'none') {
+        result.register.notRecorded.push({ machineCode, reason: reason ?? 'noBank' });
+      } else {
+        result.register[action].push(machineCode);
+      }
     }
-    return { created, skippedCodes };
+    if (result.created.length > 0 || result.reactivatedCodes.length > 0) {
+      await ensureAreaLabels([{ branchId, area: input.area }], {
+        actorId: ctx.userId,
+        origin: 'machine',
+      });
+    }
+    return result;
   }
 
   /**
-   * Add ONE machine — the per-item entry beside the legacy bulk paste. Same skip rule as the
-   * bulk form, surfaced as a conflict rather than a silent skip: a single deliberate add of a
-   * code that is already taken is a mistake worth telling the operator about, whereas a pasted
-   * batch that contains one known code is not (:2429-2451).
+   * Add ONE machine — the per-item entry beside the legacy bulk paste. A code already ACTIVE in the
+   * branch is a 409 rather than a silent skip: a single deliberate add of a taken code is a mistake
+   * worth telling the operator about, whereas a pasted batch that contains one known code is not
+   * (:2429-2451). An archived code is brought back (`reactivated`), and the answer says what the
+   * register recorded (DEC-36).
    */
-  async create(input: CreateAtmMachine, ctx: AuthContext): Promise<AtmMachineDoc> {
-    const branchId = await resolveAtmBranchId(ctx);
+  async create(input: CreateAtmMachine, ctx: AuthContext): Promise<OperationsIntakeResult> {
+    const branchId = await addBranchOf(ctx);
     const machineCode = normalizeAtmMachineCode(input.machineCode);
     if (machineCode === '') throw new NotFoundError('ATM machine code');
-    const existing = await atmMachineRepository.findOne({
-      branchId: new Types.ObjectId(branchId),
-      machineCode,
-    } as FilterQuery<AtmMachineDoc>);
-    if (existing !== null) throw new ConflictError('ATM machine code already registered');
-    const doc = await atmMachineRepository.create(
+    const settings = await resolveRegisterSettings();
+    const bank = await resolveIntakeBank(branchId, input.bankName, settings.catalog);
+    if ((await atmMachineRepository.findActiveByCode(branchId, machineCode)) !== null) {
+      throw new ConflictError('ATM machine code already registered');
+    }
+    const added = await recordOperationsIntake(
       {
-        branchId: new Types.ObjectId(branchId),
-        bankName: input.bankName,
+        branchId,
         machineCode,
         name: input.name,
-        zone: '',
         area: input.area,
-        isActive: true,
+        bankName: input.bankName,
+        bank,
       },
-      { by: ctx.userId },
+      ctx,
+      settings,
     );
-    await auditService.record({
-      entityRef: entityRef(String(doc._id)),
-      action: 'create',
-      changes: diffChanges({}, snapshot(doc)),
+    await ensureAreaLabels([{ branchId, area: input.area }], {
+      actorId: ctx.userId,
+      origin: 'machine',
     });
-    return doc;
+    return added;
   }
 
   /**
@@ -263,7 +356,7 @@ class AtmMachineService {
     const { updated, audits } = await unitOfWork((session) =>
       writeMaster(before, set, { by: ctx.userId, version: input.version, scope, session }),
     );
-    await recordAll(audits);
+    await settleMasterWrite(before, updated, audits, ctx.userId);
     return updated;
   }
 
@@ -297,16 +390,25 @@ class AtmMachineService {
         { by: ctx.userId, version: input.version, session },
       ),
     );
-    await recordAll(audits);
+    await settleMasterWrite(before, updated, audits, ctx.userId);
     return updated;
   }
 
-  /** Legacy delete-by-codes textarea (:2494-2508): soft delete + `-D` rename, unknowns reported. */
+  /**
+   * Legacy delete-by-codes textarea (:2494-2508): soft delete + `-D` rename, unknowns reported.
+   *
+   * Deleting is also how a mistyped code is fixed (delete, add again), and since DEC-36 every add
+   * wrote an open register entry. So each code is ONE unit: the master's rename and delete plus the
+   * removal of the untouched intake stub that add left (`removeUntouchedIntakeStubs`) — otherwise
+   * the stub would keep counting in the Data Report and hold the code's company-wide open period.
+   * Any other open entry stays and the delete is never refused (DEC-24). Because the delete now
+   * writes the register, `manage` must reach the acting branch, exactly as for the add (DEC-39).
+   */
   async bulkDelete(
     input: BulkDeleteAtmMachines,
     ctx: AuthContext,
   ): Promise<{ deletedCodes: string[]; unknownCodes: string[] }> {
-    const branchId = await resolveAtmBranchId(ctx);
+    const branchId = await addBranchOf(ctx);
     const deletedCodes: string[] = [];
     const unknownCodes: string[] = [];
     for (const raw of input.machineCodes) {
@@ -320,21 +422,36 @@ class AtmMachineService {
         unknownCodes.push(machineCode);
         continue;
       }
-      // The rename rides the same optimistic write as the delete used to ride updateOne; doing
-      // it first keeps the partial unique index free for a future re-add even mid-operation.
-      await atmMachineRepository.updateById(
-        existing._id.toString(),
-        {
-          machineCode: `${machineCode}-D`,
-        },
-        { by: ctx.userId, version: existing.__v },
-      );
-      await atmMachineRepository.softDeleteById(existing._id.toString(), { by: ctx.userId });
-      await auditService.record({
-        entityRef: entityRef(String(existing._id)),
-        action: 'delete',
-        changes: diffChanges(snapshot(existing), {}),
+      const stubAudits = await unitOfWork(async (session) => {
+        // A legacy row read before its backfill carries no `__v`; the backfill sets 0 (DEC-23).
+        await ensureMachineVersioned(existing._id, session);
+        // The rename rides the same optimistic write as the delete used to ride updateOne; doing
+        // it first keeps the partial unique index free for a future re-add even mid-operation.
+        await atmMachineRepository.updateById(
+          existing._id.toString(),
+          { machineCode: `${machineCode}-D` },
+          {
+            by: ctx.userId,
+            version: (existing as Partial<AtmMachineDoc>).__v ?? 0,
+            session,
+          },
+        );
+        await atmMachineRepository.softDeleteById(existing._id.toString(), {
+          by: ctx.userId,
+          session,
+        });
+        return removeUntouchedIntakeStubs(existing, ctx.userId, session);
       });
+      // After commit, once (`withTransaction` may run the callback twice). The entries' `delete`
+      // also refreshes open register screens through the existing topic.
+      await recordAll([
+        {
+          entityRef: entityRef(String(existing._id)),
+          action: 'delete',
+          changes: diffChanges(snapshot(existing), {}),
+        },
+        ...stubAudits,
+      ]);
       deletedCodes.push(machineCode);
     }
     return { deletedCodes, unknownCodes };
@@ -353,7 +470,7 @@ class AtmMachineService {
         { by: ctx.userId, version: (existing as Partial<AtmMachineDoc>).__v ?? 0, session },
       ),
     );
-    await recordAll(audits);
+    await settleMasterWrite(existing, updated, audits, ctx.userId);
     return updated;
   }
 }

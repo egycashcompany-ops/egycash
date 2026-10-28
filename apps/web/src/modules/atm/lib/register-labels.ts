@@ -1,21 +1,33 @@
 // The register's vocabulary in the reader's language — shared by the register page (WP-C), the
 // Data Report (WP-D) and the import page (WP-B), so the three cannot name a bank, a branch or a
-// status differently. Bank and branch names come from the contracts (the workbook's own Arabic,
-// D7); everything else is a translation key.
+// status differently. Branch names come from the contracts (the workbook's own Arabic, D7); bank
+// names from the bank catalog (DEC-35) when the caller holds it; everything else is a translation
+// key.
 import {
-  ATM_BANK_NAMES,
   ATM_REGISTER_BRANCH_NAMES,
+  atmBankName,
   type AtmBankCode,
   type AtmRegisterBranchCode,
   type AtmRegisterField,
   type AtmRegisterStatus,
   type Locale,
+  type LocalizedString,
 } from '@ecms/contracts';
 
 const PLACEHOLDER = '—';
 const CAIRO_TZ = 'Africa/Cairo';
 
-export const bankName = (code: AtmBankCode, locale: Locale): string => ATM_BANK_NAMES[code][locale];
+/**
+ * A bank's name: the catalog's, when the caller passes it (the register meta's banks, the Data
+ * Report's, a lookup's `ordered`), else the seed's, else the code. A bank added at runtime is a
+ * full register bank (the owner's call), so this can no longer be a fixed table of six: without the
+ * catalog a seventh bank reads as its code — never as a blank, never as a crash.
+ */
+export const bankName = (
+  code: AtmBankCode,
+  locale: Locale,
+  banks?: readonly { code: AtmBankCode; name: LocalizedString }[],
+): string => atmBankName(code, locale, banks);
 
 /** The sheet's branch name for an `EGYCASH-n` code (ATMs DE1..DK1). */
 export const branchLabel = (code: AtmRegisterBranchCode, locale: Locale): string =>

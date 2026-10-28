@@ -195,18 +195,19 @@ const runRows = async (runId: string): Promise<{ importRow: number; outcome: str
     outcome: r.outcome,
   }));
 
-/** Admin adds an Operations machine in a branch, through the data-edit route. */
+/**
+ * An Operations machine with NO register entry — the state `npm run atm:import` (or a data-edit add
+ * before DEC-36) left it in, which is what the import's link/reactivate categories meet. Inserted
+ * directly: a data-edit add now records an open receipt itself (atm-data-edit-register.spec.ts).
+ */
 const addMachine = async (
   branchId: string,
   body: { machineCode: string; name: string; bankName: string; area: string },
 ): Promise<string> => {
-  const res = await request(app)
-    .post('/api/v1/atm/machines')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .set('x-active-branch', branchId)
-    .send(body);
-  expect(res.status, res.text).toBe(201);
-  return data<{ id: string }>(res).id;
+  const [doc] = await AtmMachineModel.create([
+    { branchId: new Types.ObjectId(branchId), zone: '', isActive: true, ...body },
+  ]);
+  return String(doc?._id);
 };
 
 /** A complete open row in Alexandria; override any field. */

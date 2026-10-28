@@ -11,6 +11,20 @@
 // `closedAt: null` — the fleet maintenance-visit precedent ("no status field to forget to flip").
 import { z } from 'zod';
 import { PaginationQuerySchema, booleanQuery, objectId } from '../common/index.js';
+// `import type`, not an inline `type` specifier: under verbatimModuleSyntax the inline form still
+// emits `import {} from './atm-register.js'`, a runtime cycle (atm-register.ts imports this file).
+import type { AtmBankCode } from './atm-register.js';
+
+// ── Bank code shape (the register's bank catalog, DEC-35) ───────────────────────────────────────
+
+/**
+ * The shape of a catalog bank code — `AtmBankCodeSchema` and the catalog live in atm-register.ts.
+ * Upper-case letter first, then 1–9 upper-case letters or digits: the six seeds (NBE … NXT) fit,
+ * and the lower-case sentinels `none` (map) and `total` (report fold) never can. Declared here,
+ * not there, because the ref-label schemas below need it and atm-register.ts already imports this
+ * file (the reverse import would be a module cycle).
+ */
+export const ATM_BANK_CODE_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/;
 
 // ── Machine identity ────────────────────────────────────────────────────────────────────────────
 
@@ -107,10 +121,81 @@ export const BulkCreateAtmMachinesSchema = z
   .strict();
 export type BulkCreateAtmMachines = z.infer<typeof BulkCreateAtmMachinesSchema>;
 
+// ── A data-edit add lands in the register (DEC-36) ──────────────────────────────────────────────
+//
+// The owner's call (final): a machine added on /atm/data-edit is recorded in the Efficiency
+// register as an OPEN receipt dated the add day, linked to the machine and flagged «بيانات ناقصة»
+// for Efficiency to complete. The add itself stays Operations' write (`atmMachine.manage`); the
+// register entry is its side effect, so the answer says what happened on the register's side.
+
+/**
+ * `created` — a new open entry; `received` — a pending entry of this code was received; `linked` —
+ * an open entry already here (an unlinked imported row, …) was linked to the machine; `existing` —
+ * an open entry here already pointed at it; `none` — nothing was written (`reason` says why).
+ */
+export const ATM_MACHINE_REGISTER_ACTIONS = [
+  'created',
+  'received',
+  'linked',
+  'existing',
+  'none',
+] as const;
+export type AtmMachineRegisterAction = (typeof ATM_MACHINE_REGISTER_ACTIONS)[number];
+
+/**
+ * Why `none`: the branch has no `EGYCASH-n` code (DEC-10 — the machine still works for
+ * Operations), the code is a placeholder (`#`, `********`), or the bank text maps to no catalog
+ * bank (the machine is added; Efficiency receives it once the spelling is mapped).
+ */
+export const ATM_MACHINE_REGISTER_REASONS = [
+  'branchUnmapped',
+  'placeholderCode',
+  'noBank',
+] as const;
+export type AtmMachineRegisterReason = (typeof ATM_MACHINE_REGISTER_REASONS)[number];
+
+export interface AtmMachineRegisterOutcomeDto {
+  action: AtmMachineRegisterAction;
+  /** Set exactly when `action` is `none`. */
+  reason: AtmMachineRegisterReason | null;
+  /** The register entry written or linked; null when `none`. */
+  entryId: string | null;
+  /** The catalog bank the machine's bank text resolved to; null when it resolved to none. */
+  bankCode: AtmBankCode | null;
+}
+
+/** POST /atm/machines (201) — the machine, whether it was an archived one brought back, and the register outcome. */
+export interface AtmMachineCreateResultDto extends AtmMachineDto {
+  /** True when the code was ARCHIVED in this branch and the add reactivated it with the form's data. */
+  reactivated: boolean;
+  register: AtmMachineRegisterOutcomeDto;
+}
+
+/** Why a bulk row was refused outright (nothing written for it): the code lives in another branch. */
+export const ATM_MACHINE_BULK_REFUSALS = ['activeElsewhere', 'openElsewhere'] as const;
+export type AtmMachineBulkRefusal = (typeof ATM_MACHINE_BULK_REFUSALS)[number];
+
 export interface BulkCreateAtmMachinesResultDto {
+  /** Machines newly created (an archived code brought back is in `reactivatedCodes` instead). */
   created: AtmMachineDto[];
-  /** Codes already present (active) in the caller's branch — skipped exactly as legacy did. */
+  /** Codes already ACTIVE in the caller's branch — skipped exactly as legacy did. */
   skippedCodes: string[];
+  /** Codes that were archived in this branch and are back at work with the batch's bank and area. */
+  reactivatedCodes: string[];
+  /**
+   * Codes refused because the machine is active (`activeElsewhere`, DEC-9 — the mail matcher needs
+   * one active machine per code) or has an open register period (`openElsewhere`, D6) in another
+   * branch. Each row is its own unit, so one refusal does not undo the rest of the batch.
+   */
+  refused: { machineCode: string; reason: AtmMachineBulkRefusal }[];
+  /** The register outcome per code, for every created or reactivated row. */
+  register: {
+    created: string[];
+    received: string[];
+    linked: string[];
+    existing: string[];
+    notRecorded: { machineCode: string; reason: AtmMachineRegisterReason }[];
+  };
 }
 
 /**
@@ -189,38 +274,147 @@ export type UpdateAtmMachineArea = z.infer<typeof UpdateAtmMachineAreaSchema>;
 // different teams, and `data_edit_atm` ADDS and REMOVES entries — a write no module may perform
 // on another module's collection (port doc decision D1).
 
+//
+// Since the bank catalog (DEC-35) a `bank` label is an OPERATIONS SPELLING of a catalog bank
+// (`NBE FOREX` → NBE, a legacy text …), per branch as before and now carrying its `bankCode`; the
+// banks themselves are `atm_banks`. An `area` label gains display names in both languages (DEC-38):
+// `name` stays the one string machines and operations store — for a new area the ENGLISH name
+// (the owner: «الإنجليزي تمام»), since stored areas are Latin (MOHNDESSEN, ALEX) and the import's
+// ` FX` rule needs Latin — and `nameAr`/`nameEn` are only what the pickers show.
+
+export const ATM_REF_LABEL_KINDS = ['bank', 'area'] as const;
+export type AtmRefLabelKind = (typeof ATM_REF_LABEL_KINDS)[number];
+
+/**
+ * Who wrote a label: typed on data-edit (`manual`), the boot backfill of areas already on machines
+ * and open entries (`backfill`), a register save (`register`), a machine save (`machine`), or the
+ * register import (`import`). A row stored before this field reads `manual`.
+ */
+export const ATM_REF_LABEL_ORIGINS = [
+  'manual',
+  'backfill',
+  'register',
+  'machine',
+  'import',
+] as const;
+export type AtmRefLabelOrigin = (typeof ATM_REF_LABEL_ORIGINS)[number];
+
 export interface AtmRefLabelDto {
   id: string;
   branchId: string;
+  kind: AtmRefLabelKind;
+  /** The canonical stored string — what a machine's `bankName`/`area` holds. */
   name: string;
+  /** Areas: display names (null when not given). Banks: always null. */
+  nameAr: string | null;
+  nameEn: string | null;
+  /** Areas: earlier canonical names, so a renamed name is never re-created by a later save. */
+  formerNames: string[];
+  /** Banks: the catalog bank this spelling stands for; null = not mapped yet. Areas: null. */
+  bankCode: AtmBankCode | null;
+  origin: AtmRefLabelOrigin;
   isActive: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export const CreateAtmRefLabelSchema = z.object({ name: z.string().min(1) }).strict();
+/** A label's text: trimmed (JS `\s` covers NBSP and TAB); the register's area limit. */
+const refLabelText = () => z.string().trim().min(1).max(120);
+
+/** A spelling's bank as input — upper-cased, then the catalog code's shape. */
+const refLabelBankCode = () => z.string().trim().toUpperCase().regex(ATM_BANK_CODE_PATTERN);
+
+/**
+ * POST /atm/ref-labels/:kind. Either the legacy `{ name }` — still accepted, so an older screen
+ * keeps working — or the dialog's `{ nameAr, nameEn }` (both), from which the server takes the
+ * English name as the stored `name`. The rules that depend on the kind (a spelling needs an ACTIVE
+ * catalog bank; an area from a dialog needs both names) are the service's, because the kind is in
+ * the path, not the body. `branchId` names the branch to file the label in; absent, the acting
+ * branch, as before — the caller's key must reach it either way.
+ */
+export const CreateAtmRefLabelSchema = z
+  .object({
+    name: refLabelText().optional(),
+    nameAr: refLabelText().optional(),
+    nameEn: refLabelText().optional(),
+    bankCode: refLabelBankCode().optional(),
+    branchId: objectId().optional(),
+  })
+  .strict()
+  .refine((v) => v.name !== undefined || (v.nameAr !== undefined && v.nameEn !== undefined), {
+    message: 'name, or both nameAr and nameEn',
+    path: ['name'],
+  });
+export type CreateAtmRefLabel = z.infer<typeof CreateAtmRefLabelSchema>;
+
+/** A display name on edit: absent keeps, '' or null clears. */
+const refLabelDisplayName = () =>
+  z
+    .string()
+    .max(120)
+    .transform((s) => (s.trim() === '' ? null : s.trim()))
+    .nullable()
+    .optional();
 
 /**
  * Edit one label. Renaming is deliberate and NOT a cascade: machines store the bank and area as
  * text (the legacy denormalized both, contad_app.js:2443), so a rename changes the list the forms
- * offer from now on and leaves already-registered machines saying what they said. `isActive`
- * archives instead of removing — the list stops offering it, the machines keep it.
+ * offer from now on and leaves already-registered machines saying what they said — and the old
+ * name is kept in `formerNames`, so no later save brings it back as a new label. `isActive`
+ * archives instead of removing — the list stops offering it, the machines keep it. `nameAr` /
+ * `nameEn` change what the pickers show only; `bankCode` (spellings) maps or re-maps a spelling to
+ * an ACTIVE catalog bank, `null` un-maps it.
  */
 export const UpdateAtmRefLabelSchema = z
   .object({
     name: z.string().min(1).optional(),
+    nameAr: refLabelDisplayName(),
+    nameEn: refLabelDisplayName(),
+    bankCode: refLabelBankCode().nullable().optional(),
     isActive: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict();
 export type UpdateAtmRefLabel = z.infer<typeof UpdateAtmRefLabelSchema>;
-export type CreateAtmRefLabel = z.infer<typeof CreateAtmRefLabelSchema>;
 
+/** `branchId` narrows to one branch — a user who reaches several no longer sees them all mixed. */
 export const ListAtmRefLabelsQuerySchema = PaginationQuerySchema.extend({
   isActive: booleanQuery().optional(),
+  branchId: objectId().optional(),
 }).strict();
 export type ListAtmRefLabelsQuery = z.infer<typeof ListAtmRefLabelsQuerySchema>;
+
+/** GET /atm/ref-labels/options — absent `branchId` = the acting branch. */
+export const AtmRefLabelOptionsQuerySchema = z.object({ branchId: objectId().optional() }).strict();
+export type AtmRefLabelOptionsQuery = z.infer<typeof AtmRefLabelOptionsQuerySchema>;
+
+/**
+ * What the data-edit dialogs (and the register form) offer for ONE branch, whole — no page cap,
+ * no other branch's labels, and readable without `atmMachine.view`.
+ *
+ * · `banks` — every ACTIVE catalog bank (`kind: 'bank'`, `value` = its `opsLabel`), then this
+ *   branch's active spellings mapped to an active bank (`kind: 'spelling'`, `value` = the spelling).
+ *   `value` is exactly what gets stored on the machine.
+ * · `areas` — the branch's active area labels with their display names.
+ * · `registerMapped` — whether the branch has an `EGYCASH-n` code, i.e. whether an add here can be
+ *   recorded in the register at all (DEC-10).
+ * · `unmappedBankNames` — the bank texts active machines here carry that resolve to no bank (at
+ *   most 100), so Operations can map each one to its bank.
+ * · `unmappedBankLabels` — the same texts, each with the spelling row of THIS branch that already
+ *   holds it (an archived one, or one not linked to a bank), else null. «ربط ببنك» edits that row
+ *   instead of adding a second one (the unique name index still holds an archived row, so an add
+ *   would be refused), and never a row of another branch or one the list's page or status filter
+ *   happens to hide (review finding).
+ */
+export interface AtmRefLabelOptionsDto {
+  branchId: string;
+  registerMapped: boolean;
+  banks: { value: string; bankCode: AtmBankCode; kind: 'bank' | 'spelling' }[];
+  areas: { name: string; nameAr: string | null; nameEn: string | null }[];
+  unmappedBankNames: string[];
+  unmappedBankLabels: { name: string; label: AtmRefLabelDto | null }[];
+}
 
 // ── Operations (replenishment + maintenance) shared shapes ──────────────────────────────────────
 
@@ -811,8 +1005,10 @@ export const AtmSettingKeys = {
    */
   RegisterBranchCodes: 'atm.register.branchCodes',
   /**
-   * The register's bankCode → the label written on `atm_machines.bankName` (D5; value schema
-   * `AtmRegisterBankLabelsSettingSchema`). Defaults to `ATM_DEFAULT_BANK_LABELS_SETTING`.
+   * RETIRED (DEC-35) — read once by the bank catalog seed. It used to map the register's bankCode
+   * → the label written on `atm_machines.bankName` (D5); the catalog's `opsLabel` does that now.
+   * Still declared, so a stored value keeps validating (value schema
+   * `AtmRegisterBankLabelsSettingSchema`, default `ATM_DEFAULT_BANK_LABELS_SETTING`).
    */
   RegisterBankLabels: 'atm.register.bankLabels',
   /**

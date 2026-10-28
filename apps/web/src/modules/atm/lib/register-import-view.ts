@@ -5,7 +5,6 @@
 // The server is the rule — it refuses an apply that a blocker stands against, whatever the screen
 // sent — so `canApply` is a courtesy that keeps the button honest, not a guard.
 import {
-  ATM_BANK_NAMES,
   ATM_REGISTER_IMPORT_CATEGORIES,
   ATM_REGISTER_IMPORT_OUTCOMES,
   ErrorCodes,
@@ -15,9 +14,11 @@ import {
   type AtmRegisterImportReportCellDto,
   type AtmRegisterImportResultDto,
   type Locale,
+  type LocalizedString,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
+import { bankName } from './register-labels';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -77,20 +78,25 @@ const HINTED = new Set<AtmRegisterImportBlocker>([
 export const blockerHintKey = (blocker: AtmRegisterImportBlocker): string | null =>
   HINTED.has(blocker) ? `atm.registerImport.blockerHint.${blocker}` : null;
 
-/** One of the 57 cells, named the way the Data Report page names it. */
+/**
+ * One of the 57 cells, named the way the Data Report page names it. The check is the workbook's,
+ * so it knows the sheet's six banks only — but a seed's name is the catalog's once curated, so the
+ * caller passes the catalog when it has it, and the seed's own name stands in until it does.
+ */
 export const reportCellLabel = (
   cell: Pick<AtmRegisterImportReportCellDto, 'section' | 'branchCode' | 'bankCode' | 'isTotal'>,
   t: Translate,
   locale: Locale,
+  banks?: readonly { code: string; name: LocalizedString }[],
 ): string => {
   if (cell.isTotal) return t('atm.registerReport.total');
   if (cell.section === 1)
-    return cell.bankCode === null ? '' : ATM_BANK_NAMES[cell.bankCode][locale];
+    return cell.bankCode === null ? '' : bankName(cell.bankCode, locale, banks);
   if (cell.section === 2) {
     return cell.branchCode === null ? '' : t(`atm.registerReport.branch2.${cell.branchCode}`);
   }
   const branch = cell.branchCode === null ? '' : t(`atm.registerReport.branch3.${cell.branchCode}`);
-  const bank = cell.bankCode === null ? '' : ATM_BANK_NAMES[cell.bankCode][locale];
+  const bank = cell.bankCode === null ? '' : bankName(cell.bankCode, locale, banks);
   return `${branch} · ${bank}`;
 };
 

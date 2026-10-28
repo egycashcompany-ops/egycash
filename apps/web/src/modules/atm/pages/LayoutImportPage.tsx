@@ -12,7 +12,6 @@
 // table previews one upload; nothing here narrows a stored list, so nothing is remembered.
 import { useState } from 'react';
 import {
-  ATM_BANK_NAMES,
   ATM_LAYOUT_IMPORT_FLAGS,
   ATM_LAYOUT_IMPORT_MODES,
   ATM_LAYOUT_IMPORT_OUTCOMES,
@@ -43,6 +42,7 @@ import {
   useLayoutImportRuns,
   useSettlementContext,
 } from '../api/settlements-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { BlockedNotice } from '../components/settlements/DayField';
 import { LayoutChips } from '../components/settlements/LineChips';
 import { buildImportReportXlsx, importReportWords } from '../lib/papers/import-report-xlsx';
@@ -77,6 +77,8 @@ export const applyEstimate = (
 export const LayoutImportPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Bank names from the catalog (DEC-35): a bank added since the workbook is named, not coded.
+  const bankLookup = useAtmBankLookup();
   const context = useSettlementContext('import');
   const ctx = context.data;
   const banks = ctx?.banks ?? [];
@@ -264,7 +266,7 @@ export const LayoutImportPage = (): JSX.Element => {
                 >
                   {banks.map((b) => (
                     <option key={b} value={b}>
-                      {ATM_BANK_NAMES[b][locale]}
+                      {bankLookup.name(b, locale)}
                     </option>
                   ))}
                 </Select>

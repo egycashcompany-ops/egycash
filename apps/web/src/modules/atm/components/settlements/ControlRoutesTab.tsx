@@ -166,7 +166,9 @@ export const ControlRoutesTab = ({
   const unassigned = live.filter((l) => routeOf(l) === null);
 
   return (
-    <div className="space-y-4" data-control-routes="true">
+    // On a computer the toolbar keeps its place and the cards scroll under it (the board frame,
+    // `shared/ui/board-scroll.ts`); a phone scrolls the page as before.
+    <div className="space-y-4 lg:flex lg:flex-col" data-control-routes="true">
       <div className="flex flex-wrap items-end gap-3">
         <label className="space-y-1.5 text-sm">
           <span className="block font-medium text-slate-700 dark:text-slate-200">
@@ -216,87 +218,89 @@ export const ControlRoutesTab = ({
         </div>
       </div>
 
-      <section
-        data-route-group="unassigned"
-        className="overflow-hidden rounded-xl border border-amber-200 bg-white dark:border-amber-900 dark:bg-slate-900"
-      >
-        <header className="bg-amber-50 px-3 py-2 dark:bg-amber-950/40">
-          <strong className="text-sm text-slate-900 dark:text-white">
-            {t('atm.control.unassigned', { n: formatNumber(unassigned.length, locale) })}
-          </strong>
-        </header>
-        {items(unassigned)}
-      </section>
+      <div className="space-y-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+        <section
+          data-route-group="unassigned"
+          className="overflow-hidden rounded-xl border border-amber-200 bg-white dark:border-amber-900 dark:bg-slate-900"
+        >
+          <header className="bg-amber-50 px-3 py-2 dark:bg-amber-950/40">
+            <strong className="text-sm text-slate-900 dark:text-white">
+              {t('atm.control.unassigned', { n: formatNumber(unassigned.length, locale) })}
+            </strong>
+          </header>
+          {items(unassigned)}
+        </section>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        {routes.map((route, index) => (
-          <section
-            key={route.id}
-            data-route-group={route.id}
-            className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
-          >
-            <header className="flex items-start justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
-              <span className="min-w-0">
-                <strong className="block text-sm text-slate-900 dark:text-white">
-                  {route.name}
-                </strong>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {t('atm.control.routeSummary', {
-                    leader: route.leaderName ?? '—',
-                    n: formatNumber(route.machines, locale),
-                    b: formatNumber(route.bags, locale),
-                  })}
-                </span>
-              </span>
-              <MenuButton
-                variant="ghost"
-                size="icon"
-                ariaLabel={t('atm.control.menu.label', { name: route.name })}
-                icon={<MoreIcon className="h-4 w-4" />}
-                disabled={busy}
-                items={[
-                  {
-                    key: 'edit',
-                    label: t('atm.control.menu.edit'),
-                    onSelect: () => actions.onEdit(route),
-                  },
-                  {
-                    key: 'up',
-                    label: t('atm.control.menu.up'),
-                    disabled: index === 0,
-                    onSelect: () => actions.onShift(route, -1),
-                  },
-                  {
-                    key: 'down',
-                    label: t('atm.control.menu.down'),
-                    disabled: index === routes.length - 1,
-                    onSelect: () => actions.onShift(route, 1),
-                  },
-                  ...(canPrint
-                    ? [
-                        {
-                          key: 'print',
-                          label: t('atm.control.menu.print', { name: route.name }),
-                          onSelect: () => actions.onPrint(route),
-                        },
-                      ]
-                    : []),
-                  {
-                    key: 'delete',
-                    label: t('atm.control.menu.delete'),
-                    danger: true,
-                    onSelect: () => actions.onDelete(route),
-                  },
-                ]}
-              />
-            </header>
-            <div
-              className={cn(route.lines === 0 && 'px-3 py-4 text-center text-xs text-slate-400')}
+        <div className="grid gap-4 xl:grid-cols-2">
+          {routes.map((route, index) => (
+            <section
+              key={route.id}
+              data-route-group={route.id}
+              className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
             >
-              {route.lines === 0 ? '—' : items(live.filter((l) => l.routeId === route.id))}
-            </div>
-          </section>
-        ))}
+              <header className="flex items-start justify-between gap-2 bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
+                <span className="min-w-0">
+                  <strong className="block text-sm text-slate-900 dark:text-white">
+                    {route.name}
+                  </strong>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('atm.control.routeSummary', {
+                      leader: route.leaderName ?? '—',
+                      n: formatNumber(route.machines, locale),
+                      b: formatNumber(route.bags, locale),
+                    })}
+                  </span>
+                </span>
+                <MenuButton
+                  variant="ghost"
+                  size="icon"
+                  ariaLabel={t('atm.control.menu.label', { name: route.name })}
+                  icon={<MoreIcon className="h-4 w-4" />}
+                  disabled={busy}
+                  items={[
+                    {
+                      key: 'edit',
+                      label: t('atm.control.menu.edit'),
+                      onSelect: () => actions.onEdit(route),
+                    },
+                    {
+                      key: 'up',
+                      label: t('atm.control.menu.up'),
+                      disabled: index === 0,
+                      onSelect: () => actions.onShift(route, -1),
+                    },
+                    {
+                      key: 'down',
+                      label: t('atm.control.menu.down'),
+                      disabled: index === routes.length - 1,
+                      onSelect: () => actions.onShift(route, 1),
+                    },
+                    ...(canPrint
+                      ? [
+                          {
+                            key: 'print',
+                            label: t('atm.control.menu.print', { name: route.name }),
+                            onSelect: () => actions.onPrint(route),
+                          },
+                        ]
+                      : []),
+                    {
+                      key: 'delete',
+                      label: t('atm.control.menu.delete'),
+                      danger: true,
+                      onSelect: () => actions.onDelete(route),
+                    },
+                  ]}
+                />
+              </header>
+              <div
+                className={cn(route.lines === 0 && 'px-3 py-4 text-center text-xs text-slate-400')}
+              >
+                {route.lines === 0 ? '—' : items(live.filter((l) => l.routeId === route.id))}
+              </div>
+            </section>
+          ))}
+        </div>
       </div>
     </div>
   );

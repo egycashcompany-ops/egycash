@@ -26,6 +26,7 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
+import { REGISTER_BANK_REFUSALS } from './components/register/EntryFormSections';
 import {
   bankName,
   branchLabel,
@@ -75,10 +76,21 @@ const PAGE_KEYS = [
   'atm.register.filter.allAreas',
   'atm.register.filter.search',
   'atm.register.filter.withIssues',
+  'atm.register.filter.incomplete',
   'atm.register.secretHidden',
   'atm.register.combinationSet',
   'atm.register.combinationUnset',
   'atm.register.issues',
+  // «بيانات ناقصة» and the Operations receipts behind it (DEC-36, DEC-37).
+  'atm.register.incomplete',
+  'atm.register.incompleteMissing',
+  'atm.register.incompleteNoGaps',
+  'atm.register.source.operations',
+  'atm.register.form.dataIncompleteHint',
+  'atm.register.form.operationsNote',
+  'atm.register.form.deleteBodyOperations',
+  'atm.register.form.newAreaHint',
+  'atm.register.form.areaExistsPicked',
   'atm.register.actions',
   'atm.register.action.edit',
   'atm.register.action.receivePending',
@@ -191,6 +203,8 @@ const PAGE_KEYS = [
   'atm.registerSettings.save',
   'atm.registerSettings.saved',
   'atm.registerSettings.readOnly',
+  'atm.registerSettings.bankLabelsHint',
+  'atm.registerSettings.manageBanks',
 ];
 
 /** The vocabularies, each a prefix over a contracts enum. */
@@ -242,6 +256,13 @@ const VOCABULARIES: { name: string; keys: string[] }[] = [
     keys: ATM_REGISTER_IMPORT_RUN_STATES.map((s) => `atm.registerImport.runs.state.${s}`),
   },
   {
+    // A refused bank or Operations name, by the field and the code the server names (DEC-35).
+    name: 'bank refusals',
+    keys: Object.entries(REGISTER_BANK_REFUSALS).flatMap(([field, codes]) =>
+      codes.map((code) => `atm.register.refusal.${field}.${code}`),
+    ),
+  },
+  {
     name: 'report branch labels',
     keys: ATM_REGISTER_BRANCH_CODES.flatMap((code) => [
       `atm.registerReport.branch2.${code}`,
@@ -259,6 +280,7 @@ describe('the efficiency register i18n catalog', () => {
     expect(size('warnings')).toBe(7);
     expect(size('error codes')).toBe(14);
     expect(size('report branch labels')).toBe(14);
+    expect(size('bank refusals')).toBe(5);
   });
 
   it.each(LOCALES)('every page key resolves in %s', (locale) => {

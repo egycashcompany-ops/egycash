@@ -17,9 +17,20 @@
 // Free-text columns (area, operation type, ATM type, model, HUB) are typed with suggestions from
 // the branch — the sheet's own values plus the Operations labels — never forced onto a list: the
 // workbook has no catalogue for them, and refusing a new model would refuse the machine.
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+//
+// Banks and areas are the catalog's (DEC-35, DEC-38), and the form can add to both without leaving
+// the receipt — the owner's complaint was that the register's banks and areas were «مش مسمعه» on
+// /atm/data-edit:
+//   · the bank is one of the catalog's ACTIVE banks (a bank added at runtime is a full register
+//     bank, the owner's call), plus the bank the entry already carries; «+» adds one
+//     (`atmBank.create`, organization scope on the server);
+//   · the Operations name is a spelling of THAT bank only — the server refuses another bank's;
+//   · an area is suggested in the reader's language while the stored name is what is saved, and
+//     «+ منطقة» adds one in Arabic and English for the entry's branch — Efficiency do it with the
+//     register keys they hold (DEC-39). A typed area nobody has listed yet is still accepted: it is
+//     listed for the branch when the entry is saved, and the box says so before the click.
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
-  ATM_BANK_CODES,
   ATM_REGISTER_COLUMNS,
   ErrorCodes,
   atmRegisterIdFormatOk,
@@ -38,21 +49,31 @@ import {
   type UpdateAtmRegisterEntry,
 } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
+import { Can } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { errorMessage } from '../../../../shared/lib/errors';
 import { cn } from '../../../../shared/lib/cn';
+import { Button } from '../../../../shared/ui/Button';
 import { Checkbox, Field, Input, Select, Textarea } from '../../../../shared/ui/form';
+import { PlusIcon } from '../../../../shared/ui/icons';
 import { PasswordInput } from '../../../../shared/ui/PasswordInput';
 import { toast } from '../../../../shared/ui/toast/toast-store';
+import { RefLabelDialog } from '../DataEditDialogs';
+import { BankDialog } from '../catalog/BankDialog';
+import { inCatalogOrder, labelText, makeBankLookup, type BankLookup } from '../../lib/bank-catalog';
 import { REGISTER_LTR_FIELDS, registerFieldText } from '../../lib/register-grid';
-import { bankName, columnHeaderKey } from '../../lib/register-labels';
+import { columnHeaderKey } from '../../lib/register-labels';
 import { registerBranchOptionLabel } from './RegisterFilters';
 
 // ── Form values ─────────────────────────────────────────────────────────────────────────────────
 
-/** Every box of the form, as typed: the column fields (minus the branch code), branch, ops label. */
-export type EntryFormKey = Exclude<AtmRegisterField, 'branchCode'> | 'branchId' | 'opsBankLabel';
+/**
+ * Every box of the form, as typed: the column fields (minus the branch code), branch, ops label,
+ * and the «بيانات ناقصة» tick of an edit (`'1'` ticked, `''` not — every value here is text).
+ */
+export type EntryFormKey =
+  Exclude<AtmRegisterField, 'branchCode'> | 'branchId' | 'opsBankLabel' | 'dataIncomplete';
 export type EntryFormValues = Record<EntryFormKey, string>;
 
 const fieldsOf = (group: AtmRegisterGroup): AtmRegisterField[] =>
@@ -142,6 +163,7 @@ export const entryFormValues = (
   const values = {
     branchId: entry?.branchId ?? branchId,
     opsBankLabel: entry?.opsBankLabel ?? '',
+    dataIncomplete: entry?.dataIncomplete === true ? '1' : '',
   } as EntryFormValues;
   for (const column of ATM_REGISTER_COLUMNS) {
     if (column.field === 'branchCode') continue;
@@ -163,7 +185,7 @@ export const receiveBody = (values: EntryFormValues, secrets: boolean): ReceiveA
   }
   const code = clean(values.machineCode);
   if (code !== null) body.machineCode = code;
-  if (values.bankCode !== '') body.bankCode = values.bankCode as AtmBankCode;
+  if (values.bankCode !== '') body.bankCode = values.bankCode;
   const label = clean(values.opsBankLabel);
   if (label !== null) body.opsBankLabel = label;
   if (values.startDate !== '') body.startDate = values.startDate;
@@ -242,8 +264,9 @@ export const updateBody = (
   if (changed('name') && name !== null) body.name = name;
   const code = clean(values.machineCode);
   if (rules.codeEditable && changed('machineCode') && code !== null) body.machineCode = code;
-  if (changed('bankCode'))
-    body.bankCode = values.bankCode === '' ? null : (values.bankCode as AtmBankCode);
+  if (changed('bankCode')) body.bankCode = values.bankCode === '' ? null : values.bankCode;
+  // DEC-37: Efficiency untick it once they have completed the receipt (or tick it to come back).
+  if (changed('dataIncomplete')) body.dataIncomplete = values.dataIncomplete === '1';
   if (rules.startDateEditable && changed('startDate') && values.startDate !== '') {
     body.startDate = values.startDate;
   }
@@ -282,15 +305,46 @@ const REGISTER_ERROR_CODES = new Set<string>(
   Object.values(ErrorCodes).filter((code) => code.startsWith('ATM_REGISTER_')),
 );
 
-/** A refused write in the reader's words: the register's own codes by name, the rest generically. */
+/**
+ * The bank refusals a write can come back with, by the field they name (400, `ValidationError`):
+ *   · `bankCode` — not a catalog bank (`UNKNOWN`), or archived and not the entry's own (`INACTIVE`):
+ *     archiving stops NEW receipts on a bank, it does not make its entries unsavable (DEC-35);
+ *   · `opsBankLabel` — not one of the branch's active spellings (`UNKNOWN`), one no bank has been
+ *     linked to yet (`UNMAPPED`), or another bank's (`OTHER_BANK`): DEC-25's «a label chosen for one
+ *     bank means nothing for another», which the server now enforces.
+ * Each gets its own sentence: «بعض الحقول تحتاج إلى مراجعة» on a form of fifty boxes says nothing.
+ */
+export const REGISTER_BANK_REFUSALS = {
+  bankCode: ['UNKNOWN', 'INACTIVE'],
+  opsBankLabel: ['UNKNOWN', 'UNMAPPED', 'OTHER_BANK'],
+} as const satisfies Record<string, readonly string[]>;
+
+/** `atm.register.refusal.<field>.<code>` of the first bank refusal the error names, if any. */
+export const bankRefusalKey = (error: ApiError): string | null => {
+  for (const detail of error.details ?? []) {
+    const field = (detail.field ?? '').replace(/^body\./, '');
+    const codes: readonly string[] | undefined =
+      REGISTER_BANK_REFUSALS[field as keyof typeof REGISTER_BANK_REFUSALS];
+    if (codes?.includes(detail.code) === true)
+      return `atm.register.refusal.${field}.${detail.code}`;
+  }
+  return null;
+};
+
+/**
+ * A refused write in the reader's words: the register's own codes by name, a refused bank or
+ * Operations name by what was wrong with it, the rest generically.
+ */
 export const registerErrorText = (
   error: unknown,
   t: (key: string) => string,
   locale: Locale,
-): string =>
-  error instanceof ApiError && REGISTER_ERROR_CODES.has(error.code)
-    ? t(`atm.register.error.${error.code}`)
-    : errorMessage(error, locale);
+): string => {
+  if (!(error instanceof ApiError)) return errorMessage(error, locale);
+  if (REGISTER_ERROR_CODES.has(error.code)) return t(`atm.register.error.${error.code}`);
+  const refusal = bankRefusalKey(error);
+  return refusal === null ? errorMessage(error, locale) : t(refusal);
+};
 
 /** What a write did: the toast, what happened in the Operations list, and every warning. */
 export const announceWrite = (
@@ -334,6 +388,101 @@ export const FormError = ({ message }: { message: string | null }): JSX.Element 
 const unique = (...lists: (readonly string[] | undefined)[]): string[] =>
   [...new Set(lists.flatMap((list) => list ?? []))].sort((a, b) => a.localeCompare(b));
 
+/** One suggestion of a free-text box: what it puts in the box, and what the list shows for it. */
+export interface Suggestion {
+  value: string;
+  /** Shown beside the value when it says something else — an area's name in the reader's language. */
+  label?: string;
+}
+
+/**
+ * The bank select's banks: the catalog's ACTIVE ones in its order, plus every code the form holds —
+ * the entry's stored bank (archived since or not: an unchanged archived bank still saves) and a bank
+ * just added with «+», before the register meta has come back with it.
+ */
+export const registerBankChoices = (
+  lookup: BankLookup,
+  held: readonly string[],
+): { code: AtmBankCode; archived: boolean }[] => {
+  const codes = new Set<AtmBankCode>(lookup.active.map((bank) => bank.code));
+  for (const code of held) if (code !== '') codes.add(code);
+  const archived = new Set(
+    lookup.ordered.filter((bank) => !bank.isActive).map((bank) => bank.code),
+  );
+  return inCatalogOrder(lookup, codes).map((code) => ({ code, archived: archived.has(code) }));
+};
+
+/** «NBE · البنك الأهلي المصري», and «(مؤرشف)» after a bank the catalog has archived. */
+export const registerBankOptionLabel = (
+  choice: { code: AtmBankCode; archived: boolean },
+  lookup: BankLookup,
+  locale: Locale,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string => {
+  const text = `${choice.code} · ${lookup.name(choice.code, locale)}`;
+  return choice.archived ? t('atm.bankCatalog.archivedOption', { name: text }) : text;
+};
+
+/**
+ * The Operations-name select's names once a bank is chosen: the branch's spellings OF THAT BANK
+ * (`bankVariants` — the server refuses another bank's), plus the name the form already holds.
+ */
+export const opsLabelChoices = (
+  options: AtmRegisterBranchOptionsDto | undefined,
+  bank: string,
+  held: string,
+): string[] =>
+  unique(
+    (options?.bankVariants ?? []).filter((v) => v.bankCode === bank).map((v) => v.name),
+    held === '' ? [] : [held],
+  );
+
+/**
+ * The area box's suggestions. Each area label is offered by its STORED name — what entries and
+ * machines carry, and so what the box must hold (EG-6: two spellings are two areas) — with its name
+ * in the reader's language beside it; then the areas entries already carry that no label holds.
+ * Ordered as the reader reads them.
+ */
+export const areaSuggestions = (
+  options: AtmRegisterBranchOptionsDto | undefined,
+  locale: Locale,
+): Suggestion[] => {
+  const byName = new Map<string, Suggestion>();
+  for (const area of options?.areaOptions ?? []) {
+    const text = labelText(area, locale);
+    byName.set(
+      area.name,
+      text === area.name ? { value: area.name } : { value: area.name, label: text },
+    );
+  }
+  for (const name of [...(options?.areaLabels ?? []), ...(options?.areas ?? [])]) {
+    if (!byName.has(name)) byName.set(name, { value: name });
+  }
+  return [...byName.values()].sort((a, b) =>
+    (a.label ?? a.value).localeCompare(b.label ?? b.value),
+  );
+};
+
+/**
+ * Is the typed area one this branch lists nowhere yet? Decided only once the branch's lists have
+ * answered, and never for the value the entry already stores. Such an area is still saved — it is
+ * listed for the branch on save (DEC-38) — the box only says so first.
+ */
+export const isNewArea = (
+  options: AtmRegisterBranchOptionsDto | undefined,
+  typed: string,
+  stored: string | null,
+): boolean => {
+  const area = typed.trim();
+  if (options === undefined || area === '' || area === (stored ?? '').trim()) return false;
+  const known = new Set([
+    ...(options.areaOptions ?? []).map((a) => a.name),
+    ...options.areaLabels,
+    ...options.areas,
+  ]);
+  return !known.has(area);
+};
+
 /** The branches a receipt may name: mapped, active, and inside the reader's create reach (D4). */
 export const creatableBranches = (
   meta: AtmRegisterMetaDto | undefined,
@@ -351,6 +500,7 @@ export const EntryFormSections = ({
   options,
   secrets,
   isMissing,
+  onOverlayChange,
 }: {
   mode: 'receive' | 'edit';
   /** The entry being edited; `null` on a receipt. */
@@ -365,6 +515,11 @@ export const EntryFormSections = ({
   /** Draw the K and S boxes. */
   secrets: boolean;
   isMissing: (key: string) => boolean;
+  /**
+   * A bank or area dialog opened over the form, or closed. The form's own dialog holds still while
+   * one is open — its Escape is the nested dialog's — so a slip there never throws away the form.
+   */
+  onOverlayChange?: (open: boolean) => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -372,6 +527,14 @@ export const EntryFormSections = ({
   const rules = entry === null ? null : entryEditRules(entry);
   const receiving = mode === 'receive';
   const startSet = values.startDate !== '';
+  // The register meta's banks are the catalog's (archived ones included), already loaded with the
+  // page — so naming a bank costs no request of its own.
+  const lookup = makeBankLookup(meta?.banks);
+  const [adding, setAdding] = useState<'bank' | 'area' | null>(null);
+  const openAdd = (which: 'bank' | 'area' | null): void => {
+    setAdding(which);
+    onOverlayChange?.(which !== null);
+  };
 
   const idOf = (key: string): string => `${base}-${key.replace('.', '-')}`;
   const labelOf = (key: EntryFormKey): string =>
@@ -379,7 +542,9 @@ export const EntryFormSections = ({
       ? t(columnHeaderKey('branchCode'))
       : key === 'opsBankLabel'
         ? t('atm.register.form.opsBankLabel')
-        : t(columnHeaderKey(key));
+        : key === 'dataIncomplete'
+          ? t('atm.register.incomplete')
+          : t(columnHeaderKey(key));
 
   /**
    * How many lines the STORED value runs to. The sheet holds 1,531 cells on several lines (keys,
@@ -389,32 +554,37 @@ export const EntryFormSections = ({
    * box never changes kind under the reader's cursor.
    */
   const storedLines = (key: EntryFormKey): number => {
-    if (entry === null || key === 'branchId' || key === 'opsBankLabel') return 1;
+    if (entry === null || key === 'branchId' || key === 'opsBankLabel' || key === 'dataIncomplete')
+      return 1;
     return (registerFieldText(entry, key) ?? '').split('\n').length;
   };
 
   const textBox = (
     key: EntryFormKey,
     {
-      suggestions,
+      suggestions: given,
       multiline = false,
       required = false,
       disabled = false,
       hint,
       warning,
       className,
+      addon,
     }: {
-      suggestions?: readonly string[];
+      suggestions?: readonly (string | Suggestion)[];
       multiline?: boolean;
       required?: boolean;
       disabled?: boolean;
-      hint?: string;
-      warning?: string;
+      hint?: string | undefined;
+      warning?: string | undefined;
       className?: string;
+      /** A control beside the box — the area's «+ منطقة». */
+      addon?: ReactNode;
     } = {},
   ): JSX.Element => {
     const id = idOf(key);
     const ltr = REGISTER_LTR_FIELDS.has(key as AtmRegisterField);
+    const suggestions = given?.map((s): Suggestion => (typeof s === 'string' ? { value: s } : s));
     const common = {
       id,
       value: values[key],
@@ -423,6 +593,20 @@ export const EntryFormSections = ({
       autoComplete: 'off',
       ...(ltr ? { dir: 'ltr' } : {}),
     };
+    const box =
+      multiline || storedLines(key) > 1 ? (
+        <Textarea
+          {...common}
+          rows={Math.min(6, Math.max(2, storedLines(key)))}
+          onChange={(e) => onChange({ [key]: e.target.value })}
+        />
+      ) : (
+        <Input
+          {...common}
+          {...(suggestions === undefined || suggestions.length === 0 ? {} : { list: `${id}-list` })}
+          onChange={(e) => onChange({ [key]: e.target.value })}
+        />
+      );
     return (
       <Field
         key={key}
@@ -434,25 +618,23 @@ export const EntryFormSections = ({
         warning={warning}
         {...(className === undefined ? {} : { className })}
       >
-        {multiline || storedLines(key) > 1 ? (
-          <Textarea
-            {...common}
-            rows={Math.min(6, Math.max(2, storedLines(key)))}
-            onChange={(e) => onChange({ [key]: e.target.value })}
-          />
+        {addon === undefined ? (
+          box
         ) : (
-          <Input
-            {...common}
-            {...(suggestions === undefined || suggestions.length === 0
-              ? {}
-              : { list: `${id}-list` })}
-            onChange={(e) => onChange({ [key]: e.target.value })}
-          />
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">{box}</div>
+            {addon}
+          </div>
         )}
         {suggestions !== undefined && suggestions.length > 0 && (
           <datalist id={`${id}-list`}>
+            {/* The value is what the box will hold; the label, when there is one, what it means. */}
             {suggestions.map((option) => (
-              <option key={option} value={option} />
+              <option
+                key={option.value}
+                value={option.value}
+                {...(option.label === undefined ? {} : { label: option.label })}
+              />
             ))}
           </datalist>
         )}
@@ -500,14 +682,14 @@ export const EntryFormSections = ({
   );
 
   // ── Identity ──
-  const bank = values.bankCode === '' ? null : (values.bankCode as AtmBankCode);
+  const bank = values.bankCode === '' ? null : values.bankCode;
   const autoLabel =
     bank === null ? '—' : (meta?.banks.find((b) => b.code === bank)?.opsLabel ?? bank);
-  const bankLabels = unique(
-    options?.bankLabels,
-    values.opsBankLabel === '' ? [] : [values.opsBankLabel],
-  );
+  const bankChoices = registerBankChoices(lookup, [entry?.bankCode ?? '', values.bankCode]);
+  // The name the entry holds stays on offer even with no bank chosen, so an edit never blanks it.
+  const bankLabels = opsLabelChoices(options, bank ?? '', values.opsBankLabel);
   const code = normalizeAtmMachineCode(values.machineCode);
+  // The ID formats are the six seeds' (kept in code, DEC-35); a bank without one never warns.
   const idFormatWarning =
     bank !== null && code !== '' && !atmRegisterIdFormatOk(bank, code)
       ? t('atm.register.warning.idFormat')
@@ -520,6 +702,18 @@ export const EntryFormSections = ({
           const known = meta?.branches.find((b) => b.code === entry.branchCode);
           return known === undefined ? entry.branchCode : registerBranchOptionLabel(known, locale);
         })();
+  const areaHint = [
+    receiving && startSet
+      ? t('atm.register.form.areaRequired')
+      : rules?.areaLinks === true
+        ? t('atm.register.form.linkOnAreaHint')
+        : undefined,
+    isNewArea(options, values.area, entry?.area ?? null)
+      ? t('atm.register.form.newAreaHint')
+      : undefined,
+  ].filter((hint): hint is string => hint !== undefined);
+  // An area is filed per branch: without one there is nowhere to add it.
+  const canAddArea = values.branchId !== '';
 
   const identity = section('identity', [
     receiving ? (
@@ -550,13 +744,31 @@ export const EntryFormSections = ({
       </Field>
     ),
     textBox('area', {
-      suggestions: unique(options?.areaLabels, options?.areas),
+      suggestions: areaSuggestions(options, locale),
       required: (receiving && startSet) || (rules?.areaRequired ?? false),
-      ...(receiving && startSet
-        ? { hint: t('atm.register.form.areaRequired') }
-        : rules?.areaLinks === true
-          ? { hint: t('atm.register.form.linkOnAreaHint') }
-          : {}),
+      hint: areaHint.length === 0 ? undefined : areaHint.join(' '),
+      addon: (
+        <Can
+          anyOf={[
+            'atmRefLabel.create',
+            'atmMachine.manage',
+            'atmRegister.create',
+            'atmRegister.edit',
+          ]}
+        >
+          <Button
+            size="icon"
+            variant="secondary"
+            aria-label={t('atm.dataEdit.addArea')}
+            title={t('atm.dataEdit.addArea')}
+            data-register-add="area"
+            disabled={!canAddArea}
+            onClick={() => openAdd('area')}
+          >
+            <PlusIcon className="h-4 w-4" />
+          </Button>
+        </Can>
+      ),
     }),
     <Field
       key="bankCode"
@@ -565,19 +777,34 @@ export const EntryFormSections = ({
       required={receiving && startSet}
       missing={isMissing('bankCode')}
     >
-      <Select
-        id={idOf('bankCode')}
-        value={values.bankCode}
-        // An override chosen for one bank means nothing for another (DEC-25).
-        onChange={(e) => onChange({ bankCode: e.target.value, opsBankLabel: '' })}
-      >
-        <option value="">{t('common.select')}</option>
-        {ATM_BANK_CODES.map((bankCode) => (
-          <option key={bankCode} value={bankCode}>
-            {`${bankCode} · ${bankName(bankCode, locale)}`}
-          </option>
-        ))}
-      </Select>
+      <div className="flex items-center gap-2">
+        <Select
+          id={idOf('bankCode')}
+          value={values.bankCode}
+          className="min-w-0 flex-1"
+          // An override chosen for one bank means nothing for another (DEC-25).
+          onChange={(e) => onChange({ bankCode: e.target.value, opsBankLabel: '' })}
+        >
+          <option value="">{t('common.select')}</option>
+          {bankChoices.map((choice) => (
+            <option key={choice.code} value={choice.code}>
+              {registerBankOptionLabel(choice, lookup, locale, t)}
+            </option>
+          ))}
+        </Select>
+        <Can permission="atmBank.create">
+          <Button
+            size="icon"
+            variant="secondary"
+            aria-label={t('atm.bankCatalog.add')}
+            title={t('atm.bankCatalog.add')}
+            data-register-add="bank"
+            onClick={() => openAdd('bank')}
+          >
+            <PlusIcon className="h-4 w-4" />
+          </Button>
+        </Can>
+      </div>
     </Field>,
     <Field key="opsBankLabel" label={labelOf('opsBankLabel')} htmlFor={idOf('opsBankLabel')}>
       <Select
@@ -605,6 +832,30 @@ export const EntryFormSections = ({
     textBox('model', { suggestions: options?.models ?? [] }),
     textBox('serial'),
   ]);
+
+  // ── «بيانات ناقصة» (DEC-37), on an edit ──
+  // Efficiency's own mark: Operations' data-edit add sets it, and only a person clears it — a
+  // filled field is not proof the row was reviewed. Said above the form, where an edit opens.
+  const incomplete = receiving ? null : (
+    <div
+      data-register-incomplete-field="true"
+      className="space-y-1 rounded-lg border border-slate-200 px-4 py-3 dark:border-slate-800"
+    >
+      <Checkbox
+        label={labelOf('dataIncomplete')}
+        checked={values.dataIncomplete === '1'}
+        onChange={(e) => onChange({ dataIncomplete: e.target.checked ? '1' : '' })}
+      />
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        {t('atm.register.form.dataIncompleteHint')}
+      </p>
+      {entry?.source === 'operations' && (
+        <p data-register-operations-note="true" className="text-xs text-sky-700 dark:text-sky-300">
+          {t('atm.register.form.operationsNote')}
+        </p>
+      )}
+    </div>
+  );
 
   // ── Keys (K) ──
   const keys = secrets
@@ -699,6 +950,7 @@ export const EntryFormSections = ({
 
   return (
     <div className="space-y-4">
+      {incomplete}
       {identity}
       {keys}
       {cassettes}
@@ -707,6 +959,27 @@ export const EntryFormSections = ({
       {location}
       {section('lifecycle', lifecycle)}
       {section('hub', [textBox('hub', { suggestions: options?.hubs ?? [] })])}
+      {/* Opened over the form, and mounted only then (each reads the catalog); each puts what it
+          added into the box it was opened from. */}
+      {adding === 'bank' && (
+        <BankDialog
+          open
+          onClose={() => openAdd(null)}
+          bank={null}
+          onSaved={(added) => onChange({ bankCode: added.code, opsBankLabel: '' })}
+        />
+      )}
+      {adding === 'area' && canAddArea && (
+        <RefLabelDialog
+          open
+          onClose={() => openAdd(null)}
+          kind="area"
+          label={null}
+          branchId={values.branchId}
+          onSaved={(added) => onChange({ area: added.name })}
+          onExisting={(name) => onChange({ area: name })}
+        />
+      )}
     </div>
   );
 };

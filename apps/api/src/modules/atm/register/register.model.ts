@@ -14,10 +14,12 @@
 // opaque ref, bound to `atm_register_entries:<id>:safeCombination` (register-secrets.ts).
 import { Schema, model, type Types } from 'mongoose';
 import {
+  ATM_REGISTER_SOURCES,
   ATM_REGISTER_STATUSES,
   type AtmBankCode,
   type AtmRegisterCassettesDto,
   type AtmRegisterKeysDto,
+  type AtmRegisterSource,
   type AtmRegisterStatus,
   type SecretRef,
 } from '@ecms/contracts';
@@ -43,8 +45,9 @@ export interface AtmRegisterEntryDoc extends BaseDocFields {
   /** Null only for an imported row with a blank column A. Immutable (D4). */
   branchId: Types.ObjectId | null;
   area: string | null;
+  /** A catalog code (DEC-35); the service checks it exists — and is active, for a new value. */
   bankCode: AtmBankCode | null;
-  /** An explicit Operations bank label (e.g. `NBE FOREX`); null = the setting's label (D5). */
+  /** An explicit Operations bank label (e.g. `NBE FOREX`); null = the catalog bank's label (D5). */
   opsBankLabel: string | null;
   machineCode: string | null;
   /** The Operations master this period is coupled to (D2); null while unlinked (DEC-30). */
@@ -79,7 +82,14 @@ export interface AtmRegisterEntryDoc extends BaseDocFields {
   status: AtmRegisterStatus;
   /** DEC-11: both rows of an imported duplicate-open pair; excluded from the partial unique index. */
   openPeriodExempt: boolean;
-  source: 'manual' | 'import';
+  /** `operations` (DEC-36): recorded by the server when Operations added the machine on data-edit. */
+  source: AtmRegisterSource;
+  /**
+   * DEC-37 «بيانات ناقصة» — a STORED flag, not derived from blank fields: most imported rows have
+   * legitimate blanks (DEC-32), and key fields cannot be judged without `viewSecrets`. Set by the
+   * data-edit intake, set or cleared by Efficiency, never cleared by the server on its own.
+   */
+  dataIncomplete: boolean;
   importRunId: Types.ObjectId | null;
   importRow: number | null;
   importIssues: AtmRegisterImportIssue[];
@@ -187,7 +197,9 @@ const registerEntrySchema = new Schema<AtmRegisterEntryDoc>(
     handoverNotes: nullableText,
     status: { type: String, required: true, enum: ATM_REGISTER_STATUSES },
     openPeriodExempt: { type: Boolean, required: true, default: false },
-    source: { type: String, required: true, enum: ['manual', 'import'] },
+    source: { type: String, required: true, enum: ATM_REGISTER_SOURCES },
+    // Absent on every row written before DEC-37; the mapper and the filter read that as false.
+    dataIncomplete: { type: Boolean, required: true, default: false },
     importRunId: { type: Schema.Types.ObjectId, default: null },
     importRow: { type: Number, default: null },
     importIssues: { type: [importIssueSchema], default: [] },
@@ -222,6 +234,12 @@ registerEntrySchema.index(
   { name: 'ix_branch_status_bank' },
 );
 registerEntrySchema.index({ machineCode: 1, status: 1 }, { name: 'ix_code_status' });
+// DEC-37: the «بيانات ناقصة فقط» filter. Partial — only flagged rows are indexed, and they are few:
+// the ~3,500 imported rows never carry the flag.
+registerEntrySchema.index(
+  { branchId: 1, dataIncomplete: 1 },
+  { name: 'ix_incomplete', partialFilterExpression: { dataIncomplete: true } },
+);
 registerEntrySchema.index({ branchId: 1, machineCode: 1 }, { name: 'ix_branch_code' });
 // Coupling: "does another open entry still hold this master?" (register-coupling.ts).
 registerEntrySchema.index({ machineId: 1, status: 1 }, { name: 'ix_machine_status' });

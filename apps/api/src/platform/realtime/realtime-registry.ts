@@ -19,6 +19,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // ── ATM ────────────────────────────────────────────────────────────────────
   'atm.machine': { permission: 'atmMachine.view' },
   'atm.refLabel': { permission: 'atmMachine.view' },
+  // The bank catalog (DEC-35): a bank added, renamed or archived refreshes the pickers, the
+  // register, the report and the map legend. The machine view key, as for the labels beside it.
+  'atm.bank': { permission: 'atmMachine.view' },
   'atm.replenishment': { permission: 'atmReplenishment.view' },
   'atm.maintenance': { permission: 'atmMaintenance.view' },
   'atm.mailTicket': { permission: 'atmMailTicket.view' },

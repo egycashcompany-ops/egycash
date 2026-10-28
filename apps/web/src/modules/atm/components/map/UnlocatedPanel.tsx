@@ -14,6 +14,7 @@ import { type Locale, type AtmMapLocationSummaryDto, type AtmMapPointDto } from 
 import { useT } from '../../../../platform/localization/useT';
 import { formatNumber } from '../../../../shared/lib/format';
 import { SearchIcon } from '../../../../shared/ui/icons';
+import { type BankLookup } from '../../lib/bank-catalog';
 import { type UnlocatedChip } from '../../lib/unlocated-view';
 import { LinkResolutionCard } from './LinkResolutionCard';
 import { ReasonChips } from './ReasonChips';
@@ -29,6 +30,7 @@ export const shownRowCount = (grown: number, total: number, openIndex: number): 
 
 export const UnlocatedPanel = ({
   locale,
+  banks,
   branchId,
   summary,
   chips,
@@ -44,6 +46,8 @@ export const UnlocatedPanel = ({
   onToggleRow,
 }: {
   locale: Locale;
+  /** The catalog's bank names and colours (DEC-35), for every row. */
+  banks: BankLookup;
   /** The page's branch; null = every branch in reach («كل الفروع»). */
   branchId: string | null;
   summary: AtmMapLocationSummaryDto | undefined;
@@ -165,6 +169,7 @@ export const UnlocatedPanel = ({
             branchName={branchNames.get(point.branchId) ?? ''}
             open={openId === point.machineId}
             locale={locale}
+            banks={banks}
             actions={actions}
             onToggle={onToggleRow}
           />

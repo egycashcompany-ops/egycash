@@ -34,7 +34,12 @@ import {
 import { diffChanges } from '../../../../shared/utils/diff';
 import { type PendingAudit } from '../../register/register-coupling';
 import { branchScopeBranches, branchScopeMatch } from '../../shared/branch-scope';
-import { branchMismatch, isDuplicateKey, requireWorkBranch } from '../shared/settlement-context';
+import {
+  branchMismatch,
+  isDuplicateKey,
+  requireEnabledBank,
+  requireWorkBranch,
+} from '../shared/settlement-context';
 import { AtmCassetteLayoutModel } from '../layouts/cassette-layout.model';
 import { AtmPlanLineModel } from '../plans/plan-line.model';
 import { AtmStandardLoadModel, type AtmStandardLoadDoc } from './standard-load.model';
@@ -199,6 +204,12 @@ class AtmStandardLoadService {
     const work = await requireWorkBranch(ctx, LAYOUT_VIEW, LAYOUT_MANAGE);
     if (input.branchId !== work.branchId) throw branchMismatch();
     if (!work.canWrite) throw new ForbiddenError('the layout key does not reach this branch');
+    // The model checks the code's SHAPE only since the enum gave way to the catalog (DEC-35); the
+    // bank must exist and be enabled, the check plan create and the layouts list make — otherwise a
+    // typo («BRKK») stored a profile for no bank, and `isDefault` cleared that phantom's default.
+    // Create is the one way in: `update` refuses a bank change and the import goes through
+    // `masterProfileOf`.
+    await requireEnabledBank(input.bankCode);
     const branchId = asId(work.branchId);
     const by = asId(ctx.userId);
 

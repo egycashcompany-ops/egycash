@@ -13,7 +13,7 @@
 // for a PATCH moving a line into an occupied run.
 import { Schema, model, type Types } from 'mongoose';
 import {
-  ATM_BANK_CODES,
+  ATM_BANK_CODE_PATTERN,
   ATM_LABEL_MAX,
   ATM_PLAN_LINE_KINDS,
   ATM_PLAN_LINE_STATUSES,
@@ -142,7 +142,9 @@ const planLineSchema = new Schema<AtmPlanLineDoc>(
   {
     planId: { type: Schema.Types.ObjectId, required: true },
     branchId: { type: Schema.Types.ObjectId, required: true },
-    bankCode: { type: String, required: true, enum: ATM_BANK_CODES },
+    // A catalog code (DEC-35): the SHAPE only — a bank added at runtime must be storable here; that
+    // it exists and is enabled is the service's check (`requireEnabledBank`).
+    bankCode: { type: String, required: true, match: ATM_BANK_CODE_PATTERN },
     replenishDate: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     kind: { type: String, required: true, enum: ATM_PLAN_LINE_KINDS },
     machineId: { type: Schema.Types.ObjectId, default: null },

@@ -14,7 +14,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ATM_BANK_NAMES,
   type AssignAtmRoutes,
   type AtmControlPrint,
   type AtmControlRouteDto,
@@ -28,6 +27,7 @@ import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { Button } from '../../../shared/ui/Button';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { PrinterIcon } from '../../../shared/ui/icons';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -42,6 +42,7 @@ import {
   useRoutesFromZones,
   useUpdateRoute,
 } from '../api/settlements-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { ControlDataTab } from '../components/settlements/ControlDataTab';
 import { ControlRoutesTab } from '../components/settlements/ControlRoutesTab';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
@@ -71,6 +72,8 @@ type Editing = { route: AtmControlRouteDto | null } | null;
 export const ControlPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Bank names from the catalog (DEC-35): a bank added since the workbook is named, not coded.
+  const bankLookup = useAtmBankLookup();
   const [sp, setSp] = useSearchParams();
   const setParam = (key: 'date' | 'tab', value: string | null): void => {
     const next = new URLSearchParams(sp);
@@ -257,7 +260,7 @@ export const ControlPage = (): JSX.Element => {
           label={t('atm.control.action.printHandover')}
           items={plans.map((p) => ({
             key: p.planId,
-            label: ATM_BANK_NAMES[p.bankCode][locale],
+            label: bankLookup.name(p.bankCode, locale),
             onSelect: () => askHandover(p.planId),
           }))}
         />
@@ -288,79 +291,89 @@ export const ControlPage = (): JSX.Element => {
   );
 
   return (
-    <PageContainer>
-      <PageHeader title={t('atm.control.title')} actions={actions} />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title, the day and the tabs keep their place,
+          and only the tab's body scrolls — the lines under a head that stays, or the routes' cards
+          under their toolbar. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader title={t('atm.control.title')} actions={actions} />
 
-      <div className="mb-4 flex flex-wrap items-end gap-3" data-control-toolbar="true">
-        <DayField
-          id="control-day"
-          value={day?.date ?? askedDay ?? ''}
-          onChange={(next) => setParam('date', next)}
-        />
-        <div role="tablist" aria-label={t('atm.control.title')} className="ms-auto flex gap-2">
-          {(['data', 'routes'] as const)
-            .filter((k) => k === 'data' || day?.can.manage === true)
-            .map((k) => (
-              <button
-                key={k}
-                type="button"
-                role="tab"
-                aria-selected={tab === k}
-                data-control-tab={k}
-                onClick={() => setParam('tab', k === 'data' ? null : k)}
-                className={cn(
-                  'h-9 rounded-lg border px-4 text-sm font-medium',
-                  tab === k
-                    ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
-                )}
-              >
-                {t(k === 'data' ? 'atm.control.tab.data' : 'atm.control.tab.routes')}
-              </button>
-            ))}
+        <div className="flex flex-wrap items-end gap-3" data-control-toolbar="true">
+          <DayField
+            id="control-day"
+            value={day?.date ?? askedDay ?? ''}
+            onChange={(next) => setParam('date', next)}
+          />
+          <div role="tablist" aria-label={t('atm.control.title')} className="ms-auto flex gap-2">
+            {(['data', 'routes'] as const)
+              .filter((k) => k === 'data' || day?.can.manage === true)
+              .map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === k}
+                  data-control-tab={k}
+                  onClick={() => setParam('tab', k === 'data' ? null : k)}
+                  className={cn(
+                    'h-9 rounded-lg border px-4 text-sm font-medium',
+                    tab === k
+                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
+                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+                  )}
+                >
+                  {t(k === 'data' ? 'atm.control.tab.data' : 'atm.control.tab.routes')}
+                </button>
+              ))}
+          </div>
         </div>
-      </div>
 
-      {dayQuery.isLoading ? (
-        <LoadingState />
-      ) : day === undefined ? (
-        <ErrorState
-          error={dayQuery.error}
-          description={settlementErrorText(dayQuery.error, t, locale)}
-          onRetry={() => void dayQuery.refetch()}
-        />
-      ) : day.lines.length === 0 && tab === 'data' ? (
-        <p
-          data-control-empty="true"
-          className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300"
-        >
-          {t('atm.control.empty')}
-        </p>
-      ) : tab === 'routes' ? (
-        <ControlRoutesTab
-          day={day}
-          locale={locale}
-          busy={busy}
-          canPrint={canPrint}
-          actions={{
-            onMove: move,
-            onCreate: () => {
-              setRouteError(null);
-              setEditing({ route: null });
-            },
-            onEdit: (route) => {
-              setRouteError(null);
-              setEditing({ route });
-            },
-            onShift: (route, by) => void shift(route, by),
-            onDelete: (route) => setConfirm({ kind: 'delete', route }),
-            onPrint: (route) => askRoutes([route], [route.id]),
-            onFromZones: runFromZones,
-          }}
-        />
-      ) : (
-        <ControlDataTab day={day} locale={locale} />
-      )}
+        {dayQuery.isLoading ? (
+          <LoadingState />
+        ) : day === undefined ? (
+          <ErrorState
+            error={dayQuery.error}
+            description={settlementErrorText(dayQuery.error, t, locale)}
+            onRetry={() => void dayQuery.refetch()}
+          />
+        ) : day.lines.length === 0 && tab === 'data' ? (
+          <p
+            data-control-empty="true"
+            className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300"
+          >
+            {t('atm.control.empty')}
+          </p>
+        ) : tab === 'routes' ? (
+          <div className={BOARD_TABLE_FILL}>
+            <ControlRoutesTab
+              day={day}
+              locale={locale}
+              busy={busy}
+              canPrint={canPrint}
+              actions={{
+                onMove: move,
+                onCreate: () => {
+                  setRouteError(null);
+                  setEditing({ route: null });
+                },
+                onEdit: (route) => {
+                  setRouteError(null);
+                  setEditing({ route });
+                },
+                onShift: (route, by) => void shift(route, by),
+                onDelete: (route) => setConfirm({ kind: 'delete', route }),
+                onPrint: (route) => askRoutes([route], [route.id]),
+                onFromZones: runFromZones,
+              }}
+            />
+          </div>
+        ) : (
+          <div className={BOARD_TABLE_FILL}>
+            <ControlDataTab day={day} locale={locale} banks={bankLookup} />
+          </div>
+        )}
+      </div>
 
       <RouteDialog
         open={editing !== null}

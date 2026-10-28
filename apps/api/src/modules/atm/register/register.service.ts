@@ -18,9 +18,6 @@
 // delete → `delete`; the reveal → `secretRevealed` (an audited READ). Every diff goes through
 // `redactedDiff`, so no audit row carries a key code, a note or the combination.
 import {
-  ATM_BANK_CODES,
-  ATM_BANK_NAMES,
-  ATM_BANK_REPORT_COLORS,
   ATM_REGISTER_BRANCH_CODES,
   ATM_REGISTER_BRANCH_NAMES,
   ATM_REGISTER_SORT_FIELDS,
@@ -57,7 +54,10 @@ import {
   ValidationError,
 } from '../../../shared/errors';
 import { keyReachesBranch, scopeSelector, type AuthContext } from '../../../shared/types';
+import { ensureAreaLabels } from '../catalogs/area-labels';
+import { type AtmBankCatalog } from '../catalogs/bank-catalog';
 import { AtmRefLabelModel } from '../catalogs/ref-label.model';
+import { branchLabelChoices, readBranchLabels } from '../catalogs/ref-label.service';
 import { AtmMachineModel, type AtmMachineDoc } from '../machines/machine.model';
 import { cairoDateString } from '../shared/cairo-time';
 import {
@@ -88,6 +88,7 @@ import {
   sealCombination,
   secretsVisibleFor,
 } from './register-secrets';
+import { describeBranch } from './register-refusals';
 import {
   effectiveOpsLabel,
   resolveRegisterSettings,
@@ -150,6 +151,9 @@ export const entrySnapshot = (doc: AtmRegisterEntryDoc): Record<string, unknown>
   handoverName: doc.handoverName,
   handoverNotes: doc.handoverNotes,
   status: doc.status,
+  // DEC-36/37: so an audit diff shows where a row came from and the flag being set and cleared.
+  source: doc.source,
+  dataIncomplete: doc.dataIncomplete === true,
 });
 
 /** The P text fields a Receive and an Edit both write as given (§3.7 `commonFields`). */
@@ -186,6 +190,19 @@ const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
   for (const audit of audits) await auditService.record(audit);
 };
 
+/**
+ * DEC-38: after a write COMMITTED, the area an open or pending entry carries becomes a data-edit
+ * label of its branch, so what Efficiency types reaches Operations' lists (the owner: «مش مسمعه»).
+ * Best effort — never fails the write; an ended entry's area stays a suggestion only.
+ */
+const labelEntryArea = async (entry: AtmRegisterEntryDoc, ctx: AuthContext): Promise<void> => {
+  if (entry.status === 'ended') return;
+  await ensureAreaLabels([{ branchId: entry.branchId, area: entry.area }], {
+    actorId: ctx.userId,
+    origin: 'register',
+  });
+};
+
 export interface AtmRegisterListResult {
   items: AtmRegisterEntryDto[];
   meta: Paginated<unknown>['meta'];
@@ -210,6 +227,9 @@ class AtmRegisterService {
       filter.$or = [{ machineCode: pattern }, { name: pattern }, { serial: pattern }];
     }
     if (query.withIssues === true) filter['importIssues.0'] = { $exists: true };
+    // DEC-37. `$ne: true`, not `false`: a row written before the flag has no field at all.
+    if (query.incomplete === true) filter.dataIncomplete = true;
+    if (query.incomplete === false) filter.dataIncomplete = { $ne: true };
     return filter;
   }
 
@@ -330,46 +350,64 @@ class AtmRegisterService {
     }
   }
 
-  /** D5: an override must be one of the branch's ACTIVE Operations bank labels. */
-  private async assertOpsBankLabel(
-    branchId: Types.ObjectId | string | null,
-    label: string,
-  ): Promise<void> {
-    const found =
-      branchId === null
-        ? null
-        : await AtmRefLabelModel.exists({
-            branchId: new Types.ObjectId(String(branchId)),
-            kind: 'bank',
-            name: label,
-            isActive: true,
-            isDeleted: false,
-          }).exec();
-    if (found === null) {
+  /**
+   * DEC-35: a bank is a catalog code. It must exist, and be ACTIVE unless it is the value the entry
+   * already stores — archiving a bank stops NEW receipts on it; it does not make every entry that
+   * carries it unsavable. 400, the status the old enum gave.
+   */
+  private assertBank(code: AtmBankCode, stored: AtmBankCode | null, catalog: AtmBankCatalog): void {
+    const bank = catalog.byCode.get(code);
+    if (bank === undefined) {
       throw new ValidationError([
-        {
-          field: 'body.opsBankLabel',
-          code: 'UNKNOWN',
-          message: 'not an active Operations bank label of this branch',
-        },
+        { field: 'body.bankCode', code: 'UNKNOWN', message: 'not a bank of the bank catalog' },
+      ]);
+    }
+    if (!bank.isActive && code !== stored) {
+      throw new ValidationError([
+        { field: 'body.bankCode', code: 'INACTIVE', message: 'this bank is archived' },
       ]);
     }
   }
 
   /**
-   * How a refusal names ANOTHER branch: by its EGYCASH code only when the caller's
-   * `atmRegister.view` reaches it (review finding F-9) — never a branch the caller cannot see.
+   * D5: an override must be one of the branch's ACTIVE Operations bank spellings — and, since
+   * spellings carry their bank (DEC-35), a spelling OF THIS ENTRY'S BANK. DEC-25's rationale ("a
+   * label chosen for one bank means nothing for another") was the screen's alone; it is the
+   * server's now (`OTHER_BANK`), and a spelling nobody has mapped yet cannot be chosen as a new
+   * override (`UNMAPPED`). Checked only when the override is SENT: one already stored is left alone.
    */
-  private describeBranch(
-    ctx: AuthContext,
-    branchId: Types.ObjectId | string | null | undefined,
-    settings: RegisterSettings,
-  ): string {
-    if (branchId === null || branchId === undefined) return 'an entry with no branch';
-    const code = settings.codeByBranchId.get(String(branchId));
-    return code !== undefined && keyReachesBranch(ctx, 'atmRegister.view', String(branchId))
-      ? code
-      : 'another branch';
+  private async assertOpsBankLabel(
+    branchId: Types.ObjectId | string | null,
+    label: string,
+    bankCode: AtmBankCode | null,
+  ): Promise<void> {
+    const spelling =
+      branchId === null
+        ? null
+        : await AtmRefLabelModel.findOne(
+            {
+              branchId: new Types.ObjectId(String(branchId)),
+              kind: 'bank',
+              name: label,
+              isActive: true,
+              isDeleted: false,
+            },
+            { bankCode: 1 },
+          )
+            .lean<{ bankCode?: string | null }>()
+            .exec();
+    const refuse = (code: string, message: string): ValidationError =>
+      new ValidationError([{ field: 'body.opsBankLabel', code, message }]);
+    if (spelling === null) {
+      throw refuse('UNKNOWN', 'not an active Operations bank label of this branch');
+    }
+    const mapped = spelling.bankCode ?? null;
+    if (mapped === null) {
+      throw refuse('UNMAPPED', 'this Operations bank label is not mapped to a bank yet');
+    }
+    if (mapped !== bankCode) {
+      throw refuse('OTHER_BANK', 'this Operations bank label belongs to another bank');
+    }
   }
 
   /** D6: one OPEN period per code, company-wide (exempt pairs count here — DEC-11). */
@@ -385,7 +423,7 @@ class AtmRegisterService {
     const other = open[0];
     if (other !== undefined) {
       throw new ConflictError(
-        `machine ${machineCode} already has an open period in ${this.describeBranch(ctx, other.branchId, settings)}`,
+        `machine ${machineCode} already has an open period in ${describeBranch(ctx, other.branchId, settings)}`,
         ErrorCodes.ATM_REGISTER_OPEN_PERIOD_EXISTS,
       );
     }
@@ -407,7 +445,7 @@ class AtmRegisterService {
   ): AppError {
     if (refusal.refused === 'activeElsewhere') {
       return new ConflictError(
-        `machine ${machineCode} is active in the Operations list of ${this.describeBranch(ctx, refusal.otherBranchId, settings)}`,
+        `machine ${machineCode} is active in the Operations list of ${describeBranch(ctx, refusal.otherBranchId, settings)}`,
         ErrorCodes.ATM_REGISTER_CODE_ACTIVE_ELSEWHERE,
       );
     }
@@ -532,9 +570,12 @@ class AtmRegisterService {
         },
       ]);
     }
-    const requestedLabel = input.opsBankLabel ?? null;
-    if (requestedLabel !== null) await this.assertOpsBankLabel(input.branchId, requestedLabel);
     const bankCode = input.bankCode ?? null;
+    if (bankCode !== null) this.assertBank(bankCode, null, settings.catalog);
+    const requestedLabel = input.opsBankLabel ?? null;
+    if (requestedLabel !== null) {
+      await this.assertOpsBankLabel(input.branchId, requestedLabel, bankCode);
+    }
     const area = input.area ?? null;
     if (startDate !== null && machineCode !== null) {
       await this.assertNoOpenPeriod(ctx, machineCode, settings);
@@ -605,6 +646,7 @@ class AtmRegisterService {
             status: deriveAtmRegisterStatus(startDate, null),
             openPeriodExempt: false,
             source: 'manual',
+            dataIncomplete: false,
             importRunId: null,
             importRow: null,
             importIssues: [],
@@ -628,6 +670,7 @@ class AtmRegisterService {
       },
       ...(coupling?.audits ?? []),
     ]);
+    await labelEntryArea(doc, ctx);
     return this.writeResult(
       await this.toDto(doc, ctx, settings),
       [...warnings, ...(coupling === null ? [] : this.linkWarnings(coupling, requestedLabel))],
@@ -679,6 +722,9 @@ class AtmRegisterService {
       put('area', input.area);
     }
     if (input.bankCode !== undefined) {
+      if (input.bankCode !== null && input.bankCode !== before.bankCode) {
+        this.assertBank(input.bankCode, before.bankCode, settings.catalog);
+      }
       put('bankCode', input.bankCode);
       // DEC-25: a label chosen for one bank means nothing for another.
       if (input.bankCode !== before.bankCode && input.opsBankLabel === undefined) {
@@ -686,10 +732,14 @@ class AtmRegisterService {
       }
     }
     if (input.opsBankLabel !== undefined) {
-      if (input.opsBankLabel !== null)
-        await this.assertOpsBankLabel(before.branchId, input.opsBankLabel);
+      if (input.opsBankLabel !== null) {
+        await this.assertOpsBankLabel(before.branchId, input.opsBankLabel, merged.bankCode);
+      }
       put('opsBankLabel', input.opsBankLabel);
     }
+    // DEC-37: Efficiency ticks «بيانات ناقصة» off once the row is complete (or on, to come back to
+    // it). `atmRegister.edit` over the entry's branch, already asserted above — no other key.
+    if (input.dataIncomplete !== undefined) put('dataIncomplete', input.dataIncomplete);
 
     let codeChanged = false;
     if (input.machineCode !== undefined) {
@@ -841,6 +891,7 @@ class AtmRegisterService {
       },
       ...result.audits,
     ]);
+    if (result.updated.area !== before.area) await labelEntryArea(result.updated, ctx);
     return this.writeResult(
       await this.toDto(result.updated, ctx, settings),
       [...warnings, ...result.txWarnings],
@@ -906,8 +957,9 @@ class AtmRegisterService {
       missing.push({ field: 'body.name', code: 'REQUIRED', message: 'name is required' });
     if (missing.length > 0 || bankCode === null || machineCode === null)
       throw new ValidationError(missing);
+    this.assertBank(bankCode, before.bankCode, settings.catalog);
     if (input.opsBankLabel !== undefined && input.opsBankLabel !== null) {
-      await this.assertOpsBankLabel(branchId, input.opsBankLabel);
+      await this.assertOpsBankLabel(branchId, input.opsBankLabel, bankCode);
     }
     await this.assertNoOpenPeriod(ctx, machineCode, settings, id);
     const warnings = await this.warningsFor(
@@ -965,6 +1017,7 @@ class AtmRegisterService {
       },
       ...result.outcome.audits,
     ]);
+    await labelEntryArea(result.updated, ctx);
     return this.writeResult(
       await this.toDto(result.updated, ctx, settings),
       [...warnings, ...this.linkWarnings(result.outcome, input.opsBankLabel)],
@@ -1130,6 +1183,7 @@ class AtmRegisterService {
       },
       ...result.outcome.audits,
     ]);
+    await labelEntryArea(result.updated, ctx);
     return this.writeResult(
       await this.toDto(result.updated, ctx, settings),
       this.linkWarnings(result.outcome, undefined),
@@ -1139,17 +1193,24 @@ class AtmRegisterService {
 
   // ── Reference data for the screens ────────────────────────────────────────────────────────────
 
-  /** GET /meta — banks with their labels and colours; the seven codes with their mapped branch. */
+  /**
+   * GET /meta — every catalog bank (archived ones too: an entry may still carry one; a picker
+   * offers the active ones plus the entry's own) in catalog order; the seven codes with their
+   * mapped branch.
+   */
   async meta(ctx: AuthContext): Promise<AtmRegisterMetaDto> {
     const settings = await resolveRegisterSettings();
     const branches = await branchRepository.findByIdsSystem([...settings.branchIdByCode.values()]);
     const byId = new Map(branches.map((branch) => [String(branch._id), branch]));
     return {
-      banks: ATM_BANK_CODES.map((code) => ({
-        code,
-        name: ATM_BANK_NAMES[code],
-        opsLabel: settings.opsLabel(code),
-        color: ATM_BANK_REPORT_COLORS[code],
+      banks: settings.catalog.all.map((bank) => ({
+        code: bank.code,
+        name: { ar: bank.name.ar, en: bank.name.en },
+        opsLabel: bank.opsLabel,
+        color: bank.color,
+        isActive: bank.isActive,
+        sortOrder: bank.sortOrder,
+        isSeed: bank.isSeed,
       })),
       branches: ATM_REGISTER_BRANCH_CODES.map((code) => {
         const branchId = settings.branchIdByCode.get(code) ?? null;
@@ -1175,17 +1236,17 @@ class AtmRegisterService {
     ) {
       throw new ForbiddenError('the register keys do not reach this branch');
     }
-    const labels = await AtmRefLabelModel.find(
-      { branchId: new Types.ObjectId(branchId), isActive: true, isDeleted: false },
-      { kind: 1, name: 1 },
-    )
-      .lean<{ kind: string; name: string }[]>()
-      .exec();
-    const sorted = (kind: string): string[] =>
-      labels
-        .filter((label) => label.kind === kind)
-        .map((label) => label.name)
-        .sort((a, b) => a.localeCompare(b));
+    const [labels, settings] = await Promise.all([
+      readBranchLabels(branchId),
+      resolveRegisterSettings(),
+    ]);
+    // The same choices the data-edit dialogs read (`branchLabelChoices`), so the two forms never
+    // disagree: the Operations-label select, once a bank is chosen, offers the spellings mapped to an
+    // ACTIVE bank — a spelling that IS a catalog label (a legacy `NBE` row) is no override at all.
+    const choices = branchLabelChoices(labels, settings.catalog);
+    const bankVariants = choices.banks.flatMap((option) =>
+      option.kind === 'spelling' ? [{ name: option.value, bankCode: option.bankCode }] : [],
+    );
     const [areas, operationTypes, vendors, models, hubs] = await Promise.all([
       atmRegisterEntryRepository.distinctValues('area', branchId),
       atmRegisterEntryRepository.distinctValues('operationType', branchId),
@@ -1195,8 +1256,13 @@ class AtmRegisterService {
     ]);
     return {
       branchId,
-      areaLabels: sorted('area'),
-      bankLabels: sorted('bank'),
+      areaLabels: choices.areas.map((area) => area.name),
+      bankLabels: labels
+        .filter((label) => label.kind === 'bank')
+        .map((label) => label.name)
+        .sort((a, b) => a.localeCompare(b)),
+      areaOptions: choices.areas,
+      bankVariants,
       areas,
       operationTypes,
       vendors,

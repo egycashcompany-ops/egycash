@@ -15,7 +15,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ATM_BANK_NAMES,
   ATM_PLAN_ADD_REFUSALS,
   ErrorCodes,
   type AddAtmSpareLine,
@@ -35,10 +34,12 @@ import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
 import { ApiError, saveBlob } from '../../../shared/lib/api-client';
+import { cn } from '../../../shared/lib/cn';
 import { formatBusinessDateTime, formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Select } from '../../../shared/ui/form';
 import { DownloadIcon, PrinterIcon } from '../../../shared/ui/icons';
@@ -61,6 +62,7 @@ import {
   useStandardLoads,
   useUpdatePlanLine,
 } from '../api/settlements-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { AddMachinesDialog } from '../components/settlements/AddMachinesDialog';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
 import { IssueDialog, type ServerIssue } from '../components/settlements/IssueDialog';
@@ -111,6 +113,8 @@ const spareUseRefusal = (error: unknown): string | null => {
 export const SettlementPlanPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Bank names from the catalog (DEC-35): a bank added since the workbook is named, not coded.
+  const bankLookup = useAtmBankLookup();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const patch = (updates: Record<string, string | null>): void => {
@@ -524,176 +528,189 @@ export const SettlementPlanPage = (): JSX.Element => {
   const lastAt = (at: string): string => formatBusinessDateTime(at, locale);
 
   return (
-    <PageContainer>
-      <PageHeader title={t('atm.plan.title')} figures={figures} actions={actions} />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title and the toolbar keep their place, the
+          totals keep theirs under the table, and only the lines — and the panel beside them —
+          scroll. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader title={t('atm.plan.title')} figures={figures} actions={actions} />
 
-      {/* ── The toolbar ── */}
-      <div className="mb-4 flex flex-wrap items-end gap-3" data-plan-toolbar="true">
-        <Field label={t('atm.settlement.bank')} htmlFor="plan-bank">
-          <Select
-            id="plan-bank"
-            value={bank ?? ''}
-            onChange={(e) => patch({ bank: e.target.value, line: null })}
+        {/* ── The toolbar ── */}
+        <div className="flex flex-wrap items-end gap-3" data-plan-toolbar="true">
+          <Field label={t('atm.settlement.bank')} htmlFor="plan-bank">
+            <Select
+              id="plan-bank"
+              value={bank ?? ''}
+              onChange={(e) => patch({ bank: e.target.value, line: null })}
+            >
+              {banks.map((b) => (
+                <option key={b} value={b}>
+                  {bankLookup.name(b, locale)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <DayField
+            id="plan-day"
+            value={date}
+            onChange={(day) => patch({ date: day === cairoTomorrow() ? null : day, line: null })}
+          />
+          {state !== null && (
+            <span data-plan-state={state} className="pb-2">
+              <Badge tone={PLAN_STATE_TONE[state]}>{t(`atm.settlement.planState.${state}`)}</Badge>
+            </span>
+          )}
+          {plan !== null && plan.can.manage && (
+            <div className="ms-auto flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  setAddError(null);
+                  setAddOpen(true);
+                }}
+              >
+                {t('atm.plan.action.addMachines')}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSpareError(null);
+                  setSpareOpen(true);
+                }}
+              >
+                {t('atm.plan.action.addSpare')}
+              </Button>
+              <Button variant="secondary" disabled={drafts.length === 0} onClick={openIssue}>
+                {t('atm.plan.action.issue', { n: formatNumber(drafts.length, locale) })}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {context.isLoading || (ready && planQuery.isLoading) ? (
+          <LoadingState />
+        ) : context.error !== null && ctx === undefined ? (
+          <ErrorState error={context.error} onRetry={() => void context.refetch()} />
+        ) : planQuery.error !== null ? (
+          <ErrorState
+            error={planQuery.error}
+            description={settlementErrorText(planQuery.error, t, locale)}
+            onRetry={() => void planQuery.refetch()}
+          />
+        ) : plan === null ? (
+          <div
+            data-plan-empty="true"
+            className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-300 p-10 text-center dark:border-slate-700"
           >
-            {banks.map((b) => (
-              <option key={b} value={b}>
-                {ATM_BANK_NAMES[b][locale]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <DayField
-          id="plan-day"
-          value={date}
-          onChange={(day) => patch({ date: day === cairoTomorrow() ? null : day, line: null })}
-        />
-        {state !== null && (
-          <span data-plan-state={state} className="pb-2">
-            <Badge tone={PLAN_STATE_TONE[state]}>{t(`atm.settlement.planState.${state}`)}</Badge>
-          </span>
-        )}
-        {plan !== null && plan.can.manage && (
-          <div className="ms-auto flex flex-wrap gap-2">
-            <Button
-              onClick={() => {
-                setAddError(null);
-                setAddOpen(true);
-              }}
+            <p className="text-sm text-slate-600 dark:text-slate-300">{t('atm.plan.empty')}</p>
+            {ctx?.can.managePlans === true && (
+              <Button loading={create.isPending} onClick={createPlan} data-plan-create="true">
+                {t('atm.plan.action.create')}
+              </Button>
+            )}
+          </div>
+        ) : (
+          // The height left is the lines' and the panel's: each scrolls on its own, so the panel no
+          // longer needs to stick while the page scrolls past it.
+          <div className="flex flex-col gap-4 lg:min-h-[14rem] lg:flex-1 lg:flex-row">
+            <section
+              aria-label={t('atm.plan.title')}
+              className={cn('min-w-0 flex-1 space-y-3', BOARD_TABLE_FILL)}
             >
-              {t('atm.plan.action.addMachines')}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setSpareError(null);
-                setSpareOpen(true);
-              }}
-            >
-              {t('atm.plan.action.addSpare')}
-            </Button>
-            <Button variant="secondary" disabled={drafts.length === 0} onClick={openIssue}>
-              {t('atm.plan.action.issue', { n: formatNumber(drafts.length, locale) })}
-            </Button>
+              {plan.summary.receiptStale && plan.summary.receiptPrint !== null && (
+                <p
+                  role="status"
+                  data-plan-notice="receiptStale"
+                  className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                >
+                  {t('atm.plan.notice.receiptStale', { at: lastAt(plan.summary.receiptPrint.at) })}
+                </p>
+              )}
+              {plan.summary.handoverStale && plan.summary.handoverPrint !== null && (
+                <p
+                  role="status"
+                  data-plan-notice="handoverStale"
+                  className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                >
+                  {t('atm.plan.notice.handoverStale', {
+                    at: lastAt(plan.summary.handoverPrint.at),
+                  })}
+                </p>
+              )}
+              <PlanLinesTable
+                lines={plan.lines}
+                locale={locale}
+                selectedId={selected?.id ?? null}
+                checked={checked}
+                onSelect={(id) => patch({ line: id === selected?.id ? null : id })}
+                onCheck={(id, on) =>
+                  setChecked((current) => {
+                    const next = new Set(current);
+                    if (on) next.add(id);
+                    else next.delete(id);
+                    return next;
+                  })
+                }
+              />
+              <footer
+                data-plan-footer="true"
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900"
+              >
+                <strong className="text-slate-900 dark:text-white">
+                  {t('atm.plan.footer.title')}
+                </strong>
+                {plan.summary.all.rows
+                  .filter((row) => row.notes > 0)
+                  .map((row) => (
+                    <span key={row.denomination} className="text-slate-600 dark:text-slate-300">
+                      {t('atm.plan.footer.denomination', {
+                        d: row.denomination,
+                        n: formatNumber(row.notes, locale),
+                        v: formatEgp(denominationMinor(row.denomination, row.notes), locale),
+                      })}
+                    </span>
+                  ))}
+                <span className="ms-auto font-semibold text-slate-900 dark:text-white">
+                  {formatEgp(plan.summary.all.egpTotalMinor, locale)} ·{' '}
+                  {t('atm.plan.footer.machines', {
+                    n: formatNumber(plan.summary.all.machineCount, locale),
+                  })}
+                </span>
+              </footer>
+            </section>
+            {selected !== null && (
+              <aside
+                aria-label={lineCode(selected)}
+                className="w-full shrink-0 rounded-xl border border-slate-200 bg-white p-4 lg:min-h-0 lg:w-[380px] lg:overflow-y-auto dark:border-slate-800 dark:bg-slate-900"
+              >
+                <PlanLinePanel
+                  key={`${selected.id}:${String(selected.version)}`}
+                  line={selected}
+                  locale={locale}
+                  canManage={plan.can.manage}
+                  standardLoads={standardLoads}
+                  busy={update.isPending || remove.isPending}
+                  onPatch={(body) => patchLine(selected, body)}
+                  onRefreshLayout={() => refreshLayout(selected)}
+                  onDelete={() => deleteLine(selected)}
+                  onReopen={() => {
+                    setReasonError(null);
+                    setReasonFor({ kind: 'reopen', line: selected });
+                  }}
+                  onCancel={() => {
+                    setReasonError(null);
+                    setReasonFor({ kind: 'cancel', line: selected });
+                  }}
+                  onSpareUse={() => {
+                    setSpareUseError(null);
+                    setSpareUseFor(selected);
+                  }}
+                />
+              </aside>
+            )}
           </div>
         )}
       </div>
-
-      {context.isLoading || (ready && planQuery.isLoading) ? (
-        <LoadingState />
-      ) : context.error !== null && ctx === undefined ? (
-        <ErrorState error={context.error} onRetry={() => void context.refetch()} />
-      ) : planQuery.error !== null ? (
-        <ErrorState
-          error={planQuery.error}
-          description={settlementErrorText(planQuery.error, t, locale)}
-          onRetry={() => void planQuery.refetch()}
-        />
-      ) : plan === null ? (
-        <div
-          data-plan-empty="true"
-          className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-300 p-10 text-center dark:border-slate-700"
-        >
-          <p className="text-sm text-slate-600 dark:text-slate-300">{t('atm.plan.empty')}</p>
-          {ctx?.can.managePlans === true && (
-            <Button loading={create.isPending} onClick={createPlan} data-plan-create="true">
-              {t('atm.plan.action.create')}
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <section aria-label={t('atm.plan.title')} className="min-w-0 flex-1 space-y-3">
-            {plan.summary.receiptStale && plan.summary.receiptPrint !== null && (
-              <p
-                role="status"
-                data-plan-notice="receiptStale"
-                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
-              >
-                {t('atm.plan.notice.receiptStale', { at: lastAt(plan.summary.receiptPrint.at) })}
-              </p>
-            )}
-            {plan.summary.handoverStale && plan.summary.handoverPrint !== null && (
-              <p
-                role="status"
-                data-plan-notice="handoverStale"
-                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300"
-              >
-                {t('atm.plan.notice.handoverStale', { at: lastAt(plan.summary.handoverPrint.at) })}
-              </p>
-            )}
-            <PlanLinesTable
-              lines={plan.lines}
-              locale={locale}
-              selectedId={selected?.id ?? null}
-              checked={checked}
-              onSelect={(id) => patch({ line: id === selected?.id ? null : id })}
-              onCheck={(id, on) =>
-                setChecked((current) => {
-                  const next = new Set(current);
-                  if (on) next.add(id);
-                  else next.delete(id);
-                  return next;
-                })
-              }
-            />
-            <footer
-              data-plan-footer="true"
-              className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900"
-            >
-              <strong className="text-slate-900 dark:text-white">
-                {t('atm.plan.footer.title')}
-              </strong>
-              {plan.summary.all.rows
-                .filter((row) => row.notes > 0)
-                .map((row) => (
-                  <span key={row.denomination} className="text-slate-600 dark:text-slate-300">
-                    {t('atm.plan.footer.denomination', {
-                      d: row.denomination,
-                      n: formatNumber(row.notes, locale),
-                      v: formatEgp(denominationMinor(row.denomination, row.notes), locale),
-                    })}
-                  </span>
-                ))}
-              <span className="ms-auto font-semibold text-slate-900 dark:text-white">
-                {formatEgp(plan.summary.all.egpTotalMinor, locale)} ·{' '}
-                {t('atm.plan.footer.machines', {
-                  n: formatNumber(plan.summary.all.machineCount, locale),
-                })}
-              </span>
-            </footer>
-          </section>
-          {selected !== null && (
-            <aside
-              aria-label={lineCode(selected)}
-              className="w-full shrink-0 rounded-xl border border-slate-200 bg-white p-4 lg:sticky lg:top-4 lg:w-[380px] dark:border-slate-800 dark:bg-slate-900"
-            >
-              <PlanLinePanel
-                key={`${selected.id}:${String(selected.version)}`}
-                line={selected}
-                locale={locale}
-                canManage={plan.can.manage}
-                standardLoads={standardLoads}
-                busy={update.isPending || remove.isPending}
-                onPatch={(body) => patchLine(selected, body)}
-                onRefreshLayout={() => refreshLayout(selected)}
-                onDelete={() => deleteLine(selected)}
-                onReopen={() => {
-                  setReasonError(null);
-                  setReasonFor({ kind: 'reopen', line: selected });
-                }}
-                onCancel={() => {
-                  setReasonError(null);
-                  setReasonFor({ kind: 'cancel', line: selected });
-                }}
-                onSpareUse={() => {
-                  setSpareUseError(null);
-                  setSpareUseFor(selected);
-                }}
-              />
-            </aside>
-          )}
-        </div>
-      )}
 
       {/* ── Dialogs ── */}
       <AddMachinesDialog

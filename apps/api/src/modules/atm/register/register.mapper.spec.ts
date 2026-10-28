@@ -80,6 +80,7 @@ const doc = (over: Partial<AtmRegisterEntryDoc> = {}): AtmRegisterEntryDoc => ({
   status: 'open',
   openPeriodExempt: false,
   source: 'manual',
+  dataIncomplete: false,
   importRunId: null,
   importRow: null,
   importIssues: [],

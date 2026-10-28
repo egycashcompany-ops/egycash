@@ -19,6 +19,10 @@
 // may not see arrives as `null` with `secretsVisible:false` and is drawn as a lock; the safe-door
 // combination never arrives at all (`safeCombinationSet` is all there is), so this file has no way
 // to print one.
+//
+// Beside the Name, a row may carry two marks: «بيانات ناقصة» (DEC-37) — an Operations receipt, or a
+// row Efficiency mean to come back to — and the import's notes. A row Operations recorded from
+// /atm/data-edit (`source: 'operations'`, DEC-36) says so in the Name's tooltip.
 import {
   useEffect,
   useRef,
@@ -56,12 +60,9 @@ import {
   type RegisterActionGrants,
   type RegisterSort,
 } from '../../lib/register-grid';
-import {
-  bankName,
-  branchLabel,
-  columnHeaderKey,
-  formatRegisterDate,
-} from '../../lib/register-labels';
+import { type BankLookup } from '../../lib/bank-catalog';
+import { branchLabel, columnHeaderKey, formatRegisterDate } from '../../lib/register-labels';
+import { IncompleteBadge } from './IncompleteBadge';
 import { IssueBadge } from './IssueBadge';
 import { RegisterRowActions, type RegisterRowAction } from './RegisterRowActions';
 
@@ -102,6 +103,7 @@ export const RegisterGrid = ({
   onSort,
   grants,
   onAction,
+  lookup,
 }: {
   rows: readonly AtmRegisterEntryDto[];
   sort: RegisterSort | null;
@@ -109,6 +111,8 @@ export const RegisterGrid = ({
   onSort: (by: string) => void;
   grants: RegisterActionGrants;
   onAction: (action: RegisterRowAction, row: AtmRegisterEntryDto) => void;
+  /** Names the bank in a Bank cell's tooltip — the catalog's name, archived banks included. */
+  lookup: BankLookup;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -300,7 +304,7 @@ export const RegisterGrid = ({
       case 'bankCode': {
         if (row.bankCode === null) return { node: '' };
         const opsLabel = row.opsBankLabel === null ? '' : ` · ${row.opsBankLabel}`;
-        return { title: `${bankName(row.bankCode, locale)}${opsLabel}`, node: row.bankCode };
+        return { title: `${lookup.name(row.bankCode, locale)}${opsLabel}`, node: row.bankCode };
       }
       case 'machineCode': {
         const drift =
@@ -329,19 +333,27 @@ export const RegisterGrid = ({
           ),
         };
       }
-      case 'name':
+      case 'name': {
+        const title = [
+          row.name,
+          row.source === 'operations' ? t('atm.register.source.operations') : null,
+        ]
+          .filter((line): line is string => line !== null)
+          .join('\n');
         return {
-          ...(row.name === null ? {} : { title: row.name }),
+          ...(title === '' ? {} : { title }),
           node: (
             <span className="flex min-w-0 items-center gap-1">
               {/* An imported row whose Name cell was blank stays blank (DEC-32). */}
               <span className={cn('truncate', row.name === null && 'opacity-60')}>
                 {row.name ?? '—'}
               </span>
+              <IncompleteBadge row={row} />
               <IssueBadge issues={row.importIssues} />
             </span>
           ),
         };
+      }
       case 'startDate':
         if (row.status === 'pending') {
           return {
@@ -435,6 +447,7 @@ export const RegisterGrid = ({
                 key={row.id}
                 data-register-row={row.id}
                 data-register-status={row.status}
+                data-register-source={row.source}
                 className={cn('group', ended && REGISTER_ENDED_ROW)}
               >
                 {REGISTER_GRID_COLUMNS.map((column) => {

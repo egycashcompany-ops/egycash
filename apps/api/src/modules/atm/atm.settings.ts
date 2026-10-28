@@ -54,9 +54,10 @@ export const registerAtmSettings = (): void => {
   declareSetting({
     key: AtmSettingKeys.RegisterBankLabels,
     description:
-      'Register bank code → the bank label written on the Operations machine (`atm_machines.' +
-      'bankName`) when a receipt creates or reactivates it (D5). The defaults are the legacy ' +
-      'labels (BM → MISR); a bank left out falls back to its default.',
+      'RETIRED — read once by the bank catalog seed (DEC-35). It mapped a register bank code → ' +
+      'the bank label written on the Operations machine (`atm_machines.bankName`, D5); each ' +
+      "catalog bank's own `opsLabel` does that now, edited on the register's banks dialog. Still " +
+      'declared so a stored value keeps validating; changing it changes nothing.',
     schema: AtmRegisterBankLabelsSettingSchema,
     defaultValue: ATM_DEFAULT_BANK_LABELS_SETTING,
     allowedScopes: ['organization'],
@@ -66,8 +67,11 @@ export const registerAtmSettings = (): void => {
     description:
       'The banks the Settlements, Preparation and Control pages offer. Al Baraka first (S-10); a ' +
       'bank is added once its import profile exists (docs/12-planning/atm-settlements-phase1.md ' +
-      '§7.4, DS-24).',
-    schema: z.array(AtmBankCodeSchema).max(6),
+      '§7.4, DS-24). Codes of the bank catalog (DEC-35): a bank added there is plannable once it ' +
+      'is listed here; a code the catalog does not know is ignored, an archived one still counts.',
+    // The catalog's codes, not the six: a seventh bank is enabled exactly as the five non-BRK
+    // banks are today. 50 is a ceiling on a hand-kept list, not a business rule.
+    schema: z.array(AtmBankCodeSchema).max(50),
     defaultValue: ['BRK'],
     // Organization only: which banks the settlement pages offer is one fact about the company.
     allowedScopes: ['organization'],

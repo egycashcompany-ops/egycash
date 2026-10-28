@@ -15,7 +15,8 @@ import { Badge } from '../../../../shared/ui/Badge';
 import { Button } from '../../../../shared/ui/Button';
 import { Checkbox } from '../../../../shared/ui/form';
 import { formatNumber } from '../../../../shared/lib/format';
-import { bankName, branchLabel, columnHeaderKey } from '../../lib/register-labels';
+import { useAtmBankLookup } from '../../api/atm-queries';
+import { branchLabel, columnHeaderKey } from '../../lib/register-labels';
 import { listSeparator, pageOf } from '../../lib/register-import-view';
 
 const TH = 'p-2 text-start text-xs font-medium text-slate-500 dark:text-slate-400';
@@ -68,6 +69,8 @@ export const ImportCategoryCard = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [page, setPage] = useState(1);
+  // A row's bank by the catalog's name (DEC-35) — the seed's, or the code, until it answers.
+  const lookup = useAtmBankLookup();
   const { key, items } = category;
 
   const hasReason = items.some((item) => item.reason !== null);
@@ -175,7 +178,7 @@ export const ImportCategoryCard = ({
                         <span dir="auto">
                           {item.bankCode === null
                             ? (item.masterBankLabel ?? DASH)
-                            : bankName(item.bankCode, locale)}
+                            : lookup.name(item.bankCode, locale)}
                         </span>
                       </td>
                       {hasReason && (

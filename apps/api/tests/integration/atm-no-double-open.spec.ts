@@ -47,6 +47,7 @@ import { atmReplenishmentRepository } from '../../src/modules/atm/replenishments
 import { atmMaintenanceRepository } from '../../src/modules/atm/maintenances/maintenance.repository';
 import { atmMailTicketRepository } from '../../src/modules/atm/mail-tickets/mail-ticket.repository';
 import { atmMailIngestionService } from '../../src/modules/atm/mail-tickets/mail-ingestion.service';
+import { AtmMachineModel } from '../../src/modules/atm/machines/machine.model';
 import { importLegacyAtmDeployment } from '../../src/modules/atm/migration/legacy-import';
 import { cairoDateString, cairoWallClockUtc } from '../../src/modules/atm/shared/cairo-time';
 
@@ -264,7 +265,20 @@ beforeAll(async () => {
     { machineCode: '9901', name: 'SYN 9901' },
   ]);
   // The same code in Tanta too — a master that exists in two branches (or moved between them).
-  await addMachines(tantaToken, [{ machineCode: '8001', name: 'SYN 8001 Tanta' }]);
+  // Written as the legacy import left such pairs: the data-edit add now refuses a code active in
+  // another branch (DEC-9 — the mail matcher needs one active machine per code), and the pairs
+  // already stored are left alone (R-9), which is the state these scenarios are about.
+  await AtmMachineModel.create([
+    {
+      branchId: new Types.ObjectId(tantaBranchId),
+      bankName: 'SYN BANK',
+      machineCode: '8001',
+      name: 'SYN 8001 Tanta',
+      zone: '',
+      area: 'SYN AREA',
+      isActive: true,
+    },
+  ]);
 }, 240_000);
 
 afterEach(() => {

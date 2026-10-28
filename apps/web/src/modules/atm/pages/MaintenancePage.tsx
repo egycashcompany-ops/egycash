@@ -5,7 +5,8 @@
 // at a time, today's by default, with a switch to tomorrow, everything scheduled ahead or the
 // earlier days left open (an earlier day's row keeps its close control and checkbox, D4); every
 // column sorts; only the bank, the code, the name and the open time — when it is due — take a
-// text selection; the head's «select all» appears on F8 only; the leader edit carries the
+// text selection; the head's «select all» appears on F8 only, and there is no bulk bar — a button
+// on a checked row acts on every checked row (`actionTargets`); the leader edit carries the
 // «الوردية» box; and the table leaves as Excel and PDF, «بيان صيانة ماكينات الصراف الآلي عن يوم …».
 // The bank/area filters work the same way — an area on its own, a bank change dropping the areas
 // it orphaned, every matching row read whole past one page (port doc D8) — and one reset clears
@@ -18,11 +19,11 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
-import { BulkActionBar } from '../../../shared/ui/BulkActionBar';
 import { Button } from '../../../shared/ui/Button';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
-import { RowActions } from '../../../shared/ui/RowActions';
+import { PINNED_ACTIONS, RowActions } from '../../../shared/ui/RowActions';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { EditIcon, LockIcon, TrashIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -37,6 +38,7 @@ import { COPY_COLUMN_CLASS, COPY_TABLE_CLASS, useSelectBoardText } from '../lib/
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import { useBoardView } from '../lib/useBoardView';
 import { maintenanceColumns, statementFilterLine } from '../lib/operation-sheet';
+import { actionTargets } from '../lib/operation-view';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenMaintenancesForm } from '../components/OpenMaintenancesForm';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
@@ -125,18 +127,33 @@ export const MaintenancePage = (): JSX.Element => {
   const afterOpened = textColumns.findIndex((column) => column.key === 'opened') + 1;
 
   // Every view: close, edit, delete.
+  // A checked row's buttons act on every checked row (`actionTargets`), and say so.
+  const rowTitle = (
+    row: { id: string },
+    one: 'close' | 'edit' | 'delete',
+    all: 'closeSelected' | 'editSelected' | 'deleteSelected',
+  ): string =>
+    selectedRows.length > 1 && selection.selectedIds.has(row.id)
+      ? `atm.common.${all}`
+      : `atm.common.${one}`;
+
   const actionsColumn: Column<AtmMaintenanceDto> = {
     key: 'actions',
     header: '',
     align: 'end',
+    // Pinned to the row's end: on a laptop the board is wider than the screen, and the buttons
+    // must stay in view without a sideways scroll.
+    className: PINNED_ACTIONS.cell,
+    headerClassName: PINNED_ACTIONS.head,
     render: (row) => (
-      <RowActions>
+      // Always painted: the row's buttons are the board's work, not a secondary action.
+      <RowActions always>
         {can('atmMaintenance.complete') && (
           <Button
             size="icon"
             variant="ghost-brand"
-            title={t('atm.common.close')}
-            onClick={() => setClosing([row])}
+            title={t(rowTitle(row, 'close', 'closeSelected'))}
+            onClick={() => setClosing(actionTargets(row, selectedRows))}
           >
             <LockIcon className="h-4 w-4" />
           </Button>
@@ -145,8 +162,8 @@ export const MaintenancePage = (): JSX.Element => {
           <Button
             size="icon"
             variant="ghost"
-            title={t('atm.common.edit')}
-            onClick={() => setEditing([row])}
+            title={t(rowTitle(row, 'edit', 'editSelected'))}
+            onClick={() => setEditing(actionTargets(row, selectedRows))}
           >
             <EditIcon className="h-4 w-4" />
           </Button>
@@ -155,8 +172,8 @@ export const MaintenancePage = (): JSX.Element => {
           <Button
             size="icon"
             variant="ghost-danger"
-            title={t('atm.common.delete')}
-            onClick={() => setDeleting([row])}
+            title={t(rowTitle(row, 'delete', 'deleteSelected'))}
+            onClick={() => setDeleting(actionTargets(row, selectedRows))}
           >
             <TrashIcon className="h-4 w-4" />
           </Button>
@@ -173,94 +190,86 @@ export const MaintenancePage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader title={t('atm.maintenance.title')} />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title, the form, the filters and the day switch
+          keep their place, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader title={t('atm.maintenance.title')} />
 
-      {/* Entry and narrowing share ONE row: the form runs from the start of it, the filters sit
+        {/* Entry and narrowing share ONE row: the form runs from the start of it, the filters sit
           at the far end — the LEFT in Arabic, and mirrored in English, because `ms-auto` follows
           the writing direction rather than picking a physical side. */}
-      <div className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        {can('atmMaintenance.create') && <OpenMaintenancesForm />}
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+          {can('atmMaintenance.create') && <OpenMaintenancesForm />}
 
-        <div className="ms-auto flex flex-wrap items-end gap-2">
-          <MultiSelect
-            label={t('atm.common.bank')}
-            options={filters.bankOptions}
-            value={filters.banks}
-            onChange={filters.setBanks}
-          />
-          <MultiSelect
-            label={t('atm.common.area')}
-            options={filters.areaOptions}
-            value={filters.areas}
-            onChange={filters.setAreas}
-            searching={filters.areasLoading}
-          />
-          <BoardResetButton active={filters.filtered} onReset={filters.reset} />
-        </div>
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <BoardDayToggle value={board.view} counts={board.counts} onChange={board.setView} />
-        {/* Only once the rows on screen ARE the answer — a statement made while the board loads,
-            fails or settles a bank change would print «nothing» as if it were the truth. */}
-        {boardReady && (
-          <div className="ms-auto flex flex-wrap items-center gap-2">
-            <StatementExportButtons
-              kind="maintenance"
-              name="atm-maintenance"
-              sheetName={t('atm.maintenance.title')}
-              range={board.range}
-              rows={board.rows}
-              columns={sheetColumns}
-              filterLine={statementFilterLine(t, locale, filters)}
+          <div className="ms-auto flex flex-wrap items-end gap-2">
+            <MultiSelect
+              label={t('atm.common.bank')}
+              options={filters.bankOptions}
+              value={filters.banks}
+              onChange={filters.setBanks}
             />
+            <MultiSelect
+              label={t('atm.common.area')}
+              options={filters.areaOptions}
+              value={filters.areas}
+              onChange={filters.setAreas}
+              searching={filters.areasLoading}
+            />
+            <BoardResetButton active={filters.filtered} onReset={filters.reset} />
           </div>
-        )}
-      </div>
+        </div>
 
-      <BulkActionBar count={selection.count} onClear={selection.clear} className="mb-3">
-        {can('atmMaintenance.complete') && (
-          <Button variant="secondary" onClick={() => setClosing(selectedRows)}>
-            {t('atm.common.closeSelected')}
-          </Button>
-        )}
-        {can('atmMaintenance.edit') && (
-          <Button variant="secondary" onClick={() => setEditing(selectedRows)}>
-            {t('atm.common.editSelected')}
-          </Button>
-        )}
-        {can('atmMaintenance.delete') && (
-          <Button variant="danger" onClick={() => setDeleting(selectedRows)}>
-            {t('atm.common.deleteSelected')}
-          </Button>
-        )}
-      </BulkActionBar>
+        <div className="flex flex-wrap items-center gap-2">
+          <BoardDayToggle value={board.view} counts={board.counts} onChange={board.setView} />
+          {/* Only once the rows on screen ARE the answer — a statement made while the board loads,
+            fails or settles a bank change would print «nothing» as if it were the truth. */}
+          {boardReady && (
+            <div className="ms-auto flex flex-wrap items-center gap-2">
+              <StatementExportButtons
+                kind="maintenance"
+                name="atm-maintenance"
+                sheetName={t('atm.maintenance.title')}
+                range={board.range}
+                rows={board.rows}
+                columns={sheetColumns}
+                filterLine={statementFilterLine(t, locale, filters)}
+              />
+            </div>
+          )}
+        </div>
 
-      {/* Unselectable as a whole; the copy columns take a selection back (`lib/board-copy.ts`). An
+        {/* Unselectable as a whole; the copy columns take a selection back (`lib/board-copy.ts`). An
           earlier day's rows keep the legacy grey of the «other days» group. */}
-      <div
-        ref={tableRef}
-        className={cn(COPY_TABLE_CLASS, board.view === 'earlier' && 'opacity-75')}
-        data-board-view={board.view}
-      >
-        <DataTable
-          columns={columns}
-          rows={board.rows}
-          rowKey={(row) => row.id}
-          loading={list.isLoading || filters.settling}
-          error={list.error}
-          onRetry={() => void list.refetch()}
-          empty={
-            rows.length === 0 && filters.filtered
-              ? t('atm.common.emptyFiltered')
-              : t(`atm.maintenance.empty.${board.view}`)
-          }
-          selection={selection}
-          selectAll={selectAllShown}
-          sort={board.sorts}
-          onSortChange={board.changeSort}
-        />
+        <div
+          ref={tableRef}
+          className={cn(
+            COPY_TABLE_CLASS,
+            BOARD_TABLE_FILL,
+            board.view === 'earlier' && 'opacity-75',
+          )}
+          data-board-view={board.view}
+        >
+          <DataTable
+            columns={columns}
+            rows={board.rows}
+            rowKey={(row) => row.id}
+            loading={list.isLoading || filters.settling}
+            error={list.error}
+            onRetry={() => void list.refetch()}
+            empty={
+              rows.length === 0 && filters.filtered
+                ? t('atm.common.emptyFiltered')
+                : t(`atm.maintenance.empty.${board.view}`)
+            }
+            selection={selection}
+            selectAll={selectAllShown}
+            sort={board.sorts}
+            onSortChange={board.changeSort}
+            stickyHead
+          />
+        </div>
       </div>
 
       <CloseMaintenanceDialog

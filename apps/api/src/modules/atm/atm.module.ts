@@ -22,6 +22,7 @@ import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/cont
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildAtmMachinesRouter } from './machines/machine.routes';
 import { buildAtmRefLabelsRouter } from './catalogs/ref-label.routes';
+import { buildAtmBanksRouter } from './catalogs/bank.routes';
 import { buildAtmReplenishmentsRouter } from './replenishments/replenishment.routes';
 import { buildAtmMaintenancesRouter } from './maintenances/maintenance.routes';
 import { buildAtmMailTicketsRouter } from './mail-tickets/mail-ticket.routes';
@@ -125,6 +126,20 @@ const refLabelPermissions = declarePermissions(
   ['create', 'edit'],
   [],
   'atm.machines',
+);
+
+// The company-wide bank catalog (DEC-35): the owner's call is that a bank added at runtime is a
+// FULL register bank, so adding one is a fact about the company — the service requires both keys at
+// ORGANIZATION scope. It sits on the register's page: the catalog belongs to Efficiency and the
+// administrators, Operations keep their per-branch spellings (`atmRefLabel.*`). Reading needs no key
+// of its own — any ATM key reads it (bank.routes.ts).
+const bankPermissions = declarePermissions(
+  'atm',
+  'atmBank',
+  { en: 'ATM banks', ar: 'بنوك الصراف الآلي' },
+  ['create', 'edit'],
+  [],
+  'atm.register',
 );
 
 // The Efficiency register (D1–D8). Reading is per branch (DEC-29); the three specials are the
@@ -299,6 +314,7 @@ export const atmPermissions: PermissionDef[] = [
   ...mailTicketPermissions,
   ...machinePermissions,
   ...refLabelPermissions,
+  ...bankPermissions,
   ...registerPermissions,
   ...registerReportPermissions,
   ...mapPermissions,
@@ -401,6 +417,11 @@ export const atmModule: ModuleManifest = {
     { prefix: '/atm/machines', router: buildAtmMachinesRouter() },
     { prefix: '/atm/map', router: buildAtmMapRouter() },
     { prefix: '/atm/ref-labels', router: buildAtmRefLabelsRouter() },
+    // Read by ANY ATM key — the list is derived from the manifest's own keys, so it cannot drift.
+    {
+      prefix: '/atm/banks',
+      router: buildAtmBanksRouter(atmPermissions.map((permission) => permission.key)),
+    },
     { prefix: '/atm/replenishments', router: buildAtmReplenishmentsRouter() },
     { prefix: '/atm/maintenances', router: buildAtmMaintenancesRouter() },
     { prefix: '/atm/mail-tickets', router: buildAtmMailTicketsRouter() },
@@ -416,6 +437,7 @@ export const atmModule: ModuleManifest = {
   collections: [
     'atm_machines',
     'atm_ref_labels',
+    'atm_banks',
     'atm_replenishments',
     'atm_maintenances',
     'atm_mail_tickets',

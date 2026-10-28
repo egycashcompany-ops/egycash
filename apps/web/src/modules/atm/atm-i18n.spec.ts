@@ -2,7 +2,7 @@
 // catalog-half test operations and IT carry. A missing key does not throw (`translate` falls
 // back to the key), so without this an Arabic operator would read `atm.mail.duplicate` on screen.
 import { describe, expect, it } from 'vitest';
-import { ATM_MAIL_TICKET_STATUSES, type Locale } from '@ecms/contracts';
+import { ATM_MAIL_TICKET_STATUSES, ErrorCodes, type Locale } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { ATM_SHORTCUTS } from './pages/AtmOverviewPage';
 
@@ -190,6 +190,69 @@ const KEYS = [
   'atm.dataEdit.labelSaved',
   'atm.dataEdit.bulkTitle',
   'atm.dataEdit.lineAlignHint',
+  // The four tabs, the spellings and their unmapped callout, bilingual areas, and what an add
+  // recorded in the register (DEC-35 … DEC-38).
+  'atm.dataEdit.tab.bankLabel',
+  'atm.dataEdit.addSpelling',
+  'atm.dataEdit.editSpelling',
+  'atm.dataEdit.notLinked',
+  'atm.dataEdit.spellingBankHint',
+  'atm.dataEdit.spellingIsBankLabel',
+  'atm.dataEdit.unmappedTitle',
+  'atm.dataEdit.unmappedBody',
+  'atm.dataEdit.labelsUnscoped',
+  'atm.dataEdit.linkToBank',
+  'atm.dataEdit.storedName',
+  'atm.dataEdit.nameAr',
+  'atm.dataEdit.nameEn',
+  'atm.dataEdit.displayNameHint',
+  'atm.dataEdit.storedAs',
+  'atm.dataEdit.renameKeepsMachines',
+  'atm.dataEdit.areaExists',
+  'atm.dataEdit.origin.title',
+  'atm.dataEdit.origin.backfill',
+  'atm.dataEdit.origin.auto',
+  'atm.dataEdit.notRegisterMapped',
+  'atm.dataEdit.machineReactivated',
+  'atm.dataEdit.register.recorded',
+  'atm.dataEdit.register.linked',
+  'atm.dataEdit.register.branchUnmapped',
+  'atm.dataEdit.register.placeholderCode',
+  'atm.dataEdit.register.noBank',
+  'atm.dataEdit.error.activeElsewhere',
+  'atm.dataEdit.error.openElsewhere',
+  'atm.dataEdit.error.bankInactive',
+  'atm.dataEdit.machinesRecorded',
+  'atm.dataEdit.machinesLinked',
+  'atm.dataEdit.machinesReactivated',
+  'atm.dataEdit.machinesRefused.activeElsewhere',
+  'atm.dataEdit.machinesRefused.openElsewhere',
+  'atm.dataEdit.notRecorded.branchUnmapped',
+  'atm.dataEdit.notRecorded.placeholderCode',
+  'atm.dataEdit.notRecorded.noBank',
+  // The bank catalog's dialog (DEC-35), on data-edit and in the register.
+  'atm.bankCatalog.add',
+  'atm.bankCatalog.edit',
+  'atm.bankCatalog.code',
+  'atm.bankCatalog.codeHint',
+  'atm.bankCatalog.codeInvalid',
+  'atm.bankCatalog.codeFixed',
+  'atm.bankCatalog.nameAr',
+  'atm.bankCatalog.nameEn',
+  'atm.bankCatalog.opsLabel',
+  'atm.bankCatalog.opsLabelHint',
+  'atm.bankCatalog.opsLabelChanged',
+  'atm.bankCatalog.color',
+  'atm.bankCatalog.colorHint',
+  'atm.bankCatalog.isActive',
+  'atm.bankCatalog.activeHint',
+  'atm.bankCatalog.settlementsWarning',
+  'atm.bankCatalog.added',
+  'atm.bankCatalog.saved',
+  // The catalog as the register shows it: «البنوك», and an archived bank in a picker.
+  'atm.bankCatalog.title',
+  'atm.bankCatalog.intro',
+  'atm.bankCatalog.archivedOption',
   'atm.reports.title',
   'atm.reports.subtitle',
   'atm.reports.day',
@@ -211,6 +274,17 @@ describe('atm i18n catalog', () => {
     const missing = ATM_MAIL_TICKET_STATUSES.map((status) => `atm.mail.status.${status}`).filter(
       (key) => translate(locale, key) === key,
     );
+    expect(missing).toEqual([]);
+  });
+
+  // The catalog's own refusals are worded by name (`bankErrorText`), so a code added to the
+  // contracts without its text would reach the reader as `atm.bankCatalog.error.…`.
+  it.each(LOCALES)('every bank catalog refusal resolves in %s', (locale) => {
+    const codes = Object.values(ErrorCodes).filter((code) => code.startsWith('ATM_BANK_'));
+    expect(codes.length).toBe(3);
+    const missing = codes
+      .map((code) => `atm.bankCatalog.error.${code}`)
+      .filter((key) => translate(locale, key) === key);
     expect(missing).toEqual([]);
   });
 

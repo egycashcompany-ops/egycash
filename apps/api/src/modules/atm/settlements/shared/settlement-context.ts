@@ -9,6 +9,10 @@
 //
 // THE BANKS. `atm.settlements.banks` (organization, default `['BRK']`, S-10), read through the
 // settings service with the organization subject, as `register/register-settings.ts` reads its own.
+// Since the bank catalog (DEC-35) the setting holds catalog codes; a code the catalog does not know
+// is dropped, so a typo in the setting offers no phantom bank. An ARCHIVED bank is kept: archiving
+// must not silently break a plan day that is running — an administrator takes it out of the
+// setting.
 import {
   AtmSettingKeys,
   ErrorCodes,
@@ -17,15 +21,22 @@ import {
 } from '@ecms/contracts';
 import { branchRepository } from '../../../../platform/organization';
 import { settingsService } from '../../../../platform/settings';
+import { AtmBankModel } from '../../catalogs/bank.model';
 import { AppError, ValidationError } from '../../../../shared/errors';
 import { scopeSelector, type AuthContext } from '../../../../shared/types';
 import { narrowToBranch, resolveWorkBranch } from '../../shared/branch-scope';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 
-/** DS-24: the banks the Settlements, Preparation and Control pages offer. */
-export const enabledSettlementBanks = async (): Promise<AtmBankCode[]> =>
-  settingsService.resolve<AtmBankCode[]>(AtmSettingKeys.SettlementBanks, ORG_SUBJECT);
+/** DS-24: the banks the Settlements, Preparation and Control pages offer — catalog codes only. */
+export const enabledSettlementBanks = async (): Promise<AtmBankCode[]> => {
+  const [enabled, known] = await Promise.all([
+    settingsService.resolve<AtmBankCode[]>(AtmSettingKeys.SettlementBanks, ORG_SUBJECT),
+    AtmBankModel.distinct('code', { isDeleted: false }).exec() as Promise<unknown[]>,
+  ]);
+  const catalog = new Set(known);
+  return enabled.filter((code) => catalog.has(code));
+};
 
 /** 422 `ATM_SETTLEMENT_BANK_NOT_ENABLED` unless the bank is in the setting. */
 export const requireEnabledBank = async (bankCode: AtmBankCode): Promise<void> => {

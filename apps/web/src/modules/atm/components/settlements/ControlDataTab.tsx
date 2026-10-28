@@ -3,7 +3,7 @@
 // the crew line it travels on. «النوع» and «المنطقة» are the seals sheet's TYPE and HUB. A
 // duplicate shows ⚠ with Preparation's own words (DS-15); expanding a row lists its seals.
 import { Fragment, useState } from 'react';
-import { ATM_BANK_NAMES, type AtmControlDayDto, type Locale } from '@ecms/contracts';
+import { type AtmControlDayDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
 import { formatNumber } from '../../../../shared/lib/format';
@@ -15,6 +15,7 @@ import {
   lineCode,
   preparationStatusKey,
 } from '../../lib/settlement-view';
+import { type BankLookup } from '../../lib/bank-catalog';
 import { DuplicateNote, duplicateTexts } from './DuplicateNote';
 import { RunChip } from './RunChip';
 
@@ -50,9 +51,12 @@ const QrCell = ({ line, bag }: { line: ControlLine; bag: 1 | 2 }): JSX.Element =
 export const ControlDataTab = ({
   day,
   locale,
+  banks,
 }: {
   day: AtmControlDayDto;
   locale: Locale;
+  /** The catalog's bank names (DEC-35): a line of a bank added since the workbook is named too. */
+  banks: BankLookup;
 }): JSX.Element => {
   const t = useT();
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -66,9 +70,12 @@ export const ControlDataTab = ({
     });
 
   return (
-    <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    // The board frame's scroll box (`shared/ui/board-scroll.ts`): on a computer the page hands it
+    // the height left and its rows scroll under a head that stays — opaque, as `DataTable
+    // stickyHead` paints it, since rows pass beneath. A phone scrolls sideways only, as before.
+    <div className="relative overflow-x-auto rounded-xl border border-slate-200 bg-white lg:overflow-auto dark:border-slate-800 dark:bg-slate-900">
       <table className="w-full min-w-[72rem] border-collapse" data-control-lines="true">
-        <thead className="bg-slate-50 dark:bg-slate-800/60">
+        <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
           <tr>
             <th className={cn(TH, 'w-8')}>
               <span className="sr-only">{t('atm.control.column.seals')}</span>
@@ -120,7 +127,7 @@ export const ControlDataTab = ({
                   <td className={cn(TD, 'tabular-nums')}>
                     {line.serial === null ? '—' : formatNumber(line.serial, locale)}
                   </td>
-                  <td className={TD}>{ATM_BANK_NAMES[line.bankCode][locale]}</td>
+                  <td className={TD}>{banks.name(line.bankCode, locale)}</td>
                   <td className={TD}>
                     <span dir="ltr" className="font-medium">
                       {lineCode(line)}

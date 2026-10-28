@@ -6,7 +6,7 @@
 // `register/import/register-import-run.model.ts`); a run left `running` past `STALE_RUN_MS` is taken
 // over (`abandoned`) by the next apply.
 import { Schema, model, type Types } from 'mongoose';
-import { ATM_BANK_CODES, ATM_LAYOUT_IMPORT_MODES, type AtmBankCode } from '@ecms/contracts';
+import { ATM_BANK_CODE_PATTERN, ATM_LAYOUT_IMPORT_MODES, type AtmBankCode } from '@ecms/contracts';
 import {
   baseFields,
   baseSchemaOptions,
@@ -36,7 +36,9 @@ export interface AtmLayoutImportRunDoc extends BaseDocFields {
 const layoutImportRunSchema = new Schema<AtmLayoutImportRunDoc>(
   {
     branchId: { type: Schema.Types.ObjectId, required: true },
-    bankCode: { type: String, required: true, enum: ATM_BANK_CODES },
+    // A catalog code (DEC-35): the SHAPE only — a bank added at runtime must be storable here; that
+    // it exists and is enabled is the service's check (`requireEnabledBank`).
+    bankCode: { type: String, required: true, match: ATM_BANK_CODE_PATTERN },
     fileName: { type: String, required: true, maxlength: 200 },
     fileSha256: { type: String, required: true, match: /^[0-9a-f]{64}$/ },
     state: { type: String, required: true, enum: ['running', 'done', 'failed', 'abandoned'] },

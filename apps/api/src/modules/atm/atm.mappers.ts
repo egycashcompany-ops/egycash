@@ -3,6 +3,8 @@
 // deliberately live-computed field (the legacy recomputed it on every pending render,
 // contad_app.js:2674-2698); callers without a live answer get the ingest-time value.
 import {
+  ATM_REGISTER_ID_FORMATS,
+  type AtmBankDto,
   type AtmMachineDto,
   type AtmMailTicketDto,
   type AtmMaintenanceDto,
@@ -11,6 +13,7 @@ import {
 } from '@ecms/contracts';
 import { type AtmMachineDoc } from './machines/machine.model';
 import { type AtmRefLabelDoc } from './catalogs/ref-label.model';
+import { type AtmBankDoc } from './catalogs/bank.model';
 import { type AtmReplenishmentDoc } from './replenishments/replenishment.model';
 import { type AtmMaintenanceDoc } from './maintenances/maintenance.model';
 import { type AtmMailTicketDoc } from './mail-tickets/mail-ticket.model';
@@ -48,12 +51,43 @@ export const toAtmMachineDto = (doc: AtmMachineDoc): AtmMachineDto => ({
   ...legacyStamps(doc),
 });
 
-export const toAtmRefLabelDto = (doc: AtmRefLabelDoc): AtmRefLabelDto => ({
+/**
+ * The catalog-era label fields (DEC-35, DEC-38) are absent on a row written before them — by the
+ * legacy import's raw driver, or before this release — and read as what such a row always meant:
+ * no display names, no former names, not mapped to a bank, typed by hand.
+ */
+export const toAtmRefLabelDto = (doc: AtmRefLabelDoc): AtmRefLabelDto => {
+  const raw = doc as Partial<AtmRefLabelDoc> & Pick<AtmRefLabelDoc, '_id' | 'branchId' | 'name'>;
+  return {
+    id: String(doc._id),
+    branchId: String(doc.branchId),
+    kind: doc.kind,
+    name: doc.name,
+    nameAr: raw.nameAr ?? null,
+    nameEn: raw.nameEn ?? null,
+    formerNames: raw.formerNames ?? [],
+    bankCode: raw.bankCode ?? null,
+    origin: raw.origin ?? 'manual',
+    isActive: doc.isActive,
+    ...legacyStamps(doc),
+  };
+};
+
+export const toAtmBankDto = (doc: AtmBankDoc): AtmBankDto => ({
   id: String(doc._id),
-  branchId: String(doc.branchId),
-  name: doc.name,
+  code: doc.code,
+  name: { ar: doc.name.ar, en: doc.name.en },
+  opsLabel: doc.opsLabel,
+  formerOpsLabels: [...doc.formerOpsLabels],
+  color: doc.color,
+  sortOrder: doc.sortOrder,
   isActive: doc.isActive,
-  ...legacyStamps(doc),
+  isSeed: doc.isSeed,
+  // The six only: a bank added at runtime never warns about its ID shape (D6 stays a warning).
+  hasIdFormat: ATM_REGISTER_ID_FORMATS.has(doc.code),
+  version: doc.__v,
+  createdAt: doc.createdAt.toISOString(),
+  updatedAt: doc.updatedAt.toISOString(),
 });
 
 export const toAtmReplenishmentDto = (doc: AtmReplenishmentDoc): AtmReplenishmentDto => ({

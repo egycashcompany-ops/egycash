@@ -3,8 +3,9 @@
 // which number each bar and each table cell carries, and where on the drawing each bar stands.
 //
 // The numbers are the server's fold (`foldAtmRegisterReport`, D7) and are read through the SAME
-// cell list the import's 57-number check reads (`ATM_DATA_REPORT_CELLS` + `readAtmReportCell`), so
-// the page and the cut-over check cannot disagree about what a cell holds. The browser only picks
+// cell builder the import's 57-number check is built from (`buildAtmReportCells` +
+// `readAtmReportCell`; for the six it IS `ATM_DATA_REPORT_CELLS`), so the page and the cut-over
+// check cannot disagree about what a cell holds. The browser only picks
 // the cells of the branches the server says this reader may see (`branchesShown`, DEC-27) and
 // places them; it never adds, filters or recounts a number.
 //
@@ -15,23 +16,34 @@
 // direction.
 //
 // COLOURS ARE THE OWNER'S. Charts 1–2 are one series in the workbook theme's accent1 #4472C4; chart
-// 3 carries the six bank colours (D7), the same in both themes. Those colours fail the palette
-// checks (spec §8.5), which is why every bar has its value written on it, chart 3 has a legend, and
-// every chart has its table — the relief is mandatory, not decoration.
+// 3 carries each bank's catalog colour — the six seeds keep the workbook's (D7), the same in both
+// themes. Those colours fail the palette checks (spec §8.5), which is why every bar has its value
+// written on it, chart 3 has a legend, and every chart has its table — the relief is mandatory,
+// not decoration.
+//
+// THE BANKS ARE THE CATALOG'S (DEC-35, DEC-40). The owner's call (final): a bank added at runtime is
+// a FULL register bank, so it gets a bar in section 1 and a series in section 3 like the sheet's
+// six. Which banks, in which order, with which name and colour, is the server's answer
+// (`section1Banks`, `section3Banks`, `banks`): the six keep their sheet positions and every other
+// bank follows them. An older server that does not send those fields yet (a rolling deploy) gets
+// the sheet's own six, exactly as before.
 import {
-  ATM_BANK_NAMES,
-  ATM_BANK_REPORT_COLORS,
-  ATM_DATA_REPORT_CELLS,
+  ATM_REPORT_SECTION1_BANKS,
   ATM_REPORT_SECTION3_BANKS,
   ATM_REPORT_SECTION3_BRANCHES,
   ATM_REPORT_TOTALS_COLOR,
+  atmBankColor,
+  atmBankName,
+  buildAtmReportCells,
   readAtmReportCell,
   type AtmBankCode,
   type AtmRegisterBranchCode,
+  type AtmRegisterReportBankDto,
   type AtmRegisterReportDto,
   type AtmReportCellRef,
   type Locale,
 } from '@ecms/contracts';
+import { NO_ZONE_GREY } from './map-colors';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -43,7 +55,7 @@ export const reportCount = (value: number): string => String(value);
 
 /** One bar of a single-series chart and the cell of the table under it. */
 export interface ReportBar {
-  /** The sheet cell's key (`s1.NXT`, `s2.EGYCASH-7`, `s1.total` …) — see `ATM_DATA_REPORT_CELLS`. */
+  /** The sheet cell's key (`s1.NXT`, `s2.EGYCASH-7`, `s1.total` …) — see `buildAtmReportCells`. */
   key: string;
   label: string;
   value: number;
@@ -66,7 +78,7 @@ export interface ReportSeries {
   color: string;
 }
 
-/** One branch of section 3: six numbers, in the series' order. */
+/** One branch of section 3: one number per bank, in the series' order. */
 export interface ReportGroup {
   key: AtmRegisterBranchCode;
   label: string;
@@ -97,10 +109,26 @@ export interface RegisterReportView {
   empty: boolean;
 }
 
-const cellsOf = (section: 1 | 2 | 3): AtmReportCellRef[] =>
-  ATM_DATA_REPORT_CELLS.filter((cell) => cell.section === section);
+/** The banks the report folded and their orders — the server's, else the sheet's six. */
+interface ReportBanks {
+  section1: readonly AtmBankCode[];
+  section3: readonly AtmBankCode[];
+  banks: readonly AtmRegisterReportBankDto[];
+}
 
-const bankLabel = (bank: AtmBankCode, locale: Locale): string => ATM_BANK_NAMES[bank][locale];
+/**
+ * What the server said about the banks, with the sheet's six for a server that has not said it yet
+ * (the fields arrived with the catalog; a page served during a rolling deploy may talk to an older
+ * API). Absent, not empty: an empty list from a current server is still its answer.
+ */
+export const reportBanksOf = (dto: AtmRegisterReportDto): ReportBanks => {
+  const partial = dto as Partial<AtmRegisterReportDto>;
+  return {
+    section1: partial.section1Banks ?? ATM_REPORT_SECTION1_BANKS,
+    section3: partial.section3Banks ?? ATM_REPORT_SECTION3_BANKS,
+    banks: partial.banks ?? [],
+  };
+};
 
 /** The report's model, from the server's DTO, in the reader's language. */
 export const registerReportView = (
@@ -111,10 +139,18 @@ export const registerReportView = (
   const { counts } = dto;
   const shown = new Set<AtmRegisterBranchCode>(dto.branchesShown);
   const totalLabel = t('atm.registerReport.total');
+  const orders = reportBanksOf(dto);
+  const cells = buildAtmReportCells(orders.section1, orders.section3);
+  const cellsOf = (section: 1 | 2 | 3): AtmReportCellRef[] =>
+    cells.filter((cell) => cell.section === section);
+  // The catalog's name, else the seed's, else the code; the catalog's colour, else the seed's, else
+  // the grey of «بنك غير محدد» — a bank the server named without a colour is still drawn.
+  const bankLabel = (bank: AtmBankCode): string => atmBankName(bank, locale, orders.banks);
+  const bankColor = (bank: AtmBankCode): string => atmBankColor(bank, orders.banks) ?? NO_ZONE_GREY;
 
   const section1Bars: ReportBar[] = cellsOf(1).map((cell) => ({
     key: cell.key,
-    label: cell.isTotal || cell.bankCode === null ? totalLabel : bankLabel(cell.bankCode, locale),
+    label: cell.isTotal || cell.bankCode === null ? totalLabel : bankLabel(cell.bankCode),
     value: readAtmReportCell(counts, cell),
     isTotal: cell.isTotal,
   }));
@@ -137,7 +173,7 @@ export const registerReportView = (
     (code) => ({
       key: code,
       label: t(`atm.registerReport.branch3.${code}`),
-      cells: ATM_REPORT_SECTION3_BANKS.map((bank) => {
+      cells: orders.section3.map((bank) => {
         const cell = section3Cells.find((c) => c.branchCode === code && c.bankCode === bank);
         return {
           key: `s3.${code}.${bank}`,
@@ -166,10 +202,10 @@ export const registerReportView = (
     section3: {
       section: 3,
       title: t('atm.registerReport.section3'),
-      series: ATM_REPORT_SECTION3_BANKS.map((bank) => ({
+      series: orders.section3.map((bank) => ({
         key: bank,
-        label: bankLabel(bank, locale),
-        color: ATM_BANK_REPORT_COLORS[bank],
+        label: bankLabel(bank),
+        color: bankColor(bank),
       })),
       groups,
       total: groups.reduce(
@@ -321,7 +357,7 @@ export const singleChartLayout = (bars: readonly ReportBar[]): ChartLayout => {
   };
 };
 
-/** Chart 3: one cluster per branch, the six banks side by side inside it. */
+/** Chart 3: one cluster per branch, its banks side by side inside it. */
 export const groupedChartLayout = (
   groups: readonly ReportGroup[],
   seriesCount: number,

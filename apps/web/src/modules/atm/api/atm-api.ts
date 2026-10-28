@@ -3,7 +3,9 @@
 // carried their rules in browser JavaScript and hidden form fields (port doc §1); those rules now
 // live in the ATM domain and this file only carries them across the wire.
 import {
+  type AtmBankDto,
   type AtmLeaderOptionDto,
+  type AtmMachineCreateResultDto,
   type AtmMachineDto,
   type AtmMachinesSummaryDto,
   type AtmMailAcceptMetaDto,
@@ -14,6 +16,7 @@ import {
   type AtmMaintenanceDto,
   type AtmOperationFacetsDto,
   type AtmRefLabelDto,
+  type AtmRefLabelOptionsDto,
   type AtmReplenishmentDto,
   type BulkCreateAtmMachines,
   type BulkCreateAtmMachinesResultDto,
@@ -21,12 +24,14 @@ import {
   type BulkDeleteAtmMachinesResultDto,
   type BulkUpdateAtmMaintenances,
   type BulkUpdateAtmReplenishments,
+  type CreateAtmBankInput,
   type CreateAtmMachine,
   type CreateAtmRefLabel,
   type OpenAtmMaintenancesResultDto,
   type OpenAtmReplenishmentsResultDto,
   type Paginated,
   type ReassignAtmMachineArea,
+  type UpdateAtmBank,
   type UpdateAtmMachine,
   type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
@@ -80,8 +85,12 @@ export const bulkDeleteMachines = (
   post<BulkDeleteAtmMachinesResultDto>('/atm/machines/bulk-delete', body);
 export const reassignMachineArea = (body: ReassignAtmMachineArea): Promise<AtmMachineDto> =>
   post<AtmMachineDto>('/atm/machines/reassign-area', body);
-export const createMachine = (body: CreateAtmMachine): Promise<AtmMachineDto> =>
-  post<AtmMachineDto>('/atm/machines', body);
+/**
+ * A data-edit add (DEC-36): the machine, whether an archived code was brought back, and what the
+ * server recorded in the Efficiency register as a side effect — the dialog's toast says which.
+ */
+export const createMachine = (body: CreateAtmMachine): Promise<AtmMachineCreateResultDto> =>
+  post<AtmMachineCreateResultDto>('/atm/machines', body);
 export const updateMachine = (id: string, body: UpdateAtmMachine): Promise<AtmMachineDto> =>
   patch<AtmMachineDto>(`/atm/machines/${id}`, body);
 /** The Operations area move (`atmMachine.moveArea`): the area only, by id, versioned. */
@@ -105,6 +114,22 @@ export const updateRefLabel = (
 ): Promise<AtmRefLabelDto> => patch<AtmRefLabelDto>(`/atm/ref-labels/${kind}/${id}`, body);
 export const deleteRefLabel = (kind: 'bank' | 'area', id: string): Promise<void> =>
   del<void>(`/atm/ref-labels/${kind}/${id}`);
+/**
+ * What the data-edit dialogs offer for ONE branch, whole (no page cap): the catalog banks and the
+ * branch's spellings, its areas with both names, whether an add there reaches the register, and
+ * the bank texts its machines carry that map to no bank. No `branchId` = the acting branch.
+ */
+export const refLabelOptions = (branchId: string | null): Promise<AtmRefLabelOptionsDto> =>
+  get<AtmRefLabelOptionsDto>(
+    `/atm/ref-labels/options${branchId === null ? '' : buildQuery({ branchId })}`,
+  );
+
+// ── Bank catalog (DEC-35 — the company-wide `atm_banks`; no DELETE, archive instead) ──
+export const listBanks = (): Promise<AtmBankDto[]> => get<AtmBankDto[]>('/atm/banks');
+export const createBank = (body: CreateAtmBankInput): Promise<AtmBankDto> =>
+  post<AtmBankDto>('/atm/banks', body);
+export const updateBank = (code: string, body: UpdateAtmBank): Promise<AtmBankDto> =>
+  patch<AtmBankDto>(`/atm/banks/${encodeURIComponent(code)}`, body);
 
 // ── Replenishments (legacy /atm_replenishment ± done) ───────────────────────
 export const listOpenReplenishments = (

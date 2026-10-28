@@ -1,7 +1,7 @@
 // The bank import profiles (docs/12-planning/atm-settlements-phase1.md §5.2): Al Baraka only in
 // phase 1 (S-10), every other bank refused rather than read with Al Baraka's layout.
 import { describe, expect, it } from 'vitest';
-import { ATM_BANK_CODES, ErrorCodes } from '@ecms/contracts';
+import { ATM_SEED_BANK_CODES, ErrorCodes } from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
 import { ATM_MASTER_PROFILES, columnNumber, headerKey, masterProfileOf } from './master-profiles';
 
@@ -12,7 +12,8 @@ describe('masterProfileOf', () => {
   });
 
   it('refuses every bank without a profile with 422 ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK', () => {
-    for (const bank of ATM_BANK_CODES.filter((code) => code !== 'BRK')) {
+    // …and a bank added to the catalog at runtime (DEC-35) until it has a profile of its own.
+    for (const bank of [...ATM_SEED_BANK_CODES.filter((code) => code !== 'BRK'), 'QNB']) {
       let thrown: unknown;
       try {
         masterProfileOf(bank);

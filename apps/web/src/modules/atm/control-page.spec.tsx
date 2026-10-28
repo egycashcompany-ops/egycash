@@ -5,7 +5,8 @@
 //   · «لم يُوزّع بعد» is the first group of the routes tab, and cancelled lines are not in it;
 //   · tab 1 carries the seals paper's TYPE and HUB as «النوع» and «المنطقة»;
 //   · the routes tab is for manage, the prints for print;
-//   · a duplicate shows ⚠ (warning only).
+//   · a duplicate shows ⚠ (warning only);
+//   · a line of a bank added to the catalog (DEC-35) is named from `GET /atm/banks`.
 //
 // Every code, QR, seal and name below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -14,7 +15,13 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import { type AtmControlDayDto, type Locale, type MeDto } from '@ecms/contracts';
+import {
+  ATM_BANK_SEED,
+  type AtmBankDto,
+  type AtmControlDayDto,
+  type Locale,
+  type MeDto,
+} from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
@@ -22,6 +29,7 @@ import { translate } from '../../platform/localization/i18n';
 import { ControlPage } from './pages/ControlPage';
 import { sortItems } from './components/settlements/ControlRoutesTab';
 import { controlDayKey } from './api/settlements-queries';
+import { atmBanksKey } from './api/atm-queries';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -122,9 +130,32 @@ const store = () =>
     },
   });
 
+/** `GET /atm/banks`: the six seeds and a synthetic bank added since. */
+const CATALOG: AtmBankDto[] = [
+  ...ATM_BANK_SEED.map((seed) => ({ ...seed, isSeed: true, hasIdFormat: true })),
+  {
+    code: 'QNB',
+    name: { ar: 'بنك تجريبي سابع', en: 'SYN Seventh Bank' },
+    color: '#7030A0',
+    opsLabel: 'QNB',
+    sortOrder: 70,
+    isSeed: false,
+    hasIdFormat: false,
+  },
+].map((bank, i) => ({
+  ...bank,
+  id: `66e0000000000000000000${String(i).padStart(2, '0')}`,
+  formerOpsLabels: [],
+  isActive: true,
+  version: 1,
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+}));
+
 const render = (dto: AtmControlDayDto, tab: 'data' | 'routes'): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(controlDayKey(null, null), dto);
+  qc.setQueryData(atmBanksKey(), CATALOG);
   const url = tab === 'routes' ? '/atm/control?tab=routes' : '/atm/control';
   return renderToStaticMarkup(
     <Provider store={store()}>
@@ -234,6 +265,24 @@ describe('the data tab', () => {
     expect(html).toContain('data-control-action="routes"');
     const readOnly = render(day({ can: { manage: false, print: false, zones: false } }), 'data');
     expect(readOnly).not.toContain('data-control-action');
+  });
+});
+
+describe('a bank added to the catalog (DEC-35)', () => {
+  it('names its lines and its print from the catalog, beside the workbook’s own banks', () => {
+    const html = render(
+      day({
+        plans: [
+          { planId: PLAN, bankCode: 'BRK', lines: 3, prepared: 1 },
+          { planId: '66c000000000000000000032', bankCode: 'QNB', lines: 1, prepared: 0 },
+        ],
+        lines: [line(1), line(4, { bankCode: 'QNB', machineCode: 'QNB0001' })],
+      }),
+      'data',
+    );
+    expect(html).toContain('بنك تجريبي سابع');
+    expect(html).toContain('بنك البركة');
+    expect(html).not.toMatch(/>QNB</);
   });
 });
 

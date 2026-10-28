@@ -17,6 +17,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { RowActions } from '../../../shared/ui/RowActions';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -86,7 +87,7 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
       align: 'end',
       render: (row) =>
         can('atmReplenishment.complete') ? (
-          <RowActions>
+          <RowActions always>
             <Button
               size="icon"
               variant="ghost-warning"
@@ -101,40 +102,49 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader title={t('atm.done.repTitle')} />
-      <DoneRangeBar
-        from={from}
-        to={to}
-        onChange={setRange}
-        trailing={
-          // Only once the rows on screen are the answer — never «nothing» while loading or failed.
-          // And only for a range read whole: a part titled as the period would misstate it.
-          list.isLoading || hasError(list.error) || !doneRangeWhole(list.data?.meta) ? undefined : (
-            <StatementExportButtons
-              kind="replenishment"
-              name="atm-replenishments-done"
-              sheetName={t('atm.done.repTitle')}
-              range={{ from, to }}
-              rows={order.rows}
-              columns={sheetColumns}
-              filterLine=""
-            />
-          )
-        }
-      />
-      <DoneRangeCutShort meta={list.data?.meta} />
-      <DataTable
-        columns={columns}
-        rows={order.rows}
-        rowKey={(row) => row.id}
-        loading={list.isLoading}
-        error={list.error}
-        onRetry={() => void list.refetch()}
-        empty={t('atm.done.empty')}
-        sort={order.sorts}
-        onSortChange={order.changeSort}
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27): on a computer the title and the
+          day range keep their place, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader title={t('atm.done.repTitle')} />
+        <DoneRangeBar
+          from={from}
+          to={to}
+          onChange={setRange}
+          trailing={
+            // Only once the rows on screen are the answer — never «nothing» while loading or failed.
+            // And only for a range read whole: a part titled as the period would misstate it.
+            list.isLoading ||
+            hasError(list.error) ||
+            !doneRangeWhole(list.data?.meta) ? undefined : (
+              <StatementExportButtons
+                kind="replenishment"
+                name="atm-replenishments-done"
+                sheetName={t('atm.done.repTitle')}
+                range={{ from, to }}
+                rows={order.rows}
+                columns={sheetColumns}
+                filterLine=""
+              />
+            )
+          }
+        />
+        <DoneRangeCutShort meta={list.data?.meta} />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={order.rows}
+            rowKey={(row) => row.id}
+            loading={list.isLoading}
+            error={list.error}
+            onRetry={() => void list.refetch()}
+            empty={t('atm.done.empty')}
+            sort={order.sorts}
+            onSortChange={order.changeSort}
+            stickyHead
+          />
+        </div>
+      </div>
       <ConfirmActionDialog
         open={reopening !== null}
         title={t('atm.done.reopenTitle')}

@@ -2,9 +2,11 @@
 // from a pre-filled query cache, the way the register page is pinned (register-page.spec.tsx).
 // The server enforces the split (atm-data-edit-permissions.spec.ts); this pins that the page offers
 // each reader exactly the controls their keys allow:
-//   · Operations: banks and areas can be added, renamed and archived, and a machine can be moved to
-//     another area. No machine add, no bulk add or delete-by-codes, no archive, no delete.
-//   · `atmMachine.manage`: everything, exactly as before the split.
+//   · Operations: bank spellings and areas can be added, renamed and archived, and a machine can be
+//     moved to another area. No machine add, no bulk add or delete-by-codes, no archive, no delete.
+//   · `atmMachine.manage`: everything, exactly as before the split — the add stays its own.
+//   · the bank CATALOG tab (DEC-35): add under `atmBank.create`, edit under `atmBank.edit`, and
+//     neither Operations' keys nor `manage` reach it — it belongs to Efficiency and the admins.
 //
 // Every code, name and label below is synthetic.
 import { describe, expect, it, vi } from 'vitest';
@@ -15,10 +17,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode } from 'react';
 import {
-  MAX_PAGE_SIZE,
+  ATM_BANK_SEED,
   UpdateAtmMachineAreaSchema,
+  type AtmBankDto,
   type AtmMachineDto,
   type AtmRefLabelDto,
+  type AtmRefLabelOptionsDto,
   type Locale,
   type MeDto,
   type Paginated,
@@ -28,7 +32,8 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
-import { DataEditPage, type AtmDataTab } from './pages/DataEditPage';
+import { ATM_DATA_TABS, DataEditPage, type AtmDataTab } from './pages/DataEditPage';
+import { atmBanksKey, atmRefLabelOptionsKey } from './api/atm-queries';
 import {
   MachineAreaDialog,
   MachineDialog,
@@ -66,24 +71,73 @@ const machine = (n: number, over: Partial<AtmMachineDto> = {}): AtmMachineDto =>
   ...over,
 });
 
-const label = (n: number, name: string, isActive = true): AtmRefLabelDto => ({
+const label = (
+  n: number,
+  name: string,
+  isActive = true,
+  over: Partial<AtmRefLabelDto> = {},
+): AtmRefLabelDto => ({
   id: `650000000000000000000c0${String(n)}`,
   branchId: ALEX,
+  kind: 'bank',
   name,
+  nameAr: null,
+  nameEn: null,
+  formerNames: [],
+  bankCode: null,
+  origin: 'manual',
   isActive,
   version: 1,
   createdAt: STAMP,
   updatedAt: STAMP,
+  ...over,
 });
 
 const MACHINES = [machine(1), machine(2, { isActive: false })];
-const BANKS = [label(1, 'SYN BANK'), label(2, 'SYN BANK B'), label(3, 'SYN BANK OLD', false)];
+/** The «أسماء البنوك في التشغيل» tab: spellings of catalog banks. */
+const BANKS = [
+  label(1, 'SYN BANK', true, { bankCode: 'NBE' }),
+  label(2, 'SYN BANK B', true, { bankCode: 'BM' }),
+  label(3, 'SYN BANK OLD', false),
+];
 const AREAS = [
-  label(4, 'SYN AREA NORTH'),
-  label(5, 'SYN AREA SOUTH'),
-  label(6, 'SYN AREA OLD', false),
+  label(4, 'SYN AREA NORTH', true, { kind: 'area' }),
+  label(5, 'SYN AREA SOUTH', true, { kind: 'area' }),
+  label(6, 'SYN AREA OLD', false, { kind: 'area' }),
 ];
 const ACTIVE_AREAS = AREAS.filter((a) => a.isActive);
+
+/** `GET /atm/banks`: the six seeds, as the catalog holds them. */
+const CATALOG: AtmBankDto[] = ATM_BANK_SEED.map((seed) => ({
+  id: `650000000000000000000d${String(seed.sortOrder)}`,
+  code: seed.code,
+  name: seed.name,
+  opsLabel: seed.opsLabel,
+  formerOpsLabels: [],
+  color: seed.color,
+  sortOrder: seed.sortOrder,
+  isActive: true,
+  isSeed: true,
+  hasIdFormat: true,
+  version: 1,
+  createdAt: STAMP,
+  updatedAt: STAMP,
+}));
+
+/** `GET /atm/ref-labels/options?branchId=ALEX` — what the machine dialogs offer. */
+const OPTIONS: AtmRefLabelOptionsDto = {
+  branchId: ALEX,
+  registerMapped: true,
+  banks: [
+    { value: 'NBE', bankCode: 'NBE', kind: 'bank' },
+    { value: 'MISR', bankCode: 'BM', kind: 'bank' },
+    { value: 'SYN BANK', bankCode: 'NBE', kind: 'spelling' },
+    { value: 'SYN BANK B', bankCode: 'BM', kind: 'spelling' },
+  ],
+  areas: ACTIVE_AREAS.map((a) => ({ name: a.name, nameAr: null, nameEn: null })),
+  unmappedBankNames: [],
+  unmappedBankLabels: [],
+};
 
 /** The Operations bundle of §12.3: reads the machines, keeps the lists, moves a machine. */
 const OPERATIONS = [
@@ -93,6 +147,7 @@ const OPERATIONS = [
   'atmMachine.moveArea',
 ];
 const MANAGE = ['atmMachine.view', 'atmMachine.manage'];
+const VIEW_ONLY = 'atmMachine.view';
 
 const store = (permissions: readonly string[]) =>
   configureStore({
@@ -138,25 +193,25 @@ const renderPage = (permissions: readonly string[], tab: AtmDataTab = 'machines'
     ['bank', BANKS],
     ['area', AREAS],
   ] as const) {
-    qc.setQueryData(listKey('atm', 'refLabels', { kind, ...first, sortBy: 'name' }), page(rows));
-    // The dialogs' pick lists: the full ACTIVE list of each kind.
+    // The label tabs ask for the acting branch's rows (the options' `branchId`).
     qc.setQueryData(
-      listKey('atm', 'refLabels', {
-        kind,
-        pageSize: MAX_PAGE_SIZE,
-        sortBy: 'name',
-        sortDir: 'asc',
-        isActive: true,
-      }),
-      page(rows.filter((r) => r.isActive)),
+      listKey('atm', 'refLabels', { kind, ...first, sortBy: 'name', branchId: ALEX }),
+      page(rows),
     );
   }
+  qc.setQueryData(atmBanksKey(), CATALOG);
+  qc.setQueryData(atmRefLabelOptionsKey(null), { ...OPTIONS, branchId: ALEX });
   const url = tab === 'machines' ? '/atm/data-edit' : `/atm/data-edit?tab=${tab}`;
   return wrap(permissions, qc, <DataEditPage />, url);
 };
 
-const renderDialog = (permissions: readonly string[], node: ReactNode): string =>
-  wrap(permissions, new QueryClient(), node);
+/** A dialog, the catalog and the machine's branch's options already answered. */
+const renderDialog = (permissions: readonly string[], node: ReactNode): string => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(atmBanksKey(), CATALOG);
+  qc.setQueryData(atmRefLabelOptionsKey(ALEX), OPTIONS);
+  return wrap(permissions, qc, node);
+};
 
 /** Every gated control on the screen, by kind, in document order. */
 const actions = (markup: string): string[] =>
@@ -185,27 +240,55 @@ describe('Operations: the machines tab is read-only except for the area move', (
     );
   });
 
-  it.each(['bank', 'area'] as const)(
+  it.each(['bankLabel', 'area'] as const)(
     'may add, rename and archive on the %s tab, and delete nothing',
     (tab) => {
       const markup = renderPage(OPERATIONS, tab);
-      const rows = tab === 'bank' ? BANKS : AREAS;
+      const rows = tab === 'bankLabel' ? BANKS : AREAS;
       for (const r of rows) expect(markup).toContain(r.name);
       expect(count(markup, 'add-label')).toBe(1);
-      expect(markup).toContain(t(tab === 'bank' ? 'atm.dataEdit.addBank' : 'atm.dataEdit.addArea'));
+      expect(markup).toContain(
+        t(tab === 'bankLabel' ? 'atm.dataEdit.addSpelling' : 'atm.dataEdit.addArea'),
+      );
       expect(count(markup, 'edit-label')).toBe(rows.length);
       expect(actions(markup).filter((a) => a !== 'add-label' && a !== 'edit-label')).toEqual([]);
     },
   );
+
+  it('the bank catalog is not theirs: rows to read, nothing to add or edit', () => {
+    const markup = renderPage(OPERATIONS, 'bank');
+    for (const bank of CATALOG) expect(markup).toContain(bank.name.ar);
+    expect(actions(markup)).toEqual([]);
+  });
+});
+
+describe('the four tabs (DEC-35, DEC-38)', () => {
+  it('machines, the bank catalog, the Operations bank names and the areas, in that order', () => {
+    const markup = renderPage(OPERATIONS);
+    const tabs = [...markup.matchAll(/<button[^>]*role="tab"[^>]*>([^<]*)<\/button>/g)].map(
+      (m) => m[1],
+    );
+    expect(ATM_DATA_TABS).toEqual(['machines', 'bank', 'bankLabel', 'area']);
+    expect(tabs).toEqual(ATM_DATA_TABS.map((key) => t(`atm.dataEdit.tab.${key}`)));
+    expect(tabs[2]).toBe('أسماء البنوك في التشغيل');
+  });
+
+  it('a spelling shows its bank, or «غير مربوط ببنك» when it is linked to none', () => {
+    const markup = renderPage(OPERATIONS, 'bankLabel');
+    expect(markup).toContain('البنك الأهلي المصري');
+    expect(markup).toContain('بنك مصر');
+    expect(markup).toContain(t('atm.dataEdit.notLinked'));
+  });
 });
 
 describe('each Operations key opens only its own control', () => {
   const VIEW = 'atmMachine.view';
 
-  it('atmRefLabel.create alone: add a bank or an area, nothing else', () => {
+  it('atmRefLabel.create alone: add a bank name or an area, nothing else', () => {
     const keys = [VIEW, 'atmRefLabel.create'];
-    expect(actions(renderPage(keys, 'bank'))).toEqual(['add-label']);
+    expect(actions(renderPage(keys, 'bankLabel'))).toEqual(['add-label']);
     expect(actions(renderPage(keys, 'area'))).toEqual(['add-label']);
+    expect(actions(renderPage(keys, 'bank'))).toEqual([]);
     expect(actions(renderPage(keys))).toEqual([]);
   });
 
@@ -218,15 +301,45 @@ describe('each Operations key opens only its own control', () => {
   it('atmMachine.moveArea alone: the area move, and the lists stay read-only', () => {
     const keys = [VIEW, 'atmMachine.moveArea'];
     expect(actions(renderPage(keys))).toEqual(MACHINES.map(() => 'move-area'));
+    expect(actions(renderPage(keys, 'bankLabel'))).toEqual([]);
     expect(actions(renderPage(keys, 'bank'))).toEqual([]);
   });
 
   it('a reader with no write key gets no actions column at all', () => {
-    for (const tab of ['machines', 'bank', 'area'] as const) {
+    for (const tab of ATM_DATA_TABS) {
       const markup = renderPage([VIEW], tab);
       expect(actions(markup), tab).toEqual([]);
       expect(markup, tab).not.toContain(t('atm.dataEdit.actions'));
     }
+  });
+});
+
+describe('the bank catalog tab: its own two keys (DEC-39)', () => {
+  it('atmBank.create alone: «إضافة بنك», and no edit', () => {
+    const markup = renderPage([VIEW_ONLY, 'atmBank.create'], 'bank');
+    expect(actions(markup)).toEqual(['add-bank']);
+    expect(markup).toContain(t('atm.bankCatalog.add'));
+  });
+
+  it('atmBank.edit alone: the edit on every bank, and no add', () => {
+    expect(actions(renderPage([VIEW_ONLY, 'atmBank.edit'], 'bank'))).toEqual(
+      CATALOG.map(() => 'edit-bank'),
+    );
+  });
+
+  it('the table names each bank in both languages, with its Operations label and colour', () => {
+    const markup = renderPage([VIEW_ONLY], 'bank');
+    for (const bank of CATALOG) {
+      expect(markup).toContain(bank.name.ar);
+      expect(markup).toContain(bank.name.en);
+      expect(markup).toContain(`background-color:${bank.color}`);
+    }
+    expect(markup).toContain('MISR');
+  });
+
+  it('`manage` does not reach the catalog: the machines tab is still where its add lives', () => {
+    expect(actions(renderPage(MANAGE, 'bank'))).toEqual([]);
+    expect(count(renderPage(MANAGE), 'add-machine')).toBe(1);
   });
 });
 
@@ -236,7 +349,7 @@ describe('the area move dialog', () => {
   it('shows the code and name read-only and offers only the active areas: no bank, no archive', () => {
     const markup = renderDialog(
       OPERATIONS,
-      <MachineAreaDialog open onClose={() => undefined} machine={M} areas={ACTIVE_AREAS} />,
+      <MachineAreaDialog open onClose={() => undefined} machine={M} />,
     );
     expect(markup).toContain(t('atm.dataEdit.moveAreaTitle', { code: M.machineCode }));
     expect(markup).toContain(t('atm.dataEdit.moveAreaHint'));
@@ -256,7 +369,7 @@ describe('the area move dialog', () => {
     const archived = machine(1, { area: 'SYN AREA OLD' });
     const markup = renderDialog(
       OPERATIONS,
-      <MachineAreaDialog open onClose={() => undefined} machine={archived} areas={ACTIVE_AREAS} />,
+      <MachineAreaDialog open onClose={() => undefined} machine={archived} />,
     );
     const current = tagWith(markup, 'option', 'value', 'SYN AREA OLD');
     expect(current).toContain('selected=""');
@@ -288,22 +401,16 @@ describe('atmMachine.manage keeps everything it had (regression)', () => {
     expect(count(markup, 'move-area')).toBe(0);
   });
 
-  it.each(['bank', 'area'] as const)('the %s tab: add and edit', (tab) => {
+  it.each(['bankLabel', 'area'] as const)('the %s tab: add and edit', (tab) => {
     const markup = renderPage(MANAGE, tab);
     expect(count(markup, 'add-label')).toBe(1);
-    expect(count(markup, 'edit-label')).toBe((tab === 'bank' ? BANKS : AREAS).length);
+    expect(count(markup, 'edit-label')).toBe((tab === 'bankLabel' ? BANKS : AREAS).length);
   });
 
   it('the full machine edit still carries the bank and the archive switch', () => {
     const markup = renderDialog(
       MANAGE,
-      <MachineDialog
-        open
-        onClose={() => undefined}
-        machine={machine(1)}
-        banks={BANKS.filter((b) => b.isActive)}
-        areas={ACTIVE_AREAS}
-      />,
+      <MachineDialog open onClose={() => undefined} machine={machine(1)} />,
     );
     expect(markup).toContain(t('atm.dataEdit.pickBank'));
     expect(markup).toContain('type="checkbox"');

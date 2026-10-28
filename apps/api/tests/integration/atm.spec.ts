@@ -13,6 +13,7 @@ import { type Express } from 'express';
 import {
   SettingKeys,
   platformPermissions,
+  type AtmMachineCreateResultDto,
   type AtmMachineDto,
   type AtmMaintenanceDto,
   type AtmReplenishmentDto,
@@ -264,7 +265,7 @@ describe('atm machines — the master and its data-edit surface', () => {
     expect(again.status).toBe(409);
   });
 
-  it('edits a machine and archives it, leaving the code taken', async () => {
+  it('edits a machine and archives it; re-adding the archived code brings the SAME machine back', async () => {
     const list = await request(app)
       .get('/api/v1/atm/machines?pageSize=100&search=204')
       .set('Authorization', `Bearer ${alexToken}`);
@@ -284,12 +285,23 @@ describe('atm machines — the master and its data-edit surface', () => {
       machineCode: '204',
     });
 
-    // Archived is NOT deleted: the code is still registered, so re-adding it is refused.
+    // Archived is NOT deleted: the code is still the same machine, so re-adding it reactivates that
+    // row with the form's data (DEC-41 — a machine handed back and returned could not be re-added
+    // before, critic gap 1). This branch has no EGYCASH code, so the register records nothing.
     const readd = await request(app)
       .post('/api/v1/atm/machines')
       .set('Authorization', `Bearer ${alexToken}`)
-      .send({ machineCode: '204', name: 'Should not', bankName: 'NBE', area: 'Smouha' });
-    expect(readd.status).toBe(409);
+      .send({ machineCode: '204', name: 'Sidi Gaber back', bankName: 'NBE', area: 'Smouha' });
+    expect(readd.status, readd.text).toBe(201);
+    expect(data<AtmMachineCreateResultDto>(readd)).toMatchObject({
+      id: target?.id,
+      machineCode: '204',
+      name: 'Sidi Gaber back',
+      area: 'Smouha',
+      isActive: true,
+      reactivated: true,
+      register: { action: 'none', reason: 'branchUnmapped', entryId: null, bankCode: 'NBE' },
+    });
   });
 
   it('refuses a stale edit rather than overwriting someone else’s', async () => {

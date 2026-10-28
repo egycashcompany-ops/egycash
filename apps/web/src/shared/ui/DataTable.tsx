@@ -267,6 +267,9 @@ export const DataTable = <T,>({
         <tr
           key={id}
           {...extra}
+          // A cell that paints its own background — a pinned one (`PINNED_ACTIONS`) — reads the
+          // row's checked tint from here.
+          data-selected={isSelected ? 'true' : undefined}
           onClick={onRowClick === undefined ? undefined : () => onRowClick(row)}
           className={cn(
             // `group` so a cell can reveal its secondary controls when the pointer is on the row —

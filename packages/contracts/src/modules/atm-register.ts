@@ -19,52 +19,136 @@ import {
   booleanQuery,
   listQuery,
   objectId,
+  type Locale,
   type LocalizedString,
 } from '../common/index.js';
-import { normalizeAtmMachineCode } from './atm.js';
+import { ATM_BANK_CODE_PATTERN, normalizeAtmMachineCode } from './atm.js';
 
-// ── Banks (D5) ──────────────────────────────────────────────────────────────────────────────────
+// ── Banks (D5, amended by DEC-35: the bank catalog) ─────────────────────────────────────────────
+//
+// The owner's call (final): a bank added at runtime is a FULL register bank — it appears in the
+// register, the Data Report, settlements and the map. So the bank vocabulary is no longer a fixed
+// enum here: it is the company-wide catalog `atm_banks` (owned by ATM, seeded with the workbook's
+// six), and this file keeps only what does not change with the catalog — the code SHAPE, the six
+// seeds' own facts, and the sheet's report orders. Whether a code EXISTS is the server's question.
+//
+// The old `ATM_BANK_CODES` / `ATM_BANK_NAMES` / `ATM_BANK_REPORT_COLORS` /
+// `ATM_DEFAULT_OPS_BANK_LABELS` are deleted with no alias on purpose: every `X[code]` that assumed
+// six banks stops compiling, and that compiler list is the migration checklist (design §2).
 
-/** The company-wide bank vocabulary of the register. Fixed: a bank is not a free-text label here. */
-export const ATM_BANK_CODES = ['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT'] as const;
-export const AtmBankCodeSchema = z.enum(ATM_BANK_CODES);
-export type AtmBankCode = z.infer<typeof AtmBankCodeSchema>;
+// `ATM_BANK_CODE_PATTERN` itself lives in atm.ts beside the machine-code rule: the ref-label
+// schemas there validate a spelling's `bankCode` with it, and atm.ts may not import this file back
+// (a module cycle would leave the pattern undefined for whoever loads this file first).
 
-/** The Data Report's own Arabic names (Data Report AE2..AI2, AD2 with D7's double-space fix). */
-export const ATM_BANK_NAMES: Readonly<Record<AtmBankCode, LocalizedString>> = {
-  NBE: { ar: 'البنك الأهلي المصري', en: 'National Bank of Egypt' },
-  BM: { ar: 'بنك مصر', en: 'Banque Misr' },
-  CIB: { ar: 'البنك التجارى الدولى', en: 'Commercial International Bank' },
-  HDB: { ar: 'بنك التعمير والاسكان', en: 'Housing and Development Bank' },
-  BRK: { ar: 'بنك البركة', en: 'Al Baraka Bank' },
-  NXT: { ar: 'NXT BANK', en: 'NXT BANK' },
-};
+/**
+ * A bank code as input: the shape only (`^[A-Z][A-Z0-9]{1,9}$`). The six seeds still parse, so
+ * every body, query and stored value written before the catalog stays valid. The lower-case
+ * sentinels `none` (map) and `total` (fold) can never collide with a code.
+ */
+export const AtmBankCodeSchema = z.string().regex(ATM_BANK_CODE_PATTERN);
+/** Any catalog code. A `string`: a seventh bank is data, not a type. */
+export type AtmBankCode = string;
 
-/** The Excel chart-3 series colours (D7) — identity, used in both themes. */
-export const ATM_BANK_REPORT_COLORS: Readonly<Record<AtmBankCode, string>> = {
-  NBE: '#385723',
-  BM: '#AC2100',
-  CIB: '#FFD966',
-  HDB: '#B4C7E7',
-  BRK: '#F4B183',
-  NXT: '#000099',
-};
+/** The workbook's six — the catalog's seeds (DEC-35), in the sheet's section-3 order. */
+export const ATM_SEED_BANK_CODES = ['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT'] as const;
+export type AtmSeedBankCode = (typeof ATM_SEED_BANK_CODES)[number];
+
+export const isAtmSeedBankCode = (code: string): code is AtmSeedBankCode =>
+  (ATM_SEED_BANK_CODES as readonly string[]).includes(code);
+
+/** One seed's facts — exactly what the deleted per-bank records held, in one row. */
+export interface AtmBankSeed {
+  code: AtmSeedBankCode;
+  /** The Data Report's own names (Data Report AE2..AI2, AD2 with D7's double-space fix). */
+  name: LocalizedString;
+  /** The Excel chart-3 series colour (D7) — identity, used in both themes. */
+  color: string;
+  /** D5 default bankCode → Operations label (legacy labels: reports_atm.ejs:350 MISR, :403 NBE FOREX). */
+  opsLabel: string;
+  /** Section-3 order × 10, so a curated bank can be slotted between two seeds. */
+  sortOrder: number;
+}
+
+/**
+ * The six seeds. Read by the boot seed (`$setOnInsert`, so a curated catalog edit is never
+ * overwritten) and, on the web, as the fallback when the catalog has not loaded yet — so a seed
+ * bank is never shown as a bare code.
+ */
+export const ATM_BANK_SEED: readonly AtmBankSeed[] = [
+  {
+    code: 'NBE',
+    name: { ar: 'البنك الأهلي المصري', en: 'National Bank of Egypt' },
+    color: '#385723',
+    opsLabel: 'NBE',
+    sortOrder: 10,
+  },
+  {
+    code: 'BM',
+    name: { ar: 'بنك مصر', en: 'Banque Misr' },
+    color: '#AC2100',
+    opsLabel: 'MISR',
+    sortOrder: 20,
+  },
+  {
+    code: 'CIB',
+    name: { ar: 'البنك التجارى الدولى', en: 'Commercial International Bank' },
+    color: '#FFD966',
+    opsLabel: 'CIB',
+    sortOrder: 30,
+  },
+  {
+    code: 'HDB',
+    name: { ar: 'بنك التعمير والاسكان', en: 'Housing and Development Bank' },
+    color: '#B4C7E7',
+    opsLabel: 'HDB',
+    sortOrder: 40,
+  },
+  {
+    code: 'BRK',
+    name: { ar: 'بنك البركة', en: 'Al Baraka Bank' },
+    color: '#F4B183',
+    opsLabel: 'BRK',
+    sortOrder: 50,
+  },
+  {
+    code: 'NXT',
+    name: { ar: 'NXT BANK', en: 'NXT BANK' },
+    color: '#000099',
+    opsLabel: 'NXT',
+    sortOrder: 60,
+  },
+];
+
+/** The seed row of a code, or undefined for a catalog-only bank. */
+export const atmBankSeedOf = (code: string): AtmBankSeed | undefined =>
+  ATM_BANK_SEED.find((seed) => seed.code === code);
 
 /** Charts 1–2: the workbook theme's accent1 (xl/theme/theme1.xml), the Excel's single series (DEC-19). */
 export const ATM_REPORT_TOTALS_COLOR = '#4472C4';
 
-/** D5 default bankCode → Operations label (legacy labels: reports_atm.ejs:350 MISR, :403 NBE FOREX). */
-export const ATM_DEFAULT_OPS_BANK_LABELS: Readonly<Record<AtmBankCode, string>> = {
-  NBE: 'NBE',
-  BM: 'MISR',
-  CIB: 'CIB',
-  HDB: 'HDB',
-  BRK: 'BRK',
-  NXT: 'NXT',
-};
+/** A catalog colour: `#RRGGBB`, upper-case (the seeds' own spelling). */
+export const ATM_BANK_COLOR_PATTERN = /^#[0-9A-F]{6}$/;
+
+/**
+ * The colours a new bank is offered by default — the first one no bank uses yet. Excel's own
+ * standard and theme colours (the workbook's palette), none equal to a seed's or to
+ * `ATM_REPORT_TOTALS_COLOR`, so a seventh bank's bar, series and map pin never read as another's.
+ */
+export const ATM_BANK_EXTRA_COLORS: readonly string[] = [
+  '#7030A0',
+  '#00B0F0',
+  '#00B050',
+  '#FF66CC',
+  '#7F6000',
+  '#008080',
+  '#C55A11',
+  '#92D050',
+];
 
 /** Import-only spellings (exact match after trim). Row 2120 is the only one. */
-export const ATM_REGISTER_BANK_ALIASES: Readonly<Record<string, AtmBankCode>> = { نيكست: 'NXT' };
+export const ATM_REGISTER_BANK_ALIASES: Readonly<Record<string, AtmSeedBankCode>> = {
+  نيكست: 'NXT',
+};
 
 /** The Operations bank label an NBE machine in an ` FX` area may carry (D5, DEC-16). */
 export const ATM_NBE_FOREX_LABEL = 'NBE FOREX';
@@ -72,18 +156,125 @@ export const ATM_NBE_FOREX_LABEL = 'NBE FOREX';
 /**
  * D6: per-bank ID shapes — a WARNING, never a block. HDB is written three ways in the workbook
  * (`HDB - n`, `HDB-ATM n`, `HDB-ATMn`) and all three are accepted; which one is canonical is EG-7.
+ *
+ * Kept in code for the six only, never in the catalog: a regex typed by a user would run on every
+ * register write and every layout import row (a ReDoS risk, and a regex editor) for what is only a
+ * warning. A Map, so a crafted bank key cannot reach `Object.prototype`.
  */
-export const ATM_REGISTER_ID_FORMATS: Readonly<Record<AtmBankCode, RegExp>> = {
-  NBE: /^\d{8}$/,
-  BM: /^\d{7}$/,
-  CIB: /^\d{1,4}$/,
-  HDB: /^HDB(?: - |-ATM ?)\d+$/,
-  BRK: /^BRK[NW]\d+$/,
-  NXT: /^ATM\d{4}$/,
-};
+export const ATM_REGISTER_ID_FORMATS: ReadonlyMap<string, RegExp> = new Map<string, RegExp>([
+  ['NBE', /^\d{8}$/],
+  ['BM', /^\d{7}$/],
+  ['CIB', /^\d{1,4}$/],
+  ['HDB', /^HDB(?: - |-ATM ?)\d+$/],
+  ['BRK', /^BRK[NW]\d+$/],
+  ['NXT', /^ATM\d{4}$/],
+]);
 
+/** A bank with no known shape never warns. */
 export const atmRegisterIdFormatOk = (bank: AtmBankCode, code: string): boolean =>
-  ATM_REGISTER_ID_FORMATS[bank].test(code);
+  ATM_REGISTER_ID_FORMATS.get(bank)?.test(code) ?? true;
+
+// ── Bank catalog (DEC-35) — `atm_banks`, GET/POST /atm/banks, PATCH /atm/banks/:code ────────────
+
+/**
+ * One catalog bank. `code` is never changed after creation: it is the key stored on register
+ * entries, plans, plan lines, preparations, standard loads, layout-import runs, the note-counter
+ * key, URLs (`?bank=`) and report keys (`s1.NBE`). `opsLabel` is the ONE text a receipt writes on
+ * `atm_machines.bankName`; `formerOpsLabels` keeps the labels it had, so machines that still carry
+ * an old text keep resolving to the bank. Nothing is ever deleted — `isActive: false` archives.
+ */
+export interface AtmBankDto {
+  id: string;
+  code: AtmBankCode;
+  name: LocalizedString;
+  opsLabel: string;
+  /** System-managed: every earlier `opsLabel`, oldest first. The API never edits it directly. */
+  formerOpsLabels: string[];
+  color: string;
+  sortOrder: number;
+  isActive: boolean;
+  /** One of the workbook's six — always shown in the Data Report, as in the sheet. */
+  isSeed: boolean;
+  /** Whether the register warns on this bank's ID shape (`ATM_REGISTER_ID_FORMATS`, the six only). */
+  hasIdFormat: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Arabic AND English, both required: the register, the report and the map show the reader's own. */
+const AtmBankNameSchema = z
+  .object({ ar: z.string().trim().min(1).max(80), en: z.string().trim().min(1).max(80) })
+  .strict();
+
+/** `<input type="color">` answers lower-case; the catalog stores the seeds' upper-case spelling. */
+const AtmBankColorSchema = z.string().trim().toUpperCase().regex(ATM_BANK_COLOR_PATTERN);
+
+/** The setting's own limit (`AtmRegisterBankLabelsSettingSchema`), which `opsLabel` replaced. */
+const AtmBankOpsLabelSchema = z.string().trim().min(1).max(64);
+
+const AtmBankSortOrderSchema = z.number().int().min(0).max(100_000);
+
+/**
+ * POST /atm/banks — `atmBank.create` at ORGANIZATION scope (a bank is one fact about the company).
+ * The code is upper-cased before its shape is checked, so `qnb` is QNB. Without an `opsLabel`
+ * the code is the label — what Operations type for most banks (NBE, CIB, HDB …). Colour and order
+ * default on the server (the first unused `ATM_BANK_EXTRA_COLORS`, max `sortOrder` + 10).
+ */
+export const CreateAtmBankSchema = z
+  .object({
+    code: z.string().trim().toUpperCase().regex(ATM_BANK_CODE_PATTERN),
+    name: AtmBankNameSchema,
+    opsLabel: AtmBankOpsLabelSchema.optional(),
+    color: AtmBankColorSchema.optional(),
+    sortOrder: AtmBankSortOrderSchema.optional(),
+  })
+  .strict()
+  .transform((input) => ({ ...input, opsLabel: input.opsLabel ?? input.code }));
+export type CreateAtmBankInput = z.input<typeof CreateAtmBankSchema>;
+export type CreateAtmBank = z.output<typeof CreateAtmBankSchema>;
+
+/**
+ * PATCH /atm/banks/:code — `atmBank.edit` at organization scope, versioned. The code is not
+ * editable (see `AtmBankDto`). A new `opsLabel` moves the old one to `formerOpsLabels`; existing
+ * machines keep the text they carry. Archiving is always allowed and deletes nothing.
+ */
+export const UpdateAtmBankSchema = z
+  .object({
+    name: AtmBankNameSchema.optional(),
+    opsLabel: AtmBankOpsLabelSchema.optional(),
+    color: AtmBankColorSchema.optional(),
+    sortOrder: AtmBankSortOrderSchema.optional(),
+    isActive: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateAtmBank = z.infer<typeof UpdateAtmBankSchema>;
+
+/**
+ * The key a label is matched on (`opsLabelKeys`, and a spelling against them): trimmed and
+ * upper-cased, so «nbe » and «NBE» are the same bank and can never map to two.
+ */
+export const atmBankLabelKey = (label: string): string => label.trim().toUpperCase();
+
+/**
+ * A bank's name in the reader's language: the catalog's (when the caller has it), else the seed's,
+ * else the code itself — so a missed consumer, or a page whose catalog is still loading, shows a
+ * code rather than nothing.
+ */
+export const atmBankName = (
+  code: AtmBankCode,
+  locale: Locale,
+  banks?: readonly { code: AtmBankCode; name: LocalizedString }[],
+): string =>
+  (banks?.find((bank) => bank.code === code) ?? atmBankSeedOf(code))?.name[locale] ?? code;
+
+/** A bank's colour: the catalog's, else the seed's, else null (the web draws it grey). */
+export const atmBankColor = (
+  code: AtmBankCode,
+  banks?: readonly { code: AtmBankCode; color: string }[],
+): string | null =>
+  (banks?.find((bank) => bank.code === code) ?? atmBankSeedOf(code))?.color ?? null;
 
 // ── Branch codes (D4) ───────────────────────────────────────────────────────────────────────────
 
@@ -132,10 +323,17 @@ export const AtmRegisterBranchCodesSettingSchema = z
   );
 export type AtmRegisterBranchCodesSetting = z.infer<typeof AtmRegisterBranchCodesSettingSchema>;
 
-/** `atm.register.bankLabels` — a stored value that omits a bank falls back to that bank's default. */
+/**
+ * `atm.register.bankLabels` — RETIRED (DEC-35). The catalog's `opsLabel` replaced it; the boot seed
+ * reads it ONCE, when it first inserts the six, so an administrator's curated label survives the
+ * move. Still declared so a stored value keeps validating, and still the six only: no catalog bank
+ * added later was ever in it.
+ */
 export const AtmRegisterBankLabelsSettingSchema = z
   .array(
-    z.object({ bankCode: AtmBankCodeSchema, label: z.string().trim().min(1).max(64) }).strict(),
+    z
+      .object({ bankCode: z.enum(ATM_SEED_BANK_CODES), label: z.string().trim().min(1).max(64) })
+      .strict(),
   )
   .max(6)
   .refine(
@@ -144,8 +342,9 @@ export const AtmRegisterBankLabelsSettingSchema = z
   );
 export type AtmRegisterBankLabelsSetting = z.infer<typeof AtmRegisterBankLabelsSettingSchema>;
 
-export const ATM_DEFAULT_BANK_LABELS_SETTING: AtmRegisterBankLabelsSetting = ATM_BANK_CODES.map(
-  (bankCode) => ({ bankCode, label: ATM_DEFAULT_OPS_BANK_LABELS[bankCode] }),
+/** The retired setting's default — the seeds' own labels. */
+export const ATM_DEFAULT_BANK_LABELS_SETTING: AtmRegisterBankLabelsSetting = ATM_BANK_SEED.map(
+  (seed) => ({ bankCode: seed.code, label: seed.opsLabel }),
 );
 
 // ── Status, dates, active (D1, D7) ──────────────────────────────────────────────────────────────
@@ -178,8 +377,11 @@ export const AtmRegisterDateSchema = z
 
 // ── Data Report — orders, cells and the ONE fold (D7) ───────────────────────────────────────────
 
-/** Section 1 categories, left to right as the sheet lays them out (AD2..AI2). */
-export const ATM_REPORT_SECTION1_BANKS: readonly AtmBankCode[] = [
+/**
+ * Section 1 categories, left to right as the sheet lays them out (AD2..AI2). The SHEET's order of
+ * its six — a catalog bank is appended by `atmReportBankOrders`, never slotted in here.
+ */
+export const ATM_REPORT_SECTION1_BANKS: readonly AtmSeedBankCode[] = [
   'NXT',
   'NBE',
   'BM',
@@ -207,8 +409,8 @@ export const ATM_REPORT_SECTION3_BRANCHES: readonly AtmRegisterBranchCode[] = [
   'EGYCASH-6',
   'EGYCASH-7',
 ];
-/** Section 3 columns (AE7..AJ7). */
-export const ATM_REPORT_SECTION3_BANKS: readonly AtmBankCode[] = [
+/** Section 3 columns (AE7..AJ7) — the sheet's six; a catalog bank is appended (DEC-40). */
+export const ATM_REPORT_SECTION3_BANKS: readonly AtmSeedBankCode[] = [
   'NBE',
   'BM',
   'CIB',
@@ -216,6 +418,29 @@ export const ATM_REPORT_SECTION3_BANKS: readonly AtmBankCode[] = [
   'BRK',
   'NXT',
 ];
+
+/** The report's bank orders once the catalog holds banks beyond the sheet's six. */
+export interface AtmReportBankOrders {
+  section1: AtmBankCode[];
+  section3: AtmBankCode[];
+}
+
+/**
+ * DEC-40: the six keep their sheet positions — so the page still reads like the workbook it
+ * replaced — and every other bank follows, in the order given (the server passes the catalog's
+ * `sortOrder`, then code): after BRK in section 1, after NXT in section 3. A seed code or a repeat
+ * in `extras` is dropped, so a careless caller cannot show a bank twice.
+ */
+export const atmReportBankOrders = (extras: readonly AtmBankCode[]): AtmReportBankOrders => {
+  const tail: AtmBankCode[] = [];
+  for (const code of extras) {
+    if (!isAtmSeedBankCode(code) && !tail.includes(code)) tail.push(code);
+  }
+  return {
+    section1: [...ATM_REPORT_SECTION1_BANKS, ...tail],
+    section3: [...ATM_REPORT_SECTION3_BANKS, ...tail],
+  };
+};
 
 /** One group of ACTIVE entries. `branchCode:null` = branch set but not mapped. */
 export interface AtmRegisterReportGroup {
@@ -225,11 +450,14 @@ export interface AtmRegisterReportGroup {
 }
 
 export interface AtmRegisterReportCounts {
-  /** AD3..AI3 + AJ3 (total = Σ the six bank cells, as `=SUM(AD3:AI3)`). */
+  /**
+   * AD3..AI3 + AJ3, one cell per bank folded (the six, then any catalog bank). `total` = Σ the
+   * bank cells, as `=SUM(AD3:AI3)` — a bank code is upper-case, so it can never be `total`.
+   */
   section1: Record<AtmBankCode, number> & { total: number };
   /** AD5..AJ5 + AK5 (total = Σ the branch cells shown). Only branches in `branchesShown`. */
   section2: Partial<Record<AtmRegisterBranchCode, number>> & { total: number };
-  /** rows 8–14 × AE..AJ. No totals (the Excel has none). */
+  /** rows 8–14 × one column per bank folded. No totals (the Excel has none). */
   section3: Partial<Record<AtmRegisterBranchCode, Record<AtmBankCode, number>>>;
   /** ACTIVE with a branch outside the mapping: counted in section 1 only. */
   activeWithUnmappedBranch: number;
@@ -237,56 +465,68 @@ export interface AtmRegisterReportCounts {
   activeWithoutBank: number;
 }
 
-const zeroBanks = (): Record<AtmBankCode, number> => ({
-  NBE: 0,
-  BM: 0,
-  CIB: 0,
-  HDB: 0,
-  BRK: 0,
-  NXT: 0,
-});
+const zeroBanks = (banks: readonly AtmBankCode[]): Record<AtmBankCode, number> =>
+  Object.fromEntries(banks.map((bank) => [bank, 0]));
 
 /**
  * The single implementation of D7 — used by the report endpoint AND the import's 57-number check,
  * so the page and the cut-over check cannot disagree about what a cell counts.
  *
  * Every cell is a number (0 when nothing), never absent: each shown branch is present in section 2
- * and carries all six banks in section 3. `groups` must already be ACTIVE entries only — the fold
- * counts, it does not judge (`isAtmRegisterActive` is the judge).
+ * and carries every folded bank in section 3. `groups` must already be ACTIVE entries only — the
+ * fold counts, it does not judge (`isAtmRegisterActive` is the judge).
+ *
+ * `banks` defaults to the six, which is what the workbook knows: the import's 57-cell check folds
+ * with the default and stays the sheet's arithmetic. The report endpoint passes the catalog's
+ * banks. A group whose bank is NOT in `banks` is still counted — appended as its own cell (sorted,
+ * so the answer does not depend on the order the groups arrived in) — because dropping it would
+ * make section 1's total disagree with section 2's for the same entries.
  */
 export const foldAtmRegisterReport = (
   groups: readonly AtmRegisterReportGroup[],
   branchesShown: readonly AtmRegisterBranchCode[] = ATM_REGISTER_BRANCH_CODES,
+  banks: readonly AtmBankCode[] = ATM_SEED_BANK_CODES,
 ): AtmRegisterReportCounts => {
+  const listed = new Set<AtmBankCode>(banks);
+  const unlisted = new Set<AtmBankCode>();
+  for (const { bankCode } of groups) {
+    if (bankCode !== null && !listed.has(bankCode)) unlisted.add(bankCode);
+  }
+  const folded = [...listed, ...[...unlisted].sort()];
+
   const shown = new Set<AtmRegisterBranchCode>(branchesShown);
-  const section1: Record<AtmBankCode, number> & { total: number } = { ...zeroBanks(), total: 0 };
+  const section1: Record<AtmBankCode, number> & { total: number } = {
+    ...zeroBanks(folded),
+    total: 0,
+  };
   const section2: Partial<Record<AtmRegisterBranchCode, number>> & { total: number } = { total: 0 };
   const section3: Partial<Record<AtmRegisterBranchCode, Record<AtmBankCode, number>>> = {};
   for (const code of shown) {
     section2[code] = 0;
-    section3[code] = zeroBanks();
+    section3[code] = zeroBanks(folded);
   }
   let activeWithUnmappedBranch = 0;
   let activeWithoutBank = 0;
 
   for (const { branchCode, bankCode, count } of groups) {
-    if (bankCode !== null) section1[bankCode] += count;
+    if (bankCode !== null) section1[bankCode] = (section1[bankCode] ?? 0) + count;
     if (branchCode === null) activeWithUnmappedBranch += count;
     if (bankCode === null) activeWithoutBank += count;
     if (branchCode === null || !shown.has(branchCode)) continue;
     section2[branchCode] = (section2[branchCode] ?? 0) + count;
     const row = section3[branchCode];
-    if (bankCode !== null && row !== undefined) row[bankCode] += count;
+    if (bankCode !== null && row !== undefined) row[bankCode] = (row[bankCode] ?? 0) + count;
   }
 
-  section1.total = ATM_BANK_CODES.reduce((sum, bank) => sum + section1[bank], 0);
+  section1.total = folded.reduce((sum, bank) => sum + (section1[bank] ?? 0), 0);
   section2.total = [...shown].reduce((sum, code) => sum + (section2[code] ?? 0), 0);
   return { section1, section2, section3, activeWithUnmappedBranch, activeWithoutBank };
 };
 
-/** One of the 57 numeric cells of the Data Report sheet, for the import check (§6.5). */
+/** One numeric cell of the Data Report — the sheet's 57, or a catalog bank's (`cell: ''`). */
 export interface AtmReportCellRef {
   key: string;
+  /** The sheet address; '' for a catalog bank's cell, which the workbook does not have. */
   cell: string;
   section: 1 | 2 | 3;
   branchCode: AtmRegisterBranchCode | null;
@@ -298,20 +538,38 @@ export interface AtmReportCellRef {
 const REPORT_COLUMNS = ['AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK'] as const;
 const reportColumn = (index: number): string => REPORT_COLUMNS[index] ?? '';
 
+/** A seed's sheet column in a section, by ITS sheet position — '' for a catalog bank. */
+const sheetColumn = (
+  sheetOrder: readonly AtmSeedBankCode[],
+  bankCode: AtmBankCode,
+  offset: number,
+): string => {
+  const index = isAtmSeedBankCode(bankCode) ? sheetOrder.indexOf(bankCode) : -1;
+  return index === -1 ? '' : reportColumn(index + offset);
+};
+
 /**
- * The 57 numeric cells, built from the orders above: section 1 AD3..AI3 + AJ3 total (keys
- * `s1.NXT` … `s1.total`), section 2 AD5..AJ5 + AK5 total (`s2.EGYCASH-7` … `s2.total`), section 3
- * rows 8..14 × AE..AJ (`s3.EGYCASH-1.NBE` …). 7 + 8 + 42 = 57.
+ * The Data Report's numeric cells for the given bank orders, keyed as the sheet's always were:
+ * section 1 `s1.<bank>` … `s1.total`, section 2 `s2.EGYCASH-7` … `s2.total`, section 3
+ * `s3.<branch>.<bank>`. A seed carries its sheet letter (AD3.., AE8..) wherever the order puts it,
+ * a catalog bank carries `cell: ''` (the letters are shown only in the import's check, which knows
+ * the six), and the totals keep AJ3 and AK5 — they are the workbook's totals.
  */
-export const ATM_DATA_REPORT_CELLS: readonly AtmReportCellRef[] = [
-  ...ATM_REPORT_SECTION1_BANKS.map((bankCode, i): AtmReportCellRef => ({
-    key: `s1.${bankCode}`,
-    cell: `${reportColumn(i)}3`,
-    section: 1,
-    branchCode: null,
-    bankCode,
-    isTotal: false,
-  })),
+export const buildAtmReportCells = (
+  section1Banks: readonly AtmBankCode[],
+  section3Banks: readonly AtmBankCode[],
+): AtmReportCellRef[] => [
+  ...section1Banks.map((bankCode): AtmReportCellRef => {
+    const column = sheetColumn(ATM_REPORT_SECTION1_BANKS, bankCode, 0);
+    return {
+      key: `s1.${bankCode}`,
+      cell: column === '' ? '' : `${column}3`,
+      section: 1,
+      branchCode: null,
+      bankCode,
+      isTotal: false,
+    };
+  }),
   {
     key: 's1.total',
     cell: `${reportColumn(ATM_REPORT_SECTION1_BANKS.length)}3`,
@@ -337,25 +595,38 @@ export const ATM_DATA_REPORT_CELLS: readonly AtmReportCellRef[] = [
     isTotal: true,
   },
   ...ATM_REPORT_SECTION3_BRANCHES.flatMap((branchCode, row) =>
-    ATM_REPORT_SECTION3_BANKS.map((bankCode, col): AtmReportCellRef => ({
-      key: `s3.${branchCode}.${bankCode}`,
-      cell: `${reportColumn(col + 1)}${String(row + 8)}`,
-      section: 3,
-      branchCode,
-      bankCode,
-      isTotal: false,
-    })),
+    section3Banks.map((bankCode): AtmReportCellRef => {
+      const column = sheetColumn(ATM_REPORT_SECTION3_BANKS, bankCode, 1);
+      return {
+        key: `s3.${branchCode}.${bankCode}`,
+        cell: column === '' ? '' : `${column}${String(row + 8)}`,
+        section: 3,
+        branchCode,
+        bankCode,
+        isTotal: false,
+      };
+    }),
   ),
 ];
 
-/** The value a fold gives one sheet cell. A branch outside `branchesShown` reads 0. */
+/**
+ * The sheet's 57 numeric cells: section 1 AD3..AI3 + AJ3 total, section 2 AD5..AJ5 + AK5 total,
+ * section 3 rows 8..14 × AE..AJ. 7 + 8 + 42 = 57 — byte for byte what this constant held before the
+ * catalog (pinned by a spec), because the import's cut-over check compares against the workbook.
+ */
+export const ATM_DATA_REPORT_CELLS: readonly AtmReportCellRef[] = buildAtmReportCells(
+  ATM_REPORT_SECTION1_BANKS,
+  ATM_REPORT_SECTION3_BANKS,
+);
+
+/** The value a fold gives one cell. A branch outside `branchesShown`, or a bank not folded, reads 0. */
 export const readAtmReportCell = (
   counts: AtmRegisterReportCounts,
   ref: AtmReportCellRef,
 ): number => {
   if (ref.section === 1) {
     if (ref.isTotal) return counts.section1.total;
-    return ref.bankCode === null ? 0 : counts.section1[ref.bankCode];
+    return ref.bankCode === null ? 0 : (counts.section1[ref.bankCode] ?? 0);
   }
   if (ref.section === 2) {
     if (ref.isTotal) return counts.section2.total;
@@ -666,6 +937,12 @@ export const UpdateAtmRegisterEntrySchema = z
     handoverName: text(300).optional(),
     /** Ended only, K. */
     handoverNotes: text(4000).optional(),
+    /**
+     * DEC-37 «بيانات ناقصة»: Efficiency ticks it off once they have completed a receipt Operations
+     * recorded from data-edit (or sets it on any entry they mean to come back to). Never cleared by
+     * the server on its own — a filled field is not proof the row was reviewed.
+     */
+    dataIncomplete: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -727,6 +1004,8 @@ export const ListAtmRegisterEntriesQuerySchema = PaginationQuerySchema.extend({
   area: z.string().trim().min(1).max(120).optional(),
   search: z.string().trim().min(1).max(100).optional(),
   withIssues: booleanQuery().optional(),
+  /** DEC-37: true → only entries flagged «بيانات ناقصة»; false → only those not flagged. */
+  incomplete: booleanQuery().optional(),
 }).strict();
 export type ListAtmRegisterEntriesQuery = z.infer<typeof ListAtmRegisterEntriesQuerySchema>;
 
@@ -785,6 +1064,15 @@ export const ATM_REGISTER_MASTER_STATES = [
 ] as const;
 export type AtmRegisterMasterState = (typeof ATM_REGISTER_MASTER_STATES)[number];
 
+/**
+ * Where an entry came from. `operations` (DEC-36): recorded by the server when Operations added the
+ * machine on /atm/data-edit — the owner's call that such a machine lands in the register as an
+ * OPEN, linked receipt dated the add day. Its own value, not `manual`, so Efficiency can see that
+ * nobody on their side typed it.
+ */
+export const ATM_REGISTER_SOURCES = ['manual', 'import', 'operations'] as const;
+export type AtmRegisterSource = (typeof ATM_REGISTER_SOURCES)[number];
+
 export interface AtmRegisterImportIssueDto {
   code: AtmRegisterImportIssueCode;
   column: string | null;
@@ -837,7 +1125,13 @@ export interface AtmRegisterEntryDto {
   /** Null when !secretsVisible. */
   handoverNotes: string | null;
   status: AtmRegisterStatus;
-  source: 'manual' | 'import';
+  source: AtmRegisterSource;
+  /**
+   * DEC-37 «بيانات ناقصة»: a stored flag, not derived from blank fields — most imported rows have
+   * legitimate blanks (DEC-32), and the key fields cannot be judged without `viewSecrets`. Set by
+   * the data-edit intake, set or cleared by Efficiency. False on every row written before it.
+   */
+  dataIncomplete: boolean;
   importRow: number | null;
   importIssues: AtmRegisterImportIssueDto[];
   version: number;
@@ -882,7 +1176,19 @@ export interface AtmRegisterRevealDto {
 }
 
 export interface AtmRegisterMetaDto {
-  banks: { code: AtmBankCode; name: LocalizedString; opsLabel: string; color: string }[];
+  /**
+   * EVERY catalog bank, archived ones included (an entry may still carry one), in `sortOrder`.
+   * A picker offers the active ones plus the entry's current bank.
+   */
+  banks: {
+    code: AtmBankCode;
+    name: LocalizedString;
+    opsLabel: string;
+    color: string;
+    isActive: boolean;
+    sortOrder: number;
+    isSeed: boolean;
+  }[];
   branches: {
     code: AtmRegisterBranchCode;
     name: LocalizedString;
@@ -896,9 +1202,19 @@ export interface AtmRegisterMetaDto {
 
 export interface AtmRegisterBranchOptionsDto {
   branchId: string;
-  /** ACTIVE atm_ref_labels of that branch. */
+  /** ACTIVE atm_ref_labels of that branch (stored names; kept for older screens). */
   areaLabels: string[];
   bankLabels: string[];
+  /**
+   * The same ACTIVE area labels with their display names (DEC-38): `name` is what an entry and a
+   * machine store, `nameAr`/`nameEn` are what the picker shows.
+   */
+  areaOptions: { name: string; nameAr: string | null; nameEn: string | null }[];
+  /**
+   * The branch's ACTIVE Operations spellings that are mapped to an ACTIVE catalog bank — what the
+   * Operations-label select offers once a bank is chosen (DEC-25, now enforced by the server).
+   */
+  bankVariants: { name: string; bankCode: AtmBankCode }[];
   /** Distinct entry values in that branch. */
   areas: string[];
   operationTypes: string[];
@@ -907,12 +1223,26 @@ export interface AtmRegisterBranchOptionsDto {
   hubs: string[];
 }
 
+/** One bank as the report draws it — every bank the report folded, archived ones included. */
+export interface AtmRegisterReportBankDto {
+  code: AtmBankCode;
+  name: LocalizedString;
+  color: string;
+  isActive: boolean;
+  isSeed: boolean;
+}
+
 export interface AtmRegisterReportDto {
   /** ISO — the as-of stamp (D7): computation time = data time. */
   generatedAt: string;
   /** Mapped ∩ in scope (DEC-27). */
   branchesShown: AtmRegisterBranchCode[];
   counts: AtmRegisterReportCounts;
+  /** The banks of `section1Banks`, with what the page needs to name and colour them. */
+  banks: AtmRegisterReportBankDto[];
+  /** DEC-40: `atmReportBankOrders` of the catalog — the sheet's six, then every other bank. */
+  section1Banks: AtmBankCode[];
+  section3Banks: AtmBankCode[];
 }
 
 // ── Import vocabulary (§6) ──────────────────────────────────────────────────────────────────────

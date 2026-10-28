@@ -5,7 +5,8 @@
 //   · no plan for the day → «لا توجد خطة لهذا اليوم.», with «إنشاء الخطة» only for manage;
 //   · the print actions only with `can.print`, the Excel export only with `can.export`;
 //   · the header figures are counts — the money total stays in the footer (UI-30);
-//   · lines issued after the last «بيان التغذية» print raise the stale notice.
+//   · lines issued after the last «بيان التغذية» print raise the stale notice;
+//   · a bank added to the catalog and enabled for settlements (DEC-35) is named from the catalog.
 //
 // Every code, name, count and amount below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -15,6 +16,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
+  ATM_BANK_SEED,
+  type AtmBankDto,
   type AtmPlanLineDto,
   type AtmSettlementContextDto,
   type AtmSettlementPlanDto,
@@ -32,6 +35,7 @@ import {
   settlementPlanKey,
   standardLoadsKey,
 } from './api/settlements-queries';
+import { atmBanksKey } from './api/atm-queries';
 import { cairoTomorrow } from './lib/settlement-dates';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
@@ -153,9 +157,36 @@ const store = () =>
     },
   });
 
-const render = (ctx: AtmSettlementContextDto, day: AtmSettlementPlanDto | null): string => {
+/** `GET /atm/banks`: the six seeds and a synthetic bank added since. */
+const CATALOG: AtmBankDto[] = [
+  ...ATM_BANK_SEED.map((seed) => ({ ...seed, isSeed: true, hasIdFormat: true })),
+  {
+    code: 'QNB',
+    name: { ar: 'بنك تجريبي سابع', en: 'SYN Seventh Bank' },
+    color: '#7030A0',
+    opsLabel: 'QNB',
+    sortOrder: 70,
+    isSeed: false,
+    hasIdFormat: false,
+  },
+].map((bank, i) => ({
+  ...bank,
+  id: `66e0000000000000000000${String(i).padStart(2, '0')}`,
+  formerOpsLabels: [],
+  isActive: true,
+  version: 1,
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+}));
+
+const render = (
+  ctx: AtmSettlementContextDto,
+  day: AtmSettlementPlanDto | null,
+  catalog: AtmBankDto[] | null = CATALOG,
+): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(settlementContextKey('plans'), ctx);
+  if (catalog !== null) qc.setQueryData(atmBanksKey(), catalog);
   const params = { bankCode: 'BRK' as const, date: cairoTomorrow(), branchId: BRANCH };
   qc.setQueryData(settlementPlanKey(params), { plan: day });
   qc.setQueryData(standardLoadsKey({ bankCode: 'BRK', branchId: BRANCH }), []);
@@ -364,5 +395,28 @@ describe('the line panel’s run and time (FIT-2)', () => {
     expect(schedulePatch(draft, { time: '' })).toBeNull();
     expect(schedulePatch(draft, { time: '21:30' })).toEqual({ scheduleTime: '21:30' });
     expect(schedulePatch(line(1), { time: '' })).toEqual({ scheduleTime: null });
+  });
+});
+
+describe('the bank select (DEC-35)', () => {
+  const options = (html: string): string[] =>
+    [
+      ...(/<select[^>]*id="plan-bank"[^>]*>(.*?)<\/select>/.exec(html)?.[1] ?? '').matchAll(
+        /<option[^>]*>([^<]*)<\/option>/g,
+      ),
+    ].map((m) => m[1] ?? '');
+
+  it('names a bank added to the catalog and enabled for settlements, beside the six', () => {
+    expect(options(render(context({ banks: ['BRK', 'QNB'] }), null))).toEqual([
+      'بنك البركة',
+      'بنك تجريبي سابع',
+    ]);
+  });
+
+  it('before the catalog answers, a seed keeps its name and a new bank reads as its code', () => {
+    expect(options(render(context({ banks: ['BRK', 'QNB'] }), null, null))).toEqual([
+      'بنك البركة',
+      'QNB',
+    ]);
   });
 });

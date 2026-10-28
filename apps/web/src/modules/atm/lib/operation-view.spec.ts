@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cairoDay,
+  actionTargets,
   doneRange,
   elapsedSeconds,
   formatDuration,
@@ -12,6 +13,19 @@ describe('cairoDay — the day a board shows a row on', () => {
   it('is the Cairo calendar day, not the UTC day', () => {
     // 23:30 UTC on Jan 14 is 01:30 Cairo on Jan 15 (UTC+2).
     expect(cairoDay('2026-01-14T23:30:00.000Z')).toBe('2026-01-15');
+  });
+});
+
+describe('actionTargets — a row’s own button, over the checked rows', () => {
+  const a = { id: 'a' };
+  const b = { id: 'b' };
+  const c = { id: 'c' };
+  it('on a checked row, acts on every checked row', () => {
+    expect(actionTargets(b, [a, b])).toEqual([a, b]);
+  });
+  it('on an unchecked row, acts on that row alone — the selection is not swept in', () => {
+    expect(actionTargets(c, [a, b])).toEqual([c]);
+    expect(actionTargets(c, [])).toEqual([c]);
   });
 });
 

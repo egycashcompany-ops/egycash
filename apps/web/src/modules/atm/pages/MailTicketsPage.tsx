@@ -18,6 +18,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { BulkActionBar } from '../../../shared/ui/BulkActionBar';
 import { Button } from '../../../shared/ui/Button';
@@ -42,7 +43,7 @@ export const AcceptRefusalNotice = ({
   const locale = useAppSelector((state) => state.locale.locale);
   if (refused.length === 0) return null;
   return (
-    <p className="mb-3 text-sm text-red-600 dark:text-red-400" data-refusal="maintenance-open">
+    <p className="text-sm text-red-600 dark:text-red-400" data-refusal="maintenance-open">
       {t('atm.mail.refusedOpenMaintenance', {
         count: refused.length,
         codes: joinCodes(refusedMachineCodes(refused), locale),
@@ -123,36 +124,44 @@ export const MailTicketsPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader title={t('atm.mail.title')} />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
+          بس هو اللى يعمل Scroll»): on a computer the title, the decision bar and the refusal line
+          keep their place, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader title={t('atm.mail.title')} />
 
-      <BulkActionBar count={selection.count} onClear={selection.clear}>
-        {can('atmMailTicket.decide') && (
-          <>
-            <Button variant="primary" onClick={() => setAccepting(selection.ids)}>
-              {t('atm.mail.accept')}
-            </Button>
-            <Button variant="danger" onClick={() => setRejecting(selection.ids)}>
-              {t('atm.mail.reject')}
-            </Button>
-          </>
-        )}
-      </BulkActionBar>
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          {can('atmMailTicket.decide') && (
+            <>
+              <Button variant="primary" onClick={() => setAccepting(selection.ids)}>
+                {t('atm.mail.accept')}
+              </Button>
+              <Button variant="danger" onClick={() => setRejecting(selection.ids)}>
+                {t('atm.mail.reject')}
+              </Button>
+            </>
+          )}
+        </BulkActionBar>
 
-      <AcceptRefusalNotice refused={refused} />
+        <AcceptRefusalNotice refused={refused} />
 
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(row) => row.id}
-        loading={list.isLoading}
-        error={list.error}
-        onRetry={() => void list.refetch()}
-        empty={t('atm.mail.empty')}
-        selection={selection}
-        // The duplicate row paint — the legacy's yellow background (:771), as a row class.
-        rowClassName={(row) => (row.duplication ? 'bg-yellow-50 dark:bg-yellow-950/30' : '')}
-      />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.id}
+            loading={list.isLoading}
+            error={list.error}
+            onRetry={() => void list.refetch()}
+            empty={t('atm.mail.empty')}
+            selection={selection}
+            // The duplicate row paint — the legacy's yellow background (:771), as a row class.
+            rowClassName={(row) => (row.duplication ? 'bg-yellow-50 dark:bg-yellow-950/30' : '')}
+            stickyHead
+          />
+        </div>
+      </div>
 
       <ConfirmActionDialog
         open={accepting !== null}

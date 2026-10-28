@@ -149,6 +149,18 @@ export const ErrorCodes = {
   /** One running import at a time (DEC-15). */
   ATM_REGISTER_IMPORT_RUNNING: 'ATM_REGISTER_IMPORT_RUNNING',
 
+  // ── ATM bank catalog (DEC-35; atm-efficiency-register.md) ─────────────────────────────────────
+  /** A catalog bank already holds this code (409). Codes are never reused: they key stored data. */
+  ATM_BANK_CODE_TAKEN: 'ATM_BANK_CODE_TAKEN',
+  /**
+   * The Operations label is already a bank's — another catalog bank's current or former label, or
+   * a branch spelling mapped to a bank (409). Two banks sharing a label would make a machine's
+   * bank text mean either.
+   */
+  ATM_BANK_LABEL_TAKEN: 'ATM_BANK_LABEL_TAKEN',
+  /** Another catalog bank already has this Arabic or English name, case ignored (409). */
+  ATM_BANK_NAME_TAKEN: 'ATM_BANK_NAME_TAKEN',
+
   // ── ATM machine map and zones (docs/12-planning/atm-map-zones.md) ─────────────────────────────
   /** DM-7: the branch's zone set moved since the editor loaded it (409); nothing was written. */
   ATM_MAP_ZONES_STALE: 'ATM_MAP_ZONES_STALE',

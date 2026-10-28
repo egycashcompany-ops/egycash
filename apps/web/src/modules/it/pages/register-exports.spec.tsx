@@ -22,6 +22,8 @@ import { translate } from '../../../platform/localization/i18n';
 import { CustodyPage } from './CustodyPage';
 import { AssetsListPage } from './AssetsListPage';
 import { MobileLinesPage } from './MobileLinesPage';
+import { ConsumablesPage } from './ConsumablesPage';
+import { ConsumableMovementsPage } from './ConsumableMovementsPage';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -33,6 +35,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(join(HERE, 'CustodyPage.tsx'), 'utf8');
 const ASSETS = readFileSync(join(HERE, 'AssetsListPage.tsx'), 'utf8');
 const LINES = readFileSync(join(HERE, 'MobileLinesPage.tsx'), 'utf8');
+const CONSUMABLES = readFileSync(join(HERE, 'ConsumablesPage.tsx'), 'utf8');
+const CONSUMABLE_MOVEMENTS = readFileSync(join(HERE, 'ConsumableMovementsPage.tsx'), 'utf8');
 const ar = (key: string): string => translate('ar', key);
 
 const me = (permissions: string[]): MeDto =>
@@ -63,6 +67,7 @@ const interval: ItAssetAssignmentDto = {
   assignedToEmployeeName: 'محمد أحمد علي',
   assetCode: 'AST-00012',
   assetName: 'لاب توب Lenovo',
+  assetSerialNumber: 'PF3ABC12',
   assignedByUserId: null,
   assignedAt: '2026-10-07T09:00:00.000Z',
   conditionOnIssue: null,
@@ -99,21 +104,31 @@ const asset = {
   notes: null,
   specs: null,
   accessories: [],
+  holder: {
+    employeeId: 'e-1',
+    employeeCode: '0100052',
+    employeeName: 'محمد أحمد علي',
+    assignedAt: '2026-10-07T09:00:00.000Z',
+  },
   version: 0,
   createdAt: '2026-10-07T09:00:00.000Z',
   updatedAt: '2026-10-07T09:00:00.000Z',
 };
 
-type Screen = 'custody' | 'assets' | 'lines';
+type Screen = 'custody' | 'assets' | 'lines' | 'consumables' | 'consumableMovements';
 const PATHS: Record<Screen, string> = {
   custody: '/it/custody',
   assets: '/it/assets',
   lines: '/it/mobile-lines',
+  consumables: '/it/consumables',
+  consumableMovements: '/it/consumables/movements',
 };
 const PAGES: Record<Screen, JSX.Element> = {
   custody: <CustodyPage />,
   assets: <AssetsListPage />,
   lines: <MobileLinesPage />,
+  consumables: <ConsumablesPage />,
+  consumableMovements: <ConsumableMovementsPage />,
 };
 
 const render = (screen: Screen, permissions: string[]): string => {
@@ -141,6 +156,15 @@ const render = (screen: Screen, permissions: string[]): string => {
     meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 0 },
   });
   qc.setQueryData(listKey('it', 'mobileLines', { summary: true }), { networks: [] });
+  // The consumables (FR-20): the store's active items in its own order, and the ledger, newest first.
+  qc.setQueryData(listKey('it', 'consumables', { page: 1, pageSize: 25, active: true }), {
+    items: [],
+    meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 0 },
+  });
+  qc.setQueryData(listKey('it', 'consumables', { movements: true, page: 1, pageSize: 25 }), {
+    items: [],
+    meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 0 },
+  });
   qc.setQueryData(listKey('it', 'branchOptions'), [
     { id: 'b-hq', code: '01', name: { ar: 'المهندسين', en: 'HQ' }, parentId: null },
   ]);
@@ -202,6 +226,16 @@ describe.each([
     source: LINES,
     list: 'gatherRegister(params, api.listMobileLines)',
   },
+  // FR-20 — the consumables' store: the files before «سجل الحركات», «صرف لموظف» and «إضافة صنف».
+  {
+    screen: 'consumables' as const,
+    name: 'it-consumables',
+    action: 'it.consumables.create',
+    actionPermission: 'itAsset.create',
+    filter: 'it.consumables.allTypes',
+    source: CONSUMABLES,
+    list: 'gatherRegister(params, api.listConsumables)',
+  },
 ])(
   'the $screen screen’s Excel and PDF',
   ({ screen, name, action, actionPermission, filter, source, list }) => {
@@ -243,3 +277,33 @@ describe.each([
     });
   },
 );
+
+// «حركات المستهلكات» (FR-20) has no form of its own — only the way back to the store — so it is
+// held apart: its two buttons, for everybody who can read the ledger, and nothing else.
+describe('the consumables ledger’s Excel and PDF', () => {
+  const name = 'it-consumable-movements';
+
+  it('are in the page’s header, before the way back to the store and above the filters', () => {
+    const html = render('consumableMovements', ['itAsset.view']);
+    const excel = html.indexOf(`data-export="${name}"`);
+    const pdf = html.indexOf(`data-print="${name}"`);
+    expect(excel).toBeGreaterThan(-1);
+    expect(pdf).toBeGreaterThan(excel);
+    expect(html.indexOf(ar('it.consumables.backToStore'))).toBeGreaterThan(pdf);
+    expect(pdf).toBeLessThan(html.indexOf(ar('it.consumables.movements.allKinds')));
+  });
+
+  it('say just «Excel» and «PDF» — no «تصدير»', () => {
+    const html = render('consumableMovements', ['itAsset.view']);
+    expect(buttonText(html, `data-export="${name}"`)).toBe('Excel');
+    expect(buttonText(html, `data-print="${name}"`)).toBe('PDF');
+    expect(html).not.toContain('تصدير');
+  });
+
+  it('ask for the table’s own filters, unpaged — and are not offered when the list failed', () => {
+    expect(CONSUMABLE_MOVEMENTS).toContain('gatherRegister(params, api.listConsumableMovements)');
+    expect(CONSUMABLE_MOVEMENTS).toMatch(
+      new RegExp(`\\{!isError && \\(\\s*<RegisterExportButtons\\s+name="${name}"`, 'u'),
+    );
+  });
+});

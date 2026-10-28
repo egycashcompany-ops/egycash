@@ -13,6 +13,7 @@ import {
   type ItTicketPriorityDto,
   type ItAssetAssignmentDto,
   type ItAssetDto,
+  type ItAssetHolderDto,
   type ItAssetSpecsDto,
   type ItCustodyReceiptDto,
   type ItAssetHistoryEntryDto,
@@ -25,6 +26,9 @@ import {
   type ItMobileLineHistoryEntryDto,
   type ItMobileLineReceiptDto,
   type ItMobileNetwork,
+  type ItConsumableDto,
+  type ItConsumableMemoDto,
+  type ItConsumableMovementDto,
 } from '@ecms/contracts';
 import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
@@ -47,6 +51,11 @@ import { type ItMobileLineDoc } from './mobile-lines/mobile-line.model';
 import { type ItMobileLineAssignmentDoc } from './mobile-lines/line-assignment.model';
 import { type ItMobileLineEventDoc } from './mobile-lines/line-event.model';
 import { type ItMobileLineReceiptDoc } from './mobile-lines/line-receipt.model';
+import { type ItConsumableDoc } from './consumables/consumable.model';
+import { type ItConsumableMovementDoc } from './consumables/consumable-movement.model';
+import { type ItConsumableMemoDoc } from './consumables/consumable-memo.model';
+// A pure rule, not a model: the register's «below minimum» is the store's arithmetic, said once.
+import { isBelowMin } from './consumables/consumable-stock';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -100,7 +109,50 @@ export const toItAssetSpecsDto = (
         networkAdapters: specs.networkAdapters ?? [],
       };
 
-export const toItAssetDto = (doc: ItAssetDoc): ItAssetDto => ({
+/**
+ * Who holds each asset on ONE response — «لو متسلم اسم الشخص اللى متسلمله الحاجة» — resolved by the
+ * caller and handed in: the intervals the assets point at, by id, and their employees' labels (the
+ * mobile lines' shape, without the paper). The mapper only reads the maps, so the number of
+ * round-trips a response costs is decided in one place.
+ */
+export interface ItAssetHolderLabels {
+  intervals: ReadonlyMap<string, ItAssetAssignmentDoc>;
+  employees: ItHolderLabels;
+}
+
+/**
+ * The holder an asset names — only through the interval the asset itself points at, and only while
+ * that interval is open: a stale pointer, a closed or deleted interval, or another asset's interval
+ * holds nothing. An employee the directory cannot name keeps their id, with null code and name, and
+ * the screen shows the id — never a guess.
+ */
+const assetHolder = (doc: ItAssetDoc, labels: ItAssetHolderLabels): ItAssetHolderDto | null => {
+  const pointer = doc.currentAssignmentId == null ? null : String(doc.currentAssignmentId);
+  const open = pointer === null ? undefined : labels.intervals.get(pointer);
+  if (
+    open === undefined ||
+    open.returnedAt !== null ||
+    open.isDeleted ||
+    String(open.assetId) !== String(doc._id)
+  ) {
+    return null;
+  }
+  const employeeId = String(open.assignedToEmployeeId);
+  const employee = labels.employees.get(employeeId);
+  return {
+    employeeId,
+    employeeCode: employee?.code ?? null,
+    employeeName: employee?.fullNameAr ?? null,
+    assignedAt: iso(open.assignedAt),
+  };
+};
+
+/**
+ * The labels are REQUIRED, unlike the mobile lines': a response that forgot to resolve them would
+ * say «nobody holds it» about an asset somebody holds — and `items.map(toItAssetDto)` would hand
+ * the index in as the labels. Both are type errors this way.
+ */
+export const toItAssetDto = (doc: ItAssetDoc, holders: ItAssetHolderLabels): ItAssetDto => ({
   id: String(doc._id),
   assetCode: doc.assetCode,
   name: doc.name,
@@ -144,6 +196,7 @@ export const toItAssetDto = (doc: ItAssetDoc): ItAssetDto => ({
   notes: doc.notes,
   specs: toItAssetSpecsDto(doc.specs),
   accessories: doc.accessories ?? [],
+  holder: assetHolder(doc, holders),
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
@@ -157,8 +210,15 @@ export const toItAssetDto = (doc: ItAssetDoc): ItAssetDto => ({
  */
 export type ItHolderLabels = ReadonlyMap<string, { code: string; fullNameAr: string }>;
 
-/** The asset behind each interval — what was received, resolved the same way and handed in. */
-export type ItAssetLabels = ReadonlyMap<string, { assetCode: string; name: string }>;
+/**
+ * The asset behind each interval — what was received, resolved the same way and handed in: its
+ * code, its name and its serial («تزود سيريال الأصول لما أعمل Extract»), `null` for an asset
+ * registered without one.
+ */
+export type ItAssetLabels = ReadonlyMap<
+  string,
+  { assetCode: string; name: string; serialNumber: string | null }
+>;
 
 /** Whether each receipt on a page has its signed copy — one read per page, like the labels. */
 export type ItReceiptStates = ReadonlyMap<string, { signed: boolean }>;
@@ -177,6 +237,7 @@ export const toItAssetAssignmentDto = (
     assetId: String(doc.assetId),
     assetCode: asset?.assetCode ?? null,
     assetName: asset?.name ?? null,
+    assetSerialNumber: asset?.serialNumber ?? null,
     assignedToEmployeeId: String(doc.assignedToEmployeeId),
     assignedToEmployeeCode: holder?.code ?? null,
     assignedToEmployeeName: holder?.fullNameAr ?? null,
@@ -451,6 +512,128 @@ export const toItMobileLineHistoryEntryDto = (
   actorName: doc.actorName,
   metadata: doc.metadata ?? {},
   notes: doc.notes,
+});
+
+// ── Consumables (FR-20) ─────────────────────────────────────────────────────
+
+/** An item of a store — its counters as the ledger left them, and the reorder hint derived. */
+export const toItConsumableDto = (doc: ItConsumableDoc): ItConsumableDto => ({
+  id: String(doc._id),
+  code: doc.code,
+  name: doc.name,
+  typeId: String(doc.typeId),
+  unit: doc.unit,
+  branchId: String(doc.branchId),
+  minQty: doc.minQty ?? null,
+  notes: doc.notes ?? null,
+  active: doc.active,
+  onHandQty: doc.onHandQty,
+  issuedQty: doc.issuedQty,
+  scrappedQty: doc.scrappedQty,
+  belowMin: isBelowMin(doc.onHandQty, doc.minQty ?? null),
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * What a page of the ledger shows beside each movement, resolved ONCE per page by the caller and
+ * handed in: the items, the employees (through the directory), the assets (under the reader's
+ * scope — an asset from a branch they cannot see is not named), and the memos with their signed
+ * state. The mapper only reads the maps, so what a page costs is decided in one place.
+ */
+export interface ItConsumableMovementLabels {
+  items: ReadonlyMap<string, { code: string; name: string; typeId: string }>;
+  employees: ItHolderLabels;
+  assets: ReadonlyMap<string, { assetCode: string; name: string }>;
+  memos: ReadonlyMap<string, { memoNumber: number; signed: boolean }>;
+}
+
+/**
+ * The labels are REQUIRED, as an asset's holders are: a page that forgot to resolve them would offer
+ * a memo that may be gone — and `items.map(toItConsumableMovementDto)` would hand the index in as
+ * the labels. Both are type errors this way.
+ *
+ * The memo is offered only when it can be read (`paperOf`, the lines' rule): the workforce reset
+ * keeps the ledger and purges the papers, which name the person — and a print or upload button for
+ * a paper that is gone could only fail.
+ */
+export const toItConsumableMovementDto = (
+  doc: ItConsumableMovementDoc,
+  labels: ItConsumableMovementLabels,
+): ItConsumableMovementDto => {
+  const item = labels.items.get(String(doc.consumableId));
+  const employeeId = idOrNull(doc.employeeId);
+  const employee = employeeId === null ? undefined : labels.employees.get(employeeId);
+  const assetId = idOrNull(doc.assetId);
+  const asset = assetId === null ? undefined : labels.assets.get(assetId);
+  const memoId = paperOf(idOrNull(doc.memoId), labels.memos);
+  const memo = memoId === null ? undefined : labels.memos.get(memoId);
+  return {
+    id: String(doc._id),
+    consumableId: String(doc.consumableId),
+    kind: doc.kind,
+    qty: doc.qty,
+    at: iso(doc.at),
+    branchId: String(doc.branchId),
+    consumableCode: item?.code ?? null,
+    consumableName: item?.name ?? null,
+    typeId: item?.typeId ?? null,
+    employeeId,
+    employeeCode: employee?.code ?? null,
+    employeeName: employee?.fullNameAr ?? null,
+    assetId,
+    assetCode: asset?.assetCode ?? null,
+    assetName: asset?.name ?? null,
+    reason: doc.reason ?? null,
+    memoId,
+    memoNumber: memo?.memoNumber ?? null,
+    memoSigned: memo === undefined ? null : memo.signed,
+    byUserId: idOrNull(doc.byUserId),
+    notes: doc.notes ?? null,
+    createdAt: iso(doc.createdAt),
+  };
+};
+
+/** A memo — the paper as it was written (a snapshot), plus whether its signed copy is in. */
+export const toItConsumableMemoDto = (doc: ItConsumableMemoDoc): ItConsumableMemoDto => ({
+  id: String(doc._id),
+  memoNumber: doc.memoNumber,
+  issuedAt: iso(doc.issuedAt),
+  employeeId: String(doc.employeeId),
+  employeeName: doc.employeeName ?? null,
+  employeeCode: doc.employeeCode ?? null,
+  jobTitle: orgName(doc.jobTitle),
+  issuedByName: doc.issuedByName ?? null,
+  notes: doc.notes ?? null,
+  lines: doc.lines.map((line) => ({
+    consumableId: String(line.consumableId),
+    movementId: String(line.movementId),
+    code: line.code,
+    name: line.name,
+    typeName: orgName(line.typeName),
+    unit: line.unit,
+    qty: line.qty,
+    reason: line.reason,
+    assetId: idOrNull(line.assetId),
+    assetCode: line.assetCode ?? null,
+    assetName: line.assetName ?? null,
+  })),
+  branchId: String(doc.branchId),
+  issuedByUserId: idOrNull(doc.issuedByUserId),
+  signedCopy:
+    doc.signedCopy == null
+      ? null
+      : {
+          fileId: String(doc.signedCopy.fileId),
+          fileName: doc.signedCopy.fileName,
+          mime: doc.signedCopy.mime,
+          size: doc.signedCopy.size,
+          uploadedAt: iso(doc.signedCopy.uploadedAt),
+        },
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
 });
 
 // ── Help desk (IT-3) ────────────────────────────────────────────────────────

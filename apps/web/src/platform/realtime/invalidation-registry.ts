@@ -444,6 +444,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['it', 'mobileLines'],
     ['it', 'mobileLineAssignments'],
   ],
+  // FR-20 — the consumables are ONE subtree: a movement moves the item's figures, the ledger's rows
+  // (the movements screen, an asset's and a person's cards) and, for an issue, the memo they show.
+  'it.consumable': [['it', 'consumables']],
+  // A memo's signed copy shows on the ledger's rows («موقّع» / «بانتظار التوقيع»).
+  'it.consumableMemo': [['it', 'consumables']],
   'it.catalogItem': [
     ['it', 'catalogs'],
     ['it', 'priorities'],

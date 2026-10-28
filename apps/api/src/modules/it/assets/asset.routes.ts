@@ -24,6 +24,7 @@ import {
   deleteItAsset,
   getItAsset,
   getItAssetByCode,
+  listItAssetNames,
   listItAssets,
   renderItAssetLabels,
   updateItAsset,
@@ -48,6 +49,15 @@ export const buildItAssetsRouter = (): Router => {
     authorize('itAsset.view'),
     validate({ query: ListItAssetsQuerySchema }),
     asyncHandler(listItAssets),
+  );
+  // The name filter's options (`?name=` above) — under the read grant and its scope, so a reader is
+  // offered only the names of assets they can see. Before '/:id', like every literal segment here.
+  router.get(
+    '/names',
+    authenticate,
+    authorize('itAsset.view'),
+    validate({ query: z.object({}).strict() }),
+    asyncHandler(listItAssetNames),
   );
   // Before '/:id' so the literal segment is not swallowed by the id matcher.
   router.get(

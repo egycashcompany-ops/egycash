@@ -7,7 +7,9 @@
 // software register — products, installations, licences and the expiry sweep (ADR-025). IT-6 adds
 // dashboards — extending THIS manifest, never adding a second one. FR-19 adds the mobile lines —
 // the company's SIM lines on their three networks, handed to an employee on the F-14 paper or to a
-// car, on the asset grants (no key and no page of their own).
+// car, on the asset grants (no key and no page of their own). FR-20 adds the consumables — each
+// branch's store of inks, cables, adapters, mice and the like, issued to an employee on a memo of
+// its own series — on the same grants, again with no key and no page.
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
@@ -34,6 +36,12 @@ import {
   itMobileLineCustodyService,
   mobileLineReceiptFileAuthorizer,
 } from './mobile-lines';
+import {
+  buildItConsumableMemosRouter,
+  buildItConsumableMovementsRouter,
+  buildItConsumablesRouter,
+  consumableMemoFileAuthorizer,
+} from './consumables';
 import { buildItPeopleRouter, buildItTechniciansRouter } from './people';
 import { expirySweep } from './shared/expiry-sweeps';
 import { registerItSettings } from './it.settings';
@@ -334,6 +342,11 @@ export const itModule: ModuleManifest = {
     { prefix: '/it/mobile-lines', router: buildItMobileLinesRouter() },
     { prefix: '/it/mobile-line-assignments', router: buildItMobileLineAssignmentsRouter() },
     { prefix: '/it/mobile-line-receipts', router: buildItMobileLineReceiptsRouter() },
+    // FR-20 — «شاشة تانية تحت خطوط المحمول تكون للمستهلكات»: each branch's store, every movement
+    // in and out of it, and the memo an employee signs for what they are issued.
+    { prefix: '/it/consumables', router: buildItConsumablesRouter() },
+    { prefix: '/it/consumable-movements', router: buildItConsumableMovementsRouter() },
+    { prefix: '/it/consumable-memos', router: buildItConsumableMemosRouter() },
     { prefix: '/it/catalog-items', router: buildItCatalogRouter() },
     { prefix: '/it/vendors', router: buildItVendorsRouter() },
     { prefix: '/it/tickets', router: buildItTicketsRouter() },
@@ -358,6 +371,9 @@ export const itModule: ModuleManifest = {
     'it_mobile_line_assignments',
     'it_mobile_line_events',
     'it_mobile_line_receipts',
+    'it_consumables',
+    'it_consumable_movements',
+    'it_consumable_memos',
     'it_catalog_items',
     'it_vendors',
     'it_sequences',
@@ -428,11 +444,13 @@ export const itModule: ModuleManifest = {
   // ADR-023 — IT answers the Files service's "may this caller see the owning entity?" for its
   // file-carrying types. Declaring them is what makes ticket and comment attachments — and a
   // receipt's signed copy (FR-18) — safe on EVERY path, including a direct file id and a download
-  // ticket. A line's acknowledgment carries one too (FR-19), under its own entity type.
+  // ticket. A line's acknowledgment carries one too (FR-19), under its own entity type, and so
+  // does a consumables memo (FR-20).
   fileEntityAuthorizers: [
     ...itFileEntityAuthorizers,
     custodyReceiptFileAuthorizer,
     mobileLineReceiptFileAuthorizer,
+    consumableMemoFileAuthorizer,
   ],
   eventSubscriptions: [
     {

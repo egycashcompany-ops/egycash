@@ -7,6 +7,7 @@ import {
   ItEvents,
   type CreateItAsset,
   type ItAssetLabels,
+  type ItAssetNamesDto,
   type ListItAssetsQuery,
   type Paginated,
   type UpdateItAsset,
@@ -14,6 +15,7 @@ import {
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
+import { getDirectoryEmployees, type DirectoryEmployee } from '../../../platform/directory';
 import { diffChanges } from '../../../shared/utils/diff';
 import { emit } from '../../../platform/kernel/event-bus';
 import { pdfDriverEnabled, renderPdfFromHtml } from '../../../platform/pdf';
@@ -23,6 +25,7 @@ import { itAssetRepository } from './asset.repository';
 import { itAssetAssignmentRepository } from './assignment.repository';
 import { itAssetEventRepository } from './asset-event.repository';
 import { itMaintenanceOrderRepository } from '../maintenance/order.repository';
+import { itConsumableMovementRepository } from '../consumables/consumable-movement.repository';
 import { nextAssetCode } from './asset-sequence';
 import { buildAssetLabelSheetHtml, renderLabelQrs } from './asset-labels';
 import {
@@ -31,6 +34,17 @@ import {
   type ItAssetSpecsSub,
   type ItAssetWarrantySub,
 } from './asset.model';
+// Types only, and imported as such: the mapper module reaches every IT model, which a service
+// that only names the label shape has no reason to load.
+import type { ItAssetHolderLabels } from '../it.mappers';
+
+/**
+ * The most names the name filter is offered. A register names its devices by model, so a few
+ * hundred names cover thousands of assets; the bound keeps the answer a list, never a dump.
+ */
+export const ASSET_NAMES_CAP = 1000;
+
+const arabicOrder = new Intl.Collator('ar');
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
 
@@ -156,6 +170,9 @@ class ItAssetService {
     if (query.categoryId !== undefined) filter.categoryId = new Types.ObjectId(query.categoryId);
     if (query.status !== undefined) filter.status = query.status;
     if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
+    // The name filter commits one of the register's own names (`names()` below), so it matches
+    // that name EXACTLY — every asset by it, and no other whose name merely contains it.
+    if (query.name !== undefined) filter.name = query.name;
     if (query.holderEmployeeId !== undefined) {
       // What they hold NOW: the open intervals, matched through the asset's own pointer to its
       // current one — so an asset returned yesterday is not «held» by yesterday's holder. The
@@ -181,6 +198,53 @@ class ItAssetService {
       sortableFields: ['createdAt', 'assetCode', 'name', 'status'],
       scope,
     });
+  }
+
+  /**
+   * The name filter's options — «زود بعد الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه
+   * للكتابة»: every name the reader's scope holds, in Arabic order, at most `ASSET_NAMES_CAP`.
+   */
+  async names(scope: ScopeSelector): Promise<ItAssetNamesDto> {
+    const values = await itAssetRepository.distinctNames(scope);
+    return {
+      names: values
+        .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+        .sort(arabicOrder.compare)
+        .slice(0, ASSET_NAMES_CAP),
+    };
+  }
+
+  /**
+   * Who holds each asset on ONE response — «لو متسلم اسم الشخص اللى متسلمله الحاجة»: the intervals
+   * the assets point at, read by id in one go, then their employees through the directory in one
+   * batch. Two reads per response, never two per row — the mobile lines' `holderLabels`. Read by id
+   * without scope: the assets were already read under the caller's, and an interval is theirs.
+   */
+  async holderLabels(assets: readonly ItAssetDoc[]): Promise<ItAssetHolderLabels> {
+    const intervals = (
+      await itAssetAssignmentRepository.findByIdsSystem(
+        assets.flatMap((asset) =>
+          asset.currentAssignmentId == null ? [] : [String(asset.currentAssignmentId)],
+        ),
+      )
+    ).filter((interval) => interval.returnedAt === null && !interval.isDeleted);
+    const employeeIds = [
+      ...new Set(intervals.map((interval) => String(interval.assignedToEmployeeId))),
+    ];
+    // Nobody to name — an asset page that is all in stock asks the directory nothing.
+    const employees =
+      employeeIds.length === 0
+        ? new Map<string, DirectoryEmployee>()
+        : await getDirectoryEmployees(employeeIds);
+    return {
+      intervals: new Map(intervals.map((interval) => [String(interval._id), interval])),
+      employees: new Map(
+        [...employees].map(([id, employee]) => [
+          id,
+          { code: employee.code, fullNameAr: employee.fullNameAr },
+        ]),
+      ),
+    };
   }
 
   async getById(id: string, scope: ScopeSelector): Promise<ItAssetDoc> {
@@ -266,10 +330,19 @@ class ItAssetService {
 
     const assetId = doc._id;
     // Ordered cheapest-first, and each one is a different kind of "it was used": a history entry,
-    // a custody interval (open OR closed), a maintenance order (an open one writes no event yet).
+    // a custody interval (open OR closed), a maintenance order (an open one writes no event yet),
+    // a consumable installed on it (FR-20 — the ledger and the signed memo name it; an issue
+    // writes no asset event).
     if (await itAssetEventRepository.exists({ subjectId: assetId })) refuse('has history');
-    if (await itAssetAssignmentRepository.exists({ assetId })) refuse('has been in someone\'s custody');
-    if (await itMaintenanceOrderRepository.exists({ assetId })) refuse('carries a maintenance order');
+    if (await itAssetAssignmentRepository.exists({ assetId })) {
+      refuse("has been in someone's custody");
+    }
+    if (await itMaintenanceOrderRepository.exists({ assetId })) {
+      refuse('carries a maintenance order');
+    }
+    if (await itConsumableMovementRepository.exists({ assetId })) {
+      refuse('has consumables installed on it');
+    }
   }
 
   /** FR-5: delete is the registered-in-error window, and nothing else. */

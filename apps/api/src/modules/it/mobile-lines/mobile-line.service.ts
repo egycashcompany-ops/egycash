@@ -269,10 +269,15 @@ class ItMobileLineService {
   }
 
   /**
-   * Edit the register's facts. Two rules beyond the form's own: the line as it ENDS UP may not be
-   * an eSIM with a card serial (an edit can change either half alone), and a line someone holds
-   * does not change branch — the interval was opened in the old one and its paper names it, so it
-   * is returned first. A new branch must also be one the caller's `itAsset.edit` reaches.
+   * Edit the register's facts. The line as it ENDS UP may not be an eSIM with a card serial (an
+   * edit can change either half alone), and a new branch must be one the caller's `itAsset.edit`
+   * reaches.
+   *
+   * A line somebody holds MAY move branch — «عايزك تفتح إنى أعدل الفرع عادي لخط من خطوط الموبايل
+   * لأن ممكن القائد يغير الفرع بتاعه»: its holder moved, and the line goes with them. Its OPEN
+   * interval and the paper it names move in the same transaction, so the branch that keeps the
+   * line now sees who holds it and can print the paper again; the line's past intervals keep the
+   * branch they were held in.
    */
   async update(
     id: string,
@@ -281,15 +286,12 @@ class ItMobileLineService {
     scope: ScopeSelector,
   ): Promise<ItMobileLineDoc> {
     const before = await this.get(id, scope);
-    if (input.branchId !== undefined && input.branchId !== String(before.branchId)) {
-      if (before.status === 'assigned') {
-        throw new BusinessRuleError(
-          `line ${before.phoneNumber} is handed over; return it before moving it to another branch`,
-        );
-      }
-      if (!keyReachesBranch(ctx, 'itAsset.edit', input.branchId)) {
-        throw new ForbiddenError('itAsset.edit does not reach this branch');
-      }
+    const toBranch =
+      input.branchId !== undefined && input.branchId !== String(before.branchId)
+        ? input.branchId
+        : null;
+    if (toBranch !== null && !keyReachesBranch(ctx, 'itAsset.edit', toBranch)) {
+      throw new ForbiddenError('itAsset.edit does not reach this branch');
     }
     const simKind = input.simKind ?? before.simKind;
     const simSerial = input.simSerial === undefined ? (before.simSerial ?? null) : input.simSerial;
@@ -317,6 +319,17 @@ class ItMobileLineService {
         session,
         scope,
       });
+      // The line's current custody, and the paper signed for it, move with the line.
+      if (toBranch !== null && after.status === 'assigned') {
+        const receiptId = await itMobileLineAssignmentRepository.moveOpenToBranch(
+          id,
+          after.branchId,
+          session,
+        );
+        if (receiptId !== null) {
+          await itMobileLineReceiptRepository.moveToBranch(receiptId, after.branchId, session);
+        }
+      }
       const fields = diffChanges(snapshot(before), snapshot(after)).map((entry) => entry.field);
       if (fields.length > 0) {
         await writeLineHistory(

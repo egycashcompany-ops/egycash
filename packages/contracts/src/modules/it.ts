@@ -21,7 +21,9 @@ import {
 
 // ── Simple catalogs (design §2.4 — one collection, kind-discriminated) ──────
 
-export const IT_CATALOG_KINDS = ['assetCategory', 'ticketCategory'] as const;
+// `consumableType` — the consumables' types («حبارات», «كابلات», «محولات» …, FR-20): localized names
+// the IT team edits, exactly what this collection already is for the asset categories.
+export const IT_CATALOG_KINDS = ['assetCategory', 'ticketCategory', 'consumableType'] as const;
 export const ItCatalogKindSchema = z.enum(IT_CATALOG_KINDS);
 export type ItCatalogKind = z.infer<typeof ItCatalogKindSchema>;
 
@@ -205,9 +207,24 @@ export interface ItAssetDto {
   specs: ItAssetSpecsDto | null;
   /** What is handed over with it («مشتملاته» — a charger, a bag…), one item per entry. */
   accessories: string[];
+  /**
+   * Who holds it right now — «لو متسلم اسم الشخص اللى متسلمله الحاجة». The OPEN custody
+   * interval's employee, read at response time through the platform directory like every
+   * holder label IT prints; null while nobody holds it (or the interval cannot be read).
+   */
+  holder: ItAssetHolderDto | null;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The holder an asset row names: the open interval's employee and when they received it. */
+export interface ItAssetHolderDto {
+  employeeId: string;
+  /** Null when the directory cannot name the employee — the screen falls back to the id. */
+  employeeCode: string | null;
+  employeeName: string | null;
+  assignedAt: string;
 }
 
 // ── The device's specifications (the custody acknowledgment's table, FR-18) ──
@@ -372,8 +389,21 @@ export const ListItAssetsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
   /** The assets this employee holds right now — an OPEN custody interval, not a past one. */
   holderEmployeeId: objectId().optional(),
+  /**
+   * «زود بعد الحالات وقبل الفئة (الاسم)» — the asset's name, EXACTLY: the name filter commits one
+   * of the register's own names (`GET /it/assets/names`), so a pick means every asset by that name.
+   */
+  name: z.string().trim().min(1).max(200).optional(),
 }).strict();
 export type ListItAssetsQuery = z.infer<typeof ListItAssetsQuerySchema>;
+
+/**
+ * The register's distinct asset names, for the name filter («Drop Down مع قابليه للكتابة»): every
+ * name the reader's scope holds, sorted — a list typed into, not a page.
+ */
+export interface ItAssetNamesDto {
+  names: string[];
+}
 
 /**
  * Label sheet request (design §4.2). Bounded: a print batch, not a bulk read — the sheet grows in
@@ -411,6 +441,11 @@ export interface ItAssetAssignmentDto {
    */
   assetCode: string | null;
   assetName: string | null;
+  /**
+   * The asset's serial — «تزود سيريال الأصول لما أعمل Extract». Read with the code and the name,
+   * under the same scope; null when the asset has none or cannot be read.
+   */
+  assetSerialNumber: string | null;
   assignedByUserId: string | null;
   assignedAt: string;
   conditionOnIssue: string | null;
@@ -520,12 +555,32 @@ export const DisposeItAssetSchema = z
   .strict();
 export type DisposeItAsset = z.infer<typeof DisposeItAssetSchema>;
 
+/** The custody register's receipt filter: the paper signed and filed, waiting, or none at all. */
+export const IT_ASSIGNMENT_RECEIPT_STATES = ['signed', 'unsigned', 'none'] as const;
+export const ItAssignmentReceiptStateSchema = z.enum(IT_ASSIGNMENT_RECEIPT_STATES);
+export type ItAssignmentReceiptState = z.infer<typeof ItAssignmentReceiptStateSchema>;
+
 export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   /** `true` → only the open interval; `false` → only closed ones. Omitted → both. */
   open: booleanQuery().optional(),
   assetId: objectId().optional(),
   employeeId: objectId().optional(),
   branchId: objectId().optional(),
+  // «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the register's columns.
+  /** The asset — its code, name or serial, matched as typed. */
+  search: z.string().trim().max(200).optional(),
+  /** The asset's category. */
+  categoryId: objectId().optional(),
+  /** «تاريخ التسليم» from / to — either bound alone is a question too. */
+  assignedFrom: z.coerce.date().optional(),
+  assignedTo: z.coerce.date().optional(),
+  /** «تاريخ الاسترجاع» from / to — only a closed interval has one. */
+  returnedFrom: z.coerce.date().optional(),
+  returnedTo: z.coerce.date().optional(),
+  /** «موعد الإعادة» passed and the asset still out. */
+  overdue: booleanQuery().optional(),
+  /** «إيصال الاستلام» — signed, waiting for the signature, or none. */
+  receipt: ItAssignmentReceiptStateSchema.optional(),
 }).strict();
 export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema>;
 
@@ -2174,3 +2229,275 @@ export const ListItMobileLineHistoryQuerySchema = PaginationQuerySchema.extend({
   type: ItMobileLineEventTypeSchema.optional(),
 }).strict();
 export type ListItMobileLineHistoryQuery = z.infer<typeof ListItMobileLineHistoryQuerySchema>;
+
+// ── Consumables — المستهلكات (FR-20) ────────────────────────────────────────
+//
+// «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات زي: حبارات - كابلات بأنواعها - كونفرترات
+// (محولات) بأنواعها - ماوس - كيبرود - رامات - هاردات - فلاشات - وهكذا .. وأقدر أحدد عندي Stock إيه من
+// كل واحده وإيه الهالك وأتبدل لمين واطبعله مذكره ولو حاجة بتتركب فى حاجة تانية زى الهرد والماوس
+// والكابلات أقدر أذكر الجهاز اللى أتركب عليه من اللأصول».
+//
+// A store of its own, beside the spare parts rather than inside them: a spare part leaves the store
+// only through a maintenance order (FR-9), a consumable is handed to a person — on a memo they sign
+// — and may be named as installed on one of the register's assets. Each branch keeps its own stock,
+// so an item is a row PER BRANCH; its quantities are derived from an append-only ledger and moved
+// atomically with it, and are on no write schema. Same grants as the assets (`itAsset.*`).
+
+/** Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person. */
+export const IT_CONSUMABLE_MOVEMENT_KINDS = ['received', 'issued', 'scrapped', 'returned'] as const;
+export const ItConsumableMovementKindSchema = z.enum(IT_CONSUMABLE_MOVEMENT_KINDS);
+export type ItConsumableMovementKind = z.infer<typeof ItConsumableMovementKindSchema>;
+
+/**
+ * Why an item is issued: a new need, or in place of a damaged one («بدل تالف») — the damaged unit
+ * is then counted as scrap, though it was never on hand.
+ */
+export const IT_CONSUMABLE_ISSUE_REASONS = ['new', 'replacement'] as const;
+export const ItConsumableIssueReasonSchema = z.enum(IT_CONSUMABLE_ISSUE_REASONS);
+export type ItConsumableIssueReason = z.infer<typeof ItConsumableIssueReasonSchema>;
+
+export interface ItConsumableDto {
+  id: string;
+  /** Server-allocated, permanent («CON-00001»). */
+  code: string;
+  /** «حبر HP 85A», «كابل HDMI 3 متر» — a plain name, as the IT team calls it. */
+  name: string;
+  /** Its type — an IT catalog row of kind `consumableType` («حبارات», «كابلات» …). */
+  typeId: string;
+  /** «قطعة», «علبة», «متر». */
+  unit: string;
+  /** The branch whose store keeps it — the scope it is read and written under. */
+  branchId: string;
+  minQty: number | null;
+  notes: string | null;
+  active: boolean;
+  /** What the store holds now. */
+  onHandQty: number;
+  /** Everything ever issued from it. */
+  issuedQty: number;
+  /** Everything ever scrapped — from the store, and the damaged units issues replaced. */
+  scrappedQty: number;
+  /** On hand at or below the minimum — a reorder hint, not a stored state. */
+  belowMin: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const consumableQty = z.number().int().min(1).max(1_000_000);
+
+const consumableCore = {
+  name: z.string().trim().min(1).max(200),
+  typeId: objectId(),
+  unit: z.string().trim().min(1).max(20),
+  branchId: objectId(),
+  minQty: z.number().int().min(0).max(1_000_000).optional(),
+  notes: z.string().trim().max(2000).optional(),
+};
+
+/** No quantity is a field: an opening quantity is a `received` movement written with the item. */
+export const CreateItConsumableSchema = z
+  .object({ ...consumableCore, openingQty: consumableQty.optional() })
+  .strict();
+export type CreateItConsumable = z.infer<typeof CreateItConsumableSchema>;
+
+/** The store's facts, edited — never a quantity, and never the branch: a store's item stays in it. */
+export const UpdateItConsumableSchema = z
+  .object({
+    name: consumableCore.name.optional(),
+    typeId: objectId().optional(),
+    unit: consumableCore.unit.optional(),
+    minQty: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    active: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItConsumable = z.infer<typeof UpdateItConsumableSchema>;
+
+export const ListItConsumablesQuerySchema = PaginationQuerySchema.extend({
+  /** Matches the code and the name. */
+  search: z.string().trim().max(200).optional(),
+  typeId: objectId().optional(),
+  branchId: objectId().optional(),
+  /** `true` → on hand at or below the item's own minimum. */
+  belowMin: booleanQuery().optional(),
+  active: booleanQuery().optional(),
+}).strict();
+export type ListItConsumablesQuery = z.infer<typeof ListItConsumablesQuerySchema>;
+
+/** «توريد» — stock in. */
+export const ReceiveItConsumableSchema = z
+  .object({
+    qty: consumableQty,
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+export type ReceiveItConsumable = z.infer<typeof ReceiveItConsumableSchema>;
+
+/** «هالك» — out of the store as scrap; why is the record. */
+export const ScrapItConsumableSchema = z
+  .object({
+    qty: consumableQty,
+    reason: z.string().trim().min(1).max(500),
+    at: z.coerce.date().optional(),
+  })
+  .strict();
+export type ScrapItConsumable = z.infer<typeof ScrapItConsumableSchema>;
+
+/** «مرتجع» — back to the store in working order, from a person when known. */
+export const ReturnItConsumableSchema = z
+  .object({
+    qty: consumableQty,
+    employeeId: objectId().optional(),
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+export type ReturnItConsumable = z.infer<typeof ReturnItConsumableSchema>;
+
+/** One item of an issue — one row of the memo. */
+export const ItConsumableIssueLineSchema = z
+  .object({
+    consumableId: objectId(),
+    qty: consumableQty,
+    reason: ItConsumableIssueReasonSchema.default('new'),
+    /** «الجهاز اللى أتركب عليه» — the register's asset it was installed on, if any. */
+    assetId: objectId().optional(),
+  })
+  .strict();
+export type ItConsumableIssueLine = z.infer<typeof ItConsumableIssueLineSchema>;
+
+/** A memo is a page, not a register — and an item is on it once. */
+export const IT_CONSUMABLE_ISSUE_MAX_LINES = 20;
+
+/**
+ * «صرف لموظف»: one employee, one or more items from ONE branch's store, ONE memo — in one
+ * transaction, so the paper never lists what the store did not give, nor the reverse.
+ */
+export const IssueItConsumablesSchema = z
+  .object({
+    employeeId: objectId(),
+    issuedAt: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+    lines: z.array(ItConsumableIssueLineSchema).min(1).max(IT_CONSUMABLE_ISSUE_MAX_LINES),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.lines.forEach((line, index) => {
+      if (seen.has(line.consumableId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'consumableId'],
+          message: 'an item appears on the memo twice',
+        });
+      }
+      seen.add(line.consumableId);
+    });
+  });
+export type IssueItConsumables = z.infer<typeof IssueItConsumablesSchema>;
+
+export const ItConsumableIdParamSchema = z.object({ id: objectId() }).strict();
+
+/** One movement of the ledger, labelled for the register at response time. */
+export interface ItConsumableMovementDto {
+  id: string;
+  consumableId: string;
+  kind: ItConsumableMovementKind;
+  /** Always positive — the kind says which way it moved. */
+  qty: number;
+  at: string;
+  branchId: string;
+  consumableCode: string | null;
+  consumableName: string | null;
+  typeId: string | null;
+  /** The person an issue went to, or a return came from. */
+  employeeId: string | null;
+  employeeCode: string | null;
+  employeeName: string | null;
+  /** The asset an issued item was installed on. */
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+  /** Issued: `new` | `replacement`; scrapped: why. Null otherwise. */
+  reason: string | null;
+  memoId: string | null;
+  memoNumber: number | null;
+  /** Whether the memo's signed copy is filed; null when there is no memo (or it is gone). */
+  memoSigned: boolean | null;
+  byUserId: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend({
+  kind: ItConsumableMovementKindSchema.optional(),
+  consumableId: objectId().optional(),
+  typeId: objectId().optional(),
+  employeeId: objectId().optional(),
+  assetId: objectId().optional(),
+  branchId: objectId().optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  /** The item's code or name. */
+  search: z.string().trim().max(200).optional(),
+}).strict();
+export type ListItConsumableMovementsQuery = z.infer<typeof ListItConsumableMovementsQuerySchema>;
+
+// ── Consumables: the memo (مذكرة صرف مستهلكات) ─────────────────────────────
+
+/** The Files category a signed memo is filed under. */
+export const IT_CONSUMABLE_MEMO_FILE_CATEGORY = 'it-consumable-memos';
+
+/** The memo's own series — «EGYCASH-IT-CON-0001», one more on every issue. */
+export const IT_CONSUMABLE_MEMO_FORM = { prefix: 'EGYCASH-IT-CON', digits: 4 } as const;
+
+export const formatConsumableMemoNumber = (memoNumber: number): string =>
+  `${IT_CONSUMABLE_MEMO_FORM.prefix}-${String(memoNumber).padStart(IT_CONSUMABLE_MEMO_FORM.digits, '0')}`;
+
+export interface ItConsumableMemoLineDto {
+  consumableId: string;
+  movementId: string;
+  code: string;
+  name: string;
+  /** The item's type, as it was named when the memo was written. */
+  typeName: { ar: string; en: string } | null;
+  unit: string;
+  qty: number;
+  reason: ItConsumableIssueReason;
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+}
+
+/** The paper — what the printed memo shows, as it was written (a snapshot). */
+export interface ItConsumableMemoDocumentDto {
+  memoNumber: number;
+  issuedAt: string;
+  employeeId: string;
+  employeeName: string | null;
+  employeeCode: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  /** Who issued it — the IT signature block's name. */
+  issuedByName: string | null;
+  notes: string | null;
+  lines: ItConsumableMemoLineDto[];
+}
+
+export interface ItConsumableMemoDto extends ItConsumableMemoDocumentDto {
+  id: string;
+  branchId: string;
+  issuedByUserId: string | null;
+  signedCopy: ItCustodyReceiptSignedCopyDto | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** An issue's answer: the memo to print at once, and the items as they now stand. */
+export interface ItConsumableIssueResultDto {
+  memo: ItConsumableMemoDto;
+  consumables: ItConsumableDto[];
+}

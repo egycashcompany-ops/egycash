@@ -17,6 +17,8 @@ import {
   EMPLOYEE_STATUSES,
   IT_ASSET_STATUSES,
   IT_CATALOG_KINDS,
+  IT_CONSUMABLE_ISSUE_REASONS,
+  IT_CONSUMABLE_MOVEMENT_KINDS,
   IT_LICENSE_STATES,
   IT_MAINTENANCE_KINDS,
   IT_MAINTENANCE_ORDER_STATUSES,
@@ -81,6 +83,20 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     name: 'mobile line event type',
     prefix: 'it.mobileLines.event',
     values: IT_MOBILE_LINE_EVENT_TYPES,
+  },
+  // FR-20 — the consumables. A movement's kind (the badge, the filter, the files) and an issue's
+  // reason (the issue dialog, the ledger's column) are rendered through TEMPLATE keys, which the
+  // source scan below cannot see. The catalog's third kind, `consumableType`, rides the catalog
+  // vocabulary above, which reads `IT_CATALOG_KINDS`.
+  {
+    name: 'consumable movement kind',
+    prefix: 'it.consumables.kind',
+    values: IT_CONSUMABLE_MOVEMENT_KINDS,
+  },
+  {
+    name: 'consumable issue reason',
+    prefix: 'it.consumables.reason',
+    values: IT_CONSUMABLE_ISSUE_REASONS,
   },
 ];
 

@@ -8552,6 +8552,21 @@ const en: Record<string, string> = {
   'atm.mail.status.pending': 'Pending',
   'atm.mail.status.accepted': 'Accepted',
   'atm.mail.status.rejected': 'Rejected',
+  'atm.mail.acceptSelected': 'Accept selected',
+  'atm.mail.rejectSelected': 'Reject selected',
+  'atm.mail.search': 'Search by machine code or name',
+  'atm.mail.emptyFiltered': 'No mail matches the chosen filters.',
+  'atm.mail.allStatuses': 'All',
+  'atm.mail.restore': 'Restore',
+  'atm.mail.restoreTitle': 'Restore mail',
+  'atm.mail.restoreBodyAccepted':
+    'Return the mail for machine {{code}} to the pending mails? The maintenance it opened is removed from the maintenance page while it is still open; once that maintenance is closed, the mail cannot be restored.',
+  'atm.mail.restoreBodyRejected': 'Return the mail for machine {{code}} to the pending mails?',
+  'atm.mail.restoredCount': '{{count}} mail(s) returned to the pending mails.',
+  'atm.mail.restoreRefusedClosed':
+    'The mail for machine {{codes}} cannot be restored: the maintenance it opened is already closed.',
+  'atm.mail.restoreRefusedLegacy':
+    'The mail for machine {{codes}} cannot be restored: it was accepted in the old system, and no maintenance is linked to it.',
 
   'atm.machines.title': 'All Machines',
   'atm.machines.subtitle': 'Every active ATM machine.',
@@ -18279,6 +18294,21 @@ const ar: Record<string, string> = {
   'atm.mail.status.pending': 'معلقة',
   'atm.mail.status.accepted': 'مقبولة',
   'atm.mail.status.rejected': 'مرفوضة',
+  'atm.mail.acceptSelected': 'قبول المحدد',
+  'atm.mail.rejectSelected': 'رفض المحدد',
+  'atm.mail.search': 'بحث بكود الماكينة أو اسمها',
+  'atm.mail.emptyFiltered': 'لا توجد رسائل تطابق عوامل التصفية المختارة.',
+  'atm.mail.allStatuses': 'الكل',
+  'atm.mail.restore': 'استرجاع',
+  'atm.mail.restoreTitle': 'استرجاع رسالة',
+  'atm.mail.restoreBodyAccepted':
+    'إعادة رسالة الماكينة {{code}} إلى الرسائل المعلقة؟ ستُحذف الصيانة التي فُتحت منها من صفحة الصيانات ما دامت مفتوحة، أما إذا كانت قد أُغلقت فلا يمكن استرجاع الرسالة.',
+  'atm.mail.restoreBodyRejected': 'إعادة رسالة الماكينة {{code}} إلى الرسائل المعلقة؟',
+  'atm.mail.restoredCount': 'تمت إعادة {{count}} رسالة إلى الرسائل المعلقة.',
+  'atm.mail.restoreRefusedClosed':
+    'تعذّر استرجاع رسالة الماكينة {{codes}} لأن الصيانة التي فُتحت منها أُغلقت بالفعل.',
+  'atm.mail.restoreRefusedLegacy':
+    'تعذّر استرجاع رسالة الماكينة {{codes}} لأنها قُبلت في النظام القديم، ولا ترتبط بها أي صيانة.',
 
   'atm.machines.title': 'كل الماكينات',
   'atm.machines.subtitle': 'كل ماكينات الصراف الآلي النشطة.',

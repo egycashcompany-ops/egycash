@@ -83,10 +83,16 @@ const mailTicketPermissions = declarePermissions(
   { en: 'ATM maintenance mail', ar: 'رسائل صيانة الصراف الآلي' },
   ['view'],
   [
-    // Accept and reject are one screen and one authority — the two-direction-cell precedent.
+    // Accept and reject are one screen and one authority — the two-direction-cell precedent. The
+    // log's restore (2026-10-28) is the undo of that decision and rides the same key, as close and
+    // reopen share one: restoring an accepted mail also soft-deletes the OPEN maintenance its accept
+    // opened, so the label names it.
     {
       action: 'decide',
-      name: { en: 'Accept or reject a maintenance mail', ar: 'قبول رسالة الصيانة أو رفضها' },
+      name: {
+        en: 'Accept, reject or restore a maintenance mail',
+        ar: 'قبول رسالة الصيانة أو رفضها أو استرجاعها',
+      },
     },
     // The legacy log page had a strictly smaller privilege set than the pending page
     // (contad_app.js:2901 admin-only vs :2634) — a separate grant is that fact, kept.

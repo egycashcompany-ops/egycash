@@ -11,6 +11,28 @@ its entry here in the same PR.
 
 ### Added
 
+- **A maintenance mail accepted or rejected by mistake goes back to pending, and both mail pages
+  filter, with their buttons on the rows.** «هنا /atm/mail-tickets/log وهنا /atm/mail-tickets عايز
+  فلتر وعايز Action Buttons — في /atm/mail-tickets يكون 2 قبول ورفض — في /atm/mail-tickets/log
+  إسترجاع ويقدر يرجعه مفتوح لو قبل أو رفض غلط». On `/atm/mail-tickets/log`, accepted and rejected
+  rows carry «استرجاع»: after a confirm the mail is pending again, to be decided anew. An accepted
+  one also takes its maintenance off `/atm/maintenance`, in one step with the mail, so neither
+  happens alone, and accepting it again opens a fresh one. A maintenance already closed is work
+  done: its mail stays as it is and the message names the machine. So does a mail accepted in the
+  old system: no maintenance is linked to it, so there is nothing to take back, and returning it
+  would leave its maintenance on the board while a second accept could open another. On
+  `/atm/mail-tickets` every row
+  carries «قبول» and «رفض» at its end; on a checked row they act on every checked row, as on the
+  boards, and the accept and reject bar is gone. The confirms, the duplicate warning and the yellow
+  duplicate rows stay. Both pages have a filter row — bank, area, a search by machine code or name,
+  and the red reset — kept in the address and remembered, and the log adds a status choice beside
+  its dates. Both now read the whole list, past the first hundred rows. The buttons, and
+  `POST /atm/mail-tickets/restore` behind them, need `atmMailTicket.decide`, the key that accepts
+  and rejects — now named «قبول رسالة الصيانة أو رفضها أو استرجاعها» in the role editor; a restore
+  is on the audit trail as `restore`, beside the maintenance's `delete`. Mail the legacy import
+  wrote (it carries no timestamps) is listed on both pages instead of failing them
+  ([ATM port §6d](docs/12-planning/atm-operations-port.md)).
+
 - **The Banque Misr maintenance mailbox is set up on a screen and switched on branch by branch,
   and October works as Mohandessin in ATM.** «عايز نبدأ فى موضوع الـ Automation بتاع الميلات اللى
   بيجي من بنك مصر لماكينات الصيانة — هنبدأ بفرع المهندسين حالياً وبعدين هنبقى نزود فرع فرع».

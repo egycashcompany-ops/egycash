@@ -15,23 +15,34 @@
 // direction.
 //
 // COLOURS ARE THE OWNER'S. Charts 1–2 are one series in the workbook theme's accent1 #4472C4; chart
-// 3 carries the six bank colours (D7), the same in both themes. Those colours fail the palette
-// checks (spec §8.5), which is why every bar has its value written on it, chart 3 has a legend, and
-// every chart has its table — the relief is mandatory, not decoration.
+// 3 carries each bank's catalog colour — the six seeds keep the workbook's (D7), the same in both
+// themes. Those colours fail the palette checks (spec §8.5), which is why every bar has its value
+// written on it, chart 3 has a legend, and every chart has its table — the relief is mandatory,
+// not decoration.
+//
+// THE BANKS ARE THE CATALOG'S (DEC-35, DEC-40). The owner's call (final): a bank added at runtime is
+// a FULL register bank, so it gets a bar in section 1 and a series in section 3 like the sheet's
+// six. Which banks, in which order, with which name and colour, is the server's answer
+// (`section1Banks`, `section3Banks`, `banks`): the six keep their sheet positions and every other
+// bank follows them. An older server that does not send those fields yet (a rolling deploy) gets
+// the sheet's own six, exactly as before.
 import {
-  ATM_BANK_NAMES,
-  ATM_BANK_REPORT_COLORS,
-  ATM_DATA_REPORT_CELLS,
+  ATM_REPORT_SECTION1_BANKS,
   ATM_REPORT_SECTION3_BANKS,
   ATM_REPORT_SECTION3_BRANCHES,
   ATM_REPORT_TOTALS_COLOR,
+  atmBankColor,
+  atmBankName,
+  buildAtmReportCells,
   readAtmReportCell,
   type AtmBankCode,
   type AtmRegisterBranchCode,
+  type AtmRegisterReportBankDto,
   type AtmRegisterReportDto,
   type AtmReportCellRef,
   type Locale,
 } from '@ecms/contracts';
+import { NO_ZONE_GREY } from './map-colors';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 

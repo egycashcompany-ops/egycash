@@ -240,3 +240,76 @@ export const registerActionSlots = (grants: RegisterActionGrants): number =>
 /** One icon button is 28 px, with 2 px between them and 8 px of cell padding each side. */
 export const registerActionsWidth = (slots: number): number =>
   slots === 0 ? 0 : slots * 28 + (slots - 1) * 2 + 16;
+
+// ── «بيانات ناقصة» (DEC-37) ─────────────────────────────────────────────────────────────────────
+
+/** One thing a flagged entry still lacks: a single column, or a group none of whose cells is filled. */
+export type RegisterCompletionGap =
+  | { kind: 'field'; field: AtmRegisterField }
+  | { kind: 'group'; group: AtmRegisterGroup };
+
+/**
+ * The columns a completed receipt is expected to carry, judged one by one. The sheet leaves many
+ * others blank on purpose (a spare cassette, a note, the handover of an open machine), so those are
+ * not "missing" and would only bury the gaps that matter.
+ */
+const COMPLETION_FIELDS: ReadonlySet<AtmRegisterField> = new Set<AtmRegisterField>([
+  'area',
+  'bankCode',
+  'machineCode',
+  'name',
+  'operationType',
+  'vendor',
+  'model',
+  'serial',
+  'openTime',
+  'closeTime',
+  'receivedByName',
+  'hub',
+]);
+
+/**
+ * Groups judged as a whole: a machine has some of its keys, cassettes and location filled, never
+ * all, so a group is a gap only when NONE of its cells is. The combination is its own group of one.
+ */
+const COMPLETION_GROUPS: ReadonlySet<AtmRegisterGroup> = new Set<AtmRegisterGroup>([
+  'keys',
+  'cassettes',
+  'secret',
+  'location',
+]);
+
+const filled = (entry: AtmRegisterEntryDto, field: AtmRegisterField): boolean =>
+  (registerFieldText(entry, field) ?? '').trim() !== '';
+
+/**
+ * What the «بيانات ناقصة» badge's tooltip lists, in the grid's own column order: the expected
+ * columns still empty, and the groups with nothing in them. The flag itself is STORED, never derived
+ * from this (DEC-37 — most imported rows have legitimate blanks); this only tells Efficiency where
+ * to look. A key column, and the combination, count only for a reader who may see them: an entry
+ * whose secrets are hidden arrives with them null, and calling them "empty" would be a guess (DEC-7).
+ */
+export const missingForCompletion = (entry: AtmRegisterEntryDto): RegisterCompletionGap[] => {
+  const gaps: RegisterCompletionGap[] = [];
+  const judged = new Set<AtmRegisterGroup>();
+  for (const column of REGISTER_GRID_COLUMNS) {
+    if (column.sensitivity !== 'P' && !entry.secretsVisible) continue;
+    const { group, field } = column;
+    if (COMPLETION_GROUPS.has(group)) {
+      if (judged.has(group)) continue;
+      judged.add(group);
+      const any =
+        group === 'secret'
+          ? entry.safeCombinationSet
+          : REGISTER_GRID_COLUMNS.some((c) => c.group === group && filled(entry, c.field));
+      if (!any) gaps.push({ kind: 'group', group });
+    } else if (COMPLETION_FIELDS.has(field) && !filled(entry, field)) {
+      gaps.push({ kind: 'field', field });
+    }
+  }
+  return gaps;
+};
+
+/** A gap's translation key: the column's header, or the group's name. */
+export const registerGapLabelKey = (gap: RegisterCompletionGap): string =>
+  gap.kind === 'field' ? `atm.register.col.${gap.field}` : `atm.register.group.${gap.group}`;

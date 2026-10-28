@@ -20,6 +20,16 @@ export interface AtmMailMessage extends AtmMailIngest {
   isRead: boolean;
 }
 
+/** One page of the unread mail (`listUnreadPage`). */
+export interface AtmMailPage {
+  messages: AtmMailMessage[];
+  /**
+   * How many messages the provider listed on the page — `messages` leaves out the ones nothing can
+   * be done with (no id, no body), which stay unread and still take up their place in the list.
+   */
+  listed: number;
+}
+
 export interface AtmMailSource {
   /** Stable id, recorded in the poll log so an operator knows which mailbox answered. */
   readonly providerId: string;
@@ -38,6 +48,15 @@ export interface AtmMailSource {
    * makes re-reading a message harmless.
    */
   listUnread(limit: number): Promise<AtmMailMessage[]>;
+
+  /**
+   * The unread mail NEWEST first, `limit` messages after the first `skip` — the reading the mailbox
+   * document runs on (mail-poll.service.ts). In the ONE shared mailbox the unread pile is mostly
+   * mail left there on purpose (branches not switched on yet), and read oldest first that pile
+   * would stand between the reader and every new mail. Optional: a source without it is read with
+   * `listUnread` alone.
+   */
+  listUnreadPage?(limit: number, skip: number): Promise<AtmMailPage>;
 
   /**
    * Mark one message handled, optionally tagging it with the branch's colour category — the
@@ -68,3 +87,31 @@ export const getAtmMailSource = (): AtmMailSource => source;
 export const resetAtmMailSource = (): void => {
   source = nullSource;
 };
+
+/**
+ * What the mailbox screen's document (`atm_mailbox_config`) hands a provider: where to connect,
+ * and how to OBTAIN the secret rather than the secret itself — it stays sealed in the document and
+ * is opened through the platform secret store only when a token is due.
+ */
+export interface AtmMailboxConnection {
+  tenantId: string;
+  clientId: string;
+  userEmail: string;
+  openSecret: () => Promise<string>;
+}
+
+/** Builds the source a stored mailbox document reads through. */
+export type AtmMailSourceFactory = (connection: AtmMailboxConnection) => AtmMailSource;
+
+let factory: AtmMailSourceFactory | null = null;
+
+/**
+ * The provider for a stored mailbox document. Microsoft Graph registers itself at module load
+ * (graph-mail.source.ts); the last registration wins, so a test can install a fake mailbox exactly
+ * as it installs a fake source above.
+ */
+export const registerAtmMailSourceFactory = (next: AtmMailSourceFactory | null): void => {
+  factory = next;
+};
+
+export const getAtmMailSourceFactory = (): AtmMailSourceFactory | null => factory;

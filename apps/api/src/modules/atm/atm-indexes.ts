@@ -36,6 +36,9 @@
 // concurrent seed, or a duplicate label, an E11000 instead of a second NBE. Its keys are bank codes
 // and label keys, never a K or S value.
 //
+// The maintenance mailbox document (/atm/settings) joined the first group: `ux_mailbox_key` is what
+// makes a second "first save" a stale 409 instead of a second mailbox. Its key is a fixed word.
+//
 // THE DEFINITIONS ARE READ FROM THE SCHEMAS (`schema.indexes()`), never restated here. ONE INDEX AT
 // A TIME, so a duplicate costs exactly its own index. DUPLICATES ARE REPORTED, NEVER RESOLVED — a
 // legacy `atm_machines` loaded by `npm run atm:import` may violate `ux_branch_code` (risk R-9); the
@@ -63,6 +66,7 @@ import { AtmLinePreparationModel } from './settlements/preparation/line-preparat
 import { AtmDispatchRouteModel } from './settlements/control/dispatch-route.model';
 import { AtmRouteAssignmentModel } from './settlements/control/route-assignment.model';
 import { AtmLayoutImportRunModel } from './settlements/import/layout-import-run.model';
+import { AtmMailboxConfigModel } from './mail-tickets/mailbox-config.model';
 import { RETIRED_OPEN_OPERATION_INDEX_NAMES } from './shared/open-operation';
 
 export interface AtmIndexedModel {
@@ -111,6 +115,7 @@ export const atmIndexedModels = (): AtmIndexedModel[] => [
       AtmDispatchRouteModel,
       AtmLayoutImportRunModel,
       AtmNoteCounterModel,
+      AtmMailboxConfigModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model, rowsInLog: true })),
   ...(

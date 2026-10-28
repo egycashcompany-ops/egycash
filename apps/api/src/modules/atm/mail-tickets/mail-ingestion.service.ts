@@ -28,8 +28,19 @@ import { parseAtmMailBody } from './parse-mail';
 /** System writes carry no user — the audit trail shows the platform actor, as sweeps do. */
 const SYSTEM_ACTOR = null;
 
+/** The outcome reason for a machine whose branch the mailbox document has not switched on. */
+export const BRANCH_NOT_ENABLED_REASON = 'branch not enabled for mail';
+
+/**
+ * Which branches may receive tickets. Absent = every branch (the environment mode, as before);
+ * present = only these — the mailbox document's switched-on branches (mailbox-source.ts).
+ */
+export interface AtmMailIngestGate {
+  branchIds: ReadonlySet<string>;
+}
+
 class AtmMailIngestionService {
-  async ingest(message: AtmMailIngest): Promise<AtmMailIngestResultDto> {
+  async ingest(message: AtmMailIngest, gate?: AtmMailIngestGate): Promise<AtmMailIngestResultDto> {
     const existing = await atmMailTicketRepository.findByProviderMessageId(
       message.providerMessageId,
     );
@@ -81,6 +92,19 @@ class AtmMailIngestionService {
       };
     }
     const machine = machines[0] as AtmMachineDoc;
+
+    // Still the machine that decides the branch — the gate only says whether that branch takes mail
+    // yet. The owner switches branches on one at a time («هنبدأ بفرع المهندسين حالياً وبعدين هنبقى
+    // نزود فرع فرع»), and mail for a branch not on yet is NOT ECMS's: it stays unread for whoever
+    // still reads that mailbox by hand, and the first run after the branch is switched on files it.
+    if (gate !== undefined && !gate.branchIds.has(String(machine.branchId))) {
+      return {
+        outcome: 'unmatched',
+        ticketId: null,
+        branchId: null,
+        reason: BRANCH_NOT_ENABLED_REASON,
+      };
+    }
 
     // The ingest-time flags, as the legacy reader computed them (index.js:168-175): found = the
     // master lookup above succeeded; duplication = the machine already has an open maintenance.

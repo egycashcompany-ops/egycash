@@ -18,7 +18,10 @@
 // The machine map and its owner-drawn zones sit here too (docs/12-planning/atm-map-zones.md).
 // Settlements & Review → Preparation → Control & Supplies, phase 1 (Al Baraka first), too
 // (docs/12-planning/atm-settlements-phase1.md).
+// And /atm/settings (the owner, 2026-10-28): the Banque Misr maintenance mailbox the central reader
+// polls, and the branches that work as one in ATM (port doc §6).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
+import { registerAuthContextRefiner } from '../../platform/auth';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildAtmMachinesRouter } from './machines/machine.routes';
 import { buildAtmRefLabelsRouter } from './catalogs/ref-label.routes';
@@ -38,6 +41,10 @@ import { registerAtmSettings } from './atm.settings';
 import { seedAtm } from './atm.seed';
 import { pollAtmMailbox } from './mail-tickets/mail-poll.service';
 import { registerGraphMailSource } from './mail-tickets/graph-mail.source';
+import { buildAtmMailboxRouter } from './mail-tickets/mailbox.routes';
+import { rotateMailboxSecretKey } from './mail-tickets/mailbox-secret-rotation';
+import { buildAtmBranchLinksRouter } from './branch-links/branch-links.routes';
+import { refineAtmAuthContext } from './branch-links/link-context';
 
 const replenishmentPermissions = declarePermissions(
   'atm',
@@ -303,10 +310,35 @@ const controlPermissions = declarePermissions(
   'atm.control',
 );
 
+// /atm/settings (the owner, 2026-10-28): ONE key for the mailbox and the branch links, required at
+// ORGANIZATION scope by both services (shared/settings-authority.ts, the `atmBank.*` rule) — one
+// mailbox serves every branch, and which branch works as which is one fact about the company.
+const settingsPermissions = declarePermissions(
+  'atm',
+  'atmSettings',
+  { en: 'ATM settings', ar: 'إعدادات الصراف الآلي' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Manage the maintenance mailbox and the branches that work together',
+        ar: 'إدارة بريد الصيانة والفروع التي تعمل معاً',
+      },
+    },
+  ],
+  'atm.settings',
+);
+
 registerAtmSettings();
 // Opt-in and silent when no mailbox is configured (the OCR-sidecar precedent): without the four
-// `ATM_MAIL_GRAPH_*` settings nothing registers and the poll task below does nothing at all.
+// `ATM_MAIL_GRAPH_*` settings and without a document saved on /atm/settings, the poll task below
+// does nothing at all.
 registerGraphMailSource();
+// «فرع أكتوبر شغال هو والمهندسين مع بعض» — for ATM only: on this module's routes a caller placed in
+// a linked branch is read as placed in the branch it acts as (branch-links/link-context.ts); on
+// every other route nothing changes.
+registerAuthContextRefiner('/atm', refineAtmAuthContext);
 
 export const atmPermissions: PermissionDef[] = [
   ...replenishmentPermissions,
@@ -324,6 +356,7 @@ export const atmPermissions: PermissionDef[] = [
   ...planPermissions,
   ...preparationPermissions,
   ...controlPermissions,
+  ...settingsPermissions,
 ];
 
 export const atmPages: PageDef[] = [
@@ -404,6 +437,13 @@ export const atmPages: PageDef[] = [
     route: '/atm/control',
     sortOrder: 85,
   },
+  {
+    id: 'atm.settings',
+    moduleId: 'atm',
+    name: { en: 'ATM settings', ar: 'إعدادات الصراف الآلي' },
+    route: '/atm/settings',
+    sortOrder: 90,
+  },
 ];
 
 export const atmModule: ModuleManifest = {
@@ -433,6 +473,9 @@ export const atmModule: ModuleManifest = {
     { prefix: '/atm/settlements', router: buildAtmSettlementsRouter() },
     { prefix: '/atm/preparation', router: buildAtmPreparationRouter() },
     { prefix: '/atm/control', router: buildAtmControlRouter() },
+    // /atm/settings' two cards.
+    { prefix: '/atm/mailbox', router: buildAtmMailboxRouter() },
+    { prefix: '/atm/branch-links', router: buildAtmBranchLinksRouter() },
   ],
   collections: [
     'atm_machines',
@@ -456,6 +499,7 @@ export const atmModule: ModuleManifest = {
     'atm_dispatch_routes',
     'atm_route_assignments',
     'atm_layout_import_runs',
+    'atm_mailbox_config',
   ],
   eventSubscriptions: [],
   scheduledTasks: [
@@ -469,7 +513,10 @@ export const atmModule: ModuleManifest = {
       cron: '* * * * *',
       ownerService: 'atm',
       handler: async () => {
-        await pollAtmMailbox();
+        // A mailbox that failed as a whole (token refused, unreachable) is the run's `error` — on
+        // the screen's last-run line — and still a FAILED scheduled run, as it was before.
+        const run = await pollAtmMailbox();
+        if (run.error !== null) throw new Error(run.error);
       },
     },
     {
@@ -477,12 +524,16 @@ export const atmModule: ModuleManifest = {
       // old key after the re-wrap, so without this sweep every reveal would fail afterwards.
       key: 'atm.rotateRegisterCombinationKeys',
       description:
-        'Re-wrap register safe-door combinations still sealed under a retired key. Touches the data key only — no plaintext exists at any point.',
+        'Re-wrap register safe-door combinations, and the maintenance mailbox secret, still sealed under a retired key. Touches the data key only — no plaintext exists at any point.',
       // Nightly, after the automation sweep at 02:30.
       cron: '45 2 * * *',
       ownerService: 'atm',
       handler: async () => {
         await rotateRegisterCombinationKeys();
+        // The mailbox secret rides the same nightly pass (the key is the task's, not renamed, so
+        // its schedule row survives): a secret left on a key the rotation drops would stop the
+        // reader until somebody typed it again.
+        await rotateMailboxSecretKey();
       },
     },
   ],

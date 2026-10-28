@@ -2,7 +2,12 @@
 // catalog-half test operations and IT carry. A missing key does not throw (`translate` falls
 // back to the key), so without this an Arabic operator would read `atm.mail.duplicate` on screen.
 import { describe, expect, it } from 'vitest';
-import { ATM_MAIL_TICKET_STATUSES, ErrorCodes, type Locale } from '@ecms/contracts';
+import {
+  ATM_BRANCH_LINK_ISSUES,
+  ATM_MAIL_TICKET_STATUSES,
+  ErrorCodes,
+  type Locale,
+} from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { ATM_SHORTCUTS } from './pages/AtmOverviewPage';
 
@@ -262,6 +267,56 @@ const KEYS = [
   'atm.reports.total',
   'atm.reports.totalsLine',
   'atm.reports.empty',
+  // /atm/settings (2026-10-28): the maintenance mailbox and the branches that work as one.
+  'atm.settings.title',
+  'atm.settings.pickBranch',
+  'atm.settings.unknownBranch',
+  'atm.settings.mailbox.title',
+  'atm.settings.mailbox.notSaved',
+  'atm.settings.mailbox.tenantId',
+  'atm.settings.mailbox.tenantIdInvalid',
+  'atm.settings.mailbox.clientId',
+  'atm.settings.mailbox.clientIdInvalid',
+  'atm.settings.mailbox.clientSecret',
+  'atm.settings.mailbox.secretStored',
+  'atm.settings.mailbox.userEmail',
+  'atm.settings.mailbox.userEmailInvalid',
+  'atm.settings.mailbox.enabled',
+  'atm.settings.mailbox.enabledHint',
+  'atm.settings.mailbox.branches',
+  'atm.settings.mailbox.branchesHint',
+  'atm.settings.mailbox.branch',
+  'atm.settings.mailbox.category',
+  'atm.settings.mailbox.noBranches',
+  'atm.settings.mailbox.addBranch',
+  'atm.settings.mailbox.removeBranch',
+  'atm.settings.mailbox.test',
+  'atm.settings.mailbox.pollNow',
+  'atm.settings.mailbox.probeHint',
+  'atm.settings.mailbox.readingOffHint',
+  'atm.settings.mailbox.testOk',
+  'atm.settings.mailbox.testFailed',
+  'atm.settings.mailbox.pollDone',
+  'atm.settings.mailbox.pollFailed',
+  'atm.settings.mailbox.lastPoll',
+  'atm.settings.mailbox.lastPollAt',
+  'atm.settings.mailbox.neverPolled',
+  'atm.settings.mailbox.counts.read',
+  'atm.settings.mailbox.counts.created',
+  'atm.settings.mailbox.counts.duplicates',
+  'atm.settings.mailbox.counts.unmatched',
+  'atm.settings.mailbox.counts.failed',
+  'atm.settings.mailbox.unmatchedReasons',
+  'atm.settings.links.title',
+  'atm.settings.links.hint',
+  'atm.settings.links.row',
+  'atm.settings.links.none',
+  'atm.settings.links.branch',
+  'atm.settings.links.actsAs',
+  'atm.settings.links.add',
+  'atm.settings.links.remove',
+  'atm.settings.links.added',
+  'atm.settings.links.removed',
 ];
 
 describe('atm i18n catalog', () => {
@@ -285,6 +340,15 @@ describe('atm i18n catalog', () => {
     const missing = codes
       .map((code) => `atm.bankCatalog.error.${code}`)
       .filter((key) => translate(locale, key) === key);
+    expect(missing).toEqual([]);
+  });
+
+  // The links card words a refused pair by the contract's own issue (`atmBranchLinkIssues`), so an
+  // issue added there without its text would reach the reader as `atm.settings.links.issue.…`.
+  it.each(LOCALES)('every branch-link refusal resolves in %s', (locale) => {
+    const missing = ATM_BRANCH_LINK_ISSUES.map(
+      (issue) => `atm.settings.links.issue.${issue}`,
+    ).filter((key) => translate(locale, key) === key);
     expect(missing).toEqual([]);
   });
 

@@ -7,14 +7,24 @@
 // the workbook upload — combinations and key codes), and `beforeSend` removes the register's secret
 // field names from every event, at any depth, in case one reached `extra` or `contexts` another way.
 // The Pino redaction PATHS are not read here; only the field names are shared with the logger.
+//
+// The maintenance mailbox (/atm/settings, 2026-10-28) is the same case: `PUT /atm/mailbox` carries
+// the Graph client secret in plaintext on its way to being sealed, so its body is never captured
+// either, and `clientSecret` is scrubbed wherever else it might turn up.
 import * as Sentry from '@sentry/node';
 import { env } from '../config/env';
 import { REGISTER_SECRET_FIELD_NAMES } from '../logging/logger';
 
-const SECRET_NAMES: ReadonlySet<string> = new Set(REGISTER_SECRET_FIELD_NAMES);
+const SECRET_NAMES: ReadonlySet<string> = new Set([...REGISTER_SECRET_FIELD_NAMES, 'clientSecret']);
 
-/** Every register route, the import upload included, under any `BASE_PATH`. */
-export const isSecretBodyUrl = (url: string): boolean => url.includes('/api/v1/atm/register');
+/** Every route whose body carries a secret, under any `BASE_PATH`, matched as Express routes it. */
+const SECRET_BODY_ROUTES = ['/api/v1/atm/register', '/api/v1/atm/mailbox'];
+
+/** The register routes (the import upload included) and the maintenance mailbox. */
+export const isSecretBodyUrl = (url: string): boolean => {
+  const routed = url.toLowerCase().replace(/(?<!:)\/{2,}/g, '/');
+  return SECRET_BODY_ROUTES.some((route) => routed.includes(route));
+};
 
 /** A copy of `value` without any property named in `SECRET_NAMES`, at any depth. */
 const withoutSecretNames = (value: unknown, seen: WeakSet<object>): unknown => {

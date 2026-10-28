@@ -14,6 +14,7 @@ import {
   CalendarIcon,
   ChartIcon,
   ClipboardIcon,
+  CogIcon,
   GridIcon,
   InboxIcon,
   LayersIcon,
@@ -168,6 +169,14 @@ export const ATM_SHORTCUTS: Shortcut[] = [
     descKey: 'atm.cards.control',
     icon: TruckIcon,
     permission: 'atmControl.view',
+  },
+  /** The maintenance mailbox and the branches that work as one (2026-10-28) — no legacy screen. */
+  {
+    to: '/atm/settings',
+    titleKey: 'atm.nav.settings',
+    descKey: 'atm.cards.settings',
+    icon: CogIcon,
+    permission: 'atmSettings.manage',
   },
 ];
 

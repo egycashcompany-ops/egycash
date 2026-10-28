@@ -339,6 +339,96 @@ is the record and the tag a convenience.
   overwrote it with "now" (`index.js:134` vs `:137`), which is why its log page timestamps were
   ingest times. This is the one legacy bug the transport deliberately does not reproduce.
 
+### 6a. The mailbox on a screen, branch by branch (2026-10-28)
+
+The owner: «عايز نبدأ فى موضوع الـ Automation بتاع الميلات اللى بيجي من بنك مصر لماكينات الصيانة —
+هنبدأ بفرع المهندسين حالياً وبعدين هنبقى نزود فرع فرع». His answers in the same conversation: ONE
+shared mailbox for every branch (the machine still decides the branch); branches switched on one at
+a time, mail for a branch not on yet staying UNREAD in the mailbox; and the mailbox credentials
+typed on a screen, the secret stored encrypted — never in code.
+
+**`/atm/settings` «إعدادات الصراف الآلي»**, behind one new key, `atmSettings.manage`, which both
+services require at ORGANIZATION scope (the `atmBank.*` rule): one mailbox serves every branch, and
+which branch works as which (below) is one fact about the company. The boot seed gives it to
+super-admin; any other holder is an administrator's grant.
+
+**The mailbox document** (`atm_mailbox_config`, one row, `mail-tickets/mailbox-config.model.ts`):
+tenant, client id, the client secret as a SEALED platform `SecretRef` bound to the row
+(`atm_mailbox_config:<id>:clientSecret`), the mailbox address, «تفعيل القراءة», the switched-on
+branches with their Outlook category, and the last run. `GET/PUT /atm/mailbox` read and save it —
+the secret only ever travels toward the server: an omitted one keeps the stored ref, the answer says
+`hasSecret`, the audit (`atm.mailboxConfig`) says that it changed and never what it is. Switching
+reading on with no secret anywhere is a 400. `POST /atm/mailbox/test` acquires a token and lists one
+unread message with the stored settings; `POST /atm/mailbox/poll` («قراءة الآن») runs the reader
+once and answers its report — refused while reading is off.
+
+**Which mailbox a run reads** (`mail-tickets/mailbox-source.ts`, asked per run, so a save takes
+effect on the next minute):
+
+| State | The reader |
+| --- | --- |
+| no document | the `ATM_MAIL_GRAPH_*` environment exactly as before: every branch, `atm.mail.branchCategories` |
+| a disabled document | reads nothing — the environment included |
+| an enabled document | the mailbox it names, newest first (below); a mail is filed only when its machine's branch is switched on, otherwise it is `unmatched` · "branch not enabled for mail" and LEFT UNREAD, and is filed once its branch is switched on |
+
+The machine still decides the branch; the document only says whether that branch takes mail yet.
+A filed mail is tagged with its row's category, else the old setting's, else nothing. The source is
+built once per document version, so Graph's token outlives a run. Every run on the document is
+written to its `lastPoll` (start time, counts, the run's error, the first five unmatched reasons) —
+best effort, and outside the versioned write, so a poll a minute never makes the screen's next save
+stale; a run never creates the document. A run that fails as a whole is its `error`, and still a
+failed `atm.mailPoll` run. The nightly `atm.rotateRegisterCombinationKeys` also re-wraps the mailbox
+secret onto the active key, so a key rotation does not strand it
+([platform-crypto](../02-architecture/platform-crypto.md)).
+
+**The document is read NEWEST first, with a sweep below** (`mail-poll.service.ts`
+`readNewestFirst`, Graph's `listUnreadPage`). The shared mailbox fills with mail left unread on
+purpose — every branch not switched on yet — and the environment's batch, the 50 OLDEST unread,
+would stop reaching anything new once fifty of those sat ahead of it. So each run takes the newest
+page of 50 first: a new mail is filed on the next run however large the pile grows. When that page
+is full, the run also takes ONE older page, the next step of a sweep that walks the rest of the
+unread mail a page per run and starts over at its end (and after every save) — so a backlog deeper
+than a page, a branch switched on after weeks or a machine added to the master later, is still
+filed, and no run lists more than two pages. Graph is asked in the shape it accepts for a sorted
+filter (`receivedDateTime ge 1900-01-01 and isRead eq false`, `$orderby=receivedDateTime desc`),
+and «اختبار الاتصال» lists with that same query. The environment mode keeps its own listing and
+batch, unchanged.
+
+### 6b. Branches that work together — ATM only (2026-10-28)
+
+The owner: «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين —
+يعني أكتوبر هيشوف شغل المهندسين ويشتغل معاهم عادى والمهندسين شايف أكتوبر إنه شغال معاه بردو».
+
+The data already IS Mohandessin's, so nothing is copied or re-filed. The setting `atm.branchLinks`
+(`[{ branchId, actsAsBranchId }]`, organization scope, `GET/PUT /atm/branch-links`, written through
+the platform settings service so it is audited and its cache dropped) says «October acts as
+Mohandessin». On every ATM request a caller placed in October is read as placed in Mohandessin —
+the placement, the top bar's branch and every branch the grants reach, per key and through
+department copies — so they read Mohandessin's ATM rows, what they write is filed under
+Mohandessin, and Mohandessin's people see it because it is theirs. The rewrite runs in the platform
+auth middleware through a generic seam, `registerAuthContextRefiner(prefix, refine)`
+(`platform/auth/context-refiners.ts`), which ATM registers for `/atm` only
+(`branch-links/link-context.ts`): on every other route the same employee is still in October. A
+link to itself, a source on two rows, a chain (the target is itself a source) and a branch that does
+not exist or is not active are each a 400.
+
+### 6c. Go-live: Mohandessin first
+
+1. Grant `atmSettings.manage` at organization scope to whoever runs the screen (super-admin holds
+   it already).
+2. On `/atm/settings`, «بريد الصيانة — بنك مصر»: enter the Tenant ID, the Client ID, the Client
+   Secret and the mailbox address, leave «تفعيل القراءة» off, and save.
+3. «اختبار الاتصال» — it must answer ok; a refusal names the provider's answer.
+4. Add Mohandessin to the switched-on branches, with its Outlook category.
+5. «فروع تعمل معاً»: link October → acts as Mohandessin.
+6. Switch «تفعيل القراءة» on and save; «قراءة الآن», then check the last-run line and
+   `/atm/mail-tickets`.
+7. Once the document is saved the `ATM_MAIL_GRAPH_*` environment is no longer read: remove it from
+   the deployment, so the secret lives in one place, sealed.
+
+Every later branch is step 4 alone: its row is added, and its unread backlog is filed — its newest
+page on the next run, anything older as the sweep reaches it, a page a minute.
+
 ## 7. Migration (ATM-7 — delivered)
 
     npm run atm:import -w apps/api -- --legacy-uri=mongodb://host:27017/egycash \
@@ -415,6 +505,7 @@ argument for the suite existing at all:
 | ATM-4 | Maintenance (+ close-with-assignee via directory) + done page | delivered |
 | ATM-5 | Mail tickets: pending + accept/reject + log + unread badge + ingestion seam | delivered |
 | ATM-6 | Central mail reader: source seam, Graph transport, poll task, branch colours, §6 | delivered |
+| — | `/atm/settings`: the mailbox on a screen, branches switched on one at a time, branches that work together (§6a–§6c); suites `tests/integration/atm-mailbox.spec.ts`, `atm-branch-links.spec.ts` | delivered |
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |

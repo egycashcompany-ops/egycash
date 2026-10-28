@@ -45,6 +45,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // Day signals (DS-26): no audit row of their own; each carries the plan's branch.
   'atm.preparationDay': { permission: 'atmPreparation.view' },
   'atm.controlDay': { permission: 'atmControl.view' },
+  // /atm/settings' mailbox card: a save refreshes the card for whoever administers it. The branch
+  // links are a platform setting and are audited — and signalled — as `platform.setting`.
+  'atm.mailboxConfig': { permission: 'atmSettings.manage' },
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': { permission: 'goldBar.view' },

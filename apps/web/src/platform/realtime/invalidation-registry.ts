@@ -127,6 +127,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'atm.controlDay': [['atm', 'controlDay']],
   'atm.dispatchRoute': [['atm', 'controlDay']],
   'atm.routeAssignment': [['atm', 'controlDay']],
+  // /atm/settings' mailbox card (`settings-queries.ts`): another administrator's save refreshes it.
+  'atm.mailboxConfig': [['atm', 'mailbox']],
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': goldStockSweep,

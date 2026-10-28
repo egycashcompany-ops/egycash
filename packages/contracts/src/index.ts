@@ -70,3 +70,4 @@ export * from './modules/atm-register.js';
 export * from './modules/atm-map.js';
 export * from './modules/atm-map-geometry.js';
 export * from './modules/atm-settlements.js';
+export * from './modules/atm-settings.js';

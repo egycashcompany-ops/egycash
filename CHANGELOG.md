@@ -11,6 +11,28 @@ its entry here in the same PR.
 
 ### Added
 
+- **The Banque Misr maintenance mailbox is set up on a screen and switched on branch by branch,
+  and October works as Mohandessin in ATM.** «عايز نبدأ فى موضوع الـ Automation بتاع الميلات اللى
+  بيجي من بنك مصر لماكينات الصيانة — هنبدأ بفرع المهندسين حالياً وبعدين هنبقى نزود فرع فرع».
+  `/atm/settings` «إعدادات الصراف الآلي», under a new key `atmSettings.manage` that works only when
+  held at organization scope (super-admin holds it after the deploy), has two cards. «بريد الصيانة —
+  بنك مصر»: the Tenant ID, Client ID, Client Secret and mailbox address of the ONE shared mailbox,
+  «تفعيل القراءة», the branches switched on with their Outlook category, «اختبار الاتصال», «قراءة
+  الآن» and the last run. The secret is stored sealed by the platform secret store and is never
+  shown, returned or written to the audit trail; a save that leaves it empty keeps it, and the
+  nightly key rotation re-wraps it. The machine still decides the branch: with the screen saved, a
+  mail is filed only when its machine's branch is switched on, and any other mail stays UNREAD in
+  the mailbox («branch not enabled for mail» on the last-run line) and is filed once its branch is
+  switched on. The shared mailbox is read newest first, so the mail it leaves unread never stands
+  between the reader and a new one, and a sweep walks the older unread mail a page per minute so
+  a backlog is filed too. Until the screen is first saved, the reader runs on the
+  deployment's environment exactly as before; switched off, it reads nothing. «فروع تعمل معاً»:
+  «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين» — with
+  October linked to Mohandessin, an October employee sees Mohandessin's ATM data on every ATM page
+  and what they record is filed under Mohandessin, where Mohandessin's people see it; outside ATM
+  nothing changes. On `/atm/mail-tickets` the header «select all» box is gone; the row boxes and
+  the accept and reject bar stay ([ATM port §6a–§6c](docs/12-planning/atm-operations-port.md)).
+
 - **Banks and areas are one list across the ATM pages, in Arabic and English, and a machine added
   on data-edit lands in the register.** «وبالنسبة لإضافة الماكينات /atm/data-edit البنوك والمناطق
   مش مسمعه !! من /atm/register · مع العلم عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا

@@ -245,8 +245,7 @@ export const registerActionsWidth = (slots: number): number =>
 
 /** One thing a flagged entry still lacks: a single column, or a group none of whose cells is filled. */
 export type RegisterCompletionGap =
-  | { kind: 'field'; field: AtmRegisterField }
-  | { kind: 'group'; group: AtmRegisterGroup };
+  { kind: 'field'; field: AtmRegisterField } | { kind: 'group'; group: AtmRegisterGroup };
 
 /**
  * The columns a completed receipt is expected to carry, judged one by one. The sheet leaves many

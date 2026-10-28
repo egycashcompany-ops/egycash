@@ -42,7 +42,7 @@ ECMS" means.
 | `users` / `user_status` | platform auth/RBAC | Single-session enforcement is a platform policy, not module behaviour (T4) |
 | `employees` (dept "الصراف الالى") | `platform/directory` + `atm.maintenanceLeaderDepartmentIds` setting | The hardcoded department NAME became configuration |
 | Legacy pages | `/atm/replenishments(±/done)`, `/atm/maintenance(±/done)`, `/atm/mail-tickets(±/log)`, `/atm/machines`, `/atm/data-edit` | `apps/web/src/modules/atm/routes.tsx` |
-| Privileges (`atm-user`, `atm-user-review`, `atm-admin`, `Efficiency-admin`) | `atmReplenishment.*`, `atmMaintenance.*`, `atmMailTicket.view/decide/viewLog`, `atmMachine.view/manage/moveArea`, `atmRefLabel.create/edit`; Efficiency: `atmRegister.view/create/edit/delete/export/handover/viewSecrets/import`, `atmRegisterReport.view` | Roles carry the legacy bundles; the review role = view+complete on done surfaces (contad_app.js:1056 vs :2096); the mail log is admin-narrow (:2901). Since the Efficiency register, `/atm/data-edit` is split: Operations hold `atmRefLabel.*` + `atmMachine.moveArea`, the administrator keeps `manage` (§9) |
+| Privileges (`atm-user`, `atm-user-review`, `atm-admin`, `Efficiency-admin`) | `atmReplenishment.*`, `atmMaintenance.*`, `atmMailTicket.view/decide/viewLog`, `atmMachine.view/manage/moveArea`, `atmRefLabel.create/edit`; Efficiency: `atmRegister.view/create/edit/delete/export/handover/viewSecrets/import`, `atmRegisterReport.view`; the bank catalog: `atmBank.create/edit` (organization scope only) | Roles carry the legacy bundles; the review role = view+complete on done surfaces (contad_app.js:1056 vs :2096); the mail log is admin-narrow (:2901). Since the Efficiency register, `/atm/data-edit` is split: Operations hold `atmRefLabel.*` + `atmMachine.moveArea`, the administrator keeps `manage` (§9) |
 
 ## 3. Decisions taken under the owner's delegation
 
@@ -50,10 +50,17 @@ ECMS" means.
   REMOVES bank names (contad_app.js:2477-2524) — a write no module may perform on another
   module's collection — and the legacy itself kept `atm_data_lists` beside `data_lists` as a
   separate list with a separate administrator. Machines store the label string, as legacy did.
+  **Amended 2026-10-28:** the register's banks became the company-wide catalog `atm_banks`
+  (register spec DEC-35), and it is ATM-owned for the same reason: the operations bank catalog is
+  another module's list, with another administrator. The per-branch lists stay. A `bank` label is
+  now an Operations SPELLING of a catalog bank and names it (`bankCode`); an `area` label gains
+  Arabic and English display names. Machines still store one label string.
 - **D2 — `/data_edit_atm` in scope** (owner's follow-up message): delivered whole — bulk add with
   skip-and-name, delete with the `-D` rename, area reassignment, both label lists. Since the
   Efficiency register its authority is split between Operations and the administrator (§9);
-  nothing was removed.
+  nothing was removed. **Amended 2026-10-28:** a machine added here is also recorded in the
+  register, an archived code is brought back instead of refused, and a code living in another
+  branch is refused (§9).
 - **D3 — `/reports_atm` DELIVERED** (revised): originally deferred as outside the owner's page
   list, then built under the owner's standing delegation. It rides the existing view grants and
   declares no permission and no page (the operations B5-report precedent).
@@ -415,6 +422,7 @@ argument for the suite existing at all:
 | — | OD-1a: the rule per Cairo day, the edits guarded, the any-day index dropped (§4a); the boards one day at a time, sort, reset, copy columns, F8, the «الوردية» box, Excel/PDF on the four tables (§10) | delivered |
 | — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
+| — | The bank catalog, bilingual areas and data-edit adds recorded in the register — register spec §1.3 (DEC-35–DEC-41), §9 below; suites `tests/integration/atm-banks.spec.ts`, `atm-area-labels.spec.ts`, `atm-data-edit-register.spec.ts` | in progress (ships as one release) |
 | — | Machine map and owner-drawn zones: `/atm/map`, `/atm/map/unlocated`, the location sync and the short-link resolver — [atm-map-zones.md](atm-map-zones.md) (no legacy counterpart: GAP, §1) | in progress (ships as one release) |
 | — | Settlements & Review → Preparation → Control & Supplies, phase 1 (Al Baraka only): `/atm/settlements/plans`, `/atm/settlements/layouts` (+ `/import`), `/atm/preparation`, `/atm/control`; the machine's cassette layout, the day's plan and its papers, the bag and seal capture, the crew lines — [atm-settlements-phase1.md](atm-settlements-phase1.md); suite `tests/integration/atm-settlements.spec.ts` | in progress (ships as one release) |
 
@@ -431,11 +439,13 @@ Operations' hands — gated, never deleted:
 
 | Action | Route | Key after the split |
 |---|---|---|
-| Add / bulk add a machine, delete by codes, reassign by code, edit or archive a machine | `POST /atm/machines`, `/bulk`, `/bulk-delete`, `/reassign-area`, `PATCH /:id` | `atmMachine.manage` (unchanged) |
+| Add / bulk add a machine, delete by codes, reassign by code, edit or archive a machine | `POST /atm/machines`, `/bulk`, `/bulk-delete`, `/reassign-area`, `PATCH /:id` | `atmMachine.manage` (unchanged). Since 2026-10-28 an add needs it to reach the acting branch (DEC-39) |
 | Move ONE machine to another area (legacy «نقل ماكينة لمنطقة», contad_app.js:2529-2541) | `PATCH /atm/machines/:id/area` (new, DEC-3) | `atmMachine.moveArea` or `manage` |
-| Add a bank or area label | `POST /atm/ref-labels/:kind` | `atmRefLabel.create` or `manage` |
-| Rename or archive-toggle a label | `PATCH /atm/ref-labels/:kind/:id` | `atmRefLabel.edit` or `manage` |
+| Add a bank spelling or an area label | `POST /atm/ref-labels/:kind` | `atmRefLabel.create` or `manage`. Since 2026-10-28, for an AREA also `atmRegister.create` or `atmRegister.edit` — the register form's «+ منطقة» (DEC-39) |
+| Rename or archive-toggle a label; set an area's Arabic and English names; link a spelling to a bank | `PATCH /atm/ref-labels/:kind/:id` | `atmRefLabel.edit` or `manage` |
 | Delete a label | `DELETE /atm/ref-labels/:kind/:id` | `atmMachine.manage` (unchanged) |
+| Read what the dialogs offer in one branch (new, 2026-10-28) | `GET /atm/ref-labels/options?branchId=` | any of `atmMachine.view`, `manage`, `moveArea`, `atmRefLabel.create`, `atmRefLabel.edit` reaching the branch |
+| Add, edit or archive a bank of the company-wide catalog (new, 2026-10-28) | `POST /atm/banks`, `PATCH /atm/banks/:code`; read `GET /atm/banks` | `atmBank.create` / `atmBank.edit` at organization scope only (Efficiency and the administrators); any ATM key reads |
 
 - **Every AREA write moves the machine's open register entries with it** — `moveArea`, `PATCH /:id`
   and `reassign-area`, in the same transaction (DEC-4). A name or bank edit by an administrator does
@@ -454,6 +464,39 @@ Operations' hands — gated, never deleted:
   keys to existing roles, and removing `manage` from them, is an administrator's step (register spec
   §12.2); until then a manage-only holder still opens the page by URL through the route guard, but
   the sidebar row now needs `atmRefLabel.create`.
+
+**Since 2026-10-28** (register spec revision 4, DEC-35–DEC-41). The owner: «وبالنسبة لإضافة الماكينات
+/atm/data-edit البنوك والمناطق مش مسمعه !! من /atm/register · مع العلم عايز لما يتضاف حاجة هنا
+/atm/data-edit تتضاف هنا /atm/register بحيث شغل العمليات ميعطلش ويبقى بتاع الكفاءة والتحقيقات يكمل
+بياناتها براحته وبرضو يقدروا يضيفوا مناطق وبنوك (عربي وأنجليزي)».
+
+- **Four tabs, each one table.**
+  - «الماكينات».
+  - «البنوك»: the company-wide catalog. Any ATM key reads it; only `atmBank.*` at organization
+    scope adds or edits.
+  - «أسماء البنوك في التشغيل»: the branch's spellings of catalog banks (`NBE FOREX` → NBE). A callout
+    lists the bank texts on the branch's machines that map to no bank, each with «ربط ببنك».
+  - «المناطق»: each area with its Arabic and English names, the name stored on machines, and where
+    it came from. A new area's stored name is the English one — the owner: «الإنجليزي تمام».
+  - Every area on an active machine, or on an open or pending register entry, is listed
+    automatically: written after each save, plus a boot backfill. A name Operations deleted,
+    archived or renamed is never brought back.
+- **An add lands in the register.**
+  - A machine added here, single or bulk, is recorded as an OPEN register entry dated the add day,
+    linked to the machine and flagged «بيانات ناقصة» for Efficiency to complete.
+  - A pending entry of that code is received instead, and an open one in this branch is linked.
+  - Nothing is recorded, but the machine still works, when the branch has no `EGYCASH-n` code, the
+    code is a placeholder, or the bank text maps to no bank.
+  - The add is refused (409, nothing written) when the code is active, or has an open register
+    period, in another branch. An archived catalog bank is refused too (400).
+  - An archived code in this branch is brought back with the form's data.
+  - The dialog says each outcome in words.
+- **The dialogs read one endpoint,** `GET /atm/ref-labels/options?branchId=`. It returns:
+  - the active catalog banks and the branch's mapped spellings, grouped by bank;
+  - the branch's areas, whole (the two old 100-row lists cut long lists short and mixed branches);
+  - whether the branch is mapped, and the unmapped bank texts.
+
+  Any key of the page that reaches the branch can read it.
 
 ## 10. The boards, one day at a time — and the four tables as files (2026-10-27)
 

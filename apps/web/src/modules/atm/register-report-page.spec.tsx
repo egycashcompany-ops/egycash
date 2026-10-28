@@ -3,7 +3,8 @@
 // pinned in `lib/register-report-view.spec.ts`; this file pins that the page DRAWS them — the three
 // sections in the sheet's order, every chart and table left-to-right inside the Arabic page, the
 // first category at the smallest x, the owner's colours on the right charts, a `0` where nothing
-// is counted, only the branches the server shows, and the as-of stamp in the sheet's format.
+// is counted, only the branches the server shows, and the as-of stamp in the sheet's format — and
+// a bank added to the catalog drawn after the six, in its own colour (DEC-35, DEC-40).
 //
 // Every number below is synthetic, folded by the contracts' own fold.
 import { readFileSync } from 'node:fs';
@@ -15,12 +16,15 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
-  ATM_BANK_REPORT_COLORS,
+  ATM_BANK_SEED,
   ATM_REGISTER_BRANCH_CODES,
   ATM_REPORT_TOTALS_COLOR,
+  atmBankSeedOf,
+  atmReportBankOrders,
   foldAtmRegisterReport,
   type AtmBankCode,
   type AtmRegisterBranchCode,
+  type AtmRegisterReportBankDto,
   type AtmRegisterReportDto,
   type AtmRegisterReportGroup,
   type Locale,
@@ -48,14 +52,39 @@ const GROUPS: AtmRegisterReportGroup[] = [
   { branchCode: null, bankCode: 'BRK', count: 4 },
 ];
 
+/** A seventh bank the catalog holds (synthetic). */
+const QNB: AtmRegisterReportBankDto = {
+  code: 'QNB',
+  name: { ar: 'بنك تجريبي', en: 'Synthetic Bank' },
+  color: '#7030A0',
+  isActive: true,
+  isSeed: false,
+};
+
 const report = (
   shown: readonly AtmRegisterBranchCode[] = ATM_REGISTER_BRANCH_CODES,
   groups: readonly AtmRegisterReportGroup[] = GROUPS,
-): AtmRegisterReportDto => ({
-  generatedAt: GENERATED_AT,
-  branchesShown: [...shown],
-  counts: foldAtmRegisterReport(groups, shown),
-});
+  extras: readonly AtmRegisterReportBankDto[] = [],
+): AtmRegisterReportDto => {
+  const orders = atmReportBankOrders(extras.map((bank) => bank.code));
+  return {
+    generatedAt: GENERATED_AT,
+    branchesShown: [...shown],
+    counts: foldAtmRegisterReport(groups, shown, orders.section3),
+    banks: [
+      ...ATM_BANK_SEED.map((seed) => ({
+        code: seed.code,
+        name: seed.name,
+        color: seed.color,
+        isActive: true,
+        isSeed: true,
+      })),
+      ...extras,
+    ],
+    section1Banks: orders.section1,
+    section3Banks: orders.section3,
+  };
+};
 
 const store = (locale: Locale) =>
   configureStore({
@@ -244,7 +273,7 @@ describe('chart 3', () => {
     expect(xs).toEqual([...xs].sort((a, b) => a - b));
     for (const bar of bars) {
       if (bar.fill === null) continue;
-      expect(bar.fill).toBe(ATM_BANK_REPORT_COLORS[bar.series as AtmBankCode]);
+      expect(bar.fill).toBe(atmBankSeedOf(bar.series as AtmBankCode)?.color);
     }
     expect(bars.filter((bar) => bar.fill !== null).map((bar) => bar.key)).toEqual([
       's3.EGYCASH-1.NBE',
@@ -283,6 +312,54 @@ describe('chart 3', () => {
     const cells = [...sectionOf(markup, 3).matchAll(/data-report-cell="([^"]+)"/g)];
     expect(cells).toHaveLength(42);
     expect(sectionOf(markup, 3)).not.toContain('total');
+  });
+});
+
+describe('a bank added to the catalog', () => {
+  const withQnb = (): string =>
+    render(
+      report(
+        ATM_REGISTER_BRANCH_CODES,
+        [...GROUPS, { branchCode: 'EGYCASH-1', bankCode: 'QNB', count: 6 }],
+        [QNB],
+      ),
+    );
+
+  it('gets the seventh bar of section 1, after BRK and before the total', () => {
+    const one = barsOf(sectionOf(withQnb(), 1));
+    expect(one.map((bar) => bar.key)).toEqual([
+      's1.NXT',
+      's1.NBE',
+      's1.BM',
+      's1.CIB',
+      's1.HDB',
+      's1.BRK',
+      's1.QNB',
+      's1.total',
+    ]);
+    expect(cellText(withQnb(), 's1.QNB')).toBe('6');
+    expect(cellText(withQnb(), 's1.total')).toBe('72');
+  });
+
+  it('gets its own series in section 3, in its catalog colour, legend and table included', () => {
+    const section = sectionOf(withQnb(), 3);
+    const bars = barsOf(section);
+    expect(bars).toHaveLength(49);
+    expect(bars.find((bar) => bar.key === 's3.EGYCASH-1.QNB')?.fill).toBe('#7030A0');
+    const items = [...section.matchAll(/data-report-legend-item="([^"]+)"/g)].map((m) => m[1]);
+    expect(items).toEqual(['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT', 'QNB']);
+    expect(section).toContain('بنك تجريبي');
+    expect(cellText(section, 's3.EGYCASH-1.QNB')).toBe('6');
+    expect(cellText(section, 's3.EGYCASH-4.QNB')).toBe('0');
+  });
+
+  it('leaves the six where the sheet has them, in the sheet’s colours', () => {
+    const bars = barsOf(sectionOf(withQnb(), 3));
+    for (const bar of bars) {
+      if (bar.fill === null || bar.series === 'QNB') continue;
+      expect(bar.fill).toBe(atmBankSeedOf(bar.series as AtmBankCode)?.color);
+    }
+    expect(bars[0]?.key).toBe('s3.EGYCASH-1.NBE');
   });
 });
 

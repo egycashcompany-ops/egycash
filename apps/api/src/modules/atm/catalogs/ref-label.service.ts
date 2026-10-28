@@ -385,11 +385,16 @@ class AtmRefLabelService {
         assertActiveBank(input.bankCode, catalog);
       }
       const bankCode =
-        input.bankCode !== undefined ? input.bankCode : ((before.bankCode ?? null) as string | null);
+        input.bankCode !== undefined
+          ? input.bankCode
+          : ((before.bankCode ?? null) as string | null);
       const holder = catalog.bankOfLabel(renamedTo ?? before.name);
       // A NEW text a catalog bank answers to is no spelling (as on create); an existing legacy row
       // that is its own bank's label (`NBE` → NBE) may keep it, but not be moved to another bank.
-      if (holder !== null && (renamedTo !== null || (bankCode !== null && holder.code !== bankCode))) {
+      if (
+        holder !== null &&
+        (renamedTo !== null || (bankCode !== null && holder.code !== bankCode))
+      ) {
         throw labelTaken();
       }
       if (input.bankCode !== undefined) set.bankCode = input.bankCode;

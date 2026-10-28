@@ -1,9 +1,13 @@
-// The register's two settings, edited where the import is run (spec §8.6, DEC-20).
+// The register's settings, edited where the import is run (spec §8.6, DEC-20).
 //
 //   · Branch codes — the workbook's `EGYCASH-1..7` → the ECMS branch (D4). Nothing is pre-filled:
 //     which branch «وصال» is, is the administrator's act (EG-18). An unmapped code blocks the
 //     import (`branchUnmapped`) and refuses a receipt in that branch (DEC-10).
-//   · Operations bank labels — the name a coupled Operations machine carries for each bank (D5).
+//   · The banks — shown, no longer edited here. The name a coupled Operations machine carries for
+//     each bank (D5) is the bank CATALOG's now (DEC-35): the old `atm.register.bankLabels` setting
+//     was read once, to seed the catalog, and is never read again, so an editor for it here would
+//     save values nothing reads. The list shows what the import's preview will use, and «إدارة
+//     البنوك» opens the register's own «البنوك» for whoever keeps the catalog.
 //
 // Written through the platform `setting.edit` at organization scope (the generic settings screen
 // cannot edit an array of objects). Without `setting.edit` the card is READ-ONLY rather than
@@ -11,33 +15,33 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ATM_BANK_CODES,
-  ATM_DEFAULT_OPS_BANK_LABELS,
   ATM_REGISTER_BRANCH_CODES,
   AtmSettingKeys,
-  type AtmBankCode,
   type AtmRegisterBranchCode,
   type AtmRegisterMetaDto,
   type Locale,
 } from '@ecms/contracts';
 import { useAppSelector } from '../../../../store';
 import { useT } from '../../../../platform/localization/useT';
-import { useCan } from '../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../platform/rbac/Can';
 import { useSetSetting } from '../../../../platform/settings/settings-api';
 import { useBranchOptions } from '../../../organization/shared/references';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Button } from '../../../../shared/ui/Button';
-import { Input, Select } from '../../../../shared/ui/form';
+import { StatusBadge } from '../../../../shared/ui/Badge';
+import { Select } from '../../../../shared/ui/form';
+import { BuildingIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
 import { registerKeys, useRegisterMeta } from '../../api/register-queries';
-import { bankName, branchLabel } from '../../lib/register-labels';
+import { sortByCatalogOrder } from '../../lib/bank-catalog';
+import { branchLabel } from '../../lib/register-labels';
+import { BankCatalogDialog } from '../catalog/BankCatalogDialog';
 
 const TH = 'p-2 text-start text-xs font-medium text-slate-500 dark:text-slate-400';
 const TD = 'p-2 align-middle';
 
 type BranchDraft = Record<AtmRegisterBranchCode, string>;
-type LabelDraft = Record<AtmBankCode, string>;
 
 const branchDraftOf = (meta: AtmRegisterMetaDto | undefined): BranchDraft =>
   Object.fromEntries(
@@ -47,16 +51,8 @@ const branchDraftOf = (meta: AtmRegisterMetaDto | undefined): BranchDraft =>
     ]),
   ) as BranchDraft;
 
-const labelDraftOf = (meta: AtmRegisterMetaDto | undefined): LabelDraft =>
-  Object.fromEntries(
-    ATM_BANK_CODES.map((code) => [
-      code,
-      meta?.banks.find((b) => b.code === code)?.opsLabel ?? ATM_DEFAULT_OPS_BANK_LABELS[code],
-    ]),
-  ) as LabelDraft;
-
 const signatureOf = (meta: AtmRegisterMetaDto | undefined): string =>
-  JSON.stringify([branchDraftOf(meta), labelDraftOf(meta)]);
+  JSON.stringify(branchDraftOf(meta));
 
 export const RegisterSettingsCard = (): JSX.Element => {
   const t = useT();
@@ -70,8 +66,8 @@ export const RegisterSettingsCard = (): JSX.Element => {
   const save = useSetSetting();
 
   const [branchDraft, setBranchDraft] = useState<BranchDraft>(() => branchDraftOf(meta.data));
-  const [labelDraft, setLabelDraft] = useState<LabelDraft>(() => labelDraftOf(meta.data));
   const [followed, setFollowed] = useState<string | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   // Follow the server once it answers and after every save — keyed on content, so a refetch that
   // returns the same values does not throw away an edit in progress.
   const serverSignature = signatureOf(meta.data);
@@ -79,11 +75,11 @@ export const RegisterSettingsCard = (): JSX.Element => {
     if (meta.data === undefined || followed === serverSignature) return;
     setFollowed(serverSignature);
     setBranchDraft(branchDraftOf(meta.data));
-    setLabelDraft(labelDraftOf(meta.data));
   }, [meta.data, serverSignature, followed]);
 
-  const dirty = JSON.stringify([branchDraft, labelDraft]) !== serverSignature;
-  const labelsComplete = ATM_BANK_CODES.every((code) => labelDraft[code].trim() !== '');
+  const dirty = JSON.stringify(branchDraft) !== serverSignature;
+  // Every catalog bank, archived ones too: the preview still names a row that carries one.
+  const banks = sortByCatalogOrder(meta.data?.banks ?? []);
 
   const submit = async (): Promise<void> => {
     try {
@@ -94,11 +90,6 @@ export const RegisterSettingsCard = (): JSX.Element => {
           code,
           branchId: branchDraft[code],
         })),
-      });
-      await save.mutateAsync({
-        key: AtmSettingKeys.RegisterBankLabels,
-        scope: 'organization',
-        value: ATM_BANK_CODES.map((bankCode) => ({ bankCode, label: labelDraft[bankCode].trim() })),
       });
       await qc.invalidateQueries({ queryKey: registerKeys.meta });
       toast.success(t('atm.registerSettings.saved'));
@@ -181,10 +172,26 @@ export const RegisterSettingsCard = (): JSX.Element => {
           </div>
         </section>
 
-        <section className="space-y-2">
-          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            {t('atm.registerSettings.bankLabels')}
-          </h4>
+        <section className="space-y-2" data-register-settings-banks="true">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              {t('atm.registerSettings.bankLabels')}
+            </h4>
+            <Can anyOf={['atmBank.create', 'atmBank.edit']}>
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={<BuildingIcon className="h-4 w-4" />}
+                data-register-settings-action="banks"
+                onClick={() => setCatalogOpen(true)}
+              >
+                {t('atm.registerSettings.manageBanks')}
+              </Button>
+            </Can>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('atm.registerSettings.bankLabelsHint')}
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -192,32 +199,26 @@ export const RegisterSettingsCard = (): JSX.Element => {
                   <th className={TH}>{t('atm.registerSettings.bank')}</th>
                   <th className={TH}>{t('atm.registerSettings.bankName')}</th>
                   <th className={TH}>{t('atm.registerSettings.label')}</th>
+                  <th className={TH}>{t('atm.dataEdit.status')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {ATM_BANK_CODES.map((code) => (
-                  <tr key={code}>
+                {banks.map((bank) => (
+                  <tr key={bank.code} data-register-settings-bank={bank.code}>
                     <td className={`${TD} font-mono text-xs`} dir="ltr">
-                      {code}
+                      {bank.code}
                     </td>
                     <td className={TD}>
-                      <span dir="auto">{bankName(code, 'ar')}</span>
+                      <span dir="auto">{localized(bank.name, locale)}</span>
                     </td>
                     <td className={TD}>
-                      {canEdit ? (
-                        <Input
-                          aria-label={`${t('atm.registerSettings.label')} ${code}`}
-                          dir="ltr"
-                          maxLength={64}
-                          value={labelDraft[code]}
-                          disabled={save.isPending}
-                          onChange={(e) =>
-                            setLabelDraft((prev) => ({ ...prev, [code]: e.target.value }))
-                          }
-                        />
-                      ) : (
-                        <span dir="ltr">{labelDraft[code]}</span>
-                      )}
+                      <span dir="ltr">{bank.opsLabel}</span>
+                    </td>
+                    <td className={TD}>
+                      <StatusBadge
+                        tone={bank.isActive ? 'success' : 'neutral'}
+                        label={t(bank.isActive ? 'atm.dataEdit.active' : 'atm.dataEdit.archived')}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -230,7 +231,7 @@ export const RegisterSettingsCard = (): JSX.Element => {
           <div className="flex justify-end">
             <Button
               loading={save.isPending}
-              disabled={!dirty || !labelsComplete || meta.data === undefined}
+              disabled={!dirty || meta.data === undefined}
               onClick={() => void submit()}
             >
               {t('atm.registerSettings.save')}
@@ -238,6 +239,7 @@ export const RegisterSettingsCard = (): JSX.Element => {
           </div>
         )}
       </CardBody>
+      {catalogOpen && <BankCatalogDialog open onClose={() => setCatalogOpen(false)} />}
     </Card>
   );
 };

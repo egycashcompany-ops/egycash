@@ -54,8 +54,10 @@ import {
   ValidationError,
 } from '../../../shared/errors';
 import { keyReachesBranch, scopeSelector, type AuthContext } from '../../../shared/types';
+import { ensureAreaLabels } from '../catalogs/area-labels';
 import { type AtmBankCatalog } from '../catalogs/bank-catalog';
 import { AtmRefLabelModel } from '../catalogs/ref-label.model';
+import { branchLabelChoices, readBranchLabels } from '../catalogs/ref-label.service';
 import { AtmMachineModel, type AtmMachineDoc } from '../machines/machine.model';
 import { cairoDateString } from '../shared/cairo-time';
 import {
@@ -186,6 +188,19 @@ const notOpen = (): BusinessRuleError =>
 
 const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
   for (const audit of audits) await auditService.record(audit);
+};
+
+/**
+ * DEC-38: after a write COMMITTED, the area an open or pending entry carries becomes a data-edit
+ * label of its branch, so what Efficiency types reaches Operations' lists (the owner: «مش مسمعه»).
+ * Best effort — never fails the write; an ended entry's area stays a suggestion only.
+ */
+const labelEntryArea = async (entry: AtmRegisterEntryDoc, ctx: AuthContext): Promise<void> => {
+  if (entry.status === 'ended') return;
+  await ensureAreaLabels([{ branchId: entry.branchId, area: entry.area }], {
+    actorId: ctx.userId,
+    origin: 'register',
+  });
 };
 
 export interface AtmRegisterListResult {
@@ -655,6 +670,7 @@ class AtmRegisterService {
       },
       ...(coupling?.audits ?? []),
     ]);
+    await labelEntryArea(doc, ctx);
     return this.writeResult(
       await this.toDto(doc, ctx, settings),
       [...warnings, ...(coupling === null ? [] : this.linkWarnings(coupling, requestedLabel))],
@@ -875,6 +891,7 @@ class AtmRegisterService {
       },
       ...result.audits,
     ]);
+    if (result.updated.area !== before.area) await labelEntryArea(result.updated, ctx);
     return this.writeResult(
       await this.toDto(result.updated, ctx, settings),
       [...warnings, ...result.txWarnings],
@@ -1000,6 +1017,7 @@ class AtmRegisterService {
       },
       ...result.outcome.audits,
     ]);
+    await labelEntryArea(result.updated, ctx);
     return this.writeResult(
       await this.toDto(result.updated, ctx, settings),
       [...warnings, ...this.linkWarnings(result.outcome, input.opsBankLabel)],
@@ -1165,6 +1183,7 @@ class AtmRegisterService {
       },
       ...result.outcome.audits,
     ]);
+    await labelEntryArea(result.updated, ctx);
     return this.writeResult(
       await this.toDto(result.updated, ctx, settings),
       this.linkWarnings(result.outcome, undefined),
@@ -1217,39 +1236,17 @@ class AtmRegisterService {
     ) {
       throw new ForbiddenError('the register keys do not reach this branch');
     }
-    type OptionLabel = {
-      kind: string;
-      name: string;
-      nameAr?: string | null;
-      nameEn?: string | null;
-      bankCode?: string | null;
-    };
     const [labels, settings] = await Promise.all([
-      AtmRefLabelModel.find(
-        { branchId: new Types.ObjectId(branchId), isActive: true, isDeleted: false },
-        { kind: 1, name: 1, nameAr: 1, nameEn: 1, bankCode: 1 },
-      )
-        .lean<OptionLabel[]>()
-        .exec(),
+      readBranchLabels(branchId),
       resolveRegisterSettings(),
     ]);
-    const ofKind = (kind: string): OptionLabel[] =>
-      labels.filter((label) => label.kind === kind).sort((a, b) => a.name.localeCompare(b.name));
-    const sorted = (kind: string): string[] => ofKind(kind).map((label) => label.name);
-    // The Operations-label select, once a bank is chosen: spellings mapped to an ACTIVE bank. A
-    // spelling that IS a catalog label (a legacy `NBE` row → NBE) is no override at all, so it is
-    // not offered.
-    const bankVariants = ofKind('bank').flatMap((label) => {
-      const bank =
-        label.bankCode === null || label.bankCode === undefined
-          ? undefined
-          : settings.catalog.byCode.get(label.bankCode);
-      return bank === undefined ||
-        !bank.isActive ||
-        settings.catalog.bankOfLabel(label.name) !== null
-        ? []
-        : [{ name: label.name, bankCode: bank.code }];
-    });
+    // The same choices the data-edit dialogs read (`branchLabelChoices`), so the two forms never
+    // disagree: the Operations-label select, once a bank is chosen, offers the spellings mapped to an
+    // ACTIVE bank — a spelling that IS a catalog label (a legacy `NBE` row) is no override at all.
+    const choices = branchLabelChoices(labels, settings.catalog);
+    const bankVariants = choices.banks.flatMap((option) =>
+      option.kind === 'spelling' ? [{ name: option.value, bankCode: option.bankCode }] : [],
+    );
     const [areas, operationTypes, vendors, models, hubs] = await Promise.all([
       atmRegisterEntryRepository.distinctValues('area', branchId),
       atmRegisterEntryRepository.distinctValues('operationType', branchId),
@@ -1259,13 +1256,12 @@ class AtmRegisterService {
     ]);
     return {
       branchId,
-      areaLabels: sorted('area'),
-      bankLabels: sorted('bank'),
-      areaOptions: ofKind('area').map((label) => ({
-        name: label.name,
-        nameAr: label.nameAr ?? null,
-        nameEn: label.nameEn ?? null,
-      })),
+      areaLabels: choices.areas.map((area) => area.name),
+      bankLabels: labels
+        .filter((label) => label.kind === 'bank')
+        .map((label) => label.name)
+        .sort((a, b) => a.localeCompare(b)),
+      areaOptions: choices.areas,
       bankVariants,
       areas,
       operationTypes,

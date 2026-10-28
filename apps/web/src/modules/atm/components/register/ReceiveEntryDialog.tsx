@@ -39,6 +39,8 @@ export const defaultReceiptBranch = (
   return ids.length === 1 ? (ids[0] ?? '') : '';
 };
 
+const holdStill = (): void => undefined;
+
 export const ReceiveEntryDialog = ({
   meta,
   onClose,
@@ -54,6 +56,8 @@ export const ReceiveEntryDialog = ({
     entryFormValues(null, defaultReceiptBranch(meta, readStoredBranch())),
   );
   const [error, setError] = useState<string | null>(null);
+  // A bank or area dialog is open over the form: this one holds still until it closes.
+  const [overlay, setOverlay] = useState(false);
   const options = useRegisterBranchOptions(values.branchId === '' ? null : values.branchId);
   const receive = useReceiveRegisterEntry();
 
@@ -90,7 +94,7 @@ export const ReceiveEntryDialog = ({
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={overlay ? holdStill : onClose}
       title={t('atm.register.form.receiveTitle')}
       size="xl"
       tall
@@ -120,6 +124,7 @@ export const ReceiveEntryDialog = ({
           options={options.data}
           secrets={secrets}
           isMissing={required.isMissing}
+          onOverlayChange={setOverlay}
         />
       </div>
     </Dialog>

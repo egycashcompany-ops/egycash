@@ -124,6 +124,14 @@ describe('the 57 cells, named as the Data Report names them', () => {
     const nbe = ATM_DATA_REPORT_CELLS.find((cell) => cell.key === 's1.NBE');
     expect(nbe === undefined ? null : reportCellLabel(nbe, t, 'ar')).toBe('البنك الأهلي المصري');
   });
+
+  it('names a seed as the bank catalog names it now, when the caller has the catalog', () => {
+    const nbe = ATM_DATA_REPORT_CELLS.find((cell) => cell.key === 's3.EGYCASH-1.NBE');
+    const curated = [{ code: 'NBE', name: { ar: 'الأهلي', en: 'NBE (curated)' } }];
+    expect(nbe === undefined ? null : reportCellLabel(nbe, t, 'en', curated)).toBe(
+      'atm.registerReport.branch3.EGYCASH-1 · NBE (curated)',
+    );
+  });
 });
 
 describe('small helpers', () => {
@@ -232,7 +240,26 @@ describe('the runs card', () => {
 // sends — it carries no key value and no combination, so the page has nothing secret to show.
 
 const META: AtmRegisterMetaDto = {
-  banks: [],
+  banks: [
+    {
+      code: 'NBE',
+      name: { ar: 'البنك الأهلي المصري', en: 'National Bank of Egypt' },
+      opsLabel: 'NBE',
+      color: '#385723',
+      isActive: true,
+      sortOrder: 10,
+      isSeed: true,
+    },
+    {
+      code: 'QNB',
+      name: { ar: 'بنك تجريبي', en: 'Synthetic Bank' },
+      opsLabel: 'QNB OPS',
+      color: '#7030A0',
+      isActive: false,
+      sortOrder: 70,
+      isSeed: false,
+    },
+  ],
   branches: [
     {
       code: 'EGYCASH-4',
@@ -308,7 +335,7 @@ const PREVIEW: AtmRegisterImportResultDto = {
   applied: null,
 };
 
-const store = () =>
+const store = (extra: readonly string[] = []) =>
   configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
@@ -316,7 +343,9 @@ const store = () =>
       auth: {
         me: {
           id: 'u1',
-          permissions: { 'atmRegister.import': 'organization', 'setting.edit': 'organization' },
+          permissions: Object.fromEntries(
+            ['atmRegister.import', 'setting.edit', ...extra].map((key) => [key, 'organization']),
+          ),
         } as unknown as MeDto,
         status: 'signedIn' as const,
       },
@@ -324,13 +353,13 @@ const store = () =>
     },
   });
 
-const renderWith = (node: ReactElement): string => {
+const renderWith = (node: ReactElement, extra: readonly string[] = []): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(listKey('atm', 'registerMeta'), META);
   qc.setQueryData(listKey('atm', 'registerImportRuns'), []);
   return renderToStaticMarkup(
     createElement(Provider, {
-      store: store(),
+      store: store(extra),
       children: createElement(QueryClientProvider, { client: qc }, node),
     }),
   );
@@ -394,5 +423,31 @@ describe('rendered', () => {
       html.lastIndexOf('<button', html.lastIndexOf(translate('en', 'atm.registerImport.apply'))),
     );
     expect(apply.slice(0, apply.indexOf('>'))).toContain('disabled');
+  });
+});
+
+// The bank labels the card used to edit are the bank CATALOG's now (DEC-35): the retired setting is
+// read once, by the seed, so an editor here would save values nothing reads.
+describe('the settings card’s banks', () => {
+  it('lists the catalog read-only — archived banks too — and edits only the branch codes', () => {
+    const html = renderWith(createElement(RegisterImportPage));
+    expect(html).toContain('data-register-settings-bank="NBE"');
+    expect(html).toContain('data-register-settings-bank="QNB"');
+    expect(html).toContain('QNB OPS');
+    expect(html).toContain(translate('en', 'atm.dataEdit.archived'));
+    // As React writes it: the hint's quotation marks are escaped in the markup.
+    expect(html).toContain(
+      translate('en', 'atm.registerSettings.bankLabelsHint').replace(/"/g, '&quot;'),
+    );
+    // No box to type a bank label into, for anyone.
+    expect(html).not.toMatch(/<input[^>]*aria-label="[^"]*Name in the Operations list/);
+  });
+
+  it('opens the catalog only for whoever keeps it', () => {
+    const plain = renderWith(createElement(RegisterImportPage));
+    expect(plain).not.toContain('data-register-settings-action="banks"');
+    const keeper = renderWith(createElement(RegisterImportPage), ['atmBank.edit']);
+    expect(keeper).toContain('data-register-settings-action="banks"');
+    expect(keeper).toContain(translate('en', 'atm.registerSettings.manageBanks'));
   });
 });

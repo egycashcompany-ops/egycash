@@ -248,6 +248,10 @@ const KEYS = [
   'atm.bankCatalog.settlementsWarning',
   'atm.bankCatalog.added',
   'atm.bankCatalog.saved',
+  // The catalog as the register shows it: «البنوك», and an archived bank in a picker.
+  'atm.bankCatalog.title',
+  'atm.bankCatalog.intro',
+  'atm.bankCatalog.archivedOption',
   'atm.reports.title',
   'atm.reports.subtitle',
   'atm.reports.day',

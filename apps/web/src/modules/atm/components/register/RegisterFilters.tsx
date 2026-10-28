@@ -6,8 +6,14 @@
 // Area depends on branch: the same area name means different streets in two branches, and the
 // list of areas is the branch's own (`/atm/register/branch-options`). Without a branch the area box
 // is disabled, and changing the branch clears the area it no longer belongs to.
+//
+// Banks are the catalog's (DEC-35): every bank, archived ones too — their entries are still in the
+// register and must stay findable — with «(مؤرشف)» after an archived one, plus any code a link or a
+// remembered view carries that the catalog does not hold, so it can be seen and cleared.
+//
+// «بيانات ناقصة فقط» (DEC-37) narrows to the receipts Operations recorded from /atm/data-edit, and
+// anything Efficiency marked to come back to — the rows still to be completed.
 import {
-  ATM_BANK_CODES,
   ATM_REGISTER_STATUSES,
   type AtmBankCode,
   type AtmRegisterMetaDto,
@@ -24,7 +30,13 @@ import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { Checkbox, Select } from '../../../../shared/ui/form';
 import { useRegisterBranchOptions } from '../../api/register-queries';
-import { bankName, branchLabel, statusLabelKey } from '../../lib/register-labels';
+import {
+  areaOptionText,
+  inCatalogOrder,
+  makeBankLookup,
+  type BankLookup,
+} from '../../lib/bank-catalog';
+import { branchLabel, statusLabelKey } from '../../lib/register-labels';
 
 export interface RegisterFilterValues {
   /** ECMS branch id, '' = every branch the reader may see. */
@@ -34,12 +46,36 @@ export interface RegisterFilterValues {
   area: string;
   q: string;
   issues: boolean;
+  /** Only entries marked «بيانات ناقصة». */
+  incomplete: boolean;
 }
 
 /** The URL params this bar writes — a subset of the page's remembered list. */
 export type RegisterFilterUpdate = Partial<
-  Record<'branch' | 'bank' | 'status' | 'area' | 'q' | 'issues', string | null>
+  Record<'branch' | 'bank' | 'status' | 'area' | 'q' | 'issues' | 'incomplete', string | null>
 >;
+
+/**
+ * The bank filter's options: every catalog bank in its order, archived ones marked, then any code
+ * the filter already holds that the catalog does not (a stale link) — never a chosen value the
+ * list cannot show.
+ */
+export const registerBankFilterOptions = (
+  lookup: BankLookup,
+  chosen: readonly string[],
+  locale: Locale,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): { value: string; label: string; shortLabel: string }[] => {
+  const archived = new Set(lookup.ordered.filter((b) => !b.isActive).map((b) => b.code));
+  return inCatalogOrder(lookup, [...lookup.codes, ...chosen]).map((code) => {
+    const label = `${code} · ${lookup.name(code, locale)}`;
+    return {
+      value: code,
+      label: archived.has(code) ? t('atm.bankCatalog.archivedOption', { name: label }) : label,
+      shortLabel: code,
+    };
+  });
+};
 
 /** The branches a reader may filter by: mapped to an ECMS branch, and inside their view reach. */
 export const viewableBranches = (
@@ -78,13 +114,20 @@ export const RegisterFilters = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const areas = useRegisterBranchOptions(values.branch === '' ? null : values.branch);
+  const lookup = makeBankLookup(meta?.banks);
+  // The area filter matches the STORED name — what the entries carry; a labelled area reads in
+  // the reader's language, with the stored name after it when the two differ (DEC-38).
+  const areaText = new Map(
+    (areas.data?.areaOptions ?? []).map((area) => [area.name, areaOptionText(area, locale)]),
+  );
   const hasFilters =
     values.branch !== '' ||
     values.banks.length > 0 ||
     values.statuses.length > 0 ||
     values.area !== '' ||
     values.q !== '' ||
-    values.issues;
+    values.issues ||
+    values.incomplete;
 
   return (
     <FilterBar
@@ -143,10 +186,7 @@ export const RegisterFilters = ({
           placeholder={t('atm.register.filter.allBanks')}
           fullWidth
           clearable
-          options={ATM_BANK_CODES.map((code) => ({
-            value: code,
-            label: `${code} · ${bankName(code, locale)}`,
-          }))}
+          options={registerBankFilterOptions(lookup, values.banks, locale, t)}
           value={values.banks}
           onChange={(next) => onChange({ bank: next.length === 0 ? null : next.join(',') })}
         />
@@ -178,6 +218,7 @@ export const RegisterFilters = ({
           ariaLabel={t('atm.register.filter.area')}
           value={values.area}
           options={areas.data?.areas ?? []}
+          optionLabel={(name) => areaText.get(name) ?? name}
           onChange={(area) => onChange({ area: area === '' ? null : area })}
           placeholder={t('atm.register.filter.allAreas')}
           emptyText={t('common.noResults')}
@@ -190,6 +231,14 @@ export const RegisterFilters = ({
           label={t('atm.register.filter.withIssues')}
           checked={values.issues}
           onChange={(e) => onChange({ issues: e.target.checked ? '1' : null })}
+        />
+      </div>
+      <div className="flex h-9 items-center self-end">
+        <Checkbox
+          label={t('atm.register.filter.incomplete')}
+          checked={values.incomplete}
+          data-register-filter="incomplete"
+          onChange={(e) => onChange({ incomplete: e.target.checked ? '1' : null })}
         />
       </div>
     </FilterBar>

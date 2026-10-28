@@ -569,10 +569,17 @@ export const refLabelFormOf = (label: AtmRefLabelDto | null, presetName = ''): R
  * area gives BOTH names and the server stores the English one on machines (the owner: «الإنجليزي
  * تمام» — stored areas are Latin, MOHNDESSEN, ALEX, and the import's ` FX` rule reads Latin).
  */
-export const refLabelCreateBody = (kind: 'bank' | 'area', form: RefLabelForm): CreateAtmRefLabel =>
-  kind === 'bank'
+export const refLabelCreateBody = (
+  kind: 'bank' | 'area',
+  form: RefLabelForm,
+  branchId?: string,
+): CreateAtmRefLabel => ({
+  ...(kind === 'bank'
     ? { name: form.name.trim(), bankCode: form.bankCode }
-    : { nameAr: form.nameAr.trim(), nameEn: form.nameEn.trim() };
+    : { nameAr: form.nameAr.trim(), nameEn: form.nameEn.trim() }),
+  // Absent = the acting branch, as before; the register names the branch of the entry it edits.
+  ...(branchId === undefined ? {} : { branchId }),
+});
 
 /**
  * PATCH /atm/ref-labels/:kind/:id — only what changed, and the version. An unchanged name is not
@@ -620,6 +627,9 @@ export const refLabelFormComplete = (
  *     before the click: «يُحفظ على الماكينات باسم: …».
  *   · Editing an area shows the stored name beside the two display names. A rename does not move
  *     the machines (it never did): the dialog says so when the stored name changes.
+ *   · The register's «+ منطقة» opens it too, for the branch of the entry being filled in
+ *     (`branchId`) — Efficiency add areas with the register keys they hold (DEC-39) — and puts the
+ *     stored name of the new area into the form (`onSaved`).
  */
 export const RefLabelDialog = ({
   open,
@@ -627,6 +637,8 @@ export const RefLabelDialog = ({
   kind,
   label,
   presetName = '',
+  branchId,
+  onSaved,
 }: {
   open: boolean;
   onClose: () => void;
@@ -634,6 +646,10 @@ export const RefLabelDialog = ({
   label: AtmRefLabelDto | null;
   /** A new spelling's text, filled in («ربط ببنك»). */
   presetName?: string;
+  /** The branch a NEW label is filed in; absent = the acting branch. */
+  branchId?: string;
+  /** After a successful save, with the label as the server stored it. */
+  onSaved?: (label: AtmRefLabelDto) => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -667,13 +683,12 @@ export const RefLabelDialog = ({
     event.preventDefault();
     if (!complete) return;
     try {
-      if (label === null) {
-        await create.mutateAsync(refLabelCreateBody(kind, form));
-        toast.success(t('atm.dataEdit.labelAdded'));
-      } else {
-        await update.mutateAsync({ id: label.id, body: refLabelUpdateBody(kind, label, form) });
-        toast.success(t('atm.dataEdit.labelSaved'));
-      }
+      const saved =
+        label === null
+          ? await create.mutateAsync(refLabelCreateBody(kind, form, branchId))
+          : await update.mutateAsync({ id: label.id, body: refLabelUpdateBody(kind, label, form) });
+      toast.success(t(label === null ? 'atm.dataEdit.labelAdded' : 'atm.dataEdit.labelSaved'));
+      onSaved?.(saved);
       onClose();
     } catch (error) {
       toast.error(refLabelErrorText(error, t, locale, { areaCreate: kind === 'area' && creating }));

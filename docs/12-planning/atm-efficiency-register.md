@@ -1,7 +1,9 @@
 # ATM Efficiency & Investigations — the machine register and the Data Report
 
 **Status:** implementation spec, owner decisions D1–D8 final (2026-10-13); revision 2 (same day)
-applies the independent review — every finding and its disposition is in Appendix A · **Source of truth:** the
+applies the independent review — every finding and its disposition is in Appendix A; revision 4
+(2026-10-28) adds the bank catalog, bilingual areas and data-edit adds that land in the register —
+it amends D2, D5, D7, DEC-4, DEC-10, DEC-16, DEC-25 and EG-6 and adds DEC-35–DEC-41 (§1.3) · **Source of truth:** the
 owner's workbook `Comprehensive ATMs report 16-03-2026.xlsx` (sheets `ATMs` and `Data Report`,
 last saved 2026-09-29) and the legacy system `/home/user/ATM` · **Target:** ECMS module `atm`
 (this manifest grows, never a second one — `apps/api/src/modules/atm/atm.module.ts:5-7`).
@@ -46,12 +48,12 @@ in this document or was printed while writing it.**
 | # | Decision | Where implemented |
 |---|---|---|
 | D1 | New collection `atm_register_entries`, **one document per Excel row = one custody period** (receipt from the bank → handover to the bank), linked by `machineId` to the existing Operations master `atm_machines` (schema and `ux_branch_code` unchanged — `apps/api/src/modules/atm/machines/machine.model.ts:13-25, 45-49`). `status` is derived and stored, never accepted as input: `pending` (no startDate) / `open` (startDate, no endDate) / `ended` (endDate). | §3.4, §5.1 |
-| D2 | Efficiency controls machine existence through the register: RECEIVE creates / reactivates / links the master (`isActive:true`); HANDOVER archives it (`isActive:false`, code stays reserved, re-receipt reactivates the same row); edits of an open entry's name/area/bank sync to the master in the same transaction; soft-deleting a mistaken entry archives the master if it was the only open entry. `/atm/data-edit` stays the OPERATIONS page with delete removed for Operations: they may add/rename/archive-toggle BANKS and AREAS and move a machine to another AREA (which also moves its open register entry); machine add (single + bulk), archive, delete-by-codes, label DELETE and reassign-area stay under `atmMachine.manage` only. Enforced server-side by new keys. The `/atm/data-edit` nav row key changes through the repo's correction mechanism. | §5.5, §5.6, §7 |
+| D2 | Efficiency controls machine existence through the register: RECEIVE creates / reactivates / links the master (`isActive:true`); HANDOVER archives it (`isActive:false`, code stays reserved, re-receipt reactivates the same row); edits of an open entry's name/area/bank sync to the master in the same transaction; soft-deleting a mistaken entry archives the master if it was the only open entry. `/atm/data-edit` stays the OPERATIONS page with delete removed for Operations: they may add/rename/archive-toggle BANKS and AREAS and move a machine to another AREA (which also moves its open register entry); machine add (single + bulk), archive, delete-by-codes, label DELETE and reassign-area stay under `atmMachine.manage` only. Enforced server-side by new keys. The `/atm/data-edit` nav row key changes through the repo's correction mechanism. **Amended 2026-10-28 (revision 4, §1.3):** a machine added on `/atm/data-edit` is ALSO recorded in the register — an OPEN receipt dated the add day, linked to the machine and flagged «بيانات ناقصة» for Efficiency to complete (DEC-36, DEC-37). The add stays `atmMachine.manage` only, and the key must now reach the acting branch (DEC-39). The register still controls existence: handing that entry over, or deleting it, archives the machine like any receipt's. Operations' bank list is now their per-branch SPELLINGS of the catalog's banks (DEC-35); the company-wide catalog is Efficiency's and the administrators'. | §5.5, §5.6, §7, §5.12 |
 | D3 | AO `Combination Safe Door P.W` sealed through the platform secret store (AES-256-GCM, context-bound); the DTO carries only `safeCombinationSet`; plaintext only through an audited reveal endpoint under `atmRegister.viewSecrets`. J..Q, AN (`Notes Received`), AU (`Notes Delivered`) returned only to `viewSecrets` holders (null + `secretsVisible:false` otherwise) and redacted in audit diffs, logs and exports. No secret in import previews or error messages. | §5.4, §6.6 |
 | D4 | Branch field on the receive form (Excel col A). Server: branch exists and is active AND `keyReachesBranch(ctx,'atmRegister.create',branchId)`. ATM setting maps `EGYCASH-1..7` → ECMS branchIds (admin-configured; sheet labels 1 المهندسين, 2 طنطا, 3 أسيوط, 4 الإسكندرية, 5 أكتوبر, 6 بور سعيد, 7 وصال). Branch immutable; a move = handover in the old branch + receive in the new. | §3.2, §5.3, §5.6 |
-| D5 | Fixed company-wide bank enum `NBE, BM, CIB, HDB, BRK, NXT` with the Data Report's Arabic names; import maps `نيكست` → NXT. Setting maps bankCode → Operations bank label (defaults NBE→NBE, BM→MISR, CIB→CIB, HDB→HDB, BRK→BRK, NXT→NXT; legacy labels at `/home/user/ATM/views/events/reports_atm.ejs:350, 403-417`). An entry may carry an explicit `opsBankLabel` override picked from the branch's existing bank labels (e.g. `NBE FOREX`). A receipt that LINKS an existing active master keeps and adopts the master's `bankName`. NBE rows whose Area ends with ` FX` (verified: 83 rows, 72 open) are a separate import category `NBE + FX area → NBE FOREX` that the owner approves. | §3.1, §5.5, §6.4 |
+| D5 | Fixed company-wide bank enum `NBE, BM, CIB, HDB, BRK, NXT` with the Data Report's Arabic names; import maps `نيكست` → NXT. Setting maps bankCode → Operations bank label (defaults NBE→NBE, BM→MISR, CIB→CIB, HDB→HDB, BRK→BRK, NXT→NXT; legacy labels at `/home/user/ATM/views/events/reports_atm.ejs:350, 403-417`). An entry may carry an explicit `opsBankLabel` override picked from the branch's existing bank labels (e.g. `NBE FOREX`). A receipt that LINKS an existing active master keeps and adopts the master's `bankName`. NBE rows whose Area ends with ` FX` (verified: 83 rows, 72 open) are a separate import category `NBE + FX area → NBE FOREX` that the owner approves. **Amended 2026-10-28 (DEC-35):** the fixed enum became the company-wide bank catalog `atm_banks`, seeded at boot with these six (codes, names, colours and labels unchanged). A bank added there is a full register bank: the register, the Data Report, the settlements and the map all use it. Each bank's own `opsLabel` replaced the bankCode → label setting, which is retired (the seed reads it once). The per-bank ID formats stay in code, for the six only; a bank without one never warns. The override must now be a spelling OF the entry's bank (DEC-25). The ` FX` import category is unchanged (DEC-16). | §3.1, §5.5, §6.4, §5.12 |
 | D6 | Block a second OPEN period for the same machineCode company-wide (mail matcher needs one active machine per code: `apps/api/src/modules/atm/mail-tickets/mail-ingestion.service.ts:55-82`; partial-unique precedent `apps/api/src/modules/it/assets/assignment.model.ts:52-60`). Area REQUIRED for new open receipts. Per-bank ID format and serial duplicates are WARNINGS only. Imported historical rows keep their blanks and carry `importIssues`. | §5.1, §5.6 |
-| D7 | One ACTIVE definition everywhere: `branch set ∧ startDate set ∧ endDate null` (Excel helper CI). End date only, no as-of date. Keep the Excel's three sections, orders, labels (typo fixes: الاسكندية→الإسكندرية, `فرع إيجي بور سعيد`→`فرع إيجي كاش بور سعيد`, `NXT  BANK`→`NXT BANK`), bank series colours (NBE #385723, BM #AC2100, CIB #FFD966, HDB #B4C7E7, BRK #F4B183, NXT #000099), total bars, 0 shown not blank, an as-of stamp = server `generatedAt`. Separate permission `atmRegisterReport.view`. | §3.5, §5.8, §8.5 |
+| D7 | One ACTIVE definition everywhere: `branch set ∧ startDate set ∧ endDate null` (Excel helper CI). End date only, no as-of date. Keep the Excel's three sections, orders, labels (typo fixes: الاسكندية→الإسكندرية, `فرع إيجي بور سعيد`→`فرع إيجي كاش بور سعيد`, `NXT  BANK`→`NXT BANK`), bank series colours (NBE #385723, BM #AC2100, CIB #FFD966, HDB #B4C7E7, BRK #F4B183, NXT #000099), total bars, 0 shown not blank, an as-of stamp = server `generatedAt`. Separate permission `atmRegisterReport.view`. **Amended 2026-10-28 (DEC-40):** the report's banks come from the catalog. The six are always shown, at their sheet positions and in their sheet colours. A bank added since follows them (after BRK in section 1, after NXT in section 3) in its catalog colour. The import's 57-number check still folds the workbook's six. | §3.5, §5.8, §8.5, §5.12 |
 | D8 | Import ALL 3,542 rows (rows 3..3544: 2,607 open, 912 ended, 23 pending) through upload → PREVIEW → explicit APPLY under `atmRegister.import`. Bind columns by (exact header, nth occurrence); stream; stop at the `END` sentinel (row 5000); read A..AW only; formula cells via `result`. Preview: counts by status; the 57 Data Report numbers recomputed next to the verified snapshot — apply BLOCKED unless they match or the owner explicitly overrides; per-row issues; reconciliation categories vs live `atm_machines` (link / reactivate / create / cannot-create / active-master-without-open-entry (report only) / NBE-FX → NBE FOREX), each approved individually. Idempotent by `importRow` through a run record. Secrets sealed on write, never echoed. File never stored. Excel frozen after cut-over. | §6, §12 |
 
 
@@ -69,19 +71,19 @@ in this document or was printed while writing it.**
 | DEC-1 | Register contracts live in a NEW file `packages/contracts/src/modules/atm-register.ts`, exported from `packages/contracts/src/index.ts`. | Module sub-feature files are the convention: `gold-portal.ts`, `fleet-odometer-bracket.ts`, `hr-*.ts` (`packages/contracts/src/index.ts:31-67`). Keeps `atm.ts` (617 lines) Operations-only and gives WP-A one new file. |
 | DEC-2 | Keys: `atmRegister.{view,create,edit,delete,export}` + specials `handover`, `viewSecrets`, `import` (page `atm.register`); `atmRegisterReport.view` (page `atm.register-report`); `atmRefLabel.{create,edit}` (page `atm.machines`); `atmMachine` special `moveArea` (page `atm.machines`). Total ATM keys 15 → 27. | Standard actions are a closed list (`packages/contracts/src/permissions/def.ts:8-18`); every other verb is a named special (`:100-143`). A separate `atmRefLabel` resource lets a role hold "add bank/area" without any machine authority. |
 | DEC-3 | Operations' "move machine to area" is a NEW route `PATCH /atm/machines/:id/area` (`atmMachine.moveArea` or `manage`). `POST /atm/machines/reassign-area` stays manage-only. | D2 says reassign-area stays manage-only AND Operations keep the legacy move capability (`/home/user/ATM/contad_app.js:2529-2541`); the only way to satisfy both is a second, area-only path. |
-| DEC-4 | Every master AREA write (manage `PATCH /:id`, manage `/reassign-area`, `moveArea`) moves the machine's open register entries to the same area in the same transaction. Master NAME/BANK edits by admins (manage `PATCH /:id`) do NOT flow back into the register. | D2 states the area rule for Operations; the area is the same fact whichever key changed it. Name/bank on the register are Efficiency's record (bank is an enum, the master holds an Operations label that cannot be mapped back). Drift is visible through `masterState`/warnings, never silently rewritten. |
+| DEC-4 | Every master AREA write (manage `PATCH /:id`, manage `/reassign-area`, `moveArea`) moves the machine's open register entries to the same area in the same transaction. Master NAME/BANK edits by admins (manage `PATCH /:id`) do NOT flow back into the register. **Note 2026-10-28 (DEC-36): unchanged.** A data-edit ADD now writes the register. A later edit still reaches it only through the area: a name or bank edit does not flow back, a changed `bankName` is not validated, and turning a machine back on through `PATCH /:id` creates no receipt (a DEC-24 correction, which `masterState` already shows). | D2 states the area rule for Operations; the area is the same fact whichever key changed it. Name/bank on the register are Efficiency's record (bank is an enum, the master holds an Operations label that cannot be mapped back). Drift is visible through `masterState`/warnings, never silently rewritten. Since DEC-35 a label can be mapped back to a catalog bank, but the rule stands: an edit corrects the master, it is not a receipt. |
 | DEC-5 | **(Narrowed by O-1 — no widening.)** Nav row `/atm/data-edit` key → `atmRefLabel.create` through a new `previousPermission` field that mirrors `previousIcon` (`apps/api/src/seed-navigation.ts:28-37, 1232-1241`). Route guard accepts any of `atmRefLabel.create, atmRefLabel.edit, atmMachine.moveArea, atmMachine.manage`. ONE-TIME widening: every role AND every live ADR-032 delegated grant (`platform/rbac/delegation.model.ts:12-41`, its own `permissionKeys` per user and unit) that holds `atmMachine.manage` gains `atmRefLabel.create`, `atmRefLabel.edit`, `atmMachine.moveArea`, guarded by "the nav row still carries `atmMachine.manage`". A role or delegation given `manage` AFTER the first boot is not widened (the guard is false by then): §12.2 step 4 tells the administrator to add `atmRefLabel.create` beside it. | `syncNavigationCatalog` only fills a null key (`seed-navigation.ts:1243-1251`); `previousIcon` is the repo's only "correct a shipped value" mechanism. Without the widening, admin roles and delegated deputies holding only `manage` would lose the sidebar row. The widening adds nothing a manage holder could not already do (every widened route accepts `manage`). Module seeds run before the nav sync (`apps/api/src/server.ts:42-44`, `platform/kernel/bootstrap.ts:138-141`), so the guard turns false after the first server boot and the widening never repeats. |
 | DEC-6 | **(Superseded by O-2 — verbs are create/statusChange/update/delete; realtime.ts unchanged.)** Audit verbs: `receive` (receipt), `deliver` (handover), `create` (pending entry), `update`, `delete`, `export` — all existing (`packages/contracts/src/platform/audit.ts:26, 109, 147`). Two NEW verbs: `secretRevealed` (the audited read) and `atmRegisterImport` (one row per apply). `receive` and `deliver` are ADDED to `REALTIME_BROADCAST_ACTIONS` (`packages/contracts/src/platform/realtime.ts:19-27`). | The only audited-read precedent is `medicalRecordRead` (`audit.ts:84-93`); an import over thousands of rows audits as one record (`attendancePunchImport`, `audit.ts:125-129`). Without the broadcast change a receipt/handover would never refresh other viewers' screens (`platform/realtime/realtime-publisher.ts:55` filters on that list). Side effect, accepted: gold receiving/delivery confirmations (`modules/gold/receiving/receiving.service.ts:412`, `modules/gold/delivery/delivery.service.ts:239`) and IT part receipts (`modules/it/spare-parts/part.service.ts:150`) also start signalling their already-registered topics — a refetch, never data (ADR-029). |
 | DEC-7 | Write implies read: setting any K or S field (keys, receiptNotes, handoverNotes, safeCombination) on receive/edit/handover/import-apply requires `atmRegister.viewSecrets` (403 otherwise). | A caller who cannot see a value would otherwise overwrite it blind; same reason the employee DTO pairs a gated block with a `…Visible` flag (`modules/hr/employee-management/employees/employee.mapper.ts:1-7`). |
 | DEC-8 | LINK never writes the master. It adopts `master.bankName` into `entry.opsBankLabel` (D5); if the request named a different override → warning `opsBankLabelIgnored`; if master name/area differ from the entry → warning `masterDiffers` (manual) / listed difference (import). | D5 fixes the bank half; extending "keep" to name/area is the narrowest reading and avoids rewriting up to 2,607 Operations names at cut-over. Later edits of the open entry sync (D2). |
 | DEC-9 | A receipt is refused (409 `ATM_REGISTER_CODE_ACTIVE_ELSEWHERE`) when an ACTIVE master with the same code exists in ANOTHER branch, even without an open entry there. The refusal names the other branch only to a caller whose `atmRegister.view` reaches it. The import shows these rows as their own report category `activeElsewhere` with from-branch → to-branch counts; how to resolve them is an owner question (EG-19), not a designer default. | D6's stated reason is the mail matcher, which needs exactly one active master per code company-wide (`mail-ingestion.service.ts:59-81`). Archiving the other branch's master silently would be an invented hand-over. How often this fires depends on how production `atm_machines` were loaded (EG-19). |
-| DEC-10 | A receipt's branch must be mapped in `atm.register.branchCodes` (422 `ATM_REGISTER_BRANCH_UNMAPPED`). | The register's Branch column shows the EGYCASH code and the report's categories are the mapped codes; an unmapped branch would make Section 1 and Section 2 totals disagree (D7 "one definition"). |
+| DEC-10 | A receipt's branch must be mapped in `atm.register.branchCodes` (422 `ATM_REGISTER_BRANCH_UNMAPPED`). **Amended 2026-10-28 (DEC-36):** a data-edit add in an unmapped branch still adds the machine, so Operations are never blocked, and records nothing in the register (`register.action: 'none'`, `reason: 'branchUnmapped'`). The add dialogs say so beforehand (`registerMapped: false`). | The register's Branch column shows the EGYCASH code and the report's categories are the mapped codes; an unmapped branch would make Section 1 and Section 2 totals disagree (D7 "one definition"). |
 | DEC-11 | `openPeriodExempt: boolean` on entries; the import sets it on BOTH rows of a duplicate-open pair (rows 456/2314 = 2013, 457/2315 = 2015), and on every OPEN row whose code is a placeholder (`#`, `********` — such a code names no machine and is never coupled, but two of them would collide on the index and abort their apply batch with a bare E11000: review finding DATA-2; the snapshot has none). The partial unique index excludes exempt rows; the service check does not, so no new receipt of 2013/2015 is possible while either is open. An edit that changes an open entry's code re-derives the flag (true only for a placeholder), so a new real code is held to the index. | D8 imports all rows; D6's index would otherwise refuse the second row of each pair. Which row is right is EG-8. |
 | DEC-12 | Pending entries can be created manually (`startDate` optional) and become open through `POST …/receive`. A branch-less pending entry (5 imported rows) cannot be received — delete it and receive anew. | The Excel lets a row exist without a start date (23 rows); its meaning is EG-9, so the register neither forbids nor interprets it. Branch is immutable (D4). |
 | DEC-13 | No "reopen a handover" action in v1. | Not in the owner's action list (Receive, Edit, Handover, Delete, Reveal, Export). EG-15. |
 | DEC-14 | Handover with `endDate < startDate` or a future date is accepted with a warning. | D6 lists the only blocks; the Excel has 2 such rows (1062, 2508) and planned future ends (EG-10). |
 | DEC-15 | Import apply audits ONE `atmRegisterImport` row per apply; per-row outcomes live in the run record; writes are committed in batches of 200 rows per transaction; one running import at a time. | Attendance precedent (`audit.ts:125-129`); IT/Fleet run-record precedent (`modules/it/go-live/go-live-run.model.ts:1-57`); a single 6,000-write transaction risks the 60 s transaction limit. Idempotency is the unique `importRow` index, so a crashed batch is simply re-run. |
-| DEC-16 | `nbeForex` is applied only in branches that hold an ACTIVE bank label named exactly `NBE FOREX`; elsewhere the item is reported `labelMissing`. | D5: the override is "picked from the branch's existing bank labels". Operations can add the label themselves (D2). |
+| DEC-16 | `nbeForex` is applied only in branches that hold an ACTIVE bank label named exactly `NBE FOREX`; elsewhere the item is reported `labelMissing`. **Note 2026-10-28 (DEC-35): the rule is unchanged.** `NBE FOREX` stays a per-branch spelling, never a company-wide alias, and the import still asks for an ACTIVE label named exactly `NBE FOREX`. Spellings now name their bank (`bankCode`); the boot backfill gave `NBE FOREX` → NBE. | D5: the override is "picked from the branch's existing bank labels". Operations can add the label themselves (D2). |
 | DEC-17 | Export = server-streamed CSV with UTF-8 BOM, audited `export`, Excel header texts, P-class columns only, a derived `Status` column appended, cells beginning with `= + - @ TAB CR` (other than a lone `-` or a number) prefixed with `'`. | Server CSV precedent `modules/hr/attendance/day-records/attendance-export.ts:88-130`; BOM precedent `apps/web/src/modules/atm/pages/MachinesPage.tsx:20-29`. Server-side is the only way the export is audited and the K/S fields never leave the server. |
 | DEC-18 | Reveal is `POST …/reveal` (side effect = audit row); every `/atm/register/entries*` response carries `Cache-Control: private, no-store`; the web shows the value for 30 s, the reveal mutation has `gcTime: 0` and is `reset()` when the value is cleared, and register queries use `gcTime: 0` for `viewSecrets` holders (the medical precedent, `apps/web/src/modules/hr/medical/api/medical-queries.ts:33-49`). | No reveal-a-sealed-value endpoint exists (`modules/automation/credentials/credential.routes.ts:24-28`); the closest "own grant" reveal is GET `modules/fleet/fuel-cards/fuel-card.routes.ts:105-112` (plain text, unaudited). POST cannot be prefetched. ADR-034 records the pattern. |
 | DEC-19 | Data Report: the three charts AND their tables render `dir="ltr"` inside the RTL page, so the order on screen is the Excel's (the sheet has no `rightToLeft` and every category axis is `minMax`: first category — NXT, وصال, المهندسين — at the LEFT, total bar at the RIGHT; tables start at AD on the left); each label keeps `dir="auto"`. Charts 1–2 are single-series in the Excel's own colour, theme `accent1` `#4472C4` (`ATM_REPORT_TOTALS_COLOR`, both themes; the gradient and shadow are not reproduced); chart 3 uses the owner's bank colours in both themes; the platform surface replaces the mint `#00FFCC` canvas; every bar carries its value label, every chart has its table and chart 3 its legend. | D7 says keep the Excel's orders and colours: mirroring the order or recolouring charts 1–2 would be a designer change (review finding F-15). The dataviz validator FAILS the owner palette (adjacent NBE/BM protan ΔE 4.4; CIB/HDB/BRK contrast < 3:1 on light, NBE/BM/NXT < 3:1 on dark); the colours are mandated (D7), so the relief the validator demands — visible labels + table — is mandatory. |
@@ -90,7 +92,7 @@ in this document or was printed while writing it.**
 | DEC-22 | English names of banks/branches/columns are translations; Arabic Data Report labels are verbatim except the three D7 fixes; `Alanki`, `HUB` and the numeric headers `200/100/50` stay untranslated; every register column header shows the exact Excel header as its tooltip. | Never invent meaning (EG-1). |
 | DEC-23 | Legacy-imported master rows lacking `createdAt/updatedAt/__v` are backfilled at boot for `atm_machines` and `atm_ref_labels` (`$exists:false` guards), tolerated at runtime in the coupling path, and tolerated in the two mappers. | Rows written by `npm run atm:import` bypass Mongoose (`modules/atm/migration/legacy-import.ts:60-74`); the mapper would throw (`modules/atm/atm.mappers.ts:31`) and every versioned write would 409 (`shared/base/base.repository.ts:432-458`). Boot-migration precedent `modules/hr/recruitment/recruitment.migration.ts:1-12, 524-531`. |
 | DEC-24 | Admin (`manage`) actions on a master that has an open entry stay allowed (nothing is removed). The resulting drift is surfaced: `masterState` on the entry DTO (`active/archived/deleted/missing`) and a badge in the grid. | "Never delete a legacy feature — only gate it" (D2). |
-| DEC-25 | Changing an entry's `bankCode` clears its `opsBankLabel` override unless the same request sets one. | An override chosen for one bank is meaningless for another (e.g. `NBE FOREX` on a BM machine). |
+| DEC-25 | Changing an entry's `bankCode` clears its `opsBankLabel` override unless the same request sets one. **Amended 2026-10-28 (DEC-35): also enforced by the server.** An override that is sent must be an active spelling of THIS entry's bank, else 400 `body.opsBankLabel` `OTHER_BANK`. A spelling mapped to no bank cannot be chosen as a new override (`UNMAPPED`). An override already stored is not checked again unless it is sent again. | An override chosen for one bank is meaningless for another (e.g. `NBE FOREX` on a BM machine). Until spellings carried their bank, only the screen could know that. |
 | DEC-26 | The ATM schemas' indexes (machines, ref labels, register entries, import runs) are built at boot one at a time, duplicates reported never resolved. | `autoIndex` is off in production (`infrastructure/database/mongo.ts:10`); precedent `modules/fleet/fleet-indexes.ts:1-33`. Without it `ux_open_period_per_code` would not exist in production and the first insert into a not-yet-existing collection would happen inside a transaction (`modules/it/assets/receipt.repository.ts:15-27`). |
 | DEC-27 | Report scope: the branches shown are derived from the SAME selector as the data match (`registerScopeBranches`, §5.2): organization → every mapped branch; a reach → the mapped branches in `branchIds ∪ departmentBranchIds`; no reach → the home branch for branch/department/section; `own` → every mapped branch, with the data narrowed to `createdBy` (the Fleet dashboard's fallback). So Section 1 and Section 2 always count the same entries. | `modules/fleet/dashboard/dashboard.service.ts:66-69`; `shared/base/org-scope-match.ts:87-106`. A viewer must not see a branch outside their reach as zeros, and D7's "one definition" needs the two totals to agree. |
 | DEC-28 | **Provisional — owner to confirm (EG-21).** The total label is written «إجمالي عدد الماكينات» (the sheet has «اجمالى عدد الماكينات»). Every other sheet label is verbatim apart from D7's three fixes. | Two owner rules conflict: D7 lists exactly three label fixes, and the owner's standing rule that product Arabic is formal is enforced by the repository's guard, which rejects «اجمالى» (`scripts/check-formal-arabic.mjs:106`, run by `apps/web/src/platform/localization/formal-arabic.spec.ts` and CI). The mapping «اجمالى» → «إجمالي» is recorded as EG-21 and shipped provisionally because the verbatim string cannot pass CI; if the owner rejects it, the fix is one i18n value plus a guard exception, owned by WP-A. |
@@ -100,6 +102,46 @@ in this document or was printed while writing it.**
 | DEC-32 | **Imported blanks stay blank — including Name.** `name` is `string \| null` on entries; manual writes still require it (Zod), imports keep a blank as null with issue `noName`, and such a row cannot create or reactivate a master (reason `noName`; master `name` is required, `machines/machine.model.ts:32`). | D6: imported historical rows keep their blanks. A required Mongoose `name` would abort a 200-row batch on the first blank (review finding F-28). The snapshot has 0 blank names. |
 | DEC-33 | **Combination key rotation.** A nightly scheduled task `atm.rotateRegisterCombinationKeys` rewraps every sealed combination not on the current key (soft-deleted entries included), mirroring `automation.rotateCredentialKeys` (`modules/automation/automation.module.ts:68-81`, `credentials/credential.service.ts:288-320`). | The documented rotation procedure drops the old key after `rewrap()` (`docs/02-architecture/platform-crypto.md` "Key ring and rotation"); without a sweep every reveal would fail afterwards. |
 | DEC-34 | **Error tracking never receives register request bodies.** Sentry's HTTP integration is configured to ignore incoming bodies on `/api/v1/atm/register*`, and a `beforeSend` scrubs the register's K/S field names anywhere in an event. | The installed `@sentry/node` 10.75 attaches request bodies to error events by default (`maxIncomingRequestBodySize` default `'medium'`), and `captureError` runs on every unexpected error (`infrastructure/http/error-handler.ts:32-37, 54-55`); `sentry.ts` claims scrubbing it does not configure (review finding F-2). |
+| DEC-35 | **The bank catalog `atm_banks` (revision 4; amends D5).** Owned by ATM (port doc D1), company-wide, one row per bank: `code` (`^[A-Z][A-Z0-9]{1,9}$`, unique `ux_bank_code`, never changed and never reused — there is no DELETE); `name {ar, en}` (both required, 1–80, unique per language with case ignored — 409 `ATM_BANK_NAME_TAKEN`); `opsLabel` (1–64, default the code — the ONE text a receipt writes on `atm_machines.bankName`); `formerOpsLabels` (system-managed: a label change appends the old one); `opsLabelKeys` (system-managed: the current and former labels trimmed and upper-cased, behind the unique multikey `ux_bank_ops_label_keys`); `color` (`#RRGGBB`, default the first `ATM_BANK_EXTRA_COLORS` no bank wears, else the least-worn one); `sortOrder` (the seeds 10–60 in section-3 order, a new bank max + 10); `isActive` (archive: no longer offered or accepted for new receipts and machine adds, still named and counted wherever it is stored); `isSeed`. Refusals: `ATM_BANK_CODE_TAKEN`; `ATM_BANK_LABEL_TAKEN` when a label key is another bank's, current or former, or a live branch spelling's mapped to another bank (archived spellings included). Contracts: `ATM_BANK_CODES`, `ATM_BANK_NAMES`, `ATM_BANK_REPORT_COLORS` and `ATM_DEFAULT_OPS_BANK_LABELS` are deleted with no alias; `AtmBankCode` is a `string` and the six are `ATM_SEED_BANK_CODES` / `ATM_BANK_SEED` (§3.1). Boot seed `seedAtmBankCatalog`: the six with `$setOnInsert` only; each label is the retired `atm.register.bankLabels` value when one is stored (the D5 default then kept as a former label), else the default; the pure planner `planBankSeed` sends every colliding override back to its default before any write; an E11000 from two instances booting at once is logged and skipped; the setting is read only while a seed is missing and stays declared, described as retired. A machine's bank text resolves (`resolveBankOfLabel`) to a catalog key, else the branch's ACTIVE spelling with exactly that name and a mapped `bankCode`, else no bank. Spellings (`atm_ref_labels` kind `bank`) stay per branch and now name their bank (`bankCode`): the boot `backfillBankLabelCodes` maps every row without one, once — a catalog key → that bank, `NBE FOREX` → NBE, `نيكست` → NXT, anything else → null (listed for Operations to map, §8.7). | The owner: «… وبرضو يقدروا يضيفوا مناطق وبنوك (عربي وأنجليزي)», and the owner's call (final) that a bank added at runtime is a FULL register bank — the enum could not stay. The code keys entries, plans, plan lines, preparations, standard loads, layout-import runs, the note counter (`atm-note:<branch>:<bank>`), URLs and report keys, so it never changes. Unique label keys mean a machine's text can never mean two banks (critic gap 6); catalog keys resolve first, so a label taken from a branch spelling would silently move that branch's machines. The setting allowed one label for two banks (only `bankCode` was unique), which the unique index refuses: the planner keeps the boot from ever failing on it. One lean read per request and no cache, so several API instances agree the moment a bank is archived. The ID formats stay in code: a user-typed regex would run on every register write (a ReDoS risk) for what is only a warning. |
+| DEC-36 | **A data-edit add is recorded in the register (revision 4; amends D2).** `POST /atm/machines` and `/bulk` run `recordOperationsIntake` (`register/operations-intake.ts`), ONE `unitOfWork` per machine, after three checks: `atmMachine.manage` reaches the acting branch (DEC-39); the bank text is resolved (DEC-35) — an ARCHIVED bank is 400 `body.bankName INACTIVE`, a text that maps to no bank goes on (`noBank`); a code ACTIVE in this branch is 409 (single) or `skippedCodes` (bulk). Then, in order: (a) an OPEN entry of the code in ANOTHER branch (a null branch and the DEC-11 pairs count; placeholder codes are exempt) → 409 `ATM_REGISTER_OPEN_PERIOD_EXISTS`, nothing written; (b) `coupleReceipt`, unchanged — active in another branch → 409 `ATM_REGISTER_CODE_ACTIVE_ELSEWHERE`, archived here → reactivated with the form's name, area and bank, else a new machine; (c) branch unmapped (DEC-10) or placeholder code → `none` (`branchUnmapped` / `placeholderCode`), the machine committed; (d) open entries of the code HERE: one linked to this machine → `existing`, else each unlinked one, or one pointing at a machine no longer live, is linked → `linked`, its data and flag untouched (when every one points at another live machine, nothing is relinked and the answer is `existing`); (e) the newest PENDING entry of (branch, code) is received — start = Cairo today, open, linked, flagged, only a null area, bank or name filled from the form → `received`; (f) else, when the text resolved to a bank, a new OPEN entry with the branch, area, bank, code, machine and name, `opsBankLabel` null when the text is the bank's `opsLabel` else the text (`NBE FOREX`, a former label), start = Cairo today, `source: 'operations'`, flagged, every other field empty → `created`; with no bank → `none/noBank`. A race on `ux_open_period_per_code` rolls back the WHOLE unit, machine included, as the same 409. No register key is checked and no K/S field is written. Audits after commit: the machine's, then the entry's `create` / `update` / `statusChange` with the redacted diff. A refusal names the other branch only to a caller whose `atmMachine.view` or `atmRegister.view` reaches it (F-9). The single add answers 201 `AtmMachineCreateResultDto` — the machine, `reactivated` and `register {action, reason, entryId, bankCode}`; the bulk add runs one unit per row and adds `reactivatedCodes`, `refused` (`activeElsewhere` / `openElsewhere`) and `register {created, received, linked, existing, notRecorded}`. | The owner: «عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا /atm/register بحيث شغل العمليات ميعطلش ويبقى بتاع الكفاءة والتحقيقات يكمل بياناتها براحته», and the owner's call (final): an OPEN, linked receipt dated the add day. OPEN, not pending: only an open entry counts in the Data Report and gives the settlements a bank (`settlements/shared/register-bank.ts`), which ends the `noRegisterBank` refusals for the machines Operations add. The entry is the add's side effect — the mirror of a receipt writing the machine under register keys — so no register key is asked. A code active or open in another branch was accepted before, and broke the mail matcher (DEC-9) and D6. Receiving the pending entry keeps it from being left behind as a duplicate (critic gap 5). An unmapped spelling never blocks Operations: the machine is added, only the entry is skipped. |
+| DEC-37 | **«بيانات ناقصة» is a stored flag**, `dataIncomplete` on entries (required, default false; a row written before reads false), with the partial index `ix_incomplete` `{ branchId, dataIncomplete }` over flagged rows only. Set only by DEC-36 steps e and f; set or cleared by `PATCH /entries/:id { dataIncomplete, version }` under `atmRegister.edit` (`keyCoversEntry`); never cleared automatically; kept across a handover. `GET /entries` and the export take `incomplete` (`true` → flagged, `false` → not flagged), and the CSV gains a last column `Data incomplete` (`yes` / `no`) after `Status`. The entry snapshot carries `source` and `dataIncomplete`, so the audit diff shows the flag being set and cleared. Web (§8.7): an amber badge, the «بيانات ناقصة فقط» filter (`incomplete=1`, remembered), a checkbox on the edit form. | The owner wants Efficiency to complete Operations' receipts «براحته»: they need to find them. Derived from blank fields it would flag most of the 3,542 imported rows, whose blanks are legitimate (D6, DEC-32, EG-1), and key fields cannot be judged without `viewSecrets`. The receipt date is corrected through the open entry's existing `startDate` edit. |
+| DEC-38 | **Areas reach data-edit as labels written on save, plus a boot backfill (amends EG-6).** `ensureAreaLabels` (`catalogs/area-labels.ts`) upserts one label per (branch, trimmed area) AFTER a write commits, best effort — a failure is logged and never fails the write — from: register create, an update that changes the area, receive-pending and link; machine add and bulk add; a machine area change through `update`, `moveArea` and `reassignArea`; the import apply, once after the run. Ended entries and archived machines never create labels. The upsert's filter is `{ branchId, kind: 'area', $or: [{ name }, { formerNames: name }] }` with NO `isDeleted` and no `isActive`, so a name that was deleted, archived or renamed is never inserted again; blanks and values starting with `#` are skipped; a concurrent insert's E11000 is swallowed; each row inserted is audited `atm.refLabel` `create`. `backfillAtmAreaLabels` runs every boot over the areas of active machines and of open or pending entries that have a branch (no audit; `origin: 'backfill'`). Labels gain `nameAr` / `nameEn` (display only), `formerNames`, `bankCode` (spellings) and `origin` (`manual` / `backfill` / `register` / `machine` / `import`). A NEW area from a dialog needs Arabic AND English and STORES the English (`name := nameEn`); a legacy `{ name }` gets its display name from its script. A rename works as before, with no cascade, and moves the old name to `formerNames`. The display rule `labelText` — the reader's language, else the other, else the stored name — is used only where areas are listed or chosen (data-edit, the register's area suggestions and area filter); boards, reports, the map and exports keep the stored string. | The owner: «البنوك والمناطق مش مسمعه !! من /atm/register» — the register's areas never became `atm_ref_labels` rows, so data-edit never showed them. «الإنجليزي تمام، كمّل» settles which name is stored: the stored values are Latin (MOHNDESSEN, ALEX) and the import's ` FX` rule needs Latin. Written after commit, so no WriteConflict on the label collection reaches a register or machine transaction, and the next boot repairs a label that was missed. No merge: one spelling per label keeps EG-6's "merging would invent data", and every downstream reader (boards, daily report, leader cascade, map) matches the exact string, so the second language is display only. |
+| DEC-39 | **Permissions of revision 4.** New resource `atmBank` (`create`, `edit`; page `atm.register`), both refused (403) unless held at ORGANIZATION scope. `GET /atm/banks` accepts any ATM key (the list is derived from `atmPermissions` in `atm.module.ts`). Efficiency add AREAS with the register keys they hold: `POST /atm/ref-labels/:kind` also opens to `atmRegister.create` / `atmRegister.edit`, which the service limits to kind `area` in a branch they reach; a bank spelling stays `atmRefLabel.create` / `manage`. A label may be filed in a named `branchId`, which the authorizing key must reach. `GET /atm/ref-labels/options?branchId=` (declared before `/:kind`) accepts any data-edit key — `atmMachine.view`, `atmMachine.manage`, `atmMachine.moveArea`, `atmRefLabel.create`, `atmRefLabel.edit` — reaching the branch, or `manage` at home. Machine add and bulk add stay `atmMachine.manage` only, now with `manageActsInBranch` (the key reaches the acting branch, or "manage at home" for a department, section or own grant) — else 403. Navigation and the data-edit route guard are unchanged; there is no `atmMachine.create`. | A bank is one fact about the company: a branch-scoped holder would be adding it for every branch. Every ATM screen names and colours banks, so any ATM key reads the list, while an account outside ATM learns nothing about runtime banks; deriving the keys keeps the list from drifting. Efficiency hold no `atmRefLabel.*` (§12.3), and the owner wants them to add areas too. The add now writes the company-wide register, so it must not land in a branch only an unrelated key reaches (DEC-29's rule); nobody who could add in their own branch loses it. Who may add machines was left at its default, `manage` only. |
+| DEC-40 | **Report order for banks added since the workbook.** `atmReportBankOrders(extras)`: section 1 = the sheet's six then the extras (a new bank after BRK), section 3 = the sheet's six then the extras (after NXT). The extras are every non-seed ACTIVE catalog bank, plus an ARCHIVED one while it still has machines in operation, in `sortOrder` then code, then any counted code the catalog does not know (sorted, drawn grey `#A6A6A6`). `foldAtmRegisterReport(groups, branches, banks)` folds those banks; a group with an unlisted code is appended, so the section-1 and section-2 totals always agree. `buildAtmReportCells` gives a non-seed bank no sheet cell (`cell: ''`), and `ATM_DATA_REPORT_CELLS` is still the same 57 cells (pinned by a spec). The DTO gains `banks {code, name, color, isActive, isSeed}`, `section1Banks` and `section3Banks`; the page draws its bars and series from them in each bank's colour, and falls back to the sheet's six when an older server omits them. The import's 57-number check folds the six only. | D7 keeps the sheet's sections and orders, so the six stay where the owner reads them and every new bank comes after; the owner's call (final) is that a new bank counts in the Data Report. An archived bank is still counted (DEC-35), never hidden while it holds a number. The workbook knows six banks, so its check is untouched. |
+| DEC-41 | **What data-edit's add now refuses, and brings back.** An ARCHIVED code in the acting branch is reactivated with the form's name, area and bank — single 201 with `reactivated: true`, bulk `reactivatedCodes` — instead of 409 / skipped. A code ACTIVE in another branch → 409 `ATM_REGISTER_CODE_ACTIVE_ELSEWHERE` (bulk `refused: activeElsewhere`); a code with an OPEN register period in another branch → 409 `ATM_REGISTER_OPEN_PERIOD_EXISTS` (bulk `refused: openElsewhere`) — nothing written either way. An archived catalog bank → 400 `body.bankName INACTIVE`. Each bulk row is its own unit, so a refused row undoes nothing else; a same-branch race on adding the machine lands in `skippedCodes`. The web says each outcome in words (§8.7): «تمت إضافة الماكينة.» or «أُعيدت الماكينة المؤرشفة للعمل.», then what the register recorded; the bulk result lists the reactivated, refused and unrecorded codes. Existing cross-branch duplicates are left alone (R-9). | A machine handed back and later returned could not be re-added by Operations at all (critic gap 1) — only a register receipt reactivated it. Refusing a code that lives in another branch is what the register's receipt already did (DEC-9, D6); before, data-edit allowed it and the mail matcher stopped matching that code («active in N branches»). One unit per row keeps the legacy's skip-and-name bulk behaviour. |
+
+### 1.3 Revision 4 (2026-10-28) — the bank catalog, bilingual areas, and data-edit adds in the register
+
+The owner's request of 2026-10-27, on `/atm/data-edit`:
+
+> «وبالنسبة لإضافة الماكينات /atm/data-edit البنوك والمناطق مش مسمعه !! من /atm/register ·
+> مع العلم عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا /atm/register بحيث شغل العمليات
+> ميعطلش ويبقى بتاع الكفاءة والتحقيقات يكمل بياناتها براحته وبرضو يقدروا يضيفوا مناطق وبنوك (عربي
+> وأنجليزي)»
+
+Three calls settle it (final):
+
+1. **A bank added at runtime is a FULL register bank.** It appears in the register, the Data Report,
+   the settlements and the map. D5's fixed enum becomes the catalog `atm_banks`, seeded with the
+   workbook's six (DEC-35, DEC-40).
+2. **A machine added on data-edit is recorded in the register** as an OPEN, linked receipt dated the
+   add day, flagged «بيانات ناقصة», with a filter for it (DEC-36, DEC-37, DEC-41).
+3. **For a new area entered in Arabic and English, the ENGLISH name is stored** on machines —
+   «الإنجليزي تمام، كمّل» (DEC-38).
+
+**Defaults kept:**
+- Machine add and bulk add stay `atmMachine.manage` only; there is no `atmMachine.create` (DEC-39).
+- Machines already active in the Operations list with no open entry are NOT backfilled into the
+  register. Efficiency receive them by hand, and the receipt links the existing machine.
+- The register import is unchanged. An intake entry made before the cut-over is an `openInRegister`
+  blocker, exactly like a manual receipt (DEC-31; §12.2 step 6, R-15).
+
+**Amended by this revision:**
+- Decisions: D2, D5, D7, DEC-4 (note), DEC-10, DEC-16 (note), DEC-25, EG-6, EG-11.
+- Sections: §3.1, §3.3, §3.5, §5.1, §5.3, §7.1, §8.2–§8.6, §12 and §13. New: §5.12 (server) and
+  §8.7 (web).
+- Code: `catalogs/bank*.ts`, `catalogs/catalog.migration.ts`, `catalogs/area-labels.ts` and
+  `register/operations-intake.ts` (API); `lib/bank-catalog.ts` and `components/catalog/*` (web).
 
 ---
 
@@ -112,12 +154,12 @@ in this document or was printed while writing it.**
 | EG-3 | AT `Delivered Name`: EgyCash staff or bank-side person (24 cells carry military titles)? Only 331 of 912 ended rows have it; 8 rows have it without an end date. | Free text `handoverName`, label "Delivered name / اسم التسليم" (neutral). | Semantics unknown. |
 | EG-4 | Column AX (no header): 21 Google-Maps URLs (rows 1054–1889), `تعديل` ×2, a stray formula-like text. | Not read (D8: A..AW only). | Whether the URLs belong to `locationUrl` of rows whose AV is empty is unknown. |
 | EG-5 | Column AY: `=B{r}` with 26 hand overrides (ALEX rows 2203–2217, EL MAHALA 2218–2226, Faisal 2246, `0` 2510). | Not read. | May be intended Area corrections; only Sheet1's VLOOKUP uses them. |
-| EG-6 | Area canon: 118 raw / 99 normalized values, 18 case/space collision groups (MOHNDESSEN/Mohndessen/المهندسين …), FX-suffixed and CIB-prefixed names, 13 names under two branches, 297 open rows with no Area. | Areas stored as typed (trimmed). Import: an open row with a blank area LINKS when an active master exists in its branch, otherwise it cannot create/reactivate one (`cannotCouple: blankArea`) and stays `unlinked` until an area is entered (DEC-30). | Merging would invent data. |
+| EG-6 | Area canon: 118 raw / 99 normalized values, 18 case/space collision groups (MOHNDESSEN/Mohndessen/المهندسين …), FX-suffixed and CIB-prefixed names, 13 names under two branches, 297 open rows with no Area. | Areas stored as typed (trimmed). Import: an open row with a blank area LINKS when an active master exists in its branch, otherwise it cannot create/reactivate one (`cannotCouple: blankArea`) and stays `unlinked` until an area is entered (DEC-30). **Amended 2026-10-28 (DEC-38):** still no merge and no rewrite. Each exact trimmed spelling on an active machine, or on an open or pending entry, now becomes a data-edit area label of its branch, on save and through a boot backfill. MOHNDESSEN, Mohndessen and المهندسين are therefore three labels. Operations can add the other language as a display name, or archive one of a pair. A name that was deleted, archived or renamed is never brought back. | Merging would invent data. |
 | EG-7 | Canonical HDB ID spelling (`HDB - n` 44, `HDB-ATM n` 32, `HDB-ATMn` 26, 5 bare numbers; 10 machines under two spellings). | Stored as typed (normalized by `normalizeAtmMachineCode` only); import issue `hdbSpelling`; format check is a warning. | `normalizeAtmMachineCode` (`packages/contracts/src/modules/atm.ts:23`) does not unify them; choosing one would rename machines. |
 | EG-8 | IDs 2013 and 2015 are open twice (rows 456/2314, 457/2315); also the open row is not the newest for 4670083 and 27740059; 25990095 has an ended and an open row with the same serial and start. | Imported faithfully; pair rows `openPeriodExempt:true` (DEC-11); issues `duplicateOpen`, `openNotNewest`. Both 2013/2015 rows count in the report, as in the Excel. | Which row is correct is the team's answer. |
 | EG-9 | Meaning of rows without a start date (23: rows 2958, 3002, 3114, 3343, 3345 with no branch; 3304; 3416; the 16 EGYCASH-7 Badr rows 3372–3387). | Status `pending`, label "No start date / بدون تاريخ بدء"; no master effect; can be received later (DEC-12). | "Planned" vs "should not exist" is undecided. |
 | EG-10 | Mobile ATMs / Mid-Bus units: 16 IDs redeploy every 1–3 weeks with PLANNED future end dates (e.g. 23000017, 9 periods). Under end-date-only (D7) typing a planned end date archives the machine for Operations immediately. | Allowed with warning `futureDate`; imported future ends are `ended` (as the Excel counts them). | Needs an owner rule (as-of handling) that D7 deliberately excluded. |
-| EG-11 | Efficiency users: one central team or per-branch staff; do Operations need read access to the register? | Grants are data: a central team gets organization scope; per-branch teams get branch scope. No role is seeded (§12.3 lists the bundles). | Owner/HR decision. |
+| EG-11 | Efficiency users: one central team or per-branch staff; do Operations need read access to the register? | Grants are data: a central team gets organization scope; per-branch teams get branch scope. No role is seeded (§12.3 lists the bundles). Since revision 4 this includes the bank catalog keys `atmBank.create` / `atmBank.edit`: after the deploy only super-admin holds them (§12.3 rollout note). | Owner/HR decision. |
 | EG-12 | Received/Delivered names as free text vs employee pick-lists (271–307 distinct people after folding; multi-person cells; placeholders `الخط`, `توريد`). | Free text, as in the Excel. | Not specified. |
 | EG-13 | Other workbook sheets: `movement NBE` (could be generated from the register: 216/217 receipts and 53/55 handovers match AQ/AR), `Sheet1` (re-exposes AO and J via VLOOKUP), `Vandalizm` (5 incidents keyed by ATM ID), `معاينة أمنية`, hidden `اصلاح كاسيتات`. | Out of scope. | Not requested. Sheet1 keeps exposing secrets outside ECMS until retired (risk R-1). |
 | EG-14 | Print and export expectations for both pages (Excel print area A1:AV4999 excludes HUB; Data Report prints portrait at 19%). | Register: CSV export (D-listed action). Report: no print/export in v1. | Unstated. |
@@ -138,47 +180,64 @@ Imports: `import { z } from 'zod'; import { PaginationQuerySchema, booleanQuery,
 Export from `packages/contracts/src/index.ts` with `export * from './modules/atm-register.js';`
 directly after the `atm.js` line (`index.ts:67`).
 
-### 3.1 Banks (D5)
+### 3.1 Banks (D5, as amended by DEC-35)
+
+**Amended 2026-10-28.** The six-code enum this section first declared is now the bank catalog's seed
+(DEC-35). `ATM_BANK_CODES`, `ATM_BANK_NAMES`, `ATM_BANK_REPORT_COLORS` and
+`ATM_DEFAULT_OPS_BANK_LABELS` are deleted with no alias: every `X[code]` that assumed six banks
+stopped compiling, and that compiler list was the migration checklist. The code SHAPE lives in
+`atm.ts`, because the ref-label schemas there validate a spelling's `bankCode` with it and `atm.ts`
+may not import this file back (a module cycle).
 
 ```ts
-export const ATM_BANK_CODES = ['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT'] as const;
-export const AtmBankCodeSchema = z.enum(ATM_BANK_CODES);
-export type AtmBankCode = z.infer<typeof AtmBankCodeSchema>;
+// atm.ts
+export const ATM_BANK_CODE_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/;
 
-/** The Data Report's own Arabic names (Data Report AE2..AI2, AD2 with D7's double-space fix). */
-export const ATM_BANK_NAMES: Readonly<Record<AtmBankCode, LocalizedString>> = {
-  NBE: { ar: 'البنك الأهلي المصري', en: 'National Bank of Egypt' },
-  BM: { ar: 'بنك مصر', en: 'Banque Misr' },
-  CIB: { ar: 'البنك التجارى الدولى', en: 'Commercial International Bank' },
-  HDB: { ar: 'بنك التعمير والاسكان', en: 'Housing and Development Bank' },
-  BRK: { ar: 'بنك البركة', en: 'Al Baraka Bank' },
-  NXT: { ar: 'NXT BANK', en: 'NXT BANK' },
-};
-/** The Excel chart-3 series colours (D7) — identity, used in both themes. */
-export const ATM_BANK_REPORT_COLORS: Readonly<Record<AtmBankCode, string>> = {
-  NBE: '#385723', BM: '#AC2100', CIB: '#FFD966', HDB: '#B4C7E7', BRK: '#F4B183', NXT: '#000099',
-};
+// atm-register.ts
+/** The shape only — whether a code EXISTS is the server's question (the catalog). */
+export const AtmBankCodeSchema = z.string().regex(ATM_BANK_CODE_PATTERN);
+export type AtmBankCode = string;                       // a seventh bank is data, not a type
+export const ATM_SEED_BANK_CODES = ['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT'] as const;
+export type AtmSeedBankCode = (typeof ATM_SEED_BANK_CODES)[number];
+export const isAtmSeedBankCode = (code: string): code is AtmSeedBankCode => …;
+
+/** The six seeds — the Data Report's names, the chart-3 colours (D7), the D5 labels, section-3 order × 10. */
+export interface AtmBankSeed { code: AtmSeedBankCode; name: LocalizedString; color: string; opsLabel: string; sortOrder: number }
+export const ATM_BANK_SEED: readonly AtmBankSeed[] = [
+  { code: 'NBE', name: { ar: 'البنك الأهلي المصري', en: 'National Bank of Egypt' }, color: '#385723', opsLabel: 'NBE', sortOrder: 10 },
+  { code: 'BM', name: { ar: 'بنك مصر', en: 'Banque Misr' }, color: '#AC2100', opsLabel: 'MISR', sortOrder: 20 },
+  { code: 'CIB', name: { ar: 'البنك التجارى الدولى', en: 'Commercial International Bank' }, color: '#FFD966', opsLabel: 'CIB', sortOrder: 30 },
+  { code: 'HDB', name: { ar: 'بنك التعمير والاسكان', en: 'Housing and Development Bank' }, color: '#B4C7E7', opsLabel: 'HDB', sortOrder: 40 },
+  { code: 'BRK', name: { ar: 'بنك البركة', en: 'Al Baraka Bank' }, color: '#F4B183', opsLabel: 'BRK', sortOrder: 50 },
+  { code: 'NXT', name: { ar: 'NXT BANK', en: 'NXT BANK' }, color: '#000099', opsLabel: 'NXT', sortOrder: 60 },
+];
+export const atmBankSeedOf = (code: string): AtmBankSeed | undefined => …;
 /** Charts 1–2: the workbook theme's accent1 (xl/theme/theme1.xml), the Excel's single series (DEC-19). */
 export const ATM_REPORT_TOTALS_COLOR = '#4472C4';
-/** D5 default bankCode → Operations label (legacy labels: reports_atm.ejs:350 MISR, :403 NBE FOREX). */
-export const ATM_DEFAULT_OPS_BANK_LABELS: Readonly<Record<AtmBankCode, string>> = {
-  NBE: 'NBE', BM: 'MISR', CIB: 'CIB', HDB: 'HDB', BRK: 'BRK', NXT: 'NXT',
-};
+export const ATM_BANK_COLOR_PATTERN = /^#[0-9A-F]{6}$/;
+/** A new bank's default colour, the first no bank wears — none equals a seed's or the totals colour. */
+export const ATM_BANK_EXTRA_COLORS = ['#7030A0', '#00B0F0', '#00B050', '#FF66CC', '#7F6000', '#008080', '#C55A11', '#92D050'];
 /** Import-only spellings (exact match after trim). Row 2120 is the only one. */
-export const ATM_REGISTER_BANK_ALIASES: Readonly<Record<string, AtmBankCode>> = { 'نيكست': 'NXT' };
+export const ATM_REGISTER_BANK_ALIASES: Readonly<Record<string, AtmSeedBankCode>> = { 'نيكست': 'NXT' };
 export const ATM_NBE_FOREX_LABEL = 'NBE FOREX';
 
-/** D6: per-bank ID shapes — a WARNING, never a block. */
-export const ATM_REGISTER_ID_FORMATS: Readonly<Record<AtmBankCode, RegExp>> = {
-  NBE: /^\d{8}$/,
-  BM: /^\d{7}$/,
-  CIB: /^\d{1,4}$/,
-  HDB: /^HDB(?: - |-ATM ?)\d+$/,
-  BRK: /^BRK[NW]\d+$/,
-  NXT: /^ATM\d{4}$/,
-};
+/** D6: per-bank ID shapes — a WARNING, never a block. The six only, kept in code (DEC-35); a Map, so a crafted key cannot reach Object.prototype. */
+export const ATM_REGISTER_ID_FORMATS: ReadonlyMap<string, RegExp> = new Map([
+  ['NBE', /^\d{8}$/], ['BM', /^\d{7}$/], ['CIB', /^\d{1,4}$/],
+  ['HDB', /^HDB(?: - |-ATM ?)\d+$/], ['BRK', /^BRK[NW]\d+$/], ['NXT', /^ATM\d{4}$/],
+]);
 export const atmRegisterIdFormatOk = (bank: AtmBankCode, code: string): boolean =>
-  ATM_REGISTER_ID_FORMATS[bank].test(code);
+  ATM_REGISTER_ID_FORMATS.get(bank)?.test(code) ?? true;   // a bank with no format never warns
+
+// The bank catalog (DEC-35) — GET/POST /atm/banks, PATCH /atm/banks/:code
+export interface AtmBankDto { id; code; name: LocalizedString; opsLabel; formerOpsLabels: string[]; color; sortOrder;
+  isActive; isSeed; hasIdFormat; version; createdAt; updatedAt }
+export const CreateAtmBankSchema;   // strict: code (trimmed, upper-cased, the pattern), name { ar, en } (trimmed, 1–80 each),
+                                    // opsLabel? (1–64, default the code), color? (trimmed, upper-cased hex), sortOrder? (0–100000)
+export const UpdateAtmBankSchema;   // strict: name?, opsLabel?, color?, sortOrder?, isActive?, version
+export const atmBankLabelKey = (label: string): string => label.trim().toUpperCase();
+export const atmBankName = (code, locale, banks?) => …;    // the catalog's name, else the seed's, else the code
+export const atmBankColor = (code, banks?) => …;           // the catalog's colour, else the seed's, else null (the web draws grey)
 ```
 
 ### 3.2 Branch codes (D4)
@@ -217,17 +276,19 @@ export const AtmRegisterBranchCodesSettingSchema = z
   .refine(uniqueBy((r) => r.code), 'each code once')
   .refine(uniqueBy((r) => r.branchId), 'each branch once');
 export type AtmRegisterBranchCodesSetting = z.infer<typeof AtmRegisterBranchCodesSettingSchema>;
+/** RETIRED (DEC-35): read once, by the bank catalog seed. Still the six only — no catalog bank was ever in it. */
 export const AtmRegisterBankLabelsSettingSchema = z
-  .array(z.object({ bankCode: AtmBankCodeSchema, label: z.string().trim().min(1).max(64) }).strict())
+  .array(z.object({ bankCode: z.enum(ATM_SEED_BANK_CODES), label: z.string().trim().min(1).max(64) }).strict())
   .max(6)
   .refine(uniqueBy((r) => r.bankCode), 'each bank once');
 export type AtmRegisterBankLabelsSetting = z.infer<typeof AtmRegisterBankLabelsSettingSchema>;
-export const ATM_DEFAULT_BANK_LABELS_SETTING: AtmRegisterBankLabelsSetting = ATM_BANK_CODES.map(
-  (bankCode) => ({ bankCode, label: ATM_DEFAULT_OPS_BANK_LABELS[bankCode] }),
+export const ATM_DEFAULT_BANK_LABELS_SETTING: AtmRegisterBankLabelsSetting = ATM_BANK_SEED.map(
+  (seed) => ({ bankCode: seed.code, label: seed.opsLabel }),
 );
 ```
 Default of `branchCodes` is `[]` (no branch is guessed — EG-18). A stored `bankLabels` value that
-omits a bank falls back to the default label for that bank.
+omits a bank falls back to the default label for that bank. Since DEC-35 that fallback happens once,
+when the catalog seed first inserts the six; afterwards each bank's `opsLabel` is the label.
 
 ### 3.4 Status, dates, active (D1, D7)
 
@@ -253,13 +314,22 @@ export const AtmRegisterDateSchema = z
 
 ### 3.5 Data Report — orders, cells and the ONE fold (D7)
 
+**Amended 2026-10-28 (DEC-40).** The orders below are the SHEET's six; the report folds the
+catalog's banks, so a bank added since is appended by `atmReportBankOrders` (after BRK in section 1,
+after NXT in section 3). The fold's `banks` defaults to the six, which is what the import's
+57-number check passes — so that check is still the workbook's arithmetic.
+
 ```ts
-export const ATM_REPORT_SECTION1_BANKS: readonly AtmBankCode[] = ['NXT', 'NBE', 'BM', 'CIB', 'HDB', 'BRK']; // AD2..AI2
+export const ATM_REPORT_SECTION1_BANKS: readonly AtmSeedBankCode[] = ['NXT', 'NBE', 'BM', 'CIB', 'HDB', 'BRK']; // AD2..AI2
 export const ATM_REPORT_SECTION2_BRANCHES: readonly AtmRegisterBranchCode[] =
   ['EGYCASH-7', 'EGYCASH-1', 'EGYCASH-2', 'EGYCASH-3', 'EGYCASH-4', 'EGYCASH-5', 'EGYCASH-6']; // AD4..AJ4
 export const ATM_REPORT_SECTION3_BRANCHES: readonly AtmRegisterBranchCode[] =
   ['EGYCASH-1', 'EGYCASH-5', 'EGYCASH-2', 'EGYCASH-3', 'EGYCASH-4', 'EGYCASH-6', 'EGYCASH-7']; // AD8..AD14
-export const ATM_REPORT_SECTION3_BANKS: readonly AtmBankCode[] = ['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT']; // AE7..AJ7
+export const ATM_REPORT_SECTION3_BANKS: readonly AtmSeedBankCode[] = ['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT']; // AE7..AJ7
+
+/** DEC-40: the six at their sheet positions, then every other bank in the order given (seeds and repeats dropped). */
+export const atmReportBankOrders = (extras: readonly AtmBankCode[]): { section1: AtmBankCode[]; section3: AtmBankCode[] } =>
+  ({ section1: [...ATM_REPORT_SECTION1_BANKS, ...tail], section3: [...ATM_REPORT_SECTION3_BANKS, ...tail] });
 
 /** One group of ACTIVE entries. `branchCode:null` = branch set but not mapped. */
 export interface AtmRegisterReportGroup {
@@ -268,11 +338,11 @@ export interface AtmRegisterReportGroup {
   count: number;
 }
 export interface AtmRegisterReportCounts {
-  /** AD3..AI3 + AJ3 (total = Σ the six bank cells, as `=SUM(AD3:AI3)`). */
+  /** One cell per bank folded (the six, then any catalog bank) + `total` (= Σ the bank cells, as `=SUM(AD3:AI3)`). */
   section1: Record<AtmBankCode, number> & { total: number };
   /** AD5..AJ5 + AK5 (total = Σ the branch cells shown). Only branches in `branchesShown`. */
   section2: Partial<Record<AtmRegisterBranchCode, number>> & { total: number };
-  /** rows 8–14 × AE..AJ. No totals (the Excel has none). */
+  /** rows 8–14 × one column per bank folded. No totals (the Excel has none). */
   section3: Partial<Record<AtmRegisterBranchCode, Record<AtmBankCode, number>>>;
   /** ACTIVE with a branch outside the mapping: counted in section 1 only. */
   activeWithUnmappedBranch: number;
@@ -286,21 +356,28 @@ export interface AtmRegisterReportCounts {
 export const foldAtmRegisterReport = (
   groups: readonly AtmRegisterReportGroup[],
   branchesShown: readonly AtmRegisterBranchCode[] = ATM_REGISTER_BRANCH_CODES,
-): AtmRegisterReportCounts => { /* section1[bank] += count for every group with bankCode (any branch);
+  banks: readonly AtmBankCode[] = ATM_SEED_BANK_CODES,   // the report passes the catalog's (DEC-40)
+): AtmRegisterReportCounts => { /* the cells are `banks`, then any code a group carries that `banks` lacks
+  (sorted — so section 1 and section 2 can never disagree);
+  section1[bank] += count for every group with bankCode (any branch);
   section2[branch] += count for every group whose branchCode ∈ branchesShown;
   section3[branch][bank] += count for groups with both, branch ∈ branchesShown;
   activeWithUnmappedBranch += count where branchCode === null;
   activeWithoutBank += count where bankCode === null;
   totals = Σ of the cells of that section. */ };
 
-/** The 57 numeric cells of the sheet, for the import check (§6.5). */
+/** One numeric cell — the sheet's 57, or a catalog bank's (`cell: ''`, the workbook has no such cell). */
 export interface AtmReportCellRef { key: string; cell: string; section: 1 | 2 | 3;
   branchCode: AtmRegisterBranchCode | null; bankCode: AtmBankCode | null; isTotal: boolean }
-export const ATM_DATA_REPORT_CELLS: readonly AtmReportCellRef[]; // built from the orders above:
+/** The cells for any bank orders: a seed keeps its sheet letter at its sheet position, a catalog bank gets cell ''. */
+export const buildAtmReportCells = (section1Banks: readonly AtmBankCode[], section3Banks: readonly AtmBankCode[]): AtmReportCellRef[];
+export const ATM_DATA_REPORT_CELLS: readonly AtmReportCellRef[] =
+  buildAtmReportCells(ATM_REPORT_SECTION1_BANKS, ATM_REPORT_SECTION3_BANKS); // the same 57, byte for byte (pinned by a spec):
 // section 1: AD3..AI3 (banks in SECTION1 order) + AJ3 total  → keys 's1.NXT' … 's1.total'
 // section 2: AD5..AJ5 (SECTION2 order) + AK5 total          → keys 's2.EGYCASH-7' … 's2.total'
 // section 3: rows 8..14 (SECTION3_BRANCHES) × AE..AJ (SECTION3_BANKS) → keys 's3.EGYCASH-1.NBE' …
 // 7 + 8 + 42 = 57 (verified count: dataVerify "Data Report has 57 numeric formula cells").
+/** A branch outside `branchesShown`, or a bank not folded, reads 0. */
 export const readAtmReportCell = (counts: AtmRegisterReportCounts, ref: AtmReportCellRef): number;
 ```
 
@@ -665,7 +742,7 @@ All paths below are under `apps/api/src/modules/atm/`. New code lives in `regist
 export interface AtmRegisterEntryDoc extends BaseDocFields {
   branchId: Types.ObjectId | null;      // null only for imported rows with a blank col A
   area: string | null;
-  bankCode: AtmBankCode | null;
+  bankCode: AtmBankCode | null;         // a catalog code (DEC-35); the model has no enum, the service checks it
   opsBankLabel: string | null;
   machineCode: string | null;
   machineId: Types.ObjectId | null;
@@ -681,7 +758,8 @@ export interface AtmRegisterEntryDoc extends BaseDocFields {
   receivedByName: string | null; handoverName: string | null; handoverNotes: string | null;
   status: AtmRegisterStatus;            // derived (deriveAtmRegisterStatus) on every write
   openPeriodExempt: boolean;            // DEC-11
-  source: 'manual' | 'import';
+  source: 'manual' | 'import' | 'operations';  // 'operations' = recorded by a data-edit add (DEC-36)
+  dataIncomplete: boolean;              // «بيانات ناقصة» (DEC-37); required, default false
   importRunId: Types.ObjectId | null;
   importRow: number | null;
   importIssues: { code: string; column: string | null; detail: string | null }[];
@@ -718,6 +796,8 @@ schema.index({ machineId: 1, status: 1 }, { name: 'ix_machine_status' });       
 schema.index({ importRow: 1 }, { unique: true, name: 'ux_import_row',
   partialFilterExpression: { importRow: { $type: 'number' } } });                                // D8 idempotency
 schema.index({ 'safeCombination.keyId': 1 }, { name: 'ix_combination_keyId', sparse: true });   // the rotation sweep, DEC-33 (precedent credential.model.ts:68-70)
+schema.index({ branchId: 1, dataIncomplete: 1 }, { name: 'ix_incomplete',
+  partialFilterExpression: { dataIncomplete: true } });                                         // DEC-37: flagged rows only
 ```
 
 ### 5.2 Repository — `register/register.repository.ts`
@@ -768,13 +848,21 @@ Two `declareSetting` calls beside the existing two (`atm.settings.ts:20-34` prec
 | Key | Schema | Default | Description (in the file) |
 |---|---|---|---|
 | `atm.register.branchCodes` | `AtmRegisterBranchCodesSettingSchema` | `[]` | The workbook's `EGYCASH-n` → ECMS branch. Empty means no register receipt is possible (DEC-10) and the import is blocked (`branchUnmapped`). |
-| `atm.register.bankLabels` | `AtmRegisterBankLabelsSettingSchema` | `ATM_DEFAULT_BANK_LABELS_SETTING` | bankCode → the label written on `atm_machines.bankName` (D5). |
+| `atm.register.bankLabels` | `AtmRegisterBankLabelsSettingSchema` | `ATM_DEFAULT_BANK_LABELS_SETTING` | bankCode → the label written on `atm_machines.bankName` (D5). **RETIRED by DEC-35:** the description now reads "RETIRED — read once by the bank catalog seed (DEC-35) … changing it changes nothing". It stays declared so a stored value keeps validating. |
 
-`register-settings.ts` exports `resolveRegisterSettings(): Promise<{ codeByBranchId: Map<string, AtmRegisterBranchCode>; branchIdByCode: Map<AtmRegisterBranchCode, string>; opsLabel(bank: AtmBankCode): string }>`
-reading both through `settingsService.resolve(key, { userId: null, branchId: null })` (precedent
-`mail-tickets/mail-poll.service.ts:45-52`). `effectiveOpsLabel(entry) = entry.opsBankLabel ?? (entry.bankCode ? opsLabel(entry.bankCode) : null)`.
+`register-settings.ts` exports `resolveRegisterSettings(session?): Promise<RegisterSettings>`. It
+reads `branchCodes` through `settingsService.resolve(key, { userId: null, branchId: null })`
+(precedent `mail-tickets/mail-poll.service.ts:45-52`) and, in parallel, the bank catalog
+(`loadAtmBankCatalog(session)`, DEC-35). `RegisterSettings` is `{ codeByBranchId, branchIdByCode,
+catalog, opsLabel(bank) }`; `opsLabel` is the catalog's, falling back to the seed's and then to the
+code. The bank-labels setting is no longer read here. `effectiveOpsLabel(entry) = entry.opsBankLabel ?? (entry.bankCode ? opsLabel(entry.bankCode) : null)`.
 Settings are written by the web card through the platform endpoint (DEC-20); the settings service
-audits `settingChanged` (`platform/settings/settings.service.ts:184-195`).
+audits `settingChanged` (`platform/settings/settings.service.ts:184-195`). Since DEC-35 the card
+writes the branch codes only; a bank's Operations label is edited in the catalog (§8.7).
+
+`atm.settlements.banks` (settlements DS-24) is now `z.array(AtmBankCodeSchema).max(50)` — catalog
+codes, not the six. `enabledSettlementBanks()` keeps the codes the catalog knows, archived ones
+included, and ignores the rest.
 
 ### 5.4 Secrets and redaction — `register/register-secrets.ts`
 
@@ -978,6 +1066,87 @@ duplicate groups reported and the index skipped, never resolved (DEC-26).
 `atm.seed.ts` (`:9-18`) becomes, in order: `addSystemRoleGrants` (unchanged) → `migrateAtmIndexes()`
 → `migrateAtmLegacyTimestamps()`. No role or delegated grant is widened (lead override O-1:
 `widenDataEditRoles()` is DROPPED — granting the new keys is the administrator's step, §12.2).
+
+### 5.12 Bank catalog, area labels and the data-edit intake (revision 4 — DEC-35 to DEC-41)
+
+New files under `apps/api/src/modules/atm/`:
+
+| File | What it holds |
+|---|---|
+| `catalogs/bank.model.ts` | `AtmBankModel`, collection `atm_banks` (DEC-35). Indexes `ux_bank_code` and `ux_bank_ops_label_keys` (unique multikey, partial on live rows), built at boot before the seed writes. |
+| `catalogs/bank-catalog.ts` | `loadAtmBankCatalog(session?)` → `{ all, active, byCode, bankOfLabel, opsLabel, nameOf, extrasInOrder }`: one lean read, no cache. `resolveBankOfLabel` and the pure `pickBankOfLabel`. |
+| `catalogs/bank.service.ts`, `catalogs/bank.routes.ts` | `buildAtmBanksRouter(readKeys)` at `/atm/banks`: `GET /` (any ATM key, catalog order, archived included), `POST /` (`atmBank.create`), `PATCH /:code` (`atmBank.edit`, versioned); no DELETE. The service requires organization scope, raises the three 409s, defaults the colour and `sortOrder`, and audits `atm.bank` `create` / `update`. |
+| `catalogs/catalog.migration.ts` | `planBankSeed` / `seedAtmBankCatalog`, `bankCodeOfSpelling` / `backfillBankLabelCodes` (DEC-35). |
+| `catalogs/area-labels.ts` | `ensureAreaLabels`, `backfillAtmAreaLabels` (DEC-38). |
+| `register/operations-intake.ts` | `recordOperationsIntake` and its pure decision functions (DEC-36). |
+| `register/register-refusals.ts` | `describeBranch(ctx, branchId, settings, namingKey = 'atmRegister.view')`, moved out of the register service so the intake can name a branch by `atmMachine.view` too. |
+
+**Boot order** (`atm.seed.ts`):
+1. Super-admin grants; the two `atmBank` keys come with `atmPermissions`.
+2. `migrateAtmIndexes`, which now also builds `atm_banks` and `ix_incomplete`.
+3. `migrateAtmLegacyTimestamps`.
+4. `seedAtmBankCatalog`.
+5. `backfillBankLabelCodes`.
+6. `backfillAtmAreaLabels`.
+
+Each step is idempotent, a second boot writes nothing, and the logs carry counts and bank codes only.
+
+**What changed where:**
+
+| Where | Now |
+|---|---|
+| `register.service.ts` `meta` | Every catalog bank, archived ones too, in catalog order, with `isActive`, `sortOrder` and `isSeed`. A picker offers the active ones plus the entry's own. |
+| `register.service.ts` `assertBank` | In `create`, in `update` when the bank changes, and in `receivePending`. The code must be a catalog bank (400 `body.bankCode UNKNOWN`), and an active one unless it equals the stored value (`INACTIVE`). |
+| `register.service.ts` `assertOpsBankLabel` | DEC-25 on the server: `UNKNOWN`, `UNMAPPED` or `OTHER_BANK` on `body.opsBankLabel`, checked only when an override is sent. |
+| `register.service.ts` list and export filter; `update` | `incomplete` (DEC-37); `update` accepts `dataIncomplete` under `atmRegister.edit`. `entrySnapshot` carries `source` and `dataIncomplete`. |
+| `register.service.ts` `branchOptions` | Adds `areaOptions` `{ name, nameAr, nameEn }` and `bankVariants` `{ name, bankCode }` from `branchLabelChoices`, the same choices data-edit's options give. `areaLabels` and `bankLabels` are kept. |
+| Register create, update (area changed), `receivePending`, `link` | `ensureAreaLabels` after commit (DEC-38). |
+| `register-report.service.ts` | `reportBanks(catalog, groups)` and the DTO's `banks`, `section1Banks`, `section3Banks` (DEC-40). |
+| `register-export.ts` | The last column, `Data incomplete` (`yes` / `no`). |
+| `register/import/` `cell-convert`, `parse-rows`, `expected-data-report`, `report-check` | Typed to the six seeds; the 57-cell check is unchanged. `plan-import.ts` and `apply-import.ts` are unchanged apart from the label pass after an apply, which is isolated so it can never mark a completed run `failed`. |
+| The five settlement models (`plan`, `plan-line`, `line-preparation`, `standard-load`, `layout-import-run`) | `match: ATM_BANK_CODE_PATTERN` instead of the enum; every stored value already matched. |
+| `settlements/shared/settlement-context.ts` | `enabledSettlementBanks()` keeps catalog codes only, archived ones included (DS-24). |
+| `settlements/prints/print.service.ts` | The catalog's Arabic name, falling back to the code. |
+| `settlements/import/master-profiles.ts` | Unchanged: a seventh bank answers `ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK` until it has a profile. Manual layouts, standard loads and plans work. |
+| `machines/machine.service.ts`, `machine.controller.ts` | `create` and `bulkCreate` go through the intake (DEC-36, DEC-41); the single add answers 201 `AtmMachineCreateResultDto`. `update`, `moveArea` and `reassignArea` write the area label after commit, only for an active machine whose area moved or that was brought back. |
+| `shared/atm-context.ts` | `manageActsInBranch`, the "manage at home" rule, shared by the label add and the machine add (DEC-39). |
+| `register/register.repository.ts` | `findNewestPendingByCode(branchId, code, session)` (DEC-36 step e). |
+| `platform/realtime/realtime-registry.ts` | `'atm.bank': { permission: 'atmMachine.view' }`. |
+
+**Label kind rules** (`catalogs/ref-label.service.ts`):
+- **Bank spelling.**
+  - `name` is required; display names are refused (400 `NOT_ALLOWED`).
+  - A `bankCode` that is sent must be an ACTIVE catalog bank (`UNKNOWN` / `INACTIVE`). A legacy
+    `{ name }` body gets the bank the boot backfill would give it (`NBE FOREX` → NBE), else null.
+  - A text that IS a catalog key — any bank's current or former label, its own bank's included —
+    is 409 `ATM_BANK_LABEL_TAKEN`, on create and on rename. Catalog keys resolve first, so such a
+    spelling would be ambiguous for another bank and redundant for its own. Legacy rows like `NBE`
+    → NBE stay valid, and are hidden from the pickers.
+  - An edit may set `bankCode` to an active bank, or to null.
+- **Area.**
+  - A `bankCode` is refused (400 `NOT_ALLOWED`).
+  - `{ nameAr, nameEn }` stores the English as `name`. A legacy `{ name }` fills one display name
+    by script.
+  - A live duplicate is 409, as before.
+  - A rename appends the old name to `formerNames`. An edit may change `nameAr` / `nameEn`; blank
+    becomes null.
+- **Both.** A `branchId` naming no branch is 400 `body.branchId UNKNOWN`, checked after the
+  authority check. Every row a dialog creates has `origin: 'manual'`. `list` takes a `branchId`
+  filter.
+
+**`GET /atm/ref-labels/options?branchId=`** answers `AtmRefLabelOptionsDto`:
+- `branchId` and `registerMapped`.
+- `banks`: first the active catalog banks (`value` = `opsLabel`, `kind: 'bank'`), then the branch's
+  spellings mapped to an active bank and not themselves a catalog key (`kind: 'spelling'`).
+- `areas`: the branch's active area labels with both display names, with no page cap.
+- `unmappedBankNames`: the distinct `bankName` texts of the branch's active machines that resolve
+  to no bank, at most 100.
+
+**Rollback.** Every change is additive: one collection, nullable fields, optional request and
+response fields. Rolling back costs nothing until a non-seed bank exists. After that, older code
+fails on that bank's code (`ATM_BANK_NAMES[code]` is undefined) and the old settlement enums refuse
+it, so roll forward instead. On a rollback, catalog `opsLabel` edits are lost to the older code,
+which reads the retired setting's values again.
 
 ---
 
@@ -1214,16 +1383,20 @@ workbook" — the library message is not echoed), returns `AtmRegisterImportResu
 | Route | Today | After | File |
 |---|---|---|---|
 | `GET /atm/machines` | `atmMachine.view` | unchanged | `machines/machine.routes.ts:32-38` |
-| `POST /atm/machines` (single add) | `manage` | **unchanged — manage only** | `:41-47` |
-| `POST /atm/machines/bulk` | `manage` | **unchanged — manage only** | `:48-54` |
+| `POST /atm/machines` (single add) | `manage` | **unchanged — manage only**. Since revision 4 the key must reach the acting branch (`manageActsInBranch`, DEC-39), and the add is recorded in the register (DEC-36); 201 `AtmMachineCreateResultDto` | `:41-47` |
+| `POST /atm/machines/bulk` | `manage` | **unchanged — manage only**, with the same branch-reach check and register record per row (DEC-36, DEC-41) | `:48-54` |
 | `POST /atm/machines/bulk-delete` | `manage` | **unchanged — manage only** | `:55-61` |
 | `POST /atm/machines/reassign-area` | `manage` | **unchanged — manage only**; now also moves the open register entries' area (DEC-4) | `:62-68` |
 | `PATCH /atm/machines/:id` (name/bank/area/isActive = archive) | `manage` | **unchanged — manage only**; an area change also moves the open entries' area (DEC-4) | `:69-75` |
 | `PATCH /atm/machines/:id/area` | — | **NEW** `authorizeAny('atmMachine.moveArea','atmMachine.manage')`, body `UpdateAtmMachineAreaSchema` | declare before `/:id` |
-| `GET /atm/ref-labels/:kind` | `atmMachine.view` | unchanged | `catalogs/ref-label.routes.ts:65-71` |
-| `POST /atm/ref-labels/:kind` | `manage` | `authorizeAny('atmRefLabel.create','atmMachine.manage')` | `:72-78` |
+| `GET /atm/ref-labels/options` | — | **NEW (revision 4)** `authorizeAny('atmMachine.view','atmMachine.manage','atmMachine.moveArea','atmRefLabel.create','atmRefLabel.edit')`; one of them must reach the branch, or `manage` at home (DEC-39). Declared before `/:kind` | `catalogs/ref-label.routes.ts` |
+| `GET /atm/ref-labels/:kind` | `atmMachine.view` | unchanged; since revision 4 it takes a `branchId` filter | `catalogs/ref-label.routes.ts:65-71` |
+| `POST /atm/ref-labels/:kind` | `manage` | `authorizeAny('atmRefLabel.create','atmMachine.manage')`. Since revision 4 also `atmRegister.create` and `atmRegister.edit`, which the service limits to kind `area` in a branch they reach (DEC-39) | `:72-78` |
 | `PATCH /atm/ref-labels/:kind/:id` (rename / archive toggle) | `manage` | `authorizeAny('atmRefLabel.edit','atmMachine.manage')` | `:79-85` |
 | `DELETE /atm/ref-labels/:kind/:id` | `manage` | **unchanged — manage only** | `:86-92` |
+| `GET /atm/banks` | — | **NEW (revision 4)** any ATM key (`authorizeAny(...atmPermissions keys)`, passed in by `atm.module.ts`) | `catalogs/bank.routes.ts` |
+| `POST /atm/banks` | — | **NEW (revision 4)** `atmBank.create`, and the service requires ORGANIZATION scope (DEC-39) | `catalogs/bank.routes.ts` |
+| `PATCH /atm/banks/:code` | — | **NEW (revision 4)** `atmBank.edit`, organization scope, versioned; there is no DELETE | `catalogs/bank.routes.ts` |
 
 `authorizeAny` exists and audits a denial as `permissionDenied` with the joined keys
 (`platform/rbac/rbac.middleware.ts:52-75`; precedent `modules/fleet/dashboard/dashboard.routes.ts:15-26`).
@@ -1261,6 +1434,13 @@ Service changes:
   through `keyReachesBranch` alone, so it cannot file a label into Tanta (review REG-2, test 9c).
   `remove()` keeps `manage` (`:96-106`).
 - Route-file header comments (`machine.routes.ts:1-4`) restate the split.
+- **Revision 4 (DEC-39).** The manifest declares the resource `atmBank` (`create`, `edit`; page
+  `atm.register`; name «بنوك الصراف الآلي»), mounts `/atm/banks` and lists the collection `atm_banks`.
+  The ref-label `create()` takes an optional `branchId`, defaulting to the acting branch as before.
+  Its authority must cover THAT branch: today's rule (the label key, `manage` reaching it, or
+  `manage` at home), or, for kind `area` only, `atmRegister.create` / `atmRegister.edit` reaching
+  it. The "manage at home" rule moved to `shared/atm-context.ts` as `manageActsInBranch`, and the
+  machine add now asks it too (otherwise 403).
 
 ### 7.2 Manifest — `atm.module.ts`
 
@@ -1390,6 +1570,9 @@ the register through its own nav row (documented, not changed).
 
 ### 8.2 API client, hooks, invalidation (WP-A)
 
+**Amended 2026-10-28:** the bank catalog's calls and hooks, the label options hook, and the wider
+refreshes after machine and label writes — §8.7.
+
 `api/register-api.ts` (NEW, ADR-013 shape of `api/atm-api.ts:1-40`):
 
 | Function | Call |
@@ -1446,6 +1629,9 @@ system, and every count on the report is Latin — review finding WEB-5), `colum
 `atm.register.col.<field>`.
 
 ### 8.3 Register page `/atm/register` (WP-C)
+
+**Amended 2026-10-28:** banks from the catalog, the «البنوك» dialog, «+ منطقة», and «بيانات ناقصة»
+(badge, filter, checkbox) — §8.7.
 
 Layout: `<PageContainer fullHeight>` + the board frame (`apps/web/src/modules/fleet/components/board-scroll.ts:16-20`,
 `platform/layout/PageContainer.tsx:20-41`), RTL by the app (logical properties only).
@@ -1521,6 +1707,8 @@ Visibility by `can(key)` is a convenience; the server's `keyCoversEntry` (DEC-29
 
 ### 8.4 Data-edit changes (WP-E) — `pages/DataEditPage.tsx`, `components/DataEditDialogs.tsx`
 
+**Amended 2026-10-28:** four tabs, catalog-backed dialogs and the add's register outcome — §8.7.
+
 | Element (today) | After |
 |---|---|
 | Machines-tab actions column, rendered for `can('atmMachine.manage')` (`DataEditPage.tsx:151-183`) | Rendered for `manage` OR `moveArea`. Edit button: manage → existing `MachineDialog` (full edit + archive, unchanged); moveArea-only → new `MachineAreaDialog`. |
@@ -1536,6 +1724,9 @@ The page keeps reading only `tab, active, q, sort, size, page` (its census entry
 `['tab']`, `remembered-filters-coverage.spec.ts:47`).
 
 ### 8.5 Data Report page `/atm/register/report` (WP-D)
+
+**Amended 2026-10-28 (DEC-40):** the bars, series, colours and legend come from the DTO's catalog
+banks rather than `ATM_BANK_REPORT_COLORS` / `ATM_BANK_NAMES` — §8.7.
 
 `pages/RegisterReportPage.tsx` is a THIN shell (no `DataTable`, no `rows=`, no `.items.map(`, no
 `<Select`/`FilterBar`/`SearchInput`, no `sp.get(` — so it stays `NOT_FILTER_CAPABLE` without a note,
@@ -1588,6 +1779,8 @@ the title only (no subtitle — `page-header-has-no-subtitle.spec.ts`); work in
    (default `ATM_DEFAULT_OPS_BANK_LABELS`). Save → `useSetSetting` (`platform/settings/settings-api.ts:39-48`)
    with `{ key, scope:'organization', value }`, then invalidate `registerMeta`. Rendered editable
    only with `can('setting.edit')`; read-only otherwise (values from `useRegisterMeta`).
+   **Amended 2026-10-28 (DEC-35):** table 2 is a read-only list of the catalog with «إدارة البنوك»,
+   and Save writes the branch codes only (§8.7).
 2. **Upload** (`ImportUploadPanel`, a card — its first line is the body text
    `atm.registerImport.intro`, NOT a PageHeader child): `FileUpload` (`shared/ui/FileUpload.tsx`,
    `accept=".xlsx"`, `maxSizeMb=20`) → Preview (`apply: []`). Preview is offered only while no run is
@@ -1614,6 +1807,130 @@ the title only (no subtitle — `page-header-has-no-subtitle.spec.ts`); work in
    recomputed plan.
 5. **Runs** card: `useRegisterImportRuns()` table (started, finished, state, actor, categories,
    counts — each count labelled `atm.registerImport.outcome.<key>`).
+
+### 8.7 Revision 4 (2026-10-28) — banks from the catalog, bilingual areas, the intake on screen
+
+This section amends §8.2–§8.6 for DEC-35–DEC-41. Where it disagrees with them, it wins.
+
+**Foundation.**
+- **`api/atm-api.ts`:** `listBanks`, `createBank`, `updateBank` (`PATCH /atm/banks/:code`) and
+  `refLabelOptions(branchId)`. `createMachine` returns `AtmMachineCreateResultDto`.
+- **`api/atm-queries.ts`, new hooks:**
+  - `useAtmBanks`: key `['atm','banks','list']`, stale after 5 minutes.
+  - `useAtmBankLookup`.
+  - `useCreateAtmBank` / `useUpdateAtmBank`: they opt out of the global error toast, and refresh
+    `banks`, `registerMeta`, `registerReport`, `refLabelOptions` and `mapPoints`.
+  - `useAtmRefLabelOptions(branchId, enabled)`.
+- **`api/atm-queries.ts`, refreshes:**
+  - Every machine write (create, bulk create, update, reassign, area move) also refreshes
+    `refLabels`, `refLabelOptions`, `registerEntries` and `registerReport` (critic gap 4).
+  - A label write also refreshes `refLabelOptions` and `registerBranchOptions`.
+- **Realtime** (`platform/realtime/invalidation-registry.ts`): `'atm.bank'` refreshes the same five
+  families as the bank write hooks. `'atm.refLabel'` also refreshes `refLabelOptions` and
+  `registerBranchOptions`.
+- **NEW `lib/bank-catalog.ts`** (pure). `makeBankLookup(banks?)` gives:
+  - `ordered`, `active` and `codes`;
+  - `name(code, locale)`: the catalog's, else the seed's, else the code;
+  - `color(code)`: the catalog's, else the seed's, else `NO_ZONE_GREY`;
+  - `isPale(code)`: `needsCasing(color)`.
+
+  Before the catalog answers, the lookup holds the six seeds. The file also has `labelText`,
+  `areaOptionText`, `bankOptionGroups`, `banksOnShow` and `inCatalogOrder`. No screen keeps its own
+  list of six any more.
+- **NEW `components/catalog/BankDialog.tsx`** adds or edits one bank:
+  - fields: Arabic name, English name, code (upper-cased; read-only on edit), Operations label and
+    colour. A new bank is offered the first unused extra colour.
+  - It warns when the Operations label changes, and when an archive targets a bank enabled in
+    `atm.settlements.banks`.
+  - Each of the three `ATM_BANK_*` refusals has its own text.
+- **NEW `components/catalog/BankCatalogDialog.tsx`:** the whole catalog as one table
+  (`bankCatalogColumns`, shared with data-edit's «البنوك» tab).
+
+**Data-edit (amends §8.4).** `ATM_DATA_TABS = ['machines', 'bank', 'bankLabel', 'area']`, each tab
+one table in the board frame.
+- **«البنوك»:** the whole catalog in catalog order: code, names, Operations label, colour and status.
+  Add is gated by `Can atmBank.create`, edit by `Can atmBank.edit`.
+- **«أسماء البنوك في التشغيل»:** the spellings, each with its bank's name or a «غير مربوط ببنك»
+  badge. The table is scope-wide, like the machines tab.
+  - An amber callout above it lists `unmappedBankNames`, each with «ربط ببنك».
+  - The button edits the unlinked spelling of that name when one is listed; otherwise it opens
+    "add" with the name filled in.
+- **«المناطق»:** stored name, Arabic, English, an origin badge and status. The badge reads
+  «من البيانات الحالية» for `backfill` and «أُضيفت تلقائيًا» for `register` / `machine` / `import`.
+  - The add dialog needs Arabic AND English and shows «يُحفظ على الماكينات باسم: …».
+  - The edit dialog shows the stored name and both translations, with «الماكينات الحالية تحتفظ
+    بالاسم القديم».
+- **The machine, bulk and area-move dialogs** read `useAtmRefLabelOptions` instead of the two
+  100-row lists: the acting branch on add, `machine.branchId` on edit and move.
+  - Banks are grouped per catalog bank (`<optgroup>`).
+  - Areas show `labelText`, with the stored name in brackets when it differs.
+  - The machine's current bank and area are always offered (critic gap 3).
+  - When `registerMapped` is false, the add dialogs show an amber notice.
+- **The add buttons stay `<Can permission="atmMachine.manage">`.** The outcome is said in words:
+  «تمت إضافة الماكينة.» or «أُعيدت الماكينة المؤرشفة للعمل.», then one of «سُجلت في السجل — بيانات
+  ناقصة.», «رُبطت بسجلها.», «للتشغيل فقط: الفرع غير مربوط بكود EGYCASH.», «للتشغيل فقط: الكود المؤقت
+  لا يُسجَّل في السجل.» or «اسم البنك غير مربوط ببنك — لم تُسجَّل في السجل.» (a warning).
+  - The two 409 codes and `INACTIVE` each have their own text.
+  - The bulk result lists the reactivated, refused and unrecorded codes.
+
+**Register (amends §8.3).**
+- **Header:** «البنوك» (`Can anyOf atmBank.create, atmBank.edit`) opens `BankCatalogDialog`. This is
+  where Efficiency curate banks, since they have no data-edit nav row.
+- **Filters:**
+  - The banks are every catalog bank, archived ones marked «(مؤرشف)», plus any URL code the catalog
+    lacks. URL bank codes are read by pattern.
+  - «بيانات ناقصة فقط»: URL `incomplete=1`, in `REMEMBERED_FILTERS`, sent as `incomplete=true` to
+    the list and the export.
+  - The area filter shows `labelText` and still matches the stored name.
+- **Grid:**
+  - An amber «بيانات ناقصة» badge (`data-register-incomplete`) sits beside the import-issues mark.
+    Its tooltip (`missingForCompletion`) lists what is still empty among area, bank, ID, name,
+    operation type, vendor, model, serial, open time, close time, received-by and HUB, and the
+    groups keys, cassettes, combination and location. Keys and the combination count only when
+    `secretsVisible`.
+  - A `source: 'operations'` row says «أضافها التشغيل من صفحة «إضافة البيانات».».
+  - The Bank cell's tooltip names the bank through the lookup.
+- **Receive and edit form** (`EntryFormSections`):
+  - **Bank:** the active `meta.banks` plus the entry's own (an archived one shown «… (مؤرشف)»).
+    Beside it, «+» (`Can atmBank.create`) opens `BankDialog`.
+  - **Operations name:** the `bankVariants` of the chosen bank, plus the stored value.
+  - **Area suggestions:** `areaOptions` shown by `labelText` (the value stays the stored name), plus
+    `areas`. Beside them, «+ منطقة» (`Can anyOf atmRefLabel.create, atmMachine.manage,
+    atmRegister.create, atmRegister.edit`; disabled with no branch) opens the area dialog for that
+    branch. A typed area no list holds shows «منطقة جديدة — ستُضاف إلى قائمة الفرع.».
+  - **ID format:** the hint uses the widened check.
+  - **Edit only:** the «بيانات ناقصة» checkbox, sent only when changed. On `source: 'operations'`
+    rows, a note says where the row came from.
+  - The form stays open while a nested bank or area dialog is open.
+  - The bank and Operations-name refusals (`UNKNOWN`, `INACTIVE`, `UNMAPPED`, `OTHER_BANK`) have
+    their own sentences.
+- **`ReceivePendingDialog`:** the same banks, Operations names and area suggestions.
+- **Delete** of a `source: 'operations'` row uses `deleteBodyOperations`, which says the machine is
+  archived if this is its only open period.
+
+**Data Report (amends §8.5).**
+- Bars and series come from `dto.section1Banks`, `section3Banks` and `banks`, through
+  `buildAtmReportCells`.
+- Names and colours come from the DTO's `banks` (`atmBankName` / `atmBankColor`), else the seed's,
+  else the code and `NO_ZONE_GREY`.
+- Without the new fields (an older server), the page draws the sheet's six.
+
+**Import page (amends §8.6 item 1).**
+- `RegisterSettingsCard`'s table 2 is now a read-only catalog list (code, name, Operations name,
+  status) with «إدارة البنوك», behind the `atmBank` keys, which opens the catalog dialog in place.
+  Save writes the branch codes only.
+- `ImportCategoryCard` and `ReportCheckTable` name banks through the lookup.
+
+**Map and settlements** (all through the lookup).
+- `map-colors.ts` lost `bankColor` and `paleBank`.
+- The legend and the bank filter show the active banks plus any code the points carry
+  (`banksOnShow`); the filter accepts any code of the right shape, or `none`.
+- The settlement pages name banks through the catalog: `ControlPage`, `CassetteLayoutsPage`,
+  `PreparationPage`, `LayoutImportPage`, `SettlementPlanPage` and `ControlDataTab`.
+
+**i18n.** The new keys (`atm.dataEdit.*`, `atm.bankCatalog.*`, the register's incomplete, form and
+refusal keys, `atm.registerSettings.manageBanks`) are in both locales, in formal Arabic, and in the
+`atm-i18n` / `atm-register-i18n` censuses.
 
 ---
 
@@ -2134,7 +2451,10 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
 
 ### 12.1 Deploy (automatic at boot)
 1. `seedAtm`: super-admin grants; ATM indexes built (DEC-26); legacy timestamps backfilled
-   (DEC-23). **No role or delegated grant is widened** (O-1).
+   (DEC-23). **No role or delegated grant is widened** (O-1). Since revision 4 it then seeds the
+   bank catalog with the six (DEC-35), gives the Operations bank spellings their `bankCode`, and
+   lists every area of an active machine or an open or pending entry as a data-edit label of its
+   branch (DEC-38) — §5.12. Every step is idempotent; a second boot writes nothing.
 2. `syncNavigationCatalog`: two new rows; `/atm/data-edit` key corrected to `atmRefLabel.create`.
    From this boot on, a role or ADR-032 delegated grant holding only `atmMachine.manage` no longer
    shows the Machine Data sidebar row or the ATM overview card (both now need `atmRefLabel.create`);
@@ -2145,9 +2465,14 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
 
 ### 12.2 Administrator, before cut-over
 1. Import page → Register settings: map `EGYCASH-1..7` to the ECMS branches (EG-18 — confirm
-   EGYCASH-7 وصال); review the Operations bank labels (BM → MISR by default).
+   EGYCASH-7 وصال); review the Operations bank labels (BM → MISR by default). Since revision 4 a
+   bank's Operations label is its catalog `opsLabel`, reviewed on the register's «البنوك» dialog; a
+   label stored in the retired setting was carried into the catalog at the first boot (DEC-35).
 2. Operations (data-edit) add an `NBE FOREX` bank label in the branches whose FX machines should
-   carry it (DEC-16).
+   carry it (DEC-16). Since revision 4 that is a spelling on the «أسماء البنوك في التشغيل» tab,
+   linked to NBE. The tab's callout lists the bank texts the branch's machines carry that map to no
+   bank; map them there too, or the machines added with them are not recorded in the register
+   (`noBank`, DEC-36).
 3. Roles (§12.3). Grant the Operations role(s) `atmRefLabel.create`, `atmRefLabel.edit` and
    `atmMachine.moveArea`, then remove `atmMachine.manage` from them — until then they keep add,
    archive and delete (risk R-2).
@@ -2160,17 +2485,32 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
    not the code): EG-19 (production masters vs the seven codes — how `activeElsewhere` rows are
    resolved), EG-20 (time cells ≥ 1 day), EG-21 (total label spelling).
 6. No manual Receive of a machine that the frozen copy has OPEN between deploy and cut-over: it
-   would raise the `openInRegister` blocker (DEC-31) until handed over or deleted.
+   would raise the `openInRegister` blocker (DEC-31) until handed over or deleted. Since revision 4
+   the same holds for a machine Operations ADD on data-edit: its intake entry is open (DEC-36), so
+   a workbook row open for that code blocks the apply until Efficiency hand the entry over or
+   delete it — and deleting it archives the machine (D2). The import does not adopt intake entries
+   (R-15).
+7. **Revision 4 (EG-11):** grant `atmBank.create` / `atmBank.edit` at ORGANIZATION scope to whoever
+   curates the bank catalog — Efficiency & Investigations or the ATM administrator (§12.3). A
+   branch-scoped grant is refused by the service (DEC-39).
 
 ### 12.3 Recommended role bundles (documented, not seeded — EG-11)
 
 | Bundle | Keys | Scope |
 |---|---|---|
-| Efficiency & Investigations | `atmRegister.view/create/edit/delete/export/handover/viewSecrets`, `atmRegisterReport.view`, `atmMachine.view` | organization for a central team; branch for per-branch staff. Department, section or own scope gives READ access within the branch only — no write, no reveal, no keys (DEC-29) |
+| Efficiency & Investigations | `atmRegister.view/create/edit/delete/export/handover/viewSecrets`, `atmRegisterReport.view`, `atmMachine.view`; since revision 4 also `atmBank.create`, `atmBank.edit`, and optionally `atmRefLabel.edit` to correct area translations on data-edit | organization for a central team; branch for per-branch staff. Department, section or own scope gives READ access within the branch only — no write, no reveal, no keys (DEC-29). `atmBank.*` at **organization scope only** (DEC-39) |
 | Register import (cut-over admin) | the above + `atmRegister.import` | organization |
 | Data Report reader | `atmRegisterReport.view` | organization or branch |
 | Operations — machine data | `atmMachine.view`, `atmRefLabel.create`, `atmRefLabel.edit`, `atmMachine.moveArea` | branch |
-| ATM administrator | everything incl. `atmMachine.manage` | organization |
+| ATM administrator | everything incl. `atmMachine.manage` and `atmBank.*` | organization |
+
+**Rollout note (EG-11, revision 4).** After the deploy nobody but super-admin holds
+`atmBank.create` / `atmBank.edit`: the boot gives super-admin every ATM key and widens no other role
+(O-1). Until an administrator grants them (§12.2 step 7), nobody else can add, edit or archive a
+bank. The register's «البنوك» button and the import card's «إدارة البنوك» stay hidden, and
+data-edit's «البنوك» tab is read-only. Efficiency add areas from the register with the register
+keys they already hold (DEC-39). Operations keep `atmRefLabel.*` for spellings and areas: the
+"Operations — machine data" bundle is unchanged.
 
 ### 12.4 Cut-over day
 1. The owner freezes the Excel (no more edits) and takes a fresh copy.
@@ -2207,6 +2547,12 @@ enforcement is WP-A's (tests in `atm-data-edit-permissions.spec.ts`). Commands: 
 | R-11 | Error tracking (Sentry) attaches request bodies to error events by default, which would carry combinations and key codes off the server. | DEC-34: bodies of register routes are never captured, K/S names scrubbed in `beforeSend`, unit-tested. Other modules' bodies are outside this spec (flagged). |
 | R-12 | Production masters were loaded per legacy deployment (4) while the register has 7 codes; many open rows may land in `activeElsewhere` (EG-19). | Shown as its own category with from → to counts before anything is applied; the owner decides; `Link` (DEC-30) completes each row afterwards. |
 | R-13 | A crafted upload exhausts memory or CPU. | 20 MB upload cap, per-entry inflate caps, row and time caps, only five zip entries ever inflated (§6.2). Every scan of an inflated part is linear (the workbook/rels tags and attributes are walked by hand — a backtracking `<sheet\b[^>]*>` over a 2 MB part of unclosed tags held the event loop for minutes, review finding SEC-2) and the deadline is re-checked between the steps no chunk counter sees; the parse phase is linear too (capped detail lists, a hand-scanned trailing-digit check — SEC-3). |
+| R-14 | Revision 4: the Data Report and the settlements change from the first data-edit add. Every add in a mapped branch whose bank text resolves records an OPEN entry, so the report's numbers rise and the machine gets a settlement bank (DEC-36). | The owner's call. The import's 57-number check is pinned to the six by a spec (DEC-40), the CHANGELOG says so, and the «بيانات ناقصة» badge and filter show Efficiency exactly which rows to complete (DEC-37). |
+| R-15 | Revision 4: an intake entry made before the cut-over is an `openInRegister` blocker (DEC-31), like a manual receipt. The import does not adopt intake entries, because whether a run has already been applied in production is unknown (EG-19). | §12.2 step 6: Efficiency complete or delete them before the preview. |
+| R-16 | Revision 4: deleting an intake entry archives its machine (D2), which takes it out of Operations' open forms and the mail matcher. | The delete dialog says so on `source: 'operations'` rows (§8.7). |
+| R-17 | Revision 4: data-edit's add behaves differently. An archived code is reactivated instead of refused; a code active or open in another branch is refused (DEC-41); `manage` must reach the acting branch (DEC-39). | Each outcome is said in words on the dialog (§8.7); `atm.spec.ts` pins the new answers. Existing cross-branch duplicates are left alone (R-9). In an unmapped branch two concurrent adds of one code can still race on the machine, exactly as before. |
+| R-18 | Revision 4: automatic area labels add clutter — EG-6 counts 118 raw values, case and script variants included. | Nothing is merged; the origin badge shows where a label came from; Operations archive rather than delete; a name that was deleted, archived or renamed is never brought back (DEC-38). |
+| R-19 | Revision 4: a rollback after the first non-seed bank exists breaks older code on that bank's code, and nobody but super-admin holds `atmBank.*` after the deploy. | Roll forward past that point (§5.12 "Rollback"); grant the bank keys at organization scope (§12.2 step 7, §12.3 rollout note). |
 
 ---
 

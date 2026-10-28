@@ -196,13 +196,19 @@ const masterOf = async (branchId: string, machineCode: string): Promise<AtmMachi
     .exec();
 
 /** Admin adds an Operations machine in a branch, through the existing data-edit route. */
+/**
+ * An Operations machine with NO register entry — the state `npm run atm:import` (or a data-edit add
+ * before DEC-36) left it in. Inserted directly: a data-edit add now records an open receipt itself
+ * (atm-data-edit-register.spec.ts), and these scenarios are about a master the register meets.
+ */
 const addMachine = async (
   branchId: string,
   body: { machineCode: string; name: string; bankName: string; area: string },
 ): Promise<string> => {
-  const res = await call('post', '/atm/machines', adminToken, body, branchId);
-  expect(res.status, JSON.stringify(res.body)).toBe(201);
-  return data<{ id: string }>(res).id;
+  const [doc] = await AtmMachineModel.create([
+    { branchId: new Types.ObjectId(branchId), zone: '', isActive: true, ...body },
+  ]);
+  return String(doc?._id);
 };
 
 /** An entry written as the IMPORT writes it (WP-B) — straight into the collection. */

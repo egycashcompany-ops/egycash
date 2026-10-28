@@ -14,11 +14,17 @@
 // insert), then the `bankCode` of the Operations spellings written before spellings had one (after
 // the seed, because it maps a spelling through the catalog's labels). Both idempotent; a second boot
 // writes nothing.
+//
+// Last, the area labels (DEC-38): every area an active machine or an open or pending register entry
+// carries becomes a data-edit label of its branch, so data-edit's list finally shows what the
+// register holds (the owner: «مش مسمعه»). Idempotent, and a name Operations deleted, archived or
+// renamed is never brought back.
 import { logger } from '../../infrastructure/logging/logger';
 import { rbacService } from '../../platform/rbac';
 import { atmPermissions } from './atm.module';
 import { migrateAtmIndexes } from './atm-indexes';
 import { migrateAtmLegacyTimestamps } from './machines/machine.migration';
+import { backfillAtmAreaLabels } from './catalogs/area-labels';
 import { backfillBankLabelCodes, seedAtmBankCatalog } from './catalogs/catalog.migration';
 
 export const seedAtm = async (): Promise<void> => {
@@ -41,4 +47,5 @@ export const seedAtm = async (): Promise<void> => {
   }
   await seedAtmBankCatalog();
   await backfillBankLabelCodes();
+  await backfillAtmAreaLabels();
 };

@@ -95,7 +95,12 @@ export const buildAtmRefLabelsRouter = (): Router => {
   router.post(
     '/:kind',
     authenticate,
-    authorizeAny('atmRefLabel.create', 'atmMachine.manage', 'atmRegister.create', 'atmRegister.edit'),
+    authorizeAny(
+      'atmRefLabel.create',
+      'atmMachine.manage',
+      'atmRegister.create',
+      'atmRegister.edit',
+    ),
     validate({ body: CreateAtmRefLabelSchema, params: KindParamSchema }),
     asyncHandler(createLabel),
   );

@@ -73,6 +73,7 @@ import {
   RefLabelDialog,
 } from '../components/DataEditDialogs';
 import { BankDialog } from '../components/catalog/BankDialog';
+import { bankCatalogColumns } from '../components/catalog/BankCatalogDialog';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { makeBankLookup, sortByCatalogOrder } from '../lib/bank-catalog';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
@@ -305,58 +306,8 @@ export const DataEditPage = (): JSX.Element => {
       : []),
   ];
 
-  const bankColumns: Column<AtmBankDto>[] = [
-    {
-      key: 'code',
-      header: t('atm.bankCatalog.code'),
-      render: (r) => <span dir="ltr">{r.code}</span>,
-    },
-    { key: 'nameAr', header: t('atm.bankCatalog.nameAr'), render: (r) => r.name.ar },
-    { key: 'nameEn', header: t('atm.bankCatalog.nameEn'), render: (r) => r.name.en },
-    {
-      key: 'opsLabel',
-      header: t('atm.bankCatalog.opsLabel'),
-      render: (r) => <span dir="ltr">{r.opsLabel}</span>,
-    },
-    {
-      key: 'color',
-      header: t('atm.bankCatalog.color'),
-      render: (r) => (
-        <span className="inline-flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="h-3 w-3 shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(15,23,42,0.3)]"
-            style={{ backgroundColor: r.color }}
-          />
-          <span dir="ltr" className="text-xs text-slate-500 dark:text-slate-400">
-            {r.color}
-          </span>
-        </span>
-      ),
-    },
-    statusColumn<AtmBankDto>(),
-    ...(canEditBank
-      ? [
-          {
-            key: 'actions',
-            header: t('atm.dataEdit.actions'),
-            align: 'end',
-            render: (r: AtmBankDto) => (
-              <button
-                type="button"
-                className={actionButton}
-                aria-label={t('atm.common.edit')}
-                title={t('atm.common.edit')}
-                data-edit-action="edit-bank"
-                onClick={() => setEditingBank(r)}
-              >
-                <EditIcon className="h-4 w-4" />
-              </button>
-            ),
-          } satisfies Column<AtmBankDto>,
-        ]
-      : []),
-  ];
+  // The register's «البنوك» dialog shows the same table (`bankCatalogColumns`).
+  const bankColumns = bankCatalogColumns({ t, onEdit: canEditBank ? setEditingBank : undefined });
 
   const spellingColumns: Column<AtmRefLabelDto>[] = [
     {

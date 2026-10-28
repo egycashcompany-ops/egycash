@@ -5,11 +5,13 @@
 // date is asked for, and so is anything a receipt needs that the entry does not carry yet: the
 // area (D6), the bank, the ATM ID, and the name the Operations list should file the bank under.
 // What the entry already has is kept and not asked again.
+//
+// The bank is one of the catalog's ACTIVE banks (DEC-35) — a bank added at runtime is a full
+// register bank — and the Operations name a spelling of THAT bank, as on the receipt form; the
+// area is suggested in the reader's language and saved by its stored name.
 import { useId, useState } from 'react';
 import {
-  ATM_BANK_CODES,
   normalizeAtmMachineCode,
-  type AtmBankCode,
   type AtmRegisterEntryDto,
   type AtmRegisterMetaDto,
   type Locale,
@@ -25,9 +27,17 @@ import {
   useReceivePendingRegisterEntry,
   useRegisterBranchOptions,
 } from '../../api/register-queries';
+import { makeBankLookup } from '../../lib/bank-catalog';
 import { cairoToday } from '../../lib/operation-view';
-import { bankName } from '../../lib/register-labels';
-import { FormError, announceWrite, registerErrorText } from './EntryFormSections';
+import {
+  FormError,
+  announceWrite,
+  areaSuggestions,
+  opsLabelChoices,
+  registerBankChoices,
+  registerBankOptionLabel,
+  registerErrorText,
+} from './EntryFormSections';
 
 /** What a pending entry still lacks for a receipt — each asked for only when it is missing. */
 export const pendingGaps = (
@@ -79,20 +89,22 @@ export const ReceivePendingDialog = ({
       : []),
   ]);
 
-  const effectiveBank = (bank === '' ? entry.bankCode : bank) as AtmBankCode | null;
+  const lookup = makeBankLookup(meta?.banks);
+  const effectiveBank = bank === '' ? entry.bankCode : bank;
   const autoLabel =
     effectiveBank === null
       ? '—'
       : (meta?.banks.find((b) => b.code === effectiveBank)?.opsLabel ?? effectiveBank);
-  const areaSuggestions = [
-    ...new Set([...(options.data?.areaLabels ?? []), ...(options.data?.areas ?? [])]),
-  ].sort((a, b) => a.localeCompare(b));
+  // Only the catalog's active banks: the bank is asked for only when the entry has none.
+  const bankChoices = registerBankChoices(lookup, [bank]);
+  const opsLabels = effectiveBank === null ? [] : opsLabelChoices(options.data, effectiveBank, '');
+  const areas = areaSuggestions(options.data, locale);
 
   const submit = required.guard(async () => {
     setError(null);
     const body: ReceivePendingAtmRegisterEntry = { startDate, version: entry.version };
     if (gaps.area && area.trim() !== '') body.area = area.trim();
-    if (gaps.bank && bank !== '') body.bankCode = bank as AtmBankCode;
+    if (gaps.bank && bank !== '') body.bankCode = bank;
     if (gaps.code && code.trim() !== '') body.machineCode = code.trim();
     if (gaps.opsLabel && opsLabel !== '') body.opsBankLabel = opsLabel;
     if (gaps.receivedBy && receivedBy.trim() !== '') body.receivedByName = receivedBy.trim();
@@ -159,8 +171,12 @@ export const ReceivePendingDialog = ({
                 onChange={(e) => setArea(e.target.value)}
               />
               <datalist id={`${id}-areas`}>
-                {areaSuggestions.map((option) => (
-                  <option key={option} value={option} />
+                {areas.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    {...(option.label === undefined ? {} : { label: option.label })}
+                  />
                 ))}
               </datalist>
             </Field>
@@ -181,9 +197,9 @@ export const ReceivePendingDialog = ({
                 }}
               >
                 <option value="">{t('common.select')}</option>
-                {ATM_BANK_CODES.map((bankCode) => (
-                  <option key={bankCode} value={bankCode}>
-                    {`${bankCode} · ${bankName(bankCode, locale)}`}
+                {bankChoices.map((choice) => (
+                  <option key={choice.code} value={choice.code}>
+                    {registerBankOptionLabel(choice, lookup, locale, t)}
                   </option>
                 ))}
               </Select>
@@ -216,7 +232,7 @@ export const ReceivePendingDialog = ({
                 <option value="">
                   {t('atm.register.form.opsBankLabelAuto', { label: autoLabel })}
                 </option>
-                {(options.data?.bankLabels ?? []).map((option) => (
+                {opsLabels.map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>

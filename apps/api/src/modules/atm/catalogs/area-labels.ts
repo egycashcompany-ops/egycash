@@ -44,7 +44,9 @@ export const isArabicText = (text: string): boolean => ARABIC.test(text);
  * Pure: the display names a label gets from ONE text — that text in the language its script says,
  * nothing in the other (a legacy `{ name }` create, an automatic label).
  */
-export const areaNamesByScript = (name: string): { nameAr: string | null; nameEn: string | null } =>
+export const areaNamesByScript = (
+  name: string,
+): { nameAr: string | null; nameEn: string | null } =>
   isArabicText(name) ? { nameAr: name, nameEn: null } : { nameAr: null, nameEn: name };
 
 /**

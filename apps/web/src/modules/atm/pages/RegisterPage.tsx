@@ -17,12 +17,18 @@
 // THE URL HOLDS THE VIEW. This file reads exactly the remembered params below, plus `page` (the
 // persistence census, `remembered-filters-coverage.spec.ts`); the filter bar reports changes and
 // never touches the URL itself.
+//
+// The banks are the catalog's (DEC-35). The owner's call (final): a bank added at runtime is a full
+// register bank — so the bank filter takes any well-shaped code (whether it exists is the server's
+// answer, and a stale one simply matches nothing), and «البنوك» in the header opens the catalog for
+// whoever keeps it: Efficiency curate banks HERE, having no navigation row to /atm/data-edit.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  ATM_BANK_CODES,
+  ATM_BANK_CODE_PATTERN,
   ATM_REGISTER_STATUSES,
   type AtmRegisterEntryDto,
+  type AtmRegisterStatus,
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -34,23 +40,31 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { Pagination } from '../../../shared/ui/Pagination';
-import { ChartIcon, DownloadIcon, PlusIcon, UploadIcon } from '../../../shared/ui/icons';
+import {
+  BuildingIcon,
+  ChartIcon,
+  DownloadIcon,
+  PlusIcon,
+  UploadIcon,
+} from '../../../shared/ui/icons';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { exportRegisterEntries, type RegisterListParams } from '../api/register-api';
 import { useRegisterEntries, useRegisterMeta } from '../api/register-queries';
+import { BankCatalogDialog } from '../components/catalog/BankCatalogDialog';
 import { DeleteEntryDialog } from '../components/register/DeleteEntryDialog';
 import { EditEntryDialog } from '../components/register/EditEntryDialog';
 import { HandoverDialog } from '../components/register/HandoverDialog';
 import { LinkEntryDialog } from '../components/register/LinkEntryDialog';
 import { ReceiveEntryDialog } from '../components/register/ReceiveEntryDialog';
 import { ReceivePendingDialog } from '../components/register/ReceivePendingDialog';
-import { RegisterFilters } from '../components/register/RegisterFilters';
+import { RegisterFilters, type RegisterFilterValues } from '../components/register/RegisterFilters';
 import { RegisterGrid } from '../components/register/RegisterGrid';
 import { type RegisterRowAction } from '../components/register/RegisterRowActions';
 import { RevealCombinationDialog } from '../components/register/RevealCombinationDialog';
+import { makeBankLookup } from '../lib/bank-catalog';
 import {
   REGISTER_PAGE_SIZES,
   nextRegisterSort,
@@ -67,6 +81,7 @@ const REMEMBERED_FILTERS = [
   'area',
   'q',
   'issues',
+  'incomplete',
   'sort',
   'size',
 ] as const;
@@ -83,13 +98,47 @@ const LINK_BUTTON =
 
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
-/** A comma list from the URL, keeping only values the server knows — a stale link cannot 400. */
-const readCodes = <T extends string>(raw: string | null, allowed: readonly T[]): T[] =>
-  (raw ?? '')
-    .split(',')
-    .filter((value): value is T => (allowed as readonly string[]).includes(value));
+/** A comma list from the URL, keeping only values the server accepts — a stale link cannot 400. */
+const readCodes = <T extends string>(
+  raw: string | null,
+  keep: (value: string) => value is T,
+): T[] => (raw ?? '').split(',').filter(keep);
 
-type OpenDialog = { action: 'receive' } | { action: RegisterRowAction; entry: AtmRegisterEntryDto };
+const isStatus = (value: string): value is AtmRegisterStatus =>
+  (ATM_REGISTER_STATUSES as readonly string[]).includes(value);
+/** A bank by its shape only: the catalog may hold a bank this build has never heard of. */
+const isBankCode = (value: string): value is string => ATM_BANK_CODE_PATTERN.test(value);
+
+/** The filters as the URL holds them — what the bar shows. */
+export const readRegisterFilters = (sp: URLSearchParams): RegisterFilterValues => {
+  const branchParam = sp.get('branch') ?? '';
+  return {
+    branch: OBJECT_ID.test(branchParam) ? branchParam : '',
+    banks: readCodes(sp.get('bank'), isBankCode),
+    statuses: readCodes(sp.get('status'), isStatus),
+    area: (sp.get('area') ?? '').trim().slice(0, 120),
+    q: sp.get('q') ?? '',
+    issues: sp.get('issues') === '1',
+    incomplete: sp.get('incomplete') === '1',
+  };
+};
+
+/** The filters as the API reads them — the list and the export send exactly these. */
+export const registerFilterParams = (filters: RegisterFilterValues): RegisterListParams => ({
+  ...(filters.branch === '' ? {} : { branchId: filters.branch }),
+  ...(filters.banks.length === 0 ? {} : { banks: filters.banks }),
+  ...(filters.statuses.length === 0 ? {} : { statuses: filters.statuses }),
+  ...(filters.area === '' ? {} : { area: filters.area }),
+  ...(filters.q.trim() === '' ? {} : { search: filters.q.trim().slice(0, 100) }),
+  ...(filters.issues ? { withIssues: true } : {}),
+  // DEC-37: «بيانات ناقصة فقط» — the export takes it too, so Efficiency can take the list away.
+  ...(filters.incomplete ? { incomplete: true } : {}),
+});
+
+type OpenDialog =
+  | { action: 'receive' }
+  | { action: 'banks' }
+  | { action: RegisterRowAction; entry: AtmRegisterEntryDto };
 
 export const RegisterPage = (): JSX.Element => {
   const t = useT();
@@ -98,13 +147,7 @@ export const RegisterPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  const branchParam = sp.get('branch') ?? '';
-  const branch = OBJECT_ID.test(branchParam) ? branchParam : '';
-  const banks = readCodes(sp.get('bank'), ATM_BANK_CODES);
-  const statuses = readCodes(sp.get('status'), ATM_REGISTER_STATUSES);
-  const area = (sp.get('area') ?? '').trim().slice(0, 120);
-  const search = sp.get('q') ?? '';
-  const issues = sp.get('issues') === '1';
+  const filters = readRegisterFilters(sp);
   const sort = parseRegisterSort(sp.get('sort'));
   const pageSize = parseRegisterPageSize(sp.get('size'));
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -122,14 +165,7 @@ export const RegisterPage = (): JSX.Element => {
 
   /** The filters as the API reads them — shared by the list and the export. */
   const filterParams = useMemo<RegisterListParams>(
-    () => ({
-      ...(branch === '' ? {} : { branchId: branch }),
-      ...(banks.length === 0 ? {} : { banks }),
-      ...(statuses.length === 0 ? {} : { statuses }),
-      ...(area === '' ? {} : { area }),
-      ...(search.trim() === '' ? {} : { search: search.trim().slice(0, 100) }),
-      ...(issues ? { withIssues: true } : {}),
-    }),
+    () => registerFilterParams(filters),
     [paramsKey],
   );
   const listParams = useMemo<RegisterListParams>(
@@ -146,6 +182,9 @@ export const RegisterPage = (): JSX.Element => {
   const meta = useRegisterMeta();
   const list = useRegisterEntries(listParams);
   const rows = list.data?.items ?? [];
+  // The meta carries the whole catalog (archived banks too), so the grid names banks without a
+  // request of its own; the six seeds stand in until it answers.
+  const lookup = useMemo(() => makeBankLookup(meta.data?.banks), [meta.data]);
 
   const grants: RegisterActionGrants = {
     edit: can('atmRegister.edit'),
@@ -182,6 +221,17 @@ export const RegisterPage = (): JSX.Element => {
           title={t('atm.register.title')}
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              <Can anyOf={['atmBank.create', 'atmBank.edit']}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-register-banks="true"
+                  leftIcon={<BuildingIcon className="h-4 w-4" />}
+                  onClick={() => setDialog({ action: 'banks' })}
+                >
+                  {t('atm.bankCatalog.title')}
+                </Button>
+              </Can>
               <Can permission="atmRegisterReport.view">
                 <Link to="/atm/register/report" className={LINK_BUTTON}>
                   <ChartIcon className="h-4 w-4" />
@@ -231,14 +281,22 @@ export const RegisterPage = (): JSX.Element => {
         )}
 
         <RegisterFilters
-          values={{ branch, banks, statuses, area, q: search, issues }}
+          values={filters}
           meta={meta.data}
           total={list.data?.meta.totalItems ?? null}
           onChange={(update) => patch(update)}
           // ONE update for every key: clearing them one call at a time would rebuild each URL from
           // this render's params and put the others back.
           onClear={() =>
-            patch({ branch: null, bank: null, status: null, area: null, q: null, issues: null })
+            patch({
+              branch: null,
+              bank: null,
+              status: null,
+              area: null,
+              q: null,
+              issues: null,
+              incomplete: null,
+            })
           }
         />
 
@@ -262,6 +320,7 @@ export const RegisterPage = (): JSX.Element => {
               onSort={(by) => patch({ sort: nextRegisterSort(sort, by) }, false)}
               grants={grants}
               onAction={(action, entry) => setDialog({ action, entry })}
+              lookup={lookup}
             />
           )}
         </div>
@@ -279,6 +338,7 @@ export const RegisterPage = (): JSX.Element => {
       {/* Each dialog is mounted only while open, so it starts from the row as it is NOW and the
           reveal's value cannot outlive the dialog that showed it. */}
       {dialog?.action === 'receive' && <ReceiveEntryDialog meta={meta.data} onClose={close} />}
+      {dialog?.action === 'banks' && <BankCatalogDialog open onClose={close} />}
       {dialog !== null && dialog.action === 'edit' && (
         <EditEntryDialog entry={dialog.entry} meta={meta.data} onClose={close} />
       )}

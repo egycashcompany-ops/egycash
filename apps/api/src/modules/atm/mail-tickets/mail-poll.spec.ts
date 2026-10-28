@@ -4,7 +4,11 @@
 // marks anything read.
 import { Types } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type AtmMailIngestResultDto } from '@ecms/contracts';
+import {
+  AtmSettingKeys,
+  type AtmBranchLinksSetting,
+  type AtmMailIngestResultDto,
+} from '@ecms/contracts';
 import {
   registerAtmMailSource,
   registerAtmMailSourceFactory,
@@ -13,13 +17,23 @@ import {
   type AtmMailSource,
 } from './mail-source';
 import { atmMailIngestionService } from './mail-ingestion.service';
-import { pollAtmMailbox, resetAtmMailSweep } from './mail-poll.service';
+import {
+  categoriesFiledAs,
+  documentRules,
+  pollAtmMailbox,
+  resetAtmMailSweep,
+} from './mail-poll.service';
 import { type AtmMailboxConfigDoc } from './mailbox-config.model';
 import { atmMailboxConfigRepository } from './mailbox-config.repository';
 import { settingsService } from '../../../platform/settings';
 
 const BRANCH_ALEX = '64b7f9c2e13b4a0012345678';
 const BRANCH_TANTA = '64b7f9c2e13b4a0012345679';
+/** Linked to work as Tanta in the tests that set `links` (`atm.branchLinks`). */
+const BRANCH_LINKED = '64b7f9c2e13b4a001234567b';
+
+/** The stored branch links the settings read answers with — none unless a test sets them. */
+let links: AtmBranchLinksSetting = [];
 
 const message = (id: string): AtmMailMessage => ({
   providerMessageId: id,
@@ -54,10 +68,15 @@ const ingestReturns = (...results: AtmMailIngestResultDto[]): void => {
 };
 
 beforeEach(() => {
-  vi.spyOn(settingsService, 'resolve').mockResolvedValue([
-    { branchId: BRANCH_ALEX, category: 'Green Category' },
-    { branchId: BRANCH_TANTA, category: 'Blue Category' },
-  ] as never);
+  links = [];
+  vi.spyOn(settingsService, 'resolve').mockImplementation(async (key: string) =>
+    key === AtmSettingKeys.BranchLinks
+      ? (links as never)
+      : ([
+          { branchId: BRANCH_ALEX, category: 'Green Category' },
+          { branchId: BRANCH_TANTA, category: 'Blue Category' },
+        ] as never),
+  );
   // No document saved on /atm/settings: the environment mode every test below this line ran in
   // before the screen existed.
   vi.spyOn(atmMailboxConfigRepository, 'findSingleton').mockResolvedValue(null);
@@ -354,6 +373,27 @@ describe('pollAtmMailbox — the mailbox document', () => {
     expect(built.count).toBe(2);
   });
 
+  // The owner (2026-10-28): «فرع أكتوبر شغال هو والمهندسين مع بعض». A mail is filed under its
+  // machine's RESOLVED branch, so a row saved for the linked source switches its target on.
+  it('a linked source’s row switches its target on and colours it, unless the target has a row', async () => {
+    links = [{ branchId: BRANCH_LINKED, actsAsBranchId: BRANCH_TANTA }];
+    const find = vi.spyOn(atmMailboxConfigRepository, 'findSingleton');
+    find.mockResolvedValue(
+      mailboxDoc({
+        branches: [{ branchId: new Types.ObjectId(BRANCH_LINKED), category: 'Orange Category' }],
+      }),
+    );
+    const { handled } = fakeMailbox([message('m1')]);
+    ingestReturns({ outcome: 'created', ticketId: 't1', branchId: BRANCH_TANTA, reason: null });
+    recorded();
+
+    await pollAtmMailbox();
+
+    const gate = vi.mocked(atmMailIngestionService.ingest).mock.calls[0]?.[1];
+    expect([...(gate?.branchIds ?? [])]).toEqual([BRANCH_TANTA]);
+    expect(handled).toEqual([{ id: 'm1', category: 'Orange Category' }]);
+  });
+
   it('keeps the environment mode exactly: every branch, no gate, nothing recorded', async () => {
     const handled = fakeSource([message('m1')]);
     ingestReturns({ outcome: 'created', ticketId: 't1', branchId: BRANCH_TANTA, reason: null });
@@ -528,5 +568,41 @@ describe('pollAtmMailbox — the mailbox document', () => {
       expect(page).not.toHaveBeenCalled();
       expect(handled).toEqual(['on-env']);
     });
+  });
+});
+
+describe('documentRules / categoriesFiledAs — branches as ATM files them', () => {
+  const LINKS = new Map([[BRANCH_LINKED, BRANCH_TANTA]]);
+
+  it('without links: the rows as saved', () => {
+    const rules = documentRules(
+      {
+        branches: [
+          { branchId: new Types.ObjectId(BRANCH_TANTA), category: 'Red Category' },
+          { branchId: new Types.ObjectId(BRANCH_ALEX), category: null },
+        ],
+      },
+      new Map(),
+    );
+    expect([...rules.gate.branchIds].sort()).toEqual([BRANCH_ALEX, BRANCH_TANTA].sort());
+    expect([...rules.categories]).toEqual([[BRANCH_TANTA, 'Red Category']]);
+  });
+
+  it('a source row stands for its target; the target’s own colour wins, in either order', () => {
+    const source = { branchId: BRANCH_LINKED, category: 'Orange Category' };
+    const target = { branchId: BRANCH_TANTA, category: 'Red Category' };
+    expect([...categoriesFiledAs([source], LINKS)]).toEqual([[BRANCH_TANTA, 'Orange Category']]);
+    expect([...categoriesFiledAs([source, target], LINKS)]).toEqual([
+      [BRANCH_TANTA, 'Red Category'],
+    ]);
+    expect([...categoriesFiledAs([target, source], LINKS)]).toEqual([
+      [BRANCH_TANTA, 'Red Category'],
+    ]);
+    const rules = documentRules(
+      { branches: [{ branchId: new Types.ObjectId(BRANCH_LINKED), category: null }] },
+      LINKS,
+    );
+    expect([...rules.gate.branchIds]).toEqual([BRANCH_TANTA]);
+    expect(rules.categories.size).toBe(0);
   });
 });

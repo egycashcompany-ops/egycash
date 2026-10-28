@@ -10,6 +10,10 @@
 // an area can be added from the form, «البنوك» opens the catalog, and a row Operations recorded from
 // /atm/data-edit carries «بيانات ناقصة» — which the filter finds and the export takes along.
 //
+// And the branches as the top bar names them (2026-10-28): the grid, the filter, the receipt's
+// picker and the edit form read the ECMS name the server sends, never an EGYCASH code, and a top
+// bar on a linked source (أكتوبر, working as المهندسين) stands for the branch it works as.
+//
 // Every code, name and value below is synthetic. No real ATM ID, key code or combination appears.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,6 +30,7 @@ import {
   type AtmRegisterBranchOptionsDto,
   type AtmRegisterCassettesDto,
   type AtmRegisterEntryDto,
+  type AtmRegisterMetaBranchOptionDto,
   type AtmRegisterMetaDto,
   type Locale,
   type MeDto,
@@ -54,7 +59,14 @@ import { ReceiveEntryDialog, defaultReceiptBranch } from './components/register/
 import { BankCatalogDialog } from './components/catalog/BankCatalogDialog';
 import { REGISTER_ENDED_ROW } from './lib/register-grid';
 import { makeBankLookup } from './lib/bank-catalog';
-import { registerBankFilterOptions, searchParamOf } from './components/register/RegisterFilters';
+import {
+  registerBankFilterOptions,
+  registerBranchChoices,
+  registerBranchFilterValue,
+  searchParamOf,
+  strayRegisterBranch,
+  viewableBranches,
+} from './components/register/RegisterFilters';
 import { atmBanksKey } from './api/atm-queries';
 import { listKey } from '../../shared/lib/query-keys';
 
@@ -70,6 +82,8 @@ const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
 
 const ALEX = '650000000000000000000104';
+/** Alexandria as ECMS names it — what the top bar, and so the register, shows. */
+const ALEX_NAME = { ar: 'الإسكندرية', en: 'Alexandria' };
 /** A value no row may ever print — it rides on a row as if a server had leaked it. */
 const LEAKED_COMBINATION = 'SENTINEL-AO-VALUE';
 const SYNTHETIC_KEY = 'SYN-KEY-0001';
@@ -100,6 +114,7 @@ const entry = (id: string, over: Partial<AtmRegisterEntryDto> = {}): AtmRegister
   id,
   branchId: ALEX,
   branchCode: 'EGYCASH-4',
+  branchName: ALEX_NAME,
   area: 'SYNTH AREA',
   bankCode: 'NBE',
   opsBankLabel: null,
@@ -160,6 +175,7 @@ const BRANCHLESS = entry('650000000000000000000a05', {
   startDate: null,
   branchId: null,
   branchCode: null,
+  branchName: null,
   machineId: null,
   masterState: null,
 });
@@ -227,13 +243,53 @@ const META: AtmRegisterMetaDto = {
       code: 'EGYCASH-4',
       name: { ar: 'الإسكندرية', en: 'Alexandria' },
       branchId: ALEX,
-      branchName: { ar: 'الإسكندرية', en: 'Alexandria' },
+      branchName: ALEX_NAME,
       branchActive: true,
+      canView: true,
+      canCreate: true,
+      resolvedBranchId: ALEX,
+      resolvedBranchName: ALEX_NAME,
+    },
+  ],
+  branchOptions: [
+    {
+      branchId: ALEX,
+      name: ALEX_NAME,
+      codes: ['EGYCASH-4'],
+      sourceBranchIds: [],
+      active: true,
       canView: true,
       canCreate: true,
     },
   ],
 };
+
+/** META with one more branch the reader may receive in — a choice to make. */
+const TANTA = '650000000000000000000102';
+const withTanta = (meta: AtmRegisterMetaDto = META): AtmRegisterMetaDto => ({
+  ...meta,
+  branches: [
+    ...meta.branches,
+    {
+      ...(meta.branches[0] as AtmRegisterMetaDto['branches'][number]),
+      code: 'EGYCASH-2',
+      branchId: TANTA,
+      resolvedBranchId: TANTA,
+    },
+  ],
+  branchOptions: [
+    ...(meta.branchOptions ?? []),
+    {
+      branchId: TANTA,
+      name: { ar: 'طنطا', en: 'Tanta' },
+      codes: ['EGYCASH-2'],
+      sourceBranchIds: [],
+      active: true,
+      canView: true,
+      canCreate: true,
+    },
+  ],
+});
 
 const ALL_KEYS = [
   'atmRegister.view',
@@ -247,11 +303,11 @@ const ALL_KEYS = [
   'atmRegisterReport.view',
 ];
 
-const store = (permissions: readonly string[]) =>
+const store = (permissions: readonly string[], locale: Locale = 'ar') =>
   configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
-      locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+      locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
       auth: {
         me: {
           id: 'u1',
@@ -272,7 +328,11 @@ const render = (
   permissions: readonly string[] = ALL_KEYS,
   rows: AtmRegisterEntryDto[] = ROWS,
   meta: AtmRegisterMetaDto = META,
-  { url = '/atm/register', filters = {} }: { url?: string; filters?: Record<string, unknown> } = {},
+  {
+    url = '/atm/register',
+    filters = {},
+    locale = 'ar',
+  }: { url?: string; filters?: Record<string, unknown>; locale?: Locale } = {},
 ): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // The page's own first question: page 1, 25 rows, no filter (unless the URL holds one), no sort
@@ -283,7 +343,7 @@ const render = (
   );
   qc.setQueryData(listKey('atm', 'registerMeta'), meta);
   return renderToStaticMarkup(
-    <Provider store={store(permissions)}>
+    <Provider store={store(permissions, locale)}>
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[url]}>
           <RegisterPage />
@@ -459,7 +519,14 @@ describe('the page around the grid', () => {
   it('says so when no branch code is mapped yet', () => {
     const unmapped: AtmRegisterMetaDto = {
       ...META,
-      branches: META.branches.map((b) => ({ ...b, branchId: null, branchName: null })),
+      branches: META.branches.map((b) => ({
+        ...b,
+        branchId: null,
+        branchName: null,
+        resolvedBranchId: null,
+        resolvedBranchName: null,
+      })),
+      branchOptions: [],
     };
     expect(render(ALL_KEYS, ROWS, unmapped)).toContain(t('atm.register.noMapping'));
     expect(render()).not.toContain('data-register-no-mapping');
@@ -620,18 +687,9 @@ describe('the entry form', () => {
   it('starts a receipt on the top bar’s branch when the reader may receive there', () => {
     expect(defaultReceiptBranch(META, ALEX)).toBe(ALEX);
     expect(defaultReceiptBranch(META, null), 'the only branch on offer').toBe(ALEX);
-    const two: AtmRegisterMetaDto = {
-      ...META,
-      branches: [
-        ...META.branches,
-        {
-          ...(META.branches[0] as AtmRegisterMetaDto['branches'][number]),
-          code: 'EGYCASH-2',
-          branchId: '650000000000000000000102',
-        },
-      ],
-    };
+    const two = withTanta();
     expect(defaultReceiptBranch(two, null), 'a choice to make').toBe('');
+    expect(defaultReceiptBranch(two, TANTA)).toBe(TANTA);
     expect(defaultReceiptBranch(two, '650000000000000000000999'), 'out of reach').toBe('');
   });
 
@@ -924,18 +982,7 @@ describe('banks and areas in the entry form', () => {
     expect(withForm(edit, ['atmMachine.manage'])).toContain('data-register-add="area"');
     expect(withForm(edit, ['atmRegister.view'])).not.toContain('data-register-add="area"');
     // A receipt whose branch is not chosen yet has nowhere to file an area.
-    const two: AtmRegisterMetaDto = {
-      ...META,
-      branches: [
-        ...META.branches,
-        {
-          ...(META.branches[0] as AtmRegisterMetaDto['branches'][number]),
-          code: 'EGYCASH-2',
-          branchId: '650000000000000000000102',
-        },
-      ],
-    };
-    const receipt = withForm(<ReceiveEntryDialog meta={two} onClose={() => undefined} />);
+    const receipt = withForm(<ReceiveEntryDialog meta={withTanta()} onClose={() => undefined} />);
     expect(receipt).toMatch(/<button(?=[^>]*disabled="")(?=[^>]*data-register-add="area")[^>]*>/);
   });
 
@@ -1063,5 +1110,204 @@ describe('«البنوك» in the register', () => {
     const adder = catalogDialog(['atmBank.create']);
     expect(adder).toContain('data-bank-catalog-action="add"');
     expect(adder).not.toContain('data-edit-action="edit-bank"');
+  });
+});
+
+// ── The branches, as the top bar names them (2026-10-28) ─────────────────────────────────────────
+//
+// The owner: «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي», «الفروع فوق خالص فى البار بتاع
+// السيستم غير اللى فى الفلاتر». Below, أكتوبر works as المهندسين (`atm.branchLinks`) and the
+// workbook's EGYCASH-1 and EGYCASH-5 both resolve there: the meta lists المهندسين once, with أكتوبر
+// among its sources. The names are ECMS's, the ids synthetic.
+
+const MOH = '650000000000000000000101';
+const OCT = '650000000000000000000105';
+const PORT_SAID = '650000000000000000000106';
+
+const branchOption = (
+  over: Partial<AtmRegisterMetaBranchOptionDto> &
+    Pick<AtmRegisterMetaBranchOptionDto, 'branchId' | 'name'>,
+): AtmRegisterMetaBranchOptionDto => ({
+  codes: [],
+  sourceBranchIds: [],
+  active: true,
+  canView: true,
+  canCreate: true,
+  ...over,
+});
+
+const LINKED: AtmRegisterMetaDto = {
+  ...META,
+  // The server's order is the top bar's (by ECMS code); the page keeps it as it comes.
+  branchOptions: [
+    branchOption({ branchId: ALEX, name: ALEX_NAME, codes: ['EGYCASH-4'] }),
+    branchOption({
+      branchId: MOH,
+      name: { ar: 'المهندسين', en: 'Mohandessin' },
+      codes: ['EGYCASH-1', 'EGYCASH-5'],
+      sourceBranchIds: [OCT],
+    }),
+    // Outside what the top bar's choice lets this reader see or receive in.
+    branchOption({
+      branchId: TANTA,
+      name: { ar: 'طنطا', en: 'Tanta' },
+      codes: ['EGYCASH-2'],
+      canView: false,
+      canCreate: false,
+    }),
+    // No longer active in ECMS: its rows stay findable, nothing new is received there.
+    branchOption({
+      branchId: PORT_SAID,
+      name: { ar: 'بورسعيد', en: 'Port Said' },
+      codes: ['EGYCASH-6'],
+      active: false,
+    }),
+  ],
+};
+
+/** One select's options as [value, text], the select found by its opening tag. */
+const selectOptions = (markup: string, opening: RegExp): [string, string][] => {
+  const at = opening.exec(markup);
+  if (at === null) return [];
+  const body = markup.slice(at.index, markup.indexOf('</select>', at.index));
+  return [...body.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [
+    m[1] as string,
+    m[2] as string,
+  ]);
+};
+const BRANCH_FILTER = /<select[^>]*aria-label="الفرع"[^>]*>/;
+const RECEIPT_BRANCH = /<select[^>]*id="[^"]*-branchId"[^>]*>/;
+
+describe('the branches, as the top bar names them', () => {
+  it('names a row’s branch in its cell and tooltip by its ECMS name — never its code', () => {
+    const named = entry('650000000000000000000a0b', {
+      branchId: MOH,
+      branchCode: 'EGYCASH-1',
+      branchName: { ar: 'فرع تجريبي', en: 'Synthetic branch' },
+    });
+    const ar = cell(row(render(ALL_KEYS, [named, BRANCHLESS]), named.id), 'branchCode');
+    expect(ar).toContain('title="فرع تجريبي"');
+    expect(ar).toContain('<span dir="auto">فرع تجريبي</span>');
+    // Not the workbook's name for the code, and not the code.
+    expect(ar).not.toContain('المهندسين');
+    expect(ar).not.toContain('EGYCASH');
+    const en = cell(row(render(ALL_KEYS, [named], META, { locale: 'en' }), named.id), 'branchCode');
+    expect(en).toContain('title="Synthetic branch"');
+    // A branch-less imported row (a blank column A) reads as a dash.
+    const blank = cell(row(render(ALL_KEYS, [named, BRANCHLESS]), BRANCHLESS.id), 'branchCode');
+    expect(blank).toContain('title="—"');
+  });
+
+  it('writes no EGYCASH code anywhere on the page', () => {
+    expect(render(ALL_KEYS, ROWS, LINKED)).not.toContain('EGYCASH');
+    expect(render(ALL_KEYS, ROWS, LINKED, { locale: 'en' })).not.toContain('EGYCASH');
+  });
+
+  it('filters by the branches the server offers: ECMS names alone, in its order, viewable only', () => {
+    expect(selectOptions(render(ALL_KEYS, ROWS, LINKED), BRANCH_FILTER)).toEqual([
+      ['', t('atm.register.filter.allBranches')],
+      [ALEX, 'الإسكندرية'],
+      [MOH, 'المهندسين'],
+      [PORT_SAID, 'بورسعيد'],
+    ]);
+    expect(viewableBranches(LINKED).map((b) => b.branchId)).toEqual([ALEX, MOH, PORT_SAID]);
+  });
+
+  it('reads a filter remembered on a linked source as the branch it works as', () => {
+    const choices = viewableBranches(LINKED);
+    expect(registerBranchFilterValue(choices, OCT)).toBe(MOH);
+    expect(registerBranchFilterValue(choices, MOH)).toBe(MOH);
+    expect(registerBranchFilterValue(choices, '')).toBe('');
+    const markup = render(ALL_KEYS, ROWS, LINKED, {
+      url: `/atm/register?branch=${OCT}`,
+      filters: { branchId: OCT },
+    });
+    expect(markup).toContain(`<option value="${MOH}" selected="">المهندسين</option>`);
+  });
+
+  // The options follow the top bar, so a filter chosen under another top-bar choice (or a link
+  // from another reader's view) can name a branch no option stands for: the select read «كل
+  // الفروع» while the list stayed narrowed to it and answered empty (review finding). The page
+  // drops such a filter once the meta has answered.
+  it('drops a branch filter the server no longer offers — once the meta has answered', () => {
+    expect(
+      strayRegisterBranch(LINKED, TANTA),
+      'outside what the top bar lets this reader see',
+    ).toBe(true);
+    expect(strayRegisterBranch(LINKED, '650000000000000000000199'), 'a branch never offered').toBe(
+      true,
+    );
+    expect(strayRegisterBranch(LINKED, OCT), 'a linked source reads as its target').toBe(false);
+    expect(strayRegisterBranch(LINKED, MOH)).toBe(false);
+    expect(strayRegisterBranch(LINKED, PORT_SAID), 'inactive, still findable').toBe(false);
+    expect(strayRegisterBranch(LINKED, '')).toBe(false);
+    expect(strayRegisterBranch(undefined, TANTA), 'nothing known before the meta').toBe(false);
+  });
+
+  it('receives in the active branches the reader may create in, each named once', () => {
+    const markup = withForm(<ReceiveEntryDialog meta={LINKED} onClose={() => undefined} />);
+    expect(selectOptions(markup, RECEIPT_BRANCH)).toEqual([
+      ['', t('common.select')],
+      [ALEX, 'الإسكندرية'],
+      [MOH, 'المهندسين'],
+    ]);
+  });
+
+  it('starts a receipt on a top bar set to a linked source on the branch it works as', () => {
+    expect(defaultReceiptBranch(LINKED, OCT)).toBe(MOH);
+    expect(defaultReceiptBranch(LINKED, MOH)).toBe(MOH);
+    expect(defaultReceiptBranch(LINKED, null), 'two to choose from').toBe('');
+    expect(defaultReceiptBranch(LINKED, TANTA), 'not one this reader receives in').toBe('');
+  });
+
+  it('shows an edited entry’s branch by the ECMS name of where it is filed, read-only', () => {
+    const filed = entry('650000000000000000000a0c', {
+      branchId: OCT,
+      branchCode: 'EGYCASH-1',
+      branchName: { ar: 'أكتوبر', en: 'October' },
+    });
+    const markup = withForm(
+      <EditEntryDialog entry={filed} meta={LINKED} onClose={() => undefined} />,
+    );
+    const box = /<input[^>]*id="[^"]*-branchId"[^>]*>/.exec(markup)?.[0] ?? '';
+    expect(box).toContain('value="أكتوبر"');
+    expect(box).toContain('disabled=""');
+    expect(markup).not.toContain('EGYCASH');
+    const blank = withForm(
+      <EditEntryDialog entry={BRANCHLESS} meta={LINKED} onClose={() => undefined} />,
+    );
+    expect(/<input[^>]*id="[^"]*-branchId"[^>]*>/.exec(blank)?.[0]).toContain('value="—"');
+  });
+
+  it('lets the per-code rows stand in for an older server that sends no branch list', () => {
+    const older: AtmRegisterMetaDto = {
+      ...META,
+      branches: [
+        ...META.branches,
+        {
+          code: 'EGYCASH-3',
+          name: { ar: 'أسيوط', en: 'Asyut' },
+          branchId: null,
+          branchName: null,
+          branchActive: false,
+          canView: false,
+          canCreate: false,
+        },
+      ],
+    };
+    delete older.branchOptions;
+    expect(registerBranchChoices(older)).toEqual([
+      {
+        branchId: ALEX,
+        name: ALEX_NAME,
+        codes: ['EGYCASH-4'],
+        sourceBranchIds: [],
+        active: true,
+        canView: true,
+        canCreate: true,
+      },
+    ]);
+    expect(defaultReceiptBranch(older, ALEX)).toBe(ALEX);
+    expect(registerBranchChoices(undefined)).toEqual([]);
   });
 });

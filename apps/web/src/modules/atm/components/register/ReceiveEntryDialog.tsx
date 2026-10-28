@@ -28,15 +28,22 @@ import {
 
 /**
  * The branch a receipt starts on: the top bar's branch when the reader may receive there, else
- * the only branch they may receive in — and otherwise nothing, so the choice is theirs.
+ * the only branch they may receive in — and otherwise nothing, so the choice is theirs. A top bar
+ * on a linked source (أكتوبر, working as المهندسين) starts on the branch it works as
+ * (`sourceBranchIds`): the stored choice is the source's own id, and the receipt is filed under the
+ * target whichever of the two is sent.
  */
 export const defaultReceiptBranch = (
   meta: AtmRegisterMetaDto | undefined,
   active: string | null,
 ): string => {
-  const ids = creatableBranches(meta).map((b) => b.branchId ?? '');
-  if (active !== null && ids.includes(active)) return active;
-  return ids.length === 1 ? (ids[0] ?? '') : '';
+  const branches = creatableBranches(meta);
+  const chosen =
+    active === null
+      ? undefined
+      : branches.find((b) => b.branchId === active || b.sourceBranchIds.includes(active));
+  if (chosen !== undefined) return chosen.branchId;
+  return branches.length === 1 ? (branches[0]?.branchId ?? '') : '';
 };
 
 const holdStill = (): void => undefined;

@@ -19,8 +19,9 @@
 //      comes from the entry steps d/e will couple it to, when that entry has one (D5/DEC-8: a
 //      coupling keeps the bank label one fact on both rows — `intakeMasterLabel`), else from the
 //      form. `link` only comes from a race with another add (the caller checked) → 409;
-//   c. the branch has no `EGYCASH-n` code (DEC-10), or the code is a placeholder → the machine is
-//      committed and works, and the register records nothing (`none`);
+//   c. no register code resolves to the branch (DEC-10 — a code mapped to a branch linked to work
+//      as it counts, `atm.branchLinks`), or the code is a placeholder → the machine is committed
+//      and works, and the register records nothing (`none`);
 //   d. open entries of the code in THIS branch (DEC-24 archived-while-open, an unlinked imported
 //      row, one linked to a deleted master): one linked to this master → `existing`; else every one
 //      unlinked or pointing at a master no longer live is linked → `linked`. The entry's data wins:
@@ -326,12 +327,12 @@ const isDuplicateKeyError = (error: unknown): boolean =>
  * The other branch, named only where the caller could see it: by the page's own key
  * (`atmMachine.view`) or the register's — never more than either page shows (review finding F-9).
  */
-const whereIs = (
+const whereIs = async (
   ctx: AuthContext,
   branchId: Types.ObjectId | string | null | undefined,
-  settings: Pick<RegisterSettings, 'codeByBranchId'>,
-): string => {
-  const byMachines = describeBranch(ctx, branchId, settings, 'atmMachine.view');
+  settings: Pick<RegisterSettings, 'resolveBranch'>,
+): Promise<string> => {
+  const byMachines = await describeBranch(ctx, branchId, settings, 'atmMachine.view');
   return byMachines === 'another branch'
     ? describeBranch(ctx, branchId, settings, 'atmRegister.view')
     : byMachines;
@@ -369,7 +370,7 @@ export const recordOperationsIntake = async (
 ): Promise<OperationsIntakeResult> => {
   const code = input.machineCode;
   const placeholder = isPlaceholderMachineCode(code);
-  const mapped = settings.codeByBranchId.has(input.branchId);
+  const mapped = settings.isMapped(input.branchId);
   const today = cairoDateString(new Date());
   const bankCode = input.bank?.code ?? null;
 
@@ -378,7 +379,7 @@ export const recordOperationsIntake = async (
     // a — a placeholder is "no real code" (§6.3): one open period per code does not concern it.
     const open = placeholder ? [] : await atmRegisterEntryRepository.findOpenByCode(code, session);
     const other = openElsewhereOf(open, input.branchId);
-    if (other !== null) throw openElsewhere(code, whereIs(ctx, other.branchId, settings));
+    if (other !== null) throw openElsewhere(code, await whereIs(ctx, other.branchId, settings));
 
     // Read before b: the bank the master takes depends on the entry d/e will couple it to.
     const pending =
@@ -410,7 +411,7 @@ export const recordOperationsIntake = async (
       if (coupled.refused === 'activeElsewhere') {
         throw new IntakeRefusal(
           'activeElsewhere',
-          `machine ${code} is active in the Operations list of ${whereIs(ctx, coupled.otherBranchId, settings)}`,
+          `machine ${code} is active in the Operations list of ${await whereIs(ctx, coupled.otherBranchId, settings)}`,
           ErrorCodes.ATM_REGISTER_CODE_ACTIVE_ELSEWHERE,
         );
       }

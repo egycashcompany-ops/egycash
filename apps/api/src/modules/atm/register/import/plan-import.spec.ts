@@ -10,6 +10,7 @@ import {
   type DataScope,
 } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
+import { registerBranchMapping } from '../register-settings';
 import { type ParsedRegisterFile, type ParsedRow, type RegisterRowValues } from './parse-rows';
 import {
   planRegisterImport,
@@ -21,6 +22,11 @@ import {
 
 const ALEX = '64b000000000000000000004';
 const TANTA = '64b000000000000000000002';
+const MOH = '64b000000000000000000001';
+/** October — linked to work as Mohandessin (`atm.branchLinks`). */
+const OCT = '64b000000000000000000005';
+/** A real branch no code is mapped to. */
+const CAIRO = '64b000000000000000000009';
 const USER = '64b0000000000000000000aa';
 const FAKE_KEY = 'FAKE-KEY-0042';
 
@@ -141,21 +147,39 @@ const master = (over: Partial<PlanMaster> & { machineCode: string }): PlanMaster
   ...over,
 });
 
+/** The register mapping as the plan reads it — the stored rows through the links. */
+const settingsOf = (
+  rows: { code: AtmRegisterBranchCode; branchId: string }[] = [
+    { code: 'EGYCASH-4', branchId: ALEX },
+    { code: 'EGYCASH-2', branchId: TANTA },
+  ],
+  links: ReadonlyMap<string, string> = new Map(),
+): PlanWorld['settings'] => ({
+  ...registerBranchMapping(rows, links),
+  // The seeds' own labels — what the catalog holds until someone curates it (DEC-35).
+  opsLabel: (bank: AtmBankCode) => atmBankSeedOf(bank)?.opsLabel ?? bank,
+});
+
+/** EGYCASH-1 → المهندسين and EGYCASH-5 → أكتوبر, October working as Mohandessin. */
+const linkedSettings = (): PlanWorld['settings'] =>
+  settingsOf(
+    [
+      { code: 'EGYCASH-1', branchId: MOH },
+      { code: 'EGYCASH-4', branchId: ALEX },
+      { code: 'EGYCASH-5', branchId: OCT },
+    ],
+    new Map([[OCT, MOH]]),
+  );
+
 const world = (over: Partial<PlanWorld> = {}): PlanWorld => {
-  const codes = new Map<AtmRegisterBranchCode, string>([
-    ['EGYCASH-4', ALEX],
-    ['EGYCASH-2', TANTA],
-  ]);
   return {
-    settings: {
-      branchIdByCode: codes,
-      codeByBranchId: new Map([...codes].map(([code, id]) => [id, code])),
-      // The seeds' own labels — what the catalog holds until someone curates it (DEC-35).
-      opsLabel: (bank: AtmBankCode) => atmBankSeedOf(bank)?.opsLabel ?? bank,
-    },
+    settings: settingsOf(),
     branches: new Map([
       [ALEX, { name: { en: 'Alexandria', ar: 'الإسكندرية' }, active: true }],
       [TANTA, { name: { en: 'Tanta', ar: 'طنطا' }, active: true }],
+      [MOH, { name: { en: 'المهندسين', ar: 'المهندسين' }, active: true }],
+      [OCT, { name: { en: 'أكتوبر', ar: 'أكتوبر' }, active: true }],
+      [CAIRO, { name: { en: 'Cairo', ar: 'القاهرة' }, active: true }],
     ]),
     masters: [],
     imported: new Map(),
@@ -258,7 +282,13 @@ describe('reconciliation of open rows', () => {
       ['activeElsewhere', 'EGYCASH-2'],
     ]);
     expect(elsewhere.pairs).toEqual([
-      expect.objectContaining({ fromBranchCode: 'EGYCASH-2', toBranchCode: 'EGYCASH-4', count: 2 }),
+      expect.objectContaining({
+        fromBranchCode: 'EGYCASH-2',
+        // The ECMS name, as the top bar shows it — not the workbook's (2026-10-28).
+        fromBranchName: { en: 'Tanta', ar: 'طنطا' },
+        toBranchCode: 'EGYCASH-4',
+        count: 2,
+      }),
     ]);
     expect(rowsOf(plan, 'link')).toEqual([]);
   });
@@ -387,9 +417,7 @@ describe('blockers', () => {
       { plaintextCombination: '11 - 22 - 33' },
     );
     const columns = new Map<string, string | null>();
-    for (const letter of ['A', 'B', 'C', 'D', 'E', 'AQ', 'J', 'AT', 'AR'])
-      columns.set(letter, null);
-    columns.set('A', 'EGYCASH-4');
+    for (const letter of ['B', 'C', 'D', 'E', 'AQ', 'J', 'AT', 'AR']) columns.set(letter, null);
     columns.set('B', 'Smouha');
     columns.set('C', 'NBE');
     columns.set('D', '99990023');
@@ -446,7 +474,6 @@ describe('blockers', () => {
       opsBankLabel: null,
       columns: new Map<string, string | null>(
         Object.entries({
-          A: branchId === ALEX ? 'EGYCASH-4' : 'EGYCASH-2',
           B: row.values.area,
           C: row.values.bankCode,
           D: row.values.machineCode,
@@ -669,7 +696,6 @@ describe('blockers', () => {
               machineId: null,
               opsBankLabel: null,
               columns: new Map([
-                ['A', 'EGYCASH-4'],
                 ['B', 'Smouha'],
                 ['C', 'NBE'],
                 ['D', '99990035'],
@@ -687,5 +713,279 @@ describe('blockers', () => {
     expect(category(plan, 'entries').count).toBe(2);
     expect(plan.rowsToImport.map((r) => r.importRow)).toEqual([open.importRow, pending.importRow]);
     expect(plan.blockers).not.toContain('changedSinceImport');
+  });
+});
+
+// 2026-10-28: the owner's report — EGYCASH-1's rows filed under a linked October were visible only
+// under «كل الشركة». The mapping is read through `atm.branchLinks` (register-settings.ts).
+describe('branches as ATM files them (atm.branchLinks)', () => {
+  it('a code mapped to a linked source lands in the target, judged and named on both', () => {
+    const viaOct = parsedRow({ machineCode: '99990050', branchCode: 'EGYCASH-5' });
+    const moh = parsedRow({ machineCode: '99990051', branchCode: 'EGYCASH-1' });
+    // Refined by the link, an October importer reaches Mohandessin — never October itself.
+    const mohImporter = ctxOf(
+      { 'atmRegister.import': 'branch', 'atmRegister.viewSecrets': 'branch' },
+      MOH,
+    );
+    const plan = planRegisterImport(
+      file([moh, viaOct]),
+      world({ settings: linkedSettings() }),
+      mohImporter,
+    );
+    expect(plan.blockers).not.toContain('branchOutOfReach');
+    expect(plan.blockers).not.toContain('branchUnmapped');
+    expect(plan.branches).toEqual([
+      expect.objectContaining({
+        code: 'EGYCASH-1',
+        branchId: MOH,
+        resolvedBranchId: MOH,
+        inReach: true,
+      }),
+      expect.objectContaining({
+        code: 'EGYCASH-5',
+        // The raw mapping (what the settings card holds) and where its rows go ("via" the link).
+        branchId: OCT,
+        branchName: { en: 'أكتوبر', ar: 'أكتوبر' },
+        resolvedBranchId: MOH,
+        resolvedBranchName: { en: 'المهندسين', ar: 'المهندسين' },
+        active: true,
+        inReach: true,
+        rows: 1,
+      }),
+    ]);
+    expect(plan.couplingBranchIds).toEqual([MOH]);
+    expect(rowsOf(plan, 'create')).toEqual([moh.importRow, viaOct.importRow]);
+  });
+
+  it('a linked source that is inactive does not block: the target is where the rows go', () => {
+    const viaOct = parsedRow({ machineCode: '99990052', branchCode: 'EGYCASH-5' });
+    const branches = world().branches;
+    branches.set(OCT, { name: { en: 'أكتوبر', ar: 'أكتوبر' }, active: false });
+    const plan = planRegisterImport(
+      file([viaOct]),
+      world({ settings: linkedSettings(), branches }),
+      ORG,
+    );
+    expect(plan.blockers).not.toContain('branchInactive');
+    expect(plan.branches[0]).toMatchObject({ active: true, resolvedBranchId: MOH });
+  });
+
+  it('column A compares BRANCHES: a row stored under the source, or moved to the target, is unchanged', () => {
+    const storedAt = (row: ParsedRow, branchId: string): PlanStoredEntry => ({
+      id: `e-${String(row.importRow)}`,
+      importRow: row.importRow,
+      branchId,
+      isDeleted: false,
+      status: 'ended',
+      machineId: null,
+      opsBankLabel: null,
+      columns: new Map<string, string | null>([
+        ['B', row.values.area],
+        ['C', row.values.bankCode],
+        ['D', row.values.machineCode],
+        ['E', row.values.name],
+        ['AQ', row.values.startDate],
+        ['AR', row.values.endDate],
+      ]),
+    });
+    const ended = (code: AtmRegisterBranchCode, machineCode: string): ParsedRow =>
+      parsedRow({ branchCode: code, machineCode, endDate: '2025-06-01' });
+    // EGYCASH-1 imported while it was mapped to October, the link saved since: the same branch.
+    const underSource = ended('EGYCASH-1', '99990053');
+    // An EGYCASH-5 row whose entry «نقل البيانات» moved to Mohandessin.
+    const moved = ended('EGYCASH-5', '99990054');
+    // A row really re-filed: stored in Alexandria, the file now says Mohandessin.
+    const refiled = ended('EGYCASH-1', '99990055');
+    const plan = planRegisterImport(
+      file([underSource, moved, refiled]),
+      world({
+        settings: linkedSettings(),
+        imported: new Map([
+          [underSource.importRow, storedAt(underSource, OCT)],
+          [moved.importRow, storedAt(moved, MOH)],
+          [refiled.importRow, storedAt(refiled, ALEX)],
+        ]),
+      }),
+      ORG,
+    );
+    expect(category(plan, 'changedSinceImport').items.map((i) => [i.importRow, i.columns])).toEqual(
+      [[refiled.importRow, ['A']]],
+    );
+  });
+
+  it('two codes on one branch: one canonical code — the one mapped directly to it', () => {
+    const plan = planRegisterImport(
+      file([parsedRow({ machineCode: '99990056', branchCode: 'EGYCASH-5' })]),
+      world({
+        settings: linkedSettings(),
+        masters: [master({ machineCode: '99990057', branchId: MOH })],
+      }),
+      ORG,
+    );
+    expect(category(plan, 'activeMasterWithoutOpenEntry').items).toEqual([
+      expect.objectContaining({ machineCode: '99990057', branchCode: 'EGYCASH-1' }),
+    ]);
+  });
+
+  it('another branch is named by its ECMS name — one no code resolves to as well — only in reach', () => {
+    const inCairo = parsedRow({ machineCode: '99990058' });
+    const viaOct = parsedRow({ machineCode: '99990059' });
+    const openByCode = new Map([
+      ['99990058', [{ id: 'e-cairo', branchId: CAIRO, importRow: null }]],
+      // Still filed under the linked source: named as stored, coded as its target.
+      ['99990059', [{ id: 'e-oct', branchId: OCT, importRow: null }]],
+    ]);
+    const names = (ctx: AuthContext) =>
+      category(
+        planRegisterImport(
+          file([inCairo, viaOct]),
+          world({ settings: linkedSettings(), openByCode }),
+          ctx,
+        ),
+        'openInRegister',
+      ).items.map((i) => [i.entryId, i.otherBranchCode, i.otherBranchName]);
+    expect(names(ORG)).toEqual([
+      ['e-cairo', null, { en: 'Cairo', ar: 'القاهرة' }],
+      ['e-oct', 'EGYCASH-1', { en: 'أكتوبر', ar: 'أكتوبر' }],
+    ]);
+    // An Alexandria importer reaches neither: both unnamed.
+    const alexImporter = ctxOf(
+      { 'atmRegister.import': 'branch', 'atmRegister.viewSecrets': 'branch' },
+      ALEX,
+    );
+    expect(names(alexImporter)).toEqual([
+      ['e-cairo', null, null],
+      ['e-oct', null, null],
+    ]);
+  });
+
+  // The pairs table: one row per OTHER BRANCH (the contract). Keyed by the code alone, two branches
+  // no code resolves to — named since 2026-10-28 — merged into one row under the first one's name
+  // (review finding), and so did a linked source and its target, which share one canonical code.
+  describe('activeElsewhere pairs: one per other branch', () => {
+    const ASWAN = '64b000000000000000000007';
+    const pairsOf = (plan: ImportPlan) =>
+      category(plan, 'activeElsewhere').pairs.map((p) => [
+        p.fromBranchCode,
+        p.fromBranchName?.en ?? null,
+        p.toBranchCode,
+        p.count,
+      ]);
+    const tantaRow = (machineCode: string): ParsedRow =>
+      parsedRow({ machineCode, branchCode: 'EGYCASH-2' });
+
+    it('two branches no code resolves to keep their own rows and counts', () => {
+      const branches = world().branches;
+      branches.set(ASWAN, { name: { en: 'Aswan', ar: 'أسوان' }, active: true });
+      const plan = planRegisterImport(
+        file([tantaRow('99990060'), tantaRow('99990061'), tantaRow('99990062')]),
+        world({
+          branches,
+          masters: [
+            master({ machineCode: '99990060', branchId: CAIRO }),
+            master({ machineCode: '99990061', branchId: ASWAN }),
+            master({ machineCode: '99990062', branchId: ASWAN }),
+          ],
+        }),
+        ORG,
+      );
+      expect(pairsOf(plan)).toEqual([
+        [null, 'Cairo', 'EGYCASH-2', 1],
+        [null, 'Aswan', 'EGYCASH-2', 2],
+      ]);
+    });
+
+    it('a linked source and its target — one canonical code — keep their own rows', () => {
+      const alexRow = (machineCode: string): ParsedRow => parsedRow({ machineCode });
+      const plan = planRegisterImport(
+        file([alexRow('99990063'), alexRow('99990064'), alexRow('99990065')]),
+        world({
+          settings: linkedSettings(),
+          masters: [
+            master({ machineCode: '99990063', branchId: OCT }),
+            master({ machineCode: '99990064', branchId: MOH }),
+            master({ machineCode: '99990065', branchId: MOH }),
+          ],
+        }),
+        ORG,
+      );
+      expect(pairsOf(plan)).toEqual([
+        ['EGYCASH-1', 'أكتوبر', 'EGYCASH-4', 1],
+        ['EGYCASH-1', 'المهندسين', 'EGYCASH-4', 2],
+      ]);
+    });
+
+    it('every branch out of reach stays the one unnamed row', () => {
+      const alexImporter = ctxOf(
+        { 'atmRegister.import': 'branch', 'atmRegister.viewSecrets': 'branch' },
+        ALEX,
+      );
+      const plan = planRegisterImport(
+        file([parsedRow({ machineCode: '99990066' }), parsedRow({ machineCode: '99990067' })]),
+        world({
+          masters: [
+            master({ machineCode: '99990066', branchId: CAIRO }),
+            master({ machineCode: '99990067', branchId: TANTA }),
+          ],
+        }),
+        alexImporter,
+      );
+      expect(pairsOf(plan)).toEqual([[null, null, 'EGYCASH-4', 2]]);
+    });
+  });
+
+  // An entry imported before the link, still filed under the linked source: the plan judged it in
+  // the row's resolved branch and offered to couple it there, but a master is coupled in its
+  // entry's OWN branch and the apply reads only entries stored in `couplingBranchIds` — so the
+  // approved item was skipped without a word on every import until the move (review finding).
+  it('an entry still filed under a linked source is not offered for coupling until it is moved', () => {
+    const storedOpen = (
+      row: ParsedRow,
+      branchId: string,
+      over: Partial<PlanStoredEntry> = {},
+    ): PlanStoredEntry => ({
+      id: `e-${String(row.importRow)}`,
+      importRow: row.importRow,
+      branchId,
+      isDeleted: false,
+      status: 'open',
+      machineId: null,
+      opsBankLabel: null,
+      columns: new Map<string, string | null>([
+        ['B', row.values.area],
+        ['C', row.values.bankCode],
+        ['D', row.values.machineCode],
+        ['E', row.values.name],
+        ['AQ', row.values.startDate],
+      ]),
+      ...over,
+    });
+    const viaOct = (machineCode: string, area = 'Smouha'): ParsedRow =>
+      parsedRow({ machineCode, branchCode: 'EGYCASH-5', area });
+    const underSource = viaOct('99990068');
+    const moved = viaOct('99990069');
+    const fxUnderSource = viaOct('99990070', 'Smouha FX');
+    const fxMoved = viaOct('99990071', 'Smouha FX');
+    const plan = planRegisterImport(
+      file([underSource, moved, fxUnderSource, fxMoved]),
+      world({
+        settings: linkedSettings(),
+        imported: new Map([
+          [underSource.importRow, storedOpen(underSource, OCT)],
+          [moved.importRow, storedOpen(moved, MOH)],
+          [fxUnderSource.importRow, storedOpen(fxUnderSource, OCT, { machineId: 'm-70' })],
+          [fxMoved.importRow, storedOpen(fxMoved, MOH, { machineId: 'm-71' })],
+        ]),
+        nbeForexBranchIds: new Set([MOH]),
+      }),
+      ORG,
+    );
+    expect(plan.couplingBranchIds).toEqual([MOH]);
+    expect(rowsOf(plan, 'create')).toEqual([moved.importRow]);
+    expect(category(plan, 'nbeForex').items.map((i) => [i.importRow, i.reason])).toEqual([
+      [fxMoved.importRow, null],
+    ]);
+    // Column A still reads the source as the target: nothing here is `changedSinceImport`.
+    expect(rowsOf(plan, 'changedSinceImport')).toEqual([]);
   });
 });

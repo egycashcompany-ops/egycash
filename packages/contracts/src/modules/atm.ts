@@ -10,7 +10,12 @@
 // written 0 at creation and never changed (models/atm_rep_log.js:19). Here the open state IS
 // `closedAt: null` — the fleet maintenance-visit precedent ("no status field to forget to flip").
 import { z } from 'zod';
-import { PaginationQuerySchema, booleanQuery, objectId } from '../common/index.js';
+import {
+  PaginationQuerySchema,
+  booleanQuery,
+  objectId,
+  type LocalizedString,
+} from '../common/index.js';
 // `import type`, not an inline `type` specifier: under verbatimModuleSyntax the inline form still
 // emits `import {} from './atm-register.js'`, a runtime cycle (atm-register.ts imports this file).
 import type { AtmBankCode } from './atm-register.js';
@@ -143,9 +148,10 @@ export const ATM_MACHINE_REGISTER_ACTIONS = [
 export type AtmMachineRegisterAction = (typeof ATM_MACHINE_REGISTER_ACTIONS)[number];
 
 /**
- * Why `none`: the branch has no `EGYCASH-n` code (DEC-10 — the machine still works for
- * Operations), the code is a placeholder (`#`, `********`), or the bank text maps to no catalog
- * bank (the machine is added; Efficiency receives it once the spelling is mapped).
+ * Why `none`: no register code resolves to the branch (DEC-10 — the machine still works for
+ * Operations; a code mapped to a branch linked to work as this one counts, `atm.branchLinks`), the
+ * code is a placeholder (`#`, `********`), or the bank text maps to no catalog bank (the machine is
+ * added; Efficiency receives it once the spelling is mapped).
  */
 export const ATM_MACHINE_REGISTER_REASONS = [
   'branchUnmapped',
@@ -397,8 +403,18 @@ export type AtmRefLabelOptionsQuery = z.infer<typeof AtmRefLabelOptionsQuerySche
  *   branch's active spellings mapped to an active bank (`kind: 'spelling'`, `value` = the spelling).
  *   `value` is exactly what gets stored on the machine.
  * · `areas` — the branch's active area labels with their display names.
- * · `registerMapped` — whether the branch has an `EGYCASH-n` code, i.e. whether an add here can be
- *   recorded in the register at all (DEC-10).
+ * · `branch` — where an add from these dialogs is filed, named for the top of the add form
+ *   («الفرع: …»). Without `?branchId` it is the acting branch by the ATM write rule: an
+ *   organization-wide holder (no reach list) files where the TOP BAR points — never their home
+ *   placement — and on «كل الشركة» in the company's only active branch, else nowhere: `branch` is
+ *   null, the lists are empty and the dialog asks for a branch in the top bar before any add. A
+ *   caller with a reach list keeps the acting branch it always had. Optional in the type only so an
+ *   older server's answer still types.
+ * · `branchId` — the branch the lists are for: the `?branchId` asked for (an edit's machine's own,
+ *   resolved through `atm.branchLinks`), else `branch.id`; null exactly when `branch` is null.
+ * · `registerMapped` — whether some register code RESOLVES to the branch (a code mapped to it, or
+ *   to a branch linked to work as it), i.e. whether an add here can be recorded in the register at
+ *   all (DEC-10). False when `branch` is null.
  * · `unmappedBankNames` — the bank texts active machines here carry that resolve to no bank (at
  *   most 100), so Operations can map each one to its bank.
  * · `unmappedBankLabels` — the same texts, each with the spelling row of THIS branch that already
@@ -408,7 +424,8 @@ export type AtmRefLabelOptionsQuery = z.infer<typeof AtmRefLabelOptionsQuerySche
  *   happens to hide (review finding).
  */
 export interface AtmRefLabelOptionsDto {
-  branchId: string;
+  branchId: string | null;
+  branch?: { id: string; name: LocalizedString } | null;
   registerMapped: boolean;
   banks: { value: string; bankCode: AtmBankCode; kind: 'bank' | 'spelling' }[];
   areas: { name: string; nameAr: string | null; nameEn: string | null }[];
@@ -1004,7 +1021,9 @@ export interface AtmMailIngestResultDto {
   ticketId: string | null;
   /**
    * The branch the ticket was filed under — THE machine's branch, which is the whole of "classify
-   * by branch" in one central reader. The transport reads it to tag the message with that branch's
+   * by branch" in one central reader, as ATM resolves it: a machine still filed under a linked
+   * source is its target's (`atm.branchLinks`), so its mail is filed — and switched on, and
+   * coloured — as the target's. The transport reads it to tag the message with that branch's
    * mailbox colour; null when nothing was filed.
    */
   branchId: string | null;
@@ -1044,12 +1063,17 @@ export const AtmSettingKeys = {
    * والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين». On an ATM request a user
    * placed in `branchId` is answered as if placed in `actsAsBranchId`: they see its ATM data and
    * what they write is filed under it. DEFAULT EMPTY — no branch acts as another until linked.
+   *
+   * The ids that come from storage follow it too — the register's code mapping, a mail's machine,
+   * a branch a request names — and data filed under a source before its link existed is moved to
+   * the target by «نقل البيانات» (GET/POST /atm/branch-links/:sourceBranchId/move, atm-settings.ts).
    */
   BranchLinks: 'atm.branchLinks',
   /**
    * The efficiency register's `EGYCASH-1..7` → ECMS branch (D4; value schema
    * `AtmRegisterBranchCodesSettingSchema` in atm-register.ts). DEFAULT EMPTY — no branch is guessed
-   * (EG-18), so an unconfigured install receives nothing and the import is blocked.
+   * (EG-18), so an unconfigured install receives nothing and the import is blocked. Read through
+   * `BranchLinks`: a code mapped to a linked source is its target's.
    */
   RegisterBranchCodes: 'atm.register.branchCodes',
   /**

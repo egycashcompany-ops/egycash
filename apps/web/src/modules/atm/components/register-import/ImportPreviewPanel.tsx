@@ -26,6 +26,7 @@ import {
   listSeparator,
   orderedCategories,
   outcomeEntries,
+  worksAsTarget,
 } from '../../lib/register-import-view';
 import { ImportCategoryCard } from './ImportCategoryCard';
 import { ImportIssuesList } from './ImportIssuesList';
@@ -33,6 +34,28 @@ import { ReportCheckTable } from './ReportCheckTable';
 
 const TH = 'p-2 text-start text-xs font-medium text-slate-500 dark:text-slate-400';
 const TD = 'p-2';
+
+/**
+ * «يعمل باسم …» under a code whose mapped branch works as another (`atm.branchLinks`): the file's
+ * rows for it land in that branch, and the active and reach columns already speak of it.
+ */
+const WorksAsNote = ({
+  branch,
+}: {
+  branch: AtmRegisterImportResultDto['branches'][number];
+}): JSX.Element | null => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const target = worksAsTarget(branch, locale, t);
+  return target === null ? null : (
+    <span
+      data-import-works-as={branch.code}
+      className="block text-xs text-sky-700 dark:text-sky-300"
+    >
+      {t('atm.registerImport.branches.worksAs', { target })}
+    </span>
+  );
+};
 
 export const ImportPreviewPanel = ({
   result,
@@ -65,6 +88,7 @@ export const ImportPreviewPanel = ({
     <ImportCategoryCard
       key={category.key}
       category={category}
+      branches={result.branches}
       approved={approved.has(category.key as AtmRegisterImportCategory)}
       onToggle={() => onToggle(category.key as AtmRegisterImportCategory)}
       disabled={applying}
@@ -161,6 +185,7 @@ export const ImportPreviewPanel = ({
                       <span dir="auto">
                         {branch.branchName === null ? '—' : localized(branch.branchName, locale)}
                       </span>
+                      <WorksAsNote branch={branch} />
                     </td>
                     <td className={TD}>{yesNo(branch.active)}</td>
                     <td className={TD}>{yesNo(branch.inReach)}</td>

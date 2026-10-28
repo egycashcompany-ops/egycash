@@ -7,6 +7,11 @@
 // list of areas is the branch's own (`/atm/register/branch-options`). Without a branch the area box
 // is disabled, and changing the branch clears the area it no longer belongs to.
 //
+// The branches are the top bar's (the owner, 2026-10-28: «الفروع فوق خالص فى البار بتاع السيستم غير
+// اللى فى الفلاتر»): one option per ECMS branch the register files under, named and ordered as the
+// switcher names and orders them, and only those the reader's view scope covers — the server's
+// answer, which follows the top bar, so no option lists a branch whose rows the list would hide.
+//
 // Banks are the catalog's (DEC-35): every bank, archived ones too — their entries are still in the
 // register and must stay findable — with «(مؤرشف)» after an archived one, plus any code a link or a
 // remembered view carries that the catalog does not hold, so it can be seen and cleared.
@@ -16,6 +21,7 @@
 import {
   ATM_REGISTER_STATUSES,
   type AtmBankCode,
+  type AtmRegisterMetaBranchOptionDto,
   type AtmRegisterMetaDto,
   type AtmRegisterStatus,
   type Locale,
@@ -36,7 +42,7 @@ import {
   makeBankLookup,
   type BankLookup,
 } from '../../lib/bank-catalog';
-import { branchLabel, statusLabelKey } from '../../lib/register-labels';
+import { statusLabelKey } from '../../lib/register-labels';
 
 export interface RegisterFilterValues {
   /** ECMS branch id, '' = every branch the reader may see. */
@@ -77,13 +83,65 @@ export const registerBankFilterOptions = (
   });
 };
 
-/** The branches a reader may filter by: mapped to an ECMS branch, and inside their view reach. */
+/**
+ * The branches the register files under — one per ECMS branch some code resolves to, never two
+ * for one, named and ordered as the top bar names and orders them (`meta.branchOptions`). An older
+ * server's meta has no such list (a rolling deploy): its per-code rows stand in, one per mapped
+ * branch, as they were offered before.
+ */
+export const registerBranchChoices = (
+  meta: AtmRegisterMetaDto | undefined,
+): AtmRegisterMetaBranchOptionDto[] =>
+  meta?.branchOptions ??
+  (meta?.branches ?? []).flatMap((row): AtmRegisterMetaBranchOptionDto[] =>
+    row.branchId === null
+      ? []
+      : [
+          {
+            branchId: row.branchId,
+            name: row.branchName ?? row.name,
+            codes: [row.code],
+            sourceBranchIds: [],
+            active: row.branchActive,
+            canView: row.canView,
+            canCreate: row.canCreate,
+          },
+        ],
+  );
+
+/**
+ * The branches a reader may filter by: those the register's view scope covers, judged by the
+ * server on the top bar's choice — an organization-wide reader on «المهندسين» is offered المهندسين
+ * alone, on «كل الشركة» every branch.
+ */
 export const viewableBranches = (
   meta: AtmRegisterMetaDto | undefined,
-): AtmRegisterMetaDto['branches'] =>
-  (meta?.branches ?? []).filter((b) => b.canView && b.branchId !== null);
+): AtmRegisterMetaBranchOptionDto[] => registerBranchChoices(meta).filter((b) => b.canView);
 
-/** «EGYCASH-1 · المهندسين» — the code the sheet writes, then the branch's ECMS name. */
+/**
+ * The option a filter value stands for: its branch, or the branch a linked source works as
+ * (`sourceBranchIds`) — a filter remembered from before the link reads as the branch whose rows,
+ * the source's among them, the server lists for it.
+ */
+export const registerBranchFilterValue = (
+  choices: readonly AtmRegisterMetaBranchOptionDto[],
+  value: string,
+): string =>
+  choices.find((b) => b.branchId === value || b.sourceBranchIds.includes(value))?.branchId ?? value;
+
+/**
+ * A branch filter the server no longer offers — the top bar moved since it was chosen (`canView`
+ * follows it), or a link came from another reader's view. The select would read «كل الفروع» while
+ * the list stays narrowed to that branch and answers empty, and choosing «كل الفروع» would change
+ * nothing (review finding). The page drops it once the meta has answered, as the top bar drops a
+ * stored branch it no longer offers (BranchSwitcher). Never before the meta answers: until then
+ * nothing is known about which branches the reader may see.
+ */
+export const strayRegisterBranch = (meta: AtmRegisterMetaDto | undefined, value: string): boolean =>
+  meta !== undefined &&
+  value !== '' &&
+  !viewableBranches(meta).some((b) => b.branchId === value || b.sourceBranchIds.includes(value));
+
 /**
  * The `q` the search box writes: what was typed, exactly, or nothing for an empty box. NOT trimmed
  * here — `SearchInput` re-emits whenever its text differs from the value it is handed back, so a
@@ -91,11 +149,6 @@ export const viewableBranches = (
  * each one a new history entry (review finding WEB-2). The page trims before it asks the server.
  */
 export const searchParamOf = (text: string): string | null => (text === '' ? null : text);
-
-export const registerBranchOptionLabel = (
-  branch: AtmRegisterMetaDto['branches'][number],
-  locale: Locale,
-): string => `${branch.code} · ${branch.branchName?.[locale] ?? branchLabel(branch.code, locale)}`;
 
 export const RegisterFilters = ({
   values,
@@ -115,6 +168,7 @@ export const RegisterFilters = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const areas = useRegisterBranchOptions(values.branch === '' ? null : values.branch);
   const lookup = makeBankLookup(meta?.banks);
+  const branches = viewableBranches(meta);
   // The area filter matches the STORED name — what the entries carry; a labelled area reads in
   // the reader's language, with the stored name after it when the two differ (DEC-38).
   const areaText = new Map(
@@ -164,14 +218,15 @@ export const RegisterFilters = ({
       >
         <Select
           aria-label={t('atm.register.filter.branch')}
-          value={values.branch}
+          value={registerBranchFilterValue(branches, values.branch)}
           // A branch's areas are its own: the area picked under another branch no longer applies.
           onChange={(e) => onChange({ branch: e.target.value || null, area: null })}
         >
           <option value="">{t('atm.register.filter.allBranches')}</option>
-          {viewableBranches(meta).map((branch) => (
-            <option key={branch.code} value={branch.branchId ?? ''}>
-              {registerBranchOptionLabel(branch, locale)}
+          {/* The switcher's label: the branch's ECMS name, nothing before it (BranchSwitcher). */}
+          {branches.map((branch) => (
+            <option key={branch.branchId} value={branch.branchId}>
+              {branch.name[locale]}
             </option>
           ))}
         </Select>

@@ -15,6 +15,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
+import { Types } from 'mongoose';
 import {
   AtmSettingKeys,
   SettingKeys,
@@ -27,6 +28,7 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { atmModule, atmPermissions } from '../../src/modules/atm/atm.module';
+import { AtmMachineModel } from '../../src/modules/atm/machines/machine.model';
 import { AtmMailTicketModel } from '../../src/modules/atm/mail-tickets/mail-ticket.model';
 import { AtmMailboxConfigModel } from '../../src/modules/atm/mail-tickets/mailbox-config.model';
 import { pollAtmMailbox } from '../../src/modules/atm/mail-tickets/mail-poll.service';
@@ -639,5 +641,109 @@ describe('with no document, the environment mode is exactly what it was', () => 
     expect(String(ticket?.branchId)).toBe(alexId);
     // The run's record never creates the document — that would end the environment mode.
     expect(await AtmMailboxConfigModel.countDocuments().exec()).toBe(0);
+  });
+});
+
+// The owner's report (2026-10-28): a Mohandessin machine's mail showed only under «كل الشركة» — the
+// machine was still filed under the October branch that works as Mohandessin (`atm.branchLinks`),
+// and so was its mail. A mail is filed under its machine's RESOLVED branch, the switched-on set and
+// the colours are resolved the same way, and the card's save stores a linked source as its target.
+describe('mail through a branch link', () => {
+  let octoberId: string;
+
+  beforeAll(async () => {
+    const res = await call('post', '/platform/branches', adminToken, {
+      code: '82',
+      name: { ar: 'أكتوبر', en: 'October' },
+    });
+    expect(res.status).toBe(201);
+    octoberId = data<{ id: string }>(res).id;
+    // Filed under October as production's workbook import filed it, before the link existed.
+    await AtmMachineModel.create([
+      {
+        branchId: new Types.ObjectId(octoberId),
+        machineCode: '7201',
+        name: 'SYN 7201',
+        bankName: 'SYN BANK',
+        area: 'SYN AREA',
+        zone: '',
+        isActive: true,
+      },
+    ]);
+    await settingsService.set(adminCtx, {
+      key: AtmSettingKeys.BranchLinks,
+      scope: 'organization',
+      value: [{ branchId: octoberId, actsAsBranchId: mohandessinId }],
+    });
+  });
+
+  afterAll(async () => {
+    await settingsService.set(adminCtx, {
+      key: AtmSettingKeys.BranchLinks,
+      scope: 'organization',
+      value: [],
+    });
+  });
+
+  it('saves a linked source as its target, and drops it beside the target’s own row', async () => {
+    const first = await call(
+      'put',
+      '/atm/mailbox',
+      adminToken,
+      saveBody({
+        enabled: true,
+        clientSecret: SECRET,
+        branches: [{ branchId: octoberId, category: 'Orange Category' }],
+      }),
+    );
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(data<AtmMailboxConfigDto>(first).branches).toEqual([
+      {
+        branchId: mohandessinId,
+        branchName: { ar: 'المهندسين', en: 'Mohandessin' },
+        category: 'Orange Category',
+      },
+    ]);
+    const both = await save({
+      branches: [
+        { branchId: octoberId, category: 'Orange Category' },
+        { branchId: mohandessinId, category: 'Green Category' },
+      ],
+    });
+    expect(both.status, JSON.stringify(both.body)).toBe(200);
+    expect(
+      data<AtmMailboxConfigDto>(both).branches.map(({ branchId, category }) => [
+        branchId,
+        category,
+      ]),
+    ).toEqual([[mohandessinId, 'Green Category']]);
+  });
+
+  it('files an October machine’s mail under Mohandessin — switched on and coloured as Mohandessin', async () => {
+    const mailbox = fakeMailbox([mail('link-1', '7201')]);
+    const res = await call('post', '/atm/mailbox/poll', adminToken, {});
+    expect(data<AtmMailPollRunDto>(res)).toMatchObject({ read: 1, created: 1, unmatched: 0 });
+    expect(mailbox.handled).toEqual([{ id: 'link-1', category: 'Green Category' }]);
+    const ticket = await AtmMailTicketModel.findOne({ machineCode: '7201' }).lean().exec();
+    expect(String(ticket?.branchId)).toBe(mohandessinId);
+  });
+
+  it('reads a document saved before the link the same way: October’s row switches Mohandessin on', async () => {
+    // Saved before this change: the row names October itself.
+    await AtmMailboxConfigModel.updateOne(
+      { key: 'default' },
+      {
+        $set: {
+          branches: [{ branchId: new Types.ObjectId(octoberId), category: 'Orange Category' }],
+        },
+      },
+    ).exec();
+    await AtmMailTicketModel.deleteMany({ machineCode: '7201' }).exec();
+    const mailbox = fakeMailbox([mail('link-2', '7201')]);
+    const res = await call('post', '/atm/mailbox/poll', adminToken, {});
+    expect(data<AtmMailPollRunDto>(res)).toMatchObject({ read: 1, created: 1, unmatched: 0 });
+    expect(mailbox.handled).toEqual([{ id: 'link-2', category: 'Orange Category' }]);
+    const ticket = await AtmMailTicketModel.findOne({ machineCode: '7201' }).lean().exec();
+    expect(String(ticket?.branchId)).toBe(mohandessinId);
   });
 });

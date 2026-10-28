@@ -91,6 +91,7 @@ const doc = (over: Partial<AtmRegisterEntryDoc> = {}): AtmRegisterEntryDoc => ({
 const view = (over: Partial<RegisterEntryView> = {}): RegisterEntryView => ({
   secretsVisible: true,
   branchCode: 'EGYCASH-4',
+  branchName: { ar: 'الإسكندرية', en: 'Alexandria' },
   settingOpsLabel: 'NBE',
   linkedMasterState: 'active',
   ...over,
@@ -133,6 +134,21 @@ describe('toAtmRegisterEntryDto', () => {
     );
     expect(dto.startDate).toBe('2026-01-12');
     expect(dto.endDate).toBe('2026-02-03');
+  });
+
+  // The owner (2026-10-28): «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي» — the grid names the
+  // branch as the top bar does; the canonical code stays on the wire for older screens.
+  it('carries the ECMS branch name beside the canonical code; a branch-less row has neither', () => {
+    const dto = toAtmRegisterEntryDto(doc(), view());
+    expect(dto.branchName).toEqual({ ar: 'الإسكندرية', en: 'Alexandria' });
+    expect(dto.branchCode).toBe('EGYCASH-4');
+    const bare = toAtmRegisterEntryDto(
+      doc({ branchId: null }),
+      view({ branchCode: null, branchName: null }),
+    );
+    expect(bare.branchId).toBeNull();
+    expect(bare.branchName).toBeNull();
+    expect(bare.branchCode).toBeNull();
   });
 
   it('passes an imported blank name through as null (DEC-32)', () => {

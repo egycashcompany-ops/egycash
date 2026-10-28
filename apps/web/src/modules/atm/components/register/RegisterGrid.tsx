@@ -61,7 +61,7 @@ import {
   type RegisterSort,
 } from '../../lib/register-grid';
 import { type BankLookup } from '../../lib/bank-catalog';
-import { branchLabel, columnHeaderKey, formatRegisterDate } from '../../lib/register-labels';
+import { columnHeaderKey, formatRegisterDate } from '../../lib/register-labels';
 import { IncompleteBadge } from './IncompleteBadge';
 import { IssueBadge } from './IssueBadge';
 import { RegisterRowActions, type RegisterRowAction } from './RegisterRowActions';
@@ -294,13 +294,15 @@ export const RegisterGrid = ({
             </Badge>
           ),
         };
-      case 'branchCode':
-        return row.branchCode === null
-          ? { node: '' }
-          : {
-              title: `${row.branchCode} · ${branchLabel(row.branchCode, locale)}`,
-              node: ltr(row.branchCode),
-            };
+      case 'branchCode': {
+        // Column A names the branch as the top bar does — the ECMS name of the row's stored
+        // branch, in the reader's language — in the cell AND its tooltip. The tooltip used to say
+        // «code · workbook name» while the filter said «code · ECMS name», so one row read
+        // «المهندسين» here and «أكتوبر» there (the owner, 2026-10-28). A long name is cut with an
+        // ellipsis and read whole in the tooltip; a branch-less imported row reads «—».
+        const name = row.branchName?.[locale] ?? '—';
+        return { title: name, node: <span dir="auto">{name}</span> };
+      }
       case 'bankCode': {
         if (row.bankCode === null) return { node: '' };
         const opsLabel = row.opsBankLabel === null ? '' : ` · ${row.opsBankLabel}`;

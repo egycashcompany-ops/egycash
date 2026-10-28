@@ -181,6 +181,11 @@ export const AUDIT_ACTIONS = [
   //     which Notes, from which state, and when.
   'atmLayoutImport',
   'atmSettlementPrint',
+  // ATM branch links (/atm/settings, 2026-10-28). `atmBranchMove` — one row per run that re-files
+  // a linked source branch's ATM data under its target, carrying both branches, the counts per
+  // collection and the merges: the `atmRegisterImport` shape, one administrator's decision over
+  // thousands of rows. Not broadcast — the run signals each affected topic once, on the target.
+  'atmBranchMove',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

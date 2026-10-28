@@ -138,9 +138,12 @@ const settleMasterWrite = async (
   }
 };
 
-/** The data-edit add's branch: the acting one, and `manage` must reach it (DEC-39). */
+/**
+ * The data-edit add's branch: the acting one, and `manage` must reach it (DEC-39). An
+ * organization-wide `manage` holder acts where the top bar points (GM-20, atm-context.ts).
+ */
 const addBranchOf = async (ctx: AuthContext): Promise<string> => {
-  const branchId = await resolveAtmBranchId(ctx);
+  const branchId = await resolveAtmBranchId(ctx, 'atmMachine.manage');
   if (!manageActsInBranch(ctx, branchId)) {
     throw new ForbiddenError('atmMachine.manage does not reach this branch');
   }
@@ -458,7 +461,7 @@ class AtmMachineService {
   }
 
   async reassignArea(input: ReassignAtmMachineArea, ctx: AuthContext): Promise<AtmMachineDoc> {
-    const branchId = await resolveAtmBranchId(ctx);
+    const branchId = await resolveAtmBranchId(ctx, 'atmMachine.manage');
     const machineCode = normalizeAtmMachineCode(input.machineCode);
     const existing = await atmMachineRepository.findActiveByCode(branchId, machineCode);
     if (existing === null) throw new NotFoundError('ATM machine');

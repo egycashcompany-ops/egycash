@@ -199,6 +199,35 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Every ATM machine shows under the branch it is filed in, the ATM pages name branches as the top
+  bar does, and a linked branch's data moves to the branch it works as.** «أنا عايز كل ماكينه تظهر
+  فى الفرع بتاعها طبقاً للفرع المتسجله فيه» — machine 27720226 showed on `/atm/machines` only under
+  «كل الشركة», its replenishment and maintenance failed in Mohandessin, its mail showed only under
+  «كل الشركة», and `/atm/register` called it Mohandessin's while its filter brought it under
+  October. October works as Mohandessin since the branch links, but a link moves the PERSON, never a
+  row: what the workbook import, the register and the mail reader filed under October before stayed
+  October's. On `/atm/settings` each link now has «نقل البيانات إلى …»: a preview of what is filed
+  under the source, what merges and what refuses the move, then the move itself, under
+  `atmSettings.manage` held company-wide. Machines, register rows, mail, both operation logs, the
+  map, labels and the settlements data are re-filed under the target; a name both branches use is
+  merged or renamed, a duplicate machine is retired the way data-edit deletes one, and the mail
+  and register settings that named the source are pointed to the target. The move is refused, with
+  each reason named, while something it must not guess past stands — a machine active in both, Note
+  serials or a plan of one bank and day in both, the map's limits, an import running — and stopped
+  part-way, with what moved staying moved, if one appears while it runs; running it again carries
+  on. The card names every linked branch still holding data, and opens the preview when a link just
+  saved has data under it. What is filed from now on follows the link too: a register receipt, the
+  workbook import and a mail of a linked branch's machine land in the branch it works as, and the
+  legacy importer refuses a linked branch. «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي»,
+  «الفروع فوق خالص فى البار بتاع السيستم غير اللى فى الفلاتر»: the register's grid, filter, forms,
+  export and Data Report name a branch by its ECMS name in Arabic and English — the EGYCASH codes
+  stay on the register settings card and the import preview — and its branch filter offers only the
+  branches the top bar's choice shows. An organization-wide user placed in a branch filed every
+  machine, label, replenishment and maintenance under that home branch whatever the top bar said,
+  and under «كل الشركة» too; each is now filed where the top bar points, and on «كل الشركة» the add
+  asks for a branch first, the data-edit dialogs saying «الفرع: …» before it
+  ([ATM port §6b–§6c](docs/12-planning/atm-operations-port.md),
+  [register DEC-42](docs/12-planning/atm-efficiency-register.md)).
 - **A busy office no longer locks itself out of signing in.** Steps 1 and 2 of the capacity plan.
   Sign-in, TOTP and activation were limited per IP address — 10 tries in five minutes shared by
   everyone behind one office connection, and 60 renewals for all of them — and the address could

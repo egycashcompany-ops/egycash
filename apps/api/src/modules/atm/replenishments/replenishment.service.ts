@@ -109,7 +109,7 @@ class AtmReplenishmentService {
     unknownCodes: string[];
     alreadyOpenCodes: string[];
   }> {
-    const branchId = await resolveAtmBranchId(ctx);
+    const branchId = await resolveAtmBranchId(ctx, 'atmReplenishment.create');
     const openedAt = resolveReplenishmentOpenTime(input.forceDate, new Date());
     const openDay = openDayOf(openedAt);
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));

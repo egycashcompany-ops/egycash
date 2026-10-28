@@ -11,6 +11,14 @@
 // and Section 2 totals agree for every scope, `own` included. No polling and no as-of parameter:
 // the stamp is the server's computation time, which is the data's time.
 //
+// Branches (2026-10-28) are judged as ATM files them (`atm.branchLinks`, register-settings.ts): a
+// group still filed under a linked source counts in its target's column, and ONE column stands for
+// one resolved branch — its canonical code — so two codes resolving to one branch never show it
+// twice, once with zeros (EGYCASH-1 → المهندسين with EGYCASH-5 → أكتوبر working as المهندسين read
+// «المهندسين 0» beside «أكتوبر 14»). Each column is named by its branch's ECMS name
+// (`branchNames`), as the top bar names it; the sheet's own per-code labels are the screen's
+// fallback.
+//
 // Banks (DEC-40): the report folds the CATALOG's banks, not a fixed six. The workbook's six are
 // always shown, at their sheet positions, so the page still reads like the sheet it replaced; every
 // other ACTIVE bank follows (after BRK in section 1, after NXT in section 3) in catalog order; an
@@ -29,7 +37,9 @@ import {
   type AtmRegisterReportBankDto,
   type AtmRegisterReportDto,
   type AtmRegisterReportGroup,
+  type LocalizedString,
 } from '@ecms/contracts';
+import { branchRepository } from '../../../platform/organization';
 import { scopeSelector, type AuthContext } from '../../../shared/types';
 import { type AtmBankCatalog } from '../catalogs/bank-catalog';
 import {
@@ -38,7 +48,7 @@ import {
   registerScopeMatch,
   type AtmRegisterActiveGroup,
 } from './register.repository';
-import { resolveRegisterSettings } from './register-settings';
+import { resolveRegisterSettings, type RegisterBranchMapping } from './register-settings';
 
 /** Writes are validated against the catalog, so any stored code is a bank — counted as it is. */
 const isBankCode = (value: string | null | undefined): value is AtmBankCode =>
@@ -47,26 +57,52 @@ const isBankCode = (value: string | null | undefined): value is AtmBankCode =>
 /** A code the catalog does not know (never written by a validated path) is drawn neutral grey. */
 const UNKNOWN_BANK_COLOR = '#A6A6A6';
 
-/** Pure: `$group` rows → fold groups. An unmapped branch keeps its count with `branchCode:null`. */
+/**
+ * Pure: `$group` rows → fold groups, each under the canonical code of its RESOLVED branch. A branch
+ * no code resolves to keeps its count with `branchCode:null`.
+ */
 export const toReportGroups = (
   groups: readonly AtmRegisterActiveGroup[],
-  codeByBranchId: ReadonlyMap<string, AtmRegisterBranchCode>,
+  mapping: Pick<RegisterBranchMapping, 'canonicalCodeOf'>,
 ): AtmRegisterReportGroup[] =>
   groups.map((group) => ({
-    branchCode: codeByBranchId.get(String(group._id.branchId)) ?? null,
+    branchCode: mapping.canonicalCodeOf(group._id.branchId),
     bankCode: isBankCode(group._id.bankCode) ? group._id.bankCode : null,
     count: group.count,
   }));
 
-/** Pure: the mapped codes, in sheet order, whose branch the scope covers. */
+/**
+ * Pure: the canonical codes, in sheet order, whose RESOLVED branch the scope covers — one per
+ * branch, judged as `toReportGroups` files the groups, so every counted group's code is shown.
+ */
 export const reportBranchesShown = (
   covered: 'all' | readonly string[],
-  branchIdByCode: ReadonlyMap<AtmRegisterBranchCode, string>,
-): AtmRegisterBranchCode[] =>
-  ATM_REGISTER_BRANCH_CODES.filter((code) => {
-    const branchId = branchIdByCode.get(code);
-    return branchId !== undefined && (covered === 'all' || covered.includes(branchId));
-  });
+  mapping: Pick<RegisterBranchMapping, 'codesByBranchId' | 'canonicalCodeOf' | 'resolveBranch'>,
+): AtmRegisterBranchCode[] => {
+  const coveredBranches = covered === 'all' ? null : new Set(covered.map(mapping.resolveBranch));
+  const shown = new Set<AtmRegisterBranchCode>();
+  for (const branchId of mapping.codesByBranchId.keys()) {
+    if (coveredBranches !== null && !coveredBranches.has(branchId)) continue;
+    const code = mapping.canonicalCodeOf(branchId);
+    if (code !== null) shown.add(code);
+  }
+  return ATM_REGISTER_BRANCH_CODES.filter((code) => shown.has(code));
+};
+
+/** Pure: each shown code → the ECMS name of its resolved branch (a branch gone: left out). */
+export const reportBranchNames = (
+  shown: readonly AtmRegisterBranchCode[],
+  mapping: Pick<RegisterBranchMapping, 'branchIdByCode'>,
+  names: ReadonlyMap<string, LocalizedString>,
+): Partial<Record<AtmRegisterBranchCode, LocalizedString>> => {
+  const out: Partial<Record<AtmRegisterBranchCode, LocalizedString>> = {};
+  for (const code of shown) {
+    const branchId = mapping.branchIdByCode.get(code);
+    const name = branchId === undefined ? undefined : names.get(branchId);
+    if (name !== undefined) out[code] = name;
+  }
+  return out;
+};
 
 export interface AtmReportBanks {
   banks: AtmRegisterReportBankDto[];
@@ -119,15 +155,23 @@ class AtmRegisterReportService {
       atmRegisterEntryRepository.groupActive(registerScopeMatch(scope)),
       resolveRegisterSettings(),
     ]);
-    const branchesShown = reportBranchesShown(
-      registerScopeBranches(scope),
-      settings.branchIdByCode,
+    const branchesShown = reportBranchesShown(registerScopeBranches(scope), settings);
+    const shownBranchIds = branchesShown.flatMap((code) => {
+      const branchId = settings.branchIdByCode.get(code);
+      return branchId === undefined ? [] : [branchId];
+    });
+    const names = new Map<string, LocalizedString>(
+      (await branchRepository.findByIdsSystem(shownBranchIds)).map((branch) => [
+        String(branch._id),
+        { ar: branch.name.ar, en: branch.name.en },
+      ]),
     );
-    const reportGroups = toReportGroups(groups, settings.codeByBranchId);
+    const reportGroups = toReportGroups(groups, settings);
     const banks = reportBanks(settings.catalog, reportGroups);
     return {
       generatedAt: new Date().toISOString(),
       branchesShown,
+      branchNames: reportBranchNames(branchesShown, settings, names),
       counts: foldAtmRegisterReport(reportGroups, branchesShown, banks.section1Banks),
       ...banks,
     };

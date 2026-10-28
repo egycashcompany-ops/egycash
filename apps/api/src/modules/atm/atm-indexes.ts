@@ -39,6 +39,9 @@
 // The maintenance mailbox document (/atm/settings) joined the first group: `ux_mailbox_key` is what
 // makes a second "first save" a stale 409 instead of a second mailbox. Its key is a fixed word.
 //
+// The branch-move runs («نقل البيانات», /atm/settings) joined the first group: `ux_one_running` is
+// the lock that keeps two moves from merging one source twice. A run holds ids and counts only.
+//
 // THE DEFINITIONS ARE READ FROM THE SCHEMAS (`schema.indexes()`), never restated here. ONE INDEX AT
 // A TIME, so a duplicate costs exactly its own index. DUPLICATES ARE REPORTED, NEVER RESOLVED — a
 // legacy `atm_machines` loaded by `npm run atm:import` may violate `ux_branch_code` (risk R-9); the
@@ -67,6 +70,7 @@ import { AtmDispatchRouteModel } from './settlements/control/dispatch-route.mode
 import { AtmRouteAssignmentModel } from './settlements/control/route-assignment.model';
 import { AtmLayoutImportRunModel } from './settlements/import/layout-import-run.model';
 import { AtmMailboxConfigModel } from './mail-tickets/mailbox-config.model';
+import { AtmBranchMoveRunModel } from './branch-links/branch-move-run.model';
 import { RETIRED_OPEN_OPERATION_INDEX_NAMES } from './shared/open-operation';
 
 export interface AtmIndexedModel {
@@ -116,6 +120,7 @@ export const atmIndexedModels = (): AtmIndexedModel[] => [
       AtmLayoutImportRunModel,
       AtmNoteCounterModel,
       AtmMailboxConfigModel,
+      AtmBranchMoveRunModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model, rowsInLog: true })),
   ...(

@@ -9,6 +9,11 @@
 // The banks are the catalog's (DEC-35, DEC-40): a seventh bank gets its bar after BRK and its series
 // after NXT, in its catalog colour, while the six keep the sheet's places; an older server that
 // sends no bank fields still gets the sheet's six.
+//
+// The branches are the top bar's (2026-10-28): a section reads the ECMS name the server sends
+// (`branchNames`) inside the sheet's own pattern. The fixture below sends none, so the labels it
+// pins are the sheet's per-code ones — what a code without a name keeps; the names are pinned in
+// «a branch named as the top bar names it».
 import { describe, expect, it } from 'vitest';
 import {
   ATM_BANK_SEED,
@@ -36,6 +41,7 @@ import {
   labelTracks,
   niceStep,
   registerReportView,
+  reportBranchLabel,
   reportCount,
   singleChartLayout,
 } from './register-report-view';
@@ -220,6 +226,55 @@ describe('section 3 — branches × banks', () => {
     expect(row('EGYCASH-6')).toEqual([0, 0, 0, 0, 0, 0]);
     expect(section3.groups.every((group) => group.cells.length === 6)).toBe(true);
     expect(section3.total).toBe(62);
+  });
+});
+
+describe('a branch named as the top bar names it', () => {
+  /** The server's names: Mohandessin under a synthetic ECMS name, Wisal under the one ECMS uses. */
+  const named = (): AtmRegisterReportDto => ({
+    ...dto(),
+    branchNames: {
+      'EGYCASH-1': { ar: 'فرع تجريبي', en: 'Synthetic branch' },
+      'EGYCASH-7': { ar: 'الشروق', en: 'El Shorouk' },
+    },
+  });
+  const label2 = (view: ReturnType<typeof viewOf>, code: string): string | undefined =>
+    view.section2.bars.find((bar) => bar.key === `s2.${code}`)?.label;
+  const label3 = (view: ReturnType<typeof viewOf>, code: string): string | undefined =>
+    view.section3.groups.find((group) => group.key === code)?.label;
+
+  it('reads the ECMS name the server sends, in each section’s own pattern', () => {
+    const ar = viewOf(named());
+    expect(label2(ar, 'EGYCASH-1')).toBe('فرع إيجي كاش فرع تجريبي');
+    expect(label2(ar, 'EGYCASH-7')).toBe('فرع إيجي كاش الشروق');
+    expect(label3(ar, 'EGYCASH-1')).toBe('إيجي كــاش ( فرع تجريبي )');
+    const en = viewOf(named(), 'en');
+    expect(label2(en, 'EGYCASH-7')).toBe('EgyCash El Shorouk branch');
+    expect(label3(en, 'EGYCASH-7')).toBe('EgyCash (El Shorouk)');
+  });
+
+  it('keeps the sheet’s own label for a code it names no branch for', () => {
+    const view = viewOf(named());
+    expect(label2(view, 'EGYCASH-4')).toBe('فرع إيجي كاش الإسكندرية');
+    expect(label3(view, 'EGYCASH-4')).toBe('إيجي كــاش ( الاســكندرية )');
+    const tr = (key: string, params?: Record<string, string | number>): string =>
+      translate('ar', key, params);
+    expect(reportBranchLabel({}, 'EGYCASH-2', 2, 'ar', tr)).toBe(
+      tr('atm.registerReport.branch2.EGYCASH-2'),
+    );
+    expect(reportBranchLabel({ branchNames: {} }, 'EGYCASH-2', 3, 'ar', tr)).toBe(
+      tr('atm.registerReport.branch3.EGYCASH-2'),
+    );
+  });
+
+  it('changes no cell, number or order — only what a branch is called', () => {
+    const plain = viewOf();
+    const view = viewOf(named());
+    const cells = (v: typeof plain) => v.section2.bars.map(({ key, value }) => [key, value]);
+    expect(cells(view)).toEqual(cells(plain));
+    expect(view.section3.groups.map((group) => [group.key, group.cells])).toEqual(
+      plain.section3.groups.map((group) => [group.key, group.cells]),
+    );
   });
 });
 

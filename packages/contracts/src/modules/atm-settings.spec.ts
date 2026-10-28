@@ -2,20 +2,32 @@
 // keeps the stored one) and no refusal can quote it; the tenant id cannot reshape the token URL;
 // each branch is switched on once. The branch links: the owner's October → Mohandessin, and the
 // three refusals — a branch acting as itself, as two branches, or through a chain — each reported
-// at the row and field the screen shows it on.
+// at the row and field the screen shows it on. The move of a linked source's data: the source in
+// the path and nothing else, every collection counted once, and one shape per refusal.
 //
 // Every value below is synthetic.
 import { describe, expect, it } from 'vitest';
+import { AUDIT_ACTIONS } from '../platform/audit.js';
 import { AtmSettingKeys } from './atm.js';
 import {
   ATM_BRANCH_LINK_ISSUES,
   ATM_BRANCH_LINKS_MAX,
+  ATM_BRANCH_MOVE_BLOCKERS,
+  ATM_BRANCH_MOVE_COLLECTIONS,
+  ATM_BRANCH_MOVE_MERGES,
+  ATM_BRANCH_MOVE_RUN_STATES,
   ATM_MAILBOX_BRANCHES_MAX,
   ATM_MAIL_POLL_REASONS_MAX,
   AtmBranchLinksSettingSchema,
+  AtmBranchMoveCollectionSchema,
+  AtmBranchMoveParamsSchema,
   SaveAtmBranchLinksSchema,
   SaveAtmMailboxConfigSchema,
   atmBranchLinkIssues,
+  atmBranchMoveTotal,
+  emptyAtmBranchMoveCounts,
+  emptyAtmBranchMoveMerges,
+  type AtmBranchMoveBlockerDto,
 } from './atm-settings.js';
 
 const MOHANDESSIN = '6500000000000000000000ab';
@@ -323,5 +335,79 @@ describe('the vocabularies the next layers switch on', () => {
   it('names the link refusals and the poll record’s reasons ceiling', () => {
     expect(ATM_BRANCH_LINK_ISSUES).toEqual(['sameBranch', 'duplicateSource', 'chain']);
     expect(ATM_MAIL_POLL_REASONS_MAX).toBe(5);
+  });
+});
+
+describe('the move of a linked source’s data — «نقل البيانات»', () => {
+  it('takes the source from the path, lower-cased as a stored link is, and nothing else', () => {
+    expect(AtmBranchMoveParamsSchema.parse({ sourceBranchId: OCTOBER.toUpperCase() })).toEqual({
+      sourceBranchId: OCTOBER,
+    });
+    expect(AtmBranchMoveParamsSchema.safeParse({ sourceBranchId: 'october' }).success).toBe(false);
+    expect(AtmBranchMoveParamsSchema.safeParse({}).success).toBe(false);
+    // The target is the STORED link's: a request that names one is refused, not obeyed.
+    expect(
+      AtmBranchMoveParamsSchema.safeParse({ sourceBranchId: OCTOBER, actsAsBranchId: TANTA })
+        .success,
+    ).toBe(false);
+  });
+
+  it('counts every collection it re-files, once each, and none it leaves behind', () => {
+    expect(ATM_BRANCH_MOVE_COLLECTIONS).toHaveLength(17);
+    expect(new Set(ATM_BRANCH_MOVE_COLLECTIONS).size).toBe(17);
+    for (const key of ATM_BRANCH_MOVE_COLLECTIONS) {
+      expect(AtmBranchMoveCollectionSchema.parse(key)).toBe(key);
+    }
+    // The source's zone set stays (the target's revision moves on); the note counters stay too.
+    for (const key of ['mapZoneSets', 'noteCounters', 'banks', 'registerImportRuns']) {
+      expect(AtmBranchMoveCollectionSchema.safeParse(key).success, key).toBe(false);
+    }
+  });
+
+  it('starts every count and every merge at zero, with every key present', () => {
+    const counts = emptyAtmBranchMoveCounts();
+    expect(Object.keys(counts)).toEqual([...ATM_BRANCH_MOVE_COLLECTIONS]);
+    expect(Object.values(counts).every((n) => n === 0)).toBe(true);
+    const merges = emptyAtmBranchMoveMerges();
+    expect(Object.keys(merges)).toEqual([...ATM_BRANCH_MOVE_MERGES]);
+    expect(Object.values(merges).every((n) => n === 0)).toBe(true);
+    // A fresh object each call: one run's tally never leaks into the next one's.
+    counts.machines = 3;
+    expect(emptyAtmBranchMoveCounts().machines).toBe(0);
+  });
+
+  it('totals the rows over every collection', () => {
+    expect(atmBranchMoveTotal(emptyAtmBranchMoveCounts())).toBe(0);
+    expect(
+      atmBranchMoveTotal({
+        ...emptyAtmBranchMoveCounts(),
+        machines: 475,
+        registerEntries: 1061,
+        mailTickets: 12,
+        layoutImportRuns: 1,
+      }),
+    ).toBe(1549);
+  });
+
+  it('gives every refusal one shape — the vocabulary and the union name the same kinds', () => {
+    const examples: Record<AtmBranchMoveBlockerDto['kind'], AtmBranchMoveBlockerDto> = {
+      machineActiveInBoth: { kind: 'machineActiveInBoth', codes: ['99990001'] },
+      machineTwinOpen: { kind: 'machineTwinOpen', codes: ['99990002'] },
+      planSerialCollision: { kind: 'planSerialCollision', bankCodes: ['BRK'] },
+      planSameDay: {
+        kind: 'planSameDay',
+        items: [{ bankCode: 'BRK', replenishDate: '2026-10-28' }],
+      },
+      zoneCaps: { kind: 'zoneCaps', zones: 201, points: 18_000 },
+      layoutImportRunning: { kind: 'layoutImportRunning', bankCodes: ['BRK'] },
+      moveRunning: { kind: 'moveRunning' },
+    };
+    expect(Object.keys(examples).sort()).toEqual([...ATM_BRANCH_MOVE_BLOCKERS].sort());
+    for (const [kind, blocker] of Object.entries(examples)) expect(blocker.kind).toBe(kind);
+  });
+
+  it('names its run states, and is audited under an action of its own', () => {
+    expect(ATM_BRANCH_MOVE_RUN_STATES).toEqual(['running', 'done', 'failed']);
+    expect(AUDIT_ACTIONS).toContain('atmBranchMove');
   });
 });

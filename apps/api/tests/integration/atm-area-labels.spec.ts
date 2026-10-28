@@ -669,6 +669,8 @@ describe('GET /atm/ref-labels/options — one branch, whole, to the page’s aud
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const dto = data<AtmRefLabelOptionsDto>(res);
     expect(dto.branchId).toBe(alexBranchId);
+    // Named for the top of the add dialogs (2026-10-28): where an add from them is filed.
+    expect(dto.branch).toEqual({ id: alexBranchId, name: { ar: 'الإسكندرية', en: 'Alexandria' } });
     expect(dto.registerMapped).toBe(true);
     // The six seeds (QNB is archived), each as its Operations label, then the branch's spelling.
     expect(dto.banks.filter((bank) => bank.kind === 'bank').map((bank) => bank.bankCode)).toEqual([
@@ -690,6 +692,7 @@ describe('GET /atm/ref-labels/options — one branch, whole, to the page’s aud
     const unmapped = await options(unmappedBranchId);
     expect(data<AtmRefLabelOptionsDto>(unmapped)).toMatchObject({
       branchId: unmappedBranchId,
+      branch: { id: unmappedBranchId, name: { ar: 'أسوان', en: 'Aswan' } },
       registerMapped: false,
     });
   });

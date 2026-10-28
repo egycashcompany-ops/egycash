@@ -127,6 +127,7 @@ const CATALOG: AtmBankDto[] = ATM_BANK_SEED.map((seed) => ({
 /** `GET /atm/ref-labels/options?branchId=ALEX` — what the machine dialogs offer. */
 const OPTIONS: AtmRefLabelOptionsDto = {
   branchId: ALEX,
+  branch: { id: ALEX, name: { ar: 'فرع تجريبي', en: 'Synthetic branch' } },
   registerMapped: true,
   banks: [
     { value: 'NBE', bankCode: 'NBE', kind: 'bank' },

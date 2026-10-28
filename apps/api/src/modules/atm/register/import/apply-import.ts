@@ -281,6 +281,8 @@ export const applyRegisterImport = async (
       { $push: { rows: { $each: rows } }, $set: { counts } },
     ).exec();
   };
+  // The code's RESOLVED branch (`atm.branchLinks`, register-settings.ts) — the plan's own: a row of
+  // a code mapped to a linked source is filed, and its master coupled, under the target.
   const branchIdOf = (row: ParsedRow): string | null =>
     row.values.branchCode === null
       ? null

@@ -10,25 +10,53 @@
 // its own, with nothing else on the card to save beside it. The add row checks the list with the
 // contract's own rules (`atmBranchLinkIssues`) before anything is sent, so the reader learns why a
 // pair cannot be linked without a round trip; whether both branches still exist is the server's.
+//
+// A link moves no row, so whatever was filed under the source BEFORE it — the owner's machine
+// 27720226, shown only under «كل الشركة» — stays there until «نقل البيانات إلى …» moves it
+// (MoveBranchDataDialog). Each row offers that move; a banner names every source that still holds
+// rows; and a NEW link whose source already holds rows opens the move's preview at once, since that
+// is the link the owner made to see those rows under the target. The move answers
+// `atmSettings.manage` at organization scope on the server; the card offers it to a holder only.
 import { useState } from 'react';
 import {
   atmBranchLinkIssues,
   type AtmBranchLink,
+  type AtmBranchLinkDto,
   type AtmBranchLinkIssue,
+  type AtmBranchMovePreviewDto,
   type Locale,
   type LocalizedString,
 } from '@ecms/contracts';
 import { useAppSelector } from '../../../../store';
 import { useT } from '../../../../platform/localization/useT';
+import { useCan } from '../../../../platform/rbac/Can';
 import { useBranchOptions } from '../../../organization/shared/references';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Button } from '../../../../shared/ui/Button';
 import { Field, Select } from '../../../../shared/ui/form';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
-import { PlusIcon, TrashIcon } from '../../../../shared/ui/icons';
+import { PlusIcon, SwapIcon, TrashIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
-import { useAtmBranchLinks, useSaveAtmBranchLinks } from '../../api/settings-queries';
+import {
+  useAskAtmBranchMovePreview,
+  useAtmBranchLinks,
+  useAtmBranchMovePreviews,
+  useSaveAtmBranchLinks,
+} from '../../api/settings-queries';
+import { MoveBranchDataDialog } from './MoveBranchDataDialog';
+
+/** The key the page and the move answer to (the route guard's, `routes.tsx`). */
+const MANAGE = 'atmSettings.manage';
+
+/**
+ * The links whose source still holds ATM rows, in the list's order — `previews` lines up with
+ * `links`, one answer (or none yet) per row.
+ */
+export const linksHoldingData = (
+  links: readonly AtmBranchLinkDto[],
+  previews: readonly (AtmBranchMovePreviewDto | undefined)[],
+): AtmBranchLinkDto[] => links.filter((_, index) => (previews[index]?.total ?? 0) > 0);
 
 /**
  * Why the list would refuse this pair — the first rule `[...links, candidate]` breaks, wherever
@@ -42,13 +70,22 @@ export const branchLinkRefusal = (
 export const BranchLinksCard = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const can = useCan();
+  const mayMove = can(MANAGE);
   const links = useAtmBranchLinks();
   const branchOptions = useBranchOptions();
   const save = useSaveAtmBranchLinks();
+  const askPreview = useAskAtmBranchMovePreview();
   const [branchId, setBranchId] = useState('');
   const [actsAsBranchId, setActsAsBranchId] = useState('');
+  /** The source whose move dialog is open — a stored link's, looked up on every render. */
+  const [movingId, setMovingId] = useState<string | null>(null);
 
   const rows = links.data?.links ?? [];
+  const sources = rows.map((row) => row.branchId);
+  const previews = useAtmBranchMovePreviews(sources, mayMove);
+  const answers = previews.map((preview) => preview.data);
+  const holding = mayMove ? linksHoldingData(rows, answers) : [];
   const current: AtmBranchLink[] = rows.map((row) => ({
     branchId: row.branchId,
     actsAsBranchId: row.actsAsBranchId,
@@ -61,6 +98,10 @@ export const BranchLinksCard = (): JSX.Element => {
     const name = fromServer ?? branchOptions.data?.find((branch) => branch.id === id)?.name ?? null;
     return name === null ? t('atm.settings.unknownBranch') : localized(name, locale);
   };
+  const sourceOf = (row: AtmBranchLinkDto): string => nameOf(row.branchId, row.branchName);
+  const targetOf = (row: AtmBranchLinkDto): string =>
+    nameOf(row.actsAsBranchId, row.actsAsBranchName);
+  const moving = rows.find((row) => row.branchId === movingId) ?? null;
 
   const write = async (next: AtmBranchLink[], doneKey: string): Promise<boolean> => {
     try {
@@ -75,9 +116,17 @@ export const BranchLinksCard = (): JSX.Element => {
 
   const add = async (): Promise<void> => {
     if (candidate === null || refusal !== null) return;
-    if (await write([...current, candidate], 'atm.settings.links.added')) {
-      setBranchId('');
-      setActsAsBranchId('');
+    if (!(await write([...current, candidate], 'atm.settings.links.added'))) return;
+    setBranchId('');
+    setActsAsBranchId('');
+    if (!mayMove) return;
+    try {
+      // A source that already holds rows: the link alone shows none of them under the target, so
+      // its move is offered at once — still only after its preview, and still the reader's click.
+      const preview = await askPreview(candidate.branchId);
+      if (preview.total > 0) setMovingId(candidate.branchId);
+    } catch {
+      // Nothing opens: the row's «نقل البيانات إلى …» and the banner offer the same move.
     }
   };
 
@@ -100,6 +149,22 @@ export const BranchLinksCard = (): JSX.Element => {
           <ErrorState error={links.error} onRetry={() => void links.refetch()} />
         ) : (
           <>
+            {holding.length > 0 && (
+              <div
+                role="status"
+                className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                data-branch-move-banner="true"
+              >
+                {holding.map((row) => (
+                  <p key={row.branchId} data-branch-move-pending={row.branchId}>
+                    {t('atm.settings.move.banner', {
+                      source: sourceOf(row),
+                      target: targetOf(row),
+                    })}
+                  </p>
+                ))}
+              </div>
+            )}
             {rows.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">
                 {t('atm.settings.links.none')}
@@ -107,19 +172,29 @@ export const BranchLinksCard = (): JSX.Element => {
             ) : (
               <ul className="space-y-2">
                 {rows.map((row) => {
-                  const branch = nameOf(row.branchId, row.branchName);
+                  const branch = sourceOf(row);
+                  const target = targetOf(row);
                   return (
                     <li
                       key={row.branchId}
-                      className="flex items-center gap-2 rounded-lg border border-slate-200 p-2.5 dark:border-slate-700"
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-2.5 dark:border-slate-700"
                       data-branch-link={row.branchId}
                     >
                       <span className="min-w-0 flex-1 text-sm text-slate-700 dark:text-slate-200">
-                        {t('atm.settings.links.row', {
-                          branch,
-                          target: nameOf(row.actsAsBranchId, row.actsAsBranchName),
-                        })}
+                        {t('atm.settings.links.row', { branch, target })}
                       </span>
+                      {mayMove && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          leftIcon={<SwapIcon className="h-4 w-4" />}
+                          disabled={save.isPending}
+                          data-branch-links-action="move"
+                          onClick={() => setMovingId(row.branchId)}
+                        >
+                          {t('atm.settings.move.action', { target })}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost-danger"
                         size="sm"
@@ -195,6 +270,18 @@ export const BranchLinksCard = (): JSX.Element => {
           </>
         )}
       </CardBody>
+      <MoveBranchDataDialog
+        subject={
+          mayMove && moving !== null
+            ? {
+                sourceBranchId: moving.branchId,
+                source: sourceOf(moving),
+                target: targetOf(moving),
+              }
+            : null
+        }
+        onClose={() => setMovingId(null)}
+      />
     </Card>
   );
 };

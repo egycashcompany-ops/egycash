@@ -1,11 +1,12 @@
 // The manifest guards (the operations.module.spec precedent): the module registers cleanly, and
 // its surfaces are exactly what the shipped slices claim. The pin-the-numbers block moves with
-// every slice: 45 permissions, 12 pages, 15 routes, 22 collections, 2 scheduled tasks (ATM
+// every slice: 45 permissions, 12 pages, 15 routes, 23 collections, 2 scheduled tasks (ATM
 // Operations port ATM-0…7, then the Efficiency register — docs/12-planning/atm-efficiency-register.md
 // §7.2 — then the machine map — docs/12-planning/atm-map-zones.md §7.2 — then settlements phase 1 —
 // docs/12-planning/atm-settlements-phase1.md §7.2 — then the bank catalog, DEC-35: two keys, one
 // route, one collection, and no page of its own — then /atm/settings, the owner's 2026-10-28
-// request: one key, one page, two routes, one collection).
+// request: one key, one page, two routes, one collection — then its «نقل البيانات», one collection
+// for the move runs on the branch-links route).
 // The daily report added a route and NOTHING else — it rides the existing view grants (D7).
 import { describe, expect, it } from 'vitest';
 import { platformSatisfies, validateManifest } from '../../platform/kernel/module-registry';
@@ -104,6 +105,7 @@ describe('atm module manifest (ATM Operations port)', () => {
     ]);
     expect(atmModule.collections.sort()).toEqual([
       'atm_banks',
+      'atm_branch_move_runs',
       'atm_cassette_layout_versions',
       'atm_cassette_layouts',
       'atm_dispatch_routes',

@@ -276,4 +276,8 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // One audit row per applied Full list import (docs/12-planning/atm-settlements-phase1.md §6.11).
   'atm.layoutImport':
     'one audit row per import run (the register-import shape); the importing screen refetches itself',
+  // One audit row per «نقل البيانات» run of a linked source branch (/atm/settings, 2026-10-28). The
+  // run itself signals each topic it touched once, with the target's branch; the card refetches.
+  'atm.branchMove':
+    'one audit row per branch-move run (the register-import shape); the run signals each affected topic once and the settings card refetches itself',
 };

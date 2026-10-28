@@ -2,7 +2,13 @@
 //
 //   · Branch codes — the workbook's `EGYCASH-1..7` → the ECMS branch (D4). Nothing is pre-filled:
 //     which branch «وصال» is, is the administrator's act (EG-18). An unmapped code blocks the
-//     import (`branchUnmapped`) and refuses a receipt in that branch (DEC-10).
+//     import (`branchUnmapped`) and refuses a receipt in that branch (DEC-10). With the import
+//     preview, this card is where the codes are spoken — every other screen names the ECMS branch,
+//     as the top bar does. The card saves the RAW branch picked for each code; when that branch is
+//     linked to work as another (`atm.branchLinks`), the code's rows are filed and shown under the
+//     other one, and the row says so under the branch: «أكتوبر», then «يعمل باسم المهندسين». It
+//     never saves the resolved branch — two codes would then name one branch, which the setting
+//     refuses.
 //   · The banks — shown, no longer edited here. The name a coupled Operations machine carries for
 //     each bank (D5) is the bank CATALOG's now (DEC-35): the old `atm.register.bankLabels` setting
 //     was read once, to seed the catalog, and is never read again, so an editor for it here would
@@ -30,18 +36,53 @@ import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { Button } from '../../../../shared/ui/Button';
 import { StatusBadge } from '../../../../shared/ui/Badge';
 import { Select } from '../../../../shared/ui/form';
-import { BuildingIcon } from '../../../../shared/ui/icons';
+import { BuildingIcon, LinkIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
 import { registerKeys, useRegisterMeta } from '../../api/register-queries';
 import { sortByCatalogOrder } from '../../lib/bank-catalog';
+import { worksAsTarget } from '../../lib/register-import-view';
 import { branchLabel } from '../../lib/register-labels';
 import { BankCatalogDialog } from '../catalog/BankCatalogDialog';
+import { registerBranchChoices } from '../register/RegisterFilters';
 
 const TH = 'p-2 text-start text-xs font-medium text-slate-500 dark:text-slate-400';
 const TD = 'p-2 align-middle';
 
+/**
+ * What a save of the mapping makes stale: the meta — this card, the register's branch filter and
+ * the receipt's branches — and the entries and the Data Report, whose codes and branch sections
+ * the mapping decides. The card used to refresh the meta alone, so the report kept counting a code
+ * under the branch it had just been moved off.
+ */
+export const REGISTER_MAPPING_STALES = [
+  registerKeys.meta,
+  registerKeys.entries,
+  registerKeys.report,
+] as const;
+
 type BranchDraft = Record<AtmRegisterBranchCode, string>;
+
+/** «يعمل باسم …» under a code's branch — the branch its rows are filed under instead. */
+const WorksAsMark = ({
+  code,
+  target,
+}: {
+  code: AtmRegisterBranchCode;
+  target: string | null;
+}): JSX.Element | null => {
+  const t = useT();
+  return target === null ? null : (
+    <p
+      data-register-settings-works-as={code}
+      title={t('atm.registerSettings.worksAsHint', { target })}
+      className="mt-1 flex items-center gap-1 text-xs text-sky-700 dark:text-sky-300"
+    >
+      <LinkIcon className="h-3 w-3 shrink-0" />
+      <span>{t('atm.registerSettings.worksAs', { target })}</span>
+    </p>
+  );
+};
 
 const branchDraftOf = (meta: AtmRegisterMetaDto | undefined): BranchDraft =>
   Object.fromEntries(
@@ -91,7 +132,9 @@ export const RegisterSettingsCard = (): JSX.Element => {
           branchId: branchDraft[code],
         })),
       });
-      await qc.invalidateQueries({ queryKey: registerKeys.meta });
+      await Promise.all(
+        REGISTER_MAPPING_STALES.map((queryKey) => qc.invalidateQueries({ queryKey })),
+      );
       toast.success(t('atm.registerSettings.saved'));
     } catch {
       // Already said: `useSetSetting` declares no `onError`, so the global handler toasts this
@@ -105,9 +148,24 @@ export const RegisterSettingsCard = (): JSX.Element => {
       ? '—'
       : localized(row.branchName, locale);
   };
-  /** A branch is mapped to one code at most (the setting's own rule). */
+  /** A branch is mapped to one code at most (the setting's own rule — on the raw branches). */
   const takenElsewhere = (code: AtmRegisterBranchCode, branchId: string): boolean =>
     ATM_REGISTER_BRANCH_CODES.some((other) => other !== code && branchDraft[other] === branchId);
+  /**
+   * The branch a code's rows go to when the branch picked for it works as another: the server's
+   * answer for the saved mapping; for a branch just picked, a link the meta already knows of
+   * (`sourceBranchIds`) — else nothing until the save answers.
+   */
+  const worksAs = (code: AtmRegisterBranchCode): string | null => {
+    const picked = branchDraft[code];
+    if (picked === '') return null;
+    const saved = meta.data?.branches.find((b) => b.code === code);
+    if (saved?.branchId === picked) return worksAsTarget(saved, locale, t);
+    const target = registerBranchChoices(meta.data).find(
+      (b) => b.branchId !== picked && b.sourceBranchIds.includes(picked),
+    );
+    return target === undefined ? null : localized(target.name, locale);
+  };
 
   return (
     <Card>
@@ -164,6 +222,7 @@ export const RegisterSettingsCard = (): JSX.Element => {
                       ) : (
                         <span dir="auto">{mappedName(code)}</span>
                       )}
+                      <WorksAsMark code={code} target={worksAs(code)} />
                     </td>
                   </tr>
                 ))}

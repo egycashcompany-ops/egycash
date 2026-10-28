@@ -76,8 +76,10 @@ describe('the widths', () => {
     expect(registerColumnWidth(0)).toBe(72);
   });
 
-  // Review finding LIVE-3: 87 px left 70 px for text, and «EGYCASH-4» measures 70.3 px at 12 px.
-  it('gives the Branch column room for its nine-character codes', () => {
+  // Review finding LIVE-3: 87 px left 70 px for text, and «EGYCASH-4» measured 70.3 px at 12 px.
+  // The column names the ECMS branch now (2026-10-28): the same 96 px holds a short name whole and
+  // cuts a long one, read whole in the tooltip — and the frozen panes after it keep their offsets.
+  it('keeps the Branch column at its 96 px floor, past the sheet’s width', () => {
     const branch = ATM_REGISTER_COLUMNS.find((c) => c.field === 'branchCode');
     expect(branch === undefined ? 0 : registerWidthOf(branch)).toBe(REGISTER_BRANCH_MIN_WIDTH);
     expect(REGISTER_BRANCH_MIN_WIDTH - 16 - 1).toBeGreaterThanOrEqual(76);

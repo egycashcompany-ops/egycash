@@ -1,7 +1,7 @@
 // Entry doc → DTO (spec §3.8, §5.4). Pure: everything the DTO needs that the document does not
-// hold — the caller's secret visibility, the EGYCASH code of the branch, the setting's bank label,
-// the linked master's live state — arrives in `RegisterEntryView`, resolved once per page by the
-// service.
+// hold — the caller's secret visibility, the branch's canonical code and ECMS name, the setting's
+// bank label, the linked master's live state — arrives in `RegisterEntryView`, resolved once per
+// page by the service.
 //
 // The secret rule, in one place: K values (keys, receipt notes, handover notes) are returned only
 // when `secretsVisible`, and paired with that flag so "hidden" and "empty" never look alike on the
@@ -14,6 +14,7 @@ import {
   type AtmRegisterImportIssueCode,
   type AtmRegisterKeysDto,
   type AtmRegisterMasterState,
+  type LocalizedString,
 } from '@ecms/contracts';
 import { type AtmRegisterEntryDoc } from './register.model';
 
@@ -22,7 +23,10 @@ export type AtmRegisterLinkedMasterState = 'active' | 'archived' | 'deleted' | '
 
 export interface RegisterEntryView {
   secretsVisible: boolean;
+  /** The canonical code of the entry's RESOLVED branch (register-settings.ts). */
   branchCode: AtmRegisterBranchCode | null;
+  /** The ECMS name of the STORED branch — what every screen shows (null for no branch). */
+  branchName: LocalizedString | null;
   /** The catalog's Operations label for the entry's bank (null when the entry has no bank). */
   settingOpsLabel: string | null;
   /** Only consulted when the entry carries a `machineId`. */
@@ -101,6 +105,7 @@ export const toAtmRegisterEntryDto = (
     id: String(doc._id),
     branchId: doc.branchId === null || doc.branchId === undefined ? null : String(doc.branchId),
     branchCode: view.branchCode,
+    branchName: view.branchName,
     area: doc.area ?? null,
     bankCode: doc.bankCode ?? null,
     opsBankLabel: doc.opsBankLabel ?? null,

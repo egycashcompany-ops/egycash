@@ -132,7 +132,7 @@ class AtmMaintenanceService {
     input: OpenAtmMaintenances,
     ctx: AuthContext,
   ): Promise<{ opened: AtmMaintenanceDoc[]; unknownCodes: string[]; alreadyOpenCodes: string[] }> {
-    const branchId = await resolveAtmBranchId(ctx);
+    const branchId = await resolveAtmBranchId(ctx, 'atmMaintenance.create');
     const openedAt = input.openedAt ?? new Date();
     const openDay = openDayOf(openedAt);
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));

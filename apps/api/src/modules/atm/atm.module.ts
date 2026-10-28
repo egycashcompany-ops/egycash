@@ -506,6 +506,9 @@ export const atmModule: ModuleManifest = {
     'atm_route_assignments',
     'atm_layout_import_runs',
     'atm_mailbox_config',
+    // «نقل البيانات» (branch-links/branch-move-run.model.ts): one row per move of a linked source's
+    // data to its target — the run lock and the run's record.
+    'atm_branch_move_runs',
   ],
   eventSubscriptions: [],
   scheduledTasks: [

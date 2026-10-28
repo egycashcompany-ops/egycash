@@ -9,7 +9,9 @@
 //     machine's CURRENT bank and area always offered (critic gap 3);
 //   · the spellings tab's callout of bank texts no bank answers to, each one click from being linked;
 //   · what an add tells the reader: recorded in the register as «بيانات ناقصة», linked, for
-//     Operations only — and why a refused add was refused.
+//     Operations only — and why a refused add was refused;
+//   · where an add files, said before it (GM-20 for ATM, 2026-10-28): «الفرع: …», or, on «الشركة
+//     كلها» in a company of several branches, a request to choose a branch first, the add off.
 //
 // Every code, name and label below is synthetic.
 import { readFileSync } from 'node:fs';
@@ -50,6 +52,7 @@ import {
   BulkMachinesDialog,
   MachineDialog,
   RefLabelDialog,
+  addBlocked,
   bulkAddResultOf,
   bulkAddToasts,
   existingAreaName,
@@ -119,6 +122,7 @@ const LOOKUP = makeBankLookup(CATALOG);
 
 const OPTIONS: AtmRefLabelOptionsDto = {
   branchId: ALEX,
+  branch: { id: ALEX, name: { ar: 'الإسكندرية', en: 'Alexandria' } },
   registerMapped: true,
   banks: [
     { value: 'NBE', bankCode: 'NBE', kind: 'bank' },
@@ -512,7 +516,7 @@ describe('the machine dialogs offer the branch’s whole lists', () => {
     expect([...listed.matchAll(/value="NBE FOREX"/g)]).toHaveLength(1);
   });
 
-  it('an add in a branch with no EGYCASH code says, before the click, it is for Operations only', () => {
+  it('an add in a branch the register is not mapped to says, before the click, it is for Operations only', () => {
     const unmapped = (qc: QueryClient): void => {
       qc.setQueryData(atmRefLabelOptionsKey(null), { ...OPTIONS, registerMapped: false });
     };
@@ -528,6 +532,113 @@ describe('the machine dialogs offer the branch’s whole lists', () => {
     expect(
       render(MANAGE, <MachineDialog open onClose={() => undefined} machine={null} />),
     ).not.toContain('data-register-unmapped');
+  });
+});
+
+// ── Where an add files (GM-20 for ATM, 2026-10-28) ──────────────────────────────────────────────
+//
+// The owner's report was a machine that showed only under «كل الشركة»: an organization-wide
+// user's add went to their home placement, whatever the top bar said. The server now files it where
+// the top bar points, and the add forms say where before the click.
+
+/** The options on «الشركة كلها» in a company of several branches: no branch, nothing offered. */
+const NO_BRANCH: AtmRefLabelOptionsDto = {
+  branchId: null,
+  branch: null,
+  registerMapped: false,
+  banks: [],
+  areas: [],
+  unmappedBankNames: [],
+  unmappedBankLabels: [],
+};
+const noBranch = (qc: QueryClient): void => {
+  qc.setQueryData(atmRefLabelOptionsKey(null), NO_BRANCH);
+};
+/** Every submit button's opening tag, in document order. */
+const submits = (markup: string): string[] =>
+  [...markup.matchAll(/<button[^>]*type="submit"[^>]*>/g)].map((m) => m[0]);
+
+describe('an add says where it files', () => {
+  it('opens on «الفرع: …», the branch the server names — the single add and the bulk one', () => {
+    const add = render(MANAGE, <MachineDialog open onClose={() => undefined} machine={null} />);
+    expect(add).toContain(`data-add-branch="${ALEX}"`);
+    expect(add).toContain(t('atm.dataEdit.addInBranch', { name: 'الإسكندرية' }));
+    const bulk = render(MANAGE, <BulkMachinesDialog open onClose={() => undefined} />);
+    expect(bulk).toContain(t('atm.dataEdit.addInBranch', { name: 'الإسكندرية' }));
+    expect(submits(bulk).every((tag) => !tag.includes('disabled=""'))).toBe(true);
+    // An edit is the machine's own branch already: nothing to say.
+    expect(
+      render(MANAGE, <MachineDialog open onClose={() => undefined} machine={machine()} />),
+    ).not.toContain('data-add-branch');
+  });
+
+  it('with no branch to file under, asks for one in the top bar and keeps the add off', () => {
+    const add = render(
+      MANAGE,
+      <MachineDialog open onClose={() => undefined} machine={null} />,
+      noBranch,
+    );
+    expect(add).toContain('data-add-branch="none"');
+    expect(add).toContain(t('atm.dataEdit.chooseBranch'));
+    expect(submits(add)[0]).toContain('disabled=""');
+    // «Not mapped in the register» is no reason here: there is no branch at all.
+    expect(add).not.toContain('data-register-unmapped');
+    const bulk = render(MANAGE, <BulkMachinesDialog open onClose={() => undefined} />, noBranch);
+    expect(bulk).toContain(t('atm.dataEdit.chooseBranch'));
+    expect(bulk).not.toContain('data-register-unmapped');
+    const [bulkAdd, bulkDelete] = submits(bulk);
+    expect(bulkAdd).toContain('disabled=""');
+    // The delete finds its codes in the acting branch, as the add files there (DEC-39): with none,
+    // every delete was refused with the add's own message (review finding).
+    expect(bulkDelete, 'the delete files in the acting branch, as the add does').toContain(
+      'disabled=""',
+    );
+    // Said once, over both halves — and in words that name no action.
+    expect(bulk.indexOf('data-add-branch="none"')).toBeLessThan(bulk.indexOf('<form'));
+    expect(bulk.match(/data-add-branch=/g)).toHaveLength(1);
+    expect(t('atm.dataEdit.chooseBranch')).not.toContain('الإضافة');
+    expect(addBlocked(NO_BRANCH)).toBe(true);
+  });
+
+  it('an older server that names no branch blocks nothing and says nothing', () => {
+    const older: AtmRefLabelOptionsDto = { ...OPTIONS };
+    delete older.branch;
+    const add = render(
+      MANAGE,
+      <MachineDialog open onClose={() => undefined} machine={null} />,
+      (qc) => qc.setQueryData(atmRefLabelOptionsKey(null), older),
+    );
+    expect(add).not.toContain('data-add-branch');
+    expect(addBlocked(older)).toBe(false);
+    expect(addBlocked(undefined), 'still loading').toBe(false);
+  });
+
+  it('on the label tabs, lists every branch with the reason, and keeps the add off', () => {
+    const markup = render(
+      OPERATIONS,
+      <DataEditPage />,
+      (qc) => {
+        noBranch(qc);
+        const mixed = refLabel({ kind: 'bank', name: 'EVERY BRANCH SPELLING', bankCode: 'NBE' });
+        qc.setQueryData(
+          listKey('atm', 'refLabels', {
+            kind: 'bank',
+            page: 1,
+            pageSize: 25,
+            sortDir: 'asc',
+            sortBy: 'name',
+          }),
+          { items: [mixed], meta: { page: 1, pageSize: 25, totalItems: 1, totalPages: 1 } },
+        );
+      },
+      '/atm/data-edit?tab=bankLabel',
+    );
+    expect(markup).toContain('data-labels-unscoped');
+    expect(markup).toContain('EVERY BRANCH SPELLING');
+    expect(tagWith(markup, 'button', 'data-edit-action', 'add-label')).toContain('disabled=""');
+    // A branch named: the add is open.
+    const named = render(OPERATIONS, <DataEditPage />, () => undefined, '/atm/data-edit?tab=area');
+    expect(tagWith(named, 'button', 'data-edit-action', 'add-label')).not.toContain('disabled=""');
   });
 });
 

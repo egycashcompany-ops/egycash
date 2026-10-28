@@ -46,7 +46,8 @@ export const registerAtmSettings = (): void => {
       "The register workbook's `EGYCASH-n` branch codes (column A of the ATMs sheet) → the ECMS " +
       'branch each one is (D4). Empty means no register receipt is possible (DEC-10) and the ' +
       'workbook import is blocked (`branchUnmapped`); nothing is guessed — which branch EGYCASH-7 ' +
-      'is, is the administrator’s answer (EG-18).',
+      'is, is the administrator’s answer (EG-18). Read through `atm.branchLinks`: a code ' +
+      'mapped to a branch linked to work as another is filed, shown and counted under that one.',
     schema: AtmRegisterBranchCodesSettingSchema,
     defaultValue: [],
     // Organization only: what a code on the owner's sheet means is one fact about the company.

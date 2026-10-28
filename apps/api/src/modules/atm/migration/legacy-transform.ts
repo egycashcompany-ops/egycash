@@ -27,6 +27,25 @@ import { openDayOf } from '../shared/open-operation';
  */
 export type LegacyTimeMode = 'cairo-labelled' | 'utc';
 
+/**
+ * Pure: why a deployment may not be imported into `branchId`, or null when it may. A branch LINKED
+ * to work as another (`atm.branchLinks`, source → target) holds no ATM data of its own: its people
+ * are answered as the target (branch-links/link-context.ts), so rows filed under it would be seen
+ * only under «كل الشركة» — the owner's report of 2026-10-28 — and a re-run would put rows already
+ * moved to the target («نقل البيانات») back under the source, by their preserved ids.
+ */
+export const linkedSourceRefusal = (
+  branchId: string,
+  links: ReadonlyMap<string, string>,
+): string | null => {
+  const target = links.get(branchId.toLowerCase());
+  return target === undefined
+    ? null
+    : `--branch=${branchId} is linked to work as ${target} (atm.branchLinks): its ATM data is ` +
+        `filed under ${target}, and rows imported under it would be seen only under the whole ` +
+        `company. Import into the target instead: --branch=${target}`;
+};
+
 export const repairLegacyInstant = <T extends Date | null | undefined>(
   stored: T,
   mode: LegacyTimeMode,

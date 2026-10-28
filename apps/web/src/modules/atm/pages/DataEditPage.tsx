@@ -1,16 +1,29 @@
 // /atm/data-edit — the legacy /data_edit_atm page (data_edit_atm.ejs, contad_app.js:2356-2544),
 // rebuilt in the fleet-catalogs shape (fleet/pages/CatalogsPage.tsx) at the owner's request: the
-// three things this page administers are URL-synced tabs, each a live paginated table with a
-// status filter, and entry is a dialog per item rather than a wall of textareas.
+// things this page administers are URL-synced tabs, each a live table with a status filter, and
+// entry is a dialog per item rather than a wall of textareas.
+//
+// FOUR TABS (DEC-35, DEC-38), one table each in the board frame:
+//   · «الماكينات» — the Operations machine master;
+//   · «البنوك» — the company-wide bank CATALOG. The owner's call (final): a bank added here is a
+//     full register bank (register, Data Report, settlements, map). Kept by Efficiency and the
+//     administrators (`atmBank.create` / `atmBank.edit`, organization scope on the server);
+//   · «أسماء البنوك في التشغيل» — this branch's SPELLINGS of catalog banks (`NBE FOREX` → NBE, a
+//     legacy text …): what Operations type on a machine, each linked to the bank it means. Above
+//     the table, the bank texts machines already carry that link to no bank, each one click away
+//     from being linked — until it is, such a machine is added but not recorded in the register;
+//   · «المناطق» — the areas, with their Arabic and English names. The owner: «الإنجليزي تمام» — a
+//     new area's English name is what machines store; both are what the pickers show.
 //
 // WHO MAY DO WHAT (D2, docs/12-planning/atm-efficiency-register.md §8.4). Whether a machine EXISTS
-// is now decided by the Efficiency register: a receipt from the bank creates it, a handover
-// archives it. This stays Operations' page, minus the actions that decide existence:
-//   · Operations (`atmRefLabel.create`, `atmRefLabel.edit`, `atmMachine.moveArea`) add a bank or an
-//     area, rename one or toggle its archive, and move a machine to another area. Apart from that
-//     move, the machines tab is read-only to them. Nobody deletes a label from this page.
+// is decided by the Efficiency register: a receipt from the bank creates it, a handover archives
+// it. This stays Operations' page, minus the actions that decide existence:
+//   · Operations (`atmRefLabel.create`, `atmRefLabel.edit`, `atmMachine.moveArea`) add a spelling
+//     or an area, rename one or toggle its archive, and move a machine to another area. Apart from
+//     that move, the machines tab is read-only to them. Nobody deletes a label from this page.
 //   · `atmMachine.manage` keeps everything it had: add a machine, the bulk add and delete-by-codes,
-//     the full edit (name, bank, area, archive) and the row delete.
+//     the full edit (name, bank, area, archive) and the row delete. An add now also records an
+//     OPEN, linked receipt in the register flagged «بيانات ناقصة» (DEC-36, the owner's call).
 // Each control checks its own key. The server enforces the same split (§7.1); hiding a control
 // only spares a click that would be refused.
 //
@@ -20,41 +33,58 @@
 //   · "نقل ماكينة لمنطقة" (:2529-2541) is Operations' area-move dialog on each row, and `manage`
 //     changes the area inside the full edit as before. Both work on a machine you can see rather
 //     than one you must name;
-//   · the bank and area lists (:2471-2527) are two of the tabs.
+//   · the bank and area lists (:2471-2527) are tabs.
 //
 // What the legacy could NOT do and this can: fix one machine's name or bank, and ARCHIVE a
 // machine or a label instead of deleting it (`isActive`) — the row leaves the forms and the mail
 // matcher, which read active only, while its code stays taken and its history stays readable.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type AtmMachineDto, type AtmRefLabelDto } from '@ecms/contracts';
+import {
+  type AtmBankDto,
+  type AtmMachineDto,
+  type AtmRefLabelDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { useAppSelector } from '../../../store';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
-import { StatusBadge } from '../../../shared/ui/Badge';
+import { Badge, StatusBadge } from '../../../shared/ui/Badge';
 import { Input, Select } from '../../../shared/ui/form';
 import { EditIcon, PinIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { useAtmMachines, useAtmRefLabels, useBulkDeleteAtmMachines } from '../api/atm-queries';
+import {
+  useAtmBanks,
+  useAtmMachines,
+  useAtmRefLabelOptions,
+  useAtmRefLabels,
+  useBulkDeleteAtmMachines,
+} from '../api/atm-queries';
 import {
   BulkMachinesDialog,
   MachineAreaDialog,
   MachineDialog,
   RefLabelDialog,
 } from '../components/DataEditDialogs';
+import { BankDialog } from '../components/catalog/BankDialog';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
+import { makeBankLookup, sortByCatalogOrder } from '../lib/bank-catalog';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = ['active', 'q', 'sort', 'size'] as const;
 
-/** The three things this page administers, in the order the legacy page presented them. */
-export const ATM_DATA_TABS = ['machines', 'bank', 'area'] as const;
+/**
+ * The four things this page administers: the machines, the bank catalog, this branch's Operations
+ * spellings of its banks, and the areas.
+ */
+export const ATM_DATA_TABS = ['machines', 'bank', 'bankLabel', 'area'] as const;
 export type AtmDataTab = (typeof ATM_DATA_TABS)[number];
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -65,19 +95,34 @@ const isTab = (value: string | null): value is AtmDataTab =>
 const actionButton =
   'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
+/** Where an area label came from, as its badge says it — none for one typed on this page. */
+const originBadgeKey = (origin: AtmRefLabelDto['origin']): string | null =>
+  origin === 'manual'
+    ? null
+    : origin === 'backfill'
+      ? 'atm.dataEdit.origin.backfill'
+      : 'atm.dataEdit.origin.auto';
+
 export const DataEditPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   // The D2 split. Each control below reads the flag for its own key, and `manage` still passes
   // every check it passed before.
   const canManage = can('atmMachine.manage');
   const canMoveArea = can('atmMachine.moveArea');
   const canAddLabels = canManage || can('atmRefLabel.create');
   const canEditLabels = canManage || can('atmRefLabel.edit');
+  // The catalog is Efficiency's and the administrators' (DEC-39); the server also wants both keys
+  // at organization scope, so a branch-scoped holder sees the buttons and gets a 403's words.
+  const canAddBank = can('atmBank.create');
+  const canEditBank = can('atmBank.edit');
   const [sp, setSp] = useSearchParams();
 
   const tabParam = sp.get('tab');
   const tab: AtmDataTab = isTab(tabParam) ? tabParam : 'machines';
+  const labelTab = tab === 'bankLabel' || tab === 'area';
+  const labelKind = tab === 'area' ? 'area' : 'bank';
   // Each tab filters a different catalogue, so each keeps its own memory; the tab is not a filter.
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
   const active = sp.get('active') ?? '';
@@ -120,31 +165,47 @@ export const DataEditPage = (): JSX.Element => {
   );
 
   const machines = useAtmMachines(listParams, tab === 'machines');
-  const labels = useAtmRefLabels(tab === 'area' ? 'area' : 'bank', listParams, tab !== 'machines');
-
-  // Both dialogs pick from the full ACTIVE lists, not the current page of a filtered table.
-  const bankOptions = useAtmRefLabels('bank', {
-    pageSize: MAX_PAGE_SIZE,
-    sortBy: 'name',
-    sortDir: 'asc',
-    isActive: true,
-  });
-  const areaOptions = useAtmRefLabels('area', {
-    pageSize: MAX_PAGE_SIZE,
-    sortBy: 'name',
-    sortDir: 'asc',
-    isActive: true,
-  });
-  const banks = bankOptions.data?.items ?? [];
-  const areas = areaOptions.data?.items ?? [];
+  const labels = useAtmRefLabels(labelKind, listParams, labelTab);
+  // The catalog is read whole (fewer than fifty banks): the bank tab's table, and the name the
+  // spellings tab shows for each spelling's bank.
+  const catalog = useAtmBanks();
+  const lookup = useMemo(() => makeBankLookup(catalog.data), [catalog.data]);
+  const bankRows = useMemo(
+    () =>
+      sortByCatalogOrder(catalog.data ?? []).filter(
+        (bank) => active === '' || bank.isActive === (active === 'true'),
+      ),
+    [catalog.data, active],
+  );
+  // The acting branch's bank texts that link to no bank — the spellings tab's callout.
+  const options = useAtmRefLabelOptions(null, tab === 'bankLabel');
+  const unmapped = options.data?.unmappedBankNames ?? [];
 
   const [creating, setCreating] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState<AtmMachineDto | null>(null);
   const [movingMachine, setMovingMachine] = useState<AtmMachineDto | null>(null);
   const [editingLabel, setEditingLabel] = useState<AtmRefLabelDto | null>(null);
+  const [editingBank, setEditingBank] = useState<AtmBankDto | null>(null);
+  /** «ربط ببنك» on a text no spelling holds yet: a new spelling, its text filled in. */
+  const [linking, setLinking] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<AtmMachineDto | null>(null);
   const bulkDelete = useBulkDeleteAtmMachines();
+
+  /**
+   * «ربط ببنك» for one unmapped text: when a spelling with that exact text is already listed — a
+   * legacy row the backfill could not link — it is EDITED to name its bank (adding it again would be
+   * refused as a duplicate); otherwise a new spelling is added with the text filled in.
+   */
+  const linkToBank = (name: string): void => {
+    const row = labels.data?.items.find((r) => r.name === name && r.bankCode === null);
+    if (row !== undefined) setEditingLabel(row);
+    else setLinking(name);
+  };
+  const canLink = (name: string): boolean =>
+    labels.data?.items.some((r) => r.name === name && r.bankCode === null) === true
+      ? canEditLabels
+      : canAddLabels;
 
   const statusColumn = <T extends { isActive: boolean }>(): Column<T> => ({
     key: 'status',
@@ -156,6 +217,28 @@ export const DataEditPage = (): JSX.Element => {
       />
     ),
   });
+
+  const editLabelColumn: Column<AtmRefLabelDto>[] = canEditLabels
+    ? [
+        {
+          key: 'actions',
+          header: t('atm.dataEdit.actions'),
+          align: 'end',
+          render: (r: AtmRefLabelDto) => (
+            <button
+              type="button"
+              className={actionButton}
+              aria-label={t('atm.common.edit')}
+              title={t('atm.common.edit')}
+              data-edit-action="edit-label"
+              onClick={() => setEditingLabel(r)}
+            >
+              <EditIcon className="h-4 w-4" />
+            </button>
+          ),
+        } satisfies Column<AtmRefLabelDto>,
+      ]
+    : [];
 
   const machineColumns: Column<AtmMachineDto>[] = [
     {
@@ -222,33 +305,107 @@ export const DataEditPage = (): JSX.Element => {
       : []),
   ];
 
-  const labelColumns: Column<AtmRefLabelDto>[] = [
-    { key: 'name', header: t('atm.dataEdit.labelName'), sortable: true, render: (r) => r.name },
-    statusColumn<AtmRefLabelDto>(),
-    ...(canEditLabels
+  const bankColumns: Column<AtmBankDto>[] = [
+    {
+      key: 'code',
+      header: t('atm.bankCatalog.code'),
+      render: (r) => <span dir="ltr">{r.code}</span>,
+    },
+    { key: 'nameAr', header: t('atm.bankCatalog.nameAr'), render: (r) => r.name.ar },
+    { key: 'nameEn', header: t('atm.bankCatalog.nameEn'), render: (r) => r.name.en },
+    {
+      key: 'opsLabel',
+      header: t('atm.bankCatalog.opsLabel'),
+      render: (r) => <span dir="ltr">{r.opsLabel}</span>,
+    },
+    {
+      key: 'color',
+      header: t('atm.bankCatalog.color'),
+      render: (r) => (
+        <span className="inline-flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="h-3 w-3 shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(15,23,42,0.3)]"
+            style={{ backgroundColor: r.color }}
+          />
+          <span dir="ltr" className="text-xs text-slate-500 dark:text-slate-400">
+            {r.color}
+          </span>
+        </span>
+      ),
+    },
+    statusColumn<AtmBankDto>(),
+    ...(canEditBank
       ? [
           {
             key: 'actions',
             header: t('atm.dataEdit.actions'),
             align: 'end',
-            render: (r: AtmRefLabelDto) => (
+            render: (r: AtmBankDto) => (
               <button
                 type="button"
                 className={actionButton}
                 aria-label={t('atm.common.edit')}
                 title={t('atm.common.edit')}
-                data-edit-action="edit-label"
-                onClick={() => setEditingLabel(r)}
+                data-edit-action="edit-bank"
+                onClick={() => setEditingBank(r)}
               >
                 <EditIcon className="h-4 w-4" />
               </button>
             ),
-          } satisfies Column<AtmRefLabelDto>,
+          } satisfies Column<AtmBankDto>,
         ]
       : []),
   ];
 
-  const query = tab === 'machines' ? machines : labels;
+  const spellingColumns: Column<AtmRefLabelDto>[] = [
+    {
+      key: 'name',
+      header: t('atm.dataEdit.labelName'),
+      sortable: true,
+      render: (r) => <span dir="ltr">{r.name}</span>,
+    },
+    {
+      key: 'bankCode',
+      header: t('atm.common.bank'),
+      render: (r) =>
+        r.bankCode === null ? (
+          <Badge tone="warning" size="sm">
+            {t('atm.dataEdit.notLinked')}
+          </Badge>
+        ) : (
+          lookup.name(r.bankCode, locale)
+        ),
+    },
+    statusColumn<AtmRefLabelDto>(),
+    ...editLabelColumn,
+  ];
+
+  const areaColumns: Column<AtmRefLabelDto>[] = [
+    { key: 'name', header: t('atm.dataEdit.storedName'), sortable: true, render: (r) => r.name },
+    { key: 'nameAr', header: t('atm.dataEdit.nameAr'), render: (r) => r.nameAr ?? '—' },
+    {
+      key: 'nameEn',
+      header: t('atm.dataEdit.nameEn'),
+      render: (r) => (r.nameEn === null ? '—' : <span dir="ltr">{r.nameEn}</span>),
+    },
+    {
+      key: 'origin',
+      header: t('atm.dataEdit.origin.title'),
+      render: (r) => {
+        const key = originBadgeKey(r.origin);
+        return key === null ? null : (
+          <Badge tone={r.origin === 'backfill' ? 'neutral' : 'info'} size="sm">
+            {t(key)}
+          </Badge>
+        );
+      },
+    },
+    statusColumn<AtmRefLabelDto>(),
+    ...editLabelColumn,
+  ];
+
+  const paged = tab === 'machines' ? machines : labelTab ? labels : null;
 
   return (
     <PageContainer fullHeight>
@@ -285,6 +442,19 @@ export const DataEditPage = (): JSX.Element => {
                   </Button>
                 </div>
               </Can>
+            ) : tab === 'bank' ? (
+              <Can permission="atmBank.create">
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    leftIcon={<PlusIcon className="h-4 w-4" />}
+                    data-edit-action="add-bank"
+                    onClick={() => setCreating(true)}
+                  >
+                    {t('atm.bankCatalog.add')}
+                  </Button>
+                </div>
+              </Can>
             ) : (
               <Can anyOf={['atmRefLabel.create', 'atmMachine.manage']}>
                 <div className="flex gap-2">
@@ -294,7 +464,7 @@ export const DataEditPage = (): JSX.Element => {
                     data-edit-action="add-label"
                     onClick={() => setCreating(true)}
                   >
-                    {t(tab === 'bank' ? 'atm.dataEdit.addBank' : 'atm.dataEdit.addArea')}
+                    {t(tab === 'bankLabel' ? 'atm.dataEdit.addSpelling' : 'atm.dataEdit.addArea')}
                   </Button>
                 </div>
               </Can>
@@ -349,6 +519,40 @@ export const DataEditPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
+        {/* The texts machines here carry that link to no bank (DEC-35): until one is linked, a
+            machine added with it works for Operations but is not recorded in the register. */}
+        {tab === 'bankLabel' && unmapped.length > 0 && (
+          <div
+            data-unmapped-callout="true"
+            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <p className="font-medium">{t('atm.dataEdit.unmappedTitle')}</p>
+            <p className="mt-1 text-xs">{t('atm.dataEdit.unmappedBody')}</p>
+            <ul className="mt-2 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+              {unmapped.map((name) => (
+                <li
+                  key={name}
+                  className="flex items-center gap-2 rounded-lg bg-white/70 py-1 pe-1 ps-3 dark:bg-slate-900/60"
+                >
+                  <span dir="ltr" className="font-medium">
+                    {name}
+                  </span>
+                  {canLink(name) && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      data-edit-action="link-bank"
+                      onClick={() => linkToBank(name)}
+                    >
+                      {t('atm.dataEdit.linkToBank')}
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className={BOARD_TABLE_FILL}>
           {tab === 'machines' ? (
             <DataTable
@@ -362,9 +566,20 @@ export const DataEditPage = (): JSX.Element => {
               onSortChange={changeSort}
               stickyHead
             />
+          ) : tab === 'bank' ? (
+            // The whole catalog in its order, filtered here — it has no pager to wait on.
+            <DataTable
+              columns={bankColumns}
+              rows={bankRows}
+              rowKey={(r) => r.code}
+              loading={catalog.isLoading}
+              error={catalog.isError ? catalog.error : undefined}
+              onRetry={() => void catalog.refetch()}
+              stickyHead
+            />
           ) : (
             <DataTable
-              columns={labelColumns}
+              columns={tab === 'area' ? areaColumns : spellingColumns}
               rows={labels.data?.items ?? []}
               rowKey={(r) => r.id}
               loading={labels.isLoading}
@@ -377,9 +592,9 @@ export const DataEditPage = (): JSX.Element => {
           )}
         </div>
 
-        {query.data !== undefined && query.data.meta.totalItems > 0 && (
+        {paged !== null && paged.data !== undefined && paged.data.meta.totalItems > 0 && (
           <Pagination
-            meta={query.data.meta}
+            meta={paged.data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}
             onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
           />
@@ -392,40 +607,44 @@ export const DataEditPage = (): JSX.Element => {
         open={creating && tab === 'machines' && canManage}
         onClose={() => setCreating(false)}
         machine={null}
-        banks={banks}
-        areas={areas}
       />
       <MachineDialog
         open={editingMachine !== null && canManage}
         onClose={() => setEditingMachine(null)}
         machine={editingMachine}
-        banks={banks}
-        areas={areas}
       />
       <MachineAreaDialog
         open={movingMachine !== null && canMoveArea}
         onClose={() => setMovingMachine(null)}
         machine={movingMachine}
-        areas={areas}
+      />
+      <BankDialog
+        open={creating && tab === 'bank' && canAddBank}
+        onClose={() => setCreating(false)}
+        bank={null}
+      />
+      <BankDialog
+        open={editingBank !== null && canEditBank}
+        onClose={() => setEditingBank(null)}
+        bank={editingBank}
       />
       <RefLabelDialog
-        open={creating && tab !== 'machines' && canAddLabels}
-        onClose={() => setCreating(false)}
-        kind={tab === 'area' ? 'area' : 'bank'}
+        open={((creating && labelTab) || linking !== null) && canAddLabels}
+        onClose={() => {
+          setCreating(false);
+          setLinking(null);
+        }}
+        kind={labelKind}
         label={null}
+        presetName={linking ?? ''}
       />
       <RefLabelDialog
         open={editingLabel !== null && canEditLabels}
         onClose={() => setEditingLabel(null)}
-        kind={tab === 'area' ? 'area' : 'bank'}
+        kind={labelKind}
         label={editingLabel}
       />
-      <BulkMachinesDialog
-        open={bulkOpen && canManage}
-        onClose={() => setBulkOpen(false)}
-        banks={banks}
-        areas={areas}
-      />
+      <BulkMachinesDialog open={bulkOpen && canManage} onClose={() => setBulkOpen(false)} />
       <ConfirmActionDialog
         open={deleting !== null && canManage}
         onClose={() => setDeleting(null)}

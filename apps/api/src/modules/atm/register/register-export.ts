@@ -5,8 +5,10 @@
 // P-class columns ONLY, for everybody — viewSecrets holders included: key codes, both notes columns
 // and the combination never leave in a file, whose copies nobody can audit. The headers are the
 // workbook's own texts (newlines → spaces) so the file reads like the sheet it replaces, plus a
-// derived `Status`. Every cell passes the formula-injection guard before `csvEscape`: a cell an
-// Excel user opens must never run as a formula.
+// derived `Status` and DEC-37's `Data incomplete` («بيانات ناقصة»: `yes` / `no`) — the export
+// inherits the list's filters, `incomplete` included, so Efficiency can take the rows still to be
+// completed away in a file. Every cell passes the formula-injection guard before `csvEscape`: a
+// cell an Excel user opens must never run as a formula.
 import { type Response } from 'express';
 import {
   ATM_REGISTER_COLUMNS,
@@ -31,6 +33,7 @@ const EXPORT_COLUMNS = ATM_REGISTER_COLUMNS.filter((column) => column.sensitivit
 export const REGISTER_EXPORT_HEADERS: readonly string[] = [
   ...EXPORT_COLUMNS.map((column) => column.header.replace(/\r?\n/g, ' ')),
   'Status',
+  'Data incomplete',
 ];
 
 /**
@@ -63,7 +66,11 @@ const cellOf = (
 };
 
 export const registerRowToCsv = (doc: AtmRegisterEntryDoc, settings: RegisterSettings): string =>
-  [...EXPORT_COLUMNS.map((column) => cellOf(doc, column.field, settings)), doc.status]
+  [
+    ...EXPORT_COLUMNS.map((column) => cellOf(doc, column.field, settings)),
+    doc.status,
+    doc.dataIncomplete === true ? 'yes' : 'no',
+  ]
     .map((cell) => csvEscape(guardCsvFormula(cell)))
     .join(',');
 

@@ -13,7 +13,7 @@
 // which is the grey hollow dot of a machine on the map outside every zone. So any zone filter
 // shows located machines only, and the «بدون موقع» figure then counts none.
 import {
-  ATM_BANK_CODES,
+  ATM_BANK_CODE_PATTERN,
   ATM_MAP_STATUS_FILTERS,
   joinAtmNameList,
   splitAtmNameList,
@@ -66,7 +66,13 @@ export const DEFAULT_MAP_FILTERS: MapFilters = {
   machine: null,
 };
 
-const BANK_VALUES: readonly string[] = [...ATM_BANK_CODES, BANK_NONE];
+/**
+ * A bank value from the address bar: «بنك غير محدد», or anything shaped like a catalog code. The
+ * shape and not a list (DEC-35): a bank added at runtime must survive a reload and a shared link,
+ * and a code the catalog does not hold simply matches no point.
+ */
+const isBankValue = (value: string): value is MapBankFilter =>
+  value === BANK_NONE || ATM_BANK_CODE_PATTERN.test(value);
 
 const list = (raw: string | null): string[] => [...new Set(splitAtmNameList(raw ?? ''))];
 
@@ -77,7 +83,7 @@ export const parseMapFilters = (params: MapFilterParams): MapFilters => {
   const branch = params.branch?.trim() ?? '';
   const machine = params.machine?.trim() ?? '';
   return {
-    banks: list(params.banks).filter((b): b is MapBankFilter => BANK_VALUES.includes(b)),
+    banks: list(params.banks).filter(isBankValue),
     areas: list(params.areas),
     zones: list(params.zones),
     status,

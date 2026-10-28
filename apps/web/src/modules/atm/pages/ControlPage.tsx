@@ -14,7 +14,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ATM_BANK_NAMES,
   type AssignAtmRoutes,
   type AtmControlPrint,
   type AtmControlRouteDto,
@@ -43,6 +42,7 @@ import {
   useRoutesFromZones,
   useUpdateRoute,
 } from '../api/settlements-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { ControlDataTab } from '../components/settlements/ControlDataTab';
 import { ControlRoutesTab } from '../components/settlements/ControlRoutesTab';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
@@ -72,6 +72,8 @@ type Editing = { route: AtmControlRouteDto | null } | null;
 export const ControlPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Bank names from the catalog (DEC-35): a bank added since the workbook is named, not coded.
+  const bankLookup = useAtmBankLookup();
   const [sp, setSp] = useSearchParams();
   const setParam = (key: 'date' | 'tab', value: string | null): void => {
     const next = new URLSearchParams(sp);
@@ -258,7 +260,7 @@ export const ControlPage = (): JSX.Element => {
           label={t('atm.control.action.printHandover')}
           items={plans.map((p) => ({
             key: p.planId,
-            label: ATM_BANK_NAMES[p.bankCode][locale],
+            label: bankLookup.name(p.bankCode, locale),
             onSelect: () => askHandover(p.planId),
           }))}
         />
@@ -368,7 +370,7 @@ export const ControlPage = (): JSX.Element => {
           </div>
         ) : (
           <div className={BOARD_TABLE_FILL}>
-            <ControlDataTab day={day} locale={locale} />
+            <ControlDataTab day={day} locale={locale} banks={bankLookup} />
           </div>
         )}
       </div>

@@ -61,6 +61,7 @@ import {
   useMapZones,
   useSaveZoneSet,
 } from '../api/map-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { BankLegend } from '../components/map/BankLegend';
 import { ConflictDialog } from '../components/map/ConflictDialog';
 import { DeleteZoneDialog } from '../components/map/DeleteZoneDialog';
@@ -86,16 +87,11 @@ import {
   type CanvasView,
   type CanvasZone,
 } from '../components/map/map-canvas-types';
-import {
-  bankColor,
-  needsCasing,
-  paleBank,
-  CASING_INK,
-  NO_ZONE_GREY,
-  suggestColor,
-} from '../lib/map-colors';
+import { CASING_INK, NO_ZONE_GREY, needsCasing, suggestColor } from '../lib/map-colors';
+import { banksOnShow } from '../lib/bank-catalog';
 import { machineCountText, zoneLabelCountText } from '../lib/map-count-text';
 import {
+  BANK_NONE,
   BRANCH_ALL,
   ZONE_MULTI,
   ZONE_NONE,
@@ -241,6 +237,19 @@ export const MachineMapPage = (): JSX.Element => {
   const points = useMapPoints({ branchId, status: raw.status }, ready);
   const zonesQuery = useMapZones({ branchId }, ready);
   const allPoints = points.data?.points ?? EMPTY_POINTS;
+  // The bank catalog (DEC-35): every name, colour and order the map shows for a bank. The legend
+  // and the filter offer the active banks and any other the branch's dots carry — an archived
+  // bank's machines are still on the map in its colour — and a remembered filter's own code (the
+  // bank filter is never pruned, so `raw.banks` is what the view filters by).
+  const banks = useAtmBankLookup();
+  const bankCodes = useMemo(
+    () =>
+      banksOnShow(banks, [
+        ...allPoints.map((p) => p.bankCode),
+        ...raw.banks.filter((b) => b !== BANK_NONE),
+      ]),
+    [banks, allPoints, raw.banks.join()],
+  );
   const sets = useMemo(() => zonesQuery.data?.sets ?? [], [zonesQuery.data]);
   const viewZones = useMemo(
     () => sets.flatMap((set) => [...set.zones].sort((a, b) => a.order - b.order)),
@@ -683,8 +692,9 @@ export const MachineMapPage = (): JSX.Element => {
   ): Omit<CanvasDot, 'id' | 'lat' | 'lng' | 'faded' | 'review'> => {
     if (layers.colorBy === 'bank') {
       return {
-        fill: bankColor(bankCode),
-        ring: paleBank(bankCode) ? CASING_INK : '#ffffff',
+        fill: banks.color(bankCode),
+        // The ring by contrast (DM-17, §8.9), so a curated or added bank's pale colour gets it too.
+        ring: banks.isPale(bankCode) ? CASING_INK : '#ffffff',
         ringWidth: 1.5,
       };
     }
@@ -772,6 +782,7 @@ export const MachineMapPage = (): JSX.Element => {
             all: m.all.map(named),
           }}
           locale={locale}
+          banks={banks}
           canOpenRegister={can('atmRegister.view')}
           canMove={canLocateIn(popupPoint.branchId)}
           onClose={closePopup}
@@ -881,7 +892,7 @@ export const MachineMapPage = (): JSX.Element => {
     detailZone === undefined ? null : (
       <ZoneDetail
         zone={detailZone}
-        breakdown={zoneBreakdown(detailZone.id, visible, viewMembership)}
+        breakdown={zoneBreakdown(detailZone.id, visible, viewMembership, banks.codes)}
         overlaps={
           overlapsOf(
             detailZone,
@@ -889,6 +900,7 @@ export const MachineMapPage = (): JSX.Element => {
           ).length
         }
         locale={locale}
+        banks={banks}
         onBack={() => setDetailId(null)}
         onEdit={
           zoneEditableFromDetail(detailZone.branchId, editBranchId, canEditZones)
@@ -1125,7 +1137,9 @@ export const MachineMapPage = (): JSX.Element => {
         }}
         onKeyDown={onMapKey}
       >
-        {!editing && layers.colorBy === 'bank' && layers.pins && <BankLegend locale={locale} />}
+        {!editing && layers.colorBy === 'bank' && layers.pins && (
+          <BankLegend locale={locale} banks={banks} codes={bankCodes} />
+        )}
         {editor.mode === 'draw' && (
           <div
             role="status"
@@ -1200,6 +1214,8 @@ export const MachineMapPage = (): JSX.Element => {
               <MapFilters
                 filters={filters}
                 locale={locale}
+                banks={banks}
+                bankCodes={bankCodes}
                 areas={areas}
                 zoneOptions={zoneOptions}
                 patch={(updates: MapFilterPatch) => patch(updates)}

@@ -54,9 +54,22 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['atm', 'mapLocationSummary'],
     ['atm', 'cassetteLayouts'],
   ],
+  // A label also feeds the data-edit dialogs' options and the register form's branch options
+  // (DEC-38: register and machine saves file area labels, so another screen's save adds one).
   'atm.refLabel': [
     ['atm', 'refLabels'],
     ['atm', 'machines'],
+    ['atm', 'refLabelOptions'],
+    ['atm', 'registerBranchOptions'],
+  ],
+  // The bank catalog (DEC-35): every screen that names, orders or colours a bank — the same
+  // families the catalog's own write hooks invalidate (`atm-queries.ts`).
+  'atm.bank': [
+    ['atm', 'banks'],
+    ['atm', 'registerMeta'],
+    ['atm', 'registerReport'],
+    ['atm', 'refLabelOptions'],
+    ['atm', 'mapPoints'],
   ],
   'atm.replenishment': [['atm', 'replenishments']],
   'atm.maintenance': [['atm', 'maintenances']],

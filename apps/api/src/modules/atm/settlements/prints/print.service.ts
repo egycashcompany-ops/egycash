@@ -15,7 +15,6 @@
 // «بيان التغذية» and «سيلزات» record on the plan which serials they covered, so the plan page can
 // say when the paper and the plan no longer agree (`receiptStale`, `handoverStale`, SEC-21).
 import {
-  ATM_BANK_NAMES,
   ErrorCodes,
   byDenomination,
   isPlanned,
@@ -41,6 +40,7 @@ import {
   ValidationError,
 } from '../../../../shared/errors';
 import { keyReachesBranch, scopeSelector, type AuthContext } from '../../../../shared/types';
+import { loadAtmBankCatalog } from '../../catalogs/bank-catalog';
 import { actorName } from '../../shared/atm-context';
 import { branchScopeMatch, narrowToBranch } from '../../shared/branch-scope';
 import { AtmDispatchRouteModel, type AtmDispatchRouteDoc } from '../control/dispatch-route.model';
@@ -55,6 +55,13 @@ import { atmSettlementPlanService } from '../plans/plan.service';
 import { AtmReplenishmentPlanModel, type AtmReplenishmentPlanDoc } from '../plans/plan.model';
 import { branchMismatch, branchNameOf, requireWorkBranch } from '../shared/settlement-context';
 import { runSettlementHook } from '../shared/test-hooks';
+
+/**
+ * The bank's Arabic name on a paper — the catalog's (DEC-35), so a bank added at runtime prints by
+ * its name, and a renamed one by its current name; a code nobody knows prints as itself.
+ */
+const printedBankName = async (bankCode: string): Promise<string> =>
+  (await loadAtmBankCatalog()).nameOf(bankCode)?.ar ?? bankCode;
 
 const PLAN_VIEW = 'atmSettlementPlan.view';
 const PLAN_PRINT = 'atmSettlementPlan.print';
@@ -219,7 +226,7 @@ class AtmSettlementPrintService {
     return {
       branchName: await branchNameOf(String(plan.branchId)),
       bankCode: plan.bankCode,
-      bankNameAr: ATM_BANK_NAMES[plan.bankCode].ar,
+      bankNameAr: await printedBankName(plan.bankCode),
       replenishDate: plan.replenishDate,
       printedAt: printedAt.toISOString(),
       notes: lines.map((l) => {
@@ -279,7 +286,7 @@ class AtmSettlementPrintService {
     });
     return {
       bankCode: plan.bankCode,
-      bankNameAr: ATM_BANK_NAMES[plan.bankCode].ar,
+      bankNameAr: await printedBankName(plan.bankCode),
       replenishDate: plan.replenishDate,
       printedAt: printedAt.toISOString(),
       rows: figures.rows,

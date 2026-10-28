@@ -31,6 +31,11 @@
 // assignments in the second — operation records holding counts and seals, whose duplicate report
 // is the collection and the counts only, the operation logs' rule.
 //
+// The bank catalog (DEC-35) joined the first group: `ux_bank_code` and `ux_bank_ops_label_keys`
+// must exist before the boot seed inserts the six — they are what makes a second instance's
+// concurrent seed, or a duplicate label, an E11000 instead of a second NBE. Its keys are bank codes
+// and label keys, never a K or S value.
+//
 // THE DEFINITIONS ARE READ FROM THE SCHEMAS (`schema.indexes()`), never restated here. ONE INDEX AT
 // A TIME, so a duplicate costs exactly its own index. DUPLICATES ARE REPORTED, NEVER RESOLVED — a
 // legacy `atm_machines` loaded by `npm run atm:import` may violate `ux_branch_code` (risk R-9); the
@@ -40,6 +45,7 @@ import { type Model } from 'mongoose';
 import { logger } from '../../infrastructure/logging/logger';
 import { AtmMachineModel } from './machines/machine.model';
 import { AtmRefLabelModel } from './catalogs/ref-label.model';
+import { AtmBankModel } from './catalogs/bank.model';
 import { AtmRegisterEntryModel } from './register/register.model';
 import { AtmRegisterImportRunModel } from './register/import/register-import-run.model';
 import { AtmReplenishmentModel } from './replenishments/replenishment.model';
@@ -92,6 +98,7 @@ export const atmIndexedModels = (): AtmIndexedModel[] => [
     [
       AtmMachineModel,
       AtmRefLabelModel,
+      AtmBankModel,
       AtmRegisterEntryModel,
       AtmRegisterImportRunModel,
       AtmMapZoneModel,

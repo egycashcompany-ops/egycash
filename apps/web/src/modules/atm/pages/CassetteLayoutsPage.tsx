@@ -9,7 +9,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  ATM_BANK_NAMES,
   type AtmBankCode,
   type AtmCassetteLayoutRowDto,
   type Locale,
@@ -38,6 +37,7 @@ import {
   useSettlementContext,
   useStandardLoads,
 } from '../api/settlements-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { BlockedNotice } from '../components/settlements/DayField';
 import { LayoutChips } from '../components/settlements/LineChips';
 import { LayoutEditor } from '../components/settlements/LayoutEditor';
@@ -62,6 +62,8 @@ type Status = (typeof STATUSES)[number];
 export const CassetteLayoutsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Bank names from the catalog (DEC-35): a bank added since the workbook is named, not coded.
+  const bankLookup = useAtmBankLookup();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const patch = (updates: Record<string, string | null>): void => {
@@ -288,7 +290,7 @@ export const CassetteLayoutsPage = (): JSX.Element => {
             >
               {banks.map((b) => (
                 <option key={b} value={b}>
-                  {ATM_BANK_NAMES[b][locale]}
+                  {bankLookup.name(b, locale)}
                 </option>
               ))}
             </Select>

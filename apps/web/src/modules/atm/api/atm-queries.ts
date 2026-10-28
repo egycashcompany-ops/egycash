@@ -6,10 +6,16 @@
 //     the open board is read WHOLE (every page, one cache entry), so the refresh re-reads it all;
 //   · a mail DECISION stales maintenances too — accepting creates a maintenance row — and the
 //     unread badge, which is a count of pending tickets;
-//   · a machine-master write stales machines and the label lists it references.
-//   · an area move stales the efficiency register too: the machine's open period follows its area.
+//   · a machine-master write stales machines and the label lists it references — and, since a
+//     data-edit add lands in the register (DEC-36), the register's entries and its Data Report:
+//     an add records an open receipt, and any area write moves the machine's open period (DEC-4).
+//     Every one of those writes can also file an area label on the server (DEC-38), so the
+//     dialogs' options go stale too;
+//   · a bank catalog write (DEC-35) stales every screen that names or orders banks.
+import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  type AtmBankDto,
   type AtmMachineDto,
   type AtmMachinesSummaryDto,
   type AtmOperationFacetsDto,
@@ -17,10 +23,12 @@ import {
   type BulkDeleteAtmMachines,
   type BulkUpdateAtmMaintenances,
   type BulkUpdateAtmReplenishments,
+  type CreateAtmBankInput,
   type CreateAtmMachine,
   type CreateAtmRefLabel,
   type Paginated,
   type ReassignAtmMachineArea,
+  type UpdateAtmBank,
   type UpdateAtmMachine,
   type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
@@ -31,6 +39,7 @@ import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { isAlreadyOpenRefusal } from '../lib/operation-view';
 import { boardQuery } from '../lib/board-filters';
+import { makeBankLookup, type BankLookup } from '../lib/bank-catalog';
 import { fetchWholeBoard } from '../lib/whole-board';
 import * as api from './atm-api';
 import { type AtmListParams } from './atm-api';
@@ -40,6 +49,13 @@ const MODULE = 'atm';
 const atmKeys = {
   machines: featureKey(MODULE, 'machines'),
   refLabels: featureKey(MODULE, 'refLabels'),
+  refLabelOptions: featureKey(MODULE, 'refLabelOptions'),
+  banks: featureKey(MODULE, 'banks'),
+  // The register's families, by the same keys `register-queries.ts` builds.
+  registerEntries: featureKey(MODULE, 'registerEntries'),
+  registerReport: featureKey(MODULE, 'registerReport'),
+  registerMeta: featureKey(MODULE, 'registerMeta'),
+  mapPoints: featureKey(MODULE, 'mapPoints'),
   replenishments: featureKey(MODULE, 'replenishments'),
   maintenances: featureKey(MODULE, 'maintenances'),
   mailTickets: featureKey(MODULE, 'mailTickets'),
@@ -102,11 +118,28 @@ export const useAtmMachineCodeSearch = (params: AtmListParams, enabled: boolean)
     placeholderData: (previous: Paginated<AtmMachineDto> | undefined) => previous,
   });
 
+/**
+ * After a machine-master write: the machines, and what the write did on the register's side — an
+ * add's receipt, an area move's open period, an area label filed on save (critic gap 4: only the
+ * Operations area move used to refresh the register, though every area write moves it).
+ */
+const invalidateMachineWrite = (client: ReturnType<typeof useQueryClient>): void => {
+  for (const queryKey of [
+    atmKeys.machines,
+    atmKeys.refLabels,
+    atmKeys.refLabelOptions,
+    atmKeys.registerEntries,
+    atmKeys.registerReport,
+  ]) {
+    void client.invalidateQueries({ queryKey });
+  }
+};
+
 export const useBulkCreateAtmMachines = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: BulkCreateAtmMachines) => api.bulkCreateMachines(body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+    onSuccess: () => invalidateMachineWrite(client),
   });
 };
 
@@ -122,15 +155,21 @@ export const useReassignAtmMachineArea = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: ReassignAtmMachineArea) => api.reassignMachineArea(body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+    onSuccess: () => invalidateMachineWrite(client),
   });
 };
 
+/**
+ * The single add. Its refusals are worded by the dialog (`machineAddErrorText`: the code active or
+ * open in another branch, an archived bank, the code taken here), so it opts out of the global
+ * toast — declaring `onError` is what opts out. One failure, one message.
+ */
 export const useCreateAtmMachine = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateAtmMachine) => api.createMachine(body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+    onSuccess: () => invalidateMachineWrite(client),
+    onError: () => undefined,
   });
 };
 
@@ -139,7 +178,7 @@ export const useUpdateAtmMachine = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmMachine }) =>
       api.updateMachine(id, body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+    onSuccess: () => invalidateMachineWrite(client),
   });
 };
 
@@ -149,10 +188,7 @@ export const useUpdateAtmMachineArea = () => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmMachineArea }) =>
       api.updateMachineArea(id, body),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: atmKeys.machines });
-      void client.invalidateQueries({ queryKey: featureKey(MODULE, 'registerEntries') });
-    },
+    onSuccess: () => invalidateMachineWrite(client),
   });
 };
 
@@ -164,14 +200,36 @@ export const useAtmRefLabels = (kind: 'bank' | 'area', params: AtmListParams, en
     enabled,
   });
 
+/** The options query's key — exported so the dialogs' specs fill exactly the entry they read. */
+export const atmRefLabelOptionsKey = (branchId: string | null): readonly unknown[] =>
+  listKey(MODULE, 'refLabelOptions', { branchId });
+
+/**
+ * The data-edit dialogs' pick lists for ONE branch (`null` = the acting branch): asked only while
+ * a dialog is open, since every machine row carries a closed one.
+ */
+export const useAtmRefLabelOptions = (branchId: string | null, enabled = true) =>
+  useQuery({
+    queryKey: atmRefLabelOptionsKey(branchId),
+    queryFn: () => api.refLabelOptions(branchId),
+    enabled,
+  });
+
 // The label dialog reports its own failures — "already exists" for the 409, the reader's own
 // words for anything else (`refLabelErrorText`) — so these two opt out of the global toast:
 // declaring `onError` is what opts out (`shared/lib/query-client.ts`). One failure, one message.
+/** A label write moves the table, the dialogs' options and the register's branch options. */
+const invalidateLabelWrite = (client: ReturnType<typeof useQueryClient>): void => {
+  void client.invalidateQueries({ queryKey: atmKeys.refLabels });
+  void client.invalidateQueries({ queryKey: atmKeys.refLabelOptions });
+  void client.invalidateQueries({ queryKey: featureKey(MODULE, 'registerBranchOptions') });
+};
+
 export const useCreateAtmRefLabel = (kind: 'bank' | 'area') => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateAtmRefLabel) => api.createRefLabel(kind, body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onSuccess: () => invalidateLabelWrite(client),
     onError: () => undefined,
   });
 };
@@ -181,7 +239,7 @@ export const useUpdateAtmRefLabel = (kind: 'bank' | 'area') => {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateAtmRefLabel }) =>
       api.updateRefLabel(kind, id, body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onSuccess: () => invalidateLabelWrite(client),
     onError: () => undefined,
   });
 };
@@ -190,7 +248,70 @@ export const useDeleteAtmRefLabel = (kind: 'bank' | 'area') => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.deleteRefLabel(kind, id),
-    onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.refLabels }),
+    onSuccess: () => invalidateLabelWrite(client),
+  });
+};
+
+// ── Bank catalog (DEC-35) ───────────────────────────────────────────────────
+/** The catalog's key — exported so specs fill the entry every bank-naming screen reads. */
+export const atmBanksKey = (): readonly unknown[] => listKey(MODULE, 'banks');
+
+/**
+ * The company-wide bank catalog, whole (fewer than fifty rows; `GET /atm/banks` answers any ATM
+ * key). A bank is added a few times a year, so five minutes stale is plenty — a catalog write, here
+ * or on another screen (realtime `atm.bank`), refreshes it at once anyway.
+ */
+export const useAtmBanks = (enabled = true) =>
+  useQuery({
+    queryKey: atmBanksKey(),
+    queryFn: () => api.listBanks(),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+
+/**
+ * The lookup every bank-naming screen reads its names, colours and order from (`lib/bank-catalog`).
+ * The six seeds until the catalog answers, so nothing waits on it.
+ */
+export const useAtmBankLookup = (): BankLookup => {
+  const { data } = useAtmBanks();
+  return useMemo(() => makeBankLookup(data), [data]);
+};
+
+/**
+ * A catalog write reaches everything that names, orders or colours banks: the catalog itself, the
+ * register's meta and Data Report, the dialogs' bank options, and the map's points (their bank).
+ */
+const invalidateBankWrite = (client: ReturnType<typeof useQueryClient>): void => {
+  for (const queryKey of [
+    atmKeys.banks,
+    atmKeys.registerMeta,
+    atmKeys.registerReport,
+    atmKeys.refLabelOptions,
+    atmKeys.mapPoints,
+  ]) {
+    void client.invalidateQueries({ queryKey });
+  }
+};
+
+// The bank dialog words its own refusals (`bankErrorText`: the code, label or name already a
+// bank's), so both writes opt out of the global toast.
+export const useCreateAtmBank = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAtmBankInput): Promise<AtmBankDto> => api.createBank(body),
+    onSuccess: () => invalidateBankWrite(client),
+    onError: () => undefined,
+  });
+};
+
+export const useUpdateAtmBank = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ code, body }: { code: string; body: UpdateAtmBank }): Promise<AtmBankDto> =>
+      api.updateBank(code, body),
+    onSuccess: () => invalidateBankWrite(client),
+    onError: () => undefined,
   });
 };
 

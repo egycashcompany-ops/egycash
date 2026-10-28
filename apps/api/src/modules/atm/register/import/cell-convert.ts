@@ -10,14 +10,14 @@
 // K columns (J..Q, AN, AU) and the combination (AO) it is ALWAYS null — the value never leaves the
 // converter except as the field it fills (`issue()` below is the one place that decides it).
 import {
-  ATM_BANK_CODES,
   ATM_REGISTER_BANK_ALIASES,
   ATM_REGISTER_BRANCH_CODES,
+  ATM_SEED_BANK_CODES,
   normalizeAtmMachineCode,
-  type AtmBankCode,
   type AtmRegisterBranchCode,
   type AtmRegisterImportIssueCode,
   type AtmRegisterSensitivity,
+  type AtmSeedBankCode,
 } from '@ecms/contracts';
 import { isPlaceholderMachineCode } from '../register-coupling';
 
@@ -212,17 +212,21 @@ export const convertBranch = (
     : { value: code, present, issues: [] };
 };
 
-/** C — the bank enum; the one spelling alias (`نيكست` → NXT) is noted, any other text refused. */
+/**
+ * C — the workbook's six banks; the one spelling alias (`نيكست` → NXT) is noted, any other text
+ * refused. The SEEDS, not the catalog (DEC-35): this workbook was written before any bank was added
+ * at runtime, and its 57-cell Data Report knows exactly these six.
+ */
 export const convertBank = (
   cell: RawCellValue,
   column: CellColumn,
-): Converted<AtmBankCode | null> => {
+): Converted<AtmSeedBankCode | null> => {
   if (cell.kind === 'error') {
     return { value: null, issues: [issue('errorValue', column, cell.value)] };
   }
   const text = plainText(cell);
   if (text === null) return { value: null, issues: [] };
-  const code = ATM_BANK_CODES.find((candidate) => candidate === text);
+  const code = ATM_SEED_BANK_CODES.find((candidate) => candidate === text);
   if (code !== undefined) return { value: code, issues: [] };
   const alias = ATM_REGISTER_BANK_ALIASES[text];
   if (alias !== undefined) return { value: alias, issues: [issue('bankAlias', column, text)] };

@@ -14,14 +14,34 @@
 //     archive toggle under `atmRefLabel.edit`. A label is never deleted from this page.
 //   · `MachineAreaDialog` is Operations' area move (`atmMachine.moveArea`): the area and nothing
 //     else.
-import { useEffect, useState, type FormEvent } from 'react';
+//
+// WHAT THE PICKERS OFFER (DEC-35, DEC-38). Every machine dialog reads `GET /atm/ref-labels/options`
+// for ONE branch — the acting branch on add, the machine's own on edit and move — so the lists are
+// whole (no 100-row page), hold no other branch's labels, and need no `atmMachine.view`:
+//   · banks grouped by catalog bank («البنك الأهلي المصري» → NBE, NBE FOREX); the value is the text
+//     the machine stores, and the server resolves its bank;
+//   · areas in the reader's language, with the stored name after it when the two differ;
+//   · the machine's CURRENT bank and area always (critic gap 3: a value that is not a label —
+//     typed by the register, or archived — used to leave the select on its placeholder).
+//
+// AN ADD LANDS IN THE REGISTER (DEC-36). The owner's call (final): a machine added here is recorded
+// in the Efficiency register as an OPEN receipt dated the add day, linked to the machine and flagged
+// «بيانات ناقصة». The server answers what it did on the register's side and the toast says so — and
+// the dialog says BEFORE the click when this branch cannot be recorded at all (no EGYCASH code).
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
+  ErrorCodes,
   normalizeAtmMachineCode,
   splitAtmFormLines,
+  type AtmMachineCreateResultDto,
   type AtmMachineDto,
   type AtmRefLabelDto,
+  type AtmRefLabelOptionsDto,
+  type BulkCreateAtmMachinesResultDto,
+  type CreateAtmRefLabel,
   type Locale,
   type UpdateAtmMachineArea,
+  type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -30,8 +50,10 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Checkbox, Field, Input, Select, Textarea } from '../../../shared/ui/form';
-import { toast } from '../../../shared/ui/toast/toast-store';
+import { toast, type ToastVariant } from '../../../shared/ui/toast/toast-store';
 import {
+  useAtmBankLookup,
+  useAtmRefLabelOptions,
   useBulkCreateAtmMachines,
   useBulkDeleteAtmMachines,
   useCreateAtmMachine,
@@ -40,20 +62,148 @@ import {
   useUpdateAtmMachineArea,
   useUpdateAtmRefLabel,
 } from '../api/atm-queries';
+import { areaOptionText, bankOptionGroups, labelText, type BankLookup } from '../lib/bank-catalog';
 
 /**
  * A refused label save in the reader's words. Only the 409 is "already exists" — the legacy's
  * «موجود قبل كدا» (:2474); a 403 (no reach over the branch) or anything else says what it is
- * (review finding F1: every failure used to read "already exists").
+ * (review finding F1: every failure used to read "already exists"). Two 409s say more:
+ *   · a spelling that is already a catalog bank's own Operations label (`ATM_BANK_LABEL_TAKEN`) —
+ *     it needs no spelling, the bank already answers to it;
+ *   · a NEW area whose name is taken: areas are one label per spelling (EG-6), so the way forward
+ *     is to give the existing label its other language, which the text says.
  */
 export const refLabelErrorText = (
   error: unknown,
   t: (key: string) => string,
   locale: Locale,
-): string =>
-  error instanceof ApiError && error.status === 409
-    ? t('atm.dataEdit.labelExists')
-    : errorMessage(error, locale);
+  options: { areaCreate?: boolean } = {},
+): string => {
+  if (!(error instanceof ApiError) || error.status !== 409) return errorMessage(error, locale);
+  if (error.code === ErrorCodes.ATM_BANK_LABEL_TAKEN) return t('atm.dataEdit.spellingIsBankLabel');
+  return t(options.areaCreate === true ? 'atm.dataEdit.areaExists' : 'atm.dataEdit.labelExists');
+};
+
+// ── What an add did, and why it was refused ─────────────────────────────────────────────────────
+
+/** The two refusals the add reuses from the register (D6, DEC-9) — the other branch is not named. */
+const ADD_REFUSALS: Readonly<Record<string, string>> = {
+  [ErrorCodes.ATM_REGISTER_CODE_ACTIVE_ELSEWHERE]: 'atm.dataEdit.error.activeElsewhere',
+  [ErrorCodes.ATM_REGISTER_OPEN_PERIOD_EXISTS]: 'atm.dataEdit.error.openElsewhere',
+};
+
+/**
+ * A refused single add in the reader's words: the code active or open in ANOTHER branch, an
+ * archived catalog bank (`body.bankName INACTIVE`), the code already active here — and anything
+ * else as itself, where every failure used to read "already registered".
+ */
+export const machineAddErrorText = (
+  error: unknown,
+  t: (key: string) => string,
+  locale: Locale,
+): string => {
+  if (error instanceof ApiError) {
+    const refusal = ADD_REFUSALS[error.code];
+    if (refusal !== undefined) return t(refusal);
+    if ((error.details ?? []).some((d) => d.field === 'body.bankName' && d.code === 'INACTIVE')) {
+      return t('atm.dataEdit.error.bankInactive');
+    }
+    if (error.status === 409) return t('atm.dataEdit.codeTaken');
+  }
+  return errorMessage(error, locale);
+};
+
+export interface AddToast {
+  variant: ToastVariant;
+  title: string;
+  description: string;
+}
+
+/**
+ * The single add's toast: what happened to the machine (added, or an archived one brought back to
+ * work), then what the register recorded. `none/noBank` is a warning — the machine works, but
+ * Efficiency will not see it until its bank text is linked to a bank.
+ */
+export const machineAddToast = (
+  result: AtmMachineCreateResultDto,
+  t: (key: string) => string,
+): AddToast => {
+  const { action, reason } = result.register;
+  const outcome =
+    action === 'created' || action === 'received'
+      ? 'recorded'
+      : action === 'linked' || action === 'existing'
+        ? 'linked'
+        : (reason ?? 'noBank');
+  return {
+    variant: outcome === 'noBank' ? 'warning' : 'success',
+    title: t(result.reactivated ? 'atm.dataEdit.machineReactivated' : 'atm.dataEdit.machineAdded'),
+    description: t(`atm.dataEdit.register.${outcome}`),
+  };
+};
+
+/**
+ * The bulk add's report, one toast per kind of answer: how many were added and recorded, then the
+ * codes the reader must act on or know about — brought back from the archive, refused because the
+ * code lives in another branch, or added but not recorded in the register (and why).
+ */
+export const bulkAddToasts = (
+  result: BulkCreateAtmMachinesResultDto,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): { variant: ToastVariant; title: string }[] => {
+  const codes = (list: readonly string[]): string => list.join('، ');
+  const out: { variant: ToastVariant; title: string }[] = [];
+  if (result.created.length > 0) {
+    out.push({
+      variant: 'success',
+      title: t('atm.dataEdit.machinesAdded', { count: result.created.length }),
+    });
+  }
+  const recorded = result.register.created.length + result.register.received.length;
+  if (recorded > 0) {
+    out.push({
+      variant: 'success',
+      title: t('atm.dataEdit.machinesRecorded', { count: recorded }),
+    });
+  }
+  const linked = result.register.linked.length + result.register.existing.length;
+  if (linked > 0) {
+    out.push({ variant: 'success', title: t('atm.dataEdit.machinesLinked', { count: linked }) });
+  }
+  if (result.reactivatedCodes.length > 0) {
+    out.push({
+      variant: 'info',
+      title: t('atm.dataEdit.machinesReactivated', { codes: codes(result.reactivatedCodes) }),
+    });
+  }
+  if (result.skippedCodes.length > 0) {
+    out.push({
+      variant: 'error',
+      title: t('atm.dataEdit.machinesSkipped', { codes: codes(result.skippedCodes) }),
+    });
+  }
+  for (const reason of ['activeElsewhere', 'openElsewhere'] as const) {
+    const refused = result.refused.filter((r) => r.reason === reason).map((r) => r.machineCode);
+    if (refused.length > 0) {
+      out.push({
+        variant: 'error',
+        title: t(`atm.dataEdit.machinesRefused.${reason}`, { codes: codes(refused) }),
+      });
+    }
+  }
+  for (const reason of ['branchUnmapped', 'placeholderCode', 'noBank'] as const) {
+    const missed = result.register.notRecorded
+      .filter((r) => r.reason === reason)
+      .map((r) => r.machineCode);
+    if (missed.length > 0) {
+      out.push({
+        variant: 'warning',
+        title: t(`atm.dataEdit.notRecorded.${reason}`, { codes: codes(missed) }),
+      });
+    }
+  }
+  return out;
+};
 
 /** Code/name line pairs → machine rows; blank lines dropped, as the legacy loop did. */
 export const buildMachineRows = (
@@ -70,36 +220,122 @@ export const buildMachineRows = (
     .filter((row) => row.machineCode !== '' && row.name !== '');
 };
 
-const LabelOptions = ({ options }: { options: AtmRefLabelDto[] }): JSX.Element => (
-  <>
-    {options.map((option) => (
-      <option key={option.id} value={option.name}>
-        {option.name}
-      </option>
-    ))}
-  </>
-);
+// ── The pick lists ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The bank select's options: one group per catalog bank, each value the text the machine stores.
+ * `current` (the machine's own text) leads when no group offers it, so the select opens on the
+ * truth and an edit of the name alone keeps the bank as it was.
+ */
+export const BankOptions = ({
+  options,
+  lookup,
+  locale,
+  current = '',
+}: {
+  options: AtmRefLabelOptionsDto | undefined;
+  lookup: BankLookup;
+  locale: Locale;
+  current?: string;
+}): JSX.Element => {
+  const groups = bankOptionGroups(options?.banks ?? [], lookup, locale);
+  const listed = current === '' || groups.some((group) => group.values.includes(current));
+  return (
+    <>
+      {!listed && <option value={current}>{current}</option>}
+      {groups.map((group) => (
+        <optgroup key={group.code} label={group.label}>
+          {group.values.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  );
+};
+
+/** The branch's areas in the reader's language, by that text. */
+const sortedAreas = (
+  options: AtmRefLabelOptionsDto | undefined,
+  locale: Locale,
+): AtmRefLabelOptionsDto['areas'] =>
+  [...(options?.areas ?? [])].sort((a, b) =>
+    labelText(a, locale).localeCompare(labelText(b, locale), locale),
+  );
+
+/**
+ * The area select's options; `current` as in `BankOptions`. `currentDisabled` keeps it from being
+ * picked again where the choice must CHANGE it (the area move).
+ */
+export const AreaOptions = ({
+  options,
+  locale,
+  current = '',
+  currentDisabled = false,
+}: {
+  options: AtmRefLabelOptionsDto | undefined;
+  locale: Locale;
+  current?: string;
+  currentDisabled?: boolean;
+}): JSX.Element => {
+  const areas = sortedAreas(options, locale);
+  const listed = current === '' || areas.some((area) => area.name === current);
+  return (
+    <>
+      {!listed && (
+        <option value={current} disabled={currentDisabled}>
+          {current}
+        </option>
+      )}
+      {areas.map((area) => (
+        <option key={area.name} value={area.name}>
+          {areaOptionText(area, locale)}
+        </option>
+      ))}
+    </>
+  );
+};
+
+/**
+ * Said BEFORE an add when the branch has no EGYCASH code (DEC-10): the machine still works for
+ * Operations, but nothing can be recorded in the register for it.
+ */
+const UnmappedBranchNotice = ({
+  options,
+}: {
+  options: AtmRefLabelOptionsDto | undefined;
+}): JSX.Element | null => {
+  const t = useT();
+  return options?.registerMapped === false ? (
+    <p
+      data-register-unmapped="true"
+      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
+    >
+      {t('atm.dataEdit.notRegisterMapped')}
+    </p>
+  ) : null;
+};
 
 export const MachineDialog = ({
   open,
   onClose,
   machine,
-  banks,
-  areas,
 }: {
   open: boolean;
   onClose: () => void;
   /** null = add; a document = version-aware edit (the code is identity and stays read-only). */
   machine: AtmMachineDto | null;
-  banks: AtmRefLabelDto[];
-  areas: AtmRefLabelDto[];
 }): JSX.Element => {
   const t = useT();
-  const [machineCode, setMachineCode] = useState('');
-  const [name, setName] = useState('');
-  const [bankName, setBankName] = useState('');
-  const [area, setArea] = useState('');
-  const [isActive, setIsActive] = useState(true);
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Seeded from the props — the dialog opens on the machine's values — and re-seeded on each open.
+  const [machineCode, setMachineCode] = useState(machine?.machineCode ?? '');
+  const [name, setName] = useState(machine?.name ?? '');
+  const [bankName, setBankName] = useState(machine?.bankName ?? '');
+  const [area, setArea] = useState(machine?.area ?? '');
+  const [isActive, setIsActive] = useState(machine?.isActive ?? true);
 
   useEffect(() => {
     if (!open) return;
@@ -110,6 +346,9 @@ export const MachineDialog = ({
     setIsActive(machine?.isActive ?? true);
   }, [open, machine]);
 
+  // An add files into the acting branch; an edit offers the machine's OWN branch's lists.
+  const options = useAtmRefLabelOptions(machine?.branchId ?? null, open);
+  const lookup = useAtmBankLookup();
   const create = useCreateAtmMachine();
   const update = useUpdateAtmMachine();
   const pending = create.isPending || update.isPending;
@@ -122,26 +361,31 @@ export const MachineDialog = ({
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (!complete) return;
-    try {
-      if (machine === null) {
-        await create.mutateAsync({
+    if (machine === null) {
+      try {
+        const result = await create.mutateAsync({
           machineCode: normalizeAtmMachineCode(machineCode),
           name: name.trim(),
           bankName,
           area,
         });
-        toast.success(t('atm.dataEdit.machineAdded'));
-      } else {
-        await update.mutateAsync({
-          id: machine.id,
-          body: { name: name.trim(), bankName, area, isActive, version: machine.version },
-        });
-        toast.success(t('atm.dataEdit.machineSaved'));
+        const shown = machineAddToast(result, t);
+        toast[shown.variant](shown.title, shown.description);
+        onClose();
+      } catch (error) {
+        toast.error(machineAddErrorText(error, t, locale));
       }
+      return;
+    }
+    try {
+      await update.mutateAsync({
+        id: machine.id,
+        body: { name: name.trim(), bankName, area, isActive, version: machine.version },
+      });
+      toast.success(t('atm.dataEdit.machineSaved'));
       onClose();
     } catch {
-      // The single add reports a taken code, where the bulk paste skips it silently.
-      toast.error(machine === null ? t('atm.dataEdit.codeTaken') : t('atm.common.actionFailed'));
+      toast.error(t('atm.common.actionFailed'));
     }
   };
 
@@ -152,6 +396,7 @@ export const MachineDialog = ({
       title={machine === null ? t('atm.dataEdit.addMachine') : t('atm.dataEdit.editMachine')}
     >
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
+        {machine === null && <UnmappedBranchNotice options={options.data} />}
         <Field
           label={t('atm.common.machineId')}
           required
@@ -173,7 +418,12 @@ export const MachineDialog = ({
             <option value="" disabled>
               {t('atm.dataEdit.pickBank')}
             </option>
-            <LabelOptions options={banks} />
+            <BankOptions
+              options={options.data}
+              lookup={lookup}
+              locale={locale}
+              current={machine?.bankName ?? ''}
+            />
           </Select>
         </Field>
         <Field label={t('atm.common.area')} required>
@@ -181,7 +431,7 @@ export const MachineDialog = ({
             <option value="" disabled>
               {t('atm.dataEdit.pickArea')}
             </option>
-            <LabelOptions options={areas} />
+            <AreaOptions options={options.data} locale={locale} current={machine?.area ?? ''} />
           </Select>
         </Field>
         {machine !== null && (
@@ -225,15 +475,15 @@ export const MachineAreaDialog = ({
   open,
   onClose,
   machine,
-  areas,
 }: {
   open: boolean;
   onClose: () => void;
   machine: AtmMachineDto | null;
-  /** The ACTIVE area labels, the same list the full edit offers. */
-  areas: AtmRefLabelDto[];
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The machine's own branch's ACTIVE areas — the same list its full edit offers.
+  const options = useAtmRefLabelOptions(machine?.branchId ?? null, open && machine !== null);
   const [area, setArea] = useState(machine?.area ?? '');
 
   useEffect(() => {
@@ -246,7 +496,6 @@ export const MachineAreaDialog = ({
   // A machine may be moved BECAUSE its area was archived. That area is then missing from the
   // active list, and a select with no matching option would show the first area as if it were
   // the current one. So it stays listed but cannot be picked, and the dialog opens on the truth.
-  const currentListed = current === '' || areas.some((option) => option.name === current);
   const changed = area !== '' && area !== current;
 
   const submit = async (event: FormEvent): Promise<void> => {
@@ -279,12 +528,7 @@ export const MachineAreaDialog = ({
             <option value="" disabled>
               {t('atm.dataEdit.pickArea')}
             </option>
-            {!currentListed && (
-              <option value={current} disabled>
-                {current}
-              </option>
-            )}
-            <LabelOptions options={areas} />
+            <AreaOptions options={options.data} locale={locale} current={current} currentDisabled />
           </Select>
         </Field>
         <div className="flex justify-end gap-2">
@@ -300,68 +544,226 @@ export const MachineAreaDialog = ({
   );
 };
 
+/** The label dialog's fields as typed. */
+export interface RefLabelForm {
+  /** Spellings: the text. Areas: the stored name (edit only — a new area's is its English name). */
+  name: string;
+  nameAr: string;
+  nameEn: string;
+  /** Spellings: the catalog bank; '' = not linked (edit only). */
+  bankCode: string;
+  isActive: boolean;
+}
+
+/** The form a label dialog opens on. */
+export const refLabelFormOf = (label: AtmRefLabelDto | null, presetName = ''): RefLabelForm => ({
+  name: label?.name ?? presetName,
+  nameAr: label?.nameAr ?? '',
+  nameEn: label?.nameEn ?? '',
+  bankCode: label?.bankCode ?? '',
+  isActive: label?.isActive ?? true,
+});
+
+/**
+ * POST /atm/ref-labels/:kind. A spelling names its bank (the server requires an ACTIVE one); a new
+ * area gives BOTH names and the server stores the English one on machines (the owner: «الإنجليزي
+ * تمام» — stored areas are Latin, MOHNDESSEN, ALEX, and the import's ` FX` rule reads Latin).
+ */
+export const refLabelCreateBody = (kind: 'bank' | 'area', form: RefLabelForm): CreateAtmRefLabel =>
+  kind === 'bank'
+    ? { name: form.name.trim(), bankCode: form.bankCode }
+    : { nameAr: form.nameAr.trim(), nameEn: form.nameEn.trim() };
+
+/**
+ * PATCH /atm/ref-labels/:kind/:id — only what changed, and the version. An unchanged name is not
+ * sent, so a save that only adds a translation never records a rename (`formerNames`); an unchanged
+ * bank is not sent, so a spelling of a bank archived since still saves its other fields.
+ */
+export const refLabelUpdateBody = (
+  kind: 'bank' | 'area',
+  label: AtmRefLabelDto,
+  form: RefLabelForm,
+): UpdateAtmRefLabel => {
+  const name = form.name.trim();
+  const body: UpdateAtmRefLabel = { isActive: form.isActive, version: label.version };
+  if (name !== label.name) body.name = name;
+  if (kind === 'bank') {
+    const bankCode = form.bankCode === '' ? null : form.bankCode;
+    if (bankCode !== label.bankCode) body.bankCode = bankCode;
+  } else {
+    const nameAr = form.nameAr.trim() === '' ? null : form.nameAr.trim();
+    const nameEn = form.nameEn.trim() === '' ? null : form.nameEn.trim();
+    if (nameAr !== label.nameAr) body.nameAr = nameAr;
+    if (nameEn !== label.nameEn) body.nameEn = nameEn;
+  }
+  return body;
+};
+
+/** Whether the label form can be sent. */
+export const refLabelFormComplete = (
+  kind: 'bank' | 'area',
+  creating: boolean,
+  form: RefLabelForm,
+): boolean => {
+  if (kind === 'area' && creating) return form.nameAr.trim() !== '' && form.nameEn.trim() !== '';
+  if (form.name.trim() === '') return false;
+  return kind === 'area' || !creating || form.bankCode !== '';
+};
+
+/**
+ * One label — an Operations spelling of a catalog bank (`kind: 'bank'`) or an area.
+ *
+ *   · A spelling is a text Operations write for a bank (`NBE FOREX` → NBE): the dialog asks for the
+ *     text and its bank. `presetName` comes from «ربط ببنك» on the unmapped callout, which offers
+ *     the very text machines already carry.
+ *   · A new area asks for its name in Arabic AND English, and shows the name machines will store
+ *     before the click: «يُحفظ على الماكينات باسم: …».
+ *   · Editing an area shows the stored name beside the two display names. A rename does not move
+ *     the machines (it never did): the dialog says so when the stored name changes.
+ */
 export const RefLabelDialog = ({
   open,
   onClose,
   kind,
   label,
+  presetName = '',
 }: {
   open: boolean;
   onClose: () => void;
   kind: 'bank' | 'area';
   label: AtmRefLabelDto | null;
+  /** A new spelling's text, filled in («ربط ببنك»). */
+  presetName?: string;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [name, setName] = useState('');
-  const [isActive, setIsActive] = useState(true);
+  const lookup = useAtmBankLookup();
+  // Seeded from the props — the dialog opens on the label's values — and re-seeded on each open.
+  const [form, setForm] = useState<RefLabelForm>(() => refLabelFormOf(label, presetName));
+  const set = (patch: Partial<RefLabelForm>): void =>
+    setForm((current) => ({ ...current, ...patch }));
 
   useEffect(() => {
-    if (!open) return;
-    setName(label?.name ?? '');
-    setIsActive(label?.isActive ?? true);
-  }, [open, label]);
+    if (open) setForm(refLabelFormOf(label, presetName));
+  }, [open, label, presetName]);
 
   const create = useCreateAtmRefLabel(kind);
   const update = useUpdateAtmRefLabel(kind);
   const pending = create.isPending || update.isPending;
+  const creating = label === null;
+  const complete = refLabelFormComplete(kind, creating, form);
+  // The ACTIVE banks, plus the spelling's own bank when it has been archived since.
+  const banks = useMemo(
+    () =>
+      lookup.ordered.filter(
+        (bank) => bank.isActive || (label !== null && bank.code === label.bankCode),
+      ),
+    [lookup, label],
+  );
+  const storedAs = form.nameEn.trim();
+  const renamed = label !== null && form.name.trim() !== label.name;
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (name.trim() === '') return;
+    if (!complete) return;
     try {
       if (label === null) {
-        await create.mutateAsync({ name: name.trim() });
+        await create.mutateAsync(refLabelCreateBody(kind, form));
         toast.success(t('atm.dataEdit.labelAdded'));
       } else {
-        await update.mutateAsync({
-          id: label.id,
-          body: { name: name.trim(), isActive, version: label.version },
-        });
+        await update.mutateAsync({ id: label.id, body: refLabelUpdateBody(kind, label, form) });
         toast.success(t('atm.dataEdit.labelSaved'));
       }
       onClose();
     } catch (error) {
-      toast.error(refLabelErrorText(error, t, locale));
+      toast.error(refLabelErrorText(error, t, locale, { areaCreate: kind === 'area' && creating }));
     }
   };
 
   const title =
     label === null
-      ? t(kind === 'bank' ? 'atm.dataEdit.addBank' : 'atm.dataEdit.addArea')
-      : t(kind === 'bank' ? 'atm.dataEdit.editBank' : 'atm.dataEdit.editArea');
+      ? t(kind === 'bank' ? 'atm.dataEdit.addSpelling' : 'atm.dataEdit.addArea')
+      : t(kind === 'bank' ? 'atm.dataEdit.editSpelling' : 'atm.dataEdit.editArea');
 
   return (
     <Dialog open={open} onClose={onClose} title={title}>
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
-        <Field label={t('atm.dataEdit.labelName')} required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
-        </Field>
+        {(kind === 'bank' || !creating) && (
+          <Field
+            label={t(kind === 'bank' ? 'atm.dataEdit.labelName' : 'atm.dataEdit.storedName')}
+            required
+            // An area's rename never moves its machines: said on every edit, and in amber once
+            // the stored name has actually been changed.
+            hint={kind === 'area' ? t('atm.dataEdit.renameKeepsMachines') : undefined}
+            warning={kind === 'area' && renamed ? t('atm.dataEdit.renameKeepsMachines') : undefined}
+          >
+            <Input value={form.name} onChange={(e) => set({ name: e.target.value })} required />
+          </Field>
+        )}
+        {kind === 'bank' && (
+          <Field
+            label={t('atm.common.bank')}
+            required={creating}
+            hint={t('atm.dataEdit.spellingBankHint')}
+          >
+            <Select
+              value={form.bankCode}
+              onChange={(e) => set({ bankCode: e.target.value })}
+              required={creating}
+            >
+              <option value="" disabled={creating}>
+                {t(creating ? 'atm.dataEdit.pickBank' : 'atm.dataEdit.notLinked')}
+              </option>
+              {banks.map((bank) => (
+                <option key={bank.code} value={bank.code}>
+                  {`${lookup.name(bank.code, locale)} — ${bank.code}`}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {kind === 'area' && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label={t('atm.dataEdit.nameAr')}
+              required={creating}
+              hint={creating ? undefined : t('atm.dataEdit.displayNameHint')}
+            >
+              <Input
+                value={form.nameAr}
+                onChange={(e) => set({ nameAr: e.target.value })}
+                required={creating}
+                maxLength={120}
+                dir="rtl"
+              />
+            </Field>
+            <Field
+              label={t('atm.dataEdit.nameEn')}
+              required={creating}
+              hint={creating ? undefined : t('atm.dataEdit.displayNameHint')}
+            >
+              <Input
+                value={form.nameEn}
+                onChange={(e) => set({ nameEn: e.target.value })}
+                required={creating}
+                maxLength={120}
+                dir="ltr"
+              />
+            </Field>
+          </div>
+        )}
+        {/* Said before the click, and kept in view while typing: the English name is the one
+            every machine and operation in this area will carry. */}
+        {kind === 'area' && creating && (
+          <p data-area-stored-as="true" className="text-xs text-slate-500 dark:text-slate-400">
+            {t('atm.dataEdit.storedAs', { name: storedAs === '' ? '—' : storedAs })}
+          </p>
+        )}
         {label !== null && (
           <div className="space-y-1">
             <Checkbox
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
+              checked={form.isActive}
+              onChange={(e) => set({ isActive: e.target.checked })}
               label={t('atm.dataEdit.isActive')}
             />
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -373,7 +775,7 @@ export const RefLabelDialog = ({
           <Button type="button" variant="secondary" onClick={onClose}>
             {t('atm.common.cancel')}
           </Button>
-          <Button type="submit" loading={pending} disabled={name.trim() === ''}>
+          <Button type="submit" loading={pending} disabled={!complete}>
             {t('atm.common.save')}
           </Button>
         </div>
@@ -394,15 +796,15 @@ export const RefLabelDialog = ({
 export const BulkMachinesDialog = ({
   open,
   onClose,
-  banks,
-  areas,
 }: {
   open: boolean;
   onClose: () => void;
-  banks: AtmRefLabelDto[];
-  areas: AtmRefLabelDto[];
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The batch files into the acting branch, so its lists are that branch's.
+  const options = useAtmRefLabelOptions(null, open);
+  const lookup = useAtmBankLookup();
   const [codes, setCodes] = useState('');
   const [names, setNames] = useState('');
   const [bankName, setBankName] = useState('');
@@ -427,14 +829,11 @@ export const BulkMachinesDialog = ({
     if (machines.length === 0 || bankName === '' || area === '') return;
     try {
       const result = await bulkCreate.mutateAsync({ bankName, area, machines });
-      if (result.created.length > 0) {
-        toast.success(t('atm.dataEdit.machinesAdded', { count: result.created.length }));
+      if (result.created.length > 0 || result.reactivatedCodes.length > 0) {
         setCodes('');
         setNames('');
       }
-      if (result.skippedCodes.length > 0) {
-        toast.error(t('atm.dataEdit.machinesSkipped', { codes: result.skippedCodes.join('، ') }));
-      }
+      for (const shown of bulkAddToasts(result, t)) toast[shown.variant](shown.title);
     } catch {
       toast.error(t('atm.common.actionFailed'));
     }
@@ -463,6 +862,7 @@ export const BulkMachinesDialog = ({
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
             {t('atm.dataEdit.addMachines')}
           </h3>
+          <UnmappedBranchNotice options={options.data} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={t('atm.replenishments.machineCodes')} required>
               <Textarea
@@ -494,7 +894,7 @@ export const BulkMachinesDialog = ({
                 <option value="" disabled>
                   {t('atm.dataEdit.pickBank')}
                 </option>
-                <LabelOptions options={banks} />
+                <BankOptions options={options.data} lookup={lookup} locale={locale} />
               </Select>
             </Field>
             <Field label={t('atm.common.area')} required>
@@ -502,7 +902,7 @@ export const BulkMachinesDialog = ({
                 <option value="" disabled>
                   {t('atm.dataEdit.pickArea')}
                 </option>
-                <LabelOptions options={areas} />
+                <AreaOptions options={options.data} locale={locale} />
               </Select>
             </Field>
           </div>

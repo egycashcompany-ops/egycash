@@ -920,6 +920,60 @@ describe('2. the bank setting (DS-24)', () => {
   });
 });
 
+describe('2b. a bank added to the catalog (DEC-35, DS-24)', () => {
+  // The owner's call: a bank added at runtime is a FULL bank — plannable once an administrator
+  // enables it, exactly as the five non-BRK banks are today, printed under its catalog name, and
+  // refused by the Full list import until it has a profile of its own.
+  it('is plannable once enabled, prints its catalog name, and the Full list import refuses it', async () => {
+    const created = await call('post', '/atm/banks', 'admin', {
+      code: 'QNB',
+      name: { ar: 'بنك قطر الوطني', en: 'QNB Al Ahli' },
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const body = { bankCode: 'QNB', replenishDate: day(40), branchId: ALPHA };
+
+    const refused = await call('post', '/atm/settlements/plans', 'alphaSettle', body);
+    expect(refused.status).toBe(422);
+    expect(errorCode(refused)).toBe('ATM_SETTLEMENT_BANK_NOT_ENABLED');
+
+    // A code the catalog does not know is ignored even when the setting lists it.
+    await settingsService.set(adminCtx, {
+      key: AtmSettingKeys.SettlementBanks,
+      scope: 'organization',
+      value: ['BRK', 'QNB', 'ZZZ'],
+    });
+    try {
+      const context = await okData<{ banks: string[] }>(
+        call('get', '/atm/settlements/context?page=plans', 'alphaSettle'),
+      );
+      expect(context.banks).toEqual(['BRK', 'QNB']);
+      const unknown = await call('get', '/atm/settlements/layouts?bankCode=ZZZ', 'alphaSettle');
+      expect(errorCode(unknown)).toBe('ATM_SETTLEMENT_BANK_NOT_ENABLED');
+
+      const plan = await okData<AtmSettlementPlanDto>(
+        call('post', '/atm/settlements/plans', 'alphaSettle', body),
+      );
+      expect(plan.bankCode).toBe('QNB');
+      const receipt = await okData<AtmReceiptPrintDto>(printPlan(plan.id, { kind: 'receipt' }));
+      expect(receipt).toMatchObject({ bankCode: 'QNB', bankNameAr: 'بنك قطر الوطني' });
+
+      const book = await buildMasterWorkbook({
+        fullList: [fullListRow('QNB00001', [200, 200, 100, 50], { bank: 'QNB' })],
+        standardRows: [[1_050_000, 4000, 2000, 1000]],
+      });
+      const imported = await importBook('alphaSettle', book, importFields({ bankCode: 'QNB' }));
+      expect(imported.status).toBe(422);
+      expect(errorCode(imported)).toBe('ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK');
+    } finally {
+      await settingsService.set(adminCtx, {
+        key: AtmSettingKeys.SettlementBanks,
+        scope: 'organization',
+        value: ['BRK'],
+      });
+    }
+  });
+});
+
 // ── 3–5. The Full list import ───────────────────────────────────────────────────────────────────
 
 describe('3–5. the Full list seed import (S-1, §5)', () => {

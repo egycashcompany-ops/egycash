@@ -72,11 +72,22 @@ describe('values ⇄ params', () => {
     expect(parseMapFilters({ ...NONE, zones: 'none,multi' }).zones).toEqual(['none', 'multi']);
   });
 
-  it('drops what is not on offer by its nature: an unknown bank, status or location', () => {
-    const f = parseMapFilters({ ...NONE, banks: 'NBE,XYZ', status: 'deleted', loc: 'nowhere' });
-    expect(f.banks).toEqual(['NBE']);
+  it('drops what is not on offer by its nature: a malformed bank code, status or location', () => {
+    const f = parseMapFilters({
+      ...NONE,
+      banks: 'NBE,nbe,Q,ABCDEFGHIJK,none',
+      status: 'deleted',
+      loc: 'nowhere',
+    });
+    expect(f.banks).toEqual(['NBE', 'none']);
     expect(f.status).toBe('active');
     expect(f.loc).toBe('all');
+  });
+
+  // DEC-35: a bank added at runtime is a full bank, so its code survives a reload and a shared
+  // link — the address bar checks a code's SHAPE, and a code no point carries matches none.
+  it('keeps a catalog bank that is not one of the six', () => {
+    expect(parseMapFilters({ ...NONE, banks: 'QNB,AAIB1' }).banks).toEqual(['QNB', 'AAIB1']);
   });
 
   it('«كل الفروع» asks the server for every branch in reach', () => {
@@ -162,6 +173,7 @@ describe('visible points and figures (§6.4)', () => {
     expect(visible({ status: 'archived' })).toEqual(['archived']);
     expect(visible({ status: 'all' })).toHaveLength(7);
     expect(visible({ banks: ['CIB', 'none'] })).toEqual(['in-a-and-b', 'outside']);
+    expect(visible({ banks: ['QNB'] })).toEqual([]);
     expect(visible({ status: 'all', areas: ['العجمي'] })).toEqual(['archived']);
   });
 

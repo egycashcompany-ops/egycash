@@ -3,7 +3,7 @@
 // yields nothing. Codes, names and key values are synthetic.
 import { describe, expect, it } from 'vitest';
 import {
-  ATM_DEFAULT_OPS_BANK_LABELS,
+  atmBankSeedOf,
   type AtmBankCode,
   type AtmRegisterBranchCode,
   type AtmRegisterImportCategoryDto,
@@ -150,7 +150,8 @@ const world = (over: Partial<PlanWorld> = {}): PlanWorld => {
     settings: {
       branchIdByCode: codes,
       codeByBranchId: new Map([...codes].map(([code, id]) => [id, code])),
-      opsLabel: (bank: AtmBankCode) => ATM_DEFAULT_OPS_BANK_LABELS[bank],
+      // The seeds' own labels — what the catalog holds until someone curates it (DEC-35).
+      opsLabel: (bank: AtmBankCode) => atmBankSeedOf(bank)?.opsLabel ?? bank,
     },
     branches: new Map([
       [ALEX, { name: { en: 'Alexandria', ar: 'الإسكندرية' }, active: true }],
@@ -602,7 +603,8 @@ describe('blockers', () => {
     );
 
     const tanta = parsedRow(
-      { machineCode: '99990029', branchCode: 'EGYCASH-2', bankCode: 'QNB' as AtmBankCode },
+      // What `convertBank` makes of a text the workbook's six do not hold: no bank, and the issue.
+      { machineCode: '99990029', branchCode: 'EGYCASH-2', bankCode: null },
       { issues: [{ code: 'unknownBank', column: 'C', detail: 'QNB' }] },
     );
     const alex = parsedRow({ machineCode: '99990030' });

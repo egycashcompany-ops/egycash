@@ -23,7 +23,7 @@ export type AtmRegisterLinkedMasterState = 'active' | 'archived' | 'deleted' | '
 export interface RegisterEntryView {
   secretsVisible: boolean;
   branchCode: AtmRegisterBranchCode | null;
-  /** The setting's Operations label for the entry's bank (null when the entry has no bank). */
+  /** The catalog's Operations label for the entry's bank (null when the entry has no bank). */
   settingOpsLabel: string | null;
   /** Only consulted when the entry carries a `machineId`. */
   linkedMasterState: AtmRegisterLinkedMasterState;
@@ -131,6 +131,8 @@ export const toAtmRegisterEntryDto = (
     handoverNotes: secrets ? (doc.handoverNotes ?? null) : null,
     status: doc.status,
     source: doc.source,
+    // A row written before DEC-37 has no field at all: not flagged.
+    dataIncomplete: doc.dataIncomplete === true,
     importRow: doc.importRow ?? null,
     importIssues: (doc.importIssues ?? []).map((issue) => ({
       code: issue.code as AtmRegisterImportIssueCode,

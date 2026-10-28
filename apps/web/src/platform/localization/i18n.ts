@@ -8611,6 +8611,91 @@ const en: Record<string, string> = {
   'atm.dataEdit.labelSaved': 'Saved.',
   'atm.dataEdit.bulkTitle': 'Bulk add / delete',
   'atm.dataEdit.lineAlignHint': 'One name per line, aligned with the codes beside it.',
+  // The four tabs, the spellings' unmapped callout, bilingual areas, and what an add recorded in
+  // the register (DEC-35 … DEC-38).
+  'atm.dataEdit.tab.bankLabel': 'Operations bank names',
+  'atm.dataEdit.addSpelling': 'Add bank name',
+  'atm.dataEdit.editSpelling': 'Edit bank name',
+  'atm.dataEdit.notLinked': 'Not linked to a bank',
+  'atm.dataEdit.spellingBankHint':
+    'Machines that carry this name count for this bank in the register and the reports.',
+  'atm.dataEdit.spellingIsBankLabel':
+    "This name is already a catalog bank's own Operations name; it needs no second entry.",
+  'atm.dataEdit.unmappedTitle': 'Bank names on machines that are not linked to a bank',
+  'atm.dataEdit.unmappedBody':
+    'A machine added with one of these names works for Operations but is not recorded in the register. Link each name to its bank.',
+  'atm.dataEdit.linkToBank': 'Link to a bank',
+  'atm.dataEdit.storedName': 'Name stored on machines',
+  'atm.dataEdit.nameAr': 'Name in Arabic',
+  'atm.dataEdit.nameEn': 'Name in English',
+  'atm.dataEdit.displayNameHint': 'Shown in the lists only; machines keep the stored name.',
+  'atm.dataEdit.storedAs': 'Saved on machines as: {{name}}',
+  'atm.dataEdit.renameKeepsMachines': 'Existing machines keep the old name.',
+  'atm.dataEdit.areaExists':
+    'An area with this name already exists. If it is the same area, add the other language to it from "Edit".',
+  'atm.dataEdit.origin.title': 'Source',
+  'atm.dataEdit.origin.backfill': 'From existing data',
+  'atm.dataEdit.origin.auto': 'Added automatically',
+  'atm.dataEdit.notRegisterMapped':
+    'This branch has no EGYCASH code: machines added here work for Operations but are not recorded in the register.',
+  'atm.dataEdit.machineReactivated': 'The archived machine is back at work.',
+  'atm.dataEdit.register.recorded': 'Recorded in the register — data incomplete.',
+  'atm.dataEdit.register.linked': 'Linked to its register entry.',
+  'atm.dataEdit.register.branchUnmapped': 'For Operations only: the branch has no EGYCASH code.',
+  'atm.dataEdit.register.placeholderCode':
+    'For Operations only: a placeholder code is not recorded in the register.',
+  'atm.dataEdit.register.noBank':
+    'The bank name is not linked to a bank — not recorded in the register.',
+  'atm.dataEdit.error.activeElsewhere':
+    "This machine ID is active in another branch's Operations list; it was not added.",
+  'atm.dataEdit.error.openElsewhere':
+    'This machine ID has an open register period in another branch; it was not added.',
+  'atm.dataEdit.error.bankInactive':
+    'This bank is archived in the bank catalog; no new machines can be added to it.',
+  'atm.dataEdit.machinesRecorded':
+    '{{count}} machine(s) recorded in the register — data incomplete.',
+  'atm.dataEdit.machinesLinked': '{{count}} machine(s) linked to their register entries.',
+  'atm.dataEdit.machinesReactivated': 'Back at work from the archive: {{codes}}',
+  'atm.dataEdit.machinesRefused.activeElsewhere': 'Not added — active in another branch: {{codes}}',
+  'atm.dataEdit.machinesRefused.openElsewhere':
+    'Not added — open in the register in another branch: {{codes}}',
+  'atm.dataEdit.notRecorded.branchUnmapped':
+    'Not recorded in the register (the branch has no EGYCASH code): {{codes}}',
+  'atm.dataEdit.notRecorded.placeholderCode':
+    'Not recorded in the register (placeholder codes): {{codes}}',
+  'atm.dataEdit.notRecorded.noBank':
+    'Not recorded in the register (the bank name is not linked to a bank): {{codes}}',
+
+  // ── The bank catalog (DEC-35): its dialog, on data-edit and in the register ──
+  'atm.bankCatalog.add': 'Add bank',
+  'atm.bankCatalog.edit': 'Edit bank',
+  'atm.bankCatalog.code': 'Code',
+  'atm.bankCatalog.codeHint':
+    'Capital English letters and digits, 2 to 10, starting with a letter. It cannot be changed after saving.',
+  'atm.bankCatalog.codeInvalid':
+    'Use capital English letters and digits, starting with a letter (2 to 10).',
+  'atm.bankCatalog.codeFixed':
+    'The code is stored on every record of the bank and cannot be changed.',
+  'atm.bankCatalog.nameAr': 'Name in Arabic',
+  'atm.bankCatalog.nameEn': 'Name in English',
+  'atm.bankCatalog.opsLabel': 'Name in Operations',
+  'atm.bankCatalog.opsLabelHint':
+    'The bank name written on machines received from this bank. Left empty, the code is used.',
+  'atm.bankCatalog.opsLabelChanged':
+    'Existing machines keep the old name, and it still counts for this bank.',
+  'atm.bankCatalog.color': 'Colour',
+  'atm.bankCatalog.colorHint': 'Used in the Data Report charts and on the map.',
+  'atm.bankCatalog.isActive': 'Active',
+  'atm.bankCatalog.activeHint':
+    'An archived bank is no longer offered for new receipts and machines; its machines and counts stay.',
+  'atm.bankCatalog.settlementsWarning':
+    'This bank is enabled for settlements. Archiving does not remove it from them; an administrator edits that setting.',
+  'atm.bankCatalog.added': 'Bank added.',
+  'atm.bankCatalog.saved': 'Bank saved.',
+  'atm.bankCatalog.error.ATM_BANK_CODE_TAKEN': 'A bank with this code already exists.',
+  'atm.bankCatalog.error.ATM_BANK_LABEL_TAKEN': 'This Operations name already belongs to a bank.',
+  'atm.bankCatalog.error.ATM_BANK_NAME_TAKEN':
+    'A bank with this Arabic or English name already exists.',
 
   'atm.nav.dailyReport': 'Daily Report',
   'atm.cards.dailyReport': "Today's open and total operations per bank.",
@@ -18154,6 +18239,83 @@ const ar: Record<string, string> = {
   'atm.dataEdit.bulkTitle': 'إضافة / حذف بالجملة',
   'atm.dataEdit.lineAlignHint':
     'اسم في كل سطر، مقابل الكود الذي بجواره.',
+  // The four tabs, the spellings' unmapped callout, bilingual areas, and what an add recorded in
+  // the register (DEC-35 … DEC-38).
+  'atm.dataEdit.tab.bankLabel': 'أسماء البنوك في التشغيل',
+  'atm.dataEdit.addSpelling': 'إضافة اسم بنك',
+  'atm.dataEdit.editSpelling': 'تعديل اسم البنك',
+  'atm.dataEdit.notLinked': 'غير مربوط ببنك',
+  'atm.dataEdit.spellingBankHint':
+    'الماكينات التي تحمل هذا الاسم تُحسب لهذا البنك في السجل والتقارير.',
+  'atm.dataEdit.spellingIsBankLabel':
+    'هذا الاسم هو اسم التشغيل لبنك في دليل البنوك، فلا يحتاج إلى إضافة ثانية.',
+  'atm.dataEdit.unmappedTitle': 'أسماء بنوك على الماكينات غير مربوطة ببنك',
+  'atm.dataEdit.unmappedBody':
+    'الماكينة التي تُضاف بأحد هذه الأسماء تعمل في التشغيل، ولا تُسجَّل في السجل. اربط كل اسم ببنكه.',
+  'atm.dataEdit.linkToBank': 'ربط ببنك',
+  'atm.dataEdit.storedName': 'الاسم المحفوظ على الماكينات',
+  'atm.dataEdit.nameAr': 'الاسم بالعربية',
+  'atm.dataEdit.nameEn': 'الاسم بالإنجليزية',
+  'atm.dataEdit.displayNameHint': 'يظهر في القوائم فقط، وتحتفظ الماكينات بالاسم المحفوظ.',
+  'atm.dataEdit.storedAs': 'يُحفظ على الماكينات باسم: {{name}}',
+  'atm.dataEdit.renameKeepsMachines': 'الماكينات الحالية تحتفظ بالاسم القديم.',
+  'atm.dataEdit.areaExists':
+    'توجد منطقة بهذا الاسم. إن كانت المنطقة نفسها، فأضف إليها الاسم باللغة الأخرى من «تعديل».',
+  'atm.dataEdit.origin.title': 'المصدر',
+  'atm.dataEdit.origin.backfill': 'من البيانات الحالية',
+  'atm.dataEdit.origin.auto': 'أُضيفت تلقائيًا',
+  'atm.dataEdit.notRegisterMapped':
+    'هذا الفرع غير مربوط بكود EGYCASH: تعمل الماكينات المضافة هنا في التشغيل، ولا تُسجَّل في السجل.',
+  'atm.dataEdit.machineReactivated': 'أُعيدت الماكينة المؤرشفة للعمل.',
+  'atm.dataEdit.register.recorded': 'سُجلت في السجل — بيانات ناقصة.',
+  'atm.dataEdit.register.linked': 'رُبطت بسجلها.',
+  'atm.dataEdit.register.branchUnmapped': 'للتشغيل فقط: الفرع غير مربوط بكود EGYCASH.',
+  'atm.dataEdit.register.placeholderCode': 'للتشغيل فقط: الكود المؤقت لا يُسجَّل في السجل.',
+  'atm.dataEdit.register.noBank': 'اسم البنك غير مربوط ببنك — لم تُسجَّل في السجل.',
+  'atm.dataEdit.error.activeElsewhere': 'رقم الماكينة نشط في قائمة التشغيل لفرع آخر، فلم تُضَف.',
+  'atm.dataEdit.error.openElsewhere':
+    'لرقم الماكينة فترة تشغيل مفتوحة في السجل لفرع آخر، فلم تُضَف.',
+  'atm.dataEdit.error.bankInactive':
+    'هذا البنك مؤرشف في دليل البنوك، فلا تُضاف إليه ماكينات جديدة.',
+  'atm.dataEdit.machinesRecorded': 'تم تسجيل {{count}} ماكينة في السجل — بيانات ناقصة.',
+  'atm.dataEdit.machinesLinked': 'تم ربط {{count}} ماكينة بسجلها.',
+  'atm.dataEdit.machinesReactivated': 'أُعيدت للعمل من الأرشيف: {{codes}}',
+  'atm.dataEdit.machinesRefused.activeElsewhere': 'لم تُضَف لأنها نشطة في فرع آخر: {{codes}}',
+  'atm.dataEdit.machinesRefused.openElsewhere':
+    'لم تُضَف لأن لها فترة مفتوحة في السجل لفرع آخر: {{codes}}',
+  'atm.dataEdit.notRecorded.branchUnmapped':
+    'لم تُسجَّل في السجل (الفرع غير مربوط بكود EGYCASH): {{codes}}',
+  'atm.dataEdit.notRecorded.placeholderCode': 'لم تُسجَّل في السجل (أكواد مؤقتة): {{codes}}',
+  'atm.dataEdit.notRecorded.noBank': 'لم تُسجَّل في السجل (اسم البنك غير مربوط ببنك): {{codes}}',
+
+  // ── The bank catalog (DEC-35): its dialog, on data-edit and in the register ──
+  'atm.bankCatalog.add': 'إضافة بنك',
+  'atm.bankCatalog.edit': 'تعديل البنك',
+  'atm.bankCatalog.code': 'الكود',
+  'atm.bankCatalog.codeHint':
+    'حروف إنجليزية كبيرة وأرقام، من حرفين إلى عشرة، تبدأ بحرف. لا يمكن تغييره بعد الحفظ.',
+  'atm.bankCatalog.codeInvalid':
+    'استخدم حروفًا إنجليزية كبيرة وأرقامًا تبدأ بحرف، من حرفين إلى عشرة.',
+  'atm.bankCatalog.codeFixed': 'الكود محفوظ على كل سجلات البنك، ولا يمكن تغييره.',
+  'atm.bankCatalog.nameAr': 'الاسم بالعربية',
+  'atm.bankCatalog.nameEn': 'الاسم بالإنجليزية',
+  'atm.bankCatalog.opsLabel': 'الاسم في التشغيل',
+  'atm.bankCatalog.opsLabelHint':
+    'اسم البنك الذي يُكتب على الماكينات المستلمة منه. إذا تُرك فارغًا يُستخدم الكود.',
+  'atm.bankCatalog.opsLabelChanged':
+    'تحتفظ الماكينات الحالية بالاسم القديم، ويظل يُحسب لهذا البنك.',
+  'atm.bankCatalog.color': 'اللون',
+  'atm.bankCatalog.colorHint': 'يُستخدم في رسوم تقرير البيانات وعلى الخريطة.',
+  'atm.bankCatalog.isActive': 'نشط',
+  'atm.bankCatalog.activeHint':
+    'البنك المؤرشف لا يُعرض للاستلامات والماكينات الجديدة، وتبقى ماكيناته وأعداده كما هي.',
+  'atm.bankCatalog.settlementsWarning':
+    'هذا البنك مفعَّل في التسويات، والأرشفة لا تُزيله منها؛ يعدّل مدير النظام ذلك الإعداد.',
+  'atm.bankCatalog.added': 'تمت إضافة البنك.',
+  'atm.bankCatalog.saved': 'تم حفظ البنك.',
+  'atm.bankCatalog.error.ATM_BANK_CODE_TAKEN': 'يوجد بنك بهذا الكود.',
+  'atm.bankCatalog.error.ATM_BANK_LABEL_TAKEN': 'اسم التشغيل هذا مستخدم لبنك آخر.',
+  'atm.bankCatalog.error.ATM_BANK_NAME_TAKEN': 'يوجد بنك بهذا الاسم العربي أو الإنجليزي.',
 
   'atm.nav.dailyReport': 'تقرير اليوم',
   'atm.cards.dailyReport': 'المفتوح والإجمالي لكل بنك اليوم.',

@@ -86,8 +86,11 @@ class AtmRefLabelService {
     }
     // The unique index turns the legacy's read-then-push duplicate check (:2473, :2485) into a
     // ConflictError the client renders as "already exists" — same rule, no race.
+    // The schema guarantees `name` or both display names; a dialog's pair stores the ENGLISH one
+    // (the owner: «الإنجليزي تمام» — stored areas are Latin, and the import's ` FX` rule needs it).
+    const name = (input.name ?? input.nameEn ?? '').trim();
     const doc = await atmRefLabelRepository.create(
-      { branchId: new Types.ObjectId(branchId), kind, name: input.name.trim(), isActive: true },
+      { branchId: new Types.ObjectId(branchId), kind, name, isActive: true },
       { by: ctx.userId },
     );
     await auditService.record({

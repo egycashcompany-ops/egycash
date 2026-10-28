@@ -40,6 +40,13 @@ describe('redactedErrorText', () => {
 });
 
 describe('atmIndexedModels', () => {
+  // The bank catalog (DEC-35): its unique code and label-key indexes must exist before the boot
+  // seed writes the six; codes and label keys are not K/S values, so its rows may be logged.
+  it('lists the bank catalog with its rows allowed in the log', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    expect(listed.get('atm_banks')).toBe(true);
+  });
+
   // The machine map (docs/12-planning/atm-map-zones.md §3.4): its keys are ids, never K/S values.
   it('lists the map collections with their rows allowed in the log', () => {
     const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));

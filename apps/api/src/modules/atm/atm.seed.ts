@@ -8,11 +8,18 @@
 // D6 rests on), and the legacy master rows' missing `__v`/timestamps (DEC-23). No role other than
 // `super-admin` is widened here: granting the new Operations and Efficiency keys is an
 // administrator's step (lead override O-1, rollout §12.2).
+//
+// The bank catalog (DEC-35) adds two steps after those, in this order: the six seeds into
+// `atm_banks` (after the indexes, so `ux_bank_code` and `ux_bank_ops_label_keys` already guard the
+// insert), then the `bankCode` of the Operations spellings written before spellings had one (after
+// the seed, because it maps a spelling through the catalog's labels). Both idempotent; a second boot
+// writes nothing.
 import { logger } from '../../infrastructure/logging/logger';
 import { rbacService } from '../../platform/rbac';
 import { atmPermissions } from './atm.module';
 import { migrateAtmIndexes } from './atm-indexes';
 import { migrateAtmLegacyTimestamps } from './machines/machine.migration';
+import { backfillBankLabelCodes, seedAtmBankCatalog } from './catalogs/catalog.migration';
 
 export const seedAtm = async (): Promise<void> => {
   const keys = atmPermissions.map((permission) => permission.key);
@@ -32,4 +39,6 @@ export const seedAtm = async (): Promise<void> => {
       'atm: legacy machine and label rows given their version and timestamps',
     );
   }
+  await seedAtmBankCatalog();
+  await backfillBankLabelCodes();
 };

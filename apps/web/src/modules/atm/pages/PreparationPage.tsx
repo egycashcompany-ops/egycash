@@ -19,7 +19,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ATM_BANK_NAMES,
   cleanScannedValue,
   normalizeAtmMachineCode,
   type AtmPreparationLineDto,
@@ -46,6 +45,7 @@ import {
   useReopenPreparation,
   useSavePreparation,
 } from '../api/settlements-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { CAPTURE_SAVE_ID, CapturePanel } from '../components/settlements/CapturePanel';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
 import { RunChip } from '../components/settlements/RunChip';
@@ -126,6 +126,8 @@ export const findLine = (
 export const PreparationPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Bank names from the catalog (DEC-35): a bank added since the workbook is named, not coded.
+  const bankLookup = useAtmBankLookup();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const patch = (updates: Record<string, string | null>): void => {
@@ -401,7 +403,7 @@ export const PreparationPage = (): JSX.Element => {
             >
               {plans.map((p) => (
                 <option key={p.planId} value={p.bankCode}>
-                  {ATM_BANK_NAMES[p.bankCode][locale]}
+                  {bankLookup.name(p.bankCode, locale)}
                 </option>
               ))}
             </Select>

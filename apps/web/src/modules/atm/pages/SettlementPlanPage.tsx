@@ -15,7 +15,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ATM_BANK_NAMES,
   ATM_PLAN_ADD_REFUSALS,
   ErrorCodes,
   type AddAtmSpareLine,
@@ -63,6 +62,7 @@ import {
   useStandardLoads,
   useUpdatePlanLine,
 } from '../api/settlements-queries';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { AddMachinesDialog } from '../components/settlements/AddMachinesDialog';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
 import { IssueDialog, type ServerIssue } from '../components/settlements/IssueDialog';
@@ -113,6 +113,8 @@ const spareUseRefusal = (error: unknown): string | null => {
 export const SettlementPlanPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // Bank names from the catalog (DEC-35): a bank added since the workbook is named, not coded.
+  const bankLookup = useAtmBankLookup();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const patch = (updates: Record<string, string | null>): void => {
@@ -544,7 +546,7 @@ export const SettlementPlanPage = (): JSX.Element => {
             >
               {banks.map((b) => (
                 <option key={b} value={b}>
-                  {ATM_BANK_NAMES[b][locale]}
+                  {bankLookup.name(b, locale)}
                 </option>
               ))}
             </Select>

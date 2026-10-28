@@ -915,6 +915,31 @@ export interface AtmMailAcceptMetaDto {
   refused: AtmMailAcceptRefusalDto[];
 }
 
+/**
+ * Put decided tickets back to PENDING from the log — «إسترجاع ويقدر يرجعه مفتوح لو قبل أو رفض
+ * غلط» (2026-10-28). A rejected ticket simply reopens; an accepted one also removes the
+ * maintenance it opened, which is only possible while that maintenance is still open. A ticket
+ * already pending, or outside the caller's scope, is skipped silently, as accept/reject do.
+ */
+export const RestoreAtmMailTicketsSchema = DecideAtmMailTicketsSchema;
+export type RestoreAtmMailTickets = DecideAtmMailTickets;
+
+/** Why a selected ticket was NOT restored: the maintenance it opened is already closed. */
+export const ATM_MAIL_RESTORE_REFUSAL_REASONS = ['maintenanceClosed'] as const;
+export const AtmMailRestoreRefusalReasonSchema = z.enum(ATM_MAIL_RESTORE_REFUSAL_REASONS);
+export type AtmMailRestoreRefusalReason = z.infer<typeof AtmMailRestoreRefusalReasonSchema>;
+
+export interface AtmMailRestoreRefusalDto {
+  ticketId: string;
+  machineCode: string;
+  reason: AtmMailRestoreRefusalReason;
+}
+
+/** The restore answer's `meta` — `data` is the array of tickets RESTORED, as accept's is. */
+export interface AtmMailRestoreMetaDto {
+  refused: AtmMailRestoreRefusalDto[];
+}
+
 /** The log page range — legacy filters `open_time`, default today (contad_app.js:2909-2928). */
 export const ListAtmMailLogQuerySchema = PaginationQuerySchema.extend({
   from: z

@@ -439,7 +439,7 @@ Operations' hands — gated, never deleted:
 
 | Action | Route | Key after the split |
 |---|---|---|
-| Add / bulk add a machine, delete by codes, reassign by code, edit or archive a machine | `POST /atm/machines`, `/bulk`, `/bulk-delete`, `/reassign-area`, `PATCH /:id` | `atmMachine.manage` (unchanged). Since 2026-10-28 an add needs it to reach the acting branch (DEC-39) |
+| Add / bulk add a machine, delete by codes, reassign by code, edit or archive a machine | `POST /atm/machines`, `/bulk`, `/bulk-delete`, `/reassign-area`, `PATCH /:id` | `atmMachine.manage` (unchanged). Since 2026-10-28 an add, and a delete by codes, need it to reach the acting branch (DEC-39); the delete also removes the add's untouched register stub (DEC-36) |
 | Move ONE machine to another area (legacy «نقل ماكينة لمنطقة», contad_app.js:2529-2541) | `PATCH /atm/machines/:id/area` (new, DEC-3) | `atmMachine.moveArea` or `manage` |
 | Add a bank spelling or an area label | `POST /atm/ref-labels/:kind` | `atmRefLabel.create` or `manage`. Since 2026-10-28, for an AREA also `atmRegister.create` or `atmRegister.edit` — the register form's «+ منطقة» (DEC-39) |
 | Rename or archive-toggle a label; set an area's Arabic and English names; link a spelling to a bank | `PATCH /atm/ref-labels/:kind/:id` | `atmRefLabel.edit` or `manage` |

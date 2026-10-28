@@ -200,6 +200,7 @@ const KEYS = [
   'atm.dataEdit.spellingIsBankLabel',
   'atm.dataEdit.unmappedTitle',
   'atm.dataEdit.unmappedBody',
+  'atm.dataEdit.labelsUnscoped',
   'atm.dataEdit.linkToBank',
   'atm.dataEdit.storedName',
   'atm.dataEdit.nameAr',

@@ -165,8 +165,26 @@ export const DataEditPage = (): JSX.Element => {
     [paramsKey, tab],
   );
 
+  // The ONE branch the label tabs are about — the acting branch, the one their add and the
+  // callout already use (design §3.6, critic gap 2). Sent as the list's `branchId`, so a user whose
+  // key reaches several branches no longer sees every branch's same-named rows mixed in one table,
+  // and «ربط ببنك» can never land on another branch's row (review finding). The list waits for it
+  // rather than loading unscoped first. When the options cannot answer — an unplaced administrator
+  // in the «all» view, a key that reaches no whole branch — the list falls back to today's unscoped
+  // read, and the notice above it says why it is not one branch.
+  const options = useAtmRefLabelOptions(null, labelTab);
+  const actingBranch = options.data?.branchId;
+  const labelParams = useMemo(
+    () => (actingBranch === undefined ? listParams : { ...listParams, branchId: actingBranch }),
+    [listParams, actingBranch],
+  );
+
   const machines = useAtmMachines(listParams, tab === 'machines');
-  const labels = useAtmRefLabels(labelKind, listParams, labelTab);
+  const labels = useAtmRefLabels(
+    labelKind,
+    labelParams,
+    labelTab && (options.data !== undefined || options.isError),
+  );
   // The catalog is read whole (fewer than fifty banks): the bank tab's table, and the name the
   // spellings tab shows for each spelling's bank.
   const catalog = useAtmBanks();
@@ -178,15 +196,17 @@ export const DataEditPage = (): JSX.Element => {
       ),
     [catalog.data, active],
   );
-  // The acting branch's bank texts that link to no bank — the spellings tab's callout.
-  const options = useAtmRefLabelOptions(null, tab === 'bankLabel');
-  const unmapped = options.data?.unmappedBankNames ?? [];
+  // The acting branch's bank texts that link to no bank — the spellings tab's callout — each with
+  // the row of this branch that already holds it, if any (`unmappedBankLabels`).
+  const unmapped = options.data?.unmappedBankLabels ?? [];
 
   const [creating, setCreating] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState<AtmMachineDto | null>(null);
   const [movingMachine, setMovingMachine] = useState<AtmMachineDto | null>(null);
   const [editingLabel, setEditingLabel] = useState<AtmRefLabelDto | null>(null);
+  /** The edit was opened from the callout: the save also brings the row back from the archive. */
+  const [activating, setActivating] = useState(false);
   const [editingBank, setEditingBank] = useState<AtmBankDto | null>(null);
   /** «ربط ببنك» on a text no spelling holds yet: a new spelling, its text filled in. */
   const [linking, setLinking] = useState<string | null>(null);
@@ -194,19 +214,25 @@ export const DataEditPage = (): JSX.Element => {
   const bulkDelete = useBulkDeleteAtmMachines();
 
   /**
-   * «ربط ببنك» for one unmapped text: when a spelling with that exact text is already listed — a
-   * legacy row the backfill could not link — it is EDITED to name its bank (adding it again would be
-   * refused as a duplicate); otherwise a new spelling is added with the text filled in.
+   * «ربط ببنك» for one unmapped text. The server names the row of THIS branch that already holds
+   * the text — a legacy row the backfill could not link, or an ARCHIVED spelling (an archived
+   * `NBE FOREX` is exactly what makes its text read unmapped) — and that row is EDITED, opened
+   * active, so one save links it and brings it back; adding it again would be refused as a
+   * duplicate, since the unique name index still holds an archived row. Otherwise a new spelling
+   * is added with the text filled in. Never a row picked out of the table: that is one page, under
+   * the status filter, and for a user reaching several branches it was once another branch's
+   * same-named row (review finding).
    */
-  const linkToBank = (name: string): void => {
-    const row = labels.data?.items.find((r) => r.name === name && r.bankCode === null);
-    if (row !== undefined) setEditingLabel(row);
-    else setLinking(name);
+  const linkToBank = (entry: (typeof unmapped)[number]): void => {
+    if (entry.label === null) {
+      setLinking(entry.name);
+      return;
+    }
+    setActivating(true);
+    setEditingLabel(entry.label);
   };
-  const canLink = (name: string): boolean =>
-    labels.data?.items.some((r) => r.name === name && r.bankCode === null) === true
-      ? canEditLabels
-      : canAddLabels;
+  const canLink = (entry: (typeof unmapped)[number]): boolean =>
+    entry.label === null ? canAddLabels : canEditLabels;
 
   const statusColumn = <T extends { isActive: boolean }>(): Column<T> => ({
     key: 'status',
@@ -232,7 +258,10 @@ export const DataEditPage = (): JSX.Element => {
               aria-label={t('atm.common.edit')}
               title={t('atm.common.edit')}
               data-edit-action="edit-label"
-              onClick={() => setEditingLabel(r)}
+              onClick={() => {
+                setActivating(false);
+                setEditingLabel(r);
+              }}
             >
               <EditIcon className="h-4 w-4" />
             </button>
@@ -470,6 +499,17 @@ export const DataEditPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
+        {/* The options could not name one branch, so the table lists every branch the key
+            reaches (the server's own reason is the add's refusal too). */}
+        {labelTab && options.isError && (
+          <p
+            data-labels-unscoped="true"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300"
+          >
+            {t('atm.dataEdit.labelsUnscoped')}
+          </p>
+        )}
+
         {/* The texts machines here carry that link to no bank (DEC-35): until one is linked, a
             machine added with it works for Operations but is not recorded in the register. */}
         {tab === 'bankLabel' && unmapped.length > 0 && (
@@ -480,20 +520,20 @@ export const DataEditPage = (): JSX.Element => {
             <p className="font-medium">{t('atm.dataEdit.unmappedTitle')}</p>
             <p className="mt-1 text-xs">{t('atm.dataEdit.unmappedBody')}</p>
             <ul className="mt-2 flex max-h-32 flex-wrap gap-2 overflow-y-auto">
-              {unmapped.map((name) => (
+              {unmapped.map((entry) => (
                 <li
-                  key={name}
+                  key={entry.name}
                   className="flex items-center gap-2 rounded-lg bg-white/70 py-1 pe-1 ps-3 dark:bg-slate-900/60"
                 >
                   <span dir="ltr" className="font-medium">
-                    {name}
+                    {entry.name}
                   </span>
-                  {canLink(name) && (
+                  {canLink(entry) && (
                     <Button
                       size="sm"
                       variant="secondary"
                       data-edit-action="link-bank"
-                      onClick={() => linkToBank(name)}
+                      onClick={() => linkToBank(entry)}
                     >
                       {t('atm.dataEdit.linkToBank')}
                     </Button>
@@ -533,7 +573,8 @@ export const DataEditPage = (): JSX.Element => {
               columns={tab === 'area' ? areaColumns : spellingColumns}
               rows={labels.data?.items ?? []}
               rowKey={(r) => r.id}
-              loading={labels.isLoading}
+              // A list still waiting for its branch is loading, not empty.
+              loading={options.isLoading || labels.isLoading}
               error={labels.isError ? labels.error : undefined}
               onRetry={() => void labels.refetch()}
               sort={sort}
@@ -591,9 +632,13 @@ export const DataEditPage = (): JSX.Element => {
       />
       <RefLabelDialog
         open={editingLabel !== null && canEditLabels}
-        onClose={() => setEditingLabel(null)}
+        onClose={() => {
+          setEditingLabel(null);
+          setActivating(false);
+        }}
         kind={labelKind}
         label={editingLabel}
+        activate={activating}
       />
       <BulkMachinesDialog open={bulkOpen && canManage} onClose={() => setBulkOpen(false)} />
       <ConfirmActionDialog

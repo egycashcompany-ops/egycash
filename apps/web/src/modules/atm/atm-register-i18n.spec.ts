@@ -90,6 +90,7 @@ const PAGE_KEYS = [
   'atm.register.form.operationsNote',
   'atm.register.form.deleteBodyOperations',
   'atm.register.form.newAreaHint',
+  'atm.register.form.areaExistsPicked',
   'atm.register.actions',
   'atm.register.action.edit',
   'atm.register.action.receivePending',

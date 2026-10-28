@@ -84,6 +84,28 @@ export const refLabelErrorText = (
   return t(options.areaCreate === true ? 'atm.dataEdit.areaExists' : 'atm.dataEdit.labelExists');
 };
 
+/**
+ * The register's «+ منطقة» refused because the branch already has an area under that name: the
+ * name to put in the entry's area box instead, else null. Only for a NEW area (a 409 that is not
+ * `ATM_BANK_LABEL_TAKEN`): the unique index matches `name` exactly and a dialog area stores its
+ * English name trimmed, so the typed English text IS the existing row's stored name — archived or
+ * not, and the register accepts that text when typed (its label upsert never revives an archived
+ * one). The data-edit text («…من «تعديل»») sends the reader to an edit Efficiency neither has on the
+ * register nor holds the key for (review finding).
+ */
+export const existingAreaName = (
+  error: unknown,
+  kind: 'bank' | 'area',
+  creating: boolean,
+  form: Pick<RefLabelForm, 'nameEn'>,
+): string | null => {
+  if (kind !== 'area' || !creating) return null;
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  if (error.code === ErrorCodes.ATM_BANK_LABEL_TAKEN) return null;
+  const name = form.nameEn.trim();
+  return name === '' ? null : name;
+};
+
 // ── What an add did, and why it was refused ─────────────────────────────────────────────────────
 
 /** The two refusals the add reuses from the register (D6, DEC-9) — the other branch is not named. */
@@ -120,14 +142,27 @@ export interface AddToast {
 }
 
 /**
+ * An add's answer as an OLDER server sends it — a rollback, or a tab on this bundle during a rolling
+ * deploy: the bare machine (single) or `{ created, skippedCodes }` (bulk), with none of the register
+ * fields. Read through these so a machine the server DID add is never reported as a failure (and a
+ * retry then refused as a taken code).
+ */
+type OlderAddResult = Omit<AtmMachineCreateResultDto, 'register' | 'reactivated'> &
+  Partial<Pick<AtmMachineCreateResultDto, 'register' | 'reactivated'>>;
+type OlderBulkAddResult = Pick<BulkCreateAtmMachinesResultDto, 'created' | 'skippedCodes'> &
+  Partial<Omit<BulkCreateAtmMachinesResultDto, 'created' | 'skippedCodes'>>;
+
+/**
  * The single add's toast: what happened to the machine (added, or an archived one brought back to
  * work), then what the register recorded. `none/noBank` is a warning — the machine works, but
- * Efficiency will not see it until its bank text is linked to a bank.
+ * Efficiency will not see it until its bank text is linked to a bank. An answer with no register
+ * block (an older server) is a plain «added»: the server never said what the register did.
  */
-export const machineAddToast = (
-  result: AtmMachineCreateResultDto,
-  t: (key: string) => string,
-): AddToast => {
+export const machineAddToast = (result: OlderAddResult, t: (key: string) => string): AddToast => {
+  const title = t(
+    result.reactivated === true ? 'atm.dataEdit.machineReactivated' : 'atm.dataEdit.machineAdded',
+  );
+  if (result.register === undefined) return { variant: 'success', title, description: '' };
   const { action, reason } = result.register;
   const outcome =
     action === 'created' || action === 'received'
@@ -137,10 +172,25 @@ export const machineAddToast = (
         : (reason ?? 'noBank');
   return {
     variant: outcome === 'noBank' ? 'warning' : 'success',
-    title: t(result.reactivated ? 'atm.dataEdit.machineReactivated' : 'atm.dataEdit.machineAdded'),
+    title,
     description: t(`atm.dataEdit.register.${outcome}`),
   };
 };
+
+/** A bulk answer with every register field present — empty where an older server sent none. */
+export const bulkAddResultOf = (result: OlderBulkAddResult): BulkCreateAtmMachinesResultDto => ({
+  created: result.created,
+  skippedCodes: result.skippedCodes,
+  reactivatedCodes: result.reactivatedCodes ?? [],
+  refused: result.refused ?? [],
+  register: {
+    created: result.register?.created ?? [],
+    received: result.register?.received ?? [],
+    linked: result.register?.linked ?? [],
+    existing: result.register?.existing ?? [],
+    notRecorded: result.register?.notRecorded ?? [],
+  },
+});
 
 /**
  * The bulk add's report, one toast per kind of answer: how many were added and recorded, then the
@@ -148,9 +198,10 @@ export const machineAddToast = (
  * code lives in another branch, or added but not recorded in the register (and why).
  */
 export const bulkAddToasts = (
-  result: BulkCreateAtmMachinesResultDto,
+  answer: OlderBulkAddResult,
   t: (key: string, params?: Record<string, string | number>) => string,
 ): { variant: ToastVariant; title: string }[] => {
+  const result = bulkAddResultOf(answer);
   const codes = (list: readonly string[]): string => list.join('، ');
   const out: { variant: ToastVariant; title: string }[] = [];
   if (result.created.length > 0) {
@@ -556,12 +607,21 @@ export interface RefLabelForm {
 }
 
 /** The form a label dialog opens on. */
-export const refLabelFormOf = (label: AtmRefLabelDto | null, presetName = ''): RefLabelForm => ({
+/**
+ * The form a label dialog opens on. `activate` opens an existing row ACTIVE whatever its state: the
+ * spellings callout's «ربط ببنك» means "make this text count as its bank", and a row left archived
+ * would leave the text unmapped and the callout entry in place after the save.
+ */
+export const refLabelFormOf = (
+  label: AtmRefLabelDto | null,
+  presetName = '',
+  activate = false,
+): RefLabelForm => ({
   name: label?.name ?? presetName,
   nameAr: label?.nameAr ?? '',
   nameEn: label?.nameEn ?? '',
   bankCode: label?.bankCode ?? '',
-  isActive: label?.isActive ?? true,
+  isActive: activate || (label?.isActive ?? true),
 });
 
 /**
@@ -629,7 +689,8 @@ export const refLabelFormComplete = (
  *     the machines (it never did): the dialog says so when the stored name changes.
  *   · The register's «+ منطقة» opens it too, for the branch of the entry being filled in
  *     (`branchId`) — Efficiency add areas with the register keys they hold (DEC-39) — and puts the
- *     stored name of the new area into the form (`onSaved`).
+ *     stored name of the new area into the form (`onSaved`), or, when the branch already has an
+ *     area by that name, that one (`onExisting`).
  */
 export const RefLabelDialog = ({
   open,
@@ -637,8 +698,10 @@ export const RefLabelDialog = ({
   kind,
   label,
   presetName = '',
+  activate = false,
   branchId,
   onSaved,
+  onExisting,
 }: {
   open: boolean;
   onClose: () => void;
@@ -646,22 +709,29 @@ export const RefLabelDialog = ({
   label: AtmRefLabelDto | null;
   /** A new spelling's text, filled in («ربط ببنك»). */
   presetName?: string;
+  /** Open an existing row active (`refLabelFormOf`) — «ربط ببنك» on an archived spelling. */
+  activate?: boolean;
   /** The branch a NEW label is filed in; absent = the acting branch. */
   branchId?: string;
   /** After a successful save, with the label as the server stored it. */
   onSaved?: (label: AtmRefLabelDto) => void;
+  /**
+   * The register only: a new area whose name the branch already holds is not an error to read but
+   * the area to use — it is put in the box (`existingAreaName`) and the dialog closes.
+   */
+  onExisting?: (storedName: string) => void;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const lookup = useAtmBankLookup();
   // Seeded from the props — the dialog opens on the label's values — and re-seeded on each open.
-  const [form, setForm] = useState<RefLabelForm>(() => refLabelFormOf(label, presetName));
+  const [form, setForm] = useState<RefLabelForm>(() => refLabelFormOf(label, presetName, activate));
   const set = (patch: Partial<RefLabelForm>): void =>
     setForm((current) => ({ ...current, ...patch }));
 
   useEffect(() => {
-    if (open) setForm(refLabelFormOf(label, presetName));
-  }, [open, label, presetName]);
+    if (open) setForm(refLabelFormOf(label, presetName, activate));
+  }, [open, label, presetName, activate]);
 
   const create = useCreateAtmRefLabel(kind);
   const update = useUpdateAtmRefLabel(kind);
@@ -691,6 +761,14 @@ export const RefLabelDialog = ({
       onSaved?.(saved);
       onClose();
     } catch (error) {
+      const existing =
+        onExisting === undefined ? null : existingAreaName(error, kind, creating, form);
+      if (existing !== null && onExisting !== undefined) {
+        onExisting(existing);
+        toast.info(t('atm.register.form.areaExistsPicked'));
+        onClose();
+        return;
+      }
       toast.error(refLabelErrorText(error, t, locale, { areaCreate: kind === 'area' && creating }));
     }
   };
@@ -701,7 +779,10 @@ export const RefLabelDialog = ({
       : t(kind === 'bank' ? 'atm.dataEdit.editSpelling' : 'atm.dataEdit.editArea');
 
   return (
-    <Dialog open={open} onClose={onClose} title={title}>
+    // A form you fill in, and since the register's «+ منطقة» also one opened OVER the receipt
+    // form, whose own dialogs already ignore a stray click: «لو دوست في اى حته الموديل ميتقفلش غير
+    // لما ادوس على الاكس» (Dialog.tsx). The × and Escape still close it.
+    <Dialog open={open} onClose={onClose} title={title} dismissOnOutsideClick={false}>
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
         {(kind === 'bank' || !creating) && (
           <Field
@@ -843,7 +924,7 @@ export const BulkMachinesDialog = ({
     const machines = buildMachineRows(codes, names);
     if (machines.length === 0 || bankName === '' || area === '') return;
     try {
-      const result = await bulkCreate.mutateAsync({ bankName, area, machines });
+      const result = bulkAddResultOf(await bulkCreate.mutateAsync({ bankName, area, machines }));
       if (result.created.length > 0 || result.reactivatedCodes.length > 0) {
         setCodes('');
         setNames('');

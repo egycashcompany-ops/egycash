@@ -136,6 +136,7 @@ const OPTIONS: AtmRefLabelOptionsDto = {
   ],
   areas: ACTIVE_AREAS.map((a) => ({ name: a.name, nameAr: null, nameEn: null })),
   unmappedBankNames: [],
+  unmappedBankLabels: [],
 };
 
 /** The Operations bundle of §12.3: reads the machines, keeps the lists, moves a machine. */
@@ -192,7 +193,11 @@ const renderPage = (permissions: readonly string[], tab: AtmDataTab = 'machines'
     ['bank', BANKS],
     ['area', AREAS],
   ] as const) {
-    qc.setQueryData(listKey('atm', 'refLabels', { kind, ...first, sortBy: 'name' }), page(rows));
+    // The label tabs ask for the acting branch's rows (the options' `branchId`).
+    qc.setQueryData(
+      listKey('atm', 'refLabels', { kind, ...first, sortBy: 'name', branchId: ALEX }),
+      page(rows),
+    );
   }
   qc.setQueryData(atmBanksKey(), CATALOG);
   qc.setQueryData(atmRefLabelOptionsKey(null), { ...OPTIONS, branchId: ALEX });

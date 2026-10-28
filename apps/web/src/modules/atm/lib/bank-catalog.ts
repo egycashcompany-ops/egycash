@@ -65,13 +65,37 @@ export interface BankLookup {
   isPale: (code: AtmBankCode | null) => boolean;
 }
 
+/** Where each seed sorts — the place an older server's row, which carries no `sortOrder`, takes. */
+const SEED_ORDER: ReadonlyMap<string, number> = new Map(
+  ATM_BANK_SEED.map((seed) => [seed.code, seed.sortOrder]),
+);
+
+/**
+ * A bank row as a server may send it. An OLDER server — a rollback, or a tab still on this bundle
+ * during a rolling deploy (design §9) — answers `GET /atm/register/meta` with `{ code, name,
+ * opsLabel, color }` only: no `isActive`, no `sortOrder`.
+ */
+export type IncomingBank = Pick<LookupBank, 'code' | 'name' | 'color'> &
+  Partial<Pick<LookupBank, 'sortOrder' | 'isActive'>>;
+
 /**
  * A lookup over the catalog's banks. `undefined` (still loading, or refused) is the six seeds, so
  * every screen keeps working on the workbook's banks while the catalog is on its way.
+ *
+ * A row without the catalog's fields is filled BEFORE anything reads it — active, in its seed's
+ * place — the way the report page guards against an older server (`reportBanksOf`, DEC-40). Only
+ * filtering on `isActive !== false` would not do: the pickers and the register filter work out
+ * «مؤرشف» from `ordered` themselves, so every bank would be offered and still be marked archived,
+ * and before that, none could be chosen at all — a receipt with a start date could not be saved.
  */
-export const makeBankLookup = (banks?: readonly LookupBank[]): BankLookup => {
+export const makeBankLookup = (banks?: readonly IncomingBank[]): BankLookup => {
+  const rows: LookupBank[] = (banks ?? SEED_BANKS).map((bank) => ({
+    ...bank,
+    isActive: bank.isActive ?? true,
+    sortOrder: bank.sortOrder ?? SEED_ORDER.get(bank.code) ?? 0,
+  }));
   // The catalog's order: `sortOrder`, then the code — the order the server's pickers use.
-  const ordered = sortByCatalogOrder(banks ?? SEED_BANKS);
+  const ordered = sortByCatalogOrder(rows);
   const color = (code: AtmBankCode | null): string =>
     code === null ? NO_ZONE_GREY : (atmBankColor(code, ordered) ?? NO_ZONE_GREY);
   return {

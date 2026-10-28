@@ -977,6 +977,7 @@ export const EntryFormSections = ({
           label={null}
           branchId={values.branchId}
           onSaved={(added) => onChange({ area: added.name })}
+          onExisting={(name) => onChange({ area: name })}
         />
       )}
     </div>

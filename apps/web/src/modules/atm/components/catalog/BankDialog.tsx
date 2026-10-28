@@ -199,10 +199,14 @@ export const BankDialog = ({
   };
 
   return (
+    // A form you fill in — five fields — and since the register's «+» it is opened OVER the receipt
+    // form, whose own dialogs already ignore a stray click: «لو دوست في اى حته الموديل ميتقفلش غير
+    // لما ادوس على الاكس» (Dialog.tsx). The × and Escape still close it.
     <Dialog
       open={open}
       onClose={onClose}
       title={t(bank === null ? 'atm.bankCatalog.add' : 'atm.bankCatalog.edit')}
+      dismissOnOutsideClick={false}
     >
       <form onSubmit={(e) => void submit(e)} className="space-y-4" data-bank-dialog="true">
         <div className="grid gap-3 sm:grid-cols-2">

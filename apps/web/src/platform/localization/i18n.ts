@@ -8625,6 +8625,8 @@ const en: Record<string, string> = {
   'atm.dataEdit.unmappedBody':
     'A machine added with one of these names works for Operations but is not recorded in the register. Link each name to its bank.',
   'atm.dataEdit.linkToBank': 'Link to a bank',
+  'atm.dataEdit.labelsUnscoped':
+    'This list shows every branch you can reach, because no single branch is chosen. Choose a branch in the top bar to list and add the names of one branch.',
   'atm.dataEdit.storedName': 'Name stored on machines',
   'atm.dataEdit.nameAr': 'Name in Arabic',
   'atm.dataEdit.nameEn': 'Name in English',
@@ -8807,6 +8809,8 @@ const en: Record<string, string> = {
   'atm.register.form.startDateHint': 'Leave empty to record the machine without a start date.',
   'atm.register.form.areaRequired': 'The area is required when the start date is set.',
   'atm.register.form.newAreaHint': "A new area — it will be added to the branch's list.",
+  'atm.register.form.areaExistsPicked':
+    'This branch already has an area with this name, so it has been put in the area field.',
   'atm.register.form.dataIncompleteHint':
     'Keep it ticked until the entry is complete, and untick it once you have reviewed it.',
   'atm.register.form.operationsNote':
@@ -18285,6 +18289,8 @@ const ar: Record<string, string> = {
   'atm.dataEdit.unmappedBody':
     'الماكينة التي تُضاف بأحد هذه الأسماء تعمل في التشغيل، ولا تُسجَّل في السجل. اربط كل اسم ببنكه.',
   'atm.dataEdit.linkToBank': 'ربط ببنك',
+  'atm.dataEdit.labelsUnscoped':
+    'تعرض هذه القائمة كل الفروع المتاحة لك، لأنه لم يُحدَّد فرع واحد. اختر فرعًا من القائمة العلوية لعرض أسماء فرع واحد والإضافة إليه.',
   'atm.dataEdit.storedName': 'الاسم المحفوظ على الماكينات',
   'atm.dataEdit.nameAr': 'الاسم بالعربية',
   'atm.dataEdit.nameEn': 'الاسم بالإنجليزية',
@@ -18456,6 +18462,7 @@ const ar: Record<string, string> = {
   'atm.register.form.startDateHint': 'اتركه فارغًا لتسجيل الماكينة دون تاريخ بدء.',
   'atm.register.form.areaRequired': 'المنطقة مطلوبة عند إدخال تاريخ البدء.',
   'atm.register.form.newAreaHint': 'منطقة جديدة — ستُضاف إلى قائمة الفرع.',
+  'atm.register.form.areaExistsPicked': 'توجد منطقة بهذا الاسم في هذا الفرع، فوُضعت في خانة المنطقة.',
   'atm.register.form.dataIncompleteHint':
     'أبقِ العلامة حتى تُستكمل بيانات السجل، ثم أزِلها بعد مراجعته.',
   'atm.register.form.operationsNote':

@@ -57,6 +57,7 @@ import { ensureAreaLabels } from '../catalogs/area-labels';
 import {
   IntakeRefusal,
   recordOperationsIntake,
+  removeUntouchedIntakeStubs,
   resolveIntakeBank,
   type OperationsIntakeResult,
 } from '../register/operations-intake';
@@ -393,12 +394,21 @@ class AtmMachineService {
     return updated;
   }
 
-  /** Legacy delete-by-codes textarea (:2494-2508): soft delete + `-D` rename, unknowns reported. */
+  /**
+   * Legacy delete-by-codes textarea (:2494-2508): soft delete + `-D` rename, unknowns reported.
+   *
+   * Deleting is also how a mistyped code is fixed (delete, add again), and since DEC-36 every add
+   * wrote an open register entry. So each code is ONE unit: the master's rename and delete plus the
+   * removal of the untouched intake stub that add left (`removeUntouchedIntakeStubs`) — otherwise
+   * the stub would keep counting in the Data Report and hold the code's company-wide open period.
+   * Any other open entry stays and the delete is never refused (DEC-24). Because the delete now
+   * writes the register, `manage` must reach the acting branch, exactly as for the add (DEC-39).
+   */
   async bulkDelete(
     input: BulkDeleteAtmMachines,
     ctx: AuthContext,
   ): Promise<{ deletedCodes: string[]; unknownCodes: string[] }> {
-    const branchId = await resolveAtmBranchId(ctx);
+    const branchId = await addBranchOf(ctx);
     const deletedCodes: string[] = [];
     const unknownCodes: string[] = [];
     for (const raw of input.machineCodes) {
@@ -412,21 +422,36 @@ class AtmMachineService {
         unknownCodes.push(machineCode);
         continue;
       }
-      // The rename rides the same optimistic write as the delete used to ride updateOne; doing
-      // it first keeps the partial unique index free for a future re-add even mid-operation.
-      await atmMachineRepository.updateById(
-        existing._id.toString(),
-        {
-          machineCode: `${machineCode}-D`,
-        },
-        { by: ctx.userId, version: existing.__v },
-      );
-      await atmMachineRepository.softDeleteById(existing._id.toString(), { by: ctx.userId });
-      await auditService.record({
-        entityRef: entityRef(String(existing._id)),
-        action: 'delete',
-        changes: diffChanges(snapshot(existing), {}),
+      const stubAudits = await unitOfWork(async (session) => {
+        // A legacy row read before its backfill carries no `__v`; the backfill sets 0 (DEC-23).
+        await ensureMachineVersioned(existing._id, session);
+        // The rename rides the same optimistic write as the delete used to ride updateOne; doing
+        // it first keeps the partial unique index free for a future re-add even mid-operation.
+        await atmMachineRepository.updateById(
+          existing._id.toString(),
+          { machineCode: `${machineCode}-D` },
+          {
+            by: ctx.userId,
+            version: (existing as Partial<AtmMachineDoc>).__v ?? 0,
+            session,
+          },
+        );
+        await atmMachineRepository.softDeleteById(existing._id.toString(), {
+          by: ctx.userId,
+          session,
+        });
+        return removeUntouchedIntakeStubs(existing, ctx.userId, session);
       });
+      // After commit, once (`withTransaction` may run the callback twice). The entries' `delete`
+      // also refreshes open register screens through the existing topic.
+      await recordAll([
+        {
+          entityRef: entityRef(String(existing._id)),
+          action: 'delete',
+          changes: diffChanges(snapshot(existing), {}),
+        },
+        ...stubAudits,
+      ]);
       deletedCodes.push(machineCode);
     }
     return { deletedCodes, unknownCodes };

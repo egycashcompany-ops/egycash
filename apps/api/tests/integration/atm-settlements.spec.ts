@@ -1624,6 +1624,23 @@ describe('7. standard loads (§6.4 S7–S10)', () => {
     ).toHaveLength(1);
   });
 
+  // The enum used to refuse an unknown code; since the catalog the model checks the shape only, so
+  // the service checks the bank exists and is enabled, as plan create does (review finding).
+  it('a code the catalog does not know, or a bank not enabled, is refused — nothing stored', async () => {
+    const before = await AtmStandardLoadModel.countDocuments({}).exec();
+    for (const bankCode of ['ZZZ', 'BRKK', 'BM']) {
+      const res = await postLoad({
+        bankCode,
+        label: null,
+        isDefault: true,
+        notes: [{ denomination: 200, notes: 100 }],
+      });
+      expect(res.status, `${bankCode}: ${JSON.stringify(res.body)}`).toBe(422);
+      expect(errorCode(res)).toBe('ATM_SETTLEMENT_BANK_NOT_ENABLED');
+    }
+    expect(await AtmStandardLoadModel.countDocuments({}).exec()).toBe(before);
+  });
+
   it("a body branch other than the page's is refused; a plan-only user reads the profiles", async () => {
     const res = await postLoad({
       branchId: BETA,

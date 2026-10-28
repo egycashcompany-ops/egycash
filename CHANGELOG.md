@@ -27,7 +27,8 @@ its entry here in the same PR.
   spellings such as NBE FOREX, linked to their bank, with the machines' unlinked bank texts listed
   to link; and areas, each with an Arabic and an English name. Every area on an active machine or an
   open or pending register entry now shows there, listed automatically after each save and once at
-  the deploy. A new area entered in both languages is stored on machines under its English name
+  the deploy; a name Operations deleted, archived or renamed — a rename made before this release
+  included, found in the audit trail — is never listed again. A new area entered in both languages is stored on machines under its English name
   («الإنجليزي تمام»). Efficiency add areas from the register form's «+ منطقة» with the register keys
   they already hold.
   A machine added on data-edit, single or bulk, is recorded in the register as an OPEN entry dated
@@ -201,17 +202,22 @@ its entry here in the same PR.
   العمليات ميعطلش». Each add in a mapped branch whose bank is known opens a register entry from that
   day. It counts in the Data Report at once, and the settlements find its bank, so it is no longer
   refused there as having none. The import's 57-number check still compares the workbook's six banks
-  only. A code archived in the branch is brought back to work with the form's name, area and bank,
-  instead of being refused as already registered (a bulk add lists it as brought back). A code that
+  only. A code archived in the branch is brought back to work with the form's name and area,
+  instead of being refused as already registered (a bulk add lists it as brought back); its bank is
+  the bank of the register entry it is linked to or receives, when that entry has one, so the
+  machine and the register never name two different banks. A code that
   is active, or has an open register period, in another branch is now refused, and nothing is
   written. Before, data-edit added it, and the mail reader then stopped matching that code. Adding a
   machine needs `atmMachine.manage` over the branch it lands in, and an archived bank cannot be
-  chosen for a new machine. The register refuses a bank code the catalog does not have, an archived
+  chosen for a new machine. Deleting a machine by its code (how a mistyped code is fixed) needs the
+  same reach, and also removes the register entry its add wrote while Efficiency has not touched
+  it, so the code is free again in every branch; an entry Efficiency already edited stays. The register refuses a bank code the catalog does not have, an archived
   bank on a new receipt, and an Operations bank name that belongs to another bank or to none
   (DEC-25 now holds on the server too). The setting `atm.register.bankLabels` is retired: each bank's
   Operations name lives in the catalog, a stored label carried over at the first boot, and the
   import page's settings card shows the catalog instead of editing it. `atm.settlements.banks` takes
-  any catalog code, up to 50. Deleting a register entry Operations recorded archives its machine, as
+  any catalog code, up to 50, and a standard load is refused for a bank that is not in the catalog
+  or not enabled for settlements. Deleting a register entry Operations recorded archives its machine, as
   for any receipt; the delete dialog says so
   ([register spec DEC-36, DEC-41, R-14–R-19](docs/12-planning/atm-efficiency-register.md),
   [settlements DS-24](docs/12-planning/atm-settlements-phase1.md)).

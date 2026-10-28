@@ -3,7 +3,12 @@
 // writes themselves are tests/integration/atm-area-labels.spec.ts.
 import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
-import { areaLabelPairs, areaNamesByScript, isArabicText } from './area-labels';
+import {
+  areaLabelPairs,
+  areaNamesByScript,
+  formerNamesFromTrail,
+  isArabicText,
+} from './area-labels';
 import { buildAtmBankCatalog } from './bank-catalog';
 import { type AtmBankDoc } from './bank.model';
 import { branchLabelChoices, nextFormerNames } from './ref-label.service';
@@ -59,6 +64,22 @@ describe('nextFormerNames', () => {
     expect(nextFormerNames({ name: 'B', formerNames: ['A'] }, 'C')).toEqual(['A', 'B']);
     // Renamed back: the name in use leaves the list, the one it replaced joins it.
     expect(nextFormerNames({ name: 'B', formerNames: ['A'] }, 'A')).toEqual(['B']);
+  });
+});
+
+describe('formerNamesFromTrail — a pre-release rename recovered from its audit rows', () => {
+  it('lists every OLD name once, trimmed, in trail order, never the current one or a blank', () => {
+    const trail = [
+      { changes: [{ field: 'name', old: ' Mohndesin ', new: 'Mohndessen' }] },
+      { changes: [{ field: 'isActive', old: true, new: false }] },
+      { changes: [{ field: 'name', old: 'Mohndessen', new: 'MOHNDESSEN' }] },
+      { changes: [{ field: 'name', old: 'Mohndesin', new: 'X' }] },
+      { changes: [{ field: 'name', old: '', new: 'Y' }] },
+      { changes: [{ field: 'name', old: 'MOHNDESSEN', new: 'MOHNDESSEN' }] },
+      { changes: null },
+    ];
+    expect(formerNamesFromTrail('MOHNDESSEN', trail)).toEqual(['Mohndesin', 'Mohndessen']);
+    expect(formerNamesFromTrail('Bolkly', [])).toEqual([]);
   });
 });
 

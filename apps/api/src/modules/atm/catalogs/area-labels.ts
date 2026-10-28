@@ -24,6 +24,7 @@ import { Types } from 'mongoose';
 import { type AtmRefLabelOrigin } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { auditService } from '../../../platform/audit';
+import { AuditLogModel } from '../../../platform/audit/audit.model';
 import { diffChanges } from '../../../shared/utils/diff';
 import { AtmMachineModel } from '../machines/machine.model';
 import { AtmRegisterEntryModel } from '../register/register.model';
@@ -158,6 +159,102 @@ export const ensureAreaLabels = async (
 export interface AreaLabelBackfillResult {
   inserted: number;
 }
+
+/**
+ * Pure: the old canonical names a label's audit trail remembers — every `name` change's OLD text,
+ * trimmed, distinct, in trail order, without the current name and without blanks.
+ */
+export const formerNamesFromTrail = (
+  current: unknown,
+  trail: readonly { changes?: readonly { field: string; old?: unknown }[] | null }[],
+): string[] => {
+  const now = typeof current === 'string' ? current.trim() : null;
+  const out: string[] = [];
+  for (const row of trail) {
+    for (const change of row.changes ?? []) {
+      if (change.field !== 'name' || typeof change.old !== 'string') continue;
+      const old = change.old.trim();
+      if (old === '' || old === now || out.includes(old)) continue;
+      out.push(old);
+    }
+  }
+  return out;
+};
+
+export interface AreaFormerNamesResult {
+  /** Area rows that had no `formerNames` field and now have one. */
+  rows: number;
+  /** Of those, the rows whose trail held at least one old name. */
+  recovered: number;
+}
+
+const TRAIL_BATCH = 500;
+
+/**
+ * Boot step, ONCE per row, before `backfillAtmAreaLabels`: give `formerNames` to the area rows
+ * written before the field existed — by the old data-edit code or the legacy import.
+ *
+ * The rename existed before this release and was reachable on data-edit, but it set `name` and
+ * nothing else: no `formerNames`, no cascade, while the branch's machines kept the old text (they
+ * are never rewritten). Without this step the first boot's backfill would find that old text on an
+ * active machine, match no row by `name` or `formerNames`, and insert it as a NEW active label —
+ * reviving exactly the renamed name DEC-38 promises is never brought back (review finding,
+ * reproduced: `MOHNDESSEN` renamed from `Mohndesin` came back as `Mohndesin`). The audit trail is the
+ * only place the old name still exists: the old update recorded `diffChanges` of `{ name, isActive }`
+ * under `atm/refLabel/<id>`, and the audit stream is append-only and never pruned.
+ *
+ * Deleted rows are read too — the backfill's `taken` and the upsert both include them, so a renamed
+ * and then deleted row must also remember its old names. One audit read per batch (covered by
+ * `ix_entityRef_at`); the write repeats `formerNames: { $exists: false }`, so a rename another
+ * instance serves during a rolling deploy is never overwritten. A second boot finds no row to read.
+ * Counts only in the log, never a name.
+ */
+export const recoverAreaFormerNames = async (): Promise<AreaFormerNamesResult> => {
+  const rows = await AtmRefLabelModel.collection
+    .find<{ _id: Types.ObjectId; name?: unknown }>(
+      { kind: 'area', formerNames: { $exists: false } },
+      { projection: { name: 1 } },
+    )
+    .toArray();
+  const result: AreaFormerNamesResult = { rows: 0, recovered: 0 };
+  for (let start = 0; start < rows.length; start += TRAIL_BATCH) {
+    const batch = rows.slice(start, start + TRAIL_BATCH);
+    const trail = await AuditLogModel.find(
+      {
+        'entityRef.moduleId': 'atm',
+        'entityRef.entityType': 'refLabel',
+        'entityRef.entityId': { $in: batch.map((row) => String(row._id)) },
+        action: 'update',
+      },
+      { entityRef: 1, changes: 1, at: 1 },
+    )
+      .sort({ at: 1 })
+      .lean()
+      .exec();
+    const byLabel = new Map<string, typeof trail>();
+    for (const row of trail) {
+      const list = byLabel.get(row.entityRef.entityId) ?? [];
+      list.push(row);
+      byLabel.set(row.entityRef.entityId, list);
+    }
+    const writes: Parameters<typeof AtmRefLabelModel.collection.bulkWrite>[0] = batch.map((row) => {
+      const formerNames = formerNamesFromTrail(row.name, byLabel.get(String(row._id)) ?? []);
+      if (formerNames.length > 0) result.recovered += 1;
+      return {
+        updateOne: {
+          filter: { _id: row._id, formerNames: { $exists: false } },
+          update: { $set: { formerNames } },
+        },
+      };
+    });
+    const written = await AtmRefLabelModel.collection.bulkWrite(writes, { ordered: false });
+    result.rows += written.modifiedCount;
+  }
+  if (result.rows > 0) {
+    logger.info(result, 'atm: area labels given the former names their audit trail remembers');
+  }
+  return result;
+};
 
 /** The distinct trimmed areas per branch of one collection's rows that `match` selects. */
 const distinctAreas = async (

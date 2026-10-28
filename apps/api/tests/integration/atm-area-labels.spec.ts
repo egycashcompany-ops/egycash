@@ -376,6 +376,72 @@ describe('the boot backfill (DEC-38)', () => {
   });
 });
 
+describe('an area renamed BEFORE this release (review finding: the first boot revived it)', () => {
+  it('the old name is recovered from the audit trail, so neither boot brings it back', async () => {
+    // The pre-release shape: the old PATCH set `name` alone — no `formerNames` field at all — and
+    // audited `{ name, isActive }`; the branch's machine still carries the old text.
+    const now = new Date();
+    const inserted = await AtmRefLabelModel.collection.insertOne({
+      branchId: new Types.ObjectId(alexBranchId),
+      kind: 'area',
+      name: 'ZIZINIA',
+      isActive: true,
+      schemaVersion: 1,
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      createdBy: null,
+      updatedBy: null,
+      __v: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const labelId = String(inserted.insertedId);
+    await AuditLogModel.create({
+      entityRef: { moduleId: 'atm', entityType: 'refLabel', entityId: labelId },
+      action: 'update',
+      changes: [{ field: 'name', old: 'Zizinia', new: 'ZIZINIA' }],
+      actor: { userId: null, ip: null, userAgent: null },
+      at: now,
+    });
+    // A legacy row nobody ever renamed: no trail, so it remembers nothing.
+    const untouched = await AtmRefLabelModel.collection.insertOne({
+      branchId: new Types.ObjectId(alexBranchId),
+      kind: 'area',
+      name: 'Bolkly',
+      isActive: true,
+      isDeleted: false,
+    });
+    await AtmMachineModel.create([
+      {
+        branchId: new Types.ObjectId(alexBranchId),
+        bankName: 'NBE',
+        machineCode: '66669901',
+        name: 'Pre-release rename',
+        zone: '',
+        area: 'Zizinia',
+        isActive: true,
+      },
+    ]);
+
+    await seedAtm();
+    const renamed = await AtmRefLabelModel.findById(labelId).lean<AtmRefLabelDoc>().exec();
+    expect(renamed?.formerNames).toEqual(['Zizinia']);
+    expect(
+      (await AtmRefLabelModel.findById(untouched.insertedId).lean<AtmRefLabelDoc>().exec())
+        ?.formerNames,
+    ).toEqual([]);
+    expect((await areaLabels(alexBranchId)).map((label) => label.name)).not.toContain('Zizinia');
+
+    // A second boot reads nothing and still brings nothing back.
+    await seedAtm();
+    expect((await areaLabels(alexBranchId)).map((label) => label.name)).not.toContain('Zizinia');
+    expect(
+      (await AtmRefLabelModel.findById(labelId).lean<AtmRefLabelDoc>().exec())?.formerNames,
+    ).toEqual(['Zizinia']);
+  });
+});
+
 describe('labels written on save (DEC-38)', () => {
   it('a register receipt with a NEW area: its label exists and the data-edit options offer it', async () => {
     const res = await call('post', '/atm/register/entries', effAlexToken, {
@@ -626,6 +692,66 @@ describe('GET /atm/ref-labels/options — one branch, whole, to the page’s aud
       branchId: unmappedBranchId,
       registerMapped: false,
     });
+  });
+
+  // «ربط ببنك» edits the row that already holds the text IN THIS BRANCH — an archived spelling or
+  // one never linked — wherever the list's page or status filter would hide it, and never another
+  // branch's row of the same name (review finding).
+  it('names the acting branch’s row that holds each unmapped text, archived ones included', async () => {
+    const now = { schemaVersion: 1, origin: 'manual', formerNames: [] };
+    await AtmRefLabelModel.insertMany([
+      {
+        branchId: new Types.ObjectId(alexBranchId),
+        kind: 'bank',
+        name: 'SYN ARCHIVED',
+        bankCode: 'NBE',
+        isActive: false,
+        ...now,
+      },
+      {
+        branchId: new Types.ObjectId(alexBranchId),
+        kind: 'bank',
+        name: 'SYN LEGACY',
+        bankCode: null,
+        isActive: true,
+        ...now,
+      },
+      // Another branch's unlinked row with the text Alexandria's machines carry.
+      {
+        branchId: new Types.ObjectId(tantaBranchId),
+        kind: 'bank',
+        name: 'OLD TEXT BANK',
+        bankCode: null,
+        isActive: true,
+        ...now,
+      },
+    ]);
+    await insertMachine(alexBranchId, '66663101', 'Smouha', { bankName: 'SYN ARCHIVED' });
+    await insertMachine(alexBranchId, '66663102', 'Smouha', { bankName: 'SYN LEGACY' });
+
+    const dto = data<AtmRefLabelOptionsDto>(await options(undefined, labelOnlyToken));
+    const holder = (name: string) =>
+      dto.unmappedBankLabels.find((entry) => entry.name === name)?.label;
+    expect(dto.unmappedBankLabels.map((entry) => entry.name)).toEqual(dto.unmappedBankNames);
+    expect(holder('OLD TEXT BANK')).toBeNull();
+    expect(holder('SYN ARCHIVED')).toMatchObject({
+      branchId: alexBranchId,
+      kind: 'bank',
+      bankCode: 'NBE',
+      isActive: false,
+    });
+    expect(holder('SYN LEGACY')).toMatchObject({ branchId: alexBranchId, bankCode: null });
+
+    // Re-activating the archived row (what the dialog's save does) clears it from the callout.
+    const archived = holder('SYN ARCHIVED');
+    const back = await call('patch', `/atm/ref-labels/bank/${archived?.id ?? ''}`, adminToken, {
+      isActive: true,
+      version: archived?.version,
+    });
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    expect(
+      data<AtmRefLabelOptionsDto>(await options(undefined, labelOnlyToken)).unmappedBankNames,
+    ).not.toContain('SYN ARCHIVED');
   });
 
   it('refuses a branch the caller’s keys do not reach, and a caller outside the page', async () => {

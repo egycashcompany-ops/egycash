@@ -12,6 +12,9 @@
 //     Operations only — and why a refused add was refused.
 //
 // Every code, name and label below is synthetic.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -47,7 +50,9 @@ import {
   BulkMachinesDialog,
   MachineDialog,
   RefLabelDialog,
+  bulkAddResultOf,
   bulkAddToasts,
+  existingAreaName,
   machineAddErrorText,
   machineAddToast,
   refLabelCreateBody,
@@ -81,6 +86,7 @@ const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
 
 const ALEX = '650000000000000000000104';
+const TANTA = '650000000000000000000105';
 const STAMP = '2026-01-12T08:00:00.000Z';
 
 const bankDto = (over: Partial<AtmBankDto> & Pick<AtmBankDto, 'code'>): AtmBankDto => ({
@@ -125,6 +131,7 @@ const OPTIONS: AtmRefLabelOptionsDto = {
     { name: 'ALEX', nameAr: null, nameEn: null },
   ],
   unmappedBankNames: [],
+  unmappedBankLabels: [],
 };
 
 const machine = (over: Partial<AtmMachineDto> = {}): AtmMachineDto => ({
@@ -381,6 +388,53 @@ describe('the area dialog', () => {
     );
     expect(refLabelErrorText(conflict, t, 'ar')).toBe(t('atm.dataEdit.labelExists'));
   });
+
+  // The register's «+ منطقة» (Efficiency: register keys, no data-edit, no `atmRefLabel.edit`): the
+  // data-edit text sends them to an «تعديل» they cannot reach, so the register fills the box with
+  // the existing area instead — its stored name is exactly the English text typed (review finding).
+  it('from the register, a taken NEW area is the area to use: its stored name, not an error', () => {
+    const conflict = new ApiError('CONFLICT', 'duplicate', 409);
+    const form = { nameEn: '  Smouha  ' };
+    expect(existingAreaName(conflict, 'area', true, form)).toBe('Smouha');
+    // Not for a spelling, an edit, the catalog-label 409, another status or a blank name.
+    expect(existingAreaName(conflict, 'bank', true, form)).toBeNull();
+    expect(existingAreaName(conflict, 'area', false, form)).toBeNull();
+    const taken = new ApiError(ErrorCodes.ATM_BANK_LABEL_TAKEN, 'taken', 409);
+    expect(existingAreaName(taken, 'area', true, form)).toBeNull();
+    expect(existingAreaName(new ApiError('FORBIDDEN', 'no', 403), 'area', true, form)).toBeNull();
+    expect(existingAreaName(conflict, 'area', true, { nameEn: ' ' })).toBeNull();
+    expect(t('atm.register.form.areaExistsPicked')).not.toContain('تعديل');
+  });
+});
+
+// ── The dialogs opened over the register form (review finding) ───────────────────────────────────
+//
+// Pinned at the source, like the roster dialog's (the suite has no DOM to click a backdrop in):
+// the register's receipt dialogs ignore a stray click, and the bank and area dialogs they open on
+// top must too — «لو دوست في اى حته الموديل ميتقفلش غير لما ادوس على الاكس».
+describe('the bank and area dialogs survive a click that missed', () => {
+  const HERE = dirname(fileURLToPath(import.meta.url));
+  const source = (path: string): string => readFileSync(join(HERE, path), 'utf8');
+  /** The `<Dialog …>` opening tag that `component` renders. */
+  const dialogTag = (file: string, component: string): string => {
+    const start = file.indexOf('<Dialog', file.indexOf(`export const ${component} = (`));
+    return file.slice(start, file.indexOf('>', file.indexOf('title=', start)) + 1);
+  };
+
+  it('the area dialog and the bank dialog opt out of closing on an outside click', () => {
+    expect(dialogTag(source('components/DataEditDialogs.tsx'), 'RefLabelDialog')).toContain(
+      'dismissOnOutsideClick={false}',
+    );
+    expect(dialogTag(source('components/catalog/BankDialog.tsx'), 'BankDialog')).toContain(
+      'dismissOnOutsideClick={false}',
+    );
+  });
+
+  it('the register fills the area box with an area the branch already has', () => {
+    expect(source('components/register/EntryFormSections.tsx')).toContain(
+      'onExisting={(name) => onChange({ area: name })}',
+    );
+  });
 });
 
 describe('the bank-name (spelling) dialog', () => {
@@ -480,29 +534,41 @@ describe('the machine dialogs offer the branch’s whole lists', () => {
 // ── The spellings tab's callout ─────────────────────────────────────────────────────────────────
 
 describe('the unmapped callout on «أسماء البنوك في التشغيل»', () => {
-  const page = (permissions: readonly string[], unmapped: string[], rows: AtmRefLabelDto[] = []) =>
-    render(
+  type Unmapped = AtmRefLabelOptionsDto['unmappedBankLabels'][number];
+  const listOf = (rows: AtmRefLabelDto[]): Paginated<AtmRefLabelDto> => ({
+    items: rows,
+    meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 },
+  });
+  const firstPage = { kind: 'bank', page: 1, pageSize: 25, sortDir: 'asc', sortBy: 'name' };
+  /** The page as the server answers it: `unmapped` names, or entries with the row that holds one. */
+  const page = (
+    permissions: readonly string[],
+    unmapped: (string | Unmapped)[],
+    rows: AtmRefLabelDto[] = [],
+  ) => {
+    const entries = unmapped.map((entry) =>
+      typeof entry === 'string' ? { name: entry, label: null } : entry,
+    );
+    return render(
       permissions,
       <DataEditPage />,
       (qc) => {
-        qc.setQueryData(atmRefLabelOptionsKey(null), { ...OPTIONS, unmappedBankNames: unmapped });
-        const list: Paginated<AtmRefLabelDto> = {
-          items: rows,
-          meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 },
-        };
+        qc.setQueryData(atmRefLabelOptionsKey(null), {
+          ...OPTIONS,
+          unmappedBankNames: entries.map((entry) => entry.name),
+          unmappedBankLabels: entries,
+        });
+        // The table holds `rows` whichever way it asks — scoped to the options' branch or not — so
+        // only the server's `unmappedBankLabels` can decide the link.
         qc.setQueryData(
-          listKey('atm', 'refLabels', {
-            kind: 'bank',
-            page: 1,
-            pageSize: 25,
-            sortDir: 'asc',
-            sortBy: 'name',
-          }),
-          list,
+          listKey('atm', 'refLabels', { ...firstPage, branchId: ALEX }),
+          listOf(rows),
         );
+        qc.setQueryData(listKey('atm', 'refLabels', firstPage), listOf(rows));
       },
       '/atm/data-edit?tab=bankLabel',
     );
+  };
   const links = (markup: string): number =>
     [...markup.matchAll(/data-edit-action="link-bank"/g)].length;
 
@@ -521,15 +587,100 @@ describe('the unmapped callout on «أسماء البنوك في التشغيل�
     expect(links(readOnly)).toBe(0);
   });
 
-  it('a listed spelling linked to no bank is EDITED, so only the edit key offers its link', () => {
-    const row = refLabel({
+  it('a text the server says a row of this branch holds is EDITED, so only the edit key links it', () => {
+    const row = refLabel({ kind: 'bank', name: 'OLD SPELLING', bankCode: null });
+    const held = [{ name: 'OLD SPELLING', label: row }];
+    expect(links(page(['atmMachine.view', 'atmRefLabel.edit'], held))).toBe(1);
+    expect(links(page(['atmMachine.view', 'atmRefLabel.create'], held))).toBe(0);
+    // An ARCHIVED spelling of a bank holds its text too (that is why it reads unmapped).
+    const archived = refLabel({
+      kind: 'bank',
+      name: 'NBE FOREX',
+      bankCode: 'NBE',
+      isActive: false,
+    });
+    expect(
+      links(
+        page(['atmMachine.view', 'atmRefLabel.edit'], [{ name: 'NBE FOREX', label: archived }]),
+      ),
+    ).toBe(1);
+  });
+
+  it('another branch’s same-named row in the table never decides the link (review finding)', () => {
+    // A user reaching Tanta too: Tanta's unlinked «OLD SPELLING» is no row of the acting branch, so
+    // the server says none holds the text here — the link is an ADD, offered to the add key.
+    const tanta = refLabel({
+      id: '650000000000000000000c09',
+      branchId: TANTA,
       kind: 'bank',
       name: 'OLD SPELLING',
       bankCode: null,
-      origin: 'backfill',
     });
-    expect(links(page(['atmMachine.view', 'atmRefLabel.edit'], ['OLD SPELLING'], [row]))).toBe(1);
-    expect(links(page(['atmMachine.view', 'atmRefLabel.create'], ['OLD SPELLING'], [row]))).toBe(0);
+    expect(links(page(['atmMachine.view', 'atmRefLabel.create'], ['OLD SPELLING'], [tanta]))).toBe(
+      1,
+    );
+    expect(links(page(['atmMachine.view', 'atmRefLabel.edit'], ['OLD SPELLING'], [tanta]))).toBe(0);
+  });
+
+  it('the table lists the acting branch only — an unscoped answer is never what it shows', () => {
+    const markup = render(
+      OPERATIONS,
+      <DataEditPage />,
+      (qc) => {
+        const ours = refLabel({ kind: 'bank', name: 'ALEX SPELLING', bankCode: 'NBE' });
+        const mixed = refLabel({ kind: 'bank', name: 'EVERY BRANCH SPELLING', bankCode: 'NBE' });
+        qc.setQueryData(
+          listKey('atm', 'refLabels', { ...firstPage, branchId: ALEX }),
+          listOf([ours]),
+        );
+        qc.setQueryData(listKey('atm', 'refLabels', firstPage), listOf([mixed]));
+      },
+      '/atm/data-edit?tab=bankLabel',
+    );
+    expect(markup).toContain('ALEX SPELLING');
+    expect(markup).not.toContain('EVERY BRANCH SPELLING');
+    expect(markup).not.toContain('data-labels-unscoped');
+  });
+
+  it('when the options cannot name one branch, the unscoped list is shown and says why', () => {
+    const markup = render(
+      OPERATIONS,
+      <DataEditPage />,
+      (qc) => {
+        qc.removeQueries({ queryKey: atmRefLabelOptionsKey(null) });
+        // A refused answer the page renders as it stands (no retry on mount in a static render).
+        qc.setQueryDefaults(atmRefLabelOptionsKey(null), { retryOnMount: false });
+        qc.getQueryCache()
+          .build(qc, { queryKey: atmRefLabelOptionsKey(null) })
+          .setState({ status: 'error', error: new Error('choose a branch'), fetchStatus: 'idle' });
+        const mixed = refLabel({ kind: 'bank', name: 'EVERY BRANCH SPELLING', bankCode: 'NBE' });
+        qc.setQueryData(listKey('atm', 'refLabels', firstPage), listOf([mixed]));
+      },
+      '/atm/data-edit?tab=bankLabel',
+    );
+    expect(markup).toContain('data-labels-unscoped');
+    expect(markup).toContain(t('atm.dataEdit.labelsUnscoped'));
+    expect(markup).toContain('EVERY BRANCH SPELLING');
+  });
+
+  it('«ربط ببنك» opens the row ACTIVE, so one save links it and brings it back', () => {
+    const archived = refLabel({
+      kind: 'bank',
+      name: 'NBE FOREX',
+      bankCode: 'NBE',
+      isActive: false,
+    });
+    expect(refLabelFormOf(archived, '', true).isActive).toBe(true);
+    expect(refLabelFormOf(archived).isActive).toBe(false);
+    expect(refLabelUpdateBody('bank', archived, refLabelFormOf(archived, '', true))).toEqual({
+      isActive: true,
+      version: archived.version,
+    });
+    const markup = render(
+      OPERATIONS,
+      <RefLabelDialog open onClose={() => undefined} kind="bank" label={archived} activate />,
+    );
+    expect(tagWith(markup, 'input', 'type', 'checkbox')).toContain('checked=""');
   });
 });
 
@@ -583,6 +734,28 @@ describe('the outcome of an add', () => {
       t('atm.dataEdit.codeTaken'),
     );
     expect(say(new ApiError('FORBIDDEN', 'Forbidden', 403))).toBe('ليس لديك صلاحية للقيام بذلك.');
+  });
+
+  // An older server (rollback, or a tab on this bundle mid-deploy) answers the bare machine and the
+  // bare bulk result: a machine it DID add must not read as a failure, and a retry as a taken code.
+  it('an older server’s answers, without the register fields, read as «added», never a crash', () => {
+    // The bare machine is exactly what an older server answers a single add with.
+    expect(machineAddToast(machine(), t)).toEqual({
+      variant: 'success',
+      title: t('atm.dataEdit.machineAdded'),
+      description: '',
+    });
+    expect(bulkAddToasts({ created: [machine()], skippedCodes: ['99990003'] }, t)).toEqual([
+      { variant: 'success', title: t('atm.dataEdit.machinesAdded', { count: 1 }) },
+      { variant: 'error', title: t('atm.dataEdit.machinesSkipped', { codes: '99990003' }) },
+    ]);
+    expect(bulkAddResultOf({ created: [], skippedCodes: [] })).toEqual({
+      created: [],
+      skippedCodes: [],
+      reactivatedCodes: [],
+      refused: [],
+      register: { created: [], received: [], linked: [], existing: [], notRecorded: [] },
+    });
   });
 
   it('a bulk add lists the brought-back, refused and not-recorded codes', () => {

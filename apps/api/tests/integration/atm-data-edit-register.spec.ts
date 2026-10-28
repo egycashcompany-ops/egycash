@@ -715,3 +715,154 @@ describe('the bulk paste, banks, atomicity and races', () => {
     expect(bulkAway.status).toBe(403);
   });
 });
+
+describe('deleting a data-edit machine takes its untouched stub with it (review finding: stub leak)', () => {
+  it('15 — add → bulk-delete leaves no open entry, no Data Report count, and frees the code company-wide', async () => {
+    const before = await report();
+    const res = await add(manageAlexToken, undefined, { machineCode: '77771501' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const added = data<AtmMachineCreateResultDto>(res);
+    expect(added.register.action).toBe('created');
+    const stubId = added.register.entryId as string;
+
+    // The documented fix for a mistyped code: delete it, then add the right one.
+    const deleted = await call('post', '/atm/machines/bulk-delete', manageAlexToken, {
+      machineCodes: ['77771501'],
+    });
+    expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
+    expect(data<{ deletedCodes: string[] }>(deleted).deletedCodes).toEqual(['77771501']);
+
+    expect(await atmRegisterEntryRepository.findOpenByCode('77771501')).toHaveLength(0);
+    const stub = await AtmRegisterEntryModel.findById(stubId).lean<AtmRegisterEntryDoc>().exec();
+    expect(stub).toMatchObject({ isDeleted: true, status: 'open' });
+    const after = await report();
+    expect(after.counts.section1.total).toBe(before.counts.section1.total);
+    // Audited once, after commit, like the register's own delete.
+    expect((await auditRows(stubId)).map((row) => row.action).sort()).toEqual(['create', 'delete']);
+
+    // The code's one open period is free again: the right branch can add it at once.
+    const tanta = await add(adminToken, tantaBranchId, { machineCode: '77771501' });
+    expect(tanta.status, JSON.stringify(tanta.body)).toBe(201);
+    expect(data<AtmMachineCreateResultDto>(tanta).register.action).toBe('created');
+  });
+
+  it('16 — a stub Efficiency already touched survives the delete, showing `masterState: deleted` (DEC-24)', async () => {
+    const res = await add(adminToken, alexBranchId, { machineCode: '77771601' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const entryId = data<AtmMachineCreateResultDto>(res).register.entryId as string;
+    const edited = await call('patch', `/atm/register/entries/${entryId}`, adminToken, {
+      vendor: 'NCR',
+      version: (await getEntry(entryId)).version,
+    });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+
+    const deleted = await call(
+      'post',
+      '/atm/machines/bulk-delete',
+      adminToken,
+      { machineCodes: ['77771601'] },
+      alexBranchId,
+    );
+    expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
+    expect(await getEntry(entryId)).toMatchObject({
+      status: 'open',
+      vendor: 'NCR',
+      masterState: 'deleted',
+    });
+  });
+});
+
+describe('the master takes the bank of the entry it is coupled to (D5/DEC-8; review finding)', () => {
+  const pendingReceipt = async (
+    machineCode: string,
+    over: Record<string, unknown> = {},
+  ): Promise<string> => {
+    const res = await call('post', '/atm/register/entries', adminToken, {
+      branchId: alexBranchId,
+      machineCode,
+      name: 'Pending name',
+      ...over,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return data<AtmRegisterWriteResultDto>(res).entry.id;
+  };
+  const masterOf = async (id: string): Promise<AtmMachineDoc | null> =>
+    AtmMachineModel.findById(id).lean<AtmMachineDoc>().exec();
+
+  it('17 — a pending CIB receipt, a form saying NBE: both rows say CIB', async () => {
+    const pendingId = await pendingReceipt('77771701', { bankCode: 'CIB' });
+    const res = await add(adminToken, alexBranchId, { machineCode: '77771701', bankName: 'NBE' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const added = data<AtmMachineCreateResultDto>(res);
+    expect(added.register).toMatchObject({ action: 'received', entryId: pendingId });
+    expect(added.bankName).toBe('CIB');
+    expect((await masterOf(added.id))?.bankName).toBe('CIB');
+    expect(await getEntry(pendingId)).toMatchObject({
+      bankCode: 'CIB',
+      opsBankLabel: null,
+      effectiveOpsBankLabel: 'CIB',
+    });
+  });
+
+  it('18 — a pending NBE receipt with the NBE FOREX override, a form saying NBE: the master says NBE FOREX', async () => {
+    const pendingId = await pendingReceipt('77771801', {
+      bankCode: 'NBE',
+      opsBankLabel: 'NBE FOREX',
+    });
+    const res = await add(adminToken, alexBranchId, { machineCode: '77771801', bankName: 'NBE' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const added = data<AtmMachineCreateResultDto>(res);
+    expect((await masterOf(added.id))?.bankName).toBe('NBE FOREX');
+    expect((await getEntry(pendingId)).effectiveOpsBankLabel).toBe('NBE FOREX');
+  });
+
+  it('19 — a bank-less pending receipt, a form saying NBE FOREX: both rows say NBE FOREX', async () => {
+    const pendingId = await pendingReceipt('77771901');
+    const res = await add(adminToken, alexBranchId, {
+      machineCode: '77771901',
+      bankName: 'NBE FOREX',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const added = data<AtmMachineCreateResultDto>(res);
+    expect((await masterOf(added.id))?.bankName).toBe('NBE FOREX');
+    expect(await getEntry(pendingId)).toMatchObject({
+      bankCode: 'NBE',
+      opsBankLabel: 'NBE FOREX',
+      effectiveOpsBankLabel: 'NBE FOREX',
+    });
+  });
+
+  it('20 — archived with an open NBE entry (DEC-24), a form saying CIB: the master comes back as NBE', async () => {
+    const receipt = await call('post', '/atm/register/entries', adminToken, {
+      branchId: alexBranchId,
+      bankCode: 'NBE',
+      machineCode: '77772001',
+      area: 'Gleem',
+      name: 'Register name',
+      startDate: '2026-09-01',
+    });
+    expect(receipt.status, JSON.stringify(receipt.body)).toBe(201);
+    const masterId = data<AtmRegisterWriteResultDto>(receipt).master.machineId as string;
+    const archived = await call('patch', `/atm/machines/${masterId}`, adminToken, {
+      isActive: false,
+      version: (await masterOf(masterId))?.__v,
+    });
+    expect(archived.status, JSON.stringify(archived.body)).toBe(200);
+
+    const res = await add(adminToken, alexBranchId, {
+      machineCode: '77772001',
+      bankName: 'CIB',
+      name: 'Back at work',
+      area: 'Gleem',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(data<AtmMachineCreateResultDto>(res)).toMatchObject({
+      id: masterId,
+      reactivated: true,
+      // DEC-36(b): name and area are the form's; the bank is the entry's.
+      name: 'Back at work',
+      bankName: 'NBE',
+      register: { action: 'existing' },
+    });
+  });
+});

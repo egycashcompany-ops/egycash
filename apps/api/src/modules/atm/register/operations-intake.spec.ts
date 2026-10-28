@@ -6,8 +6,10 @@ import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import {
   intakeEntryFields,
+  intakeMasterLabel,
   intakeOpsBankLabel,
   intakeReceiptFill,
+  isUntouchedIntakeStub,
   openElsewhereOf,
   planIntakeRegister,
 } from './operations-intake';
@@ -15,7 +17,9 @@ import {
 const ALEX = new Types.ObjectId().toHexString();
 const TANTA = new Types.ObjectId().toHexString();
 const master = new Types.ObjectId();
-const catalog = { opsLabel: (code: string) => ({ NBE: 'NBE', BM: 'MISR' })[code] ?? code };
+const catalog = {
+  opsLabel: (code: string) => ({ NBE: 'NBE', BM: 'MISR', CIB: 'CIB' })[code] ?? code,
+};
 
 const plan = (over: Partial<Parameters<typeof planIntakeRegister>[0]> = {}) =>
   planIntakeRegister({
@@ -153,5 +157,90 @@ describe('what the intake writes', () => {
     const filled = intakeReceiptFill(own, form, master, '2026-10-28', catalog);
     expect(filled).toMatchObject({ area: 'Kept', bankCode: 'CIB', name: 'Form' });
     expect(filled).not.toHaveProperty('opsBankLabel');
+  });
+});
+
+describe('undoing an add — which open entry is still the add’s untouched stub', () => {
+  const owner = { _id: master, branchId: new Types.ObjectId(ALEX) };
+  const stub = {
+    source: 'operations' as const,
+    dataIncomplete: true,
+    __v: 0,
+    status: 'open' as const,
+    isDeleted: false,
+    machineId: master,
+    branchId: new Types.ObjectId(ALEX),
+  };
+
+  it('matches the intake’s own entry, flagged and never written since', () => {
+    expect(isUntouchedIntakeStub(stub, owner)).toBe(true);
+  });
+
+  it('leaves every entry Efficiency touched, received, linked or owns elsewhere', () => {
+    expect(isUntouchedIntakeStub({ ...stub, __v: 1 }, owner)).toBe(false);
+    expect(isUntouchedIntakeStub({ ...stub, dataIncomplete: false }, owner)).toBe(false);
+    expect(isUntouchedIntakeStub({ ...stub, source: 'manual' }, owner)).toBe(false);
+    expect(isUntouchedIntakeStub({ ...stub, source: 'import' }, owner)).toBe(false);
+    expect(isUntouchedIntakeStub({ ...stub, machineId: new Types.ObjectId() }, owner)).toBe(false);
+    expect(isUntouchedIntakeStub({ ...stub, machineId: null }, owner)).toBe(false);
+    expect(isUntouchedIntakeStub({ ...stub, branchId: new Types.ObjectId(TANTA) }, owner)).toBe(
+      false,
+    );
+    expect(isUntouchedIntakeStub({ ...stub, status: 'ended' }, owner)).toBe(false);
+  });
+});
+
+describe('step b — the bank the coupled master is written with (D5/DEC-8)', () => {
+  const label = (over: Partial<Parameters<typeof intakeMasterLabel>[0]> = {}) =>
+    intakeMasterLabel({
+      mapped: true,
+      placeholder: false,
+      openHere: [],
+      pending: null,
+      form: { area: 'Smouha', name: 'Form', bankName: 'NBE', bank: 'NBE' },
+      today: '2026-10-28',
+      catalog,
+      ...over,
+    });
+  const pendingOf = (bankCode: string | null, opsBankLabel: string | null = null) => ({
+    area: null,
+    bankCode,
+    name: 'Pending',
+    opsBankLabel,
+  });
+
+  it('e: the RECEIVED entry’s bank wins over the form’s, override included', () => {
+    expect(label({ pending: pendingOf('CIB') })).toBe('CIB');
+    expect(label({ pending: pendingOf('NBE', 'NBE FOREX') })).toBe('NBE FOREX');
+  });
+
+  it('e: a bank-less pending entry takes the form’s bank AND its text — so «NBE FOREX» reaches both rows', () => {
+    const form = { area: 'Smouha', name: 'Form', bankName: 'NBE FOREX', bank: 'NBE' };
+    expect(label({ pending: pendingOf(null), form })).toBe('NBE FOREX');
+    // No bank anywhere: nothing is received, the master keeps what Operations typed.
+    const unknown = { area: 'Smouha', name: 'Form', bankName: 'SOMETHING', bank: null };
+    expect(label({ pending: pendingOf(null), form: unknown })).toBe('SOMETHING');
+  });
+
+  it('d: the open entries’ label when they agree; the form’s when they disagree or have none', () => {
+    const form = { area: 'Smouha', name: 'Form', bankName: 'CIB', bank: 'CIB' };
+    expect(label({ openHere: [{ bankCode: 'NBE', opsBankLabel: null }], form })).toBe('NBE');
+    expect(
+      label({
+        openHere: [
+          { bankCode: 'NBE', opsBankLabel: null },
+          { bankCode: 'BM', opsBankLabel: null },
+        ],
+        form,
+      }),
+    ).toBe('CIB');
+    expect(label({ openHere: [{ bankCode: null, opsBankLabel: null }], form })).toBe('CIB');
+  });
+
+  it('c and f: an unmapped branch, a placeholder or no entry at all keep the form’s text', () => {
+    const openHere = [{ bankCode: 'BM', opsBankLabel: null }];
+    expect(label({ mapped: false, openHere })).toBe('NBE');
+    expect(label({ placeholder: true, pending: pendingOf('CIB') })).toBe('NBE');
+    expect(label()).toBe('NBE');
   });
 });

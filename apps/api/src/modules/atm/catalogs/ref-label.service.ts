@@ -46,6 +46,7 @@ import {
 } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { BaseRepository } from '../../../shared/base/base.repository';
+import { toAtmRefLabelDto } from '../atm.mappers';
 import { AtmMachineModel } from '../machines/machine.model';
 import { resolveRegisterSettings } from '../register/register-settings';
 import { manageActsInBranch, resolveAtmBranchId } from '../shared/atm-context';
@@ -286,11 +287,31 @@ class AtmRefLabelService {
     ]
       .sort((a, b) => a.localeCompare(b))
       .slice(0, UNMAPPED_BANK_NAMES_MAX);
+    // The row that already holds each text here — ARCHIVED ones too, which `readBranchLabels` leaves
+    // out (an archived `NBE FOREX` is exactly why the text reads unmapped). An active, linked
+    // spelling never gets here: it would have resolved the text. The page edits this row, so it
+    // never depends on the list's page, its status filter or another branch's same-named row.
+    const holders =
+      unmappedBankNames.length === 0
+        ? []
+        : await AtmRefLabelModel.find({
+            branchId: new Types.ObjectId(branchId),
+            kind: 'bank',
+            name: { $in: unmappedBankNames },
+            isDeleted: false,
+          })
+            .lean<AtmRefLabelDoc[]>()
+            .exec();
+    const holderOf = new Map(holders.map((row) => [row.name, row]));
     return {
       branchId,
       registerMapped: settings.codeByBranchId.has(branchId),
       ...branchLabelChoices(labels, settings.catalog),
       unmappedBankNames,
+      unmappedBankLabels: unmappedBankNames.map((name) => {
+        const row = holderOf.get(name);
+        return { name, label: row === undefined ? null : toAtmRefLabelDto(row) };
+      }),
     };
   }
 

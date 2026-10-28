@@ -18,13 +18,15 @@
 // Last, the area labels (DEC-38): every area an active machine or an open or pending register entry
 // carries becomes a data-edit label of its branch, so data-edit's list finally shows what the
 // register holds (the owner: «مش مسمعه»). Idempotent, and a name Operations deleted, archived or
-// renamed is never brought back.
+// renamed is never brought back. Just before it, once per row, an area label written before
+// `formerNames` existed gets the old names its audit trail remembers — the old rename kept none,
+// so without it the first backfill would bring back every name renamed before this release.
 import { logger } from '../../infrastructure/logging/logger';
 import { rbacService } from '../../platform/rbac';
 import { atmPermissions } from './atm.module';
 import { migrateAtmIndexes } from './atm-indexes';
 import { migrateAtmLegacyTimestamps } from './machines/machine.migration';
-import { backfillAtmAreaLabels } from './catalogs/area-labels';
+import { backfillAtmAreaLabels, recoverAreaFormerNames } from './catalogs/area-labels';
 import { backfillBankLabelCodes, seedAtmBankCatalog } from './catalogs/catalog.migration';
 
 export const seedAtm = async (): Promise<void> => {
@@ -47,5 +49,6 @@ export const seedAtm = async (): Promise<void> => {
   }
   await seedAtmBankCatalog();
   await backfillBankLabelCodes();
+  await recoverAreaFormerNames();
   await backfillAtmAreaLabels();
 };

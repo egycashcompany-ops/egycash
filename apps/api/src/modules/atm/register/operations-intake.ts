@@ -14,8 +14,11 @@
 //      too;
 //   b. `coupleReceipt` — the register's own receipt path, reused UNCHANGED: a code ACTIVE elsewhere
 //      → 409 `ATM_REGISTER_CODE_ACTIVE_ELSEWHERE` (data-edit can no longer break the mail matcher,
-//      DEC-9); an archived master here is reactivated with the form's name, area and bank; else a
-//      new master. `link` only comes from a race with another add (the caller checked) → 409;
+//      DEC-9); an archived master here is reactivated, else a new master is written. Name and area
+//      come from the form (DEC-36(b); DEC-8 tolerates a master/entry difference there). The BANK
+//      comes from the entry steps d/e will couple it to, when that entry has one (D5/DEC-8: a
+//      coupling keeps the bank label one fact on both rows — `intakeMasterLabel`), else from the
+//      form. `link` only comes from a race with another add (the caller checked) → 409;
 //   c. the branch has no `EGYCASH-n` code (DEC-10), or the code is a placeholder → the machine is
 //      committed and works, and the register records nothing (`none`);
 //   d. open entries of the code in THIS branch (DEC-24 archived-while-open, an unlinked imported
@@ -28,6 +31,11 @@
 // A race on `ux_open_period_per_code` rolls the WHOLE unit back — master included — as a 409 with
 // the same code; a retry lands in step a. Audits are recorded once, after commit (the
 // register.service pattern: `withTransaction` may run the callback twice).
+//
+// The add is undone with it: deleting the machine on data-edit (how a mistyped code is fixed) also
+// removes the stub step f wrote, while it is still UNTOUCHED (`removeUntouchedIntakeStubs`) — so an
+// add followed by a delete leaves nothing in the register, as before DEC-36. Anything Efficiency
+// touched, received or linked stays.
 import {
   ErrorCodes,
   type AtmBankCode,
@@ -51,11 +59,11 @@ import {
   type PendingAudit,
 } from './register-coupling';
 import { REGISTER_CASSETTE_FIELDS, REGISTER_KEY_FIELDS } from './register.mapper';
-import { type AtmRegisterEntryDoc } from './register.model';
+import { AtmRegisterEntryModel, type AtmRegisterEntryDoc } from './register.model';
 import { atmRegisterEntryRepository } from './register.repository';
 import { describeBranch } from './register-refusals';
 import { redactedDiff } from './register-secrets';
-import { type RegisterSettings } from './register-settings';
+import { effectiveOpsLabel, type RegisterSettings } from './register-settings';
 import { entrySnapshot } from './register.service';
 
 /** Why an add was refused outright — nothing was written for it. */
@@ -259,6 +267,50 @@ export const intakeEntryFields = (
   legacyMarks: null,
 });
 
+/** Stands in for the master's id where only the fill's LABEL is wanted (`intakeMasterLabel`). */
+const NO_MACHINE = new Types.ObjectId('000000000000000000000000');
+
+/**
+ * Pure: the bank label the coupled master is written with (step b). When step d or e will couple
+ * the master to an entry that already exists, that entry's bank wins — every coupling path of the
+ * register writes the master FROM the entry's label (create, reactivate, receive-pending; link copies
+ * the master's onto the entry), so Operations and the register never disagree about a machine's bank
+ * (D5, DEC-8). Without this the master took the form's text while the received pending entry kept
+ * its own bank: the Data Report and the settlements read CIB, the boards and the mail matcher NBE.
+ *
+ *   · step e — the label the RECEIVED entry will carry, override included, computed through the
+ *     same `intakeReceiptFill` that writes it (so a form «NBE FOREX» on a bank-less pending entry
+ *     still reaches the master as «NBE FOREX»);
+ *   · step d — the open entries' effective label when they all agree on one;
+ *   · otherwise (no such entry, no bank on it, entries that disagree, an unmapped branch or a
+ *     placeholder code — steps c and f) — the form's text, exactly what Operations typed.
+ */
+export const intakeMasterLabel = (input: {
+  mapped: boolean;
+  placeholder: boolean;
+  openHere: readonly Pick<AtmRegisterEntryDoc, 'bankCode' | 'opsBankLabel'>[];
+  pending: Pick<AtmRegisterEntryDoc, 'area' | 'bankCode' | 'name' | 'opsBankLabel'> | null;
+  form: Pick<OperationsIntakeInput, 'area' | 'name' | 'bankName'> & { bank: AtmBankCode | null };
+  today: string;
+  catalog: Pick<AtmBankCatalog, 'opsLabel'>;
+}): string => {
+  const fromEntry = ((): string | null => {
+    if (!input.mapped || input.placeholder) return null;
+    if (input.openHere.length > 0) {
+      const labels = new Set(input.openHere.map((row) => effectiveOpsLabel(row, input.catalog)));
+      const [only] = [...labels];
+      return labels.size === 1 ? (only ?? null) : null;
+    }
+    if (input.pending === null) return null;
+    const received = {
+      ...input.pending,
+      ...intakeReceiptFill(input.pending, input.form, NO_MACHINE, input.today, input.catalog),
+    } as Pick<AtmRegisterEntryDoc, 'bankCode' | 'opsBankLabel'>;
+    return effectiveOpsLabel(received, input.catalog);
+  })();
+  return fromEntry ?? input.form.bankName;
+};
+
 // ── The unit ────────────────────────────────────────────────────────────────────────────────────
 
 const entryRef = (id: string) => ({
@@ -328,6 +380,12 @@ export const recordOperationsIntake = async (
     const other = openElsewhereOf(open, input.branchId);
     if (other !== null) throw openElsewhere(code, whereIs(ctx, other.branchId, settings));
 
+    // Read before b: the bank the master takes depends on the entry d/e will couple it to.
+    const pending =
+      mapped && !placeholder && open.length === 0
+        ? await atmRegisterEntryRepository.findNewestPendingByCode(input.branchId, code, session)
+        : null;
+
     // b
     const coupled = await coupleReceipt(
       {
@@ -335,7 +393,15 @@ export const recordOperationsIntake = async (
         machineCode: code,
         name: input.name,
         area: input.area,
-        opsLabel: input.bankName,
+        opsLabel: intakeMasterLabel({
+          mapped,
+          placeholder,
+          openHere: open,
+          pending,
+          form: { ...input, bank: bankCode },
+          today,
+          catalog: settings.catalog,
+        }),
       },
       ctx.userId,
       session,
@@ -367,10 +433,6 @@ export const recordOperationsIntake = async (
     const others = open.flatMap((row) =>
       row.machineId === null || String(row.machineId) === String(machineId) ? [] : [row.machineId],
     );
-    const pending =
-      mapped && !placeholder && open.length === 0
-        ? await atmRegisterEntryRepository.findNewestPendingByCode(input.branchId, code, session)
-        : null;
     const plan = planIntakeRegister({
       mapped,
       placeholder,
@@ -462,4 +524,81 @@ export const recordOperationsIntake = async (
 
   for (const audit of audits) await auditService.record(audit);
   return result;
+};
+
+// ── Undoing an add ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Whether an open entry is still the untouched stub a data-edit add wrote for this master: written
+ * by the intake (`source: 'operations'`, step f), still flagged, never written since (`__v` 0 — any
+ * edit, area move or handover bumps it), linked to this master and filed in its branch. A RECEIVED
+ * pending entry (step e) is `manual` and already written, a LINKED one (step d) is the register's —
+ * both belong to Efficiency and are never matched.
+ */
+export const isUntouchedIntakeStub = (
+  entry: Pick<
+    AtmRegisterEntryDoc,
+    'source' | 'dataIncomplete' | '__v' | 'machineId' | 'branchId' | 'status' | 'isDeleted'
+  >,
+  master: Pick<AtmMachineDoc, '_id' | 'branchId'>,
+): boolean =>
+  entry.source === 'operations' &&
+  entry.dataIncomplete === true &&
+  entry.__v === 0 &&
+  entry.status === 'open' &&
+  !entry.isDeleted &&
+  entry.machineId !== null &&
+  String(entry.machineId) === String(master._id) &&
+  entry.branchId !== null &&
+  String(entry.branchId) === String(master.branchId);
+
+/**
+ * The register half of deleting a data-edit machine (the documented fix for a mistyped code: delete,
+ * then add again). Before DEC-36 an add followed by a delete left nothing behind; since every add
+ * writes an open entry, the stub would otherwise outlive its master — still counted in the Data
+ * Report and holding the code's one company-wide open period (D6), so a correct add of that code in
+ * any other branch is refused until Efficiency happens to find and delete it. So the delete takes
+ * the stub with it, in the caller's transaction.
+ *
+ * Only an UNTOUCHED stub (`isUntouchedIntakeStub`). Every other open entry on the master stays as it
+ * is and the delete is never refused: manage actions on a master with an open entry stay allowed
+ * (DEC-24), and the entry then shows `masterState: 'deleted'`. The write repeats the `__v: 0`
+ * condition, so an entry Efficiency edits between the read and the write is skipped, not deleted.
+ * `archiveIfLastOpen` is not called: the master is being deleted, not archived. Returns the audits
+ * owed, for after commit.
+ */
+export const removeUntouchedIntakeStubs = async (
+  master: Pick<AtmMachineDoc, '_id' | 'branchId'>,
+  actorId: string,
+  session: ClientSession,
+): Promise<PendingAudit[]> => {
+  const open = await atmRegisterEntryRepository.findOpenForMachine(master._id, session);
+  const audits: PendingAudit[] = [];
+  const by = new Types.ObjectId(actorId);
+  for (const entry of open) {
+    if (!isUntouchedIntakeStub(entry, master)) continue;
+    const written = await AtmRegisterEntryModel.updateOne(
+      {
+        _id: entry._id,
+        __v: 0,
+        isDeleted: false,
+        status: 'open',
+        source: 'operations',
+        dataIncomplete: true,
+        machineId: master._id,
+      },
+      {
+        $set: { isDeleted: true, deletedAt: new Date(), deletedBy: by, updatedBy: by },
+        $inc: { __v: 1 },
+      },
+      { session },
+    ).exec();
+    if (written.modifiedCount !== 1) continue;
+    audits.push({
+      entityRef: entryRef(String(entry._id)),
+      action: 'delete',
+      changes: redactedDiff(entrySnapshot(entry), {}),
+    });
+  }
+  return audits;
 };

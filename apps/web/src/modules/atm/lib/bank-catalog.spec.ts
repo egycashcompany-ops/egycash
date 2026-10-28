@@ -79,6 +79,26 @@ describe('makeBankLookup', () => {
   });
 });
 
+describe('an OLDER server’s bank rows (rollback, or a tab on this bundle mid-deploy)', () => {
+  // The meta before the catalog: `{ code, name, opsLabel, color }` — no `isActive`, no `sortOrder`.
+  const older = [...ATM_BANK_SEED]
+    .reverse()
+    .map(({ code, name, color, opsLabel }) => ({ code, name, color, opsLabel }));
+
+  it('reads a row without the flags as ACTIVE, in its seed’s place — never «مؤرشف», never none', () => {
+    const lookup = makeBankLookup(older);
+    expect(lookup.active.map((b) => b.code)).toEqual([...ATM_SEED_BANK_CODES]);
+    expect(lookup.ordered.every((b) => b.isActive)).toBe(true);
+    expect(lookup.codes).toEqual([...ATM_SEED_BANK_CODES]);
+  });
+
+  it('keeps a flag the server did send', () => {
+    const lookup = makeBankLookup([...older, { ...QNB, isActive: false }]);
+    expect(lookup.active.map((b) => b.code)).not.toContain('QNB');
+    expect(lookup.codes.at(-1)).toBe('QNB');
+  });
+});
+
 describe('what a map legend and filter show', () => {
   const lookup = makeBankLookup([...SEEDS, QNB, OLD]);
 

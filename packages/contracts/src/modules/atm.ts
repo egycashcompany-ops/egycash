@@ -401,6 +401,11 @@ export type AtmRefLabelOptionsQuery = z.infer<typeof AtmRefLabelOptionsQuerySche
  *   recorded in the register at all (DEC-10).
  * · `unmappedBankNames` — the bank texts active machines here carry that resolve to no bank (at
  *   most 100), so Operations can map each one to its bank.
+ * · `unmappedBankLabels` — the same texts, each with the spelling row of THIS branch that already
+ *   holds it (an archived one, or one not linked to a bank), else null. «ربط ببنك» edits that row
+ *   instead of adding a second one (the unique name index still holds an archived row, so an add
+ *   would be refused), and never a row of another branch or one the list's page or status filter
+ *   happens to hide (review finding).
  */
 export interface AtmRefLabelOptionsDto {
   branchId: string;
@@ -408,6 +413,7 @@ export interface AtmRefLabelOptionsDto {
   banks: { value: string; bankCode: AtmBankCode; kind: 'bank' | 'spelling' }[];
   areas: { name: string; nameAr: string | null; nameEn: string | null }[];
   unmappedBankNames: string[];
+  unmappedBankLabels: { name: string; label: AtmRefLabelDto | null }[];
 }
 
 // ── Operations (replenishment + maintenance) shared shapes ──────────────────────────────────────

@@ -8565,6 +8565,8 @@ const en: Record<string, string> = {
   'atm.mail.restoredCount': '{{count}} mail(s) returned to the pending mails.',
   'atm.mail.restoreRefusedClosed':
     'The mail for machine {{codes}} cannot be restored: the maintenance it opened is already closed.',
+  'atm.mail.restoreRefusedLegacy':
+    'The mail for machine {{codes}} cannot be restored: it was accepted in the old system, and no maintenance is linked to it.',
 
   'atm.machines.title': 'All Machines',
   'atm.machines.subtitle': 'Every active ATM machine.',
@@ -18305,6 +18307,8 @@ const ar: Record<string, string> = {
   'atm.mail.restoredCount': 'تمت إعادة {{count}} رسالة إلى الرسائل المعلقة.',
   'atm.mail.restoreRefusedClosed':
     'تعذّر استرجاع رسالة الماكينة {{codes}} لأن الصيانة التي فُتحت منها أُغلقت بالفعل.',
+  'atm.mail.restoreRefusedLegacy':
+    'تعذّر استرجاع رسالة الماكينة {{codes}} لأنها قُبلت في النظام القديم، ولا ترتبط بها أي صيانة.',
 
   'atm.machines.title': 'كل الماكينات',
   'atm.machines.subtitle': 'كل ماكينات الصراف الآلي النشطة.',

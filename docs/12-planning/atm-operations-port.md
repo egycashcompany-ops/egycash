@@ -449,10 +449,12 @@ grant's scope (`mail-ticket.service.ts` `restore`, the rule pure in `planMailRes
 | accepted, the maintenance it opened still open | that maintenance is soft-deleted — gone from `/atm/maintenance` — and the ticket returns, in ONE transaction (`maintenance.service.removeFromMail`, the undo of `openFromMail`), so neither half lands alone |
 | accepted, that maintenance already deleted on the board | back to pending |
 | accepted, that maintenance CLOSED | **refused**, nothing written — a closed maintenance is work done, on the done page and in the daily report, and erasing it to reopen a mail would erase that record |
+| accepted, and NO maintenance — live or deleted — carries it | **refused**, nothing written (`noLinkedMaintenance`) — every accept here links the maintenance it opens (`mailTicketId`), so this is a legacy accept: the importer links none (`legacy-transform.ts`). Returning it would leave its maintenance on the board while the confirm says it goes, and a second accept could open another one for the same mail |
 | already pending, or outside the caller's scope | skipped silently, as accept and reject skip a decided ticket; so is one a concurrent restore returned first (a double click) — never a 409 |
 
 The answer mirrors accept's: `data` is the tickets restored, and the refused ones ride in
-`meta.refused: [{ ticketId, machineCode, reason: 'maintenanceClosed' }]`. The maintenance is read
+`meta.refused: [{ ticketId, machineCode, reason }]`, `reason` being `maintenanceClosed` or
+`noLinkedMaintenance` — the log shows one red message per reason, naming the machines. The maintenance is read
 INSIDE the transaction, so a close that lands while a restore runs makes its delete a write
 conflict, and the retry reads the row closed and refuses: a closed maintenance is never deleted.
 Accepting a restored ticket again opens a FRESH maintenance on the ticket's day (D6) — the removed
@@ -473,7 +475,9 @@ page that restores refreshes the mail lists and the board itself.
 - `/atm/mail-tickets/log`: «استرجاع» on accepted and rejected rows, always shown and pinned, for
   `atmMailTicket.decide`, behind a confirm that says what happens — accepted: the mail returns to
   pending and the maintenance opened from it leaves `/atm/maintenance` if it is still open;
-  rejected: the mail returns to pending. A refusal names the machine code.
+  rejected: the mail returns to pending. A refusal names the machine code and says why: the
+  maintenance is already closed, or the mail was accepted in the old system and no maintenance is
+  linked to it.
 - Both: a filter row — bank, area, a search by machine code or name, and the red reset — kept in
   the address and remembered. The log adds a status choice (الكل / معلقة / مقبولة / مرفوضة, the row
   badges' own words) beside its date range, and that range reads as the done pages' does: a cleared

@@ -51,23 +51,29 @@ type MailRestoreOutcome =
   | { kind: 'restored'; updated: AtmMailTicketDoc; removed: string[]; audits: AuditEntry[] };
 
 /**
- * Pure: what restoring one ticket does. `fromTicket` = the live maintenances it opened — one after
- * an accept, none once that one was deleted on the board. A rejected ticket opened nothing and
- * simply returns to pending. An accepted one returns by taking back what it opened — unless that
- * is CLOSED: a closed maintenance is work done, on the done page and in the daily report, and
- * deleting it to reopen a mail would erase that record, so the ticket stays as it is and the
- * answer says why (`maintenanceClosed`).
+ * Pure: what restoring one ticket does. `fromTicket` = every maintenance carrying the ticket,
+ * deleted ones included — one after an accept here, still there (deleted) once removed on the
+ * board. A rejected ticket opened nothing and simply returns to pending. An accepted one returns by
+ * taking back what it opened, with two refusals that leave the ticket as it is:
+ *   · NO maintenance carries it (`noLinkedMaintenance`) — every accept here links the one it
+ *     opens, so this is an accept from the legacy system, whose import links none. Its maintenance,
+ *     if any, cannot be found to take back: returning the ticket would leave it on the board while
+ *     the confirm says it goes, and a second accept could open another for the same mail;
+ *   · a LIVE one is CLOSED (`maintenanceClosed`) — a closed maintenance is work done, on the done
+ *     page and in the daily report, and deleting it to reopen a mail would erase that record.
  */
 export const planMailRestore = (
   status: AtmMailTicketStatus,
-  fromTicket: readonly Pick<AtmMaintenanceDoc, '_id' | 'closedAt'>[],
+  fromTicket: readonly Pick<AtmMaintenanceDoc, '_id' | 'closedAt' | 'isDeleted'>[],
 ): MailRestorePlan => {
   if (status === 'pending') return { kind: 'skip' };
   if (status === 'rejected') return { kind: 'restore', removeMaintenanceIds: [] };
-  if (fromTicket.some((row) => row.closedAt !== null)) {
+  if (fromTicket.length === 0) return { kind: 'refuse', reason: 'noLinkedMaintenance' };
+  const live = fromTicket.filter((row) => !row.isDeleted);
+  if (live.some((row) => row.closedAt !== null)) {
     return { kind: 'refuse', reason: 'maintenanceClosed' };
   }
-  return { kind: 'restore', removeMaintenanceIds: fromTicket.map((row) => String(row._id)) };
+  return { kind: 'restore', removeMaintenanceIds: live.map((row) => String(row._id)) };
 };
 
 /**
@@ -248,8 +254,9 @@ class AtmMailTicketService {
    * back to PENDING, decided again on the pending screen. An accepted one takes back the
    * maintenance it opened, removed from /atm/maintenance in the SAME transaction as the ticket's
    * return, so neither half ever lands alone — and is refused, nothing written, when that
-   * maintenance is closed (`planMailRestore`). Already pending, or outside the caller's scope:
-   * skipped silently, as accept and reject skip a decided one.
+   * maintenance is closed or when no maintenance carries the ticket at all, a legacy accept
+   * (`planMailRestore`). Already pending, or outside the caller's scope: skipped silently, as
+   * accept and reject skip a decided one.
    */
   async restore(
     input: RestoreAtmMailTickets,
@@ -269,11 +276,7 @@ class AtmMailTicketService {
           // deleted.
           const fromTicket =
             ticket.status === 'accepted'
-              ? await atmMaintenanceRepository.findLiveFromTicket(
-                  ticket.branchId,
-                  ticket._id,
-                  session,
-                )
+              ? await atmMaintenanceRepository.findFromTicket(ticket.branchId, ticket._id, session)
               : [];
           const plan = planMailRestore(ticket.status, fromTicket);
           if (plan.kind !== 'restore') return plan;

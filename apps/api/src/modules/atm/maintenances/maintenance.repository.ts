@@ -28,20 +28,21 @@ class AtmMaintenanceRepository extends AtmOperationLogRepository<AtmMaintenanceD
   }
 
   /**
-   * Every LIVE maintenance opened FROM this mail ticket, open or closed — what the mail restore
-   * removes, or refuses over (mail-ticket.service.ts `restore`). Closed rows are wanted too: a
-   * closed one is the refusal. Unscoped beyond the ticket's branch, because the authority is the
+   * Every maintenance opened FROM this mail ticket — open, closed and deleted — what the mail
+   * restore removes, or refuses over (mail-ticket.service.ts `restore`). Closed rows are wanted: a
+   * live closed one is a refusal. Deleted rows are wanted too: they tell "its maintenance was
+   * deleted on the board" (the ticket simply returns) from "no maintenance was ever linked to it"
+   * (a legacy accept — refused). Unscoped beyond the ticket's branch, because the authority is the
    * ticket's: accept opened it under `atmMailTicket.decide`, and the restore undoes it under the
    * same grant. Pass the restore's `session`, so the read and the delete are one snapshot.
    */
-  async findLiveFromTicket(
+  async findFromTicket(
     branchId: Types.ObjectId,
     ticketId: Types.ObjectId,
     session: ClientSession | null = null,
   ): Promise<AtmMaintenanceDoc[]> {
     const filter = {
       branchId,
-      isDeleted: false,
       mailTicketId: ticketId,
     } as FilterQuery<AtmMaintenanceDoc>;
     return this.model.find(filter).session(session).lean<AtmMaintenanceDoc[]>().exec();

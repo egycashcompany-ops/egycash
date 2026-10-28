@@ -155,6 +155,7 @@ const KEYS = [
   'atm.mail.restoreBodyRejected',
   'atm.mail.restoredCount',
   'atm.mail.restoreRefusedClosed',
+  'atm.mail.restoreRefusedLegacy',
   'atm.machines.title',
   'atm.machines.subtitle',
   'atm.machines.export',

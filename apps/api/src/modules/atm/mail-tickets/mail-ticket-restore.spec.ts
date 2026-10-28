@@ -6,10 +6,17 @@ import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { mailRestoreChanges, planMailRestore } from './mail-ticket.service';
 
-const open = () => ({ _id: new Types.ObjectId(), closedAt: null });
+const open = () => ({ _id: new Types.ObjectId(), closedAt: null, isDeleted: false });
 const closed = () => ({
   _id: new Types.ObjectId(),
   closedAt: new Date('2026-10-28T09:00:00.000Z'),
+  isDeleted: false,
+});
+/** A maintenance from the ticket that was deleted on the board — open or closed when it went. */
+const deleted = (closedAt: Date | null = null) => ({
+  _id: new Types.ObjectId(),
+  closedAt,
+  isDeleted: true,
 });
 
 describe('planMailRestore — one ticket', () => {
@@ -34,7 +41,25 @@ describe('planMailRestore — one ticket', () => {
   });
 
   it('returns an accepted ticket whose maintenance was deleted on the board, removing nothing', () => {
-    expect(planMailRestore('accepted', [])).toEqual({ kind: 'restore', removeMaintenanceIds: [] });
+    expect(planMailRestore('accepted', [deleted()])).toEqual({
+      kind: 'restore',
+      removeMaintenanceIds: [],
+    });
+    // Deleted, it is off the done page too: a deleted CLOSED one is no record to keep.
+    const live = open();
+    expect(
+      planMailRestore('accepted', [deleted(new Date('2026-10-28T09:00:00.000Z')), live]),
+    ).toEqual({
+      kind: 'restore',
+      removeMaintenanceIds: [String(live._id)],
+    });
+  });
+
+  it('refuses an accepted ticket no maintenance carries — a legacy accept, nothing to take back', () => {
+    expect(planMailRestore('accepted', [])).toEqual({
+      kind: 'refuse',
+      reason: 'noLinkedMaintenance',
+    });
   });
 
   it('refuses an accepted ticket whose maintenance is closed — closed work is never erased', () => {

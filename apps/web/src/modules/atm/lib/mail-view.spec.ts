@@ -16,6 +16,7 @@ import {
   readMailFilters,
   readMailStatus,
   restoreConfirmBody,
+  restoreRefusalToasts,
   withMailBanks,
   withMailParam,
   withoutMailFilters,
@@ -231,5 +232,38 @@ describe('the log’s restore', () => {
     expect(restoreConfirmBody(ar, { status: 'rejected', machineCode: '99990003' })).not.toContain(
       'الصيانة',
     );
+  });
+
+  it('says why each refused mail stayed, one toast per reason, each machine named once', () => {
+    const join = (codes: readonly string[]): string => codes.join(', ');
+    for (const locale of ['ar', 'en'] as const) {
+      const t = (key: string, params?: Record<string, string | number>): string =>
+        translate(locale, key, params);
+      expect(restoreRefusalToasts(t, [], join)).toEqual([]);
+      expect(
+        restoreRefusalToasts(
+          t,
+          [
+            { machineCode: '99990004', reason: 'noLinkedMaintenance' },
+            { machineCode: '99990005', reason: 'maintenanceClosed' },
+            { machineCode: '99990006', reason: 'noLinkedMaintenance' },
+            { machineCode: '99990004', reason: 'noLinkedMaintenance' },
+          ],
+          join,
+        ),
+      ).toEqual([
+        t('atm.mail.restoreRefusedClosed', { codes: '99990005' }),
+        t('atm.mail.restoreRefusedLegacy', { codes: '99990004, 99990006' }),
+      ]);
+    }
+    const ar = (key: string, params?: Record<string, string | number>): string =>
+      translate('ar', key, params);
+    const [legacy] = restoreRefusalToasts(
+      ar,
+      [{ machineCode: '99990007', reason: 'noLinkedMaintenance' }],
+      join,
+    );
+    expect(legacy).toContain('النظام القديم');
+    expect(legacy).toContain('99990007');
   });
 });

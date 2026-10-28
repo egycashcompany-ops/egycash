@@ -18,7 +18,10 @@ its entry here in the same PR.
   rows carry «استرجاع»: after a confirm the mail is pending again, to be decided anew. An accepted
   one also takes its maintenance off `/atm/maintenance`, in one step with the mail, so neither
   happens alone, and accepting it again opens a fresh one. A maintenance already closed is work
-  done: its mail stays as it is and the message names the machine. On `/atm/mail-tickets` every row
+  done: its mail stays as it is and the message names the machine. So does a mail accepted in the
+  old system: no maintenance is linked to it, so there is nothing to take back, and returning it
+  would leave its maintenance on the board while a second accept could open another. On
+  `/atm/mail-tickets` every row
   carries «قبول» and «رفض» at its end; on a checked row they act on every checked row, as on the
   boards, and the accept and reject bar is gone. The confirms, the duplicate warning and the yellow
   duplicate rows stay. Both pages have a filter row — bank, area, a search by machine code or name,

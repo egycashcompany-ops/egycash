@@ -32,7 +32,7 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAtmMailLog, useRestoreAtmMailTickets } from '../api/atm-queries';
-import { cairoToday, doneRange, joinCodes, refusedMachineCodes } from '../lib/operation-view';
+import { cairoToday, doneRange, joinCodes } from '../lib/operation-view';
 import { withBoardFilter } from '../lib/board-filters';
 import {
   MAIL_ROW_PAINT,
@@ -44,6 +44,7 @@ import {
   readMailFilters,
   readMailStatus,
   restoreConfirmBody,
+  restoreRefusalToasts,
   withMailBanks,
   withMailParam,
   withoutMailFilters,
@@ -106,12 +107,10 @@ export const MailLogPage = (): JSX.Element => {
       if (result.restored.length > 0 || result.refused.length === 0) {
         toast.success(t('atm.mail.restoredCount', { count: result.restored.length }));
       }
-      if (result.refused.length > 0) {
-        toast.error(
-          t('atm.mail.restoreRefusedClosed', {
-            codes: joinCodes(refusedMachineCodes(result.refused), locale),
-          }),
-        );
+      for (const text of restoreRefusalToasts(t, result.refused, (codes) =>
+        joinCodes(codes, locale),
+      )) {
+        toast.error(text);
       }
     } catch {
       toast.error(t('atm.common.actionFailed'));

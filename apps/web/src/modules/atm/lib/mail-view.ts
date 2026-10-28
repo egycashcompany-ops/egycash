@@ -8,7 +8,10 @@
 // browser and draws its dropdowns from the rows it read. The address bar carries the same
 // `banks`/`areas` lists the boards write, with the same escape for a name holding a comma.
 import {
+  ATM_MAIL_RESTORE_REFUSAL_REASONS,
   ATM_MAIL_TICKET_STATUSES,
+  type AtmMailRestoreRefusalDto,
+  type AtmMailRestoreRefusalReason,
   type AtmMailTicketDto,
   type AtmMailTicketStatus,
 } from '@ecms/contracts';
@@ -199,3 +202,26 @@ export const restoreConfirmBody = (
     ticket.status === 'accepted' ? 'atm.mail.restoreBodyAccepted' : 'atm.mail.restoreBodyRejected',
     { code: ticket.machineCode },
   );
+
+/** Each refusal's words — the server says why it kept a mail where it was. */
+const RESTORE_REFUSAL_TEXT: Record<AtmMailRestoreRefusalReason, string> = {
+  maintenanceClosed: 'atm.mail.restoreRefusedClosed',
+  noLinkedMaintenance: 'atm.mail.restoreRefusedLegacy',
+};
+
+/**
+ * The red toasts after a restore: one per reason the server refused for, each naming its machines
+ * once — a maintenance already closed (finished work is never erased), or a mail accepted in the
+ * legacy system, which no maintenance carries, so there is nothing to take back.
+ */
+export const restoreRefusalToasts = (
+  t: Translate,
+  refused: readonly Pick<AtmMailRestoreRefusalDto, 'machineCode' | 'reason'>[],
+  join: (codes: readonly string[]) => string,
+): string[] =>
+  ATM_MAIL_RESTORE_REFUSAL_REASONS.flatMap((reason) => {
+    const codes = [
+      ...new Set(refused.filter((row) => row.reason === reason).map((row) => row.machineCode)),
+    ];
+    return codes.length === 0 ? [] : [t(RESTORE_REFUSAL_TEXT[reason], { codes: join(codes) })];
+  });

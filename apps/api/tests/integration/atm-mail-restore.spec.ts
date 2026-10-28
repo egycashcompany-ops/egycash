@@ -3,11 +3,12 @@
 //
 // A decided ticket goes back to PENDING. A rejected one simply returns. An accepted one takes back
 // the maintenance it opened — gone from /atm/maintenance, in the same transaction as the ticket's
-// return — and is refused, with nothing written, once that maintenance is closed. Proven here over
-// real HTTP, real RBAC and a real mongod: both returns, the board, a second accept after the
-// restore (the per-day rule does not count the removed maintenance), the refusal — also when the
-// close lands while the restore runs — the silent skips (already pending, outside the caller's
-// scope, a concurrent restore that won), the 403, and the trail each write leaves.
+// return — and is refused, with nothing written, once that maintenance is closed, or when no
+// maintenance carries the ticket at all (a legacy accept). Proven here over real HTTP, real RBAC
+// and a real mongod: both returns, the board, a second accept after the restore (the per-day rule
+// does not count the removed maintenance), both refusals — the close also when it lands while the
+// restore runs — the silent skips (already pending, outside the caller's scope, a concurrent
+// restore that won), the 403, and the trail each write leaves.
 //
 // Every code below is synthetic.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
@@ -252,7 +253,7 @@ beforeAll(async () => {
     bankName: 'SYN BANK',
     area: 'SYN AREA',
     // One code per scenario, so no scenario's maintenance stands in another's way.
-    machines: Array.from({ length: 15 }, (_, index) => String(7001 + index)).map((machineCode) => ({
+    machines: Array.from({ length: 16 }, (_, index) => String(7001 + index)).map((machineCode) => ({
       machineCode,
       name: `SYN ${machineCode}`,
     })),
@@ -378,9 +379,9 @@ describe('mail restore — a decided ticket back to pending', () => {
     const { ticketId, maintenanceId } = await acceptedTicket('7015');
     // The close lands between the restore's read (still open) and its delete. The delete is then
     // a write conflict, the transaction runs again, and its second read finds the row closed.
-    const read = atmMaintenanceRepository.findLiveFromTicket.bind(atmMaintenanceRepository);
+    const read = atmMaintenanceRepository.findFromTicket.bind(atmMaintenanceRepository);
     const lookup = vi
-      .spyOn(atmMaintenanceRepository, 'findLiveFromTicket')
+      .spyOn(atmMaintenanceRepository, 'findFromTicket')
       .mockImplementationOnce(async (...args) => {
         const rows = await read(...args);
         await closeMaintenanceDirectly(maintenanceId);
@@ -414,6 +415,31 @@ describe('mail restore — a decided ticket back to pending', () => {
     expect((await auditRows('mailTicket', ticketId, 'restore'))[0]?.changes).toEqual([
       { field: 'status', old: 'accepted', new: 'pending' },
     ]);
+  });
+
+  it('an accepted ticket NO maintenance carries — a legacy accept — is refused, nothing written', async () => {
+    // The legacy import writes decided tickets and maintenances side by side, linking none to
+    // the other: the ticket says accepted, and no maintenance carries its id.
+    const ticketId = await ingestMail('7016');
+    await AtmMailTicketModel.updateOne(
+      { _id: new Types.ObjectId(ticketId) },
+      { $set: { status: 'accepted', actionByName: 'legacy operator', actionAt: null } },
+    ).exec();
+    const before = await ticketRow(ticketId);
+    const boardBefore = (await openBoard()).map((row) => row.id);
+
+    const res = await restore(alexToken, [ticketId]);
+    expect(res.status).toBe(200);
+    expect(data<AtmMailTicketDto[]>(res)).toEqual([]);
+    expect(refusedOf(res)).toEqual([
+      { ticketId, machineCode: '7016', reason: 'noLinkedMaintenance' },
+    ]);
+    const after = await ticketRow(ticketId);
+    expect(after).toMatchObject({ status: 'accepted', actionByName: 'legacy operator' });
+    expect(after?.__v).toBe(before?.__v);
+    expect((await openBoard()).map((row) => row.id)).toEqual(boardBefore);
+    expect(await auditRows('mailTicket', ticketId, 'restore')).toHaveLength(0);
+    expect(await pendingIds()).not.toContain(ticketId);
   });
 
   it('one selection: each ticket on its own — the returned ones in `data`, the refused in `meta`', async () => {

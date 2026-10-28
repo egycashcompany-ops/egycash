@@ -4,8 +4,8 @@
 //   · a replenishment/maintenance write stales its own list, its done list AND its facets — the
 //     filter dropdowns are distinct values over the open rows, so opening or closing changes them;
 //     the open board is read WHOLE (every page, one cache entry), so the refresh re-reads it all;
-//   · a mail DECISION stales maintenances too — accepting creates a maintenance row — and the
-//     unread badge, which is a count of pending tickets;
+//   · a mail DECISION stales maintenances too — accepting creates a maintenance row, and restoring
+//     an accepted mail removes it — and the unread badge, which is a count of pending tickets;
 //   · a machine-master write stales machines and the label lists it references — and, since a
 //     data-edit add lands in the register (DEC-36), the register's entries and its Data Report:
 //     an add records an open receipt, and any area write moves the machine's open period (DEC-4).
@@ -593,16 +593,34 @@ export const useDeleteAtmMaintenances = () => {
 };
 
 // ── Mail tickets ────────────────────────────────────────────────────────────
-export const usePendingAtmMailTickets = (params: AtmListParams) =>
+/**
+ * The two mail pages' cache keys — under the mail feature key, so a decision, a restore and their
+ * realtime signal refresh both pages. Exported for the screens' specs.
+ */
+export const atmMailKeys = {
+  pending: () => listKey(MODULE, 'mailTickets', { kind: 'pending', whole: true }),
+  log: (range: { from: string; to: string }) =>
+    listKey(MODULE, 'mailTickets', { kind: 'log', whole: true, ...range }),
+};
+
+/**
+ * EVERY pending mail, walked page by page into one cache entry (`lib/whole-board.ts`). The page
+ * asked for one page of a hundred; since it filters by bank, area and text in the browser
+ * (2026-10-28), one page would answer «which of the newest hundred», not «which mails».
+ */
+export const usePendingAtmMailTickets = () =>
   useQuery({
-    queryKey: listKey(MODULE, 'mailTickets', { kind: 'pending', ...params }),
-    queryFn: () => api.listPendingMailTickets(params),
+    queryKey: atmMailKeys.pending(),
+    queryFn: () =>
+      fetchWholeBoard((page, pageSize) => api.listPendingMailTickets({ page, pageSize })),
   });
 
-export const useAtmMailLog = (params: AtmListParams) =>
+/** Every mail of a received-day range — whole, as the done pages read theirs, for the same filter. */
+export const useAtmMailLog = (range: { from: string; to: string }) =>
   useQuery({
-    queryKey: listKey(MODULE, 'mailTickets', { kind: 'log', ...params }),
-    queryFn: () => api.listMailLog(params),
+    queryKey: atmMailKeys.log(range),
+    queryFn: () =>
+      fetchWholeBoard((page, pageSize) => api.listMailLog({ ...range, page, pageSize })),
   });
 
 /** The nav badge — refreshed on an interval, the port of every page's server-rendered count. */
@@ -615,15 +633,19 @@ export const useAtmMailUnreadCount = () =>
 
 const invalidateMailDecision = (client: ReturnType<typeof useQueryClient>): void => {
   void client.invalidateQueries({ queryKey: atmKeys.mailTickets });
-  // Accepting opened a maintenance; rejecting did not, but one stale-check costs nothing.
+  // Accepting opened a maintenance and restoring an accepted mail removed it; rejecting, or
+  // restoring a rejected mail, touched none — but one stale-check costs nothing.
   void client.invalidateQueries({ queryKey: atmKeys.maintenances });
 };
 
+// Accept and reject go in batches (`inBulkBatches`), and a failing batch leaves the ones before it
+// decided. A decision is no realtime broadcast (`accept`/`reject` are not broadcast actions), so
+// nothing else would tell this page — it re-reads whether the decision succeeded or not.
 export const useAcceptAtmMailTickets = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => api.acceptMailTickets(ids),
-    onSuccess: () => invalidateMailDecision(client),
+    onSettled: () => invalidateMailDecision(client),
   });
 };
 
@@ -631,6 +653,15 @@ export const useRejectAtmMailTickets = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => api.rejectMailTickets(ids),
+    onSettled: () => invalidateMailDecision(client),
+  });
+};
+
+/** Put decided mails back to pending, from the log — the mail lists and the boards go stale. */
+export const useRestoreAtmMailTickets = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => api.restoreMailTickets(ids),
     onSuccess: () => invalidateMailDecision(client),
   });
 };

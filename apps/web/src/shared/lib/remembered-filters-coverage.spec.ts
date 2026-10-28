@@ -63,6 +63,10 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // `date` is the server's suggested day (DS-25); `line` is a selection.
   ['modules/atm/pages/PreparationPage.tsx', ['date', 'line']],
   ['modules/atm/pages/MaintenancePage.tsx', []],
+  // The mail pages' filter row (2026-10-28). The log keeps its filters but not its range: `from`
+  // opens on cairoToday() — a day of mail, not a chosen narrowing — and `to` follows it.
+  ['modules/atm/pages/MailTicketsPage.tsx', []],
+  ['modules/atm/pages/MailLogPage.tsx', ['from', 'to']],
   ['modules/atm/pages/RegisterPage.tsx', []],
   ['modules/atm/pages/ReplenishmentsPage.tsx', []],
   ['modules/fleet/pages/AccidentsPage.tsx', []],
@@ -165,7 +169,6 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
 const EXCLUDED: readonly (readonly [string, string])[] = [
   ['modules/atm/pages/DailyReportPage.tsx', '`date` opens on cairoToday() \u2014 the day the report IS'],
   ['modules/atm/pages/ControlPage.tsx', '`date` is the server\u2019s suggested day \u2014 the day being dispatched (DS-25); `tab` is a view'],
-  ['modules/atm/pages/MailLogPage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
   ['modules/atm/pages/MaintenanceDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
   ['modules/atm/pages/ReplenishmentsDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
   ['modules/operations/mobile/CaptainDayPage.tsx', '`date` is the day being driven'],
@@ -198,7 +201,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmSettingsPage.tsx'],
   ['modules/atm/pages/LayoutImportPage.tsx', 'an upload form: the bank select picks the file\u2019s profile and the table previews one upload; nothing narrows a stored list'],
   ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
-  ['modules/atm/pages/MailTicketsPage.tsx'],
   ['modules/atm/pages/RegisterImportPage.tsx'],
   ['modules/atm/pages/RegisterReportPage.tsx'],
   ['modules/fleet/pages/CustodyMemoEditorPage.tsx'],

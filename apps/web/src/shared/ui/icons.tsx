@@ -441,6 +441,18 @@ export const ResetIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/**
+ * An arrow turning back on itself — "undo that decision", for a record put back where it was. Not
+ * `ResetIcon`: that one already means "clear the filters" on the same screens. Points back along
+ * the reading direction, so flip it under RTL.
+ */
+export const UndoIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </Base>
+);
+
 /** The "more actions" affordance — three dots, no direction, so it does not flip under RTL. */
 export const MoreIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>

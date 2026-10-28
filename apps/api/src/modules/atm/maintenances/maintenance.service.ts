@@ -13,8 +13,8 @@ import {
   type Paginated,
   type UpdateAtmMaintenance,
 } from '@ecms/contracts';
-import { Types } from 'mongoose';
-import { auditService } from '../../../platform/audit';
+import { Types, type ClientSession } from 'mongoose';
+import { auditService, type AuditEntry } from '../../../platform/audit';
 import {
   getDirectoryEmployee,
   listDirectoryEmployeesByDepartment,
@@ -248,6 +248,19 @@ class AtmMaintenanceService {
       if (isOpenOperationDuplicate(error)) throw alreadyOpenError('maintenance', row.machineCode);
       throw error;
     }
+  }
+
+  /**
+   * The undo of `openFromMail` — the mail log's «إسترجاع» of an accepted ticket («ويقدر يرجعه
+   * مفتوح لو قبل أو رفض غلط», 2026-10-28): the maintenance the ticket opened is soft-deleted inside
+   * the CALLER's transaction, beside the ticket's own return to pending, under the mail grant that
+   * opened it. The caller has already refused a closed one. Returns the audit row it owes — the
+   * `delete` row `remove` writes — for the caller to record once, after commit: `withTransaction`
+   * may run the callback twice.
+   */
+  async removeFromMail(id: string, ctx: AuthContext, session: ClientSession): Promise<AuditEntry> {
+    await atmMaintenanceRepository.softDeleteById(id, { by: ctx.userId, session });
+    return { entityRef: entityRef(id), action: 'delete', changes: [] };
   }
 
   /**

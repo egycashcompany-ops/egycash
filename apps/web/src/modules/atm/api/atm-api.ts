@@ -10,6 +10,8 @@ import {
   type AtmMachinesSummaryDto,
   type AtmMailAcceptMetaDto,
   type AtmMailAcceptRefusalDto,
+  type AtmMailRestoreMetaDto,
+  type AtmMailRestoreRefusalDto,
   type AtmMailTicketDto,
   type AtmDailyReportDto,
   type AtmMailUnreadCountDto,
@@ -253,18 +255,46 @@ export const mailUnreadCount = (): Promise<AtmMailUnreadCountDto> =>
 /**
  * Accept: `data` is the tickets ACCEPTED; the tickets the owner's rule refused — their machine
  * already has an open maintenance — come back in `meta.refused` and stay pending (port doc OD-1).
+ *
+ * In batches, as the boards' checked rows are (`inBulkBatches`): the pending list is read whole
+ * since 2026-10-28, so the rows checked are no longer bounded by one page of a hundred, while one
+ * request still carries at most `ATM_BULK_MAX_IDS`. The batches run in order, so a machine
+ * accepted in an earlier batch refuses its second mail in a later one, as inside one request.
  */
 export const acceptMailTickets = async (
   ids: string[],
 ): Promise<{ accepted: AtmMailTicketDto[]; refused: AtmMailAcceptRefusalDto[] }> => {
-  const { data, meta } = await postWithMeta<AtmMailTicketDto[], AtmMailAcceptMetaDto>(
-    '/atm/mail-tickets/accept',
+  const answers = await inBulkBatches(ids, (batch) =>
+    postWithMeta<AtmMailTicketDto[], AtmMailAcceptMetaDto>('/atm/mail-tickets/accept', {
+      ids: batch,
+    }),
+  );
+  return {
+    accepted: answers.flatMap((answer) => answer.data),
+    refused: answers.flatMap((answer) => answer.meta?.refused ?? []),
+  };
+};
+/** Reject, in batches for the same reason as accept. */
+export const rejectMailTickets = async (ids: string[]): Promise<AtmMailTicketDto[]> =>
+  (
+    await inBulkBatches(ids, (batch) =>
+      post<AtmMailTicketDto[]>('/atm/mail-tickets/reject', { ids: batch }),
+    )
+  ).flat();
+/**
+ * Restore, from the log (2026-10-28): `data` is the tickets put back to PENDING — an accepted one's
+ * open maintenance removed with it; a ticket whose maintenance is already closed comes back in
+ * `meta.refused` and stays decided.
+ */
+export const restoreMailTickets = async (
+  ids: string[],
+): Promise<{ restored: AtmMailTicketDto[]; refused: AtmMailRestoreRefusalDto[] }> => {
+  const { data, meta } = await postWithMeta<AtmMailTicketDto[], AtmMailRestoreMetaDto>(
+    '/atm/mail-tickets/restore',
     { ids },
   );
-  return { accepted: data, refused: meta?.refused ?? [] };
+  return { restored: data, refused: meta?.refused ?? [] };
 };
-export const rejectMailTickets = (ids: string[]): Promise<AtmMailTicketDto[]> =>
-  post<AtmMailTicketDto[]>('/atm/mail-tickets/reject', { ids });
 
 // ── Daily report (legacy /reports_atm) ──────────────────────────────────────
 export const atmDailyReport = (date: string | null): Promise<AtmDailyReportDto> =>

@@ -259,9 +259,11 @@ its day all the same.
   opened on an earlier day — an overnight operation, a mail received yesterday and accepted today
   (D6), a back-dated open, a reopened older row, an imported stale row — blocks its machine like
   any open row, so both boards give it the close button and the checkbox.
-- **Paths that cannot open a row and need no guard:** close, the leader cascade, soft delete; the
-  edits when they leave the open time's day alone (since OD-1a an edit that moves it is guarded,
-  above); no restore path exists.
+- **Paths that cannot open a row and need no guard:** close, the leader cascade, soft delete — the
+  mail restore's removal of the maintenance a ticket opened included (§6d); the edits when they
+  leave the open time's day alone (since OD-1a an edit that moves it is guarded, above); no path
+  brings a deleted operation back — a restored ticket accepted again opens a new one, through the
+  guarded accept.
 - **The legacy importer is exempt** (§7): it writes history as it was. A second open row it carries
   is refused by the index and REPORTED (`openDuplicate`, `openDuplicateIds`), never a crashed run;
   where the index is absent the report says so (`openIndexMissing`) and the duplicate lands (§7).
@@ -429,6 +431,59 @@ not exist or is not active are each a 400.
 Every later branch is step 4 alone: its row is added, and its unread backlog is filed — its newest
 page on the next run, anything older as the sweep reaches it, a page a minute.
 
+### 6d. The two mail pages: filters, row buttons — and «إسترجاع» (2026-10-28)
+
+The owner: «هنا /atm/mail-tickets/log وهنا /atm/mail-tickets عايز فلتر وعايز Action Buttons — في
+/atm/mail-tickets يكون 2 قبول ورفض — في /atm/mail-tickets/log إسترجاع ويقدر يرجعه مفتوح لو قبل أو
+رفض غلط». A decision was final in the legacy (and here until now); this is the way back.
+
+**`POST /atm/mail-tickets/restore`** (`{ ids }`, 1–200 — `RestoreAtmMailTicketsSchema`) puts decided
+tickets back to PENDING, to be decided again on the pending screen: `status: 'pending'`, the
+decider and `actionAt` cleared by a versioned write. It rides `atmMailTicket.decide` — undoing a
+decision is deciding; the log page itself stays behind `viewLog` — and reads the tickets in that
+grant's scope (`mail-ticket.service.ts` `restore`, the rule pure in `planMailRestore`):
+
+| The ticket | The restore |
+| --- | --- |
+| rejected | back to pending — a rejection opened nothing |
+| accepted, the maintenance it opened still open | that maintenance is soft-deleted — gone from `/atm/maintenance` — and the ticket returns, in ONE transaction (`maintenance.service.removeFromMail`, the undo of `openFromMail`), so neither half lands alone |
+| accepted, that maintenance already deleted on the board | back to pending |
+| accepted, that maintenance CLOSED | **refused**, nothing written — a closed maintenance is work done, on the done page and in the daily report, and erasing it to reopen a mail would erase that record |
+| already pending, or outside the caller's scope | skipped silently, as accept and reject skip a decided ticket; so is one a concurrent restore returned first (a double click) — never a 409 |
+
+The answer mirrors accept's: `data` is the tickets restored, and the refused ones ride in
+`meta.refused: [{ ticketId, machineCode, reason: 'maintenanceClosed' }]`. The maintenance is read
+INSIDE the transaction, so a close that lands while a restore runs makes its delete a write
+conflict, and the retry reads the row closed and refuses: a closed maintenance is never deleted.
+Accepting a restored ticket again opens a FRESH maintenance on the ticket's day (D6) — the removed
+one is deleted, and OD-1 counts live rows only. The trail: the ticket gets a `restore` row (the
+status, and for an accepted ticket the `maintenanceId` it no longer has — accept's change reversed;
+the accept or reject row already there keeps who decided and when), and the maintenance gets the
+board's own `delete` row, by the caller, both after commit. The maintenance `delete` refreshes open
+boards as any delete does; `restore`, like `accept` and `reject`, is not a broadcast action, so the
+page that restores refreshes the mail lists and the board itself.
+
+**The pages.**
+
+- `/atm/mail-tickets`: «قبول» and «رفض» on every row, always shown and pinned to the row's end, for
+  `atmMailTicket.decide`. On a checked row they act on every checked row, on an unchecked row on
+  that row alone — the boards' rule (#613) — and the accept and reject bar is gone. The confirms,
+  the duplicate warning in the accept confirm, the refusal notice and the yellow duplicate rows
+  stay.
+- `/atm/mail-tickets/log`: «استرجاع» on accepted and rejected rows, always shown and pinned, for
+  `atmMailTicket.decide`, behind a confirm that says what happens — accepted: the mail returns to
+  pending and the maintenance opened from it leaves `/atm/maintenance` if it is still open;
+  rejected: the mail returns to pending. A refusal names the machine code.
+- Both: a filter row — bank, area, a search by machine code or name, and the red reset — kept in
+  the address and remembered. The log adds a status choice (الكل / معلقة / مقبولة / مرفوضة, the row
+  badges' own words) beside its date range, and that range reads as the done pages' does: a cleared
+  date takes the other, a reversed range is put in order. The dropdowns' options come from the rows
+  read; the area list follows the banks chosen, and a bank change drops the areas the new banks do
+  not hold, as on the boards. The rows are read WHOLE, page by page (the pending list was one page
+  of a hundred), and filtered in the browser; a log range too long to read whole says so, as the
+  done pages do. Accept and reject go in batches of 200, as the boards' checked rows do. Only the
+  table scrolls.
+
 ## 7. Migration (ATM-7 — delivered)
 
     npm run atm:import -w apps/api -- --legacy-uri=mongodb://host:27017/egycash \
@@ -506,6 +561,7 @@ argument for the suite existing at all:
 | ATM-5 | Mail tickets: pending + accept/reject + log + unread badge + ingestion seam | delivered |
 | ATM-6 | Central mail reader: source seam, Graph transport, poll task, branch colours, §6 | delivered |
 | — | `/atm/settings`: the mailbox on a screen, branches switched on one at a time, branches that work together (§6a–§6c); suites `tests/integration/atm-mailbox.spec.ts`, `atm-branch-links.spec.ts` | delivered |
+| — | The two mail pages' filters and row buttons, and the log's «إسترجاع» (`POST /atm/mail-tickets/restore`, §6d); suite `tests/integration/atm-mail-restore.spec.ts` | delivered |
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
 | — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |

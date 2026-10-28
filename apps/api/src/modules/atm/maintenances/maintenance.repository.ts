@@ -1,4 +1,4 @@
-import { type FilterQuery, type Types } from 'mongoose';
+import { type ClientSession, type FilterQuery, type Types } from 'mongoose';
 import { AtmOperationLogRepository } from '../shared/operation-log.repository';
 import { AtmMaintenanceModel, type AtmMaintenanceDoc } from './maintenance.model';
 
@@ -25,6 +25,26 @@ class AtmMaintenanceRepository extends AtmOperationLogRepository<AtmMaintenanceD
       mailTicketId: ticketId,
     } as FilterQuery<AtmMaintenanceDoc>;
     return (await this.model.exists(filter).exec()) !== null;
+  }
+
+  /**
+   * Every LIVE maintenance opened FROM this mail ticket, open or closed — what the mail restore
+   * removes, or refuses over (mail-ticket.service.ts `restore`). Closed rows are wanted too: a
+   * closed one is the refusal. Unscoped beyond the ticket's branch, because the authority is the
+   * ticket's: accept opened it under `atmMailTicket.decide`, and the restore undoes it under the
+   * same grant. Pass the restore's `session`, so the read and the delete are one snapshot.
+   */
+  async findLiveFromTicket(
+    branchId: Types.ObjectId,
+    ticketId: Types.ObjectId,
+    session: ClientSession | null = null,
+  ): Promise<AtmMaintenanceDoc[]> {
+    const filter = {
+      branchId,
+      isDeleted: false,
+      mailTicketId: ticketId,
+    } as FilterQuery<AtmMaintenanceDoc>;
+    return this.model.find(filter).session(session).lean<AtmMaintenanceDoc[]>().exec();
   }
 }
 

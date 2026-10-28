@@ -28,7 +28,9 @@ its entry here in the same PR.
   and the red reset — kept in the address and remembered, and the log adds a status choice beside
   its dates. Both now read the whole list, past the first hundred rows. The buttons, and
   `POST /atm/mail-tickets/restore` behind them, need `atmMailTicket.decide`, the key that accepts
-  and rejects; a restore is on the audit trail as `restore`, beside the maintenance's `delete`
+  and rejects — now named «قبول رسالة الصيانة أو رفضها أو استرجاعها» in the role editor; a restore
+  is on the audit trail as `restore`, beside the maintenance's `delete`. Mail the legacy import
+  wrote (it carries no timestamps) is listed on both pages instead of failing them
   ([ATM port §6d](docs/12-planning/atm-operations-port.md)).
 
 - **The Banque Misr maintenance mailbox is set up on a screen and switched on branch by branch,

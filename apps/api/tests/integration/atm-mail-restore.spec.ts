@@ -39,6 +39,8 @@ import { atmMaintenanceRepository } from '../../src/modules/atm/maintenances/mai
 import { AtmMailTicketModel } from '../../src/modules/atm/mail-tickets/mail-ticket.model';
 import { atmMailTicketRepository } from '../../src/modules/atm/mail-tickets/mail-ticket.repository';
 import { atmMailIngestionService } from '../../src/modules/atm/mail-tickets/mail-ingestion.service';
+import { mailTicketFromLegacy } from '../../src/modules/atm/migration/legacy-transform';
+import { cairoDateString } from '../../src/modules/atm/shared/cairo-time';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -48,6 +50,7 @@ let alexToken: string; // the operating bundle at BRANCH scope, placed in Alex �
 let alexUserId: string;
 let tantaToken: string; // the same bundle, placed in Tanta — Alex's mail is outside its scope
 let viewerToken: string; // reads the pending list and the log, decides nothing
+let alexBranch = ''; // Alex's branch id — where the legacy-shaped tickets below are written
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -209,6 +212,7 @@ beforeAll(async () => {
     return data<{ id: string }>(res).id;
   };
   const alexBranchId = await mkBranch('90', 'الإسكندرية', 'Alexandria');
+  alexBranch = alexBranchId;
   const tantaBranchId = await mkBranch('91', 'طنطا', 'Tanta');
 
   const operatorRole = await rbacService.createRole(
@@ -440,6 +444,68 @@ describe('mail restore — a decided ticket back to pending', () => {
     expect((await openBoard()).map((row) => row.id)).toEqual(boardBefore);
     expect(await auditRows('mailTicket', ticketId, 'restore')).toHaveLength(0);
     expect(await pendingIds()).not.toContain(ticketId);
+  });
+
+  it('tickets the legacy import wrote RAW (no __v, createdAt, updatedAt) list, restore and leave both pages readable', async () => {
+    // `npm run atm:import` writes mail tickets with a raw upsert, so Mongoose stamps none of them,
+    // and no boot backfill covers the mail collection. Both pages read their list WHOLE: one such
+    // row must map, or every page of the pending list and of the log fails with it.
+    const now = new Date();
+    const legacyRow = (status: number, code: string) => {
+      const row = mailTicketFromLegacy(
+        {
+          _id: new Types.ObjectId(),
+          bank: 'SYN BANK',
+          mach_id: code,
+          name: `SYN ${code}`,
+          area: 'SYN AREA',
+          open_time: now,
+          status,
+          status_txt: 'Cash out',
+          action_by: 'legacy operator',
+          sender_mail: 'bank@example.test',
+          duplication: 0,
+          found: 1,
+        },
+        new Types.ObjectId(alexBranch),
+        null,
+      );
+      expect(row).not.toBeNull();
+      return row as NonNullable<typeof row>;
+    };
+    const rejected = legacyRow(2, '7017');
+    const accepted = legacyRow(1, '7018');
+    await AtmMailTicketModel.collection.insertMany([rejected, accepted]);
+    const raw = await AtmMailTicketModel.collection.findOne({ _id: rejected._id });
+    expect(raw).not.toHaveProperty('createdAt');
+    expect(raw).not.toHaveProperty('__v');
+
+    const day = (offset: number): string =>
+      cairoDateString(new Date(now.getTime() + offset * 86_400_000));
+    const log = await get(
+      alexToken,
+      `/atm/mail-tickets/log?from=${day(-1)}&to=${day(1)}&pageSize=100`,
+    );
+    expect(log.status).toBe(200);
+    const listed = data<AtmMailTicketDto[]>(log).filter((row) =>
+      [String(rejected._id), String(accepted._id)].includes(row.id),
+    );
+    expect(listed).toHaveLength(2);
+    for (const row of listed) {
+      // Read as the master rows are (DEC-23): version 0, made at the instant inside its own id.
+      const minted = new Types.ObjectId(row.id).getTimestamp().toISOString();
+      expect(row).toMatchObject({ version: 0, createdAt: minted, updatedAt: minted });
+    }
+
+    // A legacy rejection returns: 200, the ticket pending — and the pending list still reads.
+    const res = await restore(alexToken, [String(rejected._id), String(accepted._id)]);
+    expect(res.status).toBe(200);
+    expect(restoredIds(res)).toEqual([String(rejected._id)]);
+    expect(refusedOf(res)).toEqual([
+      { ticketId: String(accepted._id), machineCode: '7018', reason: 'noLinkedMaintenance' },
+    ]);
+    expect(await pendingIds()).toContain(String(rejected._id));
+    expect(await ticketRow(String(accepted._id))).toMatchObject({ status: 'accepted' });
   });
 
   it('one selection: each ticket on its own — the returned ones in `data`, the refused in `meta`', async () => {

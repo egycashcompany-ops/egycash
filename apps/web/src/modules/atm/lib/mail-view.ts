@@ -168,12 +168,14 @@ export const withMailBanks = (
  * pinned buttons' cell included. That cell is opaque so the columns scrolling under it stay hidden
  * (`PINNED_ACTIONS`); without a paint of its own it would be a white block at the end of every
  * painted row. In the dark the paint is a veil over the table, so the cell lays the same veil
- * (the 950 shade at 30%) over its own opaque ground. Written out whole: Tailwind finds a class
- * only as a literal.
+ * (the 950 shade at 30%) over its own opaque ground. A CHECKED row adds the boards' tint, which
+ * the pinned cell lays as an image (`PINNED_ACTIONS`, data-selected): on the pending page — the
+ * only one with checkboxes — the duplicate yellow keeps that cell in its own colour, as it keeps
+ * the rest of the checked row. Written out whole: Tailwind finds a class only as a literal.
  */
 export const MAIL_ROW_PAINT = {
   duplicate:
-    'bg-yellow-50 dark:bg-yellow-950/30 [&>td:last-child]:bg-yellow-50 dark:[&>td:last-child]:bg-slate-900 dark:[&>td:last-child]:bg-[image:linear-gradient(rgb(66_32_6/0.3),rgb(66_32_6/0.3))]',
+    'bg-yellow-50 dark:bg-yellow-950/30 [&>td:last-child]:bg-yellow-50 dark:[&>td:last-child]:bg-slate-900 dark:[&>td:last-child]:bg-[image:linear-gradient(rgb(66_32_6/0.3),rgb(66_32_6/0.3))] [&[data-selected=true]>td:last-child]:bg-none dark:[&[data-selected=true]>td:last-child]:bg-[image:linear-gradient(rgb(66_32_6/0.3),rgb(66_32_6/0.3))]',
   accepted:
     'bg-green-50 dark:bg-green-950/30 [&>td:last-child]:bg-green-50 dark:[&>td:last-child]:bg-slate-900 dark:[&>td:last-child]:bg-[image:linear-gradient(rgb(5_46_22/0.3),rgb(5_46_22/0.3))]',
   rejected:

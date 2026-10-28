@@ -458,12 +458,17 @@ The answer mirrors accept's: `data` is the tickets restored, and the refused one
 INSIDE the transaction, so a close that lands while a restore runs makes its delete a write
 conflict, and the retry reads the row closed and refuses: a closed maintenance is never deleted.
 Accepting a restored ticket again opens a FRESH maintenance on the ticket's day (D6) — the removed
-one is deleted, and OD-1 counts live rows only. The trail: the ticket gets a `restore` row (the
-status, and for an accepted ticket the `maintenanceId` it no longer has — accept's change reversed;
-the accept or reject row already there keeps who decided and when), and the maintenance gets the
-board's own `delete` row, by the caller, both after commit. The maintenance `delete` refreshes open
-boards as any delete does; `restore`, like `accept` and `reject`, is not a broadcast action, so the
-page that restores refreshes the mail lists and the board itself.
+one is deleted, and OD-1 counts live rows only. The trail: the ticket gets a `restore` row — the
+status and, when the restore took a maintenance back, the `maintenanceId` it removed (accept's
+change reversed; the accept or reject row already there keeps who decided and when) — and that
+maintenance gets the board's own `delete` row, by the caller, both after commit. A maintenance
+already deleted on the board is not named again: the `delete` row its deleter wrote is its record.
+The maintenance `delete` refreshes open boards as any delete does; `restore`, like `accept` and
+`reject`, is not a broadcast action, so the page that restores refreshes the mail lists and the
+board itself — on failure too, as a decision does. A ticket the legacy import wrote raw (no `__v`,
+`createdAt` or `updatedAt` — no backfill covers the mail collection) is read as the master rows are
+(DEC-23): version 0, made at the instant inside its own id, so the whole-list reads of both pages
+never fail on one.
 
 **The pages.**
 

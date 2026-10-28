@@ -77,9 +77,10 @@ export const planMailRestore = (
 };
 
 /**
- * Pure: the restore's audit changes — the status back to pending and, for an accepted ticket, the
- * maintenance it no longer has: accept's `maintenanceId` change, reversed. The decider's name and
- * time leave the ticket; the accept or reject row already on the trail keeps who and when.
+ * Pure: the restore's audit changes — the status back to pending and each maintenance THIS restore
+ * removed: accept's `maintenanceId` change, reversed. One already deleted on the board is not named
+ * again (its own `delete` row is its record). The decider's name and time leave the ticket; the
+ * accept or reject row already on the trail keeps who and when.
  */
 export const mailRestoreChanges = (
   from: AtmMailTicketStatus,

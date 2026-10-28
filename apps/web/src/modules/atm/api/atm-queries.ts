@@ -657,12 +657,16 @@ export const useRejectAtmMailTickets = () => {
   });
 };
 
-/** Put decided mails back to pending, from the log — the mail lists and the boards go stale. */
+/**
+ * Put decided mails back to pending, from the log — the mail lists and the boards go stale. Like a
+ * decision it re-reads on failure too: an answer lost after the server committed (a dropped
+ * connection) must not leave the log showing a mail as decided that is pending again.
+ */
 export const useRestoreAtmMailTickets = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => api.restoreMailTickets(ids),
-    onSuccess: () => invalidateMailDecision(client),
+    onSettled: () => invalidateMailDecision(client),
   });
 };
 

@@ -234,6 +234,21 @@ describe('accept and reject are the row’s buttons', () => {
     expect(rowOf(markup, ONE.machineCode)).not.toContain('bg-yellow-50');
     expect(MAIL_ROW_PAINT.duplicate).toContain('[&>td:last-child]:bg-yellow-50');
   });
+
+  it('keeps a CHECKED duplicate row yellow to its end — the boards’ tint does not take the pinned cell', () => {
+    // A checked row carries the boards' tint, laid on the pinned cell as an image keyed on
+    // `data-selected`; the duplicate paint answers that state on the same cell, in both themes,
+    // with a more specific rule — so bulk-rejecting the duplicates leaves no off-colour block.
+    const asAttribute = (classes: string): string =>
+      classes.replace(/&/g, '&amp;').replace(/>/g, '&gt;');
+    const row = rowOf(render(DECIDE, [TWO.id]), TWO.machineCode);
+    expect(row).toContain('data-selected="true"');
+    expect(row).toContain(asAttribute(MAIL_ROW_PAINT.duplicate));
+    expect(MAIL_ROW_PAINT.duplicate).toContain('[&[data-selected=true]>td:last-child]:bg-none');
+    expect(MAIL_ROW_PAINT.duplicate).toContain(
+      'dark:[&[data-selected=true]>td:last-child]:bg-[image:linear-gradient(rgb(66_32_6/0.3),rgb(66_32_6/0.3))]',
+    );
+  });
 });
 
 describe('the filter row', () => {

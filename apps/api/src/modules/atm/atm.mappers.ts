@@ -25,7 +25,9 @@ const isoOrNull = (d: Date | null): string | null => (d === null ? null : d.toIS
  * DEC-23: a master row written by `npm run atm:import` bypassed Mongoose and carries no `__v`,
  * `createdAt` or `updatedAt` until the boot backfill (machines/machine.migration.ts) has run. The
  * two master mappers read those as version 0 and the instant inside the row's own ObjectId, so a
- * list served before the backfill answers instead of throwing.
+ * list served before the backfill answers instead of throwing. The import writes mail tickets the
+ * same raw way and no backfill covers them, so the mail mapper reads them through this too — the
+ * pending list and the log are read whole, and one such row would otherwise fail every page.
  */
 const legacyStamps = (
   doc: Pick<AtmMachineDoc, '_id' | '__v' | 'createdAt' | 'updatedAt'>,
@@ -155,7 +157,5 @@ export const toAtmMailTicketDto = (
   actionByName: doc.actionByName,
   actionAt: isoOrNull(doc.actionAt),
   providerMessageId: doc.providerMessageId,
-  version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  ...legacyStamps(doc),
 });

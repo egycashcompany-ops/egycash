@@ -996,8 +996,20 @@ export const AtmSettingKeys = {
    * own mailbox. One central reader serving every branch needs the tag to say WHICH branch, which
    * is the owner's "كل Branch يتم تمييزه بالـcolor الخاص به". Empty means nothing is tagged;
    * messages are still marked read, because the tag is a convenience and the ticket is the record.
+   *
+   * Since the mailbox screen (`atm_mailbox_config`, atm-settings.ts) a switched-on branch carries
+   * its own category there; this setting answers for a branch that has none, and is the only
+   * source while the reader runs on the deployment's environment.
    */
   MailBranchCategories: 'atm.mail.branchCategories',
+  /**
+   * The ATM-only branch links `[{ branchId, actsAsBranchId }]` (value schema
+   * `AtmBranchLinksSettingSchema` in atm-settings.ts). The owner (2026-10-28): «فرع أكتوبر شغال هو
+   * والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين». On an ATM request a user
+   * placed in `branchId` is answered as if placed in `actsAsBranchId`: they see its ATM data and
+   * what they write is filed under it. DEFAULT EMPTY — no branch acts as another until linked.
+   */
+  BranchLinks: 'atm.branchLinks',
   /**
    * The efficiency register's `EGYCASH-1..7` → ECMS branch (D4; value schema
    * `AtmRegisterBranchCodesSettingSchema` in atm-register.ts). DEFAULT EMPTY — no branch is guessed

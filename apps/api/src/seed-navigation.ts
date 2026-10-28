@@ -1132,6 +1132,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'truck',
         permission: 'atmControl.view',
       },
+      // The maintenance mailbox and the branches that work together (the owner, 2026-10-28),
+      // behind the page's one key — organization scope is the services' check, not the row's.
+      {
+        en: 'ATM Settings',
+        ar: 'إعدادات الصراف الآلي',
+        route: '/atm/settings',
+        icon: 'cog',
+        permission: 'atmSettings.manage',
+      },
     ],
   },
   {

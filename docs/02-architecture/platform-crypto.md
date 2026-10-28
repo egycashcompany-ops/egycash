@@ -65,7 +65,7 @@ plaintext exists at any point:
 | Task | Re-wraps | When |
 |---|---|---|
 | `automation.rotateCredentialKeys` | automation credentials | 02:30 |
-| `atm.rotateRegisterCombinationKeys` | the ATM register's safe-door combinations, soft-deleted entries included ([Efficiency register spec](../12-planning/atm-efficiency-register.md) DEC-33) | 02:45 |
+| `atm.rotateRegisterCombinationKeys` | the ATM register's safe-door combinations, soft-deleted entries included ([Efficiency register spec](../12-planning/atm-efficiency-register.md) DEC-33), and the maintenance mailbox's client secret ([ATM port §6a](../12-planning/atm-operations-port.md)) | 02:45 |
 
 Each pass moves a bounded batch and logs `{ provider, currentKeyId, rotated, failed }` only when it
 found work; the next night continues where it stopped. Drop the old key only after **both** sweeps

@@ -74,4 +74,11 @@ describe('atmIndexedModels', () => {
       expect(listed.get(collection), collection).toBe(false);
     }
   });
+
+  // /atm/settings: `ux_mailbox_key` is what turns a second "first save" into a stale 409 instead
+  // of a second mailbox. Its key is a fixed word, so its rows may be logged.
+  it('lists the mailbox document with its rows allowed in the log', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    expect(listed.get('atm_mailbox_config')).toBe(true);
+  });
 });

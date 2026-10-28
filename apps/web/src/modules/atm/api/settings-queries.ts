@@ -2,7 +2,7 @@
 // ['atm', feature, kind, params]. Invalidation facts worth stating:
 //
 //   · a mailbox save re-reads the card — its version, `hasSecret` and the branch names are the
-//     server's;
+//     server's; the PUT's own answer is put in the cache first, so the card follows at once;
 //   · «قراءة الآن» can file tickets, so it stales the mail tickets (the pending list, the unread
 //     badge, the log) as well as the card, whose `lastPoll` is now this run;
 //   · the connection test stores nothing, so it stales nothing;
@@ -36,7 +36,10 @@ export const useSaveAtmMailboxConfig = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: SaveAtmMailboxConfigInput) => api.saveMailboxConfig(body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: settingsKeys.mailbox }),
+    onSuccess: (saved) => {
+      client.setQueryData(atmMailboxKey(), saved);
+      void client.invalidateQueries({ queryKey: settingsKeys.mailbox });
+    },
   });
 };
 
@@ -61,6 +64,9 @@ export const useSaveAtmBranchLinks = () => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: SaveAtmBranchLinks) => api.saveBranchLinks(body),
-    onSuccess: () => void client.invalidateQueries({ queryKey: [MODULE] }),
+    onSuccess: (saved) => {
+      client.setQueryData(atmBranchLinksKey(), saved);
+      void client.invalidateQueries({ queryKey: [MODULE] });
+    },
   });
 };

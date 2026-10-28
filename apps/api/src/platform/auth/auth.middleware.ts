@@ -11,6 +11,7 @@ import { setActor } from '../../infrastructure/http/request-context';
 import { auditService } from '../audit';
 import { authService } from './auth.service';
 import { ACTIVE_BRANCH_HEADER, resolveActiveBranch } from './active-branch';
+import { refineAuthContext } from './context-refiners';
 import { externalMayReach } from './external-surfaces';
 
 interface AuthedRequest extends Request {
@@ -38,15 +39,19 @@ export const authenticate: RequestHandler = (
   }
   authService
     .buildAuthContext(header.slice('Bearer '.length))
-    .then(async (ctx) => {
+    .then(async (built) => {
       // The command bar's branch narrowing. Read here rather than per module so every list in the
       // application answers the same question the switcher is asking; `scopeSelector` applies it,
       // and can only ever narrow an organization-wide grant.
       const active = req.headers[ACTIVE_BRANCH_HEADER];
-      ctx.activeBranchId = await resolveActiveBranch(
+      built.activeBranchId = await resolveActiveBranch(
         typeof active === 'string' ? active : undefined,
-        touchedBranches(ctx.reach),
+        touchedBranches(built.reach),
       );
+      const path = req.originalUrl.split('?')[0] ?? '';
+      // A module's own reading of the caller on its own routes (context-refiners.ts) — after the
+      // switcher, so it sees the branch the caller chose. Every other route gets `built` as is.
+      const ctx = await refineAuthContext(built, path);
       (req as AuthedRequest).authContext = ctx;
       setActor({
         userId: ctx.userId,
@@ -55,7 +60,6 @@ export const authenticate: RequestHandler = (
         // Carried so an audited write can name its actor without a lookup of its own.
         identity: ctx.identity ?? null,
       });
-      const path = req.originalUrl.split('?')[0] ?? '';
       if (!GATE_EXEMPT.test(path) && (await authService.passwordGateActive(ctx.userId))) {
         next(
           new AppError(

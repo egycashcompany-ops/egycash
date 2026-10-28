@@ -156,10 +156,9 @@ export const MailTicketsPage = (): JSX.Element => {
             onRetry={() => void list.refetch()}
             empty={t('atm.mail.empty')}
             selection={selection}
-            // No head box, and unlike the boards no F8 to bring it back — the owner (2026-10-28):
-            // «عايزك هنا كمان /atm/mail-tickets تلغي الـ Select All». A mail is decided by
-            // checking ITS row, so the row boxes and the accept/reject bar stay: they are the
-            // only way a ticket is decided at all.
+            // No head box, and — unlike the boards — no F8 to bring it back. The owner
+            // (2026-10-28): «عايزك هنا كمان /atm/mail-tickets تلغي الـ Select All». The row boxes
+            // and the accept/reject bar stay: checking a row is the only way a mail is decided.
             selectAll={false}
             // The duplicate row paint — the legacy's yellow background (:771), as a row class.
             rowClassName={(row) => (row.duplication ? 'bg-yellow-50 dark:bg-yellow-950/30' : '')}

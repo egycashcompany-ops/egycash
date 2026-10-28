@@ -9796,6 +9796,70 @@ const en: Record<string, string> = {
   'atm.paper.routeSheet': 'Line sheet',
   'atm.paper.popupBlocked':
     'The browser blocked the print window. Allow pop-ups for this site and try again.',
+
+  // ── ATM settings: the maintenance mailbox and the branches that work as one (2026-10-28) ──
+  'atm.nav.settings': 'ATM Settings',
+  'atm.cards.settings': 'The maintenance mailbox and the branches that work together.',
+  'atm.settings.title': 'ATM Settings',
+  'atm.settings.pickBranch': 'Choose a branch…',
+  'atm.settings.unknownBranch': 'Branch not found',
+  'atm.settings.mailbox.title': 'Maintenance mail — Banque Misr',
+  'atm.settings.mailbox.notSaved':
+    'Nothing is saved here yet, so the mailbox is read with the server’s own settings, if it has any. From the first save, only these settings are used.',
+  'atm.settings.mailbox.tenantId': 'Tenant ID',
+  'atm.settings.mailbox.tenantIdInvalid':
+    'Enter a GUID or a domain such as contoso.onmicrosoft.com.',
+  'atm.settings.mailbox.clientId': 'Client ID',
+  'atm.settings.mailbox.clientIdInvalid': 'Enter a GUID in the form 8-4-4-4-12.',
+  'atm.settings.mailbox.clientSecret': 'Client Secret',
+  'atm.settings.mailbox.secretStored': 'Saved — leave it empty to keep it.',
+  'atm.settings.mailbox.userEmail': 'Mailbox address',
+  'atm.settings.mailbox.userEmailInvalid': 'Enter an email address such as name@example.com.',
+  'atm.settings.mailbox.enabled': 'Enable reading',
+  'atm.settings.mailbox.enabledHint': 'When on, the mailbox is read every minute.',
+  'atm.settings.mailbox.branches': 'Branches switched on',
+  'atm.settings.mailbox.branchesHint':
+    'Each mail is filed under its machine’s branch. Mail for a branch not on this list stays unread in the mailbox.',
+  'atm.settings.mailbox.branch': 'Branch',
+  'atm.settings.mailbox.category': 'Outlook category',
+  'atm.settings.mailbox.noBranches': 'No branch is switched on yet.',
+  'atm.settings.mailbox.addBranch': 'Add branch',
+  'atm.settings.mailbox.removeBranch': 'Remove {{branch}}',
+  'atm.settings.mailbox.test': 'Test connection',
+  'atm.settings.mailbox.pollNow': 'Read now',
+  'atm.settings.mailbox.probeHint':
+    'The test and the reading use the saved settings — save your changes first.',
+  'atm.settings.mailbox.readingOffHint':
+    'Reading is switched off — switch it on and save to read now.',
+  'atm.settings.mailbox.testOk': 'Connected. Unread messages in the sample: {{count}}.',
+  'atm.settings.mailbox.testFailed': 'The connection failed: {{error}}',
+  'atm.settings.mailbox.pollDone':
+    'Read {{read}} message(s); {{created}} added to the maintenance mail.',
+  'atm.settings.mailbox.pollFailed': 'The reading failed: {{error}}',
+  'atm.settings.mailbox.lastPoll': 'Last reading',
+  'atm.settings.mailbox.lastPollAt': 'Started {{at}}, Cairo time',
+  'atm.settings.mailbox.neverPolled': 'The mailbox has not been read with these settings yet.',
+  'atm.settings.mailbox.counts.read': 'Read',
+  'atm.settings.mailbox.counts.created': 'Added',
+  'atm.settings.mailbox.counts.duplicates': 'Duplicates',
+  'atm.settings.mailbox.counts.unmatched': 'Left unread',
+  'atm.settings.mailbox.counts.failed': 'Failed',
+  'atm.settings.mailbox.unmatchedReasons': 'Why mail was left unread',
+  'atm.settings.links.title': 'Branches that work together',
+  'atm.settings.links.hint':
+    'The first branch sees and works on the second branch’s ATM data, and everything it records is filed under the second branch.',
+  'atm.settings.links.row': '{{branch}} → works as {{target}}',
+  'atm.settings.links.none': 'No branches are linked.',
+  'atm.settings.links.branch': 'Branch',
+  'atm.settings.links.actsAs': 'Works as',
+  'atm.settings.links.add': 'Link',
+  'atm.settings.links.remove': 'Remove the link of {{branch}}',
+  'atm.settings.links.added': 'The branches were linked.',
+  'atm.settings.links.removed': 'The link was removed.',
+  'atm.settings.links.issue.sameBranch': 'A branch cannot work as itself.',
+  'atm.settings.links.issue.duplicateSource': 'This branch already works as another branch.',
+  'atm.settings.links.issue.chain':
+    'A branch that another branch works as cannot itself work as a third branch.',
 };
 
 const ar: Record<string, string> = {
@@ -19423,6 +19487,68 @@ const ar: Record<string, string> = {
   'atm.paper.routeSheet': 'كشف خط',
   'atm.paper.popupBlocked':
     'المتصفح منع فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.',
+
+  // ── إعدادات الصراف الآلي: بريد الصيانة والفروع التي تعمل معًا (2026-10-28) ──
+  'atm.nav.settings': 'إعدادات الصراف الآلي',
+  'atm.cards.settings': 'بريد الصيانة والفروع التي تعمل معًا.',
+  'atm.settings.title': 'إعدادات الصراف الآلي',
+  'atm.settings.pickBranch': 'اختر فرعًا…',
+  'atm.settings.unknownBranch': 'فرع غير موجود',
+  'atm.settings.mailbox.title': 'بريد الصيانة — بنك مصر',
+  'atm.settings.mailbox.notSaved':
+    'لم تُحفظ إعدادات هنا بعد، لذا يُقرأ البريد بإعدادات الخادم إن وُجدت. بعد أول حفظ تُستخدم هذه الإعدادات وحدها.',
+  'atm.settings.mailbox.tenantId': 'معرّف الدليل (Tenant ID)',
+  'atm.settings.mailbox.tenantIdInvalid': 'أدخل معرّف GUID أو نطاقًا مثل contoso.onmicrosoft.com.',
+  'atm.settings.mailbox.clientId': 'معرّف التطبيق (Client ID)',
+  'atm.settings.mailbox.clientIdInvalid': 'أدخل معرّف GUID بالصيغة 8-4-4-4-12.',
+  'atm.settings.mailbox.clientSecret': 'كلمة سر التطبيق (Client Secret)',
+  'atm.settings.mailbox.secretStored': 'محفوظ — اتركه فارغاً للإبقاء عليه',
+  'atm.settings.mailbox.userEmail': 'عنوان صندوق البريد',
+  'atm.settings.mailbox.userEmailInvalid': 'أدخل بريدًا إلكترونيًا مثل name@example.com',
+  'atm.settings.mailbox.enabled': 'تفعيل القراءة',
+  'atm.settings.mailbox.enabledHint': 'عند التفعيل يُقرأ صندوق البريد كل دقيقة.',
+  'atm.settings.mailbox.branches': 'الفروع المُفعَّلة',
+  'atm.settings.mailbox.branchesHint':
+    'تُسجَّل كل رسالة على فرع ماكينتها، وتبقى رسائل أي فرع غير مُدرَج في هذه القائمة غير مقروءة في صندوق البريد.',
+  'atm.settings.mailbox.branch': 'الفرع',
+  'atm.settings.mailbox.category': 'تصنيف Outlook',
+  'atm.settings.mailbox.noBranches': 'لم يُفعَّل أي فرع بعد.',
+  'atm.settings.mailbox.addBranch': 'إضافة فرع',
+  'atm.settings.mailbox.removeBranch': 'إزالة {{branch}}',
+  'atm.settings.mailbox.test': 'اختبار الاتصال',
+  'atm.settings.mailbox.pollNow': 'قراءة الآن',
+  'atm.settings.mailbox.probeHint':
+    'يستخدم الاختبار والقراءة الإعدادات المحفوظة؛ احفظ التعديلات أولًا.',
+  'atm.settings.mailbox.readingOffHint':
+    'القراءة متوقفة؛ فعّلها واحفظ الإعدادات لتتمكن من القراءة الآن.',
+  'atm.settings.mailbox.testOk': 'تم الاتصال بنجاح. الرسائل غير المقروءة في العينة: {{count}}.',
+  'atm.settings.mailbox.testFailed': 'تعذّر الاتصال: {{error}}',
+  'atm.settings.mailbox.pollDone': 'قُرئت {{read}} رسالة، وأُضيفت {{created}} إلى رسائل الصيانة.',
+  'atm.settings.mailbox.pollFailed': 'تعذّرت القراءة: {{error}}',
+  'atm.settings.mailbox.lastPoll': 'آخر قراءة',
+  'atm.settings.mailbox.lastPollAt': 'بدأت {{at}} بتوقيت القاهرة',
+  'atm.settings.mailbox.neverPolled': 'لم يُقرأ صندوق البريد بهذه الإعدادات بعد.',
+  'atm.settings.mailbox.counts.read': 'المقروءة',
+  'atm.settings.mailbox.counts.created': 'المُضافة',
+  'atm.settings.mailbox.counts.duplicates': 'المكررة',
+  'atm.settings.mailbox.counts.unmatched': 'تُركت غير مقروءة',
+  'atm.settings.mailbox.counts.failed': 'تعذّرت',
+  'atm.settings.mailbox.unmatchedReasons': 'أسباب ترك رسائل غير مقروءة',
+  'atm.settings.links.title': 'فروع تعمل معاً',
+  'atm.settings.links.hint':
+    'يرى الفرع الأول بيانات الصراف الآلي الخاصة بالفرع الثاني ويعمل عليها، وكل ما يُسجّله يُحفظ باسم الفرع الثاني.',
+  'atm.settings.links.row': '{{branch}} ← يعمل باسم {{target}}',
+  'atm.settings.links.none': 'لا توجد فروع مرتبطة.',
+  'atm.settings.links.branch': 'الفرع',
+  'atm.settings.links.actsAs': 'يعمل باسم',
+  'atm.settings.links.add': 'ربط',
+  'atm.settings.links.remove': 'إزالة ربط {{branch}}',
+  'atm.settings.links.added': 'تم ربط الفرعين.',
+  'atm.settings.links.removed': 'تمت إزالة الربط.',
+  'atm.settings.links.issue.sameBranch': 'لا يمكن أن يعمل الفرع باسم نفسه.',
+  'atm.settings.links.issue.duplicateSource': 'هذا الفرع يعمل بالفعل باسم فرع آخر.',
+  'atm.settings.links.issue.chain':
+    'الفرع الذي يعمل باسمه فرع آخر لا يمكن أن يعمل هو نفسه باسم فرع ثالث.',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

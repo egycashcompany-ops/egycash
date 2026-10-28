@@ -195,6 +195,7 @@ const MIGRATION_PENDING: readonly string[] = [];
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
+  ['modules/atm/pages/AtmSettingsPage.tsx'],
   ['modules/atm/pages/LayoutImportPage.tsx', 'an upload form: the bank select picks the file\u2019s profile and the table previews one upload; nothing narrows a stored list'],
   ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
   ['modules/atm/pages/MailTicketsPage.tsx'],

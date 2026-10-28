@@ -83,6 +83,14 @@ export const mailboxSaveBody = (
   version,
 });
 
+/**
+ * A secret has to be typed only when reading is switched on and none is stored — the server's own
+ * rule: switched on with no secret anywhere, the reader could only fail every minute. Switched
+ * off, the card saves without one (to stop the deployment's reading, or to finish it later).
+ */
+export const secretMissing = (draft: Draft, hasSecret: boolean): boolean =>
+  draft.enabled && !hasSecret && draft.clientSecret.trim() === '';
+
 /** Would the save accept this value? The contract's own rule for the field, not a copy of it. */
 const fieldOk = (field: CheckedField, value: string): boolean =>
   SaveAtmMailboxConfigSchema.shape[field].safeParse(value).success;
@@ -174,7 +182,10 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
   const set = (patch: Partial<Draft>): void => setDraft((current) => ({ ...current, ...patch }));
   const dirty = signatureOf(draft) !== serverSignature;
   const hasSecret = stored?.hasSecret === true;
-  const canProbe = stored !== null && !dirty;
+  // Both act on the STORED document; the reading also needs it switched on (the server refuses
+  // «قراءة الآن» while reading is off, and a vague refusal would say less than this button does).
+  const canTest = stored !== null && !dirty;
+  const canRead = canTest && stored.enabled;
 
   const required = useRequiredFields(
     [
@@ -188,11 +199,10 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
         label: t('atm.settings.mailbox.clientId'),
         ok: fieldOk('clientId', draft.clientId),
       },
-      // Nothing stored means nothing to keep: a mailbox without a secret can never be read.
       {
         key: 'clientSecret',
         label: t('atm.settings.mailbox.clientSecret'),
-        ok: hasSecret || draft.clientSecret.trim() !== '',
+        ok: !secretMissing(draft, hasSecret),
       },
       {
         key: 'userEmail',
@@ -320,7 +330,7 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
         <Field
           label={t('atm.settings.mailbox.clientSecret')}
           htmlFor="atm-mailbox-secret"
-          required={!hasSecret}
+          required={draft.enabled && !hasSecret}
           missing={required.isMissing('clientSecret')}
           hint={hasSecret ? t('atm.settings.mailbox.secretStored') : undefined}
         >
@@ -470,7 +480,7 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
           <Button
             variant="secondary"
             loading={test.isPending}
-            disabled={!canProbe || poll.isPending}
+            disabled={!canTest || poll.isPending}
             data-mailbox-action="test"
             onClick={() => void runTest()}
           >
@@ -479,7 +489,7 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
           <Button
             variant="secondary"
             loading={poll.isPending}
-            disabled={!canProbe || test.isPending}
+            disabled={!canRead || test.isPending}
             data-mailbox-action="poll"
             onClick={() => void runPoll()}
           >
@@ -494,9 +504,9 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
             {t('atm.common.save')}
           </Button>
         </div>
-        {stored !== null && dirty && (
+        {stored !== null && (dirty || !stored.enabled) && (
           <p className="text-end text-xs text-slate-500 dark:text-slate-400">
-            {t('atm.settings.mailbox.probeHint')}
+            {t(dirty ? 'atm.settings.mailbox.probeHint' : 'atm.settings.mailbox.readingOffHint')}
           </p>
         )}
         {testResult !== undefined && (

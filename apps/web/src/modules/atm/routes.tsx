@@ -37,6 +37,10 @@
 //   /atm/settlements/layouts/import  atmCassetteLayout.import (the bank's Full list seed import)
 //   /atm/preparation                 atmPreparation.view      (bag QRs and cassette seals)
 //   /atm/control                     atmControl.view          (the handover, the crew lines)
+//
+// The ATM settings (2026-10-28) — no legacy screen; the maintenance mailbox the reader polls and
+// the branches that work as one, both one fact for the whole company:
+//   /atm/settings              atmSettings.manage      (the mailbox, and October as Mohandessin)
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -61,6 +65,7 @@ import { CassetteLayoutsPage } from './pages/CassetteLayoutsPage';
 import { LayoutImportPage } from './pages/LayoutImportPage';
 import { PreparationPage } from './pages/PreparationPage';
 import { ControlPage } from './pages/ControlPage';
+import { AtmSettingsPage } from './pages/AtmSettingsPage';
 
 /** Every key that leads to the data-edit page (spec §7.3) — the route guard is any-of. */
 const DATA_EDIT_KEYS = [
@@ -229,6 +234,14 @@ export default function AtmRoutes(): JSX.Element {
           element={
             <RequirePermission permission="atmControl.view">
               <ControlPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="settings"
+          element={
+            <RequirePermission permission="atmSettings.manage">
+              <AtmSettingsPage />
             </RequirePermission>
           }
         />

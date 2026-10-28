@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import {
   ATM_DEFAULT_BANK_LABELS_SETTING,
+  AtmBranchLinksSettingSchema,
   AtmRegisterBankLabelsSettingSchema,
   AtmBankCodeSchema,
   AtmRegisterBranchCodesSettingSchema,
@@ -74,6 +75,20 @@ export const registerAtmSettings = (): void => {
     schema: z.array(AtmBankCodeSchema).max(50),
     defaultValue: ['BRK'],
     // Organization only: which banks the settlement pages offer is one fact about the company.
+    allowedScopes: ['organization'],
+  });
+  // The owner (2026-10-28), for ATM only: «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم
+  // والبيانات دي متسجله إنها المهندسين». Read on every ATM request (branch-links/link-context.ts).
+  declareSetting({
+    key: AtmSettingKeys.BranchLinks,
+    description:
+      'Branches that work as one in ATM: on an ATM request a user placed in `branchId` is ' +
+      'answered as if placed in `actsAsBranchId` — they see its ATM data and what they write is ' +
+      'filed under it; nothing outside ATM changes. Empty means no branch acts as another. ' +
+      'Edited on /atm/settings, which also checks that both branches exist and are active.',
+    schema: AtmBranchLinksSettingSchema,
+    defaultValue: [],
+    // Organization only: which branch works as which is one fact about the company.
     allowedScopes: ['organization'],
   });
 };

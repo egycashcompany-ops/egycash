@@ -28,6 +28,7 @@ export const AssetPicker = ({
   ariaLabel,
   status,
   exclude = [],
+  withoutStatus,
 }: {
   /** The picked asset id, '' when none. */
   value: string;
@@ -37,6 +38,11 @@ export const AssetPicker = ({
   status?: ItAssetStatus;
   /** Ids already chosen elsewhere in the form — a receipt lists an asset once. */
   exclude?: readonly string[];
+  /**
+   * Leave out assets in this state — a consumable is installed on nothing written off (FR-20).
+   * The server refuses it too; this only keeps the box from offering what can only be refused.
+   */
+  withoutStatus?: ItAssetStatus;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -52,7 +58,9 @@ export const AssetPicker = ({
   });
 
   const picked = useItAsset(allowed ? value : '');
-  const offered = (results.data?.items ?? []).filter((asset) => !exclude.includes(asset.id));
+  const offered = (results.data?.items ?? []).filter(
+    (asset) => !exclude.includes(asset.id) && asset.status !== withoutStatus,
+  );
 
   if (!allowed) {
     return (

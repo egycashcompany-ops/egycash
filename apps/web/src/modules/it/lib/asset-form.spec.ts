@@ -39,6 +39,7 @@ const LAST: ItAssetDto = {
     networkAdapters: ['Intel Wi-Fi 6'],
   },
   accessories: ['ماوس', 'كيبورد'],
+  holder: null,
   version: 3,
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-02T00:00:00.000Z',

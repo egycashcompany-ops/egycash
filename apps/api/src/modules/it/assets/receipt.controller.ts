@@ -10,6 +10,7 @@ import { hasPermission, scopeSelector } from '../../../shared/types';
 import { receiptNationalId, toItAssetDto, toItCustodyReceiptDto } from '../it.mappers';
 import { itAssetCustodyService } from './custody.service';
 import { itCustodyReceiptService } from './receipt.service';
+import { itAssetService } from './asset.service';
 
 type IdParam = { id: string };
 
@@ -68,9 +69,11 @@ export const handOverItAssets = async (req: Request, res: Response): Promise<voi
     authContext(req),
     custodyScope(req),
   );
+  // Every asset of the hand-over names its new holder — one resolution for the whole paper.
+  const holders = await itAssetService.holderLabels(assets);
   created(res, {
     receipt: toItCustodyReceiptDto(receipt, revealsNationalId(req)),
-    assets: assets.map(toItAssetDto),
+    assets: assets.map((asset) => toItAssetDto(asset, holders)),
   });
 };
 

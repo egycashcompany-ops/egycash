@@ -146,6 +146,8 @@ describe('no printed page carries a script of its own', () => {
       'modules/it/lib/custody-receipt-print.ts',
       // FR-19 — the line acknowledgment, on the device paper's shared parts.
       'modules/it/lib/mobile-line-receipt-print.ts',
+      // FR-20 — the consumables memo, on the same letterhead with its own number series.
+      'modules/it/lib/consumable-memo-print.ts',
       'modules/it/components/useAssetLabels.ts',
       // The ATM settlement papers: the Notes, «بيان التغذية», «سيلزات» and the route sheets.
       'modules/atm/lib/papers/settlement-print.ts',

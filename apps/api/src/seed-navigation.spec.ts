@@ -57,7 +57,20 @@ describe('the seeded navigation catalog', () => {
     //
     // So adding a row fails HERE first, on the author's machine, naming the number to change —
     // rather than eight minutes into CI in the one suite that cannot run without a mongod.
-    expect(rows).toHaveLength(135);
+    expect(rows).toHaveLength(136);
+  });
+
+  it('offers the consumables right under the mobile lines, on the asset grants', () => {
+    // «شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — under the lines, and keyed like them: the
+    // store has no permission of its own («same permissions as assets»).
+    const itRows = rows.filter((row) => row.route.startsWith('/it'));
+    const consumables = itRows.find((row) => row.route === '/it/consumables');
+    expect(consumables?.permission).toBe('itAsset.view');
+    expect(itRows.indexOf(consumables as (typeof itRows)[number])).toBe(
+      itRows.findIndex((row) => row.route === '/it/mobile-lines') + 1,
+    );
+    // The movements screen nests under it and has no row of its own.
+    expect(rows.some((row) => row.route === '/it/consumables/movements')).toBe(false);
   });
 
   it('offers the machine map right after the machine list, behind its own key', () => {

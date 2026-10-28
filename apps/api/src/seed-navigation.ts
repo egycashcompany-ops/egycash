@@ -819,6 +819,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'itAsset.view',
       },
       {
+        // FR-20 — «شاشة تانية تحت خطوط المحمول تكون للمستهلكات»: right under the lines, on the
+        // asset grants like them. The tray — a store's stock — is a glyph no other IT row wears.
+        en: 'Consumables',
+        ar: 'المستهلكات',
+        route: '/it/consumables',
+        icon: 'inbox',
+        permission: 'itAsset.view',
+      },
+      {
         // Everybody HR has, current and departed, each opening their whole IT history. Under the
         // custody grant: the register already names a holder on every row.
         en: 'Employees',

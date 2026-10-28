@@ -1,0 +1,400 @@
+{
+  "source": "SN ايجي كاش.xlsx — سيريالات أجهزة Lenovo ThinkCentre neo 50a 24 (كمبيوتر All in One) لفرع أكتوبر، غير مسلّمة، بعد مراجعة المالك (2026-10-28)",
+  "branch": "أكتوبر",
+  "template": {
+    "name": "Lenovo ThinkCentre neo 50a 24",
+    "manufacturer": "Lenovo",
+    "model": "ThinkCentre neo 50a 24",
+    "category": "allInOne"
+  },
+  "devices": [
+    {
+      "key": "SN ايجي كاش صف 1",
+      "serial": "MP30EPF4"
+    },
+    {
+      "key": "SN ايجي كاش صف 2",
+      "serial": "MP30EPF3"
+    },
+    {
+      "key": "SN ايجي كاش صف 3",
+      "serial": "MP30EPF2"
+    },
+    {
+      "key": "SN ايجي كاش صف 4",
+      "serial": "MP30EPF1"
+    },
+    {
+      "key": "SN ايجي كاش صف 5",
+      "serial": "MP30EPF0"
+    },
+    {
+      "key": "SN ايجي كاش صف 6",
+      "serial": "MP30EPEZ"
+    },
+    {
+      "key": "SN ايجي كاش صف 7",
+      "serial": "MP30EPEY"
+    },
+    {
+      "key": "SN ايجي كاش صف 8",
+      "serial": "MP30EPEX"
+    },
+    {
+      "key": "SN ايجي كاش صف 9",
+      "serial": "MP30EPEW"
+    },
+    {
+      "key": "SN ايجي كاش صف 10",
+      "serial": "MP30EPEV"
+    },
+    {
+      "key": "SN ايجي كاش صف 11",
+      "serial": "MP30EPET"
+    },
+    {
+      "key": "SN ايجي كاش صف 12",
+      "serial": "MP30EPES"
+    },
+    {
+      "key": "SN ايجي كاش صف 13",
+      "serial": "MP30EPER"
+    },
+    {
+      "key": "SN ايجي كاش صف 14",
+      "serial": "MP30EPEQ"
+    },
+    {
+      "key": "SN ايجي كاش صف 15",
+      "serial": "MP30EPEP"
+    },
+    {
+      "key": "SN ايجي كاش صف 16",
+      "serial": "MP30EPEN"
+    },
+    {
+      "key": "SN ايجي كاش صف 17",
+      "serial": "MP30EPEM"
+    },
+    {
+      "key": "SN ايجي كاش صف 18",
+      "serial": "MP30EPEL"
+    },
+    {
+      "key": "SN ايجي كاش صف 19",
+      "serial": "MP30EPEK"
+    },
+    {
+      "key": "SN ايجي كاش صف 20",
+      "serial": "MP30EPEJ"
+    },
+    {
+      "key": "SN ايجي كاش صف 21",
+      "serial": "MP30EPEH"
+    },
+    {
+      "key": "SN ايجي كاش صف 22",
+      "serial": "MP30EPEG"
+    },
+    {
+      "key": "SN ايجي كاش صف 23",
+      "serial": "MP30EPEF"
+    },
+    {
+      "key": "SN ايجي كاش صف 24",
+      "serial": "MP30EPEE"
+    },
+    {
+      "key": "SN ايجي كاش صف 25",
+      "serial": "MP30EPED"
+    },
+    {
+      "key": "SN ايجي كاش صف 26",
+      "serial": "MP30EPEC"
+    },
+    {
+      "key": "SN ايجي كاش صف 27",
+      "serial": "MP30EPEB"
+    },
+    {
+      "key": "SN ايجي كاش صف 28",
+      "serial": "MP30EPEA"
+    },
+    {
+      "key": "SN ايجي كاش صف 29",
+      "serial": "MP30EPE9"
+    },
+    {
+      "key": "SN ايجي كاش صف 30",
+      "serial": "MP30EPE8"
+    },
+    {
+      "key": "SN ايجي كاش صف 31",
+      "serial": "MP30EPE7"
+    },
+    {
+      "key": "SN ايجي كاش صف 32",
+      "serial": "MP30EPE6"
+    },
+    {
+      "key": "SN ايجي كاش صف 33",
+      "serial": "MP30EPE5"
+    },
+    {
+      "key": "SN ايجي كاش صف 34",
+      "serial": "MP30EPE4"
+    },
+    {
+      "key": "SN ايجي كاش صف 35",
+      "serial": "MP30EPE3"
+    },
+    {
+      "key": "SN ايجي كاش صف 36",
+      "serial": "MP30EPE2"
+    },
+    {
+      "key": "SN ايجي كاش صف 37",
+      "serial": "MP30EPE1"
+    },
+    {
+      "key": "SN ايجي كاش صف 38",
+      "serial": "MP30EPE0"
+    },
+    {
+      "key": "SN ايجي كاش صف 39",
+      "serial": "MP30EPDZ"
+    },
+    {
+      "key": "SN ايجي كاش صف 40",
+      "serial": "MP30EPDY"
+    },
+    {
+      "key": "SN ايجي كاش صف 41",
+      "serial": "MP30EPDX"
+    },
+    {
+      "key": "SN ايجي كاش صف 42",
+      "serial": "MP30EPDW"
+    },
+    {
+      "key": "SN ايجي كاش صف 43",
+      "serial": "MP30EPDV"
+    },
+    {
+      "key": "SN ايجي كاش صف 44",
+      "serial": "MP30EPDT"
+    },
+    {
+      "key": "SN ايجي كاش صف 45",
+      "serial": "MP30EPDS"
+    },
+    {
+      "key": "SN ايجي كاش صف 46",
+      "serial": "MP30EPDR"
+    },
+    {
+      "key": "SN ايجي كاش صف 47",
+      "serial": "MP30EPDQ"
+    },
+    {
+      "key": "SN ايجي كاش صف 48",
+      "serial": "MP30EPDP"
+    },
+    {
+      "key": "SN ايجي كاش صف 49",
+      "serial": "MP30EPDN"
+    },
+    {
+      "key": "SN ايجي كاش صف 50",
+      "serial": "MP30EPDM"
+    },
+    {
+      "key": "SN ايجي كاش صف 51",
+      "serial": "MP30EPDL"
+    },
+    {
+      "key": "SN ايجي كاش صف 52",
+      "serial": "MP30EPDJ"
+    },
+    {
+      "key": "SN ايجي كاش صف 53",
+      "serial": "MP30EPDH"
+    },
+    {
+      "key": "SN ايجي كاش صف 54",
+      "serial": "MP30EPDG"
+    },
+    {
+      "key": "SN ايجي كاش صف 55",
+      "serial": "MP30EPDF"
+    },
+    {
+      "key": "SN ايجي كاش صف 56",
+      "serial": "MP30EPDE"
+    },
+    {
+      "key": "SN ايجي كاش صف 57",
+      "serial": "MP30EPDD"
+    },
+    {
+      "key": "SN ايجي كاش صف 58",
+      "serial": "MP30EPDC"
+    },
+    {
+      "key": "SN ايجي كاش صف 59",
+      "serial": "MP30EPDB"
+    },
+    {
+      "key": "SN ايجي كاش صف 61",
+      "serial": "MP30EPD9"
+    },
+    {
+      "key": "SN ايجي كاش صف 62",
+      "serial": "MP30EPD8"
+    },
+    {
+      "key": "SN ايجي كاش صف 63",
+      "serial": "MP30EPD7"
+    },
+    {
+      "key": "SN ايجي كاش صف 64",
+      "serial": "MP30EPD6"
+    },
+    {
+      "key": "SN ايجي كاش صف 65",
+      "serial": "MP30EPD5"
+    },
+    {
+      "key": "SN ايجي كاش صف 66",
+      "serial": "MP30EPD4"
+    },
+    {
+      "key": "SN ايجي كاش صف 67",
+      "serial": "MP30EPD3"
+    },
+    {
+      "key": "SN ايجي كاش صف 69",
+      "serial": "MP30EPD1"
+    },
+    {
+      "key": "SN ايجي كاش صف 70",
+      "serial": "MP30EPD0"
+    },
+    {
+      "key": "SN ايجي كاش صف 72",
+      "serial": "MP30EPCZ"
+    },
+    {
+      "key": "SN ايجي كاش صف 73",
+      "serial": "MP30EPCY"
+    },
+    {
+      "key": "SN ايجي كاش صف 74",
+      "serial": "MP30EPCX"
+    },
+    {
+      "key": "SN ايجي كاش صف 75",
+      "serial": "MP30EPCW"
+    },
+    {
+      "key": "SN ايجي كاش صف 76",
+      "serial": "MP30EPCV"
+    },
+    {
+      "key": "SN ايجي كاش صف 77",
+      "serial": "MP30EPCT"
+    },
+    {
+      "key": "SN ايجي كاش صف 78",
+      "serial": "MP30EPCS"
+    },
+    {
+      "key": "SN ايجي كاش صف 79",
+      "serial": "MP30EPCR"
+    },
+    {
+      "key": "SN ايجي كاش صف 80",
+      "serial": "MP30EPCQ"
+    },
+    {
+      "key": "SN ايجي كاش صف 81",
+      "serial": "MP30EPCP"
+    },
+    {
+      "key": "SN ايجي كاش صف 82",
+      "serial": "MP30EPCN"
+    },
+    {
+      "key": "SN ايجي كاش صف 83",
+      "serial": "MP30EPCM"
+    },
+    {
+      "key": "SN ايجي كاش صف 84",
+      "serial": "MP30EPCL"
+    },
+    {
+      "key": "SN ايجي كاش صف 85",
+      "serial": "MP30EPCK"
+    },
+    {
+      "key": "SN ايجي كاش صف 86",
+      "serial": "MP30EPCJ"
+    },
+    {
+      "key": "SN ايجي كاش صف 87",
+      "serial": "MP30EPCH"
+    },
+    {
+      "key": "SN ايجي كاش صف 88",
+      "serial": "MP30EPCG"
+    },
+    {
+      "key": "SN ايجي كاش صف 89",
+      "serial": "MP30EPCF"
+    },
+    {
+      "key": "SN ايجي كاش صف 90",
+      "serial": "MP30EPCE"
+    },
+    {
+      "key": "SN ايجي كاش صف 91",
+      "serial": "MP30EPCD"
+    },
+    {
+      "key": "SN ايجي كاش صف 92",
+      "serial": "MP30EPCC"
+    },
+    {
+      "key": "SN ايجي كاش صف 93",
+      "serial": "MP30EPCB"
+    },
+    {
+      "key": "SN ايجي كاش صف 94",
+      "serial": "MP30EPCA"
+    },
+    {
+      "key": "SN ايجي كاش صف 95",
+      "serial": "MP30EPC9"
+    },
+    {
+      "key": "SN ايجي كاش صف 96",
+      "serial": "MP30EPC8"
+    },
+    {
+      "key": "SN ايجي كاش صف 97",
+      "serial": "MP30DF73"
+    },
+    {
+      "key": "SN ايجي كاش صف 98",
+      "serial": "MP30DF72"
+    },
+    {
+      "key": "SN ايجي كاش صف 99",
+      "serial": "MP30DF71"
+    },
+    {
+      "key": "SN ايجي كاش صف 100",
+      "serial": "MP30DF70"
+    }
+  ]
+}

@@ -79,6 +79,8 @@ client filter" anywhere in the module (ADR-019 rule 5 blocks it at review).
 | `asset:global` | `AST-00001` | every asset, permanent, never reused (survives disposal) |
 | `ticket:global` | `TKT-00001` | every ticket |
 | `maintenanceOrder:global` | `MO-00001` | every maintenance order |
+| `consumable:global` | `CON-00001` | every consumables-store item (§2.11), permanent |
+| `consumableMemo:global` | `EGYCASH-IT-CON-0001` | every consumables memo (§2.11) — the paper's own series |
 
 Global and monotonic — no per-branch or per-year partitions (the employee-number precedent;
 §13-Q1 lets the owner change format labels before freeze, not the allocation model). A unique
@@ -134,7 +136,9 @@ appears twice in the product but once in the code.
 One collection for every plain name-list the module needs — exactly `fleet_catalog_items`:
 `{ kind: assetCategory | ticketCategory, code?, name (ar/en), description?, active, sortOrder }`.
 Asset categories and ticket categories are the two MVP kinds; a future simple list joins as a
-kind, not as a collection. Archive, never delete, once referenced (Fleet catalog rule). No
+kind, not as a collection — as the consumables' types did (`consumableType`, §2.11: «حبارات»،
+«كابلات»، «محولات»، «ماوس»، «كيبورد»، «رامات»، «هاردات»، «فلاشات»، «أخرى», seeded once and edited
+on `/it/catalogs` under the same `itCatalog.manage`). Archive, never delete, once referenced (Fleet catalog rule). No
 category tree in MVP (§13-Q2). Catalogs that carry *behaviour* (priorities with their SLA
 targets, §2.6) stay their own collections — the `fleet_vehicle_types` precedent.
 
@@ -320,8 +324,45 @@ for an eSIM), status: inStock|assigned|suspended, branchId, currentAssignmentId?
   transaction (`custodyReceipt:global#<n>` beside the counter in `it_sequences`), so two
   hand-overs racing on one number — whichever kind of paper — cannot both commit.
 - `status` is on no write schema; it moves only by hand-over, return, suspension and reactivation.
-  A suspended line is held by nobody; a held line is returned before it is suspended, and its
-  branch changes only while nobody holds it.
+  A suspended line is held by nobody, and a held line is returned before it is suspended. A held
+  line may move branch with its holder: its OPEN interval and the paper it names move with it in
+  the same transaction, and its past intervals keep the branch they were held in (§17, 2026-10-28).
+
+### 2.11 `it_consumables` — the consumables store (المستهلكات, FR-20)
+
+The IT team's inks, cables, adapters, mice, keyboards, memory, drives and flash drives — a store
+beside the spare parts, not inside them: a spare part leaves the store only through a maintenance
+order (FR-9); a consumable is handed to a PERSON, on a memo they sign, and may be named as
+installed on one of the register's assets (§17, 2026-10-28).
+
+`{ code (CON-00001, unique ux_code), name, typeId (→ §2.4 kind consumableType), unit, branchId,
+minQty?, notes?, active, onHandQty, issuedQty, scrappedQty }` — ONE ROW PER ITEM PER BRANCH (each
+branch keeps its own stock; `ux_branch_name` on the live rows), and an item never changes store. The
+three counters are denormalized from the ledger and moved only with it (ADR-024's rule): on no write
+schema, moved by one atomic `$inc` whose filter is the guard, so `onHandQty` never goes below zero
+however many people take the last unit at once. `belowMin` (on hand at or below `minQty`) is derived
+on the answer, never stored.
+
+- **`it_consumable_movements`** — the append-only ledger: `{ consumableId, kind: received | issued |
+  scrapped | returned, qty (always positive — the kind says which way), at, branchId, byUserId,
+  employeeId?, assetId?, reason?, memoId?, notes? }`. `issued` names the employee and, when it was
+  installed on one, the asset; `reason` is `new` or `replacement` («بدل تالف») on an issue and the
+  written cause on a scrap. A replacement counts the damaged unit it replaces as scrap too, but takes
+  only the new unit off the shelf — the broken one came back from the person and was never on hand.
+  A return puts stock back and never lowers `issuedQty` (everything EVER issued). Nothing edits a
+  movement; a mistake is corrected by an opposing one.
+- **`it_consumable_memos`** — «مذكرة صرف مستهلكات», ONE per issue action, listing every item it
+  gave: `{ memoNumber, issuedAt, employeeId, employeeCode?, employeeName?, jobTitle?, issuedByUserId,
+  issuedByName?, branchId, lines[{ consumableId, movementId, code, name, typeName?, unit, qty, reason,
+  assetId?, assetCode?, assetName? }], notes?, signedCopy? }` — a snapshot of what it printed, on the
+  device acknowledgment's letterhead with a series of its own (§2.1), not F-14: an F-14 paper
+  undertakes to give back what it lists, and a consumable is used up. No national ID on it. The
+  issue writes the movements, the counters and the memo in ONE transaction, its number reserved
+  inside it, so a refused issue leaves no gap and the paper never lists what the store did not give.
+  `signedCopy` under Files category `it-consumable-memos`, authorizer `it/consumableMemo`.
+- The workforce reset KEEPS the items and the ledger (the ledger is the stock's explanation) and
+  PURGES the memos, which name a person, as it does the other papers; a movement whose memo is gone
+  offers none.
 
 ## 3. Relationships
 
@@ -344,6 +385,10 @@ platform files ── additive attachments on tickets, comment events, assets
 it_mobile_lines ──1─n it_mobile_line_events                                  (history)
    └──1─n it_mobile_line_assignments ──n─1 hr employees | a car (code + plate, text)
               └──n─0..1 it_mobile_line_receipts                              (one line per paper)
+it_catalog_items(consumableType) 1─n it_consumables (one per item per branch)
+   └──1─n it_consumable_movements ──n─0..1 hr employees    (issued to / returned by)
+              ├──n─0..1 it_assets                           (installed on)
+              └──n─0..1 it_consumable_memos                 (one memo per issue, n items)
 ```
 
 Cross-module references are **by id + event subscription only** — IT never imports HR or Fleet
@@ -428,7 +473,9 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 - **FR-4** An asset with an open assignment cannot be disposed; a disposed asset accepts no
   further operations (terminal).
 - **FR-5** Assets are never hard-deleted once they carry any §2.3 event beyond `registered`;
-  a registered-in-error asset with no history may be deleted by `itAsset.delete` (audited).
+  a registered-in-error asset with no history may be deleted by `itAsset.delete` (audited). Used
+  means any trace: a history event, a custody interval, a maintenance order, or a consumable
+  installed on it (FR-20).
 - **FR-6** SLA breach stamps are set exactly once and never cleared — a later resolution does
   not rewrite the breach; reports read stamps, not recomputed clocks.
 - **FR-7** Internal comments are never returned to callers lacking `itTicket.edit` — enforced in
@@ -492,6 +539,20 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   handed over, suspended; accounts; plans) under the other filters; the list goes to Excel and
   PDF. A leaver's lines are flagged like their assets (FR-13), never returned automatically
   (§17, 2026-10-20).
+- **FR-20** Consumables are a store of their own (§2.11) under the asset grants (`itAsset.*`),
+  each branch with its own stock: an item is added with its opening quantity, edited, retired
+  (`active: false` — it keeps its balances and history; nothing comes in or goes out, though a
+  return or a scrap can still be recorded), and its quantities move ONLY by a movement —
+  «توريد» (in), «صرف» (out to an employee), «هالك» (out as scrap, with the cause) and «مرتجع» (back
+  in working order). An issue goes to a CURRENT employee (a leaver is refused, FR-15's rule), takes
+  one or more items of ONE branch's store, never more than it holds, says per item whether it is new
+  or replaces a damaged one, may name the register's asset it was installed on (not a disposed
+  one — which then counts as used, so FR-5 no longer deletes it), and writes one numbered memo the
+  employee signs; the screen prints it at once, and it can be printed again and its signed copy
+  filed. The register shows each item's balance, what was issued
+  and what was scrapped, and flags an item at its minimum; the movements log answers who was given
+  what, and goes to Excel and PDF as the register does. An asset's page lists the consumables
+  installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28).
 
 ## 6. States catalog
 
@@ -501,6 +562,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | Assignment | `open · closed` (by `returnedAt`) | closed |
 | Mobile line | `inStock · assigned · suspended` | — |
 | Mobile-line assignment | `open · closed` (by `returnedAt`) | closed |
+| Consumable item | `active · retired` (by `active`) | — |
+| Consumable movement | append-only: `received · issued · scrapped · returned` — a fact, not a state | — |
 | Ticket | `open · inProgress · onHold · resolved · closed · cancelled` | `closed`, `cancelled` (reopen exits `closed` within the window) |
 | Maintenance order | `open · inProgress · completed · cancelled` | `completed`, `cancelled` |
 | License | derived: `active · expiringSoon · expired · perpetual` (from `expiresAt`) | — (no stored state) |
@@ -513,7 +576,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only) |
 | `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/mobile-lines` | `itAsset.view` | `itAsset.create`, `.edit` (edit, suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment), `.viewNationalId` — the asset grants: granting «الأصول» now covers the lines too, and no key or page was added (§17, 2026-10-20) |
-| `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories — one grant, the `fleetCatalog.manage` precedent) |
+| `/it/consumables` (+ `/movements`) | `itAsset.view` | `itAsset.create` (add an item), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee, take back from one, file the memo's signed copy) — the asset grants again: no key or page was added (§17, 2026-10-28) |
+| `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories and the consumables' types — one grant, the `fleetCatalog.manage` precedent) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
 | `/it/helpdesk-settings` | — | `itSlaPolicy.manage` (priorities + their SLA targets — behaviour-carrying, its own grant: the `fleetMaintenanceRule.manage` precedent) |
 | `/it/maintenance` | `itMaintenance.view` | `itMaintenance.create`, `.edit`, `.complete` (complete + cancel) |
@@ -613,8 +677,9 @@ precedent; `itAsset.export`).
 
 | Prefix | Named actions beyond CRUD |
 |---|---|
-| `/it/assets` | `GET /by-code/:code` (scan) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` |
-| `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory) |
+| `/it/assets` | `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` |
+| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId`, `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
+| `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
 | `/it/ticket-priorities` | carry the SLA targets (§2.6) |
 | `/it/maintenance-plans` | activate/deactivate |
@@ -629,6 +694,9 @@ precedent; `itAsset.export`).
 | `/it/mobile-lines` | `GET /summary` (each network's figures under the filters) · `POST /:id/assign` (employee or car) · `/:id/return` · `/:id/suspend` · `/:id/reactivate` · `GET /:id/history` — FR-19 |
 | `/it/mobile-line-assignments` | read-only: `GET /` (open, line, employee, branch) — FR-19 |
 | `/it/mobile-line-receipts` | `POST /preview` · `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-19 |
+| `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
+| `/it/consumable-movements` | read-only: `GET /` (kind, item, type, employee, asset, branch, from/to, search) — FR-20 |
+| `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
 | `/it/dashboard` | `GET /assets` · `/tickets` · `/maintenance` · `GET /reports/warranty` |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
@@ -992,3 +1060,100 @@ starts only on an explicit owner GO.
   (`registeredToLikely`). A number is searched as stored: a pasted «+20 10 …» or a card serial in
   its printed groups is found. The audit rows of a line's
   hand-over, return and status change are written after the commit.
+- **The asset register names who holds each asset; a name filter** (2026-10-28) — owner request:
+  «وعايز فى شاشة الأصول /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز
+  فى الفلتر زود بعد الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة». Every API answer
+  carrying an asset now carries `holder` (the open interval's employee, read through the directory
+  at response time, one batch per answer; null while nobody holds it), and the register shows it as
+  «المستلِم» right after the status, linked to the employee's IT page. The name filter is a list one
+  types into (`GET /it/assets/names` — the distinct names in the reader's scope) between the status
+  and the category; it matches the name exactly. The Excel/PDF gain «المستلِم» and «كود الموظف» (A4
+  landscape now that there are eight columns) and name the name filter on their filter line.
+- **The custody register: the serial in its files, and a filter per column** (2026-10-28) — owner
+  request: «وكمان فى شاشة عهد الأصول /it/custody عايزك تزود سيريال الأصول لما أعمل Extract وزود
+  الفلتر بتاع الجدول ببيانات الجدول». The Excel/PDF gain «الرقم التسلسلي» after the asset code
+  (`assetSerialNumber` on the interval, read with the code and the name). The filter bar follows the
+  table's columns, each filter under its column's name: the item (code, name or serial), the
+  category, the hand-over date from/to, «متأخر عن موعد الإعادة», the status, the branch, the holder,
+  the return date from/to, and the receipt (signed / awaiting the signature / none). A date range
+  is whole Cairo days, its end day included — the days the table prints, so a hand-over typed after
+  midnight is found under its own day. Picking a return day moves the status to the returned
+  intervals and drops «متأخر»; picking «متأخر» moves it to the ones still out and drops the return
+  days; a status drops the filters it cannot meet; and a link that contradicts itself is read
+  without what cannot be met — so the bar never contradicts itself into an empty table. «الصنف» finds a name or a serial in any
+  digit set it was typed in. The receipt filter reads «signed» exactly as the column's badge does.
+- **The acknowledgment agrees with what it hands over** (2026-10-28) — asked whether «ومواصفاته»،
+  «لاستخدامه» … should agree with a feminine item, the owner answered «شوف أنت الأنسب وأعمله». Each
+  page now takes its wording from its own kind: a feminine kind — its first word ending in «ة», a
+  plural in «ات», or «كاميرا» — prints «ومواصفاتها»، «ومشتملاتها» and «لاستخدامها … بالحفاظ عليها …
+  بردها»; every other kind prints the form exactly as before (a computer is «جهاز», masculine). The
+  mobile line's paper («خط») keeps the masculine form. Web only.
+- **No separate export grant** (2026-10-28) — asked whether the asset register's Excel/PDF should
+  ride its own `itAsset.export`, the owner answered «شوف أنت الأنسب وأعمله». The files stay with
+  whoever may read the list: they hold nothing the screen does not show, and a new grant would hide
+  the buttons from every role until each was edited. The §11 server CSV under `itAsset.export`
+  remains unbuilt.
+- **A held mobile line moves branch with its holder** (2026-10-28) — owner request: «عايزك تفتح إنى
+  أعدل الفرع عادي لخط من خطوط الموبايل لأن ممكن القائد يغير الفرع بتاعه». The edit no longer
+  refuses a held line's branch: the line, its open interval and the acknowledgment that interval
+  names move in one transaction, so the branch that keeps the line now sees its holder and can print
+  the paper again; the line's closed intervals keep the branch they were held in. The form says so
+  before it is saved.
+- **Consumables — a store of their own** (2026-10-28) — owner request: «وعايز بقى شاشة تانية تحت خطوط
+  المحمول تكون للمستهلكات زي: حبارات - كابلات بأنواعها - كونفرترات (محولات) بأنواعها - ماوس - كيبرود -
+  رامات - هاردات - فلاشات - وهكذا .. وأقدر أحدد عندي Stock إيه من كل واحده وإيه الهالك وأتبدل لمين
+  واطبعله مذكره ولو حاجة بتتركب فى حاجة تانية زى الهرد والماوس والكابلات أقدر أذكر الجهاز اللى أتركب
+  عليه من اللأصول»; the plan was approved as proposed («موافق على اقتراحاتك كلها في المستهلكات»).
+  §2.11 and FR-20: three collections — `it_consumables` (one row per item per branch: each branch
+  keeps its own stock), `it_consumable_movements` (the append-only ledger: received, issued,
+  scrapped, returned) and `it_consumable_memos` («مذكرة صرف مستهلكات») — and three routers (§12). The
+  types are a fourth catalog kind, `consumableType` (§2.4), seeded once by a boot step
+  (`go-live/consumable-types.ts`, key `go-live:it-consumable-types:v1`: ink, cables, adapters, mice,
+  keyboards, memory, storage, flash, other — a type the catalog already holds, by code or Arabic
+  name, is left as it is, and nothing is seeded beside it). **No
+  new permission**: the asset grants cover the store, as they cover the lines. `/it/consumables`
+  («المستهلكات», in the IT rail under «خطوط المحمول») lists each item with its balance, what was issued
+  and what was scrapped, and flags an item at its minimum; «صرف لموظف» takes one employee and one or
+  more items of one store, each new or in place of a damaged one («بدل تالف» — the damaged unit is
+  counted as scrap too) and optionally the asset it went into, and prints the memo at once, on the
+  device acknowledgment's letterhead with its own number (`EGYCASH-IT-CON-0001`), the employee's and
+  the IT officer's signature blocks, and no national ID. `/it/consumables/movements` («حركات
+  المستهلكات») is the ledger with its filters, its Excel and PDF. An asset's page lists what was
+  installed on it; an employee's IT page lists what they were issued. The spare parts (FR-9) are
+  unchanged. The workforce reset keeps the items and the ledger and purges the memos.
+- **The October all-in-ones** (2026-10-28) — owner request: «هبعتلك سيريلات أجهزة عايز أرفعها بنفس
+  مواصفات Lenovo ThinkCentre neo 50a 24 جهاز كمبيوتر AIO بس هيكون فى فرع أكتوبر ومش متسلم لحد أسم
+  الملف (SN ايجي كاش) وفيه 100 جهاز». Reviewed with the owner and approved («موافق على كل اقتراحاتك»):
+  the barcode's leading «S» is not part of the serial (the register already holds two of the list
+  as MP30EPDA and MP30EPD2, at the head office from the inventory — they stay as they are); one
+  serial too short to be whole is held back until the owner reads it off the device. The go-live
+  file `apps/api/assets/it-go-live/aio-october-2026-10.json` holds the 97 others, serials only. A
+  one-time boot step (`go-live/aio-october.ts`, key `go-live:it-aio-october-2026-10:v1`, after the
+  inventory run) registers them in ONE transaction as new assets in «أكتوبر», in stock and held by
+  nobody, their codes one block of the asset series, each copying the live «Lenovo ThinkCentre neo
+  50a 24» — its category, make, model, specifications and accessories (the file's make, model and
+  the inventory's all-in-one category when no such device is live) — and nothing else: no serial,
+  purchase, warranty, location or holder. A serial the register already holds is skipped and
+  reported. It writes no history entry, as no registration does, so a device registered here in
+  error can still be deleted (FR-5); the audit row names the run.
+- **Specifications by serial** (2026-10-28) — owner request: «وهبعتلك ملف تانى أسمه (جرد الأجهزة)
+  هنشوف فيه الـ سيريال بتاع الجهاز وتاخد بيانات الرام والبروسيسور والهارد وتزودها على السيستم». The
+  sheet's second page, reviewed with the owner: 38 devices the register holds; four serials the
+  sheet mistyped are looked for under the register's spelling (JSJSZXMS3 → JSZXMS3, JZ24WF3 →
+  JZ24VF3, 8VPL8F3 → BVPL8F3, 8WVGNQT3 → 8WVGNJ3 — the same model each time, approved «طبّق
+  الأربعة»); one with no match and the two «Laptop» rows are left out. The go-live file
+  `apps/api/assets/it-go-live/asset-specs-2026-10.json` carries serials and the three values only —
+  the sheet's holders and departments stay out of the public repository. A one-time boot step
+  (`go-live/asset-specs.ts`, key `go-live:it-asset-specs-2026-10:v1`, after the inventory run) fills
+  the acknowledgment table's processor, memory and storage rows ONLY where the device has none
+  («تزودها»): a value the IT team typed is kept, and reported when the sheet differs; each device
+  touched gets an `updated` history entry naming the rows (the asset-restart step's precedent); the
+  audit rows and `it.asset.updated` follow the commit.
+- **The consumables' opening stock** (2026-10-28) — owner: «دخّل الأرصدة». The «إجمالي» row of the
+  same sheet's first page — the IT team's count — entered at «المهندسين» by a one-time boot step
+  (`go-live/consumables-opening.ts`, key `go-live:it-consumables-opening-2026-10:v1`, after the
+  types step): ten items (SSD 3, RAM 8 GB 5, Keyboard 23, Mouse 13, Patch Cord 1 m 21, Patch Cord 3 m
+  24, Power Cable 5, HDMI Cable 10 m 2, HDMI Cable 3 m 11, HDMI Cable 1 m 1), each with ONE `received`
+  movement of its count, in one transaction. An item the store already keeps under the same name
+  receives the count instead of becoming a second row, and the outcome names it. The sheet's
+  «cable power» column has no total and is left out.

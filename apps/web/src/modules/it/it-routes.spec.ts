@@ -48,6 +48,9 @@ describe('IT routes', () => {
         'maintenance/:id',
         // FR-19 — the SIM lines, on the assets' grants.
         'mobile-lines',
+        // FR-20 — the consumables' store and its ledger, on the same grants.
+        'consumables',
+        'consumables/movements',
         'software',
         'spare-parts',
         'tickets',

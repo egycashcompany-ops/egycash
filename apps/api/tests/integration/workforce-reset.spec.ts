@@ -236,6 +236,8 @@ describe('a dry run', () => {
       'gold_receiving_receipts',
       'gold_transfers',
       'hr_job_offers',
+      // The consumables' stock ledger — every on-hand figure is the sum of its rows.
+      'it_consumable_movements',
       // Who holds each mobile line — cars as well as people; the line itself says it is out.
       'it_mobile_line_assignments',
     ]);
@@ -355,8 +357,8 @@ describe('the recruitment pipeline', () => {
     const report = await runReset({ write: false, includeRecruitment: true });
     expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
     expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
-    // The other eleven are still off limits.
-    expect(report.untouched).toHaveLength(11);
+    // The other twelve are still off limits.
+    expect(report.untouched).toHaveLength(12);
   }, 240_000);
 });
 

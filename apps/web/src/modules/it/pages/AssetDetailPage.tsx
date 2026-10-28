@@ -37,6 +37,7 @@ import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
 import { AssetHistoryList } from '../components/AssetHistoryList';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
+import { AssetConsumablesCard } from '../components/ConsumableMovements';
 import {
   AssignAssetDialog,
   DisposeAssetDialog,
@@ -441,6 +442,10 @@ export const AssetDetailPage = (): JSX.Element => {
             />
           </CardBody>
         </Card>
+
+        {/* FR-20 — «المستهلكات المركّبة عليه»: what the store issued as installed on this asset
+            (a drive, a stick of memory, a mouse), with who received it and the memo they signed. */}
+        <AssetConsumablesCard assetId={asset.id} />
 
         <Card>
           <CardHeader title={t('it.assets.sections.record')} />

@@ -184,6 +184,14 @@ export const ItHomePage = (): JSX.Element => {
                   description={t('it.mobileLines.subtitle')}
                   icon={PhoneIcon}
                 />
+                {/* So do the consumables (FR-20): «شاشة تانية تحت خطوط المحمول» — the rail row's
+                    tray (`inbox`), a store's stock. */}
+                <ShortcutCard
+                  to="/it/consumables"
+                  title={t('it.nav.consumables')}
+                  description={t('it.consumables.subtitle')}
+                  icon={InboxIcon}
+                />
               </>
             )}
             {canVendors && (

@@ -170,10 +170,17 @@ describe('the reveal control itself', () => {
     expect(revealButtons(arabic)[0] ?? '').toContain('إظهار كلمة المرور');
   });
 
-  // Logical placement, so RTL needs no second rule.
-  it('sits at the logical end of the field', () => {
-    expect(button).toContain('end-0');
-    expect(field).toContain('pe-10');
+  // «العين بتيجي فوق الباسورد وأنا بكتبه». The button's `end-0` and the field's `pe-10` are logical,
+  // each resolved against its own element's direction. They land on the same side only when the
+  // whole control has one direction: with only the field left-to-right, Arabic reserved the room on
+  // the right and drew the eye on the left, over the typed characters.
+  it('sits in the room kept for it, in Arabic as in English', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const html = render(<PasswordInput id="pw" value="" onChange={() => undefined} />, { locale });
+      expect(html.startsWith('<div class="relative" dir="ltr">'), locale).toBe(true);
+      expect(revealButtons(html)[0] ?? '').toContain('end-0');
+      expect(passwordFields(html)[0] ?? '').toContain('pe-10');
+    }
   });
 
   it('keeps the field left-to-right, because a password is not prose', () => {

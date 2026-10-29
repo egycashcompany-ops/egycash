@@ -254,8 +254,9 @@ its entry here in the same PR.
   stay on the register settings card and the import preview — and its branch filter offers only the
   branches the top bar's choice shows. An organization-wide user placed in a branch filed every
   machine, label, replenishment and maintenance under that home branch whatever the top bar said,
-  and under «كل الشركة» too; each is now filed where the top bar points, and on «كل الشركة» the add
-  asks for a branch first, the data-edit dialogs saying «الفرع: …» before it
+  and under «كل الشركة» too; each is now filed where the top bar points, and on «كل الشركة» an add
+  or a delete asks for a branch first («اختر فرعًا محددًا من القائمة العلوية أولًا.»),
+  the data-edit dialogs saying «الفرع: …» before an add and each row's «حذف» waiting for one
   ([ATM port §6b–§6c](docs/12-planning/atm-operations-port.md),
   [register DEC-42](docs/12-planning/atm-efficiency-register.md)).
 - **A busy office no longer locks itself out of signing in.** Steps 1 and 2 of the capacity plan.

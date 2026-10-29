@@ -44,7 +44,7 @@ import { activeBranchIds } from './branch-scope';
 const ORG_SUBJECT = { userId: null, branchId: null };
 
 /** The refusal an organization-wide caller gets on «كل الشركة» — the top bar is the control. */
-export const CHOOSE_ATM_BRANCH_MESSAGE = 'اختر فرعًا محددًا من القائمة العلوية قبل الإضافة.';
+export const CHOOSE_ATM_BRANCH_MESSAGE = 'اختر فرعًا محددًا من القائمة العلوية أولًا.';
 
 /**
  * Pure: the branch an ATM Operations write under `writeKey` is filed in, before any fallback —

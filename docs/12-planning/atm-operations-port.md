@@ -443,7 +443,7 @@ mail of those machines — stayed October's, readable only under «كل الشر
    the top bar said — and silently under «كل الشركة». When the write's own key is held company-wide
    (the label writes: `manage`, else the label key held), the top bar's branch, already refined by
    the link, is the branch; on «كل الشركة» it is the company's only active branch, or the write is
-   refused «اختر فرعًا محددًا من القائمة العلوية قبل الإضافة.». The data-edit dialogs say «الفرع: …»
+   refused «اختر فرعًا محددًا من القائمة العلوية أولًا.». The data-edit dialogs say «الفرع: …»
    before the add, and wait for a branch when there is none. Every other caller keeps the old rule.
 3. **«نقل البيانات»: what is already filed under the source moves, once**
    (`GET`/`POST /atm/branch-links/:sourceBranchId/move`, `atmSettings.manage` at organization

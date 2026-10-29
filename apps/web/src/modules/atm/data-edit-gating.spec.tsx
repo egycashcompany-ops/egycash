@@ -186,7 +186,11 @@ const wrap = (
   );
 
 /** The page on one tab, every list it asks for already answered. */
-const renderPage = (permissions: readonly string[], tab: AtmDataTab = 'machines'): string => {
+const renderPage = (
+  permissions: readonly string[],
+  tab: AtmDataTab = 'machines',
+  options: AtmRefLabelOptionsDto = { ...OPTIONS, branchId: ALEX },
+): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const first = { page: 1, pageSize: 25, sortDir: 'asc' };
   qc.setQueryData(listKey('atm', 'machines', { ...first, sortBy: 'machineCode' }), page(MACHINES));
@@ -201,7 +205,7 @@ const renderPage = (permissions: readonly string[], tab: AtmDataTab = 'machines'
     );
   }
   qc.setQueryData(atmBanksKey(), CATALOG);
-  qc.setQueryData(atmRefLabelOptionsKey(null), { ...OPTIONS, branchId: ALEX });
+  qc.setQueryData(atmRefLabelOptionsKey(null), options);
   const url = tab === 'machines' ? '/atm/data-edit' : `/atm/data-edit?tab=${tab}`;
   return wrap(permissions, qc, <DataEditPage />, url);
 };
@@ -394,6 +398,20 @@ describe('atmMachine.manage keeps everything it had (regression)', () => {
     expect(count(markup, 'move-area')).toBe(0);
     expect(markup).toContain(t('atm.dataEdit.bulkTitle'));
     expect(markup).toContain(t('atm.dataEdit.addMachine'));
+  });
+
+  it('on «كل الشركة» with no branch to act in, each row delete waits for one (review finding)', () => {
+    // The row delete is the delete-by-codes, looked up in the acting branch like the add: with no
+    // branch the server refuses it, so the button says so instead of failing after the confirm.
+    const markup = renderPage(MANAGE, 'machines', { ...OPTIONS, branchId: null, branch: null });
+    expect(count(markup, 'delete-machine')).toBe(MACHINES.length);
+    const button = tagWith(markup, 'button', 'data-edit-action', 'delete-machine');
+    expect(button).toContain('disabled=""');
+    expect(button).toContain(`title="${t('atm.dataEdit.chooseBranch')}"`);
+    // With a branch, the same buttons stay live.
+    const live = tagWith(renderPage(MANAGE), 'button', 'data-edit-action', 'delete-machine');
+    expect(live).not.toContain('disabled=""');
+    expect(live).toContain(`title="${t('atm.dataEdit.deleteMachine')}"`);
   });
 
   it('holding moveArea too changes nothing: the area is part of the full edit', () => {

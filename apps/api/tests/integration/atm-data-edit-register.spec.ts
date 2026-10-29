@@ -943,7 +943,7 @@ describe('the branch an add files into (GM-20, 2026-10-28)', () => {
   it('22 — on «كل الشركة» it is asked for a branch: nothing filed at home, the dialog names none', async () => {
     const res = await add(orgHomeTantaToken, undefined, { machineCode: '77772201' });
     expect(res.status).toBe(422);
-    expect(errorMessage(res)).toBe('اختر فرعًا محددًا من القائمة العلوية قبل الإضافة.');
+    expect(errorMessage(res)).toBe('اختر فرعًا محددًا من القائمة العلوية أولًا.');
     expect(await mastersOf('77772201')).toHaveLength(0);
     expect(await options(orgHomeTantaToken)).toEqual({
       branchId: null,
@@ -1017,7 +1017,7 @@ describe('the branch an add files into (GM-20, 2026-10-28)', () => {
     });
     const asked = await call('post', '/atm/ref-labels/area', token, { name: 'Nowhere 23b' });
     expect(asked.status, JSON.stringify(asked.body)).toBe(422);
-    expect(errorMessage(asked)).toBe('اختر فرعًا محددًا من القائمة العلوية قبل الإضافة.');
+    expect(errorMessage(asked)).toBe('اختر فرعًا محددًا من القائمة العلوية أولًا.');
   });
 });
 

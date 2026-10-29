@@ -266,6 +266,16 @@ export const applyRegisterImport = async (
     }
     throw error;
   }
+  // Again, now that this run is visible to a move (review finding): the move takes its lock and
+  // then looks for a running import (`registerImportRunning`); the import takes its run row and
+  // then looks for a running move — so of two that start together, one always sees the other.
+  // Refused here, the run wrote nothing: its row goes.
+  try {
+    await assertNoBranchMoveRunning();
+  } catch (error) {
+    await AtmRegisterImportRunModel.deleteOne({ _id: runId, state: 'running' }).exec();
+    throw error;
+  }
 
   const counts = Object.fromEntries(ATM_REGISTER_IMPORT_OUTCOMES.map((o) => [o, 0])) as Record<
     AtmRegisterImportOutcome,

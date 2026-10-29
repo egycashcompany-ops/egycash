@@ -252,7 +252,8 @@ its entry here in the same PR.
   while it runs, adding or deleting machines, receiving and linking register rows, the register
   import, saving names, opening or reopening a replenishment or maintenance and accepting mail
   wait for it (423), so nothing lands between its plan and its writes — a register import already
-  running refuses the move instead; an
+  running refuses the move instead, and a move cut off by a restart holds them until it is 30
+  minutes old, when pressing «نقل» again takes it over; an
   area name deleted or renamed away in one linked branch is not created again as a label by the
   other's writes or by the boot repair (the move itself still brings the source's own live label
   of that name across, as before). The card

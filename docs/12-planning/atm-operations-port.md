@@ -480,7 +480,10 @@ mail of those machines — stayed October's, readable only under «كل الشر
    deletes; register create, edit, receive, link, handover and delete; the register import; label
    saves; replenishment and maintenance opens and reopens, and mail accepts (open work the twin
    plan reads). A bulk add or delete checks again per row, so one begun before the move stops at
-   its next row.
+   its next row; the register import checks again once its own run row exists, so an import and a
+   move starting together always see each other. A move cut off by a restart (no heartbeat) holds
+   these writes until its run is 30 minutes old — the lock's own takeover age — when pressing
+   «نقل» again takes it over and carries on.
    Otherwise a coupling between the machines step and the register step would write a new
    master under the source, and a key the target gained after a plan would meet the batch. Each
    twin is read again inside its retire's transaction — reactivated or given open work since the

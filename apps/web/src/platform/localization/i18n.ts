@@ -10073,6 +10073,10 @@ const en: Record<string, string> = {
   // A blocker met part-way through a run (409 `ATM_BRANCH_MOVE_STOPPED`): what moved stays moved.
   'atm.settings.move.stopped':
     'The move stopped part-way: something that prevents the rest appeared after it began. What it moved stays moved, and the preview shows what is still filed under {{source}}. Resolve it, then run the move again to finish it.',
+  'atm.settings.move.targetChanged':
+    'The link was changed since this preview opened, so nothing was moved. Read the preview again before moving.',
+  'atm.settings.move.pausesWrites':
+    'While the move runs (a few minutes), adding machines, receiving register entries and saving names in ATM wait until it ends.',
   'atm.settings.move.collection.machines': 'Machines',
   'atm.settings.move.collection.registerEntries': 'ATM Register entries',
   'atm.settings.move.collection.mailTickets': 'Maintenance mail',
@@ -20018,6 +20022,10 @@ const ar: Record<string, string> = {
   // A blocker met part-way through a run (409 `ATM_BRANCH_MOVE_STOPPED`): what moved stays moved.
   'atm.settings.move.stopped':
     'توقف النقل قبل اكتماله: ظهر بعد بدئه ما يمنع نقل الباقي. ما نُقل يبقى منقولًا، وتعرض المعاينة ما بقي مسجلًا على {{source}}. عالجه ثم أعد النقل لاستكماله.',
+  'atm.settings.move.targetChanged':
+    'تغيّر الفرع المرتبط منذ فتح هذه المعاينة، فلم يُنقل شيء. راجع المعاينة من جديد قبل النقل.',
+  'atm.settings.move.pausesWrites':
+    'أثناء النقل (دقائق قليلة) تنتظر إضافة الماكينات واستلام سطور السجل وحفظ الأسماء في الصراف الآلي حتى ينتهي.',
   'atm.settings.move.collection.machines': 'الماكينات',
   'atm.settings.move.collection.registerEntries': 'سطور سجل الماكينات',
   'atm.settings.move.collection.mailTickets': 'رسائل الصيانة',

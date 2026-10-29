@@ -7,8 +7,9 @@
 // (`AtmMailboxConfigDto.hasSecret` says whether one is stored), so no answer here can carry it.
 //
 // «نقل البيانات» names only the link's SOURCE, in the path: the server takes the target from the
-// STORED link and nothing from a body (`AtmBranchMoveParamsSchema`), so nothing sent here can
-// point the move anywhere else.
+// STORED link (`AtmBranchMoveParamsSchema`), so nothing sent here can point the move anywhere else.
+// The body only names the target the reader confirmed, a precondition the server checks against
+// that stored link (`AtmBranchMoveBodySchema`).
 import {
   type AtmBranchLinksDto,
   type AtmBranchMovePreviewDto,
@@ -55,8 +56,15 @@ export const getBranchMovePreview = (sourceBranchId: string): Promise<AtmBranchM
   get<AtmBranchMovePreviewDto>(`${BRANCH_LINKS}/${sourceBranchId}/move`);
 
 /**
- * The move itself — 409 `ATM_BRANCH_MOVE_BLOCKED` while anything stands in its way, or
- * `ATM_BRANCH_MOVE_STOPPED` when something appears part-way through the run. No body.
+ * The move itself — 409 `ATM_BRANCH_MOVE_BLOCKED` while anything stands in its way,
+ * `ATM_BRANCH_MOVE_STOPPED` when something appears part-way through the run, or
+ * `ATM_BRANCH_MOVE_TARGET_CHANGED` when the link is no longer the one previewed.
  */
-export const moveBranchData = (sourceBranchId: string): Promise<AtmBranchMoveResultDto> =>
-  post<AtmBranchMoveResultDto>(`${BRANCH_LINKS}/${sourceBranchId}/move`, {});
+export const moveBranchData = (
+  sourceBranchId: string,
+  expectedTargetBranchId?: string,
+): Promise<AtmBranchMoveResultDto> =>
+  post<AtmBranchMoveResultDto>(
+    `${BRANCH_LINKS}/${sourceBranchId}/move`,
+    expectedTargetBranchId === undefined ? {} : { expectedTargetBranchId },
+  );

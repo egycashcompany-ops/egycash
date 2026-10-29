@@ -597,6 +597,47 @@ const moveIds = async (
 };
 
 /**
+ * Inside a retire's transaction: the twin as it is NOW, against the plan. Gone (retired or deleted
+ * meanwhile) is fine — the write then matches nothing. Reactivated or archived since, or holding
+ * open work it did not hold when planned (an open entry, operation or draft/issued plan line), and
+ * the run stops on it: `machineTwinOpen`, which a step turns into `ATM_BRANCH_MOVE_STOPPED`.
+ */
+const refuseChangedTwin = async (
+  twin: MachineTwinPlan['retire'][number],
+  plannedActive: boolean,
+  session: ClientSession,
+): Promise<void> => {
+  const id = oid(twin.id);
+  const now = await AtmMachineModel.findOne({
+    _id: id,
+    isDeleted: false,
+    machineCode: twin.machineCode,
+  })
+    .session(session)
+    .lean<Pick<AtmMachineDoc, 'isActive'>>()
+    .exec();
+  if (now === null) return;
+  const open = { machineId: id, closedAt: null, isDeleted: false };
+  const holdsWork =
+    (await AtmRegisterEntryModel.exists({ machineId: id, status: 'open', isDeleted: false })
+      .session(session)
+      .exec()) !== null ||
+    (await AtmReplenishmentModel.exists(open).session(session).exec()) !== null ||
+    (await AtmMaintenanceModel.exists(open).session(session).exec()) !== null ||
+    (await AtmPlanLineModel.exists({
+      machineId: id,
+      kind: 'machine',
+      status: { $in: ['draft', 'issued'] },
+      isDeleted: false,
+    })
+      .session(session)
+      .exec()) !== null;
+  if (now.isActive !== plannedActive || holdsWork) {
+    throw blocked([{ kind: 'machineTwinOpen', codes: [twin.machineCode] }]);
+  }
+};
+
+/**
  * What a retired twin hands to the master that stays (review finding: the survivor could not be
  * planned until the Full list was imported again): its cassette layout with every version, and its
  * map point — each only where the survivor has none, so nothing the survivor holds is replaced and
@@ -727,6 +768,16 @@ export const setBeforeSettlementsForTests = (fn: (() => Promise<void>) | null): 
   beforeSettlements = fn;
 };
 
+let beforeTwinRetire: (() => Promise<void>) | null = null;
+
+/**
+ * Runs ONCE between the twin plan and its first retire, so a test can change a planned twin in
+ * between and see the retire's own re-check stop the run. A no-op in production.
+ */
+export const setBeforeTwinRetireForTests = (fn: (() => Promise<void>) | null): void => {
+  beforeTwinRetire = fn;
+};
+
 /** T's zone-set revision moved on — or its set created at revision 1 (a branch never saved). */
 const bumpZoneSet = async (
   targetId: Types.ObjectId,
@@ -754,9 +805,22 @@ class AtmBranchMoveService {
   }
 
   /** POST — the move, under the run lock. 409 with the blockers while any stands. */
-  async move(sourceBranchId: string, ctx: AuthContext): Promise<AtmBranchMoveResultDto> {
+  async move(
+    sourceBranchId: string,
+    ctx: AuthContext,
+    expectedTargetBranchId?: string,
+  ): Promise<AtmBranchMoveResultDto> {
     assertAtmSettingsManager(ctx);
     const pair = await this.pairOf(sourceBranchId);
+    // The target the reader confirmed, from the preview they read — a precondition, never an
+    // authority: re-pointed since (another administrator), nothing moves (review finding).
+    if (expectedTargetBranchId !== undefined && expectedTargetBranchId !== pair.target) {
+      throw new AppError(
+        ErrorCodes.ATM_BRANCH_MOVE_TARGET_CHANGED,
+        409,
+        'the link was re-pointed since the preview — read the preview again',
+      );
+    }
     if (!pair.targetActive) {
       throw new BusinessRuleError(
         'the branch the source works as does not exist or is not active — fix the link first',
@@ -1128,19 +1192,35 @@ class AtmBranchMoveService {
     by: Types.ObjectId,
   ): Promise<{ moved: number; retired: RetiredTwin[] }> {
     const sourceIds = await idsUnder('machines', pair.sourceId);
-    const plan = planMachineTwins(await machineTwinRows(pair));
+    const rows = await machineTwinRows(pair);
+    const planned = new Map(rows.map((row) => [row.id, row.isActive]));
+    const plan = planMachineTwins(rows);
     const refused = twinBlockers(plan);
     if (refused.length > 0) throw blocked(refused);
+    if (beforeTwinRetire !== null) {
+      const hook = beforeTwinRetire;
+      beforeTwinRetire = null;
+      await hook();
+    }
     const retired: RetiredTwin[] = [];
     for (const batch of chunks(plan.retire)) {
       const done = await unitOfWork(async (session) => {
         const now = new Date();
         const written: { twin: RetiredTwin; before: AtmMachineDoc }[] = [];
         for (const twin of batch) {
+          // Re-read inside the transaction (review finding): a twin reactivated, or given open work,
+          // since the plan was read is never retired — the run stops on it instead, and the next
+          // run plans it again. The planned `isActive` is also the write's own condition.
+          await refuseChangedTwin(twin, planned.get(twin.id) ?? false, session);
           // The legacy delete (machine.service.ts bulkDelete): the code renamed `<code>-D` and the
           // row deleted in one write, so the code is free in the target the moment it commits.
           const before = await AtmMachineModel.findOneAndUpdate(
-            { _id: oid(twin.id), isDeleted: false, machineCode: twin.machineCode },
+            {
+              _id: oid(twin.id),
+              isDeleted: false,
+              machineCode: twin.machineCode,
+              isActive: planned.get(twin.id) ?? false,
+            },
             {
               $set: {
                 machineCode: `${twin.machineCode}-D`,

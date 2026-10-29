@@ -441,10 +441,14 @@ mail of those machines — stayed October's, readable only under «كل الشر
    grant adds nothing to the reach list, so such a user placed in Alexandria filed every machine
    add, delete and area move, every label, replenishment and maintenance under Alexandria whatever
    the top bar said — and silently under «كل الشركة». When the write's own key is held company-wide
-   (the label writes: `manage`, else the label key held), the top bar's branch, already refined by
+   (the label writes: `manage`, else the label key held) and the caller's grants name no branch
+   (an organization grant adds none to the reach list), the top bar's branch, already refined by
    the link, is the branch; on «كل الشركة» it is the company's only active branch, or the write is
    refused «اختر فرعًا محددًا من القائمة العلوية أولًا.». The data-edit dialogs say «الفرع: …»
-   before the add, and wait for a branch when there is none. Every other caller keeps the old rule.
+   before the add, and wait for a branch when there is none. Every other caller keeps the old rule —
+   one whose grants list branches included: the platform drops a top-bar branch outside that reach,
+   so the top bar inside it decides, else the home branch (deciding on the key alone would ask such
+   a caller for a branch while the top bar shows one).
 3. **«نقل البيانات»: what is already filed under the source moves, once**
    (`GET`/`POST /atm/branch-links/:sourceBranchId/move`, `atmSettings.manage` at organization
    scope; the pair is always the STORED link's, and a branch that is no stored source is 404). The
@@ -467,6 +471,17 @@ mail of those machines — stayed October's, readable only under «كل الشر
    moved. Every step reads what is STILL under the source, so running it again carries on, and a run
    cut off by a restart is taken over after 30 minutes and audited then. ONE `atmBranchMove` audit
    row per run (not broadcast). The link stays: October's people keep working as Mohandessin.
+   The POST names the target the reader confirmed (`expectedTargetBranchId`, from the preview) —
+   a precondition only: a link re-pointed since is refused 409 `ATM_BRANCH_MOVE_TARGET_CHANGED`
+   and nothing moves. While a run holds the lock, the writes the move plans from wait for it, 409
+   `ATM_BRANCH_MOVE_RUNNING` (`branch-links/move-fence.ts`): machine adds, edits, area moves and
+   deletes; register create, edit, receive, link, handover and delete; the register import; label
+   saves. Otherwise a coupling between the machines step and the register step would write a new
+   master under the source, and a key the target gained after a plan would meet the batch. Each
+   twin is read again inside its retire's transaction — reactivated or given open work since the
+   plan, the run stops on it (`machineTwinOpen`). An area name deleted or renamed away in one linked
+   branch is never written back as a live label by the other, neither after a write nor by the boot
+   repair (`catalogs/area-labels.ts`): the move takes the source's memory rows first.
 
 ### 6c. Go-live: Mohandessin first
 

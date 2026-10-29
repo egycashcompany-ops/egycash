@@ -32,7 +32,14 @@ import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { atmPermissions } from '../../src/modules/atm/atm.module';
 import { AtmBranchMoveRunModel } from '../../src/modules/atm/branch-links/branch-move-run.model';
-import { setBeforeSettlementsForTests } from '../../src/modules/atm/branch-links/branch-move.service';
+import {
+  setBeforeSettlementsForTests,
+  setBeforeTwinRetireForTests,
+} from '../../src/modules/atm/branch-links/branch-move.service';
+import {
+  backfillAtmAreaLabels,
+  ensureAreaLabels,
+} from '../../src/modules/atm/catalogs/area-labels';
 import { AtmRefLabelModel } from '../../src/modules/atm/catalogs/ref-label.model';
 import { AtmMachineModel } from '../../src/modules/atm/machines/machine.model';
 import { AtmMailTicketModel } from '../../src/modules/atm/mail-tickets/mail-ticket.model';
@@ -1236,5 +1243,143 @@ describe('who may move', () => {
     expect((await preview(MOH)).status).toBe(404);
     expect((await move(new Types.ObjectId().toHexString())).status).toBe(404);
     expect((await preview('not-an-id')).status).toBe(400);
+  });
+});
+
+// ── Review findings on the live writers around a run ────────────────────────────────────────────
+
+describe('the target the reader confirmed', () => {
+  it('is a precondition: a link re-pointed since refuses the move, and nothing moves', async () => {
+    const refused = await call('post', `/atm/branch-links/${OCT}/move`, adminToken, {
+      expectedTargetBranchId: TAN,
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(errorOf(refused).code).toBe('ATM_BRANCH_MOVE_TARGET_CHANGED');
+    // The stored target confirmed: the move runs (October has nothing left, so it moves nothing).
+    const confirmed = await call('post', `/atm/branch-links/${OCT}/move`, adminToken, {
+      expectedTargetBranchId: MOH,
+    });
+    expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(200);
+    // The body names the confirmed target and nothing else.
+    const other = await call('post', `/atm/branch-links/${OCT}/move`, adminToken, {
+      targetBranchId: MOH,
+    });
+    expect(other.status).toBe(400);
+  });
+});
+
+describe('writes that wait while a move runs', () => {
+  it('a machine add, a label save and a register link are refused 409 while a fresh run holds the lock', async () => {
+    const run = await AtmBranchMoveRunModel.create({
+      sourceBranchId: oid(ZAY),
+      targetBranchId: oid(MOH),
+      state: 'running',
+      startedAt: new Date(),
+    });
+    const writes = () => [
+      call('post', '/atm/machines', adminToken, {
+        bankName: 'NBE',
+        area: 'الدقي',
+        machineCode: '99990001',
+        name: 'ATM fence',
+      }),
+      call('post', '/atm/ref-labels/area', adminToken, { nameAr: 'منطقة سور', nameEn: 'Fence' }),
+      call('post', `/atm/register/entries/${new Types.ObjectId().toHexString()}/link`, adminToken, {
+        version: 0,
+      }),
+    ];
+    try {
+      for (const res of await Promise.all(writes())) {
+        expect(res.status, JSON.stringify(res.body)).toBe(409);
+        expect(errorOf(res).code).toBe('ATM_BRANCH_MOVE_RUNNING');
+      }
+      // A run left 30 minutes (its process died) no longer holds them: each answers for itself.
+      await AtmBranchMoveRunModel.updateOne(
+        { _id: run._id },
+        { $set: { startedAt: new Date(Date.now() - 31 * 60_000) } },
+      ).exec();
+      for (const res of await Promise.all(writes())) {
+        expect(errorOf(res)?.code ?? null).not.toBe('ATM_BRANCH_MOVE_RUNNING');
+      }
+    } finally {
+      await AtmBranchMoveRunModel.deleteOne({ _id: run._id }).exec();
+    }
+  });
+});
+
+describe('a twin changed since the plan', () => {
+  it('is never retired: the run stops on it, and the next run plans it again', async () => {
+    const created = await call('post', '/platform/branches', adminToken, {
+      code: '86',
+      name: { ar: 'مدينة نصر', en: 'Nasr City' },
+    });
+    expect(created.status).toBe(201);
+    const NAS = data<{ id: string }>(created).id;
+    const current = data<{ links: { branchId: string; actsAsBranchId: string }[] }>(
+      await call('get', '/atm/branch-links', adminToken),
+    ).links.map((link) => ({ branchId: link.branchId, actsAsBranchId: link.actsAsBranchId }));
+    const saved = await call('put', '/atm/branch-links', adminToken, {
+      links: [...current, { branchId: NAS, actsAsBranchId: MOH }],
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    await mkMachine(NAS, 'R1'); // active: the master that stays
+    const twin = await mkMachine(MOH, 'R1', { isActive: false }); // archived: planned for retire
+
+    // Reactivated after the plan was read, before its retire: the retire's own re-check stops.
+    setBeforeTwinRetireForTests(async () => {
+      await AtmMachineModel.updateOne({ _id: oid(twin) }, { $set: { isActive: true } }).exec();
+    });
+    const cut = await move(NAS);
+    expect(cut.status, JSON.stringify(cut.body)).toBe(409);
+    expect(errorOf(cut).details?.map((detail) => detail.code)).toEqual(['machineTwinOpen']);
+    expect(await AtmMachineModel.findById(twin).lean().exec()).toMatchObject({
+      machineCode: 'R1',
+      isActive: true,
+      isDeleted: false,
+    });
+
+    // Archived again, the next run plans it again and retires it.
+    await AtmMachineModel.updateOne({ _id: oid(twin) }, { $set: { isActive: false } }).exec();
+    const res = await move(NAS);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(await AtmMachineModel.findById(twin).lean().exec()).toMatchObject({
+      machineCode: 'R1-D',
+      isDeleted: true,
+    });
+  });
+});
+
+describe('a name a linked branch remembers', () => {
+  it('is never written back by the other branch — after a write, or by the boot repair', async () => {
+    const countIn = (branchId: string, name: string) =>
+      AtmRefLabelModel.countDocuments({ branchId: oid(branchId), kind: 'area', name }).exec();
+    // Mohandessin deleted «منطقة محذوفة»; a row filed under Sheikh Zayed, linked to it, carries it.
+    await mkLabel(MOH, 'area', 'منطقة محذوفة', { isDeleted: true, deletedAt: new Date() });
+    await ensureAreaLabels([{ branchId: ZAY, area: 'منطقة محذوفة' }], {
+      actorId: null,
+      origin: 'register',
+    });
+    expect(await countIn(ZAY, 'منطقة محذوفة')).toBe(0);
+
+    // The boot repair: a live machine under Sheikh Zayed carries a name Mohandessin renamed away.
+    await mkLabel(MOH, 'area', 'اسم جديد', { formerNames: ['اسم قديم'] });
+    await AtmMachineModel.create({
+      branchId: oid(ZAY),
+      bankName: 'NBE',
+      machineCode: 'Z9',
+      name: 'ATM Z9',
+      area: 'اسم قديم',
+      isActive: true,
+      isDeleted: false,
+    });
+    await backfillAtmAreaLabels();
+    expect(await countIn(ZAY, 'اسم قديم')).toBe(0);
+
+    // A name no linked branch remembers is still written.
+    await ensureAreaLabels([{ branchId: ZAY, area: 'منطقة جديدة' }], {
+      actorId: null,
+      origin: 'register',
+    });
+    expect(await countIn(ZAY, 'منطقة جديدة')).toBe(1);
   });
 });

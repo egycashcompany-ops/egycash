@@ -47,6 +47,7 @@ import {
 import { diffChanges } from '../../../shared/utils/diff';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { toAtmRefLabelDto } from '../atm.mappers';
+import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { AtmMachineModel } from '../machines/machine.model';
 import { resolveRegisterSettings } from '../register/register-settings';
 import {
@@ -367,6 +368,7 @@ class AtmRefLabelService {
     input: CreateAtmRefLabel,
     ctx: AuthContext,
   ): Promise<AtmRefLabelDoc> {
+    await assertNoBranchMoveRunning();
     // A branch the body names is read as ATM files it (`atm.branchLinks`): a label sent for a
     // linked source is its target's, where that branch's machines are offered it.
     const branchId =
@@ -422,6 +424,7 @@ class AtmRefLabelService {
    * to the company — reach is asked of the key. The write then goes by id and version.
    */
   async update(id: string, input: UpdateAtmRefLabel, ctx: AuthContext): Promise<AtmRefLabelDoc> {
+    await assertNoBranchMoveRunning();
     const before = await atmRefLabelRepository.findById(id);
     if (before === null) throw new NotFoundError('ATM label');
     const allowed =
@@ -487,6 +490,7 @@ class AtmRefLabelService {
 
   /** Legacy `$pull` (:2514, :2523) — the name leaves the list; machines keep their strings. */
   async remove(id: string, ctx: AuthContext): Promise<void> {
+    await assertNoBranchMoveRunning();
     const doc = await atmRefLabelRepository.softDeleteById(id, {
       by: ctx.userId,
       scope: scopeSelector(ctx, 'atmMachine.manage'),

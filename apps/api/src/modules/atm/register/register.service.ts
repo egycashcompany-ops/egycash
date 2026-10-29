@@ -68,6 +68,7 @@ import {
   scopeSelector,
   type AuthContext,
 } from '../../../shared/types';
+import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { ensureAreaLabels } from '../catalogs/area-labels';
 import { type AtmBankCatalog } from '../catalogs/bank-catalog';
 import { AtmRefLabelModel } from '../catalogs/ref-label.model';
@@ -598,6 +599,7 @@ class AtmRegisterService {
     input: ReceiveAtmRegisterEntry,
     ctx: AuthContext,
   ): Promise<AtmRegisterWriteResultDto> {
+    await assertNoBranchMoveRunning();
     const settings = await resolveRegisterSettings();
     const branchId = settings.resolveBranch(input.branchId);
     this.assertSecretsWritable(ctx, input, { branchId });
@@ -738,6 +740,7 @@ class AtmRegisterService {
     input: UpdateAtmRegisterEntry,
     ctx: AuthContext,
   ): Promise<AtmRegisterWriteResultDto> {
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmRegister.edit');
     const before = await atmRegisterEntryRepository.getById(id, scope);
     this.assertCovers(ctx, 'atmRegister.edit', before);
@@ -964,6 +967,7 @@ class AtmRegisterService {
     input: ReceivePendingAtmRegisterEntry,
     ctx: AuthContext,
   ): Promise<AtmRegisterWriteResultDto> {
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmRegister.create');
     const before = await atmRegisterEntryRepository.getById(id, scope);
     this.assertCovers(ctx, 'atmRegister.create', before);
@@ -1096,6 +1100,7 @@ class AtmRegisterService {
     input: HandoverAtmRegisterEntry,
     ctx: AuthContext,
   ): Promise<AtmRegisterWriteResultDto> {
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmRegister.handover');
     const before = await atmRegisterEntryRepository.getById(id, scope);
     this.assertCovers(ctx, 'atmRegister.handover', before);
@@ -1144,6 +1149,7 @@ class AtmRegisterService {
 
   /** DELETE /entries/:id — a mistaken entry; an open one releases its master (D2). */
   async remove(id: string, version: number, ctx: AuthContext): Promise<void> {
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmRegister.delete');
     const before = await atmRegisterEntryRepository.getById(id, scope);
     this.assertCovers(ctx, 'atmRegister.delete', before);
@@ -1189,6 +1195,7 @@ class AtmRegisterService {
 
   /** POST /entries/:id/link — couple an OPEN, unlinked entry to Operations (DEC-30). */
   async link(id: string, version: number, ctx: AuthContext): Promise<AtmRegisterWriteResultDto> {
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmRegister.edit');
     const before = await atmRegisterEntryRepository.getById(id, scope);
     this.assertCovers(ctx, 'atmRegister.edit', before);

@@ -130,11 +130,12 @@ export const useMoveAtmBranchData = () => {
   const client = useQueryClient();
   const restale = (): void => void client.invalidateQueries({ queryKey: [MODULE] });
   return useMutation({
-    mutationFn: (sourceBranchId: string) => api.moveBranchData(sourceBranchId),
+    mutationFn: (input: { sourceBranchId: string; expectedTargetBranchId?: string }) =>
+      api.moveBranchData(input.sourceBranchId, input.expectedTargetBranchId),
     onSuccess: restale,
-    onError: (error, sourceBranchId) => {
+    onError: (error, input) => {
       if (error instanceof ApiError && error.status === 404) {
-        client.removeQueries({ queryKey: atmBranchMovePreviewKey(sourceBranchId) });
+        client.removeQueries({ queryKey: atmBranchMovePreviewKey(input.sourceBranchId) });
       }
       restale();
     },

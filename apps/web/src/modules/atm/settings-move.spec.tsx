@@ -405,7 +405,11 @@ describe('the move dialog', () => {
   });
 
   it('with nothing filed under the source it says so, and has nothing to move', () => {
-    const markup = dialog({ ...NOTHING, sourceBranchId: OCTOBER });
+    const markup = dialog({
+      ...NOTHING,
+      sourceBranchId: OCTOBER,
+      sourceBranchName: { ar: 'أكتوبر', en: 'October' },
+    });
     expect(inside(markup, 'p', 'data-branch-move-nothing', 'true')).toBe(
       t('atm.settings.move.nothing', { source: 'أكتوبر' }),
     );
@@ -414,6 +418,25 @@ describe('the move dialog', () => {
     expect(tagWith(markup, 'button', 'data-branch-move-action', 'confirm')).toContain(
       'disabled=""',
     );
+  });
+
+  // The card's link list can be stale — another administrator re-pointed the link — so once the
+  // server's preview answers, the dialog names ITS pair: what the reader confirms is what the
+  // server will do (review finding).
+  it('names the pair the server previewed, not the card’s possibly stale one', () => {
+    const markup = dialog({
+      ...PREVIEW,
+      targetBranchId: ALEX,
+      targetBranchName: { ar: 'الإسكندرية', en: 'Alexandria' },
+    });
+    expect(markup).toContain(
+      t('atm.settings.move.intro', { source: 'أكتوبر', target: 'الإسكندرية' }),
+    );
+    expect(markup).not.toContain(
+      t('atm.settings.move.intro', { source: 'أكتوبر', target: 'المهندسين' }),
+    );
+    // And it says, before the click, that ATM writes wait while the move runs.
+    expect(markup).toContain(t('atm.settings.move.pausesWrites'));
   });
 
   it('«نقل» needs the server’s go, no refusal and something left to move', () => {
@@ -478,16 +501,26 @@ describe('the move names the stored link’s source, and stales the ATM tree', (
   it('both calls name the source in the path; the move sends no pair', async () => {
     await getBranchMovePreview(OCTOBER);
     await moveBranchData(OCTOBER);
+    // The target the reader confirmed travels as a precondition only — the pair stays the
+    // stored link's (review finding).
+    await moveBranchData(OCTOBER, MOHANDESSIN);
     expect(sent).toEqual([
       { method: 'get', path: `/atm/branch-links/${OCTOBER}/move` },
       { method: 'post', path: `/atm/branch-links/${OCTOBER}/move`, body: {} },
+      {
+        method: 'post',
+        path: `/atm/branch-links/${OCTOBER}/move`,
+        body: { expectedTargetBranchId: MOHANDESSIN },
+      },
     ]);
   });
 
   it('a move stales the whole ATM tree — rows changed branch on every ATM screen', async () => {
     const qc = new QueryClient();
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
-    await expect(held(qc, useMoveAtmBranchData).mutateAsync(OCTOBER)).resolves.toEqual(RESULT);
+    await expect(
+      held(qc, useMoveAtmBranchData).mutateAsync({ sourceBranchId: OCTOBER }),
+    ).resolves.toEqual(RESULT);
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([['atm']]);
   });
 
@@ -498,7 +531,9 @@ describe('the move names the stored link’s source, and stales the ATM tree', (
     postAnswer = () => Promise.reject(refusal);
     const qc = new QueryClient();
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
-    await expect(held(qc, useMoveAtmBranchData).mutateAsync(OCTOBER)).rejects.toBe(refusal);
+    await expect(
+      held(qc, useMoveAtmBranchData).mutateAsync({ sourceBranchId: OCTOBER }),
+    ).rejects.toBe(refusal);
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([['atm']]);
     const names = { source: 'أكتوبر' };
     expect(moveErrorText(refusal, names, t, 'ar')).toBe(t('atm.settings.move.blocked'));
@@ -521,6 +556,14 @@ describe('the move names the stored link’s source, and stales the ATM tree', (
     expect(translate('en', 'atm.settings.move.stopped', { source: 'October' })).toContain(
       'What it moved stays moved',
     );
+  });
+
+  it('a link re-pointed since the preview is said as such — nothing moved', () => {
+    const changed = new ApiError(ErrorCodes.ATM_BRANCH_MOVE_TARGET_CHANGED, 're-pointed', 409);
+    expect(moveErrorText(changed, { source: 'أكتوبر' }, t, 'ar')).toBe(
+      t('atm.settings.move.targetChanged'),
+    );
+    expect(translate('en', 'atm.settings.move.targetChanged')).toContain('nothing was moved');
   });
 
   it('a new link’s preview is asked at once and kept where the dialog reads it', async () => {
@@ -549,9 +592,9 @@ describe('the move names the stored link’s source, and stales the ATM tree', (
   it('a move refused 404 — the link removed meanwhile — forgets that preview', async () => {
     postAnswer = () => Promise.reject(new ApiError(ErrorCodes.NOT_FOUND, 'no such link', 404));
     const qc = clientWith([PREVIEW]);
-    await expect(held(qc, useMoveAtmBranchData).mutateAsync(OCTOBER)).rejects.toBeInstanceOf(
-      ApiError,
-    );
+    await expect(
+      held(qc, useMoveAtmBranchData).mutateAsync({ sourceBranchId: OCTOBER }),
+    ).rejects.toBeInstanceOf(ApiError);
     expect(cached(qc, OCTOBER)).toBe(false);
   });
 });

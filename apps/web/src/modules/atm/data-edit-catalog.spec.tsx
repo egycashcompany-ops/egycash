@@ -572,6 +572,40 @@ describe('an add says where it files', () => {
     ).not.toContain('data-add-branch');
   });
 
+  // However the label dialog opened — the header's button, or an add begun on another tab that
+  // came back through Back — a new label with no branch named waits for one (review finding).
+  it('a new label with no branch to file under asks for one and keeps its save off', () => {
+    const fill = { nameAr: 'منطقة', nameEn: 'Area' };
+    const asked = render(
+      OPERATIONS,
+      <RefLabelDialog open onClose={() => undefined} kind="area" label={null} />,
+      noBranch,
+    );
+    expect(asked).toContain('data-add-branch="none"');
+    expect(asked).toContain(t('atm.dataEdit.chooseBranch'));
+    expect(submits(asked)[0]).toContain('disabled=""');
+    // With a branch, it is named before the save; a branch the caller names, or an edit, asks none.
+    const named = render(
+      OPERATIONS,
+      <RefLabelDialog open onClose={() => undefined} kind="area" label={null} />,
+    );
+    expect(named).toContain(t('atm.dataEdit.addInBranch', { name: 'الإسكندرية' }));
+    expect(
+      render(
+        OPERATIONS,
+        <RefLabelDialog open onClose={() => undefined} kind="area" label={null} branchId={ALEX} />,
+        noBranch,
+      ),
+    ).not.toContain('data-add-branch');
+    expect(
+      render(
+        OPERATIONS,
+        <RefLabelDialog open onClose={() => undefined} kind="area" label={refLabel(fill)} />,
+        noBranch,
+      ),
+    ).not.toContain('data-add-branch');
+  });
+
   it('with no branch to file under, asks for one in the top bar and keeps the add off', () => {
     const add = render(
       MANAGE,

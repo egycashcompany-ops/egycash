@@ -3,8 +3,10 @@
 // services (shared/settings-authority.ts).
 import { Router, type Request, type Response } from 'express';
 import {
+  AtmBranchMoveBodySchema,
   AtmBranchMoveParamsSchema,
   SaveAtmBranchLinksSchema,
+  type AtmBranchMoveBody,
   type AtmBranchMoveParams,
   type SaveAtmBranchLinks,
 } from '@ecms/contracts';
@@ -30,8 +32,15 @@ const previewMove = async (req: Request, res: Response): Promise<void> => {
 };
 
 const runMove = async (req: Request, res: Response): Promise<void> => {
-  const { params } = validated<never, never, AtmBranchMoveParams>(req);
-  ok(res, await atmBranchMoveService.move(params.sourceBranchId, authContext(req)));
+  const { body, params } = validated<AtmBranchMoveBody, never, AtmBranchMoveParams>(req);
+  ok(
+    res,
+    await atmBranchMoveService.move(
+      params.sourceBranchId,
+      authContext(req),
+      body.expectedTargetBranchId,
+    ),
+  );
 };
 
 export const buildAtmBranchLinksRouter = (): Router => {
@@ -44,7 +53,8 @@ export const buildAtmBranchLinksRouter = (): Router => {
     validate({ body: SaveAtmBranchLinksSchema }),
     asyncHandler(saveLinks),
   );
-  // The source is the path's; the target is the STORED link's, never the request's. No body.
+  // The source is the path's; the target is the STORED link's, never the request's. The body only
+  // names the target the reader confirmed, refused when it is no longer the stored one.
   router.get(
     '/:sourceBranchId/move',
     authenticate,
@@ -56,7 +66,7 @@ export const buildAtmBranchLinksRouter = (): Router => {
     '/:sourceBranchId/move',
     authenticate,
     authorize(ATM_SETTINGS_KEY),
-    validate({ params: AtmBranchMoveParamsSchema }),
+    validate({ body: AtmBranchMoveBodySchema, params: AtmBranchMoveParamsSchema }),
     asyncHandler(runMove),
   );
   return router;

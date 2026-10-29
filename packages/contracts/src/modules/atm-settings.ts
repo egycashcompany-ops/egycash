@@ -291,6 +291,19 @@ export const AtmBranchMoveParamsSchema = z.object({ sourceBranchId: branchRef() 
 export type AtmBranchMoveParams = z.output<typeof AtmBranchMoveParamsSchema>;
 
 /**
+ * `POST …/move` — the target the reader confirmed, from the preview they read (review finding):
+ * a PRECONDITION, never an authority. The target is still the stored link's; when that is no
+ * longer this one, the move is refused 409 `ATM_BRANCH_MOVE_TARGET_CHANGED` and nothing moves.
+ * Optional, so a page loaded before this rule still moves as it did.
+ */
+export const AtmBranchMoveBodySchema = z.preprocess(
+  // No body at all (that older page) reads as an empty one.
+  (value) => value ?? {},
+  z.object({ expectedTargetBranchId: branchRef().optional() }).strict(),
+);
+export type AtmBranchMoveBody = z.output<typeof AtmBranchMoveBodySchema>;
+
+/**
  * What a move re-files, in the order the dialog lists it — every ATM collection whose rows carry a
  * `branchId`, but one: the source's zone-set document stays (the target's revision moves on, so an
  * open zone editor reloads). The bank catalog and the register import runs carry no branch; the note

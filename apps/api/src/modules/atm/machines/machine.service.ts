@@ -47,6 +47,7 @@ import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { hasPermission, keyReachesBranch, scopeSelector } from '../../../shared/types';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
+import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import {
   ensureMachineVersioned,
   machineSnapshot,
@@ -240,6 +241,7 @@ class AtmMachineService {
     input: BulkCreateAtmMachines,
     ctx: AuthContext,
   ): Promise<AtmMachineBulkCreateResult> {
+    await assertNoBranchMoveRunning();
     const branchId = await addBranchOf(ctx);
     const settings = await resolveRegisterSettings();
     const bank = await resolveIntakeBank(branchId, input.bankName, settings.catalog);
@@ -312,6 +314,7 @@ class AtmMachineService {
    * register recorded (DEC-36).
    */
   async create(input: CreateAtmMachine, ctx: AuthContext): Promise<OperationsIntakeResult> {
+    await assertNoBranchMoveRunning();
     const branchId = await addBranchOf(ctx);
     const machineCode = normalizeAtmMachineCode(input.machineCode);
     if (machineCode === '') throw new NotFoundError('ATM machine code');
@@ -347,6 +350,7 @@ class AtmMachineService {
    * taken and its rows stay readable, which is exactly what delete does NOT do.
    */
   async update(id: string, input: UpdateAtmMachine, ctx: AuthContext): Promise<AtmMachineDoc> {
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmMachine.manage');
     const before = await atmMachineRepository.getById(id, scope);
     const set: Record<string, unknown> = {};
@@ -378,6 +382,7 @@ class AtmMachineService {
     input: UpdateAtmMachineArea,
     ctx: AuthContext,
   ): Promise<AtmMachineDoc> {
+    await assertNoBranchMoveRunning();
     const before = await atmMachineRepository.findById(id);
     if (before === null) throw new NotFoundError('ATM machine');
     const allowed =
@@ -411,6 +416,7 @@ class AtmMachineService {
     input: BulkDeleteAtmMachines,
     ctx: AuthContext,
   ): Promise<{ deletedCodes: string[]; unknownCodes: string[] }> {
+    await assertNoBranchMoveRunning();
     const branchId = await addBranchOf(ctx);
     const deletedCodes: string[] = [];
     const unknownCodes: string[] = [];
@@ -461,6 +467,7 @@ class AtmMachineService {
   }
 
   async reassignArea(input: ReassignAtmMachineArea, ctx: AuthContext): Promise<AtmMachineDoc> {
+    await assertNoBranchMoveRunning();
     const branchId = await resolveAtmBranchId(ctx, 'atmMachine.manage');
     const machineCode = normalizeAtmMachineCode(input.machineCode);
     const existing = await atmMachineRepository.findActiveByCode(branchId, machineCode);

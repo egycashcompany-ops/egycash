@@ -145,6 +145,9 @@ export const moveErrorText = (
   if (error instanceof ApiError && error.code === ErrorCodes.ATM_BRANCH_MOVE_STOPPED) {
     return t('atm.settings.move.stopped', { source: names.source });
   }
+  if (error instanceof ApiError && error.code === ErrorCodes.ATM_BRANCH_MOVE_TARGET_CHANGED) {
+    return t('atm.settings.move.targetChanged');
+  }
   return errorMessage(error, locale);
 };
 
@@ -266,7 +269,13 @@ export const MoveBranchDataDialog = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const preview = useAtmBranchMovePreview(subject?.sourceBranchId ?? null, subject !== null);
   const move = useMoveAtmBranchData();
-  const names = { source: subject?.source ?? '', target: subject?.target ?? '' };
+  // The server's own names once its preview answers (review finding): the card's link list may
+  // be stale — another administrator re-pointed the link — and the reader confirms what the
+  // server will do, not what the card last read. The card's names only until then.
+  const names = {
+    source: preview.data?.sourceBranchName?.[locale] ?? subject?.source ?? '',
+    target: preview.data?.targetBranchName?.[locale] ?? subject?.target ?? '',
+  };
   // Judged on a preview the server has just given: while one is re-read (after a 409, after a run
   // that left rows behind), or could not be read again, «نقل» waits rather than act on the old one.
   const allowed =
@@ -278,10 +287,14 @@ export const MoveBranchDataDialog = ({
   const confirm = async (): Promise<void> => {
     if (subject === null || !allowed) return;
     try {
-      const result = await move.mutateAsync(subject.sourceBranchId);
+      // The target the reader read in the preview: refused 409 if the link moved since.
+      const result = await move.mutateAsync({
+        sourceBranchId: subject.sourceBranchId,
+        expectedTargetBranchId: preview.data?.targetBranchId,
+      });
       const done = t('atm.settings.move.done', {
         count: formatNumber(result.total, locale),
-        target: names.target,
+        target: result.targetBranchName?.[locale] ?? names.target,
       });
       const left = atmBranchMoveTotal(result.remaining);
       if (left === 0) {
@@ -335,6 +348,9 @@ export const MoveBranchDataDialog = ({
         data-branch-move-dialog={subject?.sourceBranchId}
       >
         <p>{t('atm.settings.move.intro', names)}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t('atm.settings.move.pausesWrites')}
+        </p>
         {preview.isLoading ? (
           <p className="text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
         ) : preview.isError ? (

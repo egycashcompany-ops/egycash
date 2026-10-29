@@ -789,7 +789,13 @@ export const RefLabelDialog = ({
   const update = useUpdateAtmRefLabel(kind);
   const pending = create.isPending || update.isPending;
   const creating = label === null;
-  const complete = refLabelFormComplete(kind, creating, form);
+  // A new label with no branch named is filed in the acting branch: on «كل الشركة» there is none,
+  // so the dialog says so and waits for one, as the machine add does — however it was opened, by
+  // the header's button or by a `creating` that survived a tab change (review finding).
+  const actingAsked = open && creating && branchId === undefined;
+  const acting = useAtmRefLabelOptions(null, actingAsked);
+  const complete =
+    refLabelFormComplete(kind, creating, form) && !(actingAsked && addBlocked(acting.data));
   // The ACTIVE banks, plus the spelling's own bank when it has been archived since.
   const banks = useMemo(
     () =>
@@ -836,6 +842,7 @@ export const RefLabelDialog = ({
     // لما ادوس على الاكس» (Dialog.tsx). The × and Escape still close it.
     <Dialog open={open} onClose={onClose} title={title} dismissOnOutsideClick={false}>
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
+        {actingAsked && <AddBranchLine options={acting.data} />}
         {(kind === 'bank' || !creating) && (
           <Field
             label={t(kind === 'bank' ? 'atm.dataEdit.labelName' : 'atm.dataEdit.storedName')}

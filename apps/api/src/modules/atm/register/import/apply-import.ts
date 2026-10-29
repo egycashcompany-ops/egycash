@@ -32,6 +32,7 @@ import { auditService } from '../../../../platform/audit';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { AppError, ConflictError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
+import { assertNoBranchMoveRunning } from '../../branch-links/move-fence';
 import { ensureAreaLabels } from '../../catalogs/area-labels';
 import { AtmRefLabelModel } from '../../catalogs/ref-label.model';
 import { AtmMachineModel, type AtmMachineDoc } from '../../machines/machine.model';
@@ -228,6 +229,8 @@ export const applyRegisterImport = async (
   headerFills: ParsedRegisterFile['headerFills'],
   ctx: AuthContext,
 ): Promise<ApplyImportResult> => {
+  // Its couplings and inserts would land between a running «نقل البيانات»'s plan and its writes.
+  await assertNoBranchMoveRunning();
   const approved = new Set(request.categories);
   const actor = new Types.ObjectId(ctx.userId);
   const now = new Date();

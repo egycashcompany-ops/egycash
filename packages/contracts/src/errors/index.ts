@@ -217,6 +217,17 @@ export const ErrorCodes = {
    * counts it); the details name the blockers as above, and running the move again carries on.
    */
   ATM_BRANCH_MOVE_STOPPED: 'ATM_BRANCH_MOVE_STOPPED',
+  /**
+   * The move refused (409) because the link it would follow is no longer the one the reader
+   * confirmed (`expectedTargetBranchId`): another administrator re-pointed it. Nothing moved.
+   */
+  ATM_BRANCH_MOVE_TARGET_CHANGED: 'ATM_BRANCH_MOVE_TARGET_CHANGED',
+  /**
+   * A write that would make or change what a running «نقل البيانات» re-files waits for it (409):
+   * a register receipt, coupling or import, a machine or label save. Retried after the move; a run
+   * left 30 minutes (its process died) no longer holds them.
+   */
+  ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

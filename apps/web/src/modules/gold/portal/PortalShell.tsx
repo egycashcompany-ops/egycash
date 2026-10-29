@@ -64,17 +64,20 @@ export const PortalShell = (): JSX.Element => {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          {/* Never shrinks: when the row is tight the customer's name (truncating) gives way, not
+              the sign-out button's label. */}
+          <div className="flex shrink-0 items-center gap-1">
             {/* The customer's own name leads; EGYCASH's logo sits with the controls, from sm up. */}
             <EgycashLogo className="hidden h-7 sm:block" />
             <span
               aria-hidden="true"
-              className="mx-2 hidden h-6 w-px bg-slate-200 dark:bg-slate-700 sm:block"
+              className="mx-2 hidden h-6 w-px shrink-0 bg-slate-200 dark:bg-slate-700 sm:block"
             />
             <ThemeToggle />
             <LanguageToggle />
             <Button
               variant="secondary"
+              className="whitespace-nowrap"
               onClick={() => {
                 void signOut();
               }}

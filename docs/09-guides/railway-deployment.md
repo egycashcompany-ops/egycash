@@ -75,7 +75,7 @@ has four packages; the config files above tell it what to build and run.
 any `VITE_*` value requires a **redeploy** — it is a build-time value.
 
 **The version on screen.** The user menu, the crash screen and the captain's phone screens show
-«Version 2.2.0 · 5f1e139» — to signed-in people only; the public sign-in page shows none — the
+«Version 2.2.0 · 5f1e139» — displayed only to somebody signed in; no public page shows it — the
 root `package.json` version and the commit the bundle was built
 from. Both are stamped by `apps/web/vite.config.ts` at build time, so nothing needs setting. The
 commit comes from `RAILWAY_GIT_COMMIT_SHA`, which Railway provides to a build deployed from

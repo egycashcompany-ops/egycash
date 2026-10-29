@@ -25,7 +25,13 @@ export const verificationQrDataUri = async (code: string, sha256: string): Promi
   }
 };
 
-/** The public verdict: match the number + integrity hash against stored generations. */
+/**
+ * The public verdict: match the number + integrity hash against stored generations.
+ *
+ * Not the generator version, which the signed PDF and the contract page still show: it says which
+ * release produced the document, nothing about whether the document is genuine, and on an endpoint
+ * anybody can call it is a version banner.
+ */
 export const verifyContract = async (code: string, key: string): Promise<ContractVerificationDto> => {
   const versions = await contractRepository.findByCode(code);
   const match = versions.find((doc) => doc.generation.integrity?.sha256 === key);
@@ -37,6 +43,5 @@ export const verifyContract = async (code: string, key: string): Promise<Contrac
     status: match.status,
     generatedAt: match.generation.integrity.generatedAt.toISOString(),
     templateVersion: match.generation.integrity.templateVersion,
-    generatorVersion: match.generation.integrity.generatorVersion,
   };
 };

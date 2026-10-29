@@ -5,8 +5,9 @@
 // which is the whole point of showing it: when somebody reports a problem, the number on their
 // screen says what they were running.
 //
-// Only to people who are signed in. The sign-in page is public, and a version printed on it is a
-// banner for anybody probing the site.
+// Displayed only to a signed-in session (`AppVersion` checks): a version printed on a public page
+// is a banner for anybody probing the site. It is not a secret — the bundle carries it, as it
+// carries every library's version — so nothing relies on it being one.
 
 const read = (key: 'VITE_APP_VERSION' | 'VITE_APP_BUILD'): string => {
   const value = import.meta.env[key] as unknown;

@@ -2,12 +2,57 @@
 //
 // The staff platform's tab reads «ECMS» (index.html). The screens that speak for the company —
 // both portals, from sign-in on, and the two public pages — draw the EGYCASH logo, so their tab says
-// EGYCASH as well. There is no DOM here to run the effect in, so this proves the wiring where it
-// lives: each of those screens sets the title before anything can return early.
+// EGYCASH as well, and leaving one gives the tab back.
+//
+// There is no DOM or renderer here that runs effects, so the hook runs against a stand-in `document`
+// with React's `useEffect` replaced by one that runs the effect at once and keeps its cleanup; the
+// screens' wiring is proved where it lives, in their source.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ReactModule from 'react';
+import { useDocumentTitle } from './useDocumentTitle';
+
+const cleanups: (() => void)[] = [];
+vi.mock('react', async (importOriginal) => ({
+  ...(await importOriginal<typeof ReactModule>()),
+  useEffect: (effect: () => void | (() => void)) => {
+    const cleanup = effect();
+    if (typeof cleanup === 'function') cleanups.push(cleanup);
+  },
+}));
+
+/** Unmount: run the kept cleanups, newest first. */
+const unmount = (): void => {
+  while (cleanups.length > 0) cleanups.pop()?.();
+};
+
+describe('the hook', () => {
+  beforeEach(() => {
+    vi.stubGlobal('document', { title: 'ECMS' });
+  });
+  afterEach(() => {
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it('names the tab while the screen is up, and gives it back when it goes', () => {
+    useDocumentTitle('EGYCASH');
+    expect(document.title).toBe('EGYCASH');
+    unmount();
+    expect(document.title).toBe('ECMS');
+  });
+
+  it('survives one EGYCASH screen replacing another: cleanups run before the next screen sets it', () => {
+    useDocumentTitle('EGYCASH'); // the portal sign-in
+    unmount();
+    useDocumentTitle('EGYCASH'); // the portal, once signed in
+    expect(document.title).toBe('EGYCASH');
+    unmount(); // signed out to a staff screen
+    expect(document.title).toBe('ECMS');
+  });
+});
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const source = (file: string): string => readFileSync(join(SRC, file), 'utf8');

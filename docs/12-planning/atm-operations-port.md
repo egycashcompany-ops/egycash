@@ -476,10 +476,12 @@ mail of those machines — stayed October's, readable only under «كل الشر
    and nothing moves. While a run holds the lock, the writes the move plans from wait for it, 409
    `ATM_BRANCH_MOVE_RUNNING` (`branch-links/move-fence.ts`): machine adds, edits, area moves and
    deletes; register create, edit, receive, link, handover and delete; the register import; label
-   saves. Otherwise a coupling between the machines step and the register step would write a new
+   saves; replenishment and maintenance opens and mail accepts (open work the twin plan reads).
+   Otherwise a coupling between the machines step and the register step would write a new
    master under the source, and a key the target gained after a plan would meet the batch. Each
    twin is read again inside its retire's transaction — reactivated or given open work since the
-   plan, the run stops on it (`machineTwinOpen`). An area name deleted or renamed away in one linked
+   plan, the run stops on it (`machineTwinOpen`, STOPPED when an earlier batch already retired some,
+   each of those counted on the run). An area name deleted or renamed away in one linked
    branch is never written back as a live label by the other, neither after a write nor by the boot
    repair (`catalogs/area-labels.ts`): the move takes the source's memory rows first.
 

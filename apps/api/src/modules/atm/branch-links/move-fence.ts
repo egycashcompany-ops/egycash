@@ -5,12 +5,16 @@
 // meet a key the target gained after the plan (a 500 after data moved, or a silent duplicate where
 // the index is missing), or write a label the next run brings back after Operations deleted it.
 //
+// An operation opened, or a mail accepted (it opens a maintenance), is open work the twin plan
+// reads (`machineTwinOpen`): one landing on a twin between the plan and its retire would be
+// orphaned, so they wait too.
+//
 // One run at a time, company-wide, a few minutes long and rare — so the fence is company-wide too:
 // a fresh `running` run refuses these writes 409 `ATM_BRANCH_MOVE_RUNNING`, and the reader retries
 // after the move. A run left 30 minutes (its process died) no longer holds them — the run lock's
 // own takeover rule (branch-move-run.repository.ts `lockHeld`). Not fenced: what files nothing the
-// move plans from — an operation opened on a moved machine, a mail ticket (filed under the branch
-// a machine works as), a map pin keyed by machine.
+// move plans from — a mail ticket the reader files (under the branch a machine works as), an
+// operation closed, a map pin keyed by machine.
 import { ErrorCodes } from '@ecms/contracts';
 import { AppError } from '../../../shared/errors';
 import { atmBranchMoveRunRepository } from './branch-move-run.repository';

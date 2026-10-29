@@ -1269,7 +1269,7 @@ describe('the target the reader confirmed', () => {
 });
 
 describe('writes that wait while a move runs', () => {
-  it('a machine add, a label save and a register link are refused 409 while a fresh run holds the lock', async () => {
+  it('machine, label, register and operation writes are refused 409 while a fresh run holds the lock', async () => {
     const run = await AtmBranchMoveRunModel.create({
       sourceBranchId: oid(ZAY),
       targetBranchId: oid(MOH),
@@ -1286,6 +1286,13 @@ describe('writes that wait while a move runs', () => {
       call('post', '/atm/ref-labels/area', adminToken, { nameAr: 'منطقة سور', nameEn: 'Fence' }),
       call('post', `/atm/register/entries/${new Types.ObjectId().toHexString()}/link`, adminToken, {
         version: 0,
+      }),
+      // Open work the twin plan reads: an operation opened, a mail accepted (it opens one).
+      call('post', '/atm/replenishments/open', operatorToken, {
+        rows: [{ machineCode: 'B1', scheduleTime: null }],
+      }),
+      call('post', '/atm/mail-tickets/accept', adminToken, {
+        ids: [new Types.ObjectId().toHexString()],
       }),
     ];
     try {
@@ -1346,6 +1353,71 @@ describe('a twin changed since the plan', () => {
       machineCode: 'R1-D',
       isDeleted: true,
     });
+  });
+});
+
+describe('a twin stopped in a later retire batch', () => {
+  it('leaves the batches before it counted: STOPPED, never «nothing was moved»', async () => {
+    const created = await call('post', '/platform/branches', adminToken, {
+      code: '87',
+      name: { ar: 'العبور', en: 'Obour' },
+    });
+    expect(created.status).toBe(201);
+    const OBR = data<{ id: string }>(created).id;
+    const current = data<{ links: { branchId: string; actsAsBranchId: string }[] }>(
+      await call('get', '/atm/branch-links', adminToken),
+    ).links.map((link) => ({ branchId: link.branchId, actsAsBranchId: link.actsAsBranchId }));
+    const saved = await call('put', '/atm/branch-links', adminToken, {
+      links: [...current, { branchId: OBR, actsAsBranchId: MOH }],
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    // 201 twins: the first retire batch takes 200, the 201st is the second batch's.
+    const codes = Array.from({ length: 201 }, (_, i) => `W${String(i + 1).padStart(3, '0')}`);
+    const machines = (branchId: string, isActive: boolean) =>
+      codes.map((machineCode) => ({
+        branchId: oid(branchId),
+        bankName: 'NBE',
+        machineCode,
+        name: `ATM ${machineCode}`,
+        area: 'الدقي',
+        isActive,
+        isDeleted: false,
+      }));
+    await AtmMachineModel.insertMany(machines(OBR, true)); // the masters that stay
+    await AtmMachineModel.insertMany(machines(MOH, false)); // archived twins, planned for retire
+    setBeforeTwinRetireForTests(async () => {
+      await AtmMachineModel.updateOne(
+        { branchId: oid(MOH), machineCode: 'W201', isDeleted: false },
+        { $set: { isActive: true } },
+      ).exec();
+    });
+
+    const cut = await move(OBR);
+    expect(cut.status, JSON.stringify(cut.body)).toBe(409);
+    expect(errorOf(cut).code).toBe('ATM_BRANCH_MOVE_STOPPED');
+    expect(errorOf(cut).details?.map((detail) => detail.code)).toEqual(['machineTwinOpen']);
+    expect(
+      await AtmMachineModel.countDocuments({
+        branchId: oid(MOH),
+        machineCode: /^W\d{3}-D$/,
+      }).exec(),
+    ).toBe(200);
+    // The run's record and its audit row count and name the 200 it retired.
+    const run = await AtmBranchMoveRunModel.findOne({ sourceBranchId: oid(OBR) })
+      .sort({ startedAt: -1 })
+      .lean()
+      .exec();
+    expect(run).toMatchObject({ state: 'failed' });
+    expect(run?.merges.machineTwinsRetired).toBe(200);
+    const audit = await AuditLogModel.findOne({
+      action: 'atmBranchMove',
+      'entityRef.entityId': String(run?._id),
+    })
+      .lean()
+      .exec();
+    expect(audit?.changes.find((change) => change.field === 'retiredMachines')?.new).toHaveLength(
+      200,
+    );
   });
 });
 

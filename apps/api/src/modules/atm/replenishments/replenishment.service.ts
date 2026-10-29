@@ -15,6 +15,7 @@ import { auditService } from '../../../platform/audit';
 import { type AuthContext, scopeSelector } from '../../../shared/types';
 import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
+import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import {
   alreadyOpenError,
@@ -109,6 +110,9 @@ class AtmReplenishmentService {
     unknownCodes: string[];
     alreadyOpenCodes: string[];
   }> {
+    // An open operation is work the move's twin plan reads (`machineTwinOpen`): one opened on a
+    // twin between that plan and its retire would be orphaned (review finding).
+    await assertNoBranchMoveRunning();
     const branchId = await resolveAtmBranchId(ctx, 'atmReplenishment.create');
     const openedAt = resolveReplenishmentOpenTime(input.forceDate, new Date());
     const openDay = openDayOf(openedAt);

@@ -10076,7 +10076,7 @@ const en: Record<string, string> = {
   'atm.settings.move.targetChanged':
     'The link was changed since this preview opened, so nothing was moved. Read the preview again before moving.',
   'atm.settings.move.pausesWrites':
-    'While the move runs (a few minutes), adding machines, receiving register entries and saving names in ATM wait until it ends.',
+    'While the move runs (a few minutes), adding machines, receiving register entries, opening replenishments and maintenances and saving names in ATM wait until it ends.',
   'atm.settings.move.collection.machines': 'Machines',
   'atm.settings.move.collection.registerEntries': 'ATM Register entries',
   'atm.settings.move.collection.mailTickets': 'Maintenance mail',
@@ -20025,7 +20025,7 @@ const ar: Record<string, string> = {
   'atm.settings.move.targetChanged':
     'تغيّر الفرع المرتبط منذ فتح هذه المعاينة، فلم يُنقل شيء. راجع المعاينة من جديد قبل النقل.',
   'atm.settings.move.pausesWrites':
-    'أثناء النقل (دقائق قليلة) تنتظر إضافة الماكينات واستلام سطور السجل وحفظ الأسماء في الصراف الآلي حتى ينتهي.',
+    'أثناء النقل (دقائق قليلة) تنتظر إضافة الماكينات واستلام سطور السجل وفتح التغذيات والصيانات وحفظ الأسماء في الصراف الآلي حتى ينتهي.',
   'atm.settings.move.collection.machines': 'الماكينات',
   'atm.settings.move.collection.registerEntries': 'سطور سجل الماكينات',
   'atm.settings.move.collection.mailTickets': 'رسائل الصيانة',

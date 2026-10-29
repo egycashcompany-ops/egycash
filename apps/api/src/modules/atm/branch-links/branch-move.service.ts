@@ -901,10 +901,14 @@ class AtmBranchMoveService {
         merges.labelsRetired = labels.retired;
       });
       await step(async () => {
-        const machines = await this.moveMachines(pair, by);
-        moved.machines = machines.moved;
-        merges.machineTwinsRetired = machines.retired.length;
-        retired.push(...machines.retired);
+        try {
+          moved.machines = await this.moveMachines(pair, by, retired);
+        } finally {
+          // The twins retired by batches that committed count even when a later batch stopped the
+          // run: the error is then STOPPED, never «nothing was moved», and the run's record and
+          // audit row name them (review finding).
+          merges.machineTwinsRetired = retired.length;
+        }
       });
       for (const collection of [
         'registerEntries',
@@ -1185,12 +1189,15 @@ class AtmBranchMoveService {
 
   /**
    * Step 2. The source's ids are read BEFORE the twins are planned: a master filed there in between
-   * stays for the next run, instead of arriving unplanned beside its twin.
+   * stays for the next run, instead of arriving unplanned beside its twin. Each retired twin is
+   * pushed onto the run's own `retired` the moment its batch commits, so a later batch that stops
+   * the run still leaves them counted. Returns the masters moved.
    */
   private async moveMachines(
     pair: MovePair,
     by: Types.ObjectId,
-  ): Promise<{ moved: number; retired: RetiredTwin[] }> {
+    retired: RetiredTwin[],
+  ): Promise<number> {
     const sourceIds = await idsUnder('machines', pair.sourceId);
     const rows = await machineTwinRows(pair);
     const planned = new Map(rows.map((row) => [row.id, row.isActive]));
@@ -1202,7 +1209,6 @@ class AtmBranchMoveService {
       beforeTwinRetire = null;
       await hook();
     }
-    const retired: RetiredTwin[] = [];
     for (const batch of chunks(plan.retire)) {
       const done = await unitOfWork(async (session) => {
         const now = new Date();
@@ -1254,7 +1260,7 @@ class AtmBranchMoveService {
       }
       retired.push(...done.map(({ twin }) => twin));
     }
-    return { moved: await moveIds('machines', sourceIds, pair), retired };
+    return moveIds('machines', sourceIds, pair);
   }
 
   /**

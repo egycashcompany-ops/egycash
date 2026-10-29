@@ -25,6 +25,7 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { StaleDocumentError } from '../../../shared/errors';
 import { type AuthContext, type ScopeSelector, scopeSelector } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
+import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { actorName } from '../shared/atm-context';
 import { isAlreadyOpenError, openDayOf } from '../shared/open-operation';
 import { cairoDateString } from '../shared/cairo-time';
@@ -154,6 +155,9 @@ class AtmMailTicketService {
     input: DecideAtmMailTickets,
     ctx: AuthContext,
   ): Promise<{ decided: AtmMailTicketDoc[]; refused: AtmMailAcceptRefusalDto[] }> {
+    // Each accept opens a maintenance (work the move's twin plan reads): refused before the first
+    // ticket, so a selection is never half accepted while a move runs.
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmMailTicket.decide');
     const decided: AtmMailTicketDoc[] = [];
     const refused: AtmMailAcceptRefusalDto[] = [];

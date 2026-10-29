@@ -34,7 +34,9 @@ export const VerifyContractPage = (): JSX.Element => {
   return (
     <div className="grid min-h-screen place-items-center bg-slate-50 px-4 dark:bg-slate-950">
       <div className="w-full max-w-md">
-        <div className="mb-6 flex justify-center"><EgycashLogo tagline={false} className="h-10" /></div>
+        <div className="mb-6 flex justify-center">
+          <EgycashLogo className="h-10" />
+        </div>
         <Card>
           <CardBody>
             <h1 className="mb-4 text-center text-lg font-semibold">{t('contracts.verify.title')}</h1>

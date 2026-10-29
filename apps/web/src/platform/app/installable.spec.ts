@@ -113,6 +113,37 @@ describe('every icon the manifest promises is really there, at the size claimed'
     // iOS never reads the manifest, so this one is only ever pinned from the document side.
     expect(pngSize('apple-touch-icon.png')).toEqual({ signature: true, width: 180, height: 180 });
   });
+
+  it('and the push badge the worker names is a real 96px PNG with transparency', () => {
+    // Android paints the badge from its alpha channel alone, so an opaque file is a plain square.
+    expect(SW).toContain('badge: `${BASE}icons/badge-96.png`');
+    expect(pngSize('icons/badge-96.png')).toEqual({ signature: true, width: 96, height: 96 });
+    const colourType = readFileSync(resolve(WEB, 'public', 'icons/badge-96.png'))[25];
+    expect(colourType, 'RGBA (6) or grey + alpha (4)').toSatisfy((t: number) => t === 6 || t === 4);
+  });
+});
+
+// The tab icon. Not something an install needs, so none of the rules above cover it — but it is
+// the logo a person sees most often, and a missing file is a broken-image icon in every tab.
+describe('the tab icon', () => {
+  const FAVICON = read('public/favicon.svg');
+
+  it('is linked through the base-url token, after the PNG it falls back to', () => {
+    const svgLink = '<link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />';
+    expect(INDEX).toContain(svgLink);
+    // A browser that reads SVG icons takes the last one it can use; one that cannot keeps the PNG.
+    expect(INDEX.indexOf('rel="icon" type="image/png"')).toBeLessThan(INDEX.indexOf(svgLink));
+  });
+
+  it('is a self-contained SVG: no script, nothing fetched from elsewhere', () => {
+    expect(FAVICON.trimStart().startsWith('<svg')).toBe(true);
+    expect(FAVICON).toContain('viewBox="0 0 558 789"');
+    expect(FAVICON).not.toMatch(/<script|href=|url\(|@import/i);
+  });
+
+  it('follows the system theme, as the shell does', () => {
+    expect(FAVICON).toContain('@media (prefers-color-scheme:dark)');
+  });
 });
 
 // The one thing that makes a subpath deployment (VITE_BASE_PATH=/ecms/) work with no build step

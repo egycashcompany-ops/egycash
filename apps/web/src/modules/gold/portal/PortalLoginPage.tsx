@@ -34,14 +34,14 @@ type Step = { kind: 'credentials' } | { kind: 'totp'; challengeToken: string };
 
 /**
  * EGYCASH, as this screen says it: the company's own logo. On the picture panel, which is
- * near-black in both themes, the reversed logo with its tagline; above the form on a small screen,
- * the compact one, which follows the theme.
+ * near-black in both themes, the reversed logo at the panel's start edge, in line with the headline
+ * below it; above the form on a small screen, a smaller one that follows the theme.
  */
 const EgycashLockup = ({ onDark = false }: { onDark?: boolean }): JSX.Element =>
   onDark ? (
-    <EgycashLogo tone="white" className="h-14" />
+    <EgycashLogo tone="white" className="h-14 self-start" />
   ) : (
-    <EgycashLogo tagline={false} className="h-9" />
+    <EgycashLogo className="h-9" />
   );
 
 export const PortalLoginPage = (): JSX.Element => {

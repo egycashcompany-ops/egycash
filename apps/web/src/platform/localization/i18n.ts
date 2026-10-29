@@ -15109,7 +15109,7 @@ const ar: Record<string, string> = {
   'fleet.drivers.profile.note.accident': 'حادث على السيارة {{code}}',
   'fleet.drivers.profile.footer.copyright': 'نظام إدارة أسطول نقل الأموال والتشغيل اللوجستي © 2026 جميع الحقوق محفوظة',
   'fleet.drivers.profile.footer.server': 'رقم الخادم',
-  'fleet.drivers.profile.footer.version': 'النسخة',
+  'fleet.drivers.profile.footer.version': 'الإصدار',
   'fleet.drivers.profile.licenseGrade': 'درجة الرخصة',
   'fleet.drivers.profile.licenseNumber': 'رقم الرخصة',
   'fleet.drivers.profile.unavailabilityTab': 'سجلات عدم الإتاحة',

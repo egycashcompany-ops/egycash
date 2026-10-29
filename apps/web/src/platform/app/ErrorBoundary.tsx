@@ -9,6 +9,7 @@ import { Component, type ReactNode } from 'react';
 import { useT } from '../localization/useT';
 import { Spinner } from '../../shared/ui/Spinner';
 import { isStaleBuildError, reloadIntoNewBuild } from './stale-build';
+import { AppVersion } from './AppVersion';
 
 interface Props {
   children: ReactNode;
@@ -71,6 +72,8 @@ const DefaultFallback = ({ message, onReset }: { message: string | null; onReset
           {t('common.errorBoundary.reload')}
         </button>
       </div>
+      {/* The screen people screenshot when they report a crash: it says which build crashed. */}
+      <AppVersion />
     </div>
   );
 };

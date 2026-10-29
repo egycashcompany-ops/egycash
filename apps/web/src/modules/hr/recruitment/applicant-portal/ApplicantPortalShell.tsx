@@ -36,7 +36,10 @@ export const ApplicantPortalShell = (): JSX.Element => {
       <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <BrandMark className="h-9" />
+            {/* The mark is decorative and the only words here are the candidate's own name, so the
+                company is named for screen readers alone. */}
+            <BrandMark size="sm" />
+            <span className="sr-only">EGYCASH</span>
             <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
               {me === null ? '' : fullName(me.name, locale)}
             </span>

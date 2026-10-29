@@ -22,12 +22,13 @@ To use a different picture per deployment without putting a file in the reposito
 
 The logo is drawn in code, not loaded from this folder: the company artwork, traced to vector paths,
 lives in `apps/web/src/shared/ui/brand-mark-paths.ts` (the mark) and
-`apps/web/src/shared/ui/egycash-wordmark-paths.ts` (the lettering and tagline). Two components
+`apps/web/src/shared/ui/egycash-wordmark-paths.ts` (the lettering). Two components
 render it, and every screen uses one of them:
 
 - `BrandMark` — the mark alone, beside the product name (the shell topbar, the sign-in screens).
-- `EgycashLogo` — the full logo, where the company's name belongs (the customer and applicant
-  portals, the public application and contract-verification pages).
+- `EgycashLogo` — the mark with the lettering, where the company's name belongs (the customer and
+  applicant portals, the public application and contract-verification pages). The artwork's
+  tagline is left out: at 6% of the logo's height it is unreadable at any size a screen draws it.
 
 Both follow the theme. The files that cannot be code are generated from the same paths and kept in
 `public/`: `favicon.svg` (the tab icon), `icons/icon-192.png`, `icons/icon-512.png`,

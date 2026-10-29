@@ -11,6 +11,16 @@ its entry here in the same PR.
 
 ### Added
 
+- **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
+  «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
+  الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn
+  from vector paths and follows the theme. The mark alone sits where the tile was, at the
+  same height: the top bar, the sign-in, activation and password screens, the applicant portal.
+  The mark with the lettering appears where the company's name belongs: the customer and applicant portal
+  sign-in, the public application page, the contract verification page. The installed app's icons,
+  the browser-tab icon and the push notification badge carry the mark too. «الإصدار 2.1.0 ·
+  5f1e139» — the version and the commit it was built from, stamped by the build — shows under the
+  sign-in form, at the foot of the user menu and on the crash screen.
 - **The IT asset register says who holds each asset, and filters by name.** «وعايز فى شاشة الأصول
   /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر زود بعد
   الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة». `/it/assets` shows «المستلِم» after

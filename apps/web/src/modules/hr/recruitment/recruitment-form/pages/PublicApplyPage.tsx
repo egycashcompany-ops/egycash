@@ -55,7 +55,7 @@ export const PublicApplyPage = (): JSX.Element => {
     <div className="min-h-screen bg-slate-50 py-8 dark:bg-slate-950">
       <div className="mx-auto w-full max-w-3xl px-4">
         <div className="mb-6 flex justify-center">
-          <EgycashLogo tagline={false} className="h-10" />
+          <EgycashLogo className="h-10" />
         </div>
         {children}
       </div>

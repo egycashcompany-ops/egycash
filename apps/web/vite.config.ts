@@ -14,10 +14,11 @@ import react from '@vitejs/plugin-react';
 //                     deployed from GitHub; a local or CI build asks git; a build with neither (a
 //                     source tarball) gets no build id rather than a failed build.
 //
-// A non-empty value already set in the environment wins, so a deployment can pin either one (a
-// blank variable counts as unset). They go into `process.env` rather than `define` because Vite
-// assembles `import.meta.env` from the VITE_-prefixed variables it finds there, after this file has
-// run — so every reader of `import.meta.env`, including bracket access, sees them.
+// A non-empty value a deployment already gives — an environment variable or an `.env*` file, as
+// Vite reads them — wins, so either can be pinned; a blank one counts as unset. The stamp goes into
+// `process.env` rather than `define` because Vite assembles `import.meta.env` from the VITE_-prefixed
+// variables after this config has run, process.env first — so every reader of `import.meta.env`,
+// including bracket access, sees it.
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
 const platformVersion = (): string => {
@@ -40,15 +41,17 @@ const buildId = (): string => {
   }
 };
 
-process.env['VITE_APP_VERSION'] ||= platformVersion();
-process.env['VITE_APP_BUILD'] ||= buildId();
-
-// Subpath deployments (e.g. https://egycash.com.eg/ecms): VITE_BASE_PATH sets the asset
-// base and — via import.meta.env.BASE_URL — the router basename. Root ('/') by default.
-export default defineConfig(({ mode }) => ({
-  base: loadEnv(mode, '.', 'VITE_').VITE_BASE_PATH ?? '/',
-  plugins: [react()],
-  server: {
-    port: 5173,
-  },
-}));
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, '.', 'VITE_');
+  process.env['VITE_APP_VERSION'] = env['VITE_APP_VERSION'] || platformVersion();
+  process.env['VITE_APP_BUILD'] = env['VITE_APP_BUILD'] || buildId();
+  return {
+    // Subpath deployments (e.g. https://egycash.com.eg/ecms): VITE_BASE_PATH sets the asset
+    // base and — via import.meta.env.BASE_URL — the router basename. Root ('/') by default.
+    base: env['VITE_BASE_PATH'] ?? '/',
+    plugins: [react()],
+    server: {
+      port: 5173,
+    },
+  };
+});

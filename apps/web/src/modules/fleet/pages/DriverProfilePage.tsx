@@ -896,7 +896,7 @@ export const DriverProfilePage = (): JSX.Element => {
             <span>•</span>
             <span>
               {t('fleet.drivers.profile.footer.version')}{' '}
-              {versionText() || '—'}
+              <bdi dir="ltr">{versionText() || '—'}</bdi>
             </span>
           </div>
         </footer>

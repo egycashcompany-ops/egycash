@@ -26,41 +26,23 @@ import { LanguageToggle } from '../../../platform/layout/LanguageToggle';
 import { loginRequest, totpChallengeRequest } from '../../../platform/auth/api';
 import { Button, Field, Form, Input, PasswordInput } from '../../../shared/ui';
 import { AlertIcon } from '../../../shared/ui/icons';
+import { EgycashLogo } from '../../../shared/ui/EgycashLogo';
 import { ApiError } from '../../../shared/lib/api-client';
 import { PortalLoginArt } from './PortalLoginArt';
 
 type Step = { kind: 'credentials' } | { kind: 'totp'; challengeToken: string };
 
 /**
- * EGYCASH, as this screen says it.
- *
- * The mark is the platform's `BrandMark` letter tile re-cut for a black panel — a real logo file
- * dropped in later replaces the `<span>` and nothing else on the page moves, because the wordmark
- * beside it carries the name either way.
+ * EGYCASH, as this screen says it: the company's own logo. On the picture panel, which is
+ * near-black in both themes, the reversed logo with its tagline; above the form on a small screen,
+ * the compact one, which follows the theme.
  */
-const EgycashLockup = ({ onDark = false }: { onDark?: boolean }): JSX.Element => (
-  <div className="flex items-center gap-3">
-    <span
-      aria-hidden="true"
-      className={
-        onDark
-          ? 'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 text-base font-bold text-black shadow-[0_0_24px_-6px_rgba(251,191,36,0.7)]'
-          : 'grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 text-sm font-bold text-black'
-      }
-    >
-      E
-    </span>
-    <span
-      className={
-        onDark
-          ? 'text-xl font-semibold tracking-tight text-white'
-          : 'text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50'
-      }
-    >
-      EGYCASH
-    </span>
-  </div>
-);
+const EgycashLockup = ({ onDark = false }: { onDark?: boolean }): JSX.Element =>
+  onDark ? (
+    <EgycashLogo tone="white" className="h-14" />
+  ) : (
+    <EgycashLogo tagline={false} className="h-9" />
+  );
 
 export const PortalLoginPage = (): JSX.Element => {
   const t = useT();

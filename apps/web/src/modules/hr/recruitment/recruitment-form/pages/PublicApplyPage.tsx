@@ -6,7 +6,7 @@ import { useParams } from 'react-router-dom';
 import { type PublicRecruitmentFormDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { BrandMark } from '../../../../../shared/ui/BrandMark';
+import { EgycashLogo } from '../../../../../shared/ui/EgycashLogo';
 import { Button } from '../../../../../shared/ui/Button';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Form, FormActions } from '../../../../../shared/ui/form';
@@ -55,7 +55,7 @@ export const PublicApplyPage = (): JSX.Element => {
     <div className="min-h-screen bg-slate-50 py-8 dark:bg-slate-950">
       <div className="mx-auto w-full max-w-3xl px-4">
         <div className="mb-6 flex justify-center">
-          <BrandMark />
+          <EgycashLogo tagline={false} className="h-10" />
         </div>
         {children}
       </div>

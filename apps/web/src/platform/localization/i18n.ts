@@ -368,6 +368,7 @@ const en: Record<string, string> = {
     'One system for HR, operations, and everything your organization runs on.',
   'platform.auth.brand.footer': 'ECMS · Enterprise Platform',
   'platform.shell.signOut': 'Sign out',
+  'platform.shell.version': 'Version',
   'platform.shell.language': 'العربية',
   'platform.landing.nothingGrantedTitle': 'No screens are assigned to your account yet',
   'platform.landing.nothingGrantedBody':
@@ -10487,6 +10488,7 @@ const ar: Record<string, string> = {
   'platform.auth.brand.subtitle': 'نظام واحد للموارد البشرية والعمليات وكل ما تعتمد عليه مؤسستك.',
   'platform.auth.brand.footer': 'ECMS · المنصة المؤسسية',
   'platform.shell.signOut': 'تسجيل الخروج',
+  'platform.shell.version': 'الإصدار',
   'platform.shell.language': 'English',
   'platform.landing.nothingGrantedTitle': 'لم تُخصَّص أي شاشات لحسابك بعد',
   'platform.landing.nothingGrantedBody':

@@ -6,7 +6,8 @@ import { useSearchParams } from 'react-router-dom';
 import { type ContractVerificationDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
-import { BrandMark, Card, CardBody, LoadingState } from '../../../../shared/ui';
+import { Card, CardBody, LoadingState } from '../../../../shared/ui';
+import { EgycashLogo } from '../../../../shared/ui/EgycashLogo';
 import { formatDateTime } from '../../../../shared/lib/format';
 import { get, buildQuery } from '../../../../shared/lib/api-client';
 
@@ -33,7 +34,7 @@ export const VerifyContractPage = (): JSX.Element => {
   return (
     <div className="grid min-h-screen place-items-center bg-slate-50 px-4 dark:bg-slate-950">
       <div className="w-full max-w-md">
-        <div className="mb-6 flex justify-center"><BrandMark /></div>
+        <div className="mb-6 flex justify-center"><EgycashLogo tagline={false} className="h-10" /></div>
         <Card>
           <CardBody>
             <h1 className="mb-4 text-center text-lg font-semibold">{t('contracts.verify.title')}</h1>

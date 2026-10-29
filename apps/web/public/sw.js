@@ -159,7 +159,9 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: `${BASE}icons/icon-192.png`,
-      badge: `${BASE}icons/icon-192.png`,
+      // Android paints only the badge's alpha, in the status bar's own colour: the full-colour icon
+      // would show as a plain square. The badge is the mark alone, white on transparent.
+      badge: `${BASE}icons/badge-96.png`,
       lang: 'ar',
       dir: 'rtl',
       // Tagged by notification id so the same one arriving twice — a retry, two devices of one

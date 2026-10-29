@@ -15,6 +15,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { ThemeToggle } from '../../../../platform/layout/ThemeToggle';
 import { fullName } from '../../../../shared/lib/format';
 import { LanguageToggle } from '../../../../platform/layout/LanguageToggle';
+import { BrandMark } from '../../../../shared/ui/BrandMark';
 
 export const ApplicantPortalShell = (): JSX.Element => {
   const t = useT();
@@ -35,12 +36,7 @@ export const ApplicantPortalShell = (): JSX.Element => {
       <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 text-sm font-bold text-white"
-            >
-              E
-            </span>
+            <BrandMark className="h-9" />
             <span className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
               {me === null ? '' : fullName(me.name, locale)}
             </span>

@@ -23,6 +23,7 @@ import { LanguageToggle } from '../../../../platform/layout/LanguageToggle';
 import { completePortalChallenge, startPortalChallenge } from '../../../../platform/auth/api';
 import { Button, Field, Form, Input } from '../../../../shared/ui';
 import { AlertIcon } from '../../../../shared/ui/icons';
+import { EgycashLogo } from '../../../../shared/ui/EgycashLogo';
 import { APPLICANT_PORTAL_SUBJECT } from './subject';
 
 type Step = 'identify' | 'code';
@@ -134,15 +135,8 @@ export const ApplicantPortalLoginPage = (): JSX.Element => {
           aria-hidden="true"
         />
         <div className="relative flex flex-1 flex-col justify-between p-12 xl:p-16">
-          <div className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-300 to-sky-600 text-base font-bold text-black"
-            >
-              E
-            </span>
-            <span className="text-xl font-semibold tracking-tight text-white">EGYCASH</span>
-          </div>
+          {/* The panel is near-black in both themes, so the reversed logo. */}
+          <EgycashLogo tone="white" className="h-14" />
           <div className="max-w-md space-y-4">
             <h2 className="text-3xl font-semibold leading-[1.2] tracking-tight text-white xl:text-4xl">
               {t('hr.applicantPortal.login.tagline')}

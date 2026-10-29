@@ -24,11 +24,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
-# The wheel cache is a BuildKit cache mount, so it never reaches a layer (image size is unchanged)
-# but survives a failed build: ~400 MB of wheels over a slow or flaky link is not re-downloaded
-# from zero every time one connection drops, which is how the first real build of this died.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --prefix=/install -r /tmp/requirements.txt
+# No BuildKit pip cache mount here, deliberately. Railway's builder rejects a `type=cache` mount
+# unless it carries an id in Railway's own format, and refuses the whole file with
+# "dockerfile invalid: ... is missing an id argument" naming the RUN line.
+#
+# A REFUSED build is worse than a slow one. Railway keeps the previous deployment serving, so the
+# old reader stays live while `main` carries the new one — the merge looks like it worked, the
+# service is healthy, and the only symptom is that cards read the way they used to.
+#
+# What the mount bought, and what this gives up: ~400 MB of wheels survived a dropped connection
+# and was not re-downloaded from zero, which is how the first real build of this died. That cost
+# is back. `--no-cache-dir` keeps pip's own cache out of the layer, which the mount did for free.
+RUN pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 
 # Bake the weights. Fails the build if nothing lands — see the script's closing assertion.
 ENV PYTHONPATH=/install/lib/python3.11/site-packages
@@ -134,9 +141,9 @@ FROM runtime AS paddleocr-vl
 # a CPU host). The base requirements are passed as constraints, so nothing PaddleOCR depends on —
 # numpy, Pillow, OpenCV — is upgraded underneath it.
 COPY requirements.txt requirements-vlm.txt /tmp/
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --index-url https://download.pytorch.org/whl/cpu torch==2.14.1 \
- && pip install -c /tmp/requirements.txt -r /tmp/requirements-vlm.txt
+# No cache mount — see the builder stage for why Railway refuses them.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.14.1 \
+ && pip install --no-cache-dir -c /tmp/requirements.txt -r /tmp/requirements-vlm.txt
 COPY --from=paddleocr-vl-weights /vlm/PaddleOCR-VL-1.6 /models/vlm/PaddleOCR-VL-1.6
 ENV OCR_TEXT_RECOGNIZER=paddleocr_vl \
     PADDLEOCR_VL_DIR=/models/vlm/PaddleOCR-VL-1.6 \

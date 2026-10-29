@@ -50,17 +50,27 @@ THRESHOLDS = {
 }
 
 
-def build_recognizer(kind: str, model_dir: str | None):
-    """`paddle` for the real thing; `mock` exercises the pipeline with no weights and no network."""
-    if kind == "paddle":
-        from nidocr.engine import PaddleRecognizer
+#: `paddle` | `paddleocr_vl` | `qwen` are the three configurations compared; `mock` exercises the
+#: pipeline with no weights and no network.
+RECOGNIZERS = ("paddle", "paddleocr_vl", "qwen", "mock")
 
-        return PaddleRecognizer(model_dir=model_dir)
+
+def build_recognizer(kind: str, model_dir: str | None):
     if kind == "mock":
         from nidocr.engine import MockRecognizer
 
         return MockRecognizer({})
+    if kind in RECOGNIZERS:
+        from nidocr.vlm import build_recognizer as build
+
+        return build(kind, model_dir=model_dir)
     raise SystemExit(f"unknown recognizer: {kind}")
+
+
+def _external_usage(recognizer) -> tuple[float, float]:
+    """CPU seconds and peak RSS (MB) a recognizer spends in a child process (llama-server)."""
+    usage = getattr(recognizer, "external_usage", None)
+    return usage() if usage is not None else (0.0, 0.0)
 
 
 def run(fixtures_dir: Path, recognizer_kind: str, model_dir: str | None) -> dict:
@@ -79,6 +89,8 @@ def run(fixtures_dir: Path, recognizer_kind: str, model_dir: str | None) -> dict
     sources = {entry.get("source", "unknown") for entry in manifest}
 
     cpu_before = time.process_time()
+    external_cpu_before, _ = _external_usage(recognizer)
+    wall_before = time.perf_counter()
 
     for entry in manifest:
         truth: dict[str, str] = entry["truth"]
@@ -113,10 +125,18 @@ def run(fixtures_dir: Path, recognizer_kind: str, model_dir: str | None) -> dict
                     }
                 )
 
-    cpu_seconds = time.process_time() - cpu_before
+    wall_seconds = time.perf_counter() - wall_before
+    external_cpu_after, external_peak_mb = _external_usage(recognizer)
+    # The model's own work may happen in a child process (llama-server for Qwen). Its CPU time is
+    # counted from the first card to the last, so loading the weights is not billed to the cards;
+    # its peak memory is added to this process's, because both are resident at once.
+    cpu_seconds = (time.process_time() - cpu_before) + (external_cpu_after - external_cpu_before)
+    close = getattr(recognizer, "close", None)
+    if close is not None:
+        close()
     # ru_maxrss is KiB on Linux, bytes on macOS. Normalizing on platform keeps the number honest.
     rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    peak_rss_mb = rss / 1024 if sys.platform != "darwin" else rss / (1024 * 1024)
+    peak_rss_mb = (rss / 1024 if sys.platform != "darwin" else rss / (1024 * 1024)) + external_peak_mb
 
     return {
         "fixtureSet": str(fixtures_dir),
@@ -152,6 +172,7 @@ def run(fixtures_dir: Path, recognizer_kind: str, model_dir: str | None) -> dict
             "peakRssMb": round(peak_rss_mb, 1),
             "cpuSecondsTotal": round(cpu_seconds, 2),
             "cpuSecondsPerCard": round(cpu_seconds / len(manifest), 3),
+            "wallSecondsPerCard": round(wall_seconds / len(manifest), 3),
             "dockerImageMb": _image_size_mb(),
         },
         "failures": sorted(failures, key=lambda f: -f["cer"])[:25],
@@ -204,7 +225,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Measure the local National-ID OCR pipeline.")
     root = Path(__file__).resolve().parents[1]
     parser.add_argument("--fixtures", default=str(root / "fixtures" / "synthetic"))
-    parser.add_argument("--recognizer", choices=("paddle", "mock"), default="paddle")
+    parser.add_argument(
+        "--recognizer",
+        choices=RECOGNIZERS,
+        default=os.environ.get("OCR_TEXT_RECOGNIZER") or "paddle",
+    )
     parser.add_argument("--model-dir", default=os.environ.get("PADDLE_OCR_MODEL_DIR"))
     parser.add_argument("--json-out", default=None)
     args = parser.parse_args()

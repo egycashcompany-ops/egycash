@@ -88,12 +88,66 @@ def clean_expiry(raw: str) -> tuple[str, bool]:
     text = to_western_digits(raw)
     match = _DATE.search(text)
     if match is None:
+        recovered = _date_without_separators(text)
+        if recovered is not None:
+            return recovered, True
+        # One separator read and the other dropped: '202612/25'. Only digits and separators, so
+        # dropping the separators leaves exactly what was printed, and it must still be a date.
+        for run in re.findall(r"[\d/\-.]{8,}", text):
+            date = _yyyymmdd(re.sub(r"\D", "", run))
+            if date is not None:
+                return date, True
         return collapse_spaces(text), False
     year, month, day = (int(part) for part in match.groups())
     try:
         return _dt.date(year, month, day).isoformat(), True
     except ValueError:
         return collapse_spaces(text), False
+
+
+#: Glyphs the Arabic recognizer emits in place of the printed '/'. A slash is one thin diagonal
+#: stroke, and so are ١ and ٧ — the real model read ٢٠٢٩/٠٥/١١ as 202910511.
+_SLASH_LOOKALIKES = frozenset("17")
+
+
+def _date_without_separators(text: str) -> str | None:
+    """A date whose slashes were dropped or misread. → ISO date, or None if not unambiguous.
+
+    The first real-model run returned 0 of 8 expiries as dates, and not one was a digit misread:
+    the recognizer either dropped both slashes ('20321016') or read one as ١/٧ ('202910511'). The
+    date was all there. Accepted only when exactly one interpretation is a valid date, so an
+    ambiguous read stays text for the reviewer rather than becoming a confident wrong date.
+    """
+    for run in re.findall(r"\d{8,10}", re.sub(r"\s+", "", text)):
+        candidates = {run}
+        # Drop up to two slash look-alikes, each where a separator is printed: right after the
+        # year, and right after a one- or two-digit month.
+        if run[4] in _SLASH_LOOKALIKES:
+            once = run[:4] + run[5:]
+            candidates.add(once)
+            for second in (5, 6):
+                if len(once) > second and once[second] in _SLASH_LOOKALIKES:
+                    candidates.add(once[:second] + once[second + 1 :])
+        for second in (6, 7):
+            if len(run) > second and run[second] in _SLASH_LOOKALIKES:
+                candidates.add(run[:second] + run[second + 1 :])
+
+        dates = {date for candidate in candidates if (date := _yyyymmdd(candidate)) is not None}
+        if len(dates) == 1:
+            return dates.pop()
+    return None
+
+
+def _yyyymmdd(digits: str) -> str | None:
+    if len(digits) != 8:
+        return None
+    year, month, day = int(digits[:4]), int(digits[4:6]), int(digits[6:])
+    if not 2000 <= year <= 2100:
+        return None
+    try:
+        return _dt.date(year, month, day).isoformat()
+    except ValueError:
+        return None
 
 
 # Closed vocabularies. Keys are the normalized (folded) forms so that orthographic variation in
@@ -270,4 +324,16 @@ def clean_address(raw: str) -> tuple[str, bool]:
     is matched against the END of the address, so a stray printed word left on the tail would stop
     the match that repairs it.
     """
-    return snap_address_tail(collapse_spaces(strip_boilerplate(collapse_spaces(raw))))
+    return snap_address_tail(
+        collapse_spaces(strip_boilerplate(collapse_spaces(_space_numbers(raw))))
+    )
+
+
+#: A number run straight into a word, or a word into a number, in either digit set.
+_NUMBER_WORD = re.compile(r"(?<=[0-9٠-٩])(?=[ء-ي])|(?<=[ء-ي])(?=[0-9٠-٩])")
+
+
+def _space_numbers(text: str) -> str:
+    """'٣٥٥زهراء' → '٣٥٥ زهراء'. A soft photo closes the gap after a house number; the card always
+    prints one, and no Arabic address word begins or ends with a digit."""
+    return _NUMBER_WORD.sub(" ", text)

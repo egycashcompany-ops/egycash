@@ -11,8 +11,9 @@
 # ── builder: install deps, fetch weights ─────────────────────────────────────
 FROM python:3.11-slim AS builder
 
-ENV PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
     PADDLE_HOME=/models \
     PADDLE_PDX_CACHE_HOME=/models
 
@@ -23,7 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --prefix=/install -r /tmp/requirements.txt
+# The wheel cache is a BuildKit cache mount, so it never reaches a layer (image size is unchanged)
+# but survives a failed build: ~400 MB of wheels over a slow or flaky link is not re-downloaded
+# from zero every time one connection drops, which is how the first real build of this died.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install -r /tmp/requirements.txt
 
 # Bake the weights. Fails the build if nothing lands — see the script's closing assertion.
 ENV PYTHONPATH=/install/lib/python3.11/site-packages
@@ -93,3 +98,66 @@ CMD ["-m", "nidocr.service"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
   CMD python -c "import urllib.request,os;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('OCR_PORT','8099')+'/health').read()" || exit 1
+
+# ══ Vision-language readers (Step 2) ═════════════════════════════════════════
+# Each VLM gets its OWN target, built FROM `runtime`, so the PaddleOCR-only image stays exactly as
+# small as it was and the gigabytes of VLM weights exist only in the images that use them:
+#
+#   docker build --target runtime      → PaddleOCR only (also the default: see the last stage)
+#   docker build --target paddleocr-vl → + PaddleOCR-VL-1.6, transformers, torch (CPU)
+#   docker build --target qwen         → + Qwen3.5-4B Q4_K_M + mmproj, llama-server
+#
+# Every artefact is pinned: model repos by commit, the llama.cpp image by digest, Python packages
+# by version, and the GGUF files by SHA-256. All weights are baked in; the containers run with
+# `--network none`.
+
+# ── weights, fetched in throwaway stages so download tooling never ships ────
+# One stage per model, so building one target never downloads the other's weights. Based on the
+# installed packages only, NOT on `runtime`: built from `runtime`, every edit under src/ invalidated
+# these stages and re-downloaded gigabytes of pinned, unchanged weights on each rebuild.
+FROM python:3.11-slim AS vlm-fetch
+COPY --from=builder /install /usr/local
+
+FROM vlm-fetch AS paddleocr-vl-weights
+ARG PADDLEOCR_VL_REVISION=c5630abae1d940eafe0697512a0325494b02ab42
+COPY scripts/fetch_vlm.py /tmp/fetch_vlm.py
+RUN python /tmp/fetch_vlm.py paddleocr_vl
+
+FROM vlm-fetch AS qwen-weights
+ARG QWEN_GGUF_REVISION=e87f176479d0855a907a41277aca2f8ee7a09523
+COPY scripts/fetch_vlm.py /tmp/fetch_vlm.py
+RUN python /tmp/fetch_vlm.py qwen
+
+# ── PaddleOCR-VL-1.6 (0.9B) via transformers, CPU ────────────────────────────
+FROM runtime AS paddleocr-vl
+# CPU-only torch from PyTorch's own index (the default wheel bundles CUDA: gigabytes of nothing on
+# a CPU host). The base requirements are passed as constraints, so nothing PaddleOCR depends on —
+# numpy, Pillow, OpenCV — is upgraded underneath it.
+COPY requirements.txt requirements-vlm.txt /tmp/
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url https://download.pytorch.org/whl/cpu torch==2.14.1 \
+ && pip install -c /tmp/requirements.txt -r /tmp/requirements-vlm.txt
+COPY --from=paddleocr-vl-weights /vlm/PaddleOCR-VL-1.6 /models/vlm/PaddleOCR-VL-1.6
+ENV OCR_TEXT_RECOGNIZER=paddleocr_vl \
+    PADDLEOCR_VL_DIR=/models/vlm/PaddleOCR-VL-1.6 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+# ── Qwen3.5-4B (Q4_K_M GGUF + vision projector) via llama-server ─────────────
+# The official llama.cpp CPU server image, pinned by digest (build 11515, commit 3d65c90d0). Its
+# binaries and ggml backends are copied in as-is; they need only libstdc++, libgomp and libssl,
+# all already in the runtime base.
+FROM ghcr.io/ggml-org/llama.cpp@sha256:f8f71e3be397e868cdddfb9c404e3a263d9697f82fd7205f4737ac981feea4b8 AS llama-cpp
+
+FROM runtime AS qwen
+COPY --from=llama-cpp /app /opt/llama
+COPY --from=qwen-weights /vlm/qwen /models/vlm/qwen
+ENV OCR_TEXT_RECOGNIZER=qwen \
+    LLAMA_SERVER=/opt/llama/llama-server \
+    LD_LIBRARY_PATH=/opt/llama \
+    QWEN_GGUF=/models/vlm/qwen/Qwen3.5-4B-Q4_K_M.gguf \
+    QWEN_MMPROJ=/models/vlm/qwen/mmproj-F16.gguf
+RUN /opt/llama/llama-server --version
+
+# ── default: a plain `docker build .` is still the PaddleOCR-only image ──────
+FROM runtime AS default

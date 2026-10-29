@@ -254,6 +254,8 @@ class AtmMachineService {
     };
     const seen = new Set<string>();
     for (const row of input.machines) {
+      // Per row as well: a bulk add begun before a move stops at its next row (review finding).
+      await assertNoBranchMoveRunning();
       const machineCode = normalizeAtmMachineCode(row.machineCode);
       if (machineCode === '' || seen.has(machineCode)) continue;
       seen.add(machineCode);
@@ -421,6 +423,7 @@ class AtmMachineService {
     const deletedCodes: string[] = [];
     const unknownCodes: string[] = [];
     for (const raw of input.machineCodes) {
+      await assertNoBranchMoveRunning();
       const machineCode = normalizeAtmMachineCode(raw);
       if (machineCode === '') continue;
       const existing = await atmMachineRepository.findOne({

@@ -1284,7 +1284,7 @@ describe('the target the reader confirmed', () => {
 });
 
 describe('writes that wait while a move runs', () => {
-  it('machine, label, register and operation writes are refused 409 while a fresh run holds the lock', async () => {
+  it('machine, label, register and operation writes are refused 423 while a fresh run holds the lock', async () => {
     const run = await AtmBranchMoveRunModel.create({
       sourceBranchId: oid(ZAY),
       targetBranchId: oid(MOH),
@@ -1309,10 +1309,14 @@ describe('writes that wait while a move runs', () => {
       call('post', '/atm/mail-tickets/accept', adminToken, {
         ids: [new Types.ObjectId().toHexString()],
       }),
+      call('post', `/atm/replenishments/${new Types.ObjectId().toHexString()}/reopen`, adminToken, {
+        version: 0,
+      }),
     ];
     try {
       for (const res of await Promise.all(writes())) {
-        expect(res.status, JSON.stringify(res.body)).toBe(409);
+        // 423, never 409: the data-edit dialogs read a 409 as "already exists" (review finding).
+        expect(res.status, JSON.stringify(res.body)).toBe(423);
         expect(errorOf(res).code).toBe('ATM_BRANCH_MOVE_RUNNING');
       }
       // A run left 30 minutes (its process died) no longer holds them: each answers for itself.

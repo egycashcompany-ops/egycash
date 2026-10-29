@@ -250,8 +250,9 @@ its entry here in the same PR.
   part-way, with what moved staying moved, if one appears while it runs; running it again carries
   on. It moves to the target the reader confirmed, refused if the link was re-pointed since, and
   while it runs, adding or deleting machines, receiving and linking register rows, the register
-  import, saving names, opening a replenishment or maintenance and accepting mail wait for it
-  (409), so nothing lands between its plan and its writes; a
+  import, saving names, opening or reopening a replenishment or maintenance and accepting mail
+  wait for it (423), so nothing lands between its plan and its writes — a register import already
+  running refuses the move instead; a
   name deleted or renamed away in one linked branch is never written back by the other. The card
   names every linked branch still holding data, and opens the preview when a link just
   saved has data under it. What is filed from now on follows the link too: a register receipt, the

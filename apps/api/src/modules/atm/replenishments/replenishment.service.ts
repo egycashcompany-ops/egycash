@@ -208,6 +208,8 @@ class AtmReplenishmentService {
    * a row stored before that field existed joins the index once it is open again.
    */
   async reopen(id: string, version: number, ctx: AuthContext): Promise<AtmReplenishmentDoc> {
+    // A reopened operation is open work again (`machineTwinOpen`): it waits for a running move.
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmReplenishment.complete');
     const row = await atmReplenishmentRepository.getById(id, scope);
     const openDay = openDayOf(row.openedAt);

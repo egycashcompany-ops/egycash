@@ -474,10 +474,13 @@ mail of those machines — stayed October's, readable only under «كل الشر
    row per run (not broadcast). The link stays: October's people keep working as Mohandessin.
    The POST names the target the reader confirmed (`expectedTargetBranchId`, from the preview) —
    a precondition only: a link re-pointed since is refused 409 `ATM_BRANCH_MOVE_TARGET_CHANGED`
-   and nothing moves. While a run holds the lock, the writes the move plans from wait for it, 409
-   `ATM_BRANCH_MOVE_RUNNING` (`branch-links/move-fence.ts`): machine adds, edits, area moves and
+   and nothing moves. While a run holds the lock, the writes the move plans from wait for it, 423
+   `ATM_BRANCH_MOVE_RUNNING` (Locked, never 409, which the data-edit dialogs read as "already
+   exists"; `branch-links/move-fence.ts`): machine adds, edits, area moves and
    deletes; register create, edit, receive, link, handover and delete; the register import; label
-   saves; replenishment and maintenance opens and mail accepts (open work the twin plan reads).
+   saves; replenishment and maintenance opens and reopens, and mail accepts (open work the twin
+   plan reads). A bulk add or delete checks again per row, so one begun before the move stops at
+   its next row.
    Otherwise a coupling between the machines step and the register step would write a new
    master under the source, and a key the target gained after a plan would meet the batch. Each
    twin is read again inside its retire's transaction — reactivated or given open work since the

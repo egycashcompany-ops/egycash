@@ -10,8 +10,8 @@
 // orphaned, so they wait too.
 //
 // One run at a time, company-wide, a few minutes long and rare — so the fence is company-wide too:
-// a fresh `running` run refuses these writes 409 `ATM_BRANCH_MOVE_RUNNING`, and the reader retries
-// after the move. A run left 30 minutes (its process died) no longer holds them — the run lock's
+// a fresh `running` run refuses these writes 423 `ATM_BRANCH_MOVE_RUNNING` (Locked — never 409,
+// which the data-edit dialogs read as "already exists"), and the reader retries after the move. A run left 30 minutes (its process died) no longer holds them — the run lock's
 // own takeover rule (branch-move-run.repository.ts `lockHeld`). Not fenced: what files nothing the
 // move plans from — a mail ticket the reader files (under the branch a machine works as), an
 // operation closed, a map pin keyed by machine.
@@ -23,9 +23,12 @@ import { atmBranchMoveRunRepository } from './branch-move-run.repository';
 export const BRANCH_MOVE_RUNNING_MESSAGE =
   'يجري الآن نقل بيانات فرع مرتبط في الصراف الآلي. أعد المحاولة بعد انتهاء النقل.';
 
-/** Refuses 409 while a move runs; resolves otherwise. */
+/**
+ * Refuses 423 while a move runs; resolves otherwise. Called at a write's entry, and again per row
+ * by a long write (a bulk add or delete), so one begun before the move stops at its next row.
+ */
 export const assertNoBranchMoveRunning = async (now: Date = new Date()): Promise<void> => {
   if (await atmBranchMoveRunRepository.lockHeld(now, null)) {
-    throw new AppError(ErrorCodes.ATM_BRANCH_MOVE_RUNNING, 409, BRANCH_MOVE_RUNNING_MESSAGE);
+    throw new AppError(ErrorCodes.ATM_BRANCH_MOVE_RUNNING, 423, BRANCH_MOVE_RUNNING_MESSAGE);
   }
 };

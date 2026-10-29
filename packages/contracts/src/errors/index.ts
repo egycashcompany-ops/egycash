@@ -223,9 +223,10 @@ export const ErrorCodes = {
    */
   ATM_BRANCH_MOVE_TARGET_CHANGED: 'ATM_BRANCH_MOVE_TARGET_CHANGED',
   /**
-   * A write that would make or change what a running «نقل البيانات» re-files waits for it (409):
-   * a register receipt, coupling or import, a machine or label save. Retried after the move; a run
-   * left 30 minutes (its process died) no longer holds them.
+   * A write that would make or change what a running «نقل البيانات» re-files waits for it (423
+   * Locked — never 409, which the data-edit dialogs read as "already exists"): a register receipt,
+   * coupling or import, a machine or label save, an operation opened or reopened, a mail accepted.
+   * Retried after the move; a run left 30 minutes (its process died) no longer holds them.
    */
   ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
 

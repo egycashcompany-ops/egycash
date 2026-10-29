@@ -385,6 +385,22 @@ describe('the area dialog', () => {
     expect(cleared.nameAr).toBeNull();
   });
 
+  // While «نقل البيانات» runs, these writes wait for it — 423, never 409, so no dialog reads the
+  // refusal as "already exists" or fills the register's area box from it (review finding).
+  it('a write waiting for a running move is said as such — never «already exists»', () => {
+    const running = new ApiError(
+      ErrorCodes.ATM_BRANCH_MOVE_RUNNING,
+      'يجري الآن نقل بيانات فرع مرتبط في الصراف الآلي. أعد المحاولة بعد انتهاء النقل.',
+      423,
+    );
+    const said = 'يجري الآن نقل بيانات فرع مرتبط في الصراف الآلي. أعد المحاولة بعد انتهاء النقل.';
+    expect(refLabelErrorText(running, t, 'ar', { areaCreate: true })).toBe(said);
+    expect(
+      existingAreaName(running, 'area', true, { ...refLabelFormOf(null), nameEn: 'Dokki' }),
+    ).toBeNull();
+    expect(machineAddErrorText(running, t, 'ar')).toBe(said);
+  });
+
   it('a taken NEW area says to give the existing one its other language', () => {
     const conflict = new ApiError('CONFLICT', 'duplicate', 409);
     expect(refLabelErrorText(conflict, t, 'ar', { areaCreate: true })).toBe(

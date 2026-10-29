@@ -487,7 +487,9 @@ mail of those machines — stayed October's, readable only under «كل الشر
    plan, the run stops on it (`machineTwinOpen`, STOPPED when an earlier batch already retired some,
    each of those counted on the run). An area name deleted or renamed away in one linked
    branch is never written back as a live label by the other, neither after a write nor by the boot
-   repair (`catalogs/area-labels.ts`): the move takes the source's memory rows first.
+   repair (`catalogs/area-labels.ts`): the move takes the source's memory rows first. The move's own
+   label step is unchanged — a source's LIVE label of a name the target deleted still comes across
+   live (the planner's rule, `branch-move.planner.spec.ts`).
 
 ### 6c. Go-live: Mohandessin first
 

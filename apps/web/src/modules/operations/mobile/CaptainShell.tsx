@@ -13,6 +13,7 @@ import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useT } from '../../../platform/localization/useT';
 import { ChevronStartIcon } from '../../../shared/ui/icons';
+import { AppVersion } from '../../../platform/app/AppVersion';
 
 export const CaptainShell = ({
   title,
@@ -52,6 +53,8 @@ export const CaptainShell = ({
         </div>
       </header>
       <main className="mx-auto max-w-2xl px-4 py-4">{children}</main>
+      {/* No top bar or user menu here, so the build a captain is running is said at the foot. */}
+      <AppVersion className="mx-auto max-w-2xl px-4 pt-4 text-center" />
     </div>
   );
 };

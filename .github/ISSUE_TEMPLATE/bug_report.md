@@ -13,6 +13,7 @@ labels: bug
 
 - Module / platform service: <!-- e.g. platform/auth, hr/recruitment -->
 - Environment: <!-- local / staging / production -->
+- Version: <!-- from the user menu (click your name at the top of the screen), e.g. «Version 2.2.0 · 5f1e139» -->
 - Request ID (if available): <!-- from the X-Request-Id response header / logs -->
 
 ## Steps to reproduce

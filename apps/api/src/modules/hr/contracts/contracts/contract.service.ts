@@ -45,8 +45,11 @@ import { resolveContractVariables } from './contract-variables';
 import { renderContractHtml } from './contract-render';
 import { contractRepository } from './contract.repository';
 import { fromOverridePairs, type ContractDoc } from './contract.model';
+import { APP_VERSION } from '../../../../platform/kernel/app-version';
 
-const GENERATOR_VERSION = 'ecms-api/2.1.0';
+// Stamped into every generated contract's integrity line: the release that produced it, from the
+// platform's one version number — not typed here, where it would fall behind the next release.
+const GENERATOR_VERSION = `ecms-api/${APP_VERSION}`;
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'contract', entityId: id });
 const employeeRef = (id: string) => ({ moduleId: 'hr', entityType: 'employee', entityId: id });

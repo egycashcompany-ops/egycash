@@ -402,7 +402,7 @@ describe('atm i18n catalog', () => {
         ...ATM_BRANCH_MOVE_MERGES.map((key) => `atm.settings.move.merge.${key}`),
         ...ATM_BRANCH_MOVE_BLOCKERS.map((kind) => `atm.settings.move.blocker.${kind}`),
       ];
-      expect(keys).toHaveLength(17 + 9 + 7);
+      expect(keys).toHaveLength(17 + 9 + 8);
       expect(keys.filter((key) => translate(locale, key) === key)).toEqual([]);
     },
   );

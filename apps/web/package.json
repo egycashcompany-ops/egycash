@@ -1,6 +1,6 @@
 {
   "name": "@ecms/web",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "ECMS web shell (phase 2.1: auth session, permission gates, ar/en RTL scaffold)",
   "type": "module",

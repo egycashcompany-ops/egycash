@@ -12,6 +12,7 @@ import { useAppDispatch, useAppSelector } from '../../../../store';
 import { signedOut } from '../../../../store/authSlice';
 import { logoutRequest } from '../../../../platform/auth/api';
 import { useT } from '../../../../platform/localization/useT';
+import { useDocumentTitle } from '../../../../shared/lib/useDocumentTitle';
 import { ThemeToggle } from '../../../../platform/layout/ThemeToggle';
 import { fullName } from '../../../../shared/lib/format';
 import { LanguageToggle } from '../../../../platform/layout/LanguageToggle';
@@ -19,6 +20,7 @@ import { BrandMark } from '../../../../shared/ui/BrandMark';
 
 export const ApplicantPortalShell = (): JSX.Element => {
   const t = useT();
+  useDocumentTitle('EGYCASH');
   const dispatch = useAppDispatch();
   const me = useAppSelector((state) => state.auth.me);
   const locale = useAppSelector((state): Locale => state.locale.locale);

@@ -1,4 +1,4 @@
-// «Version 2.1.0 · 390dce6» — the build a person is looking at, in a quiet line wherever a screen
+// «Version 2.2.0 · 390dce6» — the build a person is looking at, in a quiet line wherever a screen
 // has room for it. Renders nothing when the build stamped no version, rather than a bare label.
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';

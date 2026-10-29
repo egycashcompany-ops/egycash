@@ -21,6 +21,7 @@ import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../../store';
 import { signedIn } from '../../../store/authSlice';
 import { useT } from '../../../platform/localization/useT';
+import { useDocumentTitle } from '../../../shared/lib/useDocumentTitle';
 import { ThemeToggle } from '../../../platform/layout/ThemeToggle';
 import { LanguageToggle } from '../../../platform/layout/LanguageToggle';
 import { loginRequest, totpChallengeRequest } from '../../../platform/auth/api';
@@ -46,6 +47,7 @@ const EgycashLockup = ({ onDark = false }: { onDark?: boolean }): JSX.Element =>
 
 export const PortalLoginPage = (): JSX.Element => {
   const t = useT();
+  useDocumentTitle('EGYCASH');
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const status = useAppSelector((state) => state.auth.status);

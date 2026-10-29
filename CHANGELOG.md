@@ -18,9 +18,16 @@ its entry here in the same PR.
   same height: the top bar, the sign-in, activation and password screens, the applicant portal.
   The mark with the lettering appears where the company's name belongs: the customer and applicant portal
   sign-in, the public application page, the contract verification page. The installed app's icons,
-  the browser-tab icon and the push notification badge carry the mark too. «الإصدار 2.1.0 ·
-  5f1e139» — the version and the commit it was built from, stamped by the build — shows under the
-  sign-in form, at the foot of the user menu and on the crash screen.
+  the browser-tab icon and the push notification badge carry the mark too. «الإصدار 2.2.0 ·
+  5f1e139» — the version and the commit it was built from, stamped by the build — shows at the
+  foot of the user menu, on the crash screen and under the captain's phone screens: to signed-in
+  people only, never on the public sign-in page.
+- **The platform has one version: 2.2.0.** «أعتمد دا 2.2.0». The package files said 2.1.0 (left
+  over from Sprint 2.1), the kernel's platform contract 2.2.0, and generated contracts a
+  hand-typed «ecms-api/2.1.0». Every workspace now declares 2.2.0, a spec holds it equal to
+  `PLATFORM_VERSION`, and contracts are stamped from it
+  ([Development Workflow §6](docs/09-guides/development-workflow.md)). The 0.x headings below
+  stay the pre-GA sprint releases they are.
 - **The IT asset register says who holds each asset, and filters by name.** «وعايز فى شاشة الأصول
   /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر زود بعد
   الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة». `/it/assets` shows «المستلِم» after

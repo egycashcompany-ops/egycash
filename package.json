@@ -1,7 +1,7 @@
 {
   "name": "egycash",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "ECMS Platform — EGYCASH Enterprise Cash Management System",
   "type": "module",
   "engines": {

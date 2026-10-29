@@ -95,6 +95,14 @@ warnings/silenced rules.
   Conventional Commits.
 - The platform follows **semver at the manifest level** (module manifests declare versions);
   breaking platform-contract changes require a deprecation window and a migration note.
+- **The platform presents one version** — 2.2.0, settled by the owner on 2026-10-29. Every
+  workspace's `package.json` declares it, the kernel's `PLATFORM_VERSION` equals it
+  (`apps/api/src/platform/kernel/app-version.spec.ts` fails otherwise), the web app shows it in
+  the user menu with the commit it was built from, and generated contracts are stamped
+  `ecms-api/<version>`. Bump them together:
+  `npm version <x.y.z> --workspaces --include-workspace-root --no-git-tag-version`, then
+  `PLATFORM_VERSION`. The `0.x` headings in `CHANGELOG.md` and `docs/13-releases/` are the pre-GA
+  sprint releases — a separate sequence, kept as it is.
 - Hotfixes: `hotfix/…` off `main`, merged to `main` and back-merged to `develop` immediately.
 
 ## 7. Project rhythm

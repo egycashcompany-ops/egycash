@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { type ContractVerificationDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
+import { useDocumentTitle } from '../../../../shared/lib/useDocumentTitle';
 import { useAppSelector } from '../../../../store';
 import { Card, CardBody, LoadingState } from '../../../../shared/ui';
 import { EgycashLogo } from '../../../../shared/ui/EgycashLogo';
@@ -16,6 +17,7 @@ const fetchVerdict = (code: string, key: string): Promise<ContractVerificationDt
 
 export const VerifyContractPage = (): JSX.Element => {
   const t = useT();
+  useDocumentTitle('EGYCASH');
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp] = useSearchParams();
   const code = sp.get('code') ?? '';

@@ -5,6 +5,9 @@
 // bare «Version» label — when the build stamped nothing. Vitest does not load vite.config.ts, so the
 // stamped values are stubbed here, and the module is imported afresh after stubbing because it reads
 // them once, at load.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -34,6 +37,30 @@ const stampedAppVersion = async (version: string, build: string) => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.resetModules();
+});
+
+// Signed-in screens only. A version on a page anybody can open is a banner for whoever is probing
+// the site, so no public page — the sign-ins, the activation and password screens, the public
+// application and verification pages — renders one.
+describe('who sees it', () => {
+  const SRC = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  it.each([
+    'platform/auth/LoginPage.tsx',
+    'platform/auth/ActivationPage.tsx',
+    'platform/auth/ForcePasswordChangePage.tsx',
+    'modules/gold/portal/PortalLoginPage.tsx',
+    'modules/hr/recruitment/applicant-portal/ApplicantPortalLoginPage.tsx',
+    'modules/hr/recruitment/recruitment-form/pages/PublicApplyPage.tsx',
+    'modules/hr/contracts/pages/VerifyContractPage.tsx',
+  ])('not the public %s', (file) => {
+    const text = readFileSync(join(SRC, file), 'utf8');
+    expect(text).not.toContain('AppVersion');
+    expect(text).not.toContain('versionText');
+  });
+
+  it('the user menu does', () => {
+    expect(readFileSync(join(SRC, 'platform/layout/Topbar.tsx'), 'utf8')).toContain('<AppVersion');
+  });
 });
 
 describe('the version text', () => {

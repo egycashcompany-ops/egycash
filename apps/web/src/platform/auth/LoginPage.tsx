@@ -15,7 +15,6 @@ import { LanguageToggle } from '../layout/LanguageToggle';
 import { BrandMark, Button, Field, Form, Input, PasswordInput } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
-import { AppVersion } from '../app/AppVersion';
 
 interface Enrollment {
   secret: string;
@@ -258,7 +257,6 @@ export const LoginPage = (): JSX.Element => {
             )}
           </div>
         </div>
-        <AppVersion className="pb-4 text-center" />
       </main>
     </div>
   );

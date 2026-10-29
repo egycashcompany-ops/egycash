@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// The version the app shows — on the sign-in screen and in the user menu — is stamped here, at
-// build time, as two variables the client reads like any other `import.meta.env` value:
+// The version the app shows — in the user menu, and on the screens without one — is stamped here,
+// at build time, as two variables the client reads like any other `import.meta.env` value:
 //
 //   VITE_APP_VERSION  the platform's version, from the repository root's package.json: the one
 //                     number the platform is released and presented under.

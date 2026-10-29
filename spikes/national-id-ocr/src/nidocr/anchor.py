@@ -98,6 +98,10 @@ class _Region:
 #: safe — a merged region is still one region, whereas a fragment left alone can be lost entirely.
 MERGE_GAP_LINES = 1.2
 
+#: How far, as a fraction of the box's width, a line's centre may sit outside the box sideways and
+#: still belong to it. See `_overlaps`.
+MAX_SLACK_X = 0.10
+
 
 def _merge_rows(regions: list[_Region], size: tuple[int, int]) -> list[_Region]:
     """Join detection fragments that are words of the same printed line.
@@ -211,8 +215,16 @@ def _overlaps(
     x, y, w, h = rect
     centre_x, centre_y = x + w / 2.0, y + h / 2.0
     slack_y = min(box.h * margin, line_height * 0.5)
+    # Horizontal slack is capped too, for the same kind of reason. 35% of a 0.62-wide name box
+    # reaches 0.22 of the card to its left — onto the printed photo. The first real-model run
+    # showed it: detection read 'PHOTO' there, its centre passed this test, the name box grew left
+    # across the whole photo, and the photo's edges then bridged the gap between the name's two
+    # lines so it could no longer be split into them. A line that belongs to the field has its
+    # centre well inside the text column; fragments at the far end are merged into their line
+    # by `_merge_rows` before this is asked.
+    slack_x = box.w * min(margin, MAX_SLACK_X)
     return (
-        box.x - box.w * margin <= centre_x <= box.x + box.w * (1.0 + margin)
+        box.x - slack_x <= centre_x <= box.x + box.w + slack_x
         and box.y - slack_y <= centre_y <= box.y + box.h + slack_y
     )
 

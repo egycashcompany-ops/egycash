@@ -1,0 +1,4 @@
+# Step 2 only: the PaddleOCR-VL-1.6 image. Installed with requirements.txt as constraints so the
+# PaddleOCR stack's pins (numpy, Pillow, OpenCV) are never upgraded underneath it. torch is
+# installed separately, from PyTorch's CPU-only index — see the Dockerfile.
+transformers==5.19.0

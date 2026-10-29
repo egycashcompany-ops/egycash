@@ -337,3 +337,19 @@ def test_a_vocabulary_row_appearing_twice_is_refused():
         _line(100, 300, 900, 350, "مسلمة"),
     ]
     assert structural(lines, SIZE, wanted={"religion"}) == {}
+
+
+def test_the_printed_photo_beside_the_name_does_not_widen_the_name_box():
+    """Detection reads text on the photo ('PHOTO' on the fixtures, a pattern on real stock).
+
+    With 35% sideways slack its centre counted as part of the name, the name box grew across the
+    photo, and the photo's edges then joined the name's two lines into one unsplittable strip.
+    """
+    box = FieldBox("fullNameAr", x=0.34, y=0.20, w=0.62, h=0.20)
+    name = _line(620, 150, 950, 190, FAMILY_CHAIN)
+    photo = _line(90, 220, 180, 250, "PHOTO")  # centre x 0.135, inside the old 35% slack
+
+    fitted, sources = snap((box,), [name, photo], SIZE)
+    assert sources["fullNameAr"] == "snapped"
+    # Normal padding moves the edge a little; reaching the photo (x < 0.18) is the failure.
+    assert fitted["fullNameAr"].x > 0.25, "the name box grew across the photo"

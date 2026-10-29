@@ -288,3 +288,42 @@ def test_a_line_recognizer_that_returns_nothing_falls_back_rather_than_reporting
     """An empty field and a field the direct path could not read are different states."""
     recognizer = _recognizer_with(_FakeLineRecognizer("", ""))
     assert recognizer.recognize(_crop_with_two_printed_lines()).text == "من الكشف"
+
+
+def test_every_predictor_call_runs_on_one_thread_whatever_thread_asks():
+    """The detector only works on the thread that first ran it.
+
+    The service answers each request on a new thread, so the first card after start read
+    normally and every later card lost detection to `RuntimeError: std::exception` — and was read
+    on profile geometry alone. All predictor work must land on the recognizer's own worker thread.
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    import numpy as np
+
+    from nidocr.engine import PaddleRecognizer
+
+    threads: set[int] = set()
+
+    class _Ocr:
+        def ocr(self, image):  # noqa: ANN001, ARG002
+            threads.add(threading.get_ident())
+            return []
+
+    class _Threaded(PaddleRecognizer):
+        def __init__(self):  # noqa: D107 — deliberately skips PaddleOCR construction
+            self._lock = threading.Lock()
+            self._worker = ThreadPoolExecutor(max_workers=1)
+            self._ocr = _Ocr()
+            self._lines = None
+
+    recognizer = _Threaded()
+    for _ in range(3):
+        caller = threading.Thread(
+            target=recognizer.detect_lines, args=(np.full((646, 1024, 3), 220, np.uint8),)
+        )
+        caller.start()
+        caller.join()
+
+    assert len(threads) == 1, "predictor calls ran on more than one thread"

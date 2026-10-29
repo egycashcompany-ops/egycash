@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local OCR Test</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1c2230; --muted: #667085; --line: #e3e6eb;
+    --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --ok-bg: #e6f4ea;
+    --mid: #9a6700; --mid-bg: #fff4d6; --bad: #c62828; --bad-bg: #fde8e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b2029; --ink: #e6e9ef; --muted: #98a2b3; --line: #2b323e;
+      --accent: #4c8dff; --accent-ink: #0b1220; --ok: #5fd37d; --ok-bg: #1d3325;
+      --mid: #f2c14e; --mid-bg: #3a3020; --bad: #ff7b7b; --bad-bg: #3d2224;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.45 system-ui, "Segoe UI", Tahoma, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .sides, .result { grid-template-columns: 1fr !important; } }
+  .side.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .step { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent);
+          text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+  .preview { aspect-ratio: 85.6 / 54; border: 1px dashed var(--line); border-radius: 8px;
+             display: grid; place-items: center; overflow: hidden; background: var(--bg);
+             color: var(--muted); margin: 8px 0 12px; }
+  .preview img, .preview video { width: 100%; height: 100%; object-fit: contain; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, .filebtn { font: inherit; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+                     border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .filebtn input { display: none; }
+  .actions { margin: 16px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .status { color: var(--muted); }
+  .status.error { color: var(--bad); }
+  .result { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: flex; justify-content: space-between; align-items: center;
+                 font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .field input { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 8px;
+                 border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .field input[dir="rtl"] { font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", sans-serif; }
+  .badge { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+  .badge.high { color: var(--ok); background: var(--ok-bg); }
+  .badge.medium { color: var(--mid); background: var(--mid-bg); }
+  .badge.low, .badge.none { color: var(--bad); background: var(--bad-bg); }
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  details { margin-top: 12px; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--bg);
+        border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; }
+  .hidden { display: none !important; }
+  .cam { margin-top: 8px; }
+  .tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+  .tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+         padding: 8px 14px; color: var(--muted); }
+  .tab.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  textarea { width: 100%; min-height: 220px; font: inherit; font-size: 16px; padding: 10px;
+             border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.num { text-align: right; color: var(--muted); white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>OCR test</h1>
+  <p class="sub">Photos stay on this computer and are sent only to the local OCR service. Any
+    angle works: sideways or upside-down photos are turned upright automatically.</p>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab on" data-mode="id" role="tab">National ID card</button>
+    <button type="button" class="tab" data-mode="doc" role="tab">Any document</button>
+  </nav>
+
+  <div id="mode-id">
+  <p class="sub">Take or choose a photo of the card's <b>front</b>, then its <b>back</b>, then press
+    <b>Read card</b>. One side alone works too: the fields printed on the other side stay empty.</p>
+  <section class="sides">
+    <div class="panel side active" id="side-front">
+      <span class="step">Step 1</span>
+      <h2>Front of the card (name, address, photo)</h2>
+      <div class="preview" id="preview-front">No photo yet</div>
+      <div class="row">
+        <button type="button" data-camera="front">Use camera</button>
+        <label class="filebtn">Choose photo…
+          <input type="file" accept="image/*" capture="environment" data-file="front"></label>
+        <button type="button" data-clear="front" class="hidden">Retake</button>
+      </div>
+    </div>
+    <div class="panel side" id="side-back">
+      <span class="step">Step 2</span>
+      <h2>Back of the card (job, religion, marital status, expiry)</h2>
+      <div class="preview" id="preview-back">No photo yet</div>
+      <div class="row">
+        <button type="button" data-camera="back">Use camera</button>
+        <label class="filebtn">Choose photo…
+          <input type="file" accept="image/*" capture="environment" data-file="back"></label>
+        <button type="button" data-clear="back" class="hidden">Retake</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button type="button" class="primary" id="read" disabled>Read card</button>
+    <button type="button" id="reset">Start over</button>
+    <span class="status" id="status">Checking the OCR service…</span>
+  </div>
+
+  <section class="panel hidden" id="oriented" style="margin-top:16px">
+    <h2>What the model read <span class="note">(each photo after it was turned upright)</span></h2>
+    <div class="sides" id="oriented-sides"></div>
+  </section>
+
+  <section class="result hidden" id="result">
+    <div class="panel">
+      <h2>Extracted fields <span class="note">(editable, as the review dialog would be)</span></h2>
+      <div id="fields"></div>
+    </div>
+    <div class="panel">
+      <h2>Derived from the national ID</h2>
+      <dl id="derived"></dl>
+      <p class="note">Decoded with the same rules as <code>parseNationalId</code>; the API derives these, not OCR.</p>
+      <h2 style="margin-top:20px">Capture quality</h2>
+      <dl id="quality"></dl>
+      <details>
+        <summary>Raw response</summary>
+        <pre id="raw"></pre>
+      </details>
+    </div>
+  </section>
+  </div>
+
+  <div id="mode-doc" class="hidden">
+    <p class="sub">A receipt, a letter, a form: any paper. Take or choose one photo, then press
+      <b>Read text</b>.</p>
+    <div class="panel">
+      <div class="preview" id="preview-doc" style="aspect-ratio: 4 / 3">No photo yet</div>
+      <div class="row">
+        <button type="button" data-camera="doc">Use camera</button>
+        <label class="filebtn">Choose photo…
+          <input type="file" accept="image/*" capture="environment" data-file="doc"></label>
+        <button type="button" class="primary" id="read-doc" disabled>Read text</button>
+        <span class="status" id="status-doc"></span>
+      </div>
+    </div>
+    <section class="result hidden" id="result-doc" style="margin-top:16px">
+      <div class="panel">
+        <h2>Text <span class="note">(reading order; editable)</span></h2>
+        <textarea id="doc-text" dir="auto"></textarea>
+      </div>
+      <div class="panel hidden" id="doc-oriented">
+        <h2>What the model read <span class="note">(the photo after it was turned upright)</span></h2>
+        <div class="preview" style="aspect-ratio: auto"><img id="doc-oriented-img" alt="page as read"></div>
+        <p class="note" id="doc-oriented-note"></p>
+      </div>
+      <div class="panel">
+        <h2>Lines and confidence</h2>
+        <table id="doc-lines"></table>
+      </div>
+    </section>
+  </div>
+  <div class="panel cam hidden" id="camera">
+    <div class="row" style="justify-content: space-between">
+      <h2 id="camera-title" style="margin:0">Camera</h2>
+      <select id="camera-select" aria-label="Camera"></select>
+    </div>
+    <div class="preview" style="margin-top:12px"><video id="video" autoplay playsinline muted></video></div>
+    <div class="row">
+      <button type="button" class="primary" id="snap">Capture</button>
+      <button type="button" id="cam-cancel">Cancel</button>
+      <span class="status">Fill the frame with the card, flat, without glare.</span>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const FIELDS = [
+  ["fullNameAr", "Full name", "rtl"],
+  ["nationalId", "National ID", "ltr"],
+  ["address", "Address", "rtl"],
+  ["occupation", "Occupation", "rtl"],
+  ["religion", "Religion", "rtl"],
+  ["maritalStatus", "Marital status", "rtl"],
+  ["nationalIdExpiry", "Card expiry", "ltr"],
+];
+const GOVERNORATES = {"01":"Cairo","02":"Alexandria","03":"Port Said","04":"Suez","11":"Damietta",
+  "12":"Dakahlia","13":"Sharqia","14":"Qalyubia","15":"Kafr El Sheikh","16":"Gharbia","17":"Monufia",
+  "18":"Beheira","19":"Ismailia","21":"Giza","22":"Beni Suef","23":"Fayoum","24":"Minya","25":"Assiut",
+  "26":"Sohag","27":"Qena","28":"Aswan","29":"Luxor","31":"Red Sea","32":"New Valley","33":"Matrouh",
+  "34":"North Sinai","35":"South Sinai","88":"Born abroad"};
+// Longest side the photo is sent at. The card's width in pixels is what recognition depends on. 2000
+// was plenty for a card that fills the frame, but it shrank a card photographed from further away
+// below what can be read: a card 630 px wide in a 2900 px photo arrived 440 px wide, and the
+// religion and the last ID digit were lost that never were at full size. 4000 keeps a modern phone
+// photo at (or near) its own resolution.
+const MAX_SIDE = 4000;
+
+const photos = { front: null, back: null, doc: null };
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status");
+let stream = null, cameraFor = null;
+
+function setStatus(text, isError = false) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle("error", isError);
+}
+
+function refresh() {
+  $("preview-doc").innerHTML = photos.doc ? `<img alt="document" src="${photos.doc}">` : "No photo yet";
+  $("read-doc").disabled = !photos.doc;
+  for (const side of ["front", "back"]) {
+    const box = $("preview-" + side);
+    box.innerHTML = photos[side] ? `<img alt="${side} of the card" src="${photos[side]}">` : "No photo yet";
+    document.querySelector(`[data-clear="${side}"]`).classList.toggle("hidden", !photos[side]);
+  }
+  const next = !photos.front ? "front" : !photos.back ? "back" : null;
+  $("side-front").classList.toggle("active", next === "front");
+  $("side-back").classList.toggle("active", next === "back");
+  $("read").disabled = !(photos.front || photos.back);
+}
+
+// Downscale and re-encode in the browser: phone photos are 4–12 MB, and two of them base64-encoded
+// would exceed the service's request limit.
+function toJpeg(source, width, height) {
+  const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
+
+async function fromFile(file) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  return toJpeg(bitmap, bitmap.width, bitmap.height);
+}
+
+document.querySelectorAll("[data-file]").forEach((input) => {
+  input.addEventListener("change", async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      photos[input.dataset.file] = await fromFile(file);
+      refresh();
+    } catch (error) {
+      setStatus("Could not open that image: " + error.message, true);
+    }
+    input.value = "";
+  });
+});
+
+document.querySelectorAll("[data-clear]").forEach((button) => {
+  button.addEventListener("click", () => { photos[button.dataset.clear] = null; refresh(); });
+});
+
+async function openCamera(side, deviceId) {
+  cameraFor = side;
+  $("camera-title").textContent = {
+    front: "Camera: front of the card", back: "Camera: back of the card", doc: "Camera: document",
+  }[side];
+  stopCamera();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 } }
+                      : { facingMode: "environment", width: { ideal: 1920 } },
+      audio: false,
+    });
+  } catch (error) {
+    setStatus("Camera unavailable (" + error.message + "). Use “Choose photo…” instead.", true);
+    return;
+  }
+  $("video").srcObject = stream;
+  $("camera").classList.remove("hidden");
+  const select = $("camera-select");
+  const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+  const current = stream.getVideoTracks()[0].getSettings().deviceId;
+  select.innerHTML = devices.map((d, i) =>
+    `<option value="${d.deviceId}" ${d.deviceId === current ? "selected" : ""}>${escapeHtml(d.label || "Camera " + (i + 1))}</option>`
+  ).join("");
+  select.classList.toggle("hidden", devices.length < 2);
+}
+
+function stopCamera() {
+  if (stream) stream.getTracks().forEach((track) => track.stop());
+  stream = null;
+}
+
+document.querySelectorAll("[data-camera]").forEach((button) => {
+  button.addEventListener("click", () => openCamera(button.dataset.camera));
+});
+$("camera-select").addEventListener("change", (event) => openCamera(cameraFor, event.target.value));
+$("cam-cancel").addEventListener("click", () => { stopCamera(); $("camera").classList.add("hidden"); });
+$("snap").addEventListener("click", () => {
+  const video = $("video");
+  if (!video.videoWidth) return;
+  const side = cameraFor;
+  photos[side] = toJpeg(video, video.videoWidth, video.videoHeight);
+  stopCamera();
+  $("camera").classList.add("hidden");
+  refresh();
+  // Front done: go straight on to the back, which is the order the card is handled in.
+  if (side === "front" && !photos.back) openCamera("back");
+});
+
+$("reset").addEventListener("click", () => {
+  photos.front = photos.back = null;
+  $("result").classList.add("hidden");
+  $("oriented").classList.add("hidden");
+  refresh();
+  setStatus("Ready. Start with the front of the card.");
+});
+
+const base64Of = (dataUrl) => dataUrl.slice(dataUrl.indexOf(",") + 1);
+const escapeHtml = (text) => String(text ?? "").replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+$("read").addEventListener("click", async () => {
+  $("read").disabled = true;
+  const started = performance.now();
+  setStatus("Reading the card…");
+  const timer = setInterval(() => setStatus(`Reading the card… ${((performance.now() - started) / 1000).toFixed(0)} s`), 500);
+  try {
+    const response = await fetch("/api/extract", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        // Either side alone is allowed: the service reads whatever it is given.
+        frontImageBase64: photos.front ? base64Of(photos.front) : undefined,
+        backImageBase64: photos.back ? base64Of(photos.back) : undefined,
+        returnOrientedImages: true,
+      }),
+    });
+    const body = await response.json().catch(() => ({ error: "The service returned something that is not JSON." }));
+    if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+    clearInterval(timer);
+    const seconds = ((body.elapsedMs ?? performance.now() - started) / 1000).toFixed(1);
+    setStatus(`Done in ${seconds} s. Check every field against the card.`);
+    render(body);  // after the status line, so a "too far away" warning replaces it
+  } catch (error) {
+    clearInterval(timer);
+    setStatus("Failed: " + error.message, true);
+  } finally {
+    $("read").disabled = !(photos.front || photos.back);
+  }
+});
+
+function render(body) {
+  const fields = body.fields || {};
+  $("fields").innerHTML = FIELDS.map(([key, label, dir]) => {
+    const field = fields[key] || {};
+    const confidence = field.confidence || "none";
+    const shown = confidence === "none" ? "not read" : confidence;
+    return `<div class="field">
+      <label for="f-${key}">${label} <span class="badge ${confidence}">${shown}</span></label>
+      <input id="f-${key}" dir="${dir}" value="${escapeHtml(field.value || "")}">
+    </div>`;
+  }).join("");
+  const idInput = $("f-nationalId");
+  idInput.addEventListener("input", () => renderDerived(idInput.value));
+  renderDerived(idInput.value);
+
+  const quality = body.quality || {};
+  const diagnostics = body.diagnostics || {};
+  $("quality").innerHTML = ["front", "back"].map((side) => {
+    const q = quality[side];
+    if (!q) return `<dt>${side}</dt><dd>—</dd>`;
+    const reasons = (q.reasons || []).length ? ` (${q.reasons.join(", ")})` : "";
+    const how = (diagnostics[side]?.rectification ? `, card found by: ${diagnostics[side].rectification}` : "")
+      + (diagnostics[side]?.rotated ? `, turned ${diagnostics[side].rotated}°` : "")
+      + (diagnostics[side]?.rotated180 ? ", read upside down" : "");
+    const tone = q.verdict === "ok" ? "high" : q.verdict === "degraded" ? "medium" : "low";
+    return `<dt>${side}</dt><dd><span class="badge ${tone}">${escapeHtml(q.verdict)}</span>${escapeHtml(reasons + how)}</dd>`;
+  }).join("");
+  const images = body.orientedImages || {};
+  $("oriented-sides").innerHTML = ["front", "back"].filter((side) => images[side]).map((side) => {
+    const d = diagnostics[side] || {};
+    const turn = ((d.rotated || 0) + (d.rotated180 ? 180 : 0)) % 360;
+    const label = turn ? `turned ${turn}° clockwise` : "read as taken";
+    return `<div><div class="preview"><img alt="${side} as read" src="data:image/jpeg;base64,${images[side]}"></div>
+      <p class="note">${side}: ${label}</p></div>`;
+  }).join("");
+  $("oriented").classList.toggle("hidden", !Object.keys(images).length);
+  // The previews are large; the raw view shows the response without them.
+  // Too far away: say so plainly, above everything else, instead of leaving it in the quality list.
+  const far = ["front", "back"].filter((side) =>
+    (quality[side]?.reasons || []).includes("too_small") || diagnostics[side]?.tooFarToRead);
+  if (far.length) {
+    const located = far.filter((side) => (quality[side]?.reasons || []).includes("too_small"));
+    const widths = located.map((side) => `${side} ${Math.round(quality[side].metrics?.cardWidthPx || 0)} px`).join(", ");
+    const unreadable = far.some((side) => diagnostics[side]?.tooFarToRead);
+    setStatus((unreadable ? `No readable card in the ${far.join(" and ")} photo: it is too far away. `
+                          : "The card is small in the photo, so check the fields. ")
+      + (widths ? `Card width in the photo: ${widths}. ` : "")
+      + "Move closer so the card fills at least a quarter of the photo's width.", unreadable);
+  }
+  $("raw").textContent = JSON.stringify({ ...body, orientedImages: undefined }, null, 2);
+  $("result").classList.remove("hidden");
+}
+
+document.querySelectorAll("[data-mode]").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("[data-mode]").forEach((other) => other.classList.toggle("on", other === tab));
+    $("mode-id").classList.toggle("hidden", tab.dataset.mode !== "id");
+    $("mode-doc").classList.toggle("hidden", tab.dataset.mode !== "doc");
+  });
+});
+
+$("read-doc").addEventListener("click", async () => {
+  const status = $("status-doc");
+  $("read-doc").disabled = true;
+  status.textContent = "Reading…";
+  status.classList.remove("error");
+  try {
+    const response = await fetch("/api/read", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imageBase64: base64Of(photos.doc), returnOrientedImages: true }),
+    });
+    const body = await response.json().catch(() => ({ error: "The service returned something that is not JSON." }));
+    if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+    $("doc-text").value = body.text;
+    $("doc-text").dir = body.rtl ? "rtl" : "ltr";
+    $("doc-lines").innerHTML = body.lines.map((line) =>
+      `<tr><td dir="auto">${escapeHtml(line.text)}</td><td class="num">${Math.round(line.score * 100)}%</td></tr>`
+    ).join("");
+    if (body.orientedImage) {
+      $("doc-oriented-img").src = `data:image/jpeg;base64,${body.orientedImage}`;
+      $("doc-oriented-note").textContent = body.rotated ? `Turned ${body.rotated}° clockwise.` : "Read as taken.";
+    }
+    $("doc-oriented").classList.toggle("hidden", !body.orientedImage);
+    $("result-doc").classList.remove("hidden");
+    const turned = body.rotated ? ` Turned ${body.rotated}° to read it.` : "";
+    status.textContent = `Done in ${(body.elapsedMs / 1000).toFixed(1)} s, ${body.lines.length} lines.${turned}`;
+  } catch (error) {
+    status.textContent = "Failed: " + error.message;
+    status.classList.add("error");
+  } finally {
+    $("read-doc").disabled = !photos.doc;
+  }
+});
+
+// Mirrors packages/contracts parseNationalId, for display only.
+function parseNationalId(raw) {
+  const value = String(raw).trim().replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+  if (!/^\d{14}$/.test(value)) return null;
+  if (value[0] !== "2" && value[0] !== "3") return null;
+  const year = (value[0] === "2" ? 1900 : 2000) + Number(value.slice(1, 3));
+  const month = Number(value.slice(3, 5)), day = Number(value.slice(5, 7));
+  const birth = new Date(Date.UTC(year, month - 1, day));
+  if (birth.getUTCFullYear() !== year || birth.getUTCMonth() !== month - 1 ||
+      birth.getUTCDate() !== day || birth.getTime() > Date.now()) return null;
+  const governorate = GOVERNORATES[value.slice(7, 9)];
+  if (!governorate) return null;
+  return { birth: birth.toISOString().slice(0, 10), governorate,
+           gender: Number(value[12]) % 2 === 1 ? "Male" : "Female" };
+}
+
+function renderDerived(nationalId) {
+  const parts = parseNationalId(nationalId);
+  $("derived").innerHTML = parts
+    ? `<dt>Birth date</dt><dd>${parts.birth}</dd><dt>Gender</dt><dd>${parts.gender}</dd>
+       <dt>Governorate of birth</dt><dd>${parts.governorate}</dd>`
+    : `<dt>Status</dt><dd><span class="badge low">not a valid national ID</span></dd>`;
+}
+
+fetch("/api/health").then((r) => r.json()).then((health) => {
+  if (health.status === "ok") {
+    setStatus(`OCR service ready (layout: ${health.layoutProfile}). Start with the front of the card.`);
+  } else {
+    setStatus(health.error || "The OCR service is not ready yet.", true);
+  }
+}).catch(() => setStatus("Cannot reach the OCR service. Start it with `make serve`.", true));
+
+refresh();
+</script>
+</body>
+</html>

@@ -46,6 +46,32 @@ services:
       timeout: 10s
       retries: 20
 
+  # Offline National-ID OCR sidecar (OQ-30). Opt-in — `--profile ocr` — and paired with
+  # NATIONAL_ID_OCR_URL=http://localhost:8099 in .env. Without that variable the api keeps the
+  # null stub and the endpoint answers `available: false`, which is every install that does not
+  # run this.
+  #
+  #   docker compose --profile ocr up -d --build nid-ocr
+  #
+  # `target: runtime` is the PaddleOCR-only stage. The Dockerfile also carries `paddleocr-vl` and
+  # `qwen` stages that bake far larger VLM weights; naming the stage here keeps a plain
+  # `--build` from depending on which stage happens to be last.
+  #
+  # The weights are baked into the image, so the container needs no egress at all. The first
+  # build is long (it downloads and bakes the models) and the image is several GB. The port is
+  # bound to loopback deliberately: it reads identity cards and must never be reachable off the
+  # host.
+  nid-ocr:
+    build:
+      context: ./spikes/national-id-ocr
+      target: runtime
+    profiles: ['ocr']
+    ports:
+      - '127.0.0.1:8099:8099'
+    environment:
+      OCR_PORT: '8099'
+      OCR_PRELOAD: '1' # pay the model load at start, not on a user's first request
+
 volumes:
   mongo-data:
   redis-data:

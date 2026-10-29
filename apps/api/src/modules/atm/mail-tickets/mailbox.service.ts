@@ -26,6 +26,7 @@ import {
 } from '../../../shared/errors';
 import { type AuthContext } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
+import { linkedBranchOf, loadAtmBranchLinks } from '../shared/atm-context';
 import { assertAtmSettingsManager } from '../shared/settings-authority';
 import { pollAtmMailbox, type AtmMailPollRun } from './mail-poll.service';
 import { ATM_MAILBOX_KEY, type AtmMailboxConfigDoc } from './mailbox-config.model';
@@ -63,6 +64,29 @@ export const toAtmMailPollRunDto = (run: AtmMailPollRun): AtmMailPollRunDto => (
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/**
+ * Pure: the card's branch rows as they are saved — a linked SOURCE is saved as its target
+ * (`atm.branchLinks`), keeping its place and its category, and dropped when the target is on the
+ * list already: its mail is filed under the target (mail-ingestion.service.ts), so a row of its own
+ * would switch nothing on, and the target's own row keeps its colour. Each branch stays once.
+ */
+export const mailboxBranchesFiledAs = <T extends { branchId: string; category: string | null }>(
+  rows: readonly T[],
+  links: ReadonlyMap<string, string>,
+): { branchId: string; category: string | null }[] => {
+  const listed = new Set(rows.map((row) => row.branchId.toLowerCase()));
+  const kept = new Set<string>();
+  const out: { branchId: string; category: string | null }[] = [];
+  for (const row of rows) {
+    const branchId = linkedBranchOf(links, row.branchId);
+    if (branchId !== row.branchId.toLowerCase() && listed.has(branchId)) continue;
+    if (kept.has(branchId)) continue;
+    kept.add(branchId);
+    out.push({ branchId, category: row.category });
+  }
+  return out;
+};
 
 class AtmMailboxService {
   /** GET — the document without its secret, or `null` while the reader runs on the environment. */
@@ -102,13 +126,14 @@ class AtmMailboxService {
       input.clientSecret === undefined
         ? storedSecret
         : await this.seal(input.clientSecret, String(id));
+    const branches = mailboxBranchesFiledAs(input.branches, await loadAtmBranchLinks());
     const fields = {
       tenantId: input.tenantId,
       clientId: input.clientId,
       clientSecretRef,
       userEmail: input.userEmail,
       enabled: input.enabled,
-      branches: input.branches.map((row) => ({
+      branches: branches.map((row) => ({
         branchId: new Types.ObjectId(row.branchId),
         category: row.category,
       })),

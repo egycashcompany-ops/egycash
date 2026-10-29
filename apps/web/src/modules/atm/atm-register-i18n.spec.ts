@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATM_REGISTER_BRANCH_CODES,
+  ATM_REGISTER_BRANCH_NAMES,
   ATM_REGISTER_COLUMNS,
   ATM_REGISTER_GROUPS,
   ATM_REGISTER_IMPORT_BLOCKERS,
@@ -137,6 +138,9 @@ const PAGE_KEYS = [
   'atm.registerReport.unmapped',
   'atm.registerReport.withoutBank',
   'atm.registerReport.chartSummary',
+  // The report's branch sections named by the ECMS name the server sends (2026-10-28).
+  'atm.registerReport.branch2Named',
+  'atm.registerReport.branch3Named',
   // Import page and settings card (§9.4).
   'atm.registerImport.title',
   'atm.registerImport.intro',
@@ -174,6 +178,7 @@ const PAGE_KEYS = [
   'atm.registerImport.branches.inReach',
   'atm.registerImport.branches.rows',
   'atm.registerImport.branches.openRows',
+  'atm.registerImport.branches.worksAs',
   'atm.registerImport.runs.title',
   'atm.registerImport.runs.started',
   'atm.registerImport.runs.finished',
@@ -196,6 +201,8 @@ const PAGE_KEYS = [
   'atm.registerSettings.sheetName',
   'atm.registerSettings.branch',
   'atm.registerSettings.pickBranch',
+  'atm.registerSettings.worksAs',
+  'atm.registerSettings.worksAsHint',
   'atm.registerSettings.bankLabels',
   'atm.registerSettings.bank',
   'atm.registerSettings.bankName',
@@ -311,6 +318,50 @@ describe('the efficiency register i18n catalog', () => {
     // DEC-28 — provisional, owner to confirm (EG-21).
     expect(translate('ar', 'atm.registerReport.total')).toBe('إجمالي عدد الماكينات');
     expect(bankName('NXT', 'ar')).toBe('NXT BANK');
+  });
+
+  // A section named from the server's ECMS name must read as the sheet's own label does: the
+  // templates around the workbook's names give back the per-code labels — every one in section 2,
+  // and in section 3 every English one and each Arabic one the sheet spells plainly (its «أسيــوط»,
+  // «الاســكندرية» and «(وصال )» are the sheet's typography, kept on the per-code keys).
+  it('writes a named section as the sheet writes its own (branch alignment, 2026-10-28)', () => {
+    for (const locale of LOCALES) {
+      for (const code of ATM_REGISTER_BRANCH_CODES) {
+        const name = ATM_REGISTER_BRANCH_NAMES[code][locale];
+        expect(translate(locale, 'atm.registerReport.branch2Named', { name }), code).toBe(
+          translate(locale, `atm.registerReport.branch2.${code}`),
+        );
+      }
+    }
+    for (const code of ATM_REGISTER_BRANCH_CODES) {
+      const name = ATM_REGISTER_BRANCH_NAMES[code].en;
+      expect(translate('en', 'atm.registerReport.branch3Named', { name }), code).toBe(
+        translate('en', `atm.registerReport.branch3.${code}`),
+      );
+    }
+    for (const code of ['EGYCASH-1', 'EGYCASH-2', 'EGYCASH-5', 'EGYCASH-6'] as const) {
+      const name = ATM_REGISTER_BRANCH_NAMES[code].ar;
+      expect(translate('ar', 'atm.registerReport.branch3Named', { name }), code).toBe(
+        translate('ar', `atm.registerReport.branch3.${code}`),
+      );
+    }
+  });
+
+  // The owner: «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي». Outside the settings card and
+  // the import preview the register is named by its mapping, never by an EGYCASH code.
+  it('speaks of the register mapping, not of codes, outside the settings card and the import', () => {
+    const reworded = [
+      'atm.dataEdit.notRegisterMapped',
+      'atm.dataEdit.register.branchUnmapped',
+      'atm.dataEdit.notRecorded.branchUnmapped',
+      'atm.register.error.ATM_REGISTER_BRANCH_UNMAPPED',
+      'atm.registerReport.unmapped',
+    ];
+    for (const locale of LOCALES) {
+      for (const key of reworded) {
+        expect(translate(locale, key), `${locale} ${key}`).not.toMatch(/EGYCASH|كود|\bcode\b/i);
+      }
+    }
   });
 
   it('keeps the untranslated headers untranslated (DEC-22)', () => {

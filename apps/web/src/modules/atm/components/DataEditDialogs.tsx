@@ -27,7 +27,16 @@
 // AN ADD LANDS IN THE REGISTER (DEC-36). The owner's call (final): a machine added here is recorded
 // in the Efficiency register as an OPEN receipt dated the add day, linked to the machine and flagged
 // «بيانات ناقصة». The server answers what it did on the register's side and the toast says so — and
-// the dialog says BEFORE the click when this branch cannot be recorded at all (no EGYCASH code).
+// the dialog says BEFORE the click when this branch cannot be recorded at all (the register is not
+// mapped to it).
+//
+// AN ADD SAYS WHERE IT FILES (GM-20 for ATM, 2026-10-28). The add forms open on «الفرع: …», the
+// branch the server will write: for an organization-wide user the top bar's, never their home
+// placement — the owner's report was a machine that showed only under «كل الشركة». On «الشركة كلها»
+// in a company of several branches the server names none, and the form asks for a branch in the
+// top bar instead of letting the add through. The bulk delete-by-codes waits for that branch too:
+// it finds the codes in the acting branch exactly as the add files there (DEC-39, `addBranchOf`),
+// so without one every delete was refused with the add's own message.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   ErrorCodes,
@@ -350,8 +359,49 @@ export const AreaOptions = ({
 };
 
 /**
- * Said BEFORE an add when the branch has no EGYCASH code (DEC-10): the machine still works for
- * Operations, but nothing can be recorded in the register for it.
+ * No branch to add in: the server named none (`branch: null` — «الشركة كلها» while the company has
+ * several branches), so the add — and the bulk delete-by-codes, which looks its codes up in that
+ * same branch — waits for a branch chosen in the top bar. An older server that names no branch at
+ * all (`branch` absent) blocks nothing, as before.
+ */
+export const addBlocked = (options: AtmRefLabelOptionsDto | undefined): boolean =>
+  options?.branch === null;
+
+/**
+ * The top of an add form (of the whole bulk dialog): the branch the add files into, «الفرع: …», as
+ * the top bar names it — or, when there is none, the request to choose one there first.
+ */
+const AddBranchLine = ({
+  options,
+}: {
+  options: AtmRefLabelOptionsDto | undefined;
+}): JSX.Element | null => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const branch = options?.branch;
+  if (branch === undefined) return null;
+  return branch === null ? (
+    <p
+      role="status"
+      data-add-branch="none"
+      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
+    >
+      {t('atm.dataEdit.chooseBranch')}
+    </p>
+  ) : (
+    <p
+      data-add-branch={branch.id}
+      className="text-sm font-medium text-slate-700 dark:text-slate-200"
+    >
+      {t('atm.dataEdit.addInBranch', { name: branch.name[locale] })}
+    </p>
+  );
+};
+
+/**
+ * Said BEFORE an add when the register is not mapped to the branch (DEC-10): the machine still
+ * works for Operations, but nothing can be recorded in the register for it. Not when there is no
+ * branch at all — `AddBranchLine` says that.
  */
 const UnmappedBranchNotice = ({
   options,
@@ -359,7 +409,7 @@ const UnmappedBranchNotice = ({
   options: AtmRefLabelOptionsDto | undefined;
 }): JSX.Element | null => {
   const t = useT();
-  return options?.registerMapped === false ? (
+  return options?.registerMapped === false && !addBlocked(options) ? (
     <p
       data-register-unmapped="true"
       className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
@@ -407,7 +457,8 @@ export const MachineDialog = ({
     name.trim() !== '' &&
     bankName !== '' &&
     area !== '' &&
-    (machine !== null || normalizeAtmMachineCode(machineCode) !== '');
+    (machine !== null ||
+      (normalizeAtmMachineCode(machineCode) !== '' && !addBlocked(options.data)));
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -447,6 +498,7 @@ export const MachineDialog = ({
       title={machine === null ? t('atm.dataEdit.addMachine') : t('atm.dataEdit.editMachine')}
     >
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
+        {machine === null && <AddBranchLine options={options.data} />}
         {machine === null && <UnmappedBranchNotice options={options.data} />}
         <Field
           label={t('atm.common.machineId')}
@@ -737,7 +789,13 @@ export const RefLabelDialog = ({
   const update = useUpdateAtmRefLabel(kind);
   const pending = create.isPending || update.isPending;
   const creating = label === null;
-  const complete = refLabelFormComplete(kind, creating, form);
+  // A new label with no branch named is filed in the acting branch: on «كل الشركة» there is none,
+  // so the dialog says so and waits for one, as the machine add does — however it was opened, by
+  // the header's button or by a `creating` that survived a tab change (review finding).
+  const actingAsked = open && creating && branchId === undefined;
+  const acting = useAtmRefLabelOptions(null, actingAsked);
+  const complete =
+    refLabelFormComplete(kind, creating, form) && !(actingAsked && addBlocked(acting.data));
   // The ACTIVE banks, plus the spelling's own bank when it has been archived since.
   const banks = useMemo(
     () =>
@@ -784,6 +842,7 @@ export const RefLabelDialog = ({
     // لما ادوس على الاكس» (Dialog.tsx). The × and Escape still close it.
     <Dialog open={open} onClose={onClose} title={title} dismissOnOutsideClick={false}>
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
+        {actingAsked && <AddBranchLine options={acting.data} />}
         {(kind === 'bank' || !creating) && (
           <Field
             label={t(kind === 'bank' ? 'atm.dataEdit.labelName' : 'atm.dataEdit.storedName')}
@@ -887,7 +946,7 @@ export const RefLabelDialog = ({
  *
  * `atmMachine.manage` only (D2): both halves decide whether a machine exists, and Operations no
  * longer do that. The page offers the dialog only behind that key, and the server refuses both
- * routes without it.
+ * routes without it. Both halves work in the acting branch, named once above them.
  */
 export const BulkMachinesDialog = ({
   open,
@@ -922,7 +981,7 @@ export const BulkMachinesDialog = ({
   const submitAdd = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     const machines = buildMachineRows(codes, names);
-    if (machines.length === 0 || bankName === '' || area === '') return;
+    if (machines.length === 0 || bankName === '' || area === '' || addBlocked(options.data)) return;
     try {
       const result = bulkAddResultOf(await bulkCreate.mutateAsync({ bankName, area, machines }));
       if (result.created.length > 0 || result.reactivatedCodes.length > 0) {
@@ -938,7 +997,7 @@ export const BulkMachinesDialog = ({
   const submitDelete = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     const machineCodes = splitAtmFormLines(deleteCodes).filter((code) => code !== '');
-    if (machineCodes.length === 0) return;
+    if (machineCodes.length === 0 || addBlocked(options.data)) return;
     try {
       const result = await bulkDelete.mutateAsync({ machineCodes });
       toast.success(t('atm.dataEdit.machinesDeleted', { count: result.deletedCodes.length }));
@@ -954,6 +1013,8 @@ export const BulkMachinesDialog = ({
   return (
     <Dialog open={open} onClose={onClose} title={t('atm.dataEdit.bulkTitle')}>
       <div className="space-y-6">
+        {/* Over both halves: the delete finds its codes in the branch the add files into. */}
+        <AddBranchLine options={options.data} />
         <form onSubmit={(e) => void submitAdd(e)} className="space-y-3">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
             {t('atm.dataEdit.addMachines')}
@@ -1003,7 +1064,11 @@ export const BulkMachinesDialog = ({
             </Field>
           </div>
           <div className="flex justify-end">
-            <Button type="submit" loading={bulkCreate.isPending}>
+            <Button
+              type="submit"
+              loading={bulkCreate.isPending}
+              disabled={addBlocked(options.data)}
+            >
               {t('atm.common.add')}
             </Button>
           </div>
@@ -1031,7 +1096,12 @@ export const BulkMachinesDialog = ({
             />
           </Field>
           <div className="flex justify-end">
-            <Button type="submit" variant="danger" loading={bulkDelete.isPending}>
+            <Button
+              type="submit"
+              variant="danger"
+              loading={bulkDelete.isPending}
+              disabled={addBlocked(options.data)}
+            >
               {t('atm.common.delete')}
             </Button>
           </div>

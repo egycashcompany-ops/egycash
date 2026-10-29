@@ -22,7 +22,7 @@
 // register bank — so the bank filter takes any well-shaped code (whether it exists is the server's
 // answer, and a stale one simply matches nothing), and «البنوك» in the header opens the catalog for
 // whoever keeps it: Efficiency curate banks HERE, having no navigation row to /atm/data-edit.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ATM_BANK_CODE_PATTERN,
@@ -60,7 +60,11 @@ import { HandoverDialog } from '../components/register/HandoverDialog';
 import { LinkEntryDialog } from '../components/register/LinkEntryDialog';
 import { ReceiveEntryDialog } from '../components/register/ReceiveEntryDialog';
 import { ReceivePendingDialog } from '../components/register/ReceivePendingDialog';
-import { RegisterFilters, type RegisterFilterValues } from '../components/register/RegisterFilters';
+import {
+  RegisterFilters,
+  strayRegisterBranch,
+  type RegisterFilterValues,
+} from '../components/register/RegisterFilters';
 import { RegisterGrid } from '../components/register/RegisterGrid';
 import { type RegisterRowAction } from '../components/register/RegisterRowActions';
 import { RevealCombinationDialog } from '../components/register/RevealCombinationDialog';
@@ -181,6 +185,15 @@ export const RegisterPage = (): JSX.Element => {
 
   const meta = useRegisterMeta();
   const list = useRegisterEntries(listParams);
+  // A branch filter the server no longer offers (`strayRegisterBranch`) goes, with the area that was
+  // that branch's — replacing the history entry, so Back never returns to a view that answered
+  // empty; the remembered view then records the corrected one.
+  useEffect(() => {
+    if (!strayRegisterBranch(meta.data, filters.branch)) return;
+    const next = new URLSearchParams(sp);
+    for (const key of ['branch', 'area', 'page']) next.delete(key);
+    setSp(next, { replace: true });
+  }, [meta.data, filters.branch]);
   const rows = list.data?.items ?? [];
   // The meta carries the whole catalog (archived banks too), so the grid names banks without a
   // request of its own; the six seeds stand in until it answers.

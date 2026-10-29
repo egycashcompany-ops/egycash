@@ -1093,3 +1093,162 @@ describe('the blockers that guard the register (DEC-31)', () => {
     expect(await masterOf(alexBranchId, '99992001')).toBeNull();
   });
 });
+
+// The owner's report (2026-10-28): EGYCASH-1 was mapped to the October branch that works as
+// Mohandessin (`atm.branchLinks`, #614), so the import filed its rows — and their machines — under
+// October, readable only under «كل الشركة». The mapping is now read through the links, and an
+// already-imported row's column A is compared as BRANCHES, so the link, a remap or a data move
+// («نقل البيانات») does not block the next import with `changedSinceImport`.
+describe('branch links (2026-10-28)', () => {
+  let mohBranchId: string;
+  let octBranchId: string;
+  const settingsCtx = (): AuthContext => ({
+    userId: new Types.ObjectId().toHexString(),
+    sessionId: 'seed',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  });
+  const setCodes = (value: { code: string; branchId: string }[]) =>
+    settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.RegisterBranchCodes,
+      scope: 'organization',
+      value,
+    });
+  const setLinks = (value: { branchId: string; actsAsBranchId: string }[]) =>
+    settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.BranchLinks,
+      scope: 'organization',
+      value,
+    });
+  const MOH = { ar: 'المهندسين', en: 'Mohandessin HQ' };
+  const OCT = { ar: 'أكتوبر', en: 'October' };
+  const mohOpen = (fields: Parameters<typeof atmRow>[0]): SyntheticRow =>
+    alexOpen({ branchCode: 'EGYCASH-1', area: 'Dokki', ...fields });
+
+  beforeAll(async () => {
+    const branch = async (code: string, name: { ar: string; en: string }): Promise<string> => {
+      const res = await request(app)
+        .post('/api/v1/platform/branches')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ code, name });
+      expect(res.status, res.text).toBe(201);
+      return data<{ id: string }>(res).id;
+    };
+    mohBranchId = await branch('92', MOH);
+    octBranchId = await branch('93', OCT);
+  });
+
+  beforeEach(async () => {
+    // The owner's configuration: the workbook's EGYCASH-1 mapped to the October branch.
+    await setCodes([
+      { code: 'EGYCASH-4', branchId: alexBranchId },
+      { code: 'EGYCASH-2', branchId: tantaBranchId },
+      { code: 'EGYCASH-1', branchId: octBranchId },
+    ]);
+    await setLinks([{ branchId: octBranchId, actsAsBranchId: mohBranchId }]);
+  });
+
+  afterAll(async () => {
+    await setLinks([]);
+    await setCodes([
+      { code: 'EGYCASH-4', branchId: alexBranchId },
+      { code: 'EGYCASH-2', branchId: tantaBranchId },
+    ]);
+  });
+
+  it('21 — a code mapped to the linked October lands its rows, and their masters, in Mohandessin', async () => {
+    const file = await workbook([mohOpen({ machineCode: 99992101 })]);
+    const { dto } = await preview(importerToken, file);
+    expect(dto.blockers).not.toContain('branchUnmapped');
+    expect(dto.branches).toEqual([
+      expect.objectContaining({
+        code: 'EGYCASH-1',
+        // The raw mapping the settings card holds, and where the rows go ("via" the link).
+        branchId: octBranchId,
+        branchName: OCT,
+        resolvedBranchId: mohBranchId,
+        resolvedBranchName: MOH,
+        active: true,
+        inReach: true,
+        rows: 1,
+      }),
+    ]);
+    await applyImport(importerToken, file, ['entries', 'create']);
+    expect(String((await entryOfRow(3))?.branchId)).toBe(mohBranchId);
+    expect(await masterOf(mohBranchId, '99992101')).not.toBeNull();
+    expect(await masterOf(octBranchId, '99992101')).toBeNull();
+  });
+
+  it('22 — column A compares branches: imported under October, linked, moved or remapped — unchanged', async () => {
+    const file = await workbook([
+      mohOpen({ machineCode: 99992201 }),
+      ended({ branchCode: 'EGYCASH-1', machineCode: 99992202 }),
+    ]);
+    // Imported BEFORE the link existed: the rows sit in October, as production's do.
+    await setLinks([]);
+    await applyImport(importerToken, file, ['entries']);
+    expect(String((await entryOfRow(3))?.branchId)).toBe(octBranchId);
+    const unchanged = async (): Promise<void> => {
+      const { dto } = await preview(importerToken, file);
+      expect(dto.blockers).not.toContain('changedSinceImport');
+      expect(category(dto, 'changedSinceImport').items).toEqual([]);
+    };
+    // The link saved: October's rows are Mohandessin's, and so are the file's.
+    await setLinks([{ branchId: octBranchId, actsAsBranchId: mohBranchId }]);
+    await unchanged();
+    // «نقل البيانات» moved the entries to Mohandessin.
+    await AtmRegisterEntryModel.updateMany(
+      { branchId: new Types.ObjectId(octBranchId) },
+      { $set: { branchId: new Types.ObjectId(mohBranchId) } },
+    ).exec();
+    await unchanged();
+    // The code remapped to Mohandessin itself.
+    await setCodes([
+      { code: 'EGYCASH-4', branchId: alexBranchId },
+      { code: 'EGYCASH-2', branchId: tantaBranchId },
+      { code: 'EGYCASH-1', branchId: mohBranchId },
+    ]);
+    await unchanged();
+    // A real re-filing is still a change: the code now says Alexandria's branch.
+    await setCodes([
+      { code: 'EGYCASH-4', branchId: tantaBranchId },
+      { code: 'EGYCASH-1', branchId: alexBranchId },
+    ]);
+    const { dto } = await preview(importerToken, file);
+    expect(category(dto, 'changedSinceImport').items.map((i) => [i.importRow, i.columns])).toEqual([
+      [3, ['A']],
+      [4, ['A']],
+    ]);
+  });
+
+  it('23 — another branch is named by its ECMS name, not the workbook’s', async () => {
+    // A machine still filed under October, active: the Alexandria row of the same code meets it.
+    await addMachine(octBranchId, {
+      machineCode: '99992301',
+      name: 'October ATM',
+      bankName: 'NBE',
+      area: 'Dokki',
+    });
+    const { dto } = await preview(
+      importerToken,
+      await workbook([alexOpen({ machineCode: 99992301 })]),
+    );
+    const elsewhere = category(dto, 'activeElsewhere');
+    expect(elsewhere.items.map((i) => [i.otherBranchCode, i.otherBranchName])).toEqual([
+      ['EGYCASH-1', OCT],
+    ]);
+    expect(elsewhere.pairs).toEqual([
+      expect.objectContaining({
+        fromBranchCode: 'EGYCASH-1',
+        fromBranchName: OCT,
+        toBranchCode: 'EGYCASH-4',
+        count: 1,
+      }),
+    ]);
+  });
+});

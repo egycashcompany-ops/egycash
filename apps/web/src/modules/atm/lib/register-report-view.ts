@@ -27,6 +27,12 @@
 // (`section1Banks`, `section3Banks`, `banks`): the six keep their sheet positions and every other
 // bank follows them. An older server that does not send those fields yet (a rolling deploy) gets
 // the sheet's own six, exactly as before.
+//
+// THE BRANCHES ARE THE TOP BAR'S (2026-10-28). A branch section reads the ECMS name the server
+// sends (`branchNames`) inside the sheet's own two patterns — «فرع إيجي كاش …» in section 2,
+// «إيجي كــاش ( … )» in section 3 — so the report names a branch as the switcher does (the owner:
+// «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي»). A code the server names no branch for (an
+// older server, a branch gone) keeps the sheet's own per-code label.
 import {
   ATM_REPORT_SECTION1_BANKS,
   ATM_REPORT_SECTION3_BANKS,
@@ -101,7 +107,7 @@ export interface RegisterReportView {
   section1: ReportSingleSection;
   section2: ReportSingleSection;
   section3: ReportGroupedSection;
-  /** ACTIVE entries counted in section 1 only — their branch has no register code. */
+  /** ACTIVE entries counted in section 1 only — no register code resolves to their branch. */
   activeWithUnmappedBranch: number;
   /** ACTIVE entries counted in the branch figures only — they carry no bank. */
   activeWithoutBank: number;
@@ -128,6 +134,24 @@ export const reportBanksOf = (dto: AtmRegisterReportDto): ReportBanks => {
     section3: partial.section3Banks ?? ATM_REPORT_SECTION3_BANKS,
     banks: partial.banks ?? [],
   };
+};
+
+/**
+ * A branch section's label: the ECMS name the server sends for the code, in the sheet's pattern
+ * for that section (`branch2Named` / `branch3Named`), else the sheet's own per-code label.
+ */
+export const reportBranchLabel = (
+  dto: Pick<AtmRegisterReportDto, 'branchNames'>,
+  code: AtmRegisterBranchCode,
+  section: 2 | 3,
+  locale: Locale,
+  t: Translate,
+): string => {
+  const name = dto.branchNames?.[code]?.[locale];
+  if (name === undefined) return t(`atm.registerReport.branch${String(section)}.${code}`);
+  return t(section === 2 ? 'atm.registerReport.branch2Named' : 'atm.registerReport.branch3Named', {
+    name,
+  });
 };
 
 /** The report's model, from the server's DTO, in the reader's language. */
@@ -163,7 +187,7 @@ export const registerReportView = (
       label:
         cell.isTotal || cell.branchCode === null
           ? totalLabel
-          : t(`atm.registerReport.branch2.${cell.branchCode}`),
+          : reportBranchLabel(dto, cell.branchCode, 2, locale, t),
       value: readAtmReportCell(counts, cell),
       isTotal: cell.isTotal,
     }));
@@ -172,7 +196,7 @@ export const registerReportView = (
   const groups: ReportGroup[] = ATM_REPORT_SECTION3_BRANCHES.filter((code) => shown.has(code)).map(
     (code) => ({
       key: code,
-      label: t(`atm.registerReport.branch3.${code}`),
+      label: reportBranchLabel(dto, code, 3, locale, t),
       cells: orders.section3.map((bank) => {
         const cell = section3Cells.find((c) => c.branchCode === code && c.bankCode === bank);
         return {

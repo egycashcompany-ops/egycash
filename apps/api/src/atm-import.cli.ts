@@ -6,7 +6,10 @@
 // Flags:
 //   --legacy-uri=<uri>       REQUIRED. The legacy deployment's database (read-only usage).
 //   --branch=<objectId>      REQUIRED. The ECMS branch this deployment's data belongs to. A branch
-//                            WAS a deployment in the legacy system, so one run per branch.
+//                            WAS a deployment in the legacy system, so one run per branch. A branch
+//                            linked to work as another (/atm/settings, `atm.branchLinks`) is
+//                            refused, naming the target to import into instead: its own rows would
+//                            be seen only under «كل الشركة».
 //   --rep-time=cairo|utc     How that deployment wrote replenishment open times. Default `cairo`
 //                            (the legacy bug — local parts stamped +00:00, contad_app.js:644-650),
 //                            which the import repairs. Pass `utc` for a deployment already fixed.

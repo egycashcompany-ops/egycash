@@ -81,4 +81,11 @@ describe('atmIndexedModels', () => {
     const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
     expect(listed.get('atm_mailbox_config')).toBe(true);
   });
+
+  // «نقل البيانات»: `ux_one_running` is the lock that keeps two moves from merging one source twice;
+  // it must exist in production, where nothing else builds it. A run holds ids and counts only.
+  it('lists the branch-move runs with their rows allowed in the log', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    expect(listed.get('atm_branch_move_runs')).toBe(true);
+  });
 });

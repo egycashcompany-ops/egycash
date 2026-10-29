@@ -42,6 +42,7 @@ import {
   type AtmRegisterField,
   type AtmRegisterGroup,
   type AtmRegisterKeysInput,
+  type AtmRegisterMetaBranchOptionDto,
   type AtmRegisterMetaDto,
   type AtmRegisterWriteResultDto,
   type Locale,
@@ -64,7 +65,7 @@ import { BankDialog } from '../catalog/BankDialog';
 import { inCatalogOrder, labelText, makeBankLookup, type BankLookup } from '../../lib/bank-catalog';
 import { REGISTER_LTR_FIELDS, registerFieldText } from '../../lib/register-grid';
 import { columnHeaderKey } from '../../lib/register-labels';
-import { registerBranchOptionLabel } from './RegisterFilters';
+import { registerBranchChoices } from './RegisterFilters';
 
 // ── Form values ─────────────────────────────────────────────────────────────────────────────────
 
@@ -483,11 +484,15 @@ export const isNewArea = (
   return !known.has(area);
 };
 
-/** The branches a receipt may name: mapped, active, and inside the reader's create reach (D4). */
+/**
+ * The branches a receipt may name: one per ECMS branch the register files under, as the top bar
+ * names it, active, and inside the reader's create reach (D4) — judged by the server on the branch
+ * the receipt is filed under.
+ */
 export const creatableBranches = (
   meta: AtmRegisterMetaDto | undefined,
-): AtmRegisterMetaDto['branches'] =>
-  (meta?.branches ?? []).filter((b) => b.canCreate && b.branchActive && b.branchId !== null);
+): AtmRegisterMetaBranchOptionDto[] =>
+  registerBranchChoices(meta).filter((b) => b.canCreate && b.active);
 
 export const EntryFormSections = ({
   mode,
@@ -695,13 +700,8 @@ export const EntryFormSections = ({
       ? t('atm.register.warning.idFormat')
       : undefined;
   const codeLocked = rules !== null && !rules.codeEditable;
-  const branchName =
-    entry === null || entry.branchCode === null
-      ? '—'
-      : (() => {
-          const known = meta?.branches.find((b) => b.code === entry.branchCode);
-          return known === undefined ? entry.branchCode : registerBranchOptionLabel(known, locale);
-        })();
+  // The entry's branch as the grid names it: the ECMS name of where it is filed (D4: fixed).
+  const branchName = entry?.branchName?.[locale] ?? '—';
   const areaHint = [
     receiving && startSet
       ? t('atm.register.form.areaRequired')
@@ -732,8 +732,8 @@ export const EntryFormSections = ({
         >
           <option value="">{t('common.select')}</option>
           {creatableBranches(meta).map((branch) => (
-            <option key={branch.code} value={branch.branchId ?? ''}>
-              {registerBranchOptionLabel(branch, locale)}
+            <option key={branch.branchId} value={branch.branchId}>
+              {branch.name[locale]}
             </option>
           ))}
         </Select>

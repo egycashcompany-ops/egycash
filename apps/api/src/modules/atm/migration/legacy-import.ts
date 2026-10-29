@@ -30,9 +30,11 @@ import { AtmRefLabelModel, type AtmRefLabelKind } from '../catalogs/ref-label.mo
 import { AtmReplenishmentModel } from '../replenishments/replenishment.model';
 import { AtmMaintenanceModel } from '../maintenances/maintenance.model';
 import { AtmMailTicketModel } from '../mail-tickets/mail-ticket.model';
+import { loadAtmBranchLinks } from '../shared/atm-context';
 import { OPEN_OPERATION_INDEX_NAMES, type AtmOperationKind } from '../shared/open-operation';
 import {
   duplicateKeyWriteIndexes,
+  linkedSourceRefusal,
   machineFromLegacy,
   machineJoinCodes,
   mailTicketFromLegacy,
@@ -208,6 +210,9 @@ const operationReport = (
 export const importLegacyAtmDeployment = async (
   options: AtmImportOptions,
 ): Promise<AtmImportReport> => {
+  // Refused before anything is read — a dry run too, since it would report a plan nobody can run.
+  const refusal = linkedSourceRefusal(options.branchId, await loadAtmBranchLinks());
+  if (refusal !== null) throw new Error(refusal);
   const branchId = new Types.ObjectId(options.branchId);
   const now = new Date();
   const legacy: Connection = mongoose.createConnection(options.legacyUri);

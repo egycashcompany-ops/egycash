@@ -531,6 +531,18 @@ describe('register settings', () => {
     expect(AtmRegisterBranchCodesSettingSchema.safeParse([]).success).toBe(true);
   });
 
+  // The setting knows nothing of `atm.branchLinks`: a code on a linked source and a code on its
+  // target are two RAW branches and both parse. Reading resolves them; a link-aware refinement
+  // here would make the stored production value fail the schema — and a stored value that fails
+  // reads as `[]`, every branch unmapped (2026-10-28, branch alignment).
+  it('branch codes: stays on the raw ids — a linked source and its target each keep a code', () => {
+    const linkedSetting = [
+      { code: 'EGYCASH-1', branchId: BRANCH_ID },
+      { code: 'EGYCASH-5', branchId: OTHER_BRANCH_ID },
+    ];
+    expect(AtmRegisterBranchCodesSettingSchema.parse(linkedSetting)).toEqual(linkedSetting);
+  });
+
   it('bank labels (retired, read once by the seed): each bank once; the default covers all six', () => {
     expect(
       AtmRegisterBankLabelsSettingSchema.safeParse([

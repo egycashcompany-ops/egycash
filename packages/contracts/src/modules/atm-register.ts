@@ -291,7 +291,15 @@ export const ATM_REGISTER_BRANCH_CODES = [
 export const AtmRegisterBranchCodeSchema = z.enum(ATM_REGISTER_BRANCH_CODES);
 export type AtmRegisterBranchCode = z.infer<typeof AtmRegisterBranchCodeSchema>;
 
-/** The sheet's own branch names (ATMs DE1..DK1 + Data Report row 4), D7 typo fix applied. */
+/**
+ * The sheet's own branch names (ATMs DE1..DK1 + Data Report row 4), D7 typo fix applied.
+ *
+ * The WORKBOOK's names, shown only where the workbook itself is the subject: the register settings
+ * card («الاسم في الملف») and the import preview. Every other screen names a branch as the top bar
+ * does — its ECMS name, in Arabic and English (the owner, 2026-10-28: «أنا عايزك تعتمد التسمية
+ * اللى بالعربي والإنجليزي»), because the same row read «المهندسين» in the grid and «أكتوبر» in the
+ * filter while the two vocabularies were mixed.
+ */
 export const ATM_REGISTER_BRANCH_NAMES: Readonly<Record<AtmRegisterBranchCode, LocalizedString>> = {
   'EGYCASH-1': { ar: 'المهندسين', en: 'Mohandessin' },
   'EGYCASH-2': { ar: 'طنطا', en: 'Tanta' },
@@ -309,7 +317,17 @@ const uniqueBy =
   (rows: readonly T[]): boolean =>
     new Set(rows.map(pick)).size === rows.length;
 
-/** `atm.register.branchCodes` — default `[]`: no branch is guessed (EG-18), so nothing is received. */
+/**
+ * `atm.register.branchCodes` — default `[]`: no branch is guessed (EG-18), so nothing is received.
+ *
+ * Stored RAW — the ids the settings card saved — and READ through `atm.branchLinks` (one lookup,
+ * `links.get(id) ?? id`; the links refuse chains): a code mapped to a linked source is the
+ * target's, so its rows are filed, shown and counted under the target, and two codes may resolve to
+ * one branch (EGYCASH-1 → المهندسين, EGYCASH-5 → أكتوبر working as المهندسين). The refinements
+ * below stay on the raw ids ON PURPOSE: a stored value that fails this schema reads as the default
+ * `[]` — every branch unmapped, the import blocked, every receipt refused — so a link-aware rule
+ * here would silently unmap production the day it shipped.
+ */
 export const AtmRegisterBranchCodesSettingSchema = z
   .array(z.object({ code: AtmRegisterBranchCodeSchema, branchId: objectId() }).strict())
   .max(7)
@@ -442,7 +460,12 @@ export const atmReportBankOrders = (extras: readonly AtmBankCode[]): AtmReportBa
   };
 };
 
-/** One group of ACTIVE entries. `branchCode:null` = branch set but not mapped. */
+/**
+ * One group of ACTIVE entries. `branchCode` is the canonical code of the group's RESOLVED branch
+ * (through `atm.branchLinks`: the code mapped directly to it wins, else the first in code order),
+ * so a group still filed under a linked source counts in its target's column, and two codes that
+ * resolve to one branch never split it. `branchCode:null` = branch set but no code resolves to it.
+ */
 export interface AtmRegisterReportGroup {
   branchCode: AtmRegisterBranchCode | null;
   bankCode: AtmBankCode | null;
@@ -459,7 +482,7 @@ export interface AtmRegisterReportCounts {
   section2: Partial<Record<AtmRegisterBranchCode, number>> & { total: number };
   /** rows 8–14 × one column per bank folded. No totals (the Excel has none). */
   section3: Partial<Record<AtmRegisterBranchCode, Record<AtmBankCode, number>>>;
-  /** ACTIVE with a branch outside the mapping: counted in section 1 only. */
+  /** ACTIVE with a branch no code resolves to: counted in section 1 only. */
   activeWithUnmappedBranch: number;
   /** ACTIVE with no bank: counted in sections 2/3 rows only, never in a bank cell. */
   activeWithoutBank: number;
@@ -1083,8 +1106,20 @@ export interface AtmRegisterImportIssueDto {
 export interface AtmRegisterEntryDto {
   id: string;
   branchId: string | null;
-  /** Resolved from the setting at read time. */
+  /**
+   * Resolved from the setting at read time: the canonical code of the entry's RESOLVED branch
+   * (`atm.branchLinks`; see `AtmRegisterReportGroup`). Kept for compatibility — no screen shows it
+   * any more, the register names a branch by `branchName`.
+   */
   branchCode: AtmRegisterBranchCode | null;
+  /**
+   * The ECMS name of the STORED `branchId`, in both languages, as the top-bar switcher shows it —
+   * what the grid's branch cell, its tooltip and the edit form's branch box read (the owner,
+   * 2026-10-28: «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي»). Null for a branch-less imported
+   * row. Optional in the type only so an older server's answer still types: the server sends it on
+   * every entry.
+   */
+  branchName?: LocalizedString | null;
   area: string | null;
   bankCode: AtmBankCode | null;
   /** The stored override (null = automatic). */
@@ -1189,15 +1224,65 @@ export interface AtmRegisterMetaDto {
     sortOrder: number;
     isSeed: boolean;
   }[];
+  /**
+   * The seven codes, always, in sheet order — what the register settings card edits. `branchId` is
+   * the RAW id the setting holds (the card saves exactly these back; a resolved id would turn
+   * EGYCASH-1 → المهندسين plus EGYCASH-5 → أكتوبر into two codes on one branch, which the setting
+   * refuses), `name` the workbook's, `branchName` the ECMS name of the raw id. `branchActive`,
+   * `canView` and `canCreate` are judged on the RESOLVED branch, where the code's rows are filed.
+   */
   branches: {
     code: AtmRegisterBranchCode;
+    /** The workbook's name — the settings card and the import preview only. */
     name: LocalizedString;
     branchId: string | null;
     branchName: LocalizedString | null;
     branchActive: boolean;
     canView: boolean;
     canCreate: boolean;
+    /**
+     * `branchId` through `atm.branchLinks` (`links.get(id) ?? id`): where this code's rows are filed
+     * and shown. Equal to `branchId` unless the mapped branch is a linked source — the card then
+     * marks it «يعمل باسم …». Null with `branchId`. Optional in the type only so an older server's
+     * answer still types.
+     */
+    resolvedBranchId?: string | null;
+    resolvedBranchName?: LocalizedString | null;
   }[];
+  /**
+   * The branches the register can file under: one row per RESOLVED ECMS branch some code resolves
+   * to, never two for one branch, in the top bar's order (the ECMS branch code). The filter offers
+   * the rows it `canView`, the receipt's branch picker those it `canCreate` that are `active`.
+   * Absent from an older server's answer.
+   */
+  branchOptions?: AtmRegisterMetaBranchOptionDto[];
+}
+
+/**
+ * One branch the register can file under, named and ordered as the top-bar switcher names and
+ * orders it — the owner (2026-10-28): «الفروع فوق خالص فى البار بتاع السيستم غير اللى فى الفلاتر».
+ */
+export interface AtmRegisterMetaBranchOptionDto {
+  /** The resolved ECMS branch — the filter's value and the receipt's `branchId`. */
+  branchId: string;
+  /** Its ECMS name, both languages — the option's whole label. */
+  name: LocalizedString;
+  /** The codes that resolve to it, in sheet order (the settings card's concern, not a label). */
+  codes: AtmRegisterBranchCode[];
+  /**
+   * Linked sources that resolve to it (`atm.branchLinks`): a top-bar choice or a stored id that is
+   * one of these stands for this branch — the receipt's default maps it here.
+   */
+  sourceBranchIds: string[];
+  active: boolean;
+  /**
+   * On the resolved branch, and FOLLOWING THE TOP BAR: `canView` is the register's view scope
+   * (`scopeSelector(…, 'atmRegister.view')`), so an organization-wide reader on «المهندسين» is
+   * offered المهندسين only and on «كل الشركة» every branch — the list never offers a branch whose
+   * rows the scope would hide. `canCreate` is the create key's reach on the resolved branch.
+   */
+  canView: boolean;
+  canCreate: boolean;
 }
 
 export interface AtmRegisterBranchOptionsDto {
@@ -1235,8 +1320,17 @@ export interface AtmRegisterReportBankDto {
 export interface AtmRegisterReportDto {
   /** ISO — the as-of stamp (D7): computation time = data time. */
   generatedAt: string;
-  /** Mapped ∩ in scope (DEC-27). */
+  /**
+   * Mapped ∩ in scope (DEC-27), judged on the RESOLVED branch: canonical codes only, one per
+   * resolved branch — two codes that resolve to one branch would show it twice, once with zeros.
+   */
   branchesShown: AtmRegisterBranchCode[];
+  /**
+   * The ECMS name of each shown code's resolved branch — what the report's branch sections are
+   * labelled with. A code missing here (an older server, a branch gone) keeps the sheet's own
+   * per-code label.
+   */
+  branchNames?: Partial<Record<AtmRegisterBranchCode, LocalizedString>>;
   counts: AtmRegisterReportCounts;
   /** The banks of `section1Banks`, with what the page needs to name and colour them. */
   banks: AtmRegisterReportBankDto[];
@@ -1362,7 +1456,9 @@ export interface AtmRegisterImportItemDto {
   differences: ('name' | 'area')[];
   /**
    * activeElsewhere / openInRegister: where the conflicting master or entry is — named only when
-   * the importer's `atmRegister.import` reaches that branch (else both null).
+   * the importer's `atmRegister.import` reaches that branch (else both null). `otherBranchName` is
+   * that branch's ECMS name (not the workbook's), so a branch in reach that no code resolves to is
+   * named too; `otherBranchCode` is the canonical code of its resolved branch, null when it has none.
    */
   otherBranchCode: AtmRegisterBranchCode | null;
   otherBranchName: LocalizedString | null;
@@ -1377,7 +1473,10 @@ export interface AtmRegisterImportCategoryDto {
   approvable: boolean;
   count: number;
   items: AtmRegisterImportItemDto[];
-  /** activeElsewhere only: one row per (other branch → this row's branch); [] elsewhere. */
+  /**
+   * activeElsewhere only: one row per (other branch → this row's branch); [] elsewhere. `from…` as
+   * an item's `otherBranch…` (the ECMS name); the row's own branch is named from `branches`.
+   */
   pairs: {
     fromBranchCode: AtmRegisterBranchCode | null;
     fromBranchName: LocalizedString | null;
@@ -1404,6 +1503,11 @@ export interface AtmRegisterImportResultDto {
     byCode: { code: AtmRegisterImportIssueCode; count: number }[];
     rows: { importRow: number; issues: AtmRegisterImportIssueDto[] }[];
   };
+  /**
+   * Every code in the file. `branchId` is the code's RAW mapping (the setting) and `branchName` its
+   * ECMS name; the file's rows land in the RESOLVED branch (`atm.branchLinks`), on which `active`
+   * and `inReach` are judged.
+   */
   branches: {
     code: AtmRegisterBranchCode;
     branchId: string | null;
@@ -1412,6 +1516,13 @@ export interface AtmRegisterImportResultDto {
     inReach: boolean;
     rows: number;
     openRows: number;
+    /**
+     * Where the code's rows are filed: `branchId` through the links, equal to it unless the mapped
+     * branch is a linked source (the preview shows «يعمل باسم …»). Null with `branchId`. Optional in
+     * the type only so an older server's answer still types.
+     */
+    resolvedBranchId?: string | null;
+    resolvedBranchName?: LocalizedString | null;
   }[];
   categories: AtmRegisterImportCategoryDto[];
   applied: {

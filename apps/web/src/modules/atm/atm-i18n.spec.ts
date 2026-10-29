@@ -4,6 +4,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   ATM_BRANCH_LINK_ISSUES,
+  ATM_BRANCH_MOVE_BLOCKERS,
+  ATM_BRANCH_MOVE_COLLECTIONS,
+  ATM_BRANCH_MOVE_MERGES,
   ATM_MAIL_TICKET_STATUSES,
   ErrorCodes,
   type Locale,
@@ -231,6 +234,9 @@ const KEYS = [
   'atm.dataEdit.origin.backfill',
   'atm.dataEdit.origin.auto',
   'atm.dataEdit.notRegisterMapped',
+  // The add dialogs name the branch an add is filed in, or ask for one (2026-10-28).
+  'atm.dataEdit.addInBranch',
+  'atm.dataEdit.chooseBranch',
   'atm.dataEdit.machineReactivated',
   'atm.dataEdit.register.recorded',
   'atm.dataEdit.register.linked',
@@ -303,6 +309,8 @@ const KEYS = [
   'atm.settings.mailbox.noBranches',
   'atm.settings.mailbox.addBranch',
   'atm.settings.mailbox.removeBranch',
+  'atm.settings.mailbox.worksAs',
+  'atm.settings.mailbox.worksAsListed',
   'atm.settings.mailbox.test',
   'atm.settings.mailbox.pollNow',
   'atm.settings.mailbox.probeHint',
@@ -330,6 +338,25 @@ const KEYS = [
   'atm.settings.links.remove',
   'atm.settings.links.added',
   'atm.settings.links.removed',
+  // «نقل البيانات» on the links card (2026-10-28) — its page-level texts; the collections, merges
+  // and refusals are checked below from the contract's own vocabularies.
+  'atm.settings.move.action',
+  'atm.settings.move.title',
+  'atm.settings.move.intro',
+  'atm.settings.move.counts',
+  'atm.settings.move.total',
+  'atm.settings.move.merges',
+  'atm.settings.move.blockers',
+  'atm.settings.move.blockersHint',
+  'atm.settings.move.more',
+  'atm.settings.move.confirm',
+  'atm.settings.move.done',
+  'atm.settings.move.remaining',
+  'atm.settings.move.nothing',
+  'atm.settings.move.banner',
+  'atm.settings.move.blocked',
+  'atm.settings.move.stopped',
+  'systemAdmin.users.audit.atmBranchMove',
 ];
 
 describe('atm i18n catalog', () => {
@@ -363,6 +390,36 @@ describe('atm i18n catalog', () => {
       (issue) => `atm.settings.links.issue.${issue}`,
     ).filter((key) => translate(locale, key) === key);
     expect(missing).toEqual([]);
+  });
+
+  // The move dialog words each count, merge and refusal by the contract's own key, so a collection,
+  // merge or blocker added there without its text would reach the reader as `atm.settings.move.…`.
+  it.each(LOCALES)(
+    'every collection, merge and refusal of a branch move resolves in %s',
+    (locale) => {
+      const keys = [
+        ...ATM_BRANCH_MOVE_COLLECTIONS.map((key) => `atm.settings.move.collection.${key}`),
+        ...ATM_BRANCH_MOVE_MERGES.map((key) => `atm.settings.move.merge.${key}`),
+        ...ATM_BRANCH_MOVE_BLOCKERS.map((kind) => `atm.settings.move.blocker.${kind}`),
+      ];
+      expect(keys).toHaveLength(17 + 9 + 8);
+      expect(keys.filter((key) => translate(locale, key) === key)).toEqual([]);
+    },
+  );
+
+  // The texts a blocker fills in, by name — a placeholder the dialog does not send would show raw.
+  it.each(LOCALES)('a refusal names what stops the move, in %s', (locale) => {
+    const filled = (kind: string, params: Record<string, string | number>): string =>
+      translate(locale, `atm.settings.move.blocker.${kind}`, params);
+    expect(filled('machineActiveInBoth', { codes: '99990001' })).toContain('99990001');
+    expect(filled('machineTwinOpen', { codes: '99990002' })).toContain('99990002');
+    expect(filled('planSerialCollision', { banks: 'BRK' })).toContain('BRK');
+    expect(filled('planSameDay', { items: 'BRK 2026-10-28' })).toContain('BRK 2026-10-28');
+    expect(
+      filled('zoneCaps', { target: 'T', zones: 201, maxZones: 200, points: 19, maxPoints: 20 }),
+    ).not.toMatch(/\{\{/);
+    expect(filled('layoutImportRunning', { source: 'S', banks: 'BRK' })).not.toMatch(/\{\{/);
+    expect(filled('moveRunning', {})).not.toMatch(/\{\{/);
   });
 
   it.each(LOCALES)('every overview card resolves in %s', (locale) => {

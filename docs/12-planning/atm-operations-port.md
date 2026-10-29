@@ -401,10 +401,9 @@ batch, unchanged.
 The owner: «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين —
 يعني أكتوبر هيشوف شغل المهندسين ويشتغل معاهم عادى والمهندسين شايف أكتوبر إنه شغال معاه بردو».
 
-The data already IS Mohandessin's, so nothing is copied or re-filed. The setting `atm.branchLinks`
-(`[{ branchId, actsAsBranchId }]`, organization scope, `GET/PUT /atm/branch-links`, written through
-the platform settings service so it is audited and its cache dropped) says «October acts as
-Mohandessin». On every ATM request a caller placed in October is read as placed in Mohandessin —
+The setting `atm.branchLinks` (`[{ branchId, actsAsBranchId }]`, organization scope,
+`GET/PUT /atm/branch-links`, written through the platform settings service so it is audited and its
+cache dropped) says «October acts as Mohandessin». On every ATM request a caller placed in October is read as placed in Mohandessin —
 the placement, the top bar's branch and every branch the grants reach, per key and through
 department copies — so they read Mohandessin's ATM rows, what they write is filed under
 Mohandessin, and Mohandessin's people see it because it is theirs. The rewrite runs in the platform
@@ -413,6 +412,87 @@ auth middleware through a generic seam, `registerAuthContextRefiner(prefix, refi
 (`branch-links/link-context.ts`): on every other route the same employee is still in October. A
 link to itself, a source on two rows, a chain (the target is itself a source) and a branch that does
 not exist or is not active are each a 400.
+
+**What the link does not move (2026-10-28).** The owner's report: machine 27720226 shows on
+`/atm/machines` only under «كل الشركة» and vanishes under «المهندسين»; its replenishment and
+maintenance fail in Mohandessin; its mail shows only under «كل الشركة»; and `/atm/register` calls it
+Mohandessin's while its branch filter brings the machines under October — «أنا عايز كل ماكينه تظهر
+فى الفرع بتاعها طبقاً للفرع المتسجله فيه», «غالباً عشان أسم الفروع متسمي كدا EGYCASH-1 — أنا عايزك
+تعتمد التسمية اللى بالعربي والإنجليزي», «الفروع فوق خالص فى البار بتاع السيستم غير اللى فى
+الفلاتر». The refiner moves the CALLER, never a row: what was filed under October before the link —
+the workbook rows of the code mapped to October, the machines their import coupled there, and the
+mail of those machines — stayed October's, readable only under «كل الشركة». Three things close it:
+
+1. **An id the caller does not carry is read through the links too** — one lookup, a source is its
+   target (`linkedBranchOf`, `shared/atm-context.ts`): a branch a request names (a register receipt,
+   the register list's filter and `branch-options`, a label's `branchId`); the register's code
+   mapping, so a code mapped to October files, shows and counts its rows under Mohandessin, and the
+   import compares column A as BRANCHES, never as codes, so a remap or a move does not turn every
+   imported row into `changedSinceImport`; a mail's machine — the switch-on is judged and the ticket
+   filed on the target, and the mailbox save keeps a source's row as the target's, or drops it beside
+   the target's own row; and the legacy importer, which refuses a linked source as `--branch` and
+   names the target to import into. The stored `atm.register.branchCodes` stays RAW: the card saves
+   what it reads, and a link-aware schema would read today's value as `[]`. The register names a
+   branch by its ECMS name, as the top bar does — the codes stay on its settings card and the import
+   preview — and its branch filter offers only what the top bar's choice lets the reader see
+   (register doc DEC-42).
+2. **An organization-wide writer files where the top bar points** (GM-20 for ATM,
+   `shared/atm-context.ts`). `currentBranchId` puts the home placement first and an organization
+   grant adds nothing to the reach list, so such a user placed in Alexandria filed every machine
+   add, delete and area move, every label, replenishment and maintenance under Alexandria whatever
+   the top bar said — and silently under «كل الشركة». When the write's own key is held company-wide
+   (the label writes: `manage`, else the label key held) and the caller's grants name no branch
+   (an organization grant adds none to the reach list), the top bar's branch, already refined by
+   the link, is the branch; on «كل الشركة» it is the company's only active branch, or the write is
+   refused «اختر فرعًا محددًا من القائمة العلوية أولًا.». The data-edit dialogs say «الفرع: …»
+   before the add, and wait for a branch when there is none. Every other caller keeps the old rule —
+   one whose grants list branches included: the platform drops a top-bar branch outside that reach,
+   so the top bar inside it decides, else the home branch (deciding on the key alone would ask such
+   a caller for a branch while the top bar shows one).
+3. **«نقل البيانات»: what is already filed under the source moves, once**
+   (`GET`/`POST /atm/branch-links/:sourceBranchId/move`, `atmSettings.manage` at organization
+   scope; the pair is always the STORED link's, and a branch that is no stored source is 404). The
+   links card offers «نقل البيانات إلى …» on each link, opens it by itself when a link just saved has
+   rows under its source, and names every source still holding rows in a banner. The dialog
+   previews the rows per collection, what merges and what refuses the move; the move re-files 17
+   collections in transactions of at most 200 rows. A label of a name both branches hold merges into
+   the target's row (filling only what it left empty); a machine twin that would meet the survivor
+   in the target is retired the legacy way (`<code>-D`, deleted, with its own `delete` audit row),
+   its cassette layout (every version) and map point going to the survivor where it has none;
+   a zone or dispatch-line name the target uses gets the source's name as a suffix; the target's
+   default standard load stays the default; a Full list run stalled for 30 minutes is closed first;
+   and `atm.mail.branchCategories`, `atm.register.branchCodes` and the mailbox list are re-pointed
+   where the target has none of its own. Refused 409 `ATM_BRANCH_MOVE_BLOCKED`, with each named,
+   while a machine is active in both branches and the register does not say which stays, a twin to
+   retire still holds open work (an open register entry, replenishment or maintenance, or a draft
+   or issued plan line), Note serials or a plan of one bank and day collide, the target
+   would pass the map's caps, a Full list import is running, a register import is running (anywhere:
+   its rows file wherever a code resolves), or another move runs; a blocker that
+   appears part-way stops the run at that step (409 `ATM_BRANCH_MOVE_STOPPED`) and what moved stays
+   moved. Every step reads what is STILL under the source, so running it again carries on, and a run
+   cut off by a restart is taken over after 30 minutes and audited then. ONE `atmBranchMove` audit
+   row per run (not broadcast). The link stays: October's people keep working as Mohandessin.
+   The POST names the target the reader confirmed (`expectedTargetBranchId`, from the preview) —
+   a precondition only: a link re-pointed since is refused 409 `ATM_BRANCH_MOVE_TARGET_CHANGED`
+   and nothing moves. While a run holds the lock, the writes the move plans from wait for it, 423
+   `ATM_BRANCH_MOVE_RUNNING` (Locked, never 409, which the data-edit dialogs read as "already
+   exists"; `branch-links/move-fence.ts`): machine adds, edits, area moves and
+   deletes; register create, edit, receive, link, handover and delete; the register import; label
+   saves; replenishment and maintenance opens and reopens, and mail accepts (open work the twin
+   plan reads). A bulk add or delete checks again per row, so one begun before the move stops at
+   its next row; the register import checks again once its own run row exists, so an import and a
+   move starting together always see each other. A move cut off by a restart (no heartbeat) holds
+   these writes until its run is 30 minutes old — the lock's own takeover age — when pressing
+   «نقل» again takes it over and carries on.
+   Otherwise a coupling between the machines step and the register step would write a new
+   master under the source, and a key the target gained after a plan would meet the batch. Each
+   twin is read again inside its retire's transaction — reactivated or given open work since the
+   plan, the run stops on it (`machineTwinOpen`, STOPPED when an earlier batch already retired some,
+   each of those counted on the run). An area name deleted or renamed away in one linked
+   branch is never written back as a live label by the other, neither after a write nor by the boot
+   repair (`catalogs/area-labels.ts`): the move takes the source's memory rows first. The move's own
+   label step is unchanged — a source's LIVE label of a name the target deleted still comes across
+   live (the planner's rule, `branch-move.planner.spec.ts`).
 
 ### 6c. Go-live: Mohandessin first
 
@@ -423,9 +503,12 @@ not exist or is not active are each a 400.
 3. «اختبار الاتصال» — it must answer ok; a refusal names the provider's answer.
 4. Add Mohandessin to the switched-on branches, with its Outlook category.
 5. «فروع تعمل معاً»: link October → acts as Mohandessin.
-6. Switch «تفعيل القراءة» on and save; «قراءة الآن», then check the last-run line and
+6. «نقل البيانات إلى المهندسين» on that link (it opens by itself when October holds rows): read the
+   preview, resolve what it lists in red, then «نقل». October's earlier machines, register rows and
+   mail then show under «المهندسين» (§6b).
+7. Switch «تفعيل القراءة» on and save; «قراءة الآن», then check the last-run line and
    `/atm/mail-tickets`.
-7. Once the document is saved the `ATM_MAIL_GRAPH_*` environment is no longer read: remove it from
+8. Once the document is saved the `ATM_MAIL_GRAPH_*` environment is no longer read: remove it from
    the deployment, so the secret lives in one place, sealed.
 
 Every later branch is step 4 alone: its row is added, and its unread backlog is filed — its newest

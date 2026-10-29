@@ -26,9 +26,15 @@
 //
 // A run on the document is recorded on it (`lastPoll`, the screen's last-run line) — best effort:
 // a record that fails is logged and never fails the run.
+//
+// Branches are read as ATM files them (`atm.branchLinks`): a mail is filed under its machine's
+// RESOLVED branch (mail-ingestion.service.ts), so the switched-on set and the colours are resolved
+// the same way — a linked source's row switches its target on and colours it, unless the target
+// has a row of its own.
 import { ATM_MAIL_POLL_REASONS_MAX, AtmSettingKeys } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { settingsService } from '../../../platform/settings';
+import { linkedBranchOf, loadAtmBranchLinks } from '../shared/atm-context';
 import { atmMailIngestionService, type AtmMailIngestGate } from './mail-ingestion.service';
 import { type AtmMailMessage, type AtmMailPage, type AtmMailSource } from './mail-source';
 import { type AtmMailPollRunRecord, type AtmMailboxConfigDoc } from './mailbox-config.model';
@@ -78,17 +84,37 @@ export const resolveBranchCategories = async (): Promise<Map<string, string>> =>
   return new Map(rows.map((row) => [row.branchId, row.category]));
 };
 
-/** The switched-on branches, and the category each row names (rows naming none are absent). */
-const documentRules = (
-  doc: AtmMailboxConfigDoc,
-): { gate: AtmMailIngestGate; categories: Map<string, string> } => {
+/**
+ * Pure: branch → category, keyed as ATM files the branch — a linked source's category stands for
+ * its target unless the target names its own (rows naming none are absent).
+ */
+export const categoriesFiledAs = (
+  rows: readonly { branchId: string; category: string | null }[],
+  links: ReadonlyMap<string, string>,
+): Map<string, string> => {
   const categories = new Map<string, string>();
-  for (const row of doc.branches) {
-    if (row.category !== null) categories.set(String(row.branchId), row.category);
+  for (const row of rows) {
+    if (row.category === null) continue;
+    const branchId = linkedBranchOf(links, row.branchId);
+    if (branchId === row.branchId.toLowerCase() || !categories.has(branchId)) {
+      categories.set(branchId, row.category);
+    }
   }
+  return categories;
+};
+
+/** Pure: the switched-on branches as ATM files them, and the category each one is tagged with. */
+export const documentRules = (
+  doc: Pick<AtmMailboxConfigDoc, 'branches'>,
+  links: ReadonlyMap<string, string>,
+): { gate: AtmMailIngestGate; categories: Map<string, string> } => {
+  const rows = doc.branches.map((row) => ({
+    branchId: String(row.branchId),
+    category: row.category,
+  }));
   return {
-    gate: { branchIds: new Set(doc.branches.map((row) => String(row.branchId))) },
-    categories,
+    gate: { branchIds: new Set(rows.map((row) => linkedBranchOf(links, row.branchId))) },
+    categories: categoriesFiledAs(rows, links),
   };
 };
 
@@ -106,7 +132,11 @@ type CategoryOf = (branchId: string) => string | null;
 const categoryLookup = async (
   documentCategories: ReadonlyMap<string, string>,
 ): Promise<CategoryOf> => {
-  const categories = await resolveBranchCategories();
+  const [setting, links] = await Promise.all([resolveBranchCategories(), loadAtmBranchLinks()]);
+  const categories = categoriesFiledAs(
+    [...setting].map(([branchId, category]) => ({ branchId, category })),
+    links,
+  );
   return (branchId) => documentCategories.get(branchId) ?? categories.get(branchId) ?? null;
 };
 
@@ -261,7 +291,7 @@ export const pollAtmMailbox = async (): Promise<AtmMailPollRun> => {
       providerId = plan.source.providerId;
       await readOnce(plan.source, undefined, new Map<string, string>(), tally);
     } else {
-      const { gate, categories } = documentRules(plan.doc);
+      const { gate, categories } = documentRules(plan.doc, await loadAtmBranchLinks());
       const source = mailboxSourceFor(plan.doc);
       providerId = source.providerId;
       const listPage = source.listUnreadPage?.bind(source);

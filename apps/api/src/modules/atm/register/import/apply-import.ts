@@ -32,6 +32,7 @@ import { auditService } from '../../../../platform/audit';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { AppError, ConflictError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
+import { assertNoBranchMoveRunning } from '../../branch-links/move-fence';
 import { ensureAreaLabels } from '../../catalogs/area-labels';
 import { AtmRefLabelModel } from '../../catalogs/ref-label.model';
 import { AtmMachineModel, type AtmMachineDoc } from '../../machines/machine.model';
@@ -228,6 +229,8 @@ export const applyRegisterImport = async (
   headerFills: ParsedRegisterFile['headerFills'],
   ctx: AuthContext,
 ): Promise<ApplyImportResult> => {
+  // Its couplings and inserts would land between a running «نقل البيانات»'s plan and its writes.
+  await assertNoBranchMoveRunning();
   const approved = new Set(request.categories);
   const actor = new Types.ObjectId(ctx.userId);
   const now = new Date();
@@ -263,6 +266,16 @@ export const applyRegisterImport = async (
     }
     throw error;
   }
+  // Again, now that this run is visible to a move (review finding): the move takes its lock and
+  // then looks for a running import (`registerImportRunning`); the import takes its run row and
+  // then looks for a running move — so of two that start together, one always sees the other.
+  // Refused here, the run wrote nothing: its row goes.
+  try {
+    await assertNoBranchMoveRunning();
+  } catch (error) {
+    await AtmRegisterImportRunModel.deleteOne({ _id: runId, state: 'running' }).exec();
+    throw error;
+  }
 
   const counts = Object.fromEntries(ATM_REGISTER_IMPORT_OUTCOMES.map((o) => [o, 0])) as Record<
     AtmRegisterImportOutcome,
@@ -281,6 +294,8 @@ export const applyRegisterImport = async (
       { $push: { rows: { $each: rows } }, $set: { counts } },
     ).exec();
   };
+  // The code's RESOLVED branch (`atm.branchLinks`, register-settings.ts) — the plan's own: a row of
+  // a code mapped to a linked source is filed, and its master coupled, under the target.
   const branchIdOf = (row: ParsedRow): string | null =>
     row.values.branchCode === null
       ? null

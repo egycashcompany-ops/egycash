@@ -47,9 +47,15 @@ import {
 import { diffChanges } from '../../../shared/utils/diff';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { toAtmRefLabelDto } from '../atm.mappers';
+import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { AtmMachineModel } from '../machines/machine.model';
 import { resolveRegisterSettings } from '../register/register-settings';
-import { manageActsInBranch, resolveAtmBranchId } from '../shared/atm-context';
+import {
+  actingAtmBranchId,
+  manageActsInBranch,
+  resolveAtmBranchId,
+  resolveLinkedBranchId,
+} from '../shared/atm-context';
 import { areaNamesByScript } from './area-labels';
 import {
   loadAtmBankCatalog,
@@ -79,8 +85,30 @@ export const ATM_REF_LABEL_OPTIONS_KEYS = [
   'atmRefLabel.edit',
 ] as const;
 
+/**
+ * The key a label write with no branch named is filed by (GM-20, atm-context.ts — "the write's own
+ * key"): `manage` first — the add-machine dialogs file by it, and share the label tabs' options
+ * answer — else the label key the caller holds. The Operations roles hold `atmRefLabel.*` without
+ * `manage` (atm-efficiency-register.md §12.2 step 3): judged on `manage` alone, such a holder
+ * company-wide was never organization-wide, so a label added on «المهندسين» was filed at their
+ * home placement, and on «كل الشركة» silently too.
+ */
+const heldKeyOf = (ctx: AuthContext, keys: readonly [string, ...string[]]): string =>
+  keys.find((key) => ctx.permissions[key] !== undefined) ?? keys[0];
+
 /** The most machine bank texts the unmapped callout lists. */
 const UNMAPPED_BANK_NAMES_MAX = 100;
+
+/** The options while there is no branch to file under: nothing offered, nothing recordable. */
+const noBranchOptions = (): AtmRefLabelOptionsDto => ({
+  branchId: null,
+  branch: null,
+  registerMapped: false,
+  banks: [],
+  areas: [],
+  unmappedBankNames: [],
+  unmappedBankLabels: [],
+});
 
 const refuse = (field: string, code: string, message: string): ValidationError =>
   new ValidationError([{ field, code, message }]);
@@ -254,24 +282,43 @@ class AtmRefLabelService {
    * cap (the 100-row list read cut long lists short), no other branch's labels, and readable by the
    * page's whole audience — a holder of the label keys alone was refused the `atmMachine.view` list.
    * One of the page's keys must reach the branch (or `manage` at home, as for the add).
+   *
+   * The branch: the one asked for (an edit's machine's own), read as ATM files it
+   * (`atm.branchLinks` — a linked source answers its target's lists); else the branch the add
+   * dialogs file their machines in, by the ATM write rule (atm-context.ts) under the write's own
+   * key (`heldKeyOf`), named for the top of the add form (`branch`, «الفرع: …»). An
+   * organization-wide holder of that key on «كل الشركة» has none while the company has several
+   * branches: the lists are empty, `branch` is null and the dialog asks for a branch in the top
+   * bar before any add — never their home placement.
    */
   async options(query: AtmRefLabelOptionsQuery, ctx: AuthContext): Promise<AtmRefLabelOptionsDto> {
-    const branchId = query.branchId ?? (await resolveAtmBranchId(ctx));
+    const settings = await resolveRegisterSettings();
+    const branchId =
+      query.branchId === undefined
+        ? await actingAtmBranchId(
+            ctx,
+            heldKeyOf(ctx, ['atmMachine.manage', 'atmRefLabel.create', 'atmRefLabel.edit']),
+          )
+        : settings.resolveBranch(query.branchId);
+    if (branchId === null) return noBranchOptions();
     if (
       !ATM_REF_LABEL_OPTIONS_KEYS.some((key) => keyReachesBranch(ctx, key, branchId)) &&
       !manageActsInBranch(ctx, branchId)
     ) {
       throw new ForbiddenError('no data-edit key reaches this branch');
     }
-    const [labels, settings, bankNames] = await Promise.all([
+    const [labels, bankNames, named] = await Promise.all([
       readBranchLabels(branchId),
-      resolveRegisterSettings(),
       AtmMachineModel.distinct('bankName', {
         branchId: new Types.ObjectId(branchId),
         isActive: true,
         isDeleted: false,
       }).exec() as Promise<unknown[]>,
+      branchRepository.findByIdsSystem([branchId]),
     ]);
+    const branch = named[0];
+    // A branch id nobody holds names nothing to file under.
+    if (branch === undefined) return noBranchOptions();
     const spellings: AtmBankSpelling[] = labels
       .filter((label) => label.kind === 'bank')
       .map((label) => ({ name: label.name, bankCode: label.bankCode ?? null }));
@@ -305,7 +352,8 @@ class AtmRefLabelService {
     const holderOf = new Map(holders.map((row) => [row.name, row]));
     return {
       branchId,
-      registerMapped: settings.codeByBranchId.has(branchId),
+      branch: { id: branchId, name: { ar: branch.name.ar, en: branch.name.en } },
+      registerMapped: settings.isMapped(branchId),
       ...branchLabelChoices(labels, settings.catalog),
       unmappedBankNames,
       unmappedBankLabels: unmappedBankNames.map((name) => {
@@ -320,7 +368,13 @@ class AtmRefLabelService {
     input: CreateAtmRefLabel,
     ctx: AuthContext,
   ): Promise<AtmRefLabelDoc> {
-    const branchId = input.branchId ?? (await resolveAtmBranchId(ctx));
+    await assertNoBranchMoveRunning();
+    // A branch the body names is read as ATM files it (`atm.branchLinks`): a label sent for a
+    // linked source is its target's, where that branch's machines are offered it.
+    const branchId =
+      input.branchId === undefined
+        ? await resolveAtmBranchId(ctx, heldKeyOf(ctx, ['atmMachine.manage', 'atmRefLabel.create']))
+        : await resolveLinkedBranchId(input.branchId);
     // Today's rule — the label key or `manage` reaching the branch, `manage` at home — plus, for an
     // AREA only, the register keys reaching it: Efficiency add areas from the register (DEC-39).
     const allowed =
@@ -370,6 +424,7 @@ class AtmRefLabelService {
    * to the company — reach is asked of the key. The write then goes by id and version.
    */
   async update(id: string, input: UpdateAtmRefLabel, ctx: AuthContext): Promise<AtmRefLabelDoc> {
+    await assertNoBranchMoveRunning();
     const before = await atmRefLabelRepository.findById(id);
     if (before === null) throw new NotFoundError('ATM label');
     const allowed =
@@ -435,6 +490,7 @@ class AtmRefLabelService {
 
   /** Legacy `$pull` (:2514, :2523) — the name leaves the list; machines keep their strings. */
   async remove(id: string, ctx: AuthContext): Promise<void> {
+    await assertNoBranchMoveRunning();
     const doc = await atmRefLabelRepository.softDeleteById(id, {
       by: ctx.userId,
       scope: scopeSelector(ctx, 'atmMachine.manage'),

@@ -2,10 +2,15 @@
 // themselves (paged in the browser — never cut short), and, for an approvable category, the
 // owner's Approve tick. Every value shown is a P-class field of the row or a column LETTER; the
 // server never sends a key value or a combination, so there is nothing secret here to hide.
+//
+// A branch reads «code · ECMS name» (`codeAndName`): the row's own from the preview's branch table,
+// where its rows are filed; another branch as the server names it, a branch in reach with no code
+// included.
 import { useState } from 'react';
 import {
   type AtmRegisterImportCategoryDto,
   type AtmRegisterImportItemDto,
+  type AtmRegisterImportResultDto,
   type Locale,
 } from '@ecms/contracts';
 import { useAppSelector } from '../../../../store';
@@ -16,8 +21,13 @@ import { Button } from '../../../../shared/ui/Button';
 import { Checkbox } from '../../../../shared/ui/form';
 import { formatNumber } from '../../../../shared/lib/format';
 import { useAtmBankLookup } from '../../api/atm-queries';
-import { branchLabel, columnHeaderKey } from '../../lib/register-labels';
-import { listSeparator, pageOf } from '../../lib/register-import-view';
+import { columnHeaderKey } from '../../lib/register-labels';
+import {
+  codeAndName,
+  importBranchText,
+  listSeparator,
+  pageOf,
+} from '../../lib/register-import-view';
 
 const TH = 'p-2 text-start text-xs font-medium text-slate-500 dark:text-slate-400';
 const TD = 'p-2 align-top';
@@ -57,11 +67,14 @@ export const ClientPager = ({
 
 export const ImportCategoryCard = ({
   category,
+  branches,
   approved,
   onToggle,
   disabled = false,
 }: {
   category: AtmRegisterImportCategoryDto;
+  /** The preview's branch table — what each file code is mapped to and where its rows go. */
+  branches: AtmRegisterImportResultDto['branches'];
   approved: boolean;
   onToggle: () => void;
   disabled?: boolean;
@@ -80,7 +93,7 @@ export const ImportCategoryCard = ({
   const shown = pageOf(items, page, PAGE_SIZE);
 
   const branchOf = (item: AtmRegisterImportItemDto): string =>
-    item.branchCode === null ? DASH : branchLabel(item.branchCode, locale);
+    item.branchCode === null ? DASH : importBranchText(item.branchCode, branches, locale);
 
   return (
     <Card>
@@ -116,17 +129,19 @@ export const ImportCategoryCard = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {category.pairs.map((pair) => (
-                    <tr key={`${pair.fromBranchCode ?? ''}>${pair.toBranchCode}`}>
+                  {/* One row per other BRANCH: two such branches may share a code (a linked
+                      source and its target) or have none, so the code alone is no key. */}
+                  {category.pairs.map((pair, i) => (
+                    <tr key={`${pair.fromBranchCode ?? ''}>${pair.toBranchCode}:${String(i)}`}>
                       <td className={TD}>
                         <span dir="auto">
-                          {pair.fromBranchCode === null
-                            ? DASH
-                            : branchLabel(pair.fromBranchCode, locale)}
+                          {codeAndName(pair.fromBranchCode, pair.fromBranchName, locale)}
                         </span>
                       </td>
                       <td className={TD}>
-                        <span dir="auto">{branchLabel(pair.toBranchCode, locale)}</span>
+                        <span dir="auto">
+                          {importBranchText(pair.toBranchCode, branches, locale)}
+                        </span>
                       </td>
                       <td className={`${TD} tabular-nums`}>{formatNumber(pair.count, locale)}</td>
                     </tr>
@@ -200,9 +215,7 @@ export const ImportCategoryCard = ({
                       {showOtherBranch && (
                         <td className={TD}>
                           <span dir="auto">
-                            {item.otherBranchCode === null
-                              ? DASH
-                              : branchLabel(item.otherBranchCode, locale)}
+                            {codeAndName(item.otherBranchCode, item.otherBranchName, locale)}
                           </span>
                         </td>
                       )}

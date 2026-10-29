@@ -23,6 +23,7 @@ import { settingsService } from '../../../platform/settings';
 import { type AuthContext, scopeSelector } from '../../../shared/types';
 import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
+import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import {
   alreadyOpenError,
@@ -132,7 +133,9 @@ class AtmMaintenanceService {
     input: OpenAtmMaintenances,
     ctx: AuthContext,
   ): Promise<{ opened: AtmMaintenanceDoc[]; unknownCodes: string[]; alreadyOpenCodes: string[] }> {
-    const branchId = await resolveAtmBranchId(ctx);
+    // An open operation is work the move's twin plan reads (`machineTwinOpen`).
+    await assertNoBranchMoveRunning();
+    const branchId = await resolveAtmBranchId(ctx, 'atmMaintenance.create');
     const openedAt = input.openedAt ?? new Date();
     const openDay = openDayOf(openedAt);
     const codes = input.rows.map((row) => normalizeAtmMachineCode(row.machineCode));
@@ -304,6 +307,8 @@ class AtmMaintenanceService {
    * held by the unique index; `openDay` is written with it.
    */
   async reopen(id: string, version: number, ctx: AuthContext): Promise<AtmMaintenanceDoc> {
+    // A reopened operation is open work again (`machineTwinOpen`): it waits for a running move.
+    await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmMaintenance.complete');
     const row = await atmMaintenanceRepository.getById(id, scope);
     const openDay = openDayOf(row.openedAt);

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import {
   duplicateKeyWriteIndexes,
+  linkedSourceRefusal,
   machineFromLegacy,
   machineJoinCodes,
   mailTicketFromLegacy,
@@ -321,5 +322,27 @@ describe('duplicateKeyWriteIndexes — what the real run reports', () => {
     expect(
       duplicateKeyWriteIndexes({ writeErrors: [{ code: 11000, index: 1 }], err: { code: 64 } }),
     ).toBeNull();
+  });
+});
+
+// 2026-10-28: a branch linked to work as another holds no ATM data of its own — rows imported into
+// it would be seen only under «كل الشركة», and a re-run would put rows «نقل البيانات» moved back.
+describe('linkedSourceRefusal — the importer refuses a linked source branch', () => {
+  const OCTOBER = '650000000000000000000005';
+  const MOHANDESSIN = '650000000000000000000001';
+  const links = new Map([[OCTOBER, MOHANDESSIN]]);
+
+  it('names why and the target to import into instead', () => {
+    const refusal = linkedSourceRefusal(OCTOBER, links);
+    expect(refusal).toContain('atm.branchLinks');
+    expect(refusal).toContain(`--branch=${MOHANDESSIN}`);
+    // The flag is checked as typed: an upper-case id is the same branch.
+    expect(linkedSourceRefusal(OCTOBER.toUpperCase(), links)).toContain(MOHANDESSIN);
+  });
+
+  it('lets the target, and any unlinked branch, through', () => {
+    expect(linkedSourceRefusal(MOHANDESSIN, links)).toBeNull();
+    expect(linkedSourceRefusal(BRANCH.toHexString(), links)).toBeNull();
+    expect(linkedSourceRefusal(OCTOBER, new Map())).toBeNull();
   });
 });

@@ -26,6 +26,7 @@ import {
   platformPermissions,
   type AtmBankDto,
   type AtmMachineCreateResultDto,
+  type AtmRefLabelOptionsDto,
   type AtmRegisterEntryDto,
   type AtmRegisterReportDto,
   type AtmRegisterWriteResultDto,
@@ -54,6 +55,7 @@ const PASSWORD = 'Str0ng#Pass!';
 
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
+let adminId: string;
 let adminToken: string; // super-admin, organization scope, placed nowhere
 let manageAlexToken: string; // atmMachine.view + manage, BRANCH scope, placed in Alex
 let manageDeptToken: string; // the same bundle, DEPARTMENT scope, placed in a Tanta department
@@ -219,7 +221,7 @@ beforeAll(async () => {
     { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
     [...platformPermissions, ...atmPermissions].map((p) => p.key),
   );
-  const adminId = await mkUser('intake-admin@ecms.local');
+  adminId = await mkUser('intake-admin@ecms.local');
   await rbacService.ensureAssignment(adminId, String(superAdmin._id), 'organization');
   const ctx: AuthContext = {
     userId: adminId,
@@ -435,10 +437,12 @@ describe('the decision table (DEC-36 steps a–e)', () => {
     expect(res.status).toBe(409);
     expect(errorCode(res)).toBe('ATM_REGISTER_CODE_ACTIVE_ELSEWHERE');
     // The Alex holder sees no Tanta row on either page: the refusal does not name it.
-    expect(errorMessage(res)).not.toContain('EGYCASH-2');
+    expect(errorMessage(res)).not.toContain('Tanta');
     const org = await add(adminToken, alexBranchId, { machineCode: '77770401' });
     expect(errorCode(org)).toBe('ATM_REGISTER_CODE_ACTIVE_ELSEWHERE');
-    expect(errorMessage(org)).toContain('EGYCASH-2');
+    // Named as the top bar names it (2026-10-28), never by a workbook code.
+    expect(errorMessage(org)).toContain('Tanta');
+    expect(errorMessage(org)).not.toContain('EGYCASH');
     expect((await mastersOf('77770401')).map((m) => String(m.branchId))).toEqual([tantaBranchId]);
     expect(await entriesOf('77770401')).toHaveLength(0);
   });
@@ -448,7 +452,7 @@ describe('the decision table (DEC-36 steps a–e)', () => {
     const res = await add(manageAlexToken, undefined, { machineCode: '77770501' });
     expect(res.status).toBe(409);
     expect(errorCode(res)).toBe('ATM_REGISTER_OPEN_PERIOD_EXISTS');
-    expect(errorMessage(res)).not.toContain('EGYCASH-2');
+    expect(errorMessage(res)).not.toContain('Tanta');
     expect(await mastersOf('77770501')).toHaveLength(0);
 
     // A branch-less open row counts as "elsewhere" too (D6 is company-wide).
@@ -864,5 +868,247 @@ describe('the master takes the bank of the entry it is coupled to (D5/DEC-8; rev
       bankName: 'NBE',
       register: { action: 'existing' },
     });
+  });
+});
+
+const options = async (token: string, activeBranch?: string): Promise<AtmRefLabelOptionsDto> => {
+  const res = await call('get', '/atm/ref-labels/options', token, undefined, activeBranch);
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return data<AtmRefLabelOptionsDto>(res);
+};
+
+const settingsCtx = (): AuthContext => ({
+  userId: adminId,
+  sessionId: 'seed',
+  branchId: null,
+  departmentId: null,
+  sectionId: null,
+  locale: 'en',
+  permissions: { 'setting.edit': 'organization' },
+  permissionVersion: 1,
+  isPrivileged: true,
+});
+
+// GM-20 for ATM (2026-10-28). An organization-wide holder PLACED in a branch filed every data-edit
+// add — and every replenishment and maintenance — under that home branch whatever the top bar said,
+// and silently under «كل الشركة» too: written where nobody was looking (the owner's report, a
+// machine shown only under «كل الشركة»). Now it files where the top bar points, or is asked.
+describe('the branch an add files into (GM-20, 2026-10-28)', () => {
+  let orgHomeTantaToken: string; // machine + replenishment keys, ORGANIZATION scope, in Tanta
+
+  beforeAll(async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Operations, company-wide', ar: 'Operations, company-wide' },
+        permissionKeys: [
+          'atmMachine.view',
+          'atmMachine.manage',
+          'atmReplenishment.view',
+          'atmReplenishment.create',
+        ],
+      },
+      adminId,
+    );
+    const userId = await mkUser('intake-org-home@ecms.local', { branchId: tantaBranchId });
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    orgHomeTantaToken = await login('intake-org-home@ecms.local');
+  });
+
+  it('21 — placed in Tanta, the top bar on Alexandria: the machine is Alexandria’s, as the dialog said', async () => {
+    const said = await options(orgHomeTantaToken, alexBranchId);
+    expect(said.branch).toEqual({ id: alexBranchId, name: { ar: 'الإسكندرية', en: 'Alexandria' } });
+    expect(said.branchId).toBe(alexBranchId);
+    expect(said.registerMapped).toBe(true);
+
+    const res = await add(orgHomeTantaToken, alexBranchId, { machineCode: '77772101' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(data<AtmMachineCreateResultDto>(res)).toMatchObject({
+      branchId: alexBranchId,
+      register: { action: 'created' },
+    });
+    expect((await mastersOf('77772101')).map((m) => String(m.branchId))).toEqual([alexBranchId]);
+
+    // A replenishment opened on it follows the top bar too — never the home branch.
+    const opened = await call(
+      'post',
+      '/atm/replenishments/open',
+      orgHomeTantaToken,
+      { rows: [{ machineCode: '77772101', scheduleTime: null }], forceDate: null },
+      alexBranchId,
+    );
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    expect(data<{ unknownCodes: string[] }>(opened).unknownCodes).toEqual([]);
+  });
+
+  it('22 — on «كل الشركة» it is asked for a branch: nothing filed at home, the dialog names none', async () => {
+    const res = await add(orgHomeTantaToken, undefined, { machineCode: '77772201' });
+    expect(res.status).toBe(422);
+    expect(errorMessage(res)).toBe('اختر فرعًا محددًا من القائمة العلوية أولًا.');
+    expect(await mastersOf('77772201')).toHaveLength(0);
+    expect(await options(orgHomeTantaToken)).toEqual({
+      branchId: null,
+      branch: null,
+      registerMapped: false,
+      banks: [],
+      areas: [],
+      unmappedBankNames: [],
+      unmappedBankLabels: [],
+    });
+    const opened = await call('post', '/atm/replenishments/open', orgHomeTantaToken, {
+      rows: [{ machineCode: '77772101', scheduleTime: null }],
+      forceDate: null,
+    });
+    expect(opened.status).toBe(422);
+    // An area label without a branch named is asked for one the same way.
+    const label = await call('post', '/atm/ref-labels/area', orgHomeTantaToken, {
+      name: 'Nowhere',
+    });
+    expect(label.status).toBe(422);
+  });
+
+  it('23 — a branch-scoped holder naming another branch in the header still adds at home', async () => {
+    const res = await add(manageAlexToken, tantaBranchId, { machineCode: '77772301' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(data<AtmMachineCreateResultDto>(res).branchId).toBe(alexBranchId);
+    expect((await options(manageAlexToken, tantaBranchId)).branch?.id).toBe(alexBranchId);
+  });
+
+  // The Operations roles hold the label keys WITHOUT `manage` (§12.2 step 3). Judged on `manage`
+  // alone such a holder was never organization-wide, so the label tabs listed — and an added area
+  // was filed under — their home branch whatever the top bar said (review finding).
+  it('23b — the label keys alone, company-wide: a label is filed where the top bar points, or asked for', async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Operations labels, company-wide', ar: 'Operations labels, company-wide' },
+        permissionKeys: [
+          'atmMachine.view',
+          'atmMachine.moveArea',
+          'atmRefLabel.create',
+          'atmRefLabel.edit',
+        ],
+      },
+      adminId,
+    );
+    const userId = await mkUser('labels-org-home@ecms.local', { branchId: tantaBranchId });
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await login('labels-org-home@ecms.local');
+
+    const said = await options(token, alexBranchId);
+    expect(said.branch).toEqual({ id: alexBranchId, name: { ar: 'الإسكندرية', en: 'Alexandria' } });
+    const filed = await call(
+      'post',
+      '/atm/ref-labels/area',
+      token,
+      { name: 'Top bar area 23b' },
+      alexBranchId,
+    );
+    expect(filed.status, JSON.stringify(filed.body)).toBe(201);
+    expect(data<{ branchId: string }>(filed).branchId).toBe(alexBranchId);
+
+    // On «كل الشركة»: no branch to name, and the add is asked for one — never filed at home.
+    expect(await options(token)).toEqual({
+      branchId: null,
+      branch: null,
+      registerMapped: false,
+      banks: [],
+      areas: [],
+      unmappedBankNames: [],
+      unmappedBankLabels: [],
+    });
+    const asked = await call('post', '/atm/ref-labels/area', token, { name: 'Nowhere 23b' });
+    expect(asked.status, JSON.stringify(asked.body)).toBe(422);
+    expect(errorMessage(asked)).toBe('اختر فرعًا محددًا من القائمة العلوية أولًا.');
+  });
+});
+
+// The branch links (`atm.branchLinks`, #614): October works as Mohandessin. EGYCASH-1 mapped to
+// October — the owner's configuration — RESOLVES to Mohandessin, so a machine added there is
+// recorded in the register (`isMapped`) instead of «غير مربوط بسجل الماكينات».
+describe('a data-edit add through a branch link (2026-10-28)', () => {
+  let mohBranchId: string;
+  let octBranchId: string;
+  let octManageToken: string; // view + manage, BRANCH scope, placed in October
+
+  beforeAll(async () => {
+    const branch = async (code: string, name: { ar: string; en: string }): Promise<string> => {
+      const res = await call('post', '/platform/branches', adminToken, { code, name });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      return data<{ id: string }>(res).id;
+    };
+    mohBranchId = await branch('84', { ar: 'المهندسين', en: 'Mohandessin' });
+    octBranchId = await branch('85', { ar: 'أكتوبر', en: 'October' });
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.RegisterBranchCodes,
+      scope: 'organization',
+      value: [
+        { code: 'EGYCASH-4', branchId: alexBranchId },
+        { code: 'EGYCASH-2', branchId: tantaBranchId },
+        { code: 'EGYCASH-1', branchId: octBranchId },
+      ],
+    });
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.BranchLinks,
+      scope: 'organization',
+      value: [{ branchId: octBranchId, actsAsBranchId: mohBranchId }],
+    });
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Machines (October)', ar: 'Machines (October)' },
+        permissionKeys: ['atmMachine.view', 'atmMachine.manage'],
+      },
+      adminId,
+    );
+    const userId = await mkUser('intake-october@ecms.local', { branchId: octBranchId });
+    await rbacService.ensureAssignment(userId, String(role._id), 'branch');
+    octManageToken = await login('intake-october@ecms.local');
+  });
+
+  afterAll(async () => {
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.BranchLinks,
+      scope: 'organization',
+      value: [],
+    });
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.RegisterBranchCodes,
+      scope: 'organization',
+      value: [
+        { code: 'EGYCASH-4', branchId: alexBranchId },
+        { code: 'EGYCASH-2', branchId: tantaBranchId },
+      ],
+    });
+  });
+
+  it('24 — an October employee adds in Mohandessin, and the register records it there', async () => {
+    const said = await options(octManageToken);
+    expect(said.branch).toEqual({ id: mohBranchId, name: { ar: 'المهندسين', en: 'Mohandessin' } });
+    expect(said.registerMapped).toBe(true);
+
+    const res = await add(octManageToken, undefined, { machineCode: '77772401' });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const added = data<AtmMachineCreateResultDto>(res);
+    expect(added).toMatchObject({ branchId: mohBranchId, register: { action: 'created' } });
+    const entry = await getEntry(added.register.entryId as string);
+    expect(entry).toMatchObject({
+      branchId: mohBranchId,
+      branchCode: 'EGYCASH-1',
+      branchName: { ar: 'المهندسين', en: 'Mohandessin' },
+    });
+  });
+
+  it('25 — the options and a label asked for October are Mohandessin’s', async () => {
+    const res = await call('get', `/atm/ref-labels/options?branchId=${octBranchId}`, adminToken);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<AtmRefLabelOptionsDto>(res)).toMatchObject({
+      branchId: mohBranchId,
+      branch: { id: mohBranchId },
+      registerMapped: true,
+    });
+    const label = await call('post', '/atm/ref-labels/area', adminToken, {
+      name: 'Dokki',
+      branchId: octBranchId,
+    });
+    expect(label.status, JSON.stringify(label.body)).toBe(201);
+    expect(data<{ branchId: string }>(label).branchId).toBe(mohBranchId);
   });
 });

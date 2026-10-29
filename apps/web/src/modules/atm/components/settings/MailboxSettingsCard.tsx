@@ -8,9 +8,16 @@
 // box's hint into «محفوظ — اتركه فارغاً للإبقاء عليه», and an empty box keeps what is stored.
 // «اختبار الاتصال» and «قراءة الآن» act on what is STORED, so they wait until the card is saved:
 // a result for settings still unsaved on screen would answer a question nobody asked.
+//
+// A branch linked to work as another («أكتوبر ← يعمل باسم المهندسين», the card below) has its
+// machines' mail filed under the target, so the save keeps the TARGET's row in its place (or drops
+// it when the target is switched on already). Such a row is marked as soon as it is on the list,
+// before the save turns it into another branch's row — with the mark the save will bear out — and
+// after the save the card shows the rows the server kept.
 import { useEffect, useState } from 'react';
 import {
   SaveAtmMailboxConfigSchema,
+  type AtmBranchLinkDto,
   type AtmMailboxConfigDto,
   type AtmMailPollRunDto,
   type Locale,
@@ -31,6 +38,7 @@ import { PlusIcon, TrashIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatBusinessDateTime, formatNumber, localized } from '../../../../shared/lib/format';
 import {
+  useAtmBranchLinks,
   useAtmMailboxConfig,
   usePollAtmMailboxNow,
   useSaveAtmMailboxConfig,
@@ -64,6 +72,29 @@ export const mailboxDraftOf = (config: AtmMailboxConfigDto | null): Draft => ({
   enabled: config?.enabled ?? false,
   branches: (config?.branches ?? []).map(({ branchId, category }) => ({ branchId, category })),
 });
+
+/**
+ * Pure: the rows a save removes — the server's own rule (`mailboxBranchesFiledAs`). A linked
+ * source's row is saved as its target's row, unless the target already has a row on the list (or
+ * an earlier source row became it): then the save drops this one, and that row keeps its category.
+ */
+export const mailboxRowsRemovedOnSave = (
+  rows: readonly { branchId: string }[],
+  targetOf: (branchId: string) => string | null,
+): Set<string> => {
+  const listed = new Set(rows.map((row) => row.branchId));
+  const kept = new Set<string>();
+  const removed = new Set<string>();
+  for (const row of rows) {
+    const target = targetOf(row.branchId) ?? row.branchId;
+    if ((target !== row.branchId && listed.has(target)) || kept.has(target)) {
+      removed.add(row.branchId);
+      continue;
+    }
+    kept.add(target);
+  }
+  return removed;
+};
 
 /** What the save compares — a secret of blanks is no secret, as the schema reads it. */
 const signatureOf = (draft: Draft): string =>
@@ -161,6 +192,7 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branchOptions = useBranchOptions();
+  const links = useAtmBranchLinks();
   const save = useSaveAtmMailboxConfig();
   const test = useTestAtmMailbox();
   const poll = usePollAtmMailboxNow();
@@ -220,9 +252,13 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
 
   const submit = required.guard(async () => {
     try {
-      await save.mutateAsync(mailboxSaveBody(draft, stored?.version ?? null));
-      // The box empties whatever the answer: a saved secret is never shown again.
-      set({ clientSecret: '' });
+      const saved = await save.mutateAsync(mailboxSaveBody(draft, stored?.version ?? null));
+      // The form shows what the server KEPT: a linked source's row comes back as its target's, or
+      // not at all beside the target's own row. An answer equal to what was stored before would
+      // leave that row on screen, unsaved, behind «تم الحفظ» — the follow above is keyed on
+      // content and sees nothing new (review finding). `mailboxDraftOf` also empties the secret
+      // box: a saved secret is never shown again.
+      setDraft(mailboxDraftOf(saved));
       // A connection result was about the settings this save replaced.
       test.reset();
       toast.success(t('atm.common.saved'));
@@ -267,8 +303,22 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
       saved ?? branchOptions.data?.find((branch) => branch.id === branchId)?.name ?? null;
     return name === null ? t('atm.settings.unknownBranch') : localized(name, locale);
   };
+  /** The link a row's branch works through — none for a branch that works as itself. */
+  const linkOf = (branchId: string): AtmBranchLinkDto | null =>
+    links.data?.links.find((link) => link.branchId === branchId) ?? null;
+  const targetName = (link: AtmBranchLinkDto): string => {
+    const name =
+      link.actsAsBranchName ??
+      branchOptions.data?.find((branch) => branch.id === link.actsAsBranchId)?.name ??
+      null;
+    return name === null ? t('atm.settings.unknownBranch') : localized(name, locale);
+  };
   const switchedOn = new Set(draft.branches.map((row) => row.branchId));
   const addable = (branchOptions.data ?? []).filter((branch) => !switchedOn.has(branch.id));
+  const removedOnSave = mailboxRowsRemovedOnSave(
+    draft.branches,
+    (branchId) => linkOf(branchId)?.actsAsBranchId ?? null,
+  );
 
   const addBranch = (): void => {
     if (addBranchId === '') return;
@@ -399,10 +449,24 @@ const MailboxForm = ({ stored }: { stored: AtmMailboxConfigDto | null }): JSX.El
               ) : (
                 draft.branches.map((row) => {
                   const name = branchName(row.branchId);
+                  const link = linkOf(row.branchId);
                   return (
                     <tr key={row.branchId} data-mailbox-branch={row.branchId}>
                       <td className={TD}>
                         <span dir="auto">{name}</span>
+                        {link !== null && (
+                          <p
+                            className="mt-0.5 text-xs text-amber-700 dark:text-amber-400"
+                            data-mailbox-works-as={link.actsAsBranchId}
+                          >
+                            {t(
+                              removedOnSave.has(row.branchId)
+                                ? 'atm.settings.mailbox.worksAsListed'
+                                : 'atm.settings.mailbox.worksAs',
+                              { target: targetName(link) },
+                            )}
+                          </p>
+                        )}
                       </td>
                       <td className={TD}>
                         <span dir="ltr">{row.category ?? '—'}</span>

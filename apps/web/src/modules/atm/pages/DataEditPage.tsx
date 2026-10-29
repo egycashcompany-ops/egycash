@@ -71,6 +71,7 @@ import {
   MachineAreaDialog,
   MachineDialog,
   RefLabelDialog,
+  addBlocked,
 } from '../components/DataEditDialogs';
 import { BankDialog } from '../components/catalog/BankDialog';
 import { bankCatalogColumns } from '../components/catalog/BankCatalogDialog';
@@ -171,9 +172,15 @@ export const DataEditPage = (): JSX.Element => {
   // and «ربط ببنك» can never land on another branch's row (review finding). The list waits for it
   // rather than loading unscoped first. When the options cannot answer — an unplaced administrator
   // in the «all» view, a key that reaches no whole branch — the list falls back to today's unscoped
-  // read, and the notice above it says why it is not one branch.
-  const options = useAtmRefLabelOptions(null, labelTab);
-  const actingBranch = options.data?.branchId;
+  // read, and the notice above it says why it is not one branch. So does an organization-wide
+  // holder on «الشركة كلها» in a company of several branches: the options answer with no branch
+  // (`branchId: null`), and since an add would have nowhere to file, the add waits for one too.
+  // The machines tab asks as well when `manage` is held: a row's «حذف» is the delete-by-codes,
+  // which looks its code up in that same branch, so it waits for one exactly as the add does.
+  const options = useAtmRefLabelOptions(null, labelTab || (tab === 'machines' && canManage));
+  const deleteBlocked = addBlocked(options.data);
+  const actingBranch = options.data?.branchId ?? undefined;
+  const unscoped = options.isError || options.data?.branchId === null;
   const labelParams = useMemo(
     () => (actingBranch === undefined ? listParams : { ...listParams, branchId: actingBranch }),
     [listParams, actingBranch],
@@ -319,10 +326,13 @@ export const DataEditPage = (): JSX.Element => {
                 {canManage && (
                   <button
                     type="button"
-                    className={actionButton}
+                    className={`${actionButton} disabled:cursor-not-allowed disabled:opacity-50`}
                     aria-label={t('atm.dataEdit.deleteMachine')}
-                    title={t('atm.dataEdit.deleteMachine')}
+                    title={t(
+                      deleteBlocked ? 'atm.dataEdit.chooseBranch' : 'atm.dataEdit.deleteMachine',
+                    )}
                     data-edit-action="delete-machine"
+                    disabled={deleteBlocked}
                     onClick={() => setDeleting(r)}
                   >
                     <TrashIcon className="h-4 w-4" />
@@ -442,6 +452,7 @@ export const DataEditPage = (): JSX.Element => {
                     size="sm"
                     leftIcon={<PlusIcon className="h-4 w-4" />}
                     data-edit-action="add-label"
+                    disabled={addBlocked(options.data)}
                     onClick={() => setCreating(true)}
                   >
                     {t(tab === 'bankLabel' ? 'atm.dataEdit.addSpelling' : 'atm.dataEdit.addArea')}
@@ -501,7 +512,7 @@ export const DataEditPage = (): JSX.Element => {
 
         {/* The options could not name one branch, so the table lists every branch the key
             reaches (the server's own reason is the add's refusal too). */}
-        {labelTab && options.isError && (
+        {labelTab && unscoped && (
           <p
             data-labels-unscoped="true"
             className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300"
@@ -651,7 +662,7 @@ export const DataEditPage = (): JSX.Element => {
         busy={bulkDelete.isPending}
         onConfirm={() => {
           const code = deleting?.machineCode;
-          if (code === undefined) return;
+          if (code === undefined || deleteBlocked) return;
           void bulkDelete
             .mutateAsync({ machineCodes: [code] })
             .then(() => {

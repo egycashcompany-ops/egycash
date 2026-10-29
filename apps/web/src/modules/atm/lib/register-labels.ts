@@ -1,8 +1,10 @@
 // The register's vocabulary in the reader's language — shared by the register page (WP-C), the
 // Data Report (WP-D) and the import page (WP-B), so the three cannot name a bank, a branch or a
-// status differently. Branch names come from the contracts (the workbook's own Arabic, D7); bank
-// names from the bank catalog (DEC-35) when the caller holds it; everything else is a translation
-// key.
+// status differently. A branch is named as the top bar names it — the ECMS name the server sends
+// (the owner, 2026-10-28: «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي»); the workbook's own
+// names (D7) are for the two screens about the workbook, the register settings card and the import
+// preview. Bank names come from the bank catalog (DEC-35) when the caller holds it; everything else
+// is a translation key.
 import {
   ATM_REGISTER_BRANCH_NAMES,
   atmBankName,
@@ -29,7 +31,10 @@ export const bankName = (
   banks?: readonly { code: AtmBankCode; name: LocalizedString }[],
 ): string => atmBankName(code, locale, banks);
 
-/** The sheet's branch name for an `EGYCASH-n` code (ATMs DE1..DK1). */
+/**
+ * The sheet's branch name for an `EGYCASH-n` code (ATMs DE1..DK1) — the settings card and the
+ * import preview only; every other screen names the ECMS branch.
+ */
 export const branchLabel = (code: AtmRegisterBranchCode, locale: Locale): string =>
   ATM_REGISTER_BRANCH_NAMES[code][locale];
 

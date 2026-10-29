@@ -40,8 +40,9 @@ export type ZoneEditBranch =
  * D-M6 / DM-12: the ONE branch zones are edited and saved in — the top bar's, when the caller can
  * both read and edit it; else the caller's only editable branch; else nothing, with the reason.
  * `GET /context` and the save both ask this, so the branch the editor loads is the branch the save
- * is filed under. Not `resolveAtmBranchId`: its `currentBranchId` puts the home branch before an
- * organization-wide caller's top-bar choice, while reads narrow to that choice (GM-20).
+ * is filed under. Not `resolveAtmBranchId`: its `currentBranchId` put the home branch before an
+ * organization-wide caller's top-bar choice, while reads narrow to that choice (GM-20 — since fixed
+ * there too), and the editor must also be able to READ the branch it edits.
  */
 export const resolveZoneEditBranch = async (ctx: AuthContext): Promise<ZoneEditBranch> => {
   const readable = mapScopeBranches(scopeSelector(ctx, 'atmMap.view'));

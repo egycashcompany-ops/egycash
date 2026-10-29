@@ -10,6 +10,8 @@
 // mailbox credentials typed on a screen with the secret stored encrypted — never in code.
 import { z } from 'zod';
 import { EMAIL_RE, objectId, type LocalizedString } from '../common/index.js';
+// `import type`: atm-register.ts imports atm.ts at runtime, and this file needs only the type.
+import type { AtmBankCode } from './atm-register.js';
 
 /**
  * A branch id, lower-cased. The server compares these with `String(ObjectId)` — lower-case hex —
@@ -25,7 +27,10 @@ const branchRef = () => objectId().transform((id) => id.toLowerCase());
 // mail is filed under its machine's branch, and — with a document — only when that branch is
 // switched on in it. Otherwise it stays UNREAD in the mailbox — the owner's rule for every mail the
 // system does not take on — so a branch switched on later picks up its backlog without anybody
-// re-sending anything.
+// re-sending anything. The machine's branch is read as ATM resolves it (`atm.branchLinks`): a
+// machine still filed under a linked source is its target's, so the target's row switches its
+// mail on and files it under the target — the owner (2026-10-28) saw a Mohandessin machine's mail
+// only under «كل الشركة»: mail filed under the linked October shows nowhere else.
 
 /**
  * Branches one mailbox switches on — a ceiling on a hand-kept list, the one
@@ -102,6 +107,11 @@ export const SaveAtmMailboxConfigSchema = z
     userEmail: z.string().trim().max(254).regex(EMAIL_RE),
     /** «تفعيل القراءة» — off, the reader reads nothing at all, environment included. */
     enabled: z.boolean(),
+    /**
+     * A linked SOURCE on this list is saved as its target, or dropped when the target is on it too:
+     * its mail is filed under the target, so a row of its own would switch nothing on. The card
+     * marks such a row before the save.
+     */
     branches: z
       .array(AtmMailboxBranchSchema)
       .max(ATM_MAILBOX_BRANCHES_MAX)
@@ -176,8 +186,10 @@ export interface AtmMailboxTestResultDto {
 // So a link is DIRECTED: `branchId` (October) acts as `actsAsBranchId` (Mohandessin). On an ATM
 // request a user placed in the source is answered as if placed in the target — they see the
 // target's ATM data and what they write is filed under the target, which is how the target's own
-// people see the source's work on the same rows. Nothing is copied or re-filed (the data already IS
-// the target's), and nothing outside ATM changes.
+// people see the source's work on the same rows. Saving a link copies or re-files nothing, and
+// nothing outside ATM changes; what was filed under the source BEFORE — the workbook import's rows
+// and their machines, their mail — is moved to the target by «نقل البيانات» (below), once, after a
+// preview.
 
 /** Links one list may hold — a ceiling on a hand-kept list, never reached by a real org chart. */
 export const ATM_BRANCH_LINKS_MAX = 100;
@@ -256,4 +268,232 @@ export interface AtmBranchLinkDto {
 /** GET /atm/branch-links, and the PUT's answer. */
 export interface AtmBranchLinksDto {
   links: AtmBranchLinkDto[];
+}
+
+// ── «نقل البيانات» — a linked source's ATM data moved to its target ─────────────────────────────
+//
+// GET /atm/branch-links/:sourceBranchId/move previews, POST moves.
+//
+// A link answers the source's people AS the target from the moment it is saved, but it moves no
+// row: whatever was filed under October before — the workbook rows of the code mapped to it, the
+// machines coupled to them, the mail of those machines — stays under October, readable only under
+// «كل الشركة». The owner's report (2026-10-28): a Mohandessin machine shown only under «كل الشركة»,
+// its mail too — «أنا عايز كل ماكينه تظهر فى الفرع بتاعها طبقاً للفرع المتسجله فيه». So an
+// administrator moves the source's ATM data to its target, from the links card: a PREVIEW first
+// (what moves, what merges, what refuses the move), then the move.
+//
+// The pair is the STORED link — the path names the source, a source not stored is 404, and the
+// target is never taken from the request. `atmSettings.manage` at organization scope, as the links
+// save. The link stays: the source's people keep working as the target afterwards.
+
+/** `:sourceBranchId` — the link's source, lower-cased as every stored link id is. */
+export const AtmBranchMoveParamsSchema = z.object({ sourceBranchId: branchRef() }).strict();
+export type AtmBranchMoveParams = z.output<typeof AtmBranchMoveParamsSchema>;
+
+/**
+ * `POST …/move` — the target the reader confirmed, from the preview they read (review finding):
+ * a PRECONDITION, never an authority. The target is still the stored link's; when that is no
+ * longer this one, the move is refused 409 `ATM_BRANCH_MOVE_TARGET_CHANGED` and nothing moves.
+ * Optional, so a page loaded before this rule still moves as it did.
+ */
+export const AtmBranchMoveBodySchema = z.preprocess(
+  // No body at all (that older page) reads as an empty one.
+  (value) => value ?? {},
+  z.object({ expectedTargetBranchId: branchRef().optional() }).strict(),
+);
+export type AtmBranchMoveBody = z.output<typeof AtmBranchMoveBodySchema>;
+
+/**
+ * What a move re-files, in the order the dialog lists it — every ATM collection whose rows carry a
+ * `branchId`, but one: the source's zone-set document stays (the target's revision moves on, so an
+ * open zone editor reloads). The bank catalog and the register import runs carry no branch; the note
+ * counters hold it inside their key and are left behind, because the next Note issued in the target
+ * raises its counter past every moved serial; the mailbox list is re-pointed (`mailboxRepointed`).
+ */
+export const ATM_BRANCH_MOVE_COLLECTIONS = [
+  'machines',
+  'registerEntries',
+  'mailTickets',
+  'maintenances',
+  'replenishments',
+  'refLabels',
+  'machineLocations',
+  'cassetteLayouts',
+  'cassetteLayoutVersions',
+  'mapZones',
+  'dispatchRoutes',
+  'routeAssignments',
+  'standardLoads',
+  'replenishmentPlans',
+  'planLines',
+  'linePreparations',
+  'layoutImportRuns',
+] as const;
+export const AtmBranchMoveCollectionSchema = z.enum(ATM_BRANCH_MOVE_COLLECTIONS);
+export type AtmBranchMoveCollection = z.infer<typeof AtmBranchMoveCollectionSchema>;
+
+/** Rows per collection, every key present — 0 when there are none. */
+export type AtmBranchMoveCountsDto = Record<AtmBranchMoveCollection, number>;
+
+/** No rows anywhere: the shape a count starts from. */
+export const emptyAtmBranchMoveCounts = (): AtmBranchMoveCountsDto => ({
+  machines: 0,
+  registerEntries: 0,
+  mailTickets: 0,
+  maintenances: 0,
+  replenishments: 0,
+  refLabels: 0,
+  machineLocations: 0,
+  cassetteLayouts: 0,
+  cassetteLayoutVersions: 0,
+  mapZones: 0,
+  dispatchRoutes: 0,
+  routeAssignments: 0,
+  standardLoads: 0,
+  replenishmentPlans: 0,
+  planLines: 0,
+  linePreparations: 0,
+  layoutImportRuns: 0,
+});
+
+/** Σ of the counts — a preview's and a result's `total`. */
+export const atmBranchMoveTotal = (counts: AtmBranchMoveCountsDto): number =>
+  ATM_BRANCH_MOVE_COLLECTIONS.reduce((sum, collection) => sum + counts[collection], 0);
+
+/**
+ * What a move merges or changes beyond re-filing rows — a count each, 0 for nothing:
+ * · `labelsMerged` — a source bank spelling or area whose name the target also holds live: the
+ *   target's row stays and takes only what it left empty (its bank, its display names) and the
+ *   union of the former names; the source's row is retired and moved with the rest;
+ * · `labelsRetired` — a live source name the target renamed away (in its `formerNames`): retired,
+ *   so a renamed name never comes back (DEC-38) in the merged branch either;
+ * · `machineTwinsRetired` — one code held by a master in each branch: the one that stays (the
+ *   active one; of two active ones, the one holding the code's open register period; of two
+ *   archived ones, the target's) keeps its id and history, the other is retired the legacy way
+ *   (`<code>-D`, deleted) and keeps its own history on its own id;
+ * · `zonesRenamed` — source zones whose name the target already uses, renamed with a suffix (within
+ *   `ATM_MAP_ZONE_NAME_MAX`); every source zone's order follows the target's;
+ * · `routesRenamed` — source dispatch lines whose name the target uses on the same day, renamed;
+ * · `standardLoadDefaultsUnset` — a source default for a bank the target already has a default for
+ *   is no longer the default; the target's stays;
+ * · `layoutImportRunsAbandoned` — source Full list imports left `running` for over 30 minutes,
+ *   closed first, as the import's own takeover does;
+ * · `mailboxRepointed` — the source's row in the mailbox list, saved as the target's, or dropped
+ *   when the target is switched on already (0 or 1);
+ * · `settingsRepointed` — rows of `atm.mail.branchCategories` and `atm.register.branchCodes` that
+ *   name the source, re-pointed to the target where the target has none of its own.
+ */
+export const ATM_BRANCH_MOVE_MERGES = [
+  'labelsMerged',
+  'labelsRetired',
+  'machineTwinsRetired',
+  'zonesRenamed',
+  'routesRenamed',
+  'standardLoadDefaultsUnset',
+  'layoutImportRunsAbandoned',
+  'mailboxRepointed',
+  'settingsRepointed',
+] as const;
+export type AtmBranchMoveMerge = (typeof ATM_BRANCH_MOVE_MERGES)[number];
+export type AtmBranchMoveMergesDto = Record<AtmBranchMoveMerge, number>;
+
+/** Nothing merged: the shape the merges start from. */
+export const emptyAtmBranchMoveMerges = (): AtmBranchMoveMergesDto => ({
+  labelsMerged: 0,
+  labelsRetired: 0,
+  machineTwinsRetired: 0,
+  zonesRenamed: 0,
+  routesRenamed: 0,
+  standardLoadDefaultsUnset: 0,
+  layoutImportRunsAbandoned: 0,
+  mailboxRepointed: 0,
+  settingsRepointed: 0,
+});
+
+/**
+ * What refuses a move — each one for the administrator to resolve first, listed with what it names
+ * (the move never guesses past one):
+ * · `machineActiveInBoth` — a machine code ACTIVE in both branches where the register does not
+ *   decide which machine exists (D2: the one holding the code's open register period stays):
+ *   neither holds it, or both do through exempt twins (DEC-11);
+ * · `machineTwinOpen` — the twin the move would retire still holds an open register entry, an
+ *   open replenishment or maintenance, or a draft or issued settlements plan line;
+ * · `planSerialCollision` — Notes of the same bank issued in both branches: each branch's serials
+ *   start at 1, and a serial printed on a «محضر جرد» Note is never renumbered;
+ * · `planSameDay` — a replenishment plan of the same bank for the same day in both branches;
+ * · `zoneCaps` — the target would pass a map cap (`ATM_MAP_ZONES_PER_BRANCH_MAX` zones or
+ *   `ATM_MAP_ZONE_POINTS_PER_BRANCH_MAX` points), after which no zone save could pass again;
+ *   `zones` and `points` are the target's totals after the move;
+ * · `layoutImportRunning` — a Full list import of the source `running` for under 30 minutes;
+ * · `registerImportRunning` — a register import `running` for under 30 minutes, anywhere: its rows
+ *   file into whichever branch a code resolves to, the target included, so its couplings would land
+ *   between the move's plan and its writes (one started while a move runs waits for it instead);
+ * · `moveRunning` — another move holds the run lock (one at a time, 30 minutes before it is stale).
+ */
+export const ATM_BRANCH_MOVE_BLOCKERS = [
+  'machineActiveInBoth',
+  'machineTwinOpen',
+  'planSerialCollision',
+  'planSameDay',
+  'zoneCaps',
+  'layoutImportRunning',
+  'registerImportRunning',
+  'moveRunning',
+] as const;
+export type AtmBranchMoveBlockerKind = (typeof ATM_BRANCH_MOVE_BLOCKERS)[number];
+
+/** One refusal and what it names — machine codes, bank codes, (bank, `YYYY-MM-DD`) pairs. */
+export type AtmBranchMoveBlockerDto =
+  | { kind: 'machineActiveInBoth'; codes: string[] }
+  | { kind: 'machineTwinOpen'; codes: string[] }
+  | { kind: 'planSerialCollision'; bankCodes: AtmBankCode[] }
+  | { kind: 'planSameDay'; items: { bankCode: AtmBankCode; replenishDate: string }[] }
+  | { kind: 'zoneCaps'; zones: number; points: number }
+  | { kind: 'layoutImportRunning'; bankCodes: AtmBankCode[] }
+  | { kind: 'registerImportRunning' }
+  | { kind: 'moveRunning' };
+
+/** `atm_branch_move_runs.state` — the run lock: one `running` at a time, 30 minutes to stale. */
+export const ATM_BRANCH_MOVE_RUN_STATES = ['running', 'done', 'failed'] as const;
+export type AtmBranchMoveRunState = (typeof ATM_BRANCH_MOVE_RUN_STATES)[number];
+
+/** GET /atm/branch-links/:sourceBranchId/move — read-only: what a move would do now. */
+export interface AtmBranchMovePreviewDto {
+  sourceBranchId: string;
+  /** The ECMS names, as the top bar shows them; null for a branch that no longer exists. */
+  sourceBranchName: LocalizedString | null;
+  targetBranchId: string;
+  targetBranchName: LocalizedString | null;
+  /** Rows filed under the source, per collection. */
+  counts: AtmBranchMoveCountsDto;
+  /** `atmBranchMoveTotal(counts)` — 0: nothing is filed under the source any more. */
+  total: number;
+  merges: AtmBranchMoveMergesDto;
+  blockers: AtmBranchMoveBlockerDto[];
+  /** `blockers.length === 0`. The dialog also holds «نقل» back while `total` is 0. */
+  canMove: boolean;
+}
+
+/**
+ * POST /atm/branch-links/:sourceBranchId/move — what the run did. Refused 409
+ * `ATM_BRANCH_MOVE_BLOCKED` while the preview carries a blocker, before anything is written. A
+ * blocker that appears while the run goes stops it at the step that meets it — 409
+ * `ATM_BRANCH_MOVE_STOPPED`, what the earlier steps moved staying moved. A run stopped or cut off
+ * part-way is continued by running it again: every step reads only the rows still filed under the
+ * source.
+ */
+export interface AtmBranchMoveResultDto {
+  /** The run (`atm_branch_move_runs`) — the run's one `atmBranchMove` audit row names it. */
+  runId: string;
+  sourceBranchId: string;
+  sourceBranchName: LocalizedString | null;
+  targetBranchId: string;
+  targetBranchName: LocalizedString | null;
+  /** Rows now filed under the target, per collection — a retired label or machine twin included. */
+  moved: AtmBranchMoveCountsDto;
+  /** `atmBranchMoveTotal(moved)`. */
+  total: number;
+  merges: AtmBranchMoveMergesDto;
+  /** Rows still filed under the source after the run, per collection — all 0 once it completed. */
+  remaining: AtmBranchMoveCountsDto;
 }

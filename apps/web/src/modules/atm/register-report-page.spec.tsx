@@ -363,6 +363,27 @@ describe('a bank added to the catalog', () => {
   });
 });
 
+// The owner (2026-10-28): «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي» — a branch section
+// reads the ECMS name the server sends, in the sheet's own pattern.
+describe('the branches, as the top bar names them', () => {
+  const named = (): AtmRegisterReportDto => ({
+    ...report(),
+    branchNames: { 'EGYCASH-7': { ar: 'الشروق', en: 'El Shorouk' } },
+  });
+
+  it('labels the sections, the bars and the table rows with the server’s name', () => {
+    const markup = render(named());
+    expect(sectionOf(markup, 2)).toContain('فرع إيجي كاش الشروق');
+    expect(sectionOf(markup, 3)).toContain('إيجي كــاش ( الشروق )');
+    expect(markup).not.toContain('وصال');
+    // A code it sends no name for keeps the sheet's own label.
+    expect(sectionOf(markup, 2)).toContain('فرع إيجي كاش الإسكندرية');
+    const en = render(named(), 'en');
+    expect(sectionOf(en, 2)).toContain('EgyCash El Shorouk branch');
+    expect(sectionOf(en, 3)).toContain('EgyCash (El Shorouk)');
+  });
+});
+
 describe('a reader sees only their branches', () => {
   it('draws Alexandria alone for an Alexandria-scoped reader', () => {
     const markup = render(report(['EGYCASH-4']));

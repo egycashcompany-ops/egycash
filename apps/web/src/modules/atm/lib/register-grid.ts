@@ -52,10 +52,13 @@ export const registerColumnWidth = (excelWidth: number): number =>
   Math.max(72, Math.round(excelWidth * 7 + 5));
 
 /**
- * The Branch column's floor. Its values are the fixed nine-character `EGYCASH-n` codes, which at the
+ * The Branch column's floor. It was sized for the nine-character `EGYCASH-n` codes, which at the
  * grid's 12 px measure up to 70.3 px (Inter) — with the cell's 16 px padding and its border, more
  * than the 87 px the sheet's 11.71 characters give, so `EGYCASH-4` showed as «…YCASH-4» on every
- * row (review finding LIVE-3). 96 px fits it with room for a wider interface font.
+ * row (review finding LIVE-3). The column now names the branch as the top bar does — its ECMS name
+ * (the owner, 2026-10-28: «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي») — and 96 px still
+ * holds the short names whole (المهندسين, الإسكندرية); a longer one is cut with an ellipsis and
+ * read whole in the cell's tooltip. Widening it would move every frozen pane after it.
  */
 export const REGISTER_BRANCH_MIN_WIDTH = 96;
 
@@ -131,7 +134,10 @@ export const registerGroupSpans = (
   return spans;
 };
 
-/** The headers a reader can order the register by, and the server field each one sorts. */
+/**
+ * The headers a reader can order the register by, and the server field each one sorts. The Branch
+ * header sorts by the stored branch id: it groups a branch's rows together, not by name.
+ */
 export const REGISTER_SORT_KEYS: Readonly<Partial<Record<AtmRegisterField, string>>> = {
   branchCode: 'branchId',
   area: 'area',

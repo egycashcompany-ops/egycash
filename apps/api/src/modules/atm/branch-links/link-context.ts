@@ -2,11 +2,23 @@
 //
 // The owner (2026-10-28), for ATM only: «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم
 // والبيانات دي متسجله إنها المهندسين — يعني أكتوبر هيشوف شغل المهندسين ويشتغل معاهم عادى
-// والمهندسين شايف أكتوبر إنه شغال معاه بردو». The data already IS Mohandessin's, so nothing is
-// copied or re-filed: on an ATM request a caller placed in October is answered as if placed in
-// Mohandessin. Every ATM read is scoped from the caller's branch and every ATM write is filed under
-// it (`resolveAtmBranchId`), so moving the caller is the whole rule — October reads and writes
+// والمهندسين شايف أكتوبر إنه شغال معاه بردو». On an ATM request a caller placed in October is
+// answered as if placed in Mohandessin. Every ATM read is scoped from the caller's branch and every
+// ATM Operations write is filed under it (`resolveAtmBranchId`), so October reads and writes
 // Mohandessin's rows, and Mohandessin's people see October's work because it is filed on theirs.
+//
+// Moving the caller is NOT the whole rule (2026-10-28 — the owner's report: a Mohandessin machine
+// shown only under «كل الشركة», «أنا عايز كل ماكينه تظهر فى الفرع بتاعها طبقاً للفرع المتسجله
+// فيه»). It moves no row: what was filed under October before the link — the workbook rows of the
+// code mapped to October, the machines they coupled, their mail — stays October's, readable only
+// under «كل الشركة». So, beside this refiner:
+//   · an id that does not come from the caller is read through the links too, ONE lookup
+//     (`linkedBranchOf`, shared/atm-context.ts): a branch a request names, the register's code
+//     mapping (register-settings.ts), a mail's machine and the mailbox's switched-on list; the
+//     legacy importer refuses a linked source as its `--branch`;
+//   · what is already filed under the source is MOVED, once, by an administrator after a preview —
+//     «نقل البيانات» (branch-move.service.ts). The link stays: the source's people keep working as
+//     the target.
 //
 // Registered for the module's route prefix only (atm.module.ts) through the platform's refiner seam
 // (platform/auth/context-refiners.ts): on every other route the same person is still in October.

@@ -28,6 +28,7 @@ import { AuditLogModel } from '../../../platform/audit/audit.model';
 import { diffChanges } from '../../../shared/utils/diff';
 import { AtmMachineModel } from '../machines/machine.model';
 import { AtmRegisterEntryModel } from '../register/register.model';
+import { branchesFiledAs, loadAtmBranchLinks } from '../shared/atm-context';
 import { AtmRefLabelModel } from './ref-label.model';
 
 /** One area as one branch carries it. */
@@ -127,6 +128,46 @@ const upsertAreaLabel = async (
   }
 };
 
+/** The stored links, or none when they cannot be read — a label repair never fails on them. */
+const linksOrNone = async (): Promise<ReadonlyMap<string, string>> => {
+  try {
+    return await loadAtmBranchLinks();
+  } catch {
+    return new Map();
+  }
+};
+
+/** Pure: the other branches linked with `branchId` — the one it works as, and that one's sources. */
+const otherLinkedBranches = (links: ReadonlyMap<string, string>, branchId: string): string[] => {
+  const own = branchId.toLowerCase();
+  return links.size === 0 ? [] : branchesFiledAs(links, own).filter((id) => id !== own);
+};
+
+/**
+ * Whether a branch linked with `branchId` REMEMBERS the name (review finding): a deleted row of it,
+ * or a row it was renamed away from (`formerNames`). DEC-38 says such a name is never inserted
+ * again, and linked branches work as one — «نقل البيانات» takes the source's memory rows to the
+ * target first, so a row still filed under the source must not write the name back as a live
+ * label the next run would then bring into the target.
+ */
+const rememberedInLinkedBranch = async (
+  links: ReadonlyMap<string, string>,
+  branchId: string,
+  area: string,
+): Promise<boolean> => {
+  const others = otherLinkedBranches(links, branchId);
+  if (others.length === 0) return false;
+  const found = await AtmRefLabelModel.collection.findOne(
+    {
+      branchId: { $in: others.map((id) => new Types.ObjectId(id)) },
+      kind: 'area',
+      $or: [{ name: area, isDeleted: { $ne: false } }, { formerNames: area }],
+    },
+    { projection: { _id: 1 } },
+  );
+  return found !== null;
+};
+
 /**
  * After a register or machine write COMMITTED: a label for every area it carried that has none.
  * Never throws — the write it follows has already succeeded, and the boot backfill repairs a miss.
@@ -137,8 +178,10 @@ export const ensureAreaLabels = async (
   pairs: readonly AtmAreaLabelPair[],
   meta: { actorId: string | null; origin: AtmRefLabelOrigin },
 ): Promise<void> => {
+  const links = await linksOrNone();
   for (const { branchId, area } of areaLabelPairs(pairs)) {
     try {
+      if (await rememberedInLinkedBranch(links, branchId, area)) continue;
       const id = await upsertAreaLabel(branchId, area, meta.origin, meta.actorId);
       if (id === null) continue;
       await auditService.record({
@@ -285,17 +328,30 @@ export const backfillAtmAreaLabels = async (): Promise<AreaLabelBackfillResult> 
       branchId: { $ne: null },
     }),
     AtmRefLabelModel.collection
-      .find<{ branchId: Types.ObjectId; name?: unknown; formerNames?: unknown }>(
-        { kind: 'area' },
-        { projection: { branchId: 1, name: 1, formerNames: 1 } },
-      )
+      .find<{
+        branchId: Types.ObjectId;
+        name?: unknown;
+        formerNames?: unknown;
+        isDeleted?: unknown;
+      }>({ kind: 'area' }, { projection: { branchId: 1, name: 1, formerNames: 1, isDeleted: 1 } })
       .toArray(),
   ]);
+  const links = await linksOrNone();
   const taken = new Set<string>();
   for (const row of known) {
-    const names = [row.name, ...(Array.isArray(row.formerNames) ? row.formerNames : [])];
-    for (const name of names) {
-      if (typeof name === 'string') taken.add(`${String(row.branchId)}\u0000${name}`);
+    const branchId = String(row.branchId);
+    const former = Array.isArray(row.formerNames) ? (row.formerNames as unknown[]) : [];
+    for (const name of [row.name, ...former]) {
+      if (typeof name === 'string') taken.add(`${branchId}\u0000${name}`);
+    }
+    // A remembered name — deleted, or renamed away — answers for every branch linked with this one
+    // too (`rememberedInLinkedBranch`): after a move cut off by a restart, the source's memory rows
+    // are already the target's, and this repair must not write the names back under the source.
+    const memory = [...(row.isDeleted !== false ? [row.name] : []), ...former];
+    for (const other of otherLinkedBranches(links, branchId)) {
+      for (const name of memory) {
+        if (typeof name === 'string') taken.add(`${other}\u0000${name}`);
+      }
     }
   }
   const result: AreaLabelBackfillResult = { inserted: 0 };

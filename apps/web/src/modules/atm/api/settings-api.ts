@@ -5,8 +5,15 @@
 //
 // The client secret only ever travels TOWARD the server: it is sent on a save and never read back
 // (`AtmMailboxConfigDto.hasSecret` says whether one is stored), so no answer here can carry it.
+//
+// «نقل البيانات» names only the link's SOURCE, in the path: the server takes the target from the
+// STORED link (`AtmBranchMoveParamsSchema`), so nothing sent here can point the move anywhere else.
+// The body only names the target the reader confirmed, a precondition the server checks against
+// that stored link (`AtmBranchMoveBodySchema`).
 import {
   type AtmBranchLinksDto,
+  type AtmBranchMovePreviewDto,
+  type AtmBranchMoveResultDto,
   type AtmMailboxConfigDto,
   type AtmMailboxTestResultDto,
   type AtmMailPollRunDto,
@@ -42,3 +49,22 @@ export const getBranchLinks = (): Promise<AtmBranchLinksDto> =>
 /** The whole list, replacing the stored one. */
 export const saveBranchLinks = (body: SaveAtmBranchLinks): Promise<AtmBranchLinksDto> =>
   put<AtmBranchLinksDto>(BRANCH_LINKS, body);
+
+// ── «نقل البيانات» — a link's source re-filed under its target ──────────────
+/** Read-only: what moving this stored source would do now — 404 for a branch that is no source. */
+export const getBranchMovePreview = (sourceBranchId: string): Promise<AtmBranchMovePreviewDto> =>
+  get<AtmBranchMovePreviewDto>(`${BRANCH_LINKS}/${sourceBranchId}/move`);
+
+/**
+ * The move itself — 409 `ATM_BRANCH_MOVE_BLOCKED` while anything stands in its way,
+ * `ATM_BRANCH_MOVE_STOPPED` when something appears part-way through the run, or
+ * `ATM_BRANCH_MOVE_TARGET_CHANGED` when the link is no longer the one previewed.
+ */
+export const moveBranchData = (
+  sourceBranchId: string,
+  expectedTargetBranchId?: string,
+): Promise<AtmBranchMoveResultDto> =>
+  post<AtmBranchMoveResultDto>(
+    `${BRANCH_LINKS}/${sourceBranchId}/move`,
+    expectedTargetBranchId === undefined ? {} : { expectedTargetBranchId },
+  );

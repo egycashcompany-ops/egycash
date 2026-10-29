@@ -33,6 +33,7 @@ import {
   realtimeTopic,
   topicRoom,
   type AtmBankDto,
+  type AtmRegisterBranchCode,
   type AtmRegisterBranchOptionsDto,
   type AtmRegisterEntryDto,
   type AtmRegisterMetaDto,
@@ -801,6 +802,11 @@ describe('secrets (D3, DEC-7)', () => {
     }
     expect(header.split(',').slice(-2)).toEqual(['Status', 'Data incomplete']);
     expect(res.text).toContain('99990013');
+    // Column A names the branch as the grid does — its ECMS name, in the exporter's language
+    // (2026-10-28) — never the workbook code.
+    const row = res.text.split('\n').find((line) => line.includes('99990013'));
+    expect(row?.split(',')[0]).toBe('Alexandria');
+    expect(res.text).not.toContain('EGYCASH-');
     for (const secret of [COMBO, COMBO_2, 'SUP-FAKE-9911', NOTE])
       expect(res.text).not.toContain(secret);
     // The export is audited AFTER the stream ends (register-export.ts), so the response can
@@ -866,6 +872,11 @@ describe('the Data Report (D7)', () => {
     );
     // Zeros present, never absent.
     expect(after.branchesShown).toEqual(['EGYCASH-2', 'EGYCASH-4']);
+    // Each column named as the top bar names its branch (2026-10-28).
+    expect(after.branchNames).toEqual({
+      'EGYCASH-2': { ar: 'طنطا', en: 'Tanta' },
+      'EGYCASH-4': { ar: 'الإسكندرية', en: 'Alexandria' },
+    });
     expect(Object.keys(after.counts.section3['EGYCASH-2'] ?? {}).sort()).toEqual([
       'BM',
       'BRK',
@@ -1104,6 +1115,7 @@ describe('scope — DEC-29', () => {
     );
   });
 
+  // Named as the top bar names it — its ECMS name in the caller's language (2026-10-28).
   it('28 — a 409 names another branch only to a caller who can see it', async () => {
     // Open elsewhere: 99990025 is open in Alexandria.
     const tantaAsk = await call(
@@ -1113,14 +1125,16 @@ describe('scope — DEC-29', () => {
       receipt({ machineCode: '99990025', branchId: tantaBranchId }),
     );
     expect(errorCode(tantaAsk)).toBe('ATM_REGISTER_OPEN_PERIOD_EXISTS');
-    expect(errorMessage(tantaAsk)).not.toContain('EGYCASH-4');
+    expect(errorMessage(tantaAsk)).not.toContain('Alexandria');
+    expect(errorMessage(tantaAsk)).toContain('another branch');
     const orgAsk = await call(
       'post',
       '/atm/register/entries',
       effOrgToken,
       receipt({ machineCode: '99990025', branchId: tantaBranchId }),
     );
-    expect(errorMessage(orgAsk)).toContain('EGYCASH-4');
+    expect(errorMessage(orgAsk)).toContain('Alexandria');
+    expect(errorMessage(orgAsk)).not.toContain('EGYCASH');
 
     // Active elsewhere: an Operations machine in Alexandria with no open entry.
     await addMachine(alexBranchId, {
@@ -1136,7 +1150,7 @@ describe('scope — DEC-29', () => {
       receipt({ machineCode: '99990028', branchId: tantaBranchId }),
     );
     expect(errorCode(tantaActive)).toBe('ATM_REGISTER_CODE_ACTIVE_ELSEWHERE');
-    expect(errorMessage(tantaActive)).not.toContain('EGYCASH-4');
+    expect(errorMessage(tantaActive)).not.toContain('Alexandria');
     const orgActive = await call(
       'post',
       '/atm/register/entries',
@@ -1144,7 +1158,7 @@ describe('scope — DEC-29', () => {
       receipt({ machineCode: '99990028', branchId: tantaBranchId }),
     );
     expect(errorCode(orgActive)).toBe('ATM_REGISTER_CODE_ACTIVE_ELSEWHERE');
-    expect(errorMessage(orgActive)).toContain('EGYCASH-4');
+    expect(errorMessage(orgActive)).toContain('Alexandria');
   });
 
   it('29 — every /entries response is private, no-store', async () => {
@@ -1571,5 +1585,246 @@ describe('«بيانات ناقصة» (DEC-37)', () => {
       { field: 'dataIncomplete', old: true, new: false },
     ]);
     expect(plain.entry.dataIncomplete).toBe(false);
+  });
+});
+
+// The owner's report (2026-10-28): machine 27720226 read «المهندسين» in the grid and «أكتوبر» in
+// the filter, and its rows showed only under «كل الشركة» — EGYCASH-1 mapped to the October branch
+// that works as Mohandessin (`atm.branchLinks`, #614). The register names a branch by its ECMS
+// name, and reads its code mapping — and the branch a request names — through the links.
+describe('branch names and links (2026-10-28)', () => {
+  let mohBranchId: string;
+  let octBranchId: string;
+  let octToken: string; // register keys, BRANCH scope, placed in October — answered as Mohandessin
+  const settingsCtx = (): AuthContext => ({
+    userId: adminId,
+    sessionId: 'seed',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  });
+  const MOH = { ar: 'المهندسين', en: 'Mohandessin' };
+
+  beforeAll(async () => {
+    const branch = async (code: string, name: { ar: string; en: string }): Promise<string> => {
+      const res = await call('post', '/platform/branches', adminToken, { code, name });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      return data<{ id: string }>(res).id;
+    };
+    mohBranchId = await branch('84', MOH);
+    octBranchId = await branch('85', { ar: 'أكتوبر', en: 'October' });
+    // The card saves each branch once on RAW ids, so EGYCASH-5 reaches Mohandessin only through
+    // the linked October — the configuration two codes on one branch can only come from.
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.RegisterBranchCodes,
+      scope: 'organization',
+      value: [
+        { code: 'EGYCASH-1', branchId: mohBranchId },
+        { code: 'EGYCASH-4', branchId: alexBranchId },
+        { code: 'EGYCASH-2', branchId: tantaBranchId },
+        { code: 'EGYCASH-5', branchId: octBranchId },
+      ],
+    });
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.BranchLinks,
+      scope: 'organization',
+      value: [{ branchId: octBranchId, actsAsBranchId: mohBranchId }],
+    });
+    const efficiency = await rbacService.createRole(
+      {
+        name: { en: 'Efficiency (October)', ar: 'Efficiency (October)' },
+        permissionKeys: [
+          'atmRegister.view',
+          'atmRegister.create',
+          'atmRegister.edit',
+          'atmRegisterReport.view',
+        ],
+      },
+      adminId,
+    );
+    const octId = await mkUser('register-october@ecms.local', { branchId: octBranchId });
+    await rbacService.ensureAssignment(octId, String(efficiency._id), 'branch');
+    octToken = await login('register-october@ecms.local');
+  });
+
+  afterAll(async () => {
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.BranchLinks,
+      scope: 'organization',
+      value: [],
+    });
+    await settingsService.set(settingsCtx(), {
+      key: AtmSettingKeys.RegisterBranchCodes,
+      scope: 'organization',
+      value: [
+        { code: 'EGYCASH-4', branchId: alexBranchId },
+        { code: 'EGYCASH-2', branchId: tantaBranchId },
+      ],
+    });
+  });
+
+  it('38 — an entry is named by its STORED branch’s ECMS name, both languages; a branch-less one by none', async () => {
+    const alex = await receive(effOrgToken, { machineCode: '99990380' });
+    expect(alex.entry.branchName).toEqual({ ar: 'الإسكندرية', en: 'Alexandria' });
+    const bare = await insertEntry({ branchId: null, machineCode: '99990381' });
+    const listed = data<AtmRegisterEntryDto[]>(
+      await call('get', '/atm/register/entries?search=9999038&pageSize=100', effOrgToken),
+    );
+    expect(
+      listed.map((e) => [e.machineCode, e.branchName?.en ?? null, e.branchCode]).sort(),
+    ).toEqual([
+      ['99990380', 'Alexandria', 'EGYCASH-4'],
+      ['99990381', null, null],
+    ]);
+    expect((await getEntry(String(bare._id))).branchName).toBeNull();
+  });
+
+  it('39 — the meta: each code raw (the card’s) and resolved; one option per resolved branch, in the top bar’s order', async () => {
+    const meta = data<AtmRegisterMetaDto>(await call('get', '/atm/register/meta', effOrgToken));
+    expect(meta.branches.find((b) => b.code === 'EGYCASH-5')).toMatchObject({
+      name: { ar: 'أكتوبر', en: 'October' },
+      branchId: octBranchId,
+      branchName: { ar: 'أكتوبر', en: 'October' },
+      resolvedBranchId: mohBranchId,
+      resolvedBranchName: MOH,
+      branchActive: true,
+      canView: true,
+      canCreate: true,
+    });
+    expect(meta.branches.find((b) => b.code === 'EGYCASH-1')).toMatchObject({
+      branchId: mohBranchId,
+      resolvedBranchId: mohBranchId,
+    });
+    expect(meta.branches.find((b) => b.code === 'EGYCASH-3')).toMatchObject({
+      branchId: null,
+      resolvedBranchId: null,
+      resolvedBranchName: null,
+      canView: false,
+    });
+    expect(
+      (meta.branchOptions ?? []).map((o) => [o.branchId, o.name.en, o.codes, o.sourceBranchIds]),
+    ).toEqual([
+      [alexBranchId, 'Alexandria', ['EGYCASH-4'], []],
+      [tantaBranchId, 'Tanta', ['EGYCASH-2'], []],
+      [mohBranchId, 'Mohandessin', ['EGYCASH-1', 'EGYCASH-5'], [octBranchId]],
+    ]);
+    expect((meta.branchOptions ?? []).every((o) => o.active && o.canView && o.canCreate)).toBe(
+      true,
+    );
+  });
+
+  it('40 — the options follow the top bar: «المهندسين», or the linked October, offers Mohandessin only', async () => {
+    const viewable = async (token: string, active?: string): Promise<string[]> =>
+      (
+        data<AtmRegisterMetaDto>(await call('get', '/atm/register/meta', token, undefined, active))
+          .branchOptions ?? []
+      )
+        .filter((o) => o.canView)
+        .map((o) => o.name.en);
+    expect(await viewable(effOrgToken)).toEqual(['Alexandria', 'Tanta', 'Mohandessin']);
+    expect(await viewable(effOrgToken, mohBranchId)).toEqual(['Mohandessin']);
+    expect(await viewable(effOrgToken, octBranchId)).toEqual(['Mohandessin']);
+    expect(await viewable(tantaToken)).toEqual(['Tanta']);
+    expect(await viewable(octToken)).toEqual(['Mohandessin']);
+    // The report key opens the meta too, and lists nothing: it reads no entry.
+    expect(await viewable(reportToken)).toEqual([]);
+  });
+
+  it('41 — a receipt sent for the linked October is filed, master included, under Mohandessin', async () => {
+    const org = await receive(effOrgToken, { machineCode: '99990410', branchId: octBranchId });
+    expect(org.entry.branchId).toBe(mohBranchId);
+    expect(org.entry.branchName).toEqual(MOH);
+    expect(org.entry.branchCode).toBe('EGYCASH-1');
+    expect(await masterOf(mohBranchId, '99990410')).not.toBeNull();
+    expect(await masterOf(octBranchId, '99990410')).toBeNull();
+    // The October employee, answered as Mohandessin, files there by either id.
+    const own = await receive(octToken, { machineCode: '99990411', branchId: octBranchId });
+    expect(own.entry.branchId).toBe(mohBranchId);
+    const direct = await receive(octToken, { machineCode: '99990412', branchId: mohBranchId });
+    expect(direct.entry.branchId).toBe(mohBranchId);
+  });
+
+  it('42 — the filter «المهندسين» lists the rows still filed under October; October’s id reads the same', async () => {
+    const underOct = await insertEntry({
+      branchId: new Types.ObjectId(octBranchId),
+      machineCode: '99990420',
+    });
+    const codesFor = async (branchId: string): Promise<string[]> =>
+      data<AtmRegisterEntryDto[]>(
+        await call(
+          'get',
+          `/atm/register/entries?branchId=${branchId}&search=999904&pageSize=100`,
+          effOrgToken,
+        ),
+      )
+        .map((e) => e.machineCode ?? '')
+        .sort();
+    const all = ['99990410', '99990411', '99990412', '99990420'];
+    expect(await codesFor(mohBranchId)).toEqual(all);
+    expect(await codesFor(octBranchId)).toEqual(all);
+    // Named where it IS until «نقل البيانات» moves it; counted, coded and filtered as Mohandessin.
+    const stored = await getEntry(String(underOct._id));
+    expect(stored.branchName).toEqual({ ar: 'أكتوبر', en: 'October' });
+    expect(stored.branchCode).toBe('EGYCASH-1');
+  });
+
+  it('43 — the form options asked for October are Mohandessin’s', async () => {
+    const res = await call('get', `/atm/register/branch-options?branchId=${octBranchId}`, octToken);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(data<AtmRegisterBranchOptionsDto>(res).branchId).toBe(mohBranchId);
+  });
+
+  it('44 — the report: one column per resolved branch, October’s rows in Mohandessin’s, named by ECMS names', async () => {
+    const all = await report(effOrgToken);
+    expect(all.branchesShown).toEqual(['EGYCASH-1', 'EGYCASH-2', 'EGYCASH-4']);
+    expect(all.branchNames?.['EGYCASH-1']).toEqual(MOH);
+    expect(all.counts.section2['EGYCASH-1']).toBe(4);
+    expect(all.counts.section2).not.toHaveProperty('EGYCASH-5');
+    expect(all.counts.section1.total).toBe(
+      all.counts.section2.total + all.counts.activeWithUnmappedBranch,
+    );
+    // On «المهندسين» the scope is Mohandessin's own rows — October's wait for the move.
+    const moh = data<AtmRegisterReportDto>(
+      await call('get', '/atm/register/report', effOrgToken, undefined, mohBranchId),
+    );
+    expect(moh.branchesShown).toEqual(['EGYCASH-1']);
+    expect(moh.counts.section2['EGYCASH-1']).toBe(3);
+    expect((await report(octToken)).branchesShown).toEqual(['EGYCASH-1']);
+  });
+
+  it('45 — a linked source with no code of its own still stands for its target', async () => {
+    // What «نقل البيانات» leaves when it re-points the source's code to the target: October holds
+    // no code, the link stays — a top bar or a filter remembered on October must still find
+    // Mohandessin's option (review finding: only sources a code named were listed).
+    const mapping = async (value: { code: AtmRegisterBranchCode; branchId: string }[]) =>
+      settingsService.set(settingsCtx(), {
+        key: AtmSettingKeys.RegisterBranchCodes,
+        scope: 'organization',
+        value,
+      });
+    await mapping([
+      { code: 'EGYCASH-1', branchId: mohBranchId },
+      { code: 'EGYCASH-4', branchId: alexBranchId },
+      { code: 'EGYCASH-2', branchId: tantaBranchId },
+    ]);
+    try {
+      const meta = data<AtmRegisterMetaDto>(await call('get', '/atm/register/meta', effOrgToken));
+      expect(meta.branchOptions?.find((o) => o.branchId === mohBranchId)).toMatchObject({
+        codes: ['EGYCASH-1'],
+        sourceBranchIds: [octBranchId],
+      });
+      expect(meta.branchOptions?.map((o) => o.branchId)).not.toContain(octBranchId);
+    } finally {
+      await mapping([
+        { code: 'EGYCASH-1', branchId: mohBranchId },
+        { code: 'EGYCASH-4', branchId: alexBranchId },
+        { code: 'EGYCASH-2', branchId: tantaBranchId },
+        { code: 'EGYCASH-5', branchId: octBranchId },
+      ]);
+    }
   });
 });

@@ -6,6 +6,8 @@
 //   · the mailbox card never shows a secret: the box is empty, and a stored one reads «محفوظ —
 //     اتركه فارغاً للإبقاء عليه»; a save sends one only when it was typed;
 //   · «اختبار الاتصال» and «قراءة الآن» wait for a saved card; the last run reads in Cairo time;
+//   · a switched-on branch linked to work as another is marked: its mail, and its row, go to the
+//     target;
 //   · the links card reads each link as one sentence, «أكتوبر ← يعمل باسم المهندسين», and refuses a
 //     pair by the contract's own rules before anything is sent;
 //   · every write stales what it changed — a links save the whole ATM tree.
@@ -41,6 +43,7 @@ import { AtmSettingsPage } from './pages/AtmSettingsPage';
 import { ATM_SHORTCUTS, AtmOverviewPage } from './pages/AtmOverviewPage';
 import {
   mailboxDraftOf,
+  mailboxRowsRemovedOnSave,
   mailboxSaveBody,
   secretMissing,
 } from './components/settings/MailboxSettingsCard';
@@ -256,6 +259,63 @@ describe('«بريد الصيانة — بنك مصر»', () => {
     expect(optionsOf(markup, 'atm-mailbox-add-branch')).toEqual(['', OCTOBER, ALEX]);
     // Nothing picked yet: nothing to add.
     expect(tagWith(markup, 'button', 'data-mailbox-action', 'add-branch')).toContain('disabled=""');
+  });
+
+  it('marks a switched-on branch that works as another: its mail, its row go to the target', () => {
+    const withOctober: AtmMailboxConfigDto = {
+      ...CONFIG,
+      branches: [
+        ...CONFIG.branches,
+        { branchId: OCTOBER, branchName: { ar: 'أكتوبر', en: 'October' }, category: null },
+      ],
+    };
+    const markup = render(<AtmSettingsPage />, [KEY], clientWith(withOctober));
+    const row = (branchId: string): string =>
+      new RegExp(`<tr[^>]*data-mailbox-branch="${branchId}"[^>]*>([\\s\\S]*?)</tr>`).exec(
+        markup,
+      )?.[1] ?? '';
+    // Mohandessin is switched on already: the save REMOVES October's row and keeps Mohandessin's
+    // with its category — never «يُحفظ هذا السطر باسم المهندسين» (review finding).
+    expect(row(OCTOBER)).toContain(
+      t('atm.settings.mailbox.worksAsListed', { target: 'المهندسين' }),
+    );
+    expect(row(OCTOBER)).not.toContain(t('atm.settings.mailbox.worksAs', { target: 'المهندسين' }));
+    expect(row(OCTOBER)).toContain(`data-mailbox-works-as="${MOHANDESSIN}"`);
+    // Mohandessin works as itself: nothing to mark.
+    expect(row(MOHANDESSIN)).not.toContain('data-mailbox-works-as');
+
+    // October alone: its row IS saved as Mohandessin's.
+    const alone: AtmMailboxConfigDto = {
+      ...CONFIG,
+      branches: [
+        { branchId: OCTOBER, branchName: { ar: 'أكتوبر', en: 'October' }, category: 'Blue' },
+      ],
+    };
+    const markupAlone = render(<AtmSettingsPage />, [KEY], clientWith(alone));
+    expect(markupAlone).toContain(t('atm.settings.mailbox.worksAs', { target: 'المهندسين' }));
+    expect(markupAlone).not.toContain(
+      t('atm.settings.mailbox.worksAsListed', { target: 'المهندسين' }),
+    );
+  });
+
+  it('knows which rows the save removes — the server’s own rule', () => {
+    const SHEIKH = '650000000000000000000209';
+    const targetOf = (branchId: string): string | null =>
+      branchId === OCTOBER || branchId === SHEIKH ? MOHANDESSIN : null;
+    const removed = (ids: string[]): string[] =>
+      [
+        ...mailboxRowsRemovedOnSave(
+          ids.map((branchId) => ({ branchId })),
+          targetOf,
+        ),
+      ].sort();
+    // Beside the target's own row, wherever it sits on the list.
+    expect(removed([MOHANDESSIN, OCTOBER])).toEqual([OCTOBER]);
+    expect(removed([OCTOBER, MOHANDESSIN])).toEqual([OCTOBER]);
+    // Alone, a source becomes the target's row; a second source of the same target goes.
+    expect(removed([OCTOBER])).toEqual([]);
+    expect(removed([OCTOBER, SHEIKH])).toEqual([SHEIKH]);
+    expect(removed([ALEX])).toEqual([]);
   });
 
   it('a saved card can be tested and read now; Save waits for a change', () => {

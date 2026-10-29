@@ -1,6 +1,11 @@
 // The import page's decisions, kept pure so they are tested without rendering (spec §8.6, §10.2):
-// when Apply may be pressed, what the `apply` field says, in which order the categories show, and
-// how one of the Data Report's 57 cells is named.
+// when Apply may be pressed, what the `apply` field says, in which order the categories show, how
+// one of the Data Report's 57 cells is named, and how a branch is named on the page.
+//
+// The page is about the workbook, so a branch keeps its `EGYCASH-n` code here — beside the ECMS
+// name the top bar gives it, never the workbook's name alone (the owner, 2026-10-28: «أنا عايزك
+// تعتمد التسمية اللى بالعربي والإنجليزي») — and a code mapped to a branch linked to work as another
+// says where its rows really go: «يعمل باسم …» (`atm.branchLinks`).
 //
 // The server is the rule — it refuses an apply that a blocker stands against, whatever the screen
 // sent — so `canApply` is a courtesy that keeps the button honest, not a guard.
@@ -8,6 +13,7 @@ import {
   ATM_REGISTER_IMPORT_CATEGORIES,
   ATM_REGISTER_IMPORT_OUTCOMES,
   ErrorCodes,
+  type AtmRegisterBranchCode,
   type AtmRegisterImportBlocker,
   type AtmRegisterImportCategory,
   type AtmRegisterImportCategoryDto,
@@ -98,6 +104,50 @@ export const reportCellLabel = (
   const branch = cell.branchCode === null ? '' : t(`atm.registerReport.branch3.${cell.branchCode}`);
   const bank = cell.bankCode === null ? '' : bankName(cell.bankCode, locale, banks);
   return `${branch} · ${bank}`;
+};
+
+/** «EGYCASH-5 · أكتوبر» — a code and an ECMS name, either of them missing; «—» when both are. */
+export const codeAndName = (
+  code: AtmRegisterBranchCode | null,
+  name: LocalizedString | null,
+  locale: Locale,
+): string => {
+  const parts = [code, name?.[locale] ?? null].filter((part): part is string => part !== null);
+  return parts.length === 0 ? '—' : parts.join(' · ');
+};
+
+/**
+ * A file code's branch on the category cards: the code, then the ECMS branch its rows are filed
+ * under — the resolved one, from the preview's own branch table. The cards showed the workbook's
+ * name with no code, even for the row's own branch. A code mapped to no branch is the code alone.
+ */
+export const importBranchText = (
+  code: AtmRegisterBranchCode,
+  branches: AtmRegisterImportResultDto['branches'],
+  locale: Locale,
+): string => {
+  const row = branches.find((branch) => branch.code === code);
+  return codeAndName(code, row?.resolvedBranchName ?? row?.branchName ?? null, locale);
+};
+
+/**
+ * The branch a code's rows are filed under when it is not the branch the code is mapped to — the
+ * mapped one is linked to work as another (`atm.branchLinks`) — named for «يعمل باسم …»; null when
+ * the two are one (or the server says nothing of links). A target ECMS no longer holds still marks
+ * the row, as «فرع غير موجود».
+ */
+export const worksAsTarget = (
+  row: {
+    branchId: string | null;
+    resolvedBranchId?: string | null;
+    resolvedBranchName?: LocalizedString | null;
+  },
+  locale: Locale,
+  t: Translate,
+): string | null => {
+  const resolved = row.resolvedBranchId ?? null;
+  if (row.branchId === null || resolved === null || resolved === row.branchId) return null;
+  return row.resolvedBranchName?.[locale] ?? t('atm.settings.unknownBranch');
 };
 
 /** A run's or an apply's counts, in the catalogue's order, without the zeros. */

@@ -7015,6 +7015,8 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.atmRegisterImport': 'Imported the ATM register workbook',
   'systemAdmin.users.audit.atmLayoutImport': 'Imported a bank master workbook',
   'systemAdmin.users.audit.atmSettlementPrint': 'Printed replenishment papers',
+  // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
+  'systemAdmin.users.audit.atmBranchMove': 'Moved ATM data between linked branches',
   'systemAdmin.users.audit.unlock': 'Unlocked',
   'systemAdmin.users.audit.employeeLinked': 'Employee linked',
   'systemAdmin.users.audit.employeeUnlinked': 'Employee unlinked',
@@ -8799,12 +8801,20 @@ const en: Record<string, string> = {
   'atm.dataEdit.origin.title': 'Source',
   'atm.dataEdit.origin.backfill': 'From existing data',
   'atm.dataEdit.origin.auto': 'Added automatically',
+  // The register is named by its mapping, never by an EGYCASH code: the codes are the workbook's
+  // vocabulary, shown only on the register settings card and in the import preview (2026-10-28).
   'atm.dataEdit.notRegisterMapped':
-    'This branch has no EGYCASH code: machines added here work for Operations but are not recorded in the register.',
+    'This branch is not mapped in the ATM Register: machines added here work for Operations but are not recorded in the register.',
+  // The add dialogs say where the add is filed: the top-bar branch for an organization-wide user,
+  // never their home placement — and with «The whole company» they ask for a branch first. The
+  // bulk dialog's delete is filed in that branch too, so the request names no action.
+  'atm.dataEdit.addInBranch': 'Branch: {{name}}',
+  'atm.dataEdit.chooseBranch': 'Choose a specific branch from the top bar first.',
   'atm.dataEdit.machineReactivated': 'The archived machine is back at work.',
   'atm.dataEdit.register.recorded': 'Recorded in the register — data incomplete.',
   'atm.dataEdit.register.linked': 'Linked to its register entry.',
-  'atm.dataEdit.register.branchUnmapped': 'For Operations only: the branch has no EGYCASH code.',
+  'atm.dataEdit.register.branchUnmapped':
+    'For Operations only: the branch is not mapped in the ATM Register.',
   'atm.dataEdit.register.placeholderCode':
     'For Operations only: a placeholder code is not recorded in the register.',
   'atm.dataEdit.register.noBank':
@@ -8823,7 +8833,7 @@ const en: Record<string, string> = {
   'atm.dataEdit.machinesRefused.openElsewhere':
     'Not added — open in the register in another branch: {{codes}}',
   'atm.dataEdit.notRecorded.branchUnmapped':
-    'Not recorded in the register (the branch has no EGYCASH code): {{codes}}',
+    'Not recorded in the register (the branch is not mapped in the ATM Register): {{codes}}',
   'atm.dataEdit.notRecorded.placeholderCode':
     'Not recorded in the register (placeholder codes): {{codes}}',
   'atm.dataEdit.notRecorded.noBank':
@@ -9089,7 +9099,8 @@ const en: Record<string, string> = {
     'This ATM ID already has an open period. Hand it over first.',
   'atm.register.error.ATM_REGISTER_CODE_ACTIVE_ELSEWHERE':
     "This ATM ID is active in another branch's Operations list.",
-  'atm.register.error.ATM_REGISTER_BRANCH_UNMAPPED': 'This branch has no register code.',
+  'atm.register.error.ATM_REGISTER_BRANCH_UNMAPPED':
+    'This branch is not mapped in the ATM Register.',
   'atm.register.error.ATM_REGISTER_BRANCH_REQUIRED':
     'This entry has no branch; delete it and receive the machine again.',
   'atm.register.error.ATM_REGISTER_AREA_REQUIRED': 'The area is required.',
@@ -9115,7 +9126,7 @@ const en: Record<string, string> = {
   'atm.registerReport.legend': 'Banks',
   'atm.registerReport.empty': 'No machines in operation.',
   'atm.registerReport.unmapped':
-    '{{count}} machine(s) in operation belong to a branch without a register code and appear only in the bank totals.',
+    '{{count}} machine(s) in operation belong to a branch not mapped in the ATM Register and appear only in the bank totals.',
   'atm.registerReport.withoutBank':
     '{{count}} machine(s) in operation have no bank and appear only in the branch totals.',
   'atm.registerReport.chartSummary': '{{title}}: {{total}} machines',
@@ -9133,6 +9144,10 @@ const en: Record<string, string> = {
   'atm.registerReport.branch3.EGYCASH-4': 'EgyCash (Alexandria)',
   'atm.registerReport.branch3.EGYCASH-6': 'EgyCash (Port Said)',
   'atm.registerReport.branch3.EGYCASH-7': 'EgyCash (Wisal)',
+  // The sheet's two label patterns around the ECMS name the server sends (`branchNames`), so a
+  // section reads the branch the top bar names; the per-code labels above answer without one.
+  'atm.registerReport.branch2Named': 'EgyCash {{name}} branch',
+  'atm.registerReport.branch3Named': 'EgyCash ({{name}})',
 
   'atm.registerImport.title': 'Import the register workbook',
   'atm.registerImport.intro':
@@ -9176,6 +9191,8 @@ const en: Record<string, string> = {
   'atm.registerImport.branches.inReach': 'In your permission',
   'atm.registerImport.branches.rows': 'Rows',
   'atm.registerImport.branches.openRows': 'In operation',
+  // A code mapped to a linked branch: its rows land in the branch it works as.
+  'atm.registerImport.branches.worksAs': 'Works as {{target}}: its rows are filed there',
   'atm.registerImport.runs.title': 'Previous imports',
   'atm.registerImport.runs.started': 'Started',
   'atm.registerImport.runs.finished': 'Finished',
@@ -9571,6 +9588,10 @@ const en: Record<string, string> = {
   'atm.registerSettings.sheetName': 'Name in the workbook',
   'atm.registerSettings.branch': 'ECMS branch',
   'atm.registerSettings.pickBranch': 'Choose a branch…',
+  // The card keeps the raw branch it saves, and marks one that works as another (`atm.branchLinks`).
+  'atm.registerSettings.worksAs': 'Works as {{target}}',
+  'atm.registerSettings.worksAsHint':
+    'This branch works as {{target}} in ATM, so the rows of this code are filed and shown under {{target}}.',
   'atm.registerSettings.bankLabels': 'Bank names in the Operations list',
   'atm.registerSettings.bank': 'Bank',
   'atm.registerSettings.bankName': 'Name in the Data Report',
@@ -9986,6 +10007,13 @@ const en: Record<string, string> = {
   'atm.settings.mailbox.noBranches': 'No branch is switched on yet.',
   'atm.settings.mailbox.addBranch': 'Add branch',
   'atm.settings.mailbox.removeBranch': 'Remove {{branch}}',
+  // A linked branch's row: its machines' mail is filed under the branch it works as, so the save
+  // keeps that branch's row instead.
+  'atm.settings.mailbox.worksAs':
+    'Works as {{target}}: its mail is filed under {{target}}, and this row is saved as {{target}}.',
+  // …unless the target has a row on the list already: then the save removes this one.
+  'atm.settings.mailbox.worksAsListed':
+    'Works as {{target}}: its mail is filed under {{target}}, which is switched on already — this row is removed on save, and {{target}}’s own row keeps its category.',
   'atm.settings.mailbox.test': 'Test connection',
   'atm.settings.mailbox.pollNow': 'Read now',
   'atm.settings.mailbox.probeHint':
@@ -10021,6 +10049,85 @@ const en: Record<string, string> = {
   'atm.settings.links.issue.duplicateSource': 'This branch already works as another branch.',
   'atm.settings.links.issue.chain':
     'A branch that another branch works as cannot itself work as a third branch.',
+  // «Move the data» (2026-10-28): a linked branch's ATM data moved to the branch it works as —
+  // previewed, then moved. Each collection, merge and refusal is worded by the contract's own key
+  // (`ATM_BRANCH_MOVE_COLLECTIONS`, `…_MERGES`, `…_BLOCKERS`).
+  'atm.settings.move.action': 'Move the data to {{target}}',
+  'atm.settings.move.title': 'Move the data of {{source}} to {{target}}',
+  'atm.settings.move.intro':
+    'Every ATM record filed under {{source}} moves to {{target}} and shows there with its data. The link between the two branches stays as it is. A move cannot be undone.',
+  'atm.settings.move.counts': 'Data filed under {{source}}',
+  'atm.settings.move.total': 'Total: {{count}} record(s)',
+  'atm.settings.move.merges': 'What the move merges or changes',
+  'atm.settings.move.blockers': 'What prevents the move',
+  'atm.settings.move.blockersHint': 'Resolve these first, then open this window again.',
+  'atm.settings.move.more': 'and {{count}} more',
+  'atm.settings.move.confirm': 'Move',
+  'atm.settings.move.done': 'Moved {{count}} record(s) to {{target}}.',
+  'atm.settings.move.remaining':
+    '{{count}} record(s) are still filed under {{source}}; run the move again to finish it.',
+  'atm.settings.move.nothing': 'No data is filed under {{source}}.',
+  'atm.settings.move.banner': 'Data is still filed under {{source}} — move it to {{target}}.',
+  'atm.settings.move.blocked':
+    'The move cannot run now: something that prevents it appeared since the preview. Review it and try again.',
+  // A blocker met part-way through a run (409 `ATM_BRANCH_MOVE_STOPPED`): what moved stays moved.
+  'atm.settings.move.stopped':
+    'The move stopped part-way: something that prevents the rest appeared after it began. What it moved stays moved, and the preview shows what is still filed under {{source}}. Resolve it, then run the move again to finish it.',
+  'atm.settings.move.targetChanged':
+    'The link was changed since this preview opened, so nothing was moved. Read the preview again before moving.',
+  'atm.settings.move.pausesWrites':
+    'While the move runs (a few minutes), adding machines, receiving register entries, opening replenishments and maintenances and saving names in ATM wait until it ends.',
+  'atm.settings.move.collection.machines': 'Machines',
+  'atm.settings.move.collection.registerEntries': 'ATM Register entries',
+  'atm.settings.move.collection.mailTickets': 'Maintenance mail',
+  'atm.settings.move.collection.maintenances': 'Maintenance operations',
+  'atm.settings.move.collection.replenishments': 'Replenishments',
+  'atm.settings.move.collection.refLabels': 'Bank and area names',
+  'atm.settings.move.collection.machineLocations': 'Machine locations on the map',
+  'atm.settings.move.collection.cassetteLayouts': 'Cassette denominations',
+  'atm.settings.move.collection.cassetteLayoutVersions': 'Cassette denomination history',
+  'atm.settings.move.collection.mapZones': 'Map zones',
+  'atm.settings.move.collection.dispatchRoutes': 'Dispatch lines',
+  'atm.settings.move.collection.routeAssignments': 'Distribution over dispatch lines',
+  'atm.settings.move.collection.standardLoads': 'Standard loads',
+  'atm.settings.move.collection.replenishmentPlans': 'Replenishment plans',
+  'atm.settings.move.collection.planLines': 'Replenishment plan lines',
+  'atm.settings.move.collection.linePreparations': 'Bag and seal preparations',
+  'atm.settings.move.collection.layoutImportRuns': 'Full list imports',
+  'atm.settings.move.merge.labelsMerged':
+    'Bank and area names in both branches, merged into those of {{target}}: {{count}}',
+  'atm.settings.move.merge.labelsRetired':
+    'Names {{target}} had already renamed, removed: {{count}}',
+  'atm.settings.move.merge.machineTwinsRetired':
+    'Duplicate machines removed, the working one kept: {{count}}',
+  'atm.settings.move.merge.zonesRenamed':
+    'Zones renamed because {{target}} has zones of the same name: {{count}}',
+  'atm.settings.move.merge.routesRenamed':
+    'Dispatch lines renamed because {{target}} has lines of the same name on the same day: {{count}}',
+  'atm.settings.move.merge.standardLoadDefaultsUnset':
+    'Default standard loads unset because {{target}} already has a default for the bank: {{count}}',
+  'atm.settings.move.merge.layoutImportRunsAbandoned':
+    'Full list imports stalled for over 30 minutes, closed: {{count}}',
+  'atm.settings.move.merge.mailboxRepointed':
+    'Maintenance mail switch-on moved from {{source}} to {{target}}',
+  'atm.settings.move.merge.settingsRepointed':
+    'Settings of {{source}} (mail category, register mapping) pointed to {{target}}: {{count}}',
+  'atm.settings.move.blocker.machineActiveInBoth':
+    'Machines active in both branches, where the ATM Register does not say which one stays: {{codes}}',
+  'atm.settings.move.blocker.machineTwinOpen':
+    'Duplicate machines to be removed that still have an open register entry, operation or plan line: {{codes}}',
+  'atm.settings.move.blocker.planSerialCollision':
+    'Notes were issued for the same bank in both branches, and their serials must not repeat: {{banks}}',
+  'atm.settings.move.blocker.planSameDay':
+    'Replenishment plans for the same bank and day in both branches: {{items}}',
+  'atm.settings.move.blocker.zoneCaps':
+    '{{target}} would pass the map limits after the move — zones: {{zones}} of {{maxZones}}, points: {{points}} of {{maxPoints}}.',
+  'atm.settings.move.blocker.layoutImportRunning':
+    'A Full list import is running in {{source}} for these banks: {{banks}}. Wait until it finishes.',
+  'atm.settings.move.blocker.registerImportRunning':
+    'A register file import is running. Wait until it finishes, then try again.',
+  'atm.settings.move.blocker.moveRunning':
+    'Another data move is running. Wait until it finishes, then try again.',
 };
 
 const ar: Record<string, string> = {
@@ -16934,6 +17041,8 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.atmRegisterImport': 'استيراد ملف سجل الماكينات',
   'systemAdmin.users.audit.atmLayoutImport': 'استيراد ملف Full list للبنك',
   'systemAdmin.users.audit.atmSettlementPrint': 'طباعة أوراق التغذية',
+  // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
+  'systemAdmin.users.audit.atmBranchMove': 'نقل بيانات الصراف الآلي بين فرعين مرتبطين',
   'systemAdmin.users.audit.unlock': 'إلغاء القفل',
   'systemAdmin.users.audit.employeeLinked': 'ربط موظف',
   'systemAdmin.users.audit.employeeUnlinked': 'فك ربط موظف',
@@ -18685,12 +18794,19 @@ const ar: Record<string, string> = {
   'atm.dataEdit.origin.title': 'المصدر',
   'atm.dataEdit.origin.backfill': 'من البيانات الحالية',
   'atm.dataEdit.origin.auto': 'أُضيفت تلقائيًا',
+  // The register is named by its mapping, never by an EGYCASH code: the codes are the workbook's
+  // vocabulary, shown only on the register settings card and in the import preview (2026-10-28).
   'atm.dataEdit.notRegisterMapped':
-    'هذا الفرع غير مربوط بكود EGYCASH: تعمل الماكينات المضافة هنا في التشغيل، ولا تُسجَّل في السجل.',
+    'هذا الفرع غير مربوط بسجل الماكينات: تعمل الماكينات المضافة هنا في التشغيل، ولا تُسجَّل في السجل.',
+  // The add dialogs say where the add is filed: the top-bar branch for an organization-wide user,
+  // never their home placement — and with «الشركة كلها» they ask for a branch first. The
+  // bulk dialog's delete is filed in that branch too, so the request names no action.
+  'atm.dataEdit.addInBranch': 'الفرع: {{name}}',
+  'atm.dataEdit.chooseBranch': 'اختر فرعًا محددًا من القائمة العلوية أولًا.',
   'atm.dataEdit.machineReactivated': 'أُعيدت الماكينة المؤرشفة للعمل.',
   'atm.dataEdit.register.recorded': 'سُجلت في السجل — بيانات ناقصة.',
   'atm.dataEdit.register.linked': 'رُبطت بسجلها.',
-  'atm.dataEdit.register.branchUnmapped': 'للتشغيل فقط: الفرع غير مربوط بكود EGYCASH.',
+  'atm.dataEdit.register.branchUnmapped': 'للتشغيل فقط: الفرع غير مربوط بسجل الماكينات.',
   'atm.dataEdit.register.placeholderCode': 'للتشغيل فقط: الكود المؤقت لا يُسجَّل في السجل.',
   'atm.dataEdit.register.noBank': 'اسم البنك غير مربوط ببنك — لم تُسجَّل في السجل.',
   'atm.dataEdit.error.activeElsewhere': 'رقم الماكينة نشط في قائمة التشغيل لفرع آخر، فلم تُضَف.',
@@ -18705,7 +18821,7 @@ const ar: Record<string, string> = {
   'atm.dataEdit.machinesRefused.openElsewhere':
     'لم تُضَف لأن لها فترة مفتوحة في السجل لفرع آخر: {{codes}}',
   'atm.dataEdit.notRecorded.branchUnmapped':
-    'لم تُسجَّل في السجل (الفرع غير مربوط بكود EGYCASH): {{codes}}',
+    'لم تُسجَّل في السجل (الفرع غير مربوط بسجل الماكينات): {{codes}}',
   'atm.dataEdit.notRecorded.placeholderCode': 'لم تُسجَّل في السجل (أكواد مؤقتة): {{codes}}',
   'atm.dataEdit.notRecorded.noBank': 'لم تُسجَّل في السجل (اسم البنك غير مربوط ببنك): {{codes}}',
 
@@ -18962,7 +19078,7 @@ const ar: Record<string, string> = {
     'لرقم الماكينة هذا فترة تشغيل مفتوحة. سلّمها أولًا.',
   'atm.register.error.ATM_REGISTER_CODE_ACTIVE_ELSEWHERE':
     'رقم الماكينة هذا نشط في قائمة التشغيل لفرع آخر.',
-  'atm.register.error.ATM_REGISTER_BRANCH_UNMAPPED': 'لا يوجد كود سجل لهذا الفرع.',
+  'atm.register.error.ATM_REGISTER_BRANCH_UNMAPPED': 'هذا الفرع غير مربوط بسجل الماكينات.',
   'atm.register.error.ATM_REGISTER_BRANCH_REQUIRED':
     'هذا السجل بدون فرع؛ احذفه واستلم الماكينة من جديد.',
   'atm.register.error.ATM_REGISTER_AREA_REQUIRED': 'المنطقة مطلوبة.',
@@ -18985,7 +19101,7 @@ const ar: Record<string, string> = {
   'atm.registerReport.legend': 'البنوك',
   'atm.registerReport.empty': 'لا توجد ماكينات قيد التشغيل.',
   'atm.registerReport.unmapped':
-    '{{count}} ماكينة قيد التشغيل تتبع فرعًا بلا كود سجل، وتظهر في إجماليات البنوك فقط.',
+    '{{count}} ماكينة قيد التشغيل تتبع فرعًا غير مربوط بسجل الماكينات، وتظهر في إجماليات البنوك فقط.',
   'atm.registerReport.withoutBank':
     '{{count}} ماكينة قيد التشغيل بلا بنك، وتظهر في إجماليات الفروع فقط.',
   'atm.registerReport.chartSummary': '{{title}}: {{total}} ماكينة',
@@ -19003,6 +19119,10 @@ const ar: Record<string, string> = {
   'atm.registerReport.branch3.EGYCASH-4': 'إيجي كــاش ( الاســكندرية )',
   'atm.registerReport.branch3.EGYCASH-6': 'إيجي كــاش ( بور سعيد )',
   'atm.registerReport.branch3.EGYCASH-7': 'إيجي كــاش (وصال )',
+  // The sheet's two label patterns around the ECMS name the server sends (`branchNames`), so a
+  // section reads the branch the top bar names; the per-code labels above answer without one.
+  'atm.registerReport.branch2Named': 'فرع إيجي كاش {{name}}',
+  'atm.registerReport.branch3Named': 'إيجي كــاش ( {{name}} )',
 
   'atm.registerImport.title': 'استيراد ملف سجل الماكينات',
   'atm.registerImport.intro': 'عاين أولًا؛ لا يُكتب شيء حتى تعتمد الفئات وتطبّقها.',
@@ -19046,6 +19166,8 @@ const ar: Record<string, string> = {
   'atm.registerImport.branches.inReach': 'ضمن صلاحيتك',
   'atm.registerImport.branches.rows': 'الصفوف',
   'atm.registerImport.branches.openRows': 'قيد التشغيل',
+  // A code mapped to a linked branch: its rows land in the branch it works as.
+  'atm.registerImport.branches.worksAs': 'يعمل باسم {{target}}، فتُسجَّل صفوفه عليه',
   'atm.registerImport.runs.title': 'عمليات الاستيراد السابقة',
   'atm.registerImport.runs.started': 'البدء',
   'atm.registerImport.runs.finished': 'الانتهاء',
@@ -19432,6 +19554,10 @@ const ar: Record<string, string> = {
   'atm.registerSettings.sheetName': 'الاسم في الملف',
   'atm.registerSettings.branch': 'الفرع في النظام',
   'atm.registerSettings.pickBranch': 'اختر فرعًا…',
+  // The card keeps the raw branch it saves, and marks one that works as another (`atm.branchLinks`).
+  'atm.registerSettings.worksAs': 'يعمل باسم {{target}}',
+  'atm.registerSettings.worksAsHint':
+    'يعمل هذا الفرع باسم {{target}} في الصراف الآلي، فتُسجَّل صفوف هذا الكود وتظهر على {{target}}.',
   'atm.registerSettings.bankLabels': 'أسماء البنوك في قائمة التشغيل',
   'atm.registerSettings.bank': 'البنك',
   'atm.registerSettings.bankName': 'الاسم في تقرير البيانات',
@@ -19834,6 +19960,13 @@ const ar: Record<string, string> = {
   'atm.settings.mailbox.noBranches': 'لم يُفعَّل أي فرع بعد.',
   'atm.settings.mailbox.addBranch': 'إضافة فرع',
   'atm.settings.mailbox.removeBranch': 'إزالة {{branch}}',
+  // A linked branch's row: its machines' mail is filed under the branch it works as, so the save
+  // keeps that branch's row instead.
+  'atm.settings.mailbox.worksAs':
+    'يعمل باسم {{target}}: تُسجَّل رسائله على {{target}}، ويُحفظ هذا السطر باسم {{target}}.',
+  // …unless the target has a row on the list already: then the save removes this one.
+  'atm.settings.mailbox.worksAsListed':
+    'يعمل باسم {{target}}: تُسجَّل رسائله على {{target}}، و{{target}} مُفعَّل بالفعل؛ فيُزال هذا السطر عند الحفظ ويبقى سطر {{target}} بتصنيفه.',
   'atm.settings.mailbox.test': 'اختبار الاتصال',
   'atm.settings.mailbox.pollNow': 'قراءة الآن',
   'atm.settings.mailbox.probeHint':
@@ -19868,6 +20001,82 @@ const ar: Record<string, string> = {
   'atm.settings.links.issue.duplicateSource': 'هذا الفرع يعمل بالفعل باسم فرع آخر.',
   'atm.settings.links.issue.chain':
     'الفرع الذي يعمل باسمه فرع آخر لا يمكن أن يعمل هو نفسه باسم فرع ثالث.',
+  // «نقل البيانات» (2026-10-28): بيانات الصراف الآلي لفرع مرتبط تُنقل إلى الفرع الذي يعمل باسمه —
+  // معاينة ثم نقل. كل مجموعة ودمج ومانع بمفتاح العقد نفسه
+  // (`ATM_BRANCH_MOVE_COLLECTIONS`, `…_MERGES`, `…_BLOCKERS`).
+  'atm.settings.move.action': 'نقل البيانات إلى {{target}}',
+  'atm.settings.move.title': 'نقل بيانات {{source}} إلى {{target}}',
+  'atm.settings.move.intro':
+    'تُنقل كل بيانات الصراف الآلي المسجلة على {{source}} إلى {{target}}، فتظهر فيه مع بياناته. يبقى الربط بين الفرعين كما هو، ولا يمكن التراجع عن النقل.',
+  'atm.settings.move.counts': 'البيانات المسجلة على {{source}}',
+  'atm.settings.move.total': 'الإجمالي: {{count}} سجل',
+  'atm.settings.move.merges': 'ما يدمجه النقل أو يغيّره',
+  'atm.settings.move.blockers': 'ما يمنع النقل',
+  'atm.settings.move.blockersHint': 'عالج ما يلي أولًا، ثم أعد فتح هذه النافذة.',
+  'atm.settings.move.more': 'و{{count}} أخرى',
+  'atm.settings.move.confirm': 'نقل',
+  'atm.settings.move.done': 'تم نقل {{count}} سجل إلى {{target}}.',
+  'atm.settings.move.remaining': 'بقي {{count}} سجل على {{source}}؛ أعد النقل لاستكماله.',
+  'atm.settings.move.nothing': 'لا توجد بيانات مسجلة على {{source}}.',
+  'atm.settings.move.banner': 'توجد بيانات مسجلة على {{source}} — انقلها إلى {{target}}.',
+  'atm.settings.move.blocked':
+    'لا يمكن النقل الآن: ظهر ما يمنعه منذ المعاينة. راجعه ثم أعد المحاولة.',
+  // A blocker met part-way through a run (409 `ATM_BRANCH_MOVE_STOPPED`): what moved stays moved.
+  'atm.settings.move.stopped':
+    'توقف النقل قبل اكتماله: ظهر بعد بدئه ما يمنع نقل الباقي. ما نُقل يبقى منقولًا، وتعرض المعاينة ما بقي مسجلًا على {{source}}. عالجه ثم أعد النقل لاستكماله.',
+  'atm.settings.move.targetChanged':
+    'تغيّر الفرع المرتبط منذ فتح هذه المعاينة، فلم يُنقل شيء. راجع المعاينة من جديد قبل النقل.',
+  'atm.settings.move.pausesWrites':
+    'أثناء النقل (دقائق قليلة) تنتظر إضافة الماكينات واستلام سطور السجل وفتح التغذيات والصيانات وحفظ الأسماء في الصراف الآلي حتى ينتهي.',
+  'atm.settings.move.collection.machines': 'الماكينات',
+  'atm.settings.move.collection.registerEntries': 'سطور سجل الماكينات',
+  'atm.settings.move.collection.mailTickets': 'رسائل الصيانة',
+  'atm.settings.move.collection.maintenances': 'الصيانات',
+  'atm.settings.move.collection.replenishments': 'التغذيات',
+  'atm.settings.move.collection.refLabels': 'أسماء البنوك والمناطق',
+  'atm.settings.move.collection.machineLocations': 'مواقع الماكينات على الخريطة',
+  'atm.settings.move.collection.cassetteLayouts': 'فئات الكاسيتات',
+  'atm.settings.move.collection.cassetteLayoutVersions': 'سجل تعديلات فئات الكاسيتات',
+  'atm.settings.move.collection.mapZones': 'قطاعات الخريطة',
+  'atm.settings.move.collection.dispatchRoutes': 'الخطوط',
+  'atm.settings.move.collection.routeAssignments': 'توزيع السطور على الخطوط',
+  'atm.settings.move.collection.standardLoads': 'الحمولات القياسية',
+  'atm.settings.move.collection.replenishmentPlans': 'خطط التغذية',
+  'atm.settings.move.collection.planLines': 'سطور خطط التغذية',
+  'atm.settings.move.collection.linePreparations': 'تجهيز الشوالات والسيلزات',
+  'atm.settings.move.collection.layoutImportRuns': 'عمليات الاستيراد من Full list',
+  'atm.settings.move.merge.labelsMerged':
+    'دمج أسماء بنوك ومناطق موجودة في الفرعين في أسماء {{target}}: {{count}}',
+  'atm.settings.move.merge.labelsRetired': 'حذف أسماء سبق أن غيّرها {{target}}: {{count}}',
+  'atm.settings.move.merge.machineTwinsRetired':
+    'حذف نسخ مكررة من الماكينات، مع بقاء النسخة العاملة: {{count}}',
+  'atm.settings.move.merge.zonesRenamed':
+    'إعادة تسمية قطاعات تحمل أسماء قطاعات في {{target}}: {{count}}',
+  'atm.settings.move.merge.routesRenamed':
+    'إعادة تسمية خطوط تحمل أسماء خطوط في {{target}} في اليوم نفسه: {{count}}',
+  'atm.settings.move.merge.standardLoadDefaultsUnset':
+    'إلغاء الحمولة الافتراضية لبنوك لها حمولة افتراضية في {{target}}: {{count}}',
+  'atm.settings.move.merge.layoutImportRunsAbandoned':
+    'إنهاء عمليات استيراد من Full list متوقفة منذ أكثر من 30 دقيقة: {{count}}',
+  'atm.settings.move.merge.mailboxRepointed': 'نقل تفعيل بريد الصيانة من {{source}} إلى {{target}}',
+  'atm.settings.move.merge.settingsRepointed':
+    'توجيه إعدادات {{source}} (تصنيف البريد وربط سجل الماكينات) إلى {{target}}: {{count}}',
+  'atm.settings.move.blocker.machineActiveInBoth':
+    'ماكينات نشطة في الفرعين، ولا يحدد سجل الماكينات أيهما يبقى: {{codes}}',
+  'atm.settings.move.blocker.machineTwinOpen':
+    'نسخ مكررة من ماكينات يجب حذفها، وما زال لها سجل أو عملية أو سطر خطة مفتوح: {{codes}}',
+  'atm.settings.move.blocker.planSerialCollision':
+    'صدرت نوتس للبنك نفسه في الفرعين، ولا يجوز أن تتكرر مسلسلاتها: {{banks}}',
+  'atm.settings.move.blocker.planSameDay':
+    'خطط تغذية للبنك نفسه في اليوم نفسه في الفرعين: {{items}}',
+  'atm.settings.move.blocker.zoneCaps':
+    'سيتجاوز {{target}} الحد المسموح به للخريطة بعد النقل — القطاعات: {{zones}} من {{maxZones}}، والنقاط: {{points}} من {{maxPoints}}.',
+  'atm.settings.move.blocker.layoutImportRunning':
+    'يجري الآن استيراد من Full list في {{source}} لهذه البنوك: {{banks}}. انتظر حتى ينتهي.',
+  'atm.settings.move.blocker.registerImportRunning':
+    'يجري الآن استيراد ملف لسجل الماكينات. انتظر حتى ينتهي، ثم أعد المحاولة.',
+  'atm.settings.move.blocker.moveRunning':
+    'يجري الآن نقل بيانات آخر. انتظر حتى ينتهي، ثم أعد المحاولة.',
 };
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ar };

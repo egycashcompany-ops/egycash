@@ -89,6 +89,7 @@ import { AtmMachineLocationModel } from '../map/machine-location.model';
 import { AtmMapZoneSetModel } from '../map/zone-set.model';
 import { AtmMapZoneModel } from '../map/zone.model';
 import { STALE_RUN_MS } from '../register/import/plan-import';
+import { AtmRegisterImportRunModel } from '../register/import/register-import-run.model';
 import { machineSnapshot } from '../register/register-coupling';
 import { AtmRegisterEntryModel } from '../register/register.model';
 import { AtmReplenishmentModel } from '../replenishments/replenishment.model';
@@ -191,6 +192,18 @@ const TWIN_COLLECTIONS: ReadonlySet<AtmBranchMoveCollection> = new Set<AtmBranch
   'machineLocations',
   'cassetteLayouts',
 ]);
+
+/**
+ * A register import `running` for under 30 minutes, anywhere (review finding): its rows file into
+ * whichever branch a code resolves to — the target included — so its couplings and inserts would
+ * land between the move's plan and its writes. One started while the move runs waits for it
+ * (move-fence.ts); one already running when the move starts refuses the move instead.
+ */
+const registerImportRunning = async (now: Date): Promise<boolean> =>
+  (await AtmRegisterImportRunModel.exists({
+    state: 'running',
+    startedAt: { $gte: new Date(now.getTime() - STALE_RUN_MS) },
+  }).exec()) !== null;
 
 /** The stored link a move works on, with both branches' ECMS names (as the top bar shows them). */
 interface MovePair {
@@ -1109,6 +1122,7 @@ class AtmBranchMoveService {
     if (layoutRuns.freshBanks.length > 0) {
       blockers.push({ kind: 'layoutImportRunning', bankCodes: layoutRuns.freshBanks });
     }
+    if (await registerImportRunning(now)) blockers.push({ kind: 'registerImportRunning' });
 
     merges.mailboxRepointed = (await mailboxRepoint(pair)) === null ? 0 : 1;
     const settings = await settingsRepoint(pair);

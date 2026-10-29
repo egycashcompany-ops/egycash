@@ -52,6 +52,7 @@ import { AtmRegisterEntryModel } from '../../src/modules/atm/register/register.m
 import { AtmReplenishmentModel } from '../../src/modules/atm/replenishments/replenishment.model';
 import { AtmDispatchRouteModel } from '../../src/modules/atm/settlements/control/dispatch-route.model';
 import { AtmRouteAssignmentModel } from '../../src/modules/atm/settlements/control/route-assignment.model';
+import { AtmRegisterImportRunModel } from '../../src/modules/atm/register/import/register-import-run.model';
 import { AtmLayoutImportRunModel } from '../../src/modules/atm/settlements/import/layout-import-run.model';
 import { AtmCassetteLayoutVersionModel } from '../../src/modules/atm/settlements/layouts/cassette-layout-version.model';
 import { AtmCassetteLayoutModel } from '../../src/modules/atm/settlements/layouts/cassette-layout.model';
@@ -747,6 +748,7 @@ describe('a source holding what the move must not guess past', () => {
     'planSameDay',
     'zoneCaps',
     'layoutImportRunning',
+    'registerImportRunning',
     'moveRunning',
   ];
 
@@ -755,6 +757,13 @@ describe('a source holding what the move must not guess past', () => {
     const other = await AtmBranchMoveRunModel.create({
       sourceBranchId: oid(ZAY),
       targetBranchId: oid(MOH),
+      state: 'running',
+      startedAt: new Date(),
+    });
+    // A register import running anywhere: its rows file wherever a code resolves (review finding).
+    const importing = await AtmRegisterImportRunModel.create({
+      fileName: 'register.xlsx',
+      fileSha256: 'f'.repeat(64),
       state: 'running',
       startedAt: new Date(),
     });
@@ -769,6 +778,7 @@ describe('a source holding what the move must not guess past', () => {
         { kind: 'planSameDay', items: [{ bankCode: 'CIB', replenishDate: '2026-11-01' }] },
         { kind: 'zoneCaps', zones: 201, points: 603 },
         { kind: 'layoutImportRunning', bankCodes: ['CIB'] },
+        { kind: 'registerImportRunning' },
         { kind: 'moveRunning' },
       ]);
       expect(dto.canMove).toBe(false);
@@ -787,6 +797,7 @@ describe('a source holding what the move must not guess past', () => {
       expect(await AuditLogModel.countDocuments({ action: 'atmBranchMove' }).exec()).toBe(0);
     } finally {
       await AtmBranchMoveRunModel.deleteOne({ _id: other._id }).exec();
+      await AtmRegisterImportRunModel.deleteOne({ _id: importing._id }).exec();
     }
   });
 
@@ -798,11 +809,15 @@ describe('a source holding what the move must not guess past', () => {
       startedAt: new Date(Date.now() - 31 * 60_000),
     });
     const dto = data<AtmBranchMovePreviewDto>(await preview(BLK));
-    expect(dto.blockers.map((blocker) => blocker.kind)).toEqual(ALL_KINDS.slice(0, -1));
+    // Every blocker Banha holds, but no move or register import is running now.
+    const held = ALL_KINDS.filter(
+      (kind) => kind !== 'moveRunning' && kind !== 'registerImportRunning',
+    );
+    expect(dto.blockers.map((blocker) => blocker.kind)).toEqual(held);
     // The refused attempt still took the stale lock over, and left no row of its own.
     const refused = await move(BLK);
     expect(refused.status).toBe(409);
-    expect(errorOf(refused).details?.map((detail) => detail.code)).toEqual(ALL_KINDS.slice(0, -1));
+    expect(errorOf(refused).details?.map((detail) => detail.code)).toEqual(held);
     const after = await AtmBranchMoveRunModel.findById(dead._id).lean().exec();
     expect(after).toMatchObject({ state: 'failed', error: 'stale' });
     expect(await AtmBranchMoveRunModel.countDocuments().exec()).toBe(1);

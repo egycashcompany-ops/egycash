@@ -425,6 +425,9 @@ export const emptyAtmBranchMoveMerges = (): AtmBranchMoveMergesDto => ({
  *   `ATM_MAP_ZONE_POINTS_PER_BRANCH_MAX` points), after which no zone save could pass again;
  *   `zones` and `points` are the target's totals after the move;
  * · `layoutImportRunning` — a Full list import of the source `running` for under 30 minutes;
+ * · `registerImportRunning` — a register import `running` for under 30 minutes, anywhere: its rows
+ *   file into whichever branch a code resolves to, the target included, so its couplings would land
+ *   between the move's plan and its writes (one started while a move runs waits for it instead);
  * · `moveRunning` — another move holds the run lock (one at a time, 30 minutes before it is stale).
  */
 export const ATM_BRANCH_MOVE_BLOCKERS = [
@@ -434,6 +437,7 @@ export const ATM_BRANCH_MOVE_BLOCKERS = [
   'planSameDay',
   'zoneCaps',
   'layoutImportRunning',
+  'registerImportRunning',
   'moveRunning',
 ] as const;
 export type AtmBranchMoveBlockerKind = (typeof ATM_BRANCH_MOVE_BLOCKERS)[number];
@@ -446,6 +450,7 @@ export type AtmBranchMoveBlockerDto =
   | { kind: 'planSameDay'; items: { bankCode: AtmBankCode; replenishDate: string }[] }
   | { kind: 'zoneCaps'; zones: number; points: number }
   | { kind: 'layoutImportRunning'; bankCodes: AtmBankCode[] }
+  | { kind: 'registerImportRunning' }
   | { kind: 'moveRunning' };
 
 /** `atm_branch_move_runs.state` — the run lock: one `running` at a time, 30 minutes to stale. */

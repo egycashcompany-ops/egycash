@@ -400,6 +400,7 @@ describe('the move of a linked source’s data — «نقل البيانات»',
       },
       zoneCaps: { kind: 'zoneCaps', zones: 201, points: 18_000 },
       layoutImportRunning: { kind: 'layoutImportRunning', bankCodes: ['BRK'] },
+      registerImportRunning: { kind: 'registerImportRunning' },
       moveRunning: { kind: 'moveRunning' },
     };
     expect(Object.keys(examples).sort()).toEqual([...ATM_BRANCH_MOVE_BLOCKERS].sort());

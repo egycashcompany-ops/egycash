@@ -10124,6 +10124,8 @@ const en: Record<string, string> = {
     '{{target}} would pass the map limits after the move — zones: {{zones}} of {{maxZones}}, points: {{points}} of {{maxPoints}}.',
   'atm.settings.move.blocker.layoutImportRunning':
     'A Full list import is running in {{source}} for these banks: {{banks}}. Wait until it finishes.',
+  'atm.settings.move.blocker.registerImportRunning':
+    'A register file import is running. Wait until it finishes, then try again.',
   'atm.settings.move.blocker.moveRunning':
     'Another data move is running. Wait until it finishes, then try again.',
 };
@@ -20071,6 +20073,8 @@ const ar: Record<string, string> = {
     'سيتجاوز {{target}} الحد المسموح به للخريطة بعد النقل — القطاعات: {{zones}} من {{maxZones}}، والنقاط: {{points}} من {{maxPoints}}.',
   'atm.settings.move.blocker.layoutImportRunning':
     'يجري الآن استيراد من Full list في {{source}} لهذه البنوك: {{banks}}. انتظر حتى ينتهي.',
+  'atm.settings.move.blocker.registerImportRunning':
+    'يجري الآن استيراد ملف لسجل الماكينات. انتظر حتى ينتهي، ثم أعد المحاولة.',
   'atm.settings.move.blocker.moveRunning':
     'يجري الآن نقل بيانات آخر. انتظر حتى ينتهي، ثم أعد المحاولة.',
 };

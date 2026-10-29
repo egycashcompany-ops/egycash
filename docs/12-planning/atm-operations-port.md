@@ -466,7 +466,8 @@ mail of those machines — stayed October's, readable only under «كل الشر
    while a machine is active in both branches and the register does not say which stays, a twin to
    retire still holds open work (an open register entry, replenishment or maintenance, or a draft
    or issued plan line), Note serials or a plan of one bank and day collide, the target
-   would pass the map's caps, a Full list import is running, or another move runs; a blocker that
+   would pass the map's caps, a Full list import is running, a register import is running (anywhere:
+   its rows file wherever a code resolves), or another move runs; a blocker that
    appears part-way stops the run at that step (409 `ATM_BRANCH_MOVE_STOPPED`) and what moved stays
    moved. Every step reads what is STILL under the source, so running it again carries on, and a run
    cut off by a restart is taken over after 30 minutes and audited then. ONE `atmBranchMove` audit

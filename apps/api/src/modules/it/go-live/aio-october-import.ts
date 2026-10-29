@@ -5,7 +5,8 @@
 // The sheet was read and reviewed with the owner BEFORE anything was written («موافق على كل
 // اقتراحاتك، طبّق الأربعة»): the leading «S» the barcode reads marks the field and is not part of
 // the serial; the two serials the inventory already registered at the head office (MP30EPDA,
-// MP30EPD2) stay as they are; and the one short serial waits until the owner sends it whole. What
+// MP30EPD2) stay as they are; and the one short serial (row 71) is no device of its own — read off
+// the device by the owner, it is MP30EPD8, row 62's, scanned again («MP30EPD8 فعلاً»). What
 // came out of that review is `assets/it-go-live/aio-october-2026-10.json`, and this file is the
 // part of the go-live that is pure: the file's shape, which of the register's devices the owner's
 // «بنفس مواصفات» points at, and the category an all-in-one is filed under when the register has no

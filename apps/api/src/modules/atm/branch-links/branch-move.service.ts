@@ -21,7 +21,8 @@
 //   1. labels — merged into the target's live row of the same name, retired when the target renamed
 //      the name away, moved (deleted rows too: they are the branch's memory, DEC-38);
 //   2. machines — each twin that would meet the survivor in the target retired the legacy way
-//      (`<code>-D`, deleted), then every source master moved;
+//      (`<code>-D`, deleted), handing its layout and map point to the survivor where it has none,
+//      then every source master moved;
 //   3. what follows the machines — register entries (a branch-less row has no branch to move),
 //      mail tickets, both operation logs, map locations, layouts and their versions;
 //   4. the map — zones renamed where the target uses the name and ordered after the target's, the
@@ -184,6 +185,13 @@ const COLLECTION_TOPICS: Partial<
   linePreparations: { moduleId: 'atm', entityType: 'linePreparation' },
 };
 
+/** What a retired twin touches beyond the rows the move counts: the machine, its layout and point. */
+const TWIN_COLLECTIONS: ReadonlySet<AtmBranchMoveCollection> = new Set<AtmBranchMoveCollection>([
+  'machines',
+  'machineLocations',
+  'cassetteLayouts',
+]);
+
 /** The stored link a move works on, with both branches' ECMS names (as the top bar shows them). */
 interface MovePair {
   source: string;
@@ -197,7 +205,12 @@ interface MovePair {
 }
 
 /** A twin the move retired — named on the run's audit row, so the machine's fate can be traced. */
-type RetiredTwin = MachineTwinPlan['retire'][number];
+type RetiredTwin = MachineTwinPlan['retire'][number] & {
+  /** Its cassette layout, with every version, went to the survivor, which had none. */
+  layoutAdopted: boolean;
+  /** Its map point went to the survivor, which had none. */
+  locationAdopted: boolean;
+};
 
 const oid = (id: string): Types.ObjectId => new Types.ObjectId(id);
 
@@ -308,7 +321,8 @@ const labelRowsOf = async (branchId: Types.ObjectId): Promise<MoveLabelRow[]> =>
 
 /**
  * The live masters of every code BOTH branches hold — found by grouping, not by a duplicate-key
- * error — with what each holds: an open register entry coupled to it, an open operation naming it.
+ * error — with what each holds: an open register entry coupled to it, an open operation or a draft
+ * or issued plan line naming it.
  */
 const machineTwinRows = async (pair: MovePair): Promise<MoveMachineRow[]> => {
   const groups = await AtmMachineModel.aggregate<{
@@ -328,7 +342,7 @@ const machineTwinRows = async (pair: MovePair): Promise<MoveMachineRow[]> => {
   const ids = groups.flatMap((group) => group.rows.map((row) => row.id));
   if (ids.length === 0) return [];
   const open = { machineId: { $in: ids }, closedAt: null, isDeleted: false };
-  const [entries, replenishments, maintenances] = await Promise.all([
+  const [entries, replenishments, maintenances, planLines] = await Promise.all([
     AtmRegisterEntryModel.distinct('machineId', {
       machineId: { $in: ids },
       status: 'open',
@@ -336,9 +350,17 @@ const machineTwinRows = async (pair: MovePair): Promise<MoveMachineRow[]> => {
     }).exec(),
     AtmReplenishmentModel.distinct('machineId', open).exec(),
     AtmMaintenanceModel.distinct('machineId', open).exec(),
+    // A draft or issued line still has to be issued or prepared, and `machinePlannable` reads live
+    // masters only; a prepared or cancelled one is history, kept as its snapshot (review finding).
+    AtmPlanLineModel.distinct('machineId', {
+      machineId: { $in: ids },
+      kind: 'machine',
+      status: { $in: ['draft', 'issued'] },
+      isDeleted: false,
+    }).exec(),
   ]);
   const holdsEntry = new Set(entries.map(String));
-  const holdsOperation = new Set([...replenishments, ...maintenances].map(String));
+  const holdsOperation = new Set([...replenishments, ...maintenances, ...planLines].map(String));
   return groups.flatMap((group) =>
     group.rows.map((row) => ({
       id: String(row.id),
@@ -572,6 +594,59 @@ const moveIds = async (
     });
   }
   return moved;
+};
+
+/**
+ * What a retired twin hands to the master that stays (review finding: the survivor could not be
+ * planned until the Full list was imported again): its cassette layout with every version, and its
+ * map point — each only where the survivor has none, so nothing the survivor holds is replaced and
+ * `ux_machine` / `ux_machine_revision` are never met; otherwise they stay with the retired master,
+ * as the legacy delete leaves them. `machineId` only, through the driver: no revision, version or
+ * timestamp moves, since the layout itself did not change. A row still under the source moves to
+ * the target in step 3 with the rest. Inside the retire's own transaction, after its write.
+ */
+const adoptTwinConfig = async (
+  twin: MachineTwinPlan['retire'][number],
+  session: ClientSession,
+): Promise<{ layoutAdopted: boolean; locationAdopted: boolean }> => {
+  const from = oid(twin.id);
+  const to = oid(twin.survivorId);
+  let layoutAdopted = false;
+  const survivorLayouts = await AtmCassetteLayoutModel.collection.countDocuments(
+    { machineId: to },
+    { session },
+  );
+  const survivorVersions = await AtmCassetteLayoutVersionModel.collection.countDocuments(
+    { machineId: to },
+    { session },
+  );
+  if (survivorLayouts === 0 && survivorVersions === 0) {
+    const layouts = await AtmCassetteLayoutModel.collection.updateMany(
+      { machineId: from },
+      { $set: { machineId: to } },
+      { session },
+    );
+    await AtmCassetteLayoutVersionModel.collection.updateMany(
+      { machineId: from },
+      { $set: { machineId: to } },
+      { session },
+    );
+    layoutAdopted = layouts.modifiedCount > 0;
+  }
+  let locationAdopted = false;
+  const survivorPoints = await AtmMachineLocationModel.collection.countDocuments(
+    { machineId: to, isDeleted: false },
+    { session },
+  );
+  if (survivorPoints === 0) {
+    const points = await AtmMachineLocationModel.collection.updateMany(
+      { machineId: from, isDeleted: false },
+      { $set: { machineId: to } },
+      { session },
+    );
+    locationAdopted = points.modifiedCount > 0;
+  }
+  return { layoutAdopted, locationAdopted };
 };
 
 /**
@@ -861,6 +936,9 @@ class AtmBranchMoveService {
           machineId: twin.id,
           machineCode: twin.machineCode,
           branchId: twin.side === 'source' ? pair.source : pair.target,
+          survivorId: twin.survivorId,
+          layoutAdopted: twin.layoutAdopted,
+          locationAdopted: twin.locationAdopted,
         })),
       });
     }
@@ -1077,7 +1155,10 @@ class AtmBranchMoveService {
           )
             .lean<AtmMachineDoc>()
             .exec();
-          if (before !== null) written.push({ twin, before });
+          // Retired by this write (never one retired meanwhile): its layout and point may follow.
+          if (before !== null) {
+            written.push({ twin: { ...twin, ...(await adoptTwinConfig(twin, session)) }, before });
+          }
         }
         return written;
       });
@@ -1334,8 +1415,10 @@ class AtmBranchMoveService {
     const topics = new Map<string, { moduleId: string; entityType: string }>();
     for (const collection of ATM_BRANCH_MOVE_COLLECTIONS) {
       const topic = COLLECTION_TOPICS[collection];
+      // A retired twin changes the machines, and may have handed its layout and point over.
       const touched =
-        moved[collection] > 0 || (collection === 'machines' && merges.machineTwinsRetired > 0);
+        moved[collection] > 0 ||
+        (TWIN_COLLECTIONS.has(collection) && merges.machineTwinsRetired > 0);
       if (topic !== undefined && touched) topics.set(topic.entityType, topic);
     }
     for (const topic of topics.values()) {

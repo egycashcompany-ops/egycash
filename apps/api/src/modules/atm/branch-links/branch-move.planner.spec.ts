@@ -181,7 +181,9 @@ describe('machine twins — one code held by a live master in each branch', () =
       machine({ id: 's', side: 'source' }),
       machine({ id: 't', side: 'target', isActive: false }),
     ]);
-    expect(plan.retire).toEqual([{ id: 't', machineCode: '27720226', side: 'target' }]);
+    expect(plan.retire).toEqual([
+      { id: 't', machineCode: '27720226', side: 'target', survivorId: 's' },
+    ]);
     expect(twinBlockers(plan)).toEqual([]);
   });
 
@@ -190,7 +192,9 @@ describe('machine twins — one code held by a live master in each branch', () =
       machine({ id: 's', side: 'source', isActive: false }),
       machine({ id: 't', side: 'target' }),
     ]);
-    expect(plan.retire).toEqual([{ id: 's', machineCode: '27720226', side: 'source' }]);
+    expect(plan.retire).toEqual([
+      { id: 's', machineCode: '27720226', side: 'source', survivorId: 't' },
+    ]);
   });
 
   it('(d) archived in both: the target’s stays', () => {
@@ -249,6 +253,19 @@ describe('machine twins — one code held by a live master in each branch', () =
       machine({ id: 's3', side: 'source', machineCode: '500' }),
     ]);
     expect(plan.activeInBoth).toEqual(['99', '1001']);
+  });
+
+  it('each retired twin names the master that stays — the one that takes its layout and point', () => {
+    // The source's survives: every target twin would meet it, so each goes, naming it.
+    const plan = planMachineTwins([
+      machine({ id: 's', side: 'source' }),
+      machine({ id: 't1', side: 'target', isActive: false }),
+      machine({ id: 't2', side: 'target', isActive: false }),
+    ]);
+    expect(plan.retire.map((twin) => [twin.id, twin.survivorId])).toEqual([
+      ['t1', 's'],
+      ['t2', 's'],
+    ]);
   });
 
   it('retires only what would meet the survivor: a duplicate the target already had stays', () => {

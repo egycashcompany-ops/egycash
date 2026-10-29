@@ -498,6 +498,35 @@ beforeAll(async () => {
     revision: 1,
     isDeleted: false,
   });
+  // (a)'s twin to retire, Mohandessin's A1, holds a cassette layout with two versions and a point;
+  // the master that stays, October's A1, has none — so they follow it (review finding: it could
+  // not be planned until the Full list was imported again).
+  const insertedId = async (inserted: Promise<{ insertedId: Types.ObjectId }>) =>
+    String((await inserted).insertedId);
+  ids.tA1Layout = await insertedId(
+    AtmCassetteLayoutModel.collection.insertOne({
+      machineId: oid(ids.tA1),
+      branchId: oid(MOH),
+      revision: 2,
+      isDeleted: false,
+    }),
+  );
+  for (const revision of [1, 2]) {
+    await AtmCassetteLayoutVersionModel.collection.insertOne({
+      machineId: oid(ids.tA1),
+      branchId: oid(MOH),
+      revision,
+      isDeleted: false,
+    });
+  }
+  ids.tA1Location = await insertedId(
+    AtmMachineLocationModel.collection.insertOne({
+      machineId: oid(ids.tA1),
+      branchId: oid(MOH),
+      status: 'located',
+      isDeleted: false,
+    }),
+  );
 
   // The map: «قطاع 1» in both; each branch's zone set; a zone October deleted.
   await mkZone(MOH, 'قطاع 1', 0);
@@ -581,6 +610,30 @@ beforeAll(async () => {
   const tPlanCib = await mkPlan(TAN, 'CIB', '2026-11-01');
   await mkLine(BLK, bPlan, 'CIB', 1);
   await mkLine(TAN, tPlanCib, 'CIB', null, [1]); // Note 1 printed, then the line reopened
+  // X3 and X4: Banha's are active, so Tanta's archived ones would be retired. A draft line still
+  // names Tanta's X3 — it could no longer be issued once its master is retired (review finding);
+  // Tanta's X4 has only a prepared line, which is history kept as its snapshot, so it goes.
+  await mkMachine(BLK, 'X3');
+  await mkMachine(BLK, 'X4');
+  for (const [code, status, serial] of [
+    ['X3', 'draft', null],
+    ['X4', 'prepared', 7],
+  ] as const) {
+    const twin = await mkMachine(TAN, code, { isActive: false });
+    await AtmPlanLineModel.collection.insertOne({
+      planId: oid(tPlanCib),
+      branchId: oid(TAN),
+      bankCode: 'CIB',
+      replenishDate: '2026-11-01',
+      kind: 'machine',
+      machineId: oid(twin),
+      status,
+      serial,
+      voidedSerials: [],
+      isDeleted: false,
+      __v: 0,
+    });
+  }
   await AtmMapZoneModel.insertMany(
     Array.from({ length: 200 }, (_, i) => ({
       branchId: oid(TAN),
@@ -594,7 +647,22 @@ beforeAll(async () => {
   await mkLayoutRun(BLK, 'CIB', 'running', 5);
 
   // ── Sheikh Zayed (a second source into Mohandessin) ────────────────────────────────────────
-  await mkMachine(ZAY, 'Q1');
+  ids.sQ1 = await mkMachine(ZAY, 'Q1');
+  // … and Mohandessin's archived Q1, retired by that move: both hold a cassette layout, so the
+  // twin's stays its own — the master that stays keeps the one it has.
+  ids.tQ1 = await mkMachine(MOH, 'Q1', { isActive: false });
+  for (const [key, machineId, branchId] of [
+    ['sQ1Layout', ids.sQ1, ZAY],
+    ['tQ1Layout', ids.tQ1, MOH],
+  ] as const) {
+    const inserted = await AtmCassetteLayoutModel.collection.insertOne({
+      machineId: oid(machineId),
+      branchId: oid(branchId),
+      revision: 1,
+      isDeleted: false,
+    });
+    ids[key] = String(inserted.insertedId);
+  }
 
   // ── Heliopolis: a machine, and a plan for a day Mohandessin has none — yet ─────────────────
   await mkMachine(HEL, 'H1');
@@ -689,7 +757,7 @@ describe('a source holding what the move must not guess past', () => {
       const dto = data<AtmBranchMovePreviewDto>(res);
       expect(dto.blockers).toEqual([
         { kind: 'machineActiveInBoth', codes: ['X1'] },
-        { kind: 'machineTwinOpen', codes: ['X2'] },
+        { kind: 'machineTwinOpen', codes: ['X2', 'X3'] },
         { kind: 'planSerialCollision', bankCodes: ['CIB'] },
         { kind: 'planSameDay', items: [{ bankCode: 'CIB', replenishDate: '2026-11-01' }] },
         { kind: 'zoneCaps', zones: 201, points: 603 },
@@ -882,6 +950,38 @@ describe('October moved into Mohandessin', () => {
     expect(twins).toEqual([]);
   });
 
+  it('hands a retired twin’s layout and point to the master that stays when it has none', async () => {
+    const layout = await AtmCassetteLayoutModel.findById(ids.tA1Layout).lean().exec();
+    expect(String(layout?.machineId)).toBe(ids.sA1);
+    expect(String(layout?.branchId)).toBe(MOH);
+    expect(layout?.revision).toBe(2);
+    const versions = await AtmCassetteLayoutVersionModel.find({ machineId: oid(String(ids.sA1)) })
+      .lean()
+      .exec();
+    expect(versions.map((version) => version.revision).sort()).toEqual([1, 2]);
+    const point = await AtmMachineLocationModel.findById(ids.tA1Location).lean().exec();
+    expect(String(point?.machineId)).toBe(ids.sA1);
+    expect(
+      await AtmCassetteLayoutModel.countDocuments({ machineId: oid(String(ids.tA1)) }).exec(),
+    ).toBe(0);
+    // The run's audit row says which master stayed and what it took.
+    const audit = await AuditLogModel.findOne({
+      action: 'atmBranchMove',
+      'entityRef.entityId': result.runId,
+    })
+      .lean()
+      .exec();
+    const retiredRows = audit?.changes.find((change) => change.field === 'retiredMachines')?.new;
+    expect(retiredRows).toContainEqual({
+      machineId: ids.tA1,
+      machineCode: 'A1',
+      branchId: MOH,
+      survivorId: ids.sA1,
+      layoutAdopted: true,
+      locationAdopted: true,
+    });
+  });
+
   it('moves what follows the machines — and leaves a branch-less register row alone', async () => {
     const entry = await AtmRegisterEntryModel.findById(ids.eA1).lean().exec();
     expect(String(entry?.branchId)).toBe(MOH);
@@ -1059,6 +1159,15 @@ describe('a second source into the same target', () => {
     const res = await move(ZAY);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(data<AtmBranchMoveResultDto>(res).moved.machines).toBe(1);
+    // Mohandessin's archived Q1 retired; each master keeps its own layout (the survivor had one).
+    expect(await AtmMachineModel.findById(ids.tQ1).lean().exec()).toMatchObject({
+      machineCode: 'Q1-D',
+      isDeleted: true,
+    });
+    const layoutOf = (id: string | undefined) => AtmCassetteLayoutModel.findById(id).lean().exec();
+    expect(String((await layoutOf(ids.sQ1Layout))?.machineId)).toBe(ids.sQ1);
+    expect(String((await layoutOf(ids.sQ1Layout))?.branchId)).toBe(MOH);
+    expect(String((await layoutOf(ids.tQ1Layout))?.machineId)).toBe(ids.tQ1);
     const mailbox = await AtmMailboxConfigModel.findOne({ key: 'default' }).lean().exec();
     expect(mailbox?.branches.map((row) => String(row.branchId))).toEqual([MOH, TAN]);
     expect(

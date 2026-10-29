@@ -240,9 +240,11 @@ its entry here in the same PR.
   under the source, what merges and what refuses the move, then the move itself, under
   `atmSettings.manage` held company-wide. Machines, register rows, mail, both operation logs, the
   map, labels and the settlements data are re-filed under the target; a name both branches use is
-  merged or renamed, a duplicate machine is retired the way data-edit deletes one, and the mail
+  merged or renamed, a duplicate machine is retired the way data-edit deletes one (its cassette
+  layout and map point going to the machine that stays when that one has none), and the mail
   and register settings that named the source are pointed to the target. The move is refused, with
-  each reason named, while something it must not guess past stands — a machine active in both, Note
+  each reason named, while something it must not guess past stands — a machine active in both, a
+  duplicate still holding open work (a draft or issued plan line among it), Note
   serials or a plan of one bank and day in both, the map's limits, an import running — and stopped
   part-way, with what moved staying moved, if one appears while it runs; running it again carries
   on. The card names every linked branch still holding data, and opens the preview when a link just

@@ -453,13 +453,15 @@ mail of those machines — stayed October's, readable only under «كل الشر
    previews the rows per collection, what merges and what refuses the move; the move re-files 17
    collections in transactions of at most 200 rows. A label of a name both branches hold merges into
    the target's row (filling only what it left empty); a machine twin that would meet the survivor
-   in the target is retired the legacy way (`<code>-D`, deleted, with its own `delete` audit row);
+   in the target is retired the legacy way (`<code>-D`, deleted, with its own `delete` audit row),
+   its cassette layout (every version) and map point going to the survivor where it has none;
    a zone or dispatch-line name the target uses gets the source's name as a suffix; the target's
    default standard load stays the default; a Full list run stalled for 30 minutes is closed first;
    and `atm.mail.branchCategories`, `atm.register.branchCodes` and the mailbox list are re-pointed
    where the target has none of its own. Refused 409 `ATM_BRANCH_MOVE_BLOCKED`, with each named,
    while a machine is active in both branches and the register does not say which stays, a twin to
-   retire still holds open work, Note serials or a plan of one bank and day collide, the target
+   retire still holds open work (an open register entry, replenishment or maintenance, or a draft
+   or issued plan line), Note serials or a plan of one bank and day collide, the target
    would pass the map's caps, a Full list import is running, or another move runs; a blocker that
    appears part-way stops the run at that step (409 `ATM_BRANCH_MOVE_STOPPED`) and what moved stays
    moved. Every step reads what is STILL under the source, so running it again carries on, and a run

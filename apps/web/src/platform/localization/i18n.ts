@@ -10111,7 +10111,7 @@ const en: Record<string, string> = {
   'atm.settings.move.blocker.machineActiveInBoth':
     'Machines active in both branches, where the ATM Register does not say which one stays: {{codes}}',
   'atm.settings.move.blocker.machineTwinOpen':
-    'Duplicate machines to be removed that still have an open register entry or operation: {{codes}}',
+    'Duplicate machines to be removed that still have an open register entry, operation or plan line: {{codes}}',
   'atm.settings.move.blocker.planSerialCollision':
     'Notes were issued for the same bank in both branches, and their serials must not repeat: {{banks}}',
   'atm.settings.move.blocker.planSameDay':
@@ -20054,7 +20054,7 @@ const ar: Record<string, string> = {
   'atm.settings.move.blocker.machineActiveInBoth':
     'ماكينات نشطة في الفرعين، ولا يحدد سجل الماكينات أيهما يبقى: {{codes}}',
   'atm.settings.move.blocker.machineTwinOpen':
-    'نسخ مكررة من ماكينات يجب حذفها، وما زال لها سجل أو عملية مفتوحة: {{codes}}',
+    'نسخ مكررة من ماكينات يجب حذفها، وما زال لها سجل أو عملية أو سطر خطة مفتوح: {{codes}}',
   'atm.settings.move.blocker.planSerialCollision':
     'صدرت نوتس للبنك نفسه في الفرعين، ولا يجوز أن تتكرر مسلسلاتها: {{banks}}',
   'atm.settings.move.blocker.planSameDay':

@@ -403,8 +403,8 @@ export const emptyAtmBranchMoveMerges = (): AtmBranchMoveMergesDto => ({
  * · `machineActiveInBoth` — a machine code ACTIVE in both branches where the register does not
  *   decide which machine exists (D2: the one holding the code's open register period stays):
  *   neither holds it, or both do through exempt twins (DEC-11);
- * · `machineTwinOpen` — the twin the move would retire still holds an open register entry or an
- *   open replenishment or maintenance;
+ * · `machineTwinOpen` — the twin the move would retire still holds an open register entry, an
+ *   open replenishment or maintenance, or a draft or issued settlements plan line;
  * · `planSerialCollision` — Notes of the same bank issued in both branches: each branch's serials
  *   start at 1, and a serial printed on a «محضر جرد» Note is never renumbered;
  * · `planSameDay` — a replenishment plan of the same bank for the same day in both branches;

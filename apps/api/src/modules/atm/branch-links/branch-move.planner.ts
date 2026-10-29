@@ -224,13 +224,21 @@ export interface MoveMachineRow {
   isActive: boolean;
   /** An open register entry is coupled to it (`machineId`): it holds the code's open period (D2). */
   holdsOpenEntry: boolean;
-  /** An open replenishment or maintenance names it. */
+  /**
+   * An open replenishment or maintenance names it, or a draft or issued settlements plan line does
+   * (review finding: a retired twin's line could no longer be issued — `machinePlannable` reads
+   * live masters only). A prepared or cancelled line is history, kept as its snapshot.
+   */
   holdsOpenOperation: boolean;
 }
 
 export interface MachineTwinPlan {
-  /** Retired before the move, the legacy way — `<code>-D`, deleted — each keeping its history. */
-  retire: { id: string; machineCode: string; side: MoveSide }[];
+  /**
+   * Retired before the move, the legacy way — `<code>-D`, deleted — each keeping its history, and
+   * naming the master that stays (`survivorId`), which takes the twin's cassette layout and map
+   * point when it has none of its own (the service, inside the retire).
+   */
+  retire: { id: string; machineCode: string; side: MoveSide; survivorId: string }[];
   /** Codes active in both branches where the register does not decide which machine exists. */
   activeInBoth: string[];
   /** Codes whose twin to retire still holds an open register entry or an open operation. */
@@ -258,8 +266,9 @@ const survivorOf = (group: readonly MoveMachineRow[]): MoveMachineRow | null => 
  * one live master per branch and code. The survivor keeps its id and history; every twin that would
  * meet it in the target is retired — the other branch's, and the source's own when the source's
  * survives (all of the source arrives). Never merged into one identity: the twin's layouts,
- * locations and layout versions are unique per machine id. A twin still holding an open entry or
- * operation is never retired: the code is listed instead, for the administrator to close it first.
+ * locations and layout versions are unique per machine id, so they go to the survivor only where it
+ * has none (the service). A twin still holding an open entry, operation or plan line is never
+ * retired: the code is listed instead, for the administrator to close it first.
  */
 export const planMachineTwins = (rows: readonly MoveMachineRow[]): MachineTwinPlan => {
   const plan: MachineTwinPlan = { retire: [], activeInBoth: [], twinOpen: [] };
@@ -285,7 +294,12 @@ export const planMachineTwins = (rows: readonly MoveMachineRow[]): MachineTwinPl
       continue;
     }
     plan.retire.push(
-      ...retired.map((row) => ({ id: row.id, machineCode: row.machineCode, side: row.side })),
+      ...retired.map((row) => ({
+        id: row.id,
+        machineCode: row.machineCode,
+        side: row.side,
+        survivorId: survivor.id,
+      })),
     );
   }
   return plan;

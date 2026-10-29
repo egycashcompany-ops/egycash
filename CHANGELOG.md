@@ -37,10 +37,10 @@ its entry here in the same PR.
   opening stock, entered once by the deploy.** From «SN ايجي كاش» and «جرد الأجهزة», as reviewed
   with the owner («موافق على كل اقتراحاتك، طبّق الأربعة ودخّل الأرصدة»): 97 new «Lenovo ThinkCentre
   neo 50a 24» in «أكتوبر», in stock, copying the live one's category, make, model, specifications
-  and accessories (the two already registered at the head office stay; one short serial waits for
-  the owner); processor, memory and storage added to 38 registered devices only where empty, a typed
-  value kept; and ten items' counted balances received into the «المهندسين» store. Each runs once,
-  after the steps it depends on.
+  and accessories (the two already registered at the head office stay; a short serial was one of
+  them scanned twice); processor, memory and storage added to 38 registered devices only where
+  empty, a typed value kept; and ten items' counted balances received into the «المهندسين» store.
+  Each runs once, after the steps it depends on.
 - **A maintenance mail accepted or rejected by mistake goes back to pending, and both mail pages
   filter, with their buttons on the rows.** «هنا /atm/mail-tickets/log وهنا /atm/mail-tickets عايز
   فلتر وعايز Action Buttons — في /atm/mail-tickets يكون 2 قبول ورفض — في /atm/mail-tickets/log

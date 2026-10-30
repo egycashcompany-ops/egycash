@@ -15,10 +15,10 @@ import { resolveNavIcon } from './app-icon';
 import {
   AtmIcon,
   BriefcaseIcon,
+  BuildingIcon,
   CashIcon,
   GoldIcon,
   MonitorIcon,
-  SitemapIcon,
   TruckIcon,
   UsersIcon,
   type HomeIcon,
@@ -42,6 +42,10 @@ const SENTINEL = (() => null) as unknown as typeof HomeIcon;
 
 describe('the module launcher', () => {
   it('finds every module tile in the seed', () => {
+    // Every category block, not just the ones laid out as the parser expects: a tile it skipped
+    // would escape the two checks below without failing anything.
+    const blocks = readFileSync(SEED, 'utf8').match(/^ {4}apps: \[/gm) ?? [];
+    expect(moduleIcons().length, 'every category block was parsed').toBe(blocks.length);
     expect(moduleIcons().map(([en]) => en)).toEqual([
       'HR',
       'Fleet',
@@ -62,7 +66,7 @@ describe('the module launcher', () => {
       HR: UsersIcon,
       Fleet: TruckIcon,
       Operations: CashIcon, // «العمليات تبقي ايقونة فلوس»
-      Organization: SitemapIcon,
+      Organization: BuildingIcon, // the owner's choice for this tile (e1166473)
       IT: MonitorIcon,
       'Gold Vault': GoldIcon, // «خزائن الدهب تبقي خزينة او سبيكة»
       ATM: AtmIcon, // «الصراف الآلى تبقي Machine»

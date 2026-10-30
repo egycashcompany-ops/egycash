@@ -334,6 +334,16 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Every module tile says what its module is, and no two look alike.** «بص الأيقونات بتاعت
+  الإدارات مش متناسقة مع مدلول الإدارة … وبعدين فى متكرر ! عايز كل أيقونة تكون بتعبر عن اسم
+  الإدارة». In «الوحدات» (and the module rail and the command palette): العمليات is a banknote,
+  الصراف الآلي a cash machine, خزائن الذهب stacked gold bars — no longer the shield the two shared —
+  and الهيكل التنظيمي the building chosen for it before, which the ATM tile no longer wears. HR,
+  Fleet, IT and Administration already said what they are. Existing installations take these four
+  icons once at the next boot, whatever the tile held (the live tiles had been set by hand); the
+  change is audited, and an administrator's own choice after it stands. Reopen the app once after
+  the deploy so it has the new drawings.
+
 - **The device acknowledgment agrees with what it hands over.** A screen or a printer now reads
   «ومواصفاتها … لاستخدامها … بالحفاظ عليها … بردها»; a device, a laptop or a mouse reads as before
   («شوف أنت الأنسب وأعمله»).

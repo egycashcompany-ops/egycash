@@ -526,27 +526,29 @@ export const ReceiptIcon = (p: IconProps): JSX.Element => (
 );
 
 /**
- * Banknotes — the Operations module (العمليات), which moves cash: a note, its stack beneath it.
- * «العمليات تبقي ايقونة فلوس».
+ * A banknote — the Operations module (العمليات), which moves cash. «العمليات تبقي ايقونة فلوس».
+ * One note and nothing under it: a line beneath turned it into a screen on a stand, i.e. IT's monitor.
  */
 export const CashIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
-    <rect x="2" y="5" width="20" height="12" rx="2" />
-    <circle cx="12" cy="11" r="2.5" />
-    <path d="M6 11h.01M18 11h.01M4 20h16" />
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+    <circle cx="12" cy="12" r="2" />
+    <path d="M6 12h.01M18 12h.01" />
   </Base>
 );
 
 /**
- * A cash machine paying out a note — the ATM module (الصراف الآلي). The screen and the dispensed
- * note are what make it a machine for money rather than a printer.
+ * A cash machine — the ATM module (الصراف الآلي): a body with its screen and keypad, the ledge, and
+ * a note coming out under it. «الصراف الآلى تبقي Machine». The keypad is what keeps it from reading as
+ * a printer, which a screen over a sheet of paper otherwise is; every gap stays open at 16px.
  */
 export const AtmIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
-    <rect x="2" y="2" width="20" height="10" rx="2" />
-    <rect x="5" y="5" width="14" height="4" rx="1" />
-    <path d="M7 12v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-8" />
-    <circle cx="12" cy="16.5" r="1.8" />
+    <path d="M4 15V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11" />
+    <path d="M2 15h20" />
+    <rect x="8" y="5.5" width="8" height="3" rx="1" />
+    <path d="M9 11.5h.01M12 11.5h.01M15 11.5h.01" />
+    <path d="M7 15v5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-5" />
   </Base>
 );
 

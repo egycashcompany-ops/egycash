@@ -96,8 +96,8 @@ const REGISTRY: Record<string, NavIcon> = {
   chart: ChartIcon,
   // ATM (module port) — the machines grid.
   grid: GridIcon,
-  // The module tiles, one glyph per module and none shared: «عايز كل أيقونة تكون بتعبر عن اسم
-  // الإدارة». Operations moves cash, the ATM module runs the machines, Gold Vault keeps bullion.
+  // Module tiles, one glyph per module and none shared: «عايز كل أيقونة تكون بتعبر عن اسم الإدارة».
+  // Operations moves cash, the ATM module runs the machines, Gold Vault keeps bullion.
   cash: CashIcon,
   atm: AtmIcon,
   gold: GoldIcon,

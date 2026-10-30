@@ -4,12 +4,14 @@
 import { type ComponentType, type SVGProps } from 'react';
 import {
   AlertIcon,
+  AtmIcon,
   BadgeIcon,
   BellIcon,
   CloseIcon,
   BriefcaseIcon,
   BuildingIcon,
   CalendarIcon,
+  CashIcon,
   ChartIcon,
   ChatIcon,
   ClipboardIcon,
@@ -17,6 +19,7 @@ import {
   FileIcon,
   FolderIcon,
   GaugeIcon,
+  GoldIcon,
   GridIcon,
   HomeIcon,
   InboxIcon,
@@ -91,8 +94,13 @@ const REGISTRY: Record<string, NavIcon> = {
   // Scope B1 — the payroll reports row, registered beside the row that names it for the reason
   // stated above: an unregistered `chart` would fall back to the neutral glyph and look chosen.
   chart: ChartIcon,
-  // ATM (module port) — the machines grid and the module category tile.
+  // ATM (module port) — the machines grid.
   grid: GridIcon,
+  // Module tiles, one glyph per module and none shared: «عايز كل أيقونة تكون بتعبر عن اسم الإدارة».
+  // Operations moves cash, the ATM module runs the machines, Gold Vault keeps bullion.
+  cash: CashIcon,
+  atm: AtmIcon,
+  gold: GoldIcon,
 };
 
 export const resolveNavIcon = (name: string | null | undefined, fallback: NavIcon): NavIcon => {

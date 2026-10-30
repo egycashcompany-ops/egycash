@@ -524,3 +524,43 @@ export const ReceiptIcon = (p: IconProps): JSX.Element => (
     <path d="M9 7h6M9 11h6M9 15h4" />
   </Base>
 );
+
+/**
+ * A banknote — the Operations module (العمليات), which moves cash. «العمليات تبقي ايقونة فلوس».
+ * One note and nothing under it: a line beneath turned it into a screen on a stand, i.e. IT's monitor.
+ */
+export const CashIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+    <circle cx="12" cy="12" r="2" />
+    <path d="M6 12h.01M18 12h.01" />
+  </Base>
+);
+
+/**
+ * A cash machine — the ATM module (الصراف الآلي): a body with its screen and keypad, the ledge, and
+ * a note coming out under it. «الصراف الآلى تبقي Machine». The keypad is what keeps it from reading as
+ * a printer, which a screen over a sheet of paper otherwise is; every gap stays open at 16px.
+ */
+export const AtmIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M4 15V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11" />
+    <path d="M2 15h20" />
+    <rect x="8" y="5.5" width="8" height="3" rx="1" />
+    <path d="M9 11.5h.01M12 11.5h.01M15 11.5h.01" />
+    <path d="M7 15v5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-5" />
+  </Base>
+);
+
+/**
+ * Stacked bars with a glint — the Gold Vault module (خزائن الذهب). Bars rather than a safe: a safe
+ * with a dial is a rectangle with a circle, which at sidebar size is the banknote again.
+ */
+export const GoldIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M2 21l2-6.5h6l2 6.5z" />
+    <path d="M12 21l2-6.5h6l2 6.5z" />
+    <path d="M7 12.5L9 6h6l2 6.5z" />
+    <path d="M19 2v3M17.5 3.5h3" />
+  </Base>
+);

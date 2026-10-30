@@ -16,6 +16,7 @@
 import {
   applicationCategoryService,
   applicationCategoryRepository,
+  type ApplicationCategoryDoc,
 } from './platform/application-categories';
 import { applicationService, applicationRepository } from './platform/applications';
 import { rbacService } from './platform/rbac';
@@ -28,11 +29,12 @@ interface AppDef {
   /**
    * The icon this row shipped with BEFORE, where the glyph has been corrected since.
    *
-   * `syncNavigationCatalog` never rewrites a row that already exists, which is right — the
-   * Applications catalog is admin-editable and a boot that stamped its own opinion over a
-   * deliberate choice would be a boot that quietly undoes people's work. This is the narrow
+   * `syncNavigationCatalog` does not rewrite an application row that already exists, which is
+   * right — the Applications catalog is admin-editable and a boot that stamped its own opinion over
+   * a deliberate choice would be a boot that quietly undoes people's work. This is the narrow
    * exception: the icon is corrected only while it still holds the exact value this seed used to
-   * ship, so an installation gets the fix and an admin's own choice is left alone.
+   * ship, so an installation gets the fix and an admin's own choice is left alone. (Module tiles
+   * have one further exception, `CategoryDef.iconRevision`.)
    */
   previousIcon?: string;
   /**
@@ -56,6 +58,19 @@ interface CategoryDef {
   ar: string;
   icon: string;
   sortOrder: number;
+  /**
+   * The revision of this module tile's icon, where the icon has been changed on purpose since
+   * installations were seeded: an installation whose tile is below it gets `icon`, once.
+   *
+   * The applications' `previousIcon` corrects a row only while it still holds the old default.
+   * That could not reach the live tiles the owner complained about («عايز كل أيقونة تكون بتعبر عن
+   * اسم الإدارة»): Operations and Gold Vault still wore the shield this seed shipped, but the
+   * Organization tile drew a grid and the ATM tile a building — values set by hand, which no
+   * default could match. So a tile below the revision takes `icon` whatever it holds, and the
+   * revision is recorded on it; from then on an administrator's own choice is left alone, until the
+   * catalog raises the revision again. A tile this seed creates records the revision as it is born.
+   */
+  iconRevision?: number;
   apps: AppDef[];
 }
 
@@ -581,12 +596,14 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
   {
     en: 'Operations',
     ar: 'العمليات',
-    // `shield` rather than `truck`: Fleet owns the vehicles, Operations owns the CASH riding in
-    // them. The two modules sit next to each other on purpose — a cash-transfer day is planned
-    // against Fleet's duty rows (fleet-module-design §9.4) — so Operations takes 17, between
-    // Fleet (15) and Organization (20), without disturbing a single stored sortOrder.
-    icon: 'shield',
+    // Banknotes: Fleet owns the vehicles, Operations owns the CASH riding in them — «العمليات
+    // تبقي ايقونة فلوس». (It wore `shield`, which Gold Vault wore too.) The two modules sit next to
+    // each other on purpose — a cash-transfer day is planned against Fleet's duty rows
+    // (fleet-module-design §9.4) — so Operations takes 17, between Fleet (15) and Organization
+    // (20), without disturbing a single stored sortOrder.
+    icon: 'cash',
     sortOrder: 17,
+    iconRevision: 1,
     // OWNER RULE (FW-1 review), applied late and stated plainly: only SHIPPED pages appear in
     // navigation, and every slice appends its rows here AS IT LANDS. B1-B6 shipped thirteen
     // routed, permission-gated, API-connected screens and appended NOTHING, so the whole module
@@ -730,8 +747,12 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
   {
     en: 'Organization',
     ar: 'الهيكل التنظيمي',
+    // The building: the owner chose it for this tile (e1166473, «a sitemap reads as a hierarchy
+    // diagram rather than the organization itself»), and no other tile wears it now that ATM has
+    // its own machine. The revision is for the live tile, which had been set to a grid by hand.
     icon: 'building',
     sortOrder: 20,
+    iconRevision: 1,
     apps: [
       {
         en: 'Company',
@@ -904,8 +925,10 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
   {
     en: 'Gold Vault',
     ar: 'خزائن الذهب',
-    icon: 'shield',
+    // Gold bars — «خزائن الدهب تبقي خزينة او سبيكة». (It wore `shield`, which Operations wore too.)
+    icon: 'gold',
     sortOrder: 27,
+    iconRevision: 1,
     // The gold-vault module, ported from the standalone system. Its own sidebar listed exactly
     // these screens in exactly this order; the four it also listed — users, roles, branches and
     // the audit log — are gone, because ECMS owns those surfaces and they already appear under
@@ -1013,8 +1036,11 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
     // grants a new key (lead override O-1). The import page has no row (reached from the register).
     en: 'ATM',
     ar: 'الصراف الآلي',
-    icon: 'grid',
+    // The machine itself, paying out a note — «الصراف الآلى تبقي Machine». (`grid` stays on the
+    // machines-grid row, which is what a grid is.)
+    icon: 'atm',
     sortOrder: 28,
+    iconRevision: 1,
     apps: [
       {
         en: 'ATM Home',
@@ -1262,13 +1288,22 @@ const ensureCategory = async (def: CategoryDef, by: string): Promise<string> => 
     { name: { ar: def.ar, en: def.en }, icon: def.icon, sortOrder: def.sortOrder },
     by,
   );
+  // Born wearing the catalog icon, so born at its revision: otherwise an icon an administrator
+  // picks before the next boot would be taken for a tile that never got the change.
+  if (def.iconRevision !== undefined) {
+    await applicationCategoryRepository.updateById(
+      String(created._id),
+      { iconRevision: def.iconRevision },
+      { by, version: created.__v },
+    );
+  }
   return String(created._id);
 };
 
 /**
  * Category-icon backfill: categories created before icons were seeded carry `icon: null`, which
- * the sidebar can only render as the generic fallback tile. Filling ONLY null icons keeps the
- * additive contract — any icon an admin chose (any non-null value) is never overwritten.
+ * the sidebar can only render as the generic fallback tile. It fills ONLY null icons — an icon an
+ * admin chose is not touched here. (`correctCategoryIcon`, next, is the one bounded exception.)
  */
 const backfillCategoryIcon = async (def: CategoryDef, by: string): Promise<void> => {
   const existing = await applicationCategoryRepository.findOne({ 'name.en': def.en });
@@ -1277,6 +1312,60 @@ const backfillCategoryIcon = async (def: CategoryDef, by: string): Promise<void>
     String(existing._id),
     { icon: def.icon, version: existing.__v },
     by,
+  );
+};
+
+/**
+ * The stored tile a catalog module is: by its English name, which is how the seed keys it — or,
+ * when an administrator renamed it, by where its pages live today: the group holding MORE than half
+ * of the module's stored pages, so a page or two moved into a group of an administrator's own
+ * never hands that group the module's icon. A tile found that way is used only if it is not another
+ * catalog module's own. No clear holder, no correction.
+ */
+const findCatalogCategory = async (def: CategoryDef): Promise<ApplicationCategoryDoc | null> => {
+  const byName = await applicationCategoryRepository.findOne({ 'name.en': def.en });
+  if (byName !== null) return byName;
+  const held = new Map<string, number>();
+  let stored = 0;
+  for (const app of def.apps) {
+    const row = await applicationRepository.findOne({ route: app.route });
+    if (row === null) continue;
+    stored += 1;
+    const id = String(row.categoryId);
+    held.set(id, (held.get(id) ?? 0) + 1);
+  }
+  const [holderId] = [...held.entries()].find(([, count]) => count * 2 > stored) ?? [];
+  if (holderId === undefined) return null;
+  const holder = await applicationCategoryRepository.findById(holderId);
+  if (holder === null) return null;
+  const another = NAVIGATION_CATALOG.some((c) => c !== def && c.en === holder.name.en);
+  return another ? null : holder;
+};
+
+/**
+ * Give a module tile the catalog's icon — once per `iconRevision`, whatever it held.
+ *
+ * The icon goes through the service, so the change lands in the audit log (with no request actor:
+ * it is the boot, not a person). The revision is then recorded on the tile — internal bookkeeping,
+ * written straight to the repository, which stamps updatedBy and bumps the version like any write —
+ * so the next boot leaves it, and whatever an administrator picks after it, alone.
+ */
+export const correctCategoryIcon = async (def: CategoryDef, by: string): Promise<void> => {
+  if (def.iconRevision === undefined) return;
+  const existing = await findCatalogCategory(def);
+  if (existing === null || (existing.iconRevision ?? 0) >= def.iconRevision) return;
+  const current =
+    existing.icon === def.icon
+      ? existing
+      : await applicationCategoryService.update(
+          String(existing._id),
+          { icon: def.icon, version: existing.__v },
+          by,
+        );
+  await applicationCategoryRepository.updateById(
+    String(current._id),
+    { iconRevision: def.iconRevision },
+    { by, version: current.__v },
   );
 };
 
@@ -1384,16 +1473,20 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
  * entries added by newer releases — the dev seed above only runs on fresh installs, which is
  * how `/leave` never appeared on databases seeded before the Leave module existed.
  *
- * STRICTLY ADDITIVE — administrator customizations are never touched:
+ * ADDITIVE — administrator customizations are left alone, with the bounded exceptions listed last:
  * - existing applications are matched by route and left completely alone (name, icon,
  *   ordering, category, status all stay whatever the admin made them);
  * - a new application joins the category its group's existing apps live in TODAY (respecting
  *   admin re-grouping/renames); the seed category is created only when the whole group is new;
- * - a category icon is filled in ONLY while it is null (pre-icon installs); a non-null icon —
- *   seeded or admin-chosen — is never overwritten; an application's permission key follows the
- *   same rule (filled only while null, which is what teaches pre-field installs their keys);
+ * - a category icon is filled in while it is null (pre-icon installs); a non-null icon is
+ *   otherwise left as it is, save the `iconRevision` exception below; an application's permission
+ *   key follows the null rule (filled only while null, which is what teaches pre-field installs
+ *   their keys);
  * - the two corrections, `previousIcon` and `previousPermission`, rewrite a row's value only while
  *   it still equals what this seed used to ship — an administrator's own choice is never touched;
+ * - the one exception, deliberate and once: a module tile below its catalog `iconRevision` takes
+ *   the catalog icon whatever it holds (the owner asked for those icons), and records the
+ *   revision, after which its icon is the administrator's again;
  * - a new application lands BETWEEN the neighbours it sits between in the catalog, at half the
  *   gap in their STORED ordering. A counter derived from position in this array would hand an
  *   inserted row a number an existing sibling already owns (nothing renumbers the old rows), and
@@ -1407,6 +1500,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
   if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
   for (const category of NAVIGATION_CATALOG) {
     await backfillCategoryIcon(category, actor);
+    await correctCategoryIcon(category, actor);
     for (const app of category.apps) {
       await backfillApplicationPermission(app, actor);
       await backfillApplicationIcon(app, actor);

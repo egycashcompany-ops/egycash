@@ -1,11 +1,4 @@
-"""Model-free tests: everything except the recognizer itself.
-
-These run with no model weights and no network, which is what lets the pipeline be regression-
-tested in CI and in restricted environments. What they cover is precisely the half of the system
-that a PaddleOCR accuracy number would NOT tell you about — geometry, digit folding, structural
-validation, post-processing and scoring. A break in any of those looks identical to bad OCR in a
-report, so pinning them separately is what keeps the eventual accuracy verdict interpretable.
-"""
+"""Model-free tests: everything except the recognizer itself."""
 
 from __future__ import annotations
 
@@ -55,7 +48,7 @@ def test_normalize_matches_the_api_fold():
     assert normalize_arabic("  علي   حسن ") == "علي حسن"
 
 
-# ── National-ID structure (confidence banding only — derivation stays in TypeScript) ──
+# ── National-ID structure (confidence banding only, derivation stays in TypeScript) ──
 
 
 @pytest.mark.parametrize(
@@ -135,7 +128,7 @@ def test_expiry_survives_a_slash_read_as_a_one_or_a_seven():
 
 
 def test_an_expiry_that_could_be_two_dates_stays_text():
-    """203010112: either ١ could be the slash — 2030-01-12 or 2030-10-12. No guess."""
+    """203010112: either ١ could be the slash, 2030-01-12 or 2030-10-12. No guess."""
     value, parsed = clean_expiry("203010112")
     assert parsed is False and value == "203010112"
 
@@ -205,11 +198,7 @@ def test_boxes_stay_inside_the_card():
 
 @pytest.mark.skipif(not (FIXTURES / "manifest.json").exists(), reason="run `make fixtures` first")
 def test_extract_produces_every_field_for_every_fixture():
-    """Full pipeline over real images with recognition held constant.
-
-    Proves rectification, cropping, field attribution and post-processing work on degraded
-    images — the parts an accuracy number would otherwise conflate with model quality.
-    """
+    """Full pipeline over real images with recognition held constant."""
     manifest = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
     assert manifest, "fixture set is empty"
 

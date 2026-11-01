@@ -11,7 +11,11 @@
 // The scan runs BEFORE the applicant exists, so these uploads still land on a scratch reference:
 // `onScanned` hands their ids up so the register call can name them and the server can copy them
 // onto the applicant it creates.
-import { APPLICANT_NATIONAL_ID_FILE_CATEGORY, type FileCategoryDto } from '@ecms/contracts';
+import {
+  APPLICANT_NATIONAL_ID_FILE_CATEGORY,
+  type FileCategoryDto,
+  type NationalIdCardSide,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import {
@@ -21,6 +25,19 @@ import {
 } from '../../../../../shared/national-id';
 import { useFileCategories, useOcrExtract } from '../api/applicant-queries';
 import { uploadPlatformFile } from '../api/applicant-api';
+
+/** One scanned image and what it shows. */
+export interface ScannedCardFile {
+  id: string;
+  side: NationalIdCardSide;
+}
+
+/** A `data:image/jpeg;base64,…` URL as a File to upload. */
+const dataUrlToFile = (dataUrl: string, name: string): File => {
+  const [, body = ''] = dataUrl.split(',', 2);
+  const bytes = Uint8Array.from(atob(body), (c) => c.charCodeAt(0));
+  return new File([bytes], name, { type: 'image/jpeg' });
+};
 
 /**
  * The card category, by KEY — never "the first one that allows an image".
@@ -38,9 +55,9 @@ export const ApplicantNationalIdOcr = ({
   onScanned,
 }: {
   onConfirm: (data: NationalIdReviewData) => void;
-  /** The ids of the images just uploaded, so a caller that is about to create the applicant can
-   *  have them filed against it. Omitted by callers that do not create one. */
-  onScanned?: (fileIds: string[]) => void;
+  /** The images just uploaded — each side and the holder's photo — so a caller that is about to
+   *  create the applicant can have them filed against it. Omitted by callers that do not create one. */
+  onScanned?: (files: ScannedCardFile[]) => void;
 }): JSX.Element => {
   const t = useT();
   const { data: categories = [] } = useFileCategories();
@@ -67,11 +84,27 @@ export const ApplicantNationalIdOcr = ({
       frontFile === null ? Promise.resolve(undefined) : uploadOne(frontFile),
       backFile === null ? Promise.resolve(undefined) : uploadOne(backFile),
     ]);
-    onScanned?.([frontFileId, backFileId].filter((id): id is string => id !== undefined));
-    return ocr.mutateAsync({
+    const scanned: ScannedCardFile[] = [];
+    if (frontFileId !== undefined) scanned.push({ id: frontFileId, side: 'front' });
+    if (backFileId !== undefined) scanned.push({ id: backFileId, side: 'back' });
+    onScanned?.(scanned);
+    const result = await ocr.mutateAsync({
       ...(frontFileId === undefined ? {} : { frontFileId }),
       ...(backFileId === undefined ? {} : { backFileId }),
     });
+    // The holder's photograph, cut from the front by the reader, is kept with the card so the
+    // applicant's documents folder shows the face as well as both sides. A failure here never
+    // fails the read: the card itself is already filed.
+    const portrait = result.images?.portrait;
+    if (portrait !== undefined && onScanned !== undefined) {
+      try {
+        const id = await uploadOne(dataUrlToFile(portrait, 'national-id-photo.jpg'));
+        onScanned([...scanned, { id, side: 'portrait' }]);
+      } catch {
+        // the card is enough to register
+      }
+    }
+    return result;
   };
 
   return <NationalIdOcr extract={extract} onConfirm={onConfirm} />;

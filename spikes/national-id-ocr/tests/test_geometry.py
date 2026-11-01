@@ -1,16 +1,4 @@
-"""Locating and flattening the card — the stage everything else depends on.
-
-These tests exist because of a specific, observed failure: some cards read correctly and some came
-back as nonsense, with nothing in the output explaining the difference. The cause was that a single
-edge-based detector silently fell back to "use the whole frame", which is correct for an
-already-cropped scan and catastrophic for a photograph of a card on a desk. Both went down the same
-code path and produced the same shaped result.
-
-So the assertions here are about the two things that were actually wrong: that a card in a
-photographed scene is FOUND (against several backgrounds, angles, and a bend), and that when it is
-not found the caller can tell — because "already cropped" and "failed to locate" must stop being
-indistinguishable.
-"""
+"""Locating and flattening the card, the stage everything else depends on."""
 
 from __future__ import annotations
 
@@ -27,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from nidocr.geometry import (  # noqa: E402
     ID1_ASPECT,
-    MIN_SCORE,  # noqa: F401 — imported to keep the floor visible alongside the score tests
+    find_card_outline,
+    MIN_SCORE,  # noqa: F401 - imported to keep the floor visible alongside the score tests
     _orient_landscape,
     _score,
     locate_card,
@@ -70,12 +59,7 @@ def _card() -> np.ndarray:
     ],
 )
 def test_card_is_located_in_a_photographed_scene(quad, background, name):
-    """The corners come back within a few percent of where the card actually is.
-
-    Tolerance is expressed against the card's own width rather than in absolute pixels, because
-    what matters downstream is proportional: a field box is placed as a fraction of the card, so
-    an error of 2% of card width shifts every crop by 2% regardless of the capture's resolution.
-    """
+    """The corners come back within a few percent of where the card actually is."""
     located = locate_card(compose(_card(), quad, background=background))
     assert located is not None, f"{name}: no card found"
 
@@ -85,11 +69,7 @@ def test_card_is_located_in_a_photographed_scene(quad, background, name):
 
 
 def test_a_bent_card_is_located_and_straightened():
-    """A curled card is not a plane, so a homography alone cannot flatten it.
-
-    The bow has to be measured and removed, and — equally important — a flat card must NOT be
-    resampled for nothing, which the second half of this asserts.
-    """
+    """A curled card is not a plane, so a homography alone cannot flatten it."""
     bent = rectify(compose(_card(), FLAT, background="sand", curl=0.10), CANONICAL)
     assert bent.dewarped, "a visibly bent card was not straightened"
     assert bent.bow > 0.05, "the bow was not measured"
@@ -99,11 +79,7 @@ def test_a_bent_card_is_located_and_straightened():
 
 
 def test_a_distant_card_is_located_rather_than_dismissed():
-    """Small in frame is a quality problem, not a detection problem.
-
-    Reporting "no card found" for a card that is plainly there tells the user nothing they can act
-    on. Locating it and letting `quality` say `too_small` tells them to move closer.
-    """
+    """Small in frame is a quality problem, not a detection problem."""
     located = locate_card(compose(_card(), DISTANT, background="sand"))
     assert located is not None
     assert corner_error(located[0], DISTANT) < 40
@@ -113,14 +89,7 @@ def test_a_distant_card_is_located_rather_than_dismissed():
 
 
 def test_proportions_unlike_a_credential_are_rejected():
-    """The aspect filter is the cheapest false-positive defence available, so it must hold.
-
-    Note what it does NOT reject: A4 paper, at 1.414, sits inside the tolerance. That is a
-    deliberate consequence of setting the window wide enough for perspective — a card photographed
-    steeply really does measure near 1.4 — and it is why aspect is a filter rather than the whole
-    decision. Size, the strategy prior and the score floor are what separate a sheet of paper from
-    the card lying on it.
-    """
+    """The aspect filter is the cheapest false-positive defence available, so it must hold."""
     frame_area = 1000.0 * 1000.0
     square = np.float32([[0, 0], [500, 0], [500, 500], [0, 500]])
     long_thin = np.float32([[0, 0], [800, 0], [800, 200], [0, 200]])  # 4:1, a strip, not a card
@@ -130,17 +99,10 @@ def test_proportions_unlike_a_credential_are_rejected():
 
 
 def test_the_card_outscores_a_correctly_proportioned_scrap_inside_it():
-    """A printed block that happens to be ID-1-shaped must not beat the card it is printed on.
-
-    This is a regression guard with a real history. Printed regions on the card are often close to
-    1.59:1, and while an additive score was in use a 167 px-wide one beat the 1024 px card
-    containing it — which is how an image already cropped to a card ended up being 'located' as a
-    fragment of itself. Making size multiplicative is what fixed it, so the property under test is
-    the comparison, not either score alone.
-    """
+    """A printed block that happens to be ID-1-shaped must not beat the card it is printed on."""
     frame_area = 1024.0 * 646.0
     scrap = np.float32([[100, 100], [267, 100], [267, 205], [100, 205]])  # perfect ratio, tiny
-    # A card filling most of the frame, but not all of it — anything above 99.5% coverage is
+    # A card filling most of the frame, but not all of it, anything above 99.5% coverage is
     # rejected outright as the photograph's own border rather than an object inside it.
     card = np.float32([[40, 25], [983, 25], [983, 620], [40, 620]])
 
@@ -150,17 +112,12 @@ def test_the_card_outscores_a_correctly_proportioned_scrap_inside_it():
 
 
 def test_precropped_is_distinguished_from_not_located():
-    """The two no-detection outcomes are not the same event and must not report the same way.
-
-    An image already cropped to the card is the ordinary path and warrants no warning. A card
-    somewhere inside a frame of a different shape that no detector found means every box is about
-    to land on the wrong pixels, and that DOES warrant one.
-    """
+    """The two no-detection outcomes are not the same event and must not report the same way."""
     precropped = rectify(_card(), CANONICAL)
     assert precropped.method == "precropped"
     assert precropped.located, "an already-cropped card is addressable; nothing is wrong with it"
 
-    # 4:3 — an ordinary phone frame, nowhere near card-shaped, with nothing in it to find.
+    # 4:3, an ordinary phone frame, nowhere near card-shaped, with nothing in it to find.
     blank = np.full((900, 1200, 3), 128, np.uint8)
     missed = rectify(blank, CANONICAL)
     assert missed.method == "frame"
@@ -170,9 +127,6 @@ def test_precropped_is_distinguished_from_not_located():
 @pytest.mark.parametrize("path", sorted(FIXTURES.glob("synthetic-*-front.jpg")), ids=lambda p: p.stem)
 def test_printed_photo_on_a_tilted_crop_is_not_taken_for_the_card(path):
     """A slightly tilted card-shaped crop: the printed photo clears MIN_SCORE, the card does not.
-
-    Only synthetic-000 is square-on, and it was the only fixture these tests looked at — the other
-    fronts were being warped onto their photo while every test passed.
     """
     result = rectify(cv2.imread(str(path)), CANONICAL)
     assert result.method == "precropped", f"located {result.method} quad {result.quad}"
@@ -189,15 +143,75 @@ def test_corners_are_ordered_consistently_regardless_of_input_order():
 
 
 def test_a_portrait_card_is_relabelled_landscape():
-    """A card held upright is still a card; only the corner labels rotate.
-
-    Relabelling rather than rotating pixels keeps this free and lossless. It settles 90 degrees
-    only — the 180-degree case is genuinely indistinguishable from geometry and is resolved in
-    `extract` by trying both.
-    """
+    """A card held upright is still a card; only the corner labels rotate."""
     portrait = np.float32([[0, 0], [54, 0], [54, 86], [0, 86]])
     oriented = _orient_landscape(portrait)
     width = np.linalg.norm(oriented[1] - oriented[0])
     height = np.linalg.norm(oriented[3] - oriented[0])
     assert width > height
     assert abs(width / height - ID1_ASPECT) < 0.05
+
+
+# ── The outline shown on the test page ──
+#
+# Shown, not read: the outline the page draws must sit on the card's own edges, because a few
+# percent off shows as a strip of table or a sliver of card cut away.
+
+
+@pytest.mark.parametrize(
+    ("quad", "background"),
+    [(FLAT, "sand"), (ANGLED, "sand"), (STEEP, "dark"), (ROTATED, "white"), (FLAT, "wood")],
+)
+def test_the_outline_sits_on_the_cards_edges(quad, background):
+    outline = find_card_outline(compose(_card(), quad, background=background))
+    assert outline is not None
+    # Within 1.5 % of the scene's width at every corner.
+    assert corner_error(order_quad(outline), quad) < 0.015 * 1400
+
+
+def test_a_card_running_off_the_photo_is_outlined_whole():
+    """Cut by the frame, the card's outline is the frame there, never a line through the card."""
+    card = _card()
+    height, width = card.shape[:2]
+    photo = cv2.copyMakeBorder(card[: int(height * 0.95)], 0, 40, 30, 30, cv2.BORDER_CONSTANT, value=(40, 90, 200))
+    outline = find_card_outline(photo)
+    assert outline is not None
+    top = min(outline[:, 1])
+    assert top < 0.01 * photo.shape[0]
+
+
+def test_a_photo_without_a_card_has_no_outline():
+    plain = np.full((900, 1200, 3), (70, 120, 160), np.uint8)
+    assert find_card_outline(plain) is None
+
+
+def test_a_face_anchor_that_looks_like_a_card_front_beats_a_stronger_one_that_is_just_a_face(monkeypatch):
+    # A card photographed on its side: the face detector's strongest find came from the wrong turn
+    # and laid a landscape card across the portrait and the table; a weaker find was the card.
+    import numpy as np
+    from nidocr import geometry
+
+    wrong, right, other = (np.full((4, 2), v, np.float32) for v in (1.0, 2.0, 3.0))
+    seen = {1.0: "portrait", 2.0: "front", 3.0: None}
+    monkeypatch.setattr(geometry, "card_content", lambda image, quad: seen[float(quad[0, 0])])
+    monkeypatch.setattr(geometry, "_anchored", lambda image, anchor: anchor)
+    monkeypatch.setattr(geometry, "border_contrast", lambda image, quad: 1.0)
+    image = np.zeros((10, 10, 3), np.uint8)
+    assert geometry._best_anchor(image, [(wrong, 6.5), (other, 5.0), (right, 4.6)]) is right
+    # No front among them: anything but a bare face, then the strongest as before.
+    assert geometry._best_anchor(image, [(wrong, 6.5), (other, 5.0)]) is other
+    assert geometry._best_anchor(image, [(wrong, 6.5)]) is wrong
+
+
+def test_among_card_fronts_the_one_on_the_cards_own_edges_wins(monkeypatch):
+    # Every anchor is built around a face, so a false face in the address text also looks like a
+    # 'front'. The real card is the one whose outline meets the card's border.
+    import numpy as np
+    from nidocr import geometry
+
+    false_face, card = (np.full((4, 2), v, np.float32) for v in (1.0, 2.0))
+    monkeypatch.setattr(geometry, "card_content", lambda image, quad: "front")
+    monkeypatch.setattr(geometry, "_anchored", lambda image, anchor: anchor)
+    monkeypatch.setattr(geometry, "border_contrast", lambda image, quad: {1.0: 3.2, 2.0: 5.1}[float(quad[0, 0])])
+    image = np.zeros((10, 10, 3), np.uint8)
+    assert geometry._best_anchor(image, [(false_face, 5.5), (card, 4.6)]) is card

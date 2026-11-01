@@ -80,6 +80,11 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.employeeLoan': { permission: 'employeeLoan.view' },
   'hr.employeeLoanAttachment': { permission: 'employeeLoan.view' },
   'hr.employeeActionAttachment': { permission: 'employee.view' },
+  // The national-ID card images carried over from the applicant at hire, shown on the profile's
+  // Personal tab. `employee.view` is the key the read route itself enforces, so the room matches
+  // exactly who may fetch them — the images are personal data and the panel is the only screen
+  // that refreshes on them.
+  'hr.employeeNationalIdCard': { permission: 'employee.view' },
   // Compensation is the canonical sensitive case: even the fact that a pay item changed is
   // gated behind the compensation permission, not plain employee.view.
   'hr.employeePayItem': { permission: 'employee.viewCompensation' },

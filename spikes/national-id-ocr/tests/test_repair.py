@@ -1,18 +1,4 @@
-"""Repairing a misread national ID — and, more importantly, refusing to.
-
-Arabic-Indic numerals collide in ways Latin digits do not: ٧ and ٨ are vertical mirrors, ٢ and ٣
-differ by one tooth, ٠ is a dot and ٥ a small loop. A recognizer will confuse them, and on this
-particular field a single wrong digit does not give a slightly wrong answer — it gives a different,
-valid-looking person.
-
-The structure of the number is what makes correction possible: nine of its fourteen digits are
-constrained by a century, a real calendar date and a list of 27 governorates. But the same
-structure is what bounds it, and the boundaries are the substance of these tests. Repair must fire
-where the evidence is unique, stay silent where it is not, and never touch the five digits nothing
-constrains — because there, "repair" would mean turning one valid-looking number into another.
-
-Every number here is synthetic: structurally valid, and issued to nobody.
-"""
+"""Repairing a misread national ID, and, more importantly, refusing to."""
 
 from __future__ import annotations
 
@@ -88,21 +74,13 @@ def test_an_impossible_month_is_corrected_when_only_one_fix_works():
 
 
 def test_an_impossible_century_is_corrected_exhaustively():
-    """The century digit's entire legal domain is {2, 3}, so trying both cannot miss the answer.
-
-    Where a domain is this small, enumerating it beats any shape-similarity table — a table encodes
-    a guess about likely misreads, enumeration cannot fail to consider the truth.
-    """
+    """The century digit's entire legal domain is {2, 3}, so trying both cannot miss the answer."""
     fixed = _repair("79503141234567")
     assert (fixed.value, fixed.repaired) == (VALID, True)
 
 
 def test_the_nearest_correction_wins_rather_than_any_correction():
     """Searching outward by edit distance is what makes an answer meaningful rather than possible.
-
-    A read one edit from exactly one valid number has been identified. That same read is also two
-    edits from a dozen others, and pooling both distances would drown the real answer in
-    coincidences — so the search stops at the first distance that yields anything.
     """
     fixed = _repair("29553141234567")
     assert fixed.repaired and fixed.edits == 1
@@ -112,11 +90,7 @@ def test_the_nearest_correction_wins_rather_than_any_correction():
 
 
 def test_several_equally_close_numbers_are_refused_rather_than_guessed():
-    """A corrupted day-tens digit is genuinely unrecoverable: 04, 14 and 24 are all real days.
-
-    Refusing is the correct outcome. Choosing one would hand a reviewer a plausible number for the
-    wrong person, and a plausible number does not get re-read against the card.
-    """
+    """A corrupted day-tens digit is genuinely unrecoverable: 04, 14 and 24 are all real days."""
     fixed = _repair("29503741234567")
     assert fixed.ambiguous
     assert not fixed.repaired
@@ -124,13 +98,8 @@ def test_several_equally_close_numbers_are_refused_rather_than_guessed():
 
 
 def test_the_unconstrained_digits_are_never_edited():
-    """Positions 10-14 are the sequence and an undocumented check digit.
-
-    Nothing visible to this pipeline constrains them, so a misread there produces a string that is
-    still perfectly valid and indistinguishable from the truth. Editing them could only ever swap
-    one valid-looking identity for another, so the search must not reach them at all.
-    """
-    wrong_sequence = "29503141239567"  # differs from VALID only inside the free range
+    """Positions 10-14 are the sequence and an undocumented check digit."""
+    wrong_sequence = "29503141239567"  # differs from valid only inside the free range
     fixed = _repair(wrong_sequence)
     assert fixed.valid and not fixed.repaired
     assert fixed.value == wrong_sequence, "an unconstrained digit must be left exactly as read"
@@ -166,12 +135,7 @@ def test_the_edit_budget_is_bounded():
     ],
 )
 def test_gender_parity_is_checked_against_the_printed_word(printed, expected):
-    """Reaches a digit no structural check covers, without becoming a second source for gender.
-
-    Digit 13 is the parity digit and sits in the unconstrained range, so structural repair cannot
-    see a misread there. The back of the card states the same fact in words, and words and digits
-    do not fail the same way — a recognizer that turns ٧ into ٨ does not also turn ذكر into أنثى.
-    """
+    """Reaches a digit no structural check covers, without becoming a second source for gender."""
     assert gender_agrees(VALID, printed) is expected
 
 
@@ -184,17 +148,7 @@ def test_the_cross_check_returns_agreement_and_never_a_gender():
 
 
 def test_a_doubled_digit_is_recovered_from_any_position():
-    """An over-long read is almost always one glyph counted twice, and that is recoverable.
-
-    Blind deletion is close to useless here. When a 15-digit read's first nine digits already form
-    a valid prefix, EVERY deletion past position nine leaves the structure intact — so the search
-    finds a handful of equally valid numbers and correctly refuses all of them. A real card
-    demonstrated exactly that: five valid candidates from blind deletion, and the reviewer got a
-    fifteen-digit string with no derived birth date, gender or governorate.
-
-    Restricting the search to removing a REPEAT is what makes it unique, because a repeat is the
-    thing an insertion actually leaves behind. Every doubling position must come back.
-    """
+    """An over-long read is almost always one glyph counted twice, and that is recoverable."""
     for index in range(len(VALID)):
         doubled = VALID[:index] + VALID[index] + VALID[index:]
         assert len(doubled) == 15
@@ -205,32 +159,22 @@ def test_a_doubled_digit_is_recovered_from_any_position():
 
 
 def test_an_over_long_read_with_no_repeat_still_refuses_when_ambiguous():
-    """The restriction narrows the search; it does not lower the bar.
-
-    With no repeat to remove, the general deletions are offered as before and the uniqueness rule
-    decides — which for a spurious digit that duplicates nothing is usually a refusal, because
-    nothing in the string says which digit was invented.
-    """
+    """The restriction narrows the search; it does not lower the bar."""
     fixed = _repair("129503141234567")  # a leading digit that repeats nothing
     assert fixed.value == VALID or not fixed.repaired
 
 
 def test_the_number_is_found_beside_the_issue_date_on_one_line():
-    """The back prints both on a single row, and detection returns it as a single region.
-
-    `٢٠١٥/٠٧    ٢٩٢٠٨١٥١٢٠٣٤٥٧` strips to twenty digits, which nothing downstream can use. The
-    number is identifiable anyway: it is the one unbroken run of fourteen. This matters more than
-    it looks, because the number is printed on BOTH sides and reading it twice is the only check
-    that reaches positions 10-14, where structure constrains nothing.
-    """
+    """The back prints both on a single row, and detection returns it as a single region."""
     fixed = _repair("٢٠١٥/٠٧    ٢٩٥٠٣١٤١٢٣٤٥٦٧")
     assert fixed.value == VALID
     assert fixed.valid
 
 
 def test_the_spaced_groups_on_the_front_still_read():
-    """The front prints the number in groups, so it has no fourteen-digit run at all — the total
-    is what identifies it there. Both forms must work; a rule for one silently breaks the other."""
+    """The front prints the number in groups, so it has no fourteen-digit run at all, the total is
+    what identifies it there. Both forms must work; a rule for one silently breaks the other.
+    """
     fixed = _repair("٢٩٥٠٣ ١٤١٢ ٣٤٥٦٧")
     assert fixed.value == VALID and fixed.valid
 

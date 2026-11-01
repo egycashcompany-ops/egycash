@@ -1,0 +1,46 @@
+/* What every hero shares: a stage, its static poster, and the paused / static rules. Each theme's
+   own look and signature motion is in theme-nid.css, theme-egyid.css, theme-army.css. The two
+   "real object" heroes (the EGY CASH mark and the National ID Card) draw with WebGL (gl3d.js) into
+   a canvas; the CSS scenes in the theme files are their fallback without WebGL. */
+
+.hero {
+  position: relative; isolation: isolate; overflow: hidden; border-radius: var(--radius);
+  aspect-ratio: 16 / 9; background: radial-gradient(80% 90% at 50% 40%, var(--glow), transparent 70%), var(--surface-2);
+  contain: layout paint;
+}
+/* On a page's dark stage: big, borderless, the object standing in the studio. */
+.hero.hero-xl { aspect-ratio: auto; height: clamp(320px, 56vh, 600px); background: none; border-radius: 0; overflow: visible; }
+.hero .scene { position: absolute; inset: 0; perspective: 900px; display: grid; place-items: center; }
+.hero canvas.gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; cursor: grab; }
+.hero canvas.gl:active { cursor: grabbing; }
+.hero.has-gl .poster { display: none; }
+.hero canvas.gl { opacity: 0; transition: opacity var(--dur-slow) var(--ease-out); }
+.hero.is-live canvas.gl { opacity: 1; }
+/* The poster is in the markup from the start: it is what shows without JS, before JS has run,
+   and if WebGL is missing. The live scene fades in over it once it has drawn. */
+.hero .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none;
+  transition: opacity var(--dur-slow) var(--ease-out); }
+.hero.is-live .poster { opacity: 0; }
+.hero:not(.is-live) .scene { visibility: hidden; }
+.hero .scene { transition: opacity var(--dur-slow) var(--ease-out); }
+/* Paused (off screen or tab hidden): CSS loops stop with the rAF loop. */
+.hero.is-paused *, .hero.is-paused *::before, .hero.is-paused *::after { animation-play-state: paused !important; }
+
+/* The scan line every theme uses while reading (transform only). */
+.hero .scanline { position: absolute; left: 6%; right: 6%; top: 10%; height: 2px; opacity: 0; border-radius: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent); box-shadow: 0 0 14px var(--accent); }
+[data-state="reading"] .hero .scanline { opacity: 1; animation: scan 2.2s var(--ease-in-out) infinite; }
+/* A reading pulse around the 3D heroes (opacity and scale only). */
+.hero .pulse { position: absolute; left: 50%; top: 46%; width: 46%; aspect-ratio: 1; margin: -23% 0 0 -23%; border-radius: 50%;
+  border: 2px solid var(--accent); opacity: 0; pointer-events: none; }
+[data-state="reading"] .hero .pulse { animation: ring 1.8s var(--ease-out) infinite; }
+
+/* Invalid (the CSS fallback scenes): the hero stops, dims and loses its colour. The WebGL heroes
+   do the same in their shader. */
+[data-state="invalid"] .hero .scene { opacity: .45; filter: saturate(.15); transition: opacity var(--dur-normal), filter var(--dur-normal); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero .scene { visibility: hidden !important; }
+  .hero .poster { opacity: 1 !important; }
+  .hero.is-still .poster { opacity: 0 !important; } /* one still WebGL frame drawn instead */
+}

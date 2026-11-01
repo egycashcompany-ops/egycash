@@ -6,7 +6,12 @@
 // What IS real here: once a 14-digit number exists (from OCR or manual entry), the birth
 // date / gender / governorate derivation and structural validation are deterministic
 // (`parseNationalId`, contracts) — no external dependency — and are always applied.
-import { parseNationalId, type OcrExtractionDto, type OcrFieldDto } from '@ecms/contracts';
+import {
+  parseNationalId,
+  type OcrExtractionDto,
+  type OcrFieldDto,
+  type OcrImagesDto,
+} from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
 
 export interface OcrInput {
@@ -35,6 +40,8 @@ export interface RawOcrResult {
   maritalStatus?: OcrFieldDto;
   religion?: OcrFieldDto;
   nationalIdExpiry?: OcrFieldDto;
+  /** The card as read and the holder's photograph, for the review to show. Never stored. */
+  images?: OcrImagesDto;
 }
 
 export interface NationalIdOcrProvider {
@@ -107,5 +114,6 @@ export const extractNationalIdFields = async (input: OcrInput): Promise<OcrExtra
             gender: parsed.gender,
             governorate: parsed.governorate,
           },
+    ...(raw.images === undefined ? {} : { images: raw.images }),
   };
 };

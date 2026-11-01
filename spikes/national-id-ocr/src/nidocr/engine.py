@@ -1,15 +1,4 @@
-"""Recognizer implementations behind one protocol.
-
-The protocol exists for the same reason `NationalIdOcrProvider` exists on the TypeScript side: the
-recognizer is the part most likely to be swapped. If PaddleOCR's Arabic accuracy turns out to be
-insufficient — which is precisely what this spike is built to find out — a vision-language model
-drops in here and nothing else in the pipeline changes.
-
-`MockRecognizer` is not test scaffolding for its own sake. It lets the ENTIRE pipeline (rectify →
-deskew → crop → post-process → score) be exercised and regression-tested with no model weights and
-no network, which is what makes this spike runnable in CI and in restricted environments. Only the
-recognition step itself needs the real model.
-"""
+"""Recognizer implementations behind one protocol."""
 
 from __future__ import annotations
 
@@ -27,53 +16,71 @@ from .preprocess import split_text_lines, trim_to_ink
 
 LOG = logging.getLogger("nidocr.engine")
 
-#: Text-detection model. Deliberately the MOBILE one.
+#: Text-detection model. Deliberately the mobile one.
 #:
 #: PaddleOCR's default for this language pairs a *server*-grade detector (`PP-OCRv5_server_det`)
-#: with a *mobile* recognizer (`arabic_PP-OCRv5_mobile_rec`) — the heaviest half of the pipeline
+#: with a *mobile* recognizer (`arabic_PP-OCRv5_mobile_rec`), the heaviest half of the pipeline
 #: doing the easier half of the job. Detection here runs on a card that has already been located,
 #: flattened and deskewed, so it is looking for a handful of well-separated horizontal lines on a
 #: clean background. That is not what a server-grade detector is for, and its memory footprint is
 #: what a container's ceiling is spent on.
 #:
 #: Settable so the pairing can be revisited against real measurements rather than by argument, and
-#: read in both places that construct PaddleOCR — the runtime and the build-time bake — because a
+#: read in both places that construct PaddleOCR, the runtime and the build-time bake, because a
 #: model the image did not download is a model the offline container cannot load.
 #:
-#: BOTH MODELS MUST BE NAMED TOGETHER. PaddleOCR treats `lang` and explicit model names as mutually
+#: Both models must be named together. PaddleOCR treats `lang` and explicit model names as mutually
 #: exclusive: naming any one model discards `lang` entirely and every other model falls back to the
-#: global default. Naming only the detector therefore swapped the Arabic recognizer
-#: (`arabic_PP-OCRv5_mobile_rec`) for a generic one, which is a silent catastrophe — the pipeline
-#: would have kept running and stopped being able to read Arabic at all. It happened to also fail
-#: the build, which is the only reason it was caught before deployment:
+#: global default. Naming only the detector once swapped the Arabic recognizer
+#: (`arabic_PP-OCRv5_mobile_rec`) for a generic one: the service kept running but could no longer
+#: read Arabic. Only a build failure caught it:
 #:
 #:     UserWarning: `lang` and `ocr_version` will be ignored when model names ... are not `None`
 #:     Creating model: ('PP-OCRv6_medium_rec', None, None)
 #:
 #: So this returns the pair, and callers spread it. `lang` is still passed for readability and is
-#: ignored by PaddleOCR whenever these are set — which is exactly the behaviour being relied on.
+#: ignored by PaddleOCR whenever these are set, which is exactly the behaviour being relied on.
 DEFAULT_DETECTION_MODEL = "PP-OCRv5_mobile_det"
 DEFAULT_RECOGNITION_MODEL = "arabic_PP-OCRv5_mobile_rec"
 
 
 def model_names() -> dict[str, str]:
     """The detection/recognition pair PaddleOCR is constructed with, in both processes."""
-    return {
+    names = {
         "text_detection_model_name": os.environ.get("PADDLE_DET_MODEL", DEFAULT_DETECTION_MODEL),
         "text_recognition_model_name": os.environ.get(
             "PADDLE_REC_MODEL", DEFAULT_RECOGNITION_MODEL
         ),
     }
+    # A recognition model from a folder (a community model under test), loaded offline from there.
+    folder = os.environ.get("PADDLE_REC_MODEL_DIR", "").strip()
+    if folder:
+        names["text_recognition_model_dir"] = folder
+    return names
+
+
+def reading_order(text: str) -> str:
+    """A line as read, in reading order. PADDLE_REC_VISUAL_ORDER=1: the recognition model returns
+    right-to-left text in visual order (the community v6 Arabic model does), so it is turned around
+    the way PaddleOCR turns its own Arabic models' output (bidi get_display). Unset: unchanged."""
+    if os.environ.get("PADDLE_REC_VISUAL_ORDER", "").strip() != "1" or not text:
+        return text
+    from bidi.algorithm import get_display  # noqa: PLC0415 - PaddleX's own dependency
+
+    return get_display(text)
+
+
+def runtime_options() -> dict[str, object]:
+    """Engine switches from the environment. PADDLE_ENABLE_MKLDNN=0 turns the oneDNN CPU path off:
+    Paddle 3.3 rejects models exported for 3.0 on it. Unset, Paddle's own default."""
+    if os.environ.get("PADDLE_ENABLE_MKLDNN", "").strip() == "0":
+        return {"enable_mkldnn": False}
+    return {}
 
 
 @dataclass(frozen=True)
 class LineRead:
-    """One printed line as the recognizer returned it, before anything touches the string.
-
-    `image` is the exact strip that was handed to the model, and is populated only when a trace is
-    being collected — it is the artefact that answers "did the recognizer even see this word?",
-    which is the question four rounds of inference could not settle.
-    """
+    """One printed line as the recognizer returned it, before anything touches the string."""
 
     text: str
     score: float
@@ -98,109 +105,64 @@ class Recognizer(Protocol):
     def recognize(self, crop: np.ndarray, *, rtl: bool = True) -> Recognition: ...
 
     def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:
-        """Every text line on the image as (polygon, text, score) — for calibration.
-
-        Distinct from `recognize`, which is handed a crop the field boxes already chose. This
-        looks at the whole card and reports what is on it, which is the only way to find out
-        where the boxes *should* be rather than what they happened to catch.
-        """
+        """Every text line on the image as (polygon, text, score), for calibration."""
         ...
 
 
 class PaddleRecognizer:
-    """PP-OCR via PaddleOCR 3.x, Arabic recognition, CPU, strictly offline.
-
-    Offline is enforced, not hoped for: `PADDLE_OCR_MODEL_DIR` points at weights baked into the
-    image at build time, and PaddleOCR is constructed with those paths so it never reaches for a
-    download at runtime. A production container that phones home on first request is not an
-    offline deployment — it is one firewall rule away from a silent outage.
-
-    Import is lazy so that the rest of the package — preprocessing, layout, scoring, the whole
-    Mock path — imports and runs without paddle installed.
-
-    **Every call into the predictor is serialized.** PaddleOCR's static predictor holds native
-    inference state and is not safe to call from two threads at once; the service is a
-    `ThreadingHTTPServer` sharing one recognizer across every request. Two overlapping scans
-    therefore entered `predictor.run()` together and the process raised `RuntimeError:
-    std::exception` from inside C++ — a crash with no Python-level cause to find, which is why the
-    tracebacks pointed at paddle and told you nothing.
-
-    That is not a hypothetical read of the logs. The tracebacks themselves came out interleaved,
-    two threads writing stderr line-by-line into each other, which is direct evidence that two
-    requests were inside the recognizer simultaneously.
-
-    Serializing costs throughput and nothing else here: `OMP_NUM_THREADS=1` already pins the model
-    to one core, so concurrent requests were never actually computing in parallel — they were
-    contending for one core AND corrupting each other's inference state.
-    """
+    """PP-OCR via PaddleOCR 3.x, Arabic recognition, CPU, strictly offline."""
 
     id = "paddleocr-3.x"
 
-    #: Detection always runs on a canvas of exactly this size, letterboxed. Both dimensions are
-    #: multiples of 32, which is what the detection model's own preprocessing wants.
-    #:
-    #: A CONSTANT shape is the point, not the size. Paddle's static predictor allocates its
-    #: inference workspace for the shape it is given, and re-allocates when that shape changes.
-    #: This pipeline alternates between a full card and a series of differently-sized field crops,
-    #: so every call was a new shape and every call re-allocated — and under a container's memory
-    #: ceiling a re-allocation that cannot be satisfied surfaces as `RuntimeError: std::exception`
-    #: from inside C++, with no Python-level cause to find. Serializing the calls did not fix it,
-    #: which is what ruled out the first (thread-safety) explanation.
-    #:
-    #: Letterboxing rather than stretching: the card's proportions have to survive, because the
-    #: polygons that come back are scaled straight into field boxes.
+    #: Detection always runs on a canvas of exactly this size, letterboxed.
     DETECT_CANVAS = (960, 640)
 
     #: Keep the strip images handed to the recognizer, so a trace can show them. Off in production
-    #: — a card's worth of crops is memory spent on nobody's behalf when nobody is looking.
+    #:, a card's worth of crops is memory spent on nobody's behalf when nobody is looking.
     keep_line_images = False
 
     def __init__(self, model_dir: str | None = None, lang: str = "ar") -> None:
         self._model_dir = model_dir or os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
         self._lock = threading.Lock()
-        # Every Paddle predictor is BUILT and CALLED on this one thread, for the life of the
+        # Every Paddle predictor is built and called on this one thread, for the life of the
         # process. See `_call`.
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle")
         self._worker.submit(self._load, lang).result()
 
     def _load(self, lang: str) -> None:
-        # Point PaddleX's cache at the baked weights BEFORE importing paddleocr — the module reads
-        # this at import time (paddlex/utils/cache.py). With the weights already present, model
-        # resolution is a local lookup and nothing is fetched, which is what makes the container
-        # offline by construction rather than by firewall.
+        # Point PaddleX's cache at the baked weights before importing paddleocr, the module reads
+        # this at import time (paddlex/utils/cache.py).
         os.environ["PADDLE_PDX_CACHE_HOME"] = self._model_dir
 
-        from paddleocr import PaddleOCR  # noqa: PLC0415 — lazy, and must follow the env set above
+        from paddleocr import PaddleOCR  # noqa: PLC0415 - lazy, and must follow the env set above
 
         # The three stages are disabled for the same reason they are not baked: crops come from a
         # card that preprocess.py has already rectified and deskewed, so orientation and unwarping
-        # are pure latency. Model directories are deliberately NOT passed — PaddleOCR resolves
-        # them from the cache above, and hand-built paths would have to mirror PaddleX's internal
-        # layout, which is not a contract this spike should depend on.
+        # are pure latency.
+        # A pool worker gets its share of the cores (pool.threads_per_worker); alone, Paddle's default.
+        threads = os.environ.get("OCR_CPU_THREADS", "").strip()
+        cpu = {"cpu_threads": int(threads)} if threads.isdigit() and int(threads) > 0 else {}
         self._ocr = PaddleOCR(
             lang=lang,
             **model_names(),
+            **cpu,
+            **runtime_options(),
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
         )
 
-        # The recognition model on its own, for reading a field crop line by line. See
-        # `_read_lines`: running detection inside a crop that a field box already located is how a
-        # name lost three of its six words, so the field path skips detection entirely.
-        #
-        # Constructed defensively. It is the same weights the pipeline above already resolved, so
-        # nothing extra is downloaded — but the standalone module classes are a newer part of
-        # PaddleOCR's API than `PaddleOCR` itself, and a version that lacks them must degrade to
-        # the pipeline rather than fail to start.
+        # The recognition model on its own, for reading a field crop line by line.
         self._lines = None
         try:
-            from paddleocr import TextRecognition  # noqa: PLC0415 — optional, guarded
+            from paddleocr import TextRecognition  # noqa: PLC0415 - optional, guarded
 
+            names = model_names()
+            folder = {"model_dir": names["text_recognition_model_dir"]} if "text_recognition_model_dir" in names else {}
             self._lines = TextRecognition(
-                model_name=model_names()["text_recognition_model_name"]
+                model_name=names["text_recognition_model_name"], **folder, **cpu, **runtime_options()
             )
-        except Exception:  # noqa: BLE001 — any failure here is a downgrade, not an outage
+        except Exception:  # noqa: BLE001 - any failure here is a downgrade, not an outage
             LOG.warning(
                 "standalone text recognition unavailable; field crops will go through detection, "
                 "which can silently drop a word from the middle of a line",
@@ -208,18 +170,7 @@ class PaddleRecognizer:
             )
 
     def _call(self, work):
-        """Run `work` where the predictors live: on the one Paddle thread.
-
-        Serializing the calls (the lock below) was not enough. The service handles each request on
-        a NEW thread, and the detector only works on the thread that first ran it: the first card
-        after start read normally, and every card after it raised `RuntimeError: std::exception`
-        from inside the detector — caught, logged as `detectionFailed`, and the card read on
-        profile geometry alone, which on a real card meant a missing name and a wrong address.
-        Reproduced outside the service with nothing but `threading.Thread`; fixed by never letting
-        any other thread touch a predictor.
-
-        Subclasses built without `__init__` (the model-free tests) have no worker and run inline.
-        """
+        """Run `work` where the predictors live: on the one Paddle thread."""
         worker = getattr(self, "_worker", None)
         if worker is None:
             with self._lock:
@@ -231,25 +182,16 @@ class PaddleRecognizer:
         return self._call(lambda: _flatten_paddle_polys(self._ocr.ocr(image)))
 
     def read_page(self, image: np.ndarray) -> list[tuple[object, str, float]]:
-        """Every text line on an arbitrary page, at the page's own resolution — for `/read`.
-
-        Unlike `detect_lines` there is no fixed canvas: a receipt is long and narrow, and
-        letterboxing it into 960x640 would shrink its text below what the recognizer can read.
-        Polygons come back in the page's own pixels.
-        """
+        """Every text line on an arbitrary page, at the page's own resolution, for `/read`."""
         return self._run(image)
 
     def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:
-        """Full-page detection + recognition, keeping each line's polygon.
-
-        The card is letterboxed onto a fixed canvas and the polygons are scaled back, so the
-        contract is unchanged: coordinates come back in the caller's pixel space. Callers use these
-        to place crops, and a box is a coordinate rather than a glyph, so the precision lost to the
-        resize is absorbed by `anchor._pad`.
-
-        Placed at the origin so the inverse is a division and nothing else. An offset here would be
-        wrong in a way that looks exactly like a mis-calibrated profile.
-        """
+        """Full-page detection + recognition, keeping each line's polygon."""
+        # The same image is often asked twice in a row, the orientation check, then the row
+        # reader measuring its tilt, so the last answer is kept for that one image.
+        memo = getattr(self, "_detect_memo", None)
+        if memo is not None and memo[0] is image:
+            return memo[1]
         canvas_width, canvas_height = self.DETECT_CANVAS
         height, width = image.shape[:2]
         scale = min(canvas_width / width, canvas_height / height, 1.0)
@@ -260,31 +202,15 @@ class PaddleRecognizer:
         canvas[:fitted_height, :fitted_width] = cv2.resize(
             image, (fitted_width, fitted_height), interpolation=cv2.INTER_AREA
         )
-        return [
+        lines = [
             (np.asarray(poly, dtype=float) / scale, text, score)
             for poly, text, score in self._run(canvas)
         ]
+        self._detect_memo = (image, lines)
+        return lines
 
     def _read_lines(self, crop: np.ndarray) -> Recognition | None:
-        """Recognize a field crop line by line, WITHOUT running detection inside it.
-
-        This is the path that matters for a field box, and the reason is a failure that hides
-        completely. Handing a crop to the full pipeline runs text detection on it, and detection
-        returns the words it is confident about — so a word it is not confident about simply is not
-        in the result. The field then arrives missing a word from the MIDDLE of a line, with every
-        word around it correct, correctly read and correctly ordered. Nothing downstream can tell:
-        there is no low score to notice, no gap in the string, no structural check that fires. A
-        card printing a six-part name came back with three of them — the first, the third and the
-        last were gone.
-
-        Detection is the wrong tool at this point anyway. Its job is to find text on a page; this
-        crop was already located, because the field box is where the text is. All that remains is
-        cutting the crop into printed lines, which `preprocess.split_text_lines` does from the ink
-        profile, and then reading each line whole.
-
-        Returns None when the recognition model could not be constructed, so the caller can fall
-        back to the pipeline rather than lose the field.
-        """
+        """Recognize a field crop line by line, without running detection inside it."""
         if self._lines is None:
             return None
         strips = [trim_to_ink(strip) for strip in split_text_lines(crop)]
@@ -292,7 +218,7 @@ class PaddleRecognizer:
         reads: list[LineRead] = []
         for strip, entries in zip(strips, predictions):
             for entry in entries:
-                text = str(_field_of(entry, "rec_text", ""))
+                text = reading_order(str(_field_of(entry, "rec_text", "")))
                 if text.strip():
                     reads.append(
                         LineRead(
@@ -303,10 +229,7 @@ class PaddleRecognizer:
                     )
         if not reads:
             return None
-        # Strips come out top to bottom, which is reading order for every field on this card. No
-        # re-ordering happens here at all: each strip is one line, read whole by a model that
-        # already emits Arabic in logical order, so there are no fragments to sequence and no
-        # opportunity to sequence them wrongly.
+        # Strips come out top to bottom, which is reading order for every field on this card.
         return Recognition(
             text=" ".join(read.text for read in reads),
             score=float(np.mean([read.score for read in reads])),
@@ -342,12 +265,7 @@ def _field_of(entry: object, key: str, default: object) -> object:
 
 
 def _flatten_paddle_result(result: object) -> list[tuple[str, float]]:
-    """Normalize PaddleOCR's nested output into [(text, score)].
-
-    PaddleOCR's return shape has changed across 2.x/3.x releases (and between the `ocr()` and
-    `predict()` entry points). Parsing defensively here keeps a minor version bump from silently
-    yielding zero fields — which would look like an accuracy collapse rather than a shape change.
-    """
+    """Normalize PaddleOCR's nested output into [(text, score)]."""
     lines: list[tuple[str, float]] = []
     if not result:
         return lines
@@ -359,7 +277,7 @@ def _flatten_paddle_result(result: object) -> list[tuple[str, float]]:
             texts = page.get("rec_texts") or []
             scores = page.get("rec_scores") or []
             for text, score in zip(texts, scores):
-                lines.append((str(text), float(score)))
+                lines.append((reading_order(str(text)), float(score)))
         return lines
 
     # 2.x: list[page] of [box, (text, score)].
@@ -369,7 +287,7 @@ def _flatten_paddle_result(result: object) -> list[tuple[str, float]]:
         for entry in page:
             try:
                 text, score = entry[1]
-                lines.append((str(text), float(score)))
+                lines.append((reading_order(str(text)), float(score)))
             except (IndexError, TypeError, ValueError):
                 continue
     return lines
@@ -394,22 +312,7 @@ def _bounds(poly: object) -> tuple[float, float, float, float]:
 def _in_reading_order(
     segments: list[tuple[object, str, float]], *, rtl: bool
 ) -> list[tuple[str, float]]:
-    """Sort detected fragments into the order a person reads them.
-
-    Detection returns fragments in its own order, which is not reading order. Joining them as they
-    arrive is why a name came back as its own words shuffled — every word correct, the sequence
-    meaningless, and a reviewer forced to retype a field the model actually got right.
-
-    Fragments are grouped into rows by vertical overlap rather than by exact y, because two words
-    on the same printed line rarely share a baseline pixel-for-pixel. Rows then run top to bottom,
-    and within a row:
-
-      * `rtl=True`  — rightmost first. Arabic names and addresses read from the right.
-      * `rtl=False` — leftmost first. The national ID is a NUMBER: the card prints it in spaced
-        groups, and those groups read left to right regardless of the script around them.
-        Ordering digit groups right-to-left would reverse the number while leaving every digit
-        correct, which is the worst possible failure for this field — it looks plausible.
-    """
+    """Sort detected fragments into the order a person reads them."""
     if not segments:
         return []
 
@@ -440,12 +343,7 @@ def _in_reading_order(
 
 
 def _flatten_paddle_polys(result: object) -> list[tuple[object, str, float]]:
-    """Like `_flatten_paddle_result`, but keeps each line's polygon.
-
-    Parsed just as defensively and for the same reason: PaddleOCR moved the polygon key between
-    releases (`dt_polys` / `rec_polys`), and a silent miss here would report a card with no text
-    on it — which reads as "the card is blank" rather than "the key was renamed".
-    """
+    """Like `_flatten_paddle_result`, but keeps each line's polygon."""
     lines: list[tuple[object, str, float]] = []
     if not result:
         return lines
@@ -459,7 +357,7 @@ def _flatten_paddle_polys(result: object) -> list[tuple[object, str, float]]:
             if polys is None or len(polys) == 0:
                 polys = page.get("dt_polys") or []
             for poly, text, score in zip(polys, texts, scores):
-                lines.append((poly, str(text), float(score)))
+                lines.append((poly, reading_order(str(text)), float(score)))
         return lines
 
     # 2.x: list[page] of [box, (text, score)].
@@ -470,20 +368,14 @@ def _flatten_paddle_polys(result: object) -> list[tuple[object, str, float]]:
             try:
                 poly = entry[0]
                 text, score = entry[1]
-                lines.append((poly, str(text), float(score)))
+                lines.append((poly, reading_order(str(text)), float(score)))
             except (IndexError, TypeError, ValueError):
                 continue
     return lines
 
 
 class MockRecognizer:
-    """Replays known text per field — the pipeline harness without model weights.
-
-    Takes a `{field_name: text}` map and is driven by `extract` through the field name, so the
-    crops are still produced by the real preprocessing chain and the real geometry. What it
-    validates is everything except recognition: that rectification lands, that boxes map to the
-    right fields, that post-processing and scoring behave.
-    """
+    """Replays known text per field, the pipeline harness without model weights."""
 
     id = "mock"
 

@@ -203,6 +203,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'hr.employeeLoan': [['hr', 'employeeLoans']],
   'hr.employeeLoanAttachment': [['hr', 'employeeLoans']],
   'hr.employeeActionAttachment': [['hr', 'employees']],
+  // Narrower than the employee itself on purpose: copying the card over at hire, or back-filling
+  // it for someone hired earlier, changes the Personal tab's card panel and nothing else. The
+  // registry list would be refetched for no reason.
+  'hr.employeeNationalIdCard': [['hr', 'employees', 'national-id-card']],
   'hr.employeePayItem': [['hr', 'compensation']],
   // P-HR-TRN. Two topics, and the catalogue reaches BOTH key families: retiring a course changes
   // what the session form may offer, so a screen holding the picker open must not go on offering

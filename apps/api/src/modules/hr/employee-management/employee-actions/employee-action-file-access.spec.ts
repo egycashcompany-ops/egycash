@@ -41,7 +41,62 @@ describe('the entity type it claims', () => {
   // filed against an employee, which is a change to behaviour nobody asked for.
   it('is the attachment type, not the employee itself', () => {
     expect(authorizer.entityType).toBe('employeeActionAttachment');
-    expect(hrFileEntityAuthorizers).toHaveLength(1);
+    expect(hrFileEntityAuthorizers.map((a) => a.entityType)).toEqual([
+      'employeeActionAttachment',
+      'employeeNationalIdCard',
+    ]);
+  });
+});
+
+// The National-ID card carried over from the applicant file at hire: seeing it is seeing the
+// employee, and replacing it is a personal-data edit — the same keys the profile itself answers to.
+describe("an employee's National-ID card", () => {
+  const card = hrFileEntityAuthorizers[1];
+  if (card === undefined) throw new Error('no card authorizer registered');
+
+  it('lets a caller who can see the employee read it', async () => {
+    findById.mockResolvedValue(EMPLOYEE);
+    expect(
+      await card.authorize({
+        ctx: ctx({ 'employee.view': 'organization' }),
+        entityId: 'E1',
+        intent: 'read',
+      }),
+    ).toBe(true);
+  });
+
+  it('refuses an employee outside the caller scope', async () => {
+    findById.mockResolvedValue(null);
+    expect(
+      await card.authorize({
+        ctx: ctx({ 'employee.view': 'branch' }),
+        entityId: 'E1',
+        intent: 'read',
+      }),
+    ).toBe(false);
+  });
+
+  it('refuses a caller without employee.view', async () => {
+    findById.mockResolvedValue(EMPLOYEE);
+    expect(await card.authorize({ ctx: ctx({}), entityId: 'E1', intent: 'read' })).toBe(false);
+  });
+
+  it('asks for employee.editPersonal to write, not employee.view', async () => {
+    findById.mockResolvedValue(EMPLOYEE);
+    expect(
+      await card.authorize({
+        ctx: ctx({ 'employee.view': 'organization' }),
+        entityId: 'E1',
+        intent: 'write',
+      }),
+    ).toBe(false);
+    expect(
+      await card.authorize({
+        ctx: ctx({ 'employee.editPersonal': 'organization' }),
+        entityId: 'E1',
+        intent: 'write',
+      }),
+    ).toBe(true);
   });
 });
 

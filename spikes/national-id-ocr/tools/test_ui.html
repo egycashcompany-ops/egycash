@@ -95,8 +95,10 @@
       <div class="preview" id="preview-front">No photo yet</div>
       <div class="row">
         <button type="button" data-camera="front">Use camera</button>
-        <label class="filebtn">Choose photo…
+        <label class="filebtn">Take photo
           <input type="file" accept="image/*" capture="environment" data-file="front"></label>
+        <label class="filebtn">Choose from gallery…
+          <input type="file" accept="image/*" data-file="front"></label>
         <button type="button" data-clear="front" class="hidden">Retake</button>
       </div>
     </div>
@@ -106,8 +108,10 @@
       <div class="preview" id="preview-back">No photo yet</div>
       <div class="row">
         <button type="button" data-camera="back">Use camera</button>
-        <label class="filebtn">Choose photo…
+        <label class="filebtn">Take photo
           <input type="file" accept="image/*" capture="environment" data-file="back"></label>
+        <label class="filebtn">Choose from gallery…
+          <input type="file" accept="image/*" data-file="back"></label>
         <button type="button" data-clear="back" class="hidden">Retake</button>
       </div>
     </div>
@@ -120,12 +124,20 @@
   </div>
 
   <section class="panel hidden" id="oriented" style="margin-top:16px">
-    <h2>What the model read <span class="note">(each photo after it was turned upright)</span></h2>
+    <h2>What the model read <span class="note">(the card cut along its edges and turned upright)</span></h2>
     <div class="sides" id="oriented-sides"></div>
   </section>
 
   <section class="result hidden" id="result">
     <div class="panel">
+      <div id="portrait-box" class="hidden" style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px">
+        <img id="portrait" alt="Holder's photo from the card" style="width:140px;border-radius:8px;border:1px solid var(--line)">
+        <div>
+          <h2 style="margin:0 0 6px">Photo</h2>
+          <p class="note" style="margin:0 0 10px">Cut from the front of the card.</p>
+          <a id="portrait-download" download="card-photo.jpg"><button type="button">Download photo</button></a>
+        </div>
+      </div>
       <h2>Extracted fields <span class="note">(editable, as the review dialog would be)</span></h2>
       <div id="fields"></div>
     </div>
@@ -150,8 +162,10 @@
       <div class="preview" id="preview-doc" style="aspect-ratio: 4 / 3">No photo yet</div>
       <div class="row">
         <button type="button" data-camera="doc">Use camera</button>
-        <label class="filebtn">Choose photo…
+        <label class="filebtn">Take photo
           <input type="file" accept="image/*" capture="environment" data-file="doc"></label>
+        <label class="filebtn">Choose from gallery…
+          <input type="file" accept="image/*" data-file="doc"></label>
         <button type="button" class="primary" id="read-doc" disabled>Read text</button>
         <span class="status" id="status-doc"></span>
       </div>
@@ -187,6 +201,7 @@
 
 </main>
 
+<script src="/capture_guide.js"></script>
 <script>
 const FIELDS = [
   ["fullNameAr", "Full name", "rtl"],
@@ -219,12 +234,27 @@ function setStatus(text, isError = false) {
   statusEl.classList.toggle("error", isError);
 }
 
+// What is shown is a small copy of each photo: a full-size one is megabytes to decode, and a
+// phone gave up on large ones, leaving the box empty. The full photo is still what is read.
+const thumbs = {}, thumbFor = {};
+function shown(key) {
+  const url = photos[key];
+  if (url && thumbFor[key] !== url) {
+    thumbFor[key] = url;
+    thumbs[key] = null;
+    CaptureGuide.thumbnail(url).then((small) => {
+      if (thumbFor[key] === photos[key]) { thumbs[key] = small; refresh(); }
+    }).catch(() => {});
+  }
+  return url ? (thumbs[key] || url) : null;
+}
+
 function refresh() {
-  $("preview-doc").innerHTML = photos.doc ? `<img alt="document" src="${photos.doc}">` : "No photo yet";
+  $("preview-doc").innerHTML = photos.doc ? `<img alt="document" src="${shown("doc")}">` : "No photo yet";
   $("read-doc").disabled = !photos.doc;
   for (const side of ["front", "back"]) {
     const box = $("preview-" + side);
-    box.innerHTML = photos[side] ? `<img alt="${side} of the card" src="${photos[side]}">` : "No photo yet";
+    box.innerHTML = photos[side] ? `<img alt="${side} of the card" src="${shown(side)}">` : "No photo yet";
     document.querySelector(`[data-clear="${side}"]`).classList.toggle("hidden", !photos[side]);
   }
   const next = !photos.front ? "front" : !photos.back ? "back" : null;
@@ -235,18 +265,27 @@ function refresh() {
 
 // Downscale and re-encode in the browser: phone photos are 4–12 MB, and two of them base64-encoded
 // would exceed the service's request limit.
+// The size of each photo as sent, shown after a read: the same photo from the phone and the PC
+// should show the same size, and when the results differ this is the first thing to compare.
+const sizes = {};
+let lastSize = "";
 function toJpeg(source, width, height) {
-  const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(width * scale);
-  canvas.height = Math.round(height * scale);
-  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.92);
+  const photo = CaptureGuide.encodePhoto(source, width, height);
+  lastSize = `${photo.width}×${photo.height}`;
+  return photo.url;
 }
 
 async function fromFile(file) {
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  return toJpeg(bitmap, bitmap.width, bitmap.height);
+  const photo = await CaptureGuide.photoFromFile(file);
+  lastSize = `${photo.width}×${photo.height}`;
+  if (photo.reduced) setStatus("That photo was very large, so it was reduced to fit.");
+  return photo.url;
+}
+
+// The live camera only works on https or on this PC; on a phone over the Wi-Fi link, "Take photo"
+// opens the phone's own camera instead, so the live button is hidden there rather than failing.
+if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+  document.querySelectorAll("[data-camera]").forEach((button) => button.classList.add("hidden"));
 }
 
 document.querySelectorAll("[data-file]").forEach((input) => {
@@ -255,6 +294,7 @@ document.querySelectorAll("[data-file]").forEach((input) => {
     if (!file) return;
     try {
       photos[input.dataset.file] = await fromFile(file);
+      sizes[input.dataset.file] = lastSize;
       refresh();
     } catch (error) {
       setStatus("Could not open that image: " + error.message, true);
@@ -267,34 +307,72 @@ document.querySelectorAll("[data-clear]").forEach((button) => {
   button.addEventListener("click", () => { photos[button.dataset.clear] = null; refresh(); });
 });
 
-async function openCamera(side, deviceId) {
+// The camera is the main rear lens, chosen by name when the phone lists several (see
+// CaptureGuide.mainRearCamera); there is no list to pick from. Once found it is remembered.
+let rearCamera = null;
+async function openStream(deviceId) {
+  const video = deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 } }
+                         : { facingMode: "environment", width: { ideal: 1920 } };
+  return navigator.mediaDevices.getUserMedia({ video, audio: false });
+}
+
+async function openCamera(side) {
   cameraFor = side;
   $("camera-title").textContent = {
     front: "Camera: front of the card", back: "Camera: back of the card", doc: "Camera: document",
   }[side];
   stopCamera();
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 } }
-                      : { facingMode: "environment", width: { ideal: 1920 } },
-      audio: false,
-    });
+    try {
+      stream = await openStream(rearCamera);
+    } catch (error) {
+      if (!rearCamera) throw error;
+      rearCamera = null; // that camera is gone (the phone renumbers them): the default one
+      stream = await openStream(null);
+    }
+    if (!rearCamera && window.CaptureGuide) {
+      // Names are known now the camera is allowed: if the default is not the main lens, switch.
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const main = CaptureGuide.mainRearCamera(devices);
+      const current = stream.getVideoTracks()[0].getSettings().deviceId;
+      rearCamera = main ? main.deviceId : current;
+      if (main && main.deviceId !== current) {
+        try {
+          const better = await openStream(main.deviceId);
+          stream.getTracks().forEach((track) => track.stop());
+          stream = better;
+        } catch (error) { /* keep the default one */ }
+      }
+    }
   } catch (error) {
-    setStatus("Camera unavailable (" + error.message + "). Use “Choose photo…” instead.", true);
+    setStatus("Camera unavailable (" + error.message + "). Use “Take photo” or “Choose from gallery…” instead.", true);
     return;
   }
   $("video").srcObject = stream;
+  startGuide(side);
   $("camera").classList.remove("hidden");
-  const select = $("camera-select");
-  const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
-  const current = stream.getVideoTracks()[0].getSettings().deviceId;
-  select.innerHTML = devices.map((d, i) =>
-    `<option value="${d.deviceId}" ${d.deviceId === current ? "selected" : ""}>${escapeHtml(d.label || "Camera " + (i + 1))}</option>`
-  ).join("");
-  select.classList.toggle("hidden", devices.length < 2);
+  $("camera-select").classList.add("hidden");
+  
+}
+
+// The capture guide (capture_guide.js): a card-shaped frame over the camera, telling the person
+// what to fix (closer, steadier, less glare) and capturing by itself once the card is framed well.
+let guide = null;
+function startGuide(side) {
+  if (!window.CaptureGuide || side === "doc") return;
+  guide = guide || CaptureGuide.attach($("video"), { side: () => cameraFor, onCapture: () => $("snap").click() });
+  // The back follows the front with the front still in view: the guide knows the card it took.
+  guide.start();
+}
+// With the card in the frame, only the frame and a margin are sent: the reader then never has to
+// look for the card among the face, the hand and the table.
+function framedShot(video) {
+  const state = guide && cameraFor !== "doc" ? guide.state : null;
+  return state && state.card ? guide.capture() : toJpeg(video, video.videoWidth, video.videoHeight);
 }
 
 function stopCamera() {
+  if (guide) guide.stop();
   if (stream) stream.getTracks().forEach((track) => track.stop());
   stream = null;
 }
@@ -302,18 +380,28 @@ function stopCamera() {
 document.querySelectorAll("[data-camera]").forEach((button) => {
   button.addEventListener("click", () => openCamera(button.dataset.camera));
 });
-$("camera-select").addEventListener("change", (event) => openCamera(cameraFor, event.target.value));
 $("cam-cancel").addEventListener("click", () => { stopCamera(); $("camera").classList.add("hidden"); });
 $("snap").addEventListener("click", () => {
   const video = $("video");
   if (!video.videoWidth) return;
   const side = cameraFor;
-  photos[side] = toJpeg(video, video.videoWidth, video.videoHeight);
-  stopCamera();
-  $("camera").classList.add("hidden");
+  const firstTime = !photos[side];
+  photos[side] = framedShot(video);
+  sizes[side] = lastSize;
+  // Front done: go straight on to the back, which is the order the card is handled in, on the same
+  // camera: closing it and opening it again cost the back a second or more (the phone restarts the
+  // camera, then focuses and sets the exposure again), and was why the back was slow.
+  // (Not on a retake of the front: that is the person redoing one photo, not starting the pair.)
+  const keepOpen = side === "front" && firstTime && !photos.back && stream;
+  if (keepOpen) {
+    cameraFor = "back";
+    $("camera-title").textContent = "Camera: back of the card";
+    startGuide("back");
+  } else {
+    stopCamera();
+    $("camera").classList.add("hidden");
+  }
   refresh();
-  // Front done: go straight on to the back, which is the order the card is handled in.
-  if (side === "front" && !photos.back) openCamera("back");
 });
 
 $("reset").addEventListener("click", () => {
@@ -342,13 +430,16 @@ $("read").addEventListener("click", async () => {
         frontImageBase64: photos.front ? base64Of(photos.front) : undefined,
         backImageBase64: photos.back ? base64Of(photos.back) : undefined,
         returnOrientedImages: true,
+        returnPortrait: true,
       }),
     });
     const body = await response.json().catch(() => ({ error: "The service returned something that is not JSON." }));
     if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
     clearInterval(timer);
     const seconds = ((body.elapsedMs ?? performance.now() - started) / 1000).toFixed(1);
-    setStatus(`Done in ${seconds} s. Check every field against the card.`);
+    const sent = ["front", "back"].filter((side) => photos[side] && sizes[side])
+      .map((side) => `${side} ${sizes[side]}`).join(", ");
+    setStatus(`Done in ${seconds} s. Check every field against the card.${sent ? ` (photos sent: ${sent})` : ""}`);
     render(body);  // after the status line, so a "too far away" warning replaces it
   } catch (error) {
     clearInterval(timer);
@@ -360,15 +451,23 @@ $("read").addEventListener("click", async () => {
 
 function render(body) {
   const fields = body.fields || {};
+  const scores = body.scores || {};
+  const STATUS = { high: "looks correct", medium: "check it", low: "needs review", none: "not read" };
+  let toCheck = 0;
   $("fields").innerHTML = FIELDS.map(([key, label, dir]) => {
     const field = fields[key] || {};
     const confidence = field.confidence || "none";
-    const shown = confidence === "none" ? "not read" : confidence;
+    if (confidence !== "high") toCheck += 1;
+    const pct = key in scores ? `${scores[key]}% · ` : "";
     return `<div class="field">
-      <label for="f-${key}">${label} <span class="badge ${confidence}">${shown}</span></label>
+      <label for="f-${key}">${label} <span class="badge ${confidence}">${pct}${STATUS[confidence]}</span></label>
       <input id="f-${key}" dir="${dir}" value="${escapeHtml(field.value || "")}">
     </div>`;
   }).join("");
+  $("fields").insertAdjacentHTML("afterbegin",
+    `<p class="note" style="margin:0 0 12px">${toCheck === 0
+      ? "All fields look correct (90% or more)."
+      : `${toCheck} field${toCheck > 1 ? "s" : ""} to check: 90% and above looks correct, 70–89% check it, below 70% needs review.`}</p>`);
   const idInput = $("f-nationalId");
   idInput.addEventListener("input", () => renderDerived(idInput.value));
   renderDerived(idInput.value);
@@ -385,27 +484,30 @@ function render(body) {
     const tone = q.verdict === "ok" ? "high" : q.verdict === "degraded" ? "medium" : "low";
     return `<dt>${side}</dt><dd><span class="badge ${tone}">${escapeHtml(q.verdict)}</span>${escapeHtml(reasons + how)}</dd>`;
   }).join("");
+  if (body.portraitImage) {
+    const src = `data:image/jpeg;base64,${body.portraitImage}`;
+    $("portrait").src = src;
+    $("portrait-download").href = src;
+  }
+  $("portrait-box").classList.toggle("hidden", !body.portraitImage);
   const images = body.orientedImages || {};
   $("oriented-sides").innerHTML = ["front", "back"].filter((side) => images[side]).map((side) => {
     const d = diagnostics[side] || {};
     const turn = ((d.rotated || 0) + (d.rotated180 ? 180 : 0)) % 360;
     const label = turn ? `turned ${turn}° clockwise` : "read as taken";
-    return `<div><div class="preview"><img alt="${side} as read" src="data:image/jpeg;base64,${images[side]}"></div>
+    // A card cut along its own edges has the card's rounded corners put back, so only its surface shows.
+    const round = d.cardCorners ? ' style="border-radius:3.7% / 5.9%"' : "";
+    return `<div><div class="preview"><img alt="${side} as read"${round} src="data:image/jpeg;base64,${images[side]}"></div>
       <p class="note">${side}: ${label}</p></div>`;
   }).join("");
   $("oriented").classList.toggle("hidden", !Object.keys(images).length);
   // The previews are large; the raw view shows the response without them.
-  // Too far away: say so plainly, above everything else, instead of leaving it in the quality list.
-  const far = ["front", "back"].filter((side) =>
-    (quality[side]?.reasons || []).includes("too_small") || diagnostics[side]?.tooFarToRead);
-  if (far.length) {
-    const located = far.filter((side) => (quality[side]?.reasons || []).includes("too_small"));
-    const widths = located.map((side) => `${side} ${Math.round(quality[side].metrics?.cardWidthPx || 0)} px`).join(", ");
-    const unreadable = far.some((side) => diagnostics[side]?.tooFarToRead);
-    setStatus((unreadable ? `No readable card in the ${far.join(" and ")} photo: it is too far away. `
-                          : "The card is small in the photo, so check the fields. ")
-      + (widths ? `Card width in the photo: ${widths}. ` : "")
-      + "Move closer so the card fills at least a quarter of the photo's width.", unreadable);
+  // What to change when retaking, from the actual reason (blur, glare, distance), not always "too far".
+  const advice = window.CaptureGuide?.retakeAdvice(body);
+  const sideNote = window.CaptureGuide?.sideNote(body);
+  if (advice || sideNote) {
+    const done = advice ? "" : ($("status")?.textContent || "") + " ";
+    setStatus(done + [sideNote, advice?.text].filter(Boolean).join(" "), advice?.unreadable);
   }
   $("raw").textContent = JSON.stringify({ ...body, orientedImages: undefined }, null, 2);
   $("result").classList.remove("hidden");

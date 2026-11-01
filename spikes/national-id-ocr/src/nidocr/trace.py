@@ -1,30 +1,4 @@
-"""Every intermediate the pipeline produces, captured and rendered as one page.
-
-WHY THIS EXISTS. Four rounds of this OCR work were spent fixing causes inferred from a final
-string: a name came back short, a mechanism was proposed that would produce that symptom, the
-mechanism was removed, and the symptom came back. Two of those inferences were wrong, and the
-third was only identified because a word pattern happened to rule the others out — which is not a
-method, it is luck.
-
-The pipeline has plenty of places to lose information and no way to see any of them. A field can be
-cropped short, a line can be split wrongly, a word can fail detection, a variant can misread a
-digit, and post-processing can drop something that was read correctly. All five produce the same
-observable: a wrong value in the review dialog. Distinguishing them by reasoning is what has been
-failing.
-
-So this records the artefacts instead, in the order the pipeline makes them, using the SAME code
-path the real extraction uses — `extract()` takes the trace object and fills it as it goes. A trace
-assembled by re-implementing the pipeline would show what the trace does, not what production does,
-and that distinction is the entire value here.
-
-The output is one self-contained HTML file with every image inlined, because the hard part of a
-diagnostic is not producing it but getting it out of a container and in front of someone.
-
-PRIVACY. Unlike `/diagnose`, which is deliberately coordinates-only and safe to paste anywhere,
-THIS CONTAINS THE WHOLE CARD: the photograph, the name, the number, every crop. It is a debugging
-tool for a card whose holder has consented, not something to attach to an issue. The page says so
-at the top, and `OCR_TRACE_DISABLED=1` turns the endpoint off entirely.
-"""
+"""Every intermediate the pipeline produces, captured and rendered as one page."""
 
 from __future__ import annotations
 
@@ -62,11 +36,7 @@ class Trace:
             self.entries.append(Entry("image", label, bytes(buffer)))
 
     def text(self, label: str, value: str) -> None:
-        """A raw string exactly as some stage produced it — never cleaned, never normalized.
-
-        Quoted and escaped when rendered, so trailing spaces and empty results are visible as
-        themselves rather than as nothing.
-        """
+        """A raw string exactly as some stage produced it, never cleaned, never normalized."""
         if self.enabled:
             self.entries.append(Entry("text", label, value))
 
@@ -152,11 +122,7 @@ def render_html(trace: Trace, *, title: str = "OCR trace") -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """`python -m nidocr.trace --front a.jpg --back b.jpg --out report.html`
-
-    The local half of the same tool the `/trace` endpoint exposes. Both run the real `extract()`
-    with a collector attached, so what the page shows is what production did.
-    """
+    """`python -m nidocr.trace --front a.jpg --back b.jpg --out report.html`"""
     import argparse
 
     from .engine import PaddleRecognizer
@@ -182,5 +148,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":  # pragma: no cover — CLI entry
+if __name__ == "__main__":  # pragma: no cover, CLI entry
     raise SystemExit(main())

@@ -9233,6 +9233,8 @@ const en: Record<string, string> = {
     'The ATM employees could not be loaded. Close the window and open it again.',
   'atm.common.moveAlreadyOpen':
     'Not saved — the new open time would give a machine two open operations on the same day.',
+  'atm.common.openStopped':
+    'Stopped before the last {{count}} line(s): they were not sent and are still in the boxes. Press open again to send them.',
   'atm.board.day.label': 'Day shown',
   'atm.board.day.today': 'Today',
   'atm.board.day.tomorrow': 'Tomorrow',
@@ -19910,6 +19912,8 @@ const ar: Record<string, string> = {
   'atm.common.leadersLoadFailed': 'تعذّر تحميل موظفي الصراف الآلي. أغلق النافذة ثم افتحها مرة أخرى.',
   'atm.common.moveAlreadyOpen':
     'لم يُحفظ التعديل لأن وقت الفتح الجديد يجعل للماكينة عمليتين مفتوحتين في نفس اليوم.',
+  'atm.common.openStopped':
+    'توقف الإرسال قبل آخر {{count}} سطر: لم تُرسل وما زالت في الخانات. اضغط فتح مرة أخرى لإرسالها.',
   'atm.board.day.label': 'اليوم المعروض',
   'atm.board.day.today': 'اليوم',
   'atm.board.day.tomorrow': 'غدًا',

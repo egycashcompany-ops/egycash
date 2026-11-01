@@ -126,7 +126,13 @@ ECMS" means.
     all run over the whole set. `MAX_PAGE_SIZE` is unchanged. Since «select all» can now check
     more rows than one bulk request carries (`ATM_BULK_MAX_IDS`, 200 — unchanged), close, edit and
     delete send a larger selection in consecutive requests of that size, joined as one answer; a
-    refused batch fails the action and nothing after it is sent.
+    refused batch fails the action and nothing after it is sent. **The open forms likewise
+    (2026-11-01):** a paste longer than one open request carries (`ATM_OPEN_MAX_ROWS`, 200 —
+    unchanged; the owner pasted 700) goes in consecutive requests of that size, in order, with the
+    form's one date or open time on each, joined as one answer (`openInBatches`). The first request
+    failing fails the open as before. A later one failing stops the run without losing what opened:
+    the form keeps only the lines no request carried, so a second press never opens a line twice —
+    which matters since a replenishment opens again on every send (OD-1b).
   - **A name is matched as the board shows it.** Bank and area are free text, so the filter
     lists travel escaped: one comma-separated value as before, `\,` a comma inside a name, `\\` a
     backslash (`joinAtmNameList`/`splitAtmNameList`, `atmNameListQuery`) — «Raml, Station» used to

@@ -53,6 +53,7 @@ const KEYS = [
   'atm.common.leaderRowOnlyHint',
   'atm.common.leaderSelectedOnlyHint',
   'atm.common.moveAlreadyOpen',
+  'atm.common.openStopped',
   'atm.board.day.label',
   'atm.board.day.today',
   'atm.board.day.tomorrow',

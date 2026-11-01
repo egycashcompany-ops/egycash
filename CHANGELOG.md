@@ -282,6 +282,15 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The open forms take any number of pasted lines.** «كان عندى حوالى 700 تغذية لماكينات لما
+  بضيفهم كلهم مره واحده بيجيب الرساله … لكن لما قللتهم 100 او 200 فى المرة بقي يضيف عادى». One open
+  request carries at most 200 lines, so a longer paste was refused whole («بعض الحقول تحتاج إلى
+  مراجعة» then «لم تنجح العملية»). The replenishment and maintenance forms now send the lines in
+  consecutive requests of 200 (`ATM_OPEN_MAX_ROWS`), in order, with one date or open time for all,
+  and show one answer: the opened count, the unknown codes, and on maintenance the codes already
+  open that day. If a request after the first fails, what went before stays opened and only the
+  lines not sent stay in the boxes, with «توقف الإرسال قبل آخر … سطر», so pressing open again sends
+  those alone and never opens a line twice.
 - **The leader pickers offer the ATM employees' names — the maintenance close above all.**
   «تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية .. وخصوصاً عند تقفيل
   ماكينات الصيانة». The close's employee list read `atm.maintenanceLeaderDepartmentIds`, which

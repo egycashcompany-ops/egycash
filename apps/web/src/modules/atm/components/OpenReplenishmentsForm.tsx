@@ -5,6 +5,11 @@
 // Every line of a known code opens — a code pasted twice opens twice, and a machine already open
 // opens again (the owner, 2026-11-01 — port doc OD-1b), as in the legacy.
 //
+// Any number of lines (2026-11-01: «حوالى 700 تغذية … لما بضيفهم كلهم مره واحده بيجيب الرساله»):
+// they go in consecutive requests of `ATM_OPEN_MAX_ROWS` (`openInBatches`). If a request after the
+// first fails, what went before stays opened and ONLY the lines not sent stay in the boxes — so
+// pressing open again sends those and never opens a line twice.
+//
 // The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
 // in one bordered row so entry and narrowing read as a single band (ReplenishmentsPage.tsx).
 import { useState, type FormEvent } from 'react';
@@ -14,7 +19,9 @@ import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
 import { useOpenAtmReplenishments } from '../api/atm-queries';
+import { type ReplenishmentOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
 import { OpenRefusalNotice } from './OpenRefusalNotice';
@@ -33,6 +40,14 @@ export const buildReplenishmentRows = (
     }))
     .filter((row) => row.machineCode !== '');
 };
+
+/** Pure: rows back into the form's two boxes, line by line — `buildReplenishmentRows` reversed. */
+export const replenishmentLines = (
+  rows: readonly ReplenishmentOpenRow[],
+): { codes: string; schedules: string } => ({
+  codes: rows.map((row) => row.machineCode).join('\n'),
+  schedules: rows.map((row) => row.scheduleTime ?? '').join('\n'),
+});
 
 export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string }): JSX.Element => {
   const t = useT();
@@ -55,6 +70,15 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
       setUnknownCodes(result.unknownCodes);
       if (result.opened.length > 0) {
         toast.success(t('atm.replenishments.openedCount', { count: result.opened.length }));
+      }
+      if (result.unsent.length > 0) {
+        // Stopped part-way: the lines not sent stay, alone, for the next press.
+        const left = replenishmentLines(result.unsent);
+        setCodes(left.codes);
+        setSchedules(left.schedules);
+        toast.error(errorMessage(result.failure, locale));
+        toast.error(t('atm.common.openStopped', { count: result.unsent.length }));
+      } else if (result.opened.length > 0) {
         setCodes('');
         setSchedules('');
       }

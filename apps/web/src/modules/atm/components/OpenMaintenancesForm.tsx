@@ -4,6 +4,10 @@
 // distinguishes it from the replenishment form. Unknown codes and the codes the owner's rule left
 // unopened (an open maintenance already, or pasted twice — port doc OD-1) are shown in red.
 //
+// Any number of lines: they go in consecutive requests of `ATM_OPEN_MAX_ROWS` (`openInBatches`).
+// If a request after the first fails, what went before stays opened and ONLY the lines not sent
+// stay in the boxes, so pressing open again sends those alone.
+//
 // The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
 // in one bordered row so entry and narrowing read as a single band (MaintenancePage.tsx).
 import { useState, type FormEvent } from 'react';
@@ -13,7 +17,9 @@ import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
+import { type MaintenanceOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
 import { OpenRefusalNotice } from './OpenRefusalNotice';
@@ -36,6 +42,15 @@ export const buildMaintenanceRows = (
     }))
     .filter((row) => row.machineCode !== '');
 };
+
+/** Pure: rows back into the form's three boxes, line by line — `buildMaintenanceRows` reversed. */
+export const maintenanceLines = (
+  rows: readonly MaintenanceOpenRow[],
+): { codes: string; services: string; references: string } => ({
+  codes: rows.map((row) => row.machineCode).join('\n'),
+  services: rows.map((row) => row.serviceType ?? '').join('\n'),
+  references: rows.map((row) => row.referenceNumber ?? '').join('\n'),
+});
 
 export const OpenMaintenancesForm = (): JSX.Element => {
   const t = useT();
@@ -61,6 +76,16 @@ export const OpenMaintenancesForm = (): JSX.Element => {
       setAlreadyOpenCodes(result.alreadyOpenCodes);
       if (result.opened.length > 0) {
         toast.success(t('atm.maintenance.openedCount', { count: result.opened.length }));
+      }
+      if (result.unsent.length > 0) {
+        // Stopped part-way: the lines not sent stay, alone, for the next press.
+        const left = maintenanceLines(result.unsent);
+        setCodes(left.codes);
+        setServices(left.services);
+        setReferences(left.references);
+        toast.error(errorMessage(result.failure, locale));
+        toast.error(t('atm.common.openStopped', { count: result.unsent.length }));
+      } else if (result.opened.length > 0) {
         setCodes('');
         setServices('');
         setReferences('');

@@ -38,6 +38,7 @@ import {
   type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
   ATM_BULK_MAX_IDS,
+  ATM_OPEN_MAX_ROWS,
   joinAtmNameList,
   type AtmMachineSyncDto,
 } from '@ecms/contracts';
@@ -71,6 +72,59 @@ export const inBulkBatches = async <T>(
     answers.push(await send(ids.slice(start, start + ATM_BULK_MAX_IDS)));
   }
   return answers;
+};
+
+/** What an open request answers — the part every batch adds to the joined answer. */
+interface OpenAnswer<Opened> {
+  opened: Opened[];
+  unknownCodes: string[];
+  alreadyOpenCodes: string[];
+}
+
+/** An open form's lines, sent in batches: the joined answer, and where the run stopped. */
+export interface OpenLinesOutcome<Opened, Row> extends OpenAnswer<Opened> {
+  /** The lines no request carried — the run stopped before them. Empty when every line went. */
+  unsent: Row[];
+  /** Why the run stopped; `null` when every line went. */
+  failure: unknown;
+}
+
+/**
+ * An open form's lines, sent in consecutive requests of at most `ATM_OPEN_MAX_ROWS` — a paste can
+ * hold more lines than one open request carries (the owner, 2026-11-01: 700 replenishments at once
+ * were refused whole, 100 or 200 at a time opened). In order, one request at a time; the answers
+ * are joined as one, in the lines' order.
+ *
+ * The FIRST request failing fails the open exactly as before: nothing was opened, and the caller's
+ * error handling runs. A LATER one failing stops the run without throwing: what the requests
+ * before it opened stands and is answered, and the lines no request carried come back as `unsent`
+ * with the `failure` — so the form keeps exactly those lines, and opening again never opens a
+ * line twice (a replenishment opens again on every send since OD-1b).
+ */
+export const openInBatches = async <Row, Opened>(
+  rows: readonly Row[],
+  send: (batch: Row[]) => Promise<OpenAnswer<Opened>>,
+): Promise<OpenLinesOutcome<Opened, Row>> => {
+  const outcome: OpenLinesOutcome<Opened, Row> = {
+    opened: [],
+    unknownCodes: [],
+    alreadyOpenCodes: [],
+    unsent: [],
+    failure: null,
+  };
+  for (let start = 0; start < rows.length; start += ATM_OPEN_MAX_ROWS) {
+    let answer: OpenAnswer<Opened>;
+    try {
+      answer = await send(rows.slice(start, start + ATM_OPEN_MAX_ROWS));
+    } catch (error) {
+      if (start === 0) throw error;
+      return { ...outcome, unsent: rows.slice(start), failure: error };
+    }
+    outcome.opened.push(...answer.opened);
+    outcome.unknownCodes.push(...answer.unknownCodes);
+    outcome.alreadyOpenCodes.push(...answer.alreadyOpenCodes);
+  }
+  return outcome;
 };
 
 // ── Machines (legacy `atm` master — /all_atm + /data_edit_atm) ──────────────
@@ -166,11 +220,18 @@ export const listDoneReplenishments = (
   params: AtmListParams,
 ): Promise<Paginated<AtmReplenishmentDto>> =>
   getPage<AtmReplenishmentDto>(`/atm/replenishments/done${buildQuery(params)}`);
+export type ReplenishmentOpenRow = { machineCode: string; scheduleTime: string | null };
+/** The open form's lines, in batches of `ATM_OPEN_MAX_ROWS` (`openInBatches`), one date for all. */
 export const openReplenishments = (body: {
-  rows: { machineCode: string; scheduleTime: string | null }[];
+  rows: ReplenishmentOpenRow[];
   forceDate: string | null;
-}): Promise<OpenAtmReplenishmentsResultDto> =>
-  post<OpenAtmReplenishmentsResultDto>('/atm/replenishments/open', body);
+}): Promise<OpenLinesOutcome<AtmReplenishmentDto, ReplenishmentOpenRow>> =>
+  openInBatches(body.rows, (rows) =>
+    post<OpenAtmReplenishmentsResultDto>('/atm/replenishments/open', {
+      rows,
+      forceDate: body.forceDate,
+    }),
+  );
 export const closeReplenishments = async (ids: string[]): Promise<AtmReplenishmentDto[]> =>
   (
     await inBulkBatches(ids, (batch) =>
@@ -224,11 +285,22 @@ export const listDoneMaintenances = (
  */
 export const leaderOptions = (): Promise<AtmLeaderOptionDto[]> =>
   get<AtmLeaderOptionDto[]>('/atm/leaders/options');
+export type MaintenanceOpenRow = {
+  machineCode: string;
+  serviceType: string | null;
+  referenceNumber: string | null;
+};
+/** The open form's lines, in batches of `ATM_OPEN_MAX_ROWS` (`openInBatches`), one time for all. */
 export const openMaintenances = (body: {
-  rows: { machineCode: string; serviceType: string | null; referenceNumber: string | null }[];
+  rows: MaintenanceOpenRow[];
   openedAt: string | null;
-}): Promise<OpenAtmMaintenancesResultDto> =>
-  post<OpenAtmMaintenancesResultDto>('/atm/maintenances/open', body);
+}): Promise<OpenLinesOutcome<AtmMaintenanceDto, MaintenanceOpenRow>> =>
+  openInBatches(body.rows, (rows) =>
+    post<OpenAtmMaintenancesResultDto>('/atm/maintenances/open', {
+      rows,
+      openedAt: body.openedAt,
+    }),
+  );
 export const closeMaintenances = async (
   ids: string[],
   leaderEmployeeId: string,

@@ -196,6 +196,14 @@ export const PinIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A push pin — keeps the navigation panel open over the page (floating-nav.ts). */
+export const PushPinIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M12 17v5" />
+    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z" />
+  </Base>
+);
+
 export const AlertIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M10.3 3.3 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0z" />

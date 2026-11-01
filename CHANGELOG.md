@@ -334,6 +334,16 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The side menu shows itself on hover, over the page; pinned, it takes its place beside it.**
+  «الsidebar يظهر لما اعمل hover عليه ويظهر فوق الكونتنت ميخدش حايز» — then «عايزك تخلي موضوع
+  توسيع وطى يبقي أيقونة Pin فوق بعد الـ 4 مربعات» and «لما اعمل تثبيت يبقى موجود بس يلخد من الحايز
+  عادى». On a desktop only the slim icon strip stands beside the page by default, so tables get
+  the full width. Resting the pointer on the strip (or tabbing into it) shows the full menu OVER the
+  page, and it goes when the pointer leaves or with Escape. The pin at the top of the menu, right
+  after the module switcher's four squares, keeps it open: pinned, the menu stands in the layout
+  and the page narrows beside it, as the expanded column used to. The expand/collapse buttons at
+  the bottom are gone. Both menu styles (the launchpad and the module rail) behave the same; the
+  choice is remembered per device, and everyone starts unpinned. The phone drawer is unchanged.
 - **Every module tile says what its module is, and no two look alike.** «بص الأيقونات بتاعت
   الإدارات مش متناسقة مع مدلول الإدارة … وبعدين فى متكرر ! عايز كل أيقونة تكون بتعبر عن اسم
   الإدارة». In «الوحدات» (and the module rail and the command palette): العمليات is a banknote,

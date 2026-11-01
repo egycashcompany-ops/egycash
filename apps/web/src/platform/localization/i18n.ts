@@ -9391,7 +9391,8 @@ const en: Record<string, string> = {
   'atm.machineSync.groupHint.add': 'Not on this branch: added with the file’s bank, name and area, and recorded in the register.',
   'atm.machineSync.groupHint.reactivate': 'Archived on this branch: brought back with the file’s bank, name and area.',
   'atm.machineSync.groupHint.update': 'On this branch with a different bank, name or area: the file’s value replaces the struck-through one.',
-  'atm.machineSync.groupHint.elsewhere': 'Active in another branch, so not added here. Move the branch’s data first, or tell the administrator.',
+  'atm.machineSync.groupHint.elsewhere':
+    'Not working here, and active or open in another branch’s register, so not added or brought back here. Move the branch’s data first, or tell the administrator.',
   'atm.machineSync.groupHint.invalid': 'Left out: the reason is beside each row.',
   'atm.machineSync.groupHint.duplicate': 'The code’s first listing counts; this row is left out.',
   'atm.machineSync.groupHint.extra': 'Shown for your information only — nothing is deleted.',
@@ -9413,6 +9414,7 @@ const en: Record<string, string> = {
   'atm.machineSync.elsewhere.openElsewhere': 'Open in another branch’s register',
   'atm.machineSync.error.planChanged':
     'The branch changed since the comparison, so nothing was applied. Compare again.',
+  'atm.machineSync.error.read': 'The file could not be read. Choose it again.',
   'atm.machines.empty': 'No machines.',
   'atm.machines.emptyFiltered': 'No machine matches the chosen filters.',
   'atm.machines.figures.label': 'Totals for the chosen filters',
@@ -20070,7 +20072,8 @@ const ar: Record<string, string> = {
   'atm.machineSync.groupHint.add': 'غير موجودة في هذا الفرع: تُضاف ببنك الملف واسمه ومنطقته، وتُسجَّل في السجل.',
   'atm.machineSync.groupHint.reactivate': 'مؤرشفة في هذا الفرع: تعود للعمل ببنك الملف واسمه ومنطقته.',
   'atm.machineSync.groupHint.update': 'موجودة في هذا الفرع ببنك أو اسم أو منطقة مختلفة: قيمة الملف تحل محل القيمة المشطوبة.',
-  'atm.machineSync.groupHint.elsewhere': 'نشطة في فرع آخر، فلا تُضاف هنا. انقل بيانات الفرع أولًا، أو تواصل مع مدير النظام.',
+  'atm.machineSync.groupHint.elsewhere':
+    'لا تعمل في هذا الفرع، وهي نشطة في فرع آخر أو مفتوحة في سجله، فلا تُضاف ولا تُعاد هنا. انقل بيانات الفرع أولًا، أو تواصل مع مدير النظام.',
   'atm.machineSync.groupHint.invalid': 'لا تُضاف، والسبب مكتوب بجانب كل سطر.',
   'atm.machineSync.groupHint.duplicate': 'يُعتمد أول ظهور للكود، ويُترك هذا السطر.',
   'atm.machineSync.groupHint.extra': 'للعلم فقط، ولا يُحذف شيء.',
@@ -20091,6 +20094,7 @@ const ar: Record<string, string> = {
   'atm.machineSync.elsewhere.activeElsewhere': 'نشطة في فرع آخر',
   'atm.machineSync.elsewhere.openElsewhere': 'لها فترة مفتوحة في سجل فرع آخر',
   'atm.machineSync.error.planChanged': 'تغيّر الفرع منذ المقارنة، فلم يُطبَّق شيء. أعد المقارنة.',
+  'atm.machineSync.error.read': 'تعذّرت قراءة الملف. اختره مرة أخرى.',
   'atm.machines.empty': 'لا توجد ماكينات.',
   'atm.machines.emptyFiltered': 'لا توجد ماكينة تطابق عوامل التصفية المختارة.',
   'atm.machines.figures.label': 'الإجماليات حسب عوامل التصفية المختارة',

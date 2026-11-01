@@ -371,6 +371,7 @@ describe('the dialog', () => {
       'error.tooLarge',
       'error.changed',
       'error.planChanged',
+      'error.read',
       'changeFile',
       'repickHint',
       'skippedCodes',

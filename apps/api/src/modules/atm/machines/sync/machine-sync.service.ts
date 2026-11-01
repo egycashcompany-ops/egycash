@@ -46,6 +46,7 @@ import { atmMachineRepository } from '../machine.repository';
 import { addBranchOf, settleMasterWrite, writeMaster } from '../machine.service';
 import {
   changesOf,
+  foldSpaces,
   planDigestOf,
   planMachineSync,
   type SyncBankCatalog,
@@ -280,6 +281,17 @@ class AtmMachineSyncService {
       !before.isActive ||
       String(before.branchId) !== branchId ||
       before.machineCode !== row.machineCode
+    ) {
+      out.skipped.push(row.machineCode);
+      return;
+    }
+    // Changed by somebody since the comparison the reader approved (the digest held at the apply's
+    // start; a large apply takes a while): left as they made it, never overwritten (review finding).
+    if (
+      row.current !== null &&
+      (foldSpaces(before.bankName) !== row.current.bank ||
+        foldSpaces(before.name) !== row.current.name ||
+        foldSpaces(before.area) !== row.current.area)
     ) {
       out.skipped.push(row.machineCode);
       return;

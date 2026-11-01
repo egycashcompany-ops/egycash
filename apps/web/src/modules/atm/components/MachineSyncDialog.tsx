@@ -9,7 +9,7 @@
 // and a machine on the branch the file does not list is only shown, never deleted. The SAME `File`
 // is posted for the apply with the comparison's hash (the register import's rule); the answer is
 // the comparison made again, so after an apply the reader sees the branch as it now is.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   type AtmMachineSyncAppliedDto,
   type AtmMachineSyncDto,
@@ -223,11 +223,14 @@ export const MachineSyncDialog = ({
   const [reading, setReading] = useState(false);
   const blocked = addBlocked(options.data);
   const busy = run.isPending || reading;
+  /** Bumped on every opening: a file read begun before it lands nowhere. */
+  const opening = useRef(0);
 
   // Every opening starts clean: a comparison from before may no longer be the branch (review
   // finding). Not while a run is in flight — its answer still has to land.
   useEffect(() => {
     if (!open || run.isPending) return;
+    opening.current += 1;
     setFile(null);
     setResult(null);
     run.reset();
@@ -237,12 +240,18 @@ export const MachineSyncDialog = ({
     const picked = files[0];
     if (busy || picked === undefined) return;
     setReading(true);
+    const started = opening.current;
     try {
       // The bytes are read once, here: the compare and the apply post the same snapshot, so a file
       // saved again in Excel meanwhile cannot fail the upload (review finding).
-      setFile(new File([await picked.arrayBuffer()], picked.name, { type: picked.type }));
+      const snapshot = new File([await picked.arrayBuffer()], picked.name, { type: picked.type });
+      if (opening.current !== started) return;
+      setFile(snapshot);
       setResult(null);
       run.reset();
+    } catch {
+      // Removed, or unreadable, since it was chosen: say so rather than nothing.
+      toast.error(t('atm.machineSync.error.read'));
     } finally {
       setReading(false);
     }

@@ -143,6 +143,26 @@ export const useBulkCreateAtmMachines = () => {
   });
 };
 
+/**
+ * The machine sync (compare, then apply). An apply wrote masters and register entries like the
+ * bulk add and the machine edit do, so it stales what they stale. The dialog says a refusal in
+ * place (the file's own words), so no global toast repeats it.
+ */
+export const useSyncAtmMachines = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, apply, fileSha256 }: { file: File; apply: boolean; fileSha256?: string }) =>
+      api.syncMachinesFromFile(file, {
+        apply,
+        ...(fileSha256 === undefined ? {} : { fileSha256 }),
+      }),
+    onSuccess: (result) => {
+      if (result.applied !== null) invalidateMachineWrite(client);
+    },
+    onError: (): void => undefined,
+  });
+};
+
 export const useBulkDeleteAtmMachines = () => {
   const client = useQueryClient();
   return useMutation({

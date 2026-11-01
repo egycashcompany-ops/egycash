@@ -67,7 +67,10 @@ class AtmMachineRepository extends BaseRepository<AtmMachineDoc> {
   }
 
   /** Which of these codes are ACTIVE in a branch other than this one — never added here (DEC-9). */
-  async activeCodesElsewhere(branchId: string, machineCodes: readonly string[]): Promise<Set<string>> {
+  async activeCodesElsewhere(
+    branchId: string,
+    machineCodes: readonly string[],
+  ): Promise<Set<string>> {
     if (machineCodes.length === 0) return new Set();
     const codes = (await this.model
       .distinct('machineCode', {

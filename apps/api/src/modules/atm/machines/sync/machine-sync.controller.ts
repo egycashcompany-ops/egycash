@@ -25,7 +25,11 @@ export const syncMachines = async (req: Request, res: Response): Promise<void> =
     typeof body.fileSha256 === 'string' && body.fileSha256 !== '' ? body.fileSha256 : null;
   if (apply && fileSha256 === null) {
     throw new ValidationError([
-      { field: 'fileSha256', code: 'REQUIRED', message: 'the comparison hash is required to apply' },
+      {
+        field: 'fileSha256',
+        code: 'REQUIRED',
+        message: 'the comparison hash is required to apply',
+      },
     ]);
   }
   ok(

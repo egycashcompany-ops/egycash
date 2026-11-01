@@ -3,7 +3,12 @@
 // machines the file does not list, reported and never deleted.
 import { describe, expect, it } from 'vitest';
 import { type AtmBankCode } from '@ecms/contracts';
-import { foldSpaces, planMachineSync, type SyncBankCatalog, type SyncMachine } from './plan-machine-sync';
+import {
+  foldSpaces,
+  planMachineSync,
+  type SyncBankCatalog,
+  type SyncMachine,
+} from './plan-machine-sync';
 import { type MachineFileRow } from './read-machine-file';
 
 const LABELS: Record<string, AtmBankCode> = {

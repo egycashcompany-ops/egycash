@@ -188,7 +188,9 @@ beforeAll(async () => {
     { machineCode: '7104', name: 'Archived one' },
     { machineCode: '7199', name: 'Not in the file' },
   ]);
-  await addMachines(mohandessinId, 'CIB', 'Dokki', [{ machineCode: '7105', name: 'Right already' }]);
+  await addMachines(mohandessinId, 'CIB', 'Dokki', [
+    { machineCode: '7105', name: 'Right already' },
+  ]);
   await addMachines(octoberId, 'NBE', 'Giza', [{ machineCode: '7103', name: 'October one' }]);
   const archived = (await branchMachines(mohandessinId)).get('7104');
   const patch = await request(app)

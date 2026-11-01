@@ -73,7 +73,15 @@ describe('readMachineFile', () => {
   });
 
   it('answers ATM_MACHINE_SYNC_LAYOUT when no row names the four columns', async () => {
-    const buffer = await workbook([{ name: 'Sheet1', rows: [['Bank', 'Code'], ['NBE', '1']] }]);
+    const buffer = await workbook([
+      {
+        name: 'Sheet1',
+        rows: [
+          ['Bank', 'Code'],
+          ['NBE', '1'],
+        ],
+      },
+    ]);
     await expect(readMachineFile(buffer)).rejects.toSatisfy(
       (error: unknown) =>
         error instanceof AppError && error.code === ErrorCodes.ATM_MACHINE_SYNC_LAYOUT,

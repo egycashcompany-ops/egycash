@@ -225,7 +225,8 @@ class AtmMachineSyncService {
     ctx: AuthContext,
     out: AtmMachineSyncAppliedDto,
   ): Promise<void> {
-    const before = row.machineId === null ? null : await atmMachineRepository.findById(row.machineId);
+    const before =
+      row.machineId === null ? null : await atmMachineRepository.findById(row.machineId);
     const bankCode = catalog.codeOfLabel(row.file.bank);
     if (
       before === null ||

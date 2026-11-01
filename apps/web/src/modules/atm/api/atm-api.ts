@@ -39,6 +39,7 @@ import {
   type UpdateAtmRefLabel,
   ATM_BULK_MAX_IDS,
   joinAtmNameList,
+  type AtmMachineSyncDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -48,6 +49,7 @@ import {
   patch,
   post,
   postWithMeta,
+  upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -77,6 +79,22 @@ export const listMachines = (params: AtmListParams): Promise<Paginated<AtmMachin
 /** The list's whole answer counted, and its dropdowns' sources — the same filters as the list. */
 export const machinesSummary = (params: AtmListParams): Promise<AtmMachinesSummaryDto> =>
   get<AtmMachinesSummaryDto>(`/atm/machines/summary${buildQuery(params)}`);
+/**
+ * A machines file (Bank, ID, ATM Name, Area) compared with the branch the top bar points at — and,
+ * with `apply` and the comparison's `fileSha256`, the branch made to match it. The SAME `File` is
+ * posted both times; the server refuses (409) bytes that are not the ones compared.
+ */
+export const syncMachinesFromFile = (
+  file: File,
+  options: { apply: boolean; fileSha256?: string },
+): Promise<AtmMachineSyncDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  if (options.apply) form.append('apply', 'true');
+  if (options.fileSha256 !== undefined) form.append('fileSha256', options.fileSha256);
+  return upload<AtmMachineSyncDto>('/atm/machines/sync', form);
+};
+
 export const bulkCreateMachines = (
   body: BulkCreateAtmMachines,
 ): Promise<BulkCreateAtmMachinesResultDto> =>

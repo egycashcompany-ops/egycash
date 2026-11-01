@@ -6,6 +6,7 @@ import { type FleetCustodyLedgerRowDto } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { translate } from '../../../platform/localization/i18n';
 import {
+  cairoDayOf,
   cancelHeldBody,
   confirmTransferBody,
   custodyStepRows,
@@ -17,7 +18,7 @@ import {
   operationStatusOf,
   transferDateProblem,
 } from './custody-hold';
-import { operationIntro, type LedgerWordsKit } from './custody-ledger-words';
+import { operationIntro, partsPhrase, type LedgerWordsKit } from './custody-ledger-words';
 
 const ar = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -180,5 +181,42 @@ describe('«سجل العهدة»', () => {
     expect(say('done')).toBe(ar('fleet.custody.ledger.drawer.intro.replenish', params));
     // A stored replenishment from before the statuses reads as done.
     expect(operationIntro(op as never, kit, () => 'X')).toBe(say('done'));
+  });
+
+  it('«ألغاها … في …» names the Cairo day of the cancel, not the UTC one', () => {
+    // 01:30 Cairo on 2026/11/02 (UTC+2) is still 2026-11-01 in UTC.
+    expect(cairoDayOf('2026-11-01T23:30:00.000Z')).toBe('2026-11-02');
+    // Summer time (UTC+3): 00:30 Cairo on 2026/07/15.
+    expect(cairoDayOf('2026-07-14T21:30:00.000Z')).toBe('2026-07-15');
+    expect(cairoDayOf('2026-10-14T09:00:00.000Z')).toBe('2026-10-14');
+    expect(cairoDayOf('2026-10-14')).toBe('2026-10-14');
+  });
+
+  it('a settlement over two licence parts says «نظير مصروفَي تراخيص»; a tile keeps «مصروفا تراخيص»', () => {
+    const part = (expenseId: string) => ({
+      expenseId,
+      part: 'renewal' as const,
+      date: '2026-10-01',
+      cars: 3,
+      codes: [],
+      visaTotal: 0,
+      cashTotal: 100,
+      amount: 100,
+    });
+    const settle = (n: number) => ({
+      kind: 'settle' as const,
+      amount: 200,
+      reason: '',
+      from: null,
+      to: null,
+      memos: [],
+      parts: Array.from({ length: n }, (_, i) => part(`e${i}`)),
+    });
+    const intro = (n: number): string => operationIntro(settle(n) as never, kit, () => 'X');
+    expect(intro(2)).toContain(`نظير ${ar('fleet.custody.ledger.parts.twoGenitive')} (`);
+    expect(ar('fleet.custody.ledger.parts.twoGenitive')).toBe('مصروفَي تراخيص');
+    expect(intro(2)).not.toContain('مصروفا');
+    expect(partsPhrase(2, kit)).toBe('مصروفا تراخيص');
+    expect(intro(3)).toContain(`نظير ${partsPhrase(3, kit)} (`);
   });
 });

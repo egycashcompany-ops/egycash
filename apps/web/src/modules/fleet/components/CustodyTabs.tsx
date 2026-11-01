@@ -19,8 +19,9 @@ import { HISTORY_ICON, MEMO_ICON } from './custody-memo-parts';
 
 export type CustodyTab = 'log' | 'memos' | 'dashboard';
 
+// `flex-wrap`: on a phone the third tab («لوحة تحكم العهدة») takes a second row, never cut at the edge.
 const TAB_TRAY =
-  'inline-flex max-w-full items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-[rgba(42,58,84,.65)] dark:bg-[#0d1424] dark:shadow-[0_8px_24px_-4px_rgba(0,0,0,.5)]';
+  'inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-[rgba(42,58,84,.65)] dark:bg-[#0d1424] dark:shadow-[0_8px_24px_-4px_rgba(0,0,0,.5)]';
 /** The active tab in the site's purple, as a pressed toolbar button; the others in slate. */
 export const custodyTabLook = (on: boolean): string =>
   cn(

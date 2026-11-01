@@ -12,10 +12,13 @@ import {
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
 import { fileService, type UploadedBinary } from '../../../platform/files';
-import { NotFoundError, StaleDocumentError } from '../../../shared/errors';
+import { ForbiddenError, NotFoundError, StaleDocumentError } from '../../../shared/errors';
 import { type AuthContext } from '../../../shared/types';
 import { toVehicleContractFileDto } from './vehicle-contract.dto';
-import { resolveVehicleContractDocsCategoryId } from './vehicle-contract-files';
+import {
+  mayWriteContractFiles,
+  resolveVehicleContractDocsCategoryId,
+} from './vehicle-contract-files';
 import { fleetVehicleContractRepository } from './vehicle-contract.repository';
 import { fleetVehicleContractService, refused } from './vehicle-contract.service';
 
@@ -33,7 +36,13 @@ class FleetVehicleContractAttachments {
     id: string,
     binary: UploadedBinary,
   ): Promise<FleetVehicleContractFileDto> {
-    await fleetVehicleContractRepository.getById(id);
+    const contract = await fleetVehicleContractRepository.getById(id);
+    // `create` without `edit` adds pages only to a contract its holder saved.
+    if (!mayWriteContractFiles(ctx, contract)) {
+      throw new ForbiddenError(
+        'only edit, or the creator of this contract, may add its attachments',
+      );
+    }
     const dot = binary.originalName.lastIndexOf('.');
     const file = await fileService.upload(
       ctx,

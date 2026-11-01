@@ -51,6 +51,14 @@ export const partsPhrase = (n: number, kit: LedgerWordsKit): string =>
 export const memosAfterWord = (n: number, kit: LedgerWordsKit): string =>
   kit.form(n) === 'two' ? kit.t(`${LEDGER}.detail.twoMemosGenitive`) : kit.count('memo', n);
 
+/**
+ * The licence parts' count after «نظير», as `memosAfterWord`: two of them in the genitive,
+ * «نظير مصروفَي تراخيص» (never «نظير مصروفا تراخيص»); any other count as `partsPhrase` writes it.
+ * Tiles and titles keep `partsPhrase`, where the count stands alone.
+ */
+export const partsAfterWord = (n: number, kit: LedgerWordsKit): string =>
+  kit.form(n) === 'two' ? kit.t(`${LEDGER}.parts.twoGenitive`) : partsPhrase(n, kit);
+
 /** «كاوتش، وقود، صيانة» — the kinds in his letter's order. */
 export const kindsPhrase = (kinds: readonly FleetCustodySource[], kit: LedgerWordsKit): string =>
   inLetterOrder(kinds)
@@ -214,7 +222,7 @@ export const operationIntro = (
       }
       return kit.t(`${LEDGER}.drawer.intro.settle`, {
         amount,
-        parts: partsPhrase(op.parts.length, kit),
+        parts: partsAfterWord(op.parts.length, kit),
         kinds: licencePhrase(licence, kit),
         period,
       });

@@ -33,7 +33,7 @@ export interface VehicleContractWorld {
   adminId: string;
   /** fleetVehicleContract.view only. */
   viewer: string;
-  /** view + create. */
+  /** view + create — and the platform's file.view / file.edit / file.delete. */
   creator: string;
   /** The platform's file.view, and no contract grant. */
   fileReader: string;
@@ -116,7 +116,15 @@ export const bootVehicleContracts = async (): Promise<VehicleContractWorld> => {
     admin: superUser.token,
     adminId: superUser.id,
     viewer: (await userWith(['fleetVehicleContract.view'])).token,
-    creator: (await userWith(['fleetVehicleContract.view', 'fleetVehicleContract.create'])).token,
+    creator: (
+      await userWith([
+        'fleetVehicleContract.view',
+        'fleetVehicleContract.create',
+        'file.view',
+        'file.edit',
+        'file.delete',
+      ])
+    ).token,
     fileReader: (await userWith(['file.view'])).token,
     typeA: await makeType('غزالة'),
     typeB: await makeType('تويوتا'),

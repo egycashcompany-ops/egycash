@@ -115,7 +115,8 @@ export const buildFleetVehicleContractsRouter = (): Router => {
     validate({ body: OrderFleetVehicleContractFilesSchema, params: IdParamSchema }),
     asyncHandler(orderVehicleContractFiles),
   );
-  // A new contract's pages are uploaded by its creator right after the save — create or edit.
+  // A new contract's pages are uploaded by its creator right after the save: `edit` adds to any
+  // contract, `create` alone only to the caller's own (`mayWriteContractFiles`, in the service).
   router.post(
     '/:id/files',
     authenticate,

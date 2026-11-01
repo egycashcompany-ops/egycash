@@ -8,9 +8,11 @@ import { Link } from 'react-router-dom';
 import { type FleetVehicleContractDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
+import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
 import { type Column } from '../../../shared/ui/DataTable';
 import { EyeIcon } from '../../../shared/ui/icons';
+import { mayAddContractFiles } from '../lib/vehicle-contract-save';
 import { latin, useVehicleContractWords } from '../lib/vehicle-contract-words';
 import { ACTION_GROUP, IMAGE_EMPTY_BOX, IMAGE_GROUP, actionTone } from './row-actions-look';
 import { CloudUploadIcon, SquarePenIcon, Trash2Icon } from './row-action-icons';
@@ -38,6 +40,7 @@ export const useVehicleContractColumns = ({
 }): Column<FleetVehicleContractDto>[] => {
   const t = useT();
   const can = useCan();
+  const meId = useAppSelector((state) => state.auth.me?.id ?? null);
   const words = useVehicleContractWords();
   return [
     {
@@ -144,7 +147,7 @@ export const useVehicleContractColumns = ({
         const pdfs = c.files.filter((file) => file.kind === 'pdf').length;
         if (c.files.length === 0) {
           // No page yet: the dashed box leads to the contract's attachments, where they are added.
-          return can('fleetVehicleContract.edit') || can('fleetVehicleContract.create') ? (
+          return mayAddContractFiles(can, meId, c) ? (
             <Link
               to={`${contractPath(c.id)}#files`}
               title={t('fleet.vehicleContracts.actions.addFiles')}

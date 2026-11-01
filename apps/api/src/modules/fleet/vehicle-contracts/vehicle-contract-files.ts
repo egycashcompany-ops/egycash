@@ -9,7 +9,8 @@ import {
   type CreateFileCategory,
 } from '@ecms/contracts';
 import { fileCategoryService, type FileEntityAuthorizer } from '../../../platform/files';
-import { hasPermission } from '../../../shared/types';
+import { hasPermission, type AuthContext } from '../../../shared/types';
+import { type FleetVehicleContractDoc } from './vehicle-contract.model';
 import { fleetVehicleContractRepository } from './vehicle-contract.repository';
 
 const VEHICLE_CONTRACT_DOCS_CATEGORY: CreateFileCategory = {
@@ -35,9 +36,23 @@ export const resolveVehicleContractDocsCategoryId = async (): Promise<string> =>
 };
 
 /**
- * Reads need `fleetVehicleContract.view`; writes `fleetVehicleContract.edit` or `.create` (the
- * editor uploads a new contract's pages right after creating it). Either way the contract must be
- * live — a deleted contract's pages are reachable by nobody.
+ * May this caller write a contract's pages? `fleetVehicleContract.edit` reaches every live contract;
+ * `.create` alone only the contracts the caller saved — the editor uploads a new contract's pages
+ * right after creating it, and that is all `create` is for.
+ */
+export const mayWriteContractFiles = (
+  ctx: AuthContext,
+  doc: Pick<FleetVehicleContractDoc, 'createdBy'>,
+): boolean =>
+  hasPermission(ctx, 'fleetVehicleContract.edit') ||
+  (hasPermission(ctx, 'fleetVehicleContract.create') &&
+    doc.createdBy !== null &&
+    String(doc.createdBy) === ctx.userId.toLowerCase());
+
+/**
+ * Reads need `fleetVehicleContract.view`; writes `mayWriteContractFiles` (edit, or create on the
+ * caller's own contract). Either way the contract must be live — a deleted contract's pages are
+ * reachable by nobody.
  */
 export const vehicleContractFileAuthorizer: FileEntityAuthorizer = {
   entityType: 'vehicleContract',
@@ -49,8 +64,8 @@ export const vehicleContractFileAuthorizer: FileEntityAuthorizer = {
         : hasPermission(ctx, 'fleetVehicleContract.view');
     if (!allowed) return false;
     try {
-      await fleetVehicleContractRepository.getById(entityId);
-      return true;
+      const doc = await fleetVehicleContractRepository.getById(entityId);
+      return intent === 'read' || mayWriteContractFiles(ctx, doc);
     } catch {
       return false;
     }

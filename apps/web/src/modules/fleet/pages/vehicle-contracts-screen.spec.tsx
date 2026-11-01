@@ -163,6 +163,8 @@ const contract = (over: Partial<FleetVehicleContractDto> = {}): FleetVehicleCont
   total: 162_800_000,
   alarm: alarm('red', 5, 1),
   version: 3,
+  // Saved by someone else than the reader `me` (u-1).
+  createdBy: ID(51),
   createdAt: '2025-12-08T00:00:00.000Z',
   updatedAt: '2026-04-15T09:00:00.000Z',
   ...over,
@@ -352,6 +354,16 @@ describe("the contract's page", () => {
     expect(html).not.toContain('data-contract-delivery-edit');
     expect(html).not.toContain('data-contract-add-files');
     expect(html).not.toContain('data-contract-file-remove');
+  });
+
+  it('`create` without `edit` adds pages only to a contract the reader saved', () => {
+    const CREATE = ['fleetVehicleContract.view', 'fleetVehicleContract.create'];
+    const theirs = renderContract(contract({ files: [] }), CREATE);
+    expect(theirs).not.toContain('data-contract-add-files');
+    const mine = renderContract(contract({ files: [], createdBy: 'u-1' }), CREATE);
+    expect(mine).toContain('data-contract-add-files');
+    expect(mine).not.toContain('data-contract-file-remove');
+    expect(renderContract(contract({ files: [] }))).toContain('data-contract-add-files');
   });
 
   it('a contract received in full offers no «تسجيل استلام»', () => {

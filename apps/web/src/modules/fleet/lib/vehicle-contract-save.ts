@@ -139,3 +139,15 @@ export const saveContractWithFiles = async (
   }
   return { contract, failed, orderRefused };
 };
+
+/**
+ * May this reader add pages to the contract? `edit` on any contract; `create` alone on the ones they
+ * saved — the API's own rule, so the screen never offers an upload the server refuses.
+ */
+export const mayAddContractFiles = (
+  can: (permission: string) => boolean,
+  meId: string | null,
+  contract: Pick<FleetVehicleContractDto, 'createdBy'>,
+): boolean =>
+  can('fleetVehicleContract.edit') ||
+  (can('fleetVehicleContract.create') && meId !== null && contract.createdBy === meId);

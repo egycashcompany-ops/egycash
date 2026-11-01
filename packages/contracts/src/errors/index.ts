@@ -25,10 +25,15 @@ export const ErrorCodes = {
   /** ADR-035 — passkey sign-in is switched off (`auth.passkeys.enabled`). */
   AUTH_PASSKEYS_DISABLED: 'AUTH_PASSKEYS_DISABLED',
   /**
-   * Any refused passkey: unknown credential, bad signature, expired or replayed challenge, an
-   * account that may not use one. One code, so none of those can be told apart.
+   * Any refused passkey: unknown credential, bad signature, an account that may not use one. One
+   * code, so none of those can be told apart.
    */
   AUTH_PASSKEY_INVALID: 'AUTH_PASSKEY_INVALID',
+  /**
+   * The challenge the device signed is unknown, expired or already used — checked before any
+   * account is looked at, so it says nothing about one. Not a failed sign-in: fetch a new one.
+   */
+  AUTH_PASSKEY_EXPIRED: 'AUTH_PASSKEY_EXPIRED',
   /** This account may not add a passkey (an external account whose module did not opt in). */
   AUTH_PASSKEY_NOT_ALLOWED: 'AUTH_PASSKEY_NOT_ALLOWED',
   /** The account already holds `PASSKEYS_PER_ACCOUNT` passkeys. */

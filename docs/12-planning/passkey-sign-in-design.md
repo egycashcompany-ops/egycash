@@ -23,7 +23,7 @@ every handler applies the §5 audience rule itself).
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/authentication/options` | public | A sign-in challenge: `{ challenge, rpId, timeout, userVerification: 'required', allowCredentials: [] }` |
+| `POST` | `/authentication/options` | public | A sign-in challenge: `{ challenge, rpId, timeout, userVerification: 'required', allowCredentials: [], origin }` — `origin` is the one page address answers are accepted from; the web offers no button anywhere else |
 | `POST` | `/authentication/verify` | public | The device's answer → the same `LoginResponse` a password sign-in returns (never `totpRequired`) + refresh cookie |
 | `GET` | `/` | session | The caller's passkeys: `{ id, name, createdAt, lastUsedAt, backedUp }` |
 | `POST` | `/registration/options` | session | Step-up `{ password, totpCode? }` → creation options (excludes the caller's existing passkeys) |
@@ -32,15 +32,19 @@ every handler applies the §5 audience rule itself).
 | `DELETE` | `/:id` | session | Remove one |
 
 Error codes: `AUTH_PASSKEYS_DISABLED` (kill switch, 403), `AUTH_PASSKEY_INVALID` (any refused
-assertion — unknown credential, failed signature, expired or replayed challenge, an audience
-refused; one code so none of them can be told apart), `AUTH_PASSKEY_NOT_ALLOWED` (this account may
+assertion — unknown credential, failed signature, an audience refused; one code so none of them can
+be told apart), `AUTH_PASSKEY_EXPIRED` (the challenge is unknown, expired or already used — checked
+before any account is looked at, so it reveals nothing; not a counted failure), `AUTH_PASSKEY_NOT_ALLOWED` (this account may
 not add a passkey), `AUTH_PASSKEY_LIMIT` (ten per account). Locked / not-activated / not-active keep
 their existing codes — they are told apart on the password path already.
 
-Rate limits: options — the per-IP auth ceiling (the sign-in page fetches one on every visit);
-verify — the per-IP ceiling, ten per credential id per five minutes, and the failed-sign-in limit
-per address (`AUTH_PASSKEY_INVALID` counts there, not toward the account lockout); the four session
-routes — ten per caller per five minutes on the two registration steps, the per-IP ceiling on all.
+Rate limits: options — the per-IP renewal ceiling (`AUTH_REFRESH_RATE_LIMIT_PER_IP`: a sign-in
+page asks for two on every visit and renews both every four minutes while open); verify — the per-IP
+sign-in ceiling, ten per credential id per five minutes, and the failed-sign-in limit per address
+(`AUTH_PASSKEY_INVALID` counts there, not toward the account lockout; `AUTH_PASSKEY_EXPIRED` does not
+count); the registration steps — ten per access token per five minutes, the per-IP ceiling, and the
+TOTP code at the step-up shares the sign-in's per-account bucket (ten per five minutes) whichever
+token asks; a locked account is refused at the step-up before its password is checked.
 
 ## 3. Data
 
@@ -51,9 +55,10 @@ routes — ten per caller per five minutes on the two registration steps, the pe
 index is built by the code before the first write (`collectionReady` pattern) because production
 index sync runs in report mode.
 
-WebAuthn `user.id` = HMAC-SHA256(`JWT_ACCESS_SECRET`, `passkey-user:<userId>`) — stable per account
-(the device replaces rather than duplicates a re-registration), reveals neither the id nor its
-creation time. Sign-in never trusts it: the credential is found by `credentialId`, and the
+WebAuthn `user.id` = SHA-256(`ecms-passkey-user:<userId>`) — stable per account forever (the device
+replaces rather than duplicates a re-registration, and no configuration change can invalidate the
+passkeys already on people's phones — keying it with a rotatable secret would), and does not spell
+out the id or its creation time. It is not a secret. Sign-in never trusts it: the credential is found by `credentialId`, and the
 `userHandle` returned must match the owner's.
 
 Sessions gain `method` (`password` · `passkey` · `portalChallenge`; absent on old rows = password),
@@ -82,7 +87,11 @@ call happens between it and the WebAuthn call), offers the passkey in the userna
 where the browser supports it, and shows «الدخول بالبصمة أو الوجه» everywhere a platform
 authenticator exists → `authentication/verify`: take the challenge once; find the credential; the
 owner's gates (lock, status, cleared password, audience); verify signature, origin, RP ID, user
-verification, counter; update counter and `lastUsedAt`; `completeLogin(method: 'passkey')`.
+verification, counter; update counter and `lastUsedAt`; `completeLogin(method: 'passkey')`. While the
+page stays open both its challenges (the button's and the autofill's) are renewed before they are
+four minutes old, so neither is ever spent on one the server has dropped; the autofill never starts
+while the button's prompt is open, and once the person has picked a passkey from it, the server's
+answer (locked, rate-limited, offline) is shown like the button's.
 
 ## 5. Audience
 
@@ -99,8 +108,9 @@ and at sign-in.
 | Phishing / another origin | Origin and RP ID checked against configuration; the browser binds the credential to the RP ID |
 | Forged `Host` / `X-Forwarded-Host` | Never read for the ceremony |
 | Stolen session plants a backdoor | Password (+ TOTP) step-up bound to the session; audit `passkeyRegistered` |
-| Admin reset leaves a key working | Reset removes all passkeys; sign-in also refuses a cleared password |
-| Rehire revives an old key | Suspend / archive / delete remove passkeys |
+| Admin reset leaves a key working | The staff reset, the TOTP reset and the gold portal's «new setup link» remove all passkeys; sign-in also refuses a cleared password |
+| Rehire revives an old key | Suspend / archive / delete remove passkeys, and reactivation removes any left behind |
+| A rotated JWT secret strands every passkey | `user.id` depends on no secret |
 | Lockout bypass | `lockedUntil` honoured |
 | Lockout abuse via credential ids | Failed assertions never touch the account lockout; they count per address |
 | Account enumeration | Usernameless; options carry nothing per account; one refusal code |

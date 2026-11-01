@@ -80,11 +80,18 @@ describe('what each failure says', () => {
     ).toBe('platform.auth.passkey.alreadyAdded');
   });
 
-  it('keeps the background autofill quiet except for a server refusal', () => {
-    expect(passkeyFailure(deviceError('NotAllowedError'), true, true)).toBeNull();
-    expect(passkeyFailure(new Error('No <input> with "webauthn"'), true, true)).toBeNull();
-    expect(passkeyFailure(new ApiError('AUTH_PASSKEY_INVALID', 'x', 401), true, true)?.key).toBe(
-      'platform.auth.passkey.invalid',
+  it('says the challenge expired rather than that the passkey was refused', () => {
+    expect(passkeyFailure(new ApiError('AUTH_PASSKEY_EXPIRED', 'x', 401), true)?.key).toBe(
+      'platform.auth.passkey.expired',
+    );
+  });
+
+  it('names a server refusal after a passkey was picked — locked, rate-limited, offline', () => {
+    expect(passkeyFailure(new ApiError('RATE_LIMITED', 'x', 429), true)?.key).toBe(
+      'platform.auth.login.tooMany',
+    );
+    expect(passkeyFailure(new TypeError('Failed to fetch'), false)?.key).toBe(
+      'platform.auth.login.offline',
     );
   });
 });

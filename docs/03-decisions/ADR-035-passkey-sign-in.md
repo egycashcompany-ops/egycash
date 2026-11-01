@@ -49,7 +49,9 @@ revision.
 5. **Adding a passkey asks for the current password** — and the TOTP code when the account has one.
    Otherwise a stolen or unattended session could plant a key that outlives a password change. The
    challenge is bound to the session that proved it, lives five minutes and is consumed once. A
-   wrong password here counts toward the account lockout, as at the sign-in page. Right after a
+   wrong password here counts toward the account lockout, as at the sign-in page, and a locked
+   account is refused here before its password is checked; wrong TOTP codes share the sign-in's
+   per-account limit. Right after a
    password sign-in on a device that can hold a passkey, the sign-in page offers to add one («sign
    in faster next time?»), using the password just typed — so nobody has to find the Security page
    to get the benefit. It is offered only while the account has no passkey anywhere, and «not now»
@@ -66,10 +68,14 @@ revision.
    not a secret and anyone holding one could otherwise lock its owner out.
 
 8. **Lifecycle.** An administrator's password reset removes all of the account's passkeys, so «reset»
-   still locks the account out. So does an administrator's TOTP reset: it is what is done for a lost
-   or compromised phone, and a passkey stands in for the TOTP code (§2). Suspending, archiving or deleting the account removes them too, so a
+   still locks the account out — the gold portal's «new setup link», which clears the password too,
+   does the same and ends the customer's sessions. So does an administrator's TOTP reset: it is what
+   is done for a lost or compromised phone, and a passkey stands in for the TOTP code (§2). Suspending, archiving or deleting the account removes them too, so a
    later reactivation does not revive a key from before. Changing one's own password keeps them —
-   they are separate credentials. People rename and remove their own from *My account → Security*;
+   they are separate credentials. Reactivating an account removes any passkey still there, so a
+   removal that failed at suspension cannot be undone by the reactivation. The WebAuthn `user.id`
+   is derived from the account id alone, never from a secret, so rotating `JWT_ACCESS_SECRET` (or
+   any other key) leaves every passkey working. People rename and remove their own from *My account → Security*;
    gold-portal customers from the portal's *Security* tab.
 
 9. **An organization setting, `auth.passkeys.enabled` (default on), turns the feature off** — every

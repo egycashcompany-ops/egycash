@@ -1050,9 +1050,9 @@ class AuthService {
 export const authService = new AuthService();
 
 /**
- * In-process reactions: suspend/archive revokes sessions and drops caches; suspend, archive and
- * delete also remove the account's passkeys (ADR-035 §8) — a rehire or a reactivation starts with
- * none, rather than finding a key made under the old employment still working.
+ * In-process reactions: suspend/archive revokes sessions and drops caches; suspend, archive,
+ * reactivation and delete remove the account's passkeys (ADR-035 §8) — a rehire or a reactivation
+ * starts with none, rather than finding a key made under the old employment still working.
  */
 export const registerAuthEventHandlers = (): void => {
   subscribe(
@@ -1063,6 +1063,20 @@ export const registerAuthEventHandlers = (): void => {
       await getCache().del(userSnapshotKey(payload.userId));
       if (payload.status === 'suspended' || payload.status === 'archived') {
         await authService.revokeAllSessionsForUser(payload.userId, `user-${payload.status}`);
+      }
+    },
+  );
+  // Its own handler, so a failure revoking sessions (a Redis hiccup, an audit write) cannot leave
+  // the passkeys behind. And on REACTIVATION as well as on the way out: these handlers run in
+  // process and only log a failure, so the reactivation is the second chance that makes «a
+  // reactivated account starts with none» hold even when the removal at suspension did not run.
+  // (The only other way an account becomes active is its first activation, which has none.)
+  subscribe(
+    PlatformEvents.UserStatusChanged,
+    'auth.passkey-removal',
+    async (envelope: EventEnvelope) => {
+      const payload = envelope.payload as { userId: string; status: string };
+      if (['suspended', 'archived', 'active'].includes(payload.status)) {
         await passkeyStore.removeAllForUser(payload.userId, `user-${payload.status}`);
       }
     },

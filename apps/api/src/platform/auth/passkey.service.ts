@@ -17,7 +17,7 @@
 //   input, outside ADR-033's door. The trust anchors are emptied too, belt and braces;
 // - a sign-in refusal says one thing (`AUTH_PASSKEY_INVALID`) whatever went wrong before the
 //   signature was proven; account states are named only after it, to the key's holder.
-import { createHmac } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Types } from 'mongoose';
 import { authenticator } from 'otplib';
 import {
@@ -47,11 +47,13 @@ import {
 import { env } from '../../infrastructure/config/env';
 import { getContext } from '../../infrastructure/http/request-context';
 import { getCache } from '../../infrastructure/redis/cache';
+import { consumeRateLimit, hashedKey } from '../../infrastructure/redis/rate-limiter';
 import {
   AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
+  RateLimitedError,
   UnauthenticatedError,
 } from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
@@ -93,14 +95,19 @@ export const relyingParty = (): { rpID: string; origin: string } => {
 };
 
 /**
- * The WebAuthn `user.id` for an account: stable, so a device re-adding a passkey for the same
- * account replaces its old one instead of keeping two; an HMAC, so it gives away neither the
- * account id nor when it was created.
+ * The WebAuthn `user.id` for an account. STABLE FOREVER, so a device re-adding a passkey for the
+ * same account replaces its old one instead of keeping two — and so no configuration change can
+ * invalidate the passkeys already on people's phones: an earlier version keyed this with the JWT
+ * signing secret, and rotating that secret (the usual answer to a suspected leak) would have broken
+ * every passkey at once. A one-way hash, so the handle does not spell out the account id or when it
+ * was made. It is not a secret and need not be: the credential id finds the account and the
+ * signature proves it; the handle is only cross-checked.
  */
 const userHandle = (userId: string): Uint8Array<ArrayBuffer> =>
-  new Uint8Array(
-    createHmac('sha256', env.JWT_ACCESS_SECRET).update(`passkey-user:${userId}`).digest(),
-  );
+  new Uint8Array(createHash('sha256').update(`ecms-passkey-user:${userId}`).digest());
+
+/** Wrong TOTP codes at the step-up share the sign-in's per-account bucket (`/totp/challenge`). */
+const TOTP_GUESS_LIMIT = { name: 'auth-totp', windowSeconds: 300, max: 10 };
 
 const toBytes = (base64url: string): Uint8Array<ArrayBuffer> =>
   new Uint8Array(Buffer.from(base64url, 'base64url'));
@@ -240,6 +247,7 @@ class PasskeyService {
     return {
       challenge: options.challenge,
       rpId: rpID,
+      origin: relyingParty().origin,
       timeout: CEREMONY_TIMEOUT_MS,
       userVerification: 'required',
       allowCredentials: [],
@@ -281,11 +289,14 @@ class PasskeyService {
     const { rpID, origin } = relyingParty();
 
     // 1. The challenge the device signed — issued here, unexpired, and not used before. Consumed
-    //    now, whatever follows: a second try at the same challenge is a replay.
+    //    now, whatever follows: a second try at the same challenge is a replay. Its own answer, and
+    //    not a counted failure: it is checked before any account is looked at, so it reveals
+    //    nothing and guesses at nothing — and a sign-in page left open past five minutes must not
+    //    use up an office's failed-sign-in allowance.
     const challenge = challengeOf(response.response.clientDataJSON);
     if (challenge === null || (await getCache().take(signInKey(challenge))) === null) {
       await this.recordRefusal('challenge', null, response.id);
-      throw refused();
+      throw new UnauthenticatedError(ErrorCodes.AUTH_PASSKEY_EXPIRED, 'Challenge expired or used');
     }
 
     // 2. The key it claims to be.
@@ -382,6 +393,11 @@ class PasskeyService {
     await this.assertEnabled();
     this.assertAudience(ctx);
     const user = await userService.getById(ctx.userId);
+    // A locked account is locked here too: otherwise, once the lockout tripped, this screen would
+    // go on checking passwords that the sign-in page has stopped checking.
+    if (user.security.lockedUntil !== null && user.security.lockedUntil > new Date()) {
+      throw new UnauthenticatedError(ErrorCodes.AUTH_ACCOUNT_LOCKED, 'Account temporarily locked');
+    }
     if (user.passwordHash === null || !(await verifyPassword(user.passwordHash, proof.password))) {
       if (user.passwordHash !== null)
         await authService.countFailedPassword(user, 'passkey-step-up');
@@ -392,8 +408,17 @@ class PasskeyService {
     }
     const totp = user.security.totp;
     if (totp.enabled && totp.secret !== null) {
+      // Ten codes per account per five minutes, in the same bucket as the sign-in's TOTP step —
+      // keyed on the account, not the access token, which every renewal replaces.
+      const guess = await consumeRateLimit(TOTP_GUESS_LIMIT, hashedKey(`account:${ctx.userId}`));
+      if (!guess.allowed) throw new RateLimitedError(guess.retryAfter);
       const code = proof.totpCode ?? '';
       if (!/^\d{6}$/.test(code) || !authenticator.verify({ token: code, secret: totp.secret })) {
+        await auditService.record({
+          entityRef: userRef(ctx.userId),
+          action: 'loginFailed',
+          changes: [{ field: 'step', old: null, new: 'passkey-step-up-totp' }],
+        });
         throw new UnauthenticatedError(ErrorCodes.AUTH_TOTP_INVALID, 'Invalid TOTP code');
       }
     }
@@ -461,13 +486,17 @@ class PasskeyService {
     const invalid = (): BusinessRuleError =>
       new BusinessRuleError('Passkey not accepted', ErrorCodes.AUTH_PASSKEY_INVALID);
 
-    // The challenge this session was given after proving itself — once.
+    // The challenge this session was given after proving itself — once. None left (five minutes
+    // passed, or it was used) is its own answer: prove yourself again.
     const pendingRaw = await getCache().take(registrationKey(ctx.sessionId));
     const pending =
       pendingRaw === null
         ? null
         : (JSON.parse(pendingRaw) as { challenge: string; userId: string });
-    if (pending === null || pending.userId !== ctx.userId) throw invalid();
+    if (pending === null) {
+      throw new BusinessRuleError('Challenge expired or used', ErrorCodes.AUTH_PASSKEY_EXPIRED);
+    }
+    if (pending.userId !== ctx.userId) throw invalid();
     if (!acceptableAttestation(response.response.attestationObject)) throw invalid();
 
     const { rpID, origin } = relyingParty();

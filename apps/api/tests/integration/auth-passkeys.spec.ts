@@ -30,6 +30,7 @@ import { relyingParty } from '../../src/platform/auth/passkey.service';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import { goldPortalAccountService } from '../../src/modules/gold/portal-accounts/portal-account.service';
 import { SoftAuthenticator } from './helpers/soft-authenticator';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -197,12 +198,12 @@ describe('adding a passkey and signing in with it', () => {
     expect(rows.find((s) => s.current)?.method).toBe('passkey');
     expect(rows.some((s) => !s.current && s.method === 'password')).toBe(true);
 
-    // The same answer again is a replay.
+    // The same answer again is a replay: its challenge was spent by the first.
     const replay = await request(app)
       .post('/api/v1/auth/passkeys/authentication/verify')
       .send({ response: answer });
     expect(replay.status).toBe(401);
-    expect(replay.body.error.code).toBe(ErrorCodes.AUTH_PASSKEY_INVALID);
+    expect(replay.body.error.code).toBe(ErrorCodes.AUTH_PASSKEY_EXPIRED);
   });
 
   it('refuses the step-up with a wrong password', async () => {
@@ -301,6 +302,17 @@ describe('the account lifecycle removes passkeys', () => {
 });
 
 describe('who may use passkeys, and the switch', () => {
+  it('the gold portal’s «new setup link» removes the customer’s passkeys, as the staff reset does', async () => {
+    const customer = await makeAccount({ moduleId: 'gold', subjectType: 'goldCompany' });
+    const token = (await passwordLogin(customer.email)).accessToken ?? '';
+    const device = new SoftAuthenticator();
+    await addPasskey(token, device);
+    await goldPortalAccountService.resendSetupLink(customer.id);
+    expect(await passkeysOf(customer.id)).toBe(0);
+    const { res } = await passkeySignIn(device);
+    expect(res.body.error.code).toBe(ErrorCodes.AUTH_PASSKEY_INVALID);
+  });
+
   it('a gold-portal customer may add one and sign in with it', async () => {
     const customer = await makeAccount({ moduleId: 'gold', subjectType: 'goldCompany' });
     const token = (await passwordLogin(customer.email)).accessToken ?? '';

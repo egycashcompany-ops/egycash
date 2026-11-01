@@ -33,14 +33,21 @@ import {
   cancelPasskeyPrompt,
   detectPasskeySupport,
   pageMatchesRelyingParty,
+  passkeyAssertion,
   passkeyOfferSuppressed,
   rememberPasskeyOffer,
-  signInWithPasskey,
+  verifyPasskeyAssertion,
   type PasskeySupport,
 } from './passkeys';
 
-/** A challenge lives five minutes on the server; one older than four is fetched afresh. */
+/**
+ * A challenge lives five minutes on the server. One older than four is never used: the button's
+ * is fetched afresh in the background and the autofill suggestion is re-armed with a new one, so
+ * neither is ever spent on a challenge the server has already dropped.
+ */
 const OPTIONS_FRESH_MS = 4 * 60_000;
+/** How often an open sign-in page checks whether its challenges need renewing. */
+const FRESHNESS_CHECK_MS = 30_000;
 
 type SignedIn = Extract<LoginResponse, { totpRequired: false }>;
 
@@ -49,6 +56,12 @@ export interface PasskeySignIn {
   support: PasskeySupport;
   busy: boolean;
   signIn: () => void;
+}
+
+/** What one mount of the hook exposes to the button: whether it is still on screen, and «re-arm». */
+interface Mount {
+  alive: () => boolean;
+  rearm: () => void;
 }
 
 export const usePasskeySignIn = ({
@@ -65,72 +78,114 @@ export const usePasskeySignIn = ({
   const [busy, setBusy] = useState(false);
   const handlers = useRef({ onSignedIn, onFailure });
   handlers.current = { onSignedIn, onFailure };
-  const supportRef = useRef(support);
-  supportRef.current = support;
   const prefetched = useRef<{ options: PasskeyAuthenticationOptionsDto; at: number } | null>(null);
+  // The button's prompt is open (or about to be). The autofill must not start then: starting it
+  // would withdraw the person's Face ID sheet from under them.
+  const modalActive = useRef(false);
   // Per mount, not shared: under StrictMode the first mount's async work outlives its cleanup, and
   // a shared «mounted» flag set true again by the second mount would let it carry on.
-  const alive = useRef<() => boolean>(() => false);
-
-  const prefetch = async (isAlive: () => boolean): Promise<boolean> => {
-    try {
-      const options = await passkeyAuthenticationOptionsRequest();
-      if (isAlive()) prefetched.current = { options, at: Date.now() };
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const settle = (response: LoginResponse, isAlive: () => boolean): void => {
-    if (isAlive() && !response.totpRequired) handlers.current.onSignedIn(response);
-  };
-
-  /** The autofill suggestion: waits in the background until the person picks a passkey there. */
-  const armAutofill = async (isAlive: () => boolean): Promise<void> => {
-    let options: PasskeyAuthenticationOptionsDto;
-    try {
-      options = await passkeyAuthenticationOptionsRequest();
-    } catch {
-      return;
-    }
-    if (!isAlive()) return;
-    try {
-      settle(await signInWithPasskey(options, true), isAlive);
-    } catch (error) {
-      const failure = passkeyFailure(error, true, true);
-      // Only a server refusal of a passkey the person picked gets here; offer it again after.
-      if (failure !== null && isAlive()) {
-        handlers.current.onFailure(failure);
-        void armAutofill(isAlive);
-      }
-    }
-  };
+  const mount = useRef<Mount>({ alive: () => false, rearm: () => undefined });
 
   useEffect(() => {
     let disposed = false;
-    const isAlive = (): boolean => !disposed;
-    alive.current = isAlive;
+    let detected: PasskeySupport = NO_PASSKEY_SUPPORT;
+    let armedAt = 0;
+    let generation = 0;
+    const alive = (): boolean => !disposed;
+
+    const prefetch = async (): Promise<boolean> => {
+      try {
+        const options = await passkeyAuthenticationOptionsRequest();
+        if (!disposed) prefetched.current = { options, at: Date.now() };
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    /** The username field's suggestion, armed with its own challenge. */
+    const armAutofill = async (): Promise<void> => {
+      if (disposed || modalActive.current || !autofill || !detected.autofill) return;
+      const mine = (generation += 1);
+      let options: PasskeyAuthenticationOptionsDto;
+      try {
+        options = await passkeyAuthenticationOptionsRequest();
+      } catch {
+        return;
+      }
+      // Left the page, the button was pressed, or a newer arm took over while this one fetched.
+      if (disposed || modalActive.current || mine !== generation) return;
+      armedAt = Date.now();
+      let answer: Awaited<ReturnType<typeof passkeyAssertion>>;
+      try {
+        answer = await passkeyAssertion(options, true);
+      } catch {
+        // The device side never speaks: withdrawn (a newer arm, the button, leaving the page),
+        // timed out, or unsupported. A timed-out one is re-armed by the freshness check.
+        if (mine === generation) armedAt = 0;
+        return;
+      }
+      // The person picked a passkey: from here on a refusal — a locked account, a rate limit, a
+      // dropped connection — is theirs to see, and the suggestion is offered again.
+      try {
+        const result = await verifyPasskeyAssertion(answer);
+        if (!disposed && !result.totpRequired) handlers.current.onSignedIn(result);
+      } catch (error) {
+        if (disposed) return;
+        const failure = passkeyFailure(error, navigator.onLine);
+        if (failure !== null) handlers.current.onFailure(failure);
+        void armAutofill();
+      }
+    };
+
+    /** Keep both challenges younger than the server's five minutes while the page stays open. */
+    const keepFresh = (): void => {
+      if (disposed || modalActive.current || !detected.webauthn) return;
+      const now = Date.now();
+      const entry = prefetched.current;
+      if (entry === null || now - entry.at > OPTIONS_FRESH_MS) void prefetch();
+      if (autofill && detected.autofill && now - armedAt > OPTIONS_FRESH_MS) void armAutofill();
+    };
+
+    mount.current = {
+      alive,
+      rearm: () => {
+        void prefetch();
+        void armAutofill();
+      },
+    };
+
     void (async () => {
-      const detected = await detectPasskeySupport();
-      if (disposed || !detected.webauthn) return;
-      // Switched off, the server unreachable, or this page on another host than the passkeys'
-      // domain: no button rather than one that can only fail.
-      if (!(await prefetch(isAlive)) || disposed) return;
-      const rpId = prefetched.current?.options.rpId ?? '';
-      if (!pageMatchesRelyingParty(rpId)) return;
-      setSupport(detected);
-      if (autofill && detected.autofill) void armAutofill(isAlive);
+      const found = await detectPasskeySupport();
+      if (disposed || !found.webauthn) return;
+      // Switched off, the server unreachable, or this page not the address the server accepts
+      // answers from: no button rather than one that can only fail.
+      if (!(await prefetch()) || disposed) return;
+      const entry = prefetched.current;
+      if (entry === null || !pageMatchesRelyingParty(entry.options)) return;
+      detected = found;
+      setSupport(found);
+      void armAutofill();
     })();
+
+    const timer = window.setInterval(keepFresh, FRESHNESS_CHECK_MS);
+    // Background tabs run timers late; coming back to the tab is when a stale challenge matters.
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') keepFresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       disposed = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
       cancelPasskeyPrompt();
     };
     // Once per mount: the handlers are read through a ref, so nothing here goes stale.
   }, []);
 
   const signIn = (): void => {
-    const isAlive = alive.current;
+    const { alive, rearm } = mount.current;
+    modalActive.current = true;
     setBusy(true);
     void (async () => {
       try {
@@ -139,16 +194,22 @@ export const usePasskeySignIn = ({
         if (entry === null || Date.now() - entry.at > OPTIONS_FRESH_MS) {
           entry = { options: await passkeyAuthenticationOptionsRequest(), at: Date.now() };
         }
-        // Starting this prompt withdraws the autofill one; that one ends quietly.
-        settle(await signInWithPasskey(entry.options), isAlive);
+        // With a fresh challenge there is no await between the tap and the device prompt. Starting
+        // it withdraws the autofill request, which ends quietly.
+        const answer = await passkeyAssertion(entry.options);
+        const result = await verifyPasskeyAssertion(answer);
+        if (alive() && !result.totpRequired) handlers.current.onSignedIn(result);
       } catch (error) {
-        if (!isAlive()) return;
+        if (!alive()) return;
         const failure = passkeyFailure(error, navigator.onLine);
         if (failure !== null) handlers.current.onFailure(failure);
-        void prefetch(isAlive);
-        if (autofill && supportRef.current.autofill) void armAutofill(isAlive);
       } finally {
-        if (isAlive()) setBusy(false);
+        modalActive.current = false;
+        if (alive()) {
+          setBusy(false);
+          // A new challenge for the next tap, and the suggestion back in the username field.
+          rearm();
+        }
       }
     })();
   };
@@ -226,6 +287,11 @@ export const PasskeyOffer = ({
   useEffect(() => () => cancelPasskeyPrompt(), []);
 
   const enable = async (): Promise<void> => {
+    // The code field is showing: a malformed code is answered here, not by a validation error.
+    if (askCode && !/^\d{6}$/.test(code.trim())) {
+      setError(t('platform.auth.login.badCode'));
+      return;
+    }
     setBusy(true);
     setError(null);
     const totpCode = askCode ? code.trim() : proof.totpCode;

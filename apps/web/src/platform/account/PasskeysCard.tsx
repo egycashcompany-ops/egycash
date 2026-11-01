@@ -7,7 +7,7 @@
 // markup is the same three password fields it always had until somebody presses «add».
 //
 // Shared with the gold portal, whose customers manage their own passkeys from its Security tab.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { type PasskeyDto } from '@ecms/contracts';
 import { useAppSelector } from '../../store';
@@ -62,8 +62,12 @@ const AddPasskeyDialog = ({
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by every close: an attempt that started before it must not go on to open the device's
+  // prompt over a dialog the person has already dismissed (× and Escape work while it is busy).
+  const attempt = useRef(0);
 
   const close = (): void => {
+    attempt.current += 1;
     cancelPasskeyPrompt();
     setPassword('');
     setCode('');
@@ -72,19 +76,24 @@ const AddPasskeyDialog = ({
   };
 
   const submit = async (): Promise<void> => {
+    const mine = (attempt.current += 1);
+    const current = (): boolean => attempt.current === mine;
     setBusy(true);
     setError(null);
     try {
       const options = await passkeyRegistrationOptionsRequest(
         totpEnabled ? { password, totpCode: code.trim() } : { password },
       );
+      if (!current()) return;
       await addPasskey(options);
+      if (!current()) return;
       if (userId !== null) rememberPasskeyOffer(userId, 'added');
       toast.success(t('account.security.passkeyAdded'));
       setPassword('');
       setCode('');
       onAdded();
     } catch (e) {
+      if (!current()) return;
       if (e instanceof ApiError && e.code === 'AUTH_INVALID_CREDENTIALS') {
         setError(t('platform.auth.login.wrongPassword'));
       } else if (e instanceof ApiError && e.code === 'AUTH_TOTP_INVALID') {

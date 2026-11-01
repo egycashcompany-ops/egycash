@@ -14,6 +14,7 @@ import {
   strayChallenge,
 } from '../../../tests/integration/helpers/soft-authenticator';
 import { runWithContext } from '../../infrastructure/http/request-context';
+import { env } from '../../infrastructure/config/env';
 import { hashPassword } from '../../shared/utils/passwords';
 import { type AuthContext } from '../../shared/types';
 import { type UserDoc } from '../users';
@@ -211,6 +212,8 @@ describe('signing in with a passkey', () => {
     expect(options.allowCredentials).toEqual([]);
     expect(options.userVerification).toBe('required');
     expect(options.rpId).toBe(new URL(origin).hostname);
+    // The one page address answers are accepted from, so a screen elsewhere offers no button.
+    expect(options.origin).toBe(origin);
   });
 
   it('refuses the same answer twice — the challenge is spent by the first', async () => {
@@ -220,7 +223,7 @@ describe('signing in with a passkey', () => {
     const answer = device.authenticate(options, origin);
     await passkeyService.verifyAuthentication(answer);
     expect(await codeOf(passkeyService.verifyAuthentication(answer))).toBe(
-      ErrorCodes.AUTH_PASSKEY_INVALID,
+      ErrorCodes.AUTH_PASSKEY_EXPIRED,
     );
     expect(world.completed).toHaveLength(1);
   });
@@ -229,8 +232,9 @@ describe('signing in with a passkey', () => {
     const { device } = await enrol(makeUser());
     const answer = device.authenticate({ challenge: strayChallenge(), rpId: 'localhost' }, origin);
     expect(await codeOf(passkeyService.verifyAuthentication(answer))).toBe(
-      ErrorCodes.AUTH_PASSKEY_INVALID,
+      ErrorCodes.AUTH_PASSKEY_EXPIRED,
     );
+    expect(world.completed).toHaveLength(0);
   });
 
   it('refuses a credential nobody registered', async () => {
@@ -282,6 +286,27 @@ describe('signing in with a passkey', () => {
   it('counts a refused passkey as a failed sign-in for the address limit', async () => {
     const error = await signIn(new SoftAuthenticator()).catch((caught: unknown) => caught);
     expect(isFailedSignIn(error)).toBe(true);
+  });
+
+  it('does not count an expired challenge — a page left open proves nothing', async () => {
+    const { device } = await enrol(makeUser());
+    const answer = device.authenticate({ challenge: strayChallenge(), rpId: 'localhost' }, origin);
+    const error = await passkeyService
+      .verifyAuthentication(answer)
+      .catch((caught: unknown) => caught);
+    expect(isFailedSignIn(error)).toBe(false);
+  });
+
+  it('keeps every passkey working when the JWT signing secret is rotated', async () => {
+    const { device } = await enrol(makeUser());
+    const before = env.JWT_ACCESS_SECRET;
+    try {
+      env.JWT_ACCESS_SECRET = 'a-freshly-rotated-signing-secret-0123456789';
+      await signIn(device);
+    } finally {
+      env.JWT_ACCESS_SECRET = before;
+    }
+    expect(world.completed).toHaveLength(1);
   });
 
   describe('the account’s own barriers, after the signature is proven', () => {
@@ -418,6 +443,42 @@ describe('adding a passkey', () => {
       totpCode: authenticator.generate(secret),
     });
     expect(options.challenge).not.toBe('');
+    expect(world.audit.filter((row) => row.action === 'loginFailed')).toHaveLength(2);
+  });
+
+  it('limits TOTP guesses per account, whatever access token asks', async () => {
+    const secret = authenticator.generateSecret();
+    const user = makeUser({}, { totp: { enabled: true, secret } });
+    for (let i = 0; i < 10; i += 1) {
+      // A fresh session — a fresh access token — each time: the bucket is the account's.
+      expect(
+        await codeOf(
+          passkeyService.registrationOptions(ctxOf(user), {
+            password: PASSWORD,
+            totpCode: wrongCode(secret),
+          }),
+        ),
+      ).toBe(ErrorCodes.AUTH_TOTP_INVALID);
+    }
+    expect(
+      await codeOf(
+        passkeyService.registrationOptions(ctxOf(user), {
+          password: PASSWORD,
+          totpCode: authenticator.generate(secret),
+        }),
+      ),
+    ).toBe(ErrorCodes.RATE_LIMITED);
+  });
+
+  it('refuses the step-up while the account is locked, without checking the password', async () => {
+    const user = makeUser({}, { lockedUntil: new Date(Date.now() + 60_000) });
+    expect(
+      await codeOf(passkeyService.registrationOptions(ctxOf(user), { password: 'wrong-password' })),
+    ).toBe(ErrorCodes.AUTH_ACCOUNT_LOCKED);
+    expect(
+      await codeOf(passkeyService.registrationOptions(ctxOf(user), { password: PASSWORD })),
+    ).toBe(ErrorCodes.AUTH_ACCOUNT_LOCKED);
+    expect(world.failedPasswords).toEqual([]);
   });
 
   it('asks the device for a discoverable, user-verified key with no attestation', async () => {
@@ -470,9 +531,9 @@ describe('adding a passkey', () => {
     const ctx = ctxOf(user);
     const options = await passkeyService.registrationOptions(ctx, { password: PASSWORD });
     const answer = new SoftAuthenticator().register(options, origin);
-    // Another session of the same person did not prove itself.
+    // Another session of the same person did not prove itself: it holds no challenge.
     expect(await codeOf(passkeyService.verifyRegistration(ctxOf(user), answer, undefined))).toBe(
-      ErrorCodes.AUTH_PASSKEY_INVALID,
+      ErrorCodes.AUTH_PASSKEY_EXPIRED,
     );
     // Nor did another account presenting this session's id.
     const stranger = makeUser({ username: 'stranger' });
@@ -491,7 +552,7 @@ describe('adding a passkey', () => {
     const fresh = new SoftAuthenticator().register(again, origin);
     await passkeyService.verifyRegistration(ctx, fresh, undefined);
     expect(await codeOf(passkeyService.verifyRegistration(ctx, fresh, undefined))).toBe(
-      ErrorCodes.AUTH_PASSKEY_INVALID,
+      ErrorCodes.AUTH_PASSKEY_EXPIRED,
     );
   });
   it.each([

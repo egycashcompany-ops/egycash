@@ -184,13 +184,15 @@ export interface SessionDto {
  */
 const base64url = (max = 4096) => z.string().min(1).max(max).regex(/^[A-Za-z0-9_-]+$/, 'base64url');
 const clientExtensionResults = z.record(z.string(), z.unknown());
+/** WebAuthn allows a credential id of up to 1023 bytes: 1364 characters of unpadded base64url. */
+const CREDENTIAL_ID_MAX = 1364;
 const authenticatorAttachment = z.enum(['platform', 'cross-platform']).nullable().optional();
 
 /** What the browser returns from `navigator.credentials.get()`, in WebAuthn JSON. */
 export const PasskeyAuthenticationResponseSchema = z
   .object({
-    id: base64url(1024),
-    rawId: base64url(1024),
+    id: base64url(CREDENTIAL_ID_MAX),
+    rawId: base64url(CREDENTIAL_ID_MAX),
     type: z.literal('public-key'),
     response: z
       .object({
@@ -214,8 +216,8 @@ export type PasskeyAuthenticationVerify = z.infer<typeof PasskeyAuthenticationVe
 /** What the browser returns from `navigator.credentials.create()`, in WebAuthn JSON. */
 export const PasskeyRegistrationResponseSchema = z
   .object({
-    id: base64url(1024),
-    rawId: base64url(1024),
+    id: base64url(CREDENTIAL_ID_MAX),
+    rawId: base64url(CREDENTIAL_ID_MAX),
     type: z.literal('public-key'),
     response: z
       .object({
@@ -275,13 +277,18 @@ export interface PasskeyDto {
 /** The most passkeys one account may hold. */
 export const PASSKEYS_PER_ACCOUNT = 10;
 
-/** A sign-in challenge, in the WebAuthn JSON the browser's `get()` takes. */
+/**
+ * A sign-in challenge, in the WebAuthn JSON the browser's `get()` takes — plus `origin`, the one
+ * page address the server accepts answers from, so a screen opened anywhere else offers no button
+ * that could only fail. `origin` is not passed to the browser.
+ */
 export interface PasskeyAuthenticationOptionsDto {
   challenge: string;
   rpId: string;
   timeout: number;
   userVerification: 'required';
   allowCredentials: [];
+  origin: string;
 }
 
 /** A registration challenge, in the WebAuthn JSON the browser's `create()` takes. */

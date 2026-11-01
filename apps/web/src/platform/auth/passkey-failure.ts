@@ -14,6 +14,7 @@ import { loginFailure, type LoginFailure } from './login-failure';
 /** Every message this can ask for. The spec checks each one exists in ar and en. */
 export const PASSKEY_FAILURE_KEYS = [
   'platform.auth.passkey.invalid',
+  'platform.auth.passkey.expired',
   'platform.auth.passkey.disabled',
   'platform.auth.passkey.notAllowed',
   'platform.auth.passkey.limit',
@@ -24,6 +25,7 @@ export const PASSKEY_FAILURE_KEYS = [
 
 const BY_SERVER_CODE: Readonly<Record<string, string>> = {
   AUTH_PASSKEY_INVALID: 'platform.auth.passkey.invalid',
+  AUTH_PASSKEY_EXPIRED: 'platform.auth.passkey.expired',
   AUTH_PASSKEYS_DISABLED: 'platform.auth.passkey.disabled',
   AUTH_PASSKEY_NOT_ALLOWED: 'platform.auth.passkey.notAllowed',
   AUTH_PASSKEY_LIMIT: 'platform.auth.passkey.limit',
@@ -48,18 +50,12 @@ const field = (error: unknown, name: string): unknown =>
 /**
  * Why this attempt failed.
  *
- * `quiet` is for the autofill sign-in (the passkey offered in the username field), which runs in
- * the background whether or not the person ever looks at it: nothing it does may put a message on
- * the screen except a server refusal of a passkey the person actually chose.
- *
  * Null means say nothing: the prompt was withdrawn by the page itself (another attempt started, or
- * the page closed), which the person never saw as a failure.
+ * the page closed), which the person never saw as a failure. The autofill suggestion's own device
+ * errors never reach here at all — it runs in the background whether or not anybody looks at it —
+ * only the server's answer once the person has picked a passkey.
  */
-export const passkeyFailure = (
-  error: unknown,
-  online: boolean,
-  quiet = false,
-): LoginFailure | null => {
+export const passkeyFailure = (error: unknown, online: boolean): LoginFailure | null => {
   const name = field(error, 'name');
   const code = field(error, 'code');
 
@@ -70,10 +66,9 @@ export const passkeyFailure = (
     return { key: BY_SERVER_CODE[code] };
   }
   if (code === 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED') {
-    return quiet ? null : { key: 'platform.auth.passkey.alreadyAdded' };
+    return { key: 'platform.auth.passkey.alreadyAdded' };
   }
   if (typeof name === 'string' && DEVICE_ERRORS.has(name)) {
-    if (quiet) return null;
     // The person closed the prompt, let it time out, or has no passkey for this site on this
     // device. The browser does not say which — on purpose — so neither can we; the sentence
     // covers all three without blaming anyone.
@@ -81,5 +76,5 @@ export const passkeyFailure = (
       ? { key: 'platform.auth.passkey.cancelled' }
       : { key: 'platform.auth.passkey.deviceFailed' };
   }
-  return quiet ? null : loginFailure(error, online);
+  return loginFailure(error, online);
 };

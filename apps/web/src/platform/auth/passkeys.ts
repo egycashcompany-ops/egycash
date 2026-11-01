@@ -9,6 +9,7 @@ import {
   platformAuthenticatorIsAvailable,
   startAuthentication,
   startRegistration,
+  type AuthenticationResponseJSON,
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser';
@@ -50,33 +51,42 @@ export const detectPasskeySupport = async (): Promise<PasskeySupport> => {
 };
 
 /**
- * Is this page on the host the server's passkeys belong to? A passkey is bound to one domain
- * (ADR-035 §4); opened from another (the platform's raw deployment URL, say) the browser refuses the
- * prompt outright, so the screen offers no button there rather than one that can only fail.
+ * Is this page the address the server accepts passkey answers from? A passkey is bound to one
+ * domain and the server checks one exact origin (ADR-035 §4); opened from anywhere else — the
+ * platform's raw deployment URL, a `www.` alias — every attempt can only fail, so the screen offers
+ * no button there instead.
  */
-export const pageMatchesRelyingParty = (rpId: string): boolean => {
+export const pageMatchesRelyingParty = (options: PasskeyAuthenticationOptionsDto): boolean => {
   try {
-    const host = window.location.hostname;
-    return host === rpId || host.endsWith(`.${rpId}`);
+    return window.location.origin === options.origin;
   } catch {
     return false;
   }
 };
 
 /**
- * Sign in: the device's prompt, then the server's check. `autofill` runs it as the username field's
- * suggestion instead of a prompt — it waits, silently, until the person picks a passkey there.
+ * The device half of a sign-in: the prompt (or, with `autofill`, the username field's suggestion,
+ * which waits silently until the person picks a passkey there). Resolves with the signed answer.
+ * Only the WebAuthn members go to the browser — `origin` is ours.
  */
-export const signInWithPasskey = async (
+export const passkeyAssertion = (
   options: PasskeyAuthenticationOptionsDto,
   autofill = false,
-): Promise<LoginResponse> => {
-  const response = await startAuthentication({
-    optionsJSON: options as PublicKeyCredentialRequestOptionsJSON,
-    useBrowserAutofill: autofill,
-  });
-  return passkeyAuthenticationVerifyRequest(response);
+): Promise<AuthenticationResponseJSON> => {
+  const optionsJSON: PublicKeyCredentialRequestOptionsJSON = {
+    challenge: options.challenge,
+    rpId: options.rpId,
+    timeout: options.timeout,
+    userVerification: options.userVerification,
+    allowCredentials: [],
+  };
+  return startAuthentication({ optionsJSON, useBrowserAutofill: autofill });
 };
+
+/** The server half: the signed answer → a session. Its refusals are the person's to see. */
+export const verifyPasskeyAssertion = (
+  response: AuthenticationResponseJSON,
+): Promise<LoginResponse> => passkeyAuthenticationVerifyRequest(response);
 
 /** Add this device: the device's prompt makes the key, the server keeps its public half. */
 export const addPasskey = async (

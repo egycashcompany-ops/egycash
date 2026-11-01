@@ -197,12 +197,16 @@ export const buildAuthRouter = (): Router => {
   );
 
   // Passkey sign-in (ADR-035). The options are fetched on every visit to the sign-in page — before
-  // the tap, because older iPhones lose the gesture across a network call — so they carry only the
-  // per-IP ceiling; they hold nothing about any account. The verify route is a sign-in: the same
+  // the tap, so the device prompt follows it with no network call in between — so they carry only
+  // a per-IP ceiling; they hold nothing about any account. The verify route is a sign-in: the same
   // ceiling, a bucket per credential, and the failed-sign-in limit per address in the controller.
   router.post(
     '/passkeys/authentication/options',
-    perIpCeiling('auth-passkey-options', authIpMax),
+    // The renewal ceiling, not the sign-in one: a sign-in page asks for two (the button's and the
+    // autofill's) on every visit and refreshes both every four minutes while it stays open, so an
+    // office behind one address would empty the sign-in bucket — and lose the button — long before
+    // anybody was guessing anything. Each one writes a five-minute key and reveals nothing.
+    perIpCeiling('auth-passkey-options', env.AUTH_REFRESH_RATE_LIMIT_PER_IP),
     asyncHandler(passkeyAuthenticationOptions),
   );
   router.post(

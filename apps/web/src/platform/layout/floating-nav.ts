@@ -333,6 +333,9 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
   //     strip is handed to the same control in the panel, and the strip is `inert` while the panel
   //     shows — its controls are behind an opaque panel, and Tab would walk through every one of
   //     them unseen. Only once the focus is out of it: `inert` on a focused element drops the focus.
+  // After EVERY render, not on a change of mode: the box is not in the DOM while the menu loads, so
+  // a panel that mounts already hidden would otherwise never be made inert. Each step only acts on
+  // where the focus is now, so running it again changes nothing.
   useLayoutEffect(() => {
     const el = box.current;
     if (el === null) return;
@@ -355,7 +358,7 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
       }
       covered.toggleAttribute('inert', showing && !covered.contains(document.activeElement));
     }
-  }, [mode, quietFocus]);
+  });
 
   // Escape closes a floating panel; the effect above brings a focus inside it home first.
   useEffect(() => {

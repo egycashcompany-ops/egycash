@@ -382,11 +382,13 @@ describe('the hook feeds the rules from the DOM', () => {
     );
   });
 
-  it('the covered strip hands its focus to the panel, and goes inert only once the focus is out of it', () => {
+  it('the covered strip hands its focus to the panel, and goes inert only once the focus is out of it — after every render', () => {
+    // After every render, not on a change of mode: the box is absent while the menu loads, and a
+    // panel that mounted already hidden was never made inert (its links stayed in the tab order).
     // `inert` on a focused element drops the focus to <body>: the keyboard could not reach the
     // panel at all while the handover was racing a visibility transition.
     expect(HOOK).toMatch(
-      /if \(showing && panel !== null && covered\.contains\(document\.activeElement\)\) \{\s*quietFocus\(counterpart\(document\.activeElement, panel\)\);\s*\}\s*covered\.toggleAttribute\('inert', showing && !covered\.contains\(document\.activeElement\)\);\s*\}\s*\}, \[mode, quietFocus\]\);/,
+      /if \(showing && panel !== null && covered\.contains\(document\.activeElement\)\) \{\s*quietFocus\(counterpart\(document\.activeElement, panel\)\);\s*\}\s*covered\.toggleAttribute\('inert', showing && !covered\.contains\(document\.activeElement\)\);\s*\}\s*\}\);/,
     );
   });
 

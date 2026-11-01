@@ -22,6 +22,7 @@ import {
   type EmployeeTimelineItemDto,
   type ListEmployeesQuery,
   type Paginated,
+  type ChangeEmployeeCode,
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
@@ -798,6 +799,85 @@ class EmployeeService {
       changes: changed.map((field) => ({ field: `insurance.${field}`, old: '[redacted]', new: '[redacted]' })),
     });
     return updated;
+  }
+
+  /**
+   * Change the Employee Code BY HAND (ADR-017, amended 2026-11-01).
+   *
+   * «عايزك تعمل إمكانية تغيير كود الموظف». ADR-017 keeps the SYSTEM from ever rewriting a code — a
+   * transfer used to re-derive it and rename people silently. This is a person, holding
+   * `employee.changeCode`, typing the new code and saying why. Nothing composes it, so the
+   * `code-freeze` guard's count of composing paths does not move.
+   *
+   * What follows the code, and what does not:
+   *   · the employee's SIGN-IN NAME, when it is still the old code — it was issued as the code, and
+   *     an employee told «your code is now X» signs in with X. A sign-in name somebody chose on
+   *     purpose is left alone. The answer says which happened, so the screen can tell HR.
+   *   · the employee file's copy, which is kept in step the same way a transfer keeps it.
+   *   · NOT the copies on contracts, leave requests, past personnel actions and the like: those are
+   *     records of what was true when they were made, and a contract signed under 0100286 was signed
+   *     under 0100286.
+   *
+   * Taken codes are refused across every state, deleted employees included: `ux_code` is unique
+   * over all of them, and the roster import identifies people by code.
+   */
+  async changeCode(
+    ctx: AuthContext,
+    id: string,
+    input: ChangeEmployeeCode,
+    scope: ScopeSelector,
+  ): Promise<{ doc: EmployeeDoc; loginUsernameChanged: boolean }> {
+    const before = await employeeRepository.getById(id, scope);
+    const code = input.code.trim();
+    if (code === before.code) throw new BusinessRuleError('the new code is the same as the current one');
+
+    const holder = await employeeRepository.findByCodeAnyState(code);
+    if (holder !== null) {
+      throw new ConflictError(`employee code ${code} is already held by another employee record`);
+    }
+
+    // The sign-in name follows only if it is still the code it was issued as. Checked BEFORE the
+    // code is written, so a clash refuses the whole change rather than leaving half of it done.
+    const user = before.userId === null ? null : await userService.findByIdSystem(String(before.userId));
+    const renameLogin = user !== null && (user.username ?? '') === before.code.toLowerCase();
+    if (renameLogin) {
+      const taken = await userService.findByUsernameOrEmail(code);
+      if (taken !== null && String(taken._id) !== String(user._id)) {
+        throw new ConflictError(`the sign-in name ${code} is already used by another account`);
+      }
+    }
+
+    const updated = await employeeRepository.updateById(
+      id,
+      { code },
+      { by: ctx.userId, version: input.version, scope },
+    );
+
+    let loginUsernameChanged = false;
+    if (renameLogin) {
+      try {
+        await userService.update(String(user._id), { username: code, version: user.__v }, ctx.userId);
+        loginUsernameChanged = true;
+      } catch (error) {
+        // The code is changed either way; a sign-in name that could not follow is reported, not
+        // allowed to undo the change somebody asked for.
+        logger.warn({ err: error, employeeId: id, code }, 'employee code changed; sign-in name did not follow');
+      }
+    }
+
+    const { employeeFileService } = await import('../employee-file');
+    await employeeFileService.syncEmployeeIdentity(id, code, String(updated.branchId));
+
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        { field: 'code', old: before.code, new: code },
+        { field: 'codeChangeReason', old: null, new: input.reason.trim() },
+        ...(loginUsernameChanged ? [{ field: 'loginUsername', old: before.code.toLowerCase(), new: code }] : []),
+      ],
+    });
+    return { doc: updated, loginUsernameChanged };
   }
 
   /** Replace the officer/armed-security profile whole. Same rules as `updateInsurance`. */

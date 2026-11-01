@@ -8153,6 +8153,9 @@ const en: Record<string, string> = {
     'Vehicle licence expiry warning (days)',
   'systemAdmin.settings.keys.fleet.license.driverWarnDays': 'Driver licence expiry warning (days)',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'Default branch for new vehicles',
+  'systemAdmin.settings.keys.fleet.roster.refuseExpiredLicence':
+    'Refuse planning a driver or vehicle with an expired licence',
+  'systemAdmin.settings.keys.fleet.odometer.missingReadingDays': 'No odometer reading alert (days)',
 
   // P9-A — the setup link an administrator delivers by hand.
   'systemAdmin.users.actions.setupLink': 'Copy setup link',
@@ -18808,6 +18811,9 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.keys.fleet.license.driverWarnDays':
     'التنبيه قبل انتهاء رخصة السائق (بالأيام)',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'الفرع الافتراضي للسيارات الجديدة',
+  'systemAdmin.settings.keys.fleet.roster.refuseExpiredLicence':
+    'رفض تخطيط السائق أو السيارة برخصة منتهية',
+  'systemAdmin.settings.keys.fleet.odometer.missingReadingDays': 'تنبيه غياب قراءة العداد (أيام)',
 
   // P9-A — رابط الإعداد الذي يسلّمه المشرف يدويًا
   'systemAdmin.users.actions.setupLink': 'نسخ رابط الإعداد',

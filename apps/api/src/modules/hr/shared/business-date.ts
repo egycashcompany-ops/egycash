@@ -1,20 +1,13 @@
 // HR business dates (Leave design R10): the business calendar is Africa/Cairo; storage is
 // UTC-midnight date-only. Every "today"/dueness comparison in the leave domain (and later
 // Attendance) goes through these helpers so a UTC server never off-by-ones a Cairo date.
-const CAIRO_TZ = 'Africa/Cairo';
+import { cairoCalendarDate } from '@ecms/contracts';
 
-const cairoFormatter = new Intl.DateTimeFormat('en-CA', {
-  timeZone: CAIRO_TZ,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-/** UTC-midnight Date of the Cairo calendar date the instant falls on. */
-export const cairoCalendarDate = (instant: Date): Date => {
-  const [y, m, d] = cairoFormatter.format(instant).split('-').map(Number) as [number, number, number];
-  return new Date(Date.UTC(y, m - 1, d));
-};
+/**
+ * UTC-midnight Date of the Cairo calendar date the instant falls on. MOVED to contracts (the fleet
+ * dashboard's Cairo day is the same rule) and re-exported here, so every HR caller is unchanged.
+ */
+export { cairoCalendarDate };
 
 /** UTC-midnight Date of "today" on the Cairo business calendar. */
 export const cairoToday = (): Date => cairoCalendarDate(new Date());

@@ -242,6 +242,11 @@ export interface FleetVehicleContractDto {
   /** `null` when nothing is owed, there is no deadline, or it is more than 30 days away. */
   alarm: FleetSupplyAlarmDto | null;
   version: number;
+  /**
+   * The user who saved it; `null` when unknown. A holder of `create` without `edit` may add pages
+   * only to the contracts they saved.
+   */
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 }

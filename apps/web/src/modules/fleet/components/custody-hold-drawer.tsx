@@ -13,7 +13,7 @@ import { type FleetCustodyOperationDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Button } from '../../../shared/ui/Button';
 import { CheckIcon } from '../../../shared/ui/icons';
-import { operationStatusOf } from '../lib/custody-hold';
+import { cairoDayOf, operationStatusOf } from '../lib/custody-hold';
 import { BoardIcon, NUM, ymd } from './FuelCardBoard';
 import { CANCEL_ICON, CancelledChip, HOLD_CLOCK } from './custody-hold-parts';
 
@@ -64,7 +64,7 @@ export const HoldDrawerNote = ({
   }
   if (status === 'cancelled') {
     const cancellation = op.cancellation;
-    const day = cancellation === null ? '' : ymd(cancellation.at.slice(0, 10));
+    const day = cancellation === null ? '' : ymd(cairoDayOf(cancellation.at));
     return (
       <div
         data-ledger-cancelled-note="true"

@@ -102,6 +102,7 @@ export const toVehicleContractDto = (
     total: fromPiastres(figures.totalPiastres),
     alarm: alarmOf(doc, todayYmd, figures),
     version: doc.__v,
+    createdBy: doc.createdBy === null ? null : String(doc.createdBy),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };

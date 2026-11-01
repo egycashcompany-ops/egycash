@@ -34,6 +34,23 @@ export const isCancelled = (row: {
   status?: FleetCustodyOperationStatus | null | undefined;
 }): boolean => operationStatusOf(row) === 'cancelled';
 
+const CAIRO_DAY = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Africa/Cairo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/**
+ * The Cairo calendar day, `YYYY-MM-DD`, of an instant the API stamps (`toISOString()`, UTC) — so
+ * «ألغاها … في …» names the day he cancelled on, not the UTC one (a day early from Cairo's midnight
+ * to 02:00, 03:00 in summer). A value that is not an instant keeps its first ten characters.
+ */
+export const cairoDayOf = (iso: string): string => {
+  const instant = new Date(iso);
+  return Number.isNaN(instant.getTime()) ? iso.slice(0, 10) : CAIRO_DAY.format(instant);
+};
+
 // ── «تأكيد التحويل» ─────────────────────────────────────────────────────────────────────────────
 
 export type TransferDateProblem = 'missing' | 'beforeLetter';

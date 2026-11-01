@@ -105,12 +105,15 @@ const memoKinds = (raw: string | null): FleetCustodySource[] =>
   csv(raw).filter((v): v is FleetCustodySource =>
     (FLEET_CUSTODY_SOURCES as readonly string[]).includes(v),
   );
-/** «الحالة» as the address holds it — one of the two, or no filter at all. */
 /** A memo's status as the filter names it — pending, held for its transfer, or replenished. */
 const memoStatusKey = (
   memo: Pick<FleetCustodyMemoRowDto, 'replenishment'>,
 ): FleetCustodyMemoStatus =>
   memo.replenishment === null ? 'pending' : memo.replenishment.held ? 'held' : 'replenished';
+/**
+ * «الحالة» as the address holds it — one of the three (pending, held, replenished), or no filter
+ * at all.
+ */
 const memoStatusOf = (raw: string | null): FleetCustodyMemoStatus | '' =>
   (FLEET_CUSTODY_MEMO_STATUSES as readonly string[]).includes(raw ?? '')
     ? (raw as FleetCustodyMemoStatus)

@@ -4661,6 +4661,7 @@ const en: Record<string, string> = {
   'fleet.custody.ledger.viewExpenses': 'View the receipts on «Custody expenses»',
   'fleet.custody.fund.spentOfRequests': 'Spent of all requests',
   'fleet.custody.ledger.detail.twoMemosGenitive': '2 memos',
+  'fleet.custody.ledger.parts.twoGenitive': '2 licensing expenses',
   'fleet.custody.hold.chip': 'On hold',
   'fleet.custody.hold.chipTitle':
     'Waiting for the money to be transferred — not counted in the custody fund until «Confirm transfer»',
@@ -14438,6 +14439,7 @@ const ar: Record<string, string> = {
   'fleet.custody.ledger.viewExpenses': 'عرض الإيصالات في «مصروفات العهدة»',
   'fleet.custody.fund.spentOfRequests': 'صُرف من إجمالي طلبات العهدة',
   'fleet.custody.ledger.detail.twoMemosGenitive': 'مذكرتين',
+  'fleet.custody.ledger.parts.twoGenitive': 'مصروفَي تراخيص',
   'fleet.custody.hold.chip': 'معلّقة',
   'fleet.custody.hold.chipTitle':
     'في انتظار تحويل المبلغ — لا تُحسب في إجمالي العهدة حتى «تأكيد التحويل»',

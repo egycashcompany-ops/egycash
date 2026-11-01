@@ -47,7 +47,10 @@ describe('«مرفقات العقد» over HTTP', () => {
       .attach('file', body, { filename, contentType });
 
   beforeAll(async () => {
-    contract = await created({ date: '2026-10-10', lines: [{ typeId: typeA, count: 1 }] });
+    // Saved by the creator, who adds its pages right after the save — `create` reaches its own.
+    const res = await create({ date: '2026-10-10', lines: [{ typeId: typeA, count: 1 }] }, creator);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    contract = data<FleetVehicleContractDto>(res);
   });
 
   it('keeps an Arabic name, serves the bytes, orders, and removes softly', async () => {
@@ -100,6 +103,52 @@ describe('«مرفقات العقد» over HTTP', () => {
     expect(
       (await request(app).get(`/api/v1/platform/files/${file.fileId}`).set(auth(admin))).status,
     ).toBe(200);
+  });
+});
+
+describe('`create` without `edit` reaches only the contracts its holder saved', () => {
+  it('refuses a page on another user’s contract, and the platform /files side door to its pages', async () => {
+    const theirs = await created({ date: '2026-10-12', lines: [{ typeId: typeA, count: 1 }] });
+    expect(theirs.createdBy).not.toBeNull();
+    const page = data<FleetVehicleContractFileDto>(
+      await request(app)
+        .post(`${URL_}/${theirs.id}/files`)
+        .set(auth(admin))
+        .attach('file', PNG, { filename: 'p.png', contentType: 'image/png' }),
+    );
+    const onTheirs = await request(app)
+      .post(`${URL_}/${theirs.id}/files`)
+      .set(auth(creator))
+      .attach('file', PNG, { filename: 'x.png', contentType: 'image/png' });
+    expect(onTheirs.status).toBe(403);
+    const files = '/api/v1/platform/files';
+    expect((await request(app).delete(`${files}/${page.fileId}`).set(auth(creator))).status).toBe(
+      403,
+    );
+    expect(
+      (await request(app).post(`${files}/${page.fileId}/archive`).set(auth(creator))).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .post(`${files}/${page.fileId}/replace`)
+          .set(auth(creator))
+          .attach('file', PNG, { filename: 'y.png', contentType: 'image/png' })
+      ).status,
+    ).toBe(403);
+    expect((await FileModel.findById(page.fileId).lean())?.isDeleted).toBe(false);
+    const read = data<FleetVehicleContractDto>(
+      await request(app).get(`${URL_}/${theirs.id}`).set(auth(viewer)),
+    );
+    expect(read.files.map((f) => f.fileId)).toEqual([page.fileId]);
+
+    // On a contract the creator saved, `create` adds its pages.
+    const mine = await create({ date: '2026-10-12', lines: [{ typeId: typeA, count: 1 }] }, creator);
+    const minePage = await request(app)
+      .post(`${URL_}/${data<FleetVehicleContractDto>(mine).id}/files`)
+      .set(auth(creator))
+      .attach('file', PNG, { filename: 'z.png', contentType: 'image/png' });
+    expect(minePage.status, JSON.stringify(minePage.body)).toBe(201);
   });
 });
 

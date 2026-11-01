@@ -49,6 +49,7 @@ import {
 import { ContractFilesSection } from '../components/VehicleContractFilesSection';
 import { VehicleContractDeliveryDialog } from '../components/VehicleContractDeliveryDialog';
 import { pct } from '../lib/vehicle-contract-figures';
+import { mayAddContractFiles } from '../lib/vehicle-contract-save';
 import { latin, useVehicleContractWords } from '../lib/vehicle-contract-words';
 
 /** The forms' panel (`DESIGN_COLUMN`'s colours), as a card of the record page. */
@@ -71,6 +72,7 @@ export const VehicleContractPage = (): JSX.Element => {
   const can = useCan();
   const words = useVehicleContractWords();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const meId = useAppSelector((state) => state.auth.me?.id ?? null);
   const { id = '' } = useParams();
   const { hash } = useLocation();
   const contract = useVehicleContract(id);
@@ -264,7 +266,7 @@ export const VehicleContractPage = (): JSX.Element => {
 
         <ContractFilesSection
           contract={c}
-          mayAdd={can('fleetVehicleContract.create') || can('fleetVehicleContract.edit')}
+          mayAdd={mayAddContractFiles(can, meId, c)}
           mayChange={can('fleetVehicleContract.edit')}
           onRefused={reread}
           panel={PANEL}

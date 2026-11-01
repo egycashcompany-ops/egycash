@@ -569,6 +569,13 @@ export interface AtmRefLabelOptionsDto {
  */
 export const ATM_BULK_MAX_IDS = 200;
 
+/**
+ * The most lines one open request carries (both open forms). A paste can hold more — the owner
+ * pasted 700 replenishments at once (2026-11-01) — and the form sends them in consecutive requests
+ * of this size, joined as one answer, as the bulk actions do with `ATM_BULK_MAX_IDS`.
+ */
+export const ATM_OPEN_MAX_ROWS = 200;
+
 /** Bulk id selection — the checkbox multi-select every legacy grid action supports. */
 export const AtmOperationIdsSchema = z
   .object({ ids: z.array(objectId()).min(1).max(ATM_BULK_MAX_IDS) })
@@ -784,7 +791,7 @@ export const OpenAtmReplenishmentsSchema = z
           .strict(),
       )
       .min(1)
-      .max(200),
+      .max(ATM_OPEN_MAX_ROWS),
     forceDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -898,7 +905,7 @@ export const OpenAtmMaintenancesSchema = z
           .strict(),
       )
       .min(1)
-      .max(200),
+      .max(ATM_OPEN_MAX_ROWS),
     openedAt: z.coerce.date().nullable().default(null),
   })
   .strict();

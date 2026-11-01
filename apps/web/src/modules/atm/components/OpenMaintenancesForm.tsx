@@ -4,6 +4,12 @@
 // distinguishes it from the replenishment form. Unknown codes and the codes the owner's rule left
 // unopened (an open maintenance already, or pasted twice — port doc OD-1) are shown in red.
 //
+// Any number of lines: they go in consecutive requests of `ATM_OPEN_MAX_ROWS` (`openInBatches`).
+// If the run stops, what went before stays opened and ONLY the lines certainly not sent stay in
+// the boxes; the lines of a request that got no answer are named under the form
+// (`OpenStopNotice`), to be checked in the table and put back by hand; they stay until then,
+// whatever is pressed meanwhile. The boxes are held while the run goes.
+//
 // The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
 // in one bordered row so entry and narrowing read as a single band (MaintenancePage.tsx).
 import { useState, type FormEvent } from 'react';
@@ -13,10 +19,21 @@ import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
+import { type MaintenanceOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
 import { OpenRefusalNotice } from './OpenRefusalNotice';
+import {
+  OpenStopNotice,
+  emptyOpenStop,
+  openPressEnded,
+  openPressStarted,
+  prependLines,
+  withoutRows,
+  type OpenStopState,
+} from './OpenStopNotice';
 
 export const buildMaintenanceRows = (
   codesRaw: string,
@@ -37,6 +54,15 @@ export const buildMaintenanceRows = (
     .filter((row) => row.machineCode !== '');
 };
 
+/** Pure: rows back into the form's three boxes, line by line — `buildMaintenanceRows` reversed. */
+export const maintenanceLines = (
+  rows: readonly MaintenanceOpenRow[],
+): { codes: string; services: string; references: string } => ({
+  codes: rows.map((row) => row.machineCode).join('\n'),
+  services: rows.map((row) => row.serviceType ?? '').join('\n'),
+  references: rows.map((row) => row.referenceNumber ?? '').join('\n'),
+});
+
 export const OpenMaintenancesForm = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -47,11 +73,13 @@ export const OpenMaintenancesForm = (): JSX.Element => {
   const [openedAt, setOpenedAt] = useState('');
   const [unknownCodes, setUnknownCodes] = useState<string[]>([]);
   const [alreadyOpenCodes, setAlreadyOpenCodes] = useState<string[]>([]);
+  const [stop, setStop] = useState<OpenStopState<MaintenanceOpenRow>>(emptyOpenStop);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     const rows = buildMaintenanceRows(codes, services, references);
     if (rows.length === 0) return;
+    setStop(openPressStarted);
     try {
       const result = await open.mutateAsync({
         rows,
@@ -61,6 +89,23 @@ export const OpenMaintenancesForm = (): JSX.Element => {
       setAlreadyOpenCodes(result.alreadyOpenCodes);
       if (result.opened.length > 0) {
         toast.success(t('atm.maintenance.openedCount', { count: result.opened.length }));
+      }
+      if (result.unsent.length > 0 || result.uncertain.length > 0) {
+        // Stopped part-way: only the lines certainly not sent stay in the boxes.
+        const left = maintenanceLines(result.unsent);
+        setCodes(left.codes);
+        setServices(left.services);
+        setReferences(left.references);
+        setStop((held) => openPressEnded(held, result));
+        toast.error(
+          result.uncertain.length > 0
+            ? t('atm.common.openUncertain', { count: result.uncertain.length })
+            : t('atm.common.openStopped', { count: result.unsent.length }),
+          result.uncertain.length > 0
+            ? `${t('atm.common.openUncertainRisk')} ${errorMessage(result.failure, locale)}`
+            : errorMessage(result.failure, locale),
+        );
+      } else if (result.opened.length > 0) {
         setCodes('');
         setServices('');
         setReferences('');
@@ -83,6 +128,21 @@ export const OpenMaintenancesForm = (): JSX.Element => {
     }
   };
 
+  /** The lines of unknown outcome, back before what the boxes hold — the reader checked the table. */
+  const restoreUncertain = (): void => {
+    const shown = stop.uncertain;
+    const back = maintenanceLines(shown);
+    setCodes((current) => prependLines(back.codes, current));
+    setServices((current) => prependLines(back.services, current));
+    setReferences((current) => prependLines(back.references, current));
+    setStop((held) => ({ ...held, uncertain: withoutRows(held.uncertain, shown) }));
+  };
+  /** Hide the list the reader saw — they checked the table, or will not reopen them. */
+  const dismissUncertain = (): void => {
+    const shown = stop.uncertain;
+    setStop((held) => ({ ...held, uncertain: withoutRows(held.uncertain, shown) }));
+  };
+
   return (
     <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-end gap-3">
       <Field label={t('atm.replenishments.machineCodes')} required>
@@ -90,6 +150,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
           value={codes}
           onChange={setCodes}
           required
+          disabled={open.isPending}
           placeholder={t('atm.replenishments.machineCodesHint')}
         />
       </Field>
@@ -97,6 +158,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         <LineListInput
           value={services}
           onChange={setServices}
+          disabled={open.isPending}
           placeholder={t('atm.maintenance.serviceTypesHint')}
         />
       </Field>
@@ -104,6 +166,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         <LineListInput
           value={references}
           onChange={setReferences}
+          disabled={open.isPending}
           placeholder={t('atm.maintenance.referenceNumbersHint')}
         />
       </Field>
@@ -111,6 +174,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         <Input
           type="datetime-local"
           value={openedAt}
+          disabled={open.isPending}
           onChange={(e) => setOpenedAt(e.target.value)}
         />
       </Field>
@@ -118,6 +182,16 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         {t('atm.maintenance.openAction')}
       </Button>
       <OpenRefusalNotice unknownCodes={unknownCodes} alreadyOpenCodes={alreadyOpenCodes} />
+      {(stop.unsent > 0 || stop.uncertain.length > 0) && (
+        <OpenStopNotice
+          unsent={stop.unsent}
+          uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
+          action={t('atm.maintenance.openAction')}
+          busy={open.isPending}
+          onRestore={restoreUncertain}
+          onDismiss={dismissUncertain}
+        />
+      )}
     </form>
   );
 };

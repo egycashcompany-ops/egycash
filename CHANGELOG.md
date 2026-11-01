@@ -282,6 +282,21 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The open forms take any number of pasted lines.** «كان عندى حوالى 700 تغذية لماكينات لما
+  بضيفهم كلهم مره واحده بيجيب الرساله … لكن لما قللتهم 100 او 200 فى المرة بقي يضيف عادى». One open
+  request carries at most 200 lines, so a longer paste was refused whole («بعض الحقول تحتاج إلى
+  مراجعة» then «لم تنجح العملية»). The replenishment and maintenance forms now send the lines in
+  consecutive requests of 200 (`ATM_OPEN_MAX_ROWS`), in order, with one date or open time for all,
+  and show one answer: the opened count, the unknown codes, and on maintenance the codes already
+  open that day. The boxes are held while the run goes. If it stops, what went before stays
+  opened, and the form says what happened under the boxes as well as in a toast:
+  - lines certainly not sent (after the failed request, or in a request the API refused, which
+    writes nothing) go back into the boxes: «توقف الإرسال قبل آخر … سطر»; pressing open sends them;
+  - the lines of a request whose result is unknown (a dropped connection, a 5xx) may have opened,
+    and a replenishment opens again on every send, so they are NOT put back: they are named apart,
+    «لم تتأكد نتيجة … سطر — قد يكون بعضها فُتح. راجع الجدول قبل فتحها مرة أخرى», and stay there
+    through later presses until «إعادتها إلى الخانات» puts them back (after checking the table) or
+    «إخفاء القائمة» hides them.
 - **The leader pickers offer the ATM employees' names — the maintenance close above all.**
   «تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية .. وخصوصاً عند تقفيل
   ماكينات الصيانة». The close's employee list read `atm.maintenanceLeaderDepartmentIds`, which

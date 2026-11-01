@@ -103,10 +103,13 @@ export const navReducer = (state: NavState, action: NavAction): NavState => {
       // Unpinned by a pointer press, the panel floats on under that pointer and closes once it
       // leaves — it does not vanish under the click. The hover-open delay may not have run out yet
       // (a quick move and click, or a tap), so the press itself is the proof the pointer is there.
+      // Pressed from the keyboard, the keyboard is on the pin — even if a click put the focus there
+      // earlier — so the panel floats on with it rather than vanishing from under a visible control.
       return {
         ...state,
         pinned: !state.pinned,
         pointer: state.pinned && action.byPointer ? true : state.pointer,
+        focused: action.byPointer ? state.focused : true,
       };
   }
 };
@@ -222,6 +225,11 @@ export interface FloatingNav {
    * panel would pop open over the page after Alt+M then Escape, which nobody asked for.
    */
   restoreFocus: (el: HTMLElement | null) => void;
+  /**
+   * The same for the panel's OWN launchpad: loud (the keyboard arriving) if the keyboard had the
+   * panel open when it was raised, quiet otherwise.
+   */
+  returnFocus: (el: HTMLElement | null) => void;
 }
 
 export const useFloatingNav = (enabled: boolean): FloatingNav => {
@@ -326,13 +334,16 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
   }, [enabled, state.focused, syncFocus]);
 
   // Showing and hiding, in the DOM, before the browser paints:
-  //   • hiding with the focus in the panel brings it back to the same place in the strip or rail
-  //     first (Escape, or the pointer leaving after a click inside), so it is not dropped on <body>;
+  //   • hiding with the KEYBOARD focus in the panel (Escape) brings it back to the same place in the
+  //     strip or rail first, so it is not dropped on <body>. A focus a mouse click left there is
+  //     let go instead: parked on a strip or rail control, the next Space or Enter would press it;
   //   • the hidden panel is `inert`;
-  //   • where the panel covers the strip (the launchpad's, marked `data-nav-covered`), focus on the
-  //     strip is handed to the same control in the panel, and the strip is `inert` while the panel
-  //     shows — its controls are behind an opaque panel, and Tab would walk through every one of
-  //     them unseen. Only once the focus is out of it: `inert` on a focused element drops the focus.
+  //   • where the panel covers the strip (the launchpad's, marked `data-nav-covered`), keyboard
+  //     focus on the strip is handed to the same control in the panel — a mouse click's focus is
+  //     let go instead, since focusing the twin would scroll the list to it — and the strip is
+  //     `inert` while the panel shows: its controls are behind an opaque panel, and Tab would walk
+  //     through every one of them unseen. Only once the focus is out of it: `inert` on a focused
+  //     element drops the focus.
   // After EVERY render, not on a change of mode: the box is not in the DOM while the menu loads, so
   // a panel that mounts already hidden would otherwise never be made inert. Each step only acts on
   // where the focus is now, so running it again changes nothing.
@@ -343,18 +354,23 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
     const covered = el.querySelector<HTMLElement>('[data-nav-covered]');
     const showing = mode !== 'hidden';
     if (panel !== null) {
-      if (!showing && panel.contains(document.activeElement)) {
+      const active = document.activeElement;
+      if (!showing && panel.contains(active)) {
         const home = homeOf(el);
-        if (home !== null) {
+        if (keyboardFocus(active) && home !== null) {
           home.removeAttribute('inert');
-          quietFocus(counterpart(document.activeElement, home));
+          quietFocus(counterpart(active, home));
+        } else if (active instanceof HTMLElement) {
+          active.blur();
         }
       }
       panel.toggleAttribute('inert', !showing);
     }
     if (covered !== null) {
-      if (showing && panel !== null && covered.contains(document.activeElement)) {
-        quietFocus(counterpart(document.activeElement, panel));
+      const active = document.activeElement;
+      if (showing && panel !== null && covered.contains(active)) {
+        if (keyboardFocus(active)) quietFocus(counterpart(active, panel));
+        else if (active instanceof HTMLElement) active.blur();
       }
       covered.toggleAttribute('inert', showing && !covered.contains(document.activeElement));
     }
@@ -385,6 +401,32 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
     dispatch({ type: 'toggle', byPointer });
   }, []);
 
+  // Whether the keyboard had the panel open when the launchpad was raised from it (see returnFocus).
+  const focusedNow = useRef(state.focused);
+  useLayoutEffect(() => {
+    focusedNow.current = state.focused;
+  });
+  const keyboardHeld = useRef(false);
+  const hold = useCallback((): void => {
+    keyboardHeld.current = focusedNow.current;
+    dispatch({ type: 'hold' });
+  }, []);
+  const release = useCallback((): void => dispatch({ type: 'release' }), []);
+
+  // The panel's own launchpad closing gives the focus back to the panel's switcher. That counts as
+  // the keyboard arriving only if the keyboard had the panel open when the launchpad was raised:
+  // otherwise a panel the pointer floated would stay open over the page after Alt+M then Escape,
+  // with the pointer long gone.
+  const returnFocus = useCallback(
+    (el: HTMLElement | null): void => {
+      const loud = keyboardHeld.current;
+      keyboardHeld.current = false;
+      if (loud) el?.focus();
+      else quietFocus(el);
+    },
+    [quietFocus],
+  );
+
   // A launchpad opened from the strip may close while the panel floats over the strip (the pointer
   // came to rest on it meanwhile): the strip's switcher is inert then, and the focus goes to the
   // panel's own switcher instead of being dropped.
@@ -407,8 +449,9 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
     held: state.held,
     togglePinned,
     hoverProps: { ref, onMouseOver, onMouseOut, onFocus, onBlur },
-    hold: useCallback(() => dispatch({ type: 'hold' }), []),
-    release: useCallback(() => dispatch({ type: 'release' }), []),
+    hold,
+    release,
     restoreFocus,
+    returnFocus,
   };
 };

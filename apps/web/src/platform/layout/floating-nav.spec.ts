@@ -133,14 +133,23 @@ describe('the rules (navReducer)', () => {
     expect(navPanelMode(after)).toBe('floating');
   });
 
-  it('unpinned from the keyboard, the focus keeps it floating; with nothing on it, it hides', () => {
+  it('a key press on the pin is the keyboard arriving: unpinned that way, the panel floats on with it', () => {
     const byKey = navReducer(state({ pinned: true, focused: true }), {
       type: 'toggle',
       byPointer: false,
     });
     expect(navPanelMode(byKey)).toBe('floating');
-    const nothing = navReducer(state({ pinned: true }), { type: 'toggle', byPointer: false });
-    expect(navPanelMode(nothing)).toBe('hidden');
+    // Even when a click put the focus on the pin earlier and the pointer has gone since: the
+    // person pressed a key on a visible control, and the whole panel must not vanish under it.
+    const clickedEarlier = navReducer(state({ pinned: true }), {
+      type: 'toggle',
+      byPointer: false,
+    });
+    expect(clickedEarlier.focused).toBe(true);
+    expect(navPanelMode(clickedEarlier)).toBe('floating');
+    // A pointer press does not claim the keyboard.
+    const byPointer = navReducer(state({ pinned: true }), { type: 'toggle', byPointer: true });
+    expect(byPointer.focused).toBe(false);
   });
 
   it('pinning does not invent a pointer', () => {
@@ -322,8 +331,9 @@ describe('the hook feeds the rules from the DOM', () => {
       /if \(state\.pinned === lastPersisted\.current\) return;\s*lastPersisted\.current = state\.pinned;\s*persistNavPinned\(state\.pinned\);\s*\}, \[state\.pinned\]\);/,
     );
     expect(HOOK).toMatch(
-      /hold: useCallback\(\(\) => dispatch\(\{ type: 'hold' \}\), \[\]\),\s*release: useCallback\(\(\) => dispatch\(\{ type: 'release' \}\), \[\]\),/,
+      /const release = useCallback\(\(\): void => dispatch\(\{ type: 'release' \}\), \[\]\);/,
     );
+    expect(HOOK).toMatch(/hold,\s*release,\s*restoreFocus,\s*returnFocus,\s*\};/);
   });
 
   it('one box, with a ref, listens for the pointer and the focus — entering and leaving read from the DOM', () => {
@@ -380,13 +390,15 @@ describe('the hook feeds the rules from the DOM', () => {
     expect(HOOK).toContain("document.addEventListener('pointerdown', syncFocus, true);");
   });
 
-  it('hiding brings a focus in the panel home first; the hidden panel is inert', () => {
+  it('hiding brings a KEYBOARD focus in the panel home first, lets a mouse focus go; the hidden panel is inert', () => {
     // Hidden is the ONLY state that is inert: a docked panel made inert could not be unpinned.
     expect(HOOK).toMatch(
       /const covered = el\.querySelector<HTMLElement>\('\[data-nav-covered\]'\);\s*const showing = mode !== 'hidden';/,
     );
+    // A focus a mouse click left in the panel is let go: parked on a strip or rail control, the
+    // next Space or Enter would press it (re-navigating and dropping the page's filters).
     expect(HOOK).toMatch(
-      /if \(!showing && panel\.contains\(document\.activeElement\)\) \{\s*const home = homeOf\(el\);\s*if \(home !== null\) \{\s*home\.removeAttribute\('inert'\);\s*quietFocus\(counterpart\(document\.activeElement, home\)\);\s*\}\s*\}\s*panel\.toggleAttribute\('inert', !showing\);/,
+      /const active = document\.activeElement;\s*if \(!showing && panel\.contains\(active\)\) \{\s*const home = homeOf\(el\);\s*if \(keyboardFocus\(active\) && home !== null\) \{\s*home\.removeAttribute\('inert'\);\s*quietFocus\(counterpart\(active, home\)\);\s*\} else if \(active instanceof HTMLElement\) \{\s*active\.blur\(\);\s*\}\s*\}\s*panel\.toggleAttribute\('inert', !showing\);/,
     );
   });
 
@@ -395,8 +407,10 @@ describe('the hook feeds the rules from the DOM', () => {
     // panel that mounted already hidden was never made inert (its links stayed in the tab order).
     // `inert` on a focused element drops the focus to <body>: the keyboard could not reach the
     // panel at all while the handover was racing a visibility transition.
+    // Only a keyboard focus is handed over; a mouse click's is let go (focusing the twin would
+    // scroll the panel's list back to it on every hover).
     expect(HOOK).toMatch(
-      /if \(showing && panel !== null && covered\.contains\(document\.activeElement\)\) \{\s*quietFocus\(counterpart\(document\.activeElement, panel\)\);\s*\}\s*covered\.toggleAttribute\('inert', showing && !covered\.contains\(document\.activeElement\)\);\s*\}\s*\}\);/,
+      /const active = document\.activeElement;\s*if \(showing && panel !== null && covered\.contains\(active\)\) \{\s*if \(keyboardFocus\(active\)\) quietFocus\(counterpart\(active, panel\)\);\s*else if \(active instanceof HTMLElement\) active\.blur\(\);\s*\}\s*covered\.toggleAttribute\('inert', showing && !covered\.contains\(document\.activeElement\)\);\s*\}\s*\}\);/,
     );
   });
 
@@ -510,8 +524,20 @@ describe('on a desktop: over the page on hover, in the layout once pinned', () =
     );
   });
 
-  it('launchpad: a launchpad closed from the strip gives the focus back quietly', () => {
+  it('launchpad: a launchpad closed from the strip gives the focus back quietly; the panel’s own, loudly only if the keyboard had the panel open', () => {
     expect(LAUNCHPAD).toMatch(/<IconStrip[^/]*?restoreFocus=\{floating\.restoreFocus\}/);
+    expect(LAUNCHPAD).toMatch(
+      /onClosed=\{floating\.release\}\s*restoreFocus=\{collapsible \? floating\.returnFocus : undefined\}/,
+    );
+    expect(HOOK).toMatch(
+      /const hold = useCallback\(\(\): void => \{\s*keyboardHeld\.current = focusedNow\.current;\s*dispatch\(\{ type: 'hold' \}\);/,
+    );
+    expect(HOOK).toMatch(
+      /const loud = keyboardHeld\.current;\s*keyboardHeld\.current = false;\s*if \(loud\) el\?\.focus\(\);\s*else quietFocus\(el\);/,
+    );
+    expect(HOOK).toMatch(
+      /useLayoutEffect\(\(\) => \{\s*focusedNow\.current = state\.focused;\s*\}\);/,
+    );
     expect(LAUNCHPAD).toMatch(
       /if \(focusTrigger\) \{\s*if \(restoreFocus !== undefined\) restoreFocus\(triggerRef\.current\);\s*else triggerRef\.current\?\.focus\(\);/,
     );

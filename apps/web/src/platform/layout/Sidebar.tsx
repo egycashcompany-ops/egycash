@@ -963,6 +963,7 @@ const NavShell = ({
               onNavigate?.();
             }}
             onClosed={floating.release}
+            restoreFocus={collapsible ? floating.returnFocus : undefined}
             onPick={pickModule}
           />
         </div>

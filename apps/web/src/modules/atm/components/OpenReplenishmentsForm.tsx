@@ -6,9 +6,11 @@
 // opens again (the owner, 2026-11-01 — port doc OD-1b), as in the legacy.
 //
 // Any number of lines (2026-11-01: «حوالى 700 تغذية … لما بضيفهم كلهم مره واحده بيجيب الرساله»):
-// they go in consecutive requests of `ATM_OPEN_MAX_ROWS` (`openInBatches`). If a request after the
-// first fails, what went before stays opened and ONLY the lines not sent stay in the boxes — so
-// pressing open again sends those and never opens a line twice.
+// they go in consecutive requests of `ATM_OPEN_MAX_ROWS` (`openInBatches`). If the run stops, what
+// went before stays opened and ONLY the lines certainly not sent stay in the boxes. The lines of a
+// request that got no answer may have opened — a replenishment opens again on every send — so they
+// are named under the form instead (`OpenStopNotice`), to be checked on the board and put back by
+// hand. The boxes are held while the run goes.
 //
 // The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
 // in one bordered row so entry and narrowing read as a single band (ReplenishmentsPage.tsx).
@@ -25,6 +27,7 @@ import { type ReplenishmentOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
 import { OpenRefusalNotice } from './OpenRefusalNotice';
+import { OpenStopNotice, prependLines, type OpenStop } from './OpenStopNotice';
 
 /** Line pairs → rows: code[i] + schedule[i]; blank code lines dropped, as the legacy loop did. */
 export const buildReplenishmentRows = (
@@ -57,11 +60,13 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
   const [schedules, setSchedules] = useState('');
   const [forceDate, setForceDate] = useState(defaultDate);
   const [unknownCodes, setUnknownCodes] = useState<string[]>([]);
+  const [stop, setStop] = useState<OpenStop<ReplenishmentOpenRow> | null>(null);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     const rows = buildReplenishmentRows(codes, schedules);
     if (rows.length === 0) return;
+    setStop(null);
     try {
       const result = await open.mutateAsync({
         rows,
@@ -71,13 +76,18 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
       if (result.opened.length > 0) {
         toast.success(t('atm.replenishments.openedCount', { count: result.opened.length }));
       }
-      if (result.unsent.length > 0) {
-        // Stopped part-way: the lines not sent stay, alone, for the next press.
+      if (result.unsent.length > 0 || result.uncertain.length > 0) {
+        // Stopped part-way: only the lines certainly not sent stay in the boxes.
         const left = replenishmentLines(result.unsent);
         setCodes(left.codes);
         setSchedules(left.schedules);
-        toast.error(errorMessage(result.failure, locale));
-        toast.error(t('atm.common.openStopped', { count: result.unsent.length }));
+        setStop({ unsent: result.unsent.length, uncertain: result.uncertain });
+        toast.error(
+          result.uncertain.length > 0
+            ? t('atm.common.openUncertain', { count: result.uncertain.length })
+            : t('atm.common.openStopped', { count: result.unsent.length }),
+          errorMessage(result.failure, locale),
+        );
       } else if (result.opened.length > 0) {
         setCodes('');
         setSchedules('');
@@ -92,6 +102,15 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
     }
   };
 
+  /** The lines of unknown outcome, back before what the boxes hold — the reader checked the board. */
+  const restoreUncertain = (): void => {
+    if (stop === null) return;
+    const back = replenishmentLines(stop.uncertain);
+    setCodes((current) => prependLines(back.codes, current));
+    setSchedules((current) => prependLines(back.schedules, current));
+    setStop({ ...stop, uncertain: [] });
+  };
+
   return (
     <form onSubmit={(e) => void submit(e)} className="flex flex-wrap items-end gap-3">
       <Field label={t('atm.replenishments.machineCodes')} required>
@@ -99,6 +118,7 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
           value={codes}
           onChange={setCodes}
           required
+          disabled={open.isPending}
           placeholder={t('atm.replenishments.machineCodesHint')}
         />
       </Field>
@@ -106,16 +126,29 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
         <LineListInput
           value={schedules}
           onChange={setSchedules}
+          disabled={open.isPending}
           placeholder={t('atm.replenishments.scheduleTimesHint')}
         />
       </Field>
       <Field label={t('atm.replenishments.forceDate')}>
-        <Input type="date" value={forceDate} onChange={(e) => setForceDate(e.target.value)} />
+        <Input
+          type="date"
+          value={forceDate}
+          disabled={open.isPending}
+          onChange={(e) => setForceDate(e.target.value)}
+        />
       </Field>
       <Button type="submit" loading={open.isPending}>
         {t('atm.replenishments.openAction')}
       </Button>
       <OpenRefusalNotice unknownCodes={unknownCodes} />
+      {stop !== null && (
+        <OpenStopNotice
+          unsent={stop.unsent}
+          uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
+          onRestore={restoreUncertain}
+        />
+      )}
     </form>
   );
 };

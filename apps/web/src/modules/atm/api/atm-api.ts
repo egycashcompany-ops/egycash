@@ -43,6 +43,7 @@ import {
   type AtmMachineSyncDto,
 } from '@ecms/contracts';
 import {
+  ApiError,
   buildQuery,
   del,
   get,
@@ -83,11 +84,30 @@ interface OpenAnswer<Opened> {
 
 /** An open form's lines, sent in batches: the joined answer, and where the run stopped. */
 export interface OpenLinesOutcome<Opened, Row> extends OpenAnswer<Opened> {
-  /** The lines no request carried — the run stopped before them. Empty when every line went. */
+  /**
+   * Lines certainly NOT opened, safe to send again: the lines after the request that failed, and
+   * that request's own lines when the API refused it (`refusedBeforeWriting`). Empty when every
+   * line went.
+   */
   unsent: Row[];
+  /**
+   * The lines of a request that failed WITHOUT a refusal — a 5xx, a dropped connection, a page that
+   * is not the API's. The server may have opened some or all of them (it writes row by row), so
+   * they are never handed back to be sent again as if they had not gone.
+   */
+  uncertain: Row[];
   /** Why the run stopped; `null` when every line went. */
   failure: unknown;
 }
+
+/**
+ * Pure: did this failure refuse the request before anything was written? The API's 4xx answers to
+ * an open — validation, permission, a branch move running, «choose a branch» — are all decided
+ * before the first row is created (both open services check first, then write). Anything else
+ * leaves the request's outcome unknown.
+ */
+export const refusedBeforeWriting = (error: unknown): boolean =>
+  error instanceof ApiError && error.status >= 400 && error.status < 500;
 
 /**
  * An open form's lines, sent in consecutive requests of at most `ATM_OPEN_MAX_ROWS` — a paste can
@@ -95,11 +115,11 @@ export interface OpenLinesOutcome<Opened, Row> extends OpenAnswer<Opened> {
  * were refused whole, 100 or 200 at a time opened). In order, one request at a time; the answers
  * are joined as one, in the lines' order.
  *
- * The FIRST request failing fails the open exactly as before: nothing was opened, and the caller's
- * error handling runs. A LATER one failing stops the run without throwing: what the requests
- * before it opened stands and is answered, and the lines no request carried come back as `unsent`
- * with the `failure` — so the form keeps exactly those lines, and opening again never opens a
- * line twice (a replenishment opens again on every send since OD-1b).
+ * A request the API REFUSES wrote nothing: if it is the first, the open fails exactly as before
+ * (nothing was opened anywhere); if a later one, the run stops and its lines join `unsent` with
+ * the rest. A request that fails WITHOUT an answer stops the run too, but its own lines go to
+ * `uncertain`: some may have opened, and since OD-1b a replenishment opens again on every send, so
+ * the form must not offer them as unsent. Either way what the earlier requests opened stands.
  */
 export const openInBatches = async <Row, Opened>(
   rows: readonly Row[],
@@ -110,15 +130,25 @@ export const openInBatches = async <Row, Opened>(
     unknownCodes: [],
     alreadyOpenCodes: [],
     unsent: [],
+    uncertain: [],
     failure: null,
   };
   for (let start = 0; start < rows.length; start += ATM_OPEN_MAX_ROWS) {
+    const end = start + ATM_OPEN_MAX_ROWS;
     let answer: OpenAnswer<Opened>;
     try {
-      answer = await send(rows.slice(start, start + ATM_OPEN_MAX_ROWS));
+      answer = await send(rows.slice(start, end));
     } catch (error) {
-      if (start === 0) throw error;
-      return { ...outcome, unsent: rows.slice(start), failure: error };
+      if (refusedBeforeWriting(error)) {
+        if (start === 0) throw error;
+        return { ...outcome, unsent: rows.slice(start), failure: error };
+      }
+      return {
+        ...outcome,
+        uncertain: rows.slice(start, end),
+        unsent: rows.slice(end),
+        failure: error,
+      };
     }
     outcome.opened.push(...answer.opened);
     outcome.unknownCodes.push(...answer.unknownCodes);

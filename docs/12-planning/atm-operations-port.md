@@ -129,10 +129,14 @@ ECMS" means.
     refused batch fails the action and nothing after it is sent. **The open forms likewise
     (2026-11-01):** a paste longer than one open request carries (`ATM_OPEN_MAX_ROWS`, 200 —
     unchanged; the owner pasted 700) goes in consecutive requests of that size, in order, with the
-    form's one date or open time on each, joined as one answer (`openInBatches`). The first request
-    failing fails the open as before. A later one failing stops the run without losing what opened:
-    the form keeps only the lines no request carried, so a second press never opens a line twice —
-    which matters since a replenishment opens again on every send (OD-1b).
+    form's one date or open time on each, joined as one answer (`openInBatches`); the boxes are
+    held while it runs. A request the API refuses (a 4xx, decided before any row is written) wrote
+    nothing: the first one fails the open as before, a later one stops the run and its lines go
+    back into the boxes with the rest. A request with no answer (a dropped connection, a 5xx — the
+    server writes row by row) may have opened some of its lines, and a replenishment opens again on
+    every send (OD-1b), so its lines are NOT put back: the form names them apart (`OpenStopNotice`),
+    to be checked on the board, and puts them back only when asked. What earlier requests opened
+    stands either way.
   - **A name is matched as the board shows it.** Bank and area are free text, so the filter
     lists travel escaped: one comma-separated value as before, `\,` a comma inside a name, `\\` a
     backslash (`joinAtmNameList`/`splitAtmNameList`, `atmNameListQuery`) — «Raml, Station» used to

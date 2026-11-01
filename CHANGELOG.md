@@ -288,9 +288,14 @@ its entry here in the same PR.
   مراجعة» then «لم تنجح العملية»). The replenishment and maintenance forms now send the lines in
   consecutive requests of 200 (`ATM_OPEN_MAX_ROWS`), in order, with one date or open time for all,
   and show one answer: the opened count, the unknown codes, and on maintenance the codes already
-  open that day. If a request after the first fails, what went before stays opened and only the
-  lines not sent stay in the boxes, with «توقف الإرسال قبل آخر … سطر», so pressing open again sends
-  those alone and never opens a line twice.
+  open that day. The boxes are held while the run goes. If it stops, what went before stays
+  opened, and the form says what happened under the boxes as well as in a toast:
+  - lines certainly not sent (after the failed request, or in a request the API refused, which
+    writes nothing) go back into the boxes: «توقف الإرسال قبل آخر … سطر»; pressing open sends them;
+  - the lines of a request that got no answer (a dropped connection, a 5xx) may have opened, and a
+    replenishment opens again on every send, so they are NOT put back: they are named apart,
+    «لم يصل رد على … سطر، وقد يكون بعضها فُتح — راجع اللوحة»; «إعادتها إلى الخانات» puts them back
+    once the board has been checked.
 - **The leader pickers offer the ATM employees' names — the maintenance close above all.**
   «تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية .. وخصوصاً عند تقفيل
   ماكينات الصيانة». The close's employee list read `atm.maintenanceLeaderDepartmentIds`, which

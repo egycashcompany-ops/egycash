@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ChangeEmployeeCodeSchema,
   ChangeEmployeeStatusSchema,
   CreateEmployeeLoginSchema,
   EMPLOYEE_STATUS_TRANSITIONS,
@@ -117,5 +118,27 @@ describe('CreateEmployeeLoginSchema — what a login actually needs', () => {
       false,
     );
     expect(CreateEmployeeLoginSchema.safeParse({ lastName: names.lastName }).success).toBe(false);
+  });
+});
+
+describe('ChangeEmployeeCodeSchema — changing a code by hand (ADR-017, amended)', () => {
+  const ok = (code: string, reason = 'تصحيح كود الفرع') =>
+    ChangeEmployeeCodeSchema.safeParse({ code, reason, version: 0 }).success;
+
+  it('accepts the company\'s own shape: 3 digits of branch, then at least 4 of number', () => {
+    expect(ok('0100004')).toBe(true);
+    expect(ok('07012345')).toBe(true);
+    expect(ok(' 0100004 ')).toBe(true);
+  });
+
+  it('refuses anything the roster import would refuse the next time the file is uploaded', () => {
+    expect(ok('010004')).toBe(false);
+    expect(ok('BR-0100004')).toBe(false);
+    expect(ok('0100004A')).toBe(false);
+  });
+
+  it('requires a reason — a code is changed by somebody deciding to, and the record says why', () => {
+    expect(ok('0100004', '')).toBe(false);
+    expect(ok('0100004', '  ')).toBe(false);
   });
 });

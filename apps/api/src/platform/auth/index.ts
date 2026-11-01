@@ -17,3 +17,5 @@ export { registerPortalIdentityResolver } from './portal-identities';
 export { registerExternalSubjectLabel } from './identity-seams';
 export { userSnapshotKey } from './user-snapshot-cache';
 export { ACTIVE_BRANCH_HEADER } from './active-branch';
+export { allowPasskeysFor } from './passkey-audience';
+export { passkeyStore } from './passkey.store';

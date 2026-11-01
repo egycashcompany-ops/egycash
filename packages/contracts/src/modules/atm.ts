@@ -13,7 +13,10 @@ import { z } from 'zod';
 import {
   PaginationQuerySchema,
   booleanQuery,
+  joinNameList,
+  nameListQuery,
   objectId,
+  splitNameList,
   type LocalizedString,
 } from '../common/index.js';
 // `import type`, not an inline `type` specifier: under verbatimModuleSyntax the inline form still
@@ -585,51 +588,17 @@ export type AtmOperationIds = z.infer<typeof AtmOperationIdsSchema>;
 // inside a name, `\\` a backslash. A list whose names hold neither (every link written before this
 // existed) reads exactly as it always did, so a remembered filter or a bookmark keeps working.
 
-const escapeAtmName = (name: string): string => name.replace(/\\/g, '\\\\').replace(/,/g, '\\,');
+// The helpers themselves are the platform's (`joinNameList`, `splitNameList`, `nameListQuery` in
+// `common/`) — the IT registers' name filters needed the same escape — and keep their ATM names here.
 
 /** Names → one list value. The inverse of `splitAtmNameList`. */
-export const joinAtmNameList = (names: readonly string[]): string =>
-  names.map(escapeAtmName).join(',');
+export const joinAtmNameList = joinNameList;
 
-/**
- * One list value → the names it carries: split on the commas that are not escaped, each name
- * trimmed (as `listQuery` trims), empty ones dropped. A backslash before any character keeps that
- * character; a lone trailing backslash is kept as written.
- */
-export const splitAtmNameList = (raw: string): string[] => {
-  const names: string[] = [];
-  let current = '';
-  for (let index = 0; index < raw.length; index += 1) {
-    const char = raw.charAt(index);
-    if (char === '\\' && index + 1 < raw.length) {
-      current += raw.charAt(index + 1);
-      index += 1;
-    } else if (char === ',') {
-      names.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  names.push(current);
-  return names.map((name) => name.trim()).filter((name) => name !== '');
-};
+/** One list value → the names it carries (see `splitNameList`). */
+export const splitAtmNameList = splitNameList;
 
-/**
- * A bank/area list as a query field — `listQuery`'s contract (absent or empty means "not
- * narrowed"; a repeated parameter is accepted too, each occurrence read the same way) with the
- * escape above, so a name holding a comma arrives whole.
- */
-export const atmNameListQuery = (max = 50) =>
-  z.preprocess(
-    (raw) => {
-      if (raw === undefined || raw === null) return undefined;
-      const parts = Array.isArray(raw) ? raw : [raw];
-      const names = parts.flatMap((part) => splitAtmNameList(String(part)));
-      return names.length === 0 ? undefined : names;
-    },
-    z.array(z.string().min(1)).min(1).max(max).optional(),
-  );
+/** A bank/area list as a query field (see `nameListQuery`). */
+export const atmNameListQuery = nameListQuery;
 
 /**
  * Open replenishment/maintenance list — bank/area narrowing. The legacy stored these per user in

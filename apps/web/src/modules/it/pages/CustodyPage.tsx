@@ -13,6 +13,12 @@
 // بتاع الجدول ببيانات الجدول» — the serial in both files, and a filter for each of the table's
 // columns, standing in the columns' own order under the columns' own names: the reader looks up
 // from a column to the filter above it, not along a row of boxes guessing which is which.
+//
+// «وفى /it/custody بردو عايز الصنف يبقي بعد الفئة (فى الفلتر فقط) ونفس الكلام يتفلتر والأتنين يكونوا
+// Multiselect» — in the FILTER BAR only, «الفئة» and then «الصنف» right after it, both taking
+// several answers, the items offered being the chosen categories' own (`useCategoryNameFilter`).
+// The free-text box that used to sit under «الصنف» stays first, named «بحث» now, so the bar does
+// not ask «الصنف» twice.
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ItAssetAssignmentDto, type Locale } from '@ecms/contracts';
@@ -25,7 +31,9 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { EmployeePicker } from '../components/EmployeePicker';
-import { ItCatalogSelect } from '../components/ItCatalogSelect';
+import { AssetNameFilter } from '../components/AssetNameFilter';
+import { ItCatalogMultiSelect } from '../components/ItCatalogMultiSelect';
+import { useCategoryNameFilter } from '../components/useCategoryNameFilter';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Input, Select } from '../../../shared/ui/form';
 import { StatusBadge } from '../../../shared/ui/Badge';
@@ -55,10 +63,12 @@ import {
   statusUpdates,
 } from '../lib/custody-filters';
 import { gatherRegister, printItRegister } from '../lib/register-export';
+import { categoryQuery, namesQuery } from '../lib/category-name-filter';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
+  'asset',
   'assignedFrom',
   'assignedTo',
   'branch',
@@ -148,9 +158,8 @@ export const CustodyPage = (): JSX.Element => {
   const openParam = custodyStatusOf(sp);
   const branchId = sp.get('branch') ?? '';
   const employeeId = sp.get('employee') ?? '';
-  // «الصنف»: the asset's code, name or serial.
+  // «بحث»: the asset's code, name or serial, matched as typed.
   const search = sp.get('q') ?? '';
-  const categoryId = sp.get('category') ?? '';
   // Days as the date boxes write them, `YYYY-MM-DD` — what the request sends, and the server
   // reads «إلى» as the whole of its day.
   const assignedFrom = sp.get('assignedFrom') ?? '';
@@ -186,6 +195,10 @@ export const CustodyPage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
+  // «الفئة» (`category`, ids) and «الصنف» (`asset`, the asset register's own names, each matched
+  // exactly): both lists, the items narrowed by the categories.
+  const nameFilter = useCategoryNameFilter([sp, setSp], 'asset', patch);
+  const { categoryIds, names: assetNames } = nameFilter;
 
   const params = useMemo(
     () => ({
@@ -197,7 +210,8 @@ export const CustodyPage = (): JSX.Element => {
       branchId: branchId || undefined,
       employeeId: employeeId || undefined,
       search: search.trim() || undefined,
-      categoryId: categoryId || undefined,
+      categoryId: categoryQuery(categoryIds),
+      assetName: namesQuery(assetNames),
       assignedFrom: assignedFrom || undefined,
       assignedTo: assignedTo || undefined,
       overdue: overdue || undefined,
@@ -207,7 +221,11 @@ export const CustodyPage = (): JSX.Element => {
     }),
     [paramsKey],
   );
-  const { data, isLoading, isError, error, refetch } = useItAssignments(params);
+  // Held while a category change settles its items — see `useCategoryNameFilter`.
+  const { data, isLoading, isError, error, refetch } = useItAssignments(
+    params,
+    !nameFilter.settling,
+  );
 
   // The chip's label. A pick supplies it — kept WITH the id it was picked for, so back/forward,
   // which changes the id underneath, makes the chip follow the URL rather than the last pick (the
@@ -246,7 +264,8 @@ export const CustodyPage = (): JSX.Element => {
     branchId !== '' ||
     employeeId !== '' ||
     search !== '' ||
-    categoryId !== '' ||
+    categoryIds.length > 0 ||
+    assetNames.length > 0 ||
     assignedFrom !== '' ||
     assignedTo !== '' ||
     overdue ||
@@ -279,8 +298,9 @@ export const CustodyPage = (): JSX.Element => {
           employeeId,
           holderLabel,
           search,
-          categoryId,
+          categoryIds,
           categoryName,
+          assetNames,
           assignedFrom,
           assignedTo,
           overdue,
@@ -474,9 +494,10 @@ export const CustodyPage = (): JSX.Element => {
       <AssignAssetDialog open={handingOver} onClose={() => setHandingOver(false)} asset={null} />
 
       <div className="space-y-4">
-        {/* The table's columns, in the table's order, each under the column's name. «الصنف» and
-            its category are facts of the asset, the rest of the interval; the server reads each
-            set a filter names once (`assignment.service`). */}
+        {/* The table's columns, in the table's order, each under the column's name — except that
+            the search comes first and «الصنف» follows its category («الصنف يبقي بعد الفئة»). The
+            search, the category and «الصنف» are facts of the asset, the rest of the interval; the
+            server reads each set a filter names once (`assignment.service`). */}
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => {
@@ -487,6 +508,7 @@ export const CustodyPage = (): JSX.Element => {
               employee: null,
               q: null,
               category: null,
+              asset: null,
               assignedFrom: null,
               assignedTo: null,
               overdue: null,
@@ -496,8 +518,10 @@ export const CustodyPage = (): JSX.Element => {
             });
           }}
         >
+          {/* «بحث», not «الصنف»: the box matches the asset's code, name or serial as typed, and
+              «الصنف» is the list of names two boxes on. */}
           <FilterField
-            label={t('it.custody.asset')}
+            label={t('common.search')}
             active={search.trim() !== ''}
             className={cn(FIELD, 'sm:w-64')}
           >
@@ -510,15 +534,29 @@ export const CustodyPage = (): JSX.Element => {
           </FilterField>
           <FilterField
             label={t('it.assets.columns.category')}
-            active={categoryId !== ''}
+            active={categoryIds.length > 0}
             className={cn(FIELD, 'sm:w-44')}
           >
-            <ItCatalogSelect
+            <ItCatalogMultiSelect
               kind="assetCategory"
-              value={categoryId}
-              onChange={(id) => patch({ category: id || null })}
-              allLabel={t('it.assets.allCategories')}
-              ariaLabel={t('it.assets.columns.category')}
+              label={t('it.assets.columns.category')}
+              placeholder={t('it.assets.allCategories')}
+              value={categoryIds}
+              onChange={nameFilter.setCategories}
+              fullWidth
+              className="w-full"
+            />
+          </FilterField>
+          <FilterField
+            label={t('it.custody.asset')}
+            active={assetNames.length > 0}
+            className={cn(FIELD, 'sm:w-64')}
+          >
+            <AssetNameFilter
+              filter={nameFilter}
+              label={t('it.custody.asset')}
+              placeholder={t('it.custody.filterAll')}
+              fullWidth
               className="w-full"
             />
           </FilterField>
@@ -629,7 +667,7 @@ export const CustodyPage = (): JSX.Element => {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(a) => a.id}
-          loading={isLoading}
+          loading={isLoading || nameFilter.settling}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sort}

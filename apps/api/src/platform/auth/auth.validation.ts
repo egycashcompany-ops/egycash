@@ -7,6 +7,11 @@ export {
   UpdateMyPreferencesSchema,
   StartPortalChallengeSchema,
   CompletePortalChallengeSchema,
+  PasskeyAuthenticationVerifySchema,
+  PasskeyRegistrationOptionsSchema,
+  PasskeyRegistrationVerifySchema,
+  RenamePasskeySchema,
+  PasskeyIdParamSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

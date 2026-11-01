@@ -59,4 +59,12 @@ export const registerAuthSettings = (): void => {
     defaultValue: true,
     allowedScopes: ['organization'],
   });
+  declareSetting({
+    key: SettingKeys.PasskeysEnabled,
+    description:
+      'Allow sign-in with a passkey (fingerprint / Face ID) — ADR-035. Off refuses every passkey route.',
+    schema: z.boolean(),
+    defaultValue: true,
+    allowedScopes: ['organization'],
+  });
 };

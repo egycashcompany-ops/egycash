@@ -44,6 +44,61 @@ export const listQuery = <T extends z.ZodTypeAny>(item: T, max = 50) =>
     z.array(item).min(1).max(max).optional(),
   );
 
+// ── Lists of FREE-TEXT names ─────────────────────────────────────────────────
+//
+// A name somebody typed — an ATM bank or area label, an IT asset's name — may itself hold a comma
+// («Raml, Station»), and `listQuery` splits on every comma, which cut such a name in two and the
+// filter matched nothing. A name list keeps the platform's own shape — ONE comma-separated value,
+// in the API query and in a page's address bar alike — and escapes the two characters that would
+// break it: `\,` is a comma inside a name, `\\` a backslash. A list whose names hold neither
+// reads exactly as a plain list does, so every link written before this keeps working.
+
+const escapeListName = (name: string): string => name.replace(/\\/g, '\\\\').replace(/,/g, '\\,');
+
+/** Names → one list value. The inverse of `splitNameList`. */
+export const joinNameList = (names: readonly string[]): string =>
+  names.map(escapeListName).join(',');
+
+/**
+ * One list value → the names it carries: split on the commas that are not escaped, each name
+ * trimmed (as `listQuery` trims), empty ones dropped. A backslash before any character keeps that
+ * character; a lone trailing backslash is kept as written.
+ */
+export const splitNameList = (raw: string): string[] => {
+  const names: string[] = [];
+  let current = '';
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw.charAt(index);
+    if (char === '\\' && index + 1 < raw.length) {
+      current += raw.charAt(index + 1);
+      index += 1;
+    } else if (char === ',') {
+      names.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  names.push(current);
+  return names.map((name) => name.trim()).filter((name) => name !== '');
+};
+
+/**
+ * A name list as a query field — `listQuery`'s contract (absent or empty means "not narrowed"; a
+ * repeated parameter is accepted too, each occurrence read the same way) with the escape above,
+ * so a name holding a comma arrives whole.
+ */
+export const nameListQuery = (max = 50) =>
+  z.preprocess(
+    (raw) => {
+      if (raw === undefined || raw === null) return undefined;
+      const parts = Array.isArray(raw) ? raw : [raw];
+      const names = parts.flatMap((part) => splitNameList(String(part)));
+      return names.length === 0 ? undefined : names;
+    },
+    z.array(z.string().min(1)).min(1).max(max).optional(),
+  );
+
 // ── Data scopes (ADR-004; ADR-015 org model; ADR-017 hierarchical scopes) ────
 // The organizational visibility ladder, narrowest → widest:
 //   own (Self) ⊂ section ⊂ department ⊂ branch ⊂ organization (Company).

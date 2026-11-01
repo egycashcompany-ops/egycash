@@ -25,6 +25,26 @@ its entry here in the same PR.
   (`POST /atm/machines/sync`, `atmMachine.manage`). Spaces are folded, so a stray space is
   neither a change nor a new area; a bank is compared by the catalog bank it names.
 
+- **Sign in with a fingerprint or Face ID instead of typing the password.** «عايز الدخول يبقي ممكن
+  من خلال الـ Fingerprint أو FaceID للموبايل بحيث مش كل مره يكتب الباسورد». Passkeys (WebAuthn,
+  [ADR-035](docs/03-decisions/ADR-035-passkey-sign-in.md)): the device keeps a private key and
+  releases it only after its own fingerprint, face or PIN check; the server keeps the public half.
+  The sign-in page shows «الدخول بالبصمة أو الوجه», and where the browser supports it the passkey is
+  also offered right in the username field. After a password sign-in on a phone or computer that
+  can hold one, the page offers «تفعيل الدخول بالبصمة» once — using the password just typed — and
+  «ليس الآن» is remembered for thirty days. Devices are listed, renamed and removed under
+  *My account → Security*, which now also shows how each session signed in. Staff and gold-portal
+  customers may use them (the portal has a new *Security* tab); applicants may not. By the owner's
+  decision a passkey sign-in counts as the second factor, so no TOTP code follows it (amends R13 —
+  the password path still asks). Adding one asks for the password again (and the TOTP code); an
+  administrator's password or TOTP reset, the gold portal's «رابط تفعيل جديد», and suspending,
+  archiving, reactivating or deleting the account, remove the account's passkeys. Every challenge
+  is held by the server and used once; a locked or inactive account stays refused; only
+  attestation `none` is accepted, so no certificate the client sends can make the server fetch a
+  URL. The organization setting `auth.passkeys.enabled` (on by default) switches it off for every
+  route. The ten-minute idle
+  sign-out is unchanged («نسيبها 10 دقايق»); coming back is now one touch.
+
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
   «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
   الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn
@@ -368,6 +388,14 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The IT asset and custody registers filter by several categories and several names, the names
+  following the categories.** «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط)
+  والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا
+  Multiselect · وفى /it/custody بردو عايز الصنف يبقي بعد الفئة (فى الفلتر فقط) ونفس الكلام يتفلتر
+  والأتنين يكونوا Multiselect». On `/it/assets` the filter bar reads search, status, «الفئة», «الاسم»,
+  branch, holder; on `/it/custody` «بحث» (code, name or serial), «الفئة», «الصنف», then the rest.
+  Both category and name filters take several answers, and the names offered are those of the
+  chosen categories. A name holding a comma works. The Excel/PDF name every choice.
 - **The side menu shows itself on hover, over the page; pinned, it takes its place beside it.**
   «الsidebar يظهر لما اعمل hover عليه ويظهر فوق الكونتنت ميخدش حايز» — then «عايزك تخلي موضوع
   توسيع وطى يبقي أيقونة Pin فوق بعد الـ 4 مربعات» and «لما اعمل تثبيت يبقى موجود بس يلخد من الحايز

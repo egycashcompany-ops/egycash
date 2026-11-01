@@ -31,6 +31,9 @@ export const FAILED_SIGN_IN_WINDOW_SECONDS = 300;
 const COUNTED_REFUSALS: ReadonlySet<string> = new Set([
   ErrorCodes.AUTH_IDENTIFIER_UNKNOWN,
   ErrorCodes.AUTH_INVALID_CREDENTIALS,
+  // A refused passkey (ADR-035 §7): counted per address, never toward the account lockout — the
+  // credential id is not a secret, so counting it against the account would let anyone lock it.
+  ErrorCodes.AUTH_PASSKEY_INVALID,
 ]);
 
 export const isFailedSignIn = (error: unknown): boolean =>

@@ -29,6 +29,7 @@ const TEMPLATE_KEYS = [
   'gold.portal.tabs.keys',
   'gold.portal.tabs.representatives',
   'gold.portal.tabs.reports',
+  'gold.portal.tabs.security',
   'gold.portal.transfers.in',
   'gold.portal.transfers.out',
   'gold.portal.receiving.empty',

@@ -198,9 +198,14 @@ export const updateVendor = (id: string, body: UpdateItVendor): Promise<ItVendor
 // ── Asset register (design §2.2, §4.1) ──────────────────────────────────────
 export const listAssets = (params: ItListParams): Promise<Paginated<ItAssetDto>> =>
   getPage<ItAssetDto>(`/it/assets${buildQuery(params)}`);
-/** The name filter's options — the register's own names, as far as the reader's scope reaches. */
-export const listAssetNames = (): Promise<ItAssetNamesDto> =>
-  get<ItAssetNamesDto>('/it/assets/names');
+/**
+ * The name filter's options — the register's own names, as far as the reader's scope reaches —
+ * narrowed to the categories chosen («والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على
+ * الفئات»); every name when none is. Ids hold no comma, so the plain list `buildQuery` writes is
+ * the one `listQuery` reads.
+ */
+export const listAssetNames = (categoryIds: readonly string[] = []): Promise<ItAssetNamesDto> =>
+  get<ItAssetNamesDto>(`/it/assets/names${buildQuery({ categoryId: [...categoryIds] })}`);
 export const getAsset = (id: string): Promise<ItAssetDto> => get<ItAssetDto>(`/it/assets/${id}`);
 /** Scan resolve (design §4.2): the QR payload is the plain asset code, so this takes the code. */
 export const getAssetByCode = (code: string): Promise<ItAssetDto> =>

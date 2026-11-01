@@ -12,6 +12,8 @@ import {
   gatherRegister,
   itRegisterReport,
   namedFilter,
+  namedFilters,
+  namesPhrase,
   printItRegister,
 } from './register-export';
 
@@ -69,6 +71,30 @@ describe('the printed line of filters', () => {
     expect(filterLine(['المُسلَّم حاليًا', null, 'بتاريخ اليوم'])).toBe(
       'المُسلَّم حاليًا · بتاريخ اليوم',
     );
+  });
+
+  // «وعايز الأتنين دول يبقوا Multiselect» — a filter of several answers names every one of them.
+  describe('a filter that takes several answers', () => {
+    const categories = { all: 'it.assets.allCategories', one: 'it.export.oneCategory' };
+
+    it('names every one chosen, as prose — and «every …» when none is', () => {
+      expect(namedFilters(t, ['لاب توب', 'طابعات'], categories)).toBe('لاب توب، طابعات');
+      expect(namedFilters(t, null, categories)).toBe('كل الفئات');
+      expect(namedFilters(t, [], categories)).toBe('كل الفئات');
+    });
+
+    it('says a set-but-unnamed one is set — once, however many there are', () => {
+      expect(namedFilters(t, ['لاب توب', ''], categories)).toBe('لاب توب، فئة محددة');
+      expect(namedFilters(t, ['', ''], categories)).toBe('فئة محددة');
+    });
+
+    it('writes chosen names as one phrase, and nothing when none is chosen', () => {
+      expect(namesPhrase(['Lenovo ThinkCentre neo 50a 24', 'Raml, Station'])).toBe(
+        'Lenovo ThinkCentre neo 50a 24، Raml, Station',
+      );
+      expect(namesPhrase(null)).toBeNull();
+      expect(namesPhrase([])).toBeNull();
+    });
   });
 });
 

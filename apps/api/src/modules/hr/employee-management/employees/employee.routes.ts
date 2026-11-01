@@ -22,6 +22,7 @@ import {
   registerEmployeeDirect,
   rehireCheck,
   unlinkEmployeeUser,
+  changeEmployeeCode,
   updateEmployeeInsurance,
   updateEmployeeOfficer,
   updateEmployeePersonal,
@@ -34,6 +35,7 @@ import {
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
   RehireCheckQuerySchema,
+  ChangeEmployeeCodeSchema,
   UpdateEmployeeInsuranceSchema,
   UpdateEmployeeOfficerSchema,
   UpdateEmployeePersonalSchema,
@@ -138,6 +140,15 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.editPersonal'),
     validate({ body: UpdateEmployeePersonalSchema, params: EmployeeIdParamSchema }),
     asyncHandler(updateEmployeePersonal),
+  );
+  // The Employee Code, changed by hand (ADR-017, amended 2026-11-01). Its own permission: a code is
+  // on badges and contracts, and how the roster file names a person.
+  router.patch(
+    '/:id/code',
+    authenticate,
+    authorize('employee.changeCode'),
+    validate({ body: ChangeEmployeeCodeSchema, params: EmployeeIdParamSchema }),
+    asyncHandler(changeEmployeeCode),
   );
   // The social-insurance file and the officer profile: each replaced whole, each behind its own
   // manage permission. Neither is a personnel action — the actions engine's vocabulary is closed,

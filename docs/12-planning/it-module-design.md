@@ -677,8 +677,8 @@ precedent; `itAsset.export`).
 
 | Prefix | Named actions beyond CRUD |
 |---|---|
-| `/it/assets` | `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` |
-| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId`, `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
+| `/it/assets` | `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` |
+| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
 | `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
 | `/it/ticket-priorities` | carry the SLA targets (§2.6) |
@@ -1158,3 +1158,18 @@ starts only on an explicit owner GO.
   movement of its count, in one transaction. An item the store already keeps under the same name
   receives the count instead of becoming a second row, and the outcome names it. The sheet's
   «cable power» column has no total and is left out.
+- **Several categories and several names, the names following the categories** (2026-11-01) — owner
+  request: «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط) والبيانات اللى فى فلتر
+  الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا Multiselect · وفى /it/custody بردو
+  عايز الصنف يبقي بعد الفئة (فى الفلتر فقط) ونفس الكلام يتفلتر والأتنين يكونوا Multiselect». On both
+  registers' filter bars — the tables' columns are unchanged — the category filter takes several
+  categories, and right after it comes the name filter («الاسم» on `/it/assets`, «الصنف» on
+  `/it/custody`), which takes several of the register's names and offers only the names of the
+  assets in the chosen categories (every name while none is chosen); a name chosen earlier that the
+  new categories do not hold is dropped once their names arrive. A name is free text and may hold a
+  comma, so a name list travels as one value with `\,` and `\\` escaped — the platform's
+  `joinNameList` / `nameListQuery`, which the ATM boards' bank and area filters already used and now
+  share. The custody register keeps its free-text box, first, as «بحث» (the asset's code, name or
+  serial). The Excel/PDF name every chosen category and name. An old link with one category or one
+  name still opens as it did.
+

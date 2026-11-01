@@ -16,6 +16,10 @@ export const AUDIT_ACTIONS = [
   'passwordReset',
   'totpEnrolled',
   'totpDisabled',
+  // ADR-035 — a passkey (fingerprint / Face ID) added to, renamed on or removed from an account.
+  'passkeyRegistered',
+  'passkeyRenamed',
+  'passkeyRemoved',
   'sessionRevoked',
   'permissionDenied',
   // A break-glass permission was EXERCISED — the gate passed. `purge` says what was done; this row

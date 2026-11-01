@@ -229,6 +229,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/gold/portal/pages/PortalOverviewPage.tsx'],
   ['modules/gold/portal/pages/PortalReceiptsPage.tsx'],
   ['modules/gold/portal/pages/PortalRepresentativesPage.tsx'],
+  ['modules/gold/portal/pages/PortalSecurityPage.tsx'],
   ['modules/gold/portal/pages/PortalTransfersPage.tsx'],
   ['modules/hr/announcements/pages/ComposeAnnouncementPage.tsx'],
   ['modules/hr/attendance/pages/AssignmentsPage.tsx', 'its search and selects are fields of the "add assignment" dialog, reset on success'],
@@ -515,5 +516,28 @@ describe('a tabbed screen keeps one memory per tab', () => {
       ([p]) => !scoped.has(p) && /REMEMBERED_FILTERS, '', /.test(text(p)),
     ).map(([p]) => p);
     expect(strays).toEqual([]);
+  });
+});
+
+/**
+ * The IT registers' category and name lists («وعايز الأتنين دول يبقوا Multiselect») are read by a
+ * shared hook (`it/components/useCategoryNameFilter.ts`) under a parameter the screen passes it, so
+ * the census's scan of the page cannot see them read. Pinned here instead: each screen hands the
+ * hook a parameter it remembers, and remembers the categories too.
+ */
+describe('the IT registers remember both of their lists', () => {
+  it.each([
+    { path: 'modules/it/pages/AssetsListPage.tsx', names: 'names' },
+    { path: 'modules/it/pages/CustodyPage.tsx', names: 'asset' },
+  ])('$path remembers `category` and `$names`', ({ path, names }) => {
+    const src = text(path);
+    expect(src).toContain(`useCategoryNameFilter([sp, setSp], '${names}', patch`);
+    expect(declared(src)).toEqual(expect.arrayContaining(['category', names]));
+  });
+
+  it('the hook reads the categories from `category`, as both screens remember them', () => {
+    expect(text('modules/it/components/useCategoryNameFilter.ts')).toContain(
+      "readCategoryIds(sp.get('category'))",
+    );
   });
 });

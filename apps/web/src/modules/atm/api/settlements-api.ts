@@ -13,6 +13,8 @@
 //   · the Full list import is multipart and every field is a string (§6.3): `'true'`, the JSON of
 //     `previewRevisions`. The work branch is always sent as `branchId`.
 import {
+  ATM_BULK_MAX_IDS,
+  normalizeAtmMachineCode,
   type AddAtmPlanLines,
   type AddAtmSpareLine,
   type AssignAtmRoutes,
@@ -55,6 +57,7 @@ import {
   type UpdateAtmPlanLine,
   type UpdateAtmRoute,
 } from '@ecms/contracts';
+import { firstOfEach, inPasteBatches } from '../lib/paste-batches';
 import { buildQuery, del, get, patch, post, put, upload } from '../../../shared/lib/api-client';
 
 const SETTLEMENTS = '/atm/settlements';
@@ -177,6 +180,63 @@ export const getPlan = (planId: string): Promise<AtmSettlementPlanDto> =>
 /** S14 — a batch of machine codes; the refused ones come back with their reason, row by row. */
 export const addPlanLines = (planId: string, body: AddAtmPlanLines): Promise<AtmPlanAddResultDto> =>
   post<AtmPlanAddResultDto>(`${SETTLEMENTS}/plans/${planId}/lines`, body);
+
+export type PlanAddRow = AddAtmPlanLines['rows'][number];
+
+/** A paste added in batches: the joined answer, and what is back in the boxes if it stopped. */
+export interface PlanAddRun extends AtmPlanAddResultDto {
+  left: PlanAddRow[];
+  maybeDone: number;
+  failure: unknown;
+}
+
+/**
+ * «إضافة ماكينات» for a paste longer than one request (2026-11-01): requests of
+ * `ATM_BULK_MAX_IDS`, in order, one run for all (`inPasteBatches`). Repeats are decided over the
+ * WHOLE paste first, as the server decides them in one request: the first line of a code is sent,
+ * every later one is refused `duplicateInRequest` here — split, it would read as `duplicateInRun`,
+ * or (after a first copy refused for its time) be added with its own time. The refusals are listed
+ * in the paste's order. Safe to send again: a line added already comes back `duplicateInRun`.
+ * The plan's own ceiling (`ATM_PLAN_LINES_MAX` live lines) still answers per request: a request
+ * that would pass it is refused whole, and the run stops there.
+ */
+export const addPlanLinesInBatches = async (
+  planId: string,
+  body: AddAtmPlanLines,
+): Promise<PlanAddRun> => {
+  const codeOf = (row: PlanAddRow): string => normalizeAtmMachineCode(row.machineCode);
+  const { kept, keptIndex, repeats } = firstOfEach(body.rows, codeOf);
+  const run = await inPasteBatches(
+    kept,
+    ATM_BULK_MAX_IDS,
+    (rows) => addPlanLines(planId, { run: body.run, rows }),
+    // The plan names its branch; each request is one transaction, rolled back on every 4xx.
+    { pinBranch: false, refusalWritesNothing: true },
+  );
+  const lineOf = new Map(kept.map((row, i) => [codeOf(row), keptIndex[i] as number]));
+  const refused = [
+    ...run.answers.flatMap((answer) =>
+      answer.refused.map((r) => ({
+        ...r,
+        at: lineOf.get(normalizeAtmMachineCode(r.code)) ?? Number.MAX_SAFE_INTEGER,
+      })),
+    ),
+    ...repeats.map(({ row, index }) => ({
+      code: row.machineCode,
+      reason: 'duplicateInRequest' as const,
+      at: index,
+    })),
+  ]
+    .sort((a, b) => a.at - b.at)
+    .map(({ code, reason }) => ({ code, reason }));
+  return {
+    added: run.answers.flatMap((answer) => answer.added),
+    refused,
+    left: run.left,
+    maybeDone: run.maybeDone,
+    failure: run.failure,
+  };
+};
 
 export const addSpareLine = (planId: string, body: AddAtmSpareLine): Promise<AtmPlanLineDto> =>
   post<AtmPlanLineDto>(`${SETTLEMENTS}/plans/${planId}/spare-lines`, body);

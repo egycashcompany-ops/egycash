@@ -1231,6 +1231,18 @@ the transaction only shape the error message.
      outside it, as 409 `STALE_DOCUMENT`.
   6. After commit: one `create` audit per line on `{ entityType: 'planLine', entityId: lineId }`
      with `{ machineCode, run, scheduleTime, notes per slot }`.
+
+  **A paste longer than one request (2026-11-01).** One request carries at most
+  `ATM_BULK_MAX_IDS` (200) rows; the dialog sends a longer paste in consecutive requests of that
+  size, one run for all (`addPlanLinesInBatches`, web). Repeats are decided over the WHOLE paste
+  first, as step 1 decides them in one request: the first line of a code is sent, every later one
+  is refused `duplicateInRequest` in the browser, and the refusals are listed in the paste's order.
+  A request that fails stops the run: what earlier requests added stands, and every line not
+  confirmed goes back into the boxes. Sending them again is safe — a line added already comes back
+  `duplicateInRun` — so the failed request's own lines go back too; the dialog says they may have
+  partly gone through, unless the request was refused (every 4xx here rolls back). The 400 live
+  lines per plan still hold: a request that would pass them is refused whole and the run stops
+  there. The boxes, the run and closing are held while a run goes.
 - **Add spare line (S15).**
   - `layoutIssues(slots, { spare: true })` must be empty.
   - Counts come from the profile (when given) through `fillFromStandard`, then `denominationNotes`

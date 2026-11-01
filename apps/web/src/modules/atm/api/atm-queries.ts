@@ -135,10 +135,11 @@ const invalidateMachineWrite = (client: ReturnType<typeof useQueryClient>): void
   }
 };
 
+/** The bulk add, in batches (`bulkCreateMachinesInBatches`) — a stopped run resolves, so lists refresh. */
 export const useBulkCreateAtmMachines = () => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: BulkCreateAtmMachines) => api.bulkCreateMachines(body),
+    mutationFn: (body: BulkCreateAtmMachines) => api.bulkCreateMachinesInBatches(body),
     onSuccess: () => invalidateMachineWrite(client),
   });
 };
@@ -181,6 +182,18 @@ export const useBulkDeleteAtmMachines = () => {
   return useMutation({
     mutationFn: (body: BulkDeleteAtmMachines) => api.bulkDeleteMachines(body),
     onSuccess: () => void client.invalidateQueries({ queryKey: atmKeys.machines }),
+  });
+};
+
+/**
+ * The bulk dialog's delete, in batches (`bulkDeleteMachinesInBatches`). A delete also removes the
+ * machine's untouched register entry, so the register lists refresh with the machines.
+ */
+export const useBulkDeleteAtmMachinesInBatches = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (machineCodes: readonly string[]) => api.bulkDeleteMachinesInBatches(machineCodes),
+    onSuccess: () => invalidateMachineWrite(client),
   });
 };
 

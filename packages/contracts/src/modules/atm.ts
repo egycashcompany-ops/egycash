@@ -113,6 +113,12 @@ export interface AtmMachineDto {
 }
 
 /**
+ * The most rows one data-edit bulk add or bulk delete request carries. A paste can hold more; the
+ * dialog sends them in consecutive requests of this size (2026-11-01).
+ */
+export const ATM_MACHINES_BULK_MAX = 500;
+
+/**
  * The legacy bulk add (contad_app.js:2412-2466): code+name line pairs plus one bank and one area
  * for the whole batch. Codes already registered are skipped, not errors (:2429-2451) — the result
  * names them so the operator finally SEES the skip the legacy performed silently.
@@ -124,7 +130,7 @@ export const BulkCreateAtmMachinesSchema = z
     machines: z
       .array(z.object({ machineCode: z.string().min(1), name: z.string().min(1) }).strict())
       .min(1)
-      .max(500),
+      .max(ATM_MACHINES_BULK_MAX),
   })
   .strict();
 export type BulkCreateAtmMachines = z.infer<typeof BulkCreateAtmMachinesSchema>;
@@ -337,7 +343,7 @@ export interface BulkCreateAtmMachinesResultDto {
  * `<code>-D`, which is what lets the same code be registered again later. Both preserved.
  */
 export const BulkDeleteAtmMachinesSchema = z
-  .object({ machineCodes: z.array(z.string().min(1)).min(1).max(500) })
+  .object({ machineCodes: z.array(z.string().min(1)).min(1).max(ATM_MACHINES_BULK_MAX) })
   .strict();
 export type BulkDeleteAtmMachines = z.infer<typeof BulkDeleteAtmMachinesSchema>;
 

@@ -56,6 +56,12 @@ export const setActiveBranch = (branchId: string | null): void => {
   activeBranch = branchId;
 };
 
+/**
+ * The branch requests are narrowed to right now — read by a run of several requests, so it can
+ * stop rather than send its later requests to a branch switched to meanwhile.
+ */
+export const getActiveBranch = (): string | null => activeBranch;
+
 // Definitive auth loss (refresh failed mid-session): the app registers ONE handler here
 // (main.tsx) that signs Redux out and clears the query cache, so RequireAuth redirects to
 // /login instead of stranding the user on an error screen. Registered as a callback to keep

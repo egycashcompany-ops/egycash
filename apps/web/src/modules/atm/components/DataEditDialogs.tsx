@@ -47,6 +47,7 @@ import {
   type AtmRefLabelDto,
   type AtmRefLabelOptionsDto,
   type BulkCreateAtmMachinesResultDto,
+  type BulkDeleteAtmMachinesResultDto,
   type CreateAtmRefLabel,
   type Locale,
   type UpdateAtmMachineArea,
@@ -64,13 +65,15 @@ import {
   useAtmBankLookup,
   useAtmRefLabelOptions,
   useBulkCreateAtmMachines,
-  useBulkDeleteAtmMachines,
+  useBulkDeleteAtmMachinesInBatches,
   useCreateAtmMachine,
   useCreateAtmRefLabel,
   useUpdateAtmMachine,
   useUpdateAtmMachineArea,
   useUpdateAtmRefLabel,
 } from '../api/atm-queries';
+import { PasteStopNotice } from './PasteStopNotice';
+import { runFailureText } from '../lib/paste-batches';
 import { areaOptionText, bankOptionGroups, labelText, type BankLookup } from '../lib/bank-catalog';
 
 /**
@@ -264,6 +267,34 @@ export const bulkAddToasts = (
   }
   return out;
 };
+
+/** Pure: the answers of a bulk add sent in batches, as one — every list joined in batch order. */
+export const joinBulkAdd = (
+  answers: readonly OlderBulkAddResult[],
+): BulkCreateAtmMachinesResultDto => {
+  const all = answers.map(bulkAddResultOf);
+  return {
+    created: all.flatMap((a) => a.created),
+    skippedCodes: all.flatMap((a) => a.skippedCodes),
+    reactivatedCodes: all.flatMap((a) => a.reactivatedCodes),
+    refused: all.flatMap((a) => a.refused),
+    register: {
+      created: all.flatMap((a) => a.register.created),
+      received: all.flatMap((a) => a.register.received),
+      linked: all.flatMap((a) => a.register.linked),
+      existing: all.flatMap((a) => a.register.existing),
+      notRecorded: all.flatMap((a) => a.register.notRecorded),
+    },
+  };
+};
+
+/** Pure: the answers of a bulk delete sent in batches, as one. */
+export const joinBulkDelete = (
+  answers: readonly BulkDeleteAtmMachinesResultDto[],
+): BulkDeleteAtmMachinesResultDto => ({
+  deletedCodes: answers.flatMap((a) => a.deletedCodes),
+  unknownCodes: answers.flatMap((a) => a.unknownCodes),
+});
 
 /** Code/name line pairs → machine rows; blank lines dropped, as the legacy loop did. */
 export const buildMachineRows = (
@@ -944,6 +975,12 @@ export const RefLabelDialog = ({
  * a batch (existing codes are skipped and NAMED), and paste a column of codes to delete a batch
  * (soft delete + the `-D` rename that frees each code for re-registration).
  *
+ * Any number of lines (2026-11-01, «صلّح كمان … الـ bulk add»): both go in consecutive requests of
+ * `ATM_MACHINES_BULK_MAX`, each code once, the acting branch pinned (`inPasteBatches`). A run that
+ * stops puts every line not confirmed back into its boxes and says so (`PasteStopNotice`); sending
+ * them again is safe — an added machine comes back «مسجلة من قبل», a deleted one as unknown. The
+ * dialog, its boxes and both buttons are held while a run goes.
+ *
  * `atmMachine.manage` only (D2): both halves decide whether a machine exists, and Operations no
  * longer do that. The page offers the dialog only behind that key, and the server refuses both
  * routes without it. Both halves work in the acting branch, named once above them.
@@ -965,6 +1002,8 @@ export const BulkMachinesDialog = ({
   const [bankName, setBankName] = useState('');
   const [area, setArea] = useState('');
   const [deleteCodes, setDeleteCodes] = useState('');
+  const [addStop, setAddStop] = useState({ left: 0, maybeDone: 0 });
+  const [deleteStop, setDeleteStop] = useState({ left: 0, maybeDone: 0 });
 
   useEffect(() => {
     if (!open) return;
@@ -973,18 +1012,32 @@ export const BulkMachinesDialog = ({
     setBankName('');
     setArea('');
     setDeleteCodes('');
+    setAddStop({ left: 0, maybeDone: 0 });
+    setDeleteStop({ left: 0, maybeDone: 0 });
   }, [open]);
 
   const bulkCreate = useBulkCreateAtmMachines();
-  const bulkDelete = useBulkDeleteAtmMachines();
+  const bulkDelete = useBulkDeleteAtmMachinesInBatches();
+  const busy = bulkCreate.isPending || bulkDelete.isPending;
 
   const submitAdd = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     const machines = buildMachineRows(codes, names);
     if (machines.length === 0 || bankName === '' || area === '' || addBlocked(options.data)) return;
+    setAddStop({ left: 0, maybeDone: 0 });
     try {
-      const result = bulkAddResultOf(await bulkCreate.mutateAsync({ bankName, area, machines }));
-      if (result.created.length > 0 || result.reactivatedCodes.length > 0) {
+      const run = await bulkCreate.mutateAsync({ bankName, area, machines });
+      const result = joinBulkAdd(run.answers);
+      if (run.left.length > 0) {
+        // Stopped part-way: every line not confirmed goes back, paired line for line.
+        setCodes(run.left.map((row) => row.machineCode).join('\n'));
+        setNames(run.left.map((row) => row.name).join('\n'));
+        setAddStop({ left: run.left.length, maybeDone: run.maybeDone });
+        toast.error(
+          t('atm.common.openStopped', { count: run.left.length }),
+          runFailureText(run.failure, t, locale),
+        );
+      } else if (result.created.length > 0 || result.reactivatedCodes.length > 0) {
         setCodes('');
         setNames('');
       }
@@ -998,20 +1051,32 @@ export const BulkMachinesDialog = ({
     event.preventDefault();
     const machineCodes = splitAtmFormLines(deleteCodes).filter((code) => code !== '');
     if (machineCodes.length === 0 || addBlocked(options.data)) return;
+    setDeleteStop({ left: 0, maybeDone: 0 });
     try {
-      const result = await bulkDelete.mutateAsync({ machineCodes });
+      const run = await bulkDelete.mutateAsync(machineCodes);
+      const result = joinBulkDelete(run.answers);
       toast.success(t('atm.dataEdit.machinesDeleted', { count: result.deletedCodes.length }));
       if (result.unknownCodes.length > 0) {
         toast.error(t('atm.common.unknownCodes', { codes: result.unknownCodes.join('، ') }));
       }
-      setDeleteCodes('');
+      if (run.left.length > 0) {
+        setDeleteCodes(run.left.join('\n'));
+        setDeleteStop({ left: run.left.length, maybeDone: run.maybeDone });
+        toast.error(
+          t('atm.common.openStopped', { count: run.left.length }),
+          runFailureText(run.failure, t, locale),
+        );
+      } else {
+        setDeleteCodes('');
+      }
     } catch {
       toast.error(t('atm.common.actionFailed'));
     }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('atm.dataEdit.bulkTitle')}>
+    // Held while a run goes: closing would reset the boxes the run's end writes back into.
+    <Dialog open={open} onClose={busy ? () => {} : onClose} title={t('atm.dataEdit.bulkTitle')}>
       <div className="space-y-6">
         {/* Over both halves: the delete finds its codes in the branch the add files into. */}
         <AddBranchLine options={options.data} />
@@ -1027,6 +1092,7 @@ export const BulkMachinesDialog = ({
                 onChange={(e) => setCodes(e.target.value)}
                 rows={5}
                 required
+                disabled={busy}
                 dir="ltr"
                 className="text-center"
               />
@@ -1041,13 +1107,19 @@ export const BulkMachinesDialog = ({
                 onChange={(e) => setNames(e.target.value)}
                 rows={5}
                 required
+                disabled={busy}
                 className="text-center"
               />
             </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={t('atm.common.bank')} required>
-              <Select value={bankName} onChange={(e) => setBankName(e.target.value)} required>
+              <Select
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                required
+                disabled={busy}
+              >
                 <option value="" disabled>
                   {t('atm.dataEdit.pickBank')}
                 </option>
@@ -1055,7 +1127,12 @@ export const BulkMachinesDialog = ({
               </Select>
             </Field>
             <Field label={t('atm.common.area')} required>
-              <Select value={area} onChange={(e) => setArea(e.target.value)} required>
+              <Select
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+                required
+                disabled={busy}
+              >
                 <option value="" disabled>
                   {t('atm.dataEdit.pickArea')}
                 </option>
@@ -1063,11 +1140,17 @@ export const BulkMachinesDialog = ({
               </Select>
             </Field>
           </div>
+          <PasteStopNotice
+            left={addStop.left}
+            maybeDone={addStop.maybeDone}
+            action={t('atm.common.add')}
+            safeHint={t('atm.dataEdit.addResendSafe')}
+          />
           <div className="flex justify-end">
             <Button
               type="submit"
               loading={bulkCreate.isPending}
-              disabled={addBlocked(options.data)}
+              disabled={addBlocked(options.data) || busy}
             >
               {t('atm.common.add')}
             </Button>
@@ -1091,16 +1174,23 @@ export const BulkMachinesDialog = ({
               onChange={(e) => setDeleteCodes(e.target.value)}
               rows={4}
               required
+              disabled={busy}
               dir="ltr"
               className="text-center"
             />
           </Field>
+          <PasteStopNotice
+            left={deleteStop.left}
+            maybeDone={deleteStop.maybeDone}
+            action={t('atm.common.delete')}
+            safeHint={t('atm.dataEdit.deleteResendSafe')}
+          />
           <div className="flex justify-end">
             <Button
               type="submit"
               variant="danger"
               loading={bulkDelete.isPending}
-              disabled={addBlocked(options.data)}
+              disabled={addBlocked(options.data) || busy}
             >
               {t('atm.common.delete')}
             </Button>

@@ -19,7 +19,7 @@ import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { errorMessage } from '../../../shared/lib/errors';
+import { runFailureText } from '../lib/paste-batches';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
 import { type MaintenanceOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
@@ -102,8 +102,8 @@ export const OpenMaintenancesForm = (): JSX.Element => {
             ? t('atm.common.openUncertain', { count: result.uncertain.length })
             : t('atm.common.openStopped', { count: result.unsent.length }),
           result.uncertain.length > 0
-            ? `${t('atm.common.openUncertainRisk')} ${errorMessage(result.failure, locale)}`
-            : errorMessage(result.failure, locale),
+            ? `${t('atm.common.openUncertainRisk')} ${runFailureText(result.failure, t, locale)}`
+            : runFailureText(result.failure, t, locale),
         );
       } else if (result.opened.length > 0) {
         setCodes('');

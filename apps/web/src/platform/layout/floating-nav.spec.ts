@@ -327,6 +327,10 @@ describe('the hook feeds the rules from the DOM', () => {
   });
 
   it('one box, with a ref, listens for the pointer and the focus — entering and leaving read from the DOM', () => {
+    // A pending close must not fire after the pointer came back (and opened it again).
+    expect(HOOK).toMatch(
+      /const schedule = \(opening: boolean\): void => \{\s*clearTimer\(\);\s*const id = window\.setTimeout\(/,
+    );
     expect(HOOK).toContain('hoverProps: { ref, onMouseOver, onMouseOut, onFocus, onBlur }');
     // React's mouseenter/leave treat a portal (the module launchpad) as inside the box.
     expect(HOOK).not.toContain('onMouseEnter');
@@ -377,6 +381,10 @@ describe('the hook feeds the rules from the DOM', () => {
   });
 
   it('hiding brings a focus in the panel home first; the hidden panel is inert', () => {
+    // Hidden is the ONLY state that is inert: a docked panel made inert could not be unpinned.
+    expect(HOOK).toMatch(
+      /const covered = el\.querySelector<HTMLElement>\('\[data-nav-covered\]'\);\s*const showing = mode !== 'hidden';/,
+    );
     expect(HOOK).toMatch(
       /if \(!showing && panel\.contains\(document\.activeElement\)\) \{\s*const home = homeOf\(el\);\s*if \(home !== null\) \{\s*home\.removeAttribute\('inert'\);\s*quietFocus\(counterpart\(document\.activeElement, home\)\);\s*\}\s*\}\s*panel\.toggleAttribute\('inert', !showing\);/,
     );
@@ -476,6 +484,10 @@ describe('on a desktop: over the page on hover, in the layout once pinned', () =
   });
 
   it('launchpad: exactly one module switcher answers Alt+M at any time — the one that can be seen', () => {
+    // `shortcuts` changes with the panel's mode now, so the listener must follow it.
+    expect(LAUNCHPAD).toMatch(
+      /if \(only \|\| open \|\| !shortcuts\) return undefined;[^]*?\}, \[only, open, shortcuts\]\);/,
+    );
     // The panel's whenever it shows (floating over the strip, or docked in its place)…
     expect(LAUNCHPAD).toMatch(
       /<ModuleSwitcher[^/]*?shortcuts=\{shortcuts && floating\.mode !== 'hidden'\}[^]*?onClosed=\{floating\.release\}/,

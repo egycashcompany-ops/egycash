@@ -16,6 +16,8 @@ import {
   counterpart,
   crossesEdge,
   focusInside,
+  homeOf,
+  hoverDelay,
   initialNavState,
   keyboardFocus,
   loadNavPinned,
@@ -67,6 +69,8 @@ describe('how the panel is drawn', () => {
     expect(HOVER_OPEN_DELAY_MS).toBeGreaterThan(0);
     expect(HOVER_CLOSE_DELAY_MS).toBeGreaterThan(HOVER_OPEN_DELAY_MS);
     expect(HOVER_CLOSE_DELAY_MS).toBeLessThanOrEqual(400);
+    expect(hoverDelay(true)).toBe(HOVER_OPEN_DELAY_MS);
+    expect(hoverDelay(false)).toBe(HOVER_CLOSE_DELAY_MS);
   });
 });
 
@@ -208,6 +212,18 @@ describe('reading the DOM', () => {
     expect(keyboardFocus(el([], 'throws'))).toBe(false);
     expect(keyboardFocus(null)).toBe(false);
   });
+
+  it('the box’s home is its strip or rail — every child but the panel', () => {
+    const child = (panel: boolean): Element =>
+      ({ hasAttribute: (a: string) => panel && a === 'data-nav-panel' }) as unknown as Element;
+    const strip = child(false);
+    const panel = child(true);
+    const box = (kids: Element[]): Element => ({ children: kids }) as unknown as Element;
+    expect(homeOf(box([strip, panel]))).toBe(strip);
+    expect(homeOf(box([panel, strip]))).toBe(strip);
+    // Docked, the launchpad's strip is not mounted: there is no home to return to.
+    expect(homeOf(box([panel]))).toBeNull();
+  });
 });
 
 describe('handing the focus between the strip and the panel (counterpart)', () => {
@@ -302,28 +318,53 @@ describe('the hook feeds the rules from the DOM', () => {
       /useReducer\(navReducer, enabled, [^]*?initialNavState\(on && loadNavPinned\(\)\)/,
     );
     expect(HOOK).not.toContain('useState(');
-    expect(HOOK).toMatch(/persistNavPinned\(state\.pinned\)/);
+    expect(HOOK).toMatch(
+      /if \(state\.pinned === lastPersisted\.current\) return;\s*lastPersisted\.current = state\.pinned;\s*persistNavPinned\(state\.pinned\);\s*\}, \[state\.pinned\]\);/,
+    );
+    expect(HOOK).toMatch(
+      /hold: useCallback\(\(\) => dispatch\(\{ type: 'hold' \}\), \[\]\),\s*release: useCallback\(\(\) => dispatch\(\{ type: 'release' \}\), \[\]\),/,
+    );
   });
 
-  it('one box, with a ref, listens for the pointer and the focus', () => {
+  it('one box, with a ref, listens for the pointer and the focus — entering and leaving read from the DOM', () => {
     expect(HOOK).toContain('hoverProps: { ref, onMouseOver, onMouseOut, onFocus, onBlur }');
-    // Entering and leaving are read from the DOM: React's mouseenter/leave treat a portal as inside.
+    // React's mouseenter/leave treat a portal (the module launchpad) as inside the box.
     expect(HOOK).not.toContain('onMouseEnter');
     expect(HOOK).not.toContain('onMouseLeave');
-    for (const handler of ['onMouseOver', 'onMouseOut', 'onBlur']) {
-      expect(HOOK, handler).toMatch(
-        new RegExp(
-          `const ${handler} = useCallback\\(\\s*\\(e: BoundaryEvent\\): void => \\{\\s*if \\(!enabled \\|\\| !crossesEdge\\(e\\.currentTarget, e\\.target, e\\.relatedTarget\\)\\) return;`,
-        ),
-      );
-    }
+    const guard = String.raw`\(e: BoundaryEvent\): void => \{\s*if \(!enabled \|\| !crossesEdge\(e\.currentTarget, e\.target, e\.relatedTarget\)\) return;`;
+    expect(HOOK).toMatch(
+      new RegExp(
+        String.raw`const onMouseOver = useCallback\(\s*` +
+          guard +
+          String.raw`\s*if \(timer\.current\?\.opening === true\) return;\s*schedule\(true\);\s*\}`,
+      ),
+    );
+    expect(HOOK).toMatch(
+      new RegExp(
+        String.raw`const onMouseOut = useCallback\(\s*` +
+          guard +
+          String.raw`\s*schedule\(false\);\s*syncFocus\(\);\s*\}`,
+      ),
+    );
+    expect(HOOK).toMatch(
+      new RegExp(
+        String.raw`const onBlur = useCallback\(\s*` +
+          guard +
+          String.raw`\s*dispatch\(\{ type: 'focus', on: false \}\);\s*\}`,
+      ),
+    );
+    expect(HOOK).toMatch(
+      /dispatch\(\{ type: 'pointer', on: opening \}\);\s*\}, hoverDelay\(opening\)\);/,
+    );
   });
 
-  it('keyboard focus inside the box opens it — but not a focus put back quietly by a closing launchpad', () => {
+  it('keyboard focus inside the box opens it — but not a focus the hook moves itself, quietly', () => {
     expect(HOOK).toMatch(
       /const onFocus = useCallback\(\s*\(e: BoundaryEvent\): void => \{\s*if \(!enabled \|\| muted\.current\) return;\s*if \(!focusInside\(e\.currentTarget, e\.target\) \|\| !keyboardFocus\(e\.target\)\) return;\s*dispatch\(\{ type: 'focus', on: true \}\);/,
     );
-    expect(HOOK).toMatch(/muted\.current = true;\s*try \{\s*el\?\.focus\(\);/);
+    expect(HOOK).toMatch(
+      /const quietFocus = useCallback\(\(el: HTMLElement \| null\): void => \{\s*muted\.current = true;\s*try \{\s*el\?\.focus\(\);\s*\} finally \{\s*muted\.current = false;\s*\}\s*\}, \[\]\);/,
+    );
   });
 
   it('a focus dropped without a blur (the focused row removed) is noticed, and closes the panel', () => {
@@ -335,17 +376,32 @@ describe('the hook feeds the rules from the DOM', () => {
     expect(HOOK).toContain("document.addEventListener('pointerdown', syncFocus, true);");
   });
 
-  it('the covered strip leaves the tab order while the panel shows, after handing its focus over', () => {
+  it('hiding brings a focus in the panel home first; the hidden panel is inert', () => {
     expect(HOOK).toMatch(
-      /querySelector<HTMLElement>\('\[data-nav-covered\]'\)[^]*?const showing = mode !== 'hidden';[^]*?counterpart\(active, panel\)\?\.focus\(\);[^]*?covered\.toggleAttribute\('inert', showing\);/,
+      /if \(!showing && panel\.contains\(document\.activeElement\)\) \{\s*const home = homeOf\(el\);\s*if \(home !== null\) \{\s*home\.removeAttribute\('inert'\);\s*quietFocus\(counterpart\(document\.activeElement, home\)\);\s*\}\s*\}\s*panel\.toggleAttribute\('inert', !showing\);/,
     );
   });
 
-  it('Escape puts the focus back in the strip or rail before the panel goes', () => {
+  it('the covered strip hands its focus to the panel, and goes inert only once the focus is out of it', () => {
+    // `inert` on a focused element drops the focus to <body>: the keyboard could not reach the
+    // panel at all while the handover was racing a visibility transition.
     expect(HOOK).toMatch(
-      /if \(e\.key !== 'Escape'\) return;[^]*?panel\.contains\(document\.activeElement\)[^]*?home\.removeAttribute\('inert'\);\s*counterpart\(document\.activeElement, home\)\?\.focus\(\);[^]*?dispatch\(\{ type: 'escape' \}\);/,
+      /if \(showing && panel !== null && covered\.contains\(document\.activeElement\)\) \{\s*quietFocus\(counterpart\(document\.activeElement, panel\)\);\s*\}\s*covered\.toggleAttribute\('inert', showing && !covered\.contains\(document\.activeElement\)\);\s*\}\s*\}, \[mode, quietFocus\]\);/,
+    );
+  });
+
+  it('Escape closes a floating panel that is not held — the guard first, the timer cleared', () => {
+    expect(HOOK).toMatch(
+      /const onKey = \(e: KeyboardEvent\): void => \{\s*if \(e\.key !== 'Escape'\) return;\s*clearTimer\(\);\s*dispatch\(\{ type: 'escape' \}\);\s*\};/,
     );
     expect(HOOK).toMatch(/if \(mode !== 'floating' \|\| state\.held\) return undefined;/);
+    expect(HOOK).toMatch(/\}, \[mode, state\.held\]\);/);
+  });
+
+  it('a launchpad closing gives the focus back quietly — to the panel’s twin when its own switcher is covered', () => {
+    expect(HOOK).toMatch(
+      /const covered = el\?\.closest\('\[inert\]'\) \?\? null;\s*quietFocus\(\s*covered !== null && panel !== null && !panel\.hasAttribute\('inert'\)\s*\? counterpart\(el, panel\)\s*: el,\s*\);/,
+    );
   });
 
   it('a pointer press on the pin cancels a pending hover timer before the toggle', () => {
@@ -372,7 +428,7 @@ describe('on a desktop: over the page on hover, in the layout once pinned', () =
     ['launchpad', LAUNCHPAD, '0'],
     ['rail', RAIL, '14'],
   ])(
-    '%s: the panel is always mounted — floating over the page, in the flow when docked, invisible when hidden',
+    '%s: the panel is always mounted — floating over the page, in the flow when docked, transparent and inert when hidden',
     (name, source, start) => {
       // ONE element, never conditional and never keyed: a remount would unfold the folded sections,
       // scroll the list back up, and take the focus off the pin the moment it was pressed.
@@ -387,12 +443,19 @@ describe('on a desktop: over the page on hover, in the layout once pinned', () =
           `data-nav-panel[^]*?!docked &&\\s*'absolute inset-y-0 start-${start} z-\\[35\\]`,
         ),
       );
-      expect(source, `${name} hides by visibility, not by unmounting`).toMatch(
-        /data-nav-panel[^]*?floating\.mode === 'hidden' && 'pointer-events-none invisible opacity-0'/,
+      expect(
+        source,
+        `${name} hides by opacity (and inert, set by the hook), not by unmounting`,
+      ).toMatch(
+        /data-nav-panel[^]*?floating\.mode === 'hidden' && 'pointer-events-none opacity-0'/,
       );
-      // One transition for every change, and none replayed on unpin (an animation class would be).
+      // Never by `visibility`: its transition starts hidden, and for that frame the panel cannot
+      // take the focus the strip hands it — the keyboard could not reach the panel at all.
+      expect(source).not.toMatch(/\binvisible\b/);
+      expect(source).not.toContain('visibility');
+      // One opacity transition for every change, none replayed on unpin (an animation class would be).
       expect(source).toMatch(
-        /data-nav-panel[^]*?transition-\[opacity,visibility\][^]*?motion-reduce:transition-none/,
+        /data-nav-panel[^]*?transition-opacity duration-150[^]*?motion-reduce:transition-none/,
       );
       expect(source).not.toContain('animate-fade-in');
     },
@@ -410,14 +473,23 @@ describe('on a desktop: over the page on hover, in the layout once pinned', () =
     );
   });
 
-  it('launchpad: exactly one module switcher answers Alt+M at any time', () => {
-    // The panel's, once docked in the strip's place.
+  it('launchpad: exactly one module switcher answers Alt+M at any time — the one that can be seen', () => {
+    // The panel's whenever it shows (floating over the strip, or docked in its place)…
     expect(LAUNCHPAD).toMatch(
-      /<ModuleSwitcher[^/]*?shortcuts=\{shortcuts && docked\}[^]*?onClosed=\{floating\.release\}/,
+      /<ModuleSwitcher[^/]*?shortcuts=\{shortcuts && floating\.mode !== 'hidden'\}[^]*?onClosed=\{floating\.release\}/,
     );
-    // The strip's otherwise — but quiet while a launchpad opened from the panel is up, which
-    // answers Alt+M itself (to close); a second listener would raise another launchpad over it.
-    expect(LAUNCHPAD).toMatch(/<IconStrip[^/]*?shortcuts=\{shortcuts && !floating\.held\}/);
+    // …the strip's only while the panel is hidden: under a floating panel it is inert, and a
+    // launchpad raised from it would hand the focus back to a control nobody can reach.
+    expect(LAUNCHPAD).toMatch(
+      /<IconStrip[^/]*?shortcuts=\{shortcuts && floating\.mode === 'hidden'\}/,
+    );
+    // And one launchpad at a time, whichever switcher raised it.
+    expect(LAUNCHPAD).toMatch(
+      /if \(document\.querySelector\('\[data-module-launchpad\]'\) !== null\) return;\s*e\.preventDefault\(\);\s*raise\(\);/,
+    );
+    expect(LAUNCHPAD).toMatch(
+      /<div\s+data-module-launchpad\s+className=\{cn\('fixed inset-0 z-\[90\]'/,
+    );
     // …and the strip passes it on to its switcher, or nothing would listen at all while unpinned.
     expect(LAUNCHPAD).toMatch(
       /const IconStrip = [^]*?<ModuleSwitcher\s+modules=\{modules\}\s+current=\{current\}\s+collapsed\s+shortcuts=\{shortcuts\}\s+restoreFocus=\{restoreFocus\}/,
@@ -442,16 +514,30 @@ describe('on a desktop: over the page on hover, in the layout once pinned', () =
   });
 
   it.each([
-    ['launchpad', LAUNCHPAD],
-    ['rail', RAIL],
-  ])('%s: while the menu loads, the column is as wide as it is about to be', (_name, source) => {
-    expect(source).toMatch(
-      /if \(isLoading\) \{\s*const slim = collapsible && !floating\.pinned;\s*return \(\s*<StateShell slim=\{slim\}>/,
-    );
-  });
+    ['launchpad', LAUNCHPAD, 'column'],
+    ['rail', RAIL, 'rail'],
+  ])(
+    '%s: loading, failed or empty, the column keeps the width it has once loaded',
+    (_name, source, full) => {
+      expect(source).toContain(
+        `const stateWidth: ColumnWidth = collapsible && !floating.pinned ? 'strip' : '${full}';`,
+      );
+      expect(source).toMatch(
+        /if \(isLoading\) \{\s*return <StateShell width=\{stateWidth\}>\{slim \? <SlimLoading \/> : <LoadingState \/>\}<\/StateShell>;/,
+      );
+      expect(source).toMatch(
+        /if \(isError\) \{\s*return \(\s*<StateShell width=\{stateWidth\}>\s*\{slim \? \(\s*<SlimError onRetry=/,
+      );
+      expect(source).toMatch(
+        /if \(modules\.length === 0\) \{\s*return \(\s*<StateShell width=\{stateWidth\}>\s*\{slim \? \(\s*<SlimEmpty /,
+      );
+      expect(source).not.toMatch(/<StateShell>/);
+    },
+  );
 
-  it('the state column can be the strip’s width', () => {
-    expect(ROWS).toMatch(/slim \? 'w-14' : 'w-60'/);
+  it('the state column comes in the three loaded widths: the strip, the launchpad panel, the rail beside its panel', () => {
+    expect(ROWS).toMatch(/strip: 'w-14',\s*column: 'w-60',\s*rail: 'w-\[17\.5rem\]',/);
+    expect(ROWS).toContain('COLUMN_WIDTH[width]');
   });
 
   it.each([
@@ -471,12 +557,13 @@ describe('on a desktop: over the page on hover, in the layout once pinned', () =
     expect(LAUNCHPAD).toMatch(/setOpen\(false\);\s+onClosed\?\.\(\);/);
   });
 
-  it('the mobile drawer is left as it was: the full panel, nothing floating', () => {
+  it('the mobile drawer is left as it was: the full panel, nothing floating — its nav unnamed', () => {
+    // The drawer around it is a dialog already named «القائمة»; the same name twice is read twice.
     expect(LAUNCHPAD).toMatch(
-      /if \(!collapsible\) \{\s+return \(\s+<nav\s+aria-label=\{t\('common\.menu'\)\}\s+className="flex w-60 shrink-0 flex-col/,
+      /if \(!collapsible\) \{\s+return \(\s+<nav className="flex w-60 shrink-0 flex-col/,
     );
     expect(RAIL).toMatch(
-      /if \(!collapsible\) \{\s+return \(\s+<nav aria-label=\{t\('common\.menu'\)\} className="flex">\s+<ModuleRail/,
+      /if \(!collapsible\) \{\s+return \(\s+<nav className="flex">\s+<ModuleRail/,
     );
   });
 

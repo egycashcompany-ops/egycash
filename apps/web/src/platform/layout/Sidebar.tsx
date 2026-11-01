@@ -31,7 +31,6 @@ import {
   SearchIcon,
 } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
-import { Spinner } from '../../shared/ui/Spinner';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
 import { resolveNavIcon, type NavIcon } from '../navigation/app-icon';
@@ -45,7 +44,16 @@ import {
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
-import { AppRow, AppWithChildren, NavSectionGroup, StateShell } from './nav-rows';
+import {
+  AppRow,
+  AppWithChildren,
+  NavSectionGroup,
+  SlimEmpty,
+  SlimError,
+  SlimLoading,
+  StateShell,
+  type ColumnWidth,
+} from './nav-rows';
 import { RailShell } from './SidebarRail';
 import { useFloatingNav } from './floating-nav';
 import { NavPinButton } from './NavPinButton';
@@ -468,6 +476,7 @@ const Launchpad = ({
 
   return createPortal(
     <div
+      data-module-launchpad
       className={cn('fixed inset-0 z-[90]', shown ? '' : 'pointer-events-none')}
       role="dialog"
       aria-modal="true"
@@ -639,6 +648,9 @@ const ModuleSwitcher = ({
     if (only || open || !shortcuts) return undefined;
     const onKey = (e: KeyboardEvent): void => {
       if (e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
+        // One launchpad at a time, whichever switcher raised it: the one already up answers the
+        // chord itself (to close), and raising a second over it would stack two.
+        if (document.querySelector('[data-module-launchpad]') !== null) return;
         e.preventDefault();
         raise();
       }
@@ -881,36 +893,36 @@ const NavShell = ({
       .filter((a): a is NavApp => a !== undefined);
   }, [data, pinned]);
 
-  // While the menu loads, the column takes the width it is about to have — the strip's on an
-  // unpinned desktop — or the page would lay out 184px narrower and then jump wider on every load.
+  // Loading, failed or empty, the column keeps the width it has once loaded — the strip's on an
+  // unpinned desktop, the panel's otherwise — so the page does not jump on every load or retry.
+  // At the strip's width each state is one icon, its words in a tooltip and for screen readers.
+  const stateWidth: ColumnWidth = collapsible && !floating.pinned ? 'strip' : 'column';
+  const slim = stateWidth === 'strip';
   if (isLoading) {
-    const slim = collapsible && !floating.pinned;
-    return (
-      <StateShell slim={slim}>
-        {slim ? (
-          <span role="status" aria-label={t('common.loading')}>
-            <Spinner className="h-5 w-5 text-brand-600" />
-          </span>
-        ) : (
-          <LoadingState />
-        )}
-      </StateShell>
-    );
+    return <StateShell width={stateWidth}>{slim ? <SlimLoading /> : <LoadingState />}</StateShell>;
   }
   if (isError) {
     return (
-      <StateShell>
-        <ErrorState error={error} onRetry={() => void refetch()} />
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimError onRetry={() => void refetch()} />
+        ) : (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        )}
       </StateShell>
     );
   }
   if (modules.length === 0) {
     return (
-      <StateShell>
-        <div className="flex flex-col items-center gap-2 px-6 text-center">
-          <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
-          <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
-        </div>
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimEmpty label={t('sidebar.empty')} />
+        ) : (
+          <div className="flex flex-col items-center gap-2 px-6 text-center">
+            <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
+          </div>
+        )}
       </StateShell>
     );
   }
@@ -934,9 +946,10 @@ const NavShell = ({
   // drawer shows it as it is; on a desktop it is what floats over the page or docks beside it, and
   // the pin that docks it sits right after the switcher.
   //
-  // Only one switcher may answer Alt+M. While the panel floats, the strip is still mounted under it
-  // with a switcher of its own, so the strip's answers; once docked the panel stands in the strip's
-  // place, and its own does.
+  // Only one switcher may answer Alt+M: the one that can be seen. While the panel shows (floating
+  // over the strip, or docked in its place) that is the panel's; while it is hidden, the strip's.
+  // The strip's switcher sits under a floating panel, inert, and a launchpad raised from it would
+  // hand the focus back to a control nobody can reach.
   const panel = (
     <>
       <div className="flex items-center gap-1 border-b border-slate-200/60 px-3 py-2 dark:border-slate-800/60">
@@ -944,7 +957,7 @@ const NavShell = ({
           <ModuleSwitcher
             modules={modules}
             current={current}
-            shortcuts={shortcuts && docked}
+            shortcuts={shortcuts && floating.mode !== 'hidden'}
             onOpen={() => {
               floating.hold();
               onNavigate?.();
@@ -1000,13 +1013,11 @@ const NavShell = ({
   );
 
   // The mobile drawer: the full panel, as it always was. The column is the navigation landmark
-  // (one per shell), not the list inside the panel.
+  // (one per shell), not the list inside the panel. It is left unnamed: the drawer around it is a
+  // dialog already named «القائمة», and the same name twice is read out twice.
   if (!collapsible) {
     return (
-      <nav
-        aria-label={t('common.menu')}
-        className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900"
-      >
+      <nav className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
         {panel}
       </nav>
     );
@@ -1017,8 +1028,8 @@ const NavShell = ({
   // page keeps its whole width underneath. Pinned, the panel stands in the layout in the strip's
   // place and takes its width like any column; the page narrows beside it. One box holds both, so
   // moving from the strip into the panel is not "leaving". The panel is one element in every
-  // state — hidden only makes it invisible — so it is never remounted: a folded section stays
-  // folded between hovers, and pinning from its header keeps the focus on the pin.
+  // state — hidden makes it transparent and inert — so it is never remounted: a folded section
+  // stays folded between hovers, and pinning from its header keeps the focus on the pin.
   //
   // The floating panel covers the strip, so the strip is `data-nav-covered`: while the panel shows,
   // floating-nav takes it out of the tab order and hands its keyboard focus to the panel.
@@ -1039,9 +1050,7 @@ const NavShell = ({
             current={current}
             pinnedApps={pinnedApps}
             allRoutes={allRoutes}
-            // Quiet while a launchpad opened from the panel is up: that launchpad answers Alt+M
-            // itself (to close), and a second listener here would raise another one over it.
-            shortcuts={shortcuts && !floating.held}
+            shortcuts={shortcuts && floating.mode === 'hidden'}
             restoreFocus={floating.restoreFocus}
             onPickModule={pickModule}
             onNavigate={onNavigate}
@@ -1053,11 +1062,11 @@ const NavShell = ({
         data-nav-panel
         data-nav-mode={floating.mode}
         className={cn(
-          'flex w-60 flex-col transition-[opacity,visibility] duration-150 ease-out motion-reduce:transition-none',
+          'flex w-60 flex-col transition-opacity duration-150 ease-out motion-reduce:transition-none',
           'border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
           !docked &&
             'absolute inset-y-0 start-0 z-[35] shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
-          floating.mode === 'hidden' && 'pointer-events-none invisible opacity-0',
+          floating.mode === 'hidden' && 'pointer-events-none opacity-0',
         )}
       >
         {panel}

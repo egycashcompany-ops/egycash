@@ -18,7 +18,6 @@ import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
 import { BuildingIcon, InboxIcon } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
-import { Spinner } from '../../shared/ui/Spinner';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
 import { resolveNavIcon } from '../navigation/app-icon';
@@ -32,7 +31,16 @@ import {
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
-import { AppRow, AppWithChildren, NavSectionGroup, StateShell } from './nav-rows';
+import {
+  AppRow,
+  AppWithChildren,
+  NavSectionGroup,
+  SlimEmpty,
+  SlimError,
+  SlimLoading,
+  StateShell,
+  type ColumnWidth,
+} from './nav-rows';
 import { useFloatingNav } from './floating-nav';
 import { NavPinButton } from './NavPinButton';
 
@@ -239,36 +247,36 @@ const RailShell = ({
       .filter((a): a is NavApp => a !== undefined);
   }, [data, pinned]);
 
-  // While the menu loads, the column takes the width it is about to have — the rail's on an
-  // unpinned desktop — or the page would lay out narrower and then jump wider on every load.
+  // Loading, failed or empty, the column keeps the width it has once loaded — the rail's on an
+  // unpinned desktop, the rail beside its panel otherwise — so the page does not jump on every
+  // load or retry. At the rail's width each state is one icon, its words in a tooltip.
+  const stateWidth: ColumnWidth = collapsible && !floating.pinned ? 'strip' : 'rail';
+  const slim = stateWidth === 'strip';
   if (isLoading) {
-    const slim = collapsible && !floating.pinned;
-    return (
-      <StateShell slim={slim}>
-        {slim ? (
-          <span role="status" aria-label={t('common.loading')}>
-            <Spinner className="h-5 w-5 text-brand-600" />
-          </span>
-        ) : (
-          <LoadingState />
-        )}
-      </StateShell>
-    );
+    return <StateShell width={stateWidth}>{slim ? <SlimLoading /> : <LoadingState />}</StateShell>;
   }
   if (isError) {
     return (
-      <StateShell>
-        <ErrorState error={error} onRetry={() => void refetch()} />
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimError onRetry={() => void refetch()} />
+        ) : (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        )}
       </StateShell>
     );
   }
   if (modules.length === 0) {
     return (
-      <StateShell>
-        <div className="flex flex-col items-center gap-2 px-6 text-center">
-          <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
-          <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
-        </div>
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimEmpty label={t('sidebar.empty')} />
+        ) : (
+          <div className="flex flex-col items-center gap-2 px-6 text-center">
+            <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
+          </div>
+        )}
       </StateShell>
     );
   }
@@ -299,10 +307,11 @@ const RailShell = ({
   );
 
   // The mobile drawer: the rail and the panel side by side, as they always were. The column is the
-  // navigation landmark (one per shell), not the list inside the panel.
+  // navigation landmark (one per shell), not the list inside the panel; unnamed, because the drawer
+  // around it is a dialog already named «القائمة».
   if (!collapsible) {
     return (
-      <nav aria-label={t('common.menu')} className="flex">
+      <nav className="flex">
         <ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />
         {panel}
       </nav>
@@ -312,8 +321,8 @@ const RailShell = ({
   // A desktop. Unpinned, only the rail stands beside the page, and the module's panel is drawn OVER
   // the page from the rail's edge while the pointer (or the focus) is on them — the page keeps its
   // width. Pinned, the panel stands in the layout beside the rail and takes its width like any
-  // column. The panel is one element in every state — hidden only makes it invisible — so a folded
-  // section stays folded between hovers and the pin in its header keeps the focus.
+  // column. The panel is one element in every state — hidden makes it transparent and inert — so a
+  // folded section stays folded between hovers and the pin in its header keeps the focus.
   return (
     <nav
       aria-label={t('common.menu')}
@@ -326,10 +335,10 @@ const RailShell = ({
         data-nav-panel
         data-nav-mode={floating.mode}
         className={cn(
-          'flex transition-[opacity,visibility] duration-150 ease-out motion-reduce:transition-none',
+          'flex transition-opacity duration-150 ease-out motion-reduce:transition-none',
           !docked &&
             'absolute inset-y-0 start-14 z-[35] shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
-          floating.mode === 'hidden' && 'pointer-events-none invisible opacity-0',
+          floating.mode === 'hidden' && 'pointer-events-none opacity-0',
         )}
       >
         {panel}

@@ -12,10 +12,14 @@
 //     it, until it is unpinned. There is no other open or close button: one gesture to look at the
 //     menu, one pin to keep it.
 //
-// The panel stays mounted in all three: hidden only makes it invisible. Unmounting it on every
-// hover threw away what the person did in it — a folded section unfolded again, the page list
-// scrolled back to the top — and switching it between floating and docked must not remount it
-// either, or the pin would lose the keyboard focus the moment it was pressed.
+// The panel stays mounted in all three: hidden makes it transparent and `inert` (out of the tab
+// order, the accessibility tree and the pointer's way). Unmounting it on every hover threw away
+// what the person did in it — a folded section unfolded again, the page list scrolled back to the
+// top — and switching it between floating and docked must not remount it either, or the pin would
+// lose the keyboard focus the moment it was pressed. It is never hidden with `visibility`: a
+// visibility transition starts at its hidden end, so for that first frame nothing in the panel
+// can take the focus, and the strip's focus handed to it was lost (the keyboard could not reach
+// the panel at all).
 //
 // Every change of state goes through `navReducer`, a plain function, so the rules can be tested
 // without a browser; the hook only feeds it the pointer, the focus and the keyboard.
@@ -31,6 +35,10 @@ export const NAV_PINNED_KEY = 'ecms.nav.floatingPinned';
 export const HOVER_OPEN_DELAY_MS = 120;
 /** Long enough to cross the gap from the strip into the panel, or to come back after overshooting. */
 export const HOVER_CLOSE_DELAY_MS = 250;
+
+/** How long the pointer must stay (opening) or stay away (closing) before the panel follows it. */
+export const hoverDelay = (opening: boolean): number =>
+  opening ? HOVER_OPEN_DELAY_MS : HOVER_CLOSE_DELAY_MS;
 
 export const loadNavPinned = (): boolean => {
   try {
@@ -184,7 +192,7 @@ export const counterpart = (from: Element | null, within: ParentNode): HTMLEleme
 };
 
 /** The box's own strip or rail: every child but the panel. */
-const homeOf = (box: Element): Element | null =>
+export const homeOf = (box: Element): Element | null =>
   Array.from(box.children).find((child) => !child.hasAttribute('data-nav-panel')) ?? null;
 
 // ── The hook ────────────────────────────────────────────────────────────────
@@ -223,6 +231,17 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
   const mode = enabled ? navPanelMode(state) : 'hidden';
   const box = useRef<HTMLElement | null>(null);
   const muted = useRef(false);
+  // Moves the focus without that counting as the keyboard arriving: the hook's own handovers
+  // (strip ↔ panel) and a closing launchpad's return. Counted, a handover the pointer caused would
+  // keep the panel floating after the pointer left, and Alt+M then Escape would float it open.
+  const quietFocus = useCallback((el: HTMLElement | null): void => {
+    muted.current = true;
+    try {
+      el?.focus();
+    } finally {
+      muted.current = false;
+    }
+  }, []);
   // One timer, for whichever change of the pointer is on its way.
   const timer = useRef<{ id: number; opening: boolean } | null>(null);
 
@@ -234,13 +253,10 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
   };
   const schedule = (opening: boolean): void => {
     clearTimer();
-    const id = window.setTimeout(
-      () => {
-        timer.current = null;
-        dispatch({ type: 'pointer', on: opening });
-      },
-      opening ? HOVER_OPEN_DELAY_MS : HOVER_CLOSE_DELAY_MS,
-    );
+    const id = window.setTimeout(() => {
+      timer.current = null;
+      dispatch({ type: 'pointer', on: opening });
+    }, hoverDelay(opening));
     timer.current = { id, opening };
   };
   useEffect(() => clearTimer, []);
@@ -309,38 +325,43 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
     };
   }, [enabled, state.focused, syncFocus]);
 
-  // Where the floating panel covers the strip (the launchpad's, marked `data-nav-covered`), the
-  // strip under it leaves the tab order and the accessibility tree while the panel shows: its
-  // controls are behind an opaque panel, and Tab would otherwise walk through every one of them
-  // unseen. Keyboard focus that lands on the strip is handed to the same control in the panel
-  // first, so taking the strip away never drops it.
+  // Showing and hiding, in the DOM, before the browser paints:
+  //   • hiding with the focus in the panel brings it back to the same place in the strip or rail
+  //     first (Escape, or the pointer leaving after a click inside), so it is not dropped on <body>;
+  //   • the hidden panel is `inert`;
+  //   • where the panel covers the strip (the launchpad's, marked `data-nav-covered`), focus on the
+  //     strip is handed to the same control in the panel, and the strip is `inert` while the panel
+  //     shows — its controls are behind an opaque panel, and Tab would walk through every one of
+  //     them unseen. Only once the focus is out of it: `inert` on a focused element drops the focus.
   useLayoutEffect(() => {
     const el = box.current;
     if (el === null) return;
+    const panel = el.querySelector<HTMLElement>('[data-nav-panel]');
     const covered = el.querySelector<HTMLElement>('[data-nav-covered]');
-    if (covered === null) return;
     const showing = mode !== 'hidden';
-    const active = document.activeElement;
-    if (showing && covered.contains(active) && keyboardFocus(active)) {
-      const panel = el.querySelector('[data-nav-panel]');
-      if (panel !== null) counterpart(active, panel)?.focus();
+    if (panel !== null) {
+      if (!showing && panel.contains(document.activeElement)) {
+        const home = homeOf(el);
+        if (home !== null) {
+          home.removeAttribute('inert');
+          quietFocus(counterpart(document.activeElement, home));
+        }
+      }
+      panel.toggleAttribute('inert', !showing);
     }
-    covered.toggleAttribute('inert', showing);
-  }, [mode]);
+    if (covered !== null) {
+      if (showing && panel !== null && covered.contains(document.activeElement)) {
+        quietFocus(counterpart(document.activeElement, panel));
+      }
+      covered.toggleAttribute('inert', showing && !covered.contains(document.activeElement));
+    }
+  }, [mode, quietFocus]);
 
-  // Escape closes a floating panel. If the focus is in it, the focus goes back to the same place in
-  // the strip or rail first, so it is not dropped onto the page with the panel.
+  // Escape closes a floating panel; the effect above brings a focus inside it home first.
   useEffect(() => {
     if (mode !== 'floating' || state.held) return undefined;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
-      const el = box.current;
-      const panel = el?.querySelector('[data-nav-panel]') ?? null;
-      const home = el === null ? null : homeOf(el);
-      if (panel !== null && home !== null && panel.contains(document.activeElement)) {
-        home.removeAttribute('inert');
-        counterpart(document.activeElement, home)?.focus();
-      }
       clearTimer();
       dispatch({ type: 'escape' });
     };
@@ -361,14 +382,21 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
     dispatch({ type: 'toggle', byPointer });
   }, []);
 
-  const restoreFocus = useCallback((el: HTMLElement | null): void => {
-    muted.current = true;
-    try {
-      el?.focus();
-    } finally {
-      muted.current = false;
-    }
-  }, []);
+  // A launchpad opened from the strip may close while the panel floats over the strip (the pointer
+  // came to rest on it meanwhile): the strip's switcher is inert then, and the focus goes to the
+  // panel's own switcher instead of being dropped.
+  const restoreFocus = useCallback(
+    (el: HTMLElement | null): void => {
+      const panel = box.current?.querySelector<HTMLElement>('[data-nav-panel]') ?? null;
+      const covered = el?.closest('[inert]') ?? null;
+      quietFocus(
+        covered !== null && panel !== null && !panel.hasAttribute('inert')
+          ? counterpart(el, panel)
+          : el,
+      );
+    },
+    [quietFocus],
+  );
 
   return {
     pinned: state.pinned,

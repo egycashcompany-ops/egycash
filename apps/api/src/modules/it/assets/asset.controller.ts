@@ -8,6 +8,7 @@ import {
   type CreateItAsset,
   type ItAssetDto,
   type ItAssetLabels,
+  type ListItAssetNamesQuery,
   type ListItAssetsQuery,
   type UpdateItAsset,
 } from '@ecms/contracts';
@@ -36,9 +37,13 @@ export const listItAssets = async (req: Request, res: Response): Promise<void> =
   okPage(res, page, (doc) => toItAssetDto(doc, holders));
 };
 
-/** The name filter's options — the names the reader's own scope holds, nothing beyond it. */
+/**
+ * The name filter's options — the names the reader's own scope holds, nothing beyond it, narrowed
+ * to the categories the filter beside it has chosen.
+ */
 export const listItAssetNames = async (req: Request, res: Response): Promise<void> => {
-  ok(res, await itAssetService.names(scopeSelector(authContext(req), 'itAsset.view')));
+  const { query } = validated<never, ListItAssetNamesQuery>(req);
+  ok(res, await itAssetService.names(scopeSelector(authContext(req), 'itAsset.view'), query));
 };
 
 export const getItAsset = async (req: Request, res: Response): Promise<void> => {

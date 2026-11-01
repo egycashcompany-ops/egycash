@@ -11,9 +11,12 @@
 // screen's own action: every asset the filters match, in the table's order, not the page on screen
 // (`lib/asset-register-export.ts`).
 //
-// «تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر زود بعد الحالات وقبل
-// الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة» — the holder right after the status, and a name
-// filter between the status and the category that is a list you can type into.
+// «تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة» — the holder right after the status.
+//
+// «عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط) والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء
+// على الفئات وعايز الأتنين دول يبقوا Multiselect» — in the FILTER BAR (the table's columns keep
+// their order) the categories come first and the names right after them, both taking several
+// answers, and the names offered are the chosen categories' own (`useCategoryNameFilter`).
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { IT_ASSET_STATUSES, type ItAssetDto, type Locale } from '@ecms/contracts';
@@ -28,7 +31,6 @@ import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Select } from '../../../shared/ui/form';
-import { Combobox } from '../../../shared/ui/Combobox';
 import { BulkActionBar } from '../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -37,7 +39,6 @@ import { formatDate, localized } from '../../../shared/lib/format';
 import * as api from '../api/it-api';
 import {
   useDeleteItAsset,
-  useItAssetNames,
   useItAssets,
   useItBranchOptions,
   useItCatalog,
@@ -46,8 +47,11 @@ import {
 import { EmployeePicker } from '../components/EmployeePicker';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
-import { ItCatalogSelect } from '../components/ItCatalogSelect';
+import { AssetNameFilter } from '../components/AssetNameFilter';
+import { ItCatalogMultiSelect } from '../components/ItCatalogMultiSelect';
 import { useAssetLabels } from '../components/useAssetLabels';
+import { useCategoryNameFilter } from '../components/useCategoryNameFilter';
+import { categoryQuery, namesQuery } from '../lib/category-name-filter';
 import { RegisterExportButtons } from '../components/RegisterExportButtons';
 import { saveSheet } from '../../fleet/lib/fleet-sheet';
 import {
@@ -61,11 +65,14 @@ import { gatherRegister, printItRegister } from '../lib/register-export';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+// `names` is the name list; `name` is where the single name filter kept its one name — still
+// remembered, so a view saved before the list is restored once, then moved to `names`.
 const REMEMBERED_FILTERS = [
   'branch',
   'category',
   'holder',
   'name',
+  'names',
   'q',
   'status',
   'size',
@@ -84,9 +91,6 @@ export const AssetsListPage = (): JSX.Element => {
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
-  // One of the register's own names, matched exactly — every asset by that name.
-  const name = sp.get('name') ?? '';
-  const categoryId = sp.get('category') ?? '';
   const branchId = sp.get('branch') ?? '';
   // Who holds it NOW — an employee id, so the filter survives a rename and can be linked.
   const holderId = sp.get('holder') ?? '';
@@ -112,11 +116,16 @@ export const AssetsListPage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
+  // «الفئة» (`category`, ids) and «الاسم» (`names`, the register's own names, each matched exactly
+  // — every asset by that name): both lists, the names narrowed by the categories.
+  // The names live in `names`; `name` is where the single name filter kept its one name, raw.
+  const nameFilter = useCategoryNameFilter([sp, setSp], 'names', patch, 'name');
+  const { categoryIds, names } = nameFilter;
   const hasActiveFilters =
     search !== '' ||
     status !== '' ||
-    name !== '' ||
-    categoryId !== '' ||
+    names.length > 0 ||
+    categoryIds.length > 0 ||
     branchId !== '' ||
     holderId !== '';
 
@@ -128,14 +137,15 @@ export const AssetsListPage = (): JSX.Element => {
       sortDir: sort.dir,
       search: search || undefined,
       status: status || undefined,
-      name: name || undefined,
-      categoryId: categoryId || undefined,
+      name: namesQuery(names),
+      categoryId: categoryQuery(categoryIds),
       branchId: branchId || undefined,
       holderEmployeeId: holderId || undefined,
     }),
     [paramsKey],
   );
-  const { data, isLoading, isError, error, refetch } = useItAssets(params);
+  // Held while a category change settles its names — see `useCategoryNameFilter`.
+  const { data, isLoading, isError, error, refetch } = useItAssets(params, !nameFilter.settling);
 
   // The holder chip's label: the pick supplies it; arriving on a link or a remembered filter with
   // only an id, the person is resolved by id (ADR-019 rule 5's other half).
@@ -150,7 +160,6 @@ export const AssetsListPage = (): JSX.Element => {
       ? ''
       : `${holderPerson.data.fullNameAr} (${holderPerson.data.code})`;
   const rows = data?.items ?? [];
-  const names = useItAssetNames();
 
   const categories = useItCatalog('assetCategory');
   const categoryName = useMemo(() => {
@@ -205,8 +214,8 @@ export const AssetsListPage = (): JSX.Element => {
         ...assetRegisterFilters({
           search,
           status,
-          name,
-          categoryId,
+          names,
+          categoryIds,
           categoryName,
           branchId,
           branchName,
@@ -372,6 +381,7 @@ export const AssetsListPage = (): JSX.Element => {
               q: null,
               status: null,
               name: null,
+              names: null,
               category: null,
               branch: null,
               holder: null,
@@ -398,38 +408,21 @@ export const AssetsListPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
-          {/* After the statuses, before the category: the register's own names, typed into. A pick
-              is always one of them, so the list matches it exactly. Until the names arrive the
-              list says so — and says when they could not be read, retrying when the box is next
-              entered — rather than claiming no asset has the name being typed. */}
-          <div
-            className="w-64"
-            onFocus={() => {
-              if (names.isError) void names.refetch();
-            }}
-          >
-            <Combobox
-              ariaLabel={t('it.assets.columns.name')}
-              placeholder={t('it.assets.columns.name')}
-              value={name}
-              options={names.data?.names ?? []}
-              onChange={(next) => patch({ name: next || null })}
-              emptyText={
-                names.isError
-                  ? t('common.error.title')
-                  : names.isPending
-                    ? t('common.loading')
-                    : t('it.assets.nameFilter.empty')
-              }
-              clearLabel={t('it.assets.nameFilter.clear')}
-            />
-          </div>
-          <ItCatalogSelect
+          {/* After the statuses: the categories, then — «فلتر الأسم يبقي بعد الفئات» — the names
+              those categories hold, both taking several answers. */}
+          <ItCatalogMultiSelect
             kind="assetCategory"
-            value={categoryId}
-            onChange={(id) => patch({ category: id || null })}
-            allLabel={t('it.assets.allCategories')}
-            ariaLabel={t('it.assets.columns.category')}
+            label={t('it.assets.columns.category')}
+            value={categoryIds}
+            onChange={nameFilter.setCategories}
+            fullWidth
+            className="w-44"
+          />
+          <AssetNameFilter
+            filter={nameFilter}
+            label={t('it.assets.columns.name')}
+            fullWidth
+            className="w-64"
           />
           <Select
             aria-label={t('it.assets.columns.branch')}
@@ -473,7 +466,7 @@ export const AssetsListPage = (): JSX.Element => {
           columns={columns}
           rows={rows}
           rowKey={(a) => a.id}
-          loading={isLoading}
+          loading={isLoading || nameFilter.settling}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sort}

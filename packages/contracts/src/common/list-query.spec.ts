@@ -2,7 +2,7 @@
 // accepting the ONE answer every existing link, bookmark and API caller already sends.
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { listQuery } from './index.js';
+import { joinNameList, listQuery, nameListQuery, splitNameList } from './index.js';
 
 const Status = z.enum(['waiting', 'accepted', 'rejected']);
 const schema = z.object({ status: listQuery(Status) }).strict();
@@ -72,5 +72,30 @@ describe('listQuery', () => {
       expect(capped(100)('waiting , accepted')).toEqual(['waiting', 'accepted']);
       expect(() => capped(100)('nonsense')).toThrow();
     });
+  });
+});
+
+// A name list is `listQuery` for FREE TEXT: the same one-value shape, with `\,` and `\\` escaped so
+// a name holding a comma travels whole (an ATM bank label, an IT asset's name).
+describe('name lists', () => {
+  it('round-trips names holding commas and backslashes', () => {
+    const names = ['Lenovo ThinkCentre neo 50a 24', 'شاشة 24, Dell', 'a\\b'];
+    expect(splitNameList(joinNameList(names))).toEqual(names);
+  });
+
+  it('reads a list without escapes exactly as a plain list', () => {
+    expect(splitNameList('Dell E2423H,HP 85A')).toEqual(['Dell E2423H', 'HP 85A']);
+    expect(joinNameList(['Dell E2423H', 'HP 85A'])).toBe('Dell E2423H,HP 85A');
+  });
+
+  it('parses as a query field — absent, emptied, single, repeated', () => {
+    const schema = z.object({ name: nameListQuery() }).strict();
+    expect(schema.parse({}).name).toBeUndefined();
+    expect(schema.parse({ name: ' , ' }).name).toBeUndefined();
+    expect(schema.parse({ name: 'Dell E2423H' }).name).toEqual(['Dell E2423H']);
+    expect(schema.parse({ name: ['a\\,b', 'c'] }).name).toEqual(['a,b', 'c']);
+    expect(() =>
+      schema.parse({ name: Array.from({ length: 51 }, (_, i) => `n${i}`).join(',') }),
+    ).toThrow();
   });
 });

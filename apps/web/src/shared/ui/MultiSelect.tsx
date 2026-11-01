@@ -137,6 +137,16 @@ export const multiSelectKey = (
   return null;
 };
 
+/**
+ * What an EMPTY list says. Loading while the answer is on its way; otherwise the owner's own words
+ * when it has them — a list that could not be READ must not claim that nothing matched — and «no
+ * results» when it does not.
+ */
+export const emptyListText = (
+  t: (key: string) => string,
+  { searching, emptyText }: { searching: boolean; emptyText?: string | undefined },
+): string => (searching ? t('common.loading') : (emptyText ?? t('common.noResults')));
+
 export const MultiSelect = ({
   label,
   options,
@@ -148,6 +158,8 @@ export const MultiSelect = ({
   onCommitSearch,
   searchValue,
   searching = false,
+  emptyText,
+  statusText,
   showSelectedValues = false,
   chips = false,
   density = 'default',
@@ -195,6 +207,17 @@ export const MultiSelect = ({
    * first read. An empty list then says it is loading rather than that nothing matched.
    */
   searching?: boolean;
+  /**
+   * What the empty list says instead of «no results», when that would not be true — the options
+   * could not be read, so nothing is known about what matches. Opt-in; see `emptyListText`.
+   */
+  emptyText?: string;
+  /**
+   * A line above the options while they are not the whole answer — still loading, or could not be
+   * read — for a list that keeps showing what is already CHOSEN meanwhile. Its matches are then
+   * never empty, so the empty list's own words would never be seen. Opt-in.
+   */
+  statusText?: string;
   /**
    * How much room the TRIGGER spends on itself — the same opt-in `Input` and `Select` take.
    *
@@ -604,8 +627,11 @@ export const MultiSelect = ({
           >
             {matches.length === 0 && (
               <li className="px-3 py-2 text-sm text-slate-400">
-                {searching ? t('common.loading') : t('common.noResults')}
+                {emptyListText(t, { searching, emptyText })}
               </li>
+            )}
+            {matches.length > 0 && statusText !== undefined && (
+              <li className="px-3 py-2 text-sm text-slate-400">{statusText}</li>
             )}
             {matches.map((option, index) => {
               const checked = value.includes(option.value);

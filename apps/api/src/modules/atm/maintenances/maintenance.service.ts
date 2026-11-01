@@ -3,7 +3,6 @@
 // The differences from replenishment are the legacy's own, not a redesign — port doc §2.3.
 import {
   normalizeAtmMachineCode,
-  AtmSettingKeys,
   type AtmLeaderOptionDto,
   type BulkUpdateAtmMaintenances,
   type CloseAtmMaintenances,
@@ -15,15 +14,12 @@ import {
 } from '@ecms/contracts';
 import { Types, type ClientSession } from 'mongoose';
 import { auditService, type AuditEntry } from '../../../platform/audit';
-import {
-  getDirectoryEmployee,
-  listDirectoryEmployeesByDepartment,
-} from '../../../platform/directory';
-import { settingsService } from '../../../platform/settings';
+import { getDirectoryEmployee } from '../../../platform/directory';
 import { type AuthContext, scopeSelector } from '../../../shared/types';
 import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
+import { atmLeadersService } from '../leaders/leaders.service';
 import { actorName, resolveAtmBranchId } from '../shared/atm-context';
 import {
   alreadyOpenError,
@@ -37,9 +33,6 @@ import { atmMaintenanceRepository } from './maintenance.repository';
 import { type AtmMaintenanceDoc } from './maintenance.model';
 
 const entityRef = (id: string) => ({ moduleId: 'atm', entityType: 'maintenance', entityId: id });
-
-/** Who the close modal offers is an organization fact, like the operations crew departments. */
-const ORG_SUBJECT = { userId: null, branchId: null };
 
 const editSnapshot = (doc: AtmMaintenanceDoc) => ({
   serviceType: doc.serviceType,
@@ -101,21 +94,12 @@ class AtmMaintenanceService {
 
   /**
    * The close modal's employee list — legacy hardcoded `department: "الصراف الالى"`,
-   * work_status 1, not deleted (contad_app.js:1110-1112). The department set is the
-   * `atm.maintenanceLeaderDepartmentIds` setting (the port of that constant); employed-only is
-   * the directory seam's own rule, and exited employees are excluded the same way operations
-   * excludes them.
+   * work_status 1, not deleted (contad_app.js:1110-1112). Kept for the route that always served
+   * it; the list itself is `atm/leaders` (the departments ticked on /atm/settings, or the ATM
+   * department found by name while none is).
    */
   async leaderOptions(): Promise<AtmLeaderOptionDto[]> {
-    const departmentIds = await settingsService.resolve<string[]>(
-      AtmSettingKeys.MaintenanceLeaderDepartmentIds,
-      ORG_SUBJECT,
-    );
-    const employees = await listDirectoryEmployeesByDepartment(departmentIds);
-    return employees
-      .filter((employee) => employee.status !== 'exited')
-      .map((employee) => ({ employeeId: employee.employeeId, name: employee.fullNameAr }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    return atmLeadersService.options();
   }
 
   /**

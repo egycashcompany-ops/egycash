@@ -13,7 +13,10 @@ import { z } from 'zod';
 import {
   PaginationQuerySchema,
   booleanQuery,
+  joinNameList,
+  nameListQuery,
   objectId,
+  splitNameList,
   type LocalizedString,
 } from '../common/index.js';
 // `import type`, not an inline `type` specifier: under verbatimModuleSyntax the inline form still
@@ -460,51 +463,17 @@ export type AtmOperationIds = z.infer<typeof AtmOperationIdsSchema>;
 // inside a name, `\\` a backslash. A list whose names hold neither (every link written before this
 // existed) reads exactly as it always did, so a remembered filter or a bookmark keeps working.
 
-const escapeAtmName = (name: string): string => name.replace(/\\/g, '\\\\').replace(/,/g, '\\,');
+// The helpers themselves are the platform's (`joinNameList`, `splitNameList`, `nameListQuery` in
+// `common/`) — the IT registers' name filters needed the same escape — and keep their ATM names here.
 
 /** Names → one list value. The inverse of `splitAtmNameList`. */
-export const joinAtmNameList = (names: readonly string[]): string =>
-  names.map(escapeAtmName).join(',');
+export const joinAtmNameList = joinNameList;
 
-/**
- * One list value → the names it carries: split on the commas that are not escaped, each name
- * trimmed (as `listQuery` trims), empty ones dropped. A backslash before any character keeps that
- * character; a lone trailing backslash is kept as written.
- */
-export const splitAtmNameList = (raw: string): string[] => {
-  const names: string[] = [];
-  let current = '';
-  for (let index = 0; index < raw.length; index += 1) {
-    const char = raw.charAt(index);
-    if (char === '\\' && index + 1 < raw.length) {
-      current += raw.charAt(index + 1);
-      index += 1;
-    } else if (char === ',') {
-      names.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  names.push(current);
-  return names.map((name) => name.trim()).filter((name) => name !== '');
-};
+/** One list value → the names it carries (see `splitNameList`). */
+export const splitAtmNameList = splitNameList;
 
-/**
- * A bank/area list as a query field — `listQuery`'s contract (absent or empty means "not
- * narrowed"; a repeated parameter is accepted too, each occurrence read the same way) with the
- * escape above, so a name holding a comma arrives whole.
- */
-export const atmNameListQuery = (max = 50) =>
-  z.preprocess(
-    (raw) => {
-      if (raw === undefined || raw === null) return undefined;
-      const parts = Array.isArray(raw) ? raw : [raw];
-      const names = parts.flatMap((part) => splitAtmNameList(String(part)));
-      return names.length === 0 ? undefined : names;
-    },
-    z.array(z.string().min(1)).min(1).max(max).optional(),
-  );
+/** A bank/area list as a query field (see `nameListQuery`). */
+export const atmNameListQuery = nameListQuery;
 
 /**
  * Open replenishment/maintenance list — bank/area narrowing. The legacy stored these per user in
@@ -858,10 +827,16 @@ export const BulkUpdateAtmMaintenancesSchema = z
   .strict();
 export type BulkUpdateAtmMaintenances = z.infer<typeof BulkUpdateAtmMaintenancesSchema>;
 
-/** One row of the close modal's employee datalist (atm_maintenance.ejs:1189-1193). */
+/**
+ * One name the leader pickers offer (atm_maintenance.ejs:1189-1193 — the close modal's employee
+ * datalist; since 2026-11-01 also both kinds' edit dialogs). `GET /atm/leaders/options`.
+ */
 export interface AtmLeaderOptionDto {
   employeeId: string;
+  /** HR's full Arabic name — what the close writes as `leaderName`. */
   name: string;
+  /** HR's employee code — tells two people of one name apart in the picker. */
+  code: string;
 }
 
 // ── Mail tickets (legacy `atm_mails`) ───────────────────────────────────────────────────────────
@@ -1038,9 +1013,10 @@ export const AtmSettingKeys = {
    * HR department ids whose employees populate the maintenance close-modal's assignee list. The
    * legacy hardcoded the Arabic department NAME — `department: "الصراف الالى"`
    * (contad_app.js:1110-1112); a name cannot be hardcoded against ECMS's org chart, so the port
-   * of that constant is this setting (the operations CrewDepartmentIds precedent). DEFAULT EMPTY,
-   * meaning an unconfigured install offers nobody — closing maintenance names a real employee or
-   * does not happen, which is the legacy rule.
+   * of that constant is this setting (the operations CrewDepartmentIds precedent), ticked on
+   * /atm/settings. DEFAULT EMPTY, which since 2026-11-01 means the legacy rule itself: every active
+   * department whose NAME is the ATM department's (`atm/leaders`). Closing maintenance still names
+   * a real employee or does not happen.
    */
   MaintenanceLeaderDepartmentIds: 'atm.maintenanceLeaderDepartmentIds',
   /**

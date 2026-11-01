@@ -1,16 +1,20 @@
-// «عايز فى شاشة الأصول /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز
-// فى الفلتر زود بعد الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة» — the asset
-// register, proven against what it renders: the holder's column sits right after the status, names
-// the person with a link to what they hold and their code under it, and is a dash for an asset in
-// stock; the name filter is a box you can type into, between the status and the category, and the
-// name in the URL is what the register asks for.
+// «عايز فى شاشة الأصول /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة» — the
+// asset register, proven against what it renders: the holder's column sits right after the status,
+// names the person with a link to what they hold and their code under it, and is a dash for an
+// asset in stock.
+//
+// «عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط) والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء
+// على الفئات وعايز الأتنين دول يبقوا Multiselect» — in the bar the categories come after the
+// statuses and the names right after the categories, both taking several answers; the lists in the
+// URL are what the register asks for, a name holding a comma among them; the table's own columns
+// keep their order.
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { type ItAssetDto, type Locale, type MeDto } from '@ecms/contracts';
+import { joinNameList, type ItAssetDto, type Locale, type MeDto } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
@@ -99,7 +103,31 @@ const IN_STOCK = asset({
 });
 
 const NAME = 'Lenovo ThinkCentre neo 50a 24';
+// Free text, so it may hold a comma — and must reach the filter whole.
+const COMMA_NAME = 'Raml, Station';
+const PRINTER = asset({
+  id: 'asset-4',
+  assetCode: 'AST-00015',
+  name: COMMA_NAME,
+  categoryId: 'c-printer',
+  status: 'inStock',
+  currentAssignmentId: null,
+  holder: null,
+});
 const FIRST_PAGE = { page: 1, pageSize: 25, sortBy: 'assetCode', sortDir: 'asc' };
+
+const category = (id: string, ar: string) => ({
+  id,
+  kind: 'assetCategory' as const,
+  code: null,
+  name: { ar, en: ar },
+  description: null,
+  sortOrder: 0,
+  isActive: true,
+  version: 0,
+  createdAt: '2026-10-07T09:00:00.000Z',
+  updatedAt: '2026-10-07T09:00:00.000Z',
+});
 
 const render = (path = '/it/assets'): string => {
   const qc = new QueryClient({
@@ -109,10 +137,38 @@ const render = (path = '/it/assets'): string => {
     items,
     meta: { page: 1, pageSize: 25, totalItems: items.length, totalPages: 1 },
   });
-  // The register's first page as the screen asks for it — unfiltered, and narrowed to one name.
+  // The register's first page as the screen asks for it — unfiltered, narrowed to one name (a
+  // link from when the filter took one), and narrowed to two categories and two names, one of
+  // them holding a comma: the request carries the names as ONE escaped list.
   qc.setQueryData(listKey('it', 'assets', FIRST_PAGE), page([HELD, UNNAMED, IN_STOCK]));
   qc.setQueryData(listKey('it', 'assets', { ...FIRST_PAGE, name: NAME }), page([HELD]));
-  qc.setQueryData(listKey('it', 'assets', { names: true }), { names: [NAME, 'طابعة HP'] });
+  // A remembered or linked name from the single filter, which kept it raw: one name, comma and all.
+  qc.setQueryData(
+    listKey('it', 'assets', { ...FIRST_PAGE, name: joinNameList([COMMA_NAME]) }),
+    page([PRINTER]),
+  );
+  qc.setQueryData(listKey('it', 'assets', { ...FIRST_PAGE, categoryId: 'c-pc' }), page([HELD]));
+  qc.setQueryData(
+    listKey('it', 'assets', {
+      ...FIRST_PAGE,
+      name: joinNameList([COMMA_NAME, NAME]),
+      categoryId: 'c-printer,c-pc',
+    }),
+    page([HELD, PRINTER]),
+  );
+  // The names each choice of categories holds — every name when none is chosen.
+  qc.setQueryData(listKey('it', 'assets', { names: true, categoryId: [] }), {
+    names: [NAME, COMMA_NAME, 'طابعة HP'],
+    truncated: false,
+  });
+  qc.setQueryData(listKey('it', 'assets', { names: true, categoryId: ['c-pc', 'c-printer'] }), {
+    names: [NAME, COMMA_NAME],
+    truncated: false,
+  });
+  qc.setQueryData(listKey('it', 'catalogs', { kind: 'assetCategory', select: true }), {
+    items: [category('c-pc', 'كمبيوتر'), category('c-printer', 'طابعات')],
+    meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
+  });
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
@@ -177,25 +233,73 @@ describe('the holder’s column', () => {
   });
 });
 
-describe('the name filter', () => {
-  it('is a box to type into, after the status and before the category — «الاسم»', () => {
+/** Where a multi-select's trigger sits in the markup — by the question it asks. */
+const multiSelectAt = (html: string, label: string): number =>
+  html.indexOf(`aria-haspopup="listbox" aria-expanded="false" aria-label="${label}"`);
+
+describe('the category and name filters', () => {
+  const categoryLabel = ar('it.assets.columns.category');
+  const nameLabel = ar('it.assets.columns.name');
+
+  it('stand after the status, the category FIRST and the name right after it — «بعد الفئات»', () => {
     const html = render();
     const status = html.indexOf(`aria-label="${ar('it.assets.columns.status')}"`);
-    const name = html.indexOf(`role="combobox" aria-label="${ar('it.assets.columns.name')}"`);
-    const category = html.indexOf(`aria-label="${ar('it.assets.columns.category')}"`);
+    const category = multiSelectAt(html, categoryLabel);
+    const name = multiSelectAt(html, nameLabel);
+    const branch = html.indexOf(`aria-label="${ar('it.assets.columns.branch')}"`);
     expect(status).toBeGreaterThan(-1);
-    expect(name).toBeGreaterThan(status);
-    expect(category).toBeGreaterThan(name);
-    expect(html).toContain(`placeholder="${ar('it.assets.columns.name')}"`);
+    expect(category).toBeGreaterThan(status);
+    expect(name).toBeGreaterThan(category);
+    expect(branch).toBeGreaterThan(name);
   });
 
-  it('asks the register for the name in the URL, shows it picked, and offers the reset', () => {
-    const html = render(`/it/assets?name=${encodeURIComponent(NAME)}`);
-    expect(html).toContain(`value="${NAME}"`);
-    // Only the one asset by that name — the request carried `name`.
+  it('both take several answers — «Multiselect» — and the old single-name box is gone', () => {
+    const html = render();
+    expect(multiSelectAt(html, categoryLabel)).toBeGreaterThan(-1);
+    expect(multiSelectAt(html, nameLabel)).toBeGreaterThan(-1);
+    expect(html).not.toContain(`role="combobox" aria-label="${nameLabel}"`);
+  });
+
+  it('change the bar only — the table’s columns keep their order, the name before the category', () => {
+    const columns = headings(render());
+    expect(columns.indexOf(nameLabel)).toBeGreaterThan(-1);
+    expect(columns.indexOf(nameLabel)).toBeLessThan(columns.indexOf(categoryLabel));
+  });
+
+  it('read a link from when each took one value — a list of one', () => {
+    const byName = render(`/it/assets?name=${encodeURIComponent(NAME)}`);
+    // Only the one asset by that name — the request carried `name`; the trigger names the pick.
+    expect(byName).toContain('AST-00012');
+    expect(byName).not.toContain('AST-00014');
+    expect(byName).toContain(`title="${NAME}"`);
+    expect(byName).toContain(`aria-label="${ar('common.filters.clear')}"`);
+
+    const byCategory = render('/it/assets?category=c-pc');
+    expect(byCategory).toContain('AST-00012');
+    expect(byCategory).not.toContain('AST-00014');
+    expect(byCategory).toContain('title="كمبيوتر"');
+  });
+
+  it('ask for every category and every name in the URL — a name holding a comma, whole', () => {
+    const query = new URLSearchParams({
+      category: 'c-printer,c-pc',
+      names: joinNameList([COMMA_NAME, NAME]),
+    });
+    const html = render(`/it/assets?${query.toString()}`);
+    // The request carried both lists: the two assets they match, and none they do not.
     expect(html).toContain('AST-00012');
+    expect(html).toContain('AST-00015');
     expect(html).not.toContain('AST-00014');
-    expect(html).toContain(`aria-label="${ar('common.filters.clear')}"`);
+    // The triggers name the picks, in the order they were picked — the comma's name in one piece.
+    expect(html).toContain('title="طابعات, كمبيوتر"');
+    expect(html).toContain(`title="${COMMA_NAME}, ${NAME}"`);
+  });
+
+  it('read the single filter’s raw name whole — its comma never splits it', () => {
+    const html = render(`/it/assets?name=${encodeURIComponent(COMMA_NAME)}`);
+    expect(html).toContain('AST-00015');
+    expect(html).not.toContain('AST-00012');
+    expect(html).toContain(`title="${COMMA_NAME}"`);
   });
 
   it('offers no reset while nothing is filtered', () => {

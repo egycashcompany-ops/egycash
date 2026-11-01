@@ -17,6 +17,7 @@ import {
   ProbationFailDialog,
 } from './LifecycleDialogs';
 import { ExitDialog, RehireDialog } from './ExitRehireDialogs';
+import { ChangeCodeDialog } from './ChangeCodeDialog';
 
 type DialogKind =
   | 'promotion'
@@ -29,7 +30,8 @@ type DialogKind =
   | 'probationExtend'
   | 'probationFail'
   | 'exit'
-  | 'rehire';
+  | 'rehire'
+  | 'changeCode';
 
 interface Item {
   kind: DialogKind;
@@ -50,6 +52,7 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
   const exit = can('employee.exit');
   const rehire = can('employee.rehire');
   const override = can('employee.rehireOverride');
+  const changeCode = can('employee.changeCode');
   const s = employee.status;
   const employed = s !== 'exited';
   const inProbation =
@@ -83,6 +86,10 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
   if (s === 'exited' && rehire && (employee.exit?.eligibleForRehire === true || override)) {
     items.push({ kind: 'rehire', label: t('employees.actions.rehire.title') });
   }
+
+  // Any status, exited included: a code is corrected because it is wrong, and a wrong code on a
+  // leaver is still wrong on their contract and on the next roster file.
+  if (changeCode) items.push({ kind: 'changeCode', label: t('employees.changeCode.title') });
 
   if (items.length === 0) return null;
 
@@ -122,6 +129,7 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
       <ProbationFailDialog employee={employee} open={dialog === 'probationFail'} onClose={() => setDialog(null)} />
       <ExitDialog employee={employee} open={dialog === 'exit'} onClose={() => setDialog(null)} />
       <RehireDialog employee={employee} open={dialog === 'rehire'} onClose={() => setDialog(null)} />
+      <ChangeCodeDialog employee={employee} open={dialog === 'changeCode'} onClose={() => setDialog(null)} />
     </div>
   );
 };

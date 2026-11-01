@@ -15,7 +15,14 @@ import {
 } from '@ecms/contracts';
 import { formatDate } from '../../../shared/lib/format';
 import { type FleetReport } from '../../fleet/lib/fleet-report-print';
-import { filterLine, itRegisterReport, namedFilter, type Translate } from './register-export';
+import {
+  filterLine,
+  itRegisterReport,
+  namedFilter,
+  namedFilters,
+  namesPhrase,
+  type Translate,
+} from './register-export';
 
 export interface CustodyRegisterContext {
   t: Translate;
@@ -95,10 +102,12 @@ export interface CustodyRegisterFilters {
   open: CustodyOpenFilter;
   branch: string | null;
   holder: string | null;
-  /** «الصنف» as typed. */
+  /** «بحث» — the asset's code, name or serial, as typed. */
   search: string | null;
-  /** `''` when a category is set but its name is not among the options. */
-  category: string | null;
+  /** The categories chosen, by name — `''` for one set but not among the options. */
+  categories: string[] | null;
+  /** «الصنف» — the asset names picked, in the order they were picked. */
+  assetNames: string[] | null;
   /** «تاريخ التسليم»; null when neither bound is set. */
   assigned: CustodyDayWindow | null;
   /** Only what is still out past «موعد الإعادة». */
@@ -131,10 +140,11 @@ const dayWindow = (from: string, to: string, locale: Locale): CustodyDayWindow |
  * anywhere». So when a filter is set and its name cannot be had, the line still says it is set:
  *   · the holder by the gathered rows' own name first (every one of them is that person's), then
  *     the chip's, then the id the table itself falls back to;
- *   · the branch and the category by name, or «فرع محدد» / «فئة محددة» when the id is not among the
- *     options (a closed branch, an archived category, options not loaded yet) — an id on paper says
- *     nothing to the reader.
- * The status is read the way the request reads it: anything but «true» or «all» is the returned.
+ *   · the branch and each category by name, or «فرع محدد» / «فئة محددة» when the id is not among
+ *     the options (a closed branch, an archived category, options not loaded yet) — an id on paper
+ *     says nothing to the reader.
+ * Every category and every «الصنف» chosen is named — the request asked for all of them. The status
+ * is read the way the request reads it: anything but «true» or «all» is the returned.
  */
 export const custodyRegisterFilters = ({
   locale,
@@ -144,8 +154,9 @@ export const custodyRegisterFilters = ({
   employeeId,
   holderLabel,
   search,
-  categoryId,
+  categoryIds,
   categoryName,
+  assetNames,
   assignedFrom,
   assignedTo,
   overdue,
@@ -161,8 +172,9 @@ export const custodyRegisterFilters = ({
   employeeId: string;
   holderLabel: string;
   search: string;
-  categoryId: string;
+  categoryIds: readonly string[];
   categoryName: ReadonlyMap<string, string>;
+  assetNames: readonly string[];
   assignedFrom: string;
   assignedTo: string;
   overdue: boolean;
@@ -180,7 +192,8 @@ export const custodyRegisterFilters = ({
         holderLabel ||
         employeeId,
   search: search.trim() === '' ? null : search.trim(),
-  category: categoryId === '' ? null : (categoryName.get(categoryId) ?? ''),
+  categories: categoryIds.length === 0 ? null : categoryIds.map((id) => categoryName.get(id) ?? ''),
+  assetNames: assetNames.length === 0 ? null : [...assetNames],
   assigned: dayWindow(assignedFrom, assignedTo, locale),
   overdue,
   returned: dayWindow(returnedFrom, returnedTo, locale),
@@ -205,15 +218,17 @@ const receiptText = (t: Translate, state: ItAssignmentReceiptState): string =>
 
 /**
  * What the printed page is a view OF, under its title: the status filter, the branch, then every
- * other filter that is set — the holder, «الصنف», the category, the two date windows, «موعد
- * الإعادة», the receipt — and the day it was taken: a register on paper is only true as of a date.
- * A branch set but unnamed (`''`) prints as «فرع محدد», a category as «فئة محددة».
+ * other filter that is set — the holder, the search, the categories and the «الصنف» picked from
+ * them, the two date windows, «موعد الإعادة», the receipt — and the day it was taken: a register
+ * on paper is only true as of a date. A branch set but unnamed (`''`) prints as «فرع محدد», a
+ * category as «فئة محددة».
  */
 export const custodyRegisterSubtitle = (
   t: Translate,
   filters: CustodyRegisterFilters & { asOf: string },
-): string =>
-  filterLine([
+): string => {
+  const assetNames = namesPhrase(filters.assetNames);
+  return filterLine([
     filters.open === 'true'
       ? t('it.custody.filterOpen')
       : filters.open === 'false'
@@ -222,12 +237,13 @@ export const custodyRegisterSubtitle = (
     namedFilter(t, filters.branch, { all: 'it.assets.allBranches', one: 'it.export.oneBranch' }),
     filters.holder === null ? null : t('it.export.holderIs', { name: filters.holder }),
     filters.search === null ? null : t('it.export.searchIs', { q: filters.search }),
-    filters.category === null
+    filters.categories === null
       ? null
-      : namedFilter(t, filters.category, {
+      : namedFilters(t, filters.categories, {
           all: 'it.assets.allCategories',
           one: 'it.export.oneCategory',
         }),
+    assetNames === null ? null : t('it.custody.export.assetIs', { name: assetNames }),
     filters.assigned === null
       ? null
       : t('it.custody.export.assignedIs', { range: windowText(t, filters.assigned) }),
@@ -240,6 +256,7 @@ export const custodyRegisterSubtitle = (
       : t('it.custody.export.receiptIs', { state: receiptText(t, filters.receipt) }),
     t('it.export.asOf', { date: filters.asOf }),
   ]);
+};
 
 /** The printed register: the company's report form, landscape for eleven columns, nobody signs it. */
 export const custodyRegisterReport = (

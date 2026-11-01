@@ -526,6 +526,42 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
     expect((login.body.data as { mustChangePassword: boolean }).mustChangePassword).toBe(false);
   });
 
+  /**
+   * «عايزك تعمل إمكانية تغيير كود الموظف» — ADR-017, amended 2026-11-01. The SYSTEM still never
+   * re-derives a code; a person holding `employee.changeCode` may change one by hand, with a reason.
+   * The permanent number does not move, and the sign-in name — issued as the code — follows it.
+   */
+  it('changes an employee code by hand; refuses a taken, an unchanged or a malformed code', async () => {
+    const emp = await hire();
+    const other = await hire();
+    const change = (body: Record<string, unknown>) =>
+      request(app)
+        .patch(`/api/v1/hr/employees/${emp.id}/code`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(body);
+    const newCode = `099${emp.employeeNumber}`;
+
+    // Held by another record — `ux_code` is unique across every state.
+    expect((await change({ code: other.code, reason: 'تصحيح', version: emp.version })).status).toBe(409);
+    // The code the employee already has.
+    expect((await change({ code: emp.code, reason: 'تصحيح', version: emp.version })).status).toBe(422);
+    // Not the company's shape, and no reason.
+    expect((await change({ code: 'ABC123', reason: 'تصحيح', version: emp.version })).status).toBe(400);
+    expect((await change({ code: newCode, reason: '', version: emp.version })).status).toBe(400);
+
+    const res = await change({ code: newCode, reason: 'تصحيح كود الفرع', version: emp.version });
+    expect(res.status).toBe(200);
+    const changed = res.body.data as EmployeeDto;
+    expect(changed.code).toBe(newCode);
+    expect(changed.employeeNumber).toBe(emp.employeeNumber);
+    expect((res.body.meta as { loginUsernameChanged: boolean }).loginUsernameChanged).toBe(true);
+
+    const account = await request(app)
+      .get(`/api/v1/platform/users/${String(emp.userId)}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((account.body.data as { username: string | null }).username).toBe(newCode);
+  });
+
   it('lets a super-admin correct an otherwise-immutable branch code, but forbids ordinary editors', async () => {
     const branch = await request(app)
       .post('/api/v1/platform/branches')

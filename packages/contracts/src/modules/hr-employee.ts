@@ -206,6 +206,34 @@ export const EmployeeInsuranceSchema = z
   .strict();
 export type EmployeeInsurance = z.infer<typeof EmployeeInsuranceSchema>;
 
+/**
+ * Changing an Employee Code BY HAND — «عايزك تعمل إمكانية تغيير كود الموظف».
+ *
+ * ADR-017 freezes the code against the SYSTEM: a transfer or a rehire never re-derives it, because
+ * a code rewritten as a side effect renames somebody silently. This is the other thing — a person
+ * holding `employee.changeCode`, typing the new code, and saying why. Nothing composes it; nothing
+ * changes it on the way past.
+ *
+ * The shape is the company's own: a 3-digit branch prefix and at least four digits of number, all
+ * digits — `0100004`. Anything else would be refused by the roster import the next time the file
+ * is uploaded, so it is refused here first.
+ */
+export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
+
+export const ChangeEmployeeCodeSchema = z
+  .object({
+    code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN),
+    reason: z.string().trim().min(3).max(500),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type ChangeEmployeeCode = z.infer<typeof ChangeEmployeeCodeSchema>;
+
+/** Said back after a change: whether the employee's sign-in name followed the code. */
+export interface ChangeEmployeeCodeMeta {
+  loginUsernameChanged: boolean;
+}
+
 export const UpdateEmployeeInsuranceSchema = EmployeeInsuranceSchema.extend({
   version: z.number().int().min(0),
 }).strict();

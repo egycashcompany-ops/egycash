@@ -86,7 +86,11 @@ describe('every endpoint the IT client calls exists on the API', () => {
     );
     // …and the client calls exactly those.
     expect(CLIENT).toContain("`/it/assets${buildQuery(params)}`");
-    expect(CLIENT).toContain("get<ItAssetNamesDto>('/it/assets/names')");
+    // Narrowed by the categories chosen — «والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على
+    // الفئات» — as the `categoryId` list the names query declares.
+    expect(CLIENT).toContain(
+      'get<ItAssetNamesDto>(`/it/assets/names${buildQuery({ categoryId: [...categoryIds] })}`)',
+    );
     // A literal segment registered after '/:id' would be swallowed by the id matcher — and 400.
     const registered = (path: string): number =>
       ASSET_ROUTES.search(new RegExp(`router\\.get\\(\\s*'${path}'`));
@@ -958,6 +962,26 @@ describe('the client sends only filters the API declares', () => {
     }
   });
 
+  // «وعايز الأتنين دول يبقوا Multiselect» — both lists. The names travel as ONE escaped name list,
+  // which is what the schema reads: an array would be joined with plain commas by `buildQuery` and
+  // cut a name holding a comma in two.
+  it('the category and name lists: the names query takes the categories, names go escaped', () => {
+    const names = /ListItAssetNamesQuerySchema = z\s*\.object\(\{([\s\S]*?)\}\)/.exec(CONTRACTS);
+    expect(names?.[1] ?? '').toContain('categoryId: listQuery(objectId())');
+    expect(filters('ListItAssetsQuerySchema')).toContain('name: nameListQuery()');
+    expect(filters('ListItAssignmentsQuerySchema')).toContain('assetName: nameListQuery()');
+    for (const page of ['pages/AssetsListPage.tsx', 'pages/CustodyPage.tsx']) {
+      const src = readFileSync(resolve(HERE, page), 'utf8');
+      expect(src, page).toContain('categoryId: categoryQuery(categoryIds)');
+    }
+    expect(readFileSync(resolve(HERE, 'pages/AssetsListPage.tsx'), 'utf8')).toContain(
+      'name: namesQuery(names)',
+    );
+    expect(readFileSync(resolve(HERE, 'pages/CustodyPage.tsx'), 'utf8')).toContain(
+      'assetName: namesQuery(assetNames)',
+    );
+  });
+
   // «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the custody register's columns.
   // The client's params are an open record and the schema is strict, so a name only one side
   // knows typechecks on both and answers 400: the register would not load at all. Read from the
@@ -975,6 +999,7 @@ describe('the client sends only filters the API declares', () => {
       expect.arrayContaining([
         'search',
         'categoryId',
+        'assetName',
         'assignedFrom',
         'assignedTo',
         'returnedFrom',

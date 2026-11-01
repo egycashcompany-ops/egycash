@@ -43,7 +43,8 @@ and `organization` are **kept** (backward compatible); `section` and `department
   system accounts (e.g. the seeded super-admin) carry no `employeeId`.
 - **Authentication accepts a username OR an email.** A new, unique, mutable `username` is added and
   **defaults to the Employee Code**; email support is retained. Administrators may change the username
-  later; the Employee Code is never editable.
+  later; the Employee Code is never edited as a side effect of anything — see the 2026-11-01
+  amendment in §3 for the one deliberate, by-hand change.
 - Accounts are **enabled/disabled** through the existing status lifecycle — an employee who leaves is
   **disabled, never deleted** (history is preserved). Password reset is unchanged.
 
@@ -75,6 +76,24 @@ real people whose code appears on documents nobody reissues. The prefix answers 
 *Consequence to hold onto:* `code` is **not** reconstructible from an employee's current row.
 `buildEmployeeCode(currentBranch.code, employeeNumber)` may legitimately differ from the stored
 `code`. Read the stored value; never re-derive one to compare against it.
+
+**Amendment, 2026-11-01 — a person may change a code by hand.** The owner: «عايزك تعمل إمكانية
+تغيير كود الموظف». What the rule above protects against is a code changing as a *side effect* — a
+transfer or a rehire re-deriving it, renaming somebody nobody decided to rename. That stays forbidden,
+and `code-freeze.spec.ts` still enforces it. What is now allowed is the opposite act: a holder of the
+dedicated permission **`employee.changeCode`** types the new code and a reason, through
+`PATCH /hr/employees/:id/code`.
+
+- The code must still be the company's shape (`EMPLOYEE_CODE_PATTERN`: 3 digits, then 4–9) and free
+  across **every** state, deleted records included (`ux_code`). Nothing composes it.
+- `employeeNumber` does not move. It remains the permanent identity.
+- The sign-in name follows the code **only while it is still the code it was issued as**; one an
+  administrator chose on purpose is left alone. The response says which happened.
+- The employee file's copy is kept in step, as a transfer keeps it. Copies on contracts, leave
+  requests, past personnel actions and similar records are **not** rewritten: they record what was
+  true when they were made.
+- The audit trail records old code, new code and the reason.
+- The roster import names people by code, so the next roster file must carry the new code.
 
 ### 4. Branch Code is immutable — except super-admin
 

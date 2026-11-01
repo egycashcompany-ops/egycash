@@ -497,3 +497,54 @@ export interface AtmBranchMoveResultDto {
   /** Rows still filed under the source after the run, per collection — all 0 once it completed. */
   remaining: AtmBranchMoveCountsDto;
 }
+
+// ── The leader list — whose names the leader pickers offer ───────────────────────────────────────
+//
+// The owner (2026-11-01): «تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية
+// .. وخصوصاً عند تقفيل ماكينات الصيانة». The legacy list was every working employee of the
+// department NAMED «الصراف الالى» (contad_app.js:1110-1112). Here it is the departments ticked on
+// /atm/settings (`atm.maintenanceLeaderDepartmentIds`) — or, while none is ticked, every active
+// department whose name is the ATM department's, which is the legacy rule itself. The same list
+// feeds the maintenance close (an employee is required) and both kinds' edit dialogs (the leader).
+//
+// GET /atm/leaders/options — any ATM operations reader; GET/PUT /atm/leaders/departments —
+// `atmSettings.manage` at organization scope, like the rest of /atm/settings.
+
+/** A hand-kept list's ceiling — the setting's own schema. */
+export const ATM_LEADER_DEPARTMENTS_MAX = 50;
+
+/** PUT /atm/leaders/departments — the ticked departments; `[]` returns to the name rule. */
+export const SaveAtmLeaderDepartmentsSchema = z
+  .object({ departmentIds: z.array(objectId()).max(ATM_LEADER_DEPARTMENTS_MAX) })
+  .strict();
+export type SaveAtmLeaderDepartments = z.output<typeof SaveAtmLeaderDepartmentsSchema>;
+
+/**
+ * Where the list's departments come from now: the ones ticked (`configured`), the ATM department
+ * found by name because none is ticked (`byName`), or neither (`none` — the pickers offer nobody).
+ */
+export type AtmLeaderDepartmentsSource = 'configured' | 'byName' | 'none';
+
+/** One department as the card lists it — every active one, so any can be ticked. */
+export interface AtmLeaderDepartmentDto {
+  id: string;
+  /** Null for a stored id that is no longer an active department — shown so it can be unticked. */
+  name: LocalizedString | null;
+  branchName: LocalizedString | null;
+  /** In the list now — ticked, or found by name while none is. */
+  selected: boolean;
+  /** Its name is the ATM department's: what the list falls back to while none is ticked. */
+  matchesName: boolean;
+  /** Working employees in it. */
+  employees: number;
+}
+
+/** GET /atm/leaders/departments, and the PUT's answer. */
+export interface AtmLeaderDepartmentsDto {
+  /** The stored setting — `[]` while the name rule applies. */
+  configuredIds: string[];
+  source: AtmLeaderDepartmentsSource;
+  departments: AtmLeaderDepartmentDto[];
+  /** The names the pickers offer now, each employee once. */
+  employees: number;
+}

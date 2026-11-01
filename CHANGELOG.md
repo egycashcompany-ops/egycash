@@ -292,10 +292,11 @@ its entry here in the same PR.
   opened, and the form says what happened under the boxes as well as in a toast:
   - lines certainly not sent (after the failed request, or in a request the API refused, which
     writes nothing) go back into the boxes: «توقف الإرسال قبل آخر … سطر»; pressing open sends them;
-  - the lines of a request that got no answer (a dropped connection, a 5xx) may have opened, and a
-    replenishment opens again on every send, so they are NOT put back: they are named apart,
-    «لم يصل رد على … سطر، وقد يكون بعضها فُتح — راجع اللوحة»; «إعادتها إلى الخانات» puts them back
-    once the board has been checked.
+  - the lines of a request whose result is unknown (a dropped connection, a 5xx) may have opened,
+    and a replenishment opens again on every send, so they are NOT put back: they are named apart,
+    «لم تتأكد نتيجة … سطر — قد يكون بعضها فُتح. راجع الجدول قبل فتحها مرة أخرى», and stay there
+    through later presses until «إعادتها إلى الخانات» puts them back (after checking the table) or
+    «إخفاء القائمة» hides them.
 - **The leader pickers offer the ATM employees' names — the maintenance close above all.**
   «تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية .. وخصوصاً عند تقفيل
   ماكينات الصيانة». The close's employee list read `atm.maintenanceLeaderDepartmentIds`, which

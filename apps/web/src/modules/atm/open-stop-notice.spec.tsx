@@ -1,6 +1,8 @@
 // The line an open form keeps when its run stopped part-way (`OpenStopNotice`): how many lines
-// went back to the boxes, and — apart — the lines of a request that got no answer, named so they
-// are checked on the board before being opened again, with the button that puts them back.
+// went back to the boxes, and — apart — the lines of a request whose result is unknown, named so
+// they are checked in the table before being opened again, with the buttons that put them back or
+// hide the list. Those uncertain lines outlive later presses (`openPressStarted`/`openPressEnded`)
+// — the unsent line itself asks for one.
 //
 // Every code below is synthetic.
 import { type ReactNode } from 'react';
@@ -11,7 +13,12 @@ import { describe, expect, it } from 'vitest';
 import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { translate } from '../../platform/localization/i18n';
-import { OpenStopNotice } from './components/OpenStopNotice';
+import {
+  OpenStopNotice,
+  emptyOpenStop,
+  openPressEnded,
+  openPressStarted,
+} from './components/OpenStopNotice';
 
 const render = (locale: Locale, node: ReactNode): string =>
   renderToStaticMarkup(
@@ -36,12 +43,17 @@ describe('the stopped run, on the page', () => {
         <OpenStopNotice
           unsent={100}
           uncertainCodes={['99990400', '99990401']}
+          action="فتح التغذيات"
           onRestore={() => {}}
+          onDismiss={() => {}}
         />,
       );
       expect(markup).toContain('data-open-stop="unsent"');
       expect(markup).toContain(translate(locale, 'atm.common.openStopped', { count: 100 }));
-      expect(markup).toContain(translate(locale, 'atm.common.openStoppedHint'));
+      expect(markup).toContain(
+        translate(locale, 'atm.common.openStoppedHint', { action: 'فتح التغذيات' }),
+      );
+      expect(markup).toContain('«فتح التغذيات»');
       expect(markup).toContain('data-open-stop="uncertain"');
       expect(markup).toContain(translate(locale, 'atm.common.openUncertain', { count: 2 }));
       expect(markup).toContain(
@@ -49,7 +61,9 @@ describe('the stopped run, on the page', () => {
           codes: locale === 'ar' ? '99990400، 99990401' : '99990400, 99990401',
         }),
       );
+      expect(markup).toContain(translate(locale, 'atm.common.openUncertainRisk'));
       expect(markup).toContain(translate(locale, 'atm.common.openUncertainRestore'));
+      expect(markup).toContain(translate(locale, 'atm.common.openUncertainDismiss'));
       expect(markup).toContain('text-red-600');
     },
   );
@@ -59,25 +73,78 @@ describe('the stopped run, on the page', () => {
       'توقف الإرسال قبل آخر 100 سطر',
     );
     expect(translate('ar', 'atm.common.openUncertain', { count: 200 })).toBe(
-      'لم يصل رد على 200 سطر، وقد يكون بعضها فُتح',
+      'لم تتأكد نتيجة 200 سطر',
+    );
+    expect(translate('ar', 'atm.common.openStoppedHint', { action: 'فتح الصيانات' })).toBe(
+      'لم تُرسل وأُعيدت إلى الخانات، فاضغط «فتح الصيانات» مرة أخرى لإرسالها.',
     );
   });
 
   it('only what happened is said', () => {
     const unsentOnly = render(
       'ar',
-      <OpenStopNotice unsent={5} uncertainCodes={[]} onRestore={() => {}} />,
+      <OpenStopNotice
+        unsent={5}
+        uncertainCodes={[]}
+        action="فتح"
+        onRestore={() => {}}
+        onDismiss={() => {}}
+      />,
     );
     expect(unsentOnly).toContain('data-open-stop="unsent"');
     expect(unsentOnly).not.toContain('data-open-stop="uncertain"');
     const uncertainOnly = render(
       'ar',
-      <OpenStopNotice unsent={0} uncertainCodes={['99990001']} onRestore={() => {}} />,
+      <OpenStopNotice
+        unsent={0}
+        uncertainCodes={['99990001']}
+        action="فتح"
+        onRestore={() => {}}
+        onDismiss={() => {}}
+      />,
     );
     expect(uncertainOnly).toContain('data-open-stop="uncertain"');
     expect(uncertainOnly).not.toContain('data-open-stop="unsent"');
     expect(
-      render('ar', <OpenStopNotice unsent={0} uncertainCodes={[]} onRestore={() => {}} />),
+      render(
+        'ar',
+        <OpenStopNotice
+          unsent={0}
+          uncertainCodes={[]}
+          action="فتح"
+          onRestore={() => {}}
+          onDismiss={() => {}}
+        />,
+      ),
     ).toBe('');
+  });
+});
+
+describe('the uncertain lines stay until the reader puts them back or hides them', () => {
+  type Row = { machineCode: string };
+  const row = (machineCode: string): Row => ({ machineCode });
+
+  it('a second press — the one the unsent line asks for — keeps them; only the unsent count goes', () => {
+    // 1st press: request 3 of 4 got no answer.
+    let state = openPressEnded(emptyOpenStop<Row>(), {
+      unsent: [row('99990600')],
+      uncertain: [row('99990400'), row('99990401')],
+    });
+    expect(state).toEqual({ unsent: 1, uncertain: [row('99990400'), row('99990401')] });
+    // 2nd press starts…
+    state = openPressStarted(state);
+    expect(state).toEqual({ unsent: 0, uncertain: [row('99990400'), row('99990401')] });
+    // …and every line goes.
+    state = openPressEnded(state, { unsent: [], uncertain: [] });
+    expect(state.uncertain).toEqual([row('99990400'), row('99990401')]);
+    expect(state.unsent).toBe(0);
+  });
+
+  it('a later stop adds its uncertain lines after the ones still held', () => {
+    const held = { unsent: 0, uncertain: [row('99990400')] };
+    expect(openPressEnded(held, { unsent: [], uncertain: [row('99990900')] }).uncertain).toEqual([
+      row('99990400'),
+      row('99990900'),
+    ]);
   });
 });

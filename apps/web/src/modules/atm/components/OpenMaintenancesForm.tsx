@@ -7,8 +7,8 @@
 // Any number of lines: they go in consecutive requests of `ATM_OPEN_MAX_ROWS` (`openInBatches`).
 // If the run stops, what went before stays opened and ONLY the lines certainly not sent stay in
 // the boxes; the lines of a request that got no answer are named under the form
-// (`OpenStopNotice`), to be checked on the board and put back by hand. The boxes are held while
-// the run goes.
+// (`OpenStopNotice`), to be checked in the table and put back by hand; they stay until then,
+// whatever is pressed meanwhile. The boxes are held while the run goes.
 //
 // The form renders BARE — no card, no bottom margin. The page wraps it and the bank/area filters
 // in one bordered row so entry and narrowing read as a single band (MaintenancePage.tsx).
@@ -25,7 +25,14 @@ import { type MaintenanceOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
 import { OpenRefusalNotice } from './OpenRefusalNotice';
-import { OpenStopNotice, prependLines, type OpenStop } from './OpenStopNotice';
+import {
+  OpenStopNotice,
+  emptyOpenStop,
+  openPressEnded,
+  openPressStarted,
+  prependLines,
+  type OpenStopState,
+} from './OpenStopNotice';
 
 export const buildMaintenanceRows = (
   codesRaw: string,
@@ -65,13 +72,13 @@ export const OpenMaintenancesForm = (): JSX.Element => {
   const [openedAt, setOpenedAt] = useState('');
   const [unknownCodes, setUnknownCodes] = useState<string[]>([]);
   const [alreadyOpenCodes, setAlreadyOpenCodes] = useState<string[]>([]);
-  const [stop, setStop] = useState<OpenStop<MaintenanceOpenRow> | null>(null);
+  const [stop, setStop] = useState<OpenStopState<MaintenanceOpenRow>>(emptyOpenStop);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     const rows = buildMaintenanceRows(codes, services, references);
     if (rows.length === 0) return;
-    setStop(null);
+    setStop(openPressStarted);
     try {
       const result = await open.mutateAsync({
         rows,
@@ -88,12 +95,14 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         setCodes(left.codes);
         setServices(left.services);
         setReferences(left.references);
-        setStop({ unsent: result.unsent.length, uncertain: result.uncertain });
+        setStop((held) => openPressEnded(held, result));
         toast.error(
           result.uncertain.length > 0
             ? t('atm.common.openUncertain', { count: result.uncertain.length })
             : t('atm.common.openStopped', { count: result.unsent.length }),
-          errorMessage(result.failure, locale),
+          result.uncertain.length > 0
+            ? `${t('atm.common.openUncertainRisk')} ${errorMessage(result.failure, locale)}`
+            : errorMessage(result.failure, locale),
         );
       } else if (result.opened.length > 0) {
         setCodes('');
@@ -118,14 +127,13 @@ export const OpenMaintenancesForm = (): JSX.Element => {
     }
   };
 
-  /** The lines of unknown outcome, back before what the boxes hold — the reader checked the board. */
+  /** The lines of unknown outcome, back before what the boxes hold — the reader checked the table. */
   const restoreUncertain = (): void => {
-    if (stop === null) return;
     const back = maintenanceLines(stop.uncertain);
     setCodes((current) => prependLines(back.codes, current));
     setServices((current) => prependLines(back.services, current));
     setReferences((current) => prependLines(back.references, current));
-    setStop({ ...stop, uncertain: [] });
+    setStop((held) => ({ ...held, uncertain: [] }));
   };
 
   return (
@@ -167,11 +175,13 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         {t('atm.maintenance.openAction')}
       </Button>
       <OpenRefusalNotice unknownCodes={unknownCodes} alreadyOpenCodes={alreadyOpenCodes} />
-      {stop !== null && (
+      {(stop.unsent > 0 || stop.uncertain.length > 0) && (
         <OpenStopNotice
           unsent={stop.unsent}
           uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
+          action={t('atm.maintenance.openAction')}
           onRestore={restoreUncertain}
+          onDismiss={() => setStop((held) => ({ ...held, uncertain: [] }))}
         />
       )}
     </form>

@@ -9235,10 +9235,12 @@ const en: Record<string, string> = {
     'Not saved — the new open time would give a machine two open operations on the same day.',
   'atm.common.openStopped': 'Stopped before the last {{count}} line(s)',
   'atm.common.openStoppedHint':
-    'they were not sent and are back in the boxes; press open again to send them.',
-  'atm.common.openUncertain': 'No answer came for {{count}} line(s); some may have opened',
+    'they were not sent and are back in the boxes; press «{{action}}» again to send them.',
+  'atm.common.openUncertain': 'Result unknown for {{count}} line(s)',
+  'atm.common.openUncertainRisk': 'Some may have opened.',
   'atm.common.openUncertainHint':
-    'check the board before opening them again (they are not in the boxes): {{codes}}',
+    'Check the table before opening them again (they are not in the boxes): {{codes}}',
+  'atm.common.openUncertainDismiss': 'Hide the list',
   'atm.common.openUncertainRestore': 'Put them back in the boxes',
   'atm.board.day.label': 'Day shown',
   'atm.board.day.today': 'Today',
@@ -19918,10 +19920,11 @@ const ar: Record<string, string> = {
   'atm.common.moveAlreadyOpen':
     'لم يُحفظ التعديل لأن وقت الفتح الجديد يجعل للماكينة عمليتين مفتوحتين في نفس اليوم.',
   'atm.common.openStopped': 'توقف الإرسال قبل آخر {{count}} سطر',
-  'atm.common.openStoppedHint': 'لم تُرسل وأُعيدت إلى الخانات، فاضغط فتح مرة أخرى لإرسالها.',
-  'atm.common.openUncertain': 'لم يصل رد على {{count}} سطر، وقد يكون بعضها فُتح',
-  'atm.common.openUncertainHint':
-    'راجع اللوحة قبل فتحها مرة أخرى (ليست في الخانات): {{codes}}',
+  'atm.common.openStoppedHint': 'لم تُرسل وأُعيدت إلى الخانات، فاضغط «{{action}}» مرة أخرى لإرسالها.',
+  'atm.common.openUncertain': 'لم تتأكد نتيجة {{count}} سطر',
+  'atm.common.openUncertainRisk': 'قد يكون بعضها فُتح.',
+  'atm.common.openUncertainHint': 'راجع الجدول قبل فتحها مرة أخرى (ليست في الخانات): {{codes}}',
+  'atm.common.openUncertainDismiss': 'إخفاء القائمة',
   'atm.common.openUncertainRestore': 'إعادتها إلى الخانات',
   'atm.board.day.label': 'اليوم المعروض',
   'atm.board.day.today': 'اليوم',

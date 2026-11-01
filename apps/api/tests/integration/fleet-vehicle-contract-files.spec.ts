@@ -143,7 +143,10 @@ describe('`create` without `edit` reaches only the contracts its holder saved', 
     expect(read.files.map((f) => f.fileId)).toEqual([page.fileId]);
 
     // On a contract the creator saved, `create` adds its pages.
-    const mine = await create({ date: '2026-10-12', lines: [{ typeId: typeA, count: 1 }] }, creator);
+    const mine = await create(
+      { date: '2026-10-12', lines: [{ typeId: typeA, count: 1 }] },
+      creator,
+    );
     const minePage = await request(app)
       .post(`${URL_}/${data<FleetVehicleContractDto>(mine).id}/files`)
       .set(auth(creator))

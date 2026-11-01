@@ -260,13 +260,14 @@ export const HeldLine = ({
       data-ledger-held-line={mark}
       title={t(`${HOLD}.heldTileNote`)}
       className={cn(
-        'mt-1.5 inline-flex w-fit max-w-full items-center gap-1 self-start whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-1.5 py-px text-[11px] font-bold leading-4 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:font-semibold dark:text-amber-300',
+        // On a phone's two-column tiles the figure drops under the words instead of spilling out.
+        'mt-1.5 inline-flex w-fit max-w-full flex-wrap items-center gap-x-1 gap-y-0.5 self-start rounded-md border border-amber-300 bg-amber-50 px-1.5 py-px text-[11px] font-bold leading-4 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:font-semibold dark:text-amber-300',
         CAIRO,
       )}
     >
       <ClockGlyph className="h-3 w-3 shrink-0" />
       {before}
-      <span dir="ltr" className={NUM}>
+      <span dir="ltr" className={cn(NUM, 'whitespace-nowrap')}>
         {figure}
       </span>
       {after}

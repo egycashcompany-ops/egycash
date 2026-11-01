@@ -39,7 +39,9 @@ class FleetVehicleContractAttachments {
     const contract = await fleetVehicleContractRepository.getById(id);
     // `create` without `edit` adds pages only to a contract its holder saved.
     if (!mayWriteContractFiles(ctx, contract)) {
-      throw new ForbiddenError('only edit, or the creator of this contract, may add its attachments');
+      throw new ForbiddenError(
+        'only edit, or the creator of this contract, may add its attachments',
+      );
     }
     const dot = binary.originalName.lastIndexOf('.');
     const file = await fileService.upload(

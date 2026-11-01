@@ -2,12 +2,13 @@
 // labels; custody (assign/return/transfer/dispose) and the asset event history are IT-2. Status
 // is derived (FR-2): registration is the only operation here, so every asset it touches is
 // `inStock`.
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import {
   ItEvents,
   type CreateItAsset,
   type ItAssetLabels,
   type ItAssetNamesDto,
+  type ListItAssetNamesQuery,
   type ListItAssetsQuery,
   type Paginated,
   type UpdateItAsset,
@@ -45,6 +46,11 @@ import type { ItAssetHolderLabels } from '../it.mappers';
 export const ASSET_NAMES_CAP = 1000;
 
 const arabicOrder = new Intl.Collator('ar');
+
+/** The categories filter (one or more chosen) as the condition on an asset's `categoryId`. */
+const categoriesIn = (ids: readonly string[]): { $in: Types.ObjectId[] } => ({
+  $in: ids.map((id) => new Types.ObjectId(id)),
+});
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
 
@@ -167,12 +173,14 @@ class ItAssetService {
 
   async list(query: ListItAssetsQuery, scope: ScopeSelector): Promise<Paginated<ItAssetDoc>> {
     const filter: Record<string, unknown> = {};
-    if (query.categoryId !== undefined) filter.categoryId = new Types.ObjectId(query.categoryId);
+    // «وعايز الأتنين دول يبقوا Multiselect» — the category and the name filters each take several
+    // values: an asset in ANY of the chosen categories, and (ANDed with it) by ANY of the names.
+    if (query.categoryId !== undefined) filter.categoryId = categoriesIn(query.categoryId);
     if (query.status !== undefined) filter.status = query.status;
     if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
-    // The name filter commits one of the register's own names (`names()` below), so it matches
-    // that name EXACTLY — every asset by it, and no other whose name merely contains it.
-    if (query.name !== undefined) filter.name = query.name;
+    // The name filter commits the register's own names (`names()` below), so each is matched
+    // EXACTLY — every asset by one of them, and no other whose name merely contains one.
+    if (query.name !== undefined) filter.name = { $in: query.name };
     if (query.holderEmployeeId !== undefined) {
       // What they hold NOW: the open intervals, matched through the asset's own pointer to its
       // current one — so an asset returned yesterday is not «held» by yesterday's holder. The
@@ -201,17 +209,21 @@ class ItAssetService {
   }
 
   /**
-   * The name filter's options — «زود بعد الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه
-   * للكتابة»: every name the reader's scope holds, in Arabic order, at most `ASSET_NAMES_CAP`.
+   * The name filter's options — «Drop Down مع قابليه للكتابة»: every name the reader's scope holds,
+   * in Arabic order, at most `ASSET_NAMES_CAP`. With categories chosen, only the names of assets in
+   * them — «والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات» — so the name filter
+   * never offers a name the category filter beside it has already ruled out.
    */
-  async names(scope: ScopeSelector): Promise<ItAssetNamesDto> {
-    const values = await itAssetRepository.distinctNames(scope);
-    return {
-      names: values
-        .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
-        .sort(arabicOrder.compare)
-        .slice(0, ASSET_NAMES_CAP),
-    };
+  async names(scope: ScopeSelector, query: ListItAssetNamesQuery): Promise<ItAssetNamesDto> {
+    const filter: FilterQuery<ItAssetDoc> = {};
+    if (query.categoryId !== undefined) filter.categoryId = categoriesIn(query.categoryId);
+    const values = await itAssetRepository.distinctNames(scope, filter);
+    const names = values
+      .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+      .sort(arabicOrder.compare);
+    // Said, not hidden: the screen drops a chosen name the list no longer holds, and a name cut off
+    // by the cap is not a name the categories lack.
+    return { names: names.slice(0, ASSET_NAMES_CAP), truncated: names.length > ASSET_NAMES_CAP };
   }
 
   /**

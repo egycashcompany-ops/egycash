@@ -10,10 +10,12 @@ import { type Express } from 'express';
 import {
   ItEvents,
   SettingKeys,
+  joinNameList,
   platformPermissions,
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
+  type ItAssetNamesDto,
   type ItCatalogItemDto,
   type ItCustodyReceiptDocumentDto,
   type ItCustodyReceiptDto,
@@ -1117,5 +1119,147 @@ describe('asset custody', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({});
     expect(twice.status).toBe(409);
+  });
+});
+
+// «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات ... والبيانات اللى فى فلتر الفئات هي نفسها
+// تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا Multiselect · وفى /it/custody بردو ... ونفس الكلام
+// يتفلتر والأتنين يكونوا Multiselect» — over real HTTP: several categories, several names (one of
+// them holding a comma, sent as the screen sends it), the names offered by the categories chosen
+// and within the reader's scope, and the custody register narrowed by both.
+describe('the registers’ category and name filters', () => {
+  const HOLDER = '000000000000000000000d04';
+  let printers = '';
+  let scanners = '';
+  const asset: Record<string, ItAssetDto> = {};
+
+  const get = (path: string, query: Record<string, string>, token = adminToken) =>
+    request(app).get(`/api/v1/it${path}`).query(query).set('Authorization', `Bearer ${token}`);
+  const assetNames = async (query: Record<string, string>, token = adminToken) => {
+    const res = await get('/assets/names', query, token);
+    expect(res.status).toBe(200);
+    return data<ItAssetNamesDto>(res).names;
+  };
+  const assetIds = async (query: Record<string, string>): Promise<string[]> => {
+    const res = await get('/assets', { pageSize: '100', ...query });
+    expect(res.status).toBe(200);
+    return data<ItAssetDto[]>(res)
+      .map((row) => row.id)
+      .sort();
+  };
+  const heldIds = async (query: Record<string, string>): Promise<string[]> => {
+    const res = await get('/assignments', { employeeId: HOLDER, pageSize: '100', ...query });
+    expect(res.status).toBe(200);
+    return data<ItAssetAssignmentDto[]>(res)
+      .map((row) => row.assetId)
+      .sort();
+  };
+  const idsOf = (...names: string[]): string[] => names.map((name) => asset[name]?.id ?? '').sort();
+
+  beforeAll(async () => {
+    const category = async (ar: string, en: string): Promise<string> => {
+      const res = await request(app)
+        .post('/api/v1/it/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'assetCategory', name: { ar, en } });
+      expect(res.status).toBe(201);
+      return data<ItCatalogItemDto>(res).id;
+    };
+    printers = await category('طابعات الفروع', 'Branch printers');
+    scanners = await category('ماسحات ضوئية', 'Scanners');
+    const register: [string, string, string][] = [
+      ['HP LaserJet M402', printers, branchAId],
+      ['Canon, imageCLASS', printers, branchAId],
+      ['Fujitsu fi-7160', scanners, branchAId],
+      // Another branch's printer: offered to whoever sees branch B, never to branch A's reader.
+      ['Brother HL-L2350', printers, branchBId],
+    ];
+    for (const [name, categoryOf, branchId] of register) {
+      const res = await createAsset(adminToken, { name, categoryId: categoryOf, branchId });
+      expect(res.status).toBe(201);
+      asset[name] = data<ItAssetDto>(res);
+    }
+    // Branch A's three go to one holder, so the custody register's rows are these alone.
+    for (const name of ['HP LaserJet M402', 'Canon, imageCLASS', 'Fujitsu fi-7160']) {
+      const res = await request(app)
+        .post(`/api/v1/it/assets/${asset[name]?.id ?? ''}/assign`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: HOLDER });
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it('/it/assets takes several categories — an asset in ANY of them — and a single one still', async () => {
+    expect(await assetIds({ categoryId: `${printers},${scanners}` })).toEqual(
+      idsOf('HP LaserJet M402', 'Canon, imageCLASS', 'Fujitsu fi-7160', 'Brother HL-L2350'),
+    );
+    expect(await assetIds({ categoryId: scanners })).toEqual(idsOf('Fujitsu fi-7160'));
+    expect((await get('/assets', { categoryId: `${printers},nope` })).status).toBe(400);
+  });
+
+  it('/it/assets takes several names, each EXACTLY — a name holding a comma arriving whole', async () => {
+    expect(
+      await assetIds({ name: joinNameList(['HP LaserJet M402', 'Canon, imageCLASS']) }),
+    ).toEqual(idsOf('HP LaserJet M402', 'Canon, imageCLASS'));
+    // An exact match: «HP LaserJet» (an earlier asset's name) is not «HP LaserJet M402».
+    const exact = await get('/assets', { name: 'HP LaserJet', pageSize: '100' });
+    const rows = data<ItAssetDto[]>(exact);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.name === 'HP LaserJet')).toBe(true);
+    // And ANDed with the categories: no scanner is called «Canon, imageCLASS».
+    expect(
+      await assetIds({ categoryId: scanners, name: joinNameList(['Canon, imageCLASS']) }),
+    ).toEqual([]);
+  });
+
+  it('/it/assets/names follows the categories chosen, within the reader’s scope', async () => {
+    expect(await assetNames({ categoryId: printers })).toEqual([
+      'Brother HL-L2350',
+      'Canon, imageCLASS',
+      'HP LaserJet M402',
+    ]);
+    expect(await assetNames({ categoryId: `${printers},${scanners}` })).toEqual([
+      'Brother HL-L2350',
+      'Canon, imageCLASS',
+      'Fujitsu fi-7160',
+      'HP LaserJet M402',
+    ]);
+    // No category chosen — or the list emptied — is every name, the laptops' too.
+    const unnarrowed: Record<string, string>[] = [{}, { categoryId: '' }];
+    for (const query of unnarrowed) {
+      const every = await assetNames(query);
+      expect(every).toEqual(expect.arrayContaining(['Fujitsu fi-7160', 'ThinkPad T14']));
+    }
+    expect(await assetNames({ categoryId: scanners })).not.toContain('ThinkPad T14');
+    // Branch A's reader is never offered branch B's printer.
+    expect(await assetNames({ categoryId: printers }, branchAToken)).toEqual([
+      'Canon, imageCLASS',
+      'HP LaserJet M402',
+    ]);
+    // Only categories narrow it: a malformed id or any other key is an unreadable query.
+    expect((await get('/assets/names', { categoryId: 'nope' })).status).toBe(400);
+    expect((await get('/assets/names', { name: 'Fujitsu fi-7160' })).status).toBe(400);
+  });
+
+  it('/it/assignments narrows by several categories AND several «الصنف» names', async () => {
+    expect(await heldIds({ categoryId: `${printers},${scanners}` })).toEqual(
+      idsOf('HP LaserJet M402', 'Canon, imageCLASS', 'Fujitsu fi-7160'),
+    );
+    expect(
+      await heldIds({
+        categoryId: `${printers},${scanners}`,
+        assetName: joinNameList(['Canon, imageCLASS', 'Fujitsu fi-7160']),
+      }),
+    ).toEqual(idsOf('Canon, imageCLASS', 'Fujitsu fi-7160'));
+    expect(
+      await heldIds({ categoryId: scanners, assetName: joinNameList(['Canon, imageCLASS']) }),
+    ).toEqual([]);
+    // The free-text search stays beside them, over the code, name or serial.
+    expect(
+      await heldIds({
+        assetName: joinNameList(['Canon, imageCLASS', 'Fujitsu fi-7160']),
+        search: 'fi-71',
+      }),
+    ).toEqual(idsOf('Fujitsu fi-7160'));
   });
 });

@@ -46,6 +46,24 @@ export const namedFilter = (
   labels: { all: string; one: string },
 ): string => (value === null ? t(labels.all) : value === '' ? t(labels.one) : value);
 
+/**
+ * A filter that takes several answers, on paper: every one of them by name, joined as prose — or
+ * «every …» when none is set. One SET but unnamed (`''`) is still said to be set, as `namedFilter`
+ * says it; several unnamed say it once, not once each.
+ */
+export const namedFilters = (
+  t: Translate,
+  values: readonly string[] | null,
+  labels: { all: string; one: string },
+): string =>
+  values === null || values.length === 0
+    ? t(labels.all)
+    : [...new Set(values.map((value) => (value === '' ? t(labels.one) : value)))].join('، ');
+
+/** A list of chosen names as one phrase, or `null` when none is chosen — the line leaves it out. */
+export const namesPhrase = (names: readonly string[] | null): string | null =>
+  names === null || names.length === 0 ? null : names.join('، ');
+
 /** The line under the title, its parts joined; `null` parts are filters not set. */
 export const filterLine = (parts: readonly (string | null)[]): string =>
   parts.filter((part): part is string => part !== null).join(' · ');

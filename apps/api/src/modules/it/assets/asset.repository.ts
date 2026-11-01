@@ -40,11 +40,12 @@ class ItAssetRepository extends BaseRepository<ItAssetDoc> {
 
   /**
    * The names the register actually holds, within the caller's scope — the name filter's options
-   * («Drop Down مع قابليه للكتابة»). Not ordered here: Mongo would order them by code point, and the
-   * list is read in Arabic order, which the service applies.
+   * («Drop Down مع قابليه للكتابة») — narrowed by `filter` when the caller has one (the categories
+   * chosen beside it). Not ordered here: Mongo would order them by code point, and the list is read
+   * in Arabic order, which the service applies.
    */
-  async distinctNames(scope: ScopeSelector): Promise<unknown[]> {
-    return this.model.distinct('name', this.baseFilter(scope)).exec();
+  async distinctNames(scope: ScopeSelector, filter?: FilterQuery<ItAssetDoc>): Promise<unknown[]> {
+    return this.model.distinct('name', this.baseFilter(scope, filter)).exec();
   }
 
   /** Uniqueness pre-check — deliberately UNscoped: a serial is unique company-wide (FR-1). */

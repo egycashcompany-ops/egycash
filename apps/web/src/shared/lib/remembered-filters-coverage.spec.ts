@@ -517,3 +517,26 @@ describe('a tabbed screen keeps one memory per tab', () => {
     expect(strays).toEqual([]);
   });
 });
+
+/**
+ * The IT registers' category and name lists («وعايز الأتنين دول يبقوا Multiselect») are read by a
+ * shared hook (`it/components/useCategoryNameFilter.ts`) under a parameter the screen passes it, so
+ * the census's scan of the page cannot see them read. Pinned here instead: each screen hands the
+ * hook a parameter it remembers, and remembers the categories too.
+ */
+describe('the IT registers remember both of their lists', () => {
+  it.each([
+    { path: 'modules/it/pages/AssetsListPage.tsx', names: 'names' },
+    { path: 'modules/it/pages/CustodyPage.tsx', names: 'asset' },
+  ])('$path remembers `category` and `$names`', ({ path, names }) => {
+    const src = text(path);
+    expect(src).toContain(`useCategoryNameFilter([sp, setSp], '${names}', patch`);
+    expect(declared(src)).toEqual(expect.arrayContaining(['category', names]));
+  });
+
+  it('the hook reads the categories from `category`, as both screens remember them', () => {
+    expect(text('modules/it/components/useCategoryNameFilter.ts')).toContain(
+      "readCategoryIds(sp.get('category'))",
+    );
+  });
+});

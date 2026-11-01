@@ -220,14 +220,20 @@ export const useItAssets = (params: ItListParams, enabled = true) =>
   });
 
 /**
- * The name filter's options — «Drop Down مع قابليه للكتابة». Keyed under the ASSETS subtree, so a
- * registration or a rename refreshes the names along with the register itself.
+ * The name filter's options, narrowed to the categories chosen. Keyed under the ASSETS subtree, so
+ * a registration or a rename refreshes the names along with the register itself — and keyed by
+ * the categories, sorted, so the same choice made in another order reads the same answer.
+ *
+ * No placeholder: the previous categories' names are not this choice's, and offering them while
+ * the new ones load would let a reader pick a name the categories do not have.
  */
-export const useItAssetNames = () =>
-  useQuery({
-    queryKey: listKey(MODULE, 'assets', { names: true }),
-    queryFn: api.listAssetNames,
+export const useItAssetNames = (categoryIds: readonly string[] = []) => {
+  const categories = [...categoryIds].sort();
+  return useQuery({
+    queryKey: listKey(MODULE, 'assets', { names: true, categoryId: categories }),
+    queryFn: () => api.listAssetNames(categories),
   });
+};
 
 export const useItAsset = (id: string) =>
   useQuery({

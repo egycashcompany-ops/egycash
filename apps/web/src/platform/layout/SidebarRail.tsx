@@ -18,6 +18,7 @@ import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
 import { BuildingIcon, InboxIcon } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
+import { Spinner } from '../../shared/ui/Spinner';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
 import { resolveNavIcon } from '../navigation/app-icon';
@@ -127,7 +128,7 @@ const ModulePanel = ({
   collapsible: boolean;
   /** Whether the floating panel is pinned open; the pin in its header, after the name, toggles it. */
   pinned: boolean;
-  onTogglePinned: () => void;
+  onTogglePinned: (byPointer: boolean) => void;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
   const t = useT();
@@ -144,7 +145,7 @@ const ModulePanel = ({
         </div>
         {collapsible && <NavPinButton pinned={pinned} onToggle={onTogglePinned} />}
       </div>
-      <nav className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
+      <div className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
         {pinnedApps.length > 0 && (
           <section className="pb-2">
             <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
@@ -187,7 +188,7 @@ const ModulePanel = ({
             onNavigate={onNavigate}
           />
         ))}
-      </nav>
+      </div>
     </div>
   );
 };
@@ -238,10 +239,19 @@ const RailShell = ({
       .filter((a): a is NavApp => a !== undefined);
   }, [data, pinned]);
 
+  // While the menu loads, the column takes the width it is about to have — the rail's on an
+  // unpinned desktop — or the page would lay out narrower and then jump wider on every load.
   if (isLoading) {
+    const slim = collapsible && !floating.pinned;
     return (
-      <StateShell>
-        <LoadingState />
+      <StateShell slim={slim}>
+        {slim ? (
+          <span role="status" aria-label={t('common.loading')}>
+            <Spinner className="h-5 w-5 text-brand-600" />
+          </span>
+        ) : (
+          <LoadingState />
+        )}
       </StateShell>
     );
   }
@@ -288,36 +298,43 @@ const RailShell = ({
     />
   );
 
-  // The mobile drawer: the rail and the panel side by side, as they always were.
+  // The mobile drawer: the rail and the panel side by side, as they always were. The column is the
+  // navigation landmark (one per shell), not the list inside the panel.
   if (!collapsible) {
     return (
-      <div className="flex">
+      <nav aria-label={t('common.menu')} className="flex">
         <ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />
         {panel}
-      </div>
+      </nav>
     );
   }
 
   // A desktop. Unpinned, only the rail stands beside the page, and the module's panel is drawn OVER
   // the page from the rail's edge while the pointer (or the focus) is on them — the page keeps its
   // width. Pinned, the panel stands in the layout beside the rail and takes its width like any
-  // column. It is the same element in either state, so the pin in its header keeps the focus.
+  // column. The panel is one element in every state — hidden only makes it invisible — so a folded
+  // section stays folded between hovers and the pin in its header keeps the focus.
   return (
-    <div data-nav-strip className="relative flex h-full" {...floating.hoverProps}>
+    <nav
+      aria-label={t('common.menu')}
+      data-nav-strip
+      className="relative flex h-full"
+      {...floating.hoverProps}
+    >
       <ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />
-      {floating.mode !== 'hidden' && (
-        <div
-          data-nav-panel
-          className={cn(
-            'flex',
-            !docked &&
-              'absolute inset-y-0 start-14 z-[35] animate-fade-in shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
-          )}
-        >
-          {panel}
-        </div>
-      )}
-    </div>
+      <div
+        data-nav-panel
+        data-nav-mode={floating.mode}
+        className={cn(
+          'flex transition-[opacity,visibility] duration-150 ease-out motion-reduce:transition-none',
+          !docked &&
+            'absolute inset-y-0 start-14 z-[35] shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
+          floating.mode === 'hidden' && 'pointer-events-none invisible opacity-0',
+        )}
+      >
+        {panel}
+      </div>
+    </nav>
   );
 };
 

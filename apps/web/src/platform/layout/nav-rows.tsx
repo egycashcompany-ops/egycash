@@ -186,8 +186,24 @@ export const AppWithChildren = ({
 };
 
 /** The frame the column keeps while it is loading, failed, or empty — one width, no jumping. */
-export const StateShell = ({ children }: { children: JSX.Element }): JSX.Element => (
-  <div className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+/**
+ * The column while the menu is loading, failed or empty. `slim` is the width of the icon strip: an
+ * unpinned desktop column is that wide once it loads (floating-nav.ts), and a loading state twice
+ * as wide would make the page jump on every load.
+ */
+export const StateShell = ({
+  children,
+  slim = false,
+}: {
+  children: JSX.Element;
+  slim?: boolean;
+}): JSX.Element => (
+  <div
+    className={cn(
+      'flex shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
+      slim ? 'w-14' : 'w-60',
+    )}
+  >
     <div className="flex flex-1 items-center justify-center overflow-y-auto">{children}</div>
   </div>
 );

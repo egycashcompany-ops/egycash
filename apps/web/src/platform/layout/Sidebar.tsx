@@ -31,6 +31,7 @@ import {
   SearchIcon,
 } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
+import { Spinner } from '../../shared/ui/Spinner';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
 import { resolveNavIcon, type NavIcon } from '../navigation/app-icon';
@@ -595,6 +596,7 @@ const ModuleSwitcher = ({
   shortcuts,
   onOpen,
   onClosed,
+  restoreFocus,
   onPick,
 }: {
   modules: NavModule[];
@@ -610,6 +612,12 @@ const ModuleSwitcher = ({
   onOpen?: (() => void) | undefined;
   /** Fired as the launchpad closes, so a floating panel that held itself open can let go. */
   onClosed?: (() => void) | undefined;
+  /**
+   * How the focus goes back to this switcher when the launchpad is dismissed. The strip's switcher
+   * passes the floating panel's quiet restore, so that returning the focus is not taken for the
+   * keyboard arriving and does not float the panel open over the page.
+   */
+  restoreFocus?: ((el: HTMLElement | null) => void) | undefined;
   onPick: (m: NavModule) => void;
 }): JSX.Element => {
   const t = useT();
@@ -692,7 +700,10 @@ const ModuleSwitcher = ({
           onClose={(focusTrigger) => {
             setOpen(false);
             onClosed?.();
-            if (focusTrigger) triggerRef.current?.focus();
+            if (focusTrigger) {
+              if (restoreFocus !== undefined) restoreFocus(triggerRef.current);
+              else triggerRef.current?.focus();
+            }
           }}
         />
       )}
@@ -740,6 +751,7 @@ const IconStrip = ({
   pinnedApps,
   allRoutes,
   shortcuts,
+  restoreFocus,
   onPickModule,
   onNavigate,
 }: {
@@ -749,6 +761,7 @@ const IconStrip = ({
   pinnedApps: NavApp[];
   allRoutes: string[];
   shortcuts: boolean;
+  restoreFocus?: ((el: HTMLElement | null) => void) | undefined;
   onPickModule: (m: NavModule) => void;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
@@ -770,6 +783,7 @@ const IconStrip = ({
         current={current}
         collapsed
         shortcuts={shortcuts}
+        restoreFocus={restoreFocus}
         onOpen={onNavigate}
         onPick={onPickModule}
       />
@@ -867,10 +881,19 @@ const NavShell = ({
       .filter((a): a is NavApp => a !== undefined);
   }, [data, pinned]);
 
+  // While the menu loads, the column takes the width it is about to have — the strip's on an
+  // unpinned desktop — or the page would lay out 184px narrower and then jump wider on every load.
   if (isLoading) {
+    const slim = collapsible && !floating.pinned;
     return (
-      <StateShell>
-        <LoadingState />
+      <StateShell slim={slim}>
+        {slim ? (
+          <span role="status" aria-label={t('common.loading')}>
+            <Spinner className="h-5 w-5 text-brand-600" />
+          </span>
+        ) : (
+          <LoadingState />
+        )}
       </StateShell>
     );
   }
@@ -932,7 +955,7 @@ const NavShell = ({
         </div>
         {collapsible && <NavPinButton pinned={floating.pinned} onToggle={floating.togglePinned} />}
       </div>
-      <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
+      <div className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
         {pinnedApps.length > 0 && (
           <section className="mb-5">
             <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
@@ -972,16 +995,20 @@ const NavShell = ({
             onNavigate={onNavigate}
           />
         ))}
-      </nav>
+      </div>
     </>
   );
 
-  // The mobile drawer: the full panel, as it always was.
+  // The mobile drawer: the full panel, as it always was. The column is the navigation landmark
+  // (one per shell), not the list inside the panel.
   if (!collapsible) {
     return (
-      <div className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <nav
+        aria-label={t('common.menu')}
+        className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900"
+      >
         {panel}
-      </div>
+      </nav>
     );
   }
 
@@ -989,43 +1016,53 @@ const NavShell = ({
   // drawn OVER the page from the strip's edge while the pointer (or the focus) is on them — the
   // page keeps its whole width underneath. Pinned, the panel stands in the layout in the strip's
   // place and takes its width like any column; the page narrows beside it. One box holds both, so
-  // moving from the strip into the panel is not "leaving", and the panel is the same element in
-  // either state, so pinning or unpinning from its header neither remounts it under the pointer nor
-  // takes the focus off the pin.
+  // moving from the strip into the panel is not "leaving". The panel is one element in every
+  // state — hidden only makes it invisible — so it is never remounted: a folded section stays
+  // folded between hovers, and pinning from its header keeps the focus on the pin.
+  //
+  // The floating panel covers the strip, so the strip is `data-nav-covered`: while the panel shows,
+  // floating-nav takes it out of the tab order and hands its keyboard focus to the panel.
   return (
-    <div
+    <nav
+      aria-label={t('common.menu')}
       data-nav-strip
       className={cn('relative flex h-full shrink-0', docked ? 'w-60' : 'w-14')}
       {...floating.hoverProps}
     >
       {!docked && (
-        <div className="flex w-14 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div
+          data-nav-covered
+          className="flex w-14 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900"
+        >
           <IconStrip
             modules={modules}
             current={current}
             pinnedApps={pinnedApps}
             allRoutes={allRoutes}
-            shortcuts={shortcuts}
+            // Quiet while a launchpad opened from the panel is up: that launchpad answers Alt+M
+            // itself (to close), and a second listener here would raise another one over it.
+            shortcuts={shortcuts && !floating.held}
+            restoreFocus={floating.restoreFocus}
             onPickModule={pickModule}
             onNavigate={onNavigate}
           />
         </div>
       )}
 
-      {floating.mode !== 'hidden' && (
-        <div
-          data-nav-panel
-          className={cn(
-            'flex w-60 flex-col',
-            'border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
-            !docked &&
-              'absolute inset-y-0 start-0 z-[35] animate-fade-in shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
-          )}
-        >
-          {panel}
-        </div>
-      )}
-    </div>
+      <div
+        data-nav-panel
+        data-nav-mode={floating.mode}
+        className={cn(
+          'flex w-60 flex-col transition-[opacity,visibility] duration-150 ease-out motion-reduce:transition-none',
+          'border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
+          !docked &&
+            'absolute inset-y-0 start-0 z-[35] shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
+          floating.mode === 'hidden' && 'pointer-events-none invisible opacity-0',
+        )}
+      >
+        {panel}
+      </div>
+    </nav>
   );
 };
 

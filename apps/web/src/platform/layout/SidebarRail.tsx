@@ -225,9 +225,10 @@ const RailShell = ({
     }
   }, [urlModuleId, lastModuleId, pathname]);
 
-  // On a desktop the module panel floats over the page (floating-nav.ts); the mobile drawer
-  // shows it beside the rail, as it always did.
+  // On a desktop the module panel floats over the page on hover and docks beside the rail once
+  // pinned (floating-nav.ts); the mobile drawer shows it beside the rail, as it always did.
   const floating = useFloatingNav(collapsible);
+  const docked = floating.mode === 'docked';
 
   const allRoutes = useMemo(() => flattenApps(data).map((a) => a.route), [data]);
   const pinnedApps = useMemo(() => {
@@ -297,16 +298,21 @@ const RailShell = ({
     );
   }
 
-  // A desktop: only the rail stands beside the page. The module's panel is drawn OVER the page from
-  // the rail's edge — on hover, or pinned open with the pin in its header — and the page keeps its
-  // width.
+  // A desktop. Unpinned, only the rail stands beside the page, and the module's panel is drawn OVER
+  // the page from the rail's edge while the pointer (or the focus) is on them — the page keeps its
+  // width. Pinned, the panel stands in the layout beside the rail and takes its width like any
+  // column. It is the same element in either state, so the pin in its header keeps the focus.
   return (
     <div data-nav-strip className="relative flex h-full" {...floating.hoverProps}>
       <ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />
-      {floating.shown && (
+      {floating.mode !== 'hidden' && (
         <div
           data-nav-panel
-          className="absolute inset-y-0 start-14 z-[35] flex animate-fade-in shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]"
+          className={cn(
+            'flex',
+            !docked &&
+              'absolute inset-y-0 start-14 z-[35] animate-fade-in shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
+          )}
         >
           {panel}
         </div>

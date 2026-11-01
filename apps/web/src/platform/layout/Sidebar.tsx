@@ -852,9 +852,10 @@ const NavShell = ({
     }
   }, [urlModuleId, lastModuleId, pathname]);
 
-  // On a desktop the panel floats over the page (floating-nav.ts); the mobile drawer is the full
-  // panel already, so it has nothing to float.
+  // On a desktop the panel floats over the page on hover and docks into the layout once pinned
+  // (floating-nav.ts); the mobile drawer is the full panel already, so it has nothing to manage.
   const floating = useFloatingNav(collapsible);
+  const docked = floating.mode === 'docked';
 
   // Every route the catalog serves — the basis for "does another page live under this one?".
   const allRoutes = useMemo(() => flattenApps(data).map((a) => a.route), [data]);
@@ -907,8 +908,12 @@ const NavShell = ({
   };
 
   // The full panel: this module's switcher, the pinned favourites, then its pages. The mobile
-  // drawer shows it as it is; on a desktop it is what floats over the page, and the pin that keeps
-  // it there sits right after the switcher.
+  // drawer shows it as it is; on a desktop it is what floats over the page or docks beside it, and
+  // the pin that docks it sits right after the switcher.
+  //
+  // Only one switcher may answer Alt+M. While the panel floats, the strip is still mounted under it
+  // with a switcher of its own, so the strip's answers; once docked the panel stands in the strip's
+  // place, and its own does.
   const panel = (
     <>
       <div className="flex items-center gap-1 border-b border-slate-200/60 px-3 py-2 dark:border-slate-800/60">
@@ -916,7 +921,7 @@ const NavShell = ({
           <ModuleSwitcher
             modules={modules}
             current={current}
-            shortcuts={shortcuts}
+            shortcuts={shortcuts && docked}
             onOpen={() => {
               floating.hold();
               onNavigate?.();
@@ -980,31 +985,41 @@ const NavShell = ({
     );
   }
 
-  // A desktop: the slim strip is the only thing beside the page. The full panel is drawn OVER the
-  // page from the strip's edge — on hover, or pinned open with the pin in its header — and the page
-  // keeps its whole width underneath it. Both live in one box, so moving from the strip into the
-  // panel is not "leaving".
+  // A desktop. Unpinned, the slim strip is the only thing beside the page, and the full panel is
+  // drawn OVER the page from the strip's edge while the pointer (or the focus) is on them — the
+  // page keeps its whole width underneath. Pinned, the panel stands in the layout in the strip's
+  // place and takes its width like any column; the page narrows beside it. One box holds both, so
+  // moving from the strip into the panel is not "leaving", and the panel is the same element in
+  // either state, so pinning or unpinning from its header neither remounts it under the pointer nor
+  // takes the focus off the pin.
   return (
-    <div data-nav-strip className="relative flex h-full w-14 shrink-0" {...floating.hoverProps}>
-      <div className="flex w-14 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <IconStrip
-          modules={modules}
-          current={current}
-          pinnedApps={pinnedApps}
-          allRoutes={allRoutes}
-          shortcuts={shortcuts}
-          onPickModule={pickModule}
-          onNavigate={onNavigate}
-        />
-      </div>
+    <div
+      data-nav-strip
+      className={cn('relative flex h-full shrink-0', docked ? 'w-60' : 'w-14')}
+      {...floating.hoverProps}
+    >
+      {!docked && (
+        <div className="flex w-14 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <IconStrip
+            modules={modules}
+            current={current}
+            pinnedApps={pinnedApps}
+            allRoutes={allRoutes}
+            shortcuts={shortcuts}
+            onPickModule={pickModule}
+            onNavigate={onNavigate}
+          />
+        </div>
+      )}
 
-      {floating.shown && (
+      {floating.mode !== 'hidden' && (
         <div
           data-nav-panel
           className={cn(
-            'absolute inset-y-0 start-0 z-[35] flex w-60 animate-fade-in flex-col',
+            'flex w-60 flex-col',
             'border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
-            'shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
+            !docked &&
+              'absolute inset-y-0 start-0 z-[35] animate-fade-in shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
           )}
         >
           {panel}

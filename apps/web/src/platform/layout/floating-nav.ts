@@ -1,18 +1,20 @@
-// The navigation panel FLOATS over the page instead of taking a column from it.
+// The navigation panel on a desktop: OVER the page while it is only being looked at, IN the layout
+// once it is pinned.
 //
 // «الsidebar يظهر لما اعمل hover عليه ويظهر فوق الكونتنت ميخدش حايز لو عاوز افتحه يظهر برضو فوق
-// الجدول ميخدش حايز». On a desktop the page keeps its whole width at all times: only the slim icon
-// strip stands beside it. The full panel opens OVER the page, from the strip's edge:
-//   • hovering the strip shows it while the pointer stays on the strip or the panel — and so does
-//     moving the keyboard focus into either, so the panel and its pin can be reached by Tab;
-//   • the pin at the top of the panel, right after the module switcher (NavPinButton), keeps it
-//     shown until it is unpinned. There is no other open or close button: one gesture to see the
+// الجدول ميخدش حايز», and then, once the pin existed: «لما اعمل تثبيت يبقى موجود بس يلخد من الحايز
+// عادى». So the panel has three states (`navPanelMode`):
+//   • hidden — only the slim icon strip stands beside the page;
+//   • floating — the pointer (or the keyboard focus) is on the strip or the panel. The panel is
+//     drawn OVER the page from the strip's edge, and the table underneath keeps its whole width;
+//   • docked — pinned with the pin at the top of the panel, right after the module switcher
+//     (NavPinButton). The panel stands in the layout like any column and the page narrows beside
+//     it, until it is unpinned. There is no other open or close button: one gesture to look at the
 //     menu, one pin to keep it.
-// Either way the table underneath does not move or narrow; the panel is drawn above it.
 //
-// The pinned choice is remembered on this device. It is stored under a key of its own: the key
-// the old in-column panel used meant "expanded" by default, and carried over it would have opened
-// the floating panel over everyone's page on their first load.
+// The pinned choice is remembered on this device, under a key of its own. The old in-column
+// panel's key meant "expanded" unless someone had collapsed it, so carried over it would have
+// docked the panel for nearly everyone, and the hover the owner asked for would never be seen.
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const NAV_PINNED_KEY = 'ecms.nav.floatingPinned';
@@ -38,15 +40,22 @@ export const persistNavPinned = (pinned: boolean): void => {
   }
 };
 
+export type NavPanelMode = 'hidden' | 'floating' | 'docked';
+
 /**
- * Whether the floating panel is drawn. `held` is a surface opened from inside the panel — the
- * module launchpad — which would vanish with the panel if a hover-only panel closed under it.
+ * How the panel is drawn. Pinned wins: a pinned panel is in the layout whatever the pointer does.
+ * Otherwise the pointer or the focus floats it over the page, and so does `held` — a surface opened
+ * from inside the panel (the module launchpad), which would vanish with the panel if a hover-only
+ * panel closed under it.
  */
-export const navPanelShown = (state: {
+export const navPanelMode = (state: {
   pinned: boolean;
   hovering: boolean;
   held: boolean;
-}): boolean => state.pinned || state.hovering || state.held;
+}): NavPanelMode => {
+  if (state.pinned) return 'docked';
+  return state.hovering || state.held ? 'floating' : 'hidden';
+};
 
 /** The part of a React pointer or focus event the panel reads. */
 interface BoundaryEvent {
@@ -81,8 +90,9 @@ export const keyboardFocus = (target: EventTarget | null): boolean => {
 
 export interface FloatingNav {
   pinned: boolean;
-  shown: boolean;
-  /** Pin the panel open, or unpin it back to following the pointer. */
+  /** Always `hidden` where the panel is not managed (the mobile drawer shows it as it is). */
+  mode: NavPanelMode;
+  /** Dock the panel into the layout, or unpin it back to floating with the pointer. */
   togglePinned: () => void;
   /** Spread on the element that holds BOTH the strip and the floating panel. */
   hoverProps: {
@@ -166,8 +176,9 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
     [enabled],
   );
 
-  // Unpinning hands the panel back to the pointer: pressed from inside it, the panel stays while the
-  // pointer is still on it and closes once it leaves, rather than vanishing under the click.
+  // Unpinning hands the panel back to the pointer: pressed from inside it, the panel floats while
+  // the pointer is still on it and closes once it leaves, rather than vanishing under the click.
+  // The pointer and the focus are tracked while it is docked too, so they are right at that moment.
   const togglePinned = useCallback((): void => {
     setPinned((was) => {
       persistNavPinned(!was);
@@ -175,9 +186,9 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
     });
   }, []);
 
-  // Escape closes a panel the pointer or the focus opened. A pinned one is closed with its pin.
+  // Escape closes a panel the pointer or the focus opened. A pinned one is undocked with its pin.
   const hovering = pointer || focused;
-  const shown = navPanelShown({ pinned, hovering, held });
+  const mode = enabled ? navPanelMode({ pinned, hovering, held }) : 'hidden';
   useEffect(() => {
     if (!enabled || !hovering || pinned || held) return undefined;
     const onKey = (e: KeyboardEvent): void => {
@@ -192,7 +203,7 @@ export const useFloatingNav = (enabled: boolean): FloatingNav => {
 
   return {
     pinned,
-    shown: enabled && shown,
+    mode,
     togglePinned,
     hoverProps: { onMouseOver, onMouseOut, onFocus, onBlur },
     hold: useCallback(() => setHeld(true), []),

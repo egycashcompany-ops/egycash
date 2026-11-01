@@ -1,4 +1,5 @@
-// The navigation panel floats over the page instead of taking a column from it (floating-nav.ts).
+// The navigation panel floats over the page on hover, and docks into the layout once pinned
+// (floating-nav.ts).
 //
 // The decisions are tested as functions; how the two shells are wired to them is checked against
 // their source, the way the other shell specs here do it — this suite renders no React.
@@ -13,7 +14,7 @@ import {
   focusInside,
   keyboardFocus,
   loadNavPinned,
-  navPanelShown,
+  navPanelMode,
   persistNavPinned,
 } from './floating-nav';
 
@@ -26,14 +27,25 @@ const PIN = read('NavPinButton.tsx');
 const HOOK = read('floating-nav.ts');
 const I18N = read('../localization/i18n.ts');
 
-describe('when the floating panel is drawn', () => {
-  it('pinned, hovered or held open — any one is enough', () => {
-    expect(navPanelShown({ pinned: false, hovering: false, held: false })).toBe(false);
-    expect(navPanelShown({ pinned: true, hovering: false, held: false })).toBe(true);
-    expect(navPanelShown({ pinned: false, hovering: true, held: false })).toBe(true);
+describe('how the panel is drawn', () => {
+  it('nothing on the strip and nothing pinned: hidden', () => {
+    expect(navPanelMode({ pinned: false, hovering: false, held: false })).toBe('hidden');
+  });
+
+  it('hovered, focused or held open: floating over the page', () => {
+    expect(navPanelMode({ pinned: false, hovering: true, held: false })).toBe('floating');
     // The module launchpad opened from inside the panel keeps it, or the launchpad would vanish
     // with the panel the moment the pointer moved onto it.
-    expect(navPanelShown({ pinned: false, hovering: false, held: true })).toBe(true);
+    expect(navPanelMode({ pinned: false, hovering: false, held: true })).toBe('floating');
+  });
+
+  it('pinned: docked in the layout, whatever the pointer does', () => {
+    // «لما اعمل تثبيت يبقى موجود بس يلخد من الحايز عادى»
+    for (const hovering of [false, true]) {
+      for (const held of [false, true]) {
+        expect(navPanelMode({ pinned: true, hovering, held })).toBe('docked');
+      }
+    }
   });
 
   it('opens after a short pause and lingers a little longer, so a passing pointer does not flash it', () => {
@@ -136,7 +148,7 @@ describe('the pinned choice is remembered on this device', () => {
     expect(loadNavPinned()).toBe(false);
   });
 
-  it('under a key of its own: the old in-column panel was open by default, and must not open this one', () => {
+  it('under a key of its own: the old in-column panel was open by default, and must not dock this one', () => {
     expect(NAV_PINNED_KEY).not.toBe('ecms.nav.panelCollapsed');
     store.set('ecms.nav.panelCollapsed', '0');
     expect(loadNavPinned()).toBe(false);
@@ -156,30 +168,74 @@ describe('the pinned choice is remembered on this device', () => {
   });
 });
 
-describe('on a desktop the panel never takes the page’s width', () => {
+describe('on a desktop: over the page on hover, in the layout once pinned', () => {
   it.each([
     ['launchpad', LAUNCHPAD],
     ['rail', RAIL],
   ])(
-    '%s: the hover box holds the strip and the panel, and only the strip is in the layout',
+    '%s: one box holds the strip and the panel, and listens for the pointer and the focus',
     (name, source) => {
       expect(source, `${name} uses the shared behaviour`).toContain('useFloatingNav(collapsible)');
+      expect(source).toContain("const docked = floating.mode === 'docked';");
       expect(source, `${name} listens on one box`).toMatch(
         /data-nav-strip[^>]*\{\.\.\.floating\.hoverProps\}/,
       );
-      // The panel is positioned over the page, not placed beside it.
-      expect(source, `${name} draws the panel over the page`).toMatch(
-        /floating\.shown && \(\s*<div\s+data-nav-panel\s+className=\{?[^]*?absolute inset-y-0 start-/,
-      );
-      expect(source).toContain('z-[35]');
-      // The old in-column switch is gone: no width that depends on a collapsed flag.
-      expect(source).not.toContain("collapsed ? 'w-14' : 'w-60'");
       expect(source).not.toContain('ecms.nav.panelCollapsed');
     },
   );
 
-  it('the launchpad strip stays 56px wide', () => {
-    expect(LAUNCHPAD).toContain('className="relative flex h-full w-14 shrink-0"');
+  it.each([
+    ['launchpad', LAUNCHPAD],
+    ['rail', RAIL],
+  ])(
+    '%s: unpinned, the panel is positioned over the page; pinned, it is in the flow',
+    (name, source) => {
+      expect(source, `${name} draws the panel in either visible state`).toMatch(
+        /floating\.mode !== 'hidden' && \(\s*<div\s+data-nav-panel/,
+      );
+      // The over-the-page placement is conditional on NOT being docked. A docked panel carries none
+      // of it, so it sits in the box's flex row and the page beside it narrows.
+      expect(source, `${name} floats only while not docked`).toMatch(
+        /data-nav-panel\s+className=\{cn\([^]*?!docked &&\s*'absolute inset-y-0 start-(?:0|14) z-\[35\]/,
+      );
+    },
+  );
+
+  it.each([
+    ['launchpad', LAUNCHPAD],
+    ['rail', RAIL],
+  ])(
+    '%s: the panel is ONE element in both states, so the pin keeps the focus across a toggle',
+    (name, source) => {
+      expect(source.match(/data-nav-panel/g), name).toHaveLength(1);
+    },
+  );
+
+  it('launchpad: the box is the strip’s 56px, or the panel’s 240px once docked in its place', () => {
+    expect(LAUNCHPAD).toContain(
+      "className={cn('relative flex h-full shrink-0', docked ? 'w-60' : 'w-14')}",
+    );
+    // The strip stands only while the panel is not docked; it comes FIRST in the box, so its
+    // coming and going does not shift the panel to another slot (and remount it).
+    expect(LAUNCHPAD).toMatch(
+      /\{\.\.\.floating\.hoverProps\}\s*>\s*\{!docked && \(\s*<div className="flex w-14 flex-col[^]*?<IconStrip[^]*?\{floating\.mode !== 'hidden' && \(/,
+    );
+  });
+
+  it('launchpad: exactly one module switcher answers Alt+M — the strip’s, or the docked panel’s', () => {
+    // While the panel floats, the strip is mounted under it with its own switcher; two listeners
+    // would raise two launchpads for one keystroke.
+    expect(LAUNCHPAD).toMatch(
+      /<ModuleSwitcher[^/]*?shortcuts=\{shortcuts && docked\}[^]*?onClosed=\{floating\.release\}/,
+    );
+    expect(LAUNCHPAD).toMatch(/<IconStrip[^/]*?shortcuts=\{shortcuts\}/);
+  });
+
+  it('rail: the rail always stands; the panel docks beside it', () => {
+    expect(RAIL).toContain('className="relative flex h-full"');
+    expect(RAIL).toMatch(
+      /<ModuleRail modules=\{modules\} shownId=\{current\.id\} onPick=\{pickModule\} \/>\s*\{floating\.mode !== 'hidden'/,
+    );
   });
 
   it('the module launchpad opened from the floating panel holds it open until it closes', () => {
@@ -197,7 +253,7 @@ describe('on a desktop the panel never takes the page’s width', () => {
     );
   });
 
-  it('the top bar stays above the panel, so its menus open over it', () => {
+  it('the top bar stays above the floating panel, so its menus open over it', () => {
     expect(TOPBAR).toContain('<header className="relative z-40 flex');
   });
 });

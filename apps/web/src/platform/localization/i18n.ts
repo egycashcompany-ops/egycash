@@ -9336,6 +9336,9 @@ const en: Record<string, string> = {
   'atm.common.branchChanged':
     'The selected branch changed during the run, so it stopped before the next request.',
   'atm.common.pasteLeft': 'they are back in the boxes; press «{{action}}» again.',
+  'atm.common.pasteLeftOnly': 'they are back in the boxes.',
+  'atm.common.pasteStoppedBack': 'The run stopped; {{count}} line(s) are back in the boxes',
+  'atm.common.pressAgain': 'Press «{{action}}» again.',
   'atm.common.pasteMaybeDone':
     'The first {{count}} were in the request that stopped and some may have gone through; sending them again is safe:',
   'atm.board.day.label': 'Day shown',
@@ -20131,6 +20134,9 @@ const ar: Record<string, string> = {
   'atm.common.openUncertainRestore': 'إعادتها إلى الخانات',
   'atm.common.branchChanged': 'تغيّر الفرع المختار أثناء الإرسال، فتوقف قبل الطلب التالي.',
   'atm.common.pasteLeft': 'أُعيدت إلى الخانات، فاضغط «{{action}}» مرة أخرى.',
+  'atm.common.pasteLeftOnly': 'أُعيدت إلى الخانات.',
+  'atm.common.pasteStoppedBack': 'توقف الإرسال، وأُعيد {{count}} سطر إلى الخانات',
+  'atm.common.pressAgain': 'اضغط «{{action}}» مرة أخرى.',
   'atm.common.pasteMaybeDone':
     'أول {{count}} منها كانت في الطلب الذي توقف وقد يكون بعضها تمّ، وإرسالها مرة أخرى آمن:',
   'atm.board.day.label': 'اليوم المعروض',

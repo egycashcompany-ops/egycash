@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import {
   ATM_PLAN_RUNS,
+  ErrorCodes,
   type AtmPlanAddResultDto,
   type AtmPlanRun,
   type Locale,
@@ -25,8 +26,17 @@ import { Field, Select } from '../../../../shared/ui/form';
 import { LineListInput } from '../LineListInput';
 import { buildReplenishmentRows, replenishmentLines } from '../OpenReplenishmentsForm';
 import { PasteStopNotice } from '../PasteStopNotice';
+import { ApiError } from '../../../../shared/lib/api-client';
+import { useRunUnloadGuard } from '../../lib/useRunUnloadGuard';
 import { type PlanAddRun } from '../../api/settlements-api';
 import { runLabel } from '../../lib/settlement-view';
+
+/**
+ * Pure: may a stopped run's lines be pressed again as they are? Not after the plan answered full —
+ * a new press is refused the same way until lines are removed or cancelled.
+ */
+export const pressAgainAfter = (failure: unknown): boolean =>
+  !(failure instanceof ApiError && failure.code === ErrorCodes.ATM_PLAN_FULL);
 
 export const AddMachinesDialog = ({
   open,
@@ -52,7 +62,8 @@ export const AddMachinesDialog = ({
   const [times, setTimes] = useState('');
   const [run, setRun] = useState<AtmPlanRun>(1);
   const [result, setResult] = useState<AtmPlanAddResultDto | null>(null);
-  const [stop, setStop] = useState({ left: 0, maybeDone: 0 });
+  const [stop, setStop] = useState({ left: 0, maybeDone: 0, pressAgain: true });
+  useRunUnloadGuard(busy);
 
   useEffect(() => {
     if (!open) return;
@@ -60,13 +71,13 @@ export const AddMachinesDialog = ({
     setTimes('');
     setRun(1);
     setResult(null);
-    setStop({ left: 0, maybeDone: 0 });
+    setStop({ left: 0, maybeDone: 0, pressAgain: true });
   }, [open]);
 
   const rows = buildReplenishmentRows(codes, times);
   const submit = async (): Promise<void> => {
     if (rows.length === 0) return;
-    setStop({ left: 0, maybeDone: 0 });
+    setStop({ left: 0, maybeDone: 0, pressAgain: true });
     const answer = await onSubmit(run, rows);
     if (answer === null) return;
     setResult({ added: answer.added, refused: answer.refused });
@@ -75,7 +86,11 @@ export const AddMachinesDialog = ({
       const back = replenishmentLines(answer.left);
       setCodes(back.codes);
       setTimes(back.schedules);
-      setStop({ left: answer.left.length, maybeDone: answer.maybeDone });
+      setStop({
+        left: answer.left.length,
+        maybeDone: answer.maybeDone,
+        pressAgain: pressAgainAfter(answer.failure),
+      });
     } else if (answer.added.length > 0) {
       // As the board's open form does: once something was added the boxes clear, and what was not
       // added stays listed below with its reason.
@@ -142,6 +157,8 @@ export const AddMachinesDialog = ({
           maybeDone={stop.maybeDone}
           action={t('atm.plan.add.submit')}
           safeHint={t('atm.plan.add.resendSafe')}
+          pressAgain={stop.pressAgain}
+          formatCount={(n) => formatNumber(n, locale)}
         />
         {result !== null && (
           <div aria-live="polite" className="space-y-2" data-add-result="true">

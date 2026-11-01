@@ -62,7 +62,8 @@ ECMS" means.
   register, an archived code is brought back instead of refused, and a code living in another
   branch is refused (§9). **Amended 2026-11-01:** the bulk add and the bulk delete take any number
   of lines — consecutive requests of `ATM_MACHINES_BULK_MAX` (500, unchanged), each code once, the
-  acting branch pinned (a top-bar switch between two requests stops the run). A run that stops puts
+  acting branch pinned (a top-bar switch reloads the page, which asks first while a run goes;
+  staying stops the run before its next request). A run that stops puts
   every line not confirmed back into its boxes; sending them again is safe (an added machine comes
   back «مسجلة من قبل», a deleted one as an unknown code), so the failed request's lines go back too,
   named as possibly done.
@@ -142,8 +143,10 @@ ECMS" means.
     every send (OD-1b), so its lines are NOT put back: the form names them apart (`OpenStopNotice`),
     to be checked in the table, keeps them through later presses (a later stop adds to them), and
     puts them back or hides them only when asked. What earlier requests opened stands either way.
-    Each request resolves the acting branch from the top bar, so a switch between two requests
-    stops the run before the next one; its lines come back as unsent (2026-11-01).
+    Each request resolves the acting branch from the top bar, and a top-bar switch reloads the page,
+    so while a run goes closing or reloading asks first (`useRunUnloadGuard`); staying, the run sees
+    the switch (`branchPin`) and stops before its next request, its lines back as unsent
+    (2026-11-01).
   - **A name is matched as the board shows it.** Bank and area are free text, so the filter
     lists travel escaped: one comma-separated value as before, `\,` a comma inside a name, `\\` a
     backslash (`joinAtmNameList`/`splitAtmNameList`, `atmNameListQuery`) — «Raml, Station» used to

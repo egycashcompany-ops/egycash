@@ -22,6 +22,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { runFailureText } from '../lib/paste-batches';
+import { useRunUnloadGuard } from '../lib/useRunUnloadGuard';
 import { useOpenAtmReplenishments } from '../api/atm-queries';
 import { type ReplenishmentOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
@@ -64,6 +65,7 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const open = useOpenAtmReplenishments();
+  useRunUnloadGuard(open.isPending);
   const [codes, setCodes] = useState('');
   const [schedules, setSchedules] = useState('');
   const [forceDate, setForceDate] = useState(defaultDate);

@@ -291,9 +291,11 @@ its entry here in the same PR.
   «توقف الإرسال قبل آخر … سطر — أُعيدت إلى الخانات»; sending them again is safe — an added line
   comes back «موجودة في هذه التغذية» or «مسجلة من قبل», a deleted machine as an unknown code — so
   the lines of the request that stopped go back too, named as possibly done. Inputs, buttons and
-  closing are held while a run goes. A plan still holds at most 400 lines. The runs that depend on
-  the top-bar branch — the data-edit dialog and the open forms — stop before their next request if
-  the branch is switched meanwhile («تغيّر الفرع المختار أثناء الإرسال»).
+  closing are held while a run goes, and closing or reloading the page asks first (a top-bar branch
+  switch reloads it). A plan still holds at most 400 lines; when it is full the lines go back
+  without «اضغط … مرة أخرى». Staying on the page after a branch switch stops the runs that depend on
+  the top-bar branch — the data-edit dialog and the open forms — before their next request, with
+  their lines back («تغيّر الفرع المختار أثناء الإرسال»).
 - **The open forms take any number of pasted lines.** «كان عندى حوالى 700 تغذية لماكينات لما
   بضيفهم كلهم مره واحده بيجيب الرساله … لكن لما قللتهم 100 او 200 فى المرة بقي يضيف عادى». One open
   request carries at most 200 lines, so a longer paste was refused whole («بعض الحقول تحتاج إلى

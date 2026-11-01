@@ -72,7 +72,8 @@ import {
   useUpdateAtmMachineArea,
   useUpdateAtmRefLabel,
 } from '../api/atm-queries';
-import { PasteStopNotice } from './PasteStopNotice';
+import { PasteStopNotice, pasteStopTitle } from './PasteStopNotice';
+import { useRunUnloadGuard } from '../lib/useRunUnloadGuard';
 import { runFailureText } from '../lib/paste-batches';
 import { areaOptionText, bankOptionGroups, labelText, type BankLookup } from '../lib/bank-catalog';
 
@@ -1019,6 +1020,7 @@ export const BulkMachinesDialog = ({
   const bulkCreate = useBulkCreateAtmMachines();
   const bulkDelete = useBulkDeleteAtmMachinesInBatches();
   const busy = bulkCreate.isPending || bulkDelete.isPending;
+  useRunUnloadGuard(busy);
 
   const submitAdd = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -1028,20 +1030,20 @@ export const BulkMachinesDialog = ({
     try {
       const run = await bulkCreate.mutateAsync({ bankName, area, machines });
       const result = joinBulkAdd(run.answers);
+      for (const shown of bulkAddToasts(result, t)) toast[shown.variant](shown.title);
       if (run.left.length > 0) {
         // Stopped part-way: every line not confirmed goes back, paired line for line.
         setCodes(run.left.map((row) => row.machineCode).join('\n'));
         setNames(run.left.map((row) => row.name).join('\n'));
         setAddStop({ left: run.left.length, maybeDone: run.maybeDone });
         toast.error(
-          t('atm.common.openStopped', { count: run.left.length }),
+          pasteStopTitle(t, run.left.length, run.maybeDone),
           runFailureText(run.failure, t, locale),
         );
       } else if (result.created.length > 0 || result.reactivatedCodes.length > 0) {
         setCodes('');
         setNames('');
       }
-      for (const shown of bulkAddToasts(result, t)) toast[shown.variant](shown.title);
     } catch {
       toast.error(t('atm.common.actionFailed'));
     }
@@ -1063,7 +1065,7 @@ export const BulkMachinesDialog = ({
         setDeleteCodes(run.left.join('\n'));
         setDeleteStop({ left: run.left.length, maybeDone: run.maybeDone });
         toast.error(
-          t('atm.common.openStopped', { count: run.left.length }),
+          pasteStopTitle(t, run.left.length, run.maybeDone),
           runFailureText(run.failure, t, locale),
         );
       } else {
@@ -1076,7 +1078,14 @@ export const BulkMachinesDialog = ({
 
   return (
     // Held while a run goes: closing would reset the boxes the run's end writes back into.
-    <Dialog open={open} onClose={busy ? () => {} : onClose} title={t('atm.dataEdit.bulkTitle')}>
+    // Never on an outside click either: a stopped run's lines wait in the boxes (the sibling
+    // dialogs' rule — AddMachinesDialog, MachineSyncDialog).
+    <Dialog
+      open={open}
+      onClose={busy ? () => {} : onClose}
+      title={t('atm.dataEdit.bulkTitle')}
+      dismissOnOutsideClick={false}
+    >
       <div className="space-y-6">
         {/* Over both halves: the delete finds its codes in the branch the add files into. */}
         <AddBranchLine options={options.data} />

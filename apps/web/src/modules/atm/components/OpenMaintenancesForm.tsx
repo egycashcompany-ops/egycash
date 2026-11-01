@@ -20,6 +20,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { runFailureText } from '../lib/paste-batches';
+import { useRunUnloadGuard } from '../lib/useRunUnloadGuard';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
 import { type MaintenanceOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
@@ -67,6 +68,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const open = useOpenAtmMaintenances();
+  useRunUnloadGuard(open.isPending);
   const [codes, setCodes] = useState('');
   const [services, setServices] = useState('');
   const [references, setReferences] = useState('');

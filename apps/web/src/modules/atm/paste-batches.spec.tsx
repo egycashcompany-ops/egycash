@@ -35,7 +35,8 @@ import {
 } from './api/atm-api';
 import { addPlanLinesInBatches } from './api/settlements-api';
 import { joinBulkAdd, joinBulkDelete } from './components/DataEditDialogs';
-import { PasteStopNotice } from './components/PasteStopNotice';
+import { PasteStopNotice, pasteStopTitle } from './components/PasteStopNotice';
+import { pressAgainAfter } from './components/settlements/AddMachinesDialog';
 
 const { ApiError, setActiveBranch } = ApiClientModule;
 
@@ -377,7 +378,7 @@ describe('what the reader is told', () => {
   });
 
   it.each(['ar', 'en'] as const)(
-    'in %s: the lines back in the boxes, and which may be done',
+    'in %s: some lines may be done → «توقف الإرسال، وأُعيد n سطر», which may be done, press again',
     (locale) => {
       const markup = render(
         locale,
@@ -389,22 +390,58 @@ describe('what the reader is told', () => {
         />,
       );
       expect(markup).toContain('data-paste-stop="true"');
-      expect(markup).toContain(translate(locale, 'atm.common.openStopped', { count: 300 }));
-      expect(markup).toContain(translate(locale, 'atm.common.pasteLeft', { action: 'إضافة' }));
+      expect(markup).toContain(translate(locale, 'atm.common.pasteStoppedBack', { count: 300 }));
+      expect(markup).not.toContain(translate(locale, 'atm.common.openStopped', { count: 300 }));
       expect(markup).toContain(translate(locale, 'atm.common.pasteMaybeDone', { count: 200 }));
       expect(markup).toContain(translate(locale, 'atm.plan.add.resendSafe'));
+      expect(markup).toContain(translate(locale, 'atm.common.pressAgain', { action: 'إضافة' }));
     },
   );
 
-  it('nothing may be done → only the lines back; nothing left → nothing said', () => {
+  it('none went → «توقف الإرسال قبل آخر n سطر … فاضغط مرة أخرى»; nothing left → nothing said', () => {
     const none = render('ar', <PasteStopNotice left={5} maybeDone={0} action="حذف" safeHint="X" />);
-    expect(none).not.toContain(
-      translate('ar', 'atm.common.pasteMaybeDone', { count: 0 }).slice(0, 8),
-    );
+    expect(none).toContain(translate('ar', 'atm.common.openStopped', { count: 5 }));
+    expect(none).toContain(translate('ar', 'atm.common.pasteLeft', { action: 'حذف' }));
     expect(none).not.toContain('X');
     expect(render('ar', <PasteStopNotice left={0} maybeDone={0} action="حذف" safeHint="X" />)).toBe(
       '',
     );
+  });
+
+  it('the plan full: the lines are back, and no «اضغط … مرة أخرى» (it would be refused again)', () => {
+    const full = render(
+      'ar',
+      <PasteStopNotice left={250} maybeDone={0} action="إضافة" safeHint="X" pressAgain={false} />,
+    );
+    expect(full).toContain(translate('ar', 'atm.common.pasteLeftOnly'));
+    expect(full).not.toContain('مرة أخرى');
+  });
+
+  it('only the plan-full refusal drops «اضغط … مرة أخرى» on the plan', () => {
+    expect(pressAgainAfter(refusal)).toBe(false); // ATM_PLAN_FULL
+    expect(pressAgainAfter(dropped)).toBe(true);
+    expect(pressAgainAfter(new ApiError('STALE_DOCUMENT', 'x', 409))).toBe(true);
+    expect(pressAgainAfter(null)).toBe(true);
+  });
+
+  it('the plan writes its counts in the reader’s digits', () => {
+    const markup = render(
+      'ar',
+      <PasteStopNotice
+        left={250}
+        maybeDone={200}
+        action="إضافة"
+        safeHint="X"
+        formatCount={(n) => n.toLocaleString('ar-EG')}
+      />,
+    );
+    expect(markup).toContain('٢٥٠');
+    expect(markup).toContain('٢٠٠');
+  });
+
+  it('the toast’s title follows the same rule', () => {
+    expect(pasteStopTitle(t('ar'), 300, 200)).toBe('توقف الإرسال، وأُعيد 300 سطر إلى الخانات');
+    expect(pasteStopTitle(t('ar'), 300, 0)).toBe('توقف الإرسال قبل آخر 300 سطر');
   });
 
   it('the Arabic reads as the catalog writes it', () => {

@@ -18,6 +18,7 @@ import {
   type LoginResponse,
   type MeDto,
   type SessionDto,
+  type SessionMethod,
   type TotpEnabledDto,
   type TotpEnrollmentDto,
   type UpdateMyPreferences,
@@ -59,6 +60,7 @@ import {
   type PortalChallengeState,
 } from './portal-challenge-rules';
 import { userSnapshotKey } from './user-snapshot-cache';
+import { passkeyStore } from './passkey.store';
 import { SessionModel, type SessionDoc } from './session.model';
 
 const USED_HASHES_KEPT = 20;
@@ -218,7 +220,10 @@ class AuthService {
 
   // ── Sessions ──────────────────────────────────────────────────────────────
 
-  private async createSession(user: UserDoc): Promise<IssuedTokens & { sessionId: string }> {
+  private async createSession(
+    user: UserDoc,
+    method: SessionMethod,
+  ): Promise<IssuedTokens & { sessionId: string }> {
     const refreshToken = randomToken();
     const context = getContext();
     const now = new Date();
@@ -233,6 +238,7 @@ class AuthService {
           userAgent: context?.actor?.userAgent ?? null,
           ip: context?.actor?.ip ?? null,
         },
+        method,
         createdAt: now,
         lastUsedAt: now,
         expiresAt: refreshExpiresAt,
@@ -297,6 +303,8 @@ class AuthService {
       createdAt: session.createdAt.toISOString(),
       lastUsedAt: session.lastUsedAt.toISOString(),
       current: String(session._id) === ctx.sessionId,
+      // Sessions opened before the field existed were all password sign-ins.
+      method: session.method ?? 'password',
     }));
   }
 
@@ -445,15 +453,59 @@ class AuthService {
     return this.completeLogin(user);
   }
 
+  /**
+   * A wrong password typed somewhere other than the sign-in page — the step-up before adding a
+   * passkey (ADR-035 §5) — counted toward the account lockout like one typed there, so that no
+   * screen behind the sign-in becomes a place to try passwords the lockout does not see.
+   */
+  async countFailedPassword(user: UserDoc, step: string): Promise<void> {
+    const policy = await this.loginPolicy();
+    const { locked } = await userService.recordFailedLogin(
+      String(user._id),
+      policy.maxAttempts,
+      policy.lockMinutes,
+    );
+    await auditService.record({
+      entityRef: userEntityRef(String(user._id)),
+      action: locked ? 'lockout' : 'loginFailed',
+      changes: [{ field: 'step', old: null, new: step }],
+      actor: actorOf(user),
+    });
+    await emit(PlatformEvents.AuthLoginFailed, {
+      userId: String(user._id),
+      email: user.email,
+      reason: locked ? 'locked' : `${step}-bad-password`,
+    });
+  }
+
+  /**
+   * The session at the end of a verified passkey sign-in (ADR-035). Every gate was checked by the
+   * passkey service; the passkey is the second factor, so no TOTP step (owner decision, §2).
+   */
+  async completePasskeyLogin(
+    user: UserDoc,
+    passkeyId: string,
+  ): Promise<{ response: LoginResponse; tokens: IssuedTokens }> {
+    return this.completeLogin(user, 'passkey', [
+      { field: 'method', old: null, new: 'passkey' },
+      { field: 'passkeyId', old: null, new: passkeyId },
+    ]);
+  }
+
   private async completeLogin(
     user: UserDoc,
+    method: SessionMethod = 'password',
+    changes?: { field: string; old: unknown; new: unknown }[],
   ): Promise<{ response: LoginResponse; tokens: IssuedTokens }> {
-    const { accessToken, refreshToken, refreshExpiresAt, sessionId } =
-      await this.createSession(user);
+    const { accessToken, refreshToken, refreshExpiresAt, sessionId } = await this.createSession(
+      user,
+      method,
+    );
     await userService.recordLogin(String(user._id)); // §16.5 — Last Login on the panel
     await auditService.record({
       entityRef: userEntityRef(String(user._id)),
       action: 'login',
+      ...(changes === undefined ? {} : { changes }),
       actor: actorOf(user),
     });
     await emit(PlatformEvents.AuthLoggedIn, {
@@ -658,7 +710,10 @@ class AuthService {
     }
 
     await this.savePortalChallenge(String(user._id), afterSuccess(state));
-    const { accessToken, refreshToken, refreshExpiresAt } = await this.createSession(user);
+    const { accessToken, refreshToken, refreshExpiresAt } = await this.createSession(
+      user,
+      'portalChallenge',
+    );
     await auditService.record({
       entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(user._id) },
       action: 'login',
@@ -994,7 +1049,11 @@ class AuthService {
 
 export const authService = new AuthService();
 
-/** In-process reactions: suspend/archive revokes sessions and drops caches. */
+/**
+ * In-process reactions: suspend/archive revokes sessions and drops caches; suspend, archive and
+ * delete also remove the account's passkeys (ADR-035 §8) — a rehire or a reactivation starts with
+ * none, rather than finding a key made under the old employment still working.
+ */
 export const registerAuthEventHandlers = (): void => {
   subscribe(
     PlatformEvents.UserStatusChanged,
@@ -1004,7 +1063,12 @@ export const registerAuthEventHandlers = (): void => {
       await getCache().del(userSnapshotKey(payload.userId));
       if (payload.status === 'suspended' || payload.status === 'archived') {
         await authService.revokeAllSessionsForUser(payload.userId, `user-${payload.status}`);
+        await passkeyStore.removeAllForUser(payload.userId, `user-${payload.status}`);
       }
     },
   );
+  subscribe(PlatformEvents.UserDeleted, 'auth.passkey-removal', async (envelope: EventEnvelope) => {
+    const payload = envelope.payload as { userId: string };
+    await passkeyStore.removeAllForUser(payload.userId, 'user-deleted');
+  });
 };

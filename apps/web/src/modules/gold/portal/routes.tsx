@@ -16,6 +16,7 @@ import { PortalTransfersPage } from './pages/PortalTransfersPage';
 import { PortalKeysPage } from './pages/PortalKeysPage';
 import { PortalRepresentativesPage } from './pages/PortalRepresentativesPage';
 import { PortalReportsPage } from './pages/PortalReportsPage';
+import { PortalSecurityPage } from './pages/PortalSecurityPage';
 
 /** A wrong path INSIDE the portal stays inside it — the staff 404 links to a home they cannot open. */
 const PortalNotFound = (): JSX.Element => {
@@ -42,6 +43,7 @@ export default function GoldPortalRoutes(): JSX.Element {
         <Route path="keys" element={<PortalKeysPage />} />
         <Route path="representatives" element={<PortalRepresentativesPage />} />
         <Route path="reports" element={<PortalReportsPage />} />
+        <Route path="security" element={<PortalSecurityPage />} />
         <Route path="*" element={<PortalNotFound />} />
       </Route>
     </Routes>

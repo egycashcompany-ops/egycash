@@ -11,6 +11,25 @@ its entry here in the same PR.
 
 ### Added
 
+- **Sign in with a fingerprint or Face ID instead of typing the password.** «عايز الدخول يبقي ممكن
+  من خلال الـ Fingerprint أو FaceID للموبايل بحيث مش كل مره يكتب الباسورد». Passkeys (WebAuthn,
+  [ADR-035](docs/03-decisions/ADR-035-passkey-sign-in.md)): the device keeps a private key and
+  releases it only after its own fingerprint, face or PIN check; the server keeps the public half.
+  The sign-in page shows «الدخول بالبصمة أو الوجه», and where the browser supports it the passkey is
+  also offered right in the username field. After a password sign-in on a phone or computer that
+  can hold one, the page offers «تفعيل الدخول بالبصمة» once — using the password just typed — and
+  «ليس الآن» is remembered for thirty days. Devices are listed, renamed and removed under
+  *My account → Security*, which now also shows how each session signed in. Staff and gold-portal
+  customers may use them (the portal has a new *Security* tab); applicants may not. By the owner's
+  decision a passkey sign-in counts as the second factor, so no TOTP code follows it (amends R13 —
+  the password path still asks). Adding one asks for the password again (and the TOTP code); an
+  administrator's password or TOTP reset, and suspending, archiving or deleting the account,
+  remove the account's passkeys. Every challenge is held by the server and used once; a locked or
+  inactive account stays refused; only attestation `none` is accepted, so no certificate the
+  client sends can make the server fetch a URL. The organization setting
+  `auth.passkeys.enabled` (on by default) switches it off for every route. The ten-minute idle
+  sign-out is unchanged («نسيبها 10 دقايق»); coming back is now one touch.
+
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
   «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
   الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn

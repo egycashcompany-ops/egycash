@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { type MeDto } from '@ecms/contracts';
+import { type LoginResponse, type MeDto } from '@ecms/contracts';
 import { useAppDispatch } from '../../store';
 import { signedIn } from '../../store/authSlice';
 import { queryClient } from '../../shared/lib/query-client';
@@ -15,6 +15,12 @@ import { LanguageToggle } from '../layout/LanguageToggle';
 import { BrandMark, Button, Field, Form, Input, PasswordInput } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
+import {
+  PasskeyOffer,
+  PasskeySignInButton,
+  shouldOfferPasskey,
+  usePasskeySignIn,
+} from './PasskeySignIn';
 
 interface Enrollment {
   secret: string;
@@ -22,7 +28,9 @@ interface Enrollment {
 }
 type Step =
   | { kind: 'credentials' }
-  | { kind: 'totp'; challengeToken: string; enroll: Enrollment | null };
+  | { kind: 'totp'; challengeToken: string; enroll: Enrollment | null }
+  // After a password sign-in on a device that can hold a passkey: «sign in faster next time?».
+  | { kind: 'passkeyOffer'; me: MeDto; proof: { password: string; totpCode?: string } };
 
 export const LoginPage = (): JSX.Element => {
   const t = useT();
@@ -50,13 +58,37 @@ export const LoginPage = (): JSX.Element => {
     navigate('/');
   };
 
+  // Fingerprint / face sign-in (ADR-035): the button below the form, and the passkey offered in
+  // the identifier field's autofill. A passkey is the whole sign-in — no TOTP step follows.
+  const passkey = usePasskeySignIn({
+    autofill: true,
+    onSignedIn: (response) => finish(response.me),
+    onFailure: (failure) => setError(t(failure.key, failure.params)),
+  });
+
+  /** A password sign-in went through: offer a passkey on a device that can hold one, or go in. */
+  const signedInWithPassword = async (
+    response: Extract<LoginResponse, { totpRequired: false }>,
+    totpCode?: string,
+  ): Promise<void> => {
+    if (await shouldOfferPasskey(response, passkey.support)) {
+      setStep({
+        kind: 'passkeyOffer',
+        me: response.me,
+        proof: totpCode === undefined ? { password } : { password, totpCode },
+      });
+      return;
+    }
+    finish(response.me);
+  };
+
   const submitCredentials = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
       const response = await loginRequest(identifier.trim(), password);
       if (!response.totpRequired) {
-        finish(response.me);
+        await signedInWithPassword(response);
         return;
       }
       let enroll: Enrollment | null = null;
@@ -82,7 +114,9 @@ export const LoginPage = (): JSX.Element => {
     setError(null);
     try {
       const response = await totpChallengeRequest(step.challengeToken, code);
-      if (!response.totpRequired) finish(response.me);
+      // A backup code cannot confirm adding a passkey; the offer then asks for a current code.
+      const totpCode = /^\d{6}$/.test(code.trim()) ? code.trim() : undefined;
+      if (!response.totpRequired) await signedInWithPassword(response, totpCode);
     } catch (e) {
       // A wrong six-digit code is the common case here and now says so, instead of reading as
       // though the password that already passed had been rejected.
@@ -94,6 +128,12 @@ export const LoginPage = (): JSX.Element => {
   };
 
   const onCredentials = step.kind === 'credentials';
+  const title =
+    step.kind === 'credentials'
+      ? t('platform.auth.login.welcome')
+      : step.kind === 'totp'
+        ? t('platform.auth.login.totpSubmit')
+        : t('platform.auth.passkey.offer.title');
 
   return (
     <div className="relative flex min-h-screen bg-white dark:bg-slate-950">
@@ -150,7 +190,7 @@ export const LoginPage = (): JSX.Element => {
 
             <header className="mb-8">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-                {onCredentials ? t('platform.auth.login.welcome') : t('platform.auth.login.totpSubmit')}
+                {title}
               </h1>
               {onCredentials && (
                 <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
@@ -185,7 +225,8 @@ export const LoginPage = (): JSX.Element => {
                   <Input
                     id="login-identifier"
                     required
-                    autoComplete="username"
+                    // «webauthn» lets the browser offer a saved passkey right in this field.
+                    autoComplete="username webauthn"
                     dir="ltr"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
@@ -207,7 +248,10 @@ export const LoginPage = (): JSX.Element => {
                 <Button type="submit" loading={busy} className="mt-2 w-full">
                   {t('platform.auth.login.submit')}
                 </Button>
+                <PasskeySignInButton state={passkey} />
               </Form>
+            ) : step.kind === 'passkeyOffer' ? (
+              <PasskeyOffer me={step.me} proof={step.proof} onDone={() => finish(step.me)} />
             ) : (
               <Form onSubmit={() => void submitTotp()}>
                 {step.kind === 'totp' && step.enroll !== null && (

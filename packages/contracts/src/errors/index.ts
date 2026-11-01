@@ -22,6 +22,17 @@ export const ErrorCodes = {
   AUTH_TOTP_ALREADY_ENABLED: 'AUTH_TOTP_ALREADY_ENABLED',
   AUTH_PASSWORD_POLICY: 'AUTH_PASSWORD_POLICY',
   AUTH_ACTIVATION_TOKEN_INVALID: 'AUTH_ACTIVATION_TOKEN_INVALID',
+  /** ADR-035 — passkey sign-in is switched off (`auth.passkeys.enabled`). */
+  AUTH_PASSKEYS_DISABLED: 'AUTH_PASSKEYS_DISABLED',
+  /**
+   * Any refused passkey: unknown credential, bad signature, expired or replayed challenge, an
+   * account that may not use one. One code, so none of those can be told apart.
+   */
+  AUTH_PASSKEY_INVALID: 'AUTH_PASSKEY_INVALID',
+  /** This account may not add a passkey (an external account whose module did not opt in). */
+  AUTH_PASSKEY_NOT_ALLOWED: 'AUTH_PASSKEY_NOT_ALLOWED',
+  /** The account already holds `PASSKEYS_PER_ACCOUNT` passkeys. */
+  AUTH_PASSKEY_LIMIT: 'AUTH_PASSKEY_LIMIT',
 
   // generic
   UNAUTHENTICATED: 'UNAUTHENTICATED',

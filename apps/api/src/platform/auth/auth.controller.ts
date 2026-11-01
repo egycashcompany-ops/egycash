@@ -6,18 +6,24 @@ import {
   type ActivateAccount,
   type ChangePassword,
   type Login,
+  type PasskeyAuthenticationVerify,
+  type PasskeyIdParam,
+  type PasskeyRegistrationOptions,
+  type PasskeyRegistrationVerify,
+  type RenamePasskey,
   type TotpChallenge,
   type TotpVerify,
   type UpdateMyPreferences,
 } from '@ecms/contracts';
 import { env } from '../../infrastructure/config/env';
-import { ok, noContent } from '../../infrastructure/http/respond';
+import { created, ok, noContent } from '../../infrastructure/http/respond';
 import { validated } from '../../infrastructure/http/validate';
 import { UnauthenticatedError } from '../../shared/errors';
 import { userService } from '../users';
 import { authService, type IssuedTokens } from './auth.service';
 import { authContext } from './auth.middleware';
 import { withFailedSignInLimit } from './failed-sign-ins';
+import { passkeyService } from './passkey.service';
 
 // The refresh cookie is scoped to the auth endpoints only (ADR-006):
 // httpOnly + Secure + SameSite=Strict, never readable by the SPA.
@@ -47,6 +53,51 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   );
   if (tokens !== undefined) setRefreshCookie(res, tokens);
   ok(res, response);
+};
+
+// ── Passkeys (ADR-035) ──────────────────────────────────────────────────────
+
+/** A sign-in challenge. Carries nothing about any account: anyone may ask. */
+export const passkeyAuthenticationOptions = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await passkeyService.authenticationOptions());
+};
+
+/**
+ * The device's signed answer → the same response a password sign-in gives, and the refresh cookie.
+ * Under the failed-sign-in limit per address, like `/login`: a refused passkey counts there.
+ */
+export const passkeyAuthenticationVerify = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<PasskeyAuthenticationVerify>(req);
+  const { response, tokens } = await withFailedSignInLimit(req.ip ?? 'unknown', () =>
+    passkeyService.verifyAuthentication(body.response),
+  );
+  setRefreshCookie(res, tokens);
+  ok(res, response);
+};
+
+export const listPasskeys = async (req: Request, res: Response): Promise<void> => {
+  ok(res, await passkeyService.list(authContext(req)));
+};
+
+export const passkeyRegistrationOptions = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<PasskeyRegistrationOptions>(req);
+  ok(res, await passkeyService.registrationOptions(authContext(req), body));
+};
+
+export const passkeyRegistrationVerify = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<PasskeyRegistrationVerify>(req);
+  created(res, await passkeyService.verifyRegistration(authContext(req), body.response, body.name));
+};
+
+export const renamePasskey = async (req: Request, res: Response): Promise<void> => {
+  const { params, body } = validated<RenamePasskey, never, PasskeyIdParam>(req);
+  ok(res, await passkeyService.rename(authContext(req), params.id, body.name));
+};
+
+export const removePasskey = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, PasskeyIdParam>(req);
+  await passkeyService.remove(authContext(req), params.id);
+  noContent(res);
 };
 
 /**

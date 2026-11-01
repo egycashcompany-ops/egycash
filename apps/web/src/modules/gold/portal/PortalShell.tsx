@@ -3,7 +3,7 @@
 // A customer holds one permission and has no place in the org tree, so the staff shell would give
 // them an icon rail with nothing in it, a launcher with nothing to launch and a command palette
 // over an empty catalog. The portal is its own frame instead: their organisation's name and logo,
-// the nine tabs, and a way out — and, where there is room, EGYCASH's logo, since the portal is
+// the tabs, and a way out — and, where there is room, EGYCASH's logo, since the portal is
 // EGYCASH's service to them.
 //
 // Nothing here is forked from the platform's layout — the theme and language toggles are the same
@@ -32,6 +32,8 @@ const TABS = [
   { to: '/portal/keys', end: false, key: 'keys' },
   { to: '/portal/representatives', end: false, key: 'representatives' },
   { to: '/portal/reports', end: false, key: 'reports' },
+  // Their own account: sign-in with a fingerprint or face (ADR-035).
+  { to: '/portal/security', end: false, key: 'security' },
 ] as const;
 
 export const PortalShell = (): JSX.Element => {

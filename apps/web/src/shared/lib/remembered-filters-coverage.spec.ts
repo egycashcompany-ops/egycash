@@ -229,6 +229,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/gold/portal/pages/PortalOverviewPage.tsx'],
   ['modules/gold/portal/pages/PortalReceiptsPage.tsx'],
   ['modules/gold/portal/pages/PortalRepresentativesPage.tsx'],
+  ['modules/gold/portal/pages/PortalSecurityPage.tsx'],
   ['modules/gold/portal/pages/PortalTransfersPage.tsx'],
   ['modules/hr/announcements/pages/ComposeAnnouncementPage.tsx'],
   ['modules/hr/attendance/pages/AssignmentsPage.tsx', 'its search and selects are fields of the "add assignment" dialog, reset on success'],

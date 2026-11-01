@@ -2,6 +2,9 @@
 import {
   type LoginResponse,
   type MeDto,
+  type PasskeyAuthenticationOptionsDto,
+  type PasskeyCreationOptionsDto,
+  type PasskeyDto,
   type SessionDto,
   type UpdateMyPreferences,
 } from '@ecms/contracts';
@@ -72,6 +75,45 @@ export const completePortalChallenge = async (
   }
   return response;
 };
+
+// ── Passkeys — fingerprint / Face ID (ADR-035) ──────────────────────────────
+//
+// The device's answers are passed through as the browser library produced them (WebAuthn JSON);
+// the server validates their shape. `unknown` here because this file does not depend on the
+// browser library — `passkeys.ts` does, and only it calls the device.
+
+/** A sign-in challenge. Names no account; the sign-in page fetches one before the tap. */
+export const passkeyAuthenticationOptionsRequest = (): Promise<PasskeyAuthenticationOptionsDto> =>
+  post('/auth/passkeys/authentication/options', {});
+
+/** The device's signed answer → a session, exactly as a password sign-in gives one. */
+export const passkeyAuthenticationVerifyRequest = async (response: unknown): Promise<LoginResponse> => {
+  const result = await post<LoginResponse>('/auth/passkeys/authentication/verify', { response });
+  if (!result.totpRequired) {
+    setAccessToken(result.accessToken);
+    setIdleMinutes(result.idleMinutes);
+  }
+  return result;
+};
+
+export const listPasskeysRequest = (): Promise<PasskeyDto[]> => api('/auth/passkeys');
+
+/** Prove it is still you (password, and the TOTP code when enabled) → a registration challenge. */
+export const passkeyRegistrationOptionsRequest = (proof: {
+  password: string;
+  totpCode?: string;
+}): Promise<PasskeyCreationOptionsDto> => post('/auth/passkeys/registration/options', proof);
+
+export const passkeyRegistrationVerifyRequest = (
+  response: unknown,
+  name?: string,
+): Promise<PasskeyDto> =>
+  post('/auth/passkeys/registration/verify', name === undefined ? { response } : { response, name });
+
+export const renamePasskeyRequest = (id: string, name: string): Promise<PasskeyDto> =>
+  patch(`/auth/passkeys/${id}`, { name });
+
+export const removePasskeyRequest = (id: string): Promise<void> => del<void>(`/auth/passkeys/${id}`);
 
 export const totpEnrollWithChallengeRequest = (
   challengeToken: string,

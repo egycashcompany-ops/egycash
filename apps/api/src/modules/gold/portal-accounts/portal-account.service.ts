@@ -19,6 +19,7 @@ import {
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import { auditService } from '../../../platform/audit';
+import { authService, passkeyStore } from '../../../platform/auth';
 import { rbacService } from '../../../platform/rbac';
 import { userService } from '../../../platform/users';
 import { type UserDoc } from '../../../platform/users/user.model';
@@ -194,10 +195,18 @@ class GoldPortalAccountService {
     await auditService.record({ entityRef: entityRef(id), action: 'delete', changes: [] });
   }
 
-  /** A fresh one-time setup link, for a customer who lost theirs or never used it. */
+  /**
+   * A fresh one-time setup link, for a customer who lost theirs or never used it.
+   *
+   * It CLEARS the password, so it locks the account out exactly as the staff reset does: every
+   * session ends and every passkey goes (ADR-035 §8). Otherwise a phone the customer lost would
+   * sign in again with its passkey the moment they chose their new password.
+   */
   async resendSetupLink(id: string): Promise<void> {
     await this.portalUser(id);
     await userService.resetViaSetupLink(id);
+    await passkeyStore.removeAllForUser(id, 'admin-password-reset');
+    await authService.revokeAllSessionsForUser(id, 'admin-password-reset');
   }
 
   /**

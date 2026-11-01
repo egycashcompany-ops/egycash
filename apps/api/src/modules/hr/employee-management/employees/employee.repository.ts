@@ -8,6 +8,7 @@ import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { normalizeArabic } from '../../shared/arabic';
 import { EmployeeModel, type EmployeeDoc, type EmployeeEntity } from './employee.model';
+import { codeNumberKey, employeeCodeSort } from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
   status?: string | undefined;
@@ -531,7 +532,8 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       pageSize: params.pageSize,
       sortBy: sortField,
       sortDir: params.sortDir ?? 'asc',
-      sortableFields: ['code', 'personal.fullNameAr'],
+      sortableFields: ['code', codeNumberKey('code'), 'personal.fullNameAr'],
+      ...employeeCodeSort('code', sortField, params.sortDir ?? 'asc'),
       ...(params.scope === undefined ? {} : { scope: params.scope }),
     });
   }
@@ -550,7 +552,8 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       pageSize: params.pageSize,
       sortBy: params.sortBy,
       sortDir: params.sortDir,
-      sortableFields: ['createdAt', 'code', 'hiredAt'],
+      sortableFields: ['createdAt', 'code', codeNumberKey('code'), 'hiredAt'],
+      ...employeeCodeSort('code', params.sortBy, params.sortDir ?? 'desc'),
       ...(params.scope === undefined ? {} : { scope: params.scope }),
     });
   }

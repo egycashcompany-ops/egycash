@@ -22,6 +22,22 @@ export const ErrorCodes = {
   AUTH_TOTP_ALREADY_ENABLED: 'AUTH_TOTP_ALREADY_ENABLED',
   AUTH_PASSWORD_POLICY: 'AUTH_PASSWORD_POLICY',
   AUTH_ACTIVATION_TOKEN_INVALID: 'AUTH_ACTIVATION_TOKEN_INVALID',
+  /** ADR-035 — passkey sign-in is switched off (`auth.passkeys.enabled`). */
+  AUTH_PASSKEYS_DISABLED: 'AUTH_PASSKEYS_DISABLED',
+  /**
+   * Any refused passkey: unknown credential, bad signature, an account that may not use one. One
+   * code, so none of those can be told apart.
+   */
+  AUTH_PASSKEY_INVALID: 'AUTH_PASSKEY_INVALID',
+  /**
+   * The challenge the device signed is unknown, expired or already used — checked before any
+   * account is looked at, so it says nothing about one. Not a failed sign-in: fetch a new one.
+   */
+  AUTH_PASSKEY_EXPIRED: 'AUTH_PASSKEY_EXPIRED',
+  /** This account may not add a passkey (an external account whose module did not opt in). */
+  AUTH_PASSKEY_NOT_ALLOWED: 'AUTH_PASSKEY_NOT_ALLOWED',
+  /** The account already holds `PASSKEYS_PER_ACCOUNT` passkeys. */
+  AUTH_PASSKEY_LIMIT: 'AUTH_PASSKEY_LIMIT',
 
   // generic
   UNAUTHENTICATED: 'UNAUTHENTICATED',
@@ -229,6 +245,18 @@ export const ErrorCodes = {
    * Retried after the move; a run left 30 minutes (its process died) no longer holds them.
    */
   ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
+  /**
+   * 422 — the machines file cannot be compared: no sheet with a Bank / ID / ATM Name / Area header
+   * row, or over a cap. `details` name the missing column or the cap, never a cell's content.
+   */
+  ATM_MACHINE_SYNC_LAYOUT: 'ATM_MACHINE_SYNC_LAYOUT',
+  /** 409 — the machines file applied is not the one compared (its hash differs); nothing written. */
+  ATM_MACHINE_SYNC_FILE_CHANGED: 'ATM_MACHINE_SYNC_FILE_CHANGED',
+  /**
+   * 409 — the branch changed since the machines file was compared (a machine edited, added,
+   * archived or moved): the comparison is no longer the one the reader approved. Nothing written.
+   */
+  ATM_MACHINE_SYNC_PLAN_CHANGED: 'ATM_MACHINE_SYNC_PLAN_CHANGED',
 
   // ── Fleet fuel-card sheet reconciliation («مطابقة أرصدة الكروت») ─────────────────────────────
   /** 422 — the sheet is not the company's layout (a header is missing, no sheet), or over a cap. */

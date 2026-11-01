@@ -32,7 +32,9 @@ sequenceDiagram
 
 Controls: argon2id hashing · configurable password policy (settings) · per-IP and per-account
 login rate limits · lockout with backoff · session list & revocation UI · **inactivity timeout**
-· every auth event audited. Designed-in extension points: TOTP 2FA, OIDC SSO.
+· every auth event audited · TOTP 2FA · **passkey sign-in** (fingerprint / Face ID, WebAuthn —
+[ADR-035](../03-decisions/ADR-035-passkey-sign-in.md), counts as the second factor). Designed-in
+extension point: OIDC SSO.
 
 **Sign-in failures are named, not merged (owner's decision).** The login endpoint used to answer
 an unknown identifier and a wrong password identically, so that nobody could learn which accounts

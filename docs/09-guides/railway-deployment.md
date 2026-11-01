@@ -65,7 +65,8 @@ has four packages; the config files above tell it what to build and run.
 | `VITE_API_BASE_URL` | `/api/v1` (baked into the web build — same-origin) |
 | `WEB_STATIC_DIR` | `/app/apps/web/dist` (absolute — `npm start -w` runs with cwd `apps/api`, so a relative path resolves wrong) |
 | `API_PUBLIC_URL` | `https://<app-domain>` (signed download URLs) |
-| `WEB_PUBLIC_URL` | `https://<app-domain>` (the setup/activation links in messages) |
+| `WEB_PUBLIC_URL` | `https://<app-domain>` (the setup/activation links in messages; also the domain passkeys belong to — ADR-035) |
+| `WEBAUTHN_RP_ID` | leave unset — passkeys use the host of `WEB_PUBLIC_URL`. Set it only to share passkeys with a parent domain. Changing the host later orphans every passkey (people sign in with their password and add the device again) |
 | `CORS_ORIGINS` | `https://<app-domain>` |
 | `COOKIE_SECURE` | `true` |
 | `STORAGE_DRIVER` | `railway` (local disk rooted at the volume; Railway injects `RAILWAY_VOLUME_MOUNT_PATH`) |

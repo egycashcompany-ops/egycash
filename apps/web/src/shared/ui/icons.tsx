@@ -180,6 +180,19 @@ export const ShieldIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A fingerprint — signing in with the device's own check (passkeys: fingerprint, face, PIN). */
+export const FingerprintIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M6.5 5.5A8 8 0 0 1 20 11.5v1" />
+    <path d="M4 10a8 8 0 0 1 1-3" />
+    <path d="M4.5 15.5A8 8 0 0 0 4 12.5" />
+    <path d="M8 19.5c1-2 1.5-4.5 1.5-7a2.5 2.5 0 0 1 5 0c0 1 0 2-.2 3" />
+    <path d="M12 12.5c0 3.5-.8 6.5-2.5 9" />
+    <path d="M7.5 12.5a4.5 4.5 0 0 1 9 0c0 3-.4 5.5-1.3 8" />
+    <path d="M19.5 16.5c-.2 1.3-.5 2.5-1 3.5" />
+  </Base>
+);
+
 /** A padlock — a stop the sequential lock is holding shut. */
 export const LockIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
@@ -193,6 +206,14 @@ export const PinIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
     <circle cx="12" cy="10" r="3" />
+  </Base>
+);
+
+/** A push pin — keeps the navigation panel open over the page (floating-nav.ts). */
+export const PushPinIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M12 17v5" />
+    <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z" />
   </Base>
 );
 

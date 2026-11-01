@@ -371,7 +371,7 @@ export const addBlocked = (options: AtmRefLabelOptionsDto | undefined): boolean 
  * The top of an add form (of the whole bulk dialog): the branch the add files into, «الفرع: …», as
  * the top bar names it — or, when there is none, the request to choose one there first.
  */
-const AddBranchLine = ({
+export const AddBranchLine = ({
   options,
 }: {
   options: AtmRefLabelOptionsDto | undefined;
@@ -403,7 +403,7 @@ const AddBranchLine = ({
  * works for Operations, but nothing can be recorded in the register for it. Not when there is no
  * branch at all — `AddBranchLine` says that.
  */
-const UnmappedBranchNotice = ({
+export const UnmappedBranchNotice = ({
   options,
 }: {
   options: AtmRefLabelOptionsDto | undefined;

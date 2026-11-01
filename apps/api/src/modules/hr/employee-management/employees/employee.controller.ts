@@ -6,6 +6,8 @@
 // endpoint lives in the employee-actions feature now (deprecated alias).
 import { type Request, type Response } from 'express';
 import {
+  type ChangeEmployeeCode,
+  type ChangeEmployeeCodeMeta,
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
@@ -132,6 +134,23 @@ export const updateEmployeeInsurance = async (req: Request, res: Response): Prom
     scopeSelector(ctx, 'employee.manageInsurance'),
   );
   ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
+};
+
+/**
+ * Change the Employee Code by hand (ADR-017, amended). `meta.loginUsernameChanged` tells the screen
+ * whether the employee now signs in with the new code, so HR can say so to them.
+ */
+export const changeEmployeeCode = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ChangeEmployeeCode, never, IdParam>(req);
+  const { doc, loginUsernameChanged } = await employeeService.changeCode(
+    ctx,
+    params.id,
+    body,
+    scopeSelector(ctx, 'employee.changeCode'),
+  );
+  const meta: ChangeEmployeeCodeMeta = { loginUsernameChanged };
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)), meta);
 };
 
 /** Replace the officer / armed-security profile — an audited update, not a personnel action. */

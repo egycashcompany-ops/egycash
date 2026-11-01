@@ -39,6 +39,7 @@ import {
   type UpdateAtmRefLabel,
   ATM_BULK_MAX_IDS,
   joinAtmNameList,
+  type AtmMachineSyncDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -48,6 +49,7 @@ import {
   patch,
   post,
   postWithMeta,
+  upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
 
@@ -77,6 +79,24 @@ export const listMachines = (params: AtmListParams): Promise<Paginated<AtmMachin
 /** The list's whole answer counted, and its dropdowns' sources — the same filters as the list. */
 export const machinesSummary = (params: AtmListParams): Promise<AtmMachinesSummaryDto> =>
   get<AtmMachinesSummaryDto>(`/atm/machines/summary${buildQuery(params)}`);
+/**
+ * A machines file (Bank, ID, ATM Name, Area) compared with the branch the top bar points at — and,
+ * with `apply` and the comparison's `fileSha256`, the branch made to match it. The SAME `File` is
+ * posted both times; the server refuses (409) bytes that are not the ones compared.
+ */
+export const syncMachinesFromFile = (
+  file: File,
+  options: { apply: boolean; fileSha256?: string; planDigest?: string },
+): Promise<AtmMachineSyncDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  if (options.apply) form.append('apply', 'true');
+  if (options.fileSha256 !== undefined) form.append('fileSha256', options.fileSha256);
+  // The comparison the reader approved — the server writes nothing if the branch moved since.
+  if (options.planDigest !== undefined) form.append('planDigest', options.planDigest);
+  return upload<AtmMachineSyncDto>('/atm/machines/sync', form);
+};
+
 export const bulkCreateMachines = (
   body: BulkCreateAtmMachines,
 ): Promise<BulkCreateAtmMachinesResultDto> =>
@@ -198,8 +218,12 @@ export const listDoneMaintenances = (
   params: AtmListParams,
 ): Promise<Paginated<AtmMaintenanceDto>> =>
   getPage<AtmMaintenanceDto>(`/atm/maintenances/done${buildQuery(params)}`);
-export const maintenanceLeaderOptions = (): Promise<AtmLeaderOptionDto[]> =>
-  get<AtmLeaderOptionDto[]>('/atm/maintenances/leader-options');
+/**
+ * The leader pickers' names — the ATM department's working employees (or the departments ticked on
+ * /atm/settings). Read by either board: the maintenance close and both kinds' edit dialogs.
+ */
+export const leaderOptions = (): Promise<AtmLeaderOptionDto[]> =>
+  get<AtmLeaderOptionDto[]>('/atm/leaders/options');
 export const openMaintenances = (body: {
   rows: { machineCode: string; serviceType: string | null; referenceNumber: string | null }[];
   openedAt: string | null;

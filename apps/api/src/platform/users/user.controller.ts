@@ -11,7 +11,7 @@ import {
 import { created, noContent, ok, okPage } from '../../infrastructure/http/respond';
 import { validated } from '../../infrastructure/http/validate';
 import { scopeSelector } from '../../shared/types';
-import { authContext, authService } from '../auth';
+import { authContext, authService, passkeyStore } from '../auth';
 import { rbacService } from '../rbac';
 import { userService } from './user.service';
 
@@ -80,6 +80,10 @@ export const adminResetPassword = async (req: Request, res: Response): Promise<v
   const { params } = validated<AdminResetPassword, never, IdParam>(req);
   // §14.4: lock out (hash cleared, sessions revoked) + deliver a fresh one-time setup link.
   const delivery = await userService.resetViaSetupLink(params.id);
+  // And every passkey (ADR-035 §8): a reset is what an administrator does for a lost phone or a
+  // suspected compromise, and a key on that phone would otherwise still open the account. First,
+  // so a failure ending the sessions cannot leave the passkeys behind.
+  await passkeyStore.removeAllForUser(params.id, 'admin-password-reset');
   await authService.revokeAllSessionsForUser(params.id, 'admin-password-reset');
   ok(res, { delivery });
 };
@@ -106,6 +110,9 @@ export const adminIssueSetupLink = async (req: Request, res: Response): Promise<
 export const adminResetTotp = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
   await userService.resetTotp(params.id);
+  // A passkey stands in for the TOTP code (ADR-035 §2), so the reason for resetting one — a lost
+  // or compromised phone — applies to the other.
+  await passkeyStore.removeAllForUser(params.id, 'admin-totp-reset');
   await authService.revokeAllSessionsForUser(params.id, 'admin-totp-reset');
   noContent(res);
 };

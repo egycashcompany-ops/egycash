@@ -16,7 +16,7 @@ import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
-import { BuildingIcon, ChevronEndIcon, ChevronStartIcon, InboxIcon } from '../../shared/ui/icons';
+import { BuildingIcon, InboxIcon } from '../../shared/ui/icons';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../shared/ui/states/ErrorState';
 import { useMyApplications } from '../navigation/me-applications-queries';
@@ -31,26 +31,22 @@ import {
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
-import { AppRow, AppWithChildren, NavSectionGroup, StateShell } from './nav-rows';
+import {
+  AppRow,
+  AppWithChildren,
+  NavSectionGroup,
+  SlimEmpty,
+  SlimError,
+  SlimLoading,
+  StateShell,
+  type ColumnWidth,
+} from './nav-rows';
+import { useFloatingNav } from './floating-nav';
+import { NavPinButton } from './NavPinButton';
 
-const PANEL_KEY = 'ecms.nav.panelCollapsed';
+// Whether the floating panel is pinned open lives in `floating-nav.ts`.
 const LAST_MODULE_KEY = 'ecms.nav.lastModule';
 const LAST_PAGE_KEY = 'ecms.nav.lastPage';
-
-const readFlag = (key: string): boolean => {
-  try {
-    return localStorage.getItem(key) === '1';
-  } catch {
-    return false;
-  }
-};
-const writeFlag = (key: string, v: boolean): void => {
-  try {
-    localStorage.setItem(key, v ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-};
 const loadLastModule = (): string | null => {
   try {
     return localStorage.getItem(LAST_MODULE_KEY);
@@ -94,31 +90,33 @@ const ModuleRail = ({
 }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
-    <div className="flex w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-e border-slate-200/80 bg-slate-50 py-3 dark:border-slate-800 dark:bg-slate-900">
-      {modules.map((m) => {
-        const name = localized(m.name, locale);
-        const shown = m.id === shownId;
-        const Icon = resolveNavIcon(m.icon, BuildingIcon);
-        return (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => onPick(m)}
-            title={name}
-            aria-label={name}
-            aria-current={shown ? 'page' : undefined}
-            className={cn(
-              'grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
-              shown
-                ? 'bg-white text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.05)] dark:bg-slate-800 dark:text-slate-100'
-                : 'text-slate-500 hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
-            )}
-          >
-            <Icon className="h-5 w-5" />
-          </button>
-        );
-      })}
+    <div className="flex w-14 shrink-0 flex-col border-e border-slate-200/80 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-1 flex-col items-center gap-1 overflow-y-auto py-3">
+        {modules.map((m) => {
+          const name = localized(m.name, locale);
+          const shown = m.id === shownId;
+          const Icon = resolveNavIcon(m.icon, BuildingIcon);
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onPick(m)}
+              title={name}
+              aria-label={name}
+              aria-current={shown ? 'page' : undefined}
+              className={cn(
+                'grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40',
+                shown
+                  ? 'bg-white text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.05)] dark:bg-slate-800 dark:text-slate-100'
+                  : 'text-slate-500 hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200',
+              )}
+            >
+              <Icon className="h-5 w-5" />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -128,14 +126,17 @@ const ModulePanel = ({
   pinnedApps,
   allRoutes,
   collapsible,
-  onCollapse,
+  pinned,
+  onTogglePinned,
   onNavigate,
 }: {
   module: NavModule;
   pinnedApps: NavApp[];
   allRoutes: string[];
   collapsible: boolean;
-  onCollapse: () => void;
+  /** Whether the floating panel is pinned open; the pin in its header, after the name, toggles it. */
+  pinned: boolean;
+  onTogglePinned: (byPointer: boolean) => void;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
   const t = useT();
@@ -150,19 +151,9 @@ const ModulePanel = ({
             {localized(module.name, locale)}
           </span>
         </div>
-        {collapsible && (
-          <button
-            type="button"
-            onClick={onCollapse}
-            aria-label={t('nav.collapse')}
-            title={t('nav.collapse')}
-            className="hidden shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-slate-900/[0.04] hover:text-slate-600 dark:hover:bg-white/[0.05] lg:block"
-          >
-            <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
-          </button>
-        )}
+        {collapsible && <NavPinButton pinned={pinned} onToggle={onTogglePinned} />}
       </div>
-      <nav className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
+      <div className="flex-1 overflow-y-auto px-2 pb-3 pt-2">
         {pinnedApps.length > 0 && (
           <section className="pb-2">
             <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
@@ -205,7 +196,7 @@ const ModulePanel = ({
             onNavigate={onNavigate}
           />
         ))}
-      </nav>
+      </div>
     </div>
   );
 };
@@ -243,7 +234,10 @@ const RailShell = ({
     }
   }, [urlModuleId, lastModuleId, pathname]);
 
-  const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && readFlag(PANEL_KEY));
+  // On a desktop the module panel floats over the page on hover and docks beside the rail once
+  // pinned (floating-nav.ts); the mobile drawer shows it beside the rail, as it always did.
+  const floating = useFloatingNav(collapsible);
+  const docked = floating.mode === 'docked';
 
   const allRoutes = useMemo(() => flattenApps(data).map((a) => a.route), [data]);
   const pinnedApps = useMemo(() => {
@@ -253,27 +247,36 @@ const RailShell = ({
       .filter((a): a is NavApp => a !== undefined);
   }, [data, pinned]);
 
+  // Loading, failed or empty, the column keeps the width it has once loaded — the rail's on an
+  // unpinned desktop, the rail beside its panel otherwise — so the page does not jump on every
+  // load or retry. At the rail's width each state is one icon, its words in a tooltip.
+  const stateWidth: ColumnWidth = collapsible && !floating.pinned ? 'strip' : 'rail';
+  const slim = stateWidth === 'strip';
   if (isLoading) {
-    return (
-      <StateShell>
-        <LoadingState />
-      </StateShell>
-    );
+    return <StateShell width={stateWidth}>{slim ? <SlimLoading /> : <LoadingState />}</StateShell>;
   }
   if (isError) {
     return (
-      <StateShell>
-        <ErrorState error={error} onRetry={() => void refetch()} />
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimError onRetry={() => void refetch()} />
+        ) : (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        )}
       </StateShell>
     );
   }
   if (modules.length === 0) {
     return (
-      <StateShell>
-        <div className="flex flex-col items-center gap-2 px-6 text-center">
-          <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
-          <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
-        </div>
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimEmpty label={t('sidebar.empty')} />
+        ) : (
+          <div className="flex flex-col items-center gap-2 px-6 text-center">
+            <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
+          </div>
+        )}
       </StateShell>
     );
   }
@@ -291,40 +294,56 @@ const RailShell = ({
     onNavigate?.();
   };
 
+  const panel = (
+    <ModulePanel
+      module={current}
+      pinnedApps={pinnedApps}
+      allRoutes={allRoutes}
+      collapsible={collapsible}
+      pinned={floating.pinned}
+      onTogglePinned={floating.togglePinned}
+      onNavigate={onNavigate}
+    />
+  );
+
+  // The mobile drawer: the rail and the panel side by side, as they always were. The column is the
+  // navigation landmark (one per shell), not the list inside the panel; unnamed, because the drawer
+  // around it is a dialog already named «القائمة».
+  if (!collapsible) {
+    return (
+      <nav className="flex">
+        <ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />
+        {panel}
+      </nav>
+    );
+  }
+
+  // A desktop. Unpinned, only the rail stands beside the page, and the module's panel is drawn OVER
+  // the page from the rail's edge while the pointer (or the focus) is on them — the page keeps its
+  // width. Pinned, the panel stands in the layout beside the rail and takes its width like any
+  // column. The panel is one element in every state — hidden makes it transparent and inert — so a
+  // folded section stays folded between hovers and the pin in its header keeps the focus.
   return (
-    <div className="flex">
+    <nav
+      aria-label={t('common.menu')}
+      data-nav-strip
+      className="relative flex h-full"
+      {...floating.hoverProps}
+    >
       <ModuleRail modules={modules} shownId={current.id} onPick={pickModule} />
-      {collapsed ? (
-        collapsible && (
-          <div className="flex w-10 shrink-0 items-start justify-center border-e border-slate-200/80 bg-white pt-3 dark:border-slate-800 dark:bg-slate-900">
-            <button
-              type="button"
-              onClick={() => {
-                writeFlag(PANEL_KEY, false);
-                setCollapsed(false);
-              }}
-              aria-label={t('nav.expand')}
-              title={t('nav.expand')}
-              className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-900/[0.04] hover:text-slate-600 dark:hover:bg-white/[0.05]"
-            >
-              <ChevronEndIcon className="h-4 w-4 rtl:-scale-x-100" />
-            </button>
-          </div>
-        )
-      ) : (
-        <ModulePanel
-          module={current}
-          pinnedApps={pinnedApps}
-          allRoutes={allRoutes}
-          collapsible={collapsible}
-          onCollapse={() => {
-            writeFlag(PANEL_KEY, true);
-            setCollapsed(true);
-          }}
-          onNavigate={onNavigate}
-        />
-      )}
-    </div>
+      <div
+        data-nav-panel
+        data-nav-mode={floating.mode}
+        className={cn(
+          'flex transition-opacity duration-150 ease-out motion-reduce:transition-none',
+          !docked &&
+            'absolute inset-y-0 start-14 z-[35] shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
+          floating.mode === 'hidden' && 'pointer-events-none opacity-0',
+        )}
+      >
+        {panel}
+      </div>
+    </nav>
   );
 };
 

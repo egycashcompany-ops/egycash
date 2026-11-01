@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CancelEmployeeAction,
+  type ChangeEmployeeCode,
   type CompensationAction,
   type CreateEmployee,
   type CreateEmployeeLogin,
@@ -160,6 +161,22 @@ export const useUpdateEmployeeInsurance = (id: string) => {
       qc.setQueryData(detailKey(MODULE, FEATURE, id), updated);
       void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'timeline', id] });
     },
+  });
+};
+
+/**
+ * The Employee Code, changed by hand. `onError` is the dialog's own: a taken code is answered there,
+ * beside the field, in words about codes — not by the global «conflicts with the current state».
+ */
+export const useChangeEmployeeCode = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ChangeEmployeeCode) => api.changeEmployeeCode(id, body),
+    onSuccess: ({ data }) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, id), data);
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE] });
+    },
+    onError: () => undefined,
   });
 };
 

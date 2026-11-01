@@ -101,6 +101,23 @@ export const pickBankOfLabel = (
   return code === undefined || code === null ? null : (catalog.byCode.get(code) ?? null);
 };
 
+/** The branch's live, active bank spellings mapped to a catalog bank — what `pickBankOfLabel` reads. */
+export const loadBranchBankSpellings = async (
+  branchId: Types.ObjectId | string,
+): Promise<AtmBankSpelling[]> =>
+  AtmRefLabelModel.find(
+    {
+      branchId: new Types.ObjectId(String(branchId)),
+      kind: 'bank',
+      isActive: true,
+      isDeleted: false,
+      bankCode: { $ne: null },
+    },
+    { name: 1, bankCode: 1 },
+  )
+    .lean<AtmBankSpelling[]>()
+    .exec();
+
 /** Steps 1–3 for one branch: the catalog first, then that branch's spelling. */
 export const resolveBankOfLabel = async (
   branchId: Types.ObjectId | string,

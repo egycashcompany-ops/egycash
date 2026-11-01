@@ -13,7 +13,10 @@ import { z } from 'zod';
 import {
   PaginationQuerySchema,
   booleanQuery,
+  joinNameList,
+  nameListQuery,
   objectId,
+  splitNameList,
   type LocalizedString,
 } from '../common/index.js';
 // `import type`, not an inline `type` specifier: under verbatimModuleSyntax the inline form still
@@ -125,6 +128,131 @@ export const BulkCreateAtmMachinesSchema = z
   })
   .strict();
 export type BulkCreateAtmMachines = z.infer<typeof BulkCreateAtmMachinesSchema>;
+
+// ── Machines from a file — compare, then make the branch match (2026-11-01) ──────────────────────
+//
+// The owner, with the old system's list of Mohandessin's machines («ATM (4).xlsx»: Bank, ID, ATM
+// Name, Area): «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك
+// والكود والأسم والمنطقة». POST /atm/machines/sync uploads the workbook: without `apply` it only
+// compares, row by row, with the machines of the branch the top bar points at; with `apply` and
+// the preview's `fileSha256` it adds the missing ones (as the bulk add does — register included),
+// brings archived ones back, and writes the file's bank, name and area on the ones that differ. It
+// never deletes: a machine on the branch the file does not list is only reported (`extra`).
+
+/** The three things the file can change on a machine the branch already has (the code is identity). */
+export const ATM_MACHINE_SYNC_FIELDS = ['bank', 'name', 'area'] as const;
+export type AtmMachineSyncField = (typeof ATM_MACHINE_SYNC_FIELDS)[number];
+
+/**
+ * One row's outcome against the branch: `add` (no machine of this code here), `reactivate` (an
+ * archived one here), `update` (active here, and `changes` lists what differs), `same`, `elsewhere`
+ * (active in another branch — never added here; the branch move re-files it), `invalid` (the row
+ * cannot be read: `issue` says why) and `duplicate` (a code the file already listed above).
+ */
+export const ATM_MACHINE_SYNC_STATUSES = [
+  'add',
+  'reactivate',
+  'update',
+  'same',
+  'elsewhere',
+  'invalid',
+  'duplicate',
+] as const;
+export type AtmMachineSyncStatus = (typeof ATM_MACHINE_SYNC_STATUSES)[number];
+
+/**
+ * Why a row cannot be read. `unknownBank`: a bank the bank catalog (or the branch's bank spellings)
+ * does not know; `archivedBank`: a bank archived in the catalog, which no add may use.
+ */
+export const ATM_MACHINE_SYNC_ISSUES = [
+  'noCode',
+  'noName',
+  'noArea',
+  'noBank',
+  'unknownBank',
+  'archivedBank',
+] as const;
+export type AtmMachineSyncIssue = (typeof ATM_MACHINE_SYNC_ISSUES)[number];
+
+/** A machine's bank, name and area — as the file writes them, or as the branch holds them. */
+export interface AtmMachineSyncValuesDto {
+  bank: string;
+  name: string;
+  area: string;
+}
+
+export interface AtmMachineSyncRowDto {
+  /** The Excel row. */
+  row: number;
+  /** Normalized (`normalizeAtmMachineCode`); blank for `noCode`. */
+  machineCode: string;
+  status: AtmMachineSyncStatus;
+  /** What the file says, spaces folded (what an apply writes). */
+  file: AtmMachineSyncValuesDto;
+  /** What the branch holds now — null for `add`, `elsewhere`, `invalid`, `duplicate`. */
+  current: AtmMachineSyncValuesDto | null;
+  /** For `update` (and `reactivate`): what differs. */
+  changes: AtmMachineSyncField[];
+  issue: AtmMachineSyncIssue | null;
+  /** For `duplicate`: the row of the code's first listing, the one that counts. */
+  firstRow: number | null;
+  /**
+   * For `elsewhere`: why the code cannot work here — ACTIVE in another branch, or holding an OPEN
+   * register period in another branch (the bulk add's own two refusals).
+   */
+  elsewhere: AtmMachineBulkRefusal | null;
+}
+
+/** A machine active on the branch that the file does not list — reported, never deleted. */
+export interface AtmMachineSyncExtraDto {
+  machineCode: string;
+  bank: string;
+  name: string;
+  area: string;
+}
+
+/** What an apply did. */
+export interface AtmMachineSyncAppliedDto {
+  added: string[];
+  reactivated: string[];
+  updated: string[];
+  /** Refused at the write: active, or holding an open register period, in another branch. */
+  refused: { machineCode: string; reason: AtmMachineBulkRefusal }[];
+  /** Rows changed by somebody else WHILE the apply ran (an edit or delete) — left as they were. */
+  skipped: string[];
+  /** The register outcome of the added and reactivated rows, as the bulk add answers it. */
+  register: {
+    created: string[];
+    received: string[];
+    linked: string[];
+    existing: string[];
+    notRecorded: { machineCode: string; reason: AtmMachineRegisterReason }[];
+  };
+}
+
+/**
+ * The comparison — after an apply, the comparison made again against the branch as it now is,
+ * with `applied` saying what the apply did.
+ */
+export interface AtmMachineSyncDto {
+  fileName: string;
+  /** Sent back with `apply`, so the server knows the applied bytes are the compared ones. */
+  fileSha256: string;
+  /**
+   * The comparison itself, hashed (the branch, and every row's outcome and values). Sent back with
+   * `apply`: the server compares again and writes nothing (409 `ATM_MACHINE_SYNC_PLAN_CHANGED`)
+   * unless it is the comparison the reader saw — an apply never writes a row it did not show.
+   */
+  planDigest: string;
+  branchId: string;
+  branchName: LocalizedString | null;
+  /** Rows per status, plus `extra`. */
+  counts: Record<AtmMachineSyncStatus | 'extra', number>;
+  /** Every row except `same` ones, in the file's order. */
+  rows: AtmMachineSyncRowDto[];
+  extra: AtmMachineSyncExtraDto[];
+  applied: AtmMachineSyncAppliedDto | null;
+}
 
 // ── A data-edit add lands in the register (DEC-36) ──────────────────────────────────────────────
 //
@@ -460,51 +588,17 @@ export type AtmOperationIds = z.infer<typeof AtmOperationIdsSchema>;
 // inside a name, `\\` a backslash. A list whose names hold neither (every link written before this
 // existed) reads exactly as it always did, so a remembered filter or a bookmark keeps working.
 
-const escapeAtmName = (name: string): string => name.replace(/\\/g, '\\\\').replace(/,/g, '\\,');
+// The helpers themselves are the platform's (`joinNameList`, `splitNameList`, `nameListQuery` in
+// `common/`) — the IT registers' name filters needed the same escape — and keep their ATM names here.
 
 /** Names → one list value. The inverse of `splitAtmNameList`. */
-export const joinAtmNameList = (names: readonly string[]): string =>
-  names.map(escapeAtmName).join(',');
+export const joinAtmNameList = joinNameList;
 
-/**
- * One list value → the names it carries: split on the commas that are not escaped, each name
- * trimmed (as `listQuery` trims), empty ones dropped. A backslash before any character keeps that
- * character; a lone trailing backslash is kept as written.
- */
-export const splitAtmNameList = (raw: string): string[] => {
-  const names: string[] = [];
-  let current = '';
-  for (let index = 0; index < raw.length; index += 1) {
-    const char = raw.charAt(index);
-    if (char === '\\' && index + 1 < raw.length) {
-      current += raw.charAt(index + 1);
-      index += 1;
-    } else if (char === ',') {
-      names.push(current);
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  names.push(current);
-  return names.map((name) => name.trim()).filter((name) => name !== '');
-};
+/** One list value → the names it carries (see `splitNameList`). */
+export const splitAtmNameList = splitNameList;
 
-/**
- * A bank/area list as a query field — `listQuery`'s contract (absent or empty means "not
- * narrowed"; a repeated parameter is accepted too, each occurrence read the same way) with the
- * escape above, so a name holding a comma arrives whole.
- */
-export const atmNameListQuery = (max = 50) =>
-  z.preprocess(
-    (raw) => {
-      if (raw === undefined || raw === null) return undefined;
-      const parts = Array.isArray(raw) ? raw : [raw];
-      const names = parts.flatMap((part) => splitAtmNameList(String(part)));
-      return names.length === 0 ? undefined : names;
-    },
-    z.array(z.string().min(1)).min(1).max(max).optional(),
-  );
+/** A bank/area list as a query field (see `nameListQuery`). */
+export const atmNameListQuery = nameListQuery;
 
 /**
  * Open replenishment/maintenance list — bank/area narrowing. The legacy stored these per user in
@@ -858,10 +952,16 @@ export const BulkUpdateAtmMaintenancesSchema = z
   .strict();
 export type BulkUpdateAtmMaintenances = z.infer<typeof BulkUpdateAtmMaintenancesSchema>;
 
-/** One row of the close modal's employee datalist (atm_maintenance.ejs:1189-1193). */
+/**
+ * One name the leader pickers offer (atm_maintenance.ejs:1189-1193 — the close modal's employee
+ * datalist; since 2026-11-01 also both kinds' edit dialogs). `GET /atm/leaders/options`.
+ */
 export interface AtmLeaderOptionDto {
   employeeId: string;
+  /** HR's full Arabic name — what the close writes as `leaderName`. */
   name: string;
+  /** HR's employee code — tells two people of one name apart in the picker. */
+  code: string;
 }
 
 // ── Mail tickets (legacy `atm_mails`) ───────────────────────────────────────────────────────────
@@ -1038,9 +1138,10 @@ export const AtmSettingKeys = {
    * HR department ids whose employees populate the maintenance close-modal's assignee list. The
    * legacy hardcoded the Arabic department NAME — `department: "الصراف الالى"`
    * (contad_app.js:1110-1112); a name cannot be hardcoded against ECMS's org chart, so the port
-   * of that constant is this setting (the operations CrewDepartmentIds precedent). DEFAULT EMPTY,
-   * meaning an unconfigured install offers nobody — closing maintenance names a real employee or
-   * does not happen, which is the legacy rule.
+   * of that constant is this setting (the operations CrewDepartmentIds precedent), ticked on
+   * /atm/settings. DEFAULT EMPTY, which since 2026-11-01 means the legacy rule itself: every active
+   * department whose NAME is the ATM department's (`atm/leaders`). Closing maintenance still names
+   * a real employee or does not happen.
    */
   MaintenanceLeaderDepartmentIds: 'atm.maintenanceLeaderDepartmentIds',
   /**

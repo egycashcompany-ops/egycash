@@ -18,6 +18,11 @@ export interface KeyValueCache {
   setIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean>;
   /** Releases a lease: deletes the key only while it still holds `value` (compare-and-delete). */
   delIfValue(key: string, value: string): Promise<void>;
+  /**
+   * Reads and deletes in one step (`GETDEL`): of two callers racing for the same key, exactly one
+   * gets the value. What a single-use challenge needs — a get then a del would let both win.
+   */
+  take(key: string): Promise<string | null>;
   close(): Promise<void>;
 }
 
@@ -72,6 +77,10 @@ class RedisCache implements KeyValueCache {
 
   async delIfValue(key: string, value: string): Promise<void> {
     await this.client.eval(DEL_IF_VALUE_SCRIPT, 1, key, value);
+  }
+
+  async take(key: string): Promise<string | null> {
+    return this.client.getdel(key);
   }
 
   async close(): Promise<void> {
@@ -134,6 +143,12 @@ export class MemoryCache implements KeyValueCache {
 
   async delIfValue(key: string, value: string): Promise<void> {
     if (this.live(key)?.value === value) this.store.delete(key);
+  }
+
+  async take(key: string): Promise<string | null> {
+    const value = this.live(key)?.value ?? null;
+    this.store.delete(key);
+    return value;
   }
 
   async close(): Promise<void> {

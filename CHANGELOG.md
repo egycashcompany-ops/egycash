@@ -11,6 +11,40 @@ its entry here in the same PR.
 
 ### Added
 
+- **«مقارنة بملف» on `/atm/data-edit`: a machines file compared with the branch, then applied.**
+  «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك والكود والأسم
+  والمنطقة». Upload the machine list (Excel: Bank, ID, ATM Name, Area — the old system's export
+  reads as it is) and every row is compared with the machines of the branch the top bar names:
+  what would be added, brought back from the archive, or edited (the old bank, name or area struck
+  through beside the file's), what works in another branch, what the file leaves incomplete, what
+  it lists twice, and the branch's machines it does not list — shown, never deleted. Nothing
+  changes until «تطبيق», and the apply writes only the comparison the reader saw: if the branch
+  changed meanwhile it writes nothing and asks for a new comparison. It adds through the data-edit
+  add (the register entry included) and edits through the machine edit (audited), row by row,
+  names every code it could not write and why, and answers with the comparison made again
+  (`POST /atm/machines/sync`, `atmMachine.manage`). Spaces are folded, so a stray space is
+  neither a change nor a new area; a bank is compared by the catalog bank it names.
+
+- **Sign in with a fingerprint or Face ID instead of typing the password.** «عايز الدخول يبقي ممكن
+  من خلال الـ Fingerprint أو FaceID للموبايل بحيث مش كل مره يكتب الباسورد». Passkeys (WebAuthn,
+  [ADR-035](docs/03-decisions/ADR-035-passkey-sign-in.md)): the device keeps a private key and
+  releases it only after its own fingerprint, face or PIN check; the server keeps the public half.
+  The sign-in page shows «الدخول بالبصمة أو الوجه», and where the browser supports it the passkey is
+  also offered right in the username field. After a password sign-in on a phone or computer that
+  can hold one, the page offers «تفعيل الدخول بالبصمة» once — using the password just typed — and
+  «ليس الآن» is remembered for thirty days. Devices are listed, renamed and removed under
+  *My account → Security*, which now also shows how each session signed in. Staff and gold-portal
+  customers may use them (the portal has a new *Security* tab); applicants may not. By the owner's
+  decision a passkey sign-in counts as the second factor, so no TOTP code follows it (amends R13 —
+  the password path still asks). Adding one asks for the password again (and the TOTP code); an
+  administrator's password or TOTP reset, the gold portal's «رابط تفعيل جديد», and suspending,
+  archiving, reactivating or deleting the account, remove the account's passkeys. Every challenge
+  is held by the server and used once; a locked or inactive account stays refused; only
+  attestation `none` is accepted, so no certificate the client sends can make the server fetch a
+  URL. The organization setting `auth.passkeys.enabled` (on by default) switches it off for every
+  route. The ten-minute idle
+  sign-out is unchanged («نسيبها 10 دقايق»); coming back is now one touch.
+
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
   «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
   الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn
@@ -248,6 +282,26 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The leader pickers offer the ATM employees' names — the maintenance close above all.**
+  «تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية .. وخصوصاً عند تقفيل
+  ماكينات الصيانة». The close's employee list read `atm.maintenanceLeaderDepartmentIds`, which
+  shipped empty with no screen to set it, so the close offered nobody and no maintenance could be
+  closed; the edit dialogs' leader was a free-text box. The list (`GET /atm/leaders/options`, read
+  by either board) is now the working employees of the departments ticked on `/atm/settings` —
+  or, while none is ticked, of every active department NAMED for ATM («الصراف الآلي», «الصراف
+  الالى», «ATM»): the legacy's own rule. The new card «موظفو الصراف الآلي — قائمة القائد» lists
+  every active department with its people counted, marks the ATM one, saves the ticks
+  (`atmSettings.manage` company-wide, audited as a platform setting) and returns to the name rule.
+  The close picks from the list in a searchable box, each person with their HR code (the search
+  reads the name and code shown, never the id behind them); both kinds' edit dialogs pick the
+  leader from the same names, and a name already on a row stays pickable, so opening and saving a
+  row never rewrites its leader. A free-text leader is no longer typed. On a checked set of
+  maintenances the box opens on the leader the rows share, «حفظ» waits for a change, and the
+  leaders are cleared only by the box's ×, never by a blank left behind. A list that failed to load
+  says so. Every searchable box (`Combobox`) now commits a name typed out in full when the reader
+  clicks elsewhere or presses Tab, and its Escape closes the open list only, no longer the dialog
+  around it.
+
 - **Every ATM machine shows under the branch it is filed in, the ATM pages name branches as the top
   bar does, and a linked branch's data moves to the branch it works as.** «أنا عايز كل ماكينه تظهر
   فى الفرع بتاعها طبقاً للفرع المتسجله فيه» — machine 27720226 showed on `/atm/machines` only under
@@ -334,6 +388,24 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The IT asset and custody registers filter by several categories and several names, the names
+  following the categories.** «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط)
+  والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا
+  Multiselect · وفى /it/custody بردو عايز الصنف يبقي بعد الفئة (فى الفلتر فقط) ونفس الكلام يتفلتر
+  والأتنين يكونوا Multiselect». On `/it/assets` the filter bar reads search, status, «الفئة», «الاسم»,
+  branch, holder; on `/it/custody` «بحث» (code, name or serial), «الفئة», «الصنف», then the rest.
+  Both category and name filters take several answers, and the names offered are those of the
+  chosen categories. A name holding a comma works. The Excel/PDF name every choice.
+- **The side menu shows itself on hover, over the page; pinned, it takes its place beside it.**
+  «الsidebar يظهر لما اعمل hover عليه ويظهر فوق الكونتنت ميخدش حايز» — then «عايزك تخلي موضوع
+  توسيع وطى يبقي أيقونة Pin فوق بعد الـ 4 مربعات» and «لما اعمل تثبيت يبقى موجود بس يلخد من الحايز
+  عادى». On a desktop only the slim icon strip stands beside the page by default, so tables get
+  the full width. Resting the pointer on the strip (or tabbing into it) shows the full menu OVER the
+  page, and it goes when the pointer leaves or with Escape. The pin at the top of the menu, right
+  after the module switcher's four squares, keeps it open: pinned, the menu stands in the layout
+  and the page narrows beside it, as the expanded column used to. The expand/collapse buttons at
+  the bottom are gone. Both menu styles (the launchpad and the module rail) behave the same; the
+  choice is remembered per device, and everyone starts unpinned. The phone drawer is unchanged.
 - **Every module tile says what its module is, and no two look alike.** «بص الأيقونات بتاعت
   الإدارات مش متناسقة مع مدلول الإدارة … وبعدين فى متكرر ! عايز كل أيقونة تكون بتعبر عن اسم
   الإدارة». In «الوحدات» (and the module rail and the command palette): العمليات is a banknote,

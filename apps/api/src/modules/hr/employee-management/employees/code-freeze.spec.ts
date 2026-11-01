@@ -1,5 +1,10 @@
-// The Employee Code is composed ONCE, AT HIRE, AND NEVER REWRITTEN (ADR-017). This file is what
-// keeps that true, and it is worth being precise about why it is written this way.
+// The Employee Code is composed ONCE, AT HIRE, AND NEVER REWRITTEN BY THE SYSTEM (ADR-017). This
+// file is what keeps that true, and it is worth being precise about why it is written this way.
+//
+// AMENDED 2026-11-01 — «عايزك تعمل إمكانية تغيير كود الموظف». A PERSON may now change a code by
+// hand: behind `employee.changeCode`, with a reason on the record. That is not the thing this file
+// guards against. What it guards against is a code changing as a SIDE EFFECT of something else —
+// a transfer, a rehire — which is how people used to be renamed without anybody deciding to.
 //
 // A frozen code is not enforced by a type or a schema — `code` is a plain string field, and any
 // line anywhere may assign to it. The rule lives in prose in `employee-number.ts`, and prose does
@@ -57,6 +62,24 @@ describe('the Employee Code is frozen once issued', () => {
   it('only the two hire paths compose a code', () => {
     const composed = [...SERVICE.matchAll(/buildEmployeeCode\(/g)];
     expect(composed).toHaveLength(2);
+  });
+
+  /**
+   * THE ONE DOOR, AND A PERSON STANDS AT IT. After hire, a code changes through `changeCode` and
+   * nowhere else: behind its own permission (not `editPersonal` — a code is on badges, on contracts,
+   * and is how the roster file names a person), recording old, new and why. It composes nothing, so
+   * the count of composing paths above does not move.
+   */
+  it('a code changes after hire only by hand, behind its own permission, with the reason recorded', () => {
+    const ROUTES = code('./employee.routes.ts');
+    expect(ROUTES).toMatch(/'\/:id\/code',\s*authenticate,\s*authorize\('employee\.changeCode'\)/);
+    const start = SERVICE.indexOf('async changeCode(');
+    const method = SERVICE.slice(start, SERVICE.indexOf('async updateOfficer(', start));
+    expect(method).toContain("{ field: 'code', old: before.code, new: code }");
+    expect(method).toContain("field: 'codeChangeReason'");
+    expect(method).not.toMatch(/buildEmployeeCode|branchService/);
+    // And it is the only method that writes `{ code }` after hire.
+    expect([...SERVICE.matchAll(/\{ code \},/g)]).toHaveLength(1);
   });
 
   /**

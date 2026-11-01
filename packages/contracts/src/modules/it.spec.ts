@@ -46,6 +46,8 @@ import {
   ItAssetWarrantySchema,
   ListItTicketsQuerySchema,
   ListItAssetsQuerySchema,
+  ListItAssetNamesQuerySchema,
+  ListItAssignmentsQuerySchema,
   ListItPeopleQuerySchema,
   ListItTechniciansQuerySchema,
   ReopenItTicketSchema,
@@ -566,6 +568,49 @@ describe('it people contracts', () => {
   it('filters the asset register by the person holding an asset now', () => {
     expect(ListItAssetsQuerySchema.safeParse({ holderEmployeeId: oid(1) }).success).toBe(true);
     expect(ListItAssetsQuerySchema.safeParse({ holderEmployeeId: 'x' }).success).toBe(false);
+  });
+});
+
+// «وعايز الأتنين دول يبقوا Multiselect» — the category and the name filters of the asset and custody
+// registers take several answers; a name is free text and may hold a comma.
+describe('it register filters — several categories, several names', () => {
+  const oid = (n: number) => String(n).padStart(24, '0');
+
+  it('reads several categories, and still a single one — every link written before', () => {
+    const many = ListItAssetsQuerySchema.parse({ categoryId: `${oid(1)},${oid(2)}` });
+    expect(many.categoryId).toEqual([oid(1), oid(2)]);
+    expect(ListItAssetsQuerySchema.parse({ categoryId: oid(3) }).categoryId).toEqual([oid(3)]);
+    expect(ListItAssetsQuerySchema.parse({}).categoryId).toBeUndefined();
+    expect(ListItAssetsQuerySchema.safeParse({ categoryId: `${oid(1)},x` }).success).toBe(false);
+    expect(
+      ListItAssignmentsQuerySchema.parse({ categoryId: `${oid(1)},${oid(2)}` }).categoryId,
+    ).toEqual([oid(1), oid(2)]);
+    expect(ListItAssetNamesQuerySchema.parse({ categoryId: oid(4) }).categoryId).toEqual([oid(4)]);
+    expect(ListItAssetNamesQuerySchema.parse({}).categoryId).toBeUndefined();
+  });
+
+  it('reads several names, a comma inside a name kept whole by its escape', () => {
+    const parsed = ListItAssetsQuerySchema.parse({
+      name: 'Lenovo ThinkCentre neo 50a 24,شاشة 24\\, Dell',
+    });
+    expect(parsed.name).toEqual(['Lenovo ThinkCentre neo 50a 24', 'شاشة 24, Dell']);
+    expect(ListItAssetsQuerySchema.parse({ name: 'Dell E2423H' }).name).toEqual(['Dell E2423H']);
+    expect(ListItAssetsQuerySchema.parse({ name: '' }).name).toBeUndefined();
+    expect(
+      ListItAssignmentsQuerySchema.parse({ assetName: 'Dell E2423H,HP 85A' }).assetName,
+    ).toEqual(['Dell E2423H', 'HP 85A']);
+  });
+
+  it('keeps the custody register\u2019s text search beside the names', () => {
+    const parsed = ListItAssignmentsQuerySchema.parse({
+      search: 'PF5KX8ZT',
+      assetName: 'Dell E2423H',
+    });
+    expect(parsed).toMatchObject({ search: 'PF5KX8ZT', assetName: ['Dell E2423H'] });
+  });
+
+  it('refuses an unknown key on the names endpoint', () => {
+    expect(ListItAssetNamesQuerySchema.safeParse({ search: 'Dell' }).success).toBe(false);
   });
 });
 

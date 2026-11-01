@@ -73,6 +73,7 @@ import {
   RefLabelDialog,
   addBlocked,
 } from '../components/DataEditDialogs';
+import { MachineSyncDialog } from '../components/MachineSyncDialog';
 import { BankDialog } from '../components/catalog/BankDialog';
 import { bankCatalogColumns } from '../components/catalog/BankCatalogDialog';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
@@ -209,6 +210,7 @@ export const DataEditPage = (): JSX.Element => {
 
   const [creating, setCreating] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState<AtmMachineDto | null>(null);
   const [movingMachine, setMovingMachine] = useState<AtmMachineDto | null>(null);
   const [editingLabel, setEditingLabel] = useState<AtmRefLabelDto | null>(null);
@@ -414,6 +416,14 @@ export const DataEditPage = (): JSX.Element => {
             tab === 'machines' ? (
               <Can permission="atmMachine.manage">
                 <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    data-edit-action="sync"
+                    onClick={() => setSyncOpen(true)}
+                  >
+                    {t('atm.machineSync.open')}
+                  </Button>
                   <Button
                     size="sm"
                     variant="secondary"
@@ -652,6 +662,7 @@ export const DataEditPage = (): JSX.Element => {
         activate={activating}
       />
       <BulkMachinesDialog open={bulkOpen && canManage} onClose={() => setBulkOpen(false)} />
+      <MachineSyncDialog open={syncOpen && canManage} onClose={() => setSyncOpen(false)} />
       <ConfirmActionDialog
         open={deleting !== null && canManage}
         onClose={() => setDeleting(null)}

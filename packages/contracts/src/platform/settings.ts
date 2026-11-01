@@ -11,6 +11,8 @@ export const SettingKeys = {
   LockoutMaxAttempts: 'auth.lockout.maxAttempts',
   LockoutMinutes: 'auth.lockout.minutes',
   TotpEnforcedForPrivileged: 'auth.totp.enforcedForPrivileged',
+  /** ADR-035 — sign-in with a passkey (fingerprint / Face ID); off turns every passkey route off. */
+  PasskeysEnabled: 'auth.passkeys.enabled',
   /** Enabled login identifier kinds (design 4.3): username / email / employeeCode. */
   AuthLoginIdentifiers: 'auth.loginIdentifiers',
   /** Activation/setup-link validity window in hours (design §14). */

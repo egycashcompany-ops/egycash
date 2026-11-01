@@ -40,7 +40,7 @@ ECMS" means.
 | `atm_data_lists.bank[]/area[]` | `atm_ref_labels` (kind `bank`/`area`) | The five dead arrays (`zone`, `leaders`, `ops_emp`, `rep`, `maint`) not carried (G4) |
 | `filters` per-user collection | URL parameters (client persistence) | Same visible behaviour, no server preference store; the area list without a bank, the bank-change cascade and the whole-board read are D8 |
 | `users` / `user_status` | platform auth/RBAC | Single-session enforcement is a platform policy, not module behaviour (T4) |
-| `employees` (dept "الصراف الالى") | `platform/directory` + `atm.maintenanceLeaderDepartmentIds` setting | The hardcoded department NAME became configuration |
+| `employees` (dept "الصراف الالى") | `platform/directory` + `atm.maintenanceLeaderDepartmentIds` setting (`atm/leaders`) | The hardcoded department NAME became configuration, ticked on `/atm/settings`; while none is ticked, every active department named for ATM — the legacy rule (2026-11-01) |
 | Legacy pages | `/atm/replenishments(±/done)`, `/atm/maintenance(±/done)`, `/atm/mail-tickets(±/log)`, `/atm/machines`, `/atm/data-edit` | `apps/web/src/modules/atm/routes.tsx` |
 | Privileges (`atm-user`, `atm-user-review`, `atm-admin`, `Efficiency-admin`) | `atmReplenishment.*`, `atmMaintenance.*`, `atmMailTicket.view/decide/viewLog`, `atmMachine.view/manage/moveArea`, `atmRefLabel.create/edit`; Efficiency: `atmRegister.view/create/edit/delete/export/handover/viewSecrets/import`, `atmRegisterReport.view`; the bank catalog: `atmBank.create/edit` (organization scope only) | Roles carry the legacy bundles; the review role = view+complete on done surfaces (contad_app.js:1056 vs :2096); the mail log is admin-narrow (:2901). Since the Efficiency register, `/atm/data-edit` is split: Operations hold `atmRefLabel.*` + `atmMachine.moveArea`, the administrator keeps `manage` (§9) |
 
@@ -503,6 +503,9 @@ mail of those machines — stayed October's, readable only under «كل الشر
 3. «اختبار الاتصال» — it must answer ok; a refusal names the provider's answer.
 4. Add Mohandessin to the switched-on branches, with its Outlook category.
 5. «فروع تعمل معاً»: link October → acts as Mohandessin.
+5a. «موظفو الصراف الآلي — قائمة القائد»: check the count. The ATM department is found by its name;
+   if the count is 0, or the people are in another department, tick it and save — the maintenance
+   close needs a name from this list.
 6. «نقل البيانات إلى المهندسين» on that link (it opens by itself when October holds rows): read the
    preview, resolve what it lists in red, then «نقل». October's earlier machines, register rows and
    mail then show under «المهندسين» (§6b).
@@ -575,6 +578,32 @@ never fail on one.
   of a hundred), and filtered in the browser; a log range too long to read whole says so, as the
   done pages do. Accept and reject go in batches of 200, as the boards' checked rows do. Only the
   table scrolls.
+
+### 6e. The leader list — the ATM employees' names (2026-11-01)
+
+«تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية .. وخصوصاً عند تقفيل
+ماكينات الصيانة». The legacy close modal listed every working employee of the department NAMED
+«الصراف الالى» (contad_app.js:1110-1112). The port made the name a setting,
+`atm.maintenanceLeaderDepartmentIds`, which shipped empty with no screen to set it — so the close
+offered nobody, and the edit dialogs' leader stayed free text.
+
+- **Where the names come from** (`apps/api/src/modules/atm/leaders/`). The departments ticked on
+  `/atm/settings`; while none is ticked, every active department whose name is the ATM
+  department's, in either language — «الصراف الآلي», «الصراف الالى», «الصرافات الآلية», «ATM»
+  (`isAtmDepartmentName`, the legacy rule read the way an Arabic typist writes it). Working
+  employees only, each once, in Arabic order.
+- **Who reads what.** `GET /atm/leaders/options` — whoever views either board
+  (`atmReplenishment.view` or `atmMaintenance.view`); `/atm/maintenances/leader-options` answers the
+  same list. `GET/PUT /atm/leaders/departments` — `atmSettings.manage` at organization scope; the
+  save goes through the platform settings service (audited), and a department that is not active is
+  a 400 at its index unless it is already stored.
+- **The card** «موظفو الصراف الآلي — قائمة القائد»: every active department with its branch and
+  its people counted, the ATM one marked «باسم الصراف الآلي», a stored one retired since marked «لم
+  تعد نشطة»; the count of names the pickers offer; «استخدام إدارة الصراف الآلي باسمها» saves `[]`.
+- **The pickers.** The close: a searchable box, required, each person «name (code)»; the close
+  writes their HR name as the leader, as before. Both kinds' edit dialogs: the leader is picked from
+  the same names (each name once); a name already on the row stays pickable, and the «الوردية» rule
+  is unchanged (§4a). An empty list says where it is set.
 
 ## 7. Migration (ATM-7 — delivered)
 

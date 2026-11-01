@@ -108,6 +108,7 @@ const ROWS: FleetCustodyLedgerRowDto[] = [
 ];
 
 const FUND: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 159974.54,
   charged: { count: 2, amount: 300000 },
   spent: { count: 126, amount: 97794 },
@@ -149,6 +150,8 @@ const op = (over: Partial<FleetCustodyOperationDto>): FleetCustodyOperationDto =
   signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.replenish,
   // The log's place of the letter — the drawer shows the fund NOW instead while it is held.
   ledger: { before: 150000, after: 150000 },
+  deletion: null,
+  createdByName: null,
   version: 0,
   createdAt: STAMP,
   updatedAt: STAMP,

@@ -91,6 +91,8 @@ const card = (
   updatedAt: '2026-10-01T00:00:00.000Z',
   ...over,
 });
+/** A sheet row's batch-3 facts, neutral: no plate, chassis or code; the number kind not told. */
+const ROW_FACTS = { plate: null, chassis: null, code: null, numberKind: 'other' as const };
 const line = (
   id: string,
   system: number,
@@ -98,9 +100,22 @@ const line = (
   over: Partial<FleetFuelReconcileLineDto> = {},
 ): FleetFuelReconcileLineDto => ({
   card: card(id, system),
-  sheet: { row: 180, number: '548**********7868', name: `EGYCASH-${id}`, balance: sheet },
+  sheet: {
+    row: 180,
+    number: '548**********7868',
+    name: `EGYCASH-${id}`,
+    balance: sheet,
+    builtName: `EGYCASH-${id}`,
+    ...ROW_FACTS,
+  },
   difference: (piastres(sheet) - piastres(system)) / 100,
   numberMatches: true,
+  // Batch 3's line facts, neutral: matched by name, no crossed number, no charge to cancel.
+  matchedBy: 'name',
+  nameMatches: true,
+  numberHolder: null,
+  placeMatches: null,
+  charges: [],
   ...over,
 });
 
@@ -121,14 +136,51 @@ const RESULT: FleetFuelReconcileDto = {
     line(B, 14516.85, 596.85),
     line(C, 3049.73, 8724.73, {
       numberMatches: false,
-      sheet: { row: 28, number: '548**********0935', name: `EGYCASH-${C}`, balance: 8724.73 },
+      sheet: {
+        row: 28,
+        number: '548**********0935',
+        name: `EGYCASH-${C}`,
+        balance: 8724.73,
+        builtName: `EGYCASH-${C}`,
+        ...ROW_FACTS,
+      },
     }),
   ],
   equal: [line('e1', 6750, 6750)],
-  sheetOnly: [{ row: 222, number: '548**********1111', name: 'EGYCASH-1-2', balance: 10 }],
+  sheetOnly: [
+    {
+      row: 222,
+      number: '548**********1111',
+      name: 'EGYCASH-1-2',
+      balance: 10,
+      builtName: 'EGYCASH-1-2',
+      ...ROW_FACTS,
+    },
+  ],
   systemOnly: [card('s1', 40)],
-  duplicates: [{ row: 5, number: '548**********2222', name: 'EGYCASH-2-3', balance: 5, times: 2 }],
+  duplicates: [
+    {
+      row: 5,
+      number: '548**********2222',
+      name: 'EGYCASH-2-3',
+      balance: 5,
+      times: 2,
+      builtName: 'EGYCASH-2-3',
+      ...ROW_FACTS,
+    },
+  ],
   conflicts: [],
+  // Batch 3's reading facts, neutral.
+  layout: [],
+  nameRebuilt: false,
+  cardRows: 223,
+  skipped: [],
+  totalCheck: null,
+  example: null,
+  sheetDate: null,
+  carColumn: false,
+  links: [],
+  newCards: [],
 };
 
 const ALL = ['fleetFuelCard.view', 'fleetFuelCharge.view', 'fleetFuelCharge.approve'];
@@ -325,6 +377,8 @@ describe('the answer', () => {
               balance: 16745.12,
               at: '2026-10-20T09:00:00.000Z',
               byName: 'أحمد علي',
+              cancelledAmount: 0,
+              approvedRequest: null,
             },
           ],
         },
@@ -457,12 +511,14 @@ describe('the folds', () => {
             reason: 'badBalance',
             name: 'EGYCASHTCS-4811-48358',
             cardId: null,
+            candidateIds: [],
             rows: [{ row: 147, number: '548**********4811', balance: -2214.66 }],
           },
           {
             reason: 'sheetRowsDiffer',
             name: 'EGYCASH-3671-309819',
             cardId: null,
+            candidateIds: [],
             rows: [
               { row: 3, number: '548**********0056', balance: 8403.24 },
               { row: 225, number: '548**********0056', balance: 8103.24 },

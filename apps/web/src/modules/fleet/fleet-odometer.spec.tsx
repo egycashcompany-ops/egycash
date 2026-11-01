@@ -73,6 +73,7 @@ const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   outReading: 150000,
   inReading: 150250,
   km: 250,
+  serviceGapKm: null,
   driver1EmployeeId: null,
   driver2EmployeeId: null,
   driver1Name: null,
@@ -123,8 +124,11 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
     counterDate: '2026-05-30T00:00:00.000Z',
     judgedAgainst: null,
     exitSetAside: null,
+    workType: null,
   },
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
   ...o,
 });
 

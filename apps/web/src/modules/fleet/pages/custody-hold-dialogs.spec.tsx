@@ -141,6 +141,8 @@ const OP: FleetCustodyOperationDto = {
   letterFigure: 100000,
   signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.replenish,
   ledger: { before: 17492, after: 17492 },
+  deletion: null,
+  createdByName: null,
   version: 0,
   createdAt: STAMP,
   updatedAt: STAMP,

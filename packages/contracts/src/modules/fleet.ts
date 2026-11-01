@@ -3747,7 +3747,14 @@ export const FLEET_FUEL_SHEET_COLUMNS = ['Card Number', 'Card Name', 'Card Balan
  * column by its ROLE, not by one spelling. `number` and `balance` are required; the rest are read
  * when present.
  */
-export const FLEET_FUEL_SHEET_ROLES = ['number', 'name', 'balance', 'plate', 'chassis', 'code'] as const;
+export const FLEET_FUEL_SHEET_ROLES = [
+  'number',
+  'name',
+  'balance',
+  'plate',
+  'chassis',
+  'code',
+] as const;
 export type FleetFuelSheetRole = (typeof FLEET_FUEL_SHEET_ROLES)[number];
 
 /**
@@ -3767,9 +3774,27 @@ export const foldSheetHeader = (text: string): string =>
 
 /** Each role's headers, already folded (`foldSheetHeader`) — a header names a role when it folds to one. */
 export const FLEET_FUEL_SHEET_SYNONYMS: Readonly<Record<FleetFuelSheetRole, readonly string[]>> = {
-  number: ['cardnumber', 'cardno', 'cardnum', 'number', 'pan', 'رقمالكارت', 'رقمالبطاقه', 'رقمالكرت', 'رقمالفيزا'],
+  number: [
+    'cardnumber',
+    'cardno',
+    'cardnum',
+    'number',
+    'pan',
+    'رقمالكارت',
+    'رقمالبطاقه',
+    'رقمالكرت',
+    'رقمالفيزا',
+  ],
   name: ['cardname', 'name', 'cardholder', 'اسمالكارت', 'اسمالبطاقه', 'الاسم', 'اسمالكرت'],
-  balance: ['cardbalance', 'balance', 'currentbalance', 'الرصيد', 'رصيد', 'رصيدالكارت', 'رصيدالبطاقه'],
+  balance: [
+    'cardbalance',
+    'balance',
+    'currentbalance',
+    'الرصيد',
+    'رصيد',
+    'رصيدالكارت',
+    'رصيدالبطاقه',
+  ],
   plate: ['لوحه', 'اللوحه', 'رقماللوحه', 'plate', 'plateno', 'platenumber'],
   chassis: ['شاسيه', 'الشاسيه', 'شاسي', 'رقمالشاسيه', 'chassis', 'chassisno', 'vin'],
   code: ['كود', 'الكود', 'code', 'carcode', 'كودالعربيه', 'كودالسياره', 'vehiclecode'],
@@ -3791,7 +3816,13 @@ export const FLEET_FUEL_SHEET_NEVER_READ = {
  * than 15 digits — the spreadsheet already rounded it, so it is never matched by number), or
  * `other` (anything else; its last four digits are what is compared).
  */
-export const FLEET_FUEL_SHEET_NUMBER_KINDS = ['full', 'masked', 'none', 'imprecise', 'other'] as const;
+export const FLEET_FUEL_SHEET_NUMBER_KINDS = [
+  'full',
+  'masked',
+  'none',
+  'imprecise',
+  'other',
+] as const;
 export type FleetFuelSheetNumberKind = (typeof FLEET_FUEL_SHEET_NUMBER_KINDS)[number];
 /** The largest sheet accepted, in MB. */
 export const FLEET_FUEL_SHEET_MAX_MB = 10;
@@ -3839,7 +3870,9 @@ const fuelSheetDay = z
     if (value === undefined || value === null || value === '') return null;
     const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
     const day =
-      parts === null ? null : new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+      parts === null
+        ? null
+        : new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
     if (day === null || day.toISOString().slice(0, 10) !== value) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'a sheet date is a day, YYYY-MM-DD' });
       return z.NEVER;

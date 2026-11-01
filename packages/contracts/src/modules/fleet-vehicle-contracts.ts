@@ -92,10 +92,12 @@ const distinctLineIds = (body: { lines: { id: string | null }[] }): boolean =>
  * absent) is nothing received; never more than the line's count. Only a new contract carries it —
  * an edit records deliveries through «تسجيل استلام».
  */
-export const FleetVehicleContractCreateLineInputSchema = FleetVehicleContractLineInputSchema.extend({
-  /** «المستلم حتى الآن» — recorded as the contract's first delivery; 0 (or absent) = nothing. */
-  received: z.number().int().min(0).max(FLEET_VEHICLE_CONTRACT_MAX_COUNT).default(0),
-});
+export const FleetVehicleContractCreateLineInputSchema = FleetVehicleContractLineInputSchema.extend(
+  {
+    /** «المستلم حتى الآن» — recorded as the contract's first delivery; 0 (or absent) = nothing. */
+    received: z.number().int().min(0).max(FLEET_VEHICLE_CONTRACT_MAX_COUNT).default(0),
+  },
+);
 export type FleetVehicleContractCreateLineInput = z.infer<
   typeof FleetVehicleContractCreateLineInputSchema
 >;

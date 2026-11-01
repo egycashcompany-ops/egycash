@@ -38,6 +38,9 @@ const KIND_TONE: Record<FleetFuelCardMovementDto['kind'], string> = {
     'border-violet-300 dark:border-violet-500/40 bg-violet-500/15 text-violet-700 dark:text-violet-300',
   sheetReject:
     'border-rose-300 dark:border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+  // B3-F0 stub: W-REC — the `sheetLink` tone (sheetReject's until the real one)
+  sheetLink:
+    'border-rose-300 dark:border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300',
   charge:
     'border-emerald-300 dark:border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   transferIn: 'border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300',

@@ -60,6 +60,16 @@ const card = (
   updatedAt: '2026-10-01T00:00:00.000Z',
   ...over,
 });
+/** A sheet row's batch-3 facts, neutral: no plate, chassis or code; the number kind not told. */
+const ROW_FACTS = { plate: null, chassis: null, code: null, numberKind: 'other' as const };
+/** A line's batch-3 facts, neutral: matched by name, no crossed number, no charge to cancel. */
+const LINE_FACTS = {
+  matchedBy: 'name' as const,
+  nameMatches: true,
+  numberHolder: null,
+  placeMatches: null,
+  charges: [],
+};
 const line = (
   id: string,
   system: number,
@@ -67,9 +77,17 @@ const line = (
   numberMatches = true,
 ): FleetFuelReconcileLineDto => ({
   card: card(id, system),
-  sheet: { row: 2, number: '548**********2231', name: `EGYCASH-${id}`, balance: sheet },
+  sheet: {
+    row: 2,
+    number: '548**********2231',
+    name: `EGYCASH-${id}`,
+    balance: sheet,
+    builtName: `EGYCASH-${id}`,
+    ...ROW_FACTS,
+  },
   difference: (piastres(sheet) - piastres(system)) / 100,
   numberMatches,
+  ...LINE_FACTS,
 });
 const result = (
   id: string,
@@ -81,6 +99,8 @@ const result = (
   balance,
   at: '2026-10-27T09:41:00.000Z',
   byName: 'أحمد علي',
+  cancelledAmount: 0,
+  approvedRequest: null,
 });
 const LINES = [line('a1', 795, 16745.12), line('b2', 14516.85, 596.85), line('c3', 777, 13377.42)];
 const moved = (...ids: string[]): ApiError =>
@@ -143,14 +163,15 @@ describe('what the comparison says beside the table', () => {
     sheetOnly: [],
     systemOnly: [],
     duplicates: [
-      { row: 4, number: '1', name: 'X', balance: 1, times: 2 },
-      { row: 9, number: '2', name: 'Y', balance: 2, times: 3 },
+      { row: 4, number: '1', name: 'X', balance: 1, times: 2, builtName: 'X', ...ROW_FACTS },
+      { row: 9, number: '2', name: 'Y', balance: 2, times: 3, builtName: 'Y', ...ROW_FACTS },
     ],
     conflicts: [
       {
         reason: 'sheetRowsDiffer',
         name: 'A',
         cardId: null,
+        candidateIds: [],
         rows: [
           { row: 3, number: '1', balance: 1 },
           { row: 225, number: '1', balance: 2 },
@@ -160,10 +181,21 @@ describe('what the comparison says beside the table', () => {
         reason: 'badBalance',
         name: 'B',
         cardId: 'b',
+        candidateIds: [],
         rows: [{ row: 10, number: '2', balance: null }],
       },
-      { reason: 'systemNameTwice', name: 'C', cardId: null, rows: [] },
+      { reason: 'systemNameTwice', name: 'C', cardId: null, candidateIds: [], rows: [] },
     ],
+    layout: [],
+    nameRebuilt: false,
+    cardRows: 223,
+    skipped: [],
+    totalCheck: null,
+    example: null,
+    sheetDate: null,
+    carColumn: false,
+    links: [],
+    newCards: [],
   };
 
   it('counts rows that never match as rows, and repeated rows beyond each card’s first', () => {

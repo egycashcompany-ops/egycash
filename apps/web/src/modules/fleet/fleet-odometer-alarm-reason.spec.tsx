@@ -54,6 +54,7 @@ const log = (
   outReading: 25_581,
   inReading: 25_631,
   km: 50,
+  serviceGapKm: null,
   driver1EmployeeId: null,
   driver2EmployeeId: null,
   driver1Name: null,
@@ -76,6 +77,7 @@ const baseline = (o: Partial<FleetAlarmBaselineDto> = {}): FleetAlarmBaselineDto
   counterDate: day('2026-10-06'),
   judgedAgainst: { reading: 22_830, date: day('2026-10-06') },
   exitSetAside: null,
+  workType: null,
   ...o,
 });
 
@@ -95,6 +97,8 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   latestReadingLogId: 'r26',
   baseline: baseline(),
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
   ...o,
 });
 
@@ -362,6 +366,8 @@ describe('the card', () => {
           inDate: day('2026-10-24'),
           outDate: null,
           why: 'open',
+          workType: null,
+          workshop: null,
         },
       }),
     );
@@ -377,6 +383,8 @@ describe('the card', () => {
           inDate: day('2026-10-20'),
           outDate: day('2026-10-21'),
           why: 'notCounting',
+          workType: null,
+          workshop: null,
         },
       }),
     );

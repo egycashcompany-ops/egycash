@@ -98,6 +98,7 @@ const OUTSIDE: FleetCustodyOutsideKindDto[] = [
   outsideLine('wash', 4, 600, '2026-09-07', [2, 300]),
 ];
 const FUND: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 159974.54,
   charged: { count: 2, amount: 300000 },
   spent: { count: 126, amount: 97794 },

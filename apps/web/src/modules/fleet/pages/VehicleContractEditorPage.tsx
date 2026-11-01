@@ -204,7 +204,16 @@ export const VehicleContractEditorPage = (): JSX.Element => {
           order: (contractId, fileIds) => api.orderVehicleContractFiles(contractId, fileIds),
         },
         loaded === undefined
-          ? { mode: 'create', body, items: tray }
+          ? {
+              mode: 'create',
+              // B3-F0 stub: W-VC — «المستلم حتى الآن» per line and «تاريخ الاستلام» (nothing yet)
+              body: {
+                ...body,
+                lines: body.lines.map((line) => ({ ...line, received: 0 })),
+                receivedDate: null,
+              },
+              items: tray,
+            }
           : {
               mode: 'update',
               id: loaded.id,

@@ -133,6 +133,7 @@ const OUTSIDE: FleetCustodyOutsideKindDto[] = [
   { kind: 'wash', count: 4, total: 600, oldest: '2026-10-06', stale: { count: 0, total: 0 } },
 ];
 const FUND: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 1000,
   charged: { count: 1, amount: 100_000 },
   spent: { count: 10, amount: 99_000 },

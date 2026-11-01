@@ -399,6 +399,8 @@ describe('the facts the screens read', () => {
       inDate: D('2026-09-01').toISOString(),
       outDate: null,
       why: 'open',
+      workType: null,
+      workshop: null,
     });
   });
 

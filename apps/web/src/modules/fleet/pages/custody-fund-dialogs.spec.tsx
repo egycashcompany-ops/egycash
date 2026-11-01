@@ -218,6 +218,7 @@ const REPLENISH_CANDIDATES: FleetCustodyReplenishCandidatesDto = {
   chargedTotal: 100000,
 };
 const FUND: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 17492,
   charged: { count: 1, amount: 100000 },
   spent: { count: 97, amount: 82508 },
@@ -309,6 +310,8 @@ const operation = (over: Partial<FleetCustodyOperationDto>): FleetCustodyOperati
   letterFigure: 100000,
   signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.replenish,
   ledger: { before: 17492, after: 99400 },
+  deletion: null,
+  createdByName: null,
   version: 0,
   createdAt: STAMP,
   updatedAt: STAMP,

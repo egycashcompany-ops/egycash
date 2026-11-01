@@ -46,6 +46,7 @@ const me = (): MeDto =>
 
 /** The fund as the server answers: 6 memos saved, 3 operations made. */
 const fund: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 175_260.54,
   charged: { count: 2, amount: 300_000 },
   spent: { count: 152, amount: 97_794 },

@@ -1329,9 +1329,9 @@ describe('batch 3 — the contracts the build is frozen on', () => {
     ).toBe(false);
     expect(DeleteFleetCustodyOperationSchema.safeParse({ reason: 'x' }).success).toBe(false);
     expect(DeleteFleetCustodyOperationSchema.safeParse({ version: -1 }).success).toBe(false);
-    expect(
-      DeleteFleetCustodyOperationSchema.safeParse({ version: 0, restore: true }).success,
-    ).toBe(false);
+    expect(DeleteFleetCustodyOperationSchema.safeParse({ version: 0, restore: true }).success).toBe(
+      false,
+    );
   });
 
   it('«العمليات المحذوفة» — filtered by kind and by the day of the delete', () => {
@@ -1480,7 +1480,9 @@ describe('batch 3 — the contracts the build is frozen on', () => {
         pick: [{ cardId: cardIds[0], vehicleId: oid('aa1') }],
       }).success,
     ).toBe(false);
-    expect(DecideFleetFuelLinksSchema.safeParse({ decision: 'reject', cardIds }).success).toBe(true);
+    expect(DecideFleetFuelLinksSchema.safeParse({ decision: 'reject', cardIds }).success).toBe(
+      true,
+    );
   });
 
   it('«إضافة» a sheet-only card — on a car or named, the expiry and the PIN typed as «إضافة كارت» asks', () => {
@@ -1551,8 +1553,13 @@ describe('batch 3 — the contracts the build is frozen on', () => {
         seen.set(synonym, role);
       }
     }
-    expect(Object.keys(FLEET_FUEL_SHEET_SYNONYMS).sort()).toEqual([...FLEET_FUEL_SHEET_ROLES].sort());
-    const neverRead = [...FLEET_FUEL_SHEET_NEVER_READ.secret, ...FLEET_FUEL_SHEET_NEVER_READ.ignored];
+    expect(Object.keys(FLEET_FUEL_SHEET_SYNONYMS).sort()).toEqual(
+      [...FLEET_FUEL_SHEET_ROLES].sort(),
+    );
+    const neverRead = [
+      ...FLEET_FUEL_SHEET_NEVER_READ.secret,
+      ...FLEET_FUEL_SHEET_NEVER_READ.ignored,
+    ];
     for (const header of neverRead) {
       expect(foldSheetHeader(header)).toBe(header);
       expect(seen.has(header)).toBe(false);

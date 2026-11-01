@@ -32,6 +32,7 @@ const baseline = (o: Partial<FleetAlarmBaselineDto> = {}): FleetAlarmBaselineDto
   counterDate: day('2026-10-06'),
   judgedAgainst: { reading: 22_830, date: day('2026-10-06') },
   exitSetAside: null,
+  workType: null,
   ...o,
 });
 
@@ -51,6 +52,8 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   latestReadingLogId: 'r26',
   baseline: baseline(),
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
   ...o,
 });
 
@@ -272,7 +275,14 @@ describe('the facts', () => {
       lastServiceAt: null,
       lastServiceVisitId: null,
       baseline: null,
-      newerUncountedVisit: { visitId: 'n', inDate: day('2026-10-24'), outDate: null, why: 'open' },
+      newerUncountedVisit: {
+        visitId: 'n',
+        inDate: day('2026-10-24'),
+        outDate: null,
+        why: 'open',
+        workType: null,
+        workshop: null,
+      },
     });
     expect(kinds(open)).toEqual(['car', 'latest', 'newer']);
     expect(cardFacts(open, 'noService').at(-1)).toEqual({
@@ -286,6 +296,8 @@ describe('the facts', () => {
         inDate: day('2026-10-20'),
         outDate: day('2026-10-21'),
         why: 'notCounting',
+        workType: null,
+        workshop: null,
       },
     });
     expect(cardFacts(notCounting, 'baselineBelowChain').at(-1)).toMatchObject({

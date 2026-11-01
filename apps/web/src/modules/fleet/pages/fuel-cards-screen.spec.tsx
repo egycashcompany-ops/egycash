@@ -491,6 +491,8 @@ describe('the card log — «كارت اخر»: a card that paid for another car
     createdAt: '2026-10-01T00:00:00.000Z',
     byName: null,
     sheet: null,
+    cancelledBySheet: null,
+    link: null,
     ...over,
   });
   const logOf = (logged: FleetFuelCardDto, lines: FleetFuelCardMovementDto[]): string => {
@@ -556,6 +558,8 @@ describe('the card log — the company sheet’s two lines, and who made each li
     createdAt: '2026-10-01T00:00:00.000Z',
     byName: null,
     sheet: null,
+    cancelledBySheet: null,
+    link: null,
     ...over,
   });
   const SHEET = {
@@ -563,6 +567,7 @@ describe('the card log — the company sheet’s two lines, and who made each li
     fileName: 'wataniya-balances-2026-10-20.xlsx',
     sheetBalance: 16745.12,
     systemBalance: 795,
+    cancelledCharges: [],
   };
   const logOf = (lines: FleetFuelCardMovementDto[]): string => {
     const store = configureStore({

@@ -153,6 +153,7 @@ const ROWS: FleetCustodyLedgerRowDto[] = [
 ];
 
 const FUND: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 159974.54,
   charged: { count: 2, amount: 300000 },
   spent: { count: 126, amount: 97794 },
@@ -269,6 +270,8 @@ const OPERATIONS: Record<string, FleetCustodyOperationDto> = {
     letterFigure: 100000,
     signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.replenish,
     ledger: { before: 17492, after: 99400 },
+    deletion: null,
+    createdByName: null,
   },
   'op-s1': {
     ...base,
@@ -288,6 +291,8 @@ const OPERATIONS: Record<string, FleetCustodyOperationDto> = {
     letterFigure: 299400,
     signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.settle,
     ledger: { before: 299400, after: 175260.54 },
+    deletion: null,
+    createdByName: null,
   },
   'op-c2': {
     ...base,
@@ -302,6 +307,8 @@ const OPERATIONS: Record<string, FleetCustodyOperationDto> = {
     letterFigure: null,
     signatures: DEFAULT_FLEET_CUSTODY_PAPER_SIGNATURES.charge,
     ledger: { before: 99400, after: 299400 },
+    deletion: null,
+    createdByName: null,
   },
 };
 

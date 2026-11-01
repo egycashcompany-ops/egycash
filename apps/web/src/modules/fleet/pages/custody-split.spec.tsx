@@ -126,6 +126,7 @@ const mount = (
 
 /** The fund as the server answers — 159,974.54 in it, nothing held unless `over` says so. */
 const FUND: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 159_974.54,
   charged: { count: 2, amount: 300_000 },
   spent: { count: 126, amount: 97_794 },

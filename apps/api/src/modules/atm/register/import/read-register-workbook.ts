@@ -312,6 +312,12 @@ const beforeDeadline = (deadline: number, errors: WorkbookReadErrors): void => {
 };
 
 /** The zip path of the worksheet the workbook names `sheetName`, through its relationship id. */
+/** The sheet names the workbook declares, in its order (`<sheet name=…>`). */
+export const declaredSheetNames = (workbookXml: string): string[] =>
+  startTags(workbookXml, 'sheet')
+    .map((tag) => attributes(tag).get('name'))
+    .filter((name): name is string => name !== undefined && name !== '');
+
 const sheetPathOf = (workbookXml: string, relsXml: string, sheetName: string): string | null => {
   let relationshipId: string | null = null;
   for (const tag of startTags(workbookXml, 'sheet')) {
@@ -355,7 +361,12 @@ export type ReducedRegisterWorkbook = ReducedWorkbook;
  */
 export const reduceWorkbookToSheets = async (
   upload: Buffer,
-  sheetNames: readonly string[],
+  /**
+   * The sheets to keep — or, for a caller that does not know the workbook's sheet names (the
+   * machines file, whose sheet is «ATM» in the old system's export and anything in a hand-made
+   * one), a choice among the names the workbook declares, in their order.
+   */
+  sheetNames: readonly string[] | ((declared: readonly string[]) => readonly string[]),
   limits: WorkbookPartLimits,
   deadline: number,
   errors: WorkbookReadErrors,
@@ -389,7 +400,9 @@ export const reduceWorkbookToSheets = async (
   const workbookText = workbookXml.toString('utf8');
   const relsText = relsXml.toString('utf8');
   const sheets: { name: string; path: string; file: JSZipObject }[] = [];
-  for (const name of sheetNames) {
+  const wanted =
+    typeof sheetNames === 'function' ? sheetNames(declaredSheetNames(workbookText)) : sheetNames;
+  for (const name of wanted) {
     const sheetPath = sheetPathOf(workbookText, relsText, name);
     beforeDeadline(deadline, errors);
     const sheetFile = sheetPath === null ? null : entry(sheetPath);

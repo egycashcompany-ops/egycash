@@ -34,6 +34,11 @@ import {
   summarizeMachines,
   updateMachine,
 } from './machine.controller';
+import { noStore, workbookUpload } from '../register/import/register-import.routes';
+import { syncMachines } from './sync/machine-sync.controller';
+
+/** The owner's machines file is 80 KB; the cap is against a mistake, not a size. */
+export const MACHINE_SYNC_MAX_MB = 10;
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -84,6 +89,16 @@ export const buildAtmMachinesRouter = (): Router => {
     authorize('atmMachine.manage'),
     validate({ body: ReassignAtmMachineAreaSchema }),
     asyncHandler(reassignMachineArea),
+  );
+  // A machines file compared with the acting branch, and on `apply` the branch made to match it
+  // (sync/machine-sync.service.ts). The workbook is held in memory, the register import's way.
+  router.post(
+    '/sync',
+    noStore,
+    authenticate,
+    authorize('atmMachine.manage'),
+    workbookUpload(MACHINE_SYNC_MAX_MB),
+    asyncHandler(syncMachines),
   );
   // Declared before `/:id`, the literal-before-param rule the other routes follow.
   router.patch(

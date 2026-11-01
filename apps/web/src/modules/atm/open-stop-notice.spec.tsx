@@ -18,6 +18,7 @@ import {
   emptyOpenStop,
   openPressEnded,
   openPressStarted,
+  withoutRows,
 } from './components/OpenStopNotice';
 
 const render = (locale: Locale, node: ReactNode): string =>
@@ -44,6 +45,7 @@ describe('the stopped run, on the page', () => {
           unsent={100}
           uncertainCodes={['99990400', '99990401']}
           action="فتح التغذيات"
+          busy={false}
           onRestore={() => {}}
           onDismiss={() => {}}
         />,
@@ -87,6 +89,7 @@ describe('the stopped run, on the page', () => {
         unsent={5}
         uncertainCodes={[]}
         action="فتح"
+        busy={false}
         onRestore={() => {}}
         onDismiss={() => {}}
       />,
@@ -99,6 +102,7 @@ describe('the stopped run, on the page', () => {
         unsent={0}
         uncertainCodes={['99990001']}
         action="فتح"
+        busy={false}
         onRestore={() => {}}
         onDismiss={() => {}}
       />,
@@ -112,6 +116,7 @@ describe('the stopped run, on the page', () => {
           unsent={0}
           uncertainCodes={[]}
           action="فتح"
+          busy={false}
           onRestore={() => {}}
           onDismiss={() => {}}
         />,
@@ -146,5 +151,33 @@ describe('the uncertain lines stay until the reader puts them back or hides them
       row('99990400'),
       row('99990900'),
     ]);
+  });
+
+  it('a button clears exactly the rows it showed — never one a press added since', () => {
+    const a = row('99990400');
+    const b = row('99990401');
+    const late = row('99990900'); // appended by a press the reader had not seen yet
+    expect(withoutRows([a, b, late], [a, b])).toEqual([late]);
+    // By identity: an equal-looking row from another stop is a different line.
+    expect(withoutRows([a, row('99990400')], [a])).toEqual([row('99990400')]);
+  });
+});
+
+describe('the buttons are held while a press runs', () => {
+  it('both disabled when busy, both live when not', () => {
+    const notice = (busy: boolean) =>
+      render(
+        'ar',
+        <OpenStopNotice
+          unsent={0}
+          uncertainCodes={['99990001']}
+          action="فتح"
+          busy={busy}
+          onRestore={() => {}}
+          onDismiss={() => {}}
+        />,
+      );
+    expect(notice(true).match(/<button[^>]*\sdisabled=""/g)).toHaveLength(2);
+    expect(notice(false).match(/<button[^>]*\sdisabled=""/g)).toBeNull();
   });
 });

@@ -33,6 +33,7 @@ import {
   openPressEnded,
   openPressStarted,
   prependLines,
+  withoutRows,
   type OpenStopState,
 } from './OpenStopNotice';
 
@@ -113,10 +114,16 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
 
   /** The lines of unknown outcome, back before what the boxes hold — the reader checked the table. */
   const restoreUncertain = (): void => {
-    const back = replenishmentLines(stop.uncertain);
+    const shown = stop.uncertain;
+    const back = replenishmentLines(shown);
     setCodes((current) => prependLines(back.codes, current));
     setSchedules((current) => prependLines(back.schedules, current));
-    setStop((held) => ({ ...held, uncertain: [] }));
+    setStop((held) => ({ ...held, uncertain: withoutRows(held.uncertain, shown) }));
+  };
+  /** Hide the list the reader saw — they checked the table, or will not reopen them. */
+  const dismissUncertain = (): void => {
+    const shown = stop.uncertain;
+    setStop((held) => ({ ...held, uncertain: withoutRows(held.uncertain, shown) }));
   };
 
   return (
@@ -155,8 +162,9 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
           unsent={stop.unsent}
           uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
           action={t('atm.replenishments.openAction')}
+          busy={open.isPending}
           onRestore={restoreUncertain}
-          onDismiss={() => setStop((held) => ({ ...held, uncertain: [] }))}
+          onDismiss={dismissUncertain}
         />
       )}
     </form>

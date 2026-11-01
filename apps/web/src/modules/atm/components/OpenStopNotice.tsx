@@ -7,6 +7,8 @@
 //     them, so they are not in the boxes: they are named here, to be checked in the table first.
 //     They STAY until the reader puts them back («إعادتها إلى الخانات») or hides the list — a
 //     later press (the unsent line asks for one) never drops them, and a later stop adds to them.
+//     Both buttons are held while a press runs: its end rewrites the boxes, and would take with it
+//     anything put back meanwhile. Each clears exactly the rows it showed (`withoutRows`).
 //
 // A toast says the same in one line and goes; this stays, because the reader acts on it.
 import { useT } from '../../../platform/localization/useT';
@@ -37,6 +39,15 @@ export const openPressEnded = <Row,>(
   uncertain: [...state.uncertain, ...result.uncertain],
 });
 
+/**
+ * Pure: the held rows without the ones a button acted on — by identity, so rows a press appended
+ * after the reader's last look (not yet on screen when they clicked) are never cleared unseen.
+ */
+export const withoutRows = <Row,>(held: readonly Row[], gone: readonly Row[]): Row[] => {
+  const goneSet = new Set(gone);
+  return held.filter((row) => !goneSet.has(row));
+};
+
 /** Pure: `lines` set before what a box already holds, line for line (the boxes pair by line). */
 export const prependLines = (lines: string, current: string): string =>
   current === '' ? lines : `${lines}\n${current}`;
@@ -45,6 +56,7 @@ export const OpenStopNotice = ({
   unsent,
   uncertainCodes,
   action,
+  busy,
   onRestore,
   onDismiss,
 }: {
@@ -52,6 +64,8 @@ export const OpenStopNotice = ({
   uncertainCodes: readonly string[];
   /** The form's own open button label, named in the unsent line. */
   action: string;
+  /** A press is running: the buttons are held, as the boxes are. */
+  busy: boolean;
   onRestore: () => void;
   onDismiss: () => void;
 }): JSX.Element => {
@@ -66,10 +80,10 @@ export const OpenStopNotice = ({
             {t('atm.common.openUncertainRisk')}{' '}
             {t('atm.common.openUncertainHint', { codes: joinCodes(uncertainCodes, locale) })}
           </p>
-          <Button type="button" variant="secondary" size="sm" onClick={onRestore}>
+          <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onRestore}>
             {t('atm.common.openUncertainRestore')}
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={onDismiss}>
             {t('atm.common.openUncertainDismiss')}
           </Button>
         </div>

@@ -31,6 +31,7 @@ import {
   openPressEnded,
   openPressStarted,
   prependLines,
+  withoutRows,
   type OpenStopState,
 } from './OpenStopNotice';
 
@@ -129,11 +130,17 @@ export const OpenMaintenancesForm = (): JSX.Element => {
 
   /** The lines of unknown outcome, back before what the boxes hold — the reader checked the table. */
   const restoreUncertain = (): void => {
-    const back = maintenanceLines(stop.uncertain);
+    const shown = stop.uncertain;
+    const back = maintenanceLines(shown);
     setCodes((current) => prependLines(back.codes, current));
     setServices((current) => prependLines(back.services, current));
     setReferences((current) => prependLines(back.references, current));
-    setStop((held) => ({ ...held, uncertain: [] }));
+    setStop((held) => ({ ...held, uncertain: withoutRows(held.uncertain, shown) }));
+  };
+  /** Hide the list the reader saw — they checked the table, or will not reopen them. */
+  const dismissUncertain = (): void => {
+    const shown = stop.uncertain;
+    setStop((held) => ({ ...held, uncertain: withoutRows(held.uncertain, shown) }));
   };
 
   return (
@@ -180,8 +187,9 @@ export const OpenMaintenancesForm = (): JSX.Element => {
           unsent={stop.unsent}
           uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
           action={t('atm.maintenance.openAction')}
+          busy={open.isPending}
           onRestore={restoreUncertain}
-          onDismiss={() => setStop((held) => ({ ...held, uncertain: [] }))}
+          onDismiss={dismissUncertain}
         />
       )}
     </form>

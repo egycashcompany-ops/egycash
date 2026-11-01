@@ -5,7 +5,10 @@
 // Behaviour worth knowing:
 //  • The text box is a FILTER, not a free-text field — the committed value is always an option.
 //    Leaving the box with an unmatched query restores the last committed value rather than
-//    silently storing something the catalog does not contain.
+//    silently storing something the catalog does not contain. Leaving it — a click elsewhere, or
+//    Tab — on the WHOLE text of one option (folded) commits that option, as a click on it would:
+//    a name typed out in full and then «حفظ» pressed is the name the reader meant, not a blank.
+//  • Escape closes the open list and nothing else: the dialog around it stays open.
 //  • Filtering is diacritic- and alef-insensitive, so "الاسماعيليه" finds "الإسماعيلية".
 //  • An option may be SHOWN differently from what it commits (`optionLabel`): the ATM register's
 //    area filter matches the stored name (MOHNDESSEN) and shows it in the reader's language. Typing
@@ -15,6 +18,20 @@ import { cn } from '../lib/cn';
 import { fold } from '../lib/fold';
 import { ChevronIcon, CloseIcon } from './icons';
 import { useFieldMissing } from './required-fields';
+
+/**
+ * Pure: the option whose WHOLE text — as shown, or as committed — is what was typed, folded; none
+ * for a blank or a part. What leaving the box commits.
+ */
+export const exactOption = (
+  options: readonly string[],
+  typed: string,
+  shown: (option: string) => string = (option) => option,
+): string | undefined => {
+  const q = fold(typed);
+  if (q === '') return undefined;
+  return options.find((o) => fold(shown(o)) === q || fold(o) === q);
+};
 
 export const Combobox = ({
   value,
@@ -113,18 +130,28 @@ export const Combobox = ({
     return all.filter((o) => fold(optionLabel?.(o) ?? o).includes(q) || fold(o).includes(q));
   }, [open, query, all, remote, optionLabel]);
 
+  // Leaving the open box: an exact match is committed; anything else falls back to the value.
+  const leave = (): void => {
+    const exact = exactOption(all, query, shown);
+    if (exact !== undefined && exact !== value) onChange(exact);
+    setOpen(false);
+    setQuery('');
+    onBlur?.();
+  };
+  // Read by the document listener below, which is registered once per opening.
+  const leaveRef = useRef(leave);
+  leaveRef.current = leave;
+
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: MouseEvent): void => {
       if (boxRef.current !== null && !boxRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery('');
-        onBlur?.();
+        leaveRef.current();
       }
     };
     document.addEventListener('mousedown', onPointerDown);
     return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [open, onBlur]);
+  }, [open]);
 
   // Keep the highlighted row inside the scroll port when arrowing through a long list.
   useEffect(() => {
@@ -171,9 +198,15 @@ export const Combobox = ({
     }
     if (e.key === 'Escape' && open) {
       e.preventDefault();
+      // The list's Escape, not the dialog's: a dialog listening on the document would otherwise
+      // close too, and take everything typed into it along.
+      e.stopPropagation();
       setOpen(false);
       setQuery('');
+      return;
     }
+    // Tab leaves the box the way a click elsewhere does; focus moves on as usual.
+    if (e.key === 'Tab' && open) leave();
   };
 
   return (

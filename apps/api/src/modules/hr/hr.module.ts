@@ -511,6 +511,13 @@ const employeePermissions = declarePermissions(
       action: 'manageOfficer',
       name: { en: 'Manage officer profile', ar: 'إدارة بيانات الضباط' },
     },
+    // Changing the Employee Code by hand. Its own key, held by few: a code is printed on badges and
+    // contracts and is how the roster file names a person, so the power to change it is not a
+    // side effect of being allowed to edit personal data (ADR-017, amended 2026-11-01).
+    {
+      action: 'changeCode',
+      name: { en: 'Change employee code', ar: 'تغيير كود الموظف' },
+    },
     {
       action: 'changeStatus',
       name: {

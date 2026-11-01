@@ -278,6 +278,34 @@ describe.each([
   },
 );
 
+// «وعايز الأتنين دول يبقوا Multiselect» — the files ask for the table's own params, so they carry
+// the category and name lists as the table does; the printed line is handed the lists themselves,
+// so it names every one chosen (what it writes is `lib/*-register-export.spec.ts`).
+describe('the category and name lists in the files', () => {
+  /** The object a screen hands its printed line's filter function. */
+  const handed = (source: string, fn: string): string => {
+    const block = new RegExp(`${fn}\\(\\{([\\s\\S]*?)\\}\\)`, 'u').exec(source)?.[1];
+    expect(block, fn).toBeDefined();
+    return block ?? '';
+  };
+
+  it('the asset register names every category and every name chosen', () => {
+    const block = handed(ASSETS, 'assetRegisterFilters');
+    expect(block).toMatch(/\bcategoryIds,/u);
+    expect(block).toMatch(/\bnames,/u);
+    expect(ASSETS).toContain('categoryId: categoryQuery(categoryIds)');
+    expect(ASSETS).toContain('name: namesQuery(names)');
+  });
+
+  it('the custody register names every category and every «الصنف» chosen', () => {
+    const block = handed(PAGE, 'custodyRegisterFilters');
+    expect(block).toMatch(/\bcategoryIds,/u);
+    expect(block).toMatch(/\bassetNames,/u);
+    expect(PAGE).toContain('categoryId: categoryQuery(categoryIds)');
+    expect(PAGE).toContain('assetName: namesQuery(assetNames)');
+  });
+});
+
 // «حركات المستهلكات» (FR-20) has no form of its own — only the way back to the store — so it is
 // held apart: its two buttons, for everybody who can read the ledger, and nothing else.
 describe('the consumables ledger’s Excel and PDF', () => {

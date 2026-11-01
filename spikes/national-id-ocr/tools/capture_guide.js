@@ -34,8 +34,6 @@
   // The frame's share of the picture's width, landscape and portrait.
   const FRAME_LANDSCAPE = 0.78;
   const FRAME_PORTRAIT = 0.9;
-  // How much of the picture around the frame goes with the capture, as a share of the frame.
-  const CAPTURE_MARGIN = 0.12;
   // How long every check must keep passing before an automatic capture. A single bad frame does
   // not start the count over (a phone's hands shake): see `GRACE_FRAMES`.
   const HOLD_MS = 150;
@@ -121,42 +119,6 @@
     return grey;
   }
 
-  // The strongest peak of `profile` within [from, to), and how far it stands above the median.
-  function peak(profile, from, to) {
-    let best = -1, at = -1;
-    const values = [];
-    for (let i = Math.max(1, Math.round(from)); i < Math.min(profile.length - 1, Math.round(to)); i++) {
-      // Smoothed over 3, so a single noisy column does not win.
-      const v = profile[i - 1] + profile[i] + profile[i + 1];
-      values.push(v);
-      if (v > best) { best = v; at = i; }
-    }
-    if (at < 0) return { at: -1, strength: 0 };
-    values.sort((a, b) => a - b);
-    const typical = values[Math.floor(values.length / 2)] || 1;
-    return { at, strength: best / Math.max(typical, 1e-3) };
-  }
-
-  // Column profile of |d/dx| over rows [y0, y1), row profile of |d/dy| over columns [x0, x1).
-  function profiles(grey, width, height, x0, x1, y0, y1) {
-    const cols = new Float32Array(width);
-    const rows = new Float32Array(height);
-    const ya = Math.max(1, Math.round(y0)), yb = Math.min(height - 1, Math.round(y1));
-    const xa = Math.max(1, Math.round(x0)), xb = Math.min(width - 1, Math.round(x1));
-    for (let y = ya; y < yb; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const i = y * width + x;
-        cols[x] += Math.abs(grey[i + 1] - grey[i - 1]);
-      }
-    }
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = xa; x < xb; x++) {
-        const i = y * width + x;
-        rows[y] += Math.abs(grey[i + width] - grey[i - width]);
-      }
-    }
-    return { cols, rows };
-  }
 
   function laplacianVariance(grey, width, x0, y0, x1, y1) {
     let sum = 0, sumSq = 0, n = 0;
@@ -691,7 +653,7 @@
         canvas.width = w; canvas.height = h;
         canvas.getContext("2d").drawImage(source, 0, 0, w, h);
         url = canvas.toDataURL("image/jpeg", i === 0 ? 0.92 : 0.86);
-      } catch (error) { continue; } // too big for this browser's canvas: try smaller
+      } catch { continue; } // too big for this browser's canvas: try smaller
       if (!url || url.length < 200) continue; // some browsers answer "data:," for a canvas too large
       last = { url, width: w, height: h, reduced: i > 0 };
       if (url.length <= MAX_DATA_URL) return last;
@@ -712,11 +674,11 @@
       img.src = url;
       await img.decode();
       return encodePhoto(img, img.naturalWidth, img.naturalHeight);
-    } catch (first) {
+    } catch {
       try {
         const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
         return encodePhoto(bitmap, bitmap.width, bitmap.height);
-      } catch (second) {
+      } catch {
         // A picture too large to decode whole: have the browser shrink it while it decodes.
         const bitmap = await createImageBitmap(file, { imageOrientation: "from-image", resizeWidth: 2400, resizeQuality: "medium" });
         return encodePhoto(bitmap, bitmap.width, bitmap.height);

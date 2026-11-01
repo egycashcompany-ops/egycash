@@ -44,6 +44,7 @@ import { registerGraphMailSource } from './mail-tickets/graph-mail.source';
 import { buildAtmMailboxRouter } from './mail-tickets/mailbox.routes';
 import { rotateMailboxSecretKey } from './mail-tickets/mailbox-secret-rotation';
 import { buildAtmBranchLinksRouter } from './branch-links/branch-links.routes';
+import { buildAtmLeadersRouter } from './leaders/leaders.routes';
 import { refineAtmAuthContext } from './branch-links/link-context';
 
 const replenishmentPermissions = declarePermissions(
@@ -479,9 +480,11 @@ export const atmModule: ModuleManifest = {
     { prefix: '/atm/settlements', router: buildAtmSettlementsRouter() },
     { prefix: '/atm/preparation', router: buildAtmPreparationRouter() },
     { prefix: '/atm/control', router: buildAtmControlRouter() },
-    // /atm/settings' two cards.
+    // /atm/settings' cards.
     { prefix: '/atm/mailbox', router: buildAtmMailboxRouter() },
     { prefix: '/atm/branch-links', router: buildAtmBranchLinksRouter() },
+    // The leader pickers' names, and the /atm/settings card that says whose they are.
+    { prefix: '/atm/leaders', router: buildAtmLeadersRouter() },
   ],
   collections: [
     'atm_machines',

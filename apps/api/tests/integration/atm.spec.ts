@@ -684,7 +684,7 @@ describe('atm maintenance — the differences from replenishment', () => {
     expect(items<AtmMaintenanceDto>(list).find((m) => m.id === maintenanceId)?.closedAt).toBeNull();
   });
 
-  it('offers the close modal’s employee list, empty until the department setting is configured', async () => {
+  it('offers the close modal’s employee list — empty with nothing ticked and no department named for ATM (atm-leaders.spec.ts)', async () => {
     const res = await request(app)
       .get('/api/v1/atm/maintenances/leader-options')
       .set('Authorization', `Bearer ${alexToken}`);

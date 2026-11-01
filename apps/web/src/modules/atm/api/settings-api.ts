@@ -1,7 +1,8 @@
 // /atm/settings api/ surface (ADR-013, the `atm-api.ts` shape): one typed function per endpoint
-// of the two things the page administers — the Banque Misr maintenance mailbox (`/atm/mailbox`)
-// and the branches that work as one in ATM (`/atm/branch-links`). Both are `atmSettings.manage`
-// at ORGANIZATION scope on the server; nothing here decides anything.
+// of the things the page administers — the Banque Misr maintenance mailbox (`/atm/mailbox`), the
+// branches that work as one in ATM (`/atm/branch-links`) and the departments whose employees the
+// leader pickers offer (`/atm/leaders/departments`). All are `atmSettings.manage` at ORGANIZATION
+// scope on the server; nothing here decides anything.
 //
 // The client secret only ever travels TOWARD the server: it is sent on a save and never read back
 // (`AtmMailboxConfigDto.hasSecret` says whether one is stored), so no answer here can carry it.
@@ -14,16 +15,19 @@ import {
   type AtmBranchLinksDto,
   type AtmBranchMovePreviewDto,
   type AtmBranchMoveResultDto,
+  type AtmLeaderDepartmentsDto,
   type AtmMailboxConfigDto,
   type AtmMailboxTestResultDto,
   type AtmMailPollRunDto,
   type SaveAtmBranchLinks,
+  type SaveAtmLeaderDepartments,
   type SaveAtmMailboxConfigInput,
 } from '@ecms/contracts';
 import { get, post, put } from '../../../shared/lib/api-client';
 
 const MAILBOX = '/atm/mailbox';
 const BRANCH_LINKS = '/atm/branch-links';
+const LEADER_DEPARTMENTS = '/atm/leaders/departments';
 
 // ── The maintenance mailbox ─────────────────────────────────────────────────
 /** `null` while no document exists — the reader is still on the deployment's environment. */
@@ -68,3 +72,13 @@ export const moveBranchData = (
     `${BRANCH_LINKS}/${sourceBranchId}/move`,
     expectedTargetBranchId === undefined ? {} : { expectedTargetBranchId },
   );
+
+// ── Whose names the leader pickers offer ────────────────────────────────────
+/** Every active department, what is in the list now, and how many people that makes. */
+export const getLeaderDepartments = (): Promise<AtmLeaderDepartmentsDto> =>
+  get<AtmLeaderDepartmentsDto>(LEADER_DEPARTMENTS);
+
+/** The ticked departments, replacing the stored list; `[]` returns to the ATM department by name. */
+export const saveLeaderDepartments = (
+  body: SaveAtmLeaderDepartments,
+): Promise<AtmLeaderDepartmentsDto> => put<AtmLeaderDepartmentsDto>(LEADER_DEPARTMENTS, body);

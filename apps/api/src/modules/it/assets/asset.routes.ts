@@ -9,6 +9,7 @@ import {
   DisposeItAssetSchema,
   ItAssetLabelsSchema,
   ListItAssetHistoryQuerySchema,
+  ListItAssetNamesQuerySchema,
   ListItAssetsQuerySchema,
   ListItAssignmentsQuerySchema,
   ReturnItAssetSchema,
@@ -51,12 +52,13 @@ export const buildItAssetsRouter = (): Router => {
     asyncHandler(listItAssets),
   );
   // The name filter's options (`?name=` above) — under the read grant and its scope, so a reader is
-  // offered only the names of assets they can see. Before '/:id', like every literal segment here.
+  // offered only the names of assets they can see; `?categoryId=a,b` narrows them to the chosen
+  // categories. Before '/:id', like every literal segment here.
   router.get(
     '/names',
     authenticate,
     authorize('itAsset.view'),
-    validate({ query: z.object({}).strict() }),
+    validate({ query: ListItAssetNamesQuerySchema }),
     asyncHandler(listItAssetNames),
   );
   // Before '/:id' so the literal segment is not swallowed by the id matcher.

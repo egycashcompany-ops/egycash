@@ -2556,6 +2556,20 @@ const en: Record<string, string> = {
   'employees.roster.addedExited': 'added as a leaver',
   'employees.roster.addedExitedHint': 'These come from the Resignation sheet, so they join the registry already exited. The employees list hides exited people unless the view filter is set to All.',
   'employees.roster.refusedTitle': 'Asked for, but not done',
+  'employees.changeCode.title': 'Change employee code',
+  'employees.changeCode.current': 'Current code',
+  'employees.changeCode.new': 'New code',
+  'employees.changeCode.reason': 'Reason for the change',
+  'employees.changeCode.save': 'Change the code',
+  'employees.changeCode.required': 'Enter the new code.',
+  'employees.changeCode.shape': 'A code is digits only: 3 for the branch, then at least 4 for the employee number — e.g. 0100004.',
+  'employees.changeCode.same': 'That is already this employee’s code.',
+  'employees.changeCode.taken': 'This code is already used by another employee.',
+  'employees.changeCode.reasonRequired': 'Write why the code is being changed.',
+  'employees.changeCode.note':
+    'Contracts and documents already issued keep the code they were made with. The next employee file uploaded must carry the new code.',
+  'employees.changeCode.done': 'The code was changed.',
+  'employees.changeCode.doneWithLogin': 'The code was changed. The employee now signs in with {{code}}.',
   'employees.roster.rejectedTitle': 'Rows that could not be read',
   'employees.roster.copiesTitle': 'Repeated rows that did not match — one was used',
   'employees.roster.copiesHint':
@@ -6528,8 +6542,6 @@ const en: Record<string, string> = {
   'it.assets.allStatuses': 'All statuses',
   'it.assets.allCategories': 'All categories',
   'it.assets.allBranches': 'All branches',
-  'it.assets.nameFilter.clear': 'Clear the name',
-  'it.assets.nameFilter.empty': 'No asset has that name',
   'it.assets.printLabels': 'Print labels',
   'it.assets.printLabel': 'Print label',
   'it.assets.labelsPopupBlocked':
@@ -6788,6 +6800,7 @@ const en: Record<string, string> = {
   'it.custody.export.assignedIs': 'Assigned {{range}}',
   'it.custody.export.returnedIs': 'Returned {{range}}',
   'it.custody.export.receiptIs': 'Receipt: {{state}}',
+  'it.custody.export.assetIs': 'Item: {{name}}',
   'it.export.dayRange': 'from {{from}} to {{to}}',
   'it.export.dayFrom': 'from {{from}}',
   'it.export.dayTo': 'until {{to}}',
@@ -9259,6 +9272,11 @@ const en: Record<string, string> = {
     'Changing the leader applies to the selected operations and to every open operation of the same area in the same shift as each of them.',
   'atm.common.leaderRowOnlyHint': 'Changing the leader applies to this operation only.',
   'atm.common.leaderSelectedOnlyHint': 'Changing the leader applies to the selected operations only.',
+  'atm.common.pickLeader': 'Choose the leader…',
+  'atm.common.noLeadersHint':
+    'No ATM employees were found. Choose their department on the ATM settings page.',
+  'atm.common.leadersLoadFailed':
+    'The ATM employees could not be loaded. Close the window and open it again.',
   'atm.common.moveAlreadyOpen':
     'Not saved — the new open time would give a machine two open operations on the same day.',
   'atm.board.day.label': 'Day shown',
@@ -9337,7 +9355,7 @@ const en: Record<string, string> = {
   'atm.maintenance.assignEmployee': 'Assign employee',
   'atm.maintenance.pickEmployee': 'Choose an employee…',
   'atm.maintenance.noEmployeesHint':
-    'No employees are configured. Set the ATM department in module settings.',
+    'No ATM employees were found. Choose their department on the ATM settings page.',
   'atm.maintenance.fromMail': 'Mail',
   'atm.maintenance.editTitle': 'Edit {{code}}',
   'atm.maintenance.editManyTitle': 'Edit {{count}} selected operations',
@@ -10727,6 +10745,23 @@ const en: Record<string, string> = {
   'atm.settings.links.add': 'Link',
   'atm.settings.links.remove': 'Remove the link of {{branch}}',
   'atm.settings.links.added': 'The branches were linked.',
+  'atm.settings.leaders.title': 'ATM employees — the leader list',
+  'atm.settings.leaders.hint':
+    'The employees of the departments ticked here are offered as the leader when maintenance is closed and when a replenishment or a maintenance is edited.',
+  'atm.settings.leaders.byName':
+    'No department is ticked, so the ATM department is used by its name.',
+  'atm.settings.leaders.noneFound':
+    'No department is ticked and none is named for ATM, so the leader list is empty. Tick the department of the ATM employees.',
+  'atm.settings.leaders.count': 'Employees in the leader list now: {{count}}',
+  'atm.settings.leaders.employees': 'Employees: {{count}}',
+  'atm.settings.leaders.matchesName': 'ATM by name',
+  'atm.settings.leaders.stale': 'No longer active',
+  'atm.settings.leaders.unknown': 'Department no longer active',
+  'atm.settings.leaders.none': 'There are no active departments to choose from.',
+  'atm.settings.leaders.saved': 'The departments of the leader list were saved.',
+  'atm.settings.leaders.reset': 'Use the ATM department by name',
+  'atm.settings.leaders.emptyWarning':
+    'With no department ticked, saving returns to the ATM department found by its name.',
   'atm.settings.links.removed': 'The link was removed.',
   'atm.settings.links.issue.sameBranch': 'A branch cannot work as itself.',
   'atm.settings.links.issue.duplicateSource': 'This branch already works as another branch.',
@@ -13346,6 +13381,20 @@ const ar: Record<string, string> = {
     'هؤلاء واردون من ورقة Resignation، فيُضافون بحالة «منتهي الخدمة». وتُخفي شاشة الموظفين منتهي الخدمة ما لم يُضبط فلتر العرض على «الكل».',
   'employees.roster.refusedTitle':
     'مطلوب في الملف ولن يُنفَّذ',
+  'employees.changeCode.title': 'تغيير كود الموظف',
+  'employees.changeCode.current': 'الكود الحالي',
+  'employees.changeCode.new': 'الكود الجديد',
+  'employees.changeCode.reason': 'سبب التغيير',
+  'employees.changeCode.save': 'غيّر الكود',
+  'employees.changeCode.required': 'أدخل الكود الجديد.',
+  'employees.changeCode.shape': 'الكود أرقام فقط: 3 أرقام للفرع، ثم 4 أرقام على الأقل لرقم الموظف، مثل 0100004.',
+  'employees.changeCode.same': 'هذا هو كود الموظف الحالي.',
+  'employees.changeCode.taken': 'هذا الكود مستخدم لموظف آخر.',
+  'employees.changeCode.reasonRequired': 'اكتب سبب تغيير الكود.',
+  'employees.changeCode.note':
+    'تحتفظ العقود والمستندات الصادرة من قبل بالكود الذي صدرت به. ويجب أن يحمل ملف الموظفين الذي يُرفع بعد ذلك الكود الجديد.',
+  'employees.changeCode.done': 'تم تغيير الكود.',
+  'employees.changeCode.doneWithLogin': 'تم تغيير الكود. سيسجّل الموظف الدخول من الآن بالكود {{code}}.',
   'employees.roster.rejectedTitle':
     'صفوف تعذّرت قراءتها',
   'employees.roster.copiesTitle': 'صفوف مكرّرة غير متطابقة — اعتُمد صف واحد منها',
@@ -17239,8 +17288,6 @@ const ar: Record<string, string> = {
   'it.assets.allStatuses': 'كل الحالات',
   'it.assets.allCategories': 'كل الفئات',
   'it.assets.allBranches': 'كل الفروع',
-  'it.assets.nameFilter.clear': 'مسح الاسم',
-  'it.assets.nameFilter.empty': 'لا يوجد أصل بهذا الاسم',
   'it.assets.printLabels': 'طباعة الملصقات',
   'it.assets.printLabel': 'طباعة الملصق',
   'it.assets.labelsPopupBlocked':
@@ -17492,6 +17539,7 @@ const ar: Record<string, string> = {
   'it.custody.export.assignedIs': 'تاريخ التسليم {{range}}',
   'it.custody.export.returnedIs': 'تاريخ الاسترجاع {{range}}',
   'it.custody.export.receiptIs': 'إيصال الاستلام: {{state}}',
+  'it.custody.export.assetIs': 'الصنف: {{name}}',
   'it.export.dayRange': 'من {{from}} إلى {{to}}',
   'it.export.dayFrom': 'من {{from}}',
   'it.export.dayTo': 'حتى {{to}}',
@@ -19911,6 +19959,10 @@ const ar: Record<string, string> = {
     'تغيير القائد يسري على العمليات المحددة وعلى كل العمليات المفتوحة لنفس المنطقة في نفس الوردية لكلٍّ منها.',
   'atm.common.leaderRowOnlyHint': 'تغيير القائد يسري على هذه العملية فقط.',
   'atm.common.leaderSelectedOnlyHint': 'تغيير القائد يسري على العمليات المحددة فقط.',
+  'atm.common.pickLeader': 'اختر القائد…',
+  'atm.common.noLeadersHint':
+    'لم يُعثر على موظفين للصراف الآلي. اختر إدارتهم من صفحة إعدادات الصراف الآلي.',
+  'atm.common.leadersLoadFailed': 'تعذّر تحميل موظفي الصراف الآلي. أغلق النافذة ثم افتحها مرة أخرى.',
   'atm.common.moveAlreadyOpen':
     'لم يُحفظ التعديل لأن وقت الفتح الجديد يجعل للماكينة عمليتين مفتوحتين في نفس اليوم.',
   'atm.board.day.label': 'اليوم المعروض',
@@ -19988,7 +20040,8 @@ const ar: Record<string, string> = {
   'atm.maintenance.closeBody': 'إغلاق {{count}} عملية؟ تعيين موظف إلزامي.',
   'atm.maintenance.assignEmployee': 'تعيين موظف',
   'atm.maintenance.pickEmployee': 'اختر موظفًا…',
-  'atm.maintenance.noEmployeesHint': 'لا يوجد موظفون. حدد قسم الصراف الآلي في إعدادات الوحدة.',
+  'atm.maintenance.noEmployeesHint':
+    'لم يُعثر على موظفين للصراف الآلي. اختر إدارتهم من صفحة إعدادات الصراف الآلي.',
   'atm.maintenance.fromMail': 'بريد',
   'atm.maintenance.editTitle': 'تعديل {{code}}',
   'atm.maintenance.editManyTitle': 'تعديل {{count}} عملية محددة',
@@ -21336,6 +21389,22 @@ const ar: Record<string, string> = {
   'atm.settings.links.add': 'ربط',
   'atm.settings.links.remove': 'إزالة ربط {{branch}}',
   'atm.settings.links.added': 'تم ربط الفرعين.',
+  'atm.settings.leaders.title': 'موظفو الصراف الآلي — قائمة القائد',
+  'atm.settings.leaders.hint':
+    'يظهر موظفو الإدارات المحددة هنا في قائمة القائد عند إغلاق الصيانة وعند تعديل التغذية أو الصيانة.',
+  'atm.settings.leaders.byName': 'لم تُحدَّد أي إدارة، لذلك تُستخدم إدارة الصراف الآلي باسمها.',
+  'atm.settings.leaders.noneFound':
+    'لم تُحدَّد أي إدارة ولا توجد إدارة باسم الصراف الآلي، لذلك قائمة القائد فارغة. حدّد إدارة موظفي الصراف الآلي.',
+  'atm.settings.leaders.count': 'عدد الموظفين في قائمة القائد الآن: {{count}}',
+  'atm.settings.leaders.employees': 'الموظفون: {{count}}',
+  'atm.settings.leaders.matchesName': 'باسم الصراف الآلي',
+  'atm.settings.leaders.stale': 'لم تعد نشطة',
+  'atm.settings.leaders.unknown': 'إدارة لم تعد نشطة',
+  'atm.settings.leaders.none': 'لا توجد إدارات نشطة للاختيار منها.',
+  'atm.settings.leaders.saved': 'تم حفظ إدارات قائمة القائد.',
+  'atm.settings.leaders.reset': 'استخدام إدارة الصراف الآلي باسمها',
+  'atm.settings.leaders.emptyWarning':
+    'إذا لم تُحدَّد أي إدارة، فالحفظ يعيد استخدام إدارة الصراف الآلي باسمها.',
   'atm.settings.links.removed': 'تمت إزالة الربط.',
   'atm.settings.links.issue.sameBranch': 'لا يمكن أن يعمل الفرع باسم نفسه.',
   'atm.settings.links.issue.duplicateSource': 'هذا الفرع يعمل بالفعل باسم فرع آخر.',

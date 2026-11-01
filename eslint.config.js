@@ -226,10 +226,51 @@ export default tseslint.config(
     },
   },
 
+  // The National-ID spike's own front end and its end-to-end suite. Browser JS served straight to
+  // a page by the spike's test harness — no bundler, no TypeScript, exactly like `public/` above —
+  // plus Playwright specs that run under Node. Neither is part of the app's build; they are linted
+  // (the repository lints everything that is JS) and so each needs its environment declared, or
+  // every browser global reads as `no-undef`.
+  {
+    files: ['spikes/**/tools/**/*.js', 'spikes/**/e2e/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: {
+        // Window-scoped browser globals the spike's reader page uses.
+        window: 'readonly',
+        document: 'readonly',
+        location: 'readonly',
+        history: 'readonly',
+        localStorage: 'readonly',
+        performance: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        AbortSignal: 'readonly',
+        Event: 'readonly',
+        EventSource: 'readonly',
+        Image: 'readonly',
+        CSSRule: 'readonly',
+        btoa: 'readonly',
+        createImageBitmap: 'readonly',
+        getComputedStyle: 'readonly',
+        matchMedia: 'readonly',
+        requestAnimationFrame: 'readonly',
+        setTimeout: 'readonly',
+        clearInterval: 'readonly',
+        setInterval: 'readonly',
+        IntersectionObserver: 'readonly',
+        PerformanceObserver: 'readonly',
+        ResizeObserver: 'readonly',
+        // Playwright's config and specs run under Node.
+        process: 'readonly',
+      },
+    },
+  },
+
   // The service worker ships from `public/` verbatim — no bundler, no TypeScript — so it is plain
   // JS running in a worker global scope rather than a window one.
   {
-    files: ['apps/web/public/**/*.js'],
+    files: ['apps/web/public/sw.js'],
     languageOptions: {
       globals: {
         self: 'readonly',
@@ -238,6 +279,35 @@ export default tseslint.config(
         Request: 'readonly',
         Response: 'readonly',
         URL: 'readonly',
+      },
+    },
+  },
+
+  // The card-capture guide ships from `public/` the same way, but into a PAGE rather than a
+  // worker: it is loaded on demand by the National-ID reader and drives the camera, so it is
+  // window-scoped. Kept byte-identical to the spike's own copy, which is linted under the
+  // `spikes/**/tools` block below with the same set.
+  {
+    files: ['apps/web/public/capture-guide.js'],
+    languageOptions: {
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        Image: 'readonly',
+        Event: 'readonly',
+        performance: 'readonly',
+        getComputedStyle: 'readonly',
+        matchMedia: 'readonly',
+        requestAnimationFrame: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        createImageBitmap: 'readonly',
+        IntersectionObserver: 'readonly',
+        ResizeObserver: 'readonly',
       },
     },
   },

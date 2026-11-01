@@ -4,6 +4,8 @@
 // reuse the Job Offer feature's endpoints (no new API is introduced).
 import {
   type ActionOverlapDto,
+  type ChangeEmployeeCode,
+  type ChangeEmployeeCodeMeta,
   type DownloadTicketDto,
   type FileDto,
   type CancelEmployeeAction,
@@ -32,7 +34,8 @@ import {
   type UpdateUser,
   type UserDto,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, patch, post, upload,
+import { buildQuery, get, getPage, patch, patchWithMeta, post, upload,
+  type DataWithMeta,
   type QueryParams,
 } from '../../../../../shared/lib/api-client';
 
@@ -93,6 +96,13 @@ export const updateEmployeeInsurance = (
   id: string,
   body: UpdateEmployeeInsurance,
 ): Promise<EmployeeDto> => patch<EmployeeDto>(`/hr/employees/${id}/insurance`, body);
+
+/** The Employee Code, changed by hand — `meta` says whether the sign-in name followed it. */
+export const changeEmployeeCode = (
+  id: string,
+  body: ChangeEmployeeCode,
+): Promise<DataWithMeta<EmployeeDto, ChangeEmployeeCodeMeta>> =>
+  patchWithMeta<EmployeeDto, ChangeEmployeeCodeMeta>(`/hr/employees/${id}/code`, body);
 
 /** The officer / armed-security profile — replaced whole, same as the insurance file. */
 export const updateEmployeeOfficer = (

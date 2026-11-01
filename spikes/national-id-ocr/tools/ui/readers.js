@@ -565,7 +565,7 @@ function follow(panel, url) {
           if (job.done) { finish({ data: JSON.stringify(job) }); return; }
           await new Promise((r) => setTimeout(r, 400));
         }
-      } catch (error) {
+      } catch {
         reject(new Error("lost the connection to the OCR service"));
       }
     };

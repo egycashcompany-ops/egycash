@@ -16,19 +16,28 @@ import { type ItAssetAssignmentDoc } from './assignment.model';
 import { itCustodyReceiptRepository } from './receipt.repository';
 
 /**
- * The register's filters that are facts of the ASSET rather than of the interval — «الصنف» and the
- * category — as one filter over the assets, or `null` when neither is set.
+ * The register's filters that are facts of the ASSET rather than of the interval — the categories,
+ * «الصنف» and the free-text search — as ONE filter over the assets (each one that is set ANDed with
+ * the others), or `null` when none is set.
  *
- * «الصنف» is the asset's code, name or serial, matched wherever it occurs, letter case ignored and
- * the reader's characters taken literally. A name or a serial is kept as it was typed, in whichever
- * digit set, so a digit matches its value in every set (`registerSearchPattern`): «٢٤» and "24"
- * both find «شاشة ٢٤ بوصة» and «شاشة 24 بوصة».
+ * «وفى /it/custody بردو عايز الصنف يبقي بعد الفئة ... والأتنين يكونوا Multiselect»: the categories
+ * and «الصنف» each take several values — an asset in ANY chosen category, by ANY chosen name. A name
+ * is one the asset register's name filter offers (`GET /it/assets/names`), so it is matched
+ * EXACTLY, never as a part of a longer name.
+ *
+ * The search is the asset's code, name or serial, matched wherever it occurs, letter case ignored
+ * and the reader's characters taken literally. A name or a serial is kept as it was typed, in
+ * whichever digit set, so a digit matches its value in every set (`registerSearchPattern`): «٢٤» and
+ * "24" both find «شاشة ٢٤ بوصة» and «شاشة 24 بوصة».
  */
 export const registerAssetFilter = (
-  query: Pick<ListItAssignmentsQuery, 'search' | 'categoryId'>,
+  query: Pick<ListItAssignmentsQuery, 'search' | 'categoryId' | 'assetName'>,
 ): FilterQuery<ItAssetDoc> | null => {
   const filter: FilterQuery<ItAssetDoc> = {};
-  if (query.categoryId !== undefined) filter.categoryId = new Types.ObjectId(query.categoryId);
+  if (query.categoryId !== undefined) {
+    filter.categoryId = { $in: query.categoryId.map((id) => new Types.ObjectId(id)) };
+  }
+  if (query.assetName !== undefined) filter.name = { $in: query.assetName };
   const pattern = registerSearchPattern(query.search ?? '');
   if (pattern !== null) {
     filter.$or = [{ assetCode: pattern }, { name: pattern }, { serialNumber: pattern }];
@@ -54,9 +63,9 @@ class ItAssetAssignmentService {
    *
    * «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the table's columns. The ones
    * that are facts of something ELSE name a set, and each set is read ONCE, side by side, before
-   * the page is: the assets «الصنف» and the category match (under the caller's scope, the way the
-   * row's own asset label is read — a reader cannot find an interval by an asset they cannot see),
-   * and the receipts that are signed. Never a read per row.
+   * the page is: the assets the categories, «الصنف» and the search match together (under the
+   * caller's scope, the way the row's own asset label is read — a reader cannot find an interval by
+   * an asset they cannot see), and the receipts that are signed. Never a read per row.
    */
   async list(
     query: ListItAssignmentsQuery,

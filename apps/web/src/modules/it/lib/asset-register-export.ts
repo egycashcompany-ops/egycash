@@ -6,7 +6,14 @@
 // custody register's file: in a sheet a code is something to filter by, not a caption.
 import { type ItAssetDto, type ItAssetStatus } from '@ecms/contracts';
 import { type FleetReport } from '../../fleet/lib/fleet-report-print';
-import { filterLine, itRegisterReport, namedFilter, type Translate } from './register-export';
+import {
+  filterLine,
+  itRegisterReport,
+  namedFilter,
+  namedFilters,
+  namesPhrase,
+  type Translate,
+} from './register-export';
 
 export interface AssetRegisterContext {
   t: Translate;
@@ -53,10 +60,10 @@ export const assetRegisterLine = (
 export interface AssetRegisterFilters {
   search: string | null;
   status: ItAssetStatus | null;
-  /** The name picked from the register's own names. */
-  name: string | null;
-  /** `''` when a category is set but its name is not among the options. */
-  category: string | null;
+  /** The categories chosen, by name — `''` for one set but not among the options. */
+  categories: string[] | null;
+  /** The names picked from the register's own names, in the order they were picked. */
+  names: string[] | null;
   /** `''` when a branch is set but its name is not among the options. */
   branch: string | null;
   holder: string | null;
@@ -66,13 +73,13 @@ export interface AssetRegisterFilters {
  * The screen's filters, named for paper. A filter in force is never dropped: a category or a
  * branch whose name cannot be had prints as «فئة محددة» / «فرع محدد», and a holder as the chip's
  * label (name and code), the gathered rows' own name for them (every row is theirs), or, failing
- * both, the id.
+ * both, the id. Every category and every name chosen is named — the request asked for all of them.
  */
 export const assetRegisterFilters = ({
   search,
   status,
-  name,
-  categoryId,
+  names,
+  categoryIds,
   categoryName,
   branchId,
   branchName,
@@ -82,8 +89,8 @@ export const assetRegisterFilters = ({
 }: {
   search: string;
   status: string;
-  name: string;
-  categoryId: string;
+  names: readonly string[];
+  categoryIds: readonly string[];
   categoryName: ReadonlyMap<string, string>;
   branchId: string;
   branchName: ReadonlyMap<string, string>;
@@ -93,8 +100,8 @@ export const assetRegisterFilters = ({
 }): AssetRegisterFilters => ({
   search: search.trim() === '' ? null : search.trim(),
   status: status === '' ? null : (status as ItAssetStatus),
-  name: name === '' ? null : name,
-  category: categoryId === '' ? null : (categoryName.get(categoryId) ?? ''),
+  categories: categoryIds.length === 0 ? null : categoryIds.map((id) => categoryName.get(id) ?? ''),
+  names: names.length === 0 ? null : [...names],
   branch: branchId === '' ? null : (branchName.get(branchId) ?? ''),
   holder:
     holderId === ''
@@ -105,26 +112,28 @@ export const assetRegisterFilters = ({
 });
 
 /**
- * What the printed page is a view OF, under its title: the status, the name, the category, the
- * branch, the holder and the search when they are set — in the filter bar's order — and the day it
- * was taken.
+ * What the printed page is a view OF, under its title: the status, the categories, the names, the
+ * branch, the holder and the search when they are set — the filter bar's order, the names right
+ * after the categories they were picked from — and the day it was taken.
  */
 export const assetRegisterSubtitle = (
   t: Translate,
   filters: AssetRegisterFilters & { asOf: string },
-): string =>
-  filterLine([
+): string => {
+  const names = namesPhrase(filters.names);
+  return filterLine([
     filters.status === null ? t('it.assets.allStatuses') : t(`it.assets.status.${filters.status}`),
-    filters.name === null ? null : t('it.export.nameIs', { name: filters.name }),
-    namedFilter(t, filters.category, {
+    namedFilters(t, filters.categories, {
       all: 'it.assets.allCategories',
       one: 'it.export.oneCategory',
     }),
+    names === null ? null : t('it.export.nameIs', { name: names }),
     namedFilter(t, filters.branch, { all: 'it.assets.allBranches', one: 'it.export.oneBranch' }),
     filters.holder === null ? null : t('it.export.holderIs', { name: filters.holder }),
     filters.search === null ? null : t('it.export.searchIs', { q: filters.search }),
     t('it.export.asOf', { date: filters.asOf }),
   ]);
+};
 
 /**
  * The printed register: the company's report form, landscape for eight columns (the holder and

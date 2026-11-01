@@ -13,6 +13,8 @@
 //     the target show on every ATM screen (and the source's mailbox row and settings follow), a
 //     run cut off part-way has moved what it reached, and a 409 found a blocker the preview did
 //     not show yet — either way the dialog's preview and the card's banner read the server again;
+//   · a leader-departments save stales the leader pickers' names (`['atm','leaders']`): the next
+//     close or edit dialog offers the people of the departments just ticked;
 //   · a move preview exists only for a STORED source — any other branch is a 404 — so a links save
 //     forgets the previews of the sources it removed, and a move refused 404 (another administrator
 //     removed the link) forgets its own: a refresh asked while the removed row is still on screen
@@ -26,6 +28,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import {
   type AtmBranchMovePreviewDto,
   type SaveAtmBranchLinks,
+  type SaveAtmLeaderDepartments,
   type SaveAtmMailboxConfigInput,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -38,11 +41,14 @@ const settingsKeys = {
   mailbox: featureKey(MODULE, 'mailbox'),
   mailTickets: featureKey(MODULE, 'mailTickets'),
   branchMove: featureKey(MODULE, 'branchMove'),
+  leaders: featureKey(MODULE, 'leaders'),
 };
 
 /** The card's entries — exported so the page's specs fill exactly what it reads. */
 export const atmMailboxKey = (): readonly unknown[] => listKey(MODULE, 'mailbox');
 export const atmBranchLinksKey = (): readonly unknown[] => listKey(MODULE, 'branchLinks');
+export const atmLeaderDepartmentsKey = (): readonly unknown[] =>
+  listKey(MODULE, 'leaders', { kind: 'departments' });
 export const atmBranchMovePreviewKey = (sourceBranchId: string): readonly unknown[] =>
   detailKey(MODULE, 'branchMove', sourceBranchId);
 
@@ -138,6 +144,22 @@ export const useMoveAtmBranchData = () => {
         client.removeQueries({ queryKey: atmBranchMovePreviewKey(input.sourceBranchId) });
       }
       restale();
+    },
+  });
+};
+
+// ── Whose names the leader pickers offer ────────────────────────────────────
+export const useAtmLeaderDepartments = () =>
+  useQuery({ queryKey: atmLeaderDepartmentsKey(), queryFn: () => api.getLeaderDepartments() });
+
+export const useSaveAtmLeaderDepartments = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveAtmLeaderDepartments) => api.saveLeaderDepartments(body),
+    onSuccess: (saved) => {
+      client.setQueryData(atmLeaderDepartmentsKey(), saved);
+      // The pickers' names follow the departments just saved.
+      void client.invalidateQueries({ queryKey: settingsKeys.leaders });
     },
   });
 };

@@ -323,6 +323,12 @@ export const getPage = async <T>(path: string): Promise<Paginated<T>> => {
 export const patch = <T>(path: string, body: unknown): Promise<T> =>
   api<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 
+/** `postWithMeta` for a PATCH — an update that says something beside the record it returns. */
+export const patchWithMeta = <T, M>(path: string, body: unknown): Promise<DataWithMeta<T, M>> => {
+  const init: RequestInit = { method: 'PATCH', body: JSON.stringify(body) };
+  return withSilentRefresh(path, () => rawEnvelope<T, M>(path, init));
+};
+
 /** Replace a resource whole — the server never merges what a PUT carries. */
 export const put = <T>(path: string, body: unknown): Promise<T> =>
   api<T>(path, { method: 'PUT', body: JSON.stringify(body) });

@@ -156,6 +156,8 @@ const newerUncounted = (
     inDate: newest.inDate.toISOString(),
     outDate: newest.outDate === null ? null : newest.outDate.toISOString(),
     why,
+    workType: null, // B3-F0 stub: A-ODO — the visit's work type from the catalog
+    workshop: null, // B3-F0 stub: A-ODO — the visit's workshop from the catalog
   };
 };
 
@@ -245,10 +247,11 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
     const id = String(vehicle._id);
     const reading = readings.get(id) ?? null;
     const baseline = baselines.get(id) ?? null;
+    const intervalKm = intervals.get(String(vehicle.typeId)) ?? 0;
     const { result, baseline: used } = measureFromVisit(
       computeAlarm,
       {
-        intervalKm: intervals.get(String(vehicle.typeId)) ?? 0,
+        intervalKm,
         yellowKm,
         redKm,
         latestReading: reading?.reading ?? null,
@@ -282,8 +285,10 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       latestReading: reading?.reading ?? null,
       latestReadingAt: reading === null ? null : reading.date.toISOString(),
       latestReadingLogId: reading?.logId ?? null,
-      baseline: used,
+      baseline: used === null ? null : { ...used, workType: null }, // B3-F0 stub: A-ODO — the baseline visit's work type
       newerUncountedVisit: newerUncounted(newest.get(id) ?? null, baseline, countingIds),
+      rule: { vehicleType: null, intervalKm, yellowKm, redKm }, // B3-F0 stub: A-ODO — the make's name (vehicleType)
+      newestReading: null, // B3-F0 stub: A-ODO — the newest-dated chain reading (C6)
     };
   });
 };

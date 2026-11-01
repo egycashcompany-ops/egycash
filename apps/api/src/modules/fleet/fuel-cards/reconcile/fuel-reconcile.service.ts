@@ -22,6 +22,7 @@ import {
   type FleetFuelCardCompany,
   type FleetFuelReconcileDto,
   type FleetFuelReconcileResultDto,
+  type FleetFuelSheetRowDto,
 } from '@ecms/contracts';
 import { AppError, NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
@@ -32,12 +33,25 @@ import { actorNameOf } from '../../fleet-actor-name';
 import { fleetFuelCardMovementRepository, fleetFuelCardRepository } from '../fuel-card.repository';
 import { type FleetFuelCardDoc } from '../fuel-card.model';
 import { fuelCardEntityRef, toFuelCardDto } from '../fuel-card.service';
-import { readFuelSheet } from './read-fuel-sheet';
+import { readFuelSheet, type FuelSheetRow } from './read-fuel-sheet';
 import { compareFuelSheet, type ReconcileMatch } from './compare-fuel-sheet';
 import { fleetFuelReconciliationRepository } from './fuel-reconcile.repository';
 import { type FleetFuelReconcileLine } from './fuel-reconcile.model';
 
 const piastres = (egp: number): number => Math.round(egp * 100);
+
+/** A sheet row as answered. */
+const rowDto = (row: FuelSheetRow): FleetFuelSheetRowDto => ({
+  row: row.row,
+  number: row.number,
+  name: row.name,
+  balance: row.balance,
+  builtName: row.name, // B3-F0 stub: A-REC — the rebuilt name the matcher used
+  plate: null, // B3-F0 stub: A-REC — the sheet's plate column
+  chassis: null, // B3-F0 stub: A-REC — the sheet's chassis column
+  code: null, // B3-F0 stub: A-REC — the sheet's car code
+  numberKind: 'other', // B3-F0 stub: A-REC — how the number is printed
+});
 
 /** 409 naming every card, one detail each — the shape the screen reads (`ErrorCodes` docs). */
 const refusal = (
@@ -132,9 +146,14 @@ class FleetFuelReconcileService {
       toFuelCardDto({ doc: card, vehicleCode: codes.get(String(card.vehicleId)) ?? null });
     const lineDto = (match: ReconcileMatch) => ({
       card: cardDto(byId.get(match.cardId) as FleetFuelCardDoc),
-      sheet: match.sheet,
+      sheet: rowDto(match.sheet),
       difference: match.difference,
       numberMatches: match.numberMatches,
+      matchedBy: 'name' as const, // B3-F0 stub: A-REC — name first, else the full number
+      nameMatches: true, // B3-F0 stub: A-REC — false on a line matched by number
+      numberHolder: null, // B3-F0 stub: A-REC — a crossed number's partner
+      placeMatches: null, // B3-F0 stub: A-REC — the sheet's code against the card's car
+      charges: [], // B3-F0 stub: A-REC — 6a candidates to cancel
     });
     return {
       id: String(session._id),
@@ -146,10 +165,26 @@ class FleetFuelReconcileService {
       sheetCompany: plan.sheetCompany,
       differs: plan.differs.map(lineDto),
       equal: plan.equal.map(lineDto),
-      sheetOnly: plan.sheetOnly,
+      sheetOnly: plan.sheetOnly.map(rowDto),
       systemOnly: plan.systemOnly.map((id) => cardDto(byId.get(id) as FleetFuelCardDoc)),
-      duplicates: plan.duplicates,
-      conflicts: plan.conflicts,
+      duplicates: plan.duplicates.map((duplicate) => ({
+        ...rowDto(duplicate),
+        times: duplicate.times,
+      })),
+      conflicts: plan.conflicts.map((conflict) => ({
+        ...conflict,
+        candidateIds: [], // B3-F0 stub: A-REC — ambiguousNumber / lastFourOnly candidates
+      })),
+      layout: [], // B3-F0 stub: A-REC — how each column was read
+      nameRebuilt: false, // B3-F0 stub: A-REC — some names rebuilt from prefix, plate, chassis
+      cardRows: sheet.rowsRead, // B3-F0 stub: A-REC — rows less the skipped ones
+      skipped: [], // B3-F0 stub: A-REC — rows that are not cards
+      totalCheck: null, // B3-F0 stub: A-REC — the totals row against the balances
+      example: null, // B3-F0 stub: A-REC — the layout line's example
+      sheetDate: null, // B3-F0 stub: A-REC — «تاريخ الشيت» as given
+      carColumn: false, // B3-F0 stub: A-REC — the sheet has a car-code column
+      links: [], // B3-F0 stub: A-REC — 6b «ربط الكروت بالسيارات»
+      newCards: [], // B3-F0 stub: A-REC — 6b «كروت في الشيت وليست في النظام»
     };
   }
 
@@ -282,6 +317,8 @@ class FleetFuelReconcileService {
       balance: after,
       at: at.toISOString(),
       byName,
+      cancelledAmount: 0, // B3-F0 stub: A-REC — Σ the charges this decision cancelled
+      approvedRequest: null, // B3-F0 stub: A-REC — the «طلب رصيد» approved instead
     }));
   }
 }

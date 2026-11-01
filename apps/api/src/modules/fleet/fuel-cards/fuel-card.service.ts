@@ -119,7 +119,10 @@ export const toFuelMovementDto = (
           fileName: doc.reconciliation.fileName,
           sheetBalance: doc.reconciliation.sheetBalance,
           systemBalance: doc.reconciliation.systemBalance,
+          cancelledCharges: [], // B3-F0 stub: A-REC — the charges this adjustment cancelled
         },
+  cancelledBySheet: null, // B3-F0 stub: A-REC — the sheet that cancelled a charge
+  link: null, // B3-F0 stub: A-REC — a sheetLink line's move
 });
 
 /** The password never enters the audit trail. */

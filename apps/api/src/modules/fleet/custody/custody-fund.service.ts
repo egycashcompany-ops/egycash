@@ -170,6 +170,8 @@ export const toCustodyOperationDto = (
   letterFigure: doc.letterFigure ?? null,
   signatures: signaturesOf(doc.signatures),
   ledger,
+  deletion: null, // B3-F0 stub: A-CUST — the deletion of a deleted operation
+  createdByName: null, // B3-F0 stub: A-CUST — who recorded it («سجّلها»)
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),
@@ -301,6 +303,7 @@ class FleetCustodyFundService {
         terms.settled.count,
       memos,
       outside,
+      deleted: { count: 0 }, // B3-F0 stub: A-CUST — Σ the operations in «العمليات المحذوفة»
     };
   }
 

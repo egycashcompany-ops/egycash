@@ -43,6 +43,9 @@ export const toCatalogItemDto = (doc: FleetCatalogItemDoc): FleetCatalogItemDto 
   countsForAlarm: doc.countsForAlarm,
   violationSide: doc.violationSide,
   licenseExpenseKind: doc.licenseExpenseKind ?? null,
+  licenseExpensePaidBy: null, // B3-F0 stub: A-CAT — «طريقة الصرف» from the stored item
+  // Seeded by the boot: no one created it. Such an item is archived, never deleted.
+  builtIn: doc.createdBy == null,
   isActive: doc.isActive,
   sortOrder: doc.sortOrder ?? null,
   version: doc.__v,
@@ -169,6 +172,9 @@ export const toOdometerLogDto = (
   outReading: doc.outReading,
   inReading: doc.inReading,
   km: doc.km,
+  // The per-row gap is computed for a page of rows by the odometer service and set by its
+  // controller on every row it answers; a row mapped anywhere else carries none.
+  serviceGapKm: null,
   driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
   driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
   // `?? null`: rows written before the field existed carry nothing at all.

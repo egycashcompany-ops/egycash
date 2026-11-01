@@ -263,14 +263,43 @@ export const ErrorCodes = {
   FLEET_FUEL_SHEET_LAYOUT: 'FLEET_FUEL_SHEET_LAYOUT',
   /**
    * 409 — a named card changed after the sheet was read; nothing was written. One detail per card:
-   * `{ field: 'cardIds', code: 'CARD_CHANGED', message: <cardId> }`.
+   * `{ field: 'cardIds', code: 'CARD_CHANGED', message: <cardId> }`. Also `LINK_CHANGED` (the
+   * card's car or label changed since the read) and `REQUEST_CHANGED` (an `approveRequests` card's
+   * «طلب رصيد» is no longer the sheet's difference).
    */
   FLEET_FUEL_RECONCILE_CARD_CHANGED: 'FLEET_FUEL_RECONCILE_CARD_CHANGED',
   /**
    * 409 — a named card was already decided in this session; nothing was written. One detail per
-   * card: `{ field: 'cardIds', code: 'DECIDED', message: <cardId> }`.
+   * card: `{ field: 'cardIds', code: 'DECIDED', message: <cardId> }`. Also for a link row already
+   * decided and a sheet-only card already added.
    */
   FLEET_FUEL_RECONCILE_DECIDED: 'FLEET_FUEL_RECONCILE_DECIDED',
+  /**
+   * 422 — a charge named in `cancelCharges` cannot be cancelled by this sheet: it is not a stored
+   * candidate of its line (or its card is not decided `apply`), it is already cancelled, or the
+   * charges named for one card add up to more than the system's balance exceeds the sheet's.
+   * Nothing was written. `{ field: 'cancelCharges', code: 'NOT_A_CANDIDATE' | 'CANCELLED' |
+   * 'EXCEEDS_DIFFERENCE', message: <movementId | cardId> }`.
+   */
+  FLEET_FUEL_RECONCILE_CANCEL_REFUSED: 'FLEET_FUEL_RECONCILE_CANCEL_REFUSED',
+  /**
+   * 409 — «ربط الكروت بالسيارات»: the target car already holds a card of this company that does not
+   * move away in the same decision. Nothing was written. `{ field: 'cardIds', code: 'SLOT_HELD',
+   * message: <cardId> }`.
+   */
+  FLEET_FUEL_LINK_SLOT_HELD: 'FLEET_FUEL_LINK_SLOT_HELD',
+  /**
+   * 409 — the card's link is held back until the card-number repair («ضمن تصحيح الأرقام»): its
+   * name and balance sit on the wrong record, so moving it by the sheet would put it on the wrong
+   * car. Nothing was written. `{ field: 'cardIds', code: 'IN_REPAIR', message: <cardId> }`.
+   */
+  FLEET_FUEL_LINK_IN_REPAIR: 'FLEET_FUEL_LINK_IN_REPAIR',
+  /**
+   * 422 — «إضافة» a sheet-only card: the sheet does not print the full number and none was typed
+   * (`REQUIRED`), or the typed number's last four digits (or the sheet's printed prefix) differ
+   * from the sheet's (`MISMATCH`). `{ field: 'number', code: 'REQUIRED' | 'MISMATCH' }`.
+   */
+  FLEET_FUEL_SHEET_CARD_NUMBER: 'FLEET_FUEL_SHEET_CARD_NUMBER',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

@@ -67,6 +67,9 @@ describe('the activation link on WhatsApp', () => {
         bodyParams: ['e2001', 'E2001', '2026-11-03 08:00 UTC'],
         urlButtonParam: TOKEN,
       },
+      purpose: 'activation',
+      // Named on its own, so a refused send's stored reason cannot carry it in any mode.
+      secrets: [TOKEN],
     });
     expect(results).toContainEqual({ channel: 'whatsapp', ok: true, detail: null });
   });
@@ -83,21 +86,23 @@ describe('the activation link on WhatsApp', () => {
     const [, , options] = mocks.sendWhatsApp.mock.calls[0] as [
       string,
       string,
-      { template?: unknown },
+      { template?: unknown; secrets?: unknown },
     ];
     expect(options.template).toBeUndefined();
+    // Plain text is exactly where the token is only a fragment of the body.
+    expect(options.secrets).toEqual([TOKEN]);
   });
 
   it('records a refused send as undelivered — and the email still goes', async () => {
     mocks.sendWhatsApp.mockResolvedValue({
       ok: false,
-      detail: 'telnyx responded 400: 40008 — Template not found',
+      detail: 'telnyx responded 400: 10015 — Invalid template',
     });
     const results = await deliverCredentials(INPUT);
     expect(results).toContainEqual({
       channel: 'whatsapp',
       ok: false,
-      detail: 'telnyx responded 400: 40008 — Template not found',
+      detail: 'telnyx responded 400: 10015 — Invalid template',
     });
     expect(results).toContainEqual({ channel: 'email', ok: true, detail: null });
   });

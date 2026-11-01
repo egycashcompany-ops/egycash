@@ -149,13 +149,13 @@ describe('telnyx — what comes back', () => {
   it("reports Telnyx's own code and title, so an administrator can act on it", async () => {
     outboundFetch.mockResolvedValue(
       json(400, {
-        errors: [{ code: '40008', title: 'Template not found', detail: 'no such template' }],
+        errors: [{ code: '10015', title: 'Invalid template', detail: 'no such template' }],
       }),
     );
     const result = await sendWhatsApp('01012345678', 'x', { template: TEMPLATE });
     expect(result).toEqual({
       ok: false,
-      detail: 'telnyx responded 400: 40008 — Template not found — no such template',
+      detail: 'telnyx responded 400: 10015 — Invalid template — no such template',
     });
   });
 
@@ -171,6 +171,46 @@ describe('telnyx — what comes back', () => {
     expect(result.ok).toBe(false);
     expect(result.detail).not.toContain(TOKEN);
     expect(result.detail).toContain('[redacted]');
+  });
+
+  it('cuts the token out in plain text too, where it is only part of the body', async () => {
+    // No template: the token sits inside the composed text. An error that quotes the link — or
+    // the body re-escaped, which is not the body byte for byte — must still not carry it.
+    const body = `EGYCASH\nOpen this link:\nhttps://ecms.egycash.com.eg/activate?token=${TOKEN}\nbye`;
+    outboundFetch.mockResolvedValue(
+      json(422, {
+        errors: [
+          {
+            code: '10015',
+            title: 'Bad parameter',
+            detail: `text.body ${JSON.stringify(body)} refused`,
+          },
+        ],
+      }),
+    );
+    const result = await sendWhatsApp('01012345678', body, {
+      purpose: 'activation',
+      secrets: [TOKEN],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.detail).not.toContain(TOKEN);
+  });
+
+  it('blanks any token= it quotes even when nobody named the token', async () => {
+    outboundFetch.mockResolvedValue(
+      json(422, {
+        errors: [
+          {
+            code: '10015',
+            title: 'Bad URL',
+            detail: 'https://x.example/activate?token=abc123XYZ_-q refused',
+          },
+        ],
+      }),
+    );
+    const result = await sendWhatsApp('01012345678', 'some other text');
+    expect(result.detail).toContain('token=[redacted]');
+    expect(result.detail).not.toContain('abc123XYZ_-q');
   });
 
   it('still says something when the error body is not JSON', async () => {
@@ -205,7 +245,7 @@ describe('the other drivers are untouched by templates', () => {
 });
 
 describe('the plain-text warning', () => {
-  it('is said once per process, not once per message', async () => {
+  it('is said once per process and purpose, not once per message', async () => {
     vi.resetModules();
     const fresh = await import('./whatsapp');
     const { logger } = await import('../logging/logger');
@@ -213,7 +253,14 @@ describe('the plain-text warning', () => {
     await fresh.sendWhatsApp('01012345678', 'one');
     await fresh.sendWhatsApp('01012345678', 'two');
     await fresh.sendWhatsApp('01012345678', 'three', { template: TEMPLATE });
-    const plainText = warn.mock.calls.filter((call) => String(call[1]).includes('plain text'));
-    expect(plainText).toHaveLength(1);
+    const plainText = (): unknown[][] =>
+      warn.mock.calls.filter((call) => String(call[1]).includes('plain text'));
+    expect(plainText()).toHaveLength(1);
+    // An unlabelled message (an applicant-portal one) cannot use up the line that would say the
+    // ACTIVATION link went without its template.
+    await fresh.sendWhatsApp('01012345678', 'four', { purpose: 'activation' });
+    await fresh.sendWhatsApp('01012345678', 'five', { purpose: 'activation' });
+    expect(plainText()).toHaveLength(2);
+    expect(plainText()[1]?.[0]).toMatchObject({ provider: 'telnyx', purpose: 'activation' });
   });
 });

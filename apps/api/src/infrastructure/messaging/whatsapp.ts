@@ -34,6 +34,17 @@ export interface WhatsAppTemplate {
 export interface WhatsAppSendOptions {
   /** Sent instead of `body` by the drivers that support templates (today: `telnyx`). */
   template?: WhatsAppTemplate | undefined;
+  /**
+   * What this message is (`activation`), for the logs — never its content. A plain-text warning
+   * names it, so the line says WHICH flow went without a template.
+   */
+  purpose?: string;
+  /**
+   * Values that must never be stored, even quoted back by the provider — the setup token. Every
+   * value sent is already cut out of a stored error; these are cut out wherever they appear, which
+   * is what covers plain text, where the token is only a fragment of the body.
+   */
+  secrets?: readonly string[];
 }
 
 /** Normalize a local Egyptian mobile (01xxxxxxxxx) or an already-international number to E.164. */
@@ -131,15 +142,20 @@ export const telnyxMessageContent = (
   };
 };
 
-/** Cuts every value a request carried out of text the provider sent back. */
+/**
+ * Cuts every value a request carried out of text the provider sent back — and, whatever was
+ * listed, the value of any `token=` it quotes: a setup link echoed in some form nobody listed
+ * (re-escaped, cut short, URL-encoded around the token) must still not carry its token onward.
+ */
 const redact = (text: string, secrets: readonly string[]): string =>
   secrets
     .filter((secret) => secret.length >= 4)
-    .reduce((out, secret) => out.split(secret).join('[redacted]'), text);
+    .reduce((out, secret) => out.split(secret).join('[redacted]'), text)
+    .replace(/([?&]token(?:=|%3D))[^\s&"'<>\\]+/gi, '$1[redacted]');
 
 /**
- * A Telnyx error as one line an administrator can act on: its status, code and title (`40008` —
- * the template is not approved, or the number is not registered for WhatsApp), and its detail.
+ * A Telnyx error as one line an administrator can act on: its status, Telnyx's own code and title,
+ * and its detail.
  *
  * The line is PERSISTED — it lands on the account's delivery outcomes and in the audit trail —
  * while the request it describes carried a one-time setup link. Telnyx's detail can quote the
@@ -168,18 +184,21 @@ export const telnyxFailureDetail = async (
   return reason === '' ? status : `${status}: ${reason}`;
 };
 
-let warnedPlainText = false;
+const warnedPlainText = new Set<string>();
 
 /**
- * Said once per process, not once per message: the go-live backfill sends hundreds, and one line
- * that names the problem is more use than hundreds that repeat it.
+ * Said once per process and purpose, not once per message: the go-live backfill sends hundreds,
+ * and one line that names the problem is more use than hundreds that repeat it. Per PURPOSE, so
+ * an applicant-portal message (which has no template yet) cannot use up the one line that would
+ * have said the activation template is missing.
  */
-const warnPlainTextOnce = (): void => {
-  if (warnedPlainText) return;
-  warnedPlainText = true;
+const warnPlainTextOnce = (purpose: string | undefined): void => {
+  const key = purpose ?? 'unlabelled';
+  if (warnedPlainText.has(key)) return;
+  warnedPlainText.add(key);
   logger.warn(
-    { provider: 'telnyx' },
-    'whatsapp sent as plain text — WhatsApp delivers it only to someone who wrote to this number in the last 24 hours; configure an approved template',
+    { provider: 'telnyx', purpose: purpose ?? null },
+    'whatsapp sent as plain text — WhatsApp delivers it only to someone who wrote to this number in the last 24 hours; this message needs an approved template',
   );
 };
 
@@ -190,8 +209,9 @@ const warnPlainTextOnce = (): void => {
 const sendViaTelnyx = async (
   toPhone: string,
   body: string,
-  template: WhatsAppTemplate | undefined,
+  options: WhatsAppSendOptions,
 ): Promise<WhatsAppSendResult> => {
+  const { template } = options;
   const from = toE164(env.WHATSAPP_FROM_NUMBER);
   if (env.WHATSAPP_API_TOKEN === '' || from === null) {
     return {
@@ -199,7 +219,7 @@ const sendViaTelnyx = async (
       detail: 'telnyx is not configured — set WHATSAPP_API_TOKEN and WHATSAPP_FROM_NUMBER',
     };
   }
-  if (template === undefined) warnPlainTextOnce();
+  if (template === undefined) warnPlainTextOnce(options.purpose);
   const res = await outboundFetch(`${TELNYX_API_BASE}/messages/whatsapp`, {
     method: 'POST',
     headers: {
@@ -217,7 +237,12 @@ const sendViaTelnyx = async (
     signal: AbortSignal.timeout(TELNYX_TIMEOUT_MS),
   });
   if (!res.ok) {
-    const sent = [body, ...(template?.bodyParams ?? []), template?.urlButtonParam ?? ''];
+    const sent = [
+      ...(options.secrets ?? []),
+      body,
+      ...(template?.bodyParams ?? []),
+      template?.urlButtonParam ?? '',
+    ];
     return { ok: false, detail: await telnyxFailureDetail(res, sent) };
   }
   const accepted: unknown = await res.json().catch(() => null);
@@ -232,6 +257,7 @@ const sendViaTelnyx = async (
       provider: 'telnyx',
       messageId: typeof data?.id === 'string' ? data.id : null,
       template: template?.name ?? null,
+      purpose: options.purpose ?? null,
     },
     'whatsapp message accepted by telnyx',
   );
@@ -256,7 +282,7 @@ export const sendWhatsApp = async (
       case 'twilio':
         return await sendViaTwilio(toPhone, body);
       case 'telnyx':
-        return await sendViaTelnyx(toPhone, body, options.template);
+        return await sendViaTelnyx(toPhone, body, options);
       default:
         logger.warn({ provider: 'disabled' }, 'whatsapp transport disabled — message not sent');
         return { ok: false, detail: 'whatsapp transport disabled' };

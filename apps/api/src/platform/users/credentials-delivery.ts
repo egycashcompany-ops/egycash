@@ -115,6 +115,10 @@ export const deliverCredentials = async (
         setupToken: input.setupToken,
         expiresAt: input.expiresAt,
       }),
+      purpose: 'activation',
+      // Named on its own so a refused send's stored reason never carries it, in plain text too —
+      // where it is only a fragment of the body.
+      secrets: [input.setupToken],
     });
     results.push({ channel: 'whatsapp', ok: sent.ok, detail: sent.detail });
   }

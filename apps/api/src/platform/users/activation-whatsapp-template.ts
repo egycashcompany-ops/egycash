@@ -129,7 +129,9 @@ export const buttonAddressProblem = (publicUrl: string): string | null => {
  * APPROVED template can be sent.
  *
  * The button's URL is built from `WEB_PUBLIC_URL`, so it is this deployment's address that Meta
- * approves; a deployment whose public address changes registers the template again.
+ * approves. A deployment whose public address changes registers a NEW template, under a new name —
+ * the old one goes on sending every token to the old address, and the command refuses to call it
+ * "already registered" when its button no longer matches.
  */
 export const activationTemplateRegistration = (input: {
   wabaId: string;

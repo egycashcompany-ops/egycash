@@ -1,11 +1,13 @@
 # WhatsApp activation links through Telnyx
 
-Every new login gets a one-time setup link — when HR creates an employee, when an administrator
-re-sends or resets one, when the
+ECMS sends a login's one-time setup link over email and WhatsApp
+([auth design §12 R3/R9](../12-planning/auth-account-lifecycle-design.md)) when HR registers an
+employee (the login is made and the link sent at once), when an administrator presses **Resend setup
+link** or resets a password, when the
 [activation follow-up workflow](../../automation/README.md) re-sends it after 48 hours, and in the
-boot backfill. ECMS sends it over email and WhatsApp
-([auth design §12 R3/R9](../12-planning/auth-account-lifecycle-design.md)). This guide switches the
-WhatsApp half on through [Telnyx](https://telnyx.com).
+boot backfill. («إنشاء حساب دخول» for an existing employee and creating a user in System Users send
+nothing: they hand the link to the person creating it.) This guide switches the WhatsApp half on
+through [Telnyx](https://telnyx.com).
 
 With it on, the employee receives:
 
@@ -84,9 +86,11 @@ node apps/api/dist/whatsapp-template.cli.js --status
 
 `--write` finds the WhatsApp Business Account by itself when the Telnyx account has exactly one;
 with several it lists them and asks for `--waba <id>`. It is safe to run twice: a template already
-registered under the same name and language is reported, not submitted again. It refuses while
-`WEB_PUBLIC_URL` is not a public `https://` address, because Meta approves the button's address as
-written.
+registered in that account under the same name and language is reported, not submitted again. It
+refuses while `WEB_PUBLIC_URL` is not a public `https://` address, because Meta approves the
+button's address as written — and `--write` and `--status` both say so loudly when the template
+already there was approved for a **different** address than this deployment's. Never send through
+such a template: every employee's link would go to the old address.
 
 On a developer machine the same command is `npm run whatsapp:template -- --status`, with the
 variables in `.env` or on the command line.
@@ -101,15 +105,19 @@ Once `--status` says **APPROVED**, set on both services:
 | `WHATSAPP_ACTIVATION_TEMPLATE` | `ecms_account_activation` |
 | `WHATSAPP_TEMPLATE_LANGUAGE` | `ar` |
 
-Railway redeploys on a variable change. A name Meta could never accept (capitals, spaces, hyphens)
-fails the boot with a readable message; a valid name that is simply not the registered one shows
-up as `40008` on the first send (see below), which is why step 5 comes before the backfill.
+Deploy the changed variables. A name Meta could never accept (capitals, spaces, hyphens) fails the
+boot with a readable message. A valid name that is not the registered one, or not approved yet, is
+either refused by Telnyx at send time — the outcome shows Telnyx's code and reason — or accepted
+and dropped later by Meta, in which case ECMS shows it as sent. Step 5 is how you find out, which is
+why it comes before the backfill.
 
 ## 5. Try it on one person
 
-Put your own mobile on a test employee, then press **Resend setup link** («إعادة إرسال رابط
-التفعيل») on their account card. «Credentials delivery» («إرسال بيانات الدخول») on the card shows
-the outcome per channel. `whatsapp: sent` means Telnyx **accepted** the message;
+Register a new test employee with your own mobile — the template goes out at once — or put your
+mobile on an existing test **login** (System Users → the account → Phone) and press **Resend setup
+link** («إعادة إرسال رابط التفعيل») on its account card. Editing the employee's mobile in HR does not
+change the number a resend uses: that is the login's own phone, copied once when the login was made.
+«Credentials delivery» («إرسال بيانات الدخول») on the card shows the outcome per channel. `whatsapp: sent` means Telnyx **accepted** the message;
 the API log line `whatsapp message accepted by telnyx` carries its `messageId`, which is what the
 Telnyx portal's message search takes. Whether it reached the phone is reported by Telnyx afterwards
 (its delivery webhooks are not wired into ECMS yet), so look at the phone, or at the message in the
@@ -123,10 +131,17 @@ the quality of what you send — WhatsApp Manager shows the current one. The boo
 every employed employee without a login, around 1,670 at go-live, in one go. Above the cap Meta
 refuses the extra messages after Telnyx has accepted them, so ECMS would record them as sent.
 
-So, before the backfill runs with WhatsApp on: check the number's current limit, and either wait
-until it covers the whole workforce or roll out in waves — keep `HR_PROVISION_MISSING_LOGINS=false`
-and create logins branch by branch, a day's limit at a time. Each template message is billed (by
-Meta, plus Telnyx's fee).
+So, before the backfill runs with WhatsApp on, check the number's current limit:
+
+- **Wait** until it covers the whole workforce, keeping `HR_PROVISION_MISSING_LOGINS=false` on
+  **both** services until then — the app and the worker each run the backfill when they boot.
+- **Or roll out by hand, a day's limit at a time.** There is no bulk action for this: for an
+  existing employee «إنشاء حساب دخول» makes the login but sends nothing, so the template goes out
+  only when «إعادة إرسال رابط التفعيل» is pressed on each account card.
+
+Either way, if the activation follow-up workflow is enabled it re-sends after 48 hours to everyone
+who has not activated yet, so each wave comes round a second time — budget for it twice. Each
+template message is billed (by Meta, plus Telnyx's fee).
 
 ## When something goes wrong
 
@@ -137,24 +152,43 @@ that was sent (the token included) cut out first:
 |---|---|
 | `telnyx is not configured — set WHATSAPP_API_TOKEN and WHATSAPP_FROM_NUMBER` | one of the two is missing; nothing was sent |
 | `telnyx responded 401` | the API key is wrong or revoked |
-| `telnyx responded 4xx: 40008 — …` | the template is not approved under that name and language, or the number is not registered for WhatsApp — run `--status` |
-| `invalid phone number` | the employee's mobile cannot be read as a phone number; fix it and re-send |
+| `telnyx responded 4xx: <code> — <title> …` | Telnyx refused it, in its own words. A template, name or language problem: run `--status`; a number problem: check the number's WhatsApp registration in the Telnyx portal |
+| `invalid phone number` | the login's phone cannot be read as a phone number; fix it on the login (System Users), not only on the employee, and re-send |
 | `The operation was aborted due to timeout` | Telnyx did not answer within 15 seconds; re-send |
 
-The API log line `whatsapp sent as plain text …` (once per process) means `WHATSAPP_PROVIDER=telnyx`
-is on without `WHATSAPP_ACTIVATION_TEMPLATE`.
+The API log line `whatsapp sent as plain text …` is written once per process for each kind of
+message, and names it: `purpose: "activation"` means `WHATSAPP_ACTIVATION_TEMPLATE` is not set. A
+line with no purpose is an applicant-portal message, which has no template yet (see below).
 
-## Changing the wording
+## Changing the wording, or the address
 
-The text is fixed once Meta approves it. Change it in `activation-whatsapp-template.ts`, set
-`WHATSAPP_ACTIVATION_TEMPLATE` to a **new** name (`ecms_account_activation_v2`), register and wait
-for approval as above — the old template keeps working until the variable is switched. The
+The text — and the button's address — are fixed once Meta approves them. To change either:
+
+1. Change the text in `activation-whatsapp-template.ts` (or `WEB_PUBLIC_URL`, for a new address)
+   and deploy.
+2. Register it under a **new** name, leaving the Railway variable alone so live sends keep using
+   the approved one:
+
+   ```bash
+   node apps/api/dist/whatsapp-template.cli.js --write --name ecms_account_activation_v2
+   ```
+
+   ```bash
+   node apps/api/dist/whatsapp-template.cli.js --status --name ecms_account_activation_v2
+   ```
+
+3. Only once that says **APPROVED**, set `WHATSAPP_ACTIVATION_TEMPLATE=ecms_account_activation_v2`
+   on both services.
+
+The old template keeps working until step 3 as long as its variables are unchanged. The
 admin-editable credentials template still writes the **email**; it does not change WhatsApp.
 
 ## What else WhatsApp sends
 
-Customer-portal (Gold) accounts get their setup link through the same path, so they receive this
-same template, with «—» as the employee code — exactly as their email already reads.
+A customer-portal (Gold) account's setup code is handed to the customer by staff when the account is
+created; nothing is sent then. A later **New setup link** («رابط تفعيل جديد») on the account
+(which also resets its password), or the 48-hour follow-up, goes through this same path and sends this same template, with
+«—» as the employee code — as the email already reads.
 
 Two other messages use the same transport and still go as **plain text**: the applicant-portal link
 («ادخل على بوابة المتقدمين…») and the applicant-portal sign-in code. Under Telnyx they reach an

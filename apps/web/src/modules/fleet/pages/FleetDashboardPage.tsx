@@ -46,7 +46,10 @@ import {
   tabBadges,
   visibleTabs,
 } from '../lib/fleet-dashboard-tabs';
-import { CustodyFundSource, type CustodyFigures } from '../components/fleet-dashboard/custody-fund-line';
+import {
+  CustodyFundSource,
+  type CustodyFigures,
+} from '../components/fleet-dashboard/custody-fund-line';
 import {
   ReadError,
   TabSkeleton,
@@ -61,7 +64,25 @@ import { LicencesTab } from '../components/fleet-dashboard/tab-licences';
 import { SummariesTab } from '../components/fleet-dashboard/tab-summaries';
 
 /** The filters the page keeps across tabs and visits — never `tab` (a link names its tab). */
-export const REMEMBERED_FILTERS = ['period', 'from', 'to', 'type', 'operation', 'vehicleCodes'] as const;
+export const REMEMBERED_FILTERS = [
+  'period',
+  'from',
+  'to',
+  'type',
+  'operation',
+  'vehicleCodes',
+] as const;
+
+/**
+ * Which face a read's panel wears. A read on its way is a skeleton; a read with no answer is an error
+ * (with its retry), never an empty fleet; an answer is shown even while a later refetch fails.
+ */
+export type DashboardView = 'loading' | 'error' | 'ready';
+export const dashboardView = (query: {
+  isPending: boolean;
+  isError: boolean;
+  data: unknown;
+}): DashboardView => (query.isPending ? 'loading' : query.data === undefined ? 'error' : 'ready');
 
 /** Which of the two reads this reader may ask for at all (a read nobody may see is never sent). */
 export const dashboardReads = (
@@ -106,7 +127,11 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   const reads = dashboardReads(can);
   const nowQ = useFleetDashboardNow(reads.now);
   useCairoMidnightRefresh(nowQ.data?.asOf, nowQ.dataUpdatedAt);
-  const periodQ = useFleetDashboardPeriod(query, periodLiveness(query, nowQ.data?.today), reads.period);
+  const periodQ = useFleetDashboardPeriod(
+    query,
+    periodLiveness(query, nowQ.data?.today),
+    reads.period,
+  );
 
   const answers = { can, now: nowQ.data, period: periodQ.data };
   const visible = visibleTabs(answers);
@@ -128,7 +153,10 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   if (visible.length === 0) {
     return (
       <div className="mx-auto w-full shrink-0 px-4 py-6 sm:px-6 lg:px-8">
-        <EmptyState title={t('fleet.dash.shell.nothingTitle')} description={t('fleet.dash.shell.nothingNote')} />
+        <EmptyState
+          title={t('fleet.dash.shell.nothingTitle')}
+          description={t('fleet.dash.shell.nothingNote')}
+        />
       </div>
     );
   }
@@ -154,8 +182,13 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         can={can}
       />
     );
-  } else if (reads.now && nowQ.data === undefined) {
-    panel = nowQ.isError ? <ReadError error={nowQ.error} onRetry={refreshNow} /> : <TabSkeleton />;
+  } else if (reads.now && dashboardView(nowQ) !== 'ready') {
+    panel =
+      dashboardView(nowQ) === 'error' ? (
+        <ReadError error={nowQ.error} onRetry={refreshNow} />
+      ) : (
+        <TabSkeleton />
+      );
   } else {
     const Panel = NOW_PANELS[active];
     panel = (

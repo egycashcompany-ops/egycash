@@ -38,7 +38,9 @@ const isPreset = (raw: string | null): raw is FleetDashboardPreset =>
 
 /** The filters as the address bar holds them: an unknown preset reads as the default one. */
 export const readPeriodFilters = (sp: Pick<URLSearchParams, 'get'>): PeriodFilters => {
-  const preset = isPreset(sp.get('period')) ? (sp.get('period') as FleetDashboardPreset) : FLEET_DASHBOARD_DEFAULT_PRESET;
+  const preset = isPreset(sp.get('period'))
+    ? (sp.get('period') as FleetDashboardPreset)
+    : FLEET_DASHBOARD_DEFAULT_PRESET;
   return {
     preset,
     from: preset === 'custom' ? (sp.get('from') ?? '') : '',
@@ -55,7 +57,8 @@ export const readPeriodFilters = (sp: Pick<URLSearchParams, 'get'>): PeriodFilte
  */
 export const periodFiltersPatch = (next: PeriodFilters): Record<string, string | null> => {
   const custom = next.preset === 'custom';
-  const join = (values: readonly string[]): string | null => (values.length === 0 ? null : values.join(','));
+  const join = (values: readonly string[]): string | null =>
+    values.length === 0 ? null : values.join(',');
   return {
     period: next.preset === FLEET_DASHBOARD_DEFAULT_PRESET ? null : next.preset,
     from: custom && next.from !== '' ? next.from : null,
@@ -80,8 +83,12 @@ export const customRangeValid = (from: string, to: string): boolean =>
 export const toPeriodQuery = (f: PeriodFilters): FleetDashboardPeriodQuery => {
   const lists = {
     ...(f.typeIds.length === 0 ? {} : { typeIds: f.typeIds.slice(0, LINK_CODES_CAP) }),
-    ...(f.operationIds.length === 0 ? {} : { operationIds: f.operationIds.slice(0, LINK_CODES_CAP) }),
-    ...(f.vehicleCodes.length === 0 ? {} : { vehicleCodes: f.vehicleCodes.slice(0, LINK_CODES_CAP) }),
+    ...(f.operationIds.length === 0
+      ? {}
+      : { operationIds: f.operationIds.slice(0, LINK_CODES_CAP) }),
+    ...(f.vehicleCodes.length === 0
+      ? {}
+      : { vehicleCodes: f.vehicleCodes.slice(0, LINK_CODES_CAP) }),
   };
   if (f.preset === 'custom') {
     return customRangeValid(f.from, f.to)

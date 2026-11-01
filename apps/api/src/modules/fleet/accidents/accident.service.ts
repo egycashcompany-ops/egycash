@@ -480,12 +480,14 @@ class FleetAccidentService {
     const vehicle = fleetAccidentRepository.accidentFilter(await this.vehicleClause(input.filter));
     const since = calendarDayBounds(input.sinceYmd, input.sinceYmd).from;
     const docs = await fleetAccidentRepository.recentWritten(
-      { $and: [vehicle, { occurredAt: { $ne: null, $gte: since } }] } as FilterQuery<FleetAccidentDoc>,
+      {
+        $and: [vehicle, { occurredAt: { $ne: null, $gte: since } }],
+      } as FilterQuery<FleetAccidentDoc>,
       input.limit,
     );
-    const codes = await fleetVehicleRepository.codesByIds(
-      [...new Set(docs.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)])))],
-    );
+    const codes = await fleetVehicleRepository.codesByIds([
+      ...new Set(docs.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)]))),
+    ]);
     return docs.map((doc) => {
       const vehicleId = vehicleIdOf(doc);
       return {

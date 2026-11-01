@@ -333,9 +333,7 @@ class FleetDriverProfileService {
     }
     if (query.licenseNotRecorded !== undefined) {
       clauses.push(
-        query.licenseNotRecorded
-          ? { licenseExpiresAt: null }
-          : { licenseExpiresAt: { $ne: null } },
+        query.licenseNotRecorded ? { licenseExpiresAt: null } : { licenseExpiresAt: { $ne: null } },
       );
     }
     if (query.search !== undefined) {

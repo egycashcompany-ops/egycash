@@ -48,7 +48,10 @@ export interface NowTabProps {
 
 /** The count on a tab: the rail's tones; on the pressed pill they read against its fill. */
 const BADGE: Record<TabBadge['tone'], { off: string; on: string }> = {
-  red: { off: 'bg-red-600 text-white dark:bg-red-500', on: 'bg-red-500 text-white dark:bg-red-600' },
+  red: {
+    off: 'bg-red-600 text-white dark:bg-red-500',
+    on: 'bg-red-500 text-white dark:bg-red-600',
+  },
   amber: {
     off: 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300',
     on: 'bg-amber-400 text-slate-900 dark:bg-amber-400 dark:text-slate-900',
@@ -136,11 +139,19 @@ export const TopNav = ({
   onPick: (tab: FleetDashboardTab) => void;
 }): JSX.Element => {
   const t = useT();
-  const group = (tabs: readonly FleetDashboardTab[], zone: 'now' | 'filters'): JSX.Element | null => {
+  const group = (
+    tabs: readonly FleetDashboardTab[],
+    zone: 'now' | 'filters',
+  ): JSX.Element | null => {
     const shown = tabs.filter((tab) => visible.includes(tab));
     if (shown.length === 0) return null;
     return (
-      <div role="group" aria-label={t(`fleet.dash.shell.group.${zone}`)} data-dash-group={zone} className="flex items-center gap-0.5">
+      <div
+        role="group"
+        aria-label={t(`fleet.dash.shell.group.${zone}`)}
+        data-dash-group={zone}
+        className="flex items-center gap-0.5"
+      >
         {shown.map((tab) => (
           <NavTab key={tab} tab={tab} on={tab === active} badge={badges[tab]} onPick={onPick} />
         ))}
@@ -154,7 +165,13 @@ export const TopNav = ({
       data-dash-sticky="true"
       className="sticky top-0 z-20 -mx-3 bg-[linear-gradient(to_bottom,#f8fafc_0,#f8fafc_calc(100%-14px),rgba(248,250,252,0))] px-3 pb-4 pt-6 dark:bg-[linear-gradient(to_bottom,#020617_0,#020617_calc(100%-14px),rgba(2,6,23,0))]"
     >
-      <nav data-dash-nav="true" role="tablist" aria-orientation="horizontal" aria-label={t('fleet.dash.shell.navLabel')} className={NAV_BAR}>
+      <nav
+        data-dash-nav="true"
+        role="tablist"
+        aria-orientation="horizontal"
+        aria-label={t('fleet.dash.shell.navLabel')}
+        className={NAV_BAR}
+      >
         <span
           aria-hidden="true"
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-600 text-white shadow-md shadow-brand-700/30"
@@ -164,7 +181,10 @@ export const TopNav = ({
         <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto">
           {live}
           {live !== null && filtered !== null && (
-            <span aria-hidden="true" className="mx-1 h-6 w-px shrink-0 bg-slate-200 dark:bg-[#26324a]" />
+            <span
+              aria-hidden="true"
+              className="mx-1 h-6 w-px shrink-0 bg-slate-200 dark:bg-[#26324a]"
+            />
           )}
           {filtered}
         </div>
@@ -201,7 +221,10 @@ export const RefreshTools = ({
   return (
     <>
       {fresh !== null && (
-        <span data-dash-updated="true" className={cn('whitespace-nowrap text-xs font-semibold', MUTED)}>
+        <span
+          data-dash-updated="true"
+          className={cn('whitespace-nowrap text-xs font-semibold', MUTED)}
+        >
           {fresh.unit === 'now' ? (
             t('fleet.dash.shell.updatedNow')
           ) : (
@@ -228,11 +251,19 @@ export const RefreshTools = ({
  * with `t(key)` and no params, so the placeholders stay) is replaced by `parts[name]` — a figure in
  * the figure face, a car chip, a link. A placeholder with no part is left as written.
  */
-export const Phrase = ({ text, parts }: { text: string; parts: Record<string, ReactNode> }): JSX.Element => (
+export const Phrase = ({
+  text,
+  parts,
+}: {
+  text: string;
+  parts: Record<string, ReactNode>;
+}): JSX.Element => (
   <>
     {text.split(/(\{\{\w+\}\})/u).map((piece, i) => {
       const name = /^\{\{(\w+)\}\}$/u.exec(piece)?.[1];
-      return <Fragment key={i}>{name !== undefined && name in parts ? parts[name] : piece}</Fragment>;
+      return (
+        <Fragment key={i}>{name !== undefined && name in parts ? parts[name] : piece}</Fragment>
+      );
     })}
   </>
 );
@@ -304,7 +335,10 @@ export const SectionError = ({
 }): JSX.Element => {
   const t = useT();
   return (
-    <Card data-section-error={section} className={cn('items-center justify-center gap-3 px-5 py-8 text-center', className)}>
+    <Card
+      data-section-error={section}
+      className={cn('items-center justify-center gap-3 px-5 py-8 text-center', className)}
+    >
       <Icon d={I.warn} className="h-6 w-6 text-red-500 dark:text-red-400" />
       <p className={cn(NOTE, 'text-[13px]')}>{t('fleet.dash.common.sectionError')}</p>
       <button type="button" onClick={onRetry} className={BTN.outline}>
@@ -328,7 +362,13 @@ export const TabSkeleton = (): JSX.Element => (
 );
 
 /** A whole read that failed: its error and the retry. */
-export const ReadError = ({ error, onRetry }: { error: unknown; onRetry: () => void }): JSX.Element => (
+export const ReadError = ({
+  error,
+  onRetry,
+}: {
+  error: unknown;
+  onRetry: () => void;
+}): JSX.Element => (
   <Card data-dash-read-error="true">
     <ErrorState error={error} onRetry={onRetry} />
   </Card>

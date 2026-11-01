@@ -60,7 +60,9 @@ export const sectionState = (
 /** The tabs in their bar order, each while one of its sections may still show. */
 export const visibleTabs = (answers: DashboardAnswers): FleetDashboardTab[] =>
   FLEET_DASHBOARD_TABS.filter((tab) =>
-    FLEET_DASHBOARD_TAB_SECTIONS[tab].some((section) => sectionState(section, answers) !== 'hidden'),
+    FLEET_DASHBOARD_TAB_SECTIONS[tab].some(
+      (section) => sectionState(section, answers) !== 'hidden',
+    ),
   );
 
 // ── The alert lines (tab 1) ───────────────────────────────────────────────────────────────────
@@ -90,8 +92,8 @@ export const ALERT_CATEGORY: Readonly<Record<AlertLineId, AlertCategory>> = {
 };
 
 /** Display order: the contracts' order, with the custody line after the notices (T1.11). */
-const ORDER: readonly AlertLineId[] = FLEET_DASHBOARD_ALERTS.flatMap(
-  (alert): AlertLineId[] => (alert.id === 'noticesMissing' ? [alert.id, 'custody'] : [alert.id]),
+const ORDER: readonly AlertLineId[] = FLEET_DASHBOARD_ALERTS.flatMap((alert): AlertLineId[] =>
+  alert.id === 'noticesMissing' ? [alert.id, 'custody'] : [alert.id],
 );
 
 /**
@@ -201,7 +203,7 @@ export const leadIndex = (values: readonly number[]): number => {
 
 /** The earliest of the server's dates ('YYYY-MM-DD'), or `null` for none. */
 export const earliestDay = (days: readonly string[]): string | null =>
-  days.length === 0 ? null : [...days].sort()[0] ?? null;
+  days.length === 0 ? null : ([...days].sort()[0] ?? null);
 
 /** 'YYYY-MM-DD' → «2026/10/22», as the boards write a day. */
 export const slashDay = (ymd: string): string => ymd.slice(0, 10).replace(/-/gu, '/');

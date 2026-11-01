@@ -347,7 +347,10 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
         code: row.code,
         reason: row.statusReason ?? null,
       }))
-      .sort((a, b) => compareFleetVehicleCodes(a.code, b.code) || a.vehicleId.localeCompare(b.vehicleId));
+      .sort(
+        (a, b) =>
+          compareFleetVehicleCodes(a.code, b.code) || a.vehicleId.localeCompare(b.vehicleId),
+      );
   }
 
   /**
@@ -355,10 +358,7 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
    * the page. The list's own `vehicleListFilter` and base filter, so the count and the link agree
    * for every control the bar has, the licence-expiry bounds included.
    */
-  async countListed(
-    query: Partial<ListFleetVehiclesQuery>,
-    scope: ScopeSelector,
-  ): Promise<number> {
+  async countListed(query: Partial<ListFleetVehiclesQuery>, scope: ScopeSelector): Promise<number> {
     return this.count(vehicleListFilter(query), scope);
   }
 
@@ -521,7 +521,11 @@ export interface VehicleFilterQuery {
 /** The set half of the filter — types, operations, branches — with the keys nobody asked left off. */
 export const vehicleSetPart = (
   query: VehicleFilterQuery,
-): { typeIds?: readonly string[]; operationIds?: readonly string[]; branchIds?: readonly string[] } => ({
+): {
+  typeIds?: readonly string[];
+  operationIds?: readonly string[];
+  branchIds?: readonly string[];
+} => ({
   ...(query.typeIds === undefined ? {} : { typeIds: query.typeIds }),
   ...(query.operationIds === undefined ? {} : { operationIds: query.operationIds }),
   ...(query.branchIds === undefined ? {} : { branchIds: query.branchIds }),

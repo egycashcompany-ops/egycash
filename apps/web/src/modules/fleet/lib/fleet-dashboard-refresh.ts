@@ -44,7 +44,12 @@ export const periodLiveness = (
   today: string | undefined,
 ): PeriodLiveness => {
   if (query.preset === 'lastMonth') return 'past';
-  if (query.preset === 'custom' && today !== undefined && query.to !== undefined && query.to < today) {
+  if (
+    query.preset === 'custom' &&
+    today !== undefined &&
+    query.to !== undefined &&
+    query.to < today
+  ) {
     return 'past';
   }
   return 'live';

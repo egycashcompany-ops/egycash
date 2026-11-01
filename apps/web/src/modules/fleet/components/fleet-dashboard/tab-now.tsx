@@ -52,38 +52,93 @@ const COUNT_CHIP =
   'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-bold dark:font-semibold';
 
 /** A big figure of the card face, opening the list behind it. */
-const Big = ({ link, children, className }: { link: DashLink | null; children: ReactNode; className?: string }): JSX.Element => (
+const Big = ({
+  link,
+  children,
+  className,
+}: {
+  link: DashLink | null;
+  children: ReactNode;
+  className?: string | undefined;
+}): JSX.Element => (
   <Fig link={link} className={cn(BIG, 'tabular-nums', className)}>
     <span dir="ltr">{children}</span>
   </Fig>
 );
 
 /** A small figure in a sentence or a band. */
-const Small = ({ link = null, children, className }: { link?: DashLink | null; children: ReactNode; className?: string }): JSX.Element => (
+const Small = ({
+  link = null,
+  children,
+  className,
+}: {
+  link?: DashLink | null;
+  children: ReactNode;
+  className?: string;
+}): JSX.Element => (
   <Fig link={link} className={cn('font-bold', className ?? STRONG)}>
     <N>{children}</N>
   </Fig>
 );
 
 /** A mini tile of a card's band: the figure over its label. */
-const Tile = ({ n, label, tone, link = null }: { n: number; label: string; tone?: Tone; link?: DashLink | null }): JSX.Element => (
-  <div className={cn(BOX, BOX_HOVER, 'flex h-full min-w-0 flex-col items-center justify-center px-1 py-2.5 text-center 2xl:px-1.5')}>
-    <Fig link={link} className={cn('text-lg font-black leading-none', tone === undefined ? STRONG : TONE[tone].text)}>
+const Tile = ({
+  n,
+  label,
+  tone,
+  link = null,
+}: {
+  n: number;
+  label: string;
+  tone?: Tone;
+  link?: DashLink | null;
+}): JSX.Element => (
+  <div
+    className={cn(
+      BOX,
+      BOX_HOVER,
+      'flex h-full min-w-0 flex-col items-center justify-center px-1 py-2.5 text-center 2xl:px-1.5',
+    )}
+  >
+    <Fig
+      link={link}
+      className={cn(
+        'text-lg font-black leading-none',
+        tone === undefined ? STRONG : TONE[tone].text,
+      )}
+    >
       <N>{count(n)}</N>
     </Fig>
-    <span className="mt-2 min-h-8 text-balance text-[11px] font-semibold leading-4 text-slate-600 dark:text-slate-400">{label}</span>
+    <span className="mt-2 min-h-8 text-balance text-[11px] font-semibold leading-4 text-slate-600 dark:text-slate-400">
+      {label}
+    </span>
   </div>
 );
 
 /** A short list in a band: a reason and its count per row. */
-const Rows = ({ rows }: { rows: readonly { label: string; n: number; tone?: Tone; link?: DashLink | null }[] }): JSX.Element => (
+const Rows = ({
+  rows,
+}: {
+  rows: readonly { label: string; n: number; tone?: Tone; link?: DashLink | null }[];
+}): JSX.Element => (
   <div className={cn(BOX, 'flex min-w-0 flex-col justify-center gap-1.5 px-2 py-2')}>
     {rows.map((row) => (
-      <div key={row.label} className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-xs">
-        <span className={cn('min-w-0 font-semibold', row.tone === undefined ? 'text-slate-700 dark:text-slate-300' : TONE[row.tone].text)}>
+      <div
+        key={row.label}
+        className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-xs"
+      >
+        <span
+          className={cn(
+            'min-w-0 font-semibold',
+            row.tone === undefined ? 'text-slate-700 dark:text-slate-300' : TONE[row.tone].text,
+          )}
+        >
           {row.label}
         </span>
-        <Small link={row.link ?? null} className={row.tone === undefined ? STRONG : TONE[row.tone].text}>
+        <Small
+          link={row.link ?? null}
+          className={row.tone === undefined ? STRONG : TONE[row.tone].text}
+        >
           {count(row.n)}
         </Small>
       </div>
@@ -130,7 +185,10 @@ const Kpi = ({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className={cn(HEAD, 'flex-wrap')}>
-              <span aria-hidden="true" className={cn('h-2 w-2 shrink-0 rounded-full', TONE[tone].dot)} />
+              <span
+                aria-hidden="true"
+                className={cn('h-2 w-2 shrink-0 rounded-full', TONE[tone].dot)}
+              />
               {title}
               {end}
             </h3>
@@ -156,7 +214,9 @@ const Kpi = ({
                 <Phrase
                   text={t('fleet.dash.now.partOf')}
                   parts={{
-                    part: <N className="font-bold text-slate-700 dark:text-slate-200">{count(part)}</N>,
+                    part: (
+                      <N className="font-bold text-slate-700 dark:text-slate-200">{count(part)}</N>
+                    ),
                     whole: <N>{count(whole)}</N>,
                   }}
                 />
@@ -173,7 +233,17 @@ const Kpi = ({
 
 // ── (b) The summary strip ─────────────────────────────────────────────────────────────────────
 
-const BalanceRow = ({ label, figure, link, parts }: { label: string; figure: number; link: DashLink | null; parts: readonly { pct: number; tone: Tone }[] }): JSX.Element => (
+const BalanceRow = ({
+  label,
+  figure,
+  link,
+  parts,
+}: {
+  label: string;
+  figure: number;
+  link: DashLink | null;
+  parts: readonly { pct: number; tone: Tone }[];
+}): JSX.Element => (
   <div className="flex items-center gap-3">
     <span className={cn('w-[116px] shrink-0', BAND_LABEL)}>{label}</span>
     <Meter className="min-w-0 flex-1" height="h-2.5" parts={parts} />
@@ -183,7 +253,13 @@ const BalanceRow = ({ label, figure, link, parts }: { label: string; figure: num
   </div>
 );
 
-const Summary = ({ roster, links }: { roster: NonNullable<FleetDashboardNowDto['roster']>; links: NowLinks }): JSX.Element => {
+const Summary = ({
+  roster,
+  links,
+}: {
+  roster: NonNullable<FleetDashboardNowDto['roster']>;
+  links: NowLinks;
+}): JSX.Element => {
   const t = useT();
   const noun = useNoun();
   const onVehicle = roster.available - roster.availableWithoutVehicle;
@@ -194,11 +270,25 @@ const Summary = ({ roster, links }: { roster: NonNullable<FleetDashboardNowDto['
     <Card accent="slate" className="mb-5" data-now-card="summary">
       <div className="grid grid-cols-1 gap-6 px-6 pb-6 pt-7 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)_minmax(0,0.8fr)] lg:gap-0">
         <div className="flex items-center gap-4 lg:pe-6">
-          <div className={cn('flex h-[84px] w-[84px] shrink-0 flex-col items-center justify-center rounded-2xl 2xl:h-[92px] 2xl:w-[92px]', TONE.emerald.tile)}>
-            <span dir="ltr" data-now-badge="true" className={cn('text-[23px] font-black leading-none tracking-tight tabular-nums text-emerald-700 dark:text-emerald-300 2xl:text-[25px]', CAIRO)}>
+          <div
+            className={cn(
+              'flex h-[84px] w-[84px] shrink-0 flex-col items-center justify-center rounded-2xl 2xl:h-[92px] 2xl:w-[92px]',
+              TONE.emerald.tile,
+            )}
+          >
+            <span
+              dir="ltr"
+              data-now-badge="true"
+              className={cn(
+                'text-[23px] font-black leading-none tracking-tight tabular-nums text-emerald-700 dark:text-emerald-300 2xl:text-[25px]',
+                CAIRO,
+              )}
+            >
               {shareText(roster.readyManned, roster.ready)}
             </span>
-            <span className="mt-1.5 text-[11px] font-bold text-emerald-800 dark:font-semibold dark:text-emerald-300">{t('fleet.dash.now.badgeWord')}</span>
+            <span className="mt-1.5 text-[11px] font-bold text-emerald-800 dark:font-semibold dark:text-emerald-300">
+              {t('fleet.dash.now.badgeWord')}
+            </span>
           </div>
           <div className="min-w-0">
             <h3 className={cn(HEAD, 'flex-wrap')}>{t('fleet.dash.now.badgeTitle')}</h3>
@@ -209,7 +299,14 @@ const Summary = ({ roster, links }: { roster: NonNullable<FleetDashboardNowDto['
                   manned: <Small>{count(roster.readyManned)}</Small>,
                   ready: <Small link={links.rosterReady()}>{count(roster.ready)}</Small>,
                   noun: noun('car', roster.ready),
-                  unmanned: <Small link={links.rosterUnmanned('roster.unmanned.summary')} className={TONE.amber.text}>{count(roster.unmanned)}</Small>,
+                  unmanned: (
+                    <Small
+                      link={links.rosterUnmanned('roster.unmanned.summary')}
+                      className={TONE.amber.text}
+                    >
+                      {count(roster.unmanned)}
+                    </Small>
+                  ),
                 }}
               />
             </p>
@@ -229,7 +326,11 @@ const Summary = ({ roster, links }: { roster: NonNullable<FleetDashboardNowDto['
                 t('fleet.dash.now.balanceEven')
               ) : (
                 <Phrase
-                  text={t(gap > 0 ? 'fleet.dash.now.balanceMoreDrivers' : 'fleet.dash.now.balanceMoreCars')}
+                  text={t(
+                    gap > 0
+                      ? 'fleet.dash.now.balanceMoreDrivers'
+                      : 'fleet.dash.now.balanceMoreCars',
+                  )}
                   parts={{ count: <N className="font-bold">{count(Math.abs(gap))}</N> }}
                 />
               )}
@@ -256,12 +357,19 @@ const Summary = ({ roster, links }: { roster: NonNullable<FleetDashboardNowDto['
             />
           </div>
           <p className="mt-3.5 flex items-start gap-2 text-[13px] leading-6 text-slate-600 dark:text-slate-300">
-            <span aria-hidden="true" className={cn('mt-[9px] h-2 w-2 shrink-0 rounded-sm', TONE.amber.bar)} />
+            <span
+              aria-hidden="true"
+              className={cn('mt-[9px] h-2 w-2 shrink-0 rounded-sm', TONE.amber.bar)}
+            />
             <span>
               <Phrase
                 text={t('fleet.dash.now.balanceText')}
                 parts={{
-                  cars: <Small link={links.rosterUnmanned('roster.unmanned.balance')}>{count(roster.unmanned)}</Small>,
+                  cars: (
+                    <Small link={links.rosterUnmanned('roster.unmanned.balance')}>
+                      {count(roster.unmanned)}
+                    </Small>
+                  ),
                   carNoun: noun('car', roster.unmanned),
                   drivers: <Small>{count(roster.availableWithoutVehicle)}</Small>,
                   driverNoun: noun('driver', roster.availableWithoutVehicle),
@@ -270,14 +378,26 @@ const Summary = ({ roster, links }: { roster: NonNullable<FleetDashboardNowDto['
             </span>
           </p>
         </div>
-        <div className={cn('flex min-w-0 items-center justify-between gap-4 lg:border-s lg:ps-6', RULE)}>
+        <div
+          className={cn(
+            'flex min-w-0 items-center justify-between gap-4 lg:border-s lg:ps-6',
+            RULE,
+          )}
+        >
           <div className="min-w-0">
-            <div className="text-xs font-bold text-slate-800 dark:font-semibold dark:text-slate-300">{t('fleet.dash.now.workingTitle')}</div>
+            <div className="text-xs font-bold text-slate-800 dark:font-semibold dark:text-slate-300">
+              {t('fleet.dash.now.workingTitle')}
+            </div>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <Big link={null}>{count(roster.readyManned)}</Big>
               <span className={FIGURE_WORDS}>{noun('car', roster.readyManned)}</span>
             </div>
-            <div className={cn('mt-2 flex items-center gap-1.5 text-xs font-semibold', TONE.emerald.text)}>
+            <div
+              className={cn(
+                'mt-2 flex items-center gap-1.5 text-xs font-semibold',
+                TONE.emerald.text,
+              )}
+            >
               <Icon d={I.check} className="h-3.5 w-3.5 shrink-0" />
               {t('fleet.dash.now.workingNote')}
             </div>
@@ -294,10 +414,21 @@ const Summary = ({ roster, links }: { roster: NonNullable<FleetDashboardNowDto['
 /** Out-of-service cars named in the first card's band before «عرض الكل». */
 const OUT_TILES = 4;
 
-const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links: NowLinks; can: (p: string) => boolean; onRetry: () => void }): JSX.Element => {
+const Cards = ({
+  now,
+  links,
+  can,
+  onRetry,
+}: {
+  now: FleetDashboardNowDto;
+  links: NowLinks;
+  can: (p: string) => boolean;
+  onRetry: () => void;
+}): JSX.Element => {
   const t = useT();
   const noun = useNoun();
-  const failed = (section: 'vehicles' | 'roster' | 'workshop'): boolean => now.unavailable.includes(section);
+  const failed = (section: 'vehicles' | 'roster' | 'workshop'): boolean =>
+    now.unavailable.includes(section);
   const { vehicles, roster, workshop } = now;
   const activeBase = vehicles?.active ?? roster?.rows ?? null;
   const branch = now.branchId !== null;
@@ -312,7 +443,7 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
           icon={I.truck}
           figure={vehicles.active}
           link={links.vehiclesActive()}
-          unit={t('fleet.dash.now.activeUnit')}
+          unit={t('fleet.dash.now.activeUnit', { noun: noun('car', vehicles.active) })}
           part={vehicles.active}
           whole={vehicles.active + vehicles.outOfService}
           basis={t('fleet.dash.now.activeBasis')}
@@ -323,15 +454,28 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
                 <Fig link={links.vehiclesOutOfService()}>
                   <Phrase
                     text={t('fleet.dash.now.outOfService')}
-                    parts={{ count: <N>{count(vehicles.outOfService)}</N>, noun: noun('car', vehicles.outOfService) }}
+                    parts={{
+                      count: <N>{count(vehicles.outOfService)}</N>,
+                      noun: noun('car', vehicles.outOfService),
+                    }}
                   />
                 </Fig>
               </div>
               {vehicles.outOfServiceList.length > 0 && (
                 <div className="mt-2.5 grid flex-1 grid-cols-2 gap-2">
                   {vehicles.outOfServiceList.slice(0, OUT_TILES).map((row) => (
-                    <div key={row.vehicleId} className={cn(BOX, BOX_HOVER, 'flex min-w-0 flex-col items-start justify-center gap-1.5 px-2.5 py-2')}>
-                      <CarChip code={row.code} link={links.vehicle(row.vehicleId, 'vehicles.outOfServiceRow')} />
+                    <div
+                      key={row.vehicleId}
+                      className={cn(
+                        BOX,
+                        BOX_HOVER,
+                        'flex min-w-0 flex-col items-start justify-center gap-1.5 px-2.5 py-2',
+                      )}
+                    >
+                      <CarChip
+                        code={row.code}
+                        link={links.vehicle(row.vehicleId, 'vehicles.outOfServiceRow')}
+                      />
                       <span className="text-[11px] font-semibold leading-4 text-slate-600 dark:text-slate-400">
                         {row.reason ?? t('fleet.dash.now.noReason')}
                       </span>
@@ -341,7 +485,10 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
               )}
               {vehicles.outOfService > OUT_TILES && (
                 <div className="mt-2">
-                  <Fig link={links.vehiclesOutOfService()} className={cn('text-xs font-bold', TONE.emerald.text)}>
+                  <Fig
+                    link={links.vehiclesOutOfService()}
+                    className={cn('text-xs font-bold', TONE.emerald.text)}
+                  >
                     {t('fleet.dash.now.showAll')}
                   </Fig>
                 </div>
@@ -360,7 +507,7 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
           icon={I.check}
           figure={roster.ready}
           link={links.rosterReady()}
-          unit={t('fleet.dash.now.readyUnit')}
+          unit={t('fleet.dash.now.readyUnit', { noun: noun('car', roster.ready) })}
           part={roster.ready}
           whole={roster.rows}
           basis={t('fleet.dash.now.ofActive')}
@@ -370,12 +517,26 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
                 <Icon d={I.filter} className="h-3.5 w-3.5 text-slate-400" />
                 <Phrase
                   text={t('fleet.dash.now.readyExcluded')}
-                  parts={{ count: <N className={cn('font-bold', STRONG)}>{count(roster.rows - roster.ready)}</N>, noun: noun('car', roster.rows - roster.ready) }}
+                  parts={{
+                    count: (
+                      <N className={cn('font-bold', STRONG)}>{count(roster.rows - roster.ready)}</N>
+                    ),
+                    noun: noun('car', roster.rows - roster.ready),
+                  }}
                 />
               </div>
               <div className="mt-2.5 grid flex-1 grid-cols-2 gap-2">
-                <Tile n={roster.inWorkshop} label={t('fleet.dash.now.inWorkshop')} tone="amber" link={links.rosterWorkshop()} />
-                <Tile n={roster.licenceExpired} label={t('fleet.dash.now.licenceExpired')} tone="red" />
+                <Tile
+                  n={roster.inWorkshop}
+                  label={t('fleet.dash.now.inWorkshop')}
+                  tone="amber"
+                  link={links.rosterWorkshop()}
+                />
+                <Tile
+                  n={roster.licenceExpired}
+                  label={t('fleet.dash.now.licenceExpired')}
+                  tone="red"
+                />
               </div>
             </>
           }
@@ -391,7 +552,7 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
           icon={I.wrench}
           figure={workshop.open}
           link={links.workshopOpen()}
-          unit={t('fleet.dash.now.workshopUnit')}
+          unit={t('fleet.dash.now.workshopUnit', { noun: noun('car', workshop.open) })}
           part={workshop.openActive}
           whole={activeBase}
           basis={t('fleet.dash.now.ofActive')}
@@ -404,22 +565,39 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
                 </span>
                 <span className={cn('whitespace-nowrap font-semibold', MUTED)}>
                   {t('fleet.dash.now.statusActive')} <Small>{count(workshop.openActive)}</Small>
-                  <span aria-hidden="true" className="mx-1.5 text-slate-300 dark:text-slate-600">·</span>
+                  <span aria-hidden="true" className="mx-1.5 text-slate-300 dark:text-slate-600">
+                    ·
+                  </span>
                   {t('fleet.dash.now.statusOut')} <Small>{count(workshop.openOutOfService)}</Small>
                 </span>
               </div>
               {workshop.oldest !== null && (
-                <div className={cn('mt-2.5 flex flex-1 flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5', TONE.red.soft)}>
+                <div
+                  className={cn(
+                    'mt-2.5 flex flex-1 flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5',
+                    TONE.red.soft,
+                  )}
+                >
                   <span className="flex items-center gap-1.5 text-xs font-bold dark:font-semibold">
                     <Icon d={I.clock} className="h-3.5 w-3.5" />
                     {t('fleet.dash.now.oldest')}
                     <CarChip
                       code={workshop.oldest.code}
-                      link={workshop.oldest.vehicleId === null ? null : links.vehicle(workshop.oldest.vehicleId, 'workshop.oldest')}
+                      link={
+                        workshop.oldest.vehicleId === null
+                          ? null
+                          : links.vehicle(workshop.oldest.vehicleId, 'workshop.oldest')
+                      }
                     />
                   </span>
                   <span className={cn('whitespace-nowrap text-xs font-bold', RED)}>
-                    <Phrase text={t('fleet.dash.common.since')} parts={{ count: <N>{count(workshop.oldest.days)}</N>, noun: noun('day', workshop.oldest.days) }} />
+                    <Phrase
+                      text={t('fleet.dash.common.since')}
+                      parts={{
+                        count: <N>{count(workshop.oldest.days)}</N>,
+                        noun: noun('day', workshop.oldest.days),
+                      }}
+                    />
                   </span>
                 </div>
               )}
@@ -438,7 +616,7 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
             figure={roster.unmanned}
             link={links.rosterUnmanned()}
             figureCls="!text-amber-600 dark:!text-amber-400"
-            unit={t('fleet.dash.now.unmannedUnit')}
+            unit={t('fleet.dash.now.unmannedUnit', { noun: noun('car', roster.unmanned) })}
             part={roster.unmanned}
             whole={roster.ready}
             basis={t('fleet.dash.now.ofReady')}
@@ -450,7 +628,10 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
                 </div>
                 <div className="mt-2.5 grid flex-1 grid-cols-3 gap-2">
                   <Tile n={roster.unmannedCrewGap} label={t('fleet.dash.now.unmannedCrewGap')} />
-                  <Tile n={roster.crewGap.stalePlan} label={t('fleet.dash.now.unmannedStalePlan')} />
+                  <Tile
+                    n={roster.crewGap.stalePlan}
+                    label={t('fleet.dash.now.unmannedStalePlan')}
+                  />
                   <Tile n={roster.unmannedNoCrew} label={t('fleet.dash.now.unmannedNoCrew')} />
                 </div>
               </>
@@ -463,7 +644,7 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
             icon={I.users}
             figure={roster.available}
             link={links.rosterAvailable()}
-            unit={t('fleet.dash.now.availableUnit')}
+            unit={t('fleet.dash.now.availableUnit', { noun: noun('driver', roster.available) })}
             part={roster.available}
             whole={roster.registry}
             basis={t('fleet.dash.now.ofRegistry')}
@@ -480,17 +661,35 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
                       tone: 'red',
                       link:
                         roster.licenceRule === 'refuse'
-                          ? links.rosterUnavailable('licenceExpired', 'roster.licenceExpiredDrivers')
+                          ? links.rosterUnavailable(
+                              'licenceExpired',
+                              'roster.licenceExpiredDrivers',
+                            )
                           : links.rosterAvailable('roster.licenceExpiredDrivers'),
                     },
-                    { label: t('fleet.dash.now.profileInactive'), n: roster.profileInactive, link: links.rosterUnavailable('profileInactive', 'roster.profileInactive') },
-                    { label: t('fleet.dash.now.notEmployed'), n: roster.notEmployed, link: links.rosterUnavailable('notEmployed', 'roster.notEmployed') },
+                    {
+                      label: t('fleet.dash.now.profileInactive'),
+                      n: roster.profileInactive,
+                      link: links.rosterUnavailable('profileInactive', 'roster.profileInactive'),
+                    },
+                    {
+                      label: t('fleet.dash.now.notEmployed'),
+                      n: roster.notEmployed,
+                      link: links.rosterUnavailable('notEmployed', 'roster.notEmployed'),
+                    },
                   ]}
                 />
                 <Rows
                   rows={[
-                    { label: t('fleet.dash.now.withoutVehicle'), n: roster.availableWithoutVehicle, tone: 'amber' },
-                    { label: t('fleet.dash.now.licenceNotRecorded'), n: roster.availableLicenceNotRecorded },
+                    {
+                      label: t('fleet.dash.now.withoutVehicle'),
+                      n: roster.availableWithoutVehicle,
+                      tone: 'amber',
+                    },
+                    {
+                      label: t('fleet.dash.now.licenceNotRecorded'),
+                      n: roster.availableLicenceNotRecorded,
+                    },
                     { label: t('fleet.dash.now.noProfile'), n: roster.availableNoProfile },
                   ]}
                 />
@@ -504,7 +703,9 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
             icon={I.calendarX}
             figure={roster.absent.attendance + roster.absent.leave}
             link={null}
-            unit={t('fleet.dash.now.absentUnit')}
+            unit={t('fleet.dash.now.absentUnit', {
+              noun: noun('driver', roster.absent.attendance + roster.absent.leave),
+            })}
             part={roster.absent.attendance + roster.absent.leave}
             whole={roster.registry}
             basis={t('fleet.dash.now.ofRegistry')}
@@ -517,14 +718,25 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
                     {t('fleet.dash.now.byReason')}
                   </span>
                   {can('fleetAvailability.view') && (
-                    <Fig link={links.attendance()} className={cn('text-xs font-bold', TONE.emerald.text)}>
+                    <Fig
+                      link={links.attendance()}
+                      className={cn('text-xs font-bold', TONE.emerald.text)}
+                    >
                       {t('fleet.dash.now.attendanceSheet')}
                     </Fig>
                   )}
                 </div>
                 <div className="mt-2.5 grid flex-1 grid-cols-2 gap-2">
-                  <Tile n={roster.absent.attendance} label={t('fleet.dash.now.absentAttendance')} link={links.rosterAbsent('fleetUnavailability')} />
-                  <Tile n={roster.absent.leave} label={t('fleet.dash.now.absentLeave')} link={links.rosterAbsent('hrLeave')} />
+                  <Tile
+                    n={roster.absent.attendance}
+                    label={t('fleet.dash.now.absentAttendance')}
+                    link={links.rosterAbsent('fleetUnavailability')}
+                  />
+                  <Tile
+                    n={roster.absent.leave}
+                    label={t('fleet.dash.now.absentLeave')}
+                    link={links.rosterAbsent('hrLeave')}
+                  />
                 </div>
               </>
             }
@@ -537,8 +749,25 @@ const Cards = ({ now, links, can, onRetry }: { now: FleetDashboardNowDto; links:
 
 // ── (d) Suggestions from today's figures (they only OPEN screens, D5-2) ───────────────────────
 
-const Suggestion = ({ tone, icon, title, chip, children, actions }: { tone: 'sky' | 'amber' | 'red'; icon: IconPath; title: string; chip: ReactNode; children: ReactNode; actions: ReactNode }): JSX.Element => (
-  <div className={cn(SURFACE, TONE[tone].accent, 'flex min-w-0 flex-col p-5')} data-suggestion={tone}>
+const Suggestion = ({
+  tone,
+  icon,
+  title,
+  chip,
+  children,
+  actions,
+}: {
+  tone: 'sky' | 'amber' | 'red';
+  icon: IconPath;
+  title: string;
+  chip: ReactNode;
+  children: ReactNode;
+  actions: ReactNode;
+}): JSX.Element => (
+  <div
+    className={cn(SURFACE, TONE[tone].accent, 'flex min-w-0 flex-col p-5')}
+    data-suggestion={tone}
+  >
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className={cn(TITLE, 'flex items-center gap-2')}>
         <IconTile d={icon} tone={tone} size="sm" />
@@ -551,7 +780,13 @@ const Suggestion = ({ tone, icon, title, chip, children, actions }: { tone: 'sky
   </div>
 );
 
-const Suggestions = ({ now, links }: { now: FleetDashboardNowDto; links: NowLinks }): JSX.Element | null => {
+const Suggestions = ({
+  now,
+  links,
+}: {
+  now: FleetDashboardNowDto;
+  links: NowLinks;
+}): JSX.Element | null => {
   const t = useT();
   const noun = useNoun();
   const { roster, workshop, licenceVehicles, licenceDrivers } = now;
@@ -565,9 +800,20 @@ const Suggestions = ({ now, links }: { now: FleetDashboardNowDto; links: NowLink
         tone="sky"
         icon={I.bolt}
         title={t('fleet.dash.now.suggest.fillTitle')}
-        chip={<Phrase text={t('fleet.dash.now.suggest.fillChip')} parts={{ count: <N>{count(roster.unmanned)}</N> }} />}
+        chip={
+          <Phrase
+            text={t('fleet.dash.now.suggest.fillChip')}
+            parts={{ count: <N>{count(roster.unmanned)}</N> }}
+          />
+        }
         actions={
-          <Btn link={links.rosterUnmanned('roster.unmanned.suggestion')} kind="primary" icon={null} lead={I.calendar} className="w-full">
+          <Btn
+            link={links.rosterUnmanned('roster.unmanned.suggestion')}
+            kind="primary"
+            icon={null}
+            lead={I.calendar}
+            className="w-full"
+          >
             {t('fleet.dash.now.suggest.fillAction')}
           </Btn>
         }
@@ -592,15 +838,35 @@ const Suggestions = ({ now, links }: { now: FleetDashboardNowDto; links: NowLink
         tone="amber"
         icon={I.wrench}
         title={t('fleet.dash.now.suggest.workshopTitle')}
-        chip={<Phrase text={t('fleet.dash.now.suggest.workshopChip')} parts={{ count: <N>{count(workshop.open)}</N> }} />}
+        chip={
+          <Phrase
+            text={t('fleet.dash.now.suggest.workshopChip')}
+            parts={{ count: <N>{count(workshop.open)}</N> }}
+          />
+        }
         actions={
           <>
-            <Btn link={links.workshopOpen('workshop.open.suggestion')} kind="dark" icon={null} lead={I.eye} className="flex-1">
+            <Btn
+              link={links.workshopOpen('workshop.open.suggestion')}
+              kind="dark"
+              icon={null}
+              lead={I.eye}
+              className="flex-1"
+            >
               {t('fleet.dash.now.suggest.workshopAction')}
             </Btn>
             {oldest.vehicleId !== null && (
-              <Btn link={links.vehicle(oldest.vehicleId, 'workshop.oldest.file')} kind="outline" icon={null} lead={I.truck} className="flex-1">
-                <Phrase text={t('fleet.dash.now.suggest.vehicleFile')} parts={{ code: <N>{oldest.code}</N> }} />
+              <Btn
+                link={links.vehicle(oldest.vehicleId, 'workshop.oldest.file')}
+                kind="outline"
+                icon={null}
+                lead={I.truck}
+                className="flex-1"
+              >
+                <Phrase
+                  text={t('fleet.dash.now.suggest.vehicleFile')}
+                  parts={{ code: <N>{oldest.code}</N> }}
+                />
               </Btn>
             )}
           </>
@@ -612,7 +878,10 @@ const Suggestions = ({ now, links }: { now: FleetDashboardNowDto; links: NowLink
             code: <CarChip code={oldest.code} />,
             since: (
               <span className={cn('font-bold', RED)}>
-                <Phrase text={t('fleet.dash.common.since')} parts={{ count: <N>{count(oldest.days)}</N>, noun: noun('day', oldest.days) }} />
+                <Phrase
+                  text={t('fleet.dash.common.since')}
+                  parts={{ count: <N>{count(oldest.days)}</N>, noun: noun('day', oldest.days) }}
+                />
               </span>
             ),
             open: <Small>{count(workshop.open)}</Small>,
@@ -630,16 +899,33 @@ const Suggestions = ({ now, links }: { now: FleetDashboardNowDto; links: NowLink
         tone="red"
         icon={I.doc}
         title={t('fleet.dash.now.suggest.licencesTitle')}
-        chip={<Phrase text={t('fleet.dash.now.suggest.licencesChip')} parts={{ count: <N>{count(expiredCars + expiredDrivers)}</N> }} />}
+        chip={
+          <Phrase
+            text={t('fleet.dash.now.suggest.licencesChip')}
+            parts={{ count: <N>{count(expiredCars + expiredDrivers)}</N> }}
+          />
+        }
         actions={
           <>
             {licenceVehicles !== null && (
-              <Btn link={links.vehicleLicencesExpired()} kind="dark" icon={null} lead={I.doc} className="flex-1">
+              <Btn
+                link={links.vehicleLicencesExpired()}
+                kind="dark"
+                icon={null}
+                lead={I.doc}
+                className="flex-1"
+              >
                 {t('fleet.dash.now.suggest.openVehicles')}
               </Btn>
             )}
             {licenceDrivers !== null && (
-              <Btn link={links.driverLicencesExpired()} kind="outline" icon={null} lead={I.users} className="flex-1">
+              <Btn
+                link={links.driverLicencesExpired()}
+                kind="outline"
+                icon={null}
+                lead={I.users}
+                className="flex-1"
+              >
                 {t('fleet.dash.now.suggest.openDrivers')}
               </Btn>
             )}
@@ -662,7 +948,9 @@ const Suggestions = ({ now, links }: { now: FleetDashboardNowDto; links: NowLink
   return (
     <Card className="mt-5" data-now-card="suggestions">
       <div className="px-6 pb-6 pt-5">
-        <div className={cn('flex flex-wrap items-center justify-between gap-3 border-b pb-4', RULE)}>
+        <div
+          className={cn('flex flex-wrap items-center justify-between gap-3 border-b pb-4', RULE)}
+        >
           <div className="flex min-w-0 items-center gap-3">
             <IconTile d={I.clipboardCheck} tone="brand" />
             <div className="min-w-0">
@@ -688,7 +976,14 @@ export const NowTab = (props: NowTabProps): JSX.Element => {
         icon={I.clock}
         title={t('fleet.dash.shell.tab.now')}
         sub={t('fleet.dash.now.sub')}
-        end={<RefreshTools updatedAt={props.updatedAt} onRefresh={props.onRefresh} refreshing={props.refreshing} {...(props.clock === undefined ? {} : { clock: props.clock })} />}
+        end={
+          <RefreshTools
+            updatedAt={props.updatedAt}
+            onRefresh={props.onRefresh}
+            refreshing={props.refreshing}
+            {...(props.clock === undefined ? {} : { clock: props.clock })}
+          />
+        }
       />
       {now !== null && (
         <>

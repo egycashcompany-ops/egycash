@@ -127,14 +127,24 @@ export const I = {
 } as const;
 export type IconPath = readonly string[];
 
-export const Icon = ({ d, className = 'h-4 w-4' }: { d: IconPath; className?: string }): JSX.Element => (
-  <BoardIcon d={d} className={className} />
-);
+export const Icon = ({
+  d,
+  className = 'h-4 w-4',
+}: {
+  d: IconPath;
+  className?: string;
+}): JSX.Element => <BoardIcon d={d} className={className} />;
 
 // ── Words and numbers ─────────────────────────────────────────────────────────────────────────
 
 /** A number, laid out left to right in the app's figure font (Azeret Mono, tabular). */
-export const N = ({ children, className }: { children: ReactNode; className?: string }): JSX.Element => (
+export const N = ({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}): JSX.Element => (
   <span dir="ltr" className={cn(NUM, className)}>
     {children}
   </span>
@@ -153,14 +163,18 @@ export const STRONG = 'text-slate-900 dark:text-white';
 /** «ج.م.» beside a figure — the dashboard tiles' currency. */
 export const UNIT = 'text-xs font-semibold text-slate-500 dark:font-medium dark:text-slate-400';
 /** The big figure of a card (Cairo, black, tight), at the v2 size. */
-export const BIG = cn('text-[34px] font-black leading-none tracking-tight text-slate-900 dark:text-white', CAIRO);
+export const BIG = cn(
+  'text-[34px] font-black leading-none tracking-tight text-slate-900 dark:text-white',
+  CAIRO,
+);
 /** A share («33%») as the fund card writes it: a small slate box, the figure face, bold. */
 export const PCT = cn(
   'whitespace-nowrap rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200',
   NUM,
 );
 /** The keyboard ring of everything that opens a list or a record. */
-export const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50';
+export const FOCUS =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50';
 
 // ── Tones (one family per meaning) ────────────────────────────────────────────────────────────
 //
@@ -175,7 +189,8 @@ const AMBER_TONE = {
   text: 'text-amber-700 dark:text-amber-400',
   bar: 'bg-amber-500 dark:bg-amber-400',
   dot: 'bg-amber-500 dark:bg-amber-400',
-  accent: 'border-l-4 border-l-amber-500 hover:border-l-amber-500 dark:border-l-amber-500 dark:hover:border-l-amber-500',
+  accent:
+    'border-l-4 border-l-amber-500 hover:border-l-amber-500 dark:border-l-amber-500 dark:hover:border-l-amber-500',
 } as const;
 
 export const TONE = {
@@ -186,7 +201,8 @@ export const TONE = {
     text: 'text-emerald-700 dark:text-emerald-400',
     bar: 'bg-emerald-500 dark:bg-emerald-400',
     dot: 'bg-emerald-500 dark:bg-emerald-400',
-    accent: 'border-l-4 border-l-emerald-500 hover:border-l-emerald-500 dark:border-l-emerald-500 dark:hover:border-l-emerald-500',
+    accent:
+      'border-l-4 border-l-emerald-500 hover:border-l-emerald-500 dark:border-l-emerald-500 dark:hover:border-l-emerald-500',
   },
   blue: {
     top: 'bg-blue-600 dark:bg-blue-500',
@@ -195,7 +211,8 @@ export const TONE = {
     text: 'text-blue-700 dark:text-blue-400',
     bar: 'bg-blue-600 dark:bg-blue-500',
     dot: 'bg-blue-600 dark:bg-blue-400',
-    accent: 'border-l-4 border-l-blue-600 hover:border-l-blue-600 dark:border-l-blue-500 dark:hover:border-l-blue-500',
+    accent:
+      'border-l-4 border-l-blue-600 hover:border-l-blue-600 dark:border-l-blue-500 dark:hover:border-l-blue-500',
   },
   amber: AMBER_TONE,
   orange: AMBER_TONE,
@@ -206,7 +223,8 @@ export const TONE = {
     text: 'text-red-600 dark:text-red-400',
     bar: 'bg-red-600 dark:bg-red-500',
     dot: 'bg-red-500 dark:bg-red-400',
-    accent: 'border-l-4 border-l-red-500 hover:border-l-red-500 dark:border-l-red-500 dark:hover:border-l-red-500',
+    accent:
+      'border-l-4 border-l-red-500 hover:border-l-red-500 dark:border-l-red-500 dark:hover:border-l-red-500',
   },
   teal: {
     top: 'bg-teal-500 dark:bg-teal-400',
@@ -215,7 +233,8 @@ export const TONE = {
     text: 'text-teal-700 dark:text-teal-400',
     bar: 'bg-teal-500 dark:bg-teal-400',
     dot: 'bg-teal-500 dark:bg-teal-400',
-    accent: 'border-l-4 border-l-teal-500 hover:border-l-teal-500 dark:border-l-teal-500 dark:hover:border-l-teal-500',
+    accent:
+      'border-l-4 border-l-teal-500 hover:border-l-teal-500 dark:border-l-teal-500 dark:hover:border-l-teal-500',
   },
   violet: {
     top: 'bg-violet-500 dark:bg-violet-400',
@@ -224,7 +243,8 @@ export const TONE = {
     text: 'text-violet-700 dark:text-violet-300',
     bar: 'bg-violet-500 dark:bg-violet-400',
     dot: 'bg-violet-500 dark:bg-violet-400',
-    accent: 'border-l-4 border-l-violet-500 hover:border-l-violet-500 dark:border-l-violet-500 dark:hover:border-l-violet-500',
+    accent:
+      'border-l-4 border-l-violet-500 hover:border-l-violet-500 dark:border-l-violet-500 dark:hover:border-l-violet-500',
   },
   slate: {
     top: 'bg-slate-600 dark:bg-slate-400',
@@ -233,7 +253,8 @@ export const TONE = {
     text: 'text-slate-700 dark:text-slate-300',
     bar: 'bg-slate-600 dark:bg-slate-400',
     dot: 'bg-slate-400 dark:bg-slate-500',
-    accent: 'border-l-4 border-l-slate-600 hover:border-l-slate-600 dark:border-l-slate-400 dark:hover:border-l-slate-400',
+    accent:
+      'border-l-4 border-l-slate-600 hover:border-l-slate-600 dark:border-l-slate-400 dark:hover:border-l-slate-400',
   },
   sky: {
     top: 'bg-sky-500 dark:bg-sky-400',
@@ -242,7 +263,8 @@ export const TONE = {
     text: 'text-sky-700 dark:text-sky-400',
     bar: 'bg-sky-500 dark:bg-sky-400',
     dot: 'bg-sky-500 dark:bg-sky-400',
-    accent: 'border-l-4 border-l-sky-500 hover:border-l-sky-500 dark:border-l-sky-500 dark:hover:border-l-sky-500',
+    accent:
+      'border-l-4 border-l-sky-500 hover:border-l-sky-500 dark:border-l-sky-500 dark:hover:border-l-sky-500',
   },
   rose: {
     top: 'bg-rose-500 dark:bg-rose-400',
@@ -251,7 +273,8 @@ export const TONE = {
     text: 'text-rose-700 dark:text-rose-400',
     bar: 'bg-rose-500 dark:bg-rose-400',
     dot: 'bg-rose-500 dark:bg-rose-400',
-    accent: 'border-l-4 border-l-rose-500 hover:border-l-rose-500 dark:border-l-rose-500 dark:hover:border-l-rose-500',
+    accent:
+      'border-l-4 border-l-rose-500 hover:border-l-rose-500 dark:border-l-rose-500 dark:hover:border-l-rose-500',
   },
   brand: {
     top: 'bg-brand-600 dark:bg-brand-500',
@@ -260,7 +283,8 @@ export const TONE = {
     text: 'text-brand-700 dark:text-brand-300',
     bar: 'bg-brand-600 dark:bg-brand-500',
     dot: 'bg-brand-500 dark:bg-brand-400',
-    accent: 'border-l-4 border-l-brand-600 hover:border-l-brand-600 dark:border-l-brand-500 dark:hover:border-l-brand-500',
+    accent:
+      'border-l-4 border-l-brand-600 hover:border-l-brand-600 dark:border-l-brand-500 dark:hover:border-l-brand-500',
   },
 } as const;
 export type Tone = keyof typeof TONE;
@@ -270,10 +294,13 @@ export type Tone = keyof typeof TONE;
 export const SURFACE = cn(CARD, 'rounded-2xl');
 export const WELL =
   'rounded-xl border border-slate-200 bg-slate-50/60 dark:border-[#1e2a3f] dark:bg-[#0a101b]/70';
-export const BAND = 'border-t border-slate-200 bg-slate-50/80 dark:border-[#1c293f] dark:bg-[#0a101b]';
-export const BOX = 'rounded-xl border border-slate-200 bg-white dark:border-[#1e2a3f] dark:bg-[#0a101b]/70';
+export const BAND =
+  'border-t border-slate-200 bg-slate-50/80 dark:border-[#1c293f] dark:bg-[#0a101b]';
+export const BOX =
+  'rounded-xl border border-slate-200 bg-white dark:border-[#1e2a3f] dark:bg-[#0a101b]/70';
 /** A BOX that opens a list, under the pointer: the card's own hover edge. */
-export const BOX_HOVER = 'transition-colors hover:border-[#cbd5e1] dark:hover:border-[rgba(59,130,246,.45)]';
+export const BOX_HOVER =
+  'transition-colors hover:border-[#cbd5e1] dark:hover:border-[rgba(59,130,246,.45)]';
 export const RULE = 'border-slate-100 dark:border-[#1c273b]';
 export const DIVIDE = 'divide-y divide-slate-100 dark:divide-[#1a2538]';
 export const ROW_HOVER = 'transition hover:bg-white dark:hover:bg-slate-800/40';
@@ -395,12 +422,20 @@ export const TabHead = ({
   chips?: ReactNode;
   end?: ReactNode;
 }): JSX.Element => (
-  <div data-tab-head="true" className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+  <div
+    data-tab-head="true"
+    className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3"
+  >
     <div className="flex min-w-0 items-center gap-3">
       <IconTile d={icon} tone={tone} />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className={cn('whitespace-nowrap text-[22px] font-bold text-slate-900 dark:text-white', CAIRO)}>
+          <h2
+            className={cn(
+              'whitespace-nowrap text-[22px] font-bold text-slate-900 dark:text-white',
+              CAIRO,
+            )}
+          >
             {title}
           </h2>
           {live && <LiveChip />}
@@ -435,7 +470,12 @@ export const Fig = ({
       {children}
     </span>
   ) : (
-    <Link to={link.to} data-metric={link.metric} title={title} className={cn(className, linkedClassName, FOCUS)}>
+    <Link
+      to={link.to}
+      data-metric={link.metric}
+      title={title}
+      className={cn(className, linkedClassName, FOCUS)}
+    >
       {children}
     </Link>
   );
@@ -446,16 +486,25 @@ const BTN_BASE =
   'inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border text-[13px] font-bold transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50';
 export const BTN = {
   /** The main step of a card: the site's indigo as a tinted button with its edge. */
-  dark: cn(BTN_BASE, 'border-brand-500/50 bg-brand-500/15 px-4 py-2 text-brand-700 hover:bg-brand-500/25 dark:text-brand-200'),
+  dark: cn(
+    BTN_BASE,
+    'border-brand-500/50 bg-brand-500/15 px-4 py-2 text-brand-700 hover:bg-brand-500/25 dark:text-brand-200',
+  ),
   /** The filled button: the shared Button's `primary`. */
-  primary: cn(BTN_BASE, 'border-transparent bg-brand-600 px-4 py-2 text-white shadow-md shadow-brand-700/30 hover:bg-brand-700'),
+  primary: cn(
+    BTN_BASE,
+    'border-transparent bg-brand-600 px-4 py-2 text-white shadow-md shadow-brand-700/30 hover:bg-brand-700',
+  ),
   /** The outlined button: the shared Button's `secondary`. */
   outline: cn(
     BTN_BASE,
     'border-slate-300 bg-white px-3.5 py-2 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700',
   ),
   /** The «فتح …» link-button of the alert rows: the brand tint, a step less padding. */
-  soft: cn(BTN_BASE, 'border-brand-500/50 bg-brand-500/15 px-3 py-1.5 text-brand-700 hover:bg-brand-500/25 dark:text-brand-200'),
+  soft: cn(
+    BTN_BASE,
+    'border-brand-500/50 bg-brand-500/15 px-3 py-1.5 text-brand-700 hover:bg-brand-500/25 dark:text-brand-200',
+  ),
 } as const;
 
 /** A button that opens an existing screen (a real link), its icon after the words (the arrow by default). */
@@ -534,7 +583,13 @@ export const Count = ({ n, tone = 'slate' }: { n: ReactNode; tone?: Tone }): JSX
 );
 
 /** A vehicle's code with the little car glyph — the boards' code chip; a link when given one. */
-export const CarChip = ({ code, link = null }: { code: string; link?: DashLink | null }): JSX.Element => (
+export const CarChip = ({
+  code,
+  link = null,
+}: {
+  code: string;
+  link?: DashLink | null;
+}): JSX.Element => (
   <Fig
     link={link}
     linkedClassName=""
@@ -555,7 +610,13 @@ export const Meter = ({
   className?: string;
   height?: string;
 }): JSX.Element => (
-  <div className={cn('flex overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]', height, className)}>
+  <div
+    className={cn(
+      'flex overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]',
+      height,
+      className,
+    )}
+  >
     {parts.map((part, i) => (
       <div
         key={i}
@@ -567,7 +628,13 @@ export const Meter = ({
 );
 
 /** A footer link of a card («عرض السيارات ←») — the dashboard's emerald link. */
-export const FootLink = ({ link, children }: { link: DashLink; children: ReactNode }): JSX.Element => (
+export const FootLink = ({
+  link,
+  children,
+}: {
+  link: DashLink;
+  children: ReactNode;
+}): JSX.Element => (
   <Link
     to={link.to}
     data-metric={link.metric}

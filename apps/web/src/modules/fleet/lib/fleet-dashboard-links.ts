@@ -27,7 +27,8 @@ export interface DashLink {
 
 type Param = string | number | boolean | readonly string[] | null | undefined;
 
-/** A comma list stays readable (`type=a,b`); everything else is encoded. Empty values are dropped. */
+/** A comma list stays readable (`type=a,b`), and so does a sort's colon (`employeeCode:asc`); everything
+ *  else is encoded. Empty values are dropped. */
 const query = (params: Record<string, Param>): string => {
   const parts: string[] = [];
   for (const [key, raw] of Object.entries(params)) {
@@ -37,7 +38,7 @@ const query = (params: Record<string, Param>): string => {
       parts.push(`${key}=${raw.map((v: string) => encodeURIComponent(v)).join(',')}`);
       continue;
     }
-    parts.push(`${key}=${encodeURIComponent(String(raw))}`);
+    parts.push(`${key}=${encodeURIComponent(String(raw)).replace(/%3A/gu, ':')}`);
   }
   return parts.length === 0 ? '' : `?${parts.join('&')}`;
 };
@@ -48,7 +49,10 @@ const at = (path: string, params: Record<string, Param>, metric: string): DashLi
 });
 
 /** The screens a link may name without a query: they read no parameter and remember none. */
-export const PATH_ONLY: readonly string[] = ['/fleet/custody/dashboard', '/fleet/fuel-cards/reconcile'];
+export const PATH_ONLY: readonly string[] = [
+  '/fleet/custody/dashboard',
+  '/fleet/fuel-cards/reconcile',
+];
 
 /** The cap every screen's `vehicleCodes` takes (`vehicleCodesQuery`, 50). */
 export const LINK_CODES_CAP = 50;
@@ -85,11 +89,16 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
     // Tab 1 — alerts.
     /** T1.1: the alarms board, narrowed to the branch's cars when a branch is chosen (D19). */
     alarm: (level: 'red' | 'yellow', codes: readonly string[] | null): DashLink | null => {
-      if (codes === null) return at('/fleet/maintenance-alarms', { level }, `maintenanceAlarm.${level}`);
+      if (codes === null)
+        return at('/fleet/maintenance-alarms', { level }, `maintenanceAlarm.${level}`);
       const narrowed = codesOrNull(codes);
       return narrowed === null
         ? null
-        : at('/fleet/maintenance-alarms', { level, vehicleCodes: narrowed }, `maintenanceAlarm.${level}`);
+        : at(
+            '/fleet/maintenance-alarms',
+            { level, vehicleCodes: narrowed },
+            `maintenanceAlarm.${level}`,
+          );
     },
     /** T1.2 / T4.1: expired = on or before today (R-02). */
     vehicleLicencesExpired: (): DashLink => licence('licenceVehicles.expired', null, today),
@@ -155,7 +164,11 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
     custodyDashboard: custodyDashboardLink,
     /** T5.9: the spend screen over the last 30 days. */
     custodyExpenses: (): DashLink =>
-      at('/fleet/custody-expenses', { from: addDaysYmd(today, -29), to: today }, 'custodyFund.expenses'),
+      at(
+        '/fleet/custody-expenses',
+        { from: addDaysYmd(today, -29), to: today },
+        'custodyFund.expenses',
+      ),
     /** T1.12: the stale cars' whole history (`period=all`), at most 50 of them. */
     noReading: (codes: readonly string[]): DashLink | null => {
       const narrowed = codesOrNull(codes);
@@ -187,7 +200,8 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
       metric: string,
     ): DashLink => roster(metric, { unavailable: reason }),
     /** A secondary link (its own page guard, `fleetAvailability.view`). */
-    attendance: (): DashLink => at('/fleet/attendance', { date: today }, 'roster.absent.attendanceSheet'),
+    attendance: (): DashLink =>
+      at('/fleet/attendance', { date: today }, 'roster.absent.attendanceSheet'),
     /** T2.4 — open visits of any status. */
     workshopOpen: (metric = 'workshop.open'): DashLink =>
       at('/fleet/maintenance', { state: 'open', ...br }, metric),
@@ -199,7 +213,12 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
     ): DashLink =>
       at(
         '/fleet/vehicles',
-        { status: 'active', type: cell.typeId, branch: cell.branchId, operation: cell.operationIds },
+        {
+          status: 'active',
+          type: cell.typeId,
+          branch: cell.branchId,
+          operation: cell.operationIds,
+        },
         metric,
       ),
     /** T3.4: the registry, never bare (a bare URL restores remembered filters, CR-11). */
@@ -223,9 +242,17 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
       at('/fleet/accidents', { vehicleCodes: [code], from: day, to: day }, metric),
     /** The two «سجل …» foot links of «آخر ما سُجّل» — the 30-day window the list shows. */
     accidentsRecent: (days: number): DashLink =>
-      at('/fleet/accidents', { from: addDaysYmd(today, 1 - days), to: today }, 'recentAccidents.all'),
+      at(
+        '/fleet/accidents',
+        { from: addDaysYmd(today, 1 - days), to: today },
+        'recentAccidents.all',
+      ),
     visitsRecent: (days: number): DashLink =>
-      at('/fleet/maintenance', { from: addDaysYmd(today, 1 - days), to: today }, 'recentWorkshop.all'),
+      at(
+        '/fleet/maintenance',
+        { from: addDaysYmd(today, 1 - days), to: today },
+        'recentWorkshop.all',
+      ),
 
     // Tab 5 — summaries.
     /** T5.10. */
@@ -233,9 +260,17 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
       at('/fleet/accidents', { status: 'open', ...br }, 'accidentsOpen.count'),
     /** T5.11: company statements and the drivers' ledger of the Cairo year, unpaid. */
     violationsCompany: (year: number): DashLink =>
-      at('/fleet/violations', { year: String(year), cset: 'false', ...br }, 'violationsYear.company'),
+      at(
+        '/fleet/violations',
+        { year: String(year), cset: 'false', ...br },
+        'violationsYear.company',
+      ),
     violationsDrivers: (year: number): DashLink =>
-      at('/fleet/violations', { year: String(year), dset: 'false', ...br }, 'violationsYear.drivers'),
+      at(
+        '/fleet/violations',
+        { year: String(year), dset: 'false', ...br },
+        'violationsYear.drivers',
+      ),
     /** T5.12 «مجهول». «اسم غير مربوط» has no list parameter (named exception). */
     violationsUnknown: (year: number): DashLink =>
       at(
@@ -244,7 +279,10 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
         'violationsYear.unknown',
       ),
     /** «مطابقة أرصدة الكروت» — a quick link to an existing screen that keeps no filters. */
-    reconcile: (): DashLink => ({ to: '/fleet/fuel-cards/reconcile', metric: 'fuelCharging.reconcile' }),
+    reconcile: (): DashLink => ({
+      to: '/fleet/fuel-cards/reconcile',
+      metric: 'fuelCharging.reconcile',
+    }),
   };
 };
 export type NowLinks = ReturnType<typeof nowLinks>;
@@ -300,7 +338,11 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
       vehicleScope.typeIds.length === 0 &&
       vehicleScope.operationIds.length === 0 &&
       vehicleScope.branchId === null
-        ? at('/fleet/custody-expenses', { ...dates, vehicleCodes: vehicleScope.vehicleCodes }, 'opex.custody')
+        ? at(
+            '/fleet/custody-expenses',
+            { ...dates, vehicleCodes: vehicleScope.vehicleCodes },
+            'opex.custody',
+          )
         : over('/fleet/receipts', 'opex.custody', { source: 'custody' }),
     /** T6.9. */
     dealership: (metric = 'dealership.amount'): DashLink => over('/fleet/dealership', metric),

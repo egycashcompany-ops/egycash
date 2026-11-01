@@ -210,8 +210,10 @@ export const addPlanLinesInBatches = async (
     kept,
     ATM_BULK_MAX_IDS,
     (rows) => addPlanLines(planId, { run: body.run, rows }),
-    // The plan names its branch; each request is one transaction, rolled back on every 4xx.
-    { pinBranch: false, refusalWritesNothing: true },
+    // The plan is reached through the acting branch (the server reads it within the top-bar
+    // branch's scope), so the run is pinned; each request is one transaction, rolled back on every
+    // 4xx.
+    { pinBranch: true, refusalWritesNothing: true },
   );
   const lineOf = new Map(kept.map((row, i) => [codeOf(row), keptIndex[i] as number]));
   const refused = [

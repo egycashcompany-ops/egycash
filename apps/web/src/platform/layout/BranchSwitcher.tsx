@@ -12,7 +12,8 @@ import { useQuery } from '@tanstack/react-query';
 import { type OrgUnitOptionDto } from '@ecms/contracts';
 import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
-import { get, setActiveBranch } from '../../shared/lib/api-client';
+import { branchSwitchHeld, get, setActiveBranch } from '../../shared/lib/api-client';
+import { toast } from '../../shared/ui/toast/toast-store';
 import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { BuildingIcon, ChevronIcon } from '../../shared/ui/icons';
 
@@ -74,6 +75,13 @@ export const BranchSwitcher = (): JSX.Element => {
   });
 
   const choose = (value: string | null): void => {
+    // A run of several requests is going (a paste sent in batches): switching would reload the
+    // page under it. Nothing is written; the reader switches once it ends.
+    if (branchSwitchHeld()) {
+      setOpen(false);
+      toast.info(t('nav.branchSwitcher.held'));
+      return;
+    }
     setActive(value);
     writeStoredBranch(value);
     setActiveBranch(value);
@@ -92,7 +100,10 @@ export const BranchSwitcher = (): JSX.Element => {
   // clearing on it would throw away a working choice every time the network hiccuped.
   useEffect(() => {
     if ((!orgWide && !multi) || branches.data === undefined || active === null) return;
-    if (branches.data.some((branch) => branch.id === active && (orgWide || reach.includes(branch.id)))) return;
+    if (
+      branches.data.some((branch) => branch.id === active && (orgWide || reach.includes(branch.id)))
+    )
+      return;
     setActive(null);
     writeStoredBranch(null);
     setActiveBranch(null);

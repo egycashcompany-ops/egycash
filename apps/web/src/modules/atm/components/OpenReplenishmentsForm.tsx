@@ -165,6 +165,7 @@ export const OpenReplenishmentsForm = ({ defaultDate }: { defaultDate: string })
           uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
           action={t('atm.replenishments.openAction')}
           busy={open.isPending}
+          pressAgain={stop.pressAgain}
           onRestore={restoreUncertain}
           onDismiss={dismissUncertain}
         />

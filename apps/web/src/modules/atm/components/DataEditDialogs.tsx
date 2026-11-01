@@ -74,7 +74,7 @@ import {
 } from '../api/atm-queries';
 import { PasteStopNotice, pasteStopTitle } from './PasteStopNotice';
 import { useRunUnloadGuard } from '../lib/useRunUnloadGuard';
-import { runFailureText } from '../lib/paste-batches';
+import { BranchChangedError, runFailureText } from '../lib/paste-batches';
 import { areaOptionText, bankOptionGroups, labelText, type BankLookup } from '../lib/bank-catalog';
 
 /**
@@ -1003,8 +1003,8 @@ export const BulkMachinesDialog = ({
   const [bankName, setBankName] = useState('');
   const [area, setArea] = useState('');
   const [deleteCodes, setDeleteCodes] = useState('');
-  const [addStop, setAddStop] = useState({ left: 0, maybeDone: 0 });
-  const [deleteStop, setDeleteStop] = useState({ left: 0, maybeDone: 0 });
+  const [addStop, setAddStop] = useState({ left: 0, maybeDone: 0, pressAgain: true });
+  const [deleteStop, setDeleteStop] = useState({ left: 0, maybeDone: 0, pressAgain: true });
 
   useEffect(() => {
     if (!open) return;
@@ -1013,8 +1013,8 @@ export const BulkMachinesDialog = ({
     setBankName('');
     setArea('');
     setDeleteCodes('');
-    setAddStop({ left: 0, maybeDone: 0 });
-    setDeleteStop({ left: 0, maybeDone: 0 });
+    setAddStop({ left: 0, maybeDone: 0, pressAgain: true });
+    setDeleteStop({ left: 0, maybeDone: 0, pressAgain: true });
   }, [open]);
 
   const bulkCreate = useBulkCreateAtmMachines();
@@ -1026,7 +1026,7 @@ export const BulkMachinesDialog = ({
     event.preventDefault();
     const machines = buildMachineRows(codes, names);
     if (machines.length === 0 || bankName === '' || area === '' || addBlocked(options.data)) return;
-    setAddStop({ left: 0, maybeDone: 0 });
+    setAddStop({ left: 0, maybeDone: 0, pressAgain: true });
     try {
       const run = await bulkCreate.mutateAsync({ bankName, area, machines });
       const result = joinBulkAdd(run.answers);
@@ -1035,7 +1035,11 @@ export const BulkMachinesDialog = ({
         // Stopped part-way: every line not confirmed goes back, paired line for line.
         setCodes(run.left.map((row) => row.machineCode).join('\n'));
         setNames(run.left.map((row) => row.name).join('\n'));
-        setAddStop({ left: run.left.length, maybeDone: run.maybeDone });
+        setAddStop({
+          left: run.left.length,
+          maybeDone: run.maybeDone,
+          pressAgain: !(run.failure instanceof BranchChangedError),
+        });
         toast.error(
           pasteStopTitle(t, run.left.length, run.maybeDone),
           runFailureText(run.failure, t, locale),
@@ -1053,7 +1057,7 @@ export const BulkMachinesDialog = ({
     event.preventDefault();
     const machineCodes = splitAtmFormLines(deleteCodes).filter((code) => code !== '');
     if (machineCodes.length === 0 || addBlocked(options.data)) return;
-    setDeleteStop({ left: 0, maybeDone: 0 });
+    setDeleteStop({ left: 0, maybeDone: 0, pressAgain: true });
     try {
       const run = await bulkDelete.mutateAsync(machineCodes);
       const result = joinBulkDelete(run.answers);
@@ -1063,7 +1067,11 @@ export const BulkMachinesDialog = ({
       }
       if (run.left.length > 0) {
         setDeleteCodes(run.left.join('\n'));
-        setDeleteStop({ left: run.left.length, maybeDone: run.maybeDone });
+        setDeleteStop({
+          left: run.left.length,
+          maybeDone: run.maybeDone,
+          pressAgain: !(run.failure instanceof BranchChangedError),
+        });
         toast.error(
           pasteStopTitle(t, run.left.length, run.maybeDone),
           runFailureText(run.failure, t, locale),
@@ -1154,6 +1162,7 @@ export const BulkMachinesDialog = ({
             maybeDone={addStop.maybeDone}
             action={t('atm.common.add')}
             safeHint={t('atm.dataEdit.addResendSafe')}
+            pressAgain={addStop.pressAgain}
           />
           <div className="flex justify-end">
             <Button
@@ -1193,6 +1202,7 @@ export const BulkMachinesDialog = ({
             maybeDone={deleteStop.maybeDone}
             action={t('atm.common.delete')}
             safeHint={t('atm.dataEdit.deleteResendSafe')}
+            pressAgain={deleteStop.pressAgain}
           />
           <div className="flex justify-end">
             <Button

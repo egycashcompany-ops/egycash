@@ -190,6 +190,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
           uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
           action={t('atm.maintenance.openAction')}
           busy={open.isPending}
+          pressAgain={stop.pressAgain}
           onRestore={restoreUncertain}
           onDismiss={dismissUncertain}
         />

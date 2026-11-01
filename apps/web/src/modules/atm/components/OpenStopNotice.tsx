@@ -15,28 +15,37 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { joinCodes } from '../lib/operation-view';
+import { BranchChangedError } from '../lib/paste-batches';
 
 /** What the form keeps after its presses: the last press's unsent count, and uncertain lines. */
 export interface OpenStopState<Row> {
   unsent: number;
   uncertain: Row[];
+  /** False when the run stopped because the branch changed under it: the page must reload first. */
+  pressAgain: boolean;
 }
 
-export const emptyOpenStop = <Row,>(): OpenStopState<Row> => ({ unsent: 0, uncertain: [] });
+export const emptyOpenStop = <Row,>(): OpenStopState<Row> => ({
+  unsent: 0,
+  uncertain: [],
+  pressAgain: true,
+});
 
 /** Pure: a press starts — the last press's unsent count goes; the uncertain lines stay. */
 export const openPressStarted = <Row,>(state: OpenStopState<Row>): OpenStopState<Row> => ({
   unsent: 0,
   uncertain: state.uncertain,
+  pressAgain: true,
 });
 
 /** Pure: a press ended — its unsent count, and its uncertain lines after the ones still held. */
 export const openPressEnded = <Row,>(
   state: OpenStopState<Row>,
-  result: { unsent: readonly Row[]; uncertain: readonly Row[] },
+  result: { unsent: readonly Row[]; uncertain: readonly Row[]; failure?: unknown },
 ): OpenStopState<Row> => ({
   unsent: result.unsent.length,
   uncertain: [...state.uncertain, ...result.uncertain],
+  pressAgain: !(result.failure instanceof BranchChangedError),
 });
 
 /**
@@ -57,11 +66,14 @@ export const OpenStopNotice = ({
   uncertainCodes,
   action,
   busy,
+  pressAgain = true,
   onRestore,
   onDismiss,
 }: {
   unsent: number;
   uncertainCodes: readonly string[];
+  /** False when a new press would go to a branch switched to meanwhile. */
+  pressAgain?: boolean;
   /** The form's own open button label, named in the unsent line. */
   action: string;
   /** A press is running: the buttons are held, as the boxes are. */
@@ -91,7 +103,7 @@ export const OpenStopNotice = ({
       {unsent > 0 && (
         <p className="w-full text-sm text-red-600 dark:text-red-400" data-open-stop="unsent">
           {t('atm.common.openStopped', { count: unsent })} —{' '}
-          {t('atm.common.openStoppedHint', { action })}
+          {pressAgain ? t('atm.common.openStoppedHint', { action }) : t('atm.common.pasteLeftOnly')}
         </p>
       )}
     </>

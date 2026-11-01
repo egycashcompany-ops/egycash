@@ -14,9 +14,11 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { type Locale } from '@ecms/contracts';
 
 /**
- * The top-bar branch changed between two requests of a run. The requests that depend on it (the
- * open forms, the data-edit bulk forms — each resolves the acting branch per request) stop before
- * the next one, which would have gone to the other branch.
+ * The top-bar branch changed between two requests of a run. Every run here depends on it — the
+ * open forms and the data-edit bulk forms resolve the acting branch per request, and the plan is
+ * read within its scope — so the run stops before the next one, which would have gone to the other
+ * branch. The switcher itself waits while a run goes (`holdBranchSwitch`); this is the backstop for
+ * a branch changed without it (a stored branch retired meanwhile).
  */
 export class BranchChangedError extends Error {
   constructor() {

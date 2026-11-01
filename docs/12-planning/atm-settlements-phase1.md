@@ -1242,7 +1242,10 @@ the transaction only shape the error message.
   `duplicateInRun` — so the failed request's own lines go back too; the dialog says they may have
   partly gone through, unless the request was refused (every 4xx here rolls back). The 400 live
   lines per plan still hold: a request that would pass them is refused whole and the run stops
-  there. The boxes, the run and closing are held while a run goes.
+  there. The boxes, the run and closing are held while a run goes, the top-bar branch switch waits,
+  and closing or reloading the page asks first. The plan is read within the top-bar branch's scope,
+  so the run is pinned to that branch: changed under it anyway, the run stops before its next
+  request with its lines back.
 - **Add spare line (S15).**
   - `layoutIssues(slots, { spare: true })` must be empty.
   - Counts come from the profile (when given) through `fillFromStandard`, then `denominationNotes`

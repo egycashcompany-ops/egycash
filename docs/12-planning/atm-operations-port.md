@@ -62,8 +62,8 @@ ECMS" means.
   register, an archived code is brought back instead of refused, and a code living in another
   branch is refused (§9). **Amended 2026-11-01:** the bulk add and the bulk delete take any number
   of lines — consecutive requests of `ATM_MACHINES_BULK_MAX` (500, unchanged), each code once, the
-  acting branch pinned (a top-bar switch reloads the page, which asks first while a run goes;
-  staying stops the run before its next request). A run that stops puts
+  acting branch pinned — the top-bar switch waits while a run goes, and a branch changed under it
+  anyway stops the run before its next request. A run that stops puts
   every line not confirmed back into its boxes; sending them again is safe (an added machine comes
   back «مسجلة من قبل», a deleted one as an unknown code), so the failed request's lines go back too,
   named as possibly done.
@@ -144,9 +144,10 @@ ECMS" means.
     to be checked in the table, keeps them through later presses (a later stop adds to them), and
     puts them back or hides them only when asked. What earlier requests opened stands either way.
     Each request resolves the acting branch from the top bar, and a top-bar switch reloads the page,
-    so while a run goes closing or reloading asks first (`useRunUnloadGuard`); staying, the run sees
-    the switch (`branchPin`) and stops before its next request, its lines back as unsent
-    (2026-11-01).
+    so while a run goes the switch waits and says so, and closing or reloading asks first
+    (`useRunUnloadGuard`, `holdBranchSwitch`). A branch changed under the run anyway (a stored branch
+    retired meanwhile) is caught by the run's pin (`branchPin`): it stops before its next request,
+    its lines back as unsent, without «اضغط … مرة أخرى» (2026-11-01).
   - **A name is matched as the board shows it.** Bank and area are free text, so the filter
     lists travel escaped: one comma-separated value as before, `\,` a comma inside a name, `\\` a
     backslash (`joinAtmNameList`/`splitAtmNameList`, `atmNameListQuery`) — «Raml, Station» used to

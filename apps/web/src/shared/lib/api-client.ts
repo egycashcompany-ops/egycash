@@ -62,6 +62,26 @@ export const setActiveBranch = (branchId: string | null): void => {
  */
 export const getActiveBranch = (): string | null => activeBranch;
 
+/**
+ * Runs of several requests in flight that depend on the branch above (a paste sent in batches).
+ * While one goes, the switcher does not switch: a switch reloads the page, and a reload the reader
+ * declines would leave the tab on the new branch with the run's lines waiting to be sent there.
+ */
+let branchHolds = 0;
+
+/** Hold the branch switch until the returned release is called (once). */
+export const holdBranchSwitch = (): (() => void) => {
+  branchHolds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    branchHolds -= 1;
+  };
+};
+
+export const branchSwitchHeld = (): boolean => branchHolds > 0;
+
 // Definitive auth loss (refresh failed mid-session): the app registers ONE handler here
 // (main.tsx) that signs Redux out and clears the query cache, so RequireAuth redirects to
 // /login instead of stranding the user on an error screen. Registered as a callback to keep

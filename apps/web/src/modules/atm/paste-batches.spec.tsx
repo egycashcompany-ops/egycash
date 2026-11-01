@@ -38,7 +38,7 @@ import { joinBulkAdd, joinBulkDelete } from './components/DataEditDialogs';
 import { PasteStopNotice, pasteStopTitle } from './components/PasteStopNotice';
 import { pressAgainAfter } from './components/settlements/AddMachinesDialog';
 
-const { ApiError, setActiveBranch } = ApiClientModule;
+const { ApiError, setActiveBranch, holdBranchSwitch, branchSwitchHeld } = ApiClientModule;
 
 interface Sent {
   path: string;
@@ -195,7 +195,7 @@ describe('inPasteBatches — the run itself', () => {
     expect(run.failure).toBeInstanceOf(BranchChangedError);
   });
 
-  it('…unless the run does not depend on the top bar (the plan names its branch)', async () => {
+  it('…unless the run is not pinned', async () => {
     setActiveBranch('branch-a');
     afterRequest = () => setActiveBranch('branch-b');
     const run = await inPasteBatches([0, 1, 2, 3], 2, send, {
@@ -204,6 +204,20 @@ describe('inPasteBatches — the run itself', () => {
     });
     expect(sent).toHaveLength(2);
     expect(run.left).toEqual([]);
+  });
+});
+
+describe('the branch switch waits while a run goes', () => {
+  it('held from the first hold until the last release; a release counts once', () => {
+    expect(branchSwitchHeld()).toBe(false);
+    const a = holdBranchSwitch();
+    const b = holdBranchSwitch();
+    expect(branchSwitchHeld()).toBe(true);
+    a();
+    a();
+    expect(branchSwitchHeld()).toBe(true);
+    b();
+    expect(branchSwitchHeld()).toBe(false);
   });
 });
 
@@ -328,6 +342,17 @@ describe('the settlement plan’s «إضافة ماكينات»', () => {
     expect(run.left.map((r) => r.machineCode)).toEqual(list.slice(200));
     expect(run.maybeDone).toBe(0);
     expect(run.failure).toBe(refusal);
+  });
+
+  it('pinned: the plan is read within the top-bar branch, so a switch stops the run', async () => {
+    setActiveBranch('branch-a');
+    afterRequest = () => setActiveBranch('branch-b');
+    const run = await addPlanLinesInBatches('plan-1', { run: 1, rows: rows(codes(450)) });
+    expect(sent).toHaveLength(1);
+    expect(run.left).toHaveLength(250);
+    expect(run.maybeDone).toBe(0);
+    expect(run.failure).toBeInstanceOf(BranchChangedError);
+    expect(pressAgainAfter(run.failure)).toBe(false);
   });
 
   it('no answer on the 2nd: its lines may be done (a resend reads them «موجودة في هذه التغذية»)', async () => {

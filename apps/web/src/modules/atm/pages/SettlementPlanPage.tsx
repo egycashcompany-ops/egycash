@@ -62,6 +62,7 @@ import {
   useUpdatePlanLine,
 } from '../api/settlements-queries';
 import { type PlanAddRun } from '../api/settlements-api';
+import { BranchChangedError, runFailureText } from '../lib/paste-batches';
 import { useAtmBankLookup } from '../api/atm-queries';
 import { AddMachinesDialog } from '../components/settlements/AddMachinesDialog';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
@@ -241,7 +242,13 @@ export const SettlementPlanPage = (): JSX.Element => {
       const answer = await add.mutateAsync({ planId: plan.id, body: { run, rows } });
       // A run that stopped part-way (a later request refused — the plan full, say — or no answer):
       // the dialog lists what went and puts the rest back; the reason is said here.
-      if (answer.failure !== null) setAddError(settlementErrorText(answer.failure, t, locale));
+      if (answer.failure !== null) {
+        setAddError(
+          answer.failure instanceof BranchChangedError
+            ? runFailureText(answer.failure, t, locale)
+            : settlementErrorText(answer.failure, t, locale),
+        );
+      }
       return answer;
     } catch (error) {
       setAddError(settlementErrorText(error, t, locale));

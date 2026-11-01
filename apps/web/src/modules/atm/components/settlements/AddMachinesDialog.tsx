@@ -28,15 +28,18 @@ import { buildReplenishmentRows, replenishmentLines } from '../OpenReplenishment
 import { PasteStopNotice } from '../PasteStopNotice';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { useRunUnloadGuard } from '../../lib/useRunUnloadGuard';
+import { BranchChangedError } from '../../lib/paste-batches';
 import { type PlanAddRun } from '../../api/settlements-api';
 import { runLabel } from '../../lib/settlement-view';
 
 /**
  * Pure: may a stopped run's lines be pressed again as they are? Not after the plan answered full —
- * a new press is refused the same way until lines are removed or cancelled.
+ * a new press is refused the same way until lines are removed or cancelled — nor after the branch
+ * changed under the run (the page must reload onto the new branch first).
  */
 export const pressAgainAfter = (failure: unknown): boolean =>
-  !(failure instanceof ApiError && failure.code === ErrorCodes.ATM_PLAN_FULL);
+  !(failure instanceof ApiError && failure.code === ErrorCodes.ATM_PLAN_FULL) &&
+  !(failure instanceof BranchChangedError);
 
 export const AddMachinesDialog = ({
   open,

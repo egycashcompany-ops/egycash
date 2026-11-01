@@ -18,11 +18,13 @@ import { PORTAL_CHALLENGE_CODE_LENGTH, type MeDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../../../store';
 import { signedIn } from '../../../../store/authSlice';
 import { useT } from '../../../../platform/localization/useT';
+import { useDocumentTitle } from '../../../../shared/lib/useDocumentTitle';
 import { ThemeToggle } from '../../../../platform/layout/ThemeToggle';
 import { LanguageToggle } from '../../../../platform/layout/LanguageToggle';
 import { completePortalChallenge, startPortalChallenge } from '../../../../platform/auth/api';
 import { Button, Field, Form, Input } from '../../../../shared/ui';
 import { AlertIcon } from '../../../../shared/ui/icons';
+import { EgycashLogo } from '../../../../shared/ui/EgycashLogo';
 import { APPLICANT_PORTAL_SUBJECT } from './subject';
 
 type Step = 'identify' | 'code';
@@ -32,6 +34,7 @@ const digits = (value: string, max: number): string => value.replace(/\D/g, '').
 
 export const ApplicantPortalLoginPage = (): JSX.Element => {
   const t = useT();
+  useDocumentTitle('EGYCASH');
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const status = useAppSelector((state) => state.auth.status);
@@ -134,15 +137,9 @@ export const ApplicantPortalLoginPage = (): JSX.Element => {
           aria-hidden="true"
         />
         <div className="relative flex flex-1 flex-col justify-between p-12 xl:p-16">
-          <div className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-300 to-sky-600 text-base font-bold text-black"
-            >
-              E
-            </span>
-            <span className="text-xl font-semibold tracking-tight text-white">EGYCASH</span>
-          </div>
+          {/* The panel is near-black in both themes, so the reversed logo — at the start edge, in
+              line with the headline below it. */}
+          <EgycashLogo tone="white" className="h-14 self-start" />
           <div className="max-w-md space-y-4">
             <h2 className="text-3xl font-semibold leading-[1.2] tracking-tight text-white xl:text-4xl">
               {t('hr.applicantPortal.login.tagline')}
@@ -161,6 +158,11 @@ export const ApplicantPortalLoginPage = (): JSX.Element => {
         </div>
         <div className="flex flex-1 items-center justify-center px-6 pb-16">
           <div className="w-full max-w-sm space-y-6">
+            {/* On small screens — where most applicants are — the dark panel is hidden, so the
+                logo is surfaced here, following the theme. */}
+            <div className="lg:hidden">
+              <EgycashLogo className="h-9" />
+            </div>
             <header className="space-y-1">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
                 {t('hr.applicantPortal.login.title')}

@@ -15,9 +15,11 @@ import helmet from 'helmet';
 const directives = (): Record<string, unknown> => ({
   ...helmet.contentSecurityPolicy.getDefaultDirectives(),
   'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
+  'frame-src': ["'self'", 'blob:'],
 });
 
 const imgSrc = (): string[] => directives()['img-src'] as string[];
+const frameSrc = (): string[] => directives()['frame-src'] as string[];
 
 describe('img-src carries what the console actually renders', () => {
   it('allows the app’s own images', () => {
@@ -31,6 +33,18 @@ describe('img-src carries what the console actually renders', () => {
 
   it('allows the OpenStreetMap tile host, or the branch map picker draws nothing', () => {
     expect(imgSrc()).toContain('https://*.tile.openstreetmap.org');
+  });
+});
+
+describe('frame-src lets a fetched PDF show inside the page', () => {
+  it('allows blob: — the object URL a fetched PDF is framed from', () => {
+    // Without it the browser falls back to default-src 'self', which does not cover blob:, and
+    // the contract-pages viewer (and IT's receipt preview) frame nothing.
+    expect(frameSrc()).toContain('blob:');
+  });
+
+  it("allows the app's own pages and nothing remote", () => {
+    expect(frameSrc()).toEqual(["'self'", 'blob:']);
   });
 });
 
@@ -87,5 +101,14 @@ describe('the policy the app builds matches the one asserted here', () => {
       (match) => match[1] ?? match[2],
     );
     expect(entries).toEqual(imgSrc());
+  });
+
+  it('serves exactly the asserted frame-src entries', () => {
+    const served = /'frame-src':\s*\[([^\]]*)\]/.exec(SOURCE);
+    expect(served).not.toBeNull();
+    const entries = [...(served?.[1] ?? '').matchAll(/"([^"]*)"|'([^']*)'/g)].map(
+      (match) => match[1] ?? match[2],
+    );
+    expect(entries).toEqual(frameSrc());
   });
 });

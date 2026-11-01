@@ -65,9 +65,10 @@ describe('the committed file is the reviewed one', () => {
   const file = committed();
   const serials = file.devices.map((device) => device.serial);
 
-  it('holds the 97 devices the review kept, of the sheet’s 100', () => {
+  it('holds the 97 devices the review kept, of the sheet’s 100 rows', () => {
     expect(file.devices).toHaveLength(97);
-    // Rows 60 and 68 are the head office's two, row 71 the short one — the three held back.
+    // Rows 60 and 68 are the head office's two; row 71, a short scan, is row 62's device scanned
+    // again — the owner read it off the device as MP30EPD8. The three left out.
     const rows = file.devices.map((device) => Number(device.key.replace(/^SN ايجي كاش صف /u, '')));
     const missing = Array.from({ length: 100 }, (_, index) => index + 1).filter(
       (row) => !rows.includes(row),
@@ -83,12 +84,16 @@ describe('the committed file is the reviewed one', () => {
     }
   });
 
-  it('leaves the head office’s two as the inventory registered them, and waits for the short one', () => {
+  it('leaves the head office’s two as the inventory registered them, and row 71’s short scan out', () => {
     const headOffice = ['MP30EPDA', 'MP30EPD2'];
     const registered = inventorySerials();
     // They are the inventory's — already on the register, at the head office.
     for (const serial of headOffice) expect(registered.has(serial)).toBe(true);
     for (const serial of [...headOffice, 'MP30EPD']) expect(serials).not.toContain(serial);
+    // «MP30EPD8 فعلاً»: the device row 71 scanned short is row 62's, registered once, from row 62.
+    expect(file.devices.filter((device) => device.serial === 'MP30EPD8')).toEqual([
+      { key: 'SN ايجي كاش صف 62', serial: 'MP30EPD8' },
+    ]);
     // And nothing else of the batch is on the register yet.
     expect(serials.filter((serial) => registered.has(serial))).toEqual([]);
   });

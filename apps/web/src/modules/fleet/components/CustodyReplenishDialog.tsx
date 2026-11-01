@@ -1,11 +1,14 @@
-// «استعاضة العهدة» — the memos not replenished yet, picked with «علامة صح»: what they add up to
-// comes back into the fund, and his «استعاضه عهدة» letter asks for it.
+// «استعاضة العهدة» — the memos not replenished yet, picked with «علامة صح»: his «استعاضه عهدة»
+// letter asks for what they add up to. It is recorded HELD («تعليق الاستعاضة لحين التحويل»): the
+// letter prints, the memos are reserved for it, and the money comes into the fund only at «تأكيد
+// التحويل» — so the sum under the list is amber (`HeldFundResult`), the fund after it «بعد تأكيد
+// التحويل».
 //
 // Every memo is ticked when the dialog opens. «بيانات الخطاب»: the letter's date (today) and the
 // period it covers — the whole months of the ticked memos (his «من 01/09 إلى 30/09») until a box
 // is typed in. Under the list, the replenishment per kind in his letter's order (كاوتش · وقود ·
 // صيانة · غسيل): a kind with no ticked memo is «—», with the receipts of that kind that are in no
-// memo yet when there are any. Then the fund now, plus the total, is the fund after.
+// memo yet when there are any. Then the fund now, plus the total, is the fund once transferred.
 //
 // Receipts in no memo cannot be replenished — each kind that has some says so in amber, with the
 // way to make its memo. The eye opens a memo's own paper; while it is open, the dialog under it
@@ -63,7 +66,7 @@ import {
 } from './custody-memo-parts';
 import {
   DialogButtons,
-  FundResult,
+  HeldFundResult,
   LetterFields,
   ListNote,
   useFigure,
@@ -130,7 +133,8 @@ export const CustodyReplenishDialog = ({
   const { run, busy } = useFundOperation({
     mutation: replenish,
     letter: 'replenish',
-    done: t('fleet.custody.fundForm.replenish.done'),
+    // Recorded held: the money comes into the fund only at «تأكيد التحويل».
+    done: t('fleet.custody.hold.done'),
     taken: t('fleet.custody.fundForm.replenish.taken'),
     onDone: onClose,
     onTaken: () => {
@@ -264,7 +268,7 @@ export const CustodyReplenishDialog = ({
         // While a memo's paper is open over it, the dialog stays: its Escape is the paper's.
         onClose={viewing === null ? onClose : () => undefined}
         title={t('fleet.custody.actions.replenish')}
-        subtitle={t('fleet.custody.fundForm.replenish.subtitle')}
+        subtitle={t('fleet.custody.hold.subtitle')}
         icon={CUSTODY_OPS.replenish.icon}
         width="3xl"
         panelProps={{ 'data-memo-replenish': 'true' }}
@@ -272,7 +276,7 @@ export const CustodyReplenishDialog = ({
           <DialogButtons
             save={
               <DesignSave
-                label={t('fleet.custody.fundForm.replenish.save')}
+                label={t('fleet.custody.hold.save')}
                 busy={busy}
                 onClick={required.guard(() => send(false))}
                 data-memo-replenish-save="true"
@@ -280,7 +284,7 @@ export const CustodyReplenishDialog = ({
             }
             print={
               <PrintButton
-                label={t('fleet.custody.fundForm.savePrint')}
+                label={t('fleet.custody.hold.savePrint')}
                 busy={busy}
                 onClick={required.guard(() => send(true))}
                 data-memo-replenish-print="true"
@@ -386,17 +390,12 @@ export const CustodyReplenishDialog = ({
           </div>
         </section>
 
-        <FundResult
-          tone="sky"
-          data-memo-replenish-result="true"
-          line={figureLine('fleet.custody.fundForm.replenish.result', {
-            amount: figure(total),
-            after: figure(after),
-          })}
+        <HeldFundResult
+          line={figureLine('fleet.custody.hold.resultLine', { amount: figure(total) })}
+          note={figureLine('fleet.custody.hold.resultNote', { before: figure(before) })}
           before={before}
           change={total}
           after={after}
-          changeLabel={t('fleet.custody.fundForm.replenish.change')}
         />
 
         {outside.map((line) => (

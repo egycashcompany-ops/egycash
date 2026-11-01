@@ -230,6 +230,20 @@ export const ErrorCodes = {
    */
   ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
 
+  // ── Fleet fuel-card sheet reconciliation («مطابقة أرصدة الكروت») ─────────────────────────────
+  /** 422 — the sheet is not the company's layout (a header is missing, no sheet), or over a cap. */
+  FLEET_FUEL_SHEET_LAYOUT: 'FLEET_FUEL_SHEET_LAYOUT',
+  /**
+   * 409 — a named card changed after the sheet was read; nothing was written. One detail per card:
+   * `{ field: 'cardIds', code: 'CARD_CHANGED', message: <cardId> }`.
+   */
+  FLEET_FUEL_RECONCILE_CARD_CHANGED: 'FLEET_FUEL_RECONCILE_CARD_CHANGED',
+  /**
+   * 409 — a named card was already decided in this session; nothing was written. One detail per
+   * card: `{ field: 'cardIds', code: 'DECIDED', message: <cardId> }`.
+   */
+  FLEET_FUEL_RECONCILE_DECIDED: 'FLEET_FUEL_RECONCILE_DECIDED',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

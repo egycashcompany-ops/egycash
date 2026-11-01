@@ -6,9 +6,10 @@
 //
 // The reason comes from the SERVER, and this file's real job is to keep it that way. Four of the
 // five causes are invisible from the client: the interval lives on the vehicle type, and the
-// latest reading, its date and the baseline counter are not in this projection at all. A screen
+// latest reading, its date and the baseline counter were not in this projection at all. A screen
 // guessing from what it happens to hold would state a cause that is wrong — so no screen may
-// reason about it, and the text may exist in exactly one place.
+// reason about it, and the text may exist in exactly two places: the badge, and the odometer's
+// reason cell («بدل «—» يظهر السبب في سطر آخر قراءة لكل عربية»), both reading the server's field.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -106,6 +107,12 @@ const alarm = (over: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAl
   noAlarmReason: 'noService',
   daysWithoutReading: 0,
   latestReading: 12000,
+  // The projection's facts behind the figure: the latest reading is the highest row the odometer
+  // fixture below draws (`log-0`); no counted visit, so no baseline.
+  latestReadingAt: '2026-08-20T00:00:00.000Z',
+  latestReadingLogId: 'log-0',
+  baseline: null,
+  newerUncountedVisit: null,
   ...over,
 });
 
@@ -248,10 +255,14 @@ describe('each screen says the reason at the size its rows can carry', () => {
   // reads as several problems instead of one — the same noise a per-row tint would have made.
   //
   // Maintenance used to carry it as a tooltip on a level column. That column was taken off the
-  // grid by request («شيل دول من الجدول بتاع شاشه fleet/maintenance»), so the grid now sits with
-  // the odometer: a row there is a VISIT, not a car, and the car's alarm is the board's subject.
+  // grid by request («شيل دول من الجدول بتاع شاشه fleet/maintenance»): a row there is a VISIT, not
+  // a car, and the car's alarm is the board's subject.
+  //
+  // The odometer is the exception the owner asked for: «بدل «—» يظهر السبب في سطر آخر قراءة لكل
+  // عربية». A row there is a READING, so the reason is said ONCE per car — a chip on the row of its
+  // latest reading, the whole sentence in the card behind it — and never down every reading.
   for (const reason of REASONS) {
-    it(`«${translate('ar', `fleet.alarms.noAlarmReason.${reason}`)}» — in full on the board, absent from maintenance and from the odometer`, () => {
+    it(`«${translate('ar', `fleet.alarms.noAlarmReason.${reason}`)}» — in full on the board, absent from maintenance, once on the odometer`, () => {
       const text = translate('ar', `fleet.alarms.noAlarmReason.${reason}`);
       const a = alarm({ noAlarmReason: reason });
 
@@ -271,19 +282,25 @@ describe('each screen says the reason at the size its rows can carry', () => {
         translate('ar', 'fleet.vehicle.alarmNone'),
       );
 
-      // Rows are READINGS: a distance column stays a distance column.
+      // Rows are READINGS: the chip, once — the part of the sentence before the board's dash.
+      const chip = text.split(' — ')[0] as string;
       const onOdometer = odometer(a);
-      expect(onOdometer, 'the odometer prints no reason at all').not.toContain(text);
-      expect(onOdometer, 'not even as a tooltip').not.toContain(`title="${text}"`);
+      expect(onOdometer.split(`>${chip}<`).length - 1, 'the odometer says it once').toBe(1);
+      expect(onOdometer, 'never as a tooltip').not.toContain(`title="${chip}`);
+      expect(onOdometer, 'nor the whole sentence').not.toContain(`title="${text}"`);
     });
   }
 
-  it('a car with SEVERAL readings does not repeat its reason once per reading', () => {
-    // The defect this replaces: five readings of one car printed the same sentence five times.
+  it('a car with SEVERAL readings says its reason ONCE, not once per reading', () => {
+    // The defect the old rule guarded against: five readings of one car printed the same sentence
+    // five times. The reason is back on the odometer, and still said once — on the latest reading.
     const text = translate('ar', 'fleet.alarms.noAlarmReason.noService');
     const markup = odometerWithLogs(alarm({ noAlarmReason: 'noService' }), 4);
-    expect(markup.split('—').length - 1, 'four dashed cells').toBeGreaterThanOrEqual(4);
-    expect(markup.split(text).length - 1, 'and the reason nowhere').toBe(0);
+    expect(markup.split(`>${text}<`).length - 1, 'once').toBe(1);
+    expect(markup.split('data-odo-reason=').length - 1, 'on one row').toBe(1);
+    expect(markup.split('>—<').length - 1, 'the other three keep the dash').toBeGreaterThanOrEqual(
+      3,
+    );
   });
 
   it('a car with SEVERAL visits says the reason NO times down the maintenance column', () => {
@@ -335,8 +352,9 @@ describe('the reason is the server’s, and is written in ONE place', () => {
         'noAlarmReason.',
       );
     }
-    // The one place that does.
+    // The two places that do: the badge, and the odometer's reason cell.
     expect(read('components/AlarmBadge.tsx')).toContain('fleet.alarms.noAlarmReason.');
+    expect(read('components/AlarmReasonCell.tsx')).toContain('fleet.alarms.noAlarmReason.');
   });
 
   it('and no page DERIVES the reason — it only passes the server’s through', () => {
@@ -350,17 +368,25 @@ describe('the reason is the server’s, and is written in ONE place', () => {
       for (const reason of REASONS) {
         expect(source, `${page} does not name ${reason}`).not.toContain(`'${reason}'`);
       }
-      // Where a page shows the reason at all, it passes the SERVER's value straight through.
-      // Two of the three show none, so they pass none — that is the point, not a gap. The
-      // maintenance grid joined them when its level column came off.
+      // Where a page shows the reason at all, it passes the SERVER's value straight through:
+      // the board into its badge, the odometer through `reasonRows`, which only picks the ROW.
+      // The maintenance grid shows none, so it passes none — that is the point, not a gap.
       if (page === 'MaintenanceAlarmsPage') {
         expect(source, `${page} passes it through`).toMatch(
           /noAlarmReason=\{alarm\.noAlarmReason\}/,
         );
+      } else if (page === 'OdometerPage') {
+        expect(source, `${page} reads it only through reasonRows`).toContain('reasonRows(');
+        expect(source, `${page} reads no reason itself`).not.toContain('noAlarmReason');
       } else {
         expect(source, `${page} asks for no reason`).not.toContain('noAlarmReason');
       }
     }
+    // …and `reasonRows` passes the server's field through as it came, naming no reason itself.
+    const rows = read('lib/alarm-reason-rows.ts');
+    expect(rows).toContain('reason: alarm.noAlarmReason');
+    for (const reason of REASONS)
+      expect(rows, `rows name no ${reason}`).not.toContain(`'${reason}'`);
   });
 
   it('the badge decides nothing either — it reads the field and looks up a word', () => {

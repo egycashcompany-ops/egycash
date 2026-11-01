@@ -923,6 +923,8 @@ describe('contracts — numbering setting, search, sweeps, PDF fallback, attachm
     expect(verdict.contractVersion).toBe(1);
     // The verdict never carries employee data.
     expect(JSON.stringify(okRes.body.data)).not.toContain('موظف');
+    // Nor which release generated the document: world-readable, that is a version banner.
+    expect(okRes.body.data).not.toHaveProperty('generatorVersion');
 
     const bad = await request(app)
       .get('/api/v1/hr/contracts/verify')

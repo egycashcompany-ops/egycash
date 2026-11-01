@@ -16,11 +16,13 @@ import {
   FLEET_LICENSE_EXPENSE_KINDS,
   type FleetCustodyLedgerRowDto,
   type FleetCustodyOperationDto,
+  type FleetCustodyOperationStatus,
   type FleetCustodySource,
   type FleetLicenseExpenseKind,
 } from '@ecms/contracts';
 import { type CustodyCountForm, type CustodyCountNoun } from './custody-words';
 import { byKindInLetterOrder, inLetterOrder, type KindShare } from './custody-fund-forms';
+import { operationStatusOf } from './custody-hold';
 
 export interface LedgerWordsKit {
   t: (key: string, params?: Record<string, string | number>) => string;
@@ -41,6 +43,21 @@ const LEDGER = 'fleet.custody.ledger';
 /** «3 مصروفات تراخيص» — licence parts, as the approved ledger counts them. */
 export const partsPhrase = (n: number, kit: LedgerWordsKit): string =>
   kit.t(`${LEDGER}.parts.${kit.form(n)}`, { count: new Intl.NumberFormat('en-US').format(n) });
+
+/**
+ * The memos' count after a word that governs it — «في», «نظير»: two of them in the genitive,
+ * «في مذكرتين» (never «في مذكرتان»); any other count as `count` writes it («في 5 مذكرات»).
+ */
+export const memosAfterWord = (n: number, kit: LedgerWordsKit): string =>
+  kit.form(n) === 'two' ? kit.t(`${LEDGER}.detail.twoMemosGenitive`) : kit.count('memo', n);
+
+/**
+ * The licence parts' count after «نظير», as `memosAfterWord`: two of them in the genitive,
+ * «نظير مصروفَي تراخيص» (never «نظير مصروفا تراخيص»); any other count as `partsPhrase` writes it.
+ * Tiles and titles keep `partsPhrase`, where the count stands alone.
+ */
+export const partsAfterWord = (n: number, kit: LedgerWordsKit): string =>
+  kit.form(n) === 'two' ? kit.t(`${LEDGER}.parts.twoGenitive`) : partsPhrase(n, kit);
 
 /** «كاوتش، وقود، صيانة» — the kinds in his letter's order. */
 export const kindsPhrase = (kinds: readonly FleetCustodySource[], kit: LedgerWordsKit): string =>
@@ -82,7 +99,7 @@ export const periodPhrase = (
 export const chargeTitle = (reason: string | null, kit: LedgerWordsKit): string => {
   const typed = (reason ?? '').trim();
   return typed === ''
-    ? kit.t('fleet.custody.actions.charge')
+    ? kit.t('fleet.custody.actions.request')
     : kit.t(`${LEDGER}.detail.chargeFor`, { reason: typed });
 };
 
@@ -101,7 +118,7 @@ const spendNote = (row: FleetCustodyLedgerRowDto, kit: LedgerWordsKit): string =
   const outside = Object.values(byKind).reduce((sum, kind) => sum + kind.outside, 0);
   const memos = row.memoNos?.length ?? 0;
   const where = [
-    memos > 0 ? kit.t(`${LEDGER}.detail.inMemos`, { memos: kit.count('memo', memos) }) : null,
+    memos > 0 ? kit.t(`${LEDGER}.detail.inMemos`, { memos: memosAfterWord(memos, kit) }) : null,
     outside > 0 && outside >= receipts
       ? kit.t(`${LEDGER}.detail.allOutside`)
       : outside > 0
@@ -155,6 +172,13 @@ export const ledgerCount = (
   });
 };
 
+/** The replenishment's sentence by its status — a legacy one (no status) reads as done. */
+const REPLENISH_INTRO: Record<FleetCustodyOperationStatus, string> = {
+  held: 'replenishHeld',
+  done: 'replenish',
+  cancelled: 'replenishCancelled',
+};
+
 /**
  * The sentence that opens an operation's drawer — «استُعيض إلى العهدة مبلغ 81,908.00 ج.م. نظير 5
  * مذكرات (كاوتش، وقود، صيانة) عن الفترة من 2026/09/01 إلى 2026/09/30.». `money` writes the amount
@@ -180,9 +204,10 @@ export const operationIntro = (
           });
     }
     case 'replenish':
-      return kit.t(`${LEDGER}.drawer.intro.replenish`, {
+      // Held «طُلبت استعاضة مبلغ …», cancelled «أُلغيت استعاضة مبلغ …», done «استُعيض إلى العهدة …».
+      return kit.t(`${LEDGER}.drawer.intro.${REPLENISH_INTRO[operationStatusOf(op)]}`, {
         amount,
-        memos: kit.count('memo', op.memos.length),
+        memos: memosAfterWord(op.memos.length, kit),
         kinds: kindsPhrase(
           op.memos.map((memo) => memo.kind),
           kit,
@@ -197,7 +222,7 @@ export const operationIntro = (
       }
       return kit.t(`${LEDGER}.drawer.intro.settle`, {
         amount,
-        parts: partsPhrase(op.parts.length, kit),
+        parts: partsAfterWord(op.parts.length, kit),
         kinds: licencePhrase(licence, kit),
         period,
       });

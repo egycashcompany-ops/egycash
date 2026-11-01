@@ -124,6 +124,22 @@ def test_expiry_rejects_impossible_date():
     assert parsed is False
 
 
+def test_expiry_survives_the_recognizer_dropping_its_slashes():
+    """What the real Arabic model actually returned for ٢٠٣٢/١٠/١٦."""
+    assert clean_expiry("20321016") == ("2032-10-16", True)
+
+
+def test_expiry_survives_a_slash_read_as_a_one_or_a_seven():
+    assert clean_expiry("202910511") == ("2029-05-11", True)  # first slash → ١
+    assert clean_expiry("202809717") == ("2028-09-17", True)  # second slash → ٧
+
+
+def test_an_expiry_that_could_be_two_dates_stays_text():
+    """203010112: either ١ could be the slash — 2030-01-12 or 2030-10-12. No guess."""
+    value, parsed = clean_expiry("203010112")
+    assert parsed is False and value == "203010112"
+
+
 def test_religion_snaps_through_orthographic_variation():
     assert clean_religion("مسلمه")[0] == "مسلمة"
 

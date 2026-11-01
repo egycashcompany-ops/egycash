@@ -1126,8 +1126,9 @@ starts only on an explicit owner GO.
   الملف (SN ايجي كاش) وفيه 100 جهاز». Reviewed with the owner and approved («موافق على كل اقتراحاتك»):
   the barcode's leading «S» is not part of the serial (the register already holds two of the list
   as MP30EPDA and MP30EPD2, at the head office from the inventory — they stay as they are); one
-  serial too short to be whole is held back until the owner reads it off the device. The go-live
-  file `apps/api/assets/it-go-live/aio-october-2026-10.json` holds the 97 others, serials only. A
+  serial too short to be whole (row 71) is, read off the device by the owner, MP30EPD8 — row 62's
+  device scanned twice («MP30EPD8 فعلاً»), so the batch is 99 devices. The go-live file
+  `apps/api/assets/it-go-live/aio-october-2026-10.json` holds the 97 to register, serials only. A
   one-time boot step (`go-live/aio-october.ts`, key `go-live:it-aio-october-2026-10:v1`, after the
   inventory run) registers them in ONE transaction as new assets in «أكتوبر», in stock and held by
   nobody, their codes one block of the asset series, each copying the live «Lenovo ThinkCentre neo

@@ -9,7 +9,8 @@ import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
 import { cn } from '../../shared/lib/cn';
 import { localized } from '../../shared/lib/format';
-import { ChevronIcon, FileIcon, StarIcon } from '../../shared/ui/icons';
+import { AlertIcon, ChevronIcon, FileIcon, InboxIcon, StarIcon } from '../../shared/ui/icons';
+import { Spinner } from '../../shared/ui/Spinner';
 import { resolveNavIcon } from '../navigation/app-icon';
 import { useNavPrefs } from '../navigation/NavPrefs';
 import { requiresExactMatch, type NavSection } from '../navigation/nav-model';
@@ -186,10 +187,68 @@ export const AppWithChildren = ({
 };
 
 /** The frame the column keeps while it is loading, failed, or empty — one width, no jumping. */
-export const StateShell = ({ children }: { children: JSX.Element }): JSX.Element => (
-  <div className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+/**
+ * How wide the navigation column is: the icon strip's (an unpinned desktop, floating-nav.ts), the
+ * launchpad panel's, or the rail beside its module panel (56 + 224px). The loading, error and
+ * empty states take the width the loaded column will have, or the page would jump when it loads.
+ */
+export type ColumnWidth = 'strip' | 'column' | 'rail';
+const COLUMN_WIDTH: Record<ColumnWidth, string> = {
+  strip: 'w-14',
+  column: 'w-60',
+  rail: 'w-[17.5rem]',
+};
+
+/** The column while the menu is loading, failed or empty. */
+export const StateShell = ({
+  children,
+  width = 'column',
+}: {
+  children: JSX.Element;
+  width?: ColumnWidth;
+}): JSX.Element => (
+  <div
+    className={cn(
+      'flex shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
+      COLUMN_WIDTH[width],
+    )}
+  >
     <div className="flex flex-1 items-center justify-center overflow-y-auto">{children}</div>
   </div>
+);
+
+// The same three states at the strip's width: one icon each, with its words in a tooltip and for
+// screen readers. A sentence does not fit in 56px.
+
+export const SlimLoading = (): JSX.Element => {
+  const t = useT();
+  return (
+    <span role="status" aria-label={t('common.loading')} title={t('common.loading')}>
+      <Spinner className="h-5 w-5 text-brand-600" />
+    </span>
+  );
+};
+
+export const SlimError = ({ onRetry }: { onRetry: () => void }): JSX.Element => {
+  const t = useT();
+  const label = `${t('common.error.title')} — ${t('common.retry')}`;
+  return (
+    <button
+      type="button"
+      onClick={onRetry}
+      aria-label={label}
+      title={label}
+      className="grid h-10 w-10 place-items-center rounded-lg text-red-400 transition-colors hover:bg-slate-900/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:hover:bg-white/[0.05]"
+    >
+      <AlertIcon className="h-5 w-5" />
+    </button>
+  );
+};
+
+export const SlimEmpty = ({ label }: { label: string }): JSX.Element => (
+  <span role="status" aria-label={label} title={label}>
+    <InboxIcon className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+  </span>
 );
 
 /**

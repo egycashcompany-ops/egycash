@@ -90,12 +90,13 @@ export const transferFuelBatch = async (req: Request, res: Response): Promise<vo
 
 export const listFuelCardMovements = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetFuelCardMovementsQuery>(req);
-  const { numbers, receiptCars, ...page } = await fleetFuelCardService.movements(query);
+  const { numbers, receiptCars, names, ...page } = await fleetFuelCardService.movements(query);
   okPage(res, page, (doc) =>
     toFuelMovementDto(
       doc,
       doc.counterpartCardId == null ? null : (numbers.get(String(doc.counterpartCardId)) ?? null),
       doc.receiptId == null ? null : (receiptCars.get(String(doc.receiptId)) ?? null),
+      doc.createdBy == null ? null : (names.get(String(doc.createdBy)) ?? null),
     ),
   );
 };

@@ -46,6 +46,11 @@ const NO_SERVICE: FleetMaintenanceAlarmDto = {
   noAlarmReason: 'noService',
   daysWithoutReading: 0,
   latestReading: 12000,
+  // The projection's facts behind its figure — neutral: no assertion here reads them.
+  latestReadingAt: null,
+  latestReadingLogId: null,
+  baseline: null,
+  newerUncountedVisit: null,
 };
 
 const store = () =>

@@ -49,6 +49,8 @@ import {
   type CreateFleetCustodyMemo,
   type CreateFleetCustodyReplenishment,
   type CreateFleetCustodySettlement,
+  type CancelFleetCustodyReplenishment,
+  type ConfirmFleetCustodyTransfer,
   type FleetCustodyFundSummaryDto,
   type FleetCustodyLedgerRowDto,
   type FleetCustodyLedgerTotalsDto,
@@ -686,6 +688,18 @@ export const settleCustody = (
   body: CreateFleetCustodySettlement,
 ): Promise<FleetCustodyOperationDto> =>
   post<FleetCustodyOperationDto>('/fleet/custody/fund/settle', body);
+/** «تأكيد التحويل» — a held replenishment's money arrived: it is done, and the fund grows. */
+export const confirmCustodyTransfer = (
+  id: string,
+  body: ConfirmFleetCustodyTransfer,
+): Promise<FleetCustodyOperationDto> =>
+  post<FleetCustodyOperationDto>(`/fleet/custody/fund/operations/${id}/transfer`, body);
+/** «إلغاء الاستعاضة المعلّقة» — the letter stays, cancelled; its memos are free again. */
+export const cancelCustodyReplenishment = (
+  id: string,
+  body: CancelFleetCustodyReplenishment,
+): Promise<FleetCustodyOperationDto> =>
+  post<FleetCustodyOperationDto>(`/fleet/custody/fund/operations/${id}/cancel`, body);
 
 // ── Licensing expenses (مصروفات التراخيص) ─────────────────────────────────────
 export const listLicenseExpenses = (

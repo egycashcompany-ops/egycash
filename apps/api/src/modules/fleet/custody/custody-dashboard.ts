@@ -13,8 +13,10 @@
 // «تفاصيل استهلاك الوقود يتقسم اتنين وطنيه لوخدها وشيل اوت لوحدها»: each company's fuel (and the
 // receipts with none) also carries its fuel types, cut in the same pass over the same receipts.
 // And where each receipt stands against the memos (`memoStates`): replenished, on a memo still
-// waiting, or on none — the spend cards' bars, over the board's filters like every other figure.
+// waiting (a held replenishment's included — its money is not back), or on none — the spend
+// cards' bars, over the board's filters like every other figure.
 import {
+  FLEET_CUSTODY_MEMO_STATE_OF_STATUS,
   FLEET_CUSTODY_MEMO_STATES,
   FLEET_CUSTODY_SOURCES,
   FLEET_FUEL_CARD_COMPANIES,
@@ -31,6 +33,7 @@ import {
   type FleetCustodyFuelTypeShareDto,
   type FleetCustodyMemoState,
   type FleetCustodyMemoStateSpendDto,
+  type FleetCustodyMemoStatus,
   type FleetCustodyMovementDto,
   type FleetCustodySource,
   type FleetCustodySummaryDto,
@@ -185,17 +188,32 @@ const fuelGroup = (
 });
 
 /**
+ * A memo's status: no replenishment yet; taken by one still waiting for its transfer; replenished.
+ * A memo from before the hold has no `replenishmentHeld`, and its replenishment is a done one.
+ */
+export const custodyMemoStatusOf = (memo: {
+  replenishmentId?: unknown;
+  replenishmentHeld?: boolean | undefined;
+}): FleetCustodyMemoStatus =>
+  memo.replenishmentId == null
+    ? 'pending'
+    : memo.replenishmentHeld === true
+      ? 'held'
+      : 'replenished';
+
+/**
  * A receipt against the memos: on none (`memoId` null) — or on one that is no live memo, which a
- * delete never leaves behind — is «خارج المذكرات»; on a live memo, that memo's own state.
- * `replenished` maps each live memo the receipts name to whether a «استعاضة» brought it back.
+ * delete never leaves behind — is «خارج المذكرات»; on a live memo, where its status puts it
+ * (`FLEET_CUSTODY_MEMO_STATE_OF_STATUS`: a held memo's money is not back yet, so it is waiting).
+ * `statuses` maps each live memo the receipts name to its status.
  */
 export const custodyMemoStateOf = (
   memoId: string | null,
-  replenished: ReadonlyMap<string, boolean>,
+  statuses: ReadonlyMap<string, FleetCustodyMemoStatus>,
 ): FleetCustodyMemoState => {
   if (memoId === null) return 'outside';
-  const done = replenished.get(memoId);
-  return done === undefined ? 'outside' : done ? 'replenished' : 'pending';
+  const status = statuses.get(memoId);
+  return status === undefined ? 'outside' : FLEET_CUSTODY_MEMO_STATE_OF_STATUS[status];
 };
 
 /** Counts and whole piastres per memo state and kind — exact however many receipts add up. */

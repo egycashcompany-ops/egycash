@@ -24,7 +24,6 @@ import { localized } from '../../shared/lib/format';
 import {
   BuildingIcon,
   ChevronEndIcon,
-  ChevronStartIcon,
   CloseIcon,
   FileIcon,
   GridIcon,
@@ -45,28 +44,24 @@ import {
   type NavApp,
   type NavModule,
 } from '../navigation/nav-model';
-import { AppRow, AppWithChildren, NavSectionGroup, StateShell } from './nav-rows';
+import {
+  AppRow,
+  AppWithChildren,
+  NavSectionGroup,
+  SlimEmpty,
+  SlimError,
+  SlimLoading,
+  StateShell,
+  type ColumnWidth,
+} from './nav-rows';
 import { RailShell } from './SidebarRail';
+import { useFloatingNav } from './floating-nav';
+import { NavPinButton } from './NavPinButton';
 
 // ── Persisted chrome state ──────────────────────────────────────────────────
-const PANEL_KEY = 'ecms.nav.panelCollapsed';
+// Whether the floating panel is pinned open lives in `floating-nav.ts`.
 const LAST_MODULE_KEY = 'ecms.nav.lastModule';
 const LAST_PAGE_KEY = 'ecms.nav.lastPage';
-
-const loadCollapsed = (): boolean => {
-  try {
-    return localStorage.getItem(PANEL_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
-const persistCollapsed = (v: boolean): void => {
-  try {
-    localStorage.setItem(PANEL_KEY, v ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-};
 
 /**
  * The last module the user actually worked in. This is a FALLBACK, not a mode: it answers the
@@ -481,6 +476,7 @@ const Launchpad = ({
 
   return createPortal(
     <div
+      data-module-launchpad
       className={cn('fixed inset-0 z-[90]', shown ? '' : 'pointer-events-none')}
       role="dialog"
       aria-modal="true"
@@ -608,6 +604,8 @@ const ModuleSwitcher = ({
   collapsed = false,
   shortcuts,
   onOpen,
+  onClosed,
+  restoreFocus,
   onPick,
 }: {
   modules: NavModule[];
@@ -621,6 +619,14 @@ const ModuleSwitcher = ({
   shortcuts: boolean;
   /** Fired as the launchpad opens, so the mobile drawer can step out from behind it. */
   onOpen?: (() => void) | undefined;
+  /** Fired as the launchpad closes, so a floating panel that held itself open can let go. */
+  onClosed?: (() => void) | undefined;
+  /**
+   * How the focus goes back to this switcher when the launchpad is dismissed. The strip's switcher
+   * passes the floating panel's quiet restore, so that returning the focus is not taken for the
+   * keyboard arriving and does not float the panel open over the page.
+   */
+  restoreFocus?: ((el: HTMLElement | null) => void) | undefined;
   onPick: (m: NavModule) => void;
 }): JSX.Element => {
   const t = useT();
@@ -642,6 +648,9 @@ const ModuleSwitcher = ({
     if (only || open || !shortcuts) return undefined;
     const onKey = (e: KeyboardEvent): void => {
       if (e.altKey && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM')) {
+        // One launchpad at a time, whichever switcher raised it: the one already up answers the
+        // chord itself (to close), and raising a second over it would stack two.
+        if (document.querySelector('[data-module-launchpad]') !== null) return;
         e.preventDefault();
         raise();
       }
@@ -702,7 +711,11 @@ const ModuleSwitcher = ({
           onChoose={onPick}
           onClose={(focusTrigger) => {
             setOpen(false);
-            if (focusTrigger) triggerRef.current?.focus();
+            onClosed?.();
+            if (focusTrigger) {
+              if (restoreFocus !== undefined) restoreFocus(triggerRef.current);
+              else triggerRef.current?.focus();
+            }
           }}
         />
       )}
@@ -750,6 +763,7 @@ const IconStrip = ({
   pinnedApps,
   allRoutes,
   shortcuts,
+  restoreFocus,
   onPickModule,
   onNavigate,
 }: {
@@ -759,6 +773,7 @@ const IconStrip = ({
   pinnedApps: NavApp[];
   allRoutes: string[];
   shortcuts: boolean;
+  restoreFocus?: ((el: HTMLElement | null) => void) | undefined;
   onPickModule: (m: NavModule) => void;
   onNavigate?: (() => void) | undefined;
 }): JSX.Element => {
@@ -780,6 +795,7 @@ const IconStrip = ({
         current={current}
         collapsed
         shortcuts={shortcuts}
+        restoreFocus={restoreFocus}
         onOpen={onNavigate}
         onPick={onPickModule}
       />
@@ -862,7 +878,10 @@ const NavShell = ({
     }
   }, [urlModuleId, lastModuleId, pathname]);
 
-  const [collapsed, setCollapsed] = useState<boolean>(() => collapsible && loadCollapsed());
+  // On a desktop the panel floats over the page on hover and docks into the layout once pinned
+  // (floating-nav.ts); the mobile drawer is the full panel already, so it has nothing to manage.
+  const floating = useFloatingNav(collapsible);
+  const docked = floating.mode === 'docked';
 
   // Every route the catalog serves — the basis for "does another page live under this one?".
   const allRoutes = useMemo(() => flattenApps(data).map((a) => a.route), [data]);
@@ -874,27 +893,36 @@ const NavShell = ({
       .filter((a): a is NavApp => a !== undefined);
   }, [data, pinned]);
 
+  // Loading, failed or empty, the column keeps the width it has once loaded — the strip's on an
+  // unpinned desktop, the panel's otherwise — so the page does not jump on every load or retry.
+  // At the strip's width each state is one icon, its words in a tooltip and for screen readers.
+  const stateWidth: ColumnWidth = collapsible && !floating.pinned ? 'strip' : 'column';
+  const slim = stateWidth === 'strip';
   if (isLoading) {
-    return (
-      <StateShell>
-        <LoadingState />
-      </StateShell>
-    );
+    return <StateShell width={stateWidth}>{slim ? <SlimLoading /> : <LoadingState />}</StateShell>;
   }
   if (isError) {
     return (
-      <StateShell>
-        <ErrorState error={error} onRetry={() => void refetch()} />
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimError onRetry={() => void refetch()} />
+        ) : (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        )}
       </StateShell>
     );
   }
   if (modules.length === 0) {
     return (
-      <StateShell>
-        <div className="flex flex-col items-center gap-2 px-6 text-center">
-          <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
-          <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
-        </div>
+      <StateShell width={stateWidth}>
+        {slim ? (
+          <SlimEmpty label={t('sidebar.empty')} />
+        ) : (
+          <div className="flex flex-col items-center gap-2 px-6 text-center">
+            <InboxIcon className="h-9 w-9 text-slate-300 dark:text-slate-600" />
+            <p className="text-sm text-slate-400 dark:text-slate-500">{t('sidebar.empty')}</p>
+          </div>
+        )}
       </StateShell>
     );
   }
@@ -905,13 +933,6 @@ const NavShell = ({
     modules.find((m) => m.id === lastModuleId) ??
     modules[0]!;
 
-  const toggleCollapsed = (): void => {
-    setCollapsed((v) => {
-      persistCollapsed(!v);
-      return !v;
-    });
-  };
-
   // Switching modules NAVIGATES — it does not flip a local flag. The URL then re-scopes the
   // column, which is what keeps the two in step by construction.
   const pickModule = (m: NavModule): void => {
@@ -921,105 +942,137 @@ const NavShell = ({
     onNavigate?.();
   };
 
-  return (
-    <div
-      className={cn(
-        'flex shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
-        collapsed ? 'w-14' : 'w-60',
-      )}
-    >
-      {collapsed ? (
-        <IconStrip
-          modules={modules}
-          current={current}
-          pinnedApps={pinnedApps}
-          allRoutes={allRoutes}
-          shortcuts={shortcuts}
-          onPickModule={pickModule}
-          onNavigate={onNavigate}
-        />
-      ) : (
-        <>
-          <div className="border-b border-slate-200/60 px-3 py-2 dark:border-slate-800/60">
-            <ModuleSwitcher
-              modules={modules}
-              current={current}
-              shortcuts={shortcuts}
-              onOpen={onNavigate}
-              onPick={pickModule}
-            />
-          </div>
-          <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
-            {pinnedApps.length > 0 && (
-              <section className="mb-5">
-                <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
-                  {t('nav.pinned')}
-                </p>
-                <ul className="mt-0.5 space-y-px">
-                  {pinnedApps.map((a) => (
-                    <li key={`pin-${a.id}`}>
-                      <AppRow
-                        app={a}
-                        onNavigate={onNavigate}
-                        showPinAtRest={false}
-                        end={requiresExactMatch(a.route, allRoutes)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            {/* This module's pages, and nothing else. Ungrouped rows first — they are the ones
-                that belong to no section, and they read as the module's own top level. */}
-            <ul className="space-y-px">
-              {current.apps.map((a) => (
-                <AppWithChildren
-                  key={a.id}
-                  app={a}
-                  onNavigate={onNavigate}
-                  end={requiresExactMatch(a.route, allRoutes)}
-                />
+  // The full panel: this module's switcher, the pinned favourites, then its pages. The mobile
+  // drawer shows it as it is; on a desktop it is what floats over the page or docks beside it, and
+  // the pin that docks it sits right after the switcher.
+  //
+  // Only one switcher may answer Alt+M: the one that can be seen. While the panel shows (floating
+  // over the strip, or docked in its place) that is the panel's; while it is hidden, the strip's.
+  // The strip's switcher sits under a floating panel, inert, and a launchpad raised from it would
+  // hand the focus back to a control nobody can reach.
+  const panel = (
+    <>
+      <div className="flex items-center gap-1 border-b border-slate-200/60 px-3 py-2 dark:border-slate-800/60">
+        <div className="min-w-0 flex-1">
+          <ModuleSwitcher
+            modules={modules}
+            current={current}
+            shortcuts={shortcuts && floating.mode !== 'hidden'}
+            onOpen={() => {
+              floating.hold();
+              onNavigate?.();
+            }}
+            onClosed={floating.release}
+            restoreFocus={collapsible ? floating.returnFocus : undefined}
+            onPick={pickModule}
+          />
+        </div>
+        {collapsible && <NavPinButton pinned={floating.pinned} onToggle={floating.togglePinned} />}
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 pb-4 pt-3">
+        {pinnedApps.length > 0 && (
+          <section className="mb-5">
+            <p className="flex h-7 items-center px-2 text-[11px] font-medium uppercase tracking-[0.07em] text-slate-400 dark:text-slate-500">
+              {t('nav.pinned')}
+            </p>
+            <ul className="mt-0.5 space-y-px">
+              {pinnedApps.map((a) => (
+                <li key={`pin-${a.id}`}>
+                  <AppRow
+                    app={a}
+                    onNavigate={onNavigate}
+                    showPinAtRest={false}
+                    end={requiresExactMatch(a.route, allRoutes)}
+                  />
+                </li>
               ))}
             </ul>
-            {current.sections.map((section) => (
-              <NavSectionGroup
-                key={section.id}
-                section={section}
-                allRoutes={allRoutes}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </nav>
-        </>
-      )}
+          </section>
+        )}
+        {/* This module's pages, and nothing else. Ungrouped rows first — they are the ones
+            that belong to no section, and they read as the module's own top level. */}
+        <ul className="space-y-px">
+          {current.apps.map((a) => (
+            <AppWithChildren
+              key={a.id}
+              app={a}
+              onNavigate={onNavigate}
+              end={requiresExactMatch(a.route, allRoutes)}
+            />
+          ))}
+        </ul>
+        {current.sections.map((section) => (
+          <NavSectionGroup
+            key={section.id}
+            section={section}
+            allRoutes={allRoutes}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </div>
+    </>
+  );
 
-      {collapsible && (
-        <div className="border-t border-slate-200/60 px-2 py-2 dark:border-slate-800/60">
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label={t(collapsed ? 'nav.expand' : 'nav.collapse')}
-            title={t(collapsed ? 'nav.expand' : 'nav.collapse')}
-            className={cn(
-              'flex h-8 items-center gap-2.5 rounded-md text-slate-400 transition-colors',
-              'hover:bg-slate-900/[0.04] hover:text-slate-600 focus-visible:outline-none',
-              'focus-visible:ring-2 focus-visible:ring-slate-400/40 dark:text-slate-500',
-              'dark:hover:bg-white/[0.05] dark:hover:text-slate-300',
-              collapsed ? 'w-9 justify-center' : 'w-full px-2',
-            )}
-          >
-            {collapsed ? (
-              <ChevronEndIcon className="h-4 w-4 rtl:-scale-x-100" />
-            ) : (
-              <>
-                <ChevronStartIcon className="h-4 w-4 rtl:-scale-x-100" />
-                <span className="text-[12px]">{t('nav.collapse')}</span>
-              </>
-            )}
-          </button>
+  // The mobile drawer: the full panel, as it always was. The column is the navigation landmark
+  // (one per shell), not the list inside the panel. It is left unnamed: the drawer around it is a
+  // dialog already named «القائمة», and the same name twice is read out twice.
+  if (!collapsible) {
+    return (
+      <nav className="flex w-60 shrink-0 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900">
+        {panel}
+      </nav>
+    );
+  }
+
+  // A desktop. Unpinned, the slim strip is the only thing beside the page, and the full panel is
+  // drawn OVER the page from the strip's edge while the pointer (or the focus) is on them — the
+  // page keeps its whole width underneath. Pinned, the panel stands in the layout in the strip's
+  // place and takes its width like any column; the page narrows beside it. One box holds both, so
+  // moving from the strip into the panel is not "leaving". The panel is one element in every
+  // state — hidden makes it transparent and inert — so it is never remounted: a folded section
+  // stays folded between hovers, and pinning from its header keeps the focus on the pin.
+  //
+  // The floating panel covers the strip, so the strip is `data-nav-covered`: while the panel shows,
+  // floating-nav takes it out of the tab order and hands its keyboard focus to the panel.
+  return (
+    <nav
+      aria-label={t('common.menu')}
+      data-nav-strip
+      className={cn('relative flex h-full shrink-0', docked ? 'w-60' : 'w-14')}
+      {...floating.hoverProps}
+    >
+      {!docked && (
+        <div
+          data-nav-covered
+          className="flex w-14 flex-col border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900"
+        >
+          <IconStrip
+            modules={modules}
+            current={current}
+            pinnedApps={pinnedApps}
+            allRoutes={allRoutes}
+            shortcuts={shortcuts && floating.mode === 'hidden'}
+            restoreFocus={floating.restoreFocus}
+            onPickModule={pickModule}
+            onNavigate={onNavigate}
+          />
         </div>
       )}
-    </div>
+
+      <div
+        data-nav-panel
+        data-nav-mode={floating.mode}
+        className={cn(
+          'flex w-60 flex-col transition-opacity duration-150 ease-out motion-reduce:transition-none',
+          'border-e border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900',
+          !docked &&
+            'absolute inset-y-0 start-0 z-[35] shadow-[0_18px_48px_-12px_rgba(15,23,42,0.28)] dark:shadow-[0_18px_48px_-12px_rgba(0,0,0,0.7)]',
+          floating.mode === 'hidden' && 'pointer-events-none opacity-0',
+        )}
+      >
+        {panel}
+      </div>
+    </nav>
   );
 };
 

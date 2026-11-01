@@ -19,6 +19,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { NavLayoutToggle } from './NavLayoutToggle';
 import { BranchSwitcher } from './BranchSwitcher';
+import { AppVersion } from '../app/AppVersion';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -129,6 +130,10 @@ const UserMenu = (): JSX.Element => {
             <LogOutIcon className="h-4 w-4" />
             {t('platform.shell.signOut')}
           </button>
+          <AppVersion
+            role="none"
+            className="mt-1 border-t border-slate-100 px-4 pb-1 pt-2 dark:border-slate-700"
+          />
         </div>
       )}
     </div>
@@ -152,7 +157,10 @@ export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Elem
     // `flex-nowrap` and `h-14` again: one row, same order, same everything. Nothing here is
     // conditional on a device — it is the width that decides, so a narrow desktop window gets the
     // two-row bar too rather than the clipping.
-    <header className="relative z-30 flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900 md:h-14 md:flex-nowrap md:py-0">
+    //
+    // z-40, one level above the floating navigation panel (z-[35], floating-nav.ts): the bar's own
+    // menus open downwards over the panel's top, and must stay above it.
+    <header className="relative z-40 flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900 md:h-14 md:flex-nowrap md:py-0">
       <button
         type="button"
         onClick={() => dispatch(toggleSidebar())}

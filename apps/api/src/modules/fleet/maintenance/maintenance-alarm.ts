@@ -6,6 +6,8 @@ import {
   FleetSettingKeys,
   odometerBracketBreach,
   type FleetAlarmLevel,
+  type FleetAlarmUncountedVisitDto,
+  type FleetAlarmUncountedWhy,
   type FleetMaintenanceAlarmDto,
   type FleetNoAlarmReason,
 } from '@ecms/contracts';
@@ -14,7 +16,12 @@ import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository'
 import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetOdometerRepository } from '../odometer/odometer.repository';
-import { fleetMaintenanceRepository } from './maintenance.repository';
+import {
+  fleetMaintenanceRepository,
+  type AlarmBaseline,
+  type NewestVisit,
+} from './maintenance.repository';
+import { measureFromVisit } from './measure-from-visit';
 
 export interface AlarmInput {
   /** Per vehicle TYPE; 0 = no rule. */
@@ -26,10 +33,12 @@ export interface AlarmInput {
   baselineCounter: number | null;
   baselineDate: Date | null;
   /**
-   * The highest reading the chain already held on the day the baseline COUNTER was taken — the
+   * The highest reading the chain already held BEFORE the day the baseline COUNTER was taken — the
    * check-in day for an entry counter, the check-out day for an exit one — the lower half of the
-   * odometer bracket, resolved by the caller. `null` when the chain has nothing that early, which
-   * constrains nothing rather than meaning zero.
+   * odometer bracket, resolved by the caller. That day's own readings take no part: the register
+   * keeps no time of day, so one of them may have been taken after the counter (R4). A visit with
+   * no counter is measured from the reading the chain held on its check-out day, its own bound.
+   * `null` when the chain has nothing that early, which constrains nothing rather than meaning zero.
    */
   baselineLowerBound: number | null;
 }
@@ -125,6 +134,32 @@ const allActiveVehicles = async () => {
 };
 
 /**
+ * The car's newest visit, when the alarm cannot measure from it — still open, or of a work type
+ * that does not count — so a screen can say why the visit a reader expects is not the one used.
+ * `null` when the newest visit IS the baseline, or counts and is closed.
+ */
+const newerUncounted = (
+  newest: NewestVisit | null,
+  baseline: AlarmBaseline | null,
+  countingIds: readonly string[],
+): FleetAlarmUncountedVisitDto | null => {
+  if (newest === null || newest.visitId === baseline?.visitId) return null;
+  const why: FleetAlarmUncountedWhy | null =
+    newest.outDate === null
+      ? 'open'
+      : countingIds.includes(newest.workTypeId)
+        ? null
+        : 'notCounting';
+  if (why === null) return null;
+  return {
+    visitId: newest.visitId,
+    inDate: newest.inDate.toISOString(),
+    outDate: newest.outDate === null ? null : newest.outDate.toISOString(),
+    why,
+  };
+};
+
+/**
  * Alarm projection for every ACTIVE vehicle. Query-time, per FR-3.
  *
  * It used to take an optional list of ids, and no caller ever passed one — all four go through
@@ -150,33 +185,51 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
   // historical fact, and retiring the vocabulary that named it does not un-make it.
   const countingIds = await fleetCatalogItemRepository.countingWorkTypeIds();
 
-  const [readings, baselines] = await Promise.all([
+  const [readings, baselines, newest] = await Promise.all([
     fleetOdometerRepository.latestReadings(ids),
     fleetMaintenanceRepository.alarmBaselines(ids, countingIds),
+    fleetMaintenanceRepository.newestVisits(ids),
   ]);
 
-  // Each baseline against the chain AS IT STOOD ON THE DAY ITS COUNTER WAS TAKEN — one query for
-  // the whole fleet, not one per car. An entry counter is asked on the day the car went IN: it was
-  // read then, and readings taken between check-in and check-out do not make it untrue. It used to
-  // be asked on the check-out day for every counter, which refused 84,080 on car 219 because the
-  // chain had reached 84,189 by the time the visit closed. Only vehicles that actually have a
-  // baseline are asked about: a car with no counting visit has no date to ask on, and `noService`
-  // answers it first anyway.
-  // How many days each car ran since its last service with nobody writing the counter — one
-  // query for the whole fleet, counted from each car's own service date. See the DTO field.
-  const unread = await fleetOdometerRepository.daysWithoutReadingSince(
-    vehicles.map((vehicle) => ({
-      vehicleId: String(vehicle._id),
-      since: baselines.get(String(vehicle._id))?.serviceDate ?? null,
-    })),
-  );
-
-  const lowerBounds = await fleetOdometerRepository.lowerBoundsAt(
-    [...baselines.values()].map((baseline) => ({
-      vehicleId: baseline.vehicleId,
-      on: baseline.counterDate,
-    })),
-  );
+  // Each counter against the chain AS IT STOOD BEFORE THE DAY IT WAS TAKEN — one query per kind of
+  // counter for the whole fleet, not one per car. An entry counter is judged on the day the car went
+  // IN: it was read then, and readings taken between check-in and check-out do not make it untrue —
+  // asked on the check-out day, car 219's 84,080 of 25 June was refused because the chain had
+  // reached 84,189 by the 28th. And only the days BEFORE count (R4): the register keeps no time of
+  // day, so a reading dated on the service day may have been taken after the counter — car 295's
+  // 22,790 was refused by a reading of its own day. An exit counter is asked about even when an
+  // entry counter exists too, because the entry one is what R3 falls back to.
+  //
+  // A visit with no counter keeps the day: its stand-in is the reading the car LEFT on.
+  const visits = [...baselines.values()];
+  const askedOn = (pick: (visit: AlarmBaseline) => Date | null) =>
+    visits.flatMap((visit) => {
+      const on = pick(visit);
+      return on === null ? [] : [{ vehicleId: visit.vehicleId, on }];
+    });
+  // How many days each car ran since its last service with nobody writing the counter — counted
+  // from each car's own service date. See the DTO field.
+  const [unread, exitBounds, entryBounds, standIns] = await Promise.all([
+    fleetOdometerRepository.daysWithoutReadingSince(
+      vehicles.map((vehicle) => ({
+        vehicleId: String(vehicle._id),
+        since: baselines.get(String(vehicle._id))?.serviceDate ?? null,
+      })),
+    ),
+    fleetOdometerRepository.lowerBoundsAt(
+      askedOn((visit) => (visit.exitCounter === null ? null : visit.serviceDate)),
+      { includeDay: false },
+    ),
+    fleetOdometerRepository.lowerBoundsAt(
+      askedOn((visit) => (visit.entryCounter === null ? null : visit.inDate)),
+      { includeDay: false },
+    ),
+    fleetOdometerRepository.lowerBoundsAt(
+      askedOn((visit) =>
+        visit.exitCounter === null && visit.entryCounter === null ? visit.serviceDate : null,
+      ),
+    ),
+  ]);
 
   // One interval lookup per distinct TYPE, not per vehicle.
   const intervals = new Map<string, number>();
@@ -192,22 +245,28 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
     const id = String(vehicle._id);
     const reading = readings.get(id) ?? null;
     const baseline = baselines.get(id) ?? null;
-    const result = computeAlarm({
-      intervalKm: intervals.get(String(vehicle.typeId)) ?? 0,
-      yellowKm,
-      redKm,
-      latestReading: reading?.reading ?? null,
-      latestReadingDate: reading?.date ?? null,
-      // A service written with no counter (it is optional) is measured from the last odometer
-      // reading on or before its day — the counter the car stood at when it was serviced. With no
-      // counter `counterDate` IS the check-out day, so the stand-in is the reading it left on.
-      baselineCounter:
-        baseline === null
-          ? null
-          : (baseline.odometerAtService ?? lowerBounds.get(id)?.reading ?? null),
-      baselineDate: baseline?.serviceDate ?? null,
-      baselineLowerBound: baseline === null ? null : (lowerBounds.get(id)?.reading ?? null),
-    });
+    const { result, baseline: used } = measureFromVisit(
+      computeAlarm,
+      {
+        intervalKm: intervals.get(String(vehicle.typeId)) ?? 0,
+        yellowKm,
+        redKm,
+        latestReading: reading?.reading ?? null,
+        latestReadingDate: reading?.date ?? null,
+      },
+      baseline === null
+        ? null
+        : {
+            visitId: baseline.visitId,
+            inDate: baseline.inDate,
+            outDate: baseline.serviceDate,
+            entryCounter: baseline.entryCounter,
+            exitCounter: baseline.exitCounter,
+            exitBound: exitBounds.get(id) ?? null,
+            entryBound: entryBounds.get(id) ?? null,
+            standIn: standIns.get(id) ?? null,
+          },
+    );
     return {
       vehicleId: id,
       code: vehicle.code,
@@ -221,6 +280,10 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       daysWithoutReading: unread.get(id) ?? 0,
       // The very reading the arithmetic above measured from — see the DTO.
       latestReading: reading?.reading ?? null,
+      latestReadingAt: reading === null ? null : reading.date.toISOString(),
+      latestReadingLogId: reading?.logId ?? null,
+      baseline: used,
+      newerUncountedVisit: newerUncounted(newest.get(id) ?? null, baseline, countingIds),
     };
   });
 };

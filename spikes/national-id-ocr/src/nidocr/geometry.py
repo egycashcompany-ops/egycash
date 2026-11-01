@@ -53,6 +53,11 @@ ASPECT_TOLERANCE = 1.45
 #: reported as a success and every field box lands wherever it likes.
 PRECROP_TOLERANCE = 1.10
 
+#: Smallest share of a card-shaped frame a located quad must cover to be believed over "the frame
+#: is the card". The photo on a card front is ~11% of it; a card deliberately framed in a
+#: card-shaped crop fills well over half. See `rectify`.
+PRECROP_MIN_COVERAGE = 0.5
+
 #: Detection runs on a downscaled copy: contour finding is O(pixels), the corners it produces are
 #: no more accurate at 4000 px than at 1200, and the final warp samples the ORIGINAL anyway.
 DETECT_LONG_SIDE = 1200
@@ -62,7 +67,13 @@ DETECT_LONG_SIDE = 1200
 #: it is too small, move closer", which `quality.assess` produces from the located card's width.
 #: Refusing to locate it instead reports "no card found", which tells the user nothing about what
 #: to change. Detection should locate; judging whether it is usable belongs to the quality gate.
-MIN_COVERAGE = 0.015
+#:
+#: Lowered from 0.015 once far-away cards started being ZOOMED to rather than only refused: a card
+#: across 11% of a phone photo's width covers ~1% of it, read correctly once enlarged, and at 0.015
+#: was never found. 0.004 is a card about 6% of the frame wide.
+#: And to 0.002 so that a card too far away to read at all is still FOUND — then the answer is
+#: "your card is 160 px wide, move closer" rather than "no card found" and a page of noise.
+MIN_COVERAGE = 0.002
 
 #: Below this score, a candidate is not a card and "not located" is the better answer.
 #:
@@ -511,6 +522,19 @@ def rectify(
     """
     width, height = size
     located = locate_card(image)
+
+    frame_height, frame_width = image.shape[:2]
+    frame_is_card_shaped = abs(float(np.log(frame_width / max(frame_height, 1) / ID1_ASPECT))) <= (
+        float(np.log(PRECROP_TOLERANCE))
+    )
+    if located is not None and frame_is_card_shaped:
+        # In a frame that is already card-shaped, a "card" covering a minority of it is something
+        # printed ON the card — in practice the photo, which on a slightly tilted crop measures
+        # ~1.4:1 once rolled to landscape and clears MIN_SCORE. Warping to it put every field box on
+        # the photo for six of the eight synthetic fronts; `make check` caught it on four.
+        coverage = float(cv2.contourArea(located[0])) / float(frame_width * frame_height)
+        if coverage < PRECROP_MIN_COVERAGE:
+            located = None
 
     if located is None:
         # No card found — but that has two very different meanings, and conflating them is what

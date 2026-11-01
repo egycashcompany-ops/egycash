@@ -1,18 +1,19 @@
-// «العهدة الآن» on «لوحة تحكم العهدة» — the fund over its whole history, whatever the board's
-// filters (its heading says so: «من بداية العهدة، ولا تتأثر بالفلاتر»), above the filtered spend:
+// «العهدة الآن» on «لوحة تحكم العهدة» — the third tab of SCREEN 1 «العهدة» (`CustodyFundDashboard`):
+// the fund over its whole history (its heading says so: «من بداية العهدة»):
 //
-//   N1  the formula as five tiles — «إجمالي الشحن» − «مصروفات الإيصالات» + «إجمالي الاستعاضة» −
-//       «إجمالي التسوية» = «إجمالي العهدة» — the ledger's own tiles (`LedgerFigures`), the fund the
-//       board's own card; each tile opens «سجل العهدة» over its operation.
+//   N1  the formula as five tiles — «إجمالي طلبات العهدة» − «مصروفات الإيصالات» + «إجمالي الاستعاضة»
+//       − «إجمالي التسوية» = «إجمالي العهدة» — the ledger's own tiles (`LedgerFigures`), the fund its
+//       own card; each tile opens «سجل العهدة» over its operation.
 //   N2  «مبالغ صُرفت ولم تُستعَض بعد» — what «استعاضة العهدة» would bring back: the memos waiting and
 //       the receipts in no memo yet, kind by kind with the age of the oldest.
 //   N3  «مصروفات تراخيص لم تُسوَّ بعد» — what «تسوية العهدة» would take out: the licensing memos waiting.
 //   N4  «إجمالي العهدة بعد كل عملية» — the fund after every line of «سجل العهدة», as a step line.
 //   N5  «آخر عمليات العهدة» — its newest lines, in the log's own words.
-//   N7  the filtered spend split by its memos' state, a thin bar on each spend card.
+//   N7  the filtered spend split by its memos' state, a thin bar on each spend card of «لوحة تحكم
+//       المصروفات» (SCREEN 2 «مصروفات العهدة»).
 //
 // Plus the fund's lines in the alerts banner (a–e). Every number is one the API sends, through the
-// hooks «العهدة» and «سجل العهدة» already read (all under `fleetKeys.custody`, so a «شحن», a
+// hooks «العهدة» and «سجل العهدة» already read (all under `fleetKeys.custody`, so a «طلب عهدة», a
 // «استعاضة», a «تسوية», a memo or a receipt refreshes them). Each card loads and fails on its own —
 // its own shimmer, its own error with a retry — and the body never waits for it.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -86,8 +87,11 @@ import {
   custodyPeriodLink,
   custodySettleWaiting,
   custodyWaiting,
+  custodyWaitingShares,
   type CustodyFundAlert,
 } from '../lib/custody-dashboard-fund';
+import { custodyStepRows } from '../lib/custody-hold';
+import { HoldAmountOr, HoldOpChip, WaitingHeldLegend, holdRowTint } from './custody-hold-parts';
 
 const D = 'fleet.custody.dashboard';
 const LATIN = new Intl.NumberFormat('en-US');
@@ -277,7 +281,7 @@ const FundOpButton = ({
     </>
   );
   return onFundAction === undefined ? (
-    <Link to={`/fleet/custody?fund=${op}`} data-custody-fund-open={op} className={className}>
+    <Link to={`/fleet/custody/log?fund=${op}`} data-custody-fund-open={op} className={className}>
       {inner}
     </Link>
   ) : (
@@ -404,6 +408,7 @@ export const CustodyFundNow = ({
           charged={figures.fundCharged}
           spent={figures.fundSpent}
           figure={STRIP_FIGURE}
+          held={fund.data?.held.amount ?? 0}
         />
       </Link>
     );
@@ -417,7 +422,7 @@ export const CustodyFundNow = ({
         name="fund"
         id={headingId}
         title={t(`${D}.fund.heading`)}
-        chip={t(`${D}.fund.scope`)}
+        chip={t(`${D}.fund.scopeSince`)}
       />
       {fund.data !== undefined ? (
         <LedgerFigures fund={fund.data} look="dashboard" fundCard={card} />
@@ -555,8 +560,9 @@ export const CustodyWaitingCard = ({
   }
   const memos = cand.data.memos;
   const outside = cand.data.outside;
-  const waiting = custodyWaiting(memos, outside, fund.data.memos.pendingTotal);
-  const pctIn = waiting.total > 0 ? (waiting.inMemos / waiting.total) * 100 : 0;
+  // The held replenishments' memos are spent and not back yet: the bar's third part, first.
+  const waiting = custodyWaiting(memos, outside, fund.data.memos.pendingTotal, fund.data.held);
+  const share = custodyWaitingShares(waiting);
   const shown = memos.slice(0, SHOWN_MEMOS);
   return (
     <section
@@ -581,22 +587,38 @@ export const CustodyWaitingCard = ({
           aria-hidden="true"
           className="flex h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]"
         >
+          {waiting.held > 0 && (
+            <span
+              data-custody-waiting-part="held"
+              className="h-full bg-sky-500"
+              style={{ width: `${share.held}%` }}
+            />
+          )}
           {waiting.inMemos > 0 && (
             <span
               data-custody-waiting-part="inMemos"
               className="h-full bg-amber-500"
-              style={{ width: `${pctIn}%` }}
+              style={{ width: `${share.inMemos}%` }}
             />
           )}
           {waiting.outside > 0 && (
             <span
               data-custody-waiting-part="outside"
               className="h-full bg-slate-400 dark:bg-slate-500"
-              style={{ width: `${100 - pctIn}%` }}
+              style={{ width: `${share.outside}%` }}
             />
           )}
         </div>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs">
+        {/* Three parts do not fit one line of the card: they flow from its start, the third under. */}
+        <div
+          className={cn(
+            'mt-2 flex flex-wrap items-center gap-y-1 text-xs',
+            waiting.held > 0 ? 'justify-start gap-x-8' : 'justify-between gap-x-6',
+          )}
+        >
+          {waiting.held > 0 && (
+            <WaitingHeldLegend figure={money(waiting.held)} className={FOCUS_RING} />
+          )}
           <span
             data-custody-waiting-legend="inMemos"
             className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300"
@@ -705,7 +727,12 @@ export const CustodyWaitingCard = ({
         ) : (
           <span />
         )}
-        <FootLink to="/fleet/custody/memos">{t(`${D}.waiting.showMemos`)}</FootLink>
+        {/* The memos, and the receipts themselves on «مصروفات العهدة». */}
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <FootLink to="/fleet/custody/memos">{t(`${D}.waiting.showMemos`)}</FootLink>
+          <span aria-hidden="true" className="h-3.5 w-px bg-slate-200 dark:bg-[#1c273b]" />
+          <FootLink to="/fleet/custody-expenses">{t(`${D}.waiting.showExpenses`)}</FootLink>
+        </span>
       </div>
     </section>
   );
@@ -1063,8 +1090,9 @@ export const CustodyFundSteps = ({
       />
     );
   }
-  const rows = [...ledger.data.items].reverse();
-  const capped = ledger.data.meta.totalItems > rows.length;
+  // Held and cancelled lines move nothing: no step of their own. The last line kept carries «الآن».
+  const rows = custodyStepRows(ledger.data.items);
+  const capped = ledger.data.meta.totalItems > ledger.data.items.length;
   const n = rows.length;
   const active = picked === null ? n - 1 : Math.min(picked, n - 1);
   const shown = rows[active];
@@ -1107,7 +1135,7 @@ export const CustodyFundSteps = ({
               className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400"
             />
           </h3>
-          <p className={NOTE}>{t(`${D}.steps.note`)}</p>
+          <p className={NOTE}>{t(`${D}.steps.noteRequests`)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {capped && (
@@ -1507,10 +1535,13 @@ export const CustodyRecentOps = ({
                   ROW_HOVER,
                   FOCUS_RING,
                   row.op === 'spend' && 'bg-slate-100/70 dark:bg-white/[0.025]',
+                  holdRowTint(row.status),
                 )}
               >
                 <span className="w-[8.25rem] shrink-0">
-                  <LedgerOpChip op={row.op} size="xs" />
+                  <HoldOpChip status={row.status} size="xs">
+                    <LedgerOpChip op={row.op} size="xs" />
+                  </HoldOpChip>
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span
@@ -1519,7 +1550,9 @@ export const CustodyRecentOps = ({
                       'truncate text-[13px] font-bold',
                       row.op === 'spend'
                         ? 'text-slate-600 dark:text-slate-300'
-                        : 'text-slate-900 dark:text-white',
+                        : row.status === 'cancelled'
+                          ? 'text-slate-500 dark:text-slate-400'
+                          : 'text-slate-900 dark:text-white',
                       CAIRO,
                     )}
                   >
@@ -1534,7 +1567,12 @@ export const CustodyRecentOps = ({
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-0.5">
                   <span className="text-[13px] font-bold">
-                    <Signed value={row.amount} />
+                    <HoldAmountOr
+                      status={row.status}
+                      value={row.amount}
+                      note={false}
+                      done={<Signed value={row.amount} />}
+                    />
                   </span>
                   <span
                     data-custody-recent-after={row.after}

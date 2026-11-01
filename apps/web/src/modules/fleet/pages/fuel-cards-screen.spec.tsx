@@ -489,6 +489,8 @@ describe('the card log — «كارت اخر»: a card that paid for another car
     receiptVehicleCode: '204',
     at: '2026-10-01T00:00:00.000Z',
     createdAt: '2026-10-01T00:00:00.000Z',
+    byName: null,
+    sheet: null,
     ...over,
   });
   const logOf = (logged: FleetFuelCardDto, lines: FleetFuelCardMovementDto[]): string => {
@@ -536,5 +538,135 @@ describe('the card log — «كارت اخر»: a card that paid for another car
     expect(stock).toContain(
       translate('ar', 'fleet.fuelCards.history.kind.receiptFor', { place: '204' }),
     );
+  });
+});
+
+describe('the card log — the company sheet’s two lines, and who made each line', () => {
+  const line = (over: Partial<FleetFuelCardMovementDto>): FleetFuelCardMovementDto => ({
+    id: 'm-1',
+    cardId: 'c-1',
+    kind: 'charge',
+    amount: 100,
+    balanceAfter: 640,
+    counterpartCardId: null,
+    counterpartNumber: null,
+    receiptVehicleId: null,
+    receiptVehicleCode: null,
+    at: '2026-10-01T00:00:00.000Z',
+    createdAt: '2026-10-01T00:00:00.000Z',
+    byName: null,
+    sheet: null,
+    ...over,
+  });
+  const SHEET = {
+    reconciliationId: 'r-1',
+    fileName: 'wataniya-balances-2026-10-20.xlsx',
+    sheetBalance: 16745.12,
+    systemBalance: 795,
+  };
+  const logOf = (lines: FleetFuelCardMovementDto[]): string => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: { me: me(ALL), status: 'signedIn' as const },
+        ui: { theme: 'light' as const, sidebarOpen: false },
+      },
+    });
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+    });
+    qc.setQueryData(listKey('fleet', 'fuelCards', { movements: 'c-1' }), {
+      items: lines,
+      meta: { page: 1, pageSize: 100, totalItems: lines.length, totalPages: 1 },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store}>
+        <QueryClientProvider client={qc}>
+          <FuelCardHistoryDialog
+            card={card({ name: 'EGYCASH-9932-438728' })}
+            cards={[card()]}
+            onClose={() => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+  const lineOf = (html: string, id: string): string => {
+    const start = html.indexOf(`data-fuel-history-line="${id}"`);
+    expect(start, id).toBeGreaterThan(-1);
+    const next = html.indexOf('data-fuel-history-line=', start + 10);
+    return html.slice(start, next === -1 ? undefined : next);
+  };
+
+  it('«تعديل من شيت الشركة»: from the system’s balance to the sheet’s, its file, who decided', () => {
+    const html = logOf([
+      line({
+        id: 's-1',
+        kind: 'sheetAdjust',
+        amount: 15950.12,
+        balanceAfter: 16745.12,
+        sheet: SHEET,
+        byName: 'أحمد علي',
+      }),
+    ]);
+    const adjust = lineOf(html, 's-1');
+    expect(adjust).toContain(ar('fleet.fuelCards.history.kind.sheetAdjust'));
+    expect(ar('fleet.fuelCards.history.kind.sheetAdjust')).toBe('تعديل من شيت الشركة');
+    expect(adjust).toContain(
+      translate('ar', 'fleet.fuelCards.history.sheetFromTo', { from: '795.00', to: '16,745.12' }),
+    );
+    expect(adjust).toContain(
+      translate('ar', 'fleet.fuelCards.history.sheetFile', { file: SHEET.fileName }),
+    );
+    expect(adjust).toContain('بواسطة أحمد علي');
+    expect(adjust).toContain('+15,950.12');
+  });
+
+  it('«رفض تعديل الشيت»: nothing moved — «—» for the amount, what the sheet said and what stayed', () => {
+    const html = logOf([
+      line({
+        id: 's-2',
+        kind: 'sheetReject',
+        amount: 0,
+        balanceAfter: 795,
+        sheet: SHEET,
+        byName: 'أحمد علي',
+      }),
+    ]);
+    const reject = lineOf(html, 's-2');
+    expect(reject).toContain(ar('fleet.fuelCards.history.kind.sheetReject'));
+    expect(reject).toContain(
+      translate('ar', 'fleet.fuelCards.history.sheetWas', { sheet: '16,745.12', system: '795.00' }),
+    );
+    expect(reject).not.toContain('+0.00');
+    expect(reject).toContain('>—<');
+  });
+
+  it('neither sheet line can be changed or removed here; a charge still can', () => {
+    const html = logOf([
+      line({ id: 's-1', kind: 'sheetAdjust', amount: 5, balanceAfter: 645, sheet: SHEET }),
+      line({ id: 's-2', kind: 'sheetReject', amount: 0, balanceAfter: 640, sheet: SHEET }),
+      line({ id: 'c-9' }),
+    ]);
+    for (const id of ['s-1', 's-2']) {
+      expect(html).not.toContain(`data-fuel-history-edit="${id}"`);
+      expect(html).not.toContain(`data-fuel-history-remove="${id}"`);
+    }
+    expect(html).toContain('data-fuel-history-edit="c-9"');
+  });
+
+  it('every line says who made it; a line with no writer on file says nothing', () => {
+    const html = logOf([line({ id: 'c-1', byName: 'منى حسن' }), line({ id: 'c-2' })]);
+    expect(lineOf(html, 'c-1')).toContain(
+      translate('ar', 'fleet.fuelCards.history.by', { name: 'منى حسن' }),
+    );
+    expect(lineOf(html, 'c-2')).not.toContain('data-fuel-history-by');
+  });
+
+  it('the strip shows the card’s name — what the company’s sheet calls it — over its number', () => {
+    const html = logOf([]);
+    expect(html).toContain('data-fuel-history-name="EGYCASH-9932-438728"');
+    expect(html.indexOf('EGYCASH-9932-438728<')).toBeLessThan(html.indexOf('7045 1120 0098 2231'));
   });
 });

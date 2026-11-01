@@ -56,6 +56,7 @@ import {
   initialsOf,
 } from '../components/ProfileCard';
 import { DriverFormDialog } from '../components/DriverFormDialog';
+import { versionText } from '../../../platform/app/version';
 import { UnavailabilityDialog } from '../components/UnavailabilityDialog';
 
 /**
@@ -895,7 +896,7 @@ export const DriverProfilePage = (): JSX.Element => {
             <span>•</span>
             <span>
               {t('fleet.drivers.profile.footer.version')}{' '}
-              {(import.meta.env['VITE_APP_VERSION'] as string | undefined) ?? '—'}
+              <bdi dir="ltr">{versionText() || '—'}</bdi>
             </span>
           </div>
         </footer>

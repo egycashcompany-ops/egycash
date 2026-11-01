@@ -25,17 +25,18 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from dataclasses import dataclass, field as _field
+from dataclasses import dataclass, field as _field, replace
 from typing import Any
 
 import cv2
 import numpy as np
 
 from .anchor import Anchoring, Line, anchor, structural
-from .arabic import rasm_fold
-from .engine import MockRecognizer, Recognition, Recognizer
+from .arabic import rasm_fold, to_western_digits
+from .engine import Recognition, Recognizer
 from .ensemble import ENOUGH_AGREEMENT, Candidate, Consensus, combine
-from .geometry import Rectification
+from .geometry import Rectification, locate_card
+from .orientation import upright
 from .layout import BACK_FIELDS, FRONT_FIELDS, FieldBox
 from .nid import Repair, gender_agrees, salvage_digits
 from .preprocess import (
@@ -57,7 +58,10 @@ from .postprocess import (
     clean_religion,
     clean_text,
 )
-from .quality import QualityReport
+from .quality import QualityReport, assess
+from .crosscheck import cross_check
+from .lexicon import correct as lexicon_correct
+from .rows import read_by_rows
 from .trace import NO_TRACE, Trace
 
 LOG = logging.getLogger("nidocr.extract")
@@ -74,6 +78,10 @@ class SideResult:
     lines: list[Line] = _field(default_factory=list)
     #: True when detection RAISED rather than returning nothing. See `_detect_lines`.
     detection_failed: bool = False
+    #: The back's issue year, for the cross-checks only. Never returned.
+    issue_year: int | None = None
+    #: Which reads the row reader made: 'photo', then 'zoomed xN' and 'enhanced' on weak photos.
+    row_passes: list[str] = _field(default_factory=list)
     #: Every reading this side produced of the national ID, kept for the cross-side vote.
     nid_candidates: list[Candidate] = _field(default_factory=list)
 
@@ -98,6 +106,9 @@ class ExtractionResult:
     #: Per-side notes on how the read was obtained — rectification method, where the boxes came
     #: from, whether a side was retried upside down. Diagnostic only; carries no card content.
     diagnostics: dict[str, Any] = _field(default_factory=dict)
+    #: Each side as it was finally read: after the turn upright and any 180 retry. Kept so the
+    #: test page can SHOW the rotation instead of only reporting it. Never logged or stored.
+    oriented: dict[str, np.ndarray] = _field(default_factory=dict)
 
     def as_raw_ocr_result(self) -> dict[str, dict[str, str]]:
         """The `RawOcrResult` payload — only fields that produced a value."""
@@ -171,9 +182,12 @@ def _recognize_box(
         f"{label} / box",
         {"x": box.x, "y": box.y, "w": box.w, "h": box.h, "kind": box.kind},
     )
-    # The mock replays by field name; real recognizers only ever see pixels.
-    if isinstance(recognizer, MockRecognizer):
-        recognizer.bind(box.name)
+    # Recognizers that care which field they are reading say so with `bind`: the mock replays by
+    # field name, and the VLM hybrid sends only the prose fields to its language model. PaddleOCR
+    # alone has no `bind` and only ever sees pixels.
+    bind = getattr(recognizer, "bind", None)
+    if bind is not None:
+        bind(box.name)
 
     # The national ID and the expiry are numbers: their spaced groups read left to right even
     # on an otherwise right-to-left card. Ordering them as Arabic would reverse the value
@@ -267,9 +281,11 @@ def _read_digits(
         if not ensemble:
             continue
 
-        candidates.append(
-            Candidate(variant=variant, digits=clean_national_id(text).value, score=score)
-        )
+        # The digits as READ, not as repaired. Repairing each read before the vote made a repair
+        # look like an agreeing read, and the final cleanup then saw an already-valid number, so
+        # the cap that keeps repaired numbers off 'high' never fired. Repair happens once, after
+        # the vote, in `_finalize` — where it is flagged and capped.
+        candidates.append(Candidate(variant=variant, digits=salvage_digits(text), score=score))
         agreed = Counter(c.digits for c in candidates if len(c.digits) == 14)
         if agreed and agreed.most_common(1)[0][1] >= ENOUGH_AGREEMENT:
             settled = combine(candidates)
@@ -314,6 +330,13 @@ def _read(recognizer: Recognizer, crop: np.ndarray, rtl: bool) -> Recognition:
     except Exception:  # noqa: BLE001 — anything can come out of the native predictor
         LOG.warning("recognition failed on a field crop; leaving it empty", exc_info=True)
         return Recognition(text="", score=0.0)
+
+
+#: A vocabulary snap lifts a borderline read to 'medium' only if the read itself had something to
+#: it. Below this the snap is the evidence, not corroboration: a religion deduced from its
+#: position (scored 0.6 on purpose) and an address that is noise apart from a governorate name at
+#: the end were both being lifted to 'medium' by the snap alone.
+SNAP_LIFT_FLOOR = 0.65
 
 
 def _finalize(
@@ -368,7 +391,7 @@ def _finalize(
         # never to 'high', which stays reserved for the model being confident on its own.
         return {
             "value": value,
-            "confidence": band(max(score, 0.75) if snapped else score),
+            "confidence": band(max(score, 0.75) if snapped and score >= SNAP_LIFT_FLOOR else score),
             "raw": raw,
             "score": score,
         }
@@ -376,19 +399,32 @@ def _finalize(
         value, snapped = clean_marital_status(raw)
         return {
             "value": value,
-            "confidence": band(max(score, 0.75) if snapped else score),
+            "confidence": band(max(score, 0.75) if snapped and score >= SNAP_LIFT_FLOOR else score),
             "raw": raw,
             "score": score,
         }
     if name == "address":
         value, snapped = clean_address(raw)
+        value, corrected = lexicon_correct(value, "address")
+        confidence = band(max(score, 0.75) if snapped and score >= SNAP_LIFT_FLOOR else score)
         return {
             "value": value,
-            "confidence": band(max(score, 0.75) if snapped else score),
+            # A letter changed from a word list is a deduction: never presented as certainly read.
+            "confidence": cap(confidence, "medium") if corrected else confidence,
             "raw": raw,
             "score": score,
         }
-    return {"value": clean_text(raw), "confidence": band(score), "raw": raw, "score": score}
+    value = clean_text(raw)
+    corrected = False
+    if name == "fullNameAr":
+        value, corrected = lexicon_correct(value, "name")
+    confidence = band(score)
+    return {
+        "value": value,
+        "confidence": cap(confidence, "medium") if corrected else confidence,
+        "raw": raw,
+        "score": score,
+    }
 
 
 #: Fields the back carries but has no nominal box for. The national ID is printed on BOTH sides of
@@ -454,25 +490,59 @@ def _process_side(
         },
     )
     result = SideResult(quality=prepared.quality, rectification=prepared.rectification)
-    boxes = _side_boxes(side)
+    ceiling = prepared.quality.confidence_ceiling
+
+    # Read first, assign second (see rows.py). On the UPRIGHT PHOTO rather than the rectified card:
+    # rectification is the step that failed worst on the first real card, and reading every line
+    # needs no geometry at all. Whatever it places is final; the box path below runs only for the
+    # fields it could not place.
+    started = time.perf_counter()
+    rows = read_by_rows(image, side, recognizer)
+    timings.record(f"{side}:rows", started)
+    if rows is not None:
+        result.lines = list(rows.lines)
+        trace.data(f"{side} / rows / 00 printed rows", rows.rows)
+        result.row_passes = list(rows.passes)
+        result.issue_year = rows.issue_year
+        trace.data(
+            f"{side} / rows / 01 assigned",
+            {name: {"raw": raw, "score": round(score, 3)} for name, (raw, score, _) in rows.fields.items()},
+        )
+        for name, (raw, score, bounds) in rows.fields.items():
+            started = time.perf_counter()
+            source = rows.images.get(name, image)
+            data = _row_field(source, name, raw, score, bounds, recognizer, result, trace, side)
+            _unbind(recognizer)
+            timings.record(f"recognize:{side}:{name}", started)
+            trace.data(f"{side} / {name} / final", {k: v for k, v in data.items() if k != "score"})
+            data["confidence"] = cap(data["confidence"], ceiling)
+            result.fields[name] = data
+
+    placed = set(result.fields)
+    boxes = tuple(box for box in _side_boxes(side) if box.name not in placed)
+    extra = tuple(n for n in (_BACK_STRUCTURAL_EXTRA if side == "back" else ()) if n not in placed)
+    if not boxes and not extra:
+        return result
     size = (prepared.image.shape[1], prepared.image.shape[0])
 
     started = time.perf_counter()
-    result.lines, result.detection_failed = _detect_lines(prepared.image, recognizer, side)
+    detected, result.detection_failed = _detect_lines(prepared.image, recognizer, side)
+    if rows is None:
+        result.lines = detected
     timings.record(f"{side}:detect", started)
     trace.data(
         f"{side} / card / 03 detected lines",
         {
             "failed": result.detection_failed,
-            "count": len(result.lines),
-            "lines": [text for _, text, _ in result.lines],
+            "count": len(detected),
+            "lines": [text for _, text, _ in detected],
         },
     )
 
-    wanted = {box.name for box in boxes} | set(_BACK_STRUCTURAL_EXTRA if side == "back" else ())
-    result.anchoring = anchor(boxes, result.lines, size)
+    wanted = {box.name for box in boxes} | set(extra)
+    result.anchoring = anchor(boxes, detected, size)
     if side == "back":
-        for name, box in structural(result.lines, size, wanted=wanted).items():
+        for name, box in structural(detected, size, wanted=wanted).items():
             result.anchoring.boxes.setdefault(name, box)
             result.anchoring.sources.setdefault(name, "structural")
 
@@ -491,10 +561,12 @@ def _process_side(
     )
     trace.image(f"{side} / card / 05 boxes drawn", _draw_boxes(prepared.image, result.anchoring))
 
-    ceiling = prepared.quality.confidence_ceiling
     for name, box in result.anchoring.boxes.items():
+        if name in placed:
+            continue
         started = time.perf_counter()
         read = _recognize_box(prepared.image, box, recognizer, trace, side)
+        _unbind(recognizer)
         timings.record(f"recognize:{side}:{name}", started)
         if name == "nationalId":
             result.nid_candidates = list(read.candidates)
@@ -512,6 +584,119 @@ def _process_side(
         result.fields[name] = data
 
     return result
+
+
+def _row_field(
+    image: np.ndarray,
+    name: str,
+    raw: str,
+    score: float,
+    bounds: tuple[float, float, float, float],
+    recognizer: Recognizer,
+    result: SideResult,
+    trace: Trace,
+    side: str,
+) -> dict[str, Any]:
+    """Finalize a field the row reader placed. Where it was READ stays the row reader's answer.
+
+    Two fields get more than the page read. The national ID goes through the same digit ensemble
+    as the box path, on a box built from the lines the row reader found, with the page read as one
+    more vote — a single read is not enough for the one field where a wrong digit is a different,
+    valid-looking person. And a recognizer that reads per field (the VLM hybrid, via `bind`) is
+    given the located crop, so the VLM comparison still compares readers rather than placements.
+    """
+    height, width = image.shape[:2]
+    left, top, right, bottom = bounds
+    box = FieldBox(
+        name=name,
+        x=left / width,
+        y=top / height,
+        w=(right - left) / width,
+        h=(bottom - top) / height,
+        kind="digits" if name in ("nationalId", "nationalIdExpiry") else "text",
+    )
+    label = f"{side} / {name}"
+    if name == "nationalId":
+        page = Candidate(variant="page", digits=_digits_only(raw), score=score)
+        bind = getattr(recognizer, "bind", None)
+        if bind is not None:
+            bind(name)
+        read = _read_digits(image, box, recognizer, ensemble=True, trace=trace, label=label)
+        candidates = [page, *read.candidates]
+        settled = combine(candidates)
+        # Fourteen digits or keep looking. The box above is the union of the digit groups the page
+        # read FOUND, so a digit the page read missed at the end of the row is outside it — on a
+        # far-away card the last digit was lost exactly that way, by every variant, because none of
+        # them was ever shown it. Widen the row by a few digit-widths each side and enlarge it.
+        for widen in (2.0, 4.0):
+            if settled is not None and settled.valid:
+                break
+            candidates.extend(_read_widened(image, bounds, raw, widen, recognizer, trace, label))
+            settled = combine(candidates)
+        result.nid_candidates = candidates
+        if settled is None:
+            best = raw if len(_digits_only(raw)) >= len(_digits_only(read.text)) else read.text
+            return _finalize(name, best, score if best == raw else read.score)
+        return _finalize(name, settled.value, settled.score, settled)
+    bind = getattr(recognizer, "bind", None)
+    if bind is not None and name in ("fullNameAr", "address", "occupation"):
+        bind(name)
+        region = _crop(image, box, TEXT_MARGIN)
+        if region is not None:
+            text, text_score = _read_text(recognizer, region, trace, label)
+            if text.strip():
+                return _finalize(name, text, text_score)
+    return _finalize(name, raw, score)
+
+
+#: How much a widened ID row is enlarged before the ensemble reads it.
+ID_RETRY_ZOOM = 2.0
+
+
+def _read_widened(
+    image: np.ndarray,
+    bounds: tuple[float, float, float, float],
+    raw: str,
+    widen: float,
+    recognizer: Recognizer,
+    trace: Trace,
+    label: str,
+) -> list[Candidate]:
+    """The ID row again, `widen` digit-widths wider on each side and enlarged. → its readings."""
+    left, top, right, bottom = bounds
+    found = max(len(_digits_only(raw)), 1)
+    digit = (right - left) / found
+    height, width = image.shape[:2]
+    pad_y = (bottom - top) * 0.3
+    x0, x1 = max(0, int(left - widen * digit)), min(width, int(right + widen * digit))
+    y0, y1 = max(0, int(top - pad_y)), min(height, int(bottom + pad_y))
+    region = image[y0:y1, x0:x1]
+    if region.size == 0:
+        return []
+    region = cv2.resize(
+        region,
+        (round(region.shape[1] * ID_RETRY_ZOOM), round(region.shape[0] * ID_RETRY_ZOOM)),
+        interpolation=cv2.INTER_CUBIC,
+    )
+    whole = FieldBox(name="nationalId", x=0.0, y=0.0, w=1.0, h=1.0, kind="digits")
+    read = _read_digits(
+        region, whole, recognizer, ensemble=True, trace=trace, label=f"{label} / widened x{widen:g}"
+    )
+    return [
+        Candidate(variant=f"widened{widen:g}:{c.variant}", digits=c.digits, score=c.score)
+        for c in read.candidates
+    ]
+
+
+def _unbind(recognizer: Recognizer) -> None:
+    """Release a field binding, so a read nobody bound is never treated as that field's."""
+    unbind = getattr(recognizer, "unbind", None)
+    if unbind is not None:
+        unbind()
+
+
+def _digits_only(text: str) -> str:
+    return "".join(character for character in to_western_digits(text) if character.isdigit())
 
 
 def _printed_gender(lines: list[Line]) -> str | None:
@@ -558,6 +743,126 @@ def _looks_like_the_back(lines: list[Line]) -> bool | None:
     if not folded.strip():
         return None
     return any(marker in folded for marker in _BACK_MARKERS)
+
+
+#: Card width, in pixels, that a far-away card is enlarged to: about what a close-up phone photo
+#: of a card gives, where every field was measured reading correctly.
+CARD_TARGET_WIDTH = 2400
+#: A card narrower than this share of the photo is "far away" and gets zoomed to.
+FAR_CARD_SHARE = 0.6
+MAX_CARD_ZOOM = 16.0
+LANCZOS_FROM_ZOOM = 5.0
+
+
+def _zoom_to_card(image: np.ndarray, recognizer: Recognizer) -> tuple[np.ndarray, float]:
+    """Crop a far-away card out of its photo and enlarge it. → (image, zoom; 0 if untouched).
+
+    A card photographed from a distance is a small patch of a large frame. Every later step
+    suffers for it: orientation and detection shrink the whole frame onto a fixed canvas, which
+    leaves the card's text a few pixels tall — a back shot from a distance was turned 180 degrees
+    and every field read as noise. The card locator still finds such a card (the quality check
+    already measures its width from it), so the card is cut out with a margin and scaled up to
+    close-up size before anything reads it. The crop is an axis-aligned box around the located
+    corners, so it is indifferent to which way up the card is.
+    """
+    try:
+        found = locate_card(image)
+    except Exception:  # noqa: BLE001 — zooming is an improvement, never a reason to fail
+        found = None
+    quad = found[0] if found is not None else _detail_region(image)
+    if quad is None:
+        return image, 0.0
+    height, width = image.shape[:2]
+    left, top = float(quad[:, 0].min()), float(quad[:, 1].min())
+    right, bottom = float(quad[:, 0].max()), float(quad[:, 1].max())
+    card_width = max(right - left, bottom - top)
+    if card_width >= FAR_CARD_SHARE * max(width, height):
+        return image, 0.0
+    pad = 0.06 * card_width
+    left, top = max(0, int(left - pad)), max(0, int(top - pad))
+    right, bottom = min(width, int(right + pad)), min(height, int(bottom + pad))
+    # The locator can mistake something card-shaped ON the card for the card — the printed
+    # portrait, most often — and zooming to that throws the name and the number away. So the crop
+    # must hold the text the whole photo shows: most detected lines inside it, or none detected at
+    # all (a card far enough away that its text is too small to detect in the full frame).
+    try:
+        lines = list(recognizer.detect_lines(image))
+    except Exception:  # noqa: BLE001
+        lines = []
+    centres = [np.asarray(poly, dtype=float).reshape(-1, 2).mean(axis=0) for poly, _, _ in lines]
+    if centres:
+        inside = sum(left <= x <= right and top <= y <= bottom for x, y in centres)
+        if inside < 0.8 * len(centres):
+            return image, 0.0
+    crop = image[top:bottom, left:right]
+    zoom = min(MAX_CARD_ZOOM, max(1.0, CARD_TARGET_WIDTH / card_width))
+    if zoom > 1.0:
+        size = (round(crop.shape[1] * zoom), round(crop.shape[0] * zoom))
+        # Lanczos for the big zooms only. On a 160 px card (x13) it halved the letter errors in the
+        # name and got the ID right where cubic swapped two digits — measured against sharpening,
+        # denoising, stepwise 2x and CLAHE, all of which read worse. But at x1.5-2.5 its ringing
+        # added letters ('محمد د', 'ز هراء') that cubic does not, so smaller zooms stay cubic.
+        method = cv2.INTER_LANCZOS4 if zoom >= LANCZOS_FROM_ZOOM else cv2.INTER_CUBIC
+        crop = cv2.resize(crop, size, interpolation=method)
+    return crop, zoom
+
+
+def _too_far_to_read(side: SideResult, zoom: float) -> bool:
+    # Not by size alone: a sharp 160 px card (a screenshot, a good camera far away) still reads
+    # once zoomed, while a blurred one twice that size may not. So the read decides: the capture
+    # was refused, and at most one fragment came back, none of it with any confidence.
+    # Not even located: a card so small the locator cannot see it either. The capture was refused
+    # and at most one fragment came back, none of it with any confidence — that is a photo with
+    # no readable card in it, and saying so beats handing back the fragment.
+    quality = side.quality
+    return (
+        quality is not None
+        and quality.verdict == "reject"
+        and side.filled() <= 1
+        and all(data.get("confidence") == "low" for data in side.fields.values())
+    )
+
+
+def _detail_region(image: np.ndarray) -> np.ndarray | None:
+    """Where a tiny card is, when the card locator cannot see it. → its corners, or None.
+
+    The locator works on a 1200 px copy, where a card 160 px wide in a 2900 px photo is 67 px
+    across and its outline is gone. But a card that small is still the one patch of the photo
+    with any detail in it — printed text, a portrait, a border — on a table or screen that has
+    none. So the edges are found at FULL resolution, merged into blobs, and the largest blob is
+    taken if it is card-shaped and small. Anything else (a busy background, a card filling the
+    frame) returns None and the photo is read as it is.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    edges = cv2.Canny(gray, 50, 150)
+    if edges.mean() > 25:  # a busy scene: detail everywhere, nothing singles a card out
+        return None
+    blobs = cv2.dilate(edges, np.ones((15, 15), np.uint8))
+    contours, _ = cv2.findContours(blobs, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    x, y, w, h = cv2.boundingRect(max(contours, key=cv2.contourArea))
+    height, width = image.shape[:2]
+    aspect = max(w, h) / max(min(w, h), 1)
+    if not 1.2 <= aspect <= 2.1 or w * h > 0.4 * width * height or max(w, h) < 60:
+        return None
+    return np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], dtype=np.float32)
+
+
+def _judge_at_source_size(side: SideResult, zoom: float) -> None:
+    """Re-run the quality gate on the card's size in the PHOTO, not after it was enlarged.
+
+    Zooming lets a far-away card be read, but it does not add detail: a card 450 px wide in the
+    photo is still a 450 px card, and its digits are still guesses at that size. Judged after the
+    zoom it measured 2400 px and passed as 'ok', so a number read from a few pixels came back
+    'medium' and the "move closer" warning never fired. Judged at its source size, the person is
+    told to move closer and every field stays capped for review.
+    """
+    rect = side.rectification
+    side.quality = assess(replace(rect, card_width_px=rect.card_width_px / zoom))
+    ceiling = side.quality.confidence_ceiling
+    for data in side.fields.values():
+        data["confidence"] = cap(data["confidence"], ceiling)
 
 
 def _rotate_180(image: np.ndarray) -> np.ndarray:
@@ -626,6 +931,9 @@ def _reconcile_national_id(sides: dict[str, SideResult]) -> dict[str, Any] | Non
         # score, but not more than a structural failure — a number that cannot be a national ID is
         # still wrong when read twice.
         agreed["confidence"] = "high" if front.get("valid") else "low"
+        if front.get("repaired") or back.get("repaired"):
+            # Agreement between two repairs is agreement between two deductions, not two reads.
+            agreed["confidence"] = cap(agreed["confidence"], "medium")
         agreed["agreement"] = "both-sides"
         return agreed
 
@@ -695,7 +1003,13 @@ def extract(
     for path, side in ((front_path, "front"), (back_path, "back")):
         if path is None:
             continue
-        image = load_bgr(path)
+        image, zoom = _zoom_to_card(load_bgr(path), recognizer)
+        if zoom:
+            result.diagnostics.setdefault(side, {})["zoomedToCard"] = round(zoom, 2)
+        image, turned = upright(image, recognizer)
+        if turned:
+            result.diagnostics.setdefault(side, {})["rotated"] = turned
+            trace.image(f"{side} / turned upright ({turned} degrees)", image)
         side_result = _process_side(image, side, recognizer, result.timings, trace)
         if _needs_retry(side, side_result):
             inverted = _process_side(
@@ -704,8 +1018,16 @@ def extract(
             chosen = _better(side_result, inverted)
             if chosen is inverted:
                 result.diagnostics.setdefault(side, {})["rotated180"] = True
+                image = _rotate_180(image)
             side_result = chosen
+        if zoom and side_result.quality is not None and side_result.rectification is not None:
+            _judge_at_source_size(side_result, zoom)
+        if _too_far_to_read(side_result, zoom):
+            # Nothing is returned rather than noise: see `_too_far_to_read`.
+            side_result.fields = {}
+            result.diagnostics.setdefault(side, {})["tooFarToRead"] = True
         sides[side] = side_result
+        result.oriented[side] = image
 
     for side, side_result in sides.items():
         if side_result.quality is not None:
@@ -721,6 +1043,8 @@ def extract(
         # 'nominal' box sources is a card read entirely on profile geometry, which is the state
         # every field-placement symptom traces back to — worth one integer in the diagnostics.
         notes["linesDetected"] = len(side_result.lines)
+        if len(side_result.row_passes) > 1:
+            notes["readPasses"] = side_result.row_passes
         if side_result.detection_failed:
             notes["detectionFailed"] = True
         # How much the number was corroborated on THIS side, before the two sides are compared.
@@ -742,6 +1066,13 @@ def extract(
 
     reconciled = _reconcile_national_id(sides)
     if reconciled is not None:
+        # Whatever the two sides agreed on, a capture the quality gate refused cannot hand back a
+        # 'high' number: agreement was being promoted straight to 'high' (and a vote to 'medium')
+        # AFTER each side's own quality cap had been applied, which undid it. Both sides read the
+        # same blurred digits the same wrong way as easily as the right way.
+        ceilings = [r.quality.confidence_ceiling for r in sides.values() if r.quality is not None]
+        for ceiling in ceilings:
+            reconciled["confidence"] = cap(reconciled["confidence"], ceiling)
         result.fields["nationalId"] = reconciled
 
         back = sides.get("back")
@@ -755,6 +1086,11 @@ def extract(
                 # reason the comparison is worth making.
                 reconciled["confidence"] = "low"
                 result.diagnostics.setdefault("back", {})["genderMismatch"] = True
+
+    back = sides.get("back")
+    failed = cross_check(result.fields, back.issue_year if back is not None else None)
+    if failed:
+        result.diagnostics["crossChecksFailed"] = failed
 
     trace.data("result / fields", result.fields)
     trace.data("result / diagnostics", result.diagnostics)

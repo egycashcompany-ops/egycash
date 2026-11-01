@@ -371,9 +371,11 @@ export const ReceiptDialog = ({
   const locks = receiptMemoLocks(row);
   const memoNo = row?.memo?.no ?? 0;
   const lockReason =
-    memoState === 'replenished'
-      ? t('fleet.receipts.memo.lockedReplenished', { no: memoNo })
-      : t('fleet.receipts.memo.lockedPending', { no: memoNo });
+    memoState === 'held'
+      ? t('fleet.receipts.memo.lockedHeld', { no: memoNo })
+      : memoState === 'replenished'
+        ? t('fleet.receipts.memo.lockedReplenished', { no: memoNo })
+        : t('fleet.receipts.memo.lockedPending', { no: memoNo });
   /** A box the memo holds: not pressable, the reason on hover. */
   const held = (locked: boolean): { disabled?: true; title?: string } =>
     locked ? { disabled: true, title: lockReason } : {};
@@ -672,12 +674,14 @@ export const ReceiptDialog = ({
           data-receipt-memo-lock={memoState}
           className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200"
         >
-          {memoState === 'replenished'
-            ? t('fleet.receipts.memo.replenishedNotice', {
-                no: row.memo.no,
-                date: memoDay(row.memo.replenishedAt ?? ''),
-              })
-            : t('fleet.receipts.memo.pendingNotice', { no: row.memo.no })}
+          {memoState === 'held'
+            ? t('fleet.receipts.memo.heldNotice', { no: row.memo.no })
+            : memoState === 'replenished'
+              ? t('fleet.receipts.memo.replenishedNotice', {
+                  no: row.memo.no,
+                  date: memoDay(row.memo.replenishedAt ?? ''),
+                })
+              : t('fleet.receipts.memo.pendingNotice', { no: row.memo.no })}
         </p>
       )}
       <DesignSection title={t('fleet.receipts.form.sections.receipt')} icon={PATH.truck}>

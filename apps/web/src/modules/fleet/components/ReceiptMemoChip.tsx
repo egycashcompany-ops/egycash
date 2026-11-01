@@ -1,7 +1,7 @@
 // «مذكرة رقم 7» under «العهدة» on the receipts table: the custody memo («المذكرات») this receipt is a
-// line of — amber while that memo waits for its «استعاضة», emerald once it is replenished, as the
-// memos' own status chips read. Hovering says which, and since when; whoever may open the memo is
-// taken to it.
+// line of — amber while that memo waits for its «استعاضة» (and while its replenishment is held for
+// the transfer), emerald once it is replenished, as the memos' own status chips read. Hovering says
+// which, and since when; whoever may open the memo is taken to it.
 import { Link } from 'react-router-dom';
 import { type FleetReceiptMemoLinkDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -25,7 +25,9 @@ export const ReceiptMemoChip = ({ memo }: { memo: FleetReceiptMemoLinkDto }): JS
         no: memo.no,
         date: memoDay(memo.replenishedAt ?? ''),
       })
-    : t('fleet.receipts.memo.pendingTitle', { no: memo.no });
+    : memo.held
+      ? t('fleet.receipts.memo.heldTitle', { no: memo.no })
+      : t('fleet.receipts.memo.pendingTitle', { no: memo.no });
   const inside = (
     <>
       {replenished ? (
@@ -37,7 +39,7 @@ export const ReceiptMemoChip = ({ memo }: { memo: FleetReceiptMemoLinkDto }): JS
     </>
   );
   const look = cn(CHIP, replenished ? REPLENISHED : PENDING);
-  const state = replenished ? 'replenished' : 'pending';
+  const state = replenished ? 'replenished' : memo.held ? 'held' : 'pending';
   // The memo opens on its own page, which asks for both grants — the link is offered only then.
   return can('fleetCustody.view') && can('fleetReceipt.edit') ? (
     <Link

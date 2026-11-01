@@ -10,8 +10,11 @@
 //
 // The number is unique over EVERY memo, deleted ones included: a number is never reused.
 //
-// Once a «استعاضة عهدة» brings a memo back into the fund (`replenishmentId`), the memo is frozen:
-// the repository's `writeConditions` refuses any edit or delete in the same atomic write.
+// Once a «استعاضة عهدة» takes a memo (`replenishmentId`), the memo is frozen — while the replenishment
+// waits for its transfer (`replenishmentHeld`) and after it: the repository's `writeConditions`
+// refuses any edit or delete in the same atomic write. A cancelled replenishment frees it again.
+// A memo stored before the hold has no `replenishmentHeld` and reads as not held; the field has no
+// schema default, so such a memo read and written back never gains it.
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_CUSTODY_SIGN_ROLES,
@@ -44,10 +47,15 @@ export interface FleetCustodyMemoDoc extends BaseDocFields {
   lines: FleetCustodyMemoLineDoc[];
   /** The signatures it prints with — a snapshot taken at create, never refreshed. */
   signatures: FleetCustodyPaperSignatures;
-  /** The «استعاضة عهدة» that brought it back; `null` (or absent) while pending. */
+  /** The «استعاضة عهدة» that took it; `null` (or absent) while pending. */
   replenishmentId: Types.ObjectId | null;
-  /** That letter's day. */
+  /**
+   * The day it counts from: that letter's day while the replenishment is held, the transfer's day
+   * once «تأكيد التحويل» confirmed it (a replenishment from before the hold: its letter's day).
+   */
   replenishedAt: Date | null;
+  /** Its replenishment waits for the transfer («في انتظار التحويل»); absent or `false` otherwise. */
+  replenishmentHeld?: boolean;
   /** A native `$inc` a receipt edit writes to serialise against this memo; never on a DTO. */
   lockSeq?: number;
 }
@@ -93,6 +101,8 @@ const custodyMemoSchema = new Schema<FleetCustodyMemoDoc>(
     signatures: { type: custodyPaperSignaturesSchema, required: true },
     replenishmentId: { type: Schema.Types.ObjectId, default: null },
     replenishedAt: { type: Date, default: null },
+    // No default, on purpose (see the header).
+    replenishmentHeld: { type: Boolean },
     lockSeq: { type: Number, default: 0 },
     ...baseFields,
   },

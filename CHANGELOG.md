@@ -11,6 +11,25 @@ its entry here in the same PR.
 
 ### Added
 
+- **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
+  «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
+  الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn
+  from vector paths and follows the theme. The mark alone sits where the tile was, at the
+  same height: the top bar, the sign-in, activation and password screens, the applicant portal.
+  The mark with the lettering appears where the company's name belongs: the customer and
+  applicant portals (sign-in and, for customers, the portal's own header), the public application
+  page, the contract verification page — and those screens name the browser tab «EGYCASH». The
+  installed app's icons, the tab icon and the push notification badge carry the mark too; a
+  shared link previews as EGYCASH. «الإصدار 2.2.0 · 5f1e139» — the version and the commit it was
+  built from, stamped by the build — shows at the foot of the user menu, on the crash screen and
+  under the captain's phone screens, and only to somebody signed in: no public page displays it,
+  and the public contract-verification answer no longer names the generating release.
+- **The platform has one version: 2.2.0.** «أعتمد دا 2.2.0». The package files said 2.1.0 (left
+  over from Sprint 2.1), the kernel's platform contract 2.2.0, and generated contracts a
+  hand-typed «ecms-api/2.1.0». Every workspace now declares 2.2.0 (a spec keeps them equal) and
+  contracts are stamped from it; the next release is cut as 2.2.0
+  ([Development Workflow §6](docs/09-guides/development-workflow.md)). The 0.x headings below
+  stay the pre-GA sprint releases they are.
 - **The IT asset register says who holds each asset, and filters by name.** «وعايز فى شاشة الأصول
   /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر زود بعد
   الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة». `/it/assets` shows «المستلِم» after
@@ -37,10 +56,10 @@ its entry here in the same PR.
   opening stock, entered once by the deploy.** From «SN ايجي كاش» and «جرد الأجهزة», as reviewed
   with the owner («موافق على كل اقتراحاتك، طبّق الأربعة ودخّل الأرصدة»): 97 new «Lenovo ThinkCentre
   neo 50a 24» in «أكتوبر», in stock, copying the live one's category, make, model, specifications
-  and accessories (the two already registered at the head office stay; one short serial waits for
-  the owner); processor, memory and storage added to 38 registered devices only where empty, a typed
-  value kept; and ten items' counted balances received into the «المهندسين» store. Each runs once,
-  after the steps it depends on.
+  and accessories (the two already registered at the head office stay; a short serial was one of
+  them scanned twice); processor, memory and storage added to 38 registered devices only where
+  empty, a typed value kept; and ten items' counted balances received into the «المهندسين» store.
+  Each runs once, after the steps it depends on.
 - **A maintenance mail accepted or rejected by mistake goes back to pending, and both mail pages
   filter, with their buttons on the rows.** «هنا /atm/mail-tickets/log وهنا /atm/mail-tickets عايز
   فلتر وعايز Action Buttons — في /atm/mail-tickets يكون 2 قبول ورفض — في /atm/mail-tickets/log
@@ -314,6 +333,26 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **The side menu shows itself on hover, over the page; pinned, it takes its place beside it.**
+  «الsidebar يظهر لما اعمل hover عليه ويظهر فوق الكونتنت ميخدش حايز» — then «عايزك تخلي موضوع
+  توسيع وطى يبقي أيقونة Pin فوق بعد الـ 4 مربعات» and «لما اعمل تثبيت يبقى موجود بس يلخد من الحايز
+  عادى». On a desktop only the slim icon strip stands beside the page by default, so tables get
+  the full width. Resting the pointer on the strip (or tabbing into it) shows the full menu OVER the
+  page, and it goes when the pointer leaves or with Escape. The pin at the top of the menu, right
+  after the module switcher's four squares, keeps it open: pinned, the menu stands in the layout
+  and the page narrows beside it, as the expanded column used to. The expand/collapse buttons at
+  the bottom are gone. Both menu styles (the launchpad and the module rail) behave the same; the
+  choice is remembered per device, and everyone starts unpinned. The phone drawer is unchanged.
+- **Every module tile says what its module is, and no two look alike.** «بص الأيقونات بتاعت
+  الإدارات مش متناسقة مع مدلول الإدارة … وبعدين فى متكرر ! عايز كل أيقونة تكون بتعبر عن اسم
+  الإدارة». In «الوحدات» (and the module rail and the command palette): العمليات is a banknote,
+  الصراف الآلي a cash machine, خزائن الذهب stacked gold bars — no longer the shield the two shared —
+  and الهيكل التنظيمي the building chosen for it before, which the ATM tile no longer wears. HR,
+  Fleet, IT and Administration already said what they are. Existing installations take these four
+  icons once at the next boot, whatever the tile held (the live tiles had been set by hand); the
+  change is audited, and an administrator's own choice after it stands. Reopen the app once after
+  the deploy so it has the new drawings.
 
 - **The device acknowledgment agrees with what it hands over.** A screen or a printer now reads
   «ومواصفاتها … لاستخدامها … بالحفاظ عليها … بردها»; a device, a laptop or a mouse reads as before

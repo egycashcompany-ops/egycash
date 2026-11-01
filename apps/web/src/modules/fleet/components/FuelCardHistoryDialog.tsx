@@ -3,6 +3,11 @@
 // receipt taken off it — newest first. A charge or a transfer takes a new amount or is removed;
 // the server moves the balances with it (both cards of a transfer) and keeps a removed line on
 // file, out of every list. A receipt line belongs to the receipts screen and is only shown here.
+//
+// «مطابقة أرصدة الكروت» adds two lines no one changes here, like a receipt line: «تعديل من شيت
+// الشركة» (the balance set to the sheet's — from, to) and «رفض تعديل الشيت» (nothing moved: what the
+// sheet said, what stayed), each naming its file. Every line says who made it («بواسطة …»), and the
+// strip at the top shows the card's NAME over its number — the name the company's sheet calls it.
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type FleetFuelCardDto, type FleetFuelCardMovementDto } from '@ecms/contracts';
@@ -29,6 +34,10 @@ const stamp = (iso: string): string => {
 };
 
 const KIND_TONE: Record<FleetFuelCardMovementDto['kind'], string> = {
+  sheetAdjust:
+    'border-violet-300 dark:border-violet-500/40 bg-violet-500/15 text-violet-700 dark:text-violet-300',
+  sheetReject:
+    'border-rose-300 dark:border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300',
   charge:
     'border-emerald-300 dark:border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   transferIn: 'border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300',
@@ -36,6 +45,10 @@ const KIND_TONE: Record<FleetFuelCardMovementDto['kind'], string> = {
   receipt:
     'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
 };
+
+/** The sheet's two lines — a decision on «مطابقة أرصدة الكروت»; never changed here. */
+const isSheetLine = (line: FleetFuelCardMovementDto): boolean =>
+  line.kind === 'sheetAdjust' || line.kind === 'sheetReject';
 
 /** A line's amount: signed, green in and red out, struck through while it is being changed. */
 const Amount = ({ value, struck }: { value: number; struck: boolean }): JSX.Element => {
@@ -89,13 +102,15 @@ export const FuelCardHistoryDialog = ({
     return other?.vehicleCode ?? other?.label ?? '—';
   };
   // Who may change a line: the one who may charge for a charge, the one who may transfer for a
-  // transfer. A receipt line is never changed here.
+  // transfer. A receipt line and the sheet's two lines are never changed here.
   const mayChange = (line: FleetFuelCardMovementDto): boolean =>
-    line.kind === 'charge'
-      ? can('fleetFuelCharge.approve')
-      : line.kind === 'receipt'
-        ? false
-        : can('fleetFuelCharge.transfer');
+    isSheetLine(line)
+      ? false
+      : line.kind === 'charge'
+        ? can('fleetFuelCharge.approve')
+        : line.kind === 'receipt'
+          ? false
+          : can('fleetFuelCharge.transfer');
   // «كارت اخر»: a receipt of ANOTHER car taken off this card — or off a card on no car — says whose
   // fuel it paid for; this car's own receipt reads as it always did.
   const forAnotherCar = (line: FleetFuelCardMovementDto): boolean =>
@@ -110,6 +125,21 @@ export const FuelCardHistoryDialog = ({
         : forAnotherCar(line)
           ? t('fleet.fuelCards.history.kind.receiptFor', { place: line.receiptVehicleCode ?? '—' })
           : t(`fleet.fuelCards.history.kind.${line.kind}`);
+  /** A sheet line's own words under it — the two balances, then the file. */
+  const sheetWords = (line: FleetFuelCardMovementDto): string | null => {
+    if (line.sheet === null) return null;
+    const balances =
+      line.kind === 'sheetReject'
+        ? t('fleet.fuelCards.history.sheetWas', {
+            sheet: figure(line.sheet.sheetBalance),
+            system: figure(line.sheet.systemBalance),
+          })
+        : t('fleet.fuelCards.history.sheetFromTo', {
+            from: figure(line.sheet.systemBalance),
+            to: figure(line.sheet.sheetBalance),
+          });
+    return `${balances} · ${t('fleet.fuelCards.history.sheetFile', { file: line.sheet.fileName })}`;
+  };
 
   const cents = (n: number): number => Math.round(n * 100) / 100;
   // What a change does to the balances before it is made — this card's, and for a transfer the
@@ -199,14 +229,29 @@ export const FuelCardHistoryDialog = ({
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/80 px-4 py-3">
             <span className="flex items-center gap-3">
               <DesignLogo company={card.company} editing={false} />
+              {/* The card's name over its number — the name is what the company's sheet calls it. */}
               <span
-                dir="ltr"
-                className={cn(
-                  'text-sm font-medium tracking-wider text-slate-800 dark:text-slate-200',
-                  MONO,
-                )}
+                className="flex flex-col items-start gap-0.5"
+                data-fuel-history-name={card.name}
               >
-                {groupCardNumber(card.number)}
+                <span
+                  dir="ltr"
+                  className={cn(
+                    'text-sm font-bold tracking-wide text-slate-900 dark:text-white',
+                    MONO,
+                  )}
+                >
+                  {card.name}
+                </span>
+                <span
+                  dir="ltr"
+                  className={cn(
+                    'text-xs font-medium tracking-wider text-slate-600 dark:text-slate-300',
+                    MONO,
+                  )}
+                >
+                  {groupCardNumber(card.number)}
+                </span>
               </span>
             </span>
             <span className="text-sm text-slate-600 dark:text-slate-300">
@@ -267,7 +312,14 @@ export const FuelCardHistoryDialog = ({
                         {what(line)}
                       </span>
                       <span className="ms-auto flex items-center gap-4">
-                        <Amount value={line.amount} struck={active} />
+                        {line.kind === 'sheetReject' ? (
+                          // Nothing moved: the sheet's figure was refused.
+                          <span className="text-base font-black text-slate-400 dark:text-slate-500">
+                            —
+                          </span>
+                        ) : (
+                          <Amount value={line.amount} struck={active} />
+                        )}
                         {!active && (
                           <span className="text-xs text-slate-500 dark:text-slate-400">
                             {t('fleet.fuelCards.history.after')}{' '}
@@ -314,6 +366,31 @@ export const FuelCardHistoryDialog = ({
                         )}
                       </span>
                     </div>
+                    {(line.byName !== null || line.sheet !== null) && (
+                      <div
+                        data-fuel-history-by={line.id}
+                        className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        {sheetWords(line) !== null && (
+                          <span
+                            data-fuel-history-sheet={line.id}
+                            className={cn(
+                              'font-bold',
+                              line.kind === 'sheetReject'
+                                ? 'text-rose-700 dark:text-rose-300'
+                                : 'text-violet-700 dark:text-violet-300',
+                            )}
+                          >
+                            {sheetWords(line)}
+                          </span>
+                        )}
+                        {line.byName !== null && (
+                          <span className="ms-auto">
+                            {t('fleet.fuelCards.history.by', { name: line.byName })}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {active && (
                       <div

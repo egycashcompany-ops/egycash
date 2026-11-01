@@ -212,9 +212,12 @@ export const nameInSight = (
 /**
  * Every box round the name that cuts off what overflows it — the table's scrolling box, a rounded
  * card — each with the sticky head that covers its top, if it has one. Asked once per opening: a
- * scroll moves these boxes, it does not change which they are.
+ * scroll moves these boxes, it does not change which they are. Shared with the odometer's reason
+ * card (`AlarmReasonCell`), which follows its chip the same way.
  */
-const clippingBoxes = (el: HTMLElement): { node: HTMLElement; head: HTMLElement | null }[] => {
+export const clippingBoxes = (
+  el: HTMLElement,
+): { node: HTMLElement; head: HTMLElement | null }[] => {
   const found: { node: HTMLElement; head: HTMLElement | null }[] = [];
   for (
     let node = el.parentElement;

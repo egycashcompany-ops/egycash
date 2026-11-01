@@ -1,6 +1,6 @@
 {
   "name": "@ecms/api",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "ECMS backend: Express API + BullMQ worker (two entrypoints)",
   "type": "module",

@@ -126,6 +126,11 @@ const alarm = (over: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAl
   noAlarmReason: null,
   daysWithoutReading: 0,
   latestReading: 12000,
+  // The projection's facts behind its figure — neutral: no assertion here reads them.
+  latestReadingAt: null,
+  latestReadingLogId: null,
+  baseline: null,
+  newerUncountedVisit: null,
   ...over,
 });
 
@@ -224,7 +229,10 @@ const rows = (markup: string): string[] => markup.split('<tr').slice(2);
 const alarmsBoard = (alarms: FleetMaintenanceAlarmDto[]): string =>
   draw(<MaintenanceAlarmsPage />, '/fleet/maintenance-alarms', client(alarms));
 
-const maintenance = (alarms: FleetMaintenanceAlarmDto[], visits: FleetMaintenanceVisitDto[]): string => {
+const maintenance = (
+  alarms: FleetMaintenanceAlarmDto[],
+  visits: FleetMaintenanceVisitDto[],
+): string => {
   const qc = client(alarms);
   qc.setQueryData(
     listKey('fleet', 'maintenance', {

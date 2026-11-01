@@ -57,8 +57,10 @@ const spent = (
 const row = (over: Partial<FleetCustodyLedgerRowDto>): FleetCustodyLedgerRowDto => ({
   id: 'x',
   op: 'charge',
+  status: 'done',
   date: '2026-09-01',
   dateTo: null,
+  letterDate: null,
   amount: 0,
   before: 0,
   after: 0,
@@ -71,6 +73,8 @@ const row = (over: Partial<FleetCustodyLedgerRowDto>): FleetCustodyLedgerRowDto 
   receipts: null,
   byKind: null,
   memoNos: null,
+  transfer: null,
+  cancellation: null,
   ...over,
 });
 
@@ -154,6 +158,8 @@ const FUND: FleetCustodyFundSummaryDto = {
   spent: { count: 126, amount: 97794 },
   replenished: { count: 1, amount: 81908, memos: 5 },
   settled: { count: 1, amount: 124139.46, parts: 3 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  cancelled: { count: 0, amount: 0 },
   operations: 4,
   memos: { count: 5, pending: 0, pendingTotal: 0 },
   outside: [
@@ -238,6 +244,9 @@ const settledPart = (
   amount: Math.round((visaTotal + cashTotal) * 100) / 100,
 });
 const base = {
+  status: 'done' as const,
+  transfer: null,
+  cancellation: null,
   reason: '',
   memos: [],
   parts: [],
@@ -423,7 +432,17 @@ describe('«سجل العهدة» — the fund’s formula, as tiles', () => {
     ]);
     expect(text(tiles)).toContain(`+${figure(300000)}`);
     expect(text(tiles)).toContain(`−${figure(97794)}`);
-    expect(text(tiles)).toContain(ar('fleet.custody.ledger.tiles.formula'));
+    // «طلب عهدة» was «شحن العهدة»: the formula and the first term say so.
+    expect(text(tiles)).toContain(ar('fleet.custody.ledger.tiles.formulaRequests'));
+    expect(ar('fleet.custody.ledger.tiles.formulaRequests')).toBe(
+      'طلبات − مصروفات + استعاضة − تسوية',
+    );
+    expect(text(tiles)).toContain(
+      `${ar('fleet.custody.ledger.tiles.requested')} +${figure(300000)}`,
+    );
+    expect(ar('fleet.custody.ledger.tiles.requested')).toBe('إجمالي طلبات العهدة');
+    expect(text(tiles)).toContain(ar('fleet.custody.ledger.tiles.requestedNote.two'));
+    expect(text(tiles)).not.toContain('شحن');
   });
 
   it('the tiles are the WHOLE history’s — the filters choose the lines, never the fund', () => {
@@ -455,15 +474,24 @@ describe('«سجل العهدة» — the lines', () => {
   const html = page();
   const rowOf = (id: string): string => element(html, `data-ledger-row="${id}"`);
 
-  it('every line, newest first, in the tabs’ frame with the fund’s actions', () => {
+  it('every line, newest first, under the fund’s head — its actions there, not in the toolbar', () => {
+    expect(html).toContain('data-custody-fund-header="true"');
     expect(html).toContain('data-custody-tabs');
     expect(html).toContain('data-custody-ledger="true"');
     expect([...html.matchAll(/data-ledger-row="([^"]+)"/gu)].map((m) => m[1])).toEqual(
       ROWS.map((r) => r.id),
     );
-    expect(html).toContain('data-custody-fund-actions="true"');
-    expect(html).toContain('data-export="custody-ledger"');
-    expect(html).toContain('data-print="custody-ledger"');
+    // The head first: the fund now and its actions, the tabs; then the log's own board.
+    const head = html.indexOf('data-custody-fund-header="true"');
+    expect(head).toBeLessThan(html.indexOf('data-custody-ledger="true"'));
+    expect(html.match(/data-custody-fund-actions="true"/gu)).toHaveLength(1);
+    expect(html.indexOf('data-custody-fund-actions="true"')).toBeLessThan(
+      html.indexOf('data-custody-tabs'),
+    );
+    const toolbar = element(html, 'data-ledger-toolbar="true"');
+    expect(toolbar).not.toContain('data-custody-fund-action');
+    expect(toolbar).toContain('data-export="custody-ledger"');
+    expect(toolbar).toContain('data-print="custody-ledger"');
   });
 
   it('a receipts line is muted, its date two lines «… إلى …»', () => {
@@ -509,14 +537,16 @@ describe('«سجل العهدة» — the lines', () => {
     expect(text(element(html, 'data-ledger-count="true"'))).toBe(expected);
   });
 
-  it('an operation opens its drawer (eye) or its letter (printer); a receipts line opens «العهدة» over its days', () => {
+  it('an operation opens its drawer (eye) or its letter (printer); a receipts line opens «مصروفات العهدة» over its days', () => {
     for (const id of ['op-s1', 'op-c2', 'op-r1', 'op-c1']) {
       expect(rowOf(id)).toContain(`data-ledger-view="${id}"`);
       expect(rowOf(id)).toContain(`data-ledger-print="${id}"`);
     }
     const spend = rowOf('spend:2026-10-06:2026-10-18');
     expect(spend).not.toContain('data-ledger-view=');
-    expect(spend).toContain('href="/fleet/custody?from=2026-10-06&amp;to=2026-10-18"');
+    expect(spend).toContain('href="/fleet/custody-expenses?from=2026-10-06&amp;to=2026-10-18"');
+    expect(spend).toContain(`title="${ar('fleet.custody.ledger.viewExpenses')}"`);
+    expect(ar('fleet.custody.ledger.viewExpenses')).toBe('عرض الإيصالات في «مصروفات العهدة»');
   });
 
   it('says what each line is, from its own facts', () => {
@@ -691,8 +721,21 @@ describe('the ledger’s words, from the facts', () => {
     );
   });
 
+  it('two memos after «في» and «نظير» are in the genitive — the other counts as they are', () => {
+    const two = { ...(ROWS[4] as FleetCustodyLedgerRowDto), memoNos: [4, 5] };
+    expect(words.ledgerWords(two, kit).note).toContain(
+      'fleet.custody.ledger.detail.inMemos{"memos":"fleet.custody.ledger.detail.twoMemosGenitive"}',
+    );
+    expect(words.memosAfterWord(2, kit)).toBe('fleet.custody.ledger.detail.twoMemosGenitive');
+    for (const n of [1, 3, 5, 11, 100])
+      expect(words.memosAfterWord(n, kit), String(n)).toBe(`${n} memo`);
+    // English has no dual: «in 2 memos» as `count` writes it.
+    const en = { ...kit, form: (n: number) => custodyPlural('en', n) };
+    expect(words.memosAfterWord(2, en)).toBe('2 memo');
+  });
+
   it('a charge with no reason is the action’s own name', () => {
-    expect(words.chargeTitle('', kit)).toBe('fleet.custody.actions.charge');
+    expect(words.chargeTitle('', kit)).toBe('fleet.custody.actions.request');
     expect(words.chargeTitle(' x ', kit)).toBe(
       'fleet.custody.ledger.detail.chargeFor{"reason":"x"}',
     );
@@ -735,6 +778,21 @@ describe.skipIf(!merged)('«سجل العهدة» reads as the approved sample d
       '5 مذكرات: كاوتش، وقود، صيانة',
     );
     expect(text(element(html, 'data-ledger-detail="op-s1"'))).toContain('3 مصروفات تراخيص');
+    // «في مذكرتين», never «في مذكرتان».
+    const realKit = {
+      t: ar,
+      count,
+      form: (n: number) => custodyPlural('ar', n),
+      cars: (n: number) => `${n}`,
+      separator: '، ',
+      day: (iso: string) => iso,
+    };
+    const two = { ...(ROWS[4] as FleetCustodyLedgerRowDto), memoNos: [4, 5] };
+    expect(words.ledgerWords(two, realKit).note).toContain('— في مذكرتين،');
+    expect(words.ledgerWords(two, realKit).note).not.toContain('مذكرتان');
+    expect(words.ledgerWords(ROWS[4] as FleetCustodyLedgerRowDto, realKit).note).toContain(
+      '— في 5 مذكرات،',
+    );
     expect(text(element(html, 'data-ledger-detail="spend:2026-09-01:2026-09-28"'))).toContain(
       '97 إيصالًا صُرفت من العهدة',
     );

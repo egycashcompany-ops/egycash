@@ -1,6 +1,8 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type CancelFleetCustodyReplenishment,
+  type ConfirmFleetCustodyTransfer,
   type CreateFleetCustodyCharge,
   type CreateFleetCustodyReplenishment,
   type CreateFleetCustodySettlement,
@@ -9,6 +11,7 @@ import {
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
+import { fleetCustodyHoldService } from './custody-fund-hold';
 import { fleetCustodyFundService } from './custody-fund.service';
 
 type IdParam = { id: string };
@@ -53,4 +56,14 @@ export const replenishCustody = async (req: Request, res: Response): Promise<voi
 export const settleCustody = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<CreateFleetCustodySettlement>(req);
   created(res, await fleetCustodyFundService.settle(body, authContext(req).userId));
+};
+
+export const confirmCustodyTransfer = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<ConfirmFleetCustodyTransfer, never, IdParam>(req);
+  ok(res, await fleetCustodyHoldService.confirmTransfer(params.id, body, authContext(req).userId));
+};
+
+export const cancelCustodyReplenishment = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<CancelFleetCustodyReplenishment, never, IdParam>(req);
+  ok(res, await fleetCustodyHoldService.cancelHeld(params.id, body, authContext(req).userId));
 };

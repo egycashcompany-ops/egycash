@@ -1,9 +1,10 @@
 // «العهدة الآن» on «لوحة تحكم العهدة» — the owner's approved samples, on his scenario at 19/10/2026:
-// two charges (300,000.00), 126 receipts (97,794.00), the 29/09 replenishment of five memos
+// two requests (300,000.00), 126 receipts (97,794.00), the 29/09 replenishment of five memos
 // (81,908.00), the 05/10 settlement (124,139.46) — the fund 159,974.54 — with 33 receipts in no memo
-// (15,886.00; washing's two oldest past 30 days) and two licensing memos waiting (69,660.75). And
-// «مصروفات العهدة حسب الفلاتر» under it: five spend cards, each split by its memos' state. Rendered
-// to markup against a seeded query cache (the suite has no DOM), as the ledger's suite does.
+// (15,886.00; washing's two oldest past 30 days) and two licensing memos waiting (69,660.75).
+// «خلاص افصلهم»: that is the third tab of SCREEN 1 «العهدة» (`CustodyFundDashboard`); the five spend
+// cards, each split by its memos' state, are «لوحة تحكم المصروفات» on SCREEN 2. Rendered to markup
+// against a seeded query cache (the suite has no DOM), as the ledger's suite does.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,6 +49,7 @@ import {
   custodyStepScale,
   CustodyWaitingCard,
 } from '../components/CustodyDashboardFund';
+import { CustodyFundDashboard } from '../components/CustodyFundDashboard';
 import { LedgerFigures, STRIP_FIGURE } from '../components/CustodyLedgerFigures';
 import { CAIRO } from '../components/custody-dashboard-parts';
 import {
@@ -60,6 +62,7 @@ import {
   custodyPeriodLink,
   custodySettleWaiting,
   custodyWaiting,
+  custodyWaitingShares,
 } from '../lib/custody-dashboard-fund';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -100,6 +103,8 @@ const FUND: FleetCustodyFundSummaryDto = {
   spent: { count: 126, amount: 97794 },
   replenished: { count: 1, amount: 81908, memos: 5 },
   settled: { count: 1, amount: 124139.46, parts: 3 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  cancelled: { count: 0, amount: 0 },
   operations: 4,
   memos: { count: 5, pending: 0, pendingTotal: 0 },
   outside: OUTSIDE,
@@ -182,8 +187,10 @@ const spent = (
 const row = (over: Partial<FleetCustodyLedgerRowDto>): FleetCustodyLedgerRowDto => ({
   id: 'x',
   op: 'charge',
+  status: 'done',
   date: '2026-09-01',
   dateTo: null,
+  letterDate: null,
   amount: 0,
   before: 0,
   after: 0,
@@ -196,6 +203,8 @@ const row = (over: Partial<FleetCustodyLedgerRowDto>): FleetCustodyLedgerRowDto 
   receipts: null,
   byKind: null,
   memoNos: null,
+  transfer: null,
+  cancellation: null,
   ...over,
 });
 /** «سجل العهدة», newest first. */
@@ -464,10 +473,21 @@ describe('the fund’s arithmetic — ages, waiting money, where a line leads', 
 
   it('waits what was spent and not replenished — always the fund’s spent less its replenished', () => {
     const now = custodyWaiting([], OUTSIDE, FUND.memos.pendingTotal);
-    expect(now).toEqual({ inMemos: 0, outside: 15886, total: 15886, receipts: 33 });
+    expect(now).toEqual({ held: 0, inMemos: 0, outside: 15886, total: 15886, receipts: 33 });
     expect(now.total).toBe(FUND.spent.amount - FUND.replenished.amount);
     const now6 = custodyWaiting([MEMO6], OUTSIDE6, FUND6.memos.pendingTotal);
-    expect(now6).toEqual({ inMemos: 600, outside: 15286, total: 15886, receipts: 33 });
+    expect(now6).toEqual({ held: 0, inMemos: 600, outside: 15286, total: 15886, receipts: 33 });
+    // A replenishment held for its transfer: its memos are spent and not back yet — a third part.
+    const held = custodyWaiting([MEMO6], OUTSIDE6, 600, { amount: 8476, receipts: 12 });
+    expect(held).toEqual({ held: 8476, inMemos: 600, outside: 15286, total: 24362, receipts: 45 });
+    expect(custodyWaitingShares(held).held + custodyWaitingShares(held).inMemos).toBeCloseTo(
+      ((8476 + 600) / 24362) * 100,
+    );
+    expect(custodyWaitingShares({ ...held, total: 0 })).toEqual({
+      held: 0,
+      inMemos: 0,
+      outside: 0,
+    });
     // To the piastre.
     expect(custodyWaiting([], [outsideLine('fuel', 2, 0.1, null)], 0.2).total).toBe(0.3);
     expect(custodySettleWaiting(PARTS)).toBe(69660.75);
@@ -489,8 +509,9 @@ describe('the fund’s arithmetic — ages, waiting money, where a line leads', 
       from: '2026-10-06',
       to: '2026-10-06',
     });
+    // The board is «مصروفات العهدة» now — straight there, never through the old address.
     expect(custodyPeriodLink('2026-10-06', '2026-10-18')).toBe(
-      '/fleet/custody?from=2026-10-06&to=2026-10-18',
+      '/fleet/custody-expenses?from=2026-10-06&to=2026-10-18',
     );
     // The ledger's own eye goes the same way.
     expect(read('CustodyLedgerPage.tsx')).toContain(
@@ -681,8 +702,8 @@ describe('the fund’s alert lines (a–e)', () => {
     expect(text(over)).toContain(
       'التسويات المنتظرة (41,250.00 ج.م.) تتجاوز إجمالي العهدة الآن (−1,000.00 ج.م.)',
     );
-    // Without a board to open it on, «تسوية العهدة» is the board's own address.
-    expect(hrefs(over)).toEqual(['/fleet/custody?fund=settle']);
+    // With no handler, «تسوية العهدة» is a link to «سجل العهدة», where the head opens its dialog.
+    expect(hrefs(over)).toEqual(['/fleet/custody/log?fund=settle']);
     // A viewer reads every line, and is offered nothing he may not open.
     const viewer = draw(
       <CustodyAlerts alerts={DASHBOARD.alerts} fundLines={lines} />,
@@ -701,11 +722,12 @@ describe('N1 «العهدة الآن» — the formula as five tiles, whatever t
   it('heads the section with its scope chip and lays the formula out — each term into «سجل العهدة»', () => {
     const html = draw(<CustodyFundNow data={DASHBOARD} />);
     const heading = element(html, 'data-custody-dashboard-heading="fund"');
-    expect(text(heading)).toBe('العهدة الآن من بداية العهدة، ولا تتأثر بالفلاتر');
+    // No filters on «لوحة تحكم العهدة»: its chip no longer says «ولا تتأثر بالفلاتر».
+    expect(text(heading)).toBe('العهدة الآن من بداية العهدة');
     expect(heading).toContain('data-custody-scope="true"');
     expect(all(html, 'data-ledger-term')).toEqual(['charged', 'spent', 'replenished', 'settled']);
     const term = (name: string): string => element(html, `data-ledger-term="${name}"`);
-    expect(text(term('charged'))).toBe('إجمالي الشحن 300,000.00 ج.م. عمليتا شحن');
+    expect(text(term('charged'))).toBe('إجمالي طلبات العهدة 300,000.00 ج.م. طلبان');
     // Each after its sign: «−», «+», «−».
     expect(text(term('spent'))).toBe('− مصروفات الإيصالات 97,794.00 ج.م. 126 إيصالًا');
     expect(text(term('replenished'))).toBe('+ إجمالي الاستعاضة 81,908.00 ج.م. 5 مذكرات');
@@ -720,7 +742,7 @@ describe('N1 «العهدة الآن» — the formula as five tiles, whatever t
     // The signs between them, and the fund last: the board's own card, in the dashboard's figure.
     expect(text(element(html, 'data-ledger-term-fund="true"'))).toMatch(/^= إجمالي العهدة/u);
     const fund = element(html, 'data-custody-fund-now="true"');
-    expect(text(fund)).toBe('إجمالي العهدة 159,974.54 ج.م. صُرف من إجمالي الشحن 33%');
+    expect(text(fund)).toBe('إجمالي العهدة 159,974.54 ج.م. صُرف من إجمالي طلبات العهدة 33%');
     expect(fund).toContain(`class="${STRIP_FIGURE.replace(/'/gu, '&#x27;')}"`);
     // The four terms in the same figure — Cairo, unsigned, never the ledger's colours.
     expect(term('charged')).toContain(STRIP_FIGURE.replace(/'/gu, '&#x27;'));
@@ -769,7 +791,7 @@ describe('N1 «العهدة الآن» — the formula as five tiles, whatever t
     );
     expect(read('CustodyLedgerPage.tsx')).not.toMatch(/const (LedgerFigures|Term|OpChip) =/u);
     expect(read('../components/CustodyDashboardFund.tsx')).toMatch(
-      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
+      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+held=\{fund\.data\?\.held\.amount \?\? 0\}\s+\/>/u,
     );
   });
 });
@@ -842,9 +864,9 @@ describe('N2 «مبالغ صُرفت ولم تُستعَض بعد»', () => {
   it('offers «استعاضة العهدة» and «+ مذكرة» to a writer only — «عرض المذكرات» to all', () => {
     const writer = draw(<CustodyWaitingCard now={NOW} />);
     expect(text(element(writer, 'data-custody-fund-open="replenish"'))).toBe('استعاضة العهدة');
-    // With no board behind it, the board's own address opens the dialog.
+    // With no handler, a link to «سجل العهدة», where the head opens the dialog.
     expect(hrefs(element(writer, 'data-custody-fund-open="replenish"'))).toEqual([
-      '/fleet/custody?fund=replenish',
+      '/fleet/custody/log?fund=replenish',
     ]);
     const onBoard = draw(<CustodyWaitingCard now={NOW} onFundAction={() => undefined} />);
     expect(element(onBoard, 'data-custody-fund-open="replenish"')).toMatch(/^<button/u);
@@ -852,6 +874,14 @@ describe('N2 «مبالغ صُرفت ولم تُستعَض بعد»', () => {
     expect(viewer).not.toContain('data-custody-fund-open');
     expect(viewer).not.toContain('data-custody-make-memo');
     expect(hrefs(viewer)).toContain('/fleet/custody/memos');
+    // Its foot: the memos, and the receipts themselves on «مصروفات العهدة».
+    const foot = [...viewer.matchAll(/data-custody-foot-link="([^"]+)"[^>]*>([^<]*)/gu)].map(
+      (m) => [m[1], m[2]],
+    );
+    expect(foot).toEqual([
+      ['/fleet/custody/memos', 'عرض المذكرات'],
+      ['/fleet/custody-expenses', 'عرض مصروفات العهدة'],
+    ]);
   });
 
   it('shimmers while its reads are on their way, and says its own error with a retry', () => {
@@ -1044,11 +1074,11 @@ describe('N5 «آخر عمليات العهدة»', () => {
   it('opens an operation’s drawer, and the board over a receipts line’s days', () => {
     const html = draw(<CustodyRecentOps />);
     expect(hrefs(html)).toEqual([
-      '/fleet/custody?from=2026-10-06&to=2026-10-18',
+      '/fleet/custody-expenses?from=2026-10-06&to=2026-10-18',
       '/fleet/custody/log?open=op-s1',
       '/fleet/custody/log?open=op-c2',
       '/fleet/custody/log?open=op-r1',
-      '/fleet/custody?from=2026-09-01&to=2026-09-28',
+      '/fleet/custody-expenses?from=2026-09-01&to=2026-09-28',
       '/fleet/custody/log?open=op-c1',
       '/fleet/custody/log',
     ]);
@@ -1175,9 +1205,97 @@ describe('«مصروفات العهدة حسب الفلاتر» — five spend c
   });
 });
 
-describe('the dashboard’s two scopes, in the approved order', () => {
-  it('puts «العهدة الآن» and its four cards first, then «مصروفات العهدة حسب الفلاتر»', () => {
-    const html = draw(<CustodyDashboardBody data={DASHBOARD} now={NOW} />);
+describe('a replenishment held for its transfer — or cancelled — on «لوحة تحكم العهدة»', () => {
+  const HELD_FUND: FleetCustodyFundSummaryDto = {
+    ...FUND,
+    held: { count: 1, amount: 8476, memos: 2, receipts: 12 },
+    cancelled: { count: 1, amount: 600 },
+    operations: 6,
+  };
+  const HELD_ROWS: FleetCustodyLedgerRowDto[] = [
+    row({
+      id: 'op-h1',
+      op: 'replenish',
+      status: 'held',
+      date: '2026-10-19',
+      amount: 8476,
+      before: 159974.54,
+      after: 159974.54,
+      latest: true,
+      memos: { count: 2, kinds: ['fuel', 'wash'] },
+    }),
+    row({
+      id: 'op-x1',
+      op: 'replenish',
+      status: 'cancelled',
+      date: '2026-10-12',
+      amount: 600,
+      before: 159974.54,
+      after: 159974.54,
+      memos: { count: 1, kinds: ['wash'] },
+    }),
+    ...ROWS.map((line) => ({ ...line, latest: false })),
+  ];
+
+  it('N1: «استعاضة معلّقة: X» under «إجمالي الاستعاضة» and under the fund’s card — none at zero', () => {
+    const html = draw(<CustodyFundNow />, client({ fund: HELD_FUND }));
+    expect(all(html, 'data-ledger-held-line')).toEqual(['replenished', 'board']);
+    expect(text(element(html, 'data-ledger-held-line="board"'))).toBe(
+      ar('fleet.custody.hold.heldTile', { amount: '8,476.00' }),
+    );
+    expect(draw(<CustodyFundNow />)).not.toContain('data-ledger-held-line');
+  });
+
+  it('N2: a third part, «في انتظار التحويل», first in the bar — in the headline and its receipts', () => {
+    const html = draw(<CustodyWaitingCard now={NOW} />, client({ fund: HELD_FUND }));
+    expect(all(html, 'data-custody-waiting-part')).toEqual(['held', 'outside']);
+    expect(element(html, 'data-custody-headline-value=')).toContain(
+      'data-custody-headline-value="24362"',
+    );
+    const legend = element(html, 'data-custody-waiting-legend="held"');
+    expect(legend).toContain('href="/fleet/custody/memos?status=held"');
+    expect(text(legend)).toBe(`${ar('fleet.custody.dashboard.waiting.held')} 8,476.00 ج.م.`);
+    expect(html.indexOf('data-custody-waiting-legend="held"')).toBeLessThan(
+      html.indexOf('data-custody-waiting-legend="inMemos"'),
+    );
+    expect(draw(<CustodyWaitingCard now={NOW} />)).not.toContain(
+      'data-custody-waiting-part="held"',
+    );
+  });
+
+  it('N4: the step line skips held and cancelled lines — the last kept line carries «الآن»', () => {
+    const html = draw(<CustodyFundSteps />, client({ rows: HELD_ROWS }));
+    expect(all(html, 'data-custody-step-op')).toEqual([
+      'charge',
+      'spend',
+      'replenish',
+      'charge',
+      'settle',
+      'spend',
+    ]);
+    expect(text(element(html, 'data-custody-now-label="true"'))).toBe('الآن 159,974.54');
+  });
+
+  it('N5: a held line «معلّقة» in amber, a cancelled one muted «ملغاة», struck through', () => {
+    const html = draw(<CustodyRecentOps />, client({ rows: HELD_ROWS }));
+    const list = element(html, 'data-custody-recent-list="true"');
+    const [held = '', cancelled = ''] = list.split('data-custody-recent-row="replenish"').slice(1);
+    expect(held).toContain('data-ledger-held="true"');
+    expect(held).toContain('data-ledger-amount="held"');
+    expect(held).not.toContain(ar('fleet.custody.hold.notCounted'));
+    expect(cancelled.slice(0, cancelled.indexOf('data-custody-recent-row'))).toContain(
+      'data-ledger-cancelled="true"',
+    );
+    expect(cancelled).toContain('data-ledger-amount="cancelled"');
+    expect(list).toContain('bg-amber-50/70');
+    expect(list).toContain('bg-slate-100/70');
+  });
+});
+
+describe('the two dashboards — «لوحة تحكم العهدة» and «لوحة تحكم المصروفات»', () => {
+  it('draws «العهدة الآن» and its four cards on «لوحة تحكم العهدة», in the approved order', () => {
+    const html = draw(<CustodyFundDashboard now={NOW} />);
+    expect(html).toContain('data-custody-fund-dashboard="true"');
     expect(all(html, 'data-custody-dashboard-section')).toEqual([
       'alerts',
       'fund',
@@ -1185,6 +1303,24 @@ describe('the dashboard’s two scopes, in the approved order', () => {
       'settle',
       'steps',
       'recent',
+    ]);
+    expect(all(html, 'data-custody-dashboard-heading')).toEqual(['fund']);
+    // The banner carries washing's line, read from the same candidates as the card — the fund's
+    // own lines under the fund's own heading, and no spend line (those are SCREEN 2's).
+    const alerts = element(html, 'data-custody-dashboard-section="alerts"');
+    expect(alerts).toContain('data-custody-alert="fund-stale"');
+    expect(text(alerts)).toContain('تنبيهات وتدقيق العهدة الفوري:');
+    expect(alerts).not.toContain('data-custody-alert="audit"');
+    expect(alerts).not.toContain('data-custody-alert="doubleFuel"');
+    // The history's two cards one under the other, each the whole row.
+    expect(read('../components/CustodyFundDashboard.tsx')).toContain(
+      "const HISTORY_ROW = 'grid grid-cols-1 gap-5 [&>section]:!col-span-full';",
+    );
+  });
+
+  it('leaves «لوحة تحكم المصروفات» the spend alone — its alerts under their own heading', () => {
+    const html = draw(<CustodyDashboardBody data={DASHBOARD} now={NOW} />);
+    expect(all(html, 'data-custody-dashboard-section')).toEqual([
       'kpis',
       'timeline',
       'byKindSource',
@@ -1192,39 +1328,47 @@ describe('the dashboard’s two scopes, in the approved order', () => {
       'topDrivers',
       'fuel',
     ]);
-    expect(all(html, 'data-custody-dashboard-heading')).toEqual(['fund', 'spend']);
-    const spend = element(html, 'data-custody-dashboard-heading="spend"');
-    expect(text(spend)).toBe('مصروفات العهدة حسب الفلاتر');
-    expect(spend).not.toContain('data-custody-scope');
-    // The banner carries washing's line, read from the same candidates as the card.
-    expect(html).toContain('data-custody-alert="fund-stale"');
+    expect(all(html, 'data-custody-dashboard-heading')).toEqual([]);
+    expect(html).not.toContain('data-custody-alert="fund-');
+    expect(html).not.toContain(ar(`${D}.spend.heading`));
+    const audited = draw(
+      <CustodyDashboardBody
+        data={{ ...DASHBOARD, alerts: { ...DASHBOARD.alerts, receiptsWithoutPhoto: 2 } }}
+        now={NOW}
+      />,
+    );
+    expect(all(audited, 'data-custody-dashboard-section')[0]).toBe('alerts');
+    const alerts = element(audited, 'data-custody-dashboard-section="alerts"');
+    expect(text(alerts)).toContain('تنبيهات وتدقيق المصروفات');
+    expect(text(alerts)).not.toContain('تنبيهات وتدقيق العهدة الفوري');
+    expect(alerts).not.toContain('data-custody-alert="fund-');
   });
 
-  it('keeps the body drawn while every fund card is still on its way', () => {
+  it('keeps the fund tab drawn while every card is still on its way', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const html = draw(<CustodyDashboardBody data={DASHBOARD} now={NOW} />, qc);
+    const html = draw(<CustodyFundDashboard now={NOW} />, qc);
     expect(all(html, 'data-custody-card-loading')).toEqual([
       'formula',
       'formula',
       'formula',
       'formula',
+      'fundNow',
       'waiting',
       'settle',
       'steps',
       'recent',
     ]);
-    expect(all(html, 'data-custody-dashboard-section')).toEqual([
-      'fund',
-      'kpis',
-      'timeline',
-      'byKindSource',
-      'topCars',
-      'topDrivers',
-      'fuel',
-    ]);
+    // With nothing read at all yet, nothing is said of the fund's total: no «بالسالب», no «تتجاوز».
+    expect(all(html, 'data-custody-dashboard-section')).toEqual(['fund']);
   });
 
-  it('never swaps «العهدة الآن» for a shimmer while the filtered answer is on its way — or failed', () => {
+  it('reads the fund’s card from the summary — and the spend’s faces carry no fund part', () => {
+    const fundTab = draw(<CustodyFundDashboard now={NOW} />);
+    expect(text(element(fundTab, 'data-custody-fund-now="true"'))).toBe(
+      'إجمالي العهدة 159,974.54 ج.م. صُرف من إجمالي طلبات العهدة 33%',
+    );
+    expect(fundTab).not.toContain('data-custody-card-loading');
+    // The spend's modal: its shimmer and its error, nothing of the fund in either.
     const loading = draw(
       <CustodyDashboardContent
         view="loading"
@@ -1234,26 +1378,9 @@ describe('the dashboard’s two scopes, in the approved order', () => {
         now={NOW}
       />,
     );
-    // The fund's part whole, from its own reads — the fund's card from the summary's three figures.
-    expect(all(loading, 'data-custody-dashboard-section')).toEqual([
-      'alerts',
-      'fund',
-      'waiting',
-      'settle',
-      'steps',
-      'recent',
-    ]);
-    expect(text(element(loading, 'data-custody-fund-now="true"'))).toBe(
-      'إجمالي العهدة 159,974.54 ج.م. صُرف من إجمالي الشحن 33%',
-    );
-    expect(loading).toContain('data-custody-alert="fund-stale"');
-    expect(loading).not.toContain('data-custody-card-loading');
-    // Under it, only the filtered part shimmers — its heading already in place.
-    expect(all(loading, 'data-custody-dashboard-heading')).toEqual(['fund', 'spend']);
-    const shimmer = loading.slice(loading.indexOf('data-custody-dashboard-loading="true"'));
-    expect(shimmer).not.toContain('data-custody-dashboard-section');
-    // The same tree in every face: the fund's part first, the spend after it — a filter that
-    // changes never remounts the step line (its picked point holds) nor blanks the cards.
+    expect(loading).toContain('data-custody-dashboard-loading="true"');
+    expect(all(loading, 'data-custody-dashboard-section')).toEqual([]);
+    expect(all(loading, 'data-custody-dashboard-heading')).toEqual([]);
     const failedFace = draw(
       <CustodyDashboardContent
         view="error"
@@ -1263,54 +1390,48 @@ describe('the dashboard’s two scopes, in the approved order', () => {
         now={NOW}
       />,
     );
-    expect(all(failedFace, 'data-custody-dashboard-section')).toEqual([
-      'alerts',
-      'fund',
-      'waiting',
-      'settle',
-      'steps',
-      'recent',
-    ]);
+    expect(all(failedFace, 'data-custody-dashboard-section')).toEqual([]);
     expect(text(element(failedFace, 'data-custody-dashboard-error="true"'))).toContain(
       ar('common.retry'),
     );
-    const modal = read('../components/CustodyDashboard.tsx');
-    expect(modal).not.toContain("if (view === 'loading') return");
-    // With nothing read at all yet, nothing is said of the fund's total: no «بالسالب», no «تتجاوز».
-    const nothing = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const blank = draw(
-      <CustodyDashboardContent
-        view="loading"
-        data={undefined}
-        error={null}
-        onRetry={() => undefined}
-        now={NOW}
-      />,
-      nothing,
-    );
-    expect(blank).not.toContain('data-custody-dashboard-section="alerts"');
-    expect(blank).toContain('data-custody-card-loading="fundNow"');
+    // The fund tab never asks the filtered dashboard.
+    expect(read('../components/CustodyFundDashboard.tsx')).not.toContain('useCustodyDashboard');
   });
 
-  it('wires the board: «استعاضة / تسوية العهدة» close the dashboard and open its dialog; a receipts line sets «من» / «إلى»', () => {
+  it('wires the fund tab: «استعاضة / تسوية العهدة» open the head’s dialog; a receipts line is a link', () => {
+    const tab = read('../components/CustodyFundDashboard.tsx');
+    expect(tab).toContain('const [, setFund] = useFundParam();');
+    expect(tab.match(/onFundAction=\{setFund\}/gu)).toHaveLength(3);
+    expect(tab).toContain('<CustodyFundSteps />');
+    expect(tab).toContain('<CustodyRecentOps />');
+    expect(tab).not.toContain('onShowPeriod=');
+    const html = draw(<CustodyFundDashboard now={NOW} />);
+    expect(element(html, 'data-custody-fund-open="replenish"')).toMatch(/^<button/u);
+    expect(element(html, 'data-custody-fund-open="settle"')).toMatch(/^<button/u);
+    expect(hrefs(element(html, 'data-custody-dashboard-section="recent"'))).toContain(
+      '/fleet/custody-expenses?from=2026-10-06&to=2026-10-18',
+    );
+    // The board and its spend's modal no longer carry the fund's wiring.
     const page = read('CustodyPage.tsx');
-    expect(page).toContain('const [, setFund] = useFundParam();');
-    expect(page).toMatch(
-      /onFundAction=\{\(op\) => \{\s*setDashOpen\(false\);\s*setFund\(op\);\s*\}\}/u,
-    );
-    expect(page).toContain(
-      'onShowPeriod={(periodFrom, periodTo) => patch({ from: periodFrom, to: periodTo })}',
-    );
+    expect(page).not.toContain('useFundParam');
+    expect(page).not.toContain('onFundAction');
+    expect(page).not.toContain('onShowPeriod');
     const modal = read('../components/CustodyDashboard.tsx');
-    expect(modal).toContain('onFundAction={onFundAction}');
-    expect(modal).toContain('onShowPeriod={onShowPeriod}');
+    // Only the alerts' fund lines still take a handler (`CustodyAlerts`, used by the fund tab).
+    expect(modal).toContain('export interface CustodyDashboardActions {');
+    expect(modal.match(/onFundAction=\{onFundAction\}/gu)).toHaveLength(1);
+    expect(modal).not.toContain('onShowPeriod');
   });
 
   it('speaks formal Arabic in the approved words — and English beside it', () => {
     for (const [key, words] of [
       ['fund.heading', 'العهدة الآن'],
-      ['fund.scope', 'من بداية العهدة، ولا تتأثر بالفلاتر'],
-      ['spend.heading', 'مصروفات العهدة حسب الفلاتر'],
+      ['fund.scopeSince', 'من بداية العهدة'],
+      ['spendOpen', 'لوحة تحكم المصروفات'],
+      ['spendTitle', 'لوحة تحكم المصروفات'],
+      ['alerts.spendTitle', 'تنبيهات وتدقيق المصروفات'],
+      ['waiting.showExpenses', 'عرض مصروفات العهدة'],
+      ['steps.noteRequests', 'كل طلب عهدة واستعاضة وتسوية، ومصروفات الإيصالات بين العمليات.'],
       ['waiting.title', 'مبالغ صُرفت ولم تُستعَض بعد'],
       ['waiting.inMemos', 'في مذكرات لم تُستعَض بعد'],
       ['settle.title', 'مصروفات تراخيص لم تُسوَّ بعد'],

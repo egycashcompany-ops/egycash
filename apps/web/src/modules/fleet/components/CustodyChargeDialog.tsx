@@ -1,4 +1,4 @@
-// «شحن العهدة» — an amount charged into the fund, with his «صرف عهدة» letter.
+// «طلب عهدة» (was «شحن العهدة») — an amount requested into the fund, with his «صرف عهدة» letter.
 //
 // «التاريخ» opens on today, «المبلغ» is the only value it cannot go without, «وذلك نظير» is his
 // reason as he writes it (optional — an empty one drops the letter's second paragraph). «نص
@@ -69,8 +69,8 @@ export const CustodyChargeDialog = ({
   const { run, busy } = useFundOperation({
     mutation: charge,
     letter: 'charge',
-    done: t('fleet.custody.fundForm.charge.done'),
-    taken: t('fleet.custody.fundForm.charge.retry'),
+    done: t('fleet.custody.fundForm.request.done'),
+    taken: t('fleet.custody.fundForm.request.retry'),
     onDone: onClose,
     onTaken: () => void fund.refetch(),
   });
@@ -81,7 +81,7 @@ export const CustodyChargeDialog = ({
     <DesignDialog
       open={open}
       onClose={onClose}
-      title={t('fleet.custody.actions.charge')}
+      title={t('fleet.custody.actions.request')}
       subtitle={t('fleet.custody.fundForm.charge.subtitle')}
       icon={CUSTODY_OPS.charge.icon}
       width="2xl"
@@ -108,7 +108,7 @@ export const CustodyChargeDialog = ({
       }
     >
       <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
-      <DesignSection title={t('fleet.custody.fundForm.charge.section')} icon={PATH.calendar}>
+      <DesignSection title={t('fleet.custody.fundForm.request.section')} icon={PATH.calendar}>
         <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
           <DesignField label={t('fleet.custody.fundForm.charge.date')} datePicker>
             <Input
@@ -170,7 +170,7 @@ export const CustodyChargeDialog = ({
         before={before}
         change={value ?? 0}
         after={after}
-        changeLabel={t('fleet.custody.fundForm.charge.change')}
+        changeLabel={t('fleet.custody.fundForm.request.change')}
       />
     </DesignDialog>
   );

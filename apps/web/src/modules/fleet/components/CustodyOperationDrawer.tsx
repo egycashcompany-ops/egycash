@@ -13,6 +13,12 @@
 // receipts of that kind are in no memo yet: that figure is TODAY's (`useCustodyMemosOutside`), not
 // the day of the replenishment, and says so («حتى الآن»).
 //
+// A replenishment held for its transfer, transferred, or cancelled says so under its sentence
+// (`custody-hold-drawer.tsx`): held, the sum is the fund NOW (the fund's summary — later operations
+// may follow the letter) + the held amount = after the transfer, with «تأكيد التحويل» and the red
+// «إلغاء الاستعاضة المعلّقة» in the footer (`onConfirm` / `onCancel`, given only to whoever may
+// record them); cancelled, no sum, no letter, no print — its memos greyed.
+//
 // The shell is the custody board's car log's (`CustodyCarLog`): its own modal over the page, the
 // page beneath `inert` and held still, Escape taken on its way down so nothing beneath hears it,
 // Tab kept inside, the focus given back to what opened it.
@@ -36,7 +42,11 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { errorMessage } from '../../../shared/lib/errors';
 import { formatMoneyParts } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { useCustodyMemosOutside, useCustodyOperation } from '../api/fleet-queries';
+import {
+  useCustodyFundSummary,
+  useCustodyMemosOutside,
+  useCustodyOperation,
+} from '../api/fleet-queries';
 import {
   letterFileName,
   letterPaperOf,
@@ -84,10 +94,23 @@ import {
   TICK_ON,
 } from './custody-memo-parts';
 import { LICENCE_DOT, LICENCE_PILL } from './CustodySettleDialog';
+import { HeldSigned } from './custody-hold-parts';
+import {
+  HoldCancelButton,
+  HoldConfirmButton,
+  HoldDrawerNote,
+  HoldDrawerTitleDay,
+} from './custody-hold-drawer';
+import { operationStatusOf } from '../lib/custody-hold';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const EMERALD_INK = 'text-emerald-800 dark:text-emerald-300';
+/** A cancelled replenishment's memos: ticked, but grey — they were not replenished by it. */
+const TICK_MUTED = cn(
+  TICK_ON,
+  '!bg-slate-300 !text-slate-600 !shadow-none dark:!bg-slate-700 dark:!text-slate-300',
+);
 
 /** The words a drawer and its log share — `t`, the counts, the cars, the separator, the day. */
 export const useLedgerWordsKit = (): LedgerWordsKit => {
@@ -126,9 +149,16 @@ const LicenceKindPill = ({ kind }: { kind: FleetLicenseExpenseKind }): JSX.Eleme
 type MemoLine = FleetCustodyOperationDto['memos'][number] | { memoId: '__total__'; amount: number };
 type PartLine = FleetCustodyOperationDto['parts'][number] | { expenseId: '__total__' };
 
-/** The replenishment: each kind's part, then its memos, ticked. */
-const ReplenishBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element => {
+/** The replenishment: each kind's part, then its memos, ticked — greyed when it was cancelled. */
+const ReplenishBody = ({
+  op,
+  muted = false,
+}: {
+  op: FleetCustodyOperationDto;
+  muted?: boolean;
+}): JSX.Element => {
   const t = useT();
+  const tick = muted ? TICK_MUTED : TICK_ON;
   const kit = useLedgerWordsKit();
   const outside = useCustodyMemosOutside();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -145,7 +175,14 @@ const ReplenishBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element =>
       align: 'center',
       render: (line) =>
         total(line) ? null : (
-          <span className={TICK_ON} title={t('fleet.custody.ledger.drawer.tick.replenish')}>
+          <span
+            className={tick}
+            title={t(
+              muted
+                ? 'fleet.custody.hold.cancelledTitle'
+                : 'fleet.custody.ledger.drawer.tick.replenish',
+            )}
+          >
             <CheckIcon className="h-4 w-4 stroke-[3]" />
           </span>
         ),
@@ -199,7 +236,11 @@ const ReplenishBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element =>
     },
   ];
   return (
-    <>
+    // A cancelled one: what it WOULD have carried, greyed — it brought nothing back.
+    <div
+      className={cn('space-y-5', muted && 'opacity-80 [filter:grayscale(0.85)]')}
+      data-ledger-replenish-muted={muted ? 'true' : undefined}
+    >
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5" data-ledger-replenish-kinds="true">
         {shares.map((share) => {
           const look = CUSTODY_KIND[share.kind];
@@ -273,7 +314,7 @@ const ReplenishBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element =>
         <ul className="divide-y divide-slate-100 sm:hidden dark:divide-[#1c273b]">
           {memos.map((memo) => (
             <li key={memo.memoId} className="flex items-center gap-2.5 px-3 py-2.5">
-              <span className={cn(TICK_ON, 'mx-0 shrink-0')}>
+              <span className={cn(tick, 'mx-0 shrink-0')}>
                 <CheckIcon className="h-4 w-4 stroke-[3]" />
               </span>
               <span className="min-w-0 flex-1">
@@ -315,7 +356,7 @@ const ReplenishBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element =>
           />
         </div>
       </section>
-    </>
+    </div>
   );
 };
 
@@ -476,9 +517,18 @@ const OperationBody = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const fonts = usePaperFonts();
   const letterRef = useRef<HTMLElement>(null);
+  const { count } = useCustodyCount();
   const signed = op.kind === 'settle' ? -op.amount : op.amount;
-  const before = op.ledger?.before ?? op.fundBefore;
-  const after = op.ledger?.after ?? fundAfter(op.fundBefore, signed);
+  const status = operationStatusOf(op);
+  const held = status === 'held';
+  const cancelled = status === 'cancelled';
+  // Held: «إجمالي العهدة الآن» is the fund's own figure today (later operations may follow the
+  // letter), and the sum shows where the fund WILL be once the transfer is confirmed.
+  const fundNow = useCustodyFundSummary().data?.fundTotal;
+  const before = held && fundNow !== undefined ? fundNow : (op.ledger?.before ?? op.fundBefore);
+  const after = held
+    ? fundAfter(before, signed)
+    : (op.ledger?.after ?? fundAfter(op.fundBefore, signed));
   // Drawn again once the faces are in: the shrink-to-fit of a long line is measured with them.
   const sheets = useMemo(() => letterSheets(letterPaperOf(op)), [op, fonts]);
   useEffect(() => {
@@ -507,75 +557,97 @@ const OperationBody = ({
         ))}
       </p>
 
-      {/* The fund before → the operation → the fund after, as the log places it. */}
-      <div
-        data-ledger-sum="true"
-        className={cn(
-          CARD_SURFACE,
-          CARD_BORDER,
-          'flex flex-col gap-2 rounded-2xl p-3 sm:grid sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center sm:gap-3 sm:p-4',
-        )}
-      >
-        {[
-          {
-            key: 'before',
-            label: t('fleet.custody.ledger.drawer.before'),
-            node: (
-              <Money
-                value={before}
-                big
-                ink={before < 0 ? 'text-red-600 dark:text-red-400' : undefined}
-              />
-            ),
-          },
-          { key: 'op', label: t(CUSTODY_OPS[op.kind].label), node: <Signed value={signed} /> },
-          {
-            key: 'after',
-            label: t('fleet.custody.ledger.columns.after'),
-            node: (
-              <Money
-                value={after}
-                big
-                ink={after < 0 ? 'text-red-600 dark:text-red-400' : EMERALD_INK}
-              />
-            ),
-          },
-        ].map((cell, index) => (
-          <Fragment key={cell.key}>
-            {index > 0 && (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'hidden h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-sm font-black text-slate-600 sm:flex dark:border-slate-600 dark:text-slate-300',
-                  NUM,
-                )}
-              >
-                {index === 1 ? (signed >= 0 ? '+' : '−') : '='}
-              </span>
-            )}
-            <span
-              data-ledger-sum-cell={cell.key}
-              className="flex min-w-0 items-center justify-between gap-2 border-slate-100 text-center sm:flex-col sm:justify-center sm:gap-1 [&:not(:first-child)]:border-t [&:not(:first-child)]:pt-2 sm:[&:not(:first-child)]:border-t-0 sm:[&:not(:first-child)]:pt-0 dark:border-[#1c273b]"
-            >
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                {cell.label}
-              </span>
-              <span>{cell.node}</span>
-            </span>
-          </Fragment>
-        ))}
-      </div>
+      <HoldDrawerNote op={op} memos={count('memo', op.memos.length)} />
 
-      {op.kind === 'replenish' && <ReplenishBody op={op} />}
+      {/* The fund before → the operation → the fund after, as the log places it. A cancelled
+          replenishment moved nothing: no sum. */}
+      {!cancelled && (
+        <div
+          data-ledger-sum="true"
+          className={cn(
+            CARD_SURFACE,
+            CARD_BORDER,
+            'flex flex-col gap-2 rounded-2xl p-3 sm:grid sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center sm:gap-3 sm:p-4',
+          )}
+        >
+          {[
+            {
+              key: 'before',
+              label: t(
+                held ? 'fleet.custody.fundForm.before' : 'fleet.custody.ledger.drawer.before',
+              ),
+              node: (
+                <Money
+                  value={before}
+                  big
+                  ink={before < 0 ? 'text-red-600 dark:text-red-400' : undefined}
+                />
+              ),
+            },
+            {
+              key: 'op',
+              label: t(held ? 'fleet.custody.hold.changeHeld' : CUSTODY_OPS[op.kind].label),
+              node: held ? <HeldSigned value={signed} /> : <Signed value={signed} />,
+            },
+            {
+              key: 'after',
+              label: t(
+                held ? 'fleet.custody.hold.afterConfirm' : 'fleet.custody.ledger.columns.after',
+              ),
+              node: (
+                <Money
+                  value={after}
+                  big
+                  ink={
+                    after < 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : held
+                        ? 'text-sky-700 dark:text-sky-300'
+                        : EMERALD_INK
+                  }
+                />
+              ),
+            },
+          ].map((cell, index) => (
+            <Fragment key={cell.key}>
+              {index > 0 && (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'hidden h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-sm font-black text-slate-600 sm:flex dark:border-slate-600 dark:text-slate-300',
+                    NUM,
+                  )}
+                >
+                  {index === 1 ? (signed >= 0 ? '+' : '−') : '='}
+                </span>
+              )}
+              <span
+                data-ledger-sum-cell={cell.key}
+                className="flex min-w-0 items-center justify-between gap-2 border-slate-100 text-center sm:flex-col sm:justify-center sm:gap-1 [&:not(:first-child)]:border-t [&:not(:first-child)]:pt-2 sm:[&:not(:first-child)]:border-t-0 sm:[&:not(:first-child)]:pt-0 dark:border-[#1c273b]"
+              >
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                  {cell.label}
+                </span>
+                <span>{cell.node}</span>
+              </span>
+            </Fragment>
+          ))}
+        </div>
+      )}
+
+      {op.kind === 'replenish' && <ReplenishBody op={op} muted={cancelled} />}
       {op.kind === 'settle' && <SettleBody op={op} />}
 
-      <section ref={letterRef} className={SECTION_CARD} data-ledger-letter-section={op.kind}>
-        <div className={SECTION_STRIP}>
-          <h3 className={TITLE}>{t(`fleet.custody.ledger.drawer.letter.${op.kind}`)}</h3>
-          <span className={NOTE}>{t('fleet.custody.ledger.drawer.printsAsShown')}</span>
-        </div>
-        <PaperTray sheets={sheets} name={`ledger-letter:${op.id}`} className="rounded-none" />
-      </section>
+      {/* A cancelled letter is not printed again: no letter. */}
+      {!cancelled && (
+        <section ref={letterRef} className={SECTION_CARD} data-ledger-letter-section={op.kind}>
+          <div className={SECTION_STRIP}>
+            <h3 className={TITLE}>{t(`fleet.custody.ledger.drawer.letter.${op.kind}`)}</h3>
+            <span className={NOTE}>{t('fleet.custody.ledger.drawer.printsAsShown')}</span>
+          </div>
+          <PaperTray sheets={sheets} name={`ledger-letter:${op.id}`} className="rounded-none" />
+        </section>
+      )}
     </>
   );
 };
@@ -589,11 +661,17 @@ export const CustodyOperationDrawer = ({
   toLetter,
   opener = null,
   onClose,
+  onConfirm,
+  onCancel,
 }: {
   id: string;
   toLetter: boolean;
   opener?: HTMLElement | null;
   onClose: () => void;
+  /** A held replenishment's «تأكيد التحويل» — given only to whoever may record it. */
+  onConfirm?: (() => void) | undefined;
+  /** A held replenishment's «إلغاء الاستعاضة المعلّقة». */
+  onCancel?: (() => void) | undefined;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -671,6 +749,7 @@ export const CustodyOperationDrawer = ({
   }, []);
 
   const letterName = op === undefined ? '' : t(`fleet.custody.ledger.drawer.letter.${op.kind}`);
+  const opStatus = op === undefined ? null : operationStatusOf(op);
   const print = (): void => {
     if (op === undefined || printing) return;
     setPrinting(true);
@@ -731,10 +810,7 @@ export const CustodyOperationDrawer = ({
                 t('fleet.custody.ledger.title')
               ) : (
                 <>
-                  {t(CUSTODY_OPS[op.kind].label)} —{' '}
-                  <span dir="ltr" className={NUM}>
-                    {ymd(op.date)}
-                  </span>
+                  {t(CUSTODY_OPS[op.kind].label)} — <HoldDrawerTitleDay op={op} />
                 </>
               )}
             </span>
@@ -773,11 +849,17 @@ export const CustodyOperationDrawer = ({
         </div>
 
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 sm:px-6 dark:border-[#1c263b] dark:bg-[#0c111e]/95">
+          {op !== undefined && opStatus === 'held' && onCancel !== undefined && (
+            <HoldCancelButton id={op.id} onCancel={onCancel} />
+          )}
           <Button variant="secondary" onClick={() => close.current()}>
             {t('common.close')}
           </Button>
-          {op !== undefined && (
+          {/* A cancelled letter is not printed again. While held the next step is the transfer: the
+              print steps back beside it. */}
+          {op !== undefined && opStatus !== 'cancelled' && (
             <Button
+              variant={opStatus === 'held' ? 'secondary' : 'primary'}
               onClick={print}
               loading={printing}
               leftIcon={<PrinterIcon className="me-1.5 h-4 w-4" />}
@@ -785,6 +867,9 @@ export const CustodyOperationDrawer = ({
             >
               {t('fleet.custody.ledger.drawer.printLetter', { letter: letterName })}
             </Button>
+          )}
+          {op !== undefined && opStatus === 'held' && onConfirm !== undefined && (
+            <HoldConfirmButton id={op.id} onConfirm={onConfirm} />
           )}
         </footer>
       </div>

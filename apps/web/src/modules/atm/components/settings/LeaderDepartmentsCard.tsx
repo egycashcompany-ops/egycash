@@ -59,7 +59,16 @@ export const LeaderDepartmentsCard = (): JSX.Element => {
     save.mutate(
       { departmentIds },
       // A refused save is toasted by the global handler — the save declares no `onError`.
-      { onSuccess: () => toast.success(t('atm.settings.leaders.saved')) },
+      {
+        onSuccess: (saved) => {
+          // The ticks become the server's answer, whatever the selection signature: saving none
+          // returns to the name rule, which can answer with the same department ticked as before.
+          const next = selectedDepartmentIds(saved.departments);
+          setFollowed([...next].sort().join(','));
+          setDraft(next);
+          toast.success(t('atm.settings.leaders.saved'));
+        },
+      },
     );
   };
 
@@ -127,6 +136,15 @@ export const LeaderDepartmentsCard = (): JSX.Element => {
                 </div>
               ))}
             </div>
+            {draft.length === 0 && (
+              // Saving none is not «nobody»: it returns to the ATM department found by its name.
+              <p
+                className="text-xs text-amber-700 dark:text-amber-400"
+                data-leaders-empty-warning="true"
+              >
+                {t('atm.settings.leaders.emptyWarning')}
+              </p>
+            )}
             <p className="text-sm text-slate-600 dark:text-slate-300" data-leaders-count="true">
               {t('atm.settings.leaders.count', { count: query.data?.employees ?? 0 })}
             </p>

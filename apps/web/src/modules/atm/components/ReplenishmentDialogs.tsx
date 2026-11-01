@@ -89,14 +89,18 @@ export const LeaderField = ({
           data-leader-shift="true"
         />
       </div>
-      <Field hint={hint} warning={noNames ? t('atm.common.noLeadersHint') : undefined}>
+      <Field
+        hint={hint}
+        warning={noNames ? t('atm.common.noLeadersHint') : undefined}
+        error={options.isError ? t('atm.common.leadersLoadFailed') : undefined}
+      >
         <Combobox
           id={id}
           value={value}
           options={names}
           onChange={onChange}
           placeholder={t('atm.common.pickLeader')}
-          emptyText={t('common.noResults')}
+          emptyText={t(options.isLoading ? 'common.loading' : 'common.noResults')}
           clearLabel={t('common.clear')}
         />
       </Field>

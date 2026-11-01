@@ -291,6 +291,14 @@ describe('the card ticks departments', () => {
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toContain('body.departmentIds.1');
     expect((await card()).configuredIds).toEqual([]);
+
+    // The index is the body's own, before duplicates are folded away.
+    const later = await call('put', '/atm/leaders/departments', adminToken, {
+      departmentIds: [cashDepartmentId, cashDepartmentId.toUpperCase(), '64b7f9c2e13b4a00123456ff'],
+    });
+    expect(later.status).toBe(400);
+    expect(JSON.stringify(later.body)).toContain('body.departmentIds.2');
+    expect(JSON.stringify(later.body)).not.toContain('body.departmentIds.1');
   });
 
   it('refuses a body that is not the list', async () => {

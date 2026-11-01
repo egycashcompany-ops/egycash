@@ -25,6 +25,12 @@ import {
 import { LeaderField, toLocalInputValue } from './ReplenishmentDialogs';
 import { isAlreadyOpenRefusal } from '../lib/operation-view';
 
+/** Pure: the one leader every row shares — blank when they differ, or none has one. */
+export const sharedLeader = (rows: readonly { leaderName: string | null }[]): string => {
+  const names = new Set(rows.map((row) => row.leaderName ?? ''));
+  return names.size === 1 ? ([...names][0] ?? '') : '';
+};
+
 /** Pure: how the close picker shows one person — «name (code)», as the HR pickers do. */
 export const leaderOptionLabel = (option: AtmLeaderOptionDto): string =>
   `${option.name} (${option.code})`;
@@ -44,7 +50,11 @@ export const CloseMaintenanceDialog = ({
   const pickerId = useId();
   const [leaderEmployeeId, setLeaderEmployeeId] = useState('');
   const people = options.data ?? [];
-  const labels = new Map(people.map((option) => [option.employeeId, leaderOptionLabel(option)]));
+  // The box offers the LABELS, so a search reads what the reader sees («name (code)») and never
+  // the employee id behind it; a picked label maps back to its id.
+  const labels = people.map(leaderOptionLabel);
+  const idOfLabel = new Map(people.map((option, index) => [labels[index], option.employeeId]));
+  const labelOfId = new Map(people.map((option, index) => [option.employeeId, labels[index]]));
 
   useEffect(() => {
     if (open) setLeaderEmployeeId('');
@@ -85,6 +95,7 @@ export const CloseMaintenanceDialog = ({
           label={t('atm.maintenance.assignEmployee')}
           htmlFor={pickerId}
           required
+          error={options.isError ? t('atm.common.leadersLoadFailed') : undefined}
           warning={
             options.isSuccess && people.length === 0
               ? t('atm.maintenance.noEmployeesHint')
@@ -93,12 +104,11 @@ export const CloseMaintenanceDialog = ({
         >
           <Combobox
             id={pickerId}
-            value={leaderEmployeeId}
-            options={people.map((option) => option.employeeId)}
-            optionLabel={(employeeId) => labels.get(employeeId) ?? employeeId}
-            onChange={setLeaderEmployeeId}
+            value={labelOfId.get(leaderEmployeeId) ?? ''}
+            options={labels}
+            onChange={(label) => setLeaderEmployeeId(idOfLabel.get(label) ?? '')}
             placeholder={t('atm.maintenance.pickEmployee')}
-            emptyText={t('common.noResults')}
+            emptyText={t(options.isLoading ? 'common.loading' : 'common.noResults')}
             clearLabel={t('common.clear')}
           />
         </Field>
@@ -134,15 +144,19 @@ export const EditMaintenanceDialog = ({
   const [openedAt, setOpenedAt] = useState('');
   const [leaderName, setLeaderName] = useState('');
   const [shiftWide, setShiftWide] = useState(true);
+  // What the leader box opened on: the row's leader, or — on a checked set — the one leader every
+  // checked row shares (blank when they differ). On a checked set only a CHANGE from it is saved,
+  // so «حفظ» on an untouched box writes nothing, and a clear is the × pressed, never a blank left.
+  const initialLeader = single !== null ? (single.leaderName ?? '') : sharedLeader(rows);
 
   useEffect(() => {
     if (!open) return;
     setServiceType(single?.serviceType ?? '');
     setNotes(single?.notes ?? '');
     setOpenedAt(single === null ? '' : toLocalInputValue(single.openedAt));
-    setLeaderName(single?.leaderName ?? '');
+    setLeaderName(initialLeader);
     setShiftWide(true);
-  }, [open, single]);
+  }, [open, single, initialLeader]);
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -162,8 +176,9 @@ export const EditMaintenanceDialog = ({
       } else {
         // The legacy checked-set maintenance edit writes the leader and nothing else
         // (contad_app.js:2042-2050; its schedule write never landed — port doc T6).
-        // An empty field clears the CHECKED rows' leader, as it always did — it never goes over
-        // their shifts, whatever the box says.
+        // A cleared box (the ×) clears the CHECKED rows' leader, as an empty field always did —
+        // it never goes over their shifts, whatever the box says. Save waits for a change.
+        if (leaderName === initialLeader) return;
         await updateMany.mutateAsync({
           ids: rows.map((row) => row.id),
           ...(leaderName === '' ? { leaderName: null } : { leaderName, cascadeLeader: shiftWide }),
@@ -222,7 +237,12 @@ export const EditMaintenanceDialog = ({
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('atm.common.cancel')}
           </Button>
-          <Button type="submit" loading={busy}>
+          <Button
+            type="submit"
+            loading={busy}
+            // A checked set has nothing to save but its leader: wait for it to change.
+            disabled={single === null && leaderName === initialLeader}
+          >
             {t('atm.common.save')}
           </Button>
         </div>

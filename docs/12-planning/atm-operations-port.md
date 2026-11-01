@@ -600,10 +600,14 @@ offered nobody, and the edit dialogs' leader stayed free text.
 - **The card** «موظفو الصراف الآلي — قائمة القائد»: every active department with its branch and
   its people counted, the ATM one marked «باسم الصراف الآلي», a stored one retired since marked «لم
   تعد نشطة»; the count of names the pickers offer; «استخدام إدارة الصراف الآلي باسمها» saves `[]`.
-- **The pickers.** The close: a searchable box, required, each person «name (code)»; the close
-  writes their HR name as the leader, as before. Both kinds' edit dialogs: the leader is picked from
-  the same names (each name once); a name already on the row stays pickable, and the «الوردية» rule
-  is unchanged (§4a). An empty list says where it is set.
+- **The pickers.** The close: a searchable box, required, each person «name (code)» — the search
+  reads that label, never the employee id — and the close writes their HR name as the leader, as
+  before. Both kinds' edit dialogs: the leader is picked from the same names (each name once); a
+  name already on the row stays pickable, and the «الوردية» rule is unchanged (§4a). On a checked
+  set of maintenances the box opens on the leader the rows share; «حفظ» waits for a change, and a
+  clear is the ×, never a blank (the legacy's «empty clears» survives only as that explicit act). A
+  name typed in full is committed when the box is left (the shared `Combobox`); an empty list says
+  where it is set, and a failed one says so.
 
 ## 7. Migration (ATM-7 — delivered)
 

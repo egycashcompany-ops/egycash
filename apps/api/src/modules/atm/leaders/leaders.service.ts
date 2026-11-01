@@ -115,11 +115,14 @@ class AtmLeadersService {
     ctx: AuthContext,
   ): Promise<AtmLeaderDepartmentsDto> {
     assertAtmSettingsManager(ctx);
-    const ids = [...new Set(input.departmentIds.map((id) => id.toLowerCase()))];
     const { configuredIds, departments } = await this.source();
-    const allowed = new Set([...departments.map((unit) => unit.id), ...configuredIds]);
-    const issues = ids.flatMap((id, index) =>
-      allowed.has(id)
+    const allowed = new Set(
+      [...departments.map((unit) => unit.id), ...configuredIds].map((id) => id.toLowerCase()),
+    );
+    // Judged in the body's own order, so the 400 names the entry the caller sent at that index;
+    // only what is stored is deduplicated.
+    const issues = input.departmentIds.flatMap((id, index) =>
+      allowed.has(id.toLowerCase())
         ? []
         : [
             {
@@ -130,6 +133,7 @@ class AtmLeadersService {
           ],
     );
     if (issues.length > 0) throw new ValidationError(issues);
+    const ids = [...new Set(input.departmentIds.map((id) => id.toLowerCase()))];
 
     await settingsService.set(asSettingsEditor(ctx), {
       key: AtmSettingKeys.MaintenanceLeaderDepartmentIds,

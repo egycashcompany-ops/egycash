@@ -34,7 +34,12 @@ import {
   selectedDepartmentIds,
   toggleId,
 } from './components/settings/LeaderDepartmentsCard';
-import { CloseMaintenanceDialog, leaderOptionLabel } from './components/MaintenanceDialogs';
+import {
+  CloseMaintenanceDialog,
+  leaderOptionLabel,
+  sharedLeader,
+} from './components/MaintenanceDialogs';
+import { exactOption } from '../../shared/ui/Combobox';
 import { leaderNames } from './components/ReplenishmentDialogs';
 import { atmLeaderDepartmentsKey, useSaveAtmLeaderDepartments } from './api/settings-queries';
 import { atmLeaderOptionsKey } from './api/atm-queries';
@@ -184,6 +189,12 @@ describe('«موظفو الصراف الآلي — قائمة القائد» on 
     expect(html).toContain(t('atm.settings.leaders.reset'));
   });
 
+  it('warns, while nothing is ticked, that saving returns to the name rule — not to «nobody»', () => {
+    const html = cardWith({ configuredIds: [], source: 'none', departments: [cash], employees: 0 });
+    expect(html).toContain(t('atm.settings.leaders.emptyWarning'));
+    expect(cardWith(BY_NAME)).not.toContain(t('atm.settings.leaders.emptyWarning'));
+  });
+
   it('says the list is empty when nothing is ticked and nothing is named for ATM', () => {
     const html = cardWith({
       configuredIds: [],
@@ -249,6 +260,46 @@ describe('the leader pickers', () => {
     ]);
   });
 
+  it('the close searches what the reader sees — the labels — never the employee id behind them', () => {
+    const html = closeWith(PEOPLE);
+    expect(html).not.toContain('value="e1"');
+    // A typed HR code finds its person by the label; an id fragment finds nobody.
+    const labels = PEOPLE.map(leaderOptionLabel);
+    expect(exactOption(labels, 'محمود علي حسن (0103)')).toBe('محمود علي حسن (0103)');
+    expect(exactOption(labels, 'e1')).toBeUndefined();
+  });
+
+  it('leaving a box on a whole name picks it — a part or a blank picks nothing', () => {
+    const names = leaderNames(PEOPLE);
+    // Folded the way an Arabic typist writes it: hamza and spacing do not matter.
+    expect(exactOption(names, '  احمد سعيد محمد ')).toBe('أحمد سعيد محمد');
+    expect(exactOption(names, 'أحمد')).toBeUndefined();
+    expect(exactOption(names, '')).toBeUndefined();
+    // Shown differently from what it commits: either text is a whole match.
+    expect(exactOption(['MOHNDESSEN'], 'المهندسين', () => 'المهندسين')).toBe('MOHNDESSEN');
+  });
+
+  it('a checked set opens on the leader its rows share — blank when they differ', () => {
+    expect(sharedLeader([{ leaderName: 'أ' }, { leaderName: 'أ' }])).toBe('أ');
+    expect(sharedLeader([{ leaderName: 'أ' }, { leaderName: 'ب' }])).toBe('');
+    expect(sharedLeader([{ leaderName: 'أ' }, { leaderName: null }])).toBe('');
+    expect(sharedLeader([{ leaderName: null }, { leaderName: null }])).toBe('');
+  });
+
+  it('says the list could not be loaded, rather than offering nobody in silence', async () => {
+    // A first load that failed, with nothing cached — kept failed on mount for the static render.
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, retryOnMount: false } },
+    });
+    await qc.prefetchQuery({
+      queryKey: atmLeaderOptionsKey(),
+      queryFn: () => Promise.reject(new Error('down')),
+    });
+    const html = render(<CloseMaintenanceDialog open rows={[ROW]} onClose={() => undefined} />, qc);
+    expect(html).toContain(t('atm.common.leadersLoadFailed'));
+    expect(html).not.toContain(t('atm.maintenance.noEmployeesHint'));
+  });
+
   it('the edit dialogs offer each name once — two people of one name write the same leader', () => {
     expect(leaderNames(PEOPLE)).toEqual(['أحمد سعيد محمد', 'محمود علي حسن']);
   });
@@ -269,6 +320,8 @@ describe('the leader pickers', () => {
         'atm.settings.leaders.saved',
         'atm.settings.leaders.reset',
         'atm.maintenance.noEmployeesHint',
+        'atm.settings.leaders.emptyWarning',
+        'atm.common.leadersLoadFailed',
       ]) {
         expect(translate(locale, key)).not.toBe(key);
       }

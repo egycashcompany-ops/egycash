@@ -9171,6 +9171,8 @@ const en: Record<string, string> = {
   'atm.common.pickLeader': 'Choose the leader…',
   'atm.common.noLeadersHint':
     'No ATM employees were found. Choose their department on the ATM settings page.',
+  'atm.common.leadersLoadFailed':
+    'The ATM employees could not be loaded. Close the window and open it again.',
   'atm.common.moveAlreadyOpen':
     'Not saved — the new open time would give a machine two open operations on the same day.',
   'atm.board.day.label': 'Day shown',
@@ -10641,6 +10643,8 @@ const en: Record<string, string> = {
   'atm.settings.leaders.none': 'There are no active departments to choose from.',
   'atm.settings.leaders.saved': 'The departments of the leader list were saved.',
   'atm.settings.leaders.reset': 'Use the ATM department by name',
+  'atm.settings.leaders.emptyWarning':
+    'With no department ticked, saving returns to the ATM department found by its name.',
   'atm.settings.links.removed': 'The link was removed.',
   'atm.settings.links.issue.sameBranch': 'A branch cannot work as itself.',
   'atm.settings.links.issue.duplicateSource': 'This branch already works as another branch.',
@@ -19737,6 +19741,7 @@ const ar: Record<string, string> = {
   'atm.common.pickLeader': 'اختر القائد…',
   'atm.common.noLeadersHint':
     'لم يُعثر على موظفين للصراف الآلي. اختر إدارتهم من صفحة إعدادات الصراف الآلي.',
+  'atm.common.leadersLoadFailed': 'تعذّر تحميل موظفي الصراف الآلي. أغلق النافذة ثم افتحها مرة أخرى.',
   'atm.common.moveAlreadyOpen':
     'لم يُحفظ التعديل لأن وقت الفتح الجديد يجعل للماكينة عمليتين مفتوحتين في نفس اليوم.',
   'atm.board.day.label': 'اليوم المعروض',
@@ -21154,7 +21159,7 @@ const ar: Record<string, string> = {
   'atm.settings.links.added': 'تم ربط الفرعين.',
   'atm.settings.leaders.title': 'موظفو الصراف الآلي — قائمة القائد',
   'atm.settings.leaders.hint':
-    'يظهر موظفو الإدارات المحددة هنا في قائمة القائد عند تقفيل الصيانة وعند تعديل التغذية أو الصيانة.',
+    'يظهر موظفو الإدارات المحددة هنا في قائمة القائد عند إغلاق الصيانة وعند تعديل التغذية أو الصيانة.',
   'atm.settings.leaders.byName': 'لم تُحدَّد أي إدارة، لذلك تُستخدم إدارة الصراف الآلي باسمها.',
   'atm.settings.leaders.noneFound':
     'لم تُحدَّد أي إدارة ولا توجد إدارة باسم الصراف الآلي، لذلك قائمة القائد فارغة. حدّد إدارة موظفي الصراف الآلي.',
@@ -21166,6 +21171,8 @@ const ar: Record<string, string> = {
   'atm.settings.leaders.none': 'لا توجد إدارات نشطة للاختيار منها.',
   'atm.settings.leaders.saved': 'تم حفظ إدارات قائمة القائد.',
   'atm.settings.leaders.reset': 'استخدام إدارة الصراف الآلي باسمها',
+  'atm.settings.leaders.emptyWarning':
+    'إذا لم تُحدَّد أي إدارة، فالحفظ يعيد استخدام إدارة الصراف الآلي باسمها.',
   'atm.settings.links.removed': 'تمت إزالة الربط.',
   'atm.settings.links.issue.sameBranch': 'لا يمكن أن يعمل الفرع باسم نفسه.',
   'atm.settings.links.issue.duplicateSource': 'هذا الفرع يعمل بالفعل باسم فرع آخر.',

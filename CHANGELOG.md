@@ -258,9 +258,15 @@ its entry here in the same PR.
   الالى», «ATM»): the legacy's own rule. The new card «موظفو الصراف الآلي — قائمة القائد» lists
   every active department with its people counted, marks the ATM one, saves the ticks
   (`atmSettings.manage` company-wide, audited as a platform setting) and returns to the name rule.
-  The close picks from the list in a searchable box, each person with their HR code; both kinds'
-  edit dialogs pick the leader from the same names, and a name already on a row stays pickable,
-  so opening and saving a row never rewrites its leader. A free-text leader is no longer typed.
+  The close picks from the list in a searchable box, each person with their HR code (the search
+  reads the name and code shown, never the id behind them); both kinds' edit dialogs pick the
+  leader from the same names, and a name already on a row stays pickable, so opening and saving a
+  row never rewrites its leader. A free-text leader is no longer typed. On a checked set of
+  maintenances the box opens on the leader the rows share, «حفظ» waits for a change, and the
+  leaders are cleared only by the box's ×, never by a blank left behind. A list that failed to load
+  says so. Every searchable box (`Combobox`) now commits a name typed out in full when the reader
+  clicks elsewhere or presses Tab, and its Escape closes the open list only, no longer the dialog
+  around it.
 
 - **Every ATM machine shows under the branch it is filed in, the ATM pages name branches as the top
   bar does, and a linked branch's data moves to the branch it works as.** «أنا عايز كل ماكينه تظهر

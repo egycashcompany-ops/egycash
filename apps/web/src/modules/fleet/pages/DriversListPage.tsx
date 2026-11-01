@@ -87,6 +87,7 @@ import {
   usePrintDriverLicence,
 } from '../components/DriverLicenseImage';
 import { driverIdFilter } from '../lib/driver-filter-selection';
+import { expiryWindowLabel, expiryWindowQuery } from '../lib/vehicle-set-params';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
@@ -98,6 +99,9 @@ const REMEMBERED_FILTERS = [
   'img',
   'job',
   'lic',
+  'licExp',
+  'licExpBefore',
+  'licExpFrom',
   'phone',
   'spec',
   'size',
@@ -296,6 +300,12 @@ export const DriversListPage = (): JSX.Element => {
   // TWO ANSWERS, so it stays a single select: with «بصورة» and «بدون» a multi-select can only
   // say what one of them already says, or say both — which is the unfiltered registry.
   const image = sp.get('img') ?? '';
+  // The licence-expiry WINDOW a dashboard figure names in days — expired, or expiring within the
+  // warning days — sent as the first instant of `licExpFrom` and the last of `licExpBefore`
+  // (R-02). `licExp=none` is its «بلا تاريخ» line: the profiles on file with no expiry recorded.
+  const licExpFrom = sp.get('licExpFrom') ?? '';
+  const licExpBefore = sp.get('licExpBefore') ?? '';
+  const licenceNotRecorded = sp.get('licExp') === 'none';
   // The HR half — every one of these travels to HR's endpoint, never to Fleet's.
   const hrFilter: DriverHrFilter = {
     // Never set here: this bar names people with the multi-select, which hands over ids rather
@@ -375,12 +385,16 @@ export const DriversListPage = (): JSX.Element => {
     specializations.length > 0 ||
     licenseTypes.length > 0 ||
     image !== '' ||
+    licExpFrom !== '' ||
+    licExpBefore !== '' ||
+    licenceNotRecorded ||
     Object.values(hrFilter).some((value) => value !== '');
 
   // The two ways this bar names people, resolved to the ONE list the fleet query is asked for.
   const employeeIds = driverIdFilter(pickedDrivers, hr.employeeIds);
-  const params = useMemo(
-    () => ({
+  const params = useMemo(() => {
+    const licenceWindow = expiryWindowQuery(licExpFrom, licExpBefore);
+    return {
       page,
       pageSize,
       ...sortQuery(sorts),
@@ -389,13 +403,16 @@ export const DriversListPage = (): JSX.Element => {
       specializationId: specializations.length === 0 ? undefined : specializations,
       licenseTypeId: licenseTypes.length === 0 ? undefined : licenseTypes,
       hasLicenseImage: image === '' ? undefined : image === 'with',
+      licenseExpiresFrom: licenceWindow.from,
+      licenseExpiresBefore: licenceWindow.before,
+      licenseNotRecorded: licenceNotRecorded ? true : undefined,
       // `undefined` when nobody has been named. When somebody HAS the array is always sent,
       // including when it is empty: an empty `$in` is "these two questions agree on nobody", and
       // dropping the parameter there would answer a filtered question with an unfiltered list.
       employeeIds: employeeIds ?? undefined,
-    }),
-    [paramsKey, employeeIds],
-  );
+    };
+  }, [paramsKey, employeeIds]);
+  const licenceWindowLabel = expiryWindowLabel(licExpFrom, licExpBefore, t);
   // Three states hold the fleet query back, and each would otherwise produce a WRONG page rather
   // than a slow one: step ① still running, HR matched more than one page, HR refused or failed.
   const blocked = hr.loading || hr.tooMany || hr.failed;
@@ -1046,6 +1063,9 @@ export const DriversListPage = (): JSX.Element => {
                 spec: null,
                 lic: null,
                 img: null,
+                licExpFrom: null,
+                licExpBefore: null,
+                licExp: null,
               })
             }
           >
@@ -1151,6 +1171,40 @@ export const DriversListPage = (): JSX.Element => {
                 onChange={(next) => patch({ img: pickOne(image === '' ? [] : [image], next) })}
               />
             </FilterWithIcon>
+            {/* The licence date a dashboard link narrowed the registry to — the window, «غير
+                مسجَّل», or both as it was asked — shown only while it narrows, so a remembered one
+                is never a filter with nothing on the bar saying so. Taking an option off drops
+                its parameter. */}
+            {(licenceWindowLabel !== null || licenceNotRecorded) && (
+              <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+                <MultiSelect
+                  clearable
+                  fullWidth
+                  density={TIGHT}
+                  showSelectedValues
+                  searchThreshold={0}
+                  label={t('fleet.drivers.columns.licenseExpiresAt')}
+                  options={[
+                    ...(licenceWindowLabel === null
+                      ? []
+                      : [{ value: 'window', label: licenceWindowLabel }]),
+                    ...(licenceNotRecorded
+                      ? [{ value: 'none', label: t('fleet.drivers.notRecorded') }]
+                      : []),
+                  ]}
+                  value={[
+                    ...(licenceWindowLabel === null ? [] : ['window']),
+                    ...(licenceNotRecorded ? ['none'] : []),
+                  ]}
+                  onChange={(next) =>
+                    patch({
+                      ...(next.includes('window') ? {} : { licExpFrom: null, licExpBefore: null }),
+                      ...(next.includes('none') ? {} : { licExp: null }),
+                    })
+                  }
+                />
+              </FilterWithIcon>
+            )}
           </FilterBar>
         </div>
 

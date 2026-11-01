@@ -1127,6 +1127,7 @@ describe('driver unavailability — التمامات (FL-3)', () => {
     expect(await driverAvailabilityOn(clerk, new Date('2026-09-02'))).toEqual({
       available: false,
       reason: 'notADriver',
+      licence: 'noProfile',
     });
 
     // …and somebody in a DRIVING seat is available with nothing recorded about them at all. This
@@ -1136,6 +1137,7 @@ describe('driver unavailability — التمامات (FL-3)', () => {
     expect(await driverAvailabilityOn(employeeId, new Date('2026-09-02'))).toEqual({
       available: true,
       reason: null,
+      licence: 'noProfile',
     });
 
     await mkDriverProfile(employeeId);

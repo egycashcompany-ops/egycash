@@ -64,14 +64,27 @@ import { useEmployeeRecords } from '../components/EmployeeName';
 import { DateBox } from '../components/DateBox';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import {
+  CLEAR_VEHICLE_SET,
+  hasVehicleSet,
+  useVehicleTypeOptions,
+  vehicleSetQuery,
+} from '../lib/vehicle-set-params';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
+  'branch',
   'culpritBy',
   'from',
   'notes',
+  'operation',
   'status',
   'to',
+  'type',
   'vehicleCodes',
   'size',
   'sort',
@@ -114,6 +127,15 @@ export const AccidentsPage = (): JSX.Element => {
   const status = sp.get('status') ?? '';
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
+  // The cars a dashboard figure was counted over — «النوع» · «التشغيل» · «الفرع» — resolved by the
+  // server against the registry, so the files here are the ones the figure counted.
+  const vehicleSet = {
+    typeIds: readList(sp, 'type'),
+    operationIds: readList(sp, 'operation'),
+    branchIds: readList(sp, 'branch'),
+  };
+  const narrowedToSet = hasVehicleSet(vehicleSet);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   /**
@@ -159,6 +181,7 @@ export const AccidentsPage = (): JSX.Element => {
       status: status || undefined,
       from: from || undefined,
       to: to || undefined,
+      ...vehicleSetQuery(vehicleSet),
     }),
     [paramsKey],
   );
@@ -173,14 +196,23 @@ export const AccidentsPage = (): JSX.Element => {
   const clearFilters = (): void =>
     // ONE update, every key. The code search and the vehicle pick go together — leaving either
     // behind would hand back a "cleared" bar that is still filtering.
-    patch({ vehicleCodes: null, culpritBy: null, notes: null, status: null, from: null, to: null });
+    patch({
+      vehicleCodes: null,
+      culpritBy: null,
+      notes: null,
+      status: null,
+      from: null,
+      to: null,
+      ...CLEAR_VEHICLE_SET,
+    });
   const hasFilters =
     vehicleCodes.length > 0 ||
     culpritBy.length > 0 ||
     notes !== '' ||
     status !== '' ||
     from !== '' ||
-    to !== '';
+    to !== '' ||
+    narrowedToSet;
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes — the WHOLE
   // registry, not its first page of 100.
@@ -587,7 +619,9 @@ export const AccidentsPage = (): JSX.Element => {
           specified: كود ← العربية ← اسم المتسبب ← من ← إلى ← الحالة ← Reset.
         */}
         <FilterBar
-          singleRow
+          // The set's three controls do not fit the measured row, so while a link narrows the
+          // screen to a set the bar wraps instead of pushing them off the page.
+          singleRow={!narrowedToSet}
           // One control wider than the 1440 this was measured at. The note box shares the row's
           // slack rather than claiming a width of its own, so the bar needs the next notch up and
           // no more — `flex-nowrap` does not shorten a row that will not fit, it pushes it off
@@ -668,6 +702,44 @@ export const AccidentsPage = (): JSX.Element => {
               <option value="closed">{t('fleet.accidents.status.closed')}</option>
             </Select>
           </div>
+          {/* The vehicle set a dashboard link narrowed the files to — shown only while it does,
+              so a remembered one is never a filter with nothing on the bar saying so. The same
+              controls the registry (type) and the maintenance screen (operation, branch) use. */}
+          {narrowedToSet && (
+            <>
+              <div className="min-w-[8rem] flex-1">
+                <MultiSelect
+                  clearable
+                  fullWidth
+                  showSelectedValues
+                  chips
+                  className="w-full"
+                  label={t('fleet.vehicles.filters.short.make')}
+                  options={typeOptions}
+                  value={vehicleSet.typeIds}
+                  onChange={(ids) => patch({ type: writeList(ids) })}
+                />
+              </div>
+              <div className="min-w-[8rem] flex-1">
+                <CatalogMultiSelect
+                  kind="operation"
+                  className="w-full"
+                  fullWidth
+                  value={vehicleSet.operationIds}
+                  onChange={(ids) => patch({ operation: writeList(ids) })}
+                  label={t('fleet.vehicles.filters.short.operation')}
+                />
+              </div>
+              {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
+              <div className="min-w-[8rem] flex-1 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between">
+                <BranchFilterSelect
+                  clearable
+                  value={vehicleSet.branchIds}
+                  onChange={(ids) => patch({ branch: writeList(ids) })}
+                />
+              </div>
+            </>
+          )}
         </FilterBar>
 
         {/*

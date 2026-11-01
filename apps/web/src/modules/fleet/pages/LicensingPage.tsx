@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   compareFleetVehicleCodes,
+  paperStage as licensingPaperStage,
   type FleetLicensingMark,
   type FleetLicensingRowDto,
 } from '@ecms/contracts';
@@ -129,18 +130,16 @@ export const matchesPaper = (
  * somebody is still holding — and green is «done». Both squares empty is not a state worth
  * colouring: it is the ordinary condition of most of the board.
  *
+ * THE RULE LIVES IN THE CONTRACTS (R-11), where the fleet dashboard counts its open papers with
+ * it: the board's colour, its stats bar and the dashboard's figure are one reading, so the number
+ * the dashboard links here is the number this board shows. «استلام» without «تسليم» is still HALF
+ * DONE there — a ticked square must never sit on an uncoloured cell.
+ *
  * Exported so the tint is testable without a browser, and so nothing else in this file can invent
  * a fourth answer.
  */
-export const paperStage = (row: FleetLicensingRowDto, paper: Paper): 'none' | 'open' | 'done' => {
-  const out = row[paper.handover];
-  const back = row[paper.receipt];
-  if (out && back) return 'done';
-  // «استلام» without «تسليم» should not happen and is still HALF DONE rather than nothing: a
-  // square that is ticked must never sit on an uncoloured cell, or the reader is looking at a
-  // tick the board is pretending it cannot see.
-  return out || back ? 'open' : 'none';
-};
+export const paperStage = (row: FleetLicensingRowDto, paper: Paper): 'none' | 'open' | 'done' =>
+  licensingPaperStage(row, paper);
 
 const STAGE_TINT: Record<'none' | 'open' | 'done', string> = {
   none: '',

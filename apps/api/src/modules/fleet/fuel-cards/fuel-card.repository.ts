@@ -21,6 +21,7 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
     company?: FleetFuelCardCompany | undefined;
     number?: string | undefined;
     expiresBefore?: Date | undefined;
+    expiresFrom?: Date | undefined;
     requested?: boolean | undefined;
     balanceBelow?: number | undefined;
   }): FilterQuery<FleetFuelCardDoc> {
@@ -35,6 +36,10 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
     }
     if (query.expiresBefore !== undefined)
       clauses.push({ expiresAt: { $lte: query.expiresBefore } });
+    // The window's other bound — «تنتهي خلال 30 يومًا» must not count the cards already expired,
+    // which `expiresBefore` alone does. `$gte`, the vehicles' naming; a card with no expiry on
+    // file is in no window (`$gte` never matches null).
+    if (query.expiresFrom !== undefined) clauses.push({ expiresAt: { $gte: query.expiresFrom } });
     if (query.requested !== undefined) {
       clauses.push({ requestedAmount: query.requested ? { $ne: null } : null });
     }

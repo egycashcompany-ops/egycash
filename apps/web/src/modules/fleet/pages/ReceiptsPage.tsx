@@ -56,6 +56,15 @@ import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import {
+  CLEAR_VEHICLE_SET,
+  hasVehicleSet,
+  useVehicleTypeOptions,
+  vehicleSetQuery,
+} from '../lib/vehicle-set-params';
 import { receiptMemoState } from '../lib/receipt-memo-lock';
 import { writeRefusalOf } from '../lib/write-refusal';
 import { LockedRowAction } from '../components/LockedRowAction';
@@ -68,6 +77,9 @@ const REMEMBERED_FILTERS = [
   'kind',
   'source',
   'driver',
+  'type',
+  'operation',
+  'branch',
   'size',
   'sort',
 ] as const;
@@ -223,6 +235,15 @@ export const ReceiptsPage = (): JSX.Element => {
   const kinds = csv(sp.get('kind'));
   const source = sp.get('source') ?? '';
   const driver = sp.get('driver') ?? '';
+  // The cars a dashboard figure was counted over — «النوع» · «التشغيل» · «الفرع» — resolved by the
+  // server against the registry, so the rows here are the ones the figure counted.
+  const vehicleSet = {
+    typeIds: readList(sp, 'type'),
+    operationIds: readList(sp, 'operation'),
+    branchIds: readList(sp, 'branch'),
+  };
+  const narrowedToSet = hasVehicleSet(vehicleSet);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const sortParam = sp.get('sort');
@@ -247,7 +268,8 @@ export const ReceiptsPage = (): JSX.Element => {
     vehicleCodes.length > 0 ||
     kinds.length > 0 ||
     source !== '' ||
-    driver !== '';
+    driver !== '' ||
+    narrowedToSet;
 
   const filters = useMemo(
     () => ({
@@ -257,6 +279,7 @@ export const ReceiptsPage = (): JSX.Element => {
       kind: kinds.length > 0 ? kinds : undefined,
       source: source || undefined,
       driver: driver || undefined,
+      ...vehicleSetQuery(vehicleSet),
     }),
     [paramsKey],
   );
@@ -730,6 +753,7 @@ export const ReceiptsPage = (): JSX.Element => {
                 kind: null,
                 source: null,
                 driver: null,
+                ...CLEAR_VEHICLE_SET,
               })
             }
           >
@@ -795,6 +819,53 @@ export const ReceiptsPage = (): JSX.Element => {
                 rule="arabic"
               />
             </FilterWithIcon>
+            {/* The vehicle set a dashboard link narrowed the receipts to — shown only while it does,
+                so a remembered one is never a filter with nothing on the bar saying so. The same
+                controls the registry (type) and the maintenance screen (operation, branch) use. */}
+            {narrowedToSet && (
+              <>
+                <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                  <MultiSelect
+                    clearable
+                    className="w-full"
+                    fullWidth
+                    density="tight"
+                    showSelectedValues
+                    chips
+                    label={t('fleet.vehicles.filters.short.make')}
+                    options={typeOptions}
+                    value={vehicleSet.typeIds}
+                    onChange={(ids) => patch({ type: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+                <FilterWithIcon
+                  icon={FILTER_ICON.operation}
+                  tone="text-slate-600 dark:text-slate-300"
+                >
+                  <CatalogMultiSelect
+                    kind="operation"
+                    className="w-full"
+                    fullWidth
+                    density="tight"
+                    value={vehicleSet.operationIds}
+                    onChange={(ids) => patch({ operation: writeList(ids) })}
+                    label={t('fleet.vehicles.filters.short.operation')}
+                  />
+                </FilterWithIcon>
+                {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
+                <FilterWithIcon
+                  icon={FILTER_ICON.branch}
+                  tone="text-violet-600 dark:text-violet-300"
+                  className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+                >
+                  <BranchFilterSelect
+                    clearable
+                    value={vehicleSet.branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              </>
+            )}
           </FilterBar>
         </div>
 

@@ -35,6 +35,20 @@ import {
   VehicleViolationDialog,
 } from '../components/ViolationDialogs';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { cn } from '../../../shared/lib/cn';
+import { FilterBar } from '../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import { UNKNOWN_DRIVER } from '../lib/driver-filter-selection';
+import {
+  CLEAR_VEHICLE_SET,
+  hasVehicleSet,
+  useVehicleTypeOptions,
+  vehicleSetQuery,
+} from '../lib/vehicle-set-params';
 
 /**
  * Remembered across visits. `page` is derived, never kept.
@@ -53,6 +67,10 @@ const REMEMBERED_FILTERS = [
   'damt',
   'dset',
   'dsort',
+  'dunknown',
+  'type',
+  'operation',
+  'branch',
 ] as const;
 
 /**
@@ -85,12 +103,31 @@ export const ViolationsPage = (): JSX.Element => {
   const codes = splitVehicleCodeList(sp.get('codes') ?? '');
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
   const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
+  // «مجهول» from a dashboard link — `dunknown=true`, the drivers' fines with nobody named. It IS the
+  // drivers picker's own «مجهول» value, so it shows as that picker's chip and comes off the same
+  // way; the first edit of the picker writes it into `driver` like any other pick.
+  const unknownDriver = sp.get('dunknown') === 'true';
+  const pickedDrivers =
+    unknownDriver && !driverEmployeeIds.includes(UNKNOWN_DRIVER)
+      ? [...driverEmployeeIds, UNKNOWN_DRIVER]
+      : driverEmployeeIds;
   const driverAmount = sp.get('damt') ?? '';
   // «الحالة» on each half: '' = both, 'true' = settled, 'false' = still outstanding.
   const companySettled = sp.get('cset') ?? '';
   const driverSettled = sp.get('dset') ?? '';
   // A LIST, like `driver` above: «speeding AND seatbelt» is one question, not two.
   const typeIds = splitVehicleCodeList(sp.get('dtype') ?? '');
+  // The cars a dashboard figure was counted over — «النوع» · «التشغيل» · «الفرع» — for BOTH
+  // ledgers: unlike the car codes, the set is the figure's question, not one half's narrowing.
+  const vehicleSet = {
+    typeIds: readList(sp, 'type'),
+    operationIds: readList(sp, 'operation'),
+    branchIds: readList(sp, 'branch'),
+  };
+  const narrowedToSet = hasVehicleSet(vehicleSet);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet);
+  const setKey = [vehicleSet.typeIds, vehicleSet.operationIds, vehicleSet.branchIds].join('|');
+  const setQuery = useMemo(() => vehicleSetQuery(vehicleSet), [setKey]);
   /**
    * NO PAGE NUMBER AT ALL on this screen any more.
    *
@@ -164,6 +201,58 @@ export const ViolationsPage = (): JSX.Element => {
           What goes with it, and is worth knowing: the breadcrumb «الحركة › مخالفات السيارات»,
           which was the only in-page link back to /fleet. The sidebar and ⌘K still carry it —
           they read the server's nav, not this page. */}
+        {/* The vehicle set a dashboard link narrowed both ledgers to — shown only while it does,
+          so a remembered one is never a filter with nothing on the screen saying so. The same
+          controls the registry (type) and the maintenance screen (operation, branch) use. */}
+        {narrowedToSet && (
+          <div
+            data-violations-vehicle-set="true"
+            className={cn(DARK_FILTER_BAR, 'shrink-0 [&_[role=listbox]]:animate-menu-in')}
+          >
+            <FilterBar hasActiveFilters onClear={() => patch({ ...CLEAR_VEHICLE_SET })}>
+              <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                <MultiSelect
+                  clearable
+                  className="w-full"
+                  fullWidth
+                  density="tight"
+                  showSelectedValues
+                  chips
+                  label={t('fleet.vehicles.filters.short.make')}
+                  options={typeOptions}
+                  value={vehicleSet.typeIds}
+                  onChange={(ids) => patch({ type: writeList(ids) })}
+                />
+              </FilterWithIcon>
+              <FilterWithIcon
+                icon={FILTER_ICON.operation}
+                tone="text-slate-600 dark:text-slate-300"
+              >
+                <CatalogMultiSelect
+                  kind="operation"
+                  className="w-full"
+                  fullWidth
+                  density="tight"
+                  value={vehicleSet.operationIds}
+                  onChange={(ids) => patch({ operation: writeList(ids) })}
+                  label={t('fleet.vehicles.filters.short.operation')}
+                />
+              </FilterWithIcon>
+              {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
+              <FilterWithIcon
+                icon={FILTER_ICON.branch}
+                tone="text-violet-600 dark:text-violet-300"
+                className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+              >
+                <BranchFilterSelect
+                  clearable
+                  value={vehicleSet.branchIds}
+                  onChange={(ids) => patch({ branch: writeList(ids) })}
+                />
+              </FilterWithIcon>
+            </FilterBar>
+          </div>
+        )}
         {/*
         Company FIRST in the DOM. The app is RTL, so the first child of a row sits on the RIGHT —
         which is where the business reads its own ledger. On a narrow screen the grid collapses to
@@ -181,6 +270,7 @@ export const ViolationsPage = (): JSX.Element => {
             years={years}
             vehicleCodes={codes}
             settled={companySettled}
+            vehicleSet={setQuery}
             entryVehicleId={entryVehicleId}
             onEntryVehicleChange={setEntryVehicleId}
             onMoved={() => setMovedAt((n) => n + 1)}
@@ -202,7 +292,8 @@ export const ViolationsPage = (): JSX.Element => {
             }
             vehicleCodes={driverCodes}
             companyVehicleCodes={codes}
-            driverEmployeeIds={driverEmployeeIds}
+            driverEmployeeIds={pickedDrivers}
+            vehicleSet={setQuery}
             typeIds={typeIds}
             amount={driverAmount}
             settled={driverSettled}
@@ -210,11 +301,18 @@ export const ViolationsPage = (): JSX.Element => {
             onVehicleCodesChange={(next) =>
               patch({ dcodes: next.length === 0 ? null : next.join(',') })
             }
-            onDriverChange={(next) => patch({ driver: next })}
+            onDriverChange={(next) => patch({ driver: next, dunknown: null })}
             onTypeChange={(next) => patch({ dtype: next.length === 0 ? null : next.join(',') })}
             onAmountChange={(next) => patch({ damt: next })}
             onClear={() =>
-              patch({ dcodes: null, driver: null, dtype: null, damt: null, dset: null })
+              patch({
+                dcodes: null,
+                driver: null,
+                dunknown: null,
+                dtype: null,
+                damt: null,
+                dset: null,
+              })
             }
             onEdit={setEditing}
             onDelete={setDeleting}

@@ -18,8 +18,9 @@
 // have the standing crew put back on reload. If it does not, the fixed crew is where the day
 // starts, cut down by that day's workshop visits (FR-5) and driver availability (FR-6/7).
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
+  cairoYmd,
   compareFleetVehicleCodes,
   fleetVehicleCodeOrderKey,
   type FleetRosterRowDto,
@@ -80,12 +81,21 @@ import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
 import { rosterDraftKey, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import {
   COUNTER_TONES,
+  byReasons,
   carriesPlan,
+  expiredLicenceIds,
+  hasCrewGap,
   hasDriver,
+  hasOtherCrewGap,
+  isReady,
+  isUnmanned,
+  licenceCheckLinks,
   missionTone,
   readView,
+  reasonSubtotals,
   UNSAVED_ROW,
   visibleRows,
+  withoutExpiredLicence,
   type RosterView,
 } from '../lib/roster-view';
 import { useDraftBoard } from '../lib/useDraftBoard';
@@ -107,9 +117,14 @@ const rosterSortValue = (row: FleetRosterRowDto, key: string): string | number |
   return null;
 };
 
-const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view'] as const;
+const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view', 'unavailable'] as const;
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+/**
+ * The day the board opens on: TODAY IN CAIRO. Between midnight and 02:00 (03:00 in summer) Cairo is
+ * already on the next day while UTC is not, and a board opened then is about the Cairo day — the
+ * one the fleet dashboard counts and links to with an explicit `?date=`.
+ */
+const today = (): string => cairoYmd(new Date());
 
 const shiftDay = (date: string, delta: number): string => {
   const d = new Date(`${date}T00:00:00Z`);
@@ -117,13 +132,14 @@ const shiftDay = (date: string, delta: number): string => {
   return d.toISOString().slice(0, 10);
 };
 
-/** The five seam verdicts (`DriverUnavailableReason`); anything newer shows as sent. */
+/** The seam's verdicts (`DriverUnavailableReason`); anything newer shows as sent. */
 const KNOWN_REASONS = new Set([
   'notADriver',
   'profileInactive',
   'notEmployed',
   'fleetUnavailability',
   'hrLeave',
+  'licenceExpired',
 ]);
 
 /**
@@ -162,6 +178,7 @@ const RosterSlotCell = ({
   onDrop,
   onClear,
   setDragging,
+  expired,
 }: {
   row: FleetRosterRowDto;
   slot: DutySlot;
@@ -176,6 +193,8 @@ const RosterSlotCell = ({
   onDrop: (row: FleetRosterRowDto, slot: DutySlot, employeeId: string) => void;
   onClear: (row: FleetRosterRowDto, slot: DutySlot) => void;
   setDragging: (employeeId: string | null) => void;
+  /** The day's licence-expired drivers (R-02), so a seat holding one says so. */
+  expired: ReadonlySet<string>;
 }): JSX.Element => {
   const employeeId = row[slot];
   const key = `${row.vehicleId}:${slot}`;
@@ -267,6 +286,15 @@ const RosterSlotCell = ({
             >
               <DriverChip employeeId={employeeId} className="w-full" size="lg" />
             </span>
+            {/* «رخصة منتهية» on the driver himself: the server's flag for this date. While the
+                refusal is off he may still be planned, and this is how the dispatcher knows. */}
+            {expired.has(employeeId) && (
+              <span data-driver-licence="expired" className="shrink-0">
+                <Badge tone="danger" size="sm">
+                  {t('fleet.roster.licenceExpired')}
+                </Badge>
+              </span>
+            )}
             {/* Taking somebody OFF the day, without a dialog. The driver returns to the pool
                 immediately because the pool is derived from the draft — and, like every other
                 edit here, nothing is written until «حفظ». */}
@@ -336,6 +364,12 @@ export const RosterPage = (): JSX.Element => {
    * stops a second copy of mission filtering existing at all.
    */
   const view: RosterView | null = readView(sp.get('view'));
+  /**
+   * The unavailable panel's REASON filter — «التمامات» or «إجازة», as the dashboard's absent figure
+   * links to it. Several at once, nothing asked for being everybody, like the mission filter.
+   */
+  const reasons = readList(sp, 'unavailable');
+  const reasonsKey = reasons.join(',');
   /**
    * The columns the board is read in, in the order they were clicked. `code:asc` is where it
    * opens, which is the order the server already hands the day over in.
@@ -526,6 +560,33 @@ export const RosterPage = (): JSX.Element => {
         apply: { view: 'assigned' },
         active: view === 'assigned',
       },
+      // The day's RULES, as the server marked each row (R-03, R-06) — the figures the fleet
+      // dashboard shows and links to. Read off the row's own fields, so a chip counts exactly the
+      // rows its view shows; an unsaved drop does not move a row until «حفظ» re-reads the day.
+      {
+        key: 'ready',
+        label: t('fleet.roster.counter.ready'),
+        value: shown.filter(isReady).length,
+        tone: COUNTER_TONES.ready,
+        apply: { view: 'ready' },
+        active: view === 'ready',
+      },
+      {
+        key: 'unmanned',
+        label: t('fleet.roster.counter.unmanned'),
+        value: shown.filter(isUnmanned).length,
+        tone: COUNTER_TONES.unmanned,
+        apply: { view: 'unmanned' },
+        active: view === 'unmanned',
+      },
+      {
+        key: 'crewGap',
+        label: t('fleet.roster.counter.crewGap'),
+        value: shown.filter(hasCrewGap).length,
+        tone: COUNTER_TONES.crewGap,
+        apply: { view: 'crewGap' },
+        active: view === 'crewGap',
+      },
       ...(missionTypes.data?.items ?? [])
         .filter((item) => item.isActive)
         .map((item) => ({
@@ -612,13 +673,55 @@ export const RosterPage = (): JSX.Element => {
   // what the drag rules and the counters read, and `unavailable` is the server's verdict. These
   // two are what the panels RENDER, so clearing the box brings everybody back with no round
   // trip and no state to put right.
-  const shownAvailable = useMemo(
-    () => filterDrivers(pool, searchIndex, availableSearch),
-    [pool, searchIndex, availableSearch],
+  //
+  // THE LICENCE FLAG SPLITS THE AVAILABLE PANEL (R-04, Q-01). A driver whose licence has expired is
+  // not counted «available today», so the panel's own list and count leave him out and a section
+  // under it, «منهم رخصة منتهية N», lists every such driver of the day — the list the owner checks
+  // before switching the refusal on. While it is off he stays in `pool`, so the picker and the
+  // drag rules still offer him exactly as before: planning accepts him until the setting refuses.
+  const expiredLicence = useMemo(() => expiredLicenceIds(board), [board]);
+  const poolLicensed = useMemo(
+    () => withoutExpiredLicence(pool, expiredLicence),
+    [pool, expiredLicence],
   );
+  const shownAvailable = useMemo(
+    () => withoutExpiredLicence(filterDrivers(pool, searchIndex, availableSearch), expiredLicence),
+    [pool, searchIndex, availableSearch, expiredLicence],
+  );
+  /** Every available driver of the day the server flagged, seated or not (flag mode only). */
+  const flaggedDrivers = useMemo(
+    () => (board?.availableDrivers ?? []).filter((driver) => driver.licence === 'expired'),
+    [board],
+  );
+  const shownFlagged = useMemo(
+    () => filterDrivers(flaggedDrivers, searchIndex, availableSearch),
+    [flaggedDrivers, searchIndex, availableSearch],
+  );
+  /** The vehicles whose licence expired on the day — the other half of the owner's list. */
+  const expiredVehicles = useMemo(
+    () => saved.filter((row) => row.licenceExpired === true),
+    [saved],
+  );
+  /** Where the draft seats each driver, so a flagged driver already on a car says which. */
+  const seatedOn = useMemo(() => {
+    const at = new Map<string, string>();
+    for (const row of shown) {
+      for (const id of [row.driver1EmployeeId, row.driver2EmployeeId]) {
+        if (id !== null) at.set(id, row.code);
+      }
+    }
+    return at;
+  }, [shown]);
+  const licenceCheck =
+    board?.licenceRule !== 'refuse' && (flaggedDrivers.length > 0 || expiredVehicles.length > 0);
+  const checkLinks = licenceCheckLinks(date);
+
+  // The unavailable panel: per-reason subtotals of the whole day, and the reason filter on top of
+  // the name search — both display only, like the search.
+  const subtotals = useMemo(() => reasonSubtotals(unavailable), [unavailable]);
   const shownUnavailable = useMemo(
-    () => filterDrivers(unavailable, searchIndex, unavailableSearch),
-    [unavailable, searchIndex, unavailableSearch],
+    () => byReasons(filterDrivers(unavailable, searchIndex, unavailableSearch), reasons),
+    [unavailable, searchIndex, unavailableSearch, reasonsKey],
   );
 
   /** The board's own name for a driver — the very name the chip in the cell prints. */
@@ -754,6 +857,7 @@ export const RosterPage = (): JSX.Element => {
     onClear: (row: FleetRosterRowDto, slot: DutySlot) =>
       setDraft(() => clearSlot(draft, row.vehicleId, slot)),
     setDragging,
+    expired: expiredLicence,
   };
 
   const columns: Column<FleetRosterRowDto>[] = [
@@ -802,6 +906,30 @@ export const RosterPage = (): JSX.Element => {
         <span className="flex flex-wrap items-center gap-1">
           <InWorkshopBadge inWorkshop={row.inMaintenance} />
           {hasDriver(row) && <Badge tone="success">{t('fleet.roster.assigned')}</Badge>}
+          {/* The day's rules, each the server's mark on this row (R-03, R-06): the car's own
+              licence has expired on the date; its standing driver is absent and nobody available
+              holds his seat; the standing driver is unavailable for another reason; or the stored
+              plan names somebody who is not available on the date. */}
+          {row.licenceExpired === true && (
+            <span data-roster-flag="licenceExpired">
+              <Badge tone="danger">{t('fleet.roster.licenceExpired')}</Badge>
+            </span>
+          )}
+          {hasCrewGap(row) && (
+            <span data-roster-flag="crewGap">
+              <Badge tone="warning">{t('fleet.roster.crewAbsent')}</Badge>
+            </span>
+          )}
+          {hasOtherCrewGap(row) && (
+            <span data-roster-flag="crewUnavailable">
+              <Badge tone="neutral">{t('fleet.roster.crewUnavailable')}</Badge>
+            </span>
+          )}
+          {row.stalePlan === true && (
+            <span data-roster-flag="stalePlan">
+              <Badge tone="warning">{t('fleet.roster.stalePlan')}</Badge>
+            </span>
+          )}
         </span>
       ),
     },
@@ -1223,7 +1351,7 @@ export const RosterPage = (): JSX.Element => {
               <h2 className="text-center text-sm font-semibold text-emerald-900 dark:text-emerald-200">
                 {t('fleet.roster.availableTitle')}
                 <span className="ms-1 font-normal text-emerald-700 dark:text-emerald-400">
-                  ({formatNumber(pool.length, locale)})
+                  ({formatNumber(poolLicensed.length, locale)})
                 </span>
               </h2>
               <SearchInput
@@ -1246,7 +1374,7 @@ export const RosterPage = (): JSX.Element => {
                 and the list takes whatever the title and search box leave (`min-h-0 flex-1
                 overflow-y-auto`). No `100vh` arithmetic, no number picked for one screen, and no
                 page scroll: the only thing that scrolls is the list itself. */}
-            {pool.length === 0 ? (
+            {poolLicensed.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : shownAvailable.length === 0 ? (
               // Searched and found nobody HERE — distinct from "the list is empty", which is a
@@ -1283,6 +1411,77 @@ export const RosterPage = (): JSX.Element => {
                 ))}
               </ul>
             )}
+            {licenceCheck && (
+              <div
+                data-licence-expired-panel="true"
+                className="max-h-[45%] shrink-0 overflow-y-auto border-t border-emerald-200 px-3 pb-3 pt-2 dark:border-emerald-900"
+              >
+                <h3 className="text-center text-xs font-semibold text-red-700 dark:text-red-300">
+                  {t('fleet.roster.expiredLicence.title', {
+                    count: formatNumber(flaggedDrivers.length, locale),
+                  })}
+                </h3>
+                <p className="mt-1 text-center text-[11px] text-slate-600 dark:text-slate-400">
+                  {t('fleet.roster.expiredLicence.hint')}
+                </p>
+                {shownFlagged.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {shownFlagged.map((driver) => {
+                      const seatedCode = seatedOn.get(driver.employeeId);
+                      // Unseated, he is in the pool and may still be dragged — planning accepts him
+                      // until the refusal is switched on. Seated, the row already holds him.
+                      const free = seatedCode === undefined && mayPlan;
+                      return (
+                        <li key={driver.employeeId} data-licence-expired-driver={driver.employeeId}>
+                          <div
+                            draggable={free}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData(DRAG_TYPE, driver.employeeId);
+                              e.dataTransfer.effectAllowed = 'move';
+                              setDragging(driver.employeeId);
+                            }}
+                            onDragEnd={() => setDragging(null)}
+                            className={[
+                              'flex items-center gap-1.5',
+                              free ? 'cursor-grab active:cursor-grabbing' : '',
+                            ].join(' ')}
+                          >
+                            <DriverChip
+                              employeeId={driver.employeeId}
+                              className="min-w-0 flex-1"
+                              size="lg"
+                            />
+                            {seatedCode !== undefined && (
+                              <span className="shrink-0 text-[11px] text-slate-600 dark:text-slate-300">
+                                {t('fleet.roster.expiredLicence.seatedOn', { code: seatedCode })}
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs">
+                  <Link
+                    to={checkLinks.drivers}
+                    data-licence-check="drivers"
+                    className="font-medium text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
+                  >
+                    {t('fleet.roster.expiredLicence.driversLink')}
+                  </Link>
+                  <Link
+                    to={checkLinks.vehicles}
+                    data-licence-check="vehicles"
+                    className="font-medium text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
+                  >
+                    {t('fleet.roster.expiredLicence.vehiclesLink', {
+                      count: formatNumber(expiredVehicles.length, locale),
+                    })}
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Visible for transparency, and NOT draggable: `draggable` is never set here, so the
@@ -1302,6 +1501,42 @@ export const RosterPage = (): JSX.Element => {
                 placeholder={t('fleet.fixedRoster.driverSearchPlaceholder')}
                 className="w-full"
               />
+              {/* One subtotal per reason, each a filter: «غائبون اليوم: التمامات X · إجازة Y» is
+                  the dashboard's figure, and these chips are where its links land. They add up to
+                  the count beside the title. */}
+              {subtotals.length > 0 && (
+                <div
+                  role="group"
+                  aria-label={t('fleet.roster.reasonFilter')}
+                  className="flex flex-wrap justify-center gap-1"
+                >
+                  {subtotals.map(({ reason, count }) => {
+                    const on = reasons.includes(reason);
+                    return (
+                      <button
+                        key={reason}
+                        type="button"
+                        data-reason-filter={reason}
+                        data-active={on ? 'true' : undefined}
+                        aria-pressed={on}
+                        onClick={() =>
+                          patch({ unavailable: writeList(toggleValue(reasons, reason)) })
+                        }
+                        className={[
+                          'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors',
+                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                          on
+                            ? 'border-amber-500 bg-amber-100 text-amber-900 dark:border-amber-400 dark:bg-amber-900/40 dark:text-amber-100'
+                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800',
+                        ].join(' ')}
+                      >
+                        <span>{reasonLabel(reason)}</span>
+                        <span className="font-bold">{formatNumber(count, locale)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             {board === undefined || unavailable.length === 0 ? (
               <EmptyState title={t('fleet.roster.unavailableEmpty')} />

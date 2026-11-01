@@ -4040,6 +4040,7 @@ const en: Record<string, string> = {
   'fleet.fuelCards.history.sheetFile': 'Sheet: {{file}}',
   'fleet.fuelCards.history.sheetFromTo': 'From {{from}} to {{to}}',
   'fleet.fuelCards.history.sheetWas': 'Sheet balance {{sheet}} — kept {{system}}',
+  'fleet.fuelCards.filters.expiresFrom': 'Expires from',
   'fleet.nav.receipts': 'Custody receipts',
   'fleet.nav.custody': 'Custody ledger',
   'fleet.receipts.subtitle':
@@ -5775,6 +5776,9 @@ const en: Record<string, string> = {
   'fleet.odometer.corrected': 'Reading corrected.',
   'fleet.odometer.noReading': 'No reading',
   'fleet.filters.matchedRows': 'Rows matching these filters',
+  'fleet.filters.expiryWindow.between': 'From {{from}} to {{to}}',
+  'fleet.filters.expiryWindow.until': 'Until {{to}}',
+  'fleet.filters.expiryWindow.from': 'From {{from}}',
   'fleet.odometer.readingOptionalHint': 'This day has already passed — the counter is optional. Leave it empty if nobody wrote it down, and record it for this same day later if it turns up.',
   'fleet.odometer.recordingWithoutReading': 'Saving with no counter. The maintenance alarm will count this day as unmeasured — record the reading for this same day later and it will fill this row rather than adding another.',
   'fleet.alarms.columns.daysWithoutReading': 'Days with no reading',
@@ -6186,6 +6190,21 @@ const en: Record<string, string> = {
   'fleet.roster.reason.notEmployed': 'Not employed',
   'fleet.roster.reason.fleetUnavailability': 'Operational unavailability',
   'fleet.roster.reason.hrLeave': 'On approved leave',
+  'fleet.roster.reason.licenceExpired': 'Licence expired',
+  'fleet.roster.licenceExpired': 'Licence expired',
+  'fleet.roster.counter.ready': 'Ready',
+  'fleet.roster.counter.unmanned': 'No driver',
+  'fleet.roster.counter.crewGap': 'Fixed crew absent',
+  'fleet.roster.crewAbsent': 'Fixed crew member absent',
+  'fleet.roster.crewUnavailable': 'Fixed crew unavailable',
+  'fleet.roster.stalePlan': 'Planned driver unavailable',
+  'fleet.roster.expiredLicence.title': 'Of them, expired licence {{count}}',
+  'fleet.roster.expiredLicence.hint':
+    'They can still be planned until refusing expired licences is switched on in the fleet settings.',
+  'fleet.roster.expiredLicence.seatedOn': 'On vehicle {{code}}',
+  'fleet.roster.expiredLicence.driversLink': 'Drivers with an expired licence',
+  'fleet.roster.expiredLicence.vehiclesLink': 'Vehicles with an expired licence ({{count}})',
+  'fleet.roster.reasonFilter': 'Filter by reason',
 
   // Fleet — accidents (FW-8)
   'fleet.accidents.subtitle':
@@ -6483,6 +6502,13 @@ const en: Record<string, string> = {
   'fleet.settings.keys.fuelCardBalanceRed': 'Fuel-card balance — red below (EGP)',
   'fleet.settings.keys.defaultBranchNameHint':
     'Matched against live branch names (Arabic or English). The create form preselects it; a branch is still required.',
+  'fleet.settings.keys.refuseExpiredLicence':
+    'Refuse planning a driver or vehicle with an expired licence',
+  'fleet.settings.keys.refuseExpiredLicenceHint':
+    'Off, the roster only flags them. Before switching it on, review the «Of them, expired licence» list on the roster and correct any outdated dates. A licence with no recorded date never blocks planning.',
+  'fleet.settings.keys.odometerMissingReadingDays': 'No odometer reading alert (days)',
+  'fleet.settings.keys.odometerMissingReadingDaysHint':
+    'The dashboard flags an active vehicle with no odometer reading for this many days (1 to 30).',
 
   // IT — asset registry (ITW-1, frozen design docs/12-planning/it-module-design.md)
   'it.module.title': 'IT',
@@ -14778,6 +14804,7 @@ const ar: Record<string, string> = {
   'fleet.fuelCards.history.sheetFile': 'الشيت: {{file}}',
   'fleet.fuelCards.history.sheetFromTo': 'من {{from}} إلى {{to}}',
   'fleet.fuelCards.history.sheetWas': 'رصيد الشيت {{sheet}} — بقي {{system}}',
+  'fleet.fuelCards.filters.expiresFrom': 'تنتهي من',
   'fleet.nav.receipts': 'خصم الإيصالات',
   'fleet.nav.custody': 'العهدة',
   'fleet.receipts.subtitle': 'وقود من الكارت أو من العهدة، وكاوتش وغسيل وصيانة من العهدة.',
@@ -16468,6 +16495,9 @@ const ar: Record<string, string> = {
   'fleet.odometer.corrected': 'تم تصحيح القراءة.',
   'fleet.odometer.noReading': 'بدون قراءة',
   'fleet.filters.matchedRows': 'عدد الصفوف بعد الفلاتر',
+  'fleet.filters.expiryWindow.between': 'من {{from}} إلى {{to}}',
+  'fleet.filters.expiryWindow.until': 'حتى {{to}}',
+  'fleet.filters.expiryWindow.from': 'من {{from}}',
   'fleet.odometer.readingOptionalHint':
     'هذا اليوم مضى، والعدّاد اختياري. اتركه فارغًا إذا لم يسجّله أحد، وإذا ظهر الرقم لاحقًا فسجّله لليوم نفسه وسيُدرج في السطر نفسه.',
   'fleet.odometer.recordingWithoutReading':
@@ -16878,6 +16908,21 @@ const ar: Record<string, string> = {
   'fleet.roster.reason.notEmployed': 'خارج الخدمة الوظيفية',
   'fleet.roster.reason.fleetUnavailability': 'تمام: غير متاح',
   'fleet.roster.reason.hrLeave': 'إجازة معتمدة',
+  'fleet.roster.reason.licenceExpired': 'رخصة منتهية',
+  'fleet.roster.licenceExpired': 'رخصة منتهية',
+  'fleet.roster.counter.ready': 'جاهزة',
+  'fleet.roster.counter.unmanned': 'بلا سائق',
+  'fleet.roster.counter.crewGap': 'غياب الطاقم الثابت',
+  'fleet.roster.crewAbsent': 'غائب من الطاقم الثابت',
+  'fleet.roster.crewUnavailable': 'الطاقم الثابت غير متاح',
+  'fleet.roster.stalePlan': 'مخطَّط لها سائق غير متاح',
+  'fleet.roster.expiredLicence.title': 'منهم رخصة منتهية {{count}}',
+  'fleet.roster.expiredLicence.hint':
+    'يمكن تخطيطهم حتى يُفعَّل رفض الرخص المنتهية من إعدادات الحركة.',
+  'fleet.roster.expiredLicence.seatedOn': 'على السيارة {{code}}',
+  'fleet.roster.expiredLicence.driversLink': 'السائقون برخصة منتهية',
+  'fleet.roster.expiredLicence.vehiclesLink': 'السيارات برخصة منتهية ({{count}})',
+  'fleet.roster.reasonFilter': 'تصفية حسب السبب',
 
   // Fleet — accidents (FW-8)
   'fleet.accidents.subtitle':
@@ -17173,6 +17218,12 @@ const ar: Record<string, string> = {
   'fleet.settings.keys.fuelCardBalanceRed': 'الحد الأحمر لرصيد بطاقة الوقود (ج.م.)',
   'fleet.settings.keys.defaultBranchNameHint':
     'يُطابق أسماء الفروع الفعلية (عربي أو إنجليزي). نموذج الإضافة يختاره تلقائياً، والفرع مطلوب في كل الأحوال.',
+  'fleet.settings.keys.refuseExpiredLicence': 'رفض تخطيط السائق أو السيارة برخصة منتهية',
+  'fleet.settings.keys.refuseExpiredLicenceHint':
+    'عند الإيقاف تكتفي شاشة تعيين السيارات بالتنبيه. قبل التفعيل راجِع قائمة «منهم رخصة منتهية» في شاشة تعيين السيارات وصحِّح التواريخ القديمة. الرخصة التي لا تاريخ لها لا تمنع التخطيط أبدًا.',
+  'fleet.settings.keys.odometerMissingReadingDays': 'تنبيه غياب قراءة العداد (أيام)',
+  'fleet.settings.keys.odometerMissingReadingDaysHint':
+    'تُنبِّه لوحة التحكم إلى السيارة النشطة التي لم تُسجَّل لها قراءة عداد طوال هذا العدد من الأيام (من ١ إلى ٣٠).',
 
   // تقنية المعلومات — سجل الأصول (ITW-1)
   'it.module.title': 'تقنية المعلومات',

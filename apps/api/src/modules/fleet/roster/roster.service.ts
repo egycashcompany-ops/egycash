@@ -9,7 +9,10 @@
 // board needs, since one drag = the rows it touched (point 7). Events fire only after commit.
 import {
   FleetEvents,
+  ymdOf,
   type AuditChange,
+  type FleetDriverLicenceState,
+  type FleetDriverUnavailableReason,
   type FleetRosterDayDto,
   type FleetRosterRowDto,
   type PlanFleetRoster,
@@ -32,11 +35,20 @@ import {
 import {
   driverAvailabilityForRoster,
   driverAvailabilityOn,
+  rosterLicenceRule,
 } from '../availability/driver-availability';
 import { fleetFixedCrewRepository } from '../fixed-roster/fixed-crew.repository';
 import { fleetDutyAssignmentRepository } from './duty-assignment.repository';
 import { type FleetDutyAssignmentDoc } from './duty-assignment.model';
 import { type FleetVehicleDoc } from '../vehicles/vehicle.model';
+import {
+  crewGapsOf,
+  licenceExpiredOn,
+  rowMannedOn,
+  stalePlanOf,
+  vehicleAssignableOn,
+  type Seats,
+} from './roster-rules';
 
 const entityRef = (id: string) => ({
   moduleId: 'fleet',
@@ -64,6 +76,10 @@ export const snapshot = (doc: FleetDutyAssignmentDoc) => ({
   driver2EmployeeId: doc.driver2EmployeeId?.toString() ?? null,
   notes: doc.notes ?? null,
 });
+
+/** A stored reference as the board spells it — `String(ObjectId)`, or `null`. */
+const idOf = (employeeId: Types.ObjectId | null | undefined): string | null =>
+  employeeId === null || employeeId === undefined ? null : String(employeeId);
 
 /** An id in the one spelling mongo uses. `null`/`undefined` pass through untouched. */
 const canonical = <T extends string | null | undefined>(id: T): T =>
@@ -111,12 +127,17 @@ class FleetRosterService {
    */
   async board(date: Date, scope: ScopeSelector): Promise<FleetRosterDayDto> {
     const day = utcDay(date);
+    // The day the board DESCRIBES, as the rules read it (R-02): the date part of `day`. The
+    // dashboard hands in the Cairo day; the HTTP route hands in its `?date=`.
+    const ymd = ymdOf(day);
     const vehicles = await this.allActiveVehicles(scope);
     const vehicleIds = vehicles.map((v) => String(v._id));
-    const [inWorkshop, assignments, fixedCrews] = await Promise.all([
+    const [inWorkshop, assignments, fixedCrews, licenceRule] = await Promise.all([
       fleetVehicleService.openVisitVehicleIds(vehicleIds, day),
       fleetDutyAssignmentRepository.findForDate(day),
       fleetFixedCrewRepository.findAll(),
+      // Q-01, read ONCE for the whole board and handed to the seam's batched pass.
+      rosterLicenceRule(),
     ]);
     const byVehicle = new Map(assignments.map((row) => [String(row.vehicleId), row]));
     const fixedByVehicle = new Map(fixedCrews.map((row) => [String(row.vehicleId), row]));
@@ -128,6 +149,7 @@ class FleetRosterService {
     // crew may be carried into the day. Point 1 — the seam is the ONLY availability authority.
     const freeToday = new Set<string>();
     const availableOrder: string[] = [];
+    const licenceOf = new Map<string, FleetDriverLicenceState>();
     const unavailableDrivers: FleetRosterDayDto['unavailableDrivers'] = [];
     // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset Fleet
     // has recorded a profile for. See `drivingSeatRoster`.
@@ -137,12 +159,13 @@ class FleetRosterService {
     // single query for the whole board. Asked one driver at a time this was four serial round
     // trips per driver — a cost that grew with the pool the moment the pool became the registry.
     const seatRoster = await drivingSeatRoster();
-    const verdicts = await driverAvailabilityForRoster(seatRoster, day);
+    const verdicts = await driverAvailabilityForRoster(seatRoster, day, licenceRule);
     for (const employee of seatRoster) {
       const availability = verdicts.get(employee.employeeId);
       if (availability?.available === true) {
         freeToday.add(employee.employeeId);
         availableOrder.push(employee.employeeId);
+        licenceOf.set(employee.employeeId, availability.licence);
       } else {
         unavailableDrivers.push({
           employeeId: employee.employeeId,
@@ -151,8 +174,52 @@ class FleetRosterService {
       }
     }
 
+    /**
+     * R-04 on the board's day: why a driver is not available, or `null` when they are. The seam's
+     * verdict, with an expired licence counted as unavailable even while the rule only FLAGS it —
+     * planning may still accept such a driver, but nobody counts him as manning a seat today.
+     * Somebody outside the driving-seat registry is, as the seam's first check says, not a driver.
+     */
+    const reasonOf = (employeeId: string): FleetDriverUnavailableReason | null => {
+      const verdict = verdicts.get(employeeId);
+      if (verdict === undefined) return 'notADriver';
+      if (!verdict.available) return verdict.reason ?? 'notADriver';
+      return verdict.licence === 'expired' ? 'licenceExpired' : null;
+    };
+
     /** Where the overlay seats somebody, so the pool below can say so as the plan does. */
     const seatedByOverlay = new Map<string, string>();
+
+    /**
+     * The row's DERIVED facts (R-03, R-06) — computed from the row as it stands, planned or
+     * projected, beside the standing crew. Nothing here changes the row itself: the board still
+     * hands back exactly what is stored or projected, and these say what that MEANS today.
+     */
+    const derive = (
+      row: Pick<FleetRosterRowDto, 'driver1EmployeeId' | 'driver2EmployeeId' | 'planned'>,
+      vehicle: FleetVehicleDoc,
+      inMaintenance: boolean,
+    ) => {
+      const fixed = fixedByVehicle.get(String(vehicle._id));
+      const fixedSeats: Seats | null =
+        fixed === undefined ? null : [idOf(fixed.driver1EmployeeId), idOf(fixed.driver2EmployeeId)];
+      const seats: Seats = [row.driver1EmployeeId, row.driver2EmployeeId];
+      const assignable = vehicleAssignableOn(vehicle, inMaintenance, ymd);
+      const { crewGaps, crewCovered } = crewGapsOf({
+        ready: assignable,
+        seats,
+        fixed: fixedSeats,
+        reasonOf,
+      });
+      return {
+        assignable,
+        licenceExpired: licenceExpiredOn(vehicle.licenseExpiresAt, ymd),
+        manned: rowMannedOn(seats, reasonOf),
+        crewGaps,
+        crewCovered,
+        stalePlan: stalePlanOf({ planned: row.planned, seats, fixed: fixedSeats, reasonOf }),
+      };
+    };
 
     const rows: FleetRosterRowDto[] = vehicles.map((vehicle) => {
       const id = String(vehicle._id);
@@ -171,7 +238,7 @@ class FleetRosterService {
         // the WRITE, so a persisted row is one the server already accepted, and silently blanking
         // it on read would hide from the reader what the database actually holds.
         const facts = snapshot(assignment);
-        return {
+        const stored = {
           ...vehicleFacts,
           planned: true,
           missionTypeId: facts.missionTypeId,
@@ -179,6 +246,7 @@ class FleetRosterService {
           driver2EmployeeId: facts.driver2EmployeeId,
           notes: facts.notes,
         };
+        return { ...stored, ...derive(stored, vehicle, inMaintenance) };
       }
 
       // UNPLANNED — start from the standing crew, then let the day cut it down.
@@ -196,7 +264,7 @@ class FleetRosterService {
         return driver;
       };
 
-      return {
+      const projected = {
         ...vehicleFacts,
         // Nothing is stored for this vehicle on this date, so everything below is a PROJECTION.
         // Saying so on the wire is what lets the board offer to materialise it: an operation
@@ -210,16 +278,26 @@ class FleetRosterService {
         driver2EmployeeId: carry(fixed?.driver2EmployeeId ?? null),
         notes: null,
       };
+      return { ...projected, ...derive(projected, vehicle, inMaintenance) };
     });
 
     const availableDrivers: FleetRosterDayDto['availableDrivers'] = availableOrder.map(
       (employeeId) => ({
         employeeId,
         assignedVehicleId: taken.get(employeeId) ?? seatedByOverlay.get(employeeId) ?? null,
+        // 'expired' appears here only while the rule FLAGS; refusing, the seam has already moved
+        // that driver to the unavailable half with the reason `licenceExpired`.
+        licence: licenceOf.get(employeeId) ?? 'noProfile',
       }),
     );
 
-    return { date: day.toISOString(), rows, availableDrivers, unavailableDrivers };
+    return {
+      date: day.toISOString(),
+      rows,
+      availableDrivers,
+      unavailableDrivers,
+      licenceRule,
+    };
   }
 
   /**
@@ -298,6 +376,21 @@ class FleetRosterService {
           `vehicle ${vehicle.code} is ${vehicle.status} and cannot be assigned (§4.1)`,
         );
       }
+    }
+    // Q-01, beside the status check: a vehicle whose licence has expired on the planned date
+    // (R-02 — on the expiry day itself too) is refused ONLY while `fleet.roster.refuseExpiredLicence`
+    // is on. Off, planning is unchanged and the board merely flags the car. The setting is read
+    // only when an assigning vehicle's licence has in fact expired; a missing date never blocks.
+    const planDay = ymdOf(day);
+    const expiredVehicle = assigningRows
+      .map((row) => vehicles.get(row.vehicleId))
+      .find(
+        (vehicle) => vehicle !== undefined && licenceExpiredOn(vehicle.licenseExpiresAt, planDay),
+      );
+    if (expiredVehicle !== undefined && (await rosterLicenceRule()) === 'refuse') {
+      throw new ConflictError(
+        `vehicle ${expiredVehicle.code} has a licence that expired on ${ymdOf(expiredVehicle.licenseExpiresAt)} and cannot be assigned (licenceExpired)`,
+      );
     }
 
     // FR-5 through the seam (point 2) — clearing an in-workshop vehicle's row stays allowed.

@@ -255,15 +255,15 @@ export const maintenanceFromLegacy = (
 
 // ── The owner's rule vs. history (port doc OD-1) ────────────────────────────────────────────────
 //
-// Since 2026-10-13 a machine has at most ONE open replenishment and ONE open maintenance — per
-// Cairo day since 2026-10-27 — held by a partial unique index per collection on
-// `{ machineCode, openDay }`. The legacy had no such guard, so a deployment's history can hold two
-// open rows for one machine on one day. The importer is EXEMPT from the rule's service check — it
-// writes history as it was and decides nothing — but it cannot make the index accept a second
+// Since 2026-10-13 a machine has at most ONE open maintenance — per Cairo day since 2026-10-27 —
+// held by a partial unique index on `{ machineCode, openDay }` (replenishments were held too until
+// 2026-11-01, OD-1b). The legacy had no such guard, so a deployment's history can hold two open
+// maintenances for one machine on one day. The importer is EXEMPT from the rule's service check —
+// it writes history as it was and decides nothing — but it cannot make the index accept a second
 // open row. These two helpers are how it reports that instead of crashing.
 
 /**
- * Pure: the rows the open-operation index would refuse WITHIN one deployment's list — every open,
+ * Pure: the rows the open-maintenance index would refuse WITHIN one deployment's list — every open,
  * live row whose code AND day an earlier open, live row already holds. A dry run's prediction; the
  * real run reports what the index actually refused (which also counts rows already in ECMS).
  */

@@ -8,7 +8,6 @@
 // (:691) — not carried either.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
-import { OPEN_OPERATION_INDEX_NAMES, openOperationPartialFilter } from '../shared/open-operation';
 
 export interface AtmReplenishmentDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -67,26 +66,13 @@ const replenishmentSchema = new Schema<AtmReplenishmentDoc>(
 replenishmentSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 replenishmentSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 replenishmentSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
-// The per-day rule's QUESTION — "is this code open on that day?" — asks by the open time's day range
-// (so a row stored before `openDay` existed still counts), which the unique index below cannot
-// answer: its filter needs `openDay`. This one is what that company-wide query runs on, instead of
-// a scan of the whole log (`openMachineCodes`, shared/operation-log.repository.ts).
+// The board's company-wide question "is this code open on that day?" (`openMachineCodes`,
+// shared/operation-log.repository.ts) runs on this one instead of a scan of the whole log. Since
+// OD-1b (2026-11-01) a machine may have several open replenishments: no unique index holds one per
+// machine and day any more — atm-indexes.ts drops the one an older database built.
 replenishmentSchema.index(
   { machineCode: 1, openedAt: 1 },
   { name: 'ix_open_code_opened', partialFilterExpression: { closedAt: null, isDeleted: false } },
-);
-// The owner's rule (2026-10-13, narrowed to the day 2026-10-27 — port doc OD-1): at most ONE open
-// replenishment per machine code PER DAY, company-wide — the race-proof half of the service check
-// (replenishment.service.ts). Built at boot by atm-indexes.ts, which also drops the rule's
-// any-day index of the first form; where existing rows already violate it the boot names this
-// collection and skips the index, and the service check still refuses every new duplicate.
-replenishmentSchema.index(
-  { machineCode: 1, openDay: 1 },
-  {
-    unique: true,
-    name: OPEN_OPERATION_INDEX_NAMES.replenishment,
-    partialFilterExpression: openOperationPartialFilter(),
-  },
 );
 
 export const AtmReplenishmentModel = model<AtmReplenishmentDoc>(

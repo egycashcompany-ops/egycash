@@ -14,7 +14,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
-import { alreadyOpenCodesKey, joinCodes } from '../lib/operation-view';
+import { joinCodes } from '../lib/operation-view';
 import { LineListInput } from './LineListInput';
 import { OpenRefusalNotice } from './OpenRefusalNotice';
 
@@ -73,7 +73,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
       // The owner's rule (OD-1): a machine already open — or pasted twice — was not opened again.
       if (result.alreadyOpenCodes.length > 0) {
         toast.error(
-          t(alreadyOpenCodesKey('maintenance'), {
+          t('atm.maintenance.alreadyOpenCodes', {
             codes: joinCodes(result.alreadyOpenCodes, locale),
           }),
         );
@@ -117,11 +117,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
       <Button type="submit" loading={open.isPending}>
         {t('atm.maintenance.openAction')}
       </Button>
-      <OpenRefusalNotice
-        kind="maintenance"
-        unknownCodes={unknownCodes}
-        alreadyOpenCodes={alreadyOpenCodes}
-      />
+      <OpenRefusalNotice unknownCodes={unknownCodes} alreadyOpenCodes={alreadyOpenCodes} />
     </form>
   );
 };

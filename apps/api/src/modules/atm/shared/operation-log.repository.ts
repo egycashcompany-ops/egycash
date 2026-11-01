@@ -7,7 +7,6 @@ import { type BaseDocFields } from '../../../shared/base/base.model';
 import { type ScopeSelector } from '../../../shared/types';
 import { type Paginated } from '@ecms/contracts';
 import { cairoDayRange, cairoShiftWindow } from './cairo-time';
-import { codesBlockedByMove } from './open-operation';
 import { boardNames, storedSpellingsOf } from './board-filter';
 
 /** The lifecycle fields both operation kinds carry. */
@@ -289,35 +288,6 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
       .session(session)
       .lean<T[]>()
       .exec();
-  }
-
-  /**
-   * The owner's per-day rule for the bulk edit of the open time: which of the checked rows' machine
-   * codes would be open twice on `day` once every checked row is moved there. Read under the
-   * caller's scope — the rows the scoped write will actually move; the "open elsewhere" half is the
-   * rule's own company-wide question, with exactly THOSE rows left out of it. A checked id the write
-   * will not touch (outside the edit scope) stays in it: it is still open where it is. Codes only.
-   * Pass the bulk write's `session` so the check and the write are one transaction.
-   */
-  async codesBlockedOnDay(
-    ids: readonly string[],
-    day: string,
-    scope: ScopeSelector,
-    session: ClientSession | null = null,
-  ): Promise<string[]> {
-    const objectIds = ids
-      .filter((id) => Types.ObjectId.isValid(id))
-      .map((id) => new Types.ObjectId(id));
-    if (objectIds.length === 0) return [];
-    const rows = await this.model
-      .find(this.baseFilter(scope, { _id: { $in: objectIds } } as FilterQuery<T>))
-      .select({ machineCode: 1, closedAt: 1 })
-      .session(session)
-      .lean<{ _id: Types.ObjectId; machineCode: string; closedAt: Date | null }[]>()
-      .exec();
-    const open = rows.filter((row) => row.closedAt === null).map((row) => row.machineCode);
-    const moved = rows.map((row) => String(row._id));
-    return codesBlockedByMove(rows, await this.openMachineCodes(open, day, moved, session));
   }
 
   /**

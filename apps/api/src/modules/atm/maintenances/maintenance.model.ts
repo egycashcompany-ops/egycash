@@ -9,7 +9,7 @@
 import { Schema, model, type Types } from 'mongoose';
 import { ATM_MAINTENANCE_SOURCES, type AtmMaintenanceSource } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
-import { OPEN_OPERATION_INDEX_NAMES, openOperationPartialFilter } from '../shared/open-operation';
+import { OPEN_MAINTENANCE_INDEX_NAME, openOperationPartialFilter } from '../shared/open-operation';
 
 export interface AtmMaintenanceDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -95,7 +95,7 @@ maintenanceSchema.index(
   { machineCode: 1, openDay: 1 },
   {
     unique: true,
-    name: OPEN_OPERATION_INDEX_NAMES.maintenance,
+    name: OPEN_MAINTENANCE_INDEX_NAME,
     partialFilterExpression: openOperationPartialFilter(),
   },
 );

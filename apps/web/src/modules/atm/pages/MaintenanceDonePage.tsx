@@ -19,12 +19,7 @@ import { RowActions } from '../../../shared/ui/RowActions';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { hasError } from '../../../shared/lib/errors';
 import { useDoneAtmMaintenances, useReopenAtmMaintenance } from '../api/atm-queries';
-import {
-  cairoToday,
-  doneRange,
-  isAlreadyOpenRefusal,
-  reopenRefusalKey,
-} from '../lib/operation-view';
+import { cairoToday, doneRange, isAlreadyOpenRefusal } from '../lib/operation-view';
 import { maintenanceColumns } from '../lib/operation-sheet';
 import { useReaderOrder } from '../lib/useBoardView';
 import { StatementExportButtons } from '../components/StatementExportButtons';
@@ -59,7 +54,7 @@ export const MaintenanceDonePage = (): JSX.Element => {
       // The owner's rule (port doc OD-1): the machine already has another open maintenance that day.
       // Say so and close the dialog — trying again cannot succeed until that one is closed.
       if (isAlreadyOpenRefusal(error)) {
-        toast.error(t(reopenRefusalKey('maintenance'), { code: reopening.machineCode }));
+        toast.error(t('atm.done.reopenAlreadyOpenMaint', { code: reopening.machineCode }));
         setReopening(null);
         return;
       }

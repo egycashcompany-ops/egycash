@@ -1,23 +1,4 @@
-"""Local HTTP surface for the OCR pipeline — the process the API's provider talks to.
-
-Runs on the loopback/compose network only. It makes NO outbound calls: the weights are baked into
-the image and the recognizer is constructed with explicit local paths. There is no third-party
-service and no external API in this path, by construction rather than by policy.
-
-Deliberately built on the standard library rather than FastAPI/uvicorn. The surface is two
-endpoints; adding a web framework plus an ASGI server to a container that already carries
-PaddlePaddle would grow the image for no capability. Fewer dependencies also means fewer things
-that can pull a wheel at build time.
-
-Endpoints
-  GET  /health   → readiness, model directory, active layout profile
-  POST /extract  → {frontImageBase64?, backImageBase64?} → RawOcrResult-shaped fields
-  POST /read     → {imageBase64} → any document's text in reading order (receipts, letters, …)
-
-Images arrive as base64 in a JSON body rather than as multipart because the caller already holds
-them in memory (it read them from the Files service) and the payloads are small — a card photo is
-a few hundred KB. That keeps the client in the API a plain `fetch`, with no multipart assembly.
-"""
+"""Local HTTP surface for the OCR pipeline, the process the API's provider talks to."""
 
 from __future__ import annotations
 
@@ -28,53 +9,65 @@ import logging
 import os
 import socket
 import tempfile
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .diagnose import diagnose
 from .document import read_document
+from . import access, pool, registry
 from .extract import extract
 from .layout import active_profile_name
 from .preprocess import load_bgr
+from .portrait import find_portrait
 from .trace import Trace, render_html
 
 LOG = logging.getLogger("nidocr.service")
 
-#: Refuse oversized bodies outright. A National-ID photo is well under this; anything larger is a
-#: mistake or an attempt to exhaust memory, and both deserve a 413 rather than an OOM.
-# Two full-resolution phone photos, base64-encoded. Sized for the 4000 px the test page now sends:
-# shrinking photos to fit the old 12 MB cut far-away cards below the size they can be read at.
+#: Room for two full-resolution phone photos as base64 (the pages send up to 4000 px; shrinking
+#: further cuts far-away cards below readable size). Anything larger gets a 413, not an OOM.
 MAX_BODY_BYTES = 32 * 1024 * 1024
 
 _recognizer = None
+_jobs = None
+_jobs_lock = threading.Lock()
+
+#: Pages and their assets served by the service itself (the Readers page and its theme files), so
+#: the three readers can be watched without the separate test-page server.
+TOOLS = Path(__file__).resolve().parents[2] / "tools"
+_STATIC = {
+    "/readers": ("readers.html", "text/html; charset=utf-8"),
+}
+_STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                 ".svg": "image/svg+xml", ".png": "image/png", ".glb": "model/gltf-binary", ".webp": "image/webp"}
+
+
+def get_jobs():
+    """The job board, built on first use. Reads go through the worker pool (see pool.py)."""
+    global _jobs  # noqa: PLW0603 - one board per service process
+    with _jobs_lock:
+        if _jobs is None:
+            from .jobs import Jobs  # noqa: PLC0415
+
+            _jobs = Jobs(lambda payload: pool.submit_extraction(payload))
+        return _jobs
 
 
 def get_recognizer():
-    """Build the recognizer once, lazily.
-
-    Lazy so that `/health` can answer while the model is still loading, and once so that PP-OCR's
-    weights are not re-read per request — first-call latency is seconds, per-call is milliseconds.
-    """
-    global _recognizer  # noqa: PLW0603 — process-wide singleton is the point
+    """Build the recognizer once, lazily."""
+    global _recognizer  # noqa: PLW0603 - process-wide singleton is the point
     if _recognizer is None:
-        from .vlm import build_recognizer  # noqa: PLC0415 — lazy: the models are heavy
+        from .engine import PaddleRecognizer  # noqa: PLC0415 - lazy: the models are heavy
 
         started = time.perf_counter()
-        # OCR_TEXT_RECOGNIZER picks paddle (default) | paddleocr_vl | qwen — see vlm.py.
-        _recognizer = build_recognizer(
-            model_dir=os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
-        )
+        _recognizer = PaddleRecognizer(model_dir=os.environ.get("PADDLE_OCR_MODEL_DIR", "/models"))
         LOG.info("recognizer ready in %.1f s", time.perf_counter() - started)
     return _recognizer
 
 
 def _decode(value: str | None, suffix: str) -> str | None:
-    """Base64 → a temp file path, because OpenCV reads from disk in this pipeline.
-
-    Written under the process's own temp dir and removed by the caller. Card images are personal
-    data, so they must not outlive the request that carried them.
-    """
+    """Base64 → a temp file path, because OpenCV reads from disk in this pipeline."""
     if not value:
         return None
     try:
@@ -98,7 +91,7 @@ PREVIEW_MAX_SIDE = 900
 
 def _preview(image) -> str:
     """A photo as the pipeline read it → base64 JPEG, shrunk. Only ever sent when asked for."""
-    import cv2  # noqa: PLC0415 — already loaded by the pipeline; kept local to this helper
+    import cv2  # noqa: PLC0415 - already loaded by the pipeline; kept local to this helper
 
     height, width = image.shape[:2]
     scale = min(1.0, PREVIEW_MAX_SIDE / max(height, width, 1))
@@ -108,15 +101,18 @@ def _preview(image) -> str:
     return base64.b64encode(buffer.tobytes()).decode("ascii") if ok else ""
 
 
+def _portrait_payload(result, payload: dict) -> dict:
+    if not payload.get("returnPortrait") or "front" not in result.oriented:
+        return {}
+    portrait = find_portrait(result.oriented["front"])
+    return {} if portrait is None else {"portraitImage": _preview(portrait)}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "nidocr/1.0"
 
-    def log_message(self, fmt: str, *args) -> None:  # noqa: A003 — BaseHTTPRequestHandler API
-        """Route access logs through logging, and never log a request body.
-
-        The default handler prints to stderr; more importantly, nothing here may echo the payload,
-        which is a photograph of someone's identity document.
-        """
+    def log_message(self, fmt: str, *args) -> None:  # noqa: A003 - BaseHTTPRequestHandler API
+        """Route access logs through logging, and never log a request body."""
         LOG.info("%s - %s", self.address_string(), fmt % args)
 
     def _send(self, status: int, payload: dict) -> None:
@@ -128,9 +124,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_html(self, page: str) -> None:
-        """The trace comes back as a page rather than JSON, because the hard part of a diagnostic
-        is not producing it but getting it out of a container and in front of someone. Every image
-        is inlined, so it survives being saved and emailed."""
+        """The trace comes back as a page rather than JSON, because the hard part of a diagnostic is
+        not producing it but getting it out of a container and in front of someone. Every image is
+        inlined, so it survives being saved and emailed.
+        """
         body = page.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -139,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_document(self, payload: dict) -> None:
-        """POST /read — any document, no fields. See document.py."""
+        """POST /read, any document, no fields. See document.py."""
         path = None
         try:
             path = _decode(payload.get("imageBase64"), "-page.jpg")
@@ -147,6 +144,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "imageBase64 is required"})
                 return
             result = read_document(load_bgr(path), get_recognizer())
+            _forget(path)
             upright_image = result.pop("uprightImage", None)
             if payload.get("returnOrientedImages") and upright_image is not None:
                 result["orientedImage"] = _preview(upright_image)
@@ -160,14 +158,71 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, result)
         except ValueError as error:
             self._send(400, {"error": str(error)})
-        except Exception:  # noqa: BLE001 — a failed read must not take the service down
+        except Exception:  # noqa: BLE001 - a failed read must not take the service down
             LOG.exception("document read failed")
             self._send(500, {"error": "document read failed"})
         finally:
-            if path:
-                Path(path).unlink(missing_ok=True)
+            _forget(path)
 
-    def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
+    def _send_file(self, path: Path, content_type: str) -> None:
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_events(self, job_id: str) -> None:
+        """GET /jobs/<id>/events: each state change as a server-sent event, until the job is done."""
+        jobs = get_jobs()
+        if jobs.get(job_id) is None:
+            self._send(404, {"error": "no such job (finished jobs are forgotten after a few minutes)"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        try:
+            for event in jobs.events(job_id):
+                data = json.dumps(event, ensure_ascii=False)
+                self.wfile.write(f"event: {event['state']}\ndata: {data}\n\n".encode("utf-8"))
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the page went away; the job carries on and expires on its own
+        self.close_connection = True
+
+    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        if not access.guard(self):
+            return
+        route = self.path.split("?")[0].rstrip("/") or "/"
+        if route.startswith("/jobs/"):
+            parts = route.split("/")
+            if len(parts) == 4 and parts[3] == "events":
+                self._send_events(parts[2])
+                return
+            state = get_jobs().get(parts[2]) if len(parts) == 3 else None
+            if state is None:
+                self._send(404, {"error": "no such job (finished jobs are forgotten after a few minutes)"})
+            else:
+                self._send(200, state)
+            return
+        if route in _STATIC:
+            name, content_type = _STATIC[route]
+            self._send_file(TOOLS / name, content_type)
+            return
+        if route.startswith("/ui/"):
+            target = (TOOLS / "ui" / route[len("/ui/"):]).resolve()
+            # Only files inside tools/ui/, of the kinds listed: nothing else is reachable.
+            if (TOOLS / "ui").resolve() in target.parents and target.is_file() and target.suffix in _STATIC_TYPES:
+                self._send_file(target, _STATIC_TYPES[target.suffix])
+            else:
+                self._send(404, {"error": "not found"})
+            return
+        if route == "/types":
+            self._send(200, {"types": registry.catalogue()})
+            return
         if self.path.rstrip("/") != "/health":
             self._send(404, {"error": "not found"})
             return
@@ -180,13 +235,15 @@ class Handler(BaseHTTPRequestHandler):
                 "modelsPresent": model_dir.is_dir() and any(model_dir.rglob("*")),
                 "layoutProfile": active_profile_name(),
                 "recognizerLoaded": _recognizer is not None,
-                "textRecognizer": os.environ.get("OCR_TEXT_RECOGNIZER") or "paddle",
+                "textRecognizer": "paddle",
             },
         )
 
-    def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
+    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        if not access.guard(self):
+            return
         route = self.path.rstrip("/")
-        if route not in ("/extract", "/diagnose", "/trace", "/read"):
+        if route not in ("/extract", "/diagnose", "/trace", "/read", "/jobs"):
             self._send(404, {"error": "not found"})
             return
         if route == "/trace" and os.environ.get("OCR_TRACE_DISABLED") == "1":
@@ -206,27 +263,55 @@ class Handler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._send(400, {"error": "body is not valid JSON"})
             return
+        if not isinstance(payload, dict):
+            self._send(400, {"error": "body must be a JSON object"})
+            return
 
         if route == "/read":
             self._read_document(payload)
             return
 
+        if route == "/jobs":
+            # Answer at once with the job's id; the read runs on (see jobs.py).
+            try:
+                kind, _ = registry.resolve(payload.get("documentType") or "national_id")
+            except KeyError as error:
+                self._send(400, {"error": error.args[0]})
+                return
+            payload["documentType"] = payload.get("documentType") or kind.id
+            from .jobs import QueueFull  # noqa: PLC0415
+
+            try:
+                job_id = get_jobs().create(payload)
+            except QueueFull as error:
+                self._send(429, {"error": str(error)})
+                return
+            self._send(202, {"jobId": job_id, "documentType": kind.id, "status": f"/jobs/{job_id}",
+                             "events": f"/jobs/{job_id}/events"})
+            return
+
+        if route == "/extract":
+            status, body = pool.submit_extraction(payload)
+            self._send(status, body)
+            return
+
         front = back = None
         try:
-            front = _decode(payload.get("frontImageBase64"), "-front.jpg")
+            front = _decode(payload.get("frontImageBase64") or payload.get("imageBase64"), "-front.jpg")
             back = _decode(payload.get("backImageBase64"), "-back.jpg")
             if front is None and back is None:
                 self._send(400, {"error": "at least one of frontImageBase64 / backImageBase64"})
                 return
 
             if route == "/diagnose":
-                # Geometry only — see diagnose.py. No card text is returned or logged, so the
+                # Geometry only, see diagnose.py. No card text is returned or logged, so the
                 # output can be shared to correct the field boxes without sharing the card.
                 report = {
                     side: diagnose(path, get_recognizer())
                     for side, path in (("front", front), ("back", back))
                     if path is not None
                 }
+                _forget(front, back)
                 LOG.info(
                     "diagnosed %s",
                     {side: data["regionCount"] for side, data in report.items()},
@@ -234,126 +319,131 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, report)
                 return
 
-            if route == "/trace":
-                # Runs the REAL extraction with a collector attached, rather than a re-implementation
-                # of it — a trace assembled by a parallel code path would show what the trace does,
-                # not what production does, and that distinction is the whole point of having one.
-                recognizer = get_recognizer()
-                keep = getattr(recognizer, "keep_line_images", None)
-                trace = Trace()
-                try:
-                    if keep is not None:
-                        recognizer.keep_line_images = True
-                    extract(front, back, recognizer, trace)
-                finally:
-                    if keep is not None:
-                        recognizer.keep_line_images = keep
-                LOG.info("traced a card: %d artefacts", len(trace.entries))
-                self._send_html(render_html(trace))
-                return
-
-            started = time.perf_counter()
-            result = extract(front, back, get_recognizer())
-            elapsed = (time.perf_counter() - started) * 1000.0
-            # Field COUNT and timing only — never the values. Logs are not a place for the
-            # contents of someone's identity card. The quality verdict is a property of the
-            # photograph rather than of its holder, so it is safe to log and worth logging: a
-            # sudden run of rejected captures is an operational signal.
-            # The verdict alone says a capture was refused without saying what to change, which
-            # leaves an operator watching a run of rejections with nowhere to go. The reason codes
-            # answer it — and they describe the PHOTOGRAPH (too small, blurred, glare), never the
-            # person, so they are as safe to log as the verdict was. The measured numbers ride
-            # along because the thresholds are still untuned priors: seeing the values a real card
-            # produces is the only way anyone will ever calibrate them.
-            # How many text lines detection found per side, and where the field boxes ended up,
-            # ride along for one reason: a card read entirely on profile geometry and a card read
-            # on geometry corrected by detection produce the same-shaped output, and every
-            # field-placement complaint so far has been impossible to attribute from a screenshot.
-            # `lines: 0` with every box 'nominal' says detection contributed nothing, which is a
-            # different bug from a box in the wrong place. Counts and box provenance only.
-            LOG.info(
-                "extracted %d fields in %.0f ms (quality=%s, anchoring=%s)",
-                len(result.as_raw_ocr_result()),
-                elapsed,
-                {
-                    side: {
-                        "verdict": report.verdict,
-                        "reasons": list(report.reasons),
-                        **{
-                            name: round(value, 3)
-                            for name, value in report.metrics.items()
-                            if name in ("cardWidthPx", "sharpness", "glare", "contrast")
-                        },
-                    }
-                    for side, report in result.quality.items()
-                },
-                {
-                    side: {
-                        "lines": notes.get("linesDetected", 0),
-                        "boxes": notes.get("boxSources", {}),
-                        **({"detectionFailed": True} if notes.get("detectionFailed") else {}),
-                    }
-                    for side, notes in result.diagnostics.items()
-                },
-            )
-            self._send(
-                200,
-                {
-                    "fields": result.as_raw_ocr_result(),
-                    "elapsedMs": round(elapsed, 1),
-                    "layoutProfile": active_profile_name(),
-                    # Additive, so an older caller that ignores these keeps working unchanged.
-                    #
-                    # `quality` is the actionable half: it carries per-side reason codes ('too_small',
-                    # 'blurred', 'glare', …) that let the UI tell someone what to change about their
-                    # photograph. Without it the only available message is "could not read the card",
-                    # which sends people back to take the same bad photograph a second time.
-                    #
-                    # `diagnostics` is the explanatory half — which detector located the card,
-                    # whether it was dewarped or read upside down, how many boxes had to be moved
-                    # onto the text. It answers "why was this read poor?" without anyone needing to
-                    # send the card image to someone who can look at it. Coordinates and counts only:
-                    # like `/diagnose`, it carries no card content.
-                    "quality": {
-                        side: report.as_dict() for side, report in result.quality.items()
-                    },
-                    "diagnostics": result.diagnostics,
-                    # Opt-in, for the test page: each side as it was read, so a reader can SEE
-                    # the turn that `diagnostics.rotated` only reports. The API never asks for it.
-                    **(
-                        {
-                            "orientedImages": {
-                                side: _preview(image) for side, image in result.oriented.items()
-                            }
-                        }
-                        if payload.get("returnOrientedImages")
-                        else {}
-                    ),
-                },
-            )
+            # /trace runs the real extraction with a collector attached, so it shows what
+            # production does rather than what a parallel copy of the pipeline would do.
+            recognizer = get_recognizer()
+            keep = getattr(recognizer, "keep_line_images", None)
+            trace = Trace()
+            try:
+                if keep is not None:
+                    recognizer.keep_line_images = True
+                extract(front, back, recognizer, trace)
+            finally:
+                if keep is not None:
+                    recognizer.keep_line_images = keep
+            _forget(front, back)
+            LOG.info("traced a card: %d artefacts", len(trace.entries))
+            self._send_html(render_html(trace))
         except ValueError as error:
             self._send(400, {"error": str(error)})
-        except Exception:  # noqa: BLE001 — a failed read must not take the service down
-            LOG.exception("extraction failed")
-            self._send(500, {"error": "extraction failed"})
+        except Exception:  # noqa: BLE001 - a failed read must not take the service down
+            LOG.exception("%s failed", route)
+            self._send(500, {"error": f"{route.strip('/')} failed"})
         finally:
             # Card images are personal data; they do not outlive the request.
-            for path in (front, back):
-                if path:
-                    Path(path).unlink(missing_ok=True)
+            _forget(front, back)
+
+
+def run_extraction(payload: dict, recognizer=None) -> tuple[int, dict]:
+    """POST /extract, as a function: the request body → (HTTP status, answer).
+
+    Runs wherever it is called: on the request's thread, or in a worker process of the pool (see
+    pool.py), which passes its own recognizer. Photos are written to temporary files only for the
+    length of the read.
+    """
+    # What is being read (see registry.py). The National ID Card is the default; the old
+    # "egycash_badge" still works and is answered with a note that it is now "egycash_id".
+    try:
+        kind, deprecation = registry.resolve(payload.get("documentType") or "national_id")
+    except KeyError as error:
+        return 400, {"error": error.args[0]}
+    front = back = None
+    try:
+        front = _decode(payload.get("frontImageBase64") or payload.get("imageBase64"), "-front.jpg")
+        back = _decode(payload.get("backImageBase64"), "-back.jpg")
+        if front is None and back is None:
+            return 400, {"error": "at least one of frontImageBase64 / backImageBase64"}
+
+        started = time.perf_counter()
+        holder = payload.get("holder") if isinstance(payload.get("holder"), dict) else None
+        result = kind.reader()(front, back, recognizer or get_recognizer(), holder=holder)
+        verdict = kind.verdict()(result)
+        elapsed = (time.perf_counter() - started) * 1000.0
+        # Delete the photos before answering, so they are gone by the time the caller has the result.
+        _forget(front, back)
+        # Field count and timing only, never the values.
+        LOG.info(
+            "extracted %s: %d fields, verdict %s, in %.0f ms (quality=%s, anchoring=%s)",
+            kind.id,
+            len(result.as_raw_ocr_result()),
+            verdict.status,
+            elapsed,
+            {
+                side: {
+                    "verdict": report.verdict,
+                    "reasons": list(report.reasons),
+                    **{
+                        name: round(value, 3)
+                        for name, value in report.metrics.items()
+                        if name in ("cardWidthPx", "sharpness", "glare", "contrast")
+                    },
+                }
+                for side, report in result.quality.items()
+            },
+            {
+                side: {
+                    "lines": notes.get("linesDetected", 0),
+                    "boxes": notes.get("boxSources", {}),
+                    **({"detectionFailed": True} if notes.get("detectionFailed") else {}),
+                }
+                for side, notes in result.diagnostics.items()
+                # Per-side notes only: card-wide entries such as `crossChecksFailed` are lists.
+                if isinstance(notes, dict)
+            },
+        )
+        return 200, {
+            "documentType": kind.id,
+            # match | not_match | unreadable, with reason codes. See verdict.py.
+            "verdict": verdict.as_dict(),
+            **({"deprecation": deprecation} if deprecation else {}),
+            "fields": result.as_raw_ocr_result(),
+            # Additive: each field's confidence as a percentage inside its band.
+            "scores": result.scores(),
+            "elapsedMs": round(elapsed, 1),
+            "layoutProfile": active_profile_name(),
+            # Additive, so an older caller that ignores these keeps working unchanged.
+            "quality": {side: report.as_dict() for side, report in result.quality.items()},
+            "diagnostics": result.diagnostics,
+            # Opt-in, for the test page: each side as it was read, so a reader can see
+            # the turn that `diagnostics.rotated` only reports. The API never asks for it.
+            **(
+                {"orientedImages": {side: _preview(image) for side, image in result.oriented.items()}}
+                if payload.get("returnOrientedImages")
+                else {}
+            ),
+            # Opt-in, for the test page: the holder's photograph cut from the front.
+            # Biometric data, never logged, never stored, only sent when asked for.
+            **_portrait_payload(result, payload),
+        }
+    except ValueError as error:
+        return 400, {"error": str(error)}
+    except Exception:  # noqa: BLE001 - a failed read must not take the service down
+        LOG.exception("extraction failed")
+        return 500, {"error": "extraction failed"}
+    finally:
+        # Card images are personal data; they do not outlive the request.
+        _forget(front, back)
+
+
+def _forget(*paths: str | None) -> None:
+    """Delete the temporary photo files."""
+    for path in paths:
+        if path:
+            Path(path).unlink(missing_ok=True)
 
 
 class DualStackServer(ThreadingHTTPServer):
-    """Listens on IPv6 and, on a dual-stack host, IPv4 as well.
-
-    This is not a nicety — Railway's private network is IPv6-ONLY. A service bound to
-    `0.0.0.0` is simply unreachable at `http://<service>.railway.internal`, and the failure
-    looks like a timeout rather than a binding mistake. (The same trap is already documented for
-    Redis in `docs/09-guides/railway-deployment.md`, which is why `REDIS_URL` needs `?family=0`.)
-
-    Binding `::` with `IPV6_V6ONLY` off accepts both families, so one configuration serves
-    Railway's private network, a compose bridge, and `localhost` in development.
-    """
+    """Listens on IPv6 and, on a dual-stack host, IPv4 as well."""
 
     address_family = socket.AF_INET6
     daemon_threads = True
@@ -363,8 +453,8 @@ class DualStackServer(ThreadingHTTPServer):
             try:
                 self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             except OSError:
-                # Some kernels forbid changing it; IPv6-only still serves Railway, which is the
-                # case that would otherwise break silently.
+                # Some kernels refuse this. IPv6-only still works for IPv6-only hosts (Railway),
+                # so warn and carry on rather than fail.
                 LOG.warning("could not disable IPV6_V6ONLY; serving IPv6 only")
         super().server_bind()
 
@@ -375,19 +465,19 @@ def _build_server(host: str, port: int) -> ThreadingHTTPServer:
         return DualStackServer((host, port), Handler)
     except OSError as error:
         LOG.warning("IPv6 bind on [%s]:%d failed (%s) — falling back to IPv4", host, port, error)
-        return ThreadingHTTPServer(("0.0.0.0", port), Handler)  # noqa: S104 — internal network only
+        return ThreadingHTTPServer(("0.0.0.0", port), Handler)  # noqa: S104 - internal network only
 
 
 def main() -> None:
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(message)s")
     # `::` = every interface, both families. Override with OCR_HOST to pin it narrower.
     host = os.environ.get("OCR_HOST", "::")
-    # OCR_PORT is the explicit setting. `PORT` is the fallback because platforms that inject it
-    # (Railway among them) expect the process to honour it; without the fallback a forgotten
-    # OCR_PORT leaves the container listening somewhere the platform never routes to.
+    # OCR_PORT is the explicit setting.
     port = int(os.environ.get("OCR_PORT") or os.environ.get("PORT") or "8099")
 
-    if os.environ.get("OCR_PRELOAD", "1") == "1":
+    if pool.start():
+        pass  # the workers have loaded their own models; this process does not need them
+    elif os.environ.get("OCR_PRELOAD", "1") == "1":
         # Pay the model-load cost at start rather than on the first user-facing request.
         get_recognizer()
 

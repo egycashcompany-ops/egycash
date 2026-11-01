@@ -61,6 +61,7 @@ export const ApplicantIntakeChannelSchema = z.enum(APPLICANT_INTAKE_CHANNELS);
 export type ApplicantIntakeChannel = z.infer<typeof ApplicantIntakeChannelSchema>;
 
 /** How a source catalog entry is used — drives which structured detail it may carry. */
+export const NationalIdCardSideSchema = z.enum(['front', 'back', 'portrait']);
 export const APPLICANT_SOURCE_KINDS = ['manual', 'publicForm', 'integration'] as const;
 export const ApplicantSourceKindSchema = z.enum(APPLICANT_SOURCE_KINDS);
 export type ApplicantSourceKind = z.infer<typeof ApplicantSourceKindSchema>;
@@ -288,19 +289,30 @@ export const RegisterApplicantSchema = z
      * The scan runs BEFORE the applicant exists, so its uploads land on a scratch reference and
      * cannot name an owner yet. Passing the ids here lets the server copy them onto the applicant
      * it is creating, in the National-ID category — which is how the security-check package finds
-     * a card to print. At most two: the front and the back of one card.
+     * a card to print. At most three: the front and the back of one card, and the holder's
+     * photograph cut from the front.
      *
      * Optional, and a failure to copy never fails a registration: a person joining the pipeline
      * matters more than an image, and an uncopied card can be attached by hand afterwards.
      */
-    nationalIdCardFileIds: z.array(objectId()).max(2).optional(),
+    nationalIdCardFileIds: z.array(objectId()).max(3).optional(),
+    /**
+     * Which image each of `nationalIdCardFileIds` is, position for position. Optional: without it
+     * the images are filed as before, numbered rather than named.
+     */
+    nationalIdCardSides: z.array(NationalIdCardSideSchema).max(3).optional(),
     /**
      * Position + Branch at intake (RW1). Optional — a walk-in with no target seat is normal;
      * the placement is completed later and stays editable until Offer Acceptance (RW2/RW3).
      * When both are supplied, `placement.branchId` wins and `branchId` follows it.
      */
     placement: PlacementSchema.partial().optional(),
-    sourceId: objectId(),
+    /**
+     * Where the applicant came from. Optional: when omitted the server files the registration
+     * under the intake form's internal source, or the built-in "Direct registration" source when
+     * none is set — so HR can always add someone by hand.
+     */
+    sourceId: objectId().optional(),
     sourceDetail: SourceDetailSchema.optional(),
     intakeChannel: ApplicantIntakeChannelSchema.default('internal'),
     expectedSalary: ExpectedSalarySchema.optional(),
@@ -461,6 +473,18 @@ export interface OcrExtractionDto {
   nationalIdExpiry: OcrFieldDto | null;
   /** Deterministically derived from the number when present (birth date, gender, governorate). */
   derived: { birthDate: string; gender: Gender; governorate: string } | null;
+  /**
+   * The card as the reader saw it (cut out, turned upright) and the holder's photograph cut from
+   * the front, as `data:image/jpeg;base64,…` URLs — so the review can show the card beside the
+   * values read from it. Shown, never stored. Absent when the reader returned none.
+   */
+  images?: OcrImagesDto;
+}
+
+export interface OcrImagesDto {
+  cardFront?: string;
+  cardBack?: string;
+  portrait?: string;
 }
 
 // ── List / search / export ──────────────────────────────────────────────────
@@ -696,3 +720,17 @@ export const APPLICANT_SOURCE_ICON_FILE_CATEGORY = 'hr-applicant-source-icons';
  * model growing a column per image.
  */
 export const APPLICANT_NATIONAL_ID_FILE_CATEGORY = 'hr-applicant-national-id';
+
+/** The images of one National-ID card kept on an applicant: both sides and the holder's photo. */
+export const NATIONAL_ID_CARD_SIDES = ['front', 'back', 'portrait'] as const;
+export type NationalIdCardSide = (typeof NATIONAL_ID_CARD_SIDES)[number];
+/** The tag a filed card image carries, so it is found by what it shows rather than by its name. */
+export const nationalIdCardTag = (side: NationalIdCardSide): string => `national-id-${side}`;
+
+/**
+ * The entity type an EMPLOYEE's National-ID card images are filed under. When an applicant is
+ * hired, their card (front and back, in the category above) is copied here, so HR can open the
+ * card from the employee's profile long after the recruitment file is closed. Its own type, so
+ * the Files service asks HR's employee rule — `employee.view` within scope — before serving it.
+ */
+export const EMPLOYEE_NATIONAL_ID_CARD_ENTITY_TYPE = 'employeeNationalIdCard';

@@ -1,16 +1,4 @@
-"""Reading the national ID from both sides of the card, and combining the two.
-
-The number is printed on the front AND the back of an Egyptian ID. Reading it twice is the cheapest
-accuracy available anywhere in this pipeline, because the two crops share no pixels: their errors
-are independent, so agreement between them is far stronger evidence than either model score. A
-score says how cleanly the recognizer read what it was shown. Agreement says two different regions
-of the card said the same thing.
-
-Disagreement is worth just as much, and is handled by refusing to choose. This field is the one
-where being confidently wrong is most expensive — a single wrong digit does not give a slightly
-wrong answer, it gives a different, valid-looking person — so a conflict drops to `low` and the
-reviewer settles it against the card in their hand.
-"""
+"""Reading the national ID from both sides of the card, and combining the two."""
 
 from __future__ import annotations
 
@@ -24,7 +12,7 @@ from nidocr.ensemble import Candidate  # noqa: E402
 from nidocr.extract import SideResult, _better, _printed_gender, _reconcile_national_id  # noqa: E402
 
 VALID = "29503141234567"
-#: A second valid number, differing everywhere — for the case where the two sides disagree
+#: A second valid number, differing everywhere, for the case where the two sides disagree
 #: outright rather than by a digit. Invented, like every number in this repository.
 OTHER_VALID = "30105202143210"
 
@@ -70,11 +58,7 @@ def test_a_valid_read_is_preferred_over_an_invalid_one_but_capped():
 
 
 def test_two_different_valid_numbers_are_a_conflict_not_a_choice():
-    """Both plausible and different means the pixels do not say which person this is.
-
-    Picking one by score would hand the reviewer a number for possibly the wrong person, and a
-    number that looks decided does not get re-read.
-    """
+    """Both plausible and different means the pixels do not say which person this is."""
     combined = _reconcile_national_id(
         {
             "front": _side(VALID, valid=True, confidence="high"),
@@ -98,17 +82,7 @@ def _side_with_reads(value: str, *, valid: bool, reads: list[tuple[str, float]])
 
 
 def test_a_disagreement_is_resolved_by_the_readings_behind_the_two_values():
-    """Comparing two finished values can only report that they differ. The reads can do better.
-
-    Each side ran five preprocessing variants, so ten opinions exist on each of the fourteen
-    digits — and the front and back crops share no pixels at all, which makes their errors the most
-    independent evidence in this pipeline. A digit misread on the front has to be misread
-    identically on the back to survive the pool.
-
-    Here the front settled on a number only one of its variants read, while three of the four other
-    reads across both sides agree on another. The disagreement is not a coin flip; it has a
-    majority, and the majority is what the card says.
-    """
+    """Comparing two finished values can only report that they differ. The reads can do better."""
     front = _side_with_reads(OTHER_VALID, valid=True, reads=[(OTHER_VALID, 0.99), (VALID, 0.7)])
     back = _side_with_reads(VALID, valid=True, reads=[(VALID, 0.8), (VALID, 0.8)])
 
@@ -119,12 +93,7 @@ def test_a_disagreement_is_resolved_by_the_readings_behind_the_two_values():
 
 
 def test_an_evenly_split_pool_is_still_a_conflict():
-    """Resolution requires a majority, not a winner.
-
-    Two numbers with equal support is not evidence for either — it is two numbers. Choosing by
-    score would hand a reviewer a plausible number for possibly the wrong person, which is the one
-    outcome that does not get re-read against the card.
-    """
+    """Resolution requires a majority, not a winner."""
     front = _side_with_reads(VALID, valid=True, reads=[(VALID, 0.9), (VALID, 0.9)])
     back = _side_with_reads(OTHER_VALID, valid=True, reads=[(OTHER_VALID, 0.9), (OTHER_VALID, 0.9)])
 
@@ -158,10 +127,6 @@ def test_no_reading_at_all_yields_nothing():
 
 def test_a_structurally_valid_read_beats_a_fuller_but_invalid_one():
     """Orientation is settled by which pass produced a usable number, not by which found more text.
-
-    An upside-down card puts every box on the wrong text, so it tends to yield fragments — several
-    fields with something in them and a national ID that cannot be one. Counting fields alone would
-    pick that pass.
     """
     upright = SideResult(fields={"nationalId": {"value": VALID, "valid": True, "score": 0.7}})
     inverted = SideResult(
@@ -186,12 +151,7 @@ def test_more_recovered_fields_wins_when_neither_number_is_valid():
 
 
 def test_the_printed_sex_is_found_among_detected_lines():
-    """Deliberately not a field box.
-
-    `parseNationalId` owns gender, and giving it a box would invite something downstream to start
-    populating from it. Taken from the detection output, it can only ever reach the consistency
-    check.
-    """
+    """Deliberately not a field box."""
     lines = [
         ([[0, 0], [10, 0], [10, 10], [0, 10]], "مهندس مدني", 0.9),
         ([[0, 20], [10, 20], [10, 30], [0, 30]], "أنثى مسلمة متزوجة", 0.9),
@@ -204,11 +164,7 @@ def test_the_printed_sex_is_found_among_detected_lines():
 
 
 class _ExplodingDetector:
-    """Recognizes fields fine, but blows up on full-page detection — the observed production shape.
-
-    PaddleOCR's static predictor is native code with no Python-level failure mode: a concurrent
-    call came back as `RuntimeError: std::exception` from inside C++. Whatever the cause, the
-    question this asks is what the pipeline does about it.
+    """Recognizes fields fine, but blows up on full-page detection, the observed production shape.
     """
 
     id = "exploding"
@@ -223,13 +179,7 @@ class _ExplodingDetector:
 
 
 def test_a_detection_failure_falls_back_to_nominal_boxes(tmp_path):
-    """Anchoring is an improvement on the geometry, so losing it must cost the correction only.
-
-    It was costing the whole read: the exception left `extract`, the service turned it into a 500,
-    and a card that would have produced six usable fields produced none. Per-field recognition
-    failures were already tolerated one field at a time; detection was the single call that could
-    still take the request down with it.
-    """
+    """Anchoring is an improvement on the geometry, so losing it must cost the correction only."""
     import cv2
     import numpy as np
 
@@ -251,11 +201,7 @@ def test_a_detection_failure_falls_back_to_nominal_boxes(tmp_path):
 
 
 def test_a_front_image_submitted_as_the_back_is_flagged():
-    """The commonest two-sided capture mistake, and the one with the least legible symptom.
-
-    Applying the back's boxes to a front image returns whatever sits at those coordinates —
-    a fragment of the address arrives as a religion, and nothing about that says "wrong image".
-    """
+    """The commonest two-sided capture mistake, and the one with the least legible symptom."""
     from nidocr.extract import _looks_like_the_back
 
     front_lines = [
@@ -272,8 +218,9 @@ def test_a_front_image_submitted_as_the_back_is_flagged():
 
 
 def test_an_unreadable_side_is_not_accused_of_being_the_wrong_side():
-    """No text is not evidence of a wrong image, and flagging it would send people to re-shoot a
-    side they photographed correctly."""
+    """No text is not evidence of a wrong image, and flagging it would send people to re-shoot a side
+    they photographed correctly.
+    """
     from nidocr.extract import _looks_like_the_back
 
     assert _looks_like_the_back([]) is None

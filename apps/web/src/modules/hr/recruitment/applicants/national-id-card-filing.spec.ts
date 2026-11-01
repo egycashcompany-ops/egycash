@@ -38,17 +38,25 @@ describe('the scan is filed by kind', () => {
 });
 
 describe('the ids reach the registration', () => {
-  it('the scanner reports what it uploaded', () => {
-    expect(OCR).toContain('onScanned?.(');
-    // Only the ids that exist — a card scanned front-only must not report an undefined.
-    expect(OCR).toContain('id !== undefined');
+  it('the scanner reports what it uploaded, each image with the side it shows', () => {
+    expect(OCR).toContain('onScanned?.(scanned)');
+    // Only the sides that exist — a card scanned front-only must not report an undefined.
+    expect(OCR).toContain(
+      "if (frontFileId !== undefined) scanned.push({ id: frontFileId, side: 'front' })",
+    );
+    expect(OCR).toContain(
+      "if (backFileId !== undefined) scanned.push({ id: backFileId, side: 'back' })",
+    );
+    // The holder's photo, cut out by the reader, is kept with the card.
+    expect(OCR).toContain("side: 'portrait'");
   });
 
   it('the form holds them and sends them with the register body', () => {
     expect(FORM).toContain('onScanned={setCardFileIds}');
-    expect(FORM).toContain('nationalIdCardFileIds: cardFileIds');
+    expect(FORM).toContain('nationalIdCardFileIds: cardFileIds.map((c) => c.id)');
+    expect(FORM).toContain('nationalIdCardSides: cardFileIds.map((c) => c.side)');
     // …and sends nothing at all when no card was scanned, rather than an empty array.
-    expect(FORM).toContain('cardFileIds.length === 0 ? {} :');
+    expect(FORM).toContain('cardFileIds.length === 0');
   });
 });
 

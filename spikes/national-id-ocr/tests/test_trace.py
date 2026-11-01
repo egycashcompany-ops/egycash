@@ -1,21 +1,4 @@
-"""The trace has to show the whole chain, and has to be the chain production runs.
-
-Four rounds of this work were spent fixing causes inferred from a final string, and two of those
-inferences were wrong. The pipeline has five places it can lose information — a crop cut short, a
-line split wrongly, a word that failed detection, a variant that misread a digit, post-processing
-that dropped something read correctly — and all five produce the same observable. Reasoning could
-not separate them.
-
-Two properties make a trace worth having, and both are asserted here.
-
-**It must be the real path.** A trace assembled by re-implementing the pipeline shows what the
-trace does, not what production does. `extract()` takes the collector and fills it as it goes, so
-there is one code path and the artefacts come off it.
-
-**It must not lose the link between what was shown and what came back.** The question that has been
-unanswerable is "did the recognizer even see this word?", and answering it needs the strip image
-and the raw text it produced sitting next to each other, before any cleanup touched the string.
-"""
+"""The trace has to show the whole chain, and has to be the chain production runs."""
 
 from __future__ import annotations
 
@@ -89,13 +72,7 @@ def test_the_trace_records_every_stage_from_the_original_image_to_the_final_valu
 
 
 def test_the_raw_text_is_recorded_before_any_post_processing(tmp_path):
-    """The one distinction the whole exercise turns on.
-
-    If the raw read already misses a word, the recognizer is the problem. If the raw read is
-    complete and the final value is not, the processing is. A trace that only showed the final
-    value could not tell those apart — which is exactly the position four rounds of this were
-    argued from.
-    """
+    """The one distinction the whole exercise turns on."""
     trace = _run(tmp_path, {"fullNameAr": "  سلمى   إبراهيم  "})
     raw = [e for e in trace.entries if e.kind == "text" and "fullNameAr" in e.label]
     final = [e for e in trace.entries if e.label == "front / fullNameAr / final"]
@@ -118,8 +95,9 @@ def test_the_ensemble_records_every_variant_and_what_it_chose(tmp_path):
 
 
 def test_each_variant_records_the_pixels_it_was_actually_given(tmp_path):
-    """Preprocessing is where a digit row is fragmented against the watermark. Seeing the image
-    each variant read is what distinguishes 'the crop was wrong' from 'the crop was unreadable'."""
+    """Preprocessing is where a digit row is fragmented against the watermark. Seeing the image each
+    variant read is what distinguishes 'the crop was wrong' from 'the crop was unreadable'.
+    """
     trace = _run(tmp_path)
     prepared = [e for e in trace.entries if e.kind == "image" and "prepared" in e.label]
     assert len({e.label for e in prepared}) >= 2, "the variants' own inputs were not recorded"
@@ -161,15 +139,17 @@ def test_the_page_is_self_contained_and_carries_its_warning(tmp_path):
 
 def test_an_empty_read_renders_as_visibly_empty_rather_than_as_nothing():
     """'The recognizer returned nothing' and 'this stage was never reached' look identical when a
-    blank string renders as blank. They are different findings."""
+    blank string renders as blank. They are different findings.
+    """
     trace = Trace()
     trace.text("front / fullNameAr / raw", "")
     assert "returned nothing" in render_html(trace)
 
 
 def test_arabic_is_rendered_without_the_browser_reordering_it():
-    """A right-to-left string laid out by a left-to-right container reads as a different word
-    order, which on this page would look exactly like the bug being investigated."""
+    """A right-to-left string laid out by a left-to-right container reads as a different word order,
+    which on this page would look exactly like the bug being investigated.
+    """
     trace = Trace()
     trace.text("front / fullNameAr / raw", "سلمى إبراهيم")
     page = render_html(trace)
@@ -216,13 +196,7 @@ class _LineByLine:
 
 
 def test_each_line_shown_to_the_recognizer_is_recorded_beside_what_it_returned(tmp_path):
-    """The question four rounds of inference could not settle: did the recognizer SEE this word?
-
-    A field that comes back short is either a line the recognizer never received or a line it
-    received and misread, and those have opposite fixes — but from the final string they are
-    identical. The strip image and the raw text it produced have to sit next to each other, or the
-    trace answers the same question the final value already did.
-    """
+    """The question four rounds of inference could not settle: did the recognizer see this word?"""
     front = _scene(tmp_path / "front.png")
     trace = Trace()
     extract(front, None, _LineByLine("هدى محمد رمضان", "رضوان الحديدي عبده"), trace)

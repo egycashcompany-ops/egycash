@@ -20,6 +20,8 @@ import {
   type RestoreApplicant,
   type UpdateApplicant,
   type WithdrawApplicant,
+  nationalIdCardTag,
+  type NationalIdCardSide,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
@@ -36,6 +38,8 @@ import {
 } from './stage-materializer-seam';
 import { applicantRepository, type ApplicantListFilter } from './applicant.repository';
 import { applicantSourceRepository } from './applicant-source.repository';
+import { ApplicantSourceModel, type ApplicantSourceDoc } from './applicant-source.model';
+import { recruitmentFormRepository } from '../recruitment-form/recruitment-form.repository';
 import { nextApplicantNumber } from './applicant-sequence';
 import { getRequisitionValidator } from './requisition-ref';
 import { applicantExportRow } from './applicant.mapper';
@@ -104,6 +108,9 @@ registerWorkflowApplicantReader(async (applicantId) => {
       };
 });
 
+/** The built-in source of an applicant HR registers by hand with no source set up. */
+export const DIRECT_REGISTRATION_SOURCE_KEY = 'direct-registration';
+
 class ApplicantService {
   /** The single intake entry point (§2.1). */
   async register(ctx: AuthContext, input: RegisterApplicant): Promise<ApplicantDoc> {
@@ -113,13 +120,19 @@ class ApplicantService {
       if (existing !== null) return existing;
     }
 
-    // Source must exist and be active (§3).
-    const source = await applicantSourceRepository.findActiveById(input.sourceId);
+    // Source must exist and be active (§3). A registration that names none — HR adding someone
+    // by hand before anyone has set the intake form's source — is filed as a direct one rather
+    // than refused: a person waiting at the desk matters more than a setting.
+    const source =
+      input.sourceId === undefined
+        ? await this.directRegistrationSource()
+        : await applicantSourceRepository.findActiveById(input.sourceId);
     if (source === null) {
       throw new ValidationError([
         { field: 'sourceId', code: 'INVALID', message: 'unknown or inactive applicant source' },
       ]);
     }
+    const sourceId = String(source._id);
 
     // Requisition reference is OPTIONAL (direct intake). When supplied it is validated behind
     // the Stage-0 seam; when absent the applicant simply carries no linked Job Request.
@@ -194,7 +207,7 @@ class ApplicantService {
           input.jobRequisitionId === undefined ? null : new Types.ObjectId(input.jobRequisitionId),
         branchId: oid(branchId),
         departmentId,
-        sourceId: new Types.ObjectId(input.sourceId),
+        sourceId: new Types.ObjectId(sourceId),
         sourceDetail:
           input.sourceDetail === undefined
             ? null
@@ -296,12 +309,18 @@ class ApplicantService {
         { code: doc.code, source: source.key, requisition: input.jobRequisitionId ?? null },
       ),
     });
-    await this.fileNationalIdCards(ctx, String(doc._id), doc.code, input.nationalIdCardFileIds ?? []);
+    await this.fileNationalIdCards(
+      ctx,
+      String(doc._id),
+      doc.code,
+      input.nationalIdCardFileIds ?? [],
+      input.nationalIdCardSides ?? [],
+    );
     await emit(HrEvents.ApplicantCreated, {
       applicantId: String(doc._id),
       code: doc.code,
       ...(input.jobRequisitionId === undefined ? {} : { jobRequisitionId: input.jobRequisitionId }),
-      sourceId: input.sourceId,
+      sourceId,
     });
     // I5 — a candidate's history starts with their application. Registration is not a workflow
     // transition, so nothing downstream of the engine would record it; the timeline would begin
@@ -464,24 +483,60 @@ class ApplicantService {
    * NEVER FATAL. A person joining the pipeline matters more than an image: a copy that fails is
    * logged and the registration stands, and the card can be attached by hand afterwards.
    */
+  /**
+   * The source for a registration that names none: the one the intake-form page set for internal
+   * registration, else the built-in "Direct registration" source, created the first time it is
+   * needed. Two first registrations at once both try to create it; the unique key lets one win
+   * and the other reads the winner back.
+   */
+  private async directRegistrationSource(): Promise<ApplicantSourceDoc | null> {
+    const configured = (await recruitmentFormRepository.findSingleton())?.internalSourceId ?? null;
+    if (configured !== null) {
+      const source = await applicantSourceRepository.findActiveById(String(configured));
+      if (source !== null) return source;
+    }
+    const existing = await applicantSourceRepository.findByKey(DIRECT_REGISTRATION_SOURCE_KEY);
+    if (existing !== null) return existing.active ? existing : null;
+    try {
+      const created = await ApplicantSourceModel.create({
+        key: DIRECT_REGISTRATION_SOURCE_KEY,
+        name: { ar: 'تسجيل مباشر', en: 'Direct registration' },
+        kind: 'manual',
+        requiresDetail: false,
+        active: true,
+      });
+      return created.toObject() as ApplicantSourceDoc;
+    } catch {
+      return applicantSourceRepository.findByKey(DIRECT_REGISTRATION_SOURCE_KEY);
+    }
+  }
+
   private async fileNationalIdCards(
     ctx: AuthContext,
     applicantId: string,
     applicantCode: string,
     fileIds: readonly string[],
+    sides: readonly NationalIdCardSide[] = [],
   ): Promise<void> {
     if (fileIds.length === 0) return;
     try {
       const categoryId = await resolveNationalIdCardCategoryId();
       for (const [index, fileId] of fileIds.entries()) {
+        // Named by what it shows when the scanner said so — which is how the documents folder
+        // tells the front, the back and the face apart — else numbered, as before.
+        const side = sides[index];
         await fileService
           .copy(ctx, fileId, {
             moduleId: 'hr',
             entityType: 'applicant',
             entityId: applicantId,
             categoryId,
-            displayName: `${applicantCode} — national id ${index + 1}`,
+            displayName:
+              side === undefined
+                ? `${applicantCode} — national id ${index + 1}`
+                : `${applicantCode} — national id ${side}`,
             visibility: 'private',
+            ...(side === undefined ? {} : { tags: [nationalIdCardTag(side)] }),
           })
           .catch((error: unknown) => {
             logger.warn({ err: error, applicantId, fileId }, 'filing a national-id card failed');

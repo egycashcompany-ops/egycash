@@ -1,10 +1,4 @@
-"""Turning a photo upright by reading it.
-
-The fake recognizer here stands in for PaddleOCR the way the real one behaves: text that is the
-right way up reads confidently, text upside down reads as low-confidence garbage, and a photo on
-its side produces TALL line boxes. A marker block in the photo's top-left corner says which way up
-the fake is looking at it, so every rotation is checkable without a model.
-"""
+"""Turning a photo upright by reading it."""
 
 from __future__ import annotations
 
@@ -100,3 +94,29 @@ def test_a_reader_that_cannot_tell_keeps_the_photo_as_given():
 def test_a_recognizer_without_page_reading_leaves_the_photo_alone():
     image = turn(_photo(), 180)
     assert upright(image, object()) == (image, 0)
+
+
+class _FooledReader(_Reader):
+    """Reads a soft photo badly as given, and reads it 'best' turned sideways, the barcode case."""
+
+    def detect_lines(self, image):  # noqa: ANN001
+        self.calls += 1
+        height, width = image.shape[:2]
+        box = [[0, 0], [200, 0], [200, 20], [0, 20]]
+        if height > width:
+            return [(box, "خطوط باركود كثيرة جدا", 0.85)] * 6
+        return [(box, "قراءة", 0.6)] * 4
+
+
+def test_the_cards_outline_rules_out_turning_a_lying_card_on_its_side():
+    """A card lying along the photo is upright or upside down, never turned 90 by the barcode."""
+    image, turned = upright(_photo(), _FooledReader(), turns=(0, 180))
+    assert turned in (0, 180)
+    assert image.shape == _photo().shape
+
+
+def test_a_card_standing_in_the_photo_is_always_laid_down():
+    standing = turn(_photo(), 90)
+    image, turned = upright(standing, _Reader(), turns=(90, 270))
+    assert turned in (90, 270)
+    assert _corner(image) == "tl"

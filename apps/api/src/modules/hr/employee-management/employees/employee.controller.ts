@@ -148,6 +148,13 @@ export const updateEmployeeOfficer = async (req: Request, res: Response): Promis
 };
 
 /** Employed direct reports of this employee (manager tree seed). */
+/** The employee's National-ID card images, carried over from their applicant file. */
+export const getEmployeeNationalIdCard = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await employeeService.nationalIdCard(ctx, params.id, scopeSelector(ctx, 'employee.view')));
+};
+
 export const listSubordinates = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);

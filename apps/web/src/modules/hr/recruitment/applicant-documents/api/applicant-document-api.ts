@@ -4,6 +4,9 @@
 // `applicant-portal-api.ts`: a reviewer works through other people's files by definition, and it
 // is a permission that lets them, not a session that happens to be theirs.
 import {
+  type ApplicantFolderDetailDto,
+  type ApplicantFolderDto,
+  type DownloadTicketDto,
   type ApplicantDocumentSetDto,
   type Paginated,
   type ReviewApplicantDocument,
@@ -33,3 +36,23 @@ export const reviewApplicantDocument = (input: {
   body: ReviewApplicantDocument;
 }): Promise<ApplicantDocumentSetDto> =>
   post(`${BASE}/${input.applicantId}/documents/${input.typeId}/review`, input.body);
+
+// ── Folders: everything kept for each applicant ─────────────────────────────
+
+export interface ApplicantFolderParams {
+  page: number;
+  pageSize: number;
+  search?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+export const fetchApplicantFolders = (
+  params: ApplicantFolderParams,
+): Promise<Paginated<ApplicantFolderDto>> => getPage(`${BASE}/folders${buildQuery(params)}`);
+
+export const fetchApplicantFolder = (applicantId: string): Promise<ApplicantFolderDetailDto> =>
+  get(`${BASE}/folders/${applicantId}`);
+
+/** A short-lived signed URL for one file's bytes (the URL itself needs no session). */
+export const fileTicket = (fileId: string): Promise<DownloadTicketDto> =>
+  get<DownloadTicketDto>(`/platform/files/${fileId}/download?mode=ticket`);

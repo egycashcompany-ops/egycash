@@ -19,6 +19,7 @@ import {
   linkEmployeeUser,
   listEmployees,
   listSubordinates,
+  getEmployeeNationalIdCard,
   registerEmployeeDirect,
   rehireCheck,
   unlinkEmployeeUser,
@@ -155,6 +156,14 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.manageOfficer'),
     validate({ body: UpdateEmployeeOfficerSchema, params: EmployeeIdParamSchema }),
     asyncHandler(updateEmployeeOfficer),
+  );
+  // The National-ID card (front and back) carried over from the applicant file at hire.
+  router.get(
+    '/:id/national-id-card',
+    authenticate,
+    authorize('employee.view'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(getEmployeeNationalIdCard),
   );
   // Employed direct reports (manager tree seed).
   router.get(

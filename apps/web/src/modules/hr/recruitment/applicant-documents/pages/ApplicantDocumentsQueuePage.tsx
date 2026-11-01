@@ -1,8 +1,8 @@
 // The reviewer's worklist: candidates whose handed-in documents are waiting on a decision.
 //
-// TWO TABS, AND THE DEFAULT IS THE ONE WITH WORK IN IT. «Waiting» is what somebody opens this
-// screen to do; «all» is for looking a specific person up afterwards. Defaulting to the full list
-// would make the common case start with a filter.
+// THREE TABS. «Folders» opens first: one folder per applicant with everything kept for them —
+// their National-ID card (front, back and face), HR's attachments and what they handed in — each
+// downloadable. «Waiting» is the review work; «all» is for looking a specific person up afterwards.
 //
 // Each candidate expands in place rather than opening a detail route. A reviewer's unit of work is
 // one PERSON's four or five documents — accept, accept, refuse this one with a reason — and pushing
@@ -13,6 +13,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { EmptyState, LoadingState, Pagination, SearchInput } from '../../../../../shared/ui';
 import { ApplicantDocumentReview } from '../components/ApplicantDocumentReview';
+import { ApplicantFolders } from '../components/ApplicantFolders';
 import { useApplicantDocumentSets } from '../api/applicant-document-queries';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
 
@@ -23,7 +24,7 @@ import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFil
  */
 const REMEMBERED_FILTERS = ['q'] as const;
 
-const TABS = ['waiting', 'all'] as const;
+const TABS = ['folders', 'waiting', 'all'] as const;
 type Tab = (typeof TABS)[number];
 
 const PAGE_SIZE = 20;
@@ -35,7 +36,7 @@ export const ApplicantDocumentsQueuePage = (): JSX.Element => {
   // queue is a view of this screen rather than a place to go Back to.
   const [sp, setSp] = useSearchParams();
   const tabParam = sp.get('tab');
-  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'waiting';
+  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'folders';
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
     const next = new URLSearchParams(sp);
@@ -47,7 +48,7 @@ export const ApplicantDocumentsQueuePage = (): JSX.Element => {
     setSp(next, { replace: true });
   };
 
-  const setTab = (value: Tab): void => patch({ tab: value === 'waiting' ? null : value });
+  const setTab = (value: Tab): void => patch({ tab: value === 'folders' ? null : value });
   const search = sp.get('q') ?? '';
   const setSearch = (value: string): void => patch({ q: value });
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -57,7 +58,7 @@ export const ApplicantDocumentsQueuePage = (): JSX.Element => {
   const query = useApplicantDocumentSets({
     page,
     pageSize: PAGE_SIZE,
-    ...(tab === 'waiting' ? { pendingOnly: true } : {}),
+    ...(tab === 'all' ? {} : { pendingOnly: true }),
     ...(search.trim() === '' ? {} : { search: search.trim() }),
   });
 
@@ -97,17 +98,21 @@ export const ApplicantDocumentsQueuePage = (): JSX.Element => {
             </button>
           ))}
         </div>
-        <SearchInput
-          value={search}
-          onChange={(value) => {
-            setSearch(value);
-            setPage(1);
-          }}
-          placeholder={t('hr.applicantDocuments.searchPlaceholder')}
-        />
+        {tab !== 'folders' && (
+          <SearchInput
+            value={search}
+            onChange={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
+            placeholder={t('hr.applicantDocuments.searchPlaceholder')}
+          />
+        )}
       </div>
 
-      {query.isPending ? (
+      {tab === 'folders' ? (
+        <ApplicantFolders />
+      ) : query.isPending ? (
         <LoadingState />
       ) : query.isError || query.data === undefined ? (
         <EmptyState title={t('hr.applicantDocuments.loadFailed')} />

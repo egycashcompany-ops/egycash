@@ -26,6 +26,7 @@ import { EmployeeCostCenterCard } from '../components/EmployeeCostCenterCard';
 import { PersonalView } from '../components/PersonalView';
 import { EmployeeInsuranceCard } from '../components/EmployeeInsuranceCard';
 import { EmployeeOfficerCard } from '../components/EmployeeOfficerCard';
+import { EmployeeNationalIdCard } from '../components/EmployeeNationalIdCard';
 import { EditPersonalDialog } from '../components/EditPersonalDialog';
 import { EmployeeFileDocuments } from '../../employee-files/components/EmployeeFileDocuments';
 import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries';
@@ -365,6 +366,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
             </div>
           </Can>
           <PersonalView personal={e.personal} />
+          <EmployeeNationalIdCard employeeId={e.id} employeeCode={e.code} />
           {/*
             The insurance file and the officer profile sit HERE rather than on Overview beside the
             salary, and deliberately: the wages on the insurance file are statutory brackets, not

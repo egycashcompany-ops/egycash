@@ -1,18 +1,4 @@
-"""Combining several readings of the national ID.
-
-THE FAULT THIS ANSWERS. A card printed a number and the pipeline returned it with one digit wrong,
-inside the sequence. Both strings were structurally valid — same century, same birth date, same
-governorate — so `is_structurally_valid` accepted each, `parseNationalId` decoded each into a
-consistent person, and nothing downstream had any way to prefer one. Validation cannot catch this
-class of error and no amount of tightening it will, because the information that separates the two
-numbers is not in the number.
-
-It is in the pixels, and it is recoverable by reading them more than once under preprocessing that
-fails differently. Then the digit five reads agree on is corroborated, and the digit one read
-disagrees on is outvoted.
-
-Every number here is synthetic: structurally valid, and issued to nobody.
-"""
+"""Combining several readings of the national ID."""
 
 from __future__ import annotations
 
@@ -28,7 +14,7 @@ from nidocr.nid import is_structurally_valid  # noqa: E402
 
 TODAY = dt.date(2026, 7, 29)
 VALID = "29503141234567"
-#: The same number with one digit changed at position eleven — inside the sequence, where nothing
+#: The same number with one digit changed at position eleven, inside the sequence, where nothing
 #: constrains it. This is the shape of the reported fault: a different, equally valid person.
 NEAR_MISS = "29503141235567"
 
@@ -46,9 +32,6 @@ def _combine(*pairs: tuple[str, float]):
 
 def test_both_numbers_in_these_tests_are_valid():
     """Guards the whole file: if either stopped validating, every assertion below changes meaning.
-
-    This is the premise — structure cannot separate these two, so any test that appears to show
-    structure separating them is testing something else.
     """
     assert is_structurally_valid(VALID, today=TODAY)
     assert is_structurally_valid(NEAR_MISS, today=TODAY)
@@ -65,13 +48,7 @@ def test_reads_that_all_agree_are_reported_as_unanimous():
 
 
 def test_the_agreed_number_beats_a_higher_scoring_lone_disagreement():
-    """The reported fault, reduced to its essentials.
-
-    One variant reads a digit wrong and is *confident* about it — a thresholded crop against the
-    card's watermark produces exactly this: fewer competing hypotheses, so a higher score for the
-    wrong answer. Both candidates validate. Only the fact that two independent preprocessings
-    agreed on the other one can decide it, and it has to outweigh the score.
-    """
+    """The reported fault, reduced to its essentials."""
     settled = _combine((NEAR_MISS, 0.99), (VALID, 0.80), (VALID, 0.78))
     assert settled.value == VALID
     assert settled.agreement == "majority" and settled.support == 2
@@ -87,12 +64,7 @@ def test_a_lone_valid_read_is_kept_but_marked_as_such():
 
 
 def test_reads_that_each_get_one_digit_wrong_are_voted_back_together():
-    """No two reads are identical, yet every position has a clear majority.
-
-    This is the case a "pick the best single read" rule cannot solve at all: each candidate is
-    wrong somewhere, so whichever is chosen is wrong. Position-wise majority recovers a number that
-    no variant produced and every variant supports.
-    """
+    """No two reads are identical, yet every position has a clear majority."""
     first = "3" + VALID[1:]  # wrong century
     second = VALID[:10] + "9" + VALID[11:]  # wrong sequence digit
     third = VALID[:13] + "0"  # wrong parity digit
@@ -114,7 +86,8 @@ def test_a_voted_value_does_not_inherit_the_best_read_s_score():
 
 def test_agreement_wins_over_voting_even_when_voting_would_differ():
     """Two variants landing on the same fourteen digits is evidence; a positional majority is a
-    reconstruction. Where both are available, the thing that was actually read wins."""
+    reconstruction. Where both are available, the thing that was actually read wins.
+    """
     settled = _combine((VALID, 0.7), (VALID, 0.7), (NEAR_MISS, 0.99), (NEAR_MISS, 0.99))
     assert settled.value in (VALID, NEAR_MISS)
     assert settled.agreement == "majority", "a reconstruction must not displace a real agreement"
@@ -124,7 +97,7 @@ def test_agreement_wins_over_voting_even_when_voting_would_differ():
 
 
 def test_no_valid_reading_is_reported_as_invalid_rather_than_dressed_up():
-    """The value still goes to the reviewer — with `valid` false, so nothing treats it as read."""
+    """The value still goes to the reviewer, with `valid` false, so nothing treats it as read."""
     settled = _combine(("99999999999999", 0.9), ("99999999999999", 0.9))
     assert settled is not None
     assert not settled.valid
@@ -143,3 +116,84 @@ def test_the_diagnostics_carry_counts_and_never_the_number():
     reported = settled.as_diagnostics()
     assert set(reported) == {"agreement", "support", "reads"}
     assert VALID not in str(reported)
+
+
+# ── Partial reads ──
+#
+# The real fault: the sharp greyscale reads kept every stroke of ٥٣٥ but dropped the dot-sized
+# zeros at the row's start, so they came back short and did not vote; the thresholded reads kept
+# the zeros but filled the ring of ٥ into ٠, came back with fourteen digits, and won.
+
+#: A synthetic number ending ٥٣٥, and the same number with that ٥٣٥ read as ٠٣٠.
+FIVES = "29503141235535"
+FIVES_AS_ZEROS = "29503141230030"
+
+
+def _sourced(*reads: tuple[str, str, float]) -> list[Candidate]:
+    return [Candidate(variant=variant, digits=digits, score=score) for variant, digits, score in reads]
+
+
+def test_partial_reads_overrule_full_reads_they_do_not_fit():
+    assert is_structurally_valid(FIVES, today=TODAY)
+    assert is_structurally_valid(FIVES_AS_ZEROS, today=TODAY)
+    reads = _sourced(
+        ("page", FIVES[2:], 0.98),
+        ("grey", FIVES[3:], 0.97),
+        ("thick", FIVES[3:], 0.97),
+        ("clahe", FIVES[2:], 0.97),
+        ("binary", FIVES_AS_ZEROS, 0.80),
+        ("widened2:binary", FIVES_AS_ZEROS, 0.82),
+        ("otsu", FIVES_AS_ZEROS, 0.81),
+        ("widened2:thick", FIVES, 0.94),
+    )
+    settled = combine(reads, today=TODAY)
+    assert settled.value == FIVES
+    # A count that was overruled is a contest: flagged as a deduction, never the top band.
+    assert settled.agreement == "backed"
+    assert settled.deduced
+
+
+def test_a_partial_read_is_completed_from_a_full_one():
+    """No read has all fourteen right; the short sharp reads plus a full read's first digits do."""
+    reads = _sourced(
+        ("grey", FIVES[4:], 0.96),
+        ("thick", FIVES[4:], 0.98),
+        ("clahe", FIVES[4:], 0.95),
+        ("otsu", FIVES_AS_ZEROS, 0.73),
+        ("invert", FIVES_AS_ZEROS, 0.73),
+    )
+    settled = combine(reads, today=TODAY)
+    assert settled.value == FIVES
+    assert settled.support == 0
+
+
+def test_the_same_filter_on_a_widened_crop_is_one_source():
+    reads = _sourced(
+        ("grey", FIVES, 0.9),
+        ("binary", FIVES_AS_ZEROS, 0.9),
+        ("widened2:binary", FIVES_AS_ZEROS, 0.9),
+        ("widened4:binary", FIVES_AS_ZEROS, 0.9),
+    )
+    # Three binary reads are one opinion, so the count (3 to 1) is not overruled by backing alone,
+    # and backing does not invent a margin for it either.
+    settled = combine(reads, today=TODAY)
+    assert settled.value == FIVES_AS_ZEROS
+    assert settled.margin == 1.0
+
+
+def test_reads_that_fit_both_numbers_do_not_dilute_the_ones_that_separate_them():
+    """The back's widened read took the ٢ ending the issue date beside the ID: 2… against 3…."""
+    true = "30512180101234"
+    with_date_digit = "2" + true[1:]
+    # The borrowed digit now also makes the holder 123 years old, which no card holder is: the
+    # rival is ruled out by structure before the vote is needed. The vote must still agree.
+    assert is_structurally_valid(true, today=TODAY) and not is_structurally_valid(with_date_digit, today=TODAY)
+    reads = _sourced(
+        ("front:page", true, 0.99), ("front:grey", true, 0.98), ("front:thick", true, 0.98),
+        ("back:page", true[4:], 0.97), ("back:grey", true[2:], 0.92), ("back:thick", true[2:], 0.96),
+        ("back:widened2:thick", with_date_digit, 0.83), ("back:widened2:grey", with_date_digit[:-1] + "0", 0.73),
+    )
+    settled = combine(reads, today=TODAY)
+    assert settled.value == true
+    # The back's short reads fit both and decide nothing; the front's three reads decide it.
+    assert settled.margin >= 1.5

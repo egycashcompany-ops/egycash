@@ -1,28 +1,4 @@
-"""Fields found by reading the whole card first, then deciding which printed row is which.
-
-WHY THIS EXISTS. The box path decides WHERE each field is before reading anything: a profile puts
-a rectangle on the card, anchoring nudges it toward detected text, and only the pixels inside are
-read. On the first real card photographed for this spike that went wrong on every prose field —
-the name box held only the second name line, the address came back as two letters, and the back's
-occupation box covered the ID row — while `/read`, which simply reads every line on the photo,
-returned all of them correctly. The information was always in the photo; the boxes threw it away.
-
-So this path reads first and assigns second. Every line on the side is read at the photo's own
-resolution (the same call `/read` makes), lines are grouped into printed rows, and the rows are
-assigned by what an Egyptian card always prints, in order:
-
-  front   header (republic, card title) · name (two rows) · address (the rest) · 14-digit ID row
-  back    ID row (+ issue date) · occupation · gender/religion/marital row · "valid until" row
-
-Assignment uses content, not coordinates: the ID row is the one made of digits, the back's status
-row is the one carrying words from the closed gender/religion/marital vocabularies, the validity
-row is the one that says سارية. Position is only used for what content cannot settle — which text
-rows sit between two of those landmarks.
-
-Fields it cannot place are left out, and `extract` falls back to the box path for exactly those.
-A recognizer with no `read_page` (the model-free MockRecognizer) skips this path entirely, so every
-box-path test still exercises the box path.
-"""
+"""Fields found by reading the whole card first, then deciding which printed row is which."""
 
 from __future__ import annotations
 
@@ -33,16 +9,14 @@ from typing import Any
 import cv2
 import numpy as np
 
-from .arabic import levenshtein, rasm_fold, to_western_digits
+from .arabic import levenshtein, normalize_arabic, rasm_fold, to_western_digits
 from .document import _bounds, _rows
 from .postprocess import MARITAL_TERMS, RELIGION_TERMS, clean_expiry
 
 _ARABIC_LETTER = re.compile(r"[ء-ي]")
 _DIGIT = re.compile(r"\d")
 
-#: Words from the printed header. A row carrying one, near the top, is furniture, and so is every
-#: row above it (the calligraphic republic name is often read as garbage, so it cannot be matched
-#: on its own — but it is always above the card title, which can).
+#: Words from the printed header.
 _HEADER_WORDS = frozenset(rasm_fold(w) for w in ("بطاقة", "تحقيق", "الشخصية", "جمهورية", "العربية"))
 _GENDER_WORDS = frozenset(rasm_fold(w) for w in ("ذكر", "أنثى", "انثي"))
 _RELIGION = {rasm_fold(term): term for term in RELIGION_TERMS}
@@ -51,7 +25,13 @@ _MARITAL = {rasm_fold(term): term for term in MARITAL_TERMS}
 _ADDRESS_WORDS = frozenset(
     rasm_fold(w)
     for w in ("ش", "شارع", "برج", "عمارة", "عماره", "قسم", "مركز", "حي", "الحي", "الحى", "ميدان",
-              "شياخة", "قرية", "عزبة", "مدينة", "مدينه", "طريق", "بلوك")
+              "شياخة", "قرية", "قريه", "عزبة", "عزبه", "مدينة", "مدينه", "طريق", "بلوك", "نجع",
+              "كفر", "منشاة", "منشأة", "منشية", "حارة", "حاره", "عطفة", "عطفه", "درب", "ناحية")
+)
+#: Address words found even glued to the word before them, a soft photo loses the hyphen in
+#: 'البراهمه-نجع جوده' and reads 'البراهمهنجع'.
+_GLUED_ADDRESS_WORDS = tuple(
+    normalize_arabic(w) for w in ("نجع", "عزبة", "شارع", "مركز", "قرية", "منشاة", "شياخة")
 )
 _VALIDITY_WORDS = frozenset(rasm_fold(w) for w in ("سارية", "حتى", "حتي"))
 
@@ -70,21 +50,35 @@ class RowRead:
     fields: dict[str, tuple[str, float, tuple[float, float, float, float]]] = field(
         default_factory=dict
     )
-    #: Every line read, as (polygon, text, score) — the shape `detect_lines` returns, so the
+    #: Every line read, as (polygon, text, score), the shape `detect_lines` returns, so the
     #: back-of-card checks (printed gender, side mismatch) work on these unchanged.
     lines: list[tuple[object, str, float]] = field(default_factory=list)
+    #: The lines of the other reads (zoomed, enhanced), for checks that need only their words, such
+    #: as the printed sex. Kept apart so line counts and positions stay those of the first read.
+    pass_lines: list[tuple[object, str, float]] = field(default_factory=list)
     rows: list[list[str]] = field(default_factory=list)
     #: The image each field's bounds refer to. A field may come from the zoomed or the enhanced
     #: read (see `read_by_rows`), and a crop taken from the wrong image is a crop of nothing.
     images: dict[str, np.ndarray] = field(default_factory=dict)
     #: Which reads were made, for the diagnostics: 'photo', 'zoomed xN', 'enhanced'.
     passes: list[str] = field(default_factory=list)
+    #: field name -> (left limit, right limit) a wider re-read of the field must stay inside, in
+    #: the same image's pixels; None for no limit.
+    fences: dict[str, tuple[float | None, float | None]] = field(default_factory=dict)
     #: On the back: the gap between the sex word and the marital status, where the religion is
-    #: printed — kept so a religion detection missed can be read from exactly there.
+    #: printed, kept so a religion detection missed can be read from exactly there.
     religion_gap: tuple[float, float, float, float] | None = None
     #: On the back: the year of the issue date printed beside the ID (its month is often misread,
     #: so only the year is kept). For the cross-checks in `crosscheck.py`; never returned.
     issue_year: int | None = None
+    #: On the front: the birth date printed beside the ID, as YYYYMMDD. The number carries the
+    #: same date in its digits 2-7, so it is an independent read of half the number.
+    birth: str | None = None
+    #: On the front: where the name's two rows should be, and the rows found there (see
+    #: `_recover_name`). None when the header or the ID row was not found to measure from.
+    name_geo: dict[str, Any] | None = None
+    #: True when `_recover_name` changed the name.
+    recovered_name: bool = False
 
 
 def _letters(text: str) -> int:
@@ -135,10 +129,16 @@ def _text_field(rows: list[list[dict[str, Any]]]) -> tuple[str, float, tuple] | 
 
 
 def _id_row(rows: list[list[dict[str, Any]]]) -> int | None:
-    """The row whose number-only lines hold the most digits, if that is at least ten."""
-    best, best_count = None, 9
+    """The row whose number-only lines hold the most digits, if that is at least six."""
+    best, best_count = None, 5
     for index, row in enumerate(rows):
-        count = sum(len(_digits(line["text"])) for line in row if _is_number_part(line))
+        row = [_undated(line) for line in row]
+        count = sum(
+            len(_digits(line["text"]))
+            for line in row
+            if _is_number_part(line)
+            and not _is_date(_digits(line["text"]))
+        )
         if count > best_count:
             best, best_count = index, count
     return best
@@ -148,27 +148,93 @@ def _id_row(rows: list[list[dict[str, Any]]]) -> int | None:
 #: row, and with its slash misread as ١ it is a digits-only line like any piece of the number.
 _DATE_LIKE = re.compile(r"^(19|20)\d{2}")
 
+#: The same dates with each slash read as ١, the way the recognizer most often reads a slash:
+#: '2003/07/25' as 2003107125, '2019/12' as 2019112. Ten and seven digits, so the "at most eight"
+#: rule above let them join the number as pieces of it.
+_SLASHED_DATE = re.compile(r"^(?:19|20)\d{2}1(?:0[1-9]|1[0-2])(?:1(?:0[1-9]|[12]\d|3[01]))?$")
+
+
+#: A date written with separators, inside a longer piece of text.
+_DATE_IN_LINE = re.compile(r"(?:19|20)\d{2}\s*[/\|.\-]\s*\d{1,2}(?:\s*[/\|.\-]\s*\d{1,2})?")
+
+
+def _undated(line: dict[str, Any]) -> dict[str, Any]:
+    """`line` with a date at either end of it taken off, its box shortened to match.
+
+    The detector sometimes boxes the issue date (back) or birth date (front) together with the
+    first digits of the number beside it; the slash then kept the whole box out of the number, and
+    the number came back short by those digits.
+    """
+    text = to_western_digits(line["text"])
+    match = _DATE_IN_LINE.search(text)
+    if match is None:
+        return line
+    rest = (text[: match.start()] + " " + text[match.end():]).strip()
+    if len(_digits(rest)) < 2 or "/" in rest or (match.start() > 0 and match.end() < len(text)):
+        return line  # nothing left of the number, or the date sits in the middle of something
+    left, top, right, bottom = line["box"]
+    share = len(rest) / max(len(text), 1)
+    # Digits read left to right: a date at the start of the text was on the left of the box.
+    if match.start() == 0:
+        left = right - share * (right - left)
+    else:
+        right = left + share * (right - left)
+    return {**line, "text": rest, "box": (left, top, right, bottom)}
+
+
+def _is_date(digits: str, shortest: int = 0) -> bool:
+    """Is this run of digits a date printed beside the number rather than a piece of it?"""
+    if _SLASHED_DATE.match(digits):
+        return True
+    return bool(_DATE_LIKE.match(digits)) and max(shortest, 1) <= len(digits) <= 8
+
 
 def _id_field(row: list[dict[str, Any]]) -> tuple[str, float, tuple]:
     # Digits read left to right even on a right-to-left card: the groups are joined by x.
     parts = sorted((line for line in row if _is_number_part(line)), key=lambda item: item["box"][0])
     whole = [line for line in parts if 13 <= len(_digits(line["text"])) <= 15]
     if whole:
-        # Read in one piece: that piece IS the number, whatever else shares the row.
+        # Read in one piece: that piece is the number, whatever else shares the row.
         parts = [min(whole, key=lambda line: abs(len(_digits(line["text"])) - 14))]
     else:
+        # A long date-shaped piece is always the issue date: no 6+ digit stretch of a living
+        # holder's number starts 19 or 20.
+        parts = [
+            line
+            for line in parts
+            if not _is_date(_digits(line["text"]), shortest=6)
+        ] or parts
         undated = [
             line
             for line in parts
-            if not (_DATE_LIKE.match(_digits(line["text"])) and len(_digits(line["text"])) <= 8)
+            if not _is_date(_digits(line["text"]))
         ]
-        # Only drop what looked like a date if what is left can still be the number: a piece of
-        # the ID itself can start with 19 or 20 (a month and day, '2012'), and dropping it lost
-        # real digits.
+        # Only drop what looked like a date if what is left can still be the number: a piece of the
+        # ID itself can start with 19 or 20 (a month and day, '2012'), and dropping it lost real
+        # digits.
         if len("".join(_digits(line["text"]) for line in undated)) >= 12:
             parts = undated
     raw = "".join(_digits(line["text"]) for line in parts)
     return raw, min(line["score"] for line in parts), _union(parts)
+
+
+def _id_fence(
+    row: list[dict[str, Any]], bounds: tuple[float, float, float, float]
+) -> tuple[float | None, float | None]:
+    """How far a wider re-read of the ID may reach before it reaches the date printed beside it."""
+    left, _, right, _ = bounds
+    lower = upper = None
+    for line in row:
+        digits = _digits(line["text"])
+        dated = "/" in line["text"] or _is_date(digits, shortest=4)
+        if not digits or not dated:
+            continue
+        box_left, _, box_right, _ = line["box"]
+        if box_right <= left + 1:
+            lower = box_right if lower is None else max(lower, box_right)
+        elif box_left >= right - 1:
+            upper = box_left if upper is None else min(upper, box_left)
+    return lower, upper
 
 
 def _is_prose(line: dict[str, Any]) -> bool:
@@ -176,13 +242,7 @@ def _is_prose(line: dict[str, Any]) -> bool:
 
 
 def _prose_row(row: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """A row's text, or nothing if the row has no Arabic words.
-
-    Numbers are kept when they share a row with words: an address starts with its house number,
-    and on a far-away photo the detector reads '٣٥٥' as a line of its own — dropping number-only
-    lines threw the house number away. A row of numbers alone is not prose, and stray Latin
-    fragments (noise read off the background pattern) never are.
-    """
+    """A row's text, or nothing if the row has no Arabic words."""
     if not any(_is_prose(line) for line in row):
         return []
     return [line for line in row if _is_prose(line) or (_digits(line["text"]) and not re.search(r"[A-Za-z]", line["text"]))]
@@ -196,10 +256,249 @@ def _centre(row: list[dict[str, Any]]) -> float:
     return float(np.mean([(line["box"][1] + line["box"][3]) / 2.0 for line in row]))
 
 
+#: How much wider the gap under the header is than the gap below it. On a real card the header's
+#: centre sits ~1.4x further from the given name than the given name does from the rest of the
+#: name, while with no header the given name is CLOSER to its second row than that row is to the
+#: address (~0.75x).
+HEADER_GAP = 1.2
+
+#: The fewest text rows a front can keep once the header is cut: two for the name, one address.
+MIN_BODY_ROWS = 3
+
+
+def _header_rows_by_position(
+    body: list[list[dict[str, Any]]], id_row: list[dict[str, Any]]
+) -> int:
+    """How many rows at the top of `body` are the unread header, judged by position alone.
+
+    Position alone is not enough. Measured from the top of the TEXT, the header fills the first
+    ~quarter — but only when the header was detected at all. When it was not (glare, blur, a
+    distant photo), the top of the text is the given name, and a rule that drops whatever sits in
+    the first quarter dropped the given name: 'حسن فؤاد سمير عطية' came back as 'فؤاد سمير عطية'.
+    A short given name is hit hardest, because it is alone on its row.
+
+    What does tell the header apart is the gap under it. The given name and the rest of the name
+    are the tightest pair of rows on the card, so a header is followed by a gap clearly wider than
+    the next one down, and a given name by one that is narrower. A top row counts as header only
+    if it lies in the header share, that wider gap follows it, and enough rows stay for a name and
+    an address. Otherwise nothing is dropped: keeping a header row costs a stray word the review
+    shows, dropping the given name costs the name.
+    """
+    centres = [_centre(row) for row in body] + [_centre(id_row)]
+    top = min(line["box"][1] for line in body[0])
+    span = max(centres[-1] - top, 1.0)
+    gaps = [b - a for a, b in zip(centres, centres[1:])]
+    cut = 0
+    for index in range(len(gaps) - 1):
+        if (centres[index] - top) / span >= HEADER_SHARE or len(body) - (index + 1) < MIN_BODY_ROWS:
+            break
+        if gaps[index] > HEADER_GAP * gaps[index + 1]:
+            cut = index + 1
+    return cut
+
+
+#: A printed date with its separators read as anything that is not a digit.
+_SEPARATED_DATE = re.compile(r"((?:19|20)\d{2})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})")
+
+
+def _as_date(year: str, month: str, day: str) -> str | None:
+    import datetime as _dt  # noqa: PLC0415
+
+    try:
+        _dt.date(int(year), int(month), int(day))
+    except ValueError:
+        return None
+    return f"{year}{int(month):02d}{int(day):02d}"
+
+
+def _birth_date(rows: list[list[dict[str, Any]]], id_index: int) -> str | None:
+    """The birth date printed beside the front's ID, as YYYYMMDD, if one reads as a real date."""
+    for row in rows[max(0, id_index - 1) : id_index + 2]:
+        for line in row:
+            text = to_western_digits(line["text"])
+            match = _SEPARATED_DATE.search(text)
+            if match is not None:
+                found = _as_date(*match.groups())
+                if found:
+                    return found
+            digits = _digits(text)
+            if len(digits) == 10 and _SLASHED_DATE.match(digits):
+                found = _as_date(digits[:4], digits[5:7], digits[8:10])
+            elif len(digits) == 8 and _DATE_LIKE.match(digits):
+                found = _as_date(digits[:4], digits[4:6], digits[6:8])
+            else:
+                found = None
+            if found:
+                return found
+    return None
+
+
+#: Where the card's rows sit between the bottom of its title (0) and the top of the ID number (1),
+#: measured on every well-read photo here: the given name 0.10-0.18, the rest of the name 0.27-0.37,
+#: the address from 0.49. A row centred above NAME_ROW_LIMIT is the name's.
+NAME_ROW_LIMIT = 0.43
+NAME_SLOTS = (0.145, 0.32)
+#: How far from a slot's centre a row still counts as being in it, and how far a probe reaches
+#: above and below it (both as shares of the title-to-number span).
+SLOT_REACH = 0.09
+PROBE_REACH = 0.11
+#: Where the text starts, as a share of the image's width: right of the portrait.
+TEXT_LEFT_SHARE = 0.30
+#: Confidence a probe read needs, and the share of the image's width it must span at least.
+PROBE_SCORE = 0.7
+PROBE_MIN_WIDTH = 0.04
+
+
+def _name_geometry(
+    rows: list[list[dict[str, Any]]], header: int | None, id_index: int | None
+) -> tuple[float, float] | None:
+    """(bottom of the title, distance from it to the ID number's top), or None."""
+    if header is None or id_index is None:
+        return None
+    top = max(line["box"][3] for line in rows[header])
+    bottom = min(line["box"][1] for line in rows[id_index])
+    return (top, bottom - top) if bottom - top > 40 else None
+
+
+def _known_name_words(text: str) -> bool:
+    from .lexicon import _index  # noqa: PLC0415 - the word lists load on first use
+
+    known = _index("name")[0]  # normalized: ى is ي, ة is ه, as the card's reader folds them
+    words = normalize_arabic(text).split()
+    return bool(words) and all(word in known or word.startswith("عبد") for word in words)
+
+
+#: Printed text is the darkest thing on the card: a pixel darker than this share of the strip's
+#: median is ink, the pyramids, the guilloche and the tint behind the print are not.
+PROBE_INK_SHARE = 0.55
+PROBE_INK_MAX = 110
+
+
+def _ink_columns(crop: np.ndarray) -> tuple[int, int] | None:
+    """(first, last) column holding printed ink in a probe strip, or None if it holds none."""
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    dark = gray < min(PROBE_INK_MAX, float(np.median(gray)) * PROBE_INK_SHARE)
+    columns = np.flatnonzero(dark.sum(axis=0) >= max(2, int(0.03 * gray.shape[0])))
+    return (int(columns[0]), int(columns[-1])) if columns.size else None
+
+
+def _known_after_one_stray(text: str) -> str | None:
+    """`text` with one letter dropped from either end, if that makes it a known name.
+
+    A probe strip still reaches some background, and the recognizer turns a pyramid's edge or a
+    guilloche swirl next to a short name into one extra letter: 'هدى' read as 'هدىه'. One stray
+    letter at an end is that artefact; a longer difference is a different word.
+    """
+    words = text.split()
+    if not words:
+        return None
+    # The card prints some names with a gap inside them ('هـ دى'), and the recognizer splits them
+    # there: 'هد ى'. Joined, it is the name.
+    if len(words) > 1 and _known_name_words("".join(words)):
+        return "".join(words)
+    for index in (len(words) - 1, 0):
+        word = words[index]
+        for trimmed in (word[:-1], word[1:]):
+            if _letters(trimmed) >= 2:
+                candidate = " ".join(words[:index] + [trimmed] + words[index + 1 :])
+                if _known_name_words(candidate):
+                    return candidate
+    return None
+
+
+def _probe(image: np.ndarray, box: tuple[int, int, int, int], recognizer: object) -> tuple[str, float] | None:
+    """Read one strip of the card, on its own, for a word page detection dropped."""
+    recognize = getattr(recognizer, "recognize", None)
+    left, top, right, bottom = box
+    height, width = image.shape[:2]
+    left, top, right, bottom = max(0, left), max(0, top), min(width, right), min(height, bottom)
+    if recognize is None or right - left < PROBE_MIN_WIDTH * width or bottom - top < 8:
+        return None
+    strip = image[top:bottom, left:right]
+    # The strip runs from the portrait to the text's right edge, so a short given name is a few
+    # percent of it and the rest is the pyramids and the guilloche — which the recognizer reads
+    # too ('هدى' came back 'هدىه' and was refused). Cut it to the printed ink, keeping a margin of
+    # one strip height so a stroke's faint edge stays in. No dark ink at all: nothing is printed.
+    span = _ink_columns(strip)
+    if span is None:
+        return None
+    pad = bottom - top
+    strip = strip[:, max(0, span[0] - pad) : min(strip.shape[1], span[1] + pad + 1)]
+    crop = cv2.resize(strip, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    try:
+        out = recognize(crop, rtl=True)
+    except Exception:  # noqa: BLE001 - a probe is a second chance, never a reason to fail
+        return None
+    text = " ".join(out.text.split())
+    if _letters(text) < 2 or _DIGIT.search(to_western_digits(text)) or re.search(r"[A-Za-z]", text):
+        return None
+    # A name the card could carry is believed at the model's usual confidence; anything else needs
+    # to be read nearly perfectly, or it is the pattern behind the print and not a word.
+    if _known_name_words(text):
+        return (text, float(out.score)) if out.score >= PROBE_SCORE else None
+    cleaned = _known_after_one_stray(text)
+    if cleaned is not None:
+        return (cleaned, float(out.score)) if out.score >= PROBE_SCORE else None
+    return (text, float(out.score)) if out.score >= 0.9 else None
+
+
+def _recover_name(image: np.ndarray, read: RowRead, recognizer: object) -> None:
+    """Put back a given name, or the last words of the name, that page detection dropped.
+
+    Short words at the end of a printed line are what the detector loses (a three-letter name
+    after four others, a given name alone above the rest): the box is never made, so no recognizer
+    ever sees them. The name's rows are at known places between the title and the number, so the
+    places where a row or the end of one is missing are read directly.
+    """
+    geo = read.name_geo
+    if geo is None or "fullNameAr" not in read.fields:
+        return
+    top, span, right, text_left = geo["top"], geo["span"], geo["right"], geo["left"]
+    width = image.shape[1]
+    limit = int(min(TEXT_LEFT_SHARE * width, text_left))
+    placed: list[tuple[float, str, float]] = []  # (centre, text, score)
+    taken: set[int] = set()
+    for centre in NAME_SLOTS:
+        slot = [
+            (i, row) for i, row in enumerate(geo["rows"])
+            if i not in taken and abs((_centre(row) - top) / span - centre) <= SLOT_REACH
+        ]
+        y0, y1 = int(top + (centre - PROBE_REACH) * span), int(top + (centre + PROBE_REACH) * span)
+        if not slot:
+            found = _probe(image, (limit, y0, int(right) + 2, y1), recognizer)
+            if found is not None:
+                placed.append((centre, found[0], found[1]))
+            continue
+        i, row = slot[0]
+        taken.add(i)
+        row_left = int(min(line["box"][0] for line in row))
+        text = _rtl_text(row)
+        score = float(np.mean([line["score"] for line in row]))
+        found = _probe(image, (limit, y0, row_left - 2, y1), recognizer)
+        if found is not None:
+            text, score = f"{text} {found[0]}", (score + found[1]) / 2
+        placed.append((centre, text, score))
+    for i, row in enumerate(geo["rows"]):
+        if i not in taken:  # a row between the slots: kept, in its place
+            placed.append(((_centre(row) - top) / span, _rtl_text(row), float(np.mean([l["score"] for l in row]))))
+    placed.sort(key=lambda item: item[0])
+    text = " ".join(item[1] for item in placed).strip()
+    if not text or text == read.fields["fullNameAr"][0].strip():
+        return
+    _, y_top, _, y_bottom = read.fields["fullNameAr"][2]
+    read.fields["fullNameAr"] = (
+        text,
+        float(np.mean([item[2] for item in placed])),
+        (float(limit), min(y_top, top + 0.05 * span), float(right), y_bottom),
+    )
+    read.recovered_name = True
+
+
 def _front(rows: list[list[dict[str, Any]]], out: RowRead) -> None:
     id_index = _id_row(rows)
     if id_index is not None:
-        out.fields["nationalId"] = _id_field(rows[id_index])
+        out.fields["nationalId"] = _id_field([_undated(line) for line in rows[id_index]])
+        out.birth = _birth_date(rows, id_index)
 
     # Everything above the ID row; the header and anything above it removed.
     body = rows[:id_index] if id_index is not None else rows
@@ -211,29 +510,36 @@ def _front(rows: list[list[dict[str, Any]]], out: RowRead) -> None:
         body = body[header + 1 :]
     elif id_index is not None and body:
         # The card title did not read (on a tiny card its letters are a few pixels tall), so the
-        # garbled header would be taken for the first name. Find it by position instead: from the
-        # top of the text to the ID row, the header fills the first ~quarter (on a real card it
-        # ends at 0.16 and the first name starts at 0.32).
-        top = min(line["box"][1] for line in body[0])
-        bottom = _centre(rows[id_index])
-        span = max(bottom - top, 1.0)
-        body = [row for row in body if (_centre(row) - top) / span >= HEADER_SHARE]
+        # garbled header would be taken for the first name. Find it by position instead.
+        body = body[_header_rows_by_position(body, rows[id_index]) :]
     text_rows = [_prose_row(row) for row in body]
     text_rows = [row for row in text_rows if row]
     if not text_rows:
         return
 
     # A real card prints the name on two rows (given name, then the rest) and the address below.
-    # A name that fits may sit on one row, though, and then the second row is the address's first
-    # — which is recognisable: a name carries no digits and none of the address's own words. With
-    # only two rows there is no way to know the name wrapped, so it gets one.
-    second_is_address = len(text_rows) > 1 and any(
-        _DIGIT.search(to_western_digits(line["text"])) or any(
-            rasm_fold(token) in _ADDRESS_WORDS for token in line["text"].split()
-        )
-        for line in text_rows[1]
-    )
-    split = 2 if len(text_rows) >= 3 and not second_is_address else 1
+    geometry = _name_geometry(rows, header, id_index)
+    if geometry is not None:
+        # Which rows are the name is a matter of where they are between the title and the number,
+        # not of how many rows were detected: a given name the detector dropped left the first
+        # address row to be taken for the second half of the name.
+        top, span = geometry
+        names = [row for row in text_rows if (_centre(row) - top) / span < NAME_ROW_LIMIT]
+        if names:
+            split = len(names)
+            text_rows = names + [row for row in text_rows if row not in names]
+            out.name_geo = {
+                "top": top,
+                "span": span,
+                "rows": [[line for line in row if _is_prose(line)] for row in names],
+                "right": max(line["box"][2] for row in text_rows for line in row),
+                "left": min(line["box"][0] for row in text_rows for line in row),
+            }
+        else:
+            geometry = None
+    if geometry is None:
+        second_is_address = len(text_rows) > 1 and any(_looks_like_address(line["text"]) for line in text_rows[1])
+        split = 2 if len(text_rows) >= 3 and not second_is_address else 1
     # A name has no digits, so a number on a name row is background noise read as text; only the
     # address keeps its numbers (see `_prose_row`).
     name_rows = [[line for line in row if _is_prose(line)] for row in text_rows[:split]]
@@ -241,6 +547,20 @@ def _front(rows: list[list[dict[str, Any]]], out: RowRead) -> None:
         read = _text_field(chosen)
         if read is not None:
             out.fields[name] = read
+
+
+def _looks_like_address(text: str) -> bool:
+    """A digit, an address word, or a hyphen joining two places: no name has any of them."""
+    if _DIGIT.search(to_western_digits(text)) or "-" in text:
+        return True
+    tokens = text.split()
+    if any(rasm_fold(token) in _ADDRESS_WORDS for token in tokens):
+        return True
+    return any(
+        word in normalize_arabic(token) and len(token) > len(word)
+        for token in tokens
+        for word in _GLUED_ADDRESS_WORDS
+    )
 
 
 def _issue_year(row: list[dict[str, Any]]) -> int | None:
@@ -255,7 +575,8 @@ def _issue_year(row: list[dict[str, Any]]) -> int | None:
 def _back(rows: list[list[dict[str, Any]]], out: RowRead) -> None:
     id_index = _id_row(rows)
     if id_index is not None:
-        out.fields["nationalId"] = _id_field(rows[id_index])
+        out.fields["nationalId"] = _id_field([_undated(line) for line in rows[id_index]])
+        out.fences["nationalId"] = _id_fence(rows[id_index], out.fields["nationalId"][2])
         out.issue_year = _issue_year(rows[id_index])
 
     status_index = None
@@ -347,13 +668,7 @@ def _read_religion_gap(image: np.ndarray, read: RowRead, recognizer: object) -> 
 
 
 def _religion_by_position(row: list[dict[str, Any]]) -> str | None:
-    """The religion word when blur has left too little of it to match: read from where it sits.
-
-    The status row prints sex, religion and marital status right to left, always in that order.
-    With the sex word found (it is short and survives blur best), the next word to its left is the
-    religion, and there are only four it can be. The nearest of them is taken, in the grammatical
-    gender the sex word gives — a blurred 'مسلم' read as 'مسد' is still nearer مسلم than مسيحي.
-    """
+    """The religion word when blur has left too little of it to match: read from where it sits."""
     words = [
         (line["box"][2], token)
         for line in row
@@ -385,12 +700,7 @@ def _religion_by_position(row: list[dict[str, Any]]) -> str | None:
 
 
 def _vocabulary(tokens: list[str], vocabulary: dict[str, str]) -> str | None:
-    """The vocabulary word among these tokens: exact first, then one edit away.
-
-    One edit, and only for tokens of three letters or more: a blurred مسلم comes back as ملم, and
-    at that distance it is still closer to مسلم than to any other word on the back of a card. A
-    two-letter fragment is not evidence of anything.
-    """
+    """The vocabulary word among these tokens: exact first, then one edit away."""
     exact = next((vocabulary[t] for t in tokens if t in vocabulary), None)
     if exact is not None:
         return exact
@@ -409,7 +719,7 @@ def _vocabulary(tokens: list[str], vocabulary: dict[str, str]) -> str | None:
 # far away puts its text at 10-15 px inside a 4000 px frame; a blurred or dark photo leaves the
 # strokes too soft to separate. Both are recoverable from the same photo: crop to where the text
 # is and enlarge it, and raise the local contrast. Each costs one more full read, so they run only
-# when the read of the photo as given came back WEAK — a clean close-up pays nothing.
+# when the read of the photo as given came back weak, a clean close-up pays nothing.
 
 #: Median line height the zoom aims for, in pixels: about what a close-up phone photo of a card
 #: gives, which is where the recognizer was measured reading every field correctly.
@@ -425,7 +735,7 @@ WEAK_SCORE = 0.90
 def _lines(image: np.ndarray, read) -> list[dict[str, Any]]:
     try:
         found = read(image)
-    except Exception:  # noqa: BLE001 — a failed extra pass costs the pass, not the card
+    except Exception:  # noqa: BLE001 - a failed extra pass costs the pass, not the card
         return []
     return [
         {"text": text.strip(), "score": float(score), "box": _bounds(poly)}
@@ -443,7 +753,7 @@ MAX_SKEW = 15.0
 def _polys(image: np.ndarray, read) -> list[tuple[object, str, float]]:
     try:
         return [(poly, text, score) for poly, text, score in read(image) if text and text.strip()]
-    except Exception:  # noqa: BLE001 — a failed read costs the card's rows, never the request
+    except Exception:  # noqa: BLE001 - a failed read costs the card's rows, never the request
         return []
 
 
@@ -455,13 +765,7 @@ def _as_line_dicts(found: list[tuple[object, str, float]]) -> list[dict[str, Any
 
 
 def _skew(found: list[tuple[object, str, float]]) -> float | None:
-    """The card's tilt in degrees, from the slope of its long lines. None if level enough.
-
-    WHY THIS MATTERS. Rows are grouped by vertical position, and the ID row is the longest line on
-    the card. Tilted a few degrees, its left end sits a whole line-height away from its right end,
-    so it is split into two "rows" — and only the half with more digits is taken as the number. A
-    far-away card tilted 6 degrees lost its first two digits exactly that way, in every variant.
-    """
+    """The card's tilt in degrees, from the slope of its long lines. None if level enough."""
     angles = []
     for poly, _, _ in found:
         try:
@@ -506,8 +810,8 @@ def _zoom(image: np.ndarray, lines: list[dict[str, Any]]) -> tuple[np.ndarray, f
     heights = sorted(line["box"][3] - line["box"][1] for line in text)
     line_height = max(heights[len(heights) // 2], 1.0)
     left, top, right, bottom = _union(text)
-    # Generous, because the rows the first read MISSED are exactly the ones this pass is for, and
-    # they lie outside the union of the ones it found — on a far-away back the whole ID row did.
+    # Generous, because the rows the first read missed are exactly the ones this pass is for, and
+    # they lie outside the union of the ones it found, on a far-away back the whole ID row did.
     pad_x = max(line_height * 2, (right - left) * 0.15)
     pad_y = max(line_height * 2, (bottom - top) * 0.35)
     height, width = image.shape[:2]
@@ -574,22 +878,17 @@ def _weak(read: RowRead, side: str) -> bool:
 
 
 def _merge(reads: list[RowRead]) -> RowRead:
-    """Each field from the read that got it best: a sound value first, then the higher score.
-
-    Per field rather than per read, because the passes fail differently: a zoomed read can recover
-    the religion and lose a digit the plain read had, and keeping either read whole would throw
-    away the other's correct field.
-    """
+    """Each field from the read that got it best: a sound value first, then the higher score."""
     merged = RowRead(
         lines=reads[0].lines,
+        pass_lines=[line for read in reads[1:] for line in (*read.lines, *read.pass_lines)],
         rows=reads[0].rows,
         passes=[label for read in reads for label in read.passes],
         issue_year=next((read.issue_year for read in reads if read.issue_year), None),
+        birth=next((read.birth for read in reads if read.birth), None),
     )
-    # The name and the address are cut from the SAME run of rows — where one ends the other
-    # begins — so they must come from the same read. Taken separately, one read's one-row name
-    # and another read's address that starts below ITS two-row name lost the name's second line
-    # between them on a real card. The pair comes from whichever read placed more text in them.
+    # The name and the address are cut from the same run of rows (where one ends the other
+    # begins), so they must come from the same read.
     paired = ("fullNameAr", "address")
     with_both = [read for read in reads if all(name in read.fields for name in paired)]
     if with_both:
@@ -603,6 +902,8 @@ def _merge(reads: list[RowRead]) -> RowRead:
         for name in paired:
             merged.fields[name] = best.fields[name]
             merged.images[name] = best.images[name]
+            if name in best.fences:
+                merged.fences[name] = best.fences[name]
     for name in {name for read in reads for name in read.fields} - set(merged.fields):
         best = max(
             (read for read in reads if name in read.fields),
@@ -610,6 +911,8 @@ def _merge(reads: list[RowRead]) -> RowRead:
         )
         merged.fields[name] = best.fields[name]
         merged.images[name] = best.images[name]
+        if name in best.fences:
+            merged.fences[name] = best.fences[name]
     return merged
 
 
@@ -620,16 +923,13 @@ def _as_dicts(read: RowRead) -> list[dict[str, Any]]:
 
 
 def read_by_rows(image: np.ndarray, side: str, recognizer: object) -> RowRead | None:
-    """Read every line on this side and assign the fields. None if the recognizer cannot.
-
-    The photo as given is read first. Only if that read is weak — a field missing, a number that
-    is not fourteen digits, an expiry that is not a date, or a low mean score — is it read again
-    zoomed onto the text, and then, if still weak, zoomed and enhanced. Fields are merged across
-    the reads that were made.
-    """
+    """Read every line on this side and assign the fields. None if the recognizer cannot."""
     read = getattr(recognizer, "read_page", None)
     if read is None:
         return None
+    # The tilt is measured on a full read, not on the quick one the orientation check made: tried,
+    # the quick read's tilt levelled a real card it should not have, and its name and address each
+    # lost a letter, for about a second saved.
     found = _polys(image, read)
     angle = _skew(found)
     if angle is not None:
@@ -639,6 +939,8 @@ def read_by_rows(image: np.ndarray, side: str, recognizer: object) -> RowRead | 
         reads = [_assign(image, side, _as_line_dicts(found), "photo")]
     if side == "back":
         _read_religion_gap(image, reads[0], recognizer)
+    else:
+        _recover_name(image, reads[0], recognizer)
     if not _weak(reads[0], side):
         return reads[0]
 
@@ -649,6 +951,8 @@ def read_by_rows(image: np.ndarray, side: str, recognizer: object) -> RowRead | 
         reads.append(_assign(base, side, _lines(base, read), f"zoomed x{scale:.1f}"))
         if side == "back":
             _read_religion_gap(base, reads[-1], recognizer)
+        else:
+            _recover_name(base, reads[-1], recognizer)
         if not _weak(reads[-1], side):
             return _merge(reads)
 
@@ -656,4 +960,6 @@ def read_by_rows(image: np.ndarray, side: str, recognizer: object) -> RowRead | 
     reads.append(_assign(enhanced, side, _lines(enhanced, read), "enhanced"))
     if side == "back":
         _read_religion_gap(enhanced, reads[-1], recognizer)
+    else:
+        _recover_name(enhanced, reads[-1], recognizer)
     return _merge(reads)

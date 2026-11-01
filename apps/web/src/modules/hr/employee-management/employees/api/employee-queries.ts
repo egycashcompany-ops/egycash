@@ -182,6 +182,13 @@ export const useRehireCheck = (nationalId: string) =>
     staleTime: 30_000,
   });
 
+export const useEmployeeNationalIdCard = (id: string) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'national-id-card', id],
+    queryFn: () => api.getEmployeeNationalIdCard(id),
+    enabled: id !== '',
+  });
+
 export const useSubordinates = (id: string) =>
   useQuery({
     queryKey: [MODULE, FEATURE, 'subordinates', id],

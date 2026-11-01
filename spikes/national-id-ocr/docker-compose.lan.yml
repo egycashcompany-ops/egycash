@@ -1,0 +1,13 @@
+# Reach the readers from a phone on the same Wi-Fi:
+#   docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d
+# The service then listens on every network interface, so it REQUIRES an access code: put
+# OCR_ACCESS_CODE=... in .env (git-ignored). Without one, compose refuses to start this way.
+# The code keeps others on the network out; the traffic itself is plain HTTP, not encrypted.
+services:
+  nid-ocr:
+    environment:
+      OCR_ACCESS_CODE: ${OCR_ACCESS_CODE:?set OCR_ACCESS_CODE in .env before opening the service to the network}
+      # /trace returns the card's images and text for debugging: never on a shared network.
+      OCR_TRACE_DISABLED: "1"
+    ports: !override
+      - "8099:8099"

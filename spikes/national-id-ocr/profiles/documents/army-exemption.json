@@ -1,0 +1,322 @@
+{
+  "_about": "Measured on three real samples (2026-10-15): the printed form words, where each value sits relative to its label, and the decision wording. No personal value is stored here. Widen it as more certificates arrive.",
+  "titleWords": [
+    "وزارة",
+    "الدفاع",
+    "شهادة",
+    "بالإعفاء",
+    "الإعفاء",
+    "النهائي",
+    "التجنيد",
+    "العسكرية",
+    "المؤقت"
+  ],
+  "minTitleWords": 2,
+  "earliestYear": 1950,
+  "fields": {
+    "fullNameAr": {
+      "labels": [
+        "الاسم واللقب",
+        "الإسم واللقب",
+        "الاسم"
+      ],
+      "layout": "inline",
+      "kind": "name",
+      "sameRowAs": "birthDate",
+      "side": "right"
+    },
+    "birthDate": {
+      "labels": [
+        "تاريخ الميلاد"
+      ],
+      "layout": "inline",
+      "kind": "date"
+    },
+    "militaryNumber": {
+      "labels": [
+        "رقم البطاقة العسكرية",
+        "رقم البطاقة"
+      ],
+      "layout": "below",
+      "kind": "digits",
+      "minDigits": 6,
+      "groups": 3,
+      "groupLengths": [
+        4,
+        3,
+        3
+      ],
+      "_groups": "Printed as three groups, right to left: 4, 3 and 3 digits (two samples). Used to choose between reads, never to fill one in."
+    },
+    "nationalId": {
+      "labels": [
+        "الرقم القومي وجهة صدوره",
+        "الرقم القومي"
+      ],
+      "layout": "below",
+      "kind": "nationalId"
+    },
+    "decisionCode": {
+      "labels": [
+        "كود القرار",
+        "كود"
+      ],
+      "layout": "below",
+      "kind": "digits",
+      "minDigits": 1
+    },
+    "decisionNumber": {
+      "labels": [
+        "رقم القرار"
+      ],
+      "layout": "below",
+      "kind": "digits",
+      "minDigits": 3
+    },
+    "decisionDate": {
+      "labels": [
+        "تاريخ القرار"
+      ],
+      "layout": "below",
+      "kind": "date"
+    },
+    "issueDate": {
+      "labels": [
+        "تاريخ تحرير الشهادة",
+        "تاريخ تحرير"
+      ],
+      "layout": "inline",
+      "kind": "date"
+    },
+    "decision": {
+      "labels": [
+        "القرار"
+      ],
+      "layout": "paragraph",
+      "kind": "text",
+      "keywords": [
+        "اعفاء",
+        "إعفاء",
+        "الخدمة",
+        "العسكرية",
+        "لياقته",
+        "نهائيا"
+      ]
+    }
+  },
+  "exemptionTypes": {
+    "النهائي": "نهائي",
+    "نهائيا": "نهائي",
+    "المؤقت": "مؤقت",
+    "مؤقتا": "مؤقت"
+  },
+  "required": [
+    "nationalId",
+    "fullNameAr"
+  ],
+  "issuers": {
+    "militaryIssuer": "militaryNumber",
+    "nationalIdIssuer": "nationalId"
+  },
+  "recruitmentAreaLabels": [
+    "منطقة تجنيد",
+    "منطقة التجنيد"
+  ],
+  "clauses": {
+    "اولا": {
+      "value": "أولاً",
+      "type": "نهائي"
+    },
+    "ثانيا": {
+      "value": "ثانياً",
+      "type": "مؤقت"
+    }
+  },
+  "_reasons": "Exemption grounds, checked in this order. Words are matched folded, a letter of OCR slack on long words. 'type' is the kind of exemption the law gives that ground (Law 127/1980, article 7: first = final, second = temporary), from a legal summary, not the official gazette: a lawyer should confirm it.",
+  "reasons": [
+    {
+      "id": "medical_unfit",
+      "type": "نهائي",
+      "any": [
+        "لياقته",
+        "اللياقة",
+        "لياقة",
+        "طبيا",
+        "طبياً",
+        "لائق"
+      ],
+      "ar": "عدم اللياقة الطبية",
+      "en": "Medically unfit for service"
+    },
+    {
+      "id": "only_son_deceased_father",
+      "type": "نهائي",
+      "all": [
+        "الابن",
+        "الوحيد"
+      ],
+      "any": [
+        "المتوفى",
+        "المتوفي",
+        "متوفى",
+        "المتوفاة"
+      ],
+      "ar": "الابن الوحيد لأب متوفى",
+      "en": "Only son of a deceased father"
+    },
+    {
+      "id": "only_son_father_over_60",
+      "type": "نهائي",
+      "all": [
+        "الابن",
+        "الوحيد"
+      ],
+      "any": [
+        "المتجاوز",
+        "الستين",
+        "60",
+        "ال60"
+      ],
+      "ar": "الابن الوحيد لأب تجاوز الستين",
+      "en": "Only son of a father over 60"
+    },
+    {
+      "id": "only_son_father_unable",
+      "type": "نهائي",
+      "all": [
+        "الابن",
+        "الوحيد"
+      ],
+      "any": [
+        "قادر",
+        "القادر"
+      ],
+      "ar": "الابن الوحيد لأب غير قادر على الكسب",
+      "en": "Only son of a father unable to earn"
+    },
+    {
+      "id": "only_son_living_father",
+      "type": "مؤقت",
+      "all": [
+        "الابن",
+        "الوحيد"
+      ],
+      "any": [
+        "الحي",
+        "الحى"
+      ],
+      "ar": "الابن الوحيد لأبيه الحي",
+      "en": "Only son of a living father"
+    },
+    {
+      "id": "breadwinner",
+      "type": "مؤقت",
+      "any": [
+        "العائل",
+        "عائل",
+        "يعول"
+      ],
+      "ar": "العائل لأسرته",
+      "en": "Supports his family (breadwinner)"
+    },
+    {
+      "id": "martyr_relative",
+      "type": "نهائي",
+      "any": [
+        "شهيد",
+        "الشهيد",
+        "استشهاد",
+        "استشهد",
+        "الحربية",
+        "الارهابية"
+      ],
+      "ar": "قريب شهيد أو مصاب في العمليات",
+      "en": "Relative of someone killed or disabled in war or service"
+    },
+    {
+      "id": "missing_relative",
+      "type": "مؤقت",
+      "any": [
+        "مفقود",
+        "المفقود"
+      ],
+      "ar": "قريب مفقود في العمليات",
+      "en": "Relative of someone missing in war operations"
+    }
+  ],
+  "decisionWords": [
+    "إعفاء",
+    "اعفاء",
+    "المذكور",
+    "نهائيا",
+    "نهائياً",
+    "مؤقتا",
+    "مؤقتاً",
+    "من",
+    "أداء",
+    "اداء",
+    "الخدمة",
+    "العسكرية",
+    "والوطنية",
+    "كونه",
+    "الابن",
+    "الوحيد",
+    "لأبيه",
+    "لابيه",
+    "المتوفى",
+    "العائل",
+    "للعائلة",
+    "لأسرته",
+    "بعد",
+    "أبيه",
+    "ابيه",
+    "المتجاوز",
+    "سن",
+    "ال60",
+    "الستين",
+    "وأخيه",
+    "واخيه",
+    "شقيقه",
+    "القاصر",
+    "مواليد",
+    "وعليه",
+    "تقديم",
+    "نفسه",
+    "خلال",
+    "يوما",
+    "يوماً",
+    "تاريخ",
+    "زوال",
+    "السبب",
+    "أو",
+    "او",
+    "بلوغ",
+    "أخيه",
+    "اخيه",
+    "سنة",
+    "أيهما",
+    "ايهما",
+    "أقرب",
+    "اقرب",
+    "تاريخا",
+    "تاريخاً",
+    "لعدم",
+    "لياقته",
+    "طبيا",
+    "طبياً",
+    "الحي",
+    "لأمه",
+    "لامه",
+    "الأرملة",
+    "الارملة",
+    "غير",
+    "الغير",
+    "قادر",
+    "القادر",
+    "على",
+    "الكسب",
+    "والدته",
+    "والده"
+  ],
+  "_decisionWords": "The words decisions are written in (three samples plus the law's grounds). A word read one or two letters off exactly one of them is corrected to it."
+}

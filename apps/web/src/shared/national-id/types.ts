@@ -27,6 +27,33 @@ export interface NationalIdReviewData {
   gender: Gender | '';
 }
 
+export type OcrConfidence = 'high' | 'medium' | 'low';
+
+/**
+ * What the review shows beside the editable values: how sure the reader was of each, the card as
+ * it was read, the holder's photograph cut from it, and the photos the user uploaded (shown when
+ * the reader returned no image of its own). Display only — never part of the confirmed data.
+ */
+export interface NationalIdReviewMeta {
+  confidence: Partial<
+    Record<
+      | 'fullNameAr'
+      | 'nationalId'
+      | 'nationalIdExpiry'
+      | 'maritalStatus'
+      | 'religion'
+      | 'addressLine'
+      | 'city',
+      OcrConfidence
+    >
+  >;
+  cardFront?: string;
+  cardBack?: string;
+  portrait?: string;
+  uploadedFront?: string;
+  uploadedBack?: string;
+}
+
 /**
  * Runs the OCR extraction for the two card images. Injected by the consuming module, which owns
  * the file upload + the OCR endpoint call (so this generic component stays decoupled from HR).

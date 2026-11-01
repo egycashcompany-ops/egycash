@@ -1,15 +1,4 @@
-"""Removing the card's own printed words, and refusing to remove anybody else's.
-
-The reason this module exists is a trade the geometry cannot win. A field box tight enough to
-exclude the header printed above the name is also tight enough to clip the first line of a name
-that wraps differently — and the two failures are not equally bad. A header glued onto a name is
-recoverable, because the phrase is identical on every card ever issued. A name whose first line was
-cropped away is not recoverable by anything, and nothing downstream can even tell it is missing.
-
-So the boxes are allowed to be generous and this cleans up after them. Which makes the false
-positive — stripping something that was actually somebody's data — the failure that matters here,
-and most of these tests are about the guards against it.
-"""
+"""Removing the card's own printed words, and refusing to remove anybody else's."""
 
 from __future__ import annotations
 
@@ -46,10 +35,6 @@ def test_the_printed_header_is_removed_from_a_name(read, expected):
 
 def test_the_phrase_is_matched_through_dropped_dots():
     """Same reasoning as everywhere else in this pipeline: dots are what a recognizer loses first.
-
-    A header read as 'بطاقه تحقيق الشخصيه' has been read correctly and punctuated wrongly, and it
-    has to still count as the header — otherwise the one case the removal exists for, a slightly
-    imperfect read, is the one case it fails on.
     """
     assert strip_boilerplate(f"بطاقه تحقيق الشخصيه {NAME}") == NAME
 
@@ -63,13 +48,7 @@ def test_a_label_and_its_value_keep_the_value():
 
 
 def test_a_single_word_of_a_phrase_is_never_removed_on_its_own():
-    """The guard that makes this safe, and the reason matching is on token SEQUENCES.
-
-    'مصر' is a word in real Cairo addresses — مصر الجديدة, مصر القديمة — and it is also the middle
-    word of the state's name printed across the top of every card. Matching loose words would strip
-    a district out of somebody's address; matching the whole phrase cannot, because no address
-    contains 'جمهورية مصر العربية'.
-    """
+    """The guard that makes this safe, and the reason matching is on token sequences."""
     address = "١٢ ش الثورة - مصر الجديدة - القاهرة"
     assert strip_boilerplate(address) == address
     assert clean_address(address)[0].endswith("القاهرة")
@@ -99,7 +78,7 @@ def test_a_line_of_nothing_but_furniture_is_recognised_as_such(line):
 @pytest.mark.parametrize(
     "line",
     [
-        "البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤",  # a label AND the expiry — the expiry is found by no other means
+        "البطاقة سارية حتى ٢٠٢٢/٠٧/٠٤",  # a label and the expiry, the expiry is found by no other means
         "الديانة مسلمة",
         NAME,
         "٢٩٥٠٣ ١٤١٢ ٣٤٥٦٧",
@@ -112,3 +91,32 @@ def test_a_line_carrying_a_value_is_kept(line):
 def test_the_name_field_arrives_clean_even_when_the_crop_caught_the_header():
     """The end-to-end shape of the trade: a generous crop, and a value with nothing extra in it."""
     assert clean_text(f"بطاقة تحقيق الشخصية {NAME}") == NAME
+
+
+# ── Broken pieces of a line read twice ──
+
+
+def test_a_letter_repeating_the_next_words_start_is_dropped():
+    assert "ن نصراول" not in clean_address("مدينة نصر الحى العاشر مدينه ن نصراول القاهره")[0]
+
+
+def test_a_letter_repeating_the_previous_words_end_is_dropped():
+    assert clean_address("٣٥٥ زهراء مدينة ة نصر")[0].startswith("٣٥٥ زهراء مدينة نصر")
+
+
+def test_a_piece_ending_in_tatweel_is_dropped():
+    assert "الـ" not in clean_address("مدينة نصر الحى الـ العاشر")[0]
+
+
+def test_real_one_letter_words_stay():
+    """ش is how the card abbreviates شارع, even next to a word that starts with ش."""
+    assert "من ش شبرا" in clean_address("١ شارع المحمدى من ش شبرا القاهره")[0]
+
+
+def test_an_address_word_glued_to_the_place_before_it_is_split_off():
+    """'البراهمه-نجع جوده' read without its hyphen: 'البراهمهنجع جوده'."""
+    assert clean_address("البراهمهنجع جوده مركز قفط قنا")[0].startswith("البراهمه نجع جوده")
+
+
+def test_a_word_that_merely_contains_an_address_word_is_left_alone():
+    assert clean_address("١ شارع المحمدى مركز سمسطا بنى سويف")[0] == "١ شارع المحمدى مركز سمسطا بنى سويف"

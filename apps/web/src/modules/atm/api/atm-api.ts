@@ -86,12 +86,14 @@ export const machinesSummary = (params: AtmListParams): Promise<AtmMachinesSumma
  */
 export const syncMachinesFromFile = (
   file: File,
-  options: { apply: boolean; fileSha256?: string },
+  options: { apply: boolean; fileSha256?: string; planDigest?: string },
 ): Promise<AtmMachineSyncDto> => {
   const form = new FormData();
   form.append('file', file);
   if (options.apply) form.append('apply', 'true');
   if (options.fileSha256 !== undefined) form.append('fileSha256', options.fileSha256);
+  // The comparison the reader approved — the server writes nothing if the branch moved since.
+  if (options.planDigest !== undefined) form.append('planDigest', options.planDigest);
   return upload<AtmMachineSyncDto>('/atm/machines/sync', form);
 };
 

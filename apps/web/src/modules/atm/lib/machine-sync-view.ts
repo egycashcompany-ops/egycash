@@ -51,6 +51,43 @@ export const appliedCounts = (
     .filter(([, count]) => count > 0)
     .map(([key, count]) => ({ key, count }));
 
+/** Every row of the file the comparison read (the branch's `extra` machines are not rows). */
+export const syncFileRows = (dto: AtmMachineSyncDto): number =>
+  (Object.entries(dto.counts) as [string, number][])
+    .filter(([key]) => key !== 'extra')
+    .reduce((sum, [, n]) => sum + n, 0);
+
+/**
+ * What an apply could not do, as translation keys with their codes — one line per reason, in the
+ * bulk add's own words (`atm.dataEdit.machinesRefused.*`, `atm.dataEdit.notRecorded.*`), plus the
+ * rows somebody changed while it ran.
+ */
+export const appliedProblemLines = (
+  applied: AtmMachineSyncAppliedDto,
+): { key: string; params: Record<string, string> }[] => {
+  const lines: { key: string; params: Record<string, string> }[] = [];
+  const byReason = <T extends string>(
+    rows: readonly { machineCode: string; reason: T }[],
+    prefix: string,
+  ): void => {
+    const grouped = new Map<T, string[]>();
+    for (const row of rows)
+      grouped.set(row.reason, [...(grouped.get(row.reason) ?? []), row.machineCode]);
+    for (const [reason, codes] of grouped) {
+      lines.push({ key: `${prefix}.${reason}`, params: { codes: codes.join('، ') } });
+    }
+  };
+  byReason(applied.refused, 'atm.dataEdit.machinesRefused');
+  if (applied.skipped.length > 0) {
+    lines.push({
+      key: 'atm.machineSync.skippedCodes',
+      params: { codes: applied.skipped.join('، ') },
+    });
+  }
+  byReason(applied.register.notRecorded, 'atm.dataEdit.notRecorded');
+  return lines;
+};
+
 /** The file-level reason a refusal named, if any (`details[].field === 'file'`). */
 const fileReason = (error: ApiError): string | undefined =>
   error.details?.find((d) => d.field === 'file')?.code;
@@ -61,6 +98,12 @@ export const syncErrorText = (error: unknown, t: Translate, locale: Locale): str
   if (error.code === ErrorCodes.ATM_MACHINE_SYNC_FILE_CHANGED) {
     return t('atm.machineSync.error.changed');
   }
+  if (error.code === ErrorCodes.ATM_MACHINE_SYNC_PLAN_CHANGED) {
+    return t('atm.machineSync.error.planChanged');
+  }
+  // The server's own sentence for a business rule («اختر فرعًا محددًا…», a running branch move).
+  if (error.code === ErrorCodes.BUSINESS_RULE_VIOLATION && error.message !== '')
+    return error.message;
   const reason = fileReason(error);
   if (reason === 'MISSING_HEADER') return t('atm.machineSync.error.header');
   if (reason === 'MISSING_SHEET') return t('atm.machineSync.error.sheet');

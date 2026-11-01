@@ -151,13 +151,26 @@ export const useBulkCreateAtmMachines = () => {
 export const useSyncAtmMachines = () => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, apply, fileSha256 }: { file: File; apply: boolean; fileSha256?: string }) =>
+    mutationFn: ({
+      file,
+      apply,
+      fileSha256,
+      planDigest,
+    }: {
+      file: File;
+      apply: boolean;
+      fileSha256?: string;
+      planDigest?: string;
+    }) =>
       api.syncMachinesFromFile(file, {
         apply,
         ...(fileSha256 === undefined ? {} : { fileSha256 }),
+        ...(planDigest === undefined ? {} : { planDigest }),
       }),
-    onSuccess: (result) => {
-      if (result.applied !== null) invalidateMachineWrite(client);
+    // After ANY apply, answered or not: one cut off part-way (a branch move's 423, a timeout) has
+    // still written the rows it reached (review finding).
+    onSettled: (_result, _error, variables) => {
+      if (variables.apply) invalidateMachineWrite(client);
     },
     onError: (): void => undefined,
   });

@@ -24,10 +24,12 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { ApiError } from '../../shared/lib/api-client';
-import { GroupTable, MachineSyncDialog } from './components/MachineSyncDialog';
+import { AppliedProblems, GroupTable, MachineSyncDialog } from './components/MachineSyncDialog';
 import {
   SYNC_GROUPS,
   appliedCounts,
+  appliedProblemLines,
+  syncFileRows,
   rowsOfStatus,
   syncErrorText,
   syncWrites,
@@ -46,6 +48,7 @@ const t = (key: string, params?: Record<string, string | number>): string =>
 const DTO: AtmMachineSyncDto = {
   fileName: 'ATM (4).xlsx',
   fileSha256: 'a'.repeat(64),
+  planDigest: 'b'.repeat(64),
   branchId: '650000000000000000000401',
   branchName: { ar: 'المهندسين', en: 'Mohandessin' },
   counts: {
@@ -68,6 +71,7 @@ const DTO: AtmMachineSyncDto = {
       changes: ['bank', 'name'],
       issue: null,
       firstRow: null,
+      elsewhere: null,
     },
     {
       row: 3,
@@ -78,6 +82,7 @@ const DTO: AtmMachineSyncDto = {
       changes: [],
       issue: null,
       firstRow: null,
+      elsewhere: null,
     },
     {
       row: 4,
@@ -88,6 +93,7 @@ const DTO: AtmMachineSyncDto = {
       changes: [],
       issue: null,
       firstRow: null,
+      elsewhere: 'activeElsewhere',
     },
     {
       row: 5,
@@ -98,6 +104,7 @@ const DTO: AtmMachineSyncDto = {
       changes: [],
       issue: 'unknownBank',
       firstRow: null,
+      elsewhere: null,
     },
     {
       row: 6,
@@ -108,6 +115,7 @@ const DTO: AtmMachineSyncDto = {
       changes: [],
       issue: null,
       firstRow: 3,
+      elsewhere: null,
     },
   ],
   extra: [{ machineCode: '7199', bank: 'NBE', name: 'Not in the file', area: 'Zamalek' }],
@@ -170,6 +178,52 @@ describe('the comparison’s pure parts', () => {
     ]);
   });
 
+  it('counts the file’s rows, not the branch’s extra machines', () => {
+    expect(syncFileRows(DTO)).toBe(10);
+  });
+
+  it('names what an apply could not do, one line per reason, in the bulk add’s words', () => {
+    const applied = {
+      added: [],
+      reactivated: [],
+      updated: [],
+      refused: [
+        { machineCode: '1', reason: 'activeElsewhere' as const },
+        { machineCode: '2', reason: 'openElsewhere' as const },
+        { machineCode: '3', reason: 'activeElsewhere' as const },
+      ],
+      skipped: ['4'],
+      register: {
+        created: [],
+        received: [],
+        linked: [],
+        existing: [],
+        notRecorded: [{ machineCode: '5', reason: 'branchUnmapped' as const }],
+      },
+    };
+    expect(appliedProblemLines(applied)).toEqual([
+      { key: 'atm.dataEdit.machinesRefused.activeElsewhere', params: { codes: '1، 3' } },
+      { key: 'atm.dataEdit.machinesRefused.openElsewhere', params: { codes: '2' } },
+      { key: 'atm.machineSync.skippedCodes', params: { codes: '4' } },
+      { key: 'atm.dataEdit.notRecorded.branchUnmapped', params: { codes: '5' } },
+    ]);
+    const html = render(<AppliedProblems applied={applied} />);
+    expect(html).toContain(t('atm.dataEdit.machinesRefused.activeElsewhere', { codes: '1، 3' }));
+    expect(html).toContain(t('atm.machineSync.skippedCodes', { codes: '4' }));
+    expect(
+      render(
+        <AppliedProblems
+          applied={{
+            ...applied,
+            refused: [],
+            skipped: [],
+            register: { ...applied.register, notRecorded: [] },
+          }}
+        />,
+      ),
+    ).toBe('');
+  });
+
   it('says a refused upload in the reader’s words', () => {
     const layout = (code: string): ApiError =>
       new ApiError(ErrorCodes.ATM_MACHINE_SYNC_LAYOUT, 'x', 422, [
@@ -192,6 +246,21 @@ describe('the comparison’s pure parts', () => {
     expect(
       syncErrorText(new ApiError(ErrorCodes.ATM_MACHINE_SYNC_FILE_CHANGED, 'x', 409), t, 'ar'),
     ).toBe(t('atm.machineSync.error.changed'));
+    expect(
+      syncErrorText(new ApiError(ErrorCodes.ATM_MACHINE_SYNC_PLAN_CHANGED, 'x', 409), t, 'ar'),
+    ).toBe(t('atm.machineSync.error.planChanged'));
+    // A business rule in the server's own words — «اختر فرعًا محددًا من القائمة العلوية أولًا.»
+    expect(
+      syncErrorText(
+        new ApiError(
+          ErrorCodes.BUSINESS_RULE_VIOLATION,
+          'اختر فرعًا محددًا من القائمة العلوية أولًا.',
+          422,
+        ),
+        t,
+        'ar',
+      ),
+    ).toBe('اختر فرعًا محددًا من القائمة العلوية أولًا.');
   });
 });
 
@@ -219,6 +288,7 @@ describe('the comparison on screen', () => {
     expect(groupOf(html, 'invalid')).toContain(t('atm.machineSync.issue.unknownBank'));
     expect(groupOf(html, 'duplicate')).toContain(t('atm.machineSync.firstRow', { row: 3 }));
     expect(groupOf(html, 'elsewhere')).toContain(t('atm.machineSync.groupHint.elsewhere'));
+    expect(groupOf(html, 'elsewhere')).toContain(t('atm.machineSync.elsewhere.activeElsewhere'));
   });
 
   it('shows the branch’s machines the file does not list — for information, never to delete', () => {
@@ -226,6 +296,10 @@ describe('the comparison on screen', () => {
     expect(extra).toContain('7199');
     expect(extra).toContain(t('atm.machineSync.groupHint.extra'));
     expect(extra).not.toMatch(/<button/u);
+  });
+
+  it('keeps the disclosure marker: the summary is not turned into a flex box', () => {
+    expect(all()).not.toMatch(/<summary[^>]*class="[^"]*\bflex\b/u);
   });
 
   it('shows no group with nothing in it', () => {
@@ -296,6 +370,12 @@ describe('the dialog', () => {
       'error.unreadable',
       'error.tooLarge',
       'error.changed',
+      'error.planChanged',
+      'changeFile',
+      'repickHint',
+      'skippedCodes',
+      'elsewhere.activeElsewhere',
+      'elsewhere.openElsewhere',
     ].map((k) => `atm.machineSync.${k}`);
     for (const locale of ['ar', 'en'] as const) {
       for (const key of keys) expect(translate(locale, key)).not.toBe(key);

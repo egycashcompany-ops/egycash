@@ -18,9 +18,11 @@ its entry here in the same PR.
   what would be added, brought back from the archive, or edited (the old bank, name or area struck
   through beside the file's), what works in another branch, what the file leaves incomplete, what
   it lists twice, and the branch's machines it does not list — shown, never deleted. Nothing
-  changes until «تطبيق»; the apply adds through the data-edit add (the register entry included)
-  and edits through the machine edit (audited), row by row, and answers with the comparison made
-  again (`POST /atm/machines/sync`, `atmMachine.manage`). Spaces are folded, so a stray space is
+  changes until «تطبيق», and the apply writes only the comparison the reader saw: if the branch
+  changed meanwhile it writes nothing and asks for a new comparison. It adds through the data-edit
+  add (the register entry included) and edits through the machine edit (audited), row by row,
+  names every code it could not write and why, and answers with the comparison made again
+  (`POST /atm/machines/sync`, `atmMachine.manage`). Spaces are folded, so a stray space is
   neither a change nor a new area; a bank is compared by the catalog bank it names.
 
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**

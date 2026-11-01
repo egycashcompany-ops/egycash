@@ -9,8 +9,9 @@
 // and a machine on the branch the file does not list is only shown, never deleted. The SAME `File`
 // is posted for the apply with the comparison's hash (the register import's rule); the answer is
 // the comparison made again, so after an apply the reader sees the branch as it now is.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  type AtmMachineSyncAppliedDto,
   type AtmMachineSyncDto,
   type AtmMachineSyncField,
   type AtmMachineSyncRowDto,
@@ -24,11 +25,12 @@ import { Badge } from '../../../shared/ui/Badge';
 import { FileUpload } from '../../../shared/ui/FileUpload';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
-import { cn } from '../../../shared/lib/cn';
 import { useAtmRefLabelOptions, useSyncAtmMachines } from '../api/atm-queries';
 import {
   SYNC_GROUPS,
   appliedCounts,
+  appliedProblemLines,
+  syncFileRows,
   rowsOfStatus,
   syncErrorText,
   syncWrites,
@@ -83,9 +85,12 @@ export const GroupTable = ({
   const count = dto.counts[group];
   if (count === 0) return null;
   const head = (
-    <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-      <Badge tone={GROUP_TONE[group]}>{formatNumber(count, locale)}</Badge>
-      {t(`atm.machineSync.group.${group}`)}
+    // The summary keeps its own display, so the ▸/▾ marker shows the group opens (review finding).
+    <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-200">
+      <span className="inline-flex items-center gap-2 align-middle">
+        <Badge tone={GROUP_TONE[group]}>{formatNumber(count, locale)}</Badge>
+        {t(`atm.machineSync.group.${group}`)}
+      </span>
     </summary>
   );
   const note = (
@@ -126,7 +131,7 @@ export const GroupTable = ({
     );
   }
   const rows = rowsOfStatus(dto, group);
-  const problem = group === 'invalid' || group === 'duplicate';
+  const problem = group === 'invalid' || group === 'duplicate' || group === 'elsewhere';
   return (
     <details data-sync-group={group} open={group === 'update' || group === 'add'}>
       {head}
@@ -165,7 +170,9 @@ export const GroupTable = ({
                   <td className={TD}>
                     {row.issue !== null
                       ? t(`atm.machineSync.issue.${row.issue}`)
-                      : t('atm.machineSync.firstRow', { row: row.firstRow ?? 0 })}
+                      : row.elsewhere !== null
+                        ? t(`atm.machineSync.elsewhere.${row.elsewhere}`)
+                        : t('atm.machineSync.firstRow', { row: row.firstRow ?? 0 })}
                   </td>
                 )}
               </tr>
@@ -174,6 +181,29 @@ export const GroupTable = ({
         </table>
       </div>
     </details>
+  );
+};
+
+/** What an apply could not do, one line per reason — the codes named, as the bulk add names them. */
+export const AppliedProblems = ({
+  applied,
+}: {
+  applied: AtmMachineSyncAppliedDto;
+}): JSX.Element | null => {
+  const t = useT();
+  const lines = appliedProblemLines(applied).map(({ key, params }) => t(key, params));
+  if (lines.length === 0) return null;
+  return (
+    <ul
+      className="list-disc space-y-1 rounded-lg border border-amber-200 bg-amber-50 py-2 pe-3 ps-7 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+      data-sync-problems="true"
+    >
+      {lines.map((line) => (
+        <li key={line} dir="auto">
+          {line}
+        </li>
+      ))}
+    </ul>
   );
 };
 
@@ -190,39 +220,71 @@ export const MachineSyncDialog = ({
   const run = useSyncAtmMachines();
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<AtmMachineSyncDto | null>(null);
+  const [reading, setReading] = useState(false);
   const blocked = addBlocked(options.data);
+  const busy = run.isPending || reading;
 
-  const pick = (files: File[]): void => {
-    setFile(files[0] ?? null);
+  // Every opening starts clean: a comparison from before may no longer be the branch (review
+  // finding). Not while a run is in flight — its answer still has to land.
+  useEffect(() => {
+    if (!open || run.isPending) return;
+    setFile(null);
+    setResult(null);
+    run.reset();
+  }, [open]);
+
+  const pick = async (files: File[]): Promise<void> => {
+    const picked = files[0];
+    if (busy || picked === undefined) return;
+    setReading(true);
+    try {
+      // The bytes are read once, here: the compare and the apply post the same snapshot, so a file
+      // saved again in Excel meanwhile cannot fail the upload (review finding).
+      setFile(new File([await picked.arrayBuffer()], picked.name, { type: picked.type }));
+      setResult(null);
+      run.reset();
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const changeFile = (): void => {
+    if (busy) return;
+    setFile(null);
     setResult(null);
     run.reset();
   };
 
   const compare = (): void => {
-    if (file === null || blocked) return;
+    if (file === null || blocked || busy) return;
     run.mutate({ file, apply: false }, { onSuccess: setResult });
   };
 
   const apply = (): void => {
-    if (file === null || result === null || blocked) return;
+    if (file === null || result === null || blocked || busy) return;
     run.mutate(
-      { file, apply: true, fileSha256: result.fileSha256 },
+      { file, apply: true, fileSha256: result.fileSha256, planDigest: result.planDigest },
       {
         onSuccess: (applied) => {
           setResult(applied);
           const done = applied.applied === null ? [] : appliedCounts(applied.applied);
-          toast.success(
+          const text =
             done.length === 0
               ? t('atm.machineSync.appliedNothing')
               : done
                   .map(({ key, count }) =>
                     t(`atm.machineSync.applied.${key}`, { count: formatNumber(count, locale) }),
                   )
-                  .join(locale === 'ar' ? '، ' : ', '),
-          );
+                  .join(locale === 'ar' ? '، ' : ', ');
+          const problems = applied.applied === null ? [] : appliedProblemLines(applied.applied);
+          if (problems.length > 0) toast.warning(text);
+          else toast.success(text);
         },
-        // The error box sits above; the reader is looking at «تطبيق», so say it there too.
-        onError: (error) => toast.error(syncErrorText(error, t, locale)),
+        onError: (error) => {
+          // What is on screen is no longer the branch (a refused or cut-off apply): compare again.
+          setResult(null);
+          toast.error(syncErrorText(error, t, locale));
+        },
       },
     );
   };
@@ -243,8 +305,8 @@ export const MachineSyncDialog = ({
           </Button>
           {result !== null && (
             <Button
-              disabled={writes === 0 || run.isPending || blocked}
-              loading={run.isPending}
+              disabled={writes === 0 || busy || blocked}
+              loading={run.isPending && result !== null}
               onClick={apply}
               data-sync-action="apply"
             >
@@ -263,7 +325,32 @@ export const MachineSyncDialog = ({
         <AddBranchLine options={options.data} />
         <UnmappedBranchNotice options={options.data} />
         <p className="text-sm text-slate-600 dark:text-slate-300">{t('atm.machineSync.intro')}</p>
-        <FileUpload accept={XLSX} maxSizeMb={MAX_MB} onFiles={pick} disabled={run.isPending} />
+        {file === null ? (
+          <FileUpload
+            accept={XLSX}
+            maxSizeMb={MAX_MB}
+            onFiles={(files) => void pick(files)}
+            disabled={busy}
+          />
+        ) : (
+          // The chosen file, held by the dialog itself: no picker control can drop it mid-run.
+          <div className="space-y-1" data-sync-file="true">
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+              <span
+                className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200"
+                dir="auto"
+              >
+                {file.name}
+              </span>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={changeFile}>
+                {t('atm.machineSync.changeFile')}
+              </Button>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t('atm.machineSync.repickHint')}
+            </p>
+          </div>
+        )}
         {run.isError && (
           <p
             role="alert"
@@ -275,7 +362,7 @@ export const MachineSyncDialog = ({
         <div className="flex justify-end">
           <Button
             variant="secondary"
-            disabled={file === null || run.isPending || blocked}
+            disabled={file === null || busy || blocked}
             loading={run.isPending && result === null}
             onClick={compare}
             data-sync-action="compare"
@@ -286,25 +373,23 @@ export const MachineSyncDialog = ({
         {result !== null && (
           <div className="space-y-3" data-sync-result="true">
             {result.applied !== null && (
-              <p
-                role="status"
-                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
-              >
-                {t('atm.machineSync.appliedLine')}
-              </p>
+              <>
+                <p
+                  role="status"
+                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                >
+                  {t('atm.machineSync.appliedLine')}
+                </p>
+                <AppliedProblems applied={result.applied} />
+              </>
             )}
             <p className="text-sm text-slate-700 dark:text-slate-200">
               {t('atm.machineSync.summary', {
-                total: formatNumber(
-                  Object.entries(result.counts)
-                    .filter(([key]) => key !== 'extra')
-                    .reduce((sum, [, n]) => sum + n, 0),
-                  locale,
-                ),
+                total: formatNumber(syncFileRows(result), locale),
                 same: formatNumber(result.counts.same, locale),
               })}
             </p>
-            <div className={cn('space-y-3')}>
+            <div className="space-y-3">
               {SYNC_GROUPS.map((group) => (
                 <GroupTable key={group} dto={result} group={group} />
               ))}

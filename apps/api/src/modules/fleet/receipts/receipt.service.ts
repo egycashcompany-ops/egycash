@@ -30,7 +30,12 @@ import { settingsService } from '../../../platform/settings';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { type AuthContext } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import {
+  fleetVehicleRepository,
+  intersectVehicleIds,
+  vehicleSetPart,
+} from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { drivingSeatRoster } from '../driver-profiles/driving-seat-roster';
 import { fleetFuelCardRepository } from '../fuel-cards/fuel-card.repository';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
@@ -138,12 +143,20 @@ interface ReceiptFacts {
 class FleetReceiptService {
   // ── Reading ───────────────────────────────────────────────────────────────
 
+  /**
+   * One filter for the page and its figures: the codes the reader picked, intersected with the
+   * vehicle set — «النوع / التشغيل / الفرع» (plan D10, `resolveVehicleFilterIds`, deleted cars
+   * included), so a receipt on a car since removed still counts for that car's type.
+   */
   private async filterFor(query: FleetReceiptSummaryQuery): Promise<FilterQuery<FleetReceiptDoc>> {
+    const [byCode, bySet] = await Promise.all([
+      query.vehicleCodes === undefined
+        ? undefined
+        : fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+      resolveVehicleFilterIds(vehicleSetPart(query)),
+    ]);
     return fleetReceiptRepository.receiptFilter({
-      vehicleIds:
-        query.vehicleCodes === undefined
-          ? undefined
-          : await fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+      vehicleIds: intersectVehicleIds(byCode, bySet),
       kind: query.kind,
       source: query.source,
       driver: query.driver,
@@ -167,7 +180,24 @@ class FleetReceiptService {
   }
 
   async summary(query: FleetReceiptSummaryQuery): Promise<FleetReceiptTotalsDto> {
+    return this.summaryOver(query);
+  }
+
+  /**
+   * The figures over the rows the screen's query matches — `/summary` answers through it, and so
+   * does the fleet dashboard's «مصروفات التشغيل» (T6.7/T6.8, R-19: card and custody split by
+   * `source`, never added to the dealership figure).
+   */
+  async summaryOver(query: FleetReceiptSummaryQuery): Promise<FleetReceiptTotalsDto> {
     return fleetReceiptRepository.totals(await this.filterFor(query));
+  }
+
+  /**
+   * R-21 — the day the receipts' data starts: the earliest live receipt's `date`, as the calendar
+   * day it was entered for («البيانات متاحة من …»). `null` while there is none.
+   */
+  async firstReceiptDate(): Promise<string | null> {
+    return fleetReceiptRepository.firstDate();
   }
 
   /**

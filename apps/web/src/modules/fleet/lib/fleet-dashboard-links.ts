@@ -57,6 +57,12 @@ export const LINK_CODES_CAP = 50;
 const codesOrNull = (codes: readonly string[]): readonly string[] | null =>
   codes.length === 0 || codes.length > LINK_CODES_CAP ? null : codes;
 
+/** T1.11 / T5.6–T5.9 — the custody dashboard has no filters: its link is its path (no R1 needed). */
+export const custodyDashboardLink = (metric: string): DashLink => ({
+  to: '/fleet/custody/dashboard',
+  metric,
+});
+
 // ── The «الآن» tabs (R1): today and the active branch ───────────────────────────────────────────
 
 export interface NowEcho {
@@ -146,8 +152,7 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
     noticesOpen: (): DashLink => at('/fleet/notices', { status: 'open' }, 'notices.missingAny'),
     noticesCheckImage: (): DashLink =>
       at('/fleet/notices', { status: 'open', checkImage: 'missing' }, 'notices.missingCheckImage'),
-    /** T1.11 / T5.6–T5.9 — the custody dashboard has no filters: its link is its path. */
-    custodyDashboard: (metric: string): DashLink => ({ to: '/fleet/custody/dashboard', metric }),
+    custodyDashboard: custodyDashboardLink,
     /** T5.9: the spend screen over the last 30 days. */
     custodyExpenses: (): DashLink =>
       at('/fleet/custody-expenses', { from: addDaysYmd(today, -29), to: today }, 'custodyFund.expenses'),

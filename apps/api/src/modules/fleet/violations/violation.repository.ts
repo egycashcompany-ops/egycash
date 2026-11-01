@@ -388,6 +388,61 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       .exec();
   }
 
+  /**
+   * R-24 — the drivers' fines still OWED in one year, grouped by whom they are on.
+   *
+   * THE ROLLUP'S OWN QUESTION, NARROWED: the same live rows, the same year rule
+   * (`violationYearBranches`, `filedYear` first) and the same vehicle scope `yearSums` is asked
+   * with, kept to `kind: 'driver'` and not collected — exactly what `outstandingDriverAmount` sums.
+   * So the groups add up to the drivers' outstanding total of the rollup, to the piastre.
+   *
+   * Money and count together, as the rollup keeps them: «مجهول ٣ · ٤٥٠ ج.م» is one statement.
+   */
+  async driverFineGroups(
+    year: number,
+    scope?: {
+      vehicleIds?: readonly string[] | undefined;
+      vehicleCodes?: readonly string[] | undefined;
+    },
+  ): Promise<DriverFineGroup[]> {
+    const clauses: FilterQuery<FleetViolationDoc>[] = [
+      { kind: 'driver' },
+      // `$ne: true` and not `false`: the rollup's `$not: ['$collected']` counts a row whose flag
+      // is missing as owed, and so must this.
+      { collected: { $ne: true } },
+      FleetViolationRepository.yearsClause([year]),
+    ];
+    if (scope?.vehicleIds !== undefined) {
+      clauses.push(byVehicleOrBookCode(scope.vehicleIds, scope.vehicleCodes));
+    }
+    const attributed = { $ne: [{ $ifNull: ['$driverEmployeeId', null] }, null] };
+    const rows = await this.model
+      .aggregate<{
+        _id: { attributed: boolean; driverName: string | null };
+        amount: number;
+        count: number;
+      }>([
+        { $match: { isDeleted: false, $and: clauses } },
+        {
+          $group: {
+            _id: {
+              attributed,
+              driverName: { $cond: [attributed, null, { $ifNull: ['$driverName', null] }] },
+            },
+            amount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
+    return rows.map((row) => ({
+      attributed: row._id.attributed,
+      driverName: row._id.driverName ?? null,
+      amount: row.amount,
+      count: row.count,
+    }));
+  }
+
   async yearSums(
     years: readonly number[] | undefined,
     /**
@@ -562,6 +617,20 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       collectedCount: row.collectedCount,
     }));
   }
+}
+
+/**
+ * The drivers' fines still owed in a year, cut by WHO they are on (R-24) — one group per name for
+ * the fines no employee is named on, one group for every attributed fine. The caller sorts the
+ * names into «مجهول» and «اسم غير مربوط» with the contract's own `isUnknownFleetDriver`.
+ */
+export interface DriverFineGroup {
+  /** An employee is named on these fines. */
+  attributed: boolean;
+  /** The book's name, for an unattributed group; `null` for the attributed one or no name. */
+  driverName: string | null;
+  amount: number;
+  count: number;
 }
 
 class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {

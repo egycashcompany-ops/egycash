@@ -462,9 +462,10 @@ export const useCloseAtmReplenishments = () => {
 };
 
 /**
- * A reopen — or an edit moving the open time — the owner's rule refused (port doc OD-1: the
- * machine already has another open operation of that kind that day) is worded by its own screen,
- * in the reader's language. Every OTHER
+ * A maintenance reopen — or an edit moving its open time — the owner's rule refused (port doc
+ * OD-1: the machine already has another open maintenance that day) is worded by its own screen,
+ * in the reader's language. Replenishments are outside the rule (OD-1b), so their hooks keep the
+ * global toast. Every OTHER
  * failure still gets the global toast exactly as before — declaring `onError` is what opts a hook
  * out of it (`shared/lib/query-client.ts`), so the hook raises that same toast for the rest.
  */
@@ -480,7 +481,6 @@ export const useReopenAtmReplenishment = () => {
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.reopenReplenishment(id, version),
     onSuccess: () => invalidateReplenishments(client),
-    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -501,9 +501,6 @@ export const useUpdateAtmReplenishment = () => {
       };
     }) => api.updateReplenishment(id, body),
     onSuccess: () => invalidateReplenishments(client),
-    // An edit moving the open time onto a day the machine is already open on is the rule's
-    // refusal (OD-1): the dialog words it, so it raises no second toast.
-    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -512,9 +509,6 @@ export const useBulkUpdateAtmReplenishments = () => {
   return useMutation({
     mutationFn: (body: BulkUpdateAtmReplenishments) => api.bulkUpdateReplenishments(body),
     onSuccess: () => invalidateReplenishments(client),
-    // An edit moving the open time onto a day the machine is already open on is the rule's
-    // refusal (OD-1): the dialog words it, so it raises no second toast.
-    onError: toastUnlessAlreadyOpen,
   });
 };
 

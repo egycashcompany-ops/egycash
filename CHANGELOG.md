@@ -388,6 +388,17 @@ its entry here in the same PR.
 
 ### Changed
 
+- **A machine may have more than one open replenishment.** «عايزك تسمح فى التغذيات بإنى افتح تغذيه
+  أكتر من واحده لنفس الماكينة عادى .. لأنه بيمنع دلوقتى». The rule «a machine is never open twice on
+  one day» now holds for maintenance only (port doc OD-1b). On `/atm/replenishments`, every pasted
+  code the branch knows opens its own operation: a code pasted twice opens twice, and a machine
+  already open today (in this branch or another) opens again, as in the old system. The done page
+  reopens a replenishment beside another open one, and the edit dialogs move the open time onto any
+  day, the checked set's two rows of one machine included. The «لم تُفتح لأن للماكينة تغذية مفتوحة»
+  line and its reopen and move refusals are gone from the replenishment screens. Maintenance is
+  unchanged: one open per machine per day, the mail accept included. The boot drops the
+  replenishment log's unique index (`ux_open_replenishment_per_code_day`) from an existing database,
+  and the legacy importer writes every replenishment row as it was.
 - **The IT asset and custody registers filter by several categories and several names, the names
   following the categories.** «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط)
   والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا

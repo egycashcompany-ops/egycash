@@ -23,12 +23,7 @@ import { RowActions } from '../../../shared/ui/RowActions';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { hasError } from '../../../shared/lib/errors';
 import { useDoneAtmReplenishments, useReopenAtmReplenishment } from '../api/atm-queries';
-import {
-  cairoToday,
-  doneRange,
-  isAlreadyOpenRefusal,
-  reopenRefusalKey,
-} from '../lib/operation-view';
+import { cairoToday, doneRange } from '../lib/operation-view';
 import { replenishmentColumns } from '../lib/operation-sheet';
 import { useReaderOrder } from '../lib/useBoardView';
 import { StatementExportButtons } from '../components/StatementExportButtons';
@@ -59,14 +54,8 @@ export const ReplenishmentsDonePage = (): JSX.Element => {
       await reopen.mutateAsync({ id: reopening.id, version: reopening.version });
       toast.success(t('atm.done.reopened'));
       setReopening(null);
-    } catch (error) {
-      // The owner's rule (port doc OD-1): the machine already has another open replenishment that day.
-      // Say so and close the dialog — trying again cannot succeed until that one is closed.
-      if (isAlreadyOpenRefusal(error)) {
-        toast.error(t(reopenRefusalKey('replenishment'), { code: reopening.machineCode }));
-        setReopening(null);
-        return;
-      }
+    } catch {
+      // Never the per-day rule: a replenishment reopens beside another open one (OD-1b).
       toast.error(t('atm.common.actionFailed'));
     }
   };

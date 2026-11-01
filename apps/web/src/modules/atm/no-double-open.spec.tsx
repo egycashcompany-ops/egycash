@@ -1,9 +1,13 @@
 // The owner's rule on screen (2026-10-13, port doc OD-1): «مينفعش أضيف ماكينة مرتين سواء فى عملية
-// التغذية أو الصيانة». The server refuses a second open operation; these pin that every refusal
-// reaches the reader in their language, once:
-//   · the open forms name the codes they did not open, in red, beside the unknown codes;
-//   · a done page words a refused reopen itself — and the global toast stays silent for THAT
-//     refusal only, every other failure still raising it exactly as before;
+// التغذية أو الصيانة» — for MAINTENANCE only since 2026-11-01 (OD-1b): «عايزك تسمح فى التغذيات
+// بإنى افتح تغذيه أكتر من واحده لنفس الماكينة عادى». The server refuses a second open maintenance
+// that day; these pin that every refusal reaches the reader in their language, once, and that the
+// replenishment screens no longer speak of one:
+//   · the maintenance open form names the codes it did not open, in red, beside the unknown codes;
+//     the replenishment form prints the unknown codes only;
+//   · the maintenance done page words a refused reopen itself — and the global toast stays silent
+//     for THAT refusal only, every other failure still raising it exactly as before; a
+//     replenishment reopen's failure is always the global toast's;
 //   · the mail page names the tickets accept refused, and the accept call reads them from `meta`
 //     while `data` stays the accepted tickets — and its confirm says BEFORE the accept which of the
 //     selected mails will be refused;
@@ -24,14 +28,11 @@ import { queryClient } from '../../shared/lib/query-client';
 import { toast } from '../../shared/ui/toast/toast-store';
 import {
   acceptConfirmBody,
-  alreadyOpenCodesKey,
   isAlreadyOpenRefusal,
   joinCodes,
   refusedMachineCodes,
-  reopenRefusalKey,
 } from './lib/operation-view';
 import { OpenRefusalNotice } from './components/OpenRefusalNotice';
-import { repeatsAnOpenMachine } from './components/ReplenishmentDialogs';
 import { AcceptRefusalNotice } from './pages/MailTicketsPage';
 import { useReopenAtmMaintenance, useReopenAtmReplenishment } from './api/atm-queries';
 import type * as AtmApiModule from './api/atm-api';
@@ -39,7 +40,7 @@ import type * as AtmApiModule from './api/atm-api';
 const refusal = (): ApiError =>
   new ApiError(
     ErrorCodes.ATM_OPERATION_ALREADY_OPEN,
-    'machine 99990001 already has an open replenishment',
+    'machine 99990001 already has an open maintenance that day',
     409,
     undefined,
     'req-spec',
@@ -117,24 +118,15 @@ describe('the refusal is recognized by its code, never by its words', () => {
 const sep = (locale: Locale): string => (locale === 'ar' ? '، ' : ', ');
 
 describe('the open forms name the codes they did not open', () => {
-  it.each([
-    ['replenishment', 'ar'],
-    ['replenishment', 'en'],
-    ['maintenance', 'ar'],
-    ['maintenance', 'en'],
-  ] as const)('%s, in %s, beside the unknown codes', (kind, locale) => {
+  it.each(['ar', 'en'] as const)('maintenance, in %s, beside the unknown codes', (locale) => {
     const markup = render(
       locale,
-      <OpenRefusalNotice
-        kind={kind}
-        unknownCodes={['99990009']}
-        alreadyOpenCodes={['99990001', '99990001']}
-      />,
+      <OpenRefusalNotice unknownCodes={['99990009']} alreadyOpenCodes={['99990001', '99990001']} />,
     );
-    const line = translate(locale, alreadyOpenCodesKey(kind), {
+    const line = translate(locale, 'atm.maintenance.alreadyOpenCodes', {
       codes: `99990001${sep(locale)}99990001`,
     });
-    expect(line).not.toBe(alreadyOpenCodesKey(kind));
+    expect(line).not.toBe('atm.maintenance.alreadyOpenCodes');
     expect(markup).toContain(line);
     expect(markup).toContain('data-refusal="already-open"');
     expect(markup).toContain('text-red-600');
@@ -142,48 +134,51 @@ describe('the open forms name the codes they did not open', () => {
     expect(markup).toContain(translate(locale, 'atm.common.unknownCodes', { codes: '99990009' }));
   });
 
+  it('replenishment: the unknown codes only — every line of a known code opens (OD-1b)', () => {
+    const markup = render('ar', <OpenRefusalNotice unknownCodes={['99990009']} />);
+    expect(markup).toContain(translate('ar', 'atm.common.unknownCodes', { codes: '99990009' }));
+    expect(markup).not.toContain('data-refusal="already-open"');
+    // The replenishment refusal line is gone from the catalog, in both languages.
+    for (const locale of ['ar', 'en'] as const) {
+      expect(translate(locale, 'atm.replenishments.alreadyOpenCodes', { codes: '1' })).toBe(
+        'atm.replenishments.alreadyOpenCodes',
+      );
+    }
+  });
+
   it('prints the Arabic in the formal register the catalog is held to', () => {
-    expect(translate('ar', 'atm.replenishments.alreadyOpenCodes', { codes: '99990001' })).toBe(
-      'لم تُفتح لأن للماكينة تغذية مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: 99990001',
-    );
     expect(translate('ar', 'atm.maintenance.alreadyOpenCodes', { codes: '99990001' })).toBe(
       'لم تُفتح لأن للماكينة صيانة مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: 99990001',
     );
   });
 
   it('prints nothing when every line opened', () => {
-    expect(
-      render(
-        'ar',
-        <OpenRefusalNotice kind="replenishment" unknownCodes={[]} alreadyOpenCodes={[]} />,
-      ),
-    ).toBe('');
+    expect(render('ar', <OpenRefusalNotice unknownCodes={[]} alreadyOpenCodes={[]} />)).toBe('');
+    expect(render('ar', <OpenRefusalNotice unknownCodes={[]} />)).toBe('');
   });
 });
 
 describe('a done page words a refused reopen itself', () => {
-  it.each(['replenishment', 'maintenance'] as const)(
-    '%s: the message names the machine',
-    (kind) => {
-      for (const locale of ['ar', 'en'] as const) {
-        const text = translate(locale, reopenRefusalKey(kind), { code: '99990001' });
-        expect(text).not.toBe(reopenRefusalKey(kind));
-        expect(text).toContain('99990001');
-      }
-      expect(translate('ar', reopenRefusalKey(kind), { code: '99990001' })).toBe(
-        kind === 'replenishment'
-          ? 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 تغذية مفتوحة أخرى في نفس اليوم.'
-          : 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 صيانة مفتوحة أخرى في نفس اليوم.',
-      );
-    },
-  );
+  it('maintenance: the message names the machine', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const text = translate(locale, 'atm.done.reopenAlreadyOpenMaint', { code: '99990001' });
+      expect(text).not.toBe('atm.done.reopenAlreadyOpenMaint');
+      expect(text).toContain('99990001');
+    }
+    expect(translate('ar', 'atm.done.reopenAlreadyOpenMaint', { code: '99990001' })).toBe(
+      'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 صيانة مفتوحة أخرى في نفس اليوم.',
+    );
+    // The replenishment wording is gone: a replenishment reopen is never refused for this.
+    expect(translate('ar', 'atm.done.reopenAlreadyOpenRep', { code: '99990001' })).toBe(
+      'atm.done.reopenAlreadyOpenRep',
+    );
+  });
 
-  it.each([
-    ['replenishment', () => held(useReopenAtmReplenishment).mutateAsync({ id: 'r1', version: 1 })],
-    ['maintenance', () => held(useReopenAtmMaintenance).mutateAsync({ id: 'm1', version: 1 })],
-  ])('%s: the rule’s refusal raises no global toast', async (_kind, run) => {
+  it('maintenance: the rule’s refusal raises no global toast', async () => {
     const errors = vi.spyOn(toast, 'error').mockImplementation(() => 'toast');
-    await expect(run()).rejects.toBeInstanceOf(ApiError);
+    await expect(
+      held(useReopenAtmMaintenance).mutateAsync({ id: 'm1', version: 1 }),
+    ).rejects.toBeInstanceOf(ApiError);
     expect(errors).not.toHaveBeenCalled();
   });
 
@@ -194,6 +189,14 @@ describe('a done page words a refused reopen itself', () => {
     reopenFailure = () => new ApiError('STALE_DOCUMENT', 'stale', 409);
     const errors = vi.spyOn(toast, 'error').mockImplementation(() => 'toast');
     await expect(run()).rejects.toBeInstanceOf(ApiError);
+    expect(errors).toHaveBeenCalledTimes(1);
+  });
+
+  it('replenishment: the hook keeps the global toast for every failure — it is outside the rule', async () => {
+    const errors = vi.spyOn(toast, 'error').mockImplementation(() => 'toast');
+    await expect(
+      held(useReopenAtmReplenishment).mutateAsync({ id: 'r1', version: 1 }),
+    ).rejects.toBeInstanceOf(ApiError);
     expect(errors).toHaveBeenCalledTimes(1);
   });
 });
@@ -280,22 +283,5 @@ describe('the accept confirm says which selected mails will be refused, before t
     expect(translate('ar', 'atm.mail.acceptBodyFlagged', { count: 2 })).toBe(
       'باستثناء 2 منها، إذ إن لماكيناتها صيانة مفتوحة بالفعل (الصفوف المميزة)، فلن تُقبل وستبقى معلقة.',
     );
-  });
-});
-
-describe('a bulk move of the open time is refused before it is sent when it would double a machine', () => {
-  it('is two OPEN rows of one machine — they would share the day the rule allows once', () => {
-    const open = (machineCode: string) => ({ machineCode, closedAt: null });
-    expect(repeatsAnOpenMachine([open('99990001'), open('99990002')])).toBe(false);
-    expect(repeatsAnOpenMachine([open('99990001'), open('99990002'), open('99990001')])).toBe(true);
-  });
-
-  it('a closed row does not count — the rule holds open rows only', () => {
-    expect(
-      repeatsAnOpenMachine([
-        { machineCode: '99990001', closedAt: null },
-        { machineCode: '99990001', closedAt: '2026-10-27T10:00:00.000Z' },
-      ]),
-    ).toBe(false);
   });
 });

@@ -1,16 +1,22 @@
-// The owner's rule, end to end (2026-10-13, narrowed to the day 2026-10-27 — port doc OD-1):
+// The owner's rule, end to end (2026-10-13, narrowed to the day 2026-10-27 — port doc OD-1;
+// lifted for replenishments 2026-11-01 — OD-1b):
 //
 //   «في ملحوظه مهمه جداً .. إن مينفعش أضيف ماكينة مرتين سواء فى عملية التغذية أو الصيانة»
 //   «خلى الرفض دا يحصل فقط إذا كانت الماكينات مفتوحه في نفس اليوم ولم تُغلق ! مش يرفضها لو
 //    مفتوحه أمبارح ومتقفلتش»
+//   «عايزك تسمح فى التغذيات بإنى افتح تغذيه أكتر من واحده لنفس الماكينة عادى»
 //
-// A machine has at most ONE open replenishment and at most ONE open maintenance PER CAIRO DAY,
-// company-wide, and the two are independent; one left open on an earlier day does not block. Proven here over real HTTP, real RBAC and a real mongod: every path that
-// creates or re-opens an open operation refuses the second one on that day (the two batch opens,
-// the two reopens, the mail accept, an edit moving the open time), a race past the service check lands on the unique index and is
-// answered the same way — never a 500 — and a refusal never describes another branch. The boot
-// index builder's report of pre-existing duplicates names the collection and counts only, and the
-// legacy importer reports the historical duplicates the index refuses instead of crashing.
+// A machine has at most ONE open maintenance PER CAIRO DAY, company-wide; one left open on an
+// earlier day does not block. Replenishments are outside the rule: a machine may have several
+// open, whatever the day, and they never block a maintenance. Proven here over real HTTP, real
+// RBAC and a real mongod: every path that creates or re-opens an open maintenance refuses the
+// second one on that day (the batch open, the reopen, the mail accept, an edit moving the open
+// time), a race past the service check lands on the unique index and is answered the same way —
+// never a 500 — and a refusal never describes another branch; every replenishment path opens,
+// reopens and moves freely. The boot drops the replenishment index an older database built, its
+// report of pre-existing maintenance duplicates names the collection and counts only, and the
+// legacy importer writes every replenishment and reports the historical maintenance duplicates the
+// index refuses instead of crashing.
 //
 // Every code below is synthetic.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
@@ -43,7 +49,6 @@ import { migrateAtmIndexes } from '../../src/modules/atm/atm-indexes';
 import { AtmReplenishmentModel } from '../../src/modules/atm/replenishments/replenishment.model';
 import { AtmMaintenanceModel } from '../../src/modules/atm/maintenances/maintenance.model';
 import { AtmMailTicketModel } from '../../src/modules/atm/mail-tickets/mail-ticket.model';
-import { atmReplenishmentRepository } from '../../src/modules/atm/replenishments/replenishment.repository';
 import { atmMaintenanceRepository } from '../../src/modules/atm/maintenances/maintenance.repository';
 import { atmMailTicketRepository } from '../../src/modules/atm/mail-tickets/mail-ticket.repository';
 import { atmMailIngestionService } from '../../src/modules/atm/mail-tickets/mail-ingestion.service';
@@ -290,29 +295,28 @@ afterAll(async () => {
   if (replSet !== null) await replSet.stop();
 });
 
-describe('the race-proof index exists after boot', () => {
-  it.each([
-    ['atm_replenishments', 'ux_open_replenishment_per_code_day'],
-    ['atm_maintenances', 'ux_open_maintenance_per_code_day'],
-  ])(
-    '%s carries %s — unique on the code AND day over open, live rows',
-    async (collection, name) => {
-      const indexes = await mongoose.connection.db?.collection(collection).listIndexes().toArray();
-      const index = indexes?.find((entry) => entry.name === name);
-      expect(index, `${name} on ${collection}`).toBeDefined();
-      expect(index?.key).toEqual({ machineCode: 1, openDay: 1 });
-      expect(index?.unique).toBe(true);
-      expect(index?.partialFilterExpression).toEqual({
-        closedAt: null,
-        isDeleted: false,
-        machineCode: { $gt: '' },
-        openDay: { $gt: '' },
-      });
-    },
-  );
+describe('the race-proof index exists after boot — on the maintenance log only', () => {
+  it('atm_maintenances carries ux_open_maintenance_per_code_day — unique on the code AND day over open, live rows', async () => {
+    const indexes = await AtmMaintenanceModel.collection.listIndexes().toArray();
+    const index = indexes.find((entry) => entry.name === 'ux_open_maintenance_per_code_day');
+    expect(index).toBeDefined();
+    expect(index?.key).toEqual({ machineCode: 1, openDay: 1 });
+    expect(index?.unique).toBe(true);
+    expect(index?.partialFilterExpression).toEqual({
+      closedAt: null,
+      isDeleted: false,
+      machineCode: { $gt: '' },
+      openDay: { $gt: '' },
+    });
+  });
+
+  it('atm_replenishments carries no unique index — a machine may have several open (OD-1b)', async () => {
+    const indexes = await AtmReplenishmentModel.collection.listIndexes().toArray();
+    expect(indexes.filter((index) => index.unique === true).map((index) => index.name)).toEqual([]);
+  });
 
   it.each(['atm_replenishments', 'atm_maintenances'])(
-    '%s carries the index the rule’s day question runs on — not a scan of the log',
+    '%s carries the index the per-day question runs on (maintenance asks it; replenishment keeps it) — not a scan of the log',
     async (collection) => {
       const indexes = await mongoose.connection.db?.collection(collection).listIndexes().toArray();
       const index = indexes?.find((entry) => entry.name === 'ix_open_code_opened');
@@ -336,10 +340,9 @@ describe('the race-proof index exists after boot', () => {
     },
   );
 
-  it('drops the any-day index of the rule’s first form, and nothing else', async () => {
-    const collection = AtmMaintenanceModel.collection;
-    // A database that ran the first form carries it.
-    await collection.createIndex(
+  it('drops the retired indexes — the any-day form, and the replenishment per-day form — and nothing else', async () => {
+    // A database that ran the earlier forms carries them.
+    await AtmMaintenanceModel.collection.createIndex(
       { machineCode: 1 },
       {
         name: 'ux_open_maintenance_per_code',
@@ -347,91 +350,97 @@ describe('the race-proof index exists after boot', () => {
         partialFilterExpression: { closedAt: null, isDeleted: false, machineCode: { $gt: '' } },
       },
     );
+    await AtmReplenishmentModel.collection.createIndex(
+      { machineCode: 1, openDay: 1 },
+      {
+        name: 'ux_open_replenishment_per_code_day',
+        unique: true,
+        partialFilterExpression: {
+          closedAt: null,
+          isDeleted: false,
+          machineCode: { $gt: '' },
+          openDay: { $gt: '' },
+        },
+      },
+    );
     const result = await migrateAtmIndexes();
     expect(result.dropped).toEqual([
+      { collection: 'atm_replenishments', index: 'ux_open_replenishment_per_code_day' },
       { collection: 'atm_maintenances', index: 'ux_open_maintenance_per_code' },
     ]);
-    const names = (await collection.listIndexes().toArray()).map((index) => index.name);
-    expect(names).not.toContain('ux_open_maintenance_per_code');
-    expect(names).toContain('ux_open_maintenance_per_code_day');
-    // Idempotent: nothing left to drop.
+    const maintenanceNames = (await AtmMaintenanceModel.collection.listIndexes().toArray()).map(
+      (index) => index.name,
+    );
+    expect(maintenanceNames).not.toContain('ux_open_maintenance_per_code');
+    expect(maintenanceNames).toContain('ux_open_maintenance_per_code_day');
+    const replenishmentNames = (await AtmReplenishmentModel.collection.listIndexes().toArray()).map(
+      (index) => index.name,
+    );
+    expect(replenishmentNames).not.toContain('ux_open_replenishment_per_code_day');
+    expect(replenishmentNames).toContain('ix_open_code_opened');
+    // Idempotent: nothing left to drop, and the replenishment index is not built again.
     expect((await migrateAtmIndexes()).dropped).toEqual([]);
+    expect(
+      (await AtmReplenishmentModel.collection.listIndexes().toArray()).map((index) => index.name),
+    ).not.toContain('ux_open_replenishment_per_code_day');
   });
 });
 
-describe('replenishment — one open per machine', () => {
-  it('refuses a second open of the same machine and reports it, opening nothing', async () => {
+describe('replenishment — several open per machine (OD-1b)', () => {
+  it('opens a second replenishment of a machine that already has one open today', async () => {
     const first = await openReps(alexToken, ['5001']);
     expect(first.status).toBe(200);
     expect(repResult(first).opened.map((r) => r.machineCode)).toEqual(['5001']);
-    expect(repResult(first).alreadyOpenCodes).toEqual([]);
 
     const second = await openReps(alexToken, ['5001']);
     expect(second.status).toBe(200);
-    expect(repResult(second).opened).toEqual([]);
-    expect(repResult(second).alreadyOpenCodes).toEqual(['5001']);
-    expect(repResult(second).unknownCodes).toEqual([]);
-    expect(await openRows('rep', '5001')).toBe(1);
+    expect(repResult(second)).toMatchObject({ unknownCodes: [], alreadyOpenCodes: [] });
+    expect(repResult(second).opened.map((r) => r.machineCode)).toEqual(['5001']);
+    expect(repResult(second).opened[0]?.id).not.toBe(repResult(first).opened[0]?.id);
+    expect(await openRows('rep', '5001')).toBe(2);
   });
 
-  it('opens a code repeated in ONE batch once, reports the repeats, and still opens the rest', async () => {
+  it('opens a code repeated in ONE batch on every line, as the legacy did, and still reports unknown codes', async () => {
     const res = await openReps(alexToken, ['5002', '5002', '9999', '5005', '5002', '5001']);
     expect(res.status).toBe(200);
     const body = repResult(res);
-    expect(body.opened.map((r) => r.machineCode)).toEqual(['5002', '5005']);
-    // One entry per refused line: two repeats of 5002, and 5001 still open from the test above.
-    expect(body.alreadyOpenCodes).toEqual(['5002', '5002', '5001']);
+    expect(body.opened.map((r) => r.machineCode)).toEqual(['5002', '5002', '5005', '5002', '5001']);
+    expect(body.alreadyOpenCodes).toEqual([]);
     expect(body.unknownCodes).toEqual(['9999']);
-    expect(await openRows('rep', '5002')).toBe(1);
-    expect(await openRows('rep', '5005')).toBe(1);
+    expect(await openRows('rep', '5002')).toBe(3);
+    expect(await openRows('rep', '5001')).toBe(3);
   });
 
-  it('allows a new open once the earlier one is closed', async () => {
+  it('reopens a closed replenishment while another of the machine is open', async () => {
     const open = repResult(await openReps(alexToken, ['5003'])).opened[0] as AtmReplenishmentDto;
     const close = await post(alexToken, '/atm/replenishments/close', { ids: [open.id] });
     expect(close.status).toBe(200);
+    const closed = data<AtmReplenishmentDto[]>(close)[0] as AtmReplenishmentDto;
+    expect(repResult(await openReps(alexToken, ['5003'])).opened).toHaveLength(1);
 
-    const again = await openReps(alexToken, ['5003']);
-    expect(repResult(again).opened.map((r) => r.machineCode)).toEqual(['5003']);
-    expect(repResult(again).alreadyOpenCodes).toEqual([]);
+    const reopened = await post(alexToken, `/atm/replenishments/${closed.id}/reopen`, {
+      version: closed.version,
+    });
+    expect(reopened.status, JSON.stringify(reopened.body)).toBe(200);
+    expect(data<AtmReplenishmentDto>(reopened).closedAt).toBeNull();
+    expect(await openRows('rep', '5003')).toBe(2);
   });
 
-  it('refuses a REOPEN while another replenishment of the machine is open (409), allows it after', async () => {
-    // 5003 now has one closed row (the first) and one open row (from the test above).
-    const closed = await AtmReplenishmentModel.findOne({
-      machineCode: '5003',
-      closedAt: { $ne: null },
-    })
-      .lean()
-      .exec();
-    const open = await AtmReplenishmentModel.findOne({ machineCode: '5003', closedAt: null })
-      .lean()
-      .exec();
-    expect(closed).not.toBeNull();
-
-    const refused = await post(alexToken, `/atm/replenishments/${String(closed?._id)}/reopen`, {
-      version: closed?.__v,
-    });
-    expect(refused.status).toBe(409);
-    expect((refused.body as { error: { code: string } }).error.code).toBe(
-      ErrorCodes.ATM_OPERATION_ALREADY_OPEN,
-    );
-    expect(await openRows('rep', '5003')).toBe(1);
-
-    expect(
-      (await post(alexToken, '/atm/replenishments/close', { ids: [String(open?._id)] })).status,
-    ).toBe(200);
-    const reopened = await post(alexToken, `/atm/replenishments/${String(closed?._id)}/reopen`, {
-      version: closed?.__v,
-    });
-    expect(reopened.status).toBe(200);
-    expect(data<AtmReplenishmentDto>(reopened).closedAt).toBeNull();
+  it('two concurrent opens of one code both open — no index to lose to', async () => {
+    const [a, b] = await Promise.all([
+      openReps(alexToken, ['7101']),
+      openReps(alexToken, ['7101']),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect([repResult(a), repResult(b)].flatMap((r) => r.opened)).toHaveLength(2);
+    expect([repResult(a), repResult(b)].flatMap((r) => r.alreadyOpenCodes)).toEqual([]);
+    expect(await openRows('rep', '7101')).toBe(2);
   });
 });
 
 describe('maintenance — one open per machine, independent of replenishment', () => {
-  it('opens a maintenance on a machine whose replenishment is open — the kinds are independent', async () => {
-    expect(await openRows('rep', '5001')).toBe(1);
+  it('opens a maintenance on a machine whose replenishments are open — they never block it', async () => {
+    expect(await openRows('rep', '5001')).toBe(3);
     const res = await openMaints(alexToken, ['5001']);
     expect(res.status).toBe(200);
     expect(maintResult(res).opened.map((m) => m.machineCode)).toEqual(['5001']);
@@ -616,7 +625,7 @@ describe('mail accept — a concurrent accept of the SAME ticket is not reported
 });
 
 describe('an empty machine code identifies no machine — it never blocks', () => {
-  it('a reopen of an empty-code row is not refused by another empty-code open row', async () => {
+  it('a reopen of an empty-code maintenance is not refused by another empty-code open row', async () => {
     const raw = (closedAt: Date | null) => ({
       _id: new Types.ObjectId(),
       branchId: new Types.ObjectId(alexBranchId),
@@ -628,7 +637,12 @@ describe('an empty machine code identifies no machine — it never blocks', () =
       area: 'SYN AREA',
       openedAt: new Date(),
       closedAt,
-      scheduleTime: null,
+      serviceType: null,
+      notes: null,
+      referenceNumber: null,
+      source: 'manual',
+      mailTicketId: null,
+      leaderEmployeeId: null,
       leaderName: null,
       openedById: null,
       openedByName: null,
@@ -646,44 +660,44 @@ describe('an empty machine code identifies no machine — it never blocks', () =
     });
     const open = raw(null);
     const closed = raw(new Date());
-    await AtmReplenishmentModel.collection.insertMany([open, closed]);
+    await AtmMaintenanceModel.collection.insertMany([open, closed]);
     try {
-      expect(
-        await atmReplenishmentRepository.hasOpenOperation('', cairoDateString(new Date())),
-      ).toBe(false);
-      const res = await post(alexToken, `/atm/replenishments/${String(closed._id)}/reopen`, {
+      expect(await atmMaintenanceRepository.hasOpenOperation('', cairoDateString(new Date()))).toBe(
+        false,
+      );
+      const res = await post(alexToken, `/atm/maintenances/${String(closed._id)}/reopen`, {
         version: 0,
       });
       expect(res.status, JSON.stringify(res.body)).toBe(200);
-      expect(data<AtmReplenishmentDto>(res).closedAt).toBeNull();
+      expect(data<AtmMaintenanceDto>(res).closedAt).toBeNull();
     } finally {
-      await AtmReplenishmentModel.collection.deleteMany({ _id: { $in: [open._id, closed._id] } });
+      await AtmMaintenanceModel.collection.deleteMany({ _id: { $in: [open._id, closed._id] } });
     }
   });
 });
 
 describe('company-wide, without describing the other branch', () => {
-  it('refuses Tanta a machine code that is open in Alex — and the answer names only the code', async () => {
+  it('refuses Tanta a maintenance of a machine code open in Alex — and the answer names only the code', async () => {
     // Tanta opens and closes 8001 first, so it holds a closed row to try reopening later.
-    const tantaRow = repResult(await openReps(tantaToken, ['8001']))
-      .opened[0] as AtmReplenishmentDto;
-    const closed = await post(tantaToken, '/atm/replenishments/close', { ids: [tantaRow.id] });
-    const tantaClosed = data<AtmReplenishmentDto[]>(closed)[0] as AtmReplenishmentDto;
+    const tantaRow = maintResult(await openMaints(tantaToken, ['8001']))
+      .opened[0] as AtmMaintenanceDto;
+    await closeMaintenanceDirectly(tantaRow.id);
+    const tantaClosed = await AtmMaintenanceModel.findById(tantaRow.id).lean().exec();
 
-    const alexOpen = repResult(await openReps(alexToken, ['8001']))
-      .opened[0] as AtmReplenishmentDto;
+    const alexOpen = maintResult(await openMaints(alexToken, ['8001']))
+      .opened[0] as AtmMaintenanceDto;
     expect(alexOpen.branchId).toBe(alexBranchId);
 
-    const res = await openReps(tantaToken, ['8001']);
+    const res = await openMaints(tantaToken, ['8001']);
     expect(res.status).toBe(200);
-    expect(repResult(res)).toEqual({ opened: [], unknownCodes: [], alreadyOpenCodes: ['8001'] });
+    expect(maintResult(res)).toEqual({ opened: [], unknownCodes: [], alreadyOpenCodes: ['8001'] });
     const text = JSON.stringify(res.body);
     expect(text).not.toContain(alexBranchId);
     expect(text).not.toContain(alexOpen.id);
     expect(text).not.toContain('Alex');
 
-    const reopen = await post(tantaToken, `/atm/replenishments/${tantaClosed.id}/reopen`, {
-      version: tantaClosed.version,
+    const reopen = await post(tantaToken, `/atm/maintenances/${tantaRow.id}/reopen`, {
+      version: tantaClosed?.__v,
     });
     expect(reopen.status).toBe(409);
     expect((reopen.body as { error: { code: string } }).error.code).toBe(
@@ -694,10 +708,18 @@ describe('company-wide, without describing the other branch', () => {
     expect(refusal).not.toContain(alexOpen.id);
     expect(refusal).not.toContain('Alex');
 
-    // Tanta still cannot see Alex's row, and its maintenance — the other kind — is free.
-    const list = await get(tantaToken, '/atm/replenishments?pageSize=100');
-    expect(data<AtmReplenishmentDto[]>(list).map((r) => r.id)).not.toContain(alexOpen.id);
-    expect(maintResult(await openMaints(tantaToken, ['8001'])).opened).toHaveLength(1);
+    // Tanta still cannot see Alex's row.
+    const list = await get(tantaToken, '/atm/maintenances?pageSize=100');
+    expect(data<AtmMaintenanceDto[]>(list).map((m) => m.id)).not.toContain(alexOpen.id);
+  });
+
+  it('a replenishment open in Alex never blocks Tanta’s — replenishments are outside the rule', async () => {
+    const alexRep = repResult(await openReps(alexToken, ['8001'])).opened[0] as AtmReplenishmentDto;
+    expect(alexRep.branchId).toBe(alexBranchId);
+    const res = await openReps(tantaToken, ['8001']);
+    expect(res.status).toBe(200);
+    expect(repResult(res).opened.map((r) => r.branchId)).toEqual([tantaBranchId]);
+    expect(repResult(res).alreadyOpenCodes).toEqual([]);
   });
 });
 
@@ -732,26 +754,19 @@ describe('per day — an operation left open on an earlier day does not block', 
       { machineCode: '5105', name: 'SYN 5105' },
       { machineCode: '5106', name: 'SYN 5106' },
       { machineCode: '5107', name: 'SYN 5107' },
-      { machineCode: '5108', name: 'SYN 5108' },
-      { machineCode: '5109', name: 'SYN 5109' },
     ]);
   });
 
-  it('opens today a machine left open YESTERDAY and never closed — and still refuses a second today', async () => {
-    const yesterday = repResult(await openRepsOn(['5101'], dayAt(-1)));
-    expect(yesterday.opened.map((r) => r.machineCode)).toEqual(['5101']);
-
-    const today = await openReps(alexToken, ['5101']);
-    expect(repResult(today).opened.map((r) => r.machineCode)).toEqual(['5101']);
-    expect(repResult(today).alreadyOpenCodes).toEqual([]);
-    expect(await openRows('rep', '5101')).toBe(2);
-
-    const again = await openReps(alexToken, ['5101']);
-    expect(repResult(again).opened).toEqual([]);
-    expect(repResult(again).alreadyOpenCodes).toEqual(['5101']);
+  it('replenishment: a machine opens yesterday, today, and again today — no day blocks it', async () => {
+    expect(repResult(await openRepsOn(['5101'], dayAt(-1))).opened).toHaveLength(1);
+    expect(repResult(await openReps(alexToken, ['5101'])).opened).toHaveLength(1);
+    const again = repResult(await openReps(alexToken, ['5101']));
+    expect(again.opened.map((r) => r.machineCode)).toEqual(['5101']);
+    expect(again.alreadyOpenCodes).toEqual([]);
+    expect(await openRows('rep', '5101')).toBe(3);
   });
 
-  it('a row stored before `openDay` existed still blocks its own day — the check reads the open time', async () => {
+  it('maintenance: a row stored before `openDay` existed still blocks its own day — the check reads the open time', async () => {
     const legacy = {
       _id: new Types.ObjectId(),
       branchId: new Types.ObjectId(alexBranchId),
@@ -763,25 +778,32 @@ describe('per day — an operation left open on an earlier day does not block', 
       area: 'SYN AREA',
       openedAt: new Date(),
       closedAt: null,
+      serviceType: null,
+      notes: null,
+      referenceNumber: null,
+      source: 'manual',
+      mailTicketId: null,
       isDeleted: false,
       schemaVersion: 1,
     };
-    await AtmReplenishmentModel.collection.insertOne(legacy);
+    await AtmMaintenanceModel.collection.insertOne(legacy);
     try {
-      expect(repResult(await openReps(alexToken, ['5102'])).alreadyOpenCodes).toEqual(['5102']);
-      // …and only its own day: tomorrow opens.
-      expect(repResult(await openRepsOn(['5102'], dayAt(1))).opened).toHaveLength(1);
+      expect(maintResult(await openMaints(alexToken, ['5102'])).alreadyOpenCodes).toEqual(['5102']);
+      // …and only its own day: a day earlier opens.
+      const earlier = cairoWallClockUtc(dayAt(-1), 12).toISOString();
+      expect(maintResult(await openMaints(alexToken, ['5102'], earlier)).opened).toHaveLength(1);
     } finally {
-      await AtmReplenishmentModel.collection.deleteOne({ _id: legacy._id });
+      await AtmMaintenanceModel.collection.deleteOne({ _id: legacy._id });
     }
   });
 
-  it('schedules ahead: tomorrow opens beside today’s, and a second one for tomorrow is refused', async () => {
+  it('replenishment: schedules ahead — tomorrow opens beside today’s, and a second for tomorrow too', async () => {
     expect(repResult(await openReps(alexToken, ['5103'])).opened).toHaveLength(1);
     const tomorrow = repResult(await openRepsOn(['5103'], dayAt(1)));
     expect(tomorrow.opened).toHaveLength(1);
     expect(cairoDateString(new Date(tomorrow.opened[0]?.openedAt as string))).toBe(dayAt(1));
-    expect(repResult(await openRepsOn(['5103'], dayAt(1))).alreadyOpenCodes).toEqual(['5103']);
+    expect(repResult(await openRepsOn(['5103'], dayAt(1))).opened).toHaveLength(1);
+    expect(await openRows('rep', '5103')).toBe(3);
   });
 
   it('maintenance: the same rule, its own kind', async () => {
@@ -792,32 +814,33 @@ describe('per day — an operation left open on an earlier day does not block', 
     expect(await openRows('maint', '5104')).toBe(2);
   });
 
-  it('a reopen is refused only by an open row of the reopened row’s OWN day', async () => {
-    const y = repResult(await openRepsOn(['5105'], dayAt(-1))).opened[0] as AtmReplenishmentDto;
-    const a = repResult(await openReps(alexToken, ['5105'])).opened[0] as AtmReplenishmentDto;
-    expect((await post(alexToken, '/atm/replenishments/close', { ids: [y.id, a.id] })).status).toBe(
-      200,
-    );
-    const b = repResult(await openReps(alexToken, ['5105'])).opened[0] as AtmReplenishmentDto;
+  it('maintenance: a reopen is refused only by an open row of the reopened row’s OWN day', async () => {
+    const yesterday = cairoWallClockUtc(dayAt(-1), 12).toISOString();
+    const y = maintResult(await openMaints(alexToken, ['5105'], yesterday))
+      .opened[0] as AtmMaintenanceDto;
+    const a = maintResult(await openMaints(alexToken, ['5105'])).opened[0] as AtmMaintenanceDto;
+    await closeMaintenanceDirectly(y.id);
+    await closeMaintenanceDirectly(a.id);
+    const b = maintResult(await openMaints(alexToken, ['5105'])).opened[0] as AtmMaintenanceDto;
     expect(b).toBeDefined();
 
-    const closedY = await AtmReplenishmentModel.findById(y.id).lean().exec();
-    const reopenY = await post(alexToken, `/atm/replenishments/${y.id}/reopen`, {
+    const closedY = await AtmMaintenanceModel.findById(y.id).lean().exec();
+    const reopenY = await post(alexToken, `/atm/maintenances/${y.id}/reopen`, {
       version: closedY?.__v,
     });
     expect(reopenY.status, 'yesterday’s row: today’s open row is another day').toBe(200);
-    expect((await AtmReplenishmentModel.findById(y.id).lean().exec())?.openDay).toBe(dayAt(-1));
+    expect((await AtmMaintenanceModel.findById(y.id).lean().exec())?.openDay).toBe(dayAt(-1));
 
-    const closedA = await AtmReplenishmentModel.findById(a.id).lean().exec();
-    const reopenA = await post(alexToken, `/atm/replenishments/${a.id}/reopen`, {
+    const closedA = await AtmMaintenanceModel.findById(a.id).lean().exec();
+    const reopenA = await post(alexToken, `/atm/maintenances/${a.id}/reopen`, {
       version: closedA?.__v,
     });
     expect(reopenA.status, 'today’s row: today is taken').toBe(409);
     expect(refusedCode(reopenA)).toBe(ErrorCodes.ATM_OPERATION_ALREADY_OPEN);
-    expect(await openRows('rep', '5105')).toBe(2);
+    expect(await openRows('maint', '5105')).toBe(2);
   });
 
-  it('an edit MOVING an open row onto a day its machine is already open is refused, nothing written', async () => {
+  it('replenishment: an edit MOVING an open row onto a day its machine is already open is allowed — single and bulk', async () => {
     const today = repResult(await openReps(alexToken, ['5106'])).opened[0] as AtmReplenishmentDto;
     const ahead = repResult(await openRepsOn(['5106'], dayAt(1))).opened[0] as AtmReplenishmentDto;
 
@@ -825,49 +848,19 @@ describe('per day — an operation left open on an earlier day does not block', 
       openedAt: cairoWallClockUtc(dayAt(0), 11).toISOString(),
       version: ahead.version,
     });
-    expect(single.status).toBe(409);
-    expect(refusedCode(single)).toBe(ErrorCodes.ATM_OPERATION_ALREADY_OPEN);
-    const unmoved = await AtmReplenishmentModel.findById(ahead.id).lean().exec();
-    expect(unmoved?.openedAt.toISOString()).toBe(ahead.openedAt);
+    expect(single.status, JSON.stringify(single.body)).toBe(200);
+    expect((await AtmReplenishmentModel.findById(ahead.id).lean().exec())?.openDay).toBe(dayAt(0));
 
-    // The bulk edit sets ONE instant on every checked row: two rows of one machine cannot share it.
+    // The bulk edit sets ONE instant on every checked row — two rows of one machine share it.
     const both = await patch('/atm/replenishments/bulk', {
       ids: [today.id, ahead.id],
       openedAt: cairoWallClockUtc(dayAt(2), 10).toISOString(),
     });
-    expect(both.status).toBe(409);
-    expect(refusedCode(both)).toBe(ErrorCodes.ATM_OPERATION_ALREADY_OPEN);
-    expect(
-      (await AtmReplenishmentModel.findById(today.id).lean().exec())?.openedAt.toISOString(),
-    ).toBe(today.openedAt);
-
-    // Onto a free day it moves — and its stored day moves with it.
-    const free = await patch('/atm/replenishments/bulk', {
-      ids: [ahead.id],
-      openedAt: cairoWallClockUtc(dayAt(2), 10).toISOString(),
-    });
-    expect(free.status, JSON.stringify(free.body)).toBe(200);
-    expect((await AtmReplenishmentModel.findById(ahead.id).lean().exec())?.openDay).toBe(dayAt(2));
-  });
-
-  it('a bulk move the index refuses half-way writes NOTHING — one transaction, never a partial move', async () => {
-    // A then B, so the move reaches A before the row B collides on.
-    const a = repResult(await openRepsOn(['5108'], dayAt(-1))).opened[0] as AtmReplenishmentDto;
-    const b = repResult(await openRepsOn(['5109'], dayAt(-1))).opened[0] as AtmReplenishmentDto;
-    const holder = repResult(await openRepsOn(['5109'], dayAt(3))).opened[0] as AtmReplenishmentDto;
-    expect(holder).toBeDefined();
-    // As if a concurrent open landed between the rule's check and the write.
-    vi.spyOn(atmReplenishmentRepository, 'codesBlockedOnDay').mockResolvedValue([]);
-    const res = await patch('/atm/replenishments/bulk', {
-      ids: [a.id, b.id],
-      openedAt: cairoWallClockUtc(dayAt(3), 10).toISOString(),
-    });
-    expect(res.status).toBe(409);
-    expect(refusedCode(res)).toBe(ErrorCodes.ATM_OPERATION_ALREADY_OPEN);
-    const storedA = await AtmReplenishmentModel.findById(a.id).lean().exec();
-    expect(storedA?.openedAt.toISOString(), 'A rolled back with B').toBe(a.openedAt);
-    expect(storedA?.openDay).toBe(dayAt(-1));
-    expect(storedA?.__v).toBe(a.version);
+    expect(both.status, JSON.stringify(both.body)).toBe(200);
+    for (const id of [today.id, ahead.id]) {
+      expect((await AtmReplenishmentModel.findById(id).lean().exec())?.openDay).toBe(dayAt(2));
+    }
+    expect(await openRows('rep', '5106')).toBe(2);
   });
 
   it('maintenance: an edit moving an open row onto a taken day is refused too', async () => {
@@ -886,19 +879,6 @@ describe('per day — an operation left open on an earlier day does not block', 
 });
 
 describe('a forced race lands on the index — exactly one opened, never a 500', () => {
-  it('two concurrent replenishment opens of one code, both past the service check', async () => {
-    vi.spyOn(atmReplenishmentRepository, 'openMachineCodes').mockResolvedValue(new Set());
-    const [a, b] = await Promise.all([
-      openReps(alexToken, ['7101']),
-      openReps(alexToken, ['7101']),
-    ]);
-    expect([a.status, b.status]).toEqual([200, 200]);
-    const results = [repResult(a), repResult(b)];
-    expect(results.flatMap((r) => r.opened)).toHaveLength(1);
-    expect(results.flatMap((r) => r.alreadyOpenCodes)).toEqual(['7101']);
-    expect(await openRows('rep', '7101')).toBe(1);
-  });
-
   it('two concurrent maintenance opens of one code, both past the service check', async () => {
     vi.spyOn(atmMaintenanceRepository, 'openMachineCodes').mockResolvedValue(new Set());
     const [a, b] = await Promise.all([
@@ -912,36 +892,34 @@ describe('a forced race lands on the index — exactly one opened, never a 500',
     expect(await openRows('maint', '7101')).toBe(1);
   });
 
-  it('two concurrent opens WITHOUT forcing — the same single row, whichever guard answers', async () => {
+  it('two concurrent maintenance opens WITHOUT forcing — the same single row, whichever guard answers', async () => {
     const [a, b] = await Promise.all([
-      openReps(alexToken, ['7103']),
-      openReps(alexToken, ['7103']),
+      openMaints(alexToken, ['7103']),
+      openMaints(alexToken, ['7103']),
     ]);
     expect([a.status, b.status]).toEqual([200, 200]);
-    expect([repResult(a), repResult(b)].flatMap((r) => r.opened)).toHaveLength(1);
-    expect(await openRows('rep', '7103')).toBe(1);
+    expect([maintResult(a), maintResult(b)].flatMap((r) => r.opened)).toHaveLength(1);
+    expect(await openRows('maint', '7103')).toBe(1);
   });
 
-  it('two concurrent REOPENS of two closed rows of one machine: one 200, one 409', async () => {
+  it('two concurrent REOPENS of two closed maintenances of one machine: one 200, one 409', async () => {
     const ids: { id: string; version: number }[] = [];
     for (let i = 0; i < 2; i += 1) {
-      const row = repResult(await openReps(alexToken, ['7102'])).opened[0] as AtmReplenishmentDto;
-      const closed = await post(alexToken, '/atm/replenishments/close', { ids: [row.id] });
-      const after = data<AtmReplenishmentDto[]>(closed)[0] as AtmReplenishmentDto;
-      ids.push({ id: after.id, version: after.version });
+      const row = maintResult(await openMaints(alexToken, ['7102'])).opened[0] as AtmMaintenanceDto;
+      await closeMaintenanceDirectly(row.id);
+      const after = await AtmMaintenanceModel.findById(row.id).lean().exec();
+      ids.push({ id: row.id, version: after?.__v as number });
     }
-    vi.spyOn(atmReplenishmentRepository, 'hasOpenOperation').mockResolvedValue(false);
+    vi.spyOn(atmMaintenanceRepository, 'hasOpenOperation').mockResolvedValue(false);
     const responses = await Promise.all(
-      ids.map(({ id, version }) =>
-        post(alexToken, `/atm/replenishments/${id}/reopen`, { version }),
-      ),
+      ids.map(({ id, version }) => post(alexToken, `/atm/maintenances/${id}/reopen`, { version })),
     );
     expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
     const refused = responses.find((r) => r.status === 409);
     expect((refused?.body as { error: { code: string } }).error.code).toBe(
       ErrorCodes.ATM_OPERATION_ALREADY_OPEN,
     );
-    expect(await openRows('rep', '7102')).toBe(1);
+    expect(await openRows('maint', '7102')).toBe(1);
   });
 
   it('a mail accept that loses the race leaves the ticket pending and reports it', async () => {
@@ -960,9 +938,9 @@ describe('a forced race lands on the index — exactly one opened, never a 500',
 });
 
 describe('existing duplicates: the boot reports the collection, the service check still holds', () => {
-  it('skips the index over duplicate open rows, logs no row data, and refuses new opens', async () => {
-    const collection = AtmReplenishmentModel.collection;
-    await collection.dropIndex('ux_open_replenishment_per_code_day');
+  it('skips the maintenance index over duplicate open rows, logs no row data, and refuses new opens', async () => {
+    const collection = AtmMaintenanceModel.collection;
+    await collection.dropIndex('ux_open_maintenance_per_code_day');
     const stale = (n: number) => ({
       _id: new Types.ObjectId(),
       branchId: new Types.ObjectId(alexBranchId),
@@ -975,6 +953,11 @@ describe('existing duplicates: the boot reports the collection, the service chec
       openedAt: new Date(),
       openDay: cairoDateString(new Date()),
       closedAt: null,
+      serviceType: null,
+      notes: null,
+      referenceNumber: null,
+      source: 'manual',
+      mailTicketId: null,
       isDeleted: false,
       schemaVersion: 1,
     });
@@ -984,17 +967,22 @@ describe('existing duplicates: the boot reports the collection, the service chec
     const errors = vi.spyOn(logger, 'error');
     const result = await migrateAtmIndexes();
     expect(result.skippedDuplicates).toContainEqual({
-      collection: 'atm_replenishments',
-      index: 'ux_open_replenishment_per_code_day',
+      collection: 'atm_maintenances',
+      index: 'ux_open_maintenance_per_code_day',
       groups: 1,
     });
+    // The replenishment log holds open duplicates by now (5001, 5002…) and is outside the rule:
+    // the boot has nothing to say about it.
+    expect(result.skippedDuplicates.map((entry) => entry.collection)).not.toContain(
+      'atm_replenishments',
+    );
     const report = errors.mock.calls.find((call) =>
-      JSON.stringify(call[0]).includes('atm_replenishments'),
+      JSON.stringify(call[0]).includes('atm_maintenances'),
     );
     expect(report).toBeDefined();
     expect(report?.[0]).toEqual({
-      collection: 'atm_replenishments',
-      index: 'ux_open_replenishment_per_code_day',
+      collection: 'atm_maintenances',
+      index: 'ux_open_maintenance_per_code_day',
       groups: 1,
       rows: 2,
     });
@@ -1003,20 +991,20 @@ describe('existing duplicates: the boot reports the collection, the service chec
     for (const row of rows) expect(logged).not.toContain(String(row._id));
 
     // Without the index the service check is what holds.
-    const refused = await openReps(alexToken, ['9901']);
-    expect(repResult(refused).alreadyOpenCodes).toEqual(['9901']);
+    const refused = await openMaints(alexToken, ['9901']);
+    expect(maintResult(refused).alreadyOpenCodes).toEqual(['9901']);
 
     // Resolved → the next boot builds it.
     await collection.deleteMany({ _id: { $in: rows.map((row) => row._id) } });
     const rebuilt = await migrateAtmIndexes();
     expect(rebuilt.built).toBeGreaterThanOrEqual(1);
     const indexes = await collection.listIndexes().toArray();
-    expect(indexes.map((index) => index.name)).toContain('ux_open_replenishment_per_code_day');
+    expect(indexes.map((index) => index.name)).toContain('ux_open_maintenance_per_code_day');
   });
 });
 
 describe('the legacy importer is exempt, and never crashes on the index', () => {
-  it('reports the historical open duplicate the index refuses, and imports everything else', async () => {
+  it('writes every historical replenishment, reports the maintenance duplicate the index refuses, and imports everything else', async () => {
     const legacyDb = `ecms-atm-legacy-${String(Date.now())}`;
     const legacy = mongoose.connection.getClient().db(legacyDb);
     const machineId = new Types.ObjectId();
@@ -1041,15 +1029,18 @@ describe('the legacy importer is exempt, and never crashes on the index', () => 
       deleted: 0,
       ...over,
     });
+    // Replenishments: two open on one Cairo day, one closed, one open on another day — all land.
     const openA = op({});
-    // The same machine, the same Cairo day — the one the index refuses.
     const openB = op({ open_time: new Date('2026-09-01T12:00:00.000Z') });
     const closedC = op({ close_time: new Date('2026-09-01T10:00:00.000Z') });
-    // The same machine left open on ANOTHER day — per day, it lands.
     const openD = op({ open_time: new Date('2026-09-02T08:00:00.000Z') });
     await legacy.collection('atm_rep_log').insertMany([openA, openB, closedC, openD]);
-    // One open maintenance for the same machine — the other kind, not a duplicate.
-    await legacy.collection('atm_maint_log').insertOne(op({}));
+    // Maintenances: the same machine twice on one Cairo day — the one the index refuses — and
+    // once on another day, which lands.
+    const maintA = op({});
+    const maintB = op({ open_time: new Date('2026-09-01T12:00:00.000Z') });
+    const maintD = op({ open_time: new Date('2026-09-02T08:00:00.000Z') });
+    await legacy.collection('atm_maint_log').insertMany([maintA, maintB, maintD]);
 
     const options = {
       legacyUri: uriFor(legacyDb),
@@ -1057,44 +1048,46 @@ describe('the legacy importer is exempt, and never crashes on the index', () => 
       replenishmentTime: 'utc' as const,
       maintenanceTime: 'utc' as const,
     };
+    const replenishments = {
+      read: 4,
+      written: 4,
+      openDuplicate: 0,
+      openDuplicateIds: [],
+      openIndexMissing: false,
+    };
+    const maintenances = {
+      read: 3,
+      written: 2,
+      openDuplicate: 1,
+      openDuplicateIds: [String(maintB._id)],
+      openIndexMissing: false,
+    };
 
     const dry = await importLegacyAtmDeployment({ ...options, dryRun: true });
-    expect(dry.replenishments).toMatchObject({
-      read: 4,
-      written: 3,
-      openDuplicate: 1,
-      openDuplicateIds: [String(openB._id)],
-      openIndexMissing: false,
-    });
+    expect(dry.replenishments).toMatchObject(replenishments);
+    expect(dry.maintenances).toMatchObject(maintenances);
 
     for (let run = 0; run < 2; run += 1) {
       // Idempotent: the second run replaces the same rows and refuses the same one.
       const report = await importLegacyAtmDeployment({ ...options, dryRun: false });
-      expect(report.replenishments, `run ${String(run + 1)}`).toMatchObject({
-        read: 4,
-        written: 3,
-        openDuplicate: 1,
-        openDuplicateIds: [String(openB._id)],
-        openIndexMissing: false,
-      });
-      expect(report.maintenances).toMatchObject({
-        read: 1,
-        written: 1,
-        openDuplicate: 0,
-        openIndexMissing: false,
-      });
+      expect(report.replenishments, `run ${String(run + 1)}`).toMatchObject(replenishments);
+      expect(report.maintenances, `run ${String(run + 1)}`).toMatchObject(maintenances);
     }
     const imported = await AtmReplenishmentModel.find({ machineCode: '7301' }).lean().exec();
     expect(imported.map((row) => String(row._id)).sort()).toEqual(
-      [String(openA._id), String(closedC._id), String(openD._id)].sort(),
+      [String(openA._id), String(openB._id), String(closedC._id), String(openD._id)].sort(),
     );
-    expect(await openRows('rep', '7301')).toBe(2);
-    expect(await openRows('maint', '7301')).toBe(1);
+    expect(await openRows('rep', '7301')).toBe(3);
+    const importedMaints = await AtmMaintenanceModel.find({ machineCode: '7301' }).lean().exec();
+    expect(importedMaints.map((row) => String(row._id)).sort()).toEqual(
+      [String(maintA._id), String(maintD._id)].sort(),
+    );
+    expect(await openRows('maint', '7301')).toBe(2);
   });
 
-  it('says so when the index is ABSENT: nothing refused, the duplicates named as written, dry run = real run', async () => {
-    const collection = AtmReplenishmentModel.collection;
-    await collection.dropIndex('ux_open_replenishment_per_code_day');
+  it('says so when the maintenance index is ABSENT: nothing refused, the duplicates named as written, dry run = real run', async () => {
+    const collection = AtmMaintenanceModel.collection;
+    await collection.dropIndex('ux_open_maintenance_per_code_day');
     const legacyDb = `ecms-atm-legacy-noindex-${String(Date.now())}`;
     const legacy = mongoose.connection.getClient().db(legacyDb);
     await legacy.collection('atm').insertOne({
@@ -1119,7 +1112,7 @@ describe('the legacy importer is exempt, and never crashes on the index', () => 
     });
     const openA = op('2026-09-01T08:00:00.000Z');
     const openB = op('2026-09-01T12:00:00.000Z');
-    await legacy.collection('atm_rep_log').insertMany([openA, openB]);
+    await legacy.collection('atm_maint_log').insertMany([openA, openB]);
     const options = {
       legacyUri: uriFor(legacyDb),
       branchId: portSaidBranchId,
@@ -1136,21 +1129,21 @@ describe('the legacy importer is exempt, and never crashes on the index', () => 
     try {
       const warnings = vi.spyOn(logger, 'warn');
       const dry = await importLegacyAtmDeployment({ ...options, dryRun: true });
-      expect(dry.replenishments).toMatchObject(expected);
-      expect(await openRows('rep', '7302')).toBe(0);
+      expect(dry.maintenances).toMatchObject(expected);
+      expect(await openRows('maint', '7302')).toBe(0);
 
       const real = await importLegacyAtmDeployment({ ...options, dryRun: false });
-      expect(real.replenishments).toMatchObject(expected);
-      expect(await openRows('rep', '7302')).toBe(2);
-      // The maintenance log still has its index: unaffected.
-      expect(real.maintenances.openIndexMissing).toBe(false);
+      expect(real.maintenances).toMatchObject(expected);
+      expect(await openRows('maint', '7302')).toBe(2);
+      // The replenishment log is outside the rule: no index to miss there.
+      expect(real.replenishments).toMatchObject({ openDuplicate: 0, openIndexMissing: false });
 
       const warning = warnings.mock.calls.find((call) =>
-        JSON.stringify(call[0]).includes('ux_open_replenishment_per_code_day'),
+        JSON.stringify(call[0]).includes('ux_open_maintenance_per_code_day'),
       );
       expect(warning?.[0]).toEqual({
-        collection: 'atm_replenishments',
-        index: 'ux_open_replenishment_per_code_day',
+        collection: 'atm_maintenances',
+        index: 'ux_open_maintenance_per_code_day',
         openDuplicate: 1,
       });
       const logged = JSON.stringify(warning);
@@ -1161,6 +1154,6 @@ describe('the legacy importer is exempt, and never crashes on the index', () => 
       await migrateAtmIndexes();
     }
     const indexes = await collection.listIndexes().toArray();
-    expect(indexes.map((index) => index.name)).toContain('ux_open_replenishment_per_code_day');
+    expect(indexes.map((index) => index.name)).toContain('ux_open_maintenance_per_code_day');
   });
 });

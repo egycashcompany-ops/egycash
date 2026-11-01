@@ -9266,8 +9266,6 @@ const en: Record<string, string> = {
   'atm.replenishments.forceDate': 'Date',
   'atm.replenishments.openAction': 'Open replenishments',
   'atm.replenishments.openedCount': '{{count}} operation(s) opened.',
-  'atm.replenishments.alreadyOpenCodes':
-    'Not opened — the machine already has an open replenishment that day, or the code was entered twice: {{codes}}',
   'atm.replenishments.editTitle': 'Edit {{code}}',
   'atm.replenishments.editManyTitle': 'Edit {{count}} selected operations',
 
@@ -9282,8 +9280,6 @@ const en: Record<string, string> = {
   'atm.done.reopened': 'Reopened — back on the live page.',
   'atm.done.reopenTitle': 'Reopen operation',
   'atm.done.reopenBody': 'Reopen the operation for machine {{code}}?',
-  'atm.done.reopenAlreadyOpenRep':
-    'This operation cannot be reopened: machine {{code}} already has another open replenishment that day.',
   'atm.done.reopenAlreadyOpenMaint':
     'This operation cannot be reopened: machine {{code}} already has another open maintenance that day.',
 
@@ -19947,8 +19943,6 @@ const ar: Record<string, string> = {
   'atm.replenishments.forceDate': 'التاريخ',
   'atm.replenishments.openAction': 'فتح التغذيات',
   'atm.replenishments.openedCount': 'تم فتح {{count}} عملية.',
-  'atm.replenishments.alreadyOpenCodes':
-    'لم تُفتح لأن للماكينة تغذية مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: {{codes}}',
   'atm.replenishments.editTitle': 'تعديل {{code}}',
   'atm.replenishments.editManyTitle': 'تعديل {{count}} عملية محددة',
 
@@ -19963,8 +19957,6 @@ const ar: Record<string, string> = {
   'atm.done.reopened': 'أُعيد فتحها — عادت للصفحة الحية.',
   'atm.done.reopenTitle': 'إعادة فتح عملية',
   'atm.done.reopenBody': 'إعادة فتح عملية الماكينة {{code}}؟',
-  'atm.done.reopenAlreadyOpenRep':
-    'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} تغذية مفتوحة أخرى في نفس اليوم.',
   'atm.done.reopenAlreadyOpenMaint':
     'لا يمكن إعادة فتح هذه العملية لأن للماكينة {{code}} صيانة مفتوحة أخرى في نفس اليوم.',
 

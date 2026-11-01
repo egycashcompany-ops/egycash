@@ -29,7 +29,6 @@ import {
   useBulkUpdateAtmReplenishments,
   useUpdateAtmReplenishment,
 } from '../api/atm-queries';
-import { isAlreadyOpenRefusal } from '../lib/operation-view';
 
 /** Instant → the value a `datetime-local` input edits (LOCAL wall clock, minute precision). */
 export const toLocalInputValue = (iso: string): string => {
@@ -106,19 +105,6 @@ export const LeaderField = ({
       </Field>
     </div>
   );
-};
-
-/** Pure: do two of these OPEN rows belong to one machine? */
-export const repeatsAnOpenMachine = (
-  rows: readonly { machineCode: string; closedAt: string | null }[],
-): boolean => {
-  const seen = new Set<string>();
-  for (const row of rows) {
-    if (row.closedAt !== null) continue;
-    if (seen.has(row.machineCode)) return true;
-    seen.add(row.machineCode);
-  }
-  return false;
 };
 
 export const ConfirmActionDialog = ({
@@ -198,14 +184,8 @@ export const EditReplenishmentDialog = ({
           },
         });
       } else {
-        // The move gives every checked row ONE open time: two open rows of one machine would
-        // then share a day, which the per-day rule refuses. Say so before anything is sent — a
-        // large selection goes in several requests, and a refusal in a later one would leave the
-        // earlier ones saved under a «not saved» message.
-        if (openedAt !== '' && repeatsAnOpenMachine(rows)) {
-          toast.error(t('atm.common.moveAlreadyOpen'));
-          return;
-        }
+        // The move gives every checked row ONE open time — two rows of one machine included:
+        // several open replenishments of a machine are allowed (port doc OD-1b).
         await updateMany.mutateAsync({
           ids: rows.map((row) => row.id),
           ...(scheduleTime === '' ? {} : { scheduleTime }),
@@ -215,12 +195,8 @@ export const EditReplenishmentDialog = ({
       }
       toast.success(t('atm.common.saved'));
       onClose();
-    } catch (error) {
-      // The per-day rule (port doc OD-1): moving the open time onto a day the machine is already
-      // open on is refused — say so, rather than a bare «failed».
-      toast.error(
-        t(isAlreadyOpenRefusal(error) ? 'atm.common.moveAlreadyOpen' : 'atm.common.actionFailed'),
-      );
+    } catch {
+      toast.error(t('atm.common.actionFailed'));
     }
   };
 

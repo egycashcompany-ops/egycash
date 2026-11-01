@@ -799,12 +799,9 @@ export interface OpenAtmReplenishmentsResultDto {
   opened: AtmReplenishmentDto[];
   unknownCodes: string[];
   /**
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per day since 2026-10-27): one entry
-   * per submitted line that was NOT opened because its machine already has an open replenishment
-   * ON THE BATCH'S DAY — anywhere in the company — or because the same code appeared earlier in
-   * this batch (that earlier line opened).
-   * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
-   * where the open operation is.
+   * Always empty since 2026-11-01 (port doc OD-1b): a machine may have several open
+   * replenishments, so every line of a known code opens — a code repeated in the batch, or one
+   * already open, included. Kept so the answer has one shape for both kinds.
    */
   alreadyOpenCodes: string[];
 }
@@ -910,7 +907,14 @@ export type OpenAtmMaintenances = z.infer<typeof OpenAtmMaintenancesSchema>;
 export interface OpenAtmMaintenancesResultDto {
   opened: AtmMaintenanceDto[];
   unknownCodes: string[];
-  /** The owner's rule, as on `OpenAtmReplenishmentsResultDto.alreadyOpenCodes` — per kind. */
+  /**
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per day since 2026-10-27; maintenance
+   * only since 2026-11-01 — port doc OD-1b): one entry per submitted line that was NOT opened
+   * because its machine already has an open maintenance ON THE BATCH'S DAY — anywhere in the
+   * company — or because the same code appeared earlier in this batch (that earlier line opened).
+   * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
+   * where the open operation is.
+   */
   alreadyOpenCodes: string[];
 }
 

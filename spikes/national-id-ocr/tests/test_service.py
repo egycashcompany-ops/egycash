@@ -1,13 +1,4 @@
-"""The HTTP contract between the sidecar and the API's provider.
-
-This is the seam where the two languages meet, so it is worth pinning independently of model
-quality: the TypeScript side parses this exact JSON, and a change in shape would surface as
-"OCR silently returns nothing" rather than as a failure anyone could trace.
-
-Recognition is stubbed, so these run with no weights and no network. What they prove is the part
-the provider actually depends on — base64 in, `{fields: {name: {value, confidence}}}` out, sane
-status codes on bad input, and no card image left on disk afterwards.
-"""
+"""The HTTP contract between the sidecar and the API's provider."""
 
 from __future__ import annotations
 
@@ -32,11 +23,7 @@ FIXTURES = ROOT / "fixtures" / "synthetic"
 
 
 def _ipv6_usable() -> bool:
-    """Whether this host can actually bind IPv6 — `socket.has_ipv6` only reports build support.
-
-    Containers and CI runners routinely compile it in and then disable the stack, which is why
-    the binding tests probe instead of trusting the flag.
-    """
+    """Whether this host can actually bind IPv6, `socket.has_ipv6` only reports build support."""
     try:
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as probe:
             probe.bind(("::1", 0))
@@ -153,8 +140,8 @@ def test_card_images_do_not_outlive_the_request(server, tmp_path, monkeypatch):
 
 # ── Binding ──────────────────────────────────────────────────────────────────
 # Railway's private network is IPv6-only, so how the socket is bound decides whether the API can
-# reach this service at all. A regression here surfaces as an OCR timeout — indistinguishable from
-# a slow model unless you already suspect the network — which is why it is pinned rather than left
+# reach this service at all. A regression here surfaces as an OCR timeout, indistinguishable from
+# a slow model unless you already suspect the network, which is why it is pinned rather than left
 # to a manual check on the platform.
 
 _HAS_IPV6 = socket.has_ipv6 and _ipv6_usable()
@@ -162,7 +149,7 @@ _HAS_IPV6 = socket.has_ipv6 and _ipv6_usable()
 
 @pytest.mark.skipif(not _HAS_IPV6, reason="host has no usable IPv6 stack")
 def test_dual_stack_bind_accepts_ipv4_and_ipv6():
-    """One socket, both families — the compose bridge and Railway's private net at once."""
+    """One socket, both families, the compose bridge and Railway's private net at once."""
     httpd = service_module._build_server("::", 0)
     assert isinstance(httpd, service_module.DualStackServer)
     port = httpd.server_address[1]

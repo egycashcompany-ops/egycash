@@ -45,6 +45,7 @@ import {
   type AtmMachineSyncDto,
 } from '@ecms/contracts';
 import {
+  ApiError,
   buildQuery,
   del,
   get,

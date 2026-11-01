@@ -68,6 +68,34 @@
 }
 
 @layer components {
+  /* National-ID reader: while a card is read, a light runs around the card frame and a scan line
+     passes over the photo, so an 18-second read never looks like a dead button. The reduced-motion
+     rule above stops both for anyone who asked for less motion. */
+  .ocr-trace { animation: ocr-trace 1.4s linear infinite; }
+  .ocr-scan { animation: ocr-scan 1.8s ease-in-out infinite alternate; }
+
+  /* The applicant form: roomier, friendlier controls. Scoped to this form, so no other screen
+     changes; colours are the app's own (slate + brand). */
+  .applicant-form input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+  .applicant-form select,
+  .applicant-form textarea {
+    @apply min-h-[44px] rounded-xl border-slate-200 bg-slate-50/70 px-3.5 text-[15px] shadow-none transition-colors
+      hover:border-slate-300 focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/10
+      dark:border-slate-700 dark:bg-slate-800/40 dark:hover:border-slate-600 dark:focus:border-brand-500 dark:focus:bg-slate-900;
+  }
+  .applicant-form label.block { @apply text-[13px] font-semibold text-slate-600 dark:text-slate-300; }
+  .applicant-form section > header + div { @apply px-6 py-5; }
+}
+
+@keyframes ocr-trace {
+  to { stroke-dashoffset: -100; }
+}
+@keyframes ocr-scan {
+  from { transform: translateY(-110%); }
+  to { transform: translateY(110%); }
+}
+
+@layer components {
   /* Contract template editor content (TipTap). Preflight strips heading/list styling,
      so the editable area restores the document-like look authors expect. Mirrors the
      server print CSS closely enough that WYSIWYG intuition holds; the true render

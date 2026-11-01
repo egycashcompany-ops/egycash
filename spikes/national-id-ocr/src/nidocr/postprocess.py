@@ -1,20 +1,4 @@
-"""Per-field cleanup and confidence banding.
-
-Two ideas carry this module.
-
-**Field-typed cleanup.** A recognizer returns a string; what makes it a *value* is knowing which
-field it belongs to. The national ID is digits only, so anything else is noise to strip. The
-expiry is a date in a known printed form. Religion and marital status are drawn from a tiny closed
-vocabulary, so a near-miss can be snapped to the intended term — but only when the match is
-unambiguous, because silently "correcting" a field a human will not re-read is worse than leaving
-it visibly rough.
-
-**Structure beats self-reported confidence.** A recognizer's score says how sure the model is
-about its own pixels, which is not the same as whether the answer can be true. A 14-digit string
-with an impossible birth month is wrong at score 0.99. So `band()` lets a structural check
-override the model downward — never upward. The result feeds `OcrFieldDto.confidence`, which is
-what tells the human reviewer where to look.
-"""
+"""Per-field cleanup and confidence banding."""
 
 from __future__ import annotations
 
@@ -26,11 +10,9 @@ from .boilerplate import strip_boilerplate
 from .governorates import snap_address_tail
 from .nid import repair as repair_national_id
 
-Band = str  # 'high' | 'medium' | 'low' — mirrors OcrFieldDto.confidence
+Band = str  # 'high' | 'medium' | 'low', mirrors OcrFieldDto.confidence
 
 # Thresholds are starting points, to be re-tuned once real fixtures produce a score distribution.
-# Deliberately conservative: over-reporting confidence is the failure mode that actually hurts,
-# because it is the one that stops a reviewer from looking.
 _HIGH = 0.90
 _MEDIUM = 0.70
 
@@ -50,41 +32,24 @@ _RANK = {"low": 0, "medium": 1, "high": 2}
 
 
 def cap(value: Band, ceiling: Band) -> Band:
-    """Lower a band to at most `ceiling`, never raise it.
-
-    Used wherever a value was arrived at partly by inference rather than purely by reading the
-    pixels — a repaired national ID, a number chosen because the other side's was invalid. Those
-    are worth keeping and worth flagging, and the way to flag them is to refuse the top band: a
-    reviewer's attention is drawn by anything that is not 'high', which is exactly where it should
-    go on a field the pipeline had to reason its way to.
-    """
+    """Lower a band to at most `ceiling`, never raise it."""
     return value if _RANK[value] <= _RANK[ceiling] else ceiling
 
 
 def clean_national_id(raw: str):
     """→ a `nid.Repair`. Folds Indic numerals, drops separators, and repairs where the structure
     identifies a unique correction.
-
-    Returns the whole repair record rather than a value and a flag, because the caller needs to
-    distinguish three outcomes that a boolean cannot: read cleanly, corrected (so confidence is
-    capped — a structural deduction is not the model having read the digits), and ambiguous (so
-    confidence is floored — several different people's numbers were equally close to this read).
     """
     return repair_national_id(raw)
 
 
 # The card prints the expiry as YYYY/MM/DD in Indic numerals. Accept the common separators a
-# recognizer might substitute, but require the full shape — a partial date is not a date.
+# recognizer might substitute, but require the full shape, a partial date is not a date.
 _DATE = re.compile(r"(\d{4})\s*[/\-.]\s*(\d{1,2})\s*[/\-.]\s*(\d{1,2})")
 
 
 def clean_expiry(raw: str) -> tuple[str, bool]:
-    """→ (ISO date or cleaned text, parsed_ok).
-
-    Returns ISO-8601 on success so the value crosses into TypeScript unambiguously; on failure it
-    returns the cleaned text rather than nothing, because a human reviewing a rough date beats a
-    human retyping a blank field.
-    """
+    """→ (ISO date or cleaned text, parsed_ok)."""
     text = to_western_digits(raw)
     match = _DATE.search(text)
     if match is None:
@@ -106,18 +71,12 @@ def clean_expiry(raw: str) -> tuple[str, bool]:
 
 
 #: Glyphs the Arabic recognizer emits in place of the printed '/'. A slash is one thin diagonal
-#: stroke, and so are ١ and ٧ — the real model read ٢٠٢٩/٠٥/١١ as 202910511.
+#: stroke, and so are ١ and ٧, the real model read ٢٠٢٩/٠٥/١١ as 202910511.
 _SLASH_LOOKALIKES = frozenset("17")
 
 
 def _date_without_separators(text: str) -> str | None:
-    """A date whose slashes were dropped or misread. → ISO date, or None if not unambiguous.
-
-    The first real-model run returned 0 of 8 expiries as dates, and not one was a digit misread:
-    the recognizer either dropped both slashes ('20321016') or read one as ١/٧ ('202910511'). The
-    date was all there. Accepted only when exactly one interpretation is a valid date, so an
-    ambiguous read stays text for the reviewer rather than becoming a confident wrong date.
-    """
+    """A date whose slashes were dropped or misread. → ISO date, or None if not unambiguous."""
     for run in re.findall(r"\d{8,10}", re.sub(r"\s+", "", text)):
         candidates = {run}
         # Drop up to two slash look-alikes, each where a separator is printed: right after the
@@ -151,17 +110,14 @@ def _yyyymmdd(digits: str) -> str | None:
 
 
 # Closed vocabularies. Keys are the normalized (folded) forms so that orthographic variation in
-# the OCR output — which is the common case for Arabic — still matches.
+# the OCR output, which is the common case for Arabic, still matches.
 RELIGION_TERMS = ("مسلم", "مسلمة", "مسيحي", "مسيحية")
 MARITAL_TERMS = ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة")
 
 _RELIGIONS = {normalize_arabic(term): term for term in RELIGION_TERMS}
 _MARITAL = {normalize_arabic(term): term for term in MARITAL_TERMS}
 
-# Rasm indexes for the dot-tolerant pass. Built defensively: if two terms in a vocabulary ever
-# folded to the same skeleton, snapping between them would become a silent coin flip, so a
-# collision drops BOTH from the index rather than letting one shadow the other. Neither vocabulary
-# collides today — this exists so that adding a term later cannot quietly introduce one.
+# Rasm indexes for the dot-tolerant pass.
 def _rasm_index(terms: tuple[str, ...]) -> dict[str, str]:
     grouped: dict[str, list[str]] = {}
     for term in terms:
@@ -179,25 +135,7 @@ def _snap(
     rasm_index: dict[str, str],
     terms: tuple[str, ...] = (),
 ) -> tuple[str, bool]:
-    """Snap to a vocabulary term when unambiguous; otherwise return the text unchanged.
-
-    Three passes. Exact after the standard fold; then substring matching in both directions, which
-    catches a dropped final letter or a stray character glued on; then exact after RASM folding,
-    which forgives the dots — and dots are what a recognizer loses first, being the smallest marks
-    on the card and the first thing a reflection erases. A read of مسلمه where مسلمة was printed
-    has got the letterforms exactly right and one dot wrong, and it should not cost the reviewer a
-    retype.
-
-    There is deliberately NO edit-distance pass. In both of these vocabularies the masculine and
-    feminine forms differ by exactly one character — مسلم/مسلمة, متزوج/متزوجة, أرمل/أرملة — so a
-    distance-1 match is ambiguous between them by construction, and the ambiguity guard would
-    reject it anyway. Worse, that one character is not noise: it is the part of the value carrying
-    the meaning. Rasm folding is safe here precisely because it maps ة onto ه rather than deleting
-    it, so the feminine ending survives the fold and the two forms stay distinct.
-
-    Anything matching more than one term is left alone. An ambiguous snap manufactures certainty
-    the pixels do not support, and a reviewer does not re-read a field that looks decided.
-    """
+    """Snap to a vocabulary term when unambiguous; otherwise return the text unchanged."""
     text = collapse_spaces(raw)
     key = normalize_arabic(text)
     if not key:
@@ -212,8 +150,7 @@ def _snap(
         return _agree_in_gender(text, hits[0], terms) or hits[0], True
     if len(hits) == 2 and _COUNTERPART.get(hits[0]) == hits[1]:
         # The word matched both its own spelling and its counterpart, which is what the whole
-        # sex/religion/marital row does: مسلم is a substring of مسلمة. The row states the sex, so
-        # take whichever of the two agrees with it.
+        # sex/religion/marital row does: مسلم is a substring of مسلمة.
         feminine_line = _line_is_feminine(text)
         if feminine_line is not None:
             agreeing = [term for term in hits if (term in _IS_FEMININE) == feminine_line]
@@ -234,9 +171,7 @@ _FEMININE = frozenset({rasm_fold("أنثى"), rasm_fold("انثى"), rasm_fold("
 _MASCULINE = frozenset({rasm_fold("ذكر")})
 
 
-#: (masculine, feminine) for every term that has both. Listed rather than derived, because the
-#: relationship is not a suffix rule: متزوج/متزوجة adds a ة, but أعزب/عزباء changes the word. Six
-#: pairs is a table, and a table cannot be wrong about Arabic morphology the way a rule can.
+#: (masculine, feminine) for every term that has both.
 _GENDER_PAIRS: tuple[tuple[str, str], ...] = (
     ("مسلم", "مسلمة"),
     ("مسيحي", "مسيحية"),
@@ -251,6 +186,30 @@ _COUNTERPART = {
 }
 _IS_FEMININE = {feminine for _, feminine in _GENDER_PAIRS}
 
+#: Fields whose words have a masculine and a feminine form.
+GENDERED_FIELDS = ("religion", "maritalStatus")
+
+
+def agree_with_sex(fields: dict[str, dict], female: bool | None) -> None:
+    """Put religion and marital status in the holder's grammatical gender.
+
+    The two forms differ by one letter (متزوج / متزوجة), which the recognizer drops often enough that a
+    woman's card was coming back with the masculine word. When the holder's sex is known (see
+    extract._holder_is_female), a word in the other form is swapped for its counterpart and held at
+    'medium' at most, so a person confirms it. Unknown sex changes nothing.
+    """
+    if female is None:
+        return
+    for name in GENDERED_FIELDS:
+        data = fields.get(name)
+        if not data or data.get("value") not in _COUNTERPART:
+            continue
+        if (data["value"] in _IS_FEMININE) == female:
+            continue
+        data["value"] = _COUNTERPART[data["value"]]
+        data["confidence"] = "low" if data.get("confidence") == "low" else "medium"
+        data["genderCorrected"] = True
+
 
 def _line_is_feminine(raw: str) -> bool | None:
     """Which sex the row states, or None when it states neither."""
@@ -261,25 +220,7 @@ def _line_is_feminine(raw: str) -> bool | None:
 
 
 def _agree_in_gender(raw: str, matched: str, terms: tuple[str, ...]) -> str | None:
-    """Correct a term to the gender the same printed line states, when it disagrees.
-
-    The card puts sex, religion and marital status on ONE row — `أنثى مسلمة متزوجة` — and Arabic
-    makes the last two agree with the first. The feminine marker is a single trailing ة, which is
-    also the first thing a recognizer drops, and dropping it turns متزوجة into متزوج: still a real
-    vocabulary term, so it snaps cleanly and silently records the wrong marital status. Nothing
-    downstream can tell, because the value looks entirely reasonable.
-
-    The row itself resolves it. If the line says أنثى and the matched term is masculine while its
-    feminine counterpart exists in the vocabulary, the counterpart is what was printed.
-
-    This is NOT a second source for gender and never reaches the output: it corrects the spelling
-    of a DIFFERENT field. `parseNationalId` remains the only thing that says whether a person is
-    male or female, and nothing here is returned as a sex.
-
-    Silent unless every part of the justification is present — a sex word on the line, a genuine
-    disagreement, and exactly one counterpart in the vocabulary. Anywhere else the evidence for
-    changing a value the model actually read does not exist.
-    """
+    """Correct a term to the gender the same printed line states, when it disagrees."""
     feminine_line = _line_is_feminine(raw)
     if feminine_line is None:
         return None  # the row states no sex; there is nothing to agree with
@@ -299,41 +240,79 @@ def clean_marital_status(raw: str) -> tuple[str, bool]:
 
 
 def clean_text(raw: str) -> str:
-    """Free Arabic text (name, occupation): whitespace, and the card's own printed words.
-
-    Deliberately does NOT apply `normalize_arabic`. That fold is for comparison; applying it to a
-    stored value would strip the hamzas and taa marbuta out of a person's actual name.
-
-    Card furniture IS removed. 'بطاقة تحقيق الشخصية' is printed directly above the name on every
-    Egyptian card, so a name box generous enough not to clip a long name can catch it — and the
-    trade is not symmetric. A header glued onto a name is recoverable here, because the phrase is
-    identical on every card ever issued; a name whose first line was cropped away is not recoverable
-    anywhere. So the boxes are allowed to be generous and this removes what that lets in.
-    """
+    """Free Arabic text (name, occupation): whitespace, and the card's own printed words."""
     return collapse_spaces(strip_boilerplate(collapse_spaces(raw)))
 
 
 def clean_address(raw: str) -> tuple[str, bool]:
-    """Address text, with the governorate at the end repaired against the official list.
-
-    Only the tail is corrected, because only the tail comes from a closed set. Building numbers,
-    street names and districts are free text with nothing to check them against, and rewriting any
-    of that would be invention rather than correction — see `governorates.snap_address_tail`.
-
-    Printed card furniture is removed first, for the same reason as in `clean_text`: the governorate
-    is matched against the END of the address, so a stray printed word left on the tail would stop
-    the match that repairs it.
-    """
+    """Address text, with the governorate at the end repaired against the official list."""
     return snap_address_tail(
-        collapse_spaces(strip_boilerplate(collapse_spaces(_space_numbers(raw))))
+        _unglue(
+            _drop_fragments(
+                collapse_spaces(strip_boilerplate(collapse_spaces(_space_numbers(_indic_digits(raw)))))
+            )
+        )
     )
+
+
+#: Address words that a lost hyphen or space glues to their neighbour: 'البراهمه-نجع' read as
+#: 'البراهمهنجع'. Only words no place name contains as part of itself.
+_GLUEABLE = ("نجع", "عزبة", "عزبه", "شارع", "مركز", "قرية", "قريه", "منشاة", "شياخة")
+
+
+def _unglue(text: str) -> str:
+    """Put back the space between a place name and an address word glued onto it."""
+    words = []
+    for word in text.split():
+        for marker in _GLUEABLE:
+            if word.endswith(marker) and len(word) - len(marker) >= 3:
+                word = word[: -len(marker)] + " " + marker
+                break
+            if word.startswith(marker) and len(word) - len(marker) >= 3 and marker != "شارع":
+                word = marker + " " + word[len(marker):]
+                break
+        words.append(word)
+    return " ".join(words)
+
+
+#: One-letter words an Egyptian address really prints: ش for شارع, and و.
+_REAL_ONE_LETTER = {"ش", "و"}
+
+
+def _drop_fragments(text: str) -> str:
+    """Remove the broken pieces a line read twice leaves behind."""
+    words = text.split()
+    kept = []
+    for index, word in enumerate(words):
+        before = words[index - 1] if index else ""
+        after = words[index + 1] if index + 1 < len(words) else ""
+        if word.endswith("ـ"):
+            continue
+        if (
+            len(word) == 1
+            and "ء" <= word <= "ي"
+            and word not in _REAL_ONE_LETTER
+            and (after.startswith(word) or before.endswith(word))
+        ):
+            continue
+        kept.append(word)
+    return " ".join(kept)
 
 
 #: A number run straight into a word, or a word into a number, in either digit set.
 _NUMBER_WORD = re.compile(r"(?<=[0-9٠-٩])(?=[ء-ي])|(?<=[ء-ي])(?=[0-9٠-٩])")
 
 
+_TO_INDIC = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
+
+
+def _indic_digits(text: str) -> str:
+    """The card prints its address numbers in Arabic-Indic; a stray Latin '1' is the same digit."""
+    return text.translate(_TO_INDIC)
+
+
 def _space_numbers(text: str) -> str:
     """'٣٥٥زهراء' → '٣٥٥ زهراء'. A soft photo closes the gap after a house number; the card always
-    prints one, and no Arabic address word begins or ends with a digit."""
+    prints one, and no Arabic address word begins or ends with a digit.
+    """
     return _NUMBER_WORD.sub(" ", text)

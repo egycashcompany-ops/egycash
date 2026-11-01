@@ -1,0 +1,48 @@
+/* Shared motion. Transform and opacity only, so nothing here moves layout. Every loop runs only
+   while a reader is reading; one-shots stay under 1.2 s. Under prefers-reduced-motion every
+   animation becomes a short fade or a static state (the block at the end). */
+
+@keyframes rise     { from { opacity: 0; transform: translateY(var(--rise)); } to { opacity: 1; transform: none; } }
+@keyframes fade-in  { from { opacity: 0; } }
+@keyframes pop      { 0% { opacity: 0; transform: scale(.92); } 60% { opacity: 1; transform: scale(1.03); } 100% { transform: scale(1); } }
+@keyframes shine    { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(220%) skewX(-18deg); } }
+@keyframes scan     { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(var(--scan-travel, 180px)); } }
+@keyframes breathe  { 50% { opacity: .55; transform: scale(1.06); } }
+@keyframes ring     { from { opacity: .7; transform: scale(.6); } to { opacity: 0; transform: scale(1.9); } }
+@keyframes shimmer  { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+/* Invalid: one short shake, then still. Three swings in 420 ms, well under 3 flashes a second. */
+@keyframes shake    { 0%, 100% { transform: none; } 20% { transform: translateX(-7px); } 45% { transform: translateX(6px); }
+                      70% { transform: translateX(-3px); } 85% { transform: translateX(1px); } }
+/* Match: the check draws itself, then a soft pop. */
+@keyframes draw     { from { stroke-dashoffset: var(--len, 30); } to { stroke-dashoffset: 0; } }
+@keyframes stamp    { 0% { opacity: 0; transform: scale(1.45) rotate(-8deg); } 55% { opacity: 1; transform: scale(.94) rotate(-8deg); }
+                      100% { opacity: 1; transform: scale(1) rotate(-8deg); } }
+@keyframes sweep    { from { transform: translateX(-130%) rotate(12deg); } to { transform: translateX(230%) rotate(12deg); } }
+@keyframes drift    { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-48px, -28px, 0); } }
+@keyframes float    { 50% { transform: translateY(-6px); } }
+
+.enter        { animation: rise var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * var(--stagger)); }
+.enter-pop    { animation: pop var(--dur-normal) var(--ease-spring) both; }
+
+/* Skeleton rows while a reader reads: a light that passes over grey bars. */
+.skeleton { position: relative; overflow: hidden; border-radius: 8px; background: var(--surface-2); height: 14px; }
+.skeleton::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .35), transparent);
+  animation: shimmer 1.3s var(--ease-in-out) infinite; }
+
+/* The check that draws itself (match) and the cross (invalid). */
+.mark-check path { stroke-dasharray: 30; stroke-dashoffset: 0; }
+[data-state="match"] .mark-check path { animation: draw var(--dur-normal) var(--ease-out) both; }
+[data-state="match"] .mark-check { animation: pop var(--dur-normal) var(--dur-fast) var(--ease-spring) both; }
+
+[data-state="invalid"] .shake-once { animation: shake 420ms var(--ease-out) 1 both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important; animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important; transition-duration: 150ms !important; scroll-behavior: auto !important;
+  }
+  /* Loops become still; one-shots land on their end state at once (fade at most). */
+  .skeleton::after { animation: none !important; opacity: 0; }
+  [data-state="invalid"] .shake-once { animation: fade-in 150ms both !important; }
+}

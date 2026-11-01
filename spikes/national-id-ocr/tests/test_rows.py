@@ -1,9 +1,4 @@
-"""Reading by rows: every line read first, fields assigned from what the card prints in order.
-
-The lines below are made up — the row SHAPES are the ones the real model returned on a real card
-(a name split across two rows and several pieces, an ID row read as two groups, the back's ID row
-sharing a line with the issue date whose slash came back as ١), but no text is anyone's.
-"""
+"""Reading by rows: every line read first, fields assigned from what the card prints in order."""
 
 from __future__ import annotations
 
@@ -161,6 +156,24 @@ def test_a_blurred_religion_is_found_beside_the_marital_status_when_the_sex_word
     assert read_by_rows(IMAGE, "back", PageReader(lost)).fields["religion"][0].split()[-1] == "مسلم"
 
 
+def test_a_given_name_is_kept_when_the_header_did_not_read_at_all():
+    # Glare or a distant photo can lose the header entirely. The top of the text is then the
+    # given name, and dropping 'the first quarter' by position used to drop the name with it.
+    no_header = [line for line in FRONT if line[1] not in ("بطاقة تحقيق", "الشخصية")]
+    fields = read_by_rows(IMAGE, "front", PageReader(no_header)).fields
+    assert fields["fullNameAr"][0] == "كريم سامي علي حسن"
+    assert fields["address"][0] == "١٢ ش النيل الدقي الجيزة"
+
+
+def test_a_short_given_name_alone_on_its_row_survives_a_lost_header():
+    no_header = [
+        line for line in FRONT if line[1] not in ("بطاقة تحقيق", "الشخصية", "كريم")
+    ] + [_line("مي", 2760, 530, 2900, 670)]
+    assert read_by_rows(IMAGE, "front", PageReader(no_header)).fields["fullNameAr"][0] == (
+        "مي سامي علي حسن"
+    )
+
+
 def test_an_unreadable_card_title_is_dropped_by_its_position_not_taken_for_the_name():
     garbled = [line for line in FRONT if line[1] not in ("بطاقة تحقيق", "الشخصية")] + [
         _line("سهوزد مة", 1700, 290, 2400, 440),
@@ -206,3 +219,92 @@ def test_name_and_address_come_from_the_same_read_so_no_name_line_falls_between_
                       images={"fullNameAr": IMAGE, "address": IMAGE}, passes=["enhanced"])
     merged = _merge([two_row, one_row])
     assert merged.fields["fullNameAr"][0] == "كريم سامي علي حسن"
+
+
+def test_the_governorate_keeps_the_cards_own_spelling_when_only_ya_and_alef_maqsura_differ():
+    from nidocr.postprocess import clean_address
+
+    assert clean_address("مركز سمسطا بنى سويف")[0].endswith("بنى سويف")
+
+
+def test_an_id_row_with_only_some_groups_found_is_still_the_id_row_not_the_date():
+    pieces = [line for line in FRONT if line[1] not in ("١٠٤٣٣٥", "٢٩٠٠١١٥")] + [
+        _line("٢٠٠٠١٠٤٥", 300, 1480, 900, 1640),  # the front's issue date, slash misread
+        _line("٢٢ ٧", 2300, 1500, 2700, 1680),
+        _line("٥٣٥", 2750, 1500, 3000, 1680),
+    ]
+    raw = read_by_rows(IMAGE, "front", PageReader(pieces)).fields["nationalId"][0]
+    assert raw == "227535"
+
+
+def test_a_latin_digit_in_the_address_becomes_the_arabic_indic_one_the_card_prints():
+    from nidocr.postprocess import clean_address
+
+    assert clean_address("1 شارع المحمدى")[0] == "١ شارع المحمدى"
+
+
+def test_an_address_row_with_its_hyphen_lost_is_still_an_address():
+    """'البراهمه-نجع جوده' read without its hyphen glued نجع onto the village name."""
+    from nidocr.rows import _looks_like_address
+
+    assert _looks_like_address("البراهمهنجع جوده")
+    assert _looks_like_address("البراهمه-نجع جوده")
+    assert _looks_like_address("عزبة الشيخ")
+
+
+def test_a_name_row_is_not_taken_for_an_address():
+    from nidocr.rows import _looks_like_address
+
+    assert not _looks_like_address("عبدالمنعم محمود على")
+    assert not _looks_like_address("محمد الكفراوى")  # كفر inside a family name is not the village
+
+
+# ── recovering a given name the page detector dropped ────────────────────────────────────────────
+
+
+class _Out:
+    def __init__(self, text: str, score: float) -> None:
+        self.text, self.score = text, score
+
+
+class _WidthReader:
+    """Reads 'هدى' when handed just the word, and the background too when handed the whole strip."""
+
+    def __init__(self) -> None:
+        self.widths: list[int] = []
+
+    def recognize(self, crop, rtl=True):
+        self.widths.append(crop.shape[1])
+        return _Out("هدى" if crop.shape[1] < 600 else "هدىه", 0.85)
+
+
+def _strip_with_word(width: int = 1000, height: int = 100) -> np.ndarray:
+    strip = np.full((height, width, 3), 215, np.uint8)
+    strip[:, 300:500] = (120, 170, 210)  # a pyramid: tinted, not dark
+    strip[30:70, 900:980] = 30  # the printed word, near-black, at the right end
+    return strip
+
+
+def test_ink_columns_find_the_printed_word_and_not_the_background():
+    from nidocr.rows import _ink_columns
+
+    assert _ink_columns(_strip_with_word()) == (900, 979)
+    assert _ink_columns(np.full((100, 1000, 3), 215, np.uint8)) is None
+
+
+def test_a_probe_reads_only_the_inked_part_of_its_strip():
+    from nidocr.rows import _probe
+
+    reader = _WidthReader()
+    image = np.full((400, 1200, 3), 215, np.uint8)
+    image[100:200, 100:1100] = _strip_with_word()
+    assert _probe(image, (100, 100, 1100, 200), reader) == ("هدى", 0.85)
+    assert reader.widths and reader.widths[0] < 600
+
+
+def test_one_stray_letter_or_a_split_does_not_cost_a_known_name():
+    from nidocr.rows import _known_after_one_stray
+
+    assert _known_after_one_stray("هدىه") == "هدى"
+    assert _known_after_one_stray("هد ى") == "هدى"
+    assert _known_after_one_stray("ززززز") is None

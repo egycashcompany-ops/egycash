@@ -3,6 +3,7 @@
 import { type Request, type Response } from 'express';
 import {
   type ListApplicantDocumentSetsQuery,
+  type ListApplicantFoldersQuery,
   type ListApplicantDocumentTypesQuery,
   type ReviewApplicantDocument,
   type UpdateApplicantDocumentType,
@@ -10,6 +11,7 @@ import {
   type PageMeta,
 } from '@ecms/contracts';
 import { ok, created, validated } from '../../../../platform/web';
+import { applicantFolderService } from './applicant-folder.service';
 import { authContext } from '../../../../platform/auth';
 import { NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
@@ -80,6 +82,18 @@ export const listApplicantDocumentSets = async (req: Request, res: Response): Pr
     ...(query.search === undefined ? {} : { search: query.search }),
   });
   ok(res, items, pageMeta(query.page, query.pageSize, total));
+};
+
+/** The Applicant documents page's folders: one per applicant. */
+export const listApplicantFolders = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<unknown, ListApplicantFoldersQuery>(req);
+  const { items, total } = await applicantFolderService.list(query);
+  ok(res, items, pageMeta(query.page, query.pageSize, total));
+};
+
+export const getApplicantFolder = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<unknown, unknown, { applicantId: string }>(req);
+  ok(res, await applicantFolderService.get(params.applicantId));
 };
 
 export const getApplicantDocuments = async (req: Request, res: Response): Promise<void> => {

@@ -6,6 +6,7 @@ import {
   type ActionOverlapDto,
   type ChangeEmployeeCode,
   type ChangeEmployeeCodeMeta,
+  type DownloadTicketDto,
   type FileDto,
   type CancelEmployeeAction,
   type CompensationAction,
@@ -112,6 +113,14 @@ export const updateEmployeeOfficer = (
 /** Exited-employee match for a national id (the Rehire prompt). */
 export const rehireCheck = (nationalId: string): Promise<RehireCheckResultDto | null> =>
   get<RehireCheckResultDto | null>(`/hr/employees/rehire-check${buildQuery({ nationalId })}`);
+
+/** A short-lived signed URL for one file's bytes (the URL itself needs no session). */
+export const fileDownloadTicket = (fileId: string): Promise<DownloadTicketDto> =>
+  get<DownloadTicketDto>(`/platform/files/${fileId}/download?mode=ticket`);
+
+/** The National-ID card images (front and back) carried over from the applicant file. */
+export const getEmployeeNationalIdCard = (id: string): Promise<FileDto[]> =>
+  get<FileDto[]>(`/hr/employees/${id}/national-id-card`);
 
 export const listSubordinates = (id: string): Promise<EmployeeDto[]> =>
   get<EmployeeDto[]>(`/hr/employees/${id}/subordinates`);

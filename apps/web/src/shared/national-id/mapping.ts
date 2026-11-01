@@ -4,7 +4,7 @@
 // suggestion. Kept separate from the components so it is trivially unit-testable.
 import { parseNationalId, type MaritalStatus, type OcrExtractionDto } from '@ecms/contracts';
 import { transliterateArabicName } from './transliterate';
-import { type NationalIdReviewData } from './types';
+import { type NationalIdReviewData, type NationalIdReviewMeta } from './types';
 
 /** Map a raw OCR marital-status string (Arabic or English) to the enum, else '' (unknown). */
 export const mapMaritalStatus = (raw: string): MaritalStatus | '' => {
@@ -59,9 +59,44 @@ export const ocrToReview = (r: OcrExtractionDto): NationalIdReviewData => {
     nationalId,
     maritalStatus: r.maritalStatus === null ? '' : mapMaritalStatus(r.maritalStatus.value),
     religion: r.religion?.value.trim() ?? '',
-    nationalIdExpiry: r.nationalIdExpiry === null ? '' : r.nationalIdExpiry.value.slice(0, 10),
+    nationalIdExpiry: isoDate(r.nationalIdExpiry?.value),
     addressLine: r.address?.value.trim() ?? '',
     city: r.city?.value.trim() ?? '',
     ...deriveFromNationalId(nationalId),
+  };
+};
+
+/** A yyyy-mm-dd prefix, or '' — the reader can return words where a date belongs. */
+const isoDate = (raw: string | undefined): string => {
+  const head = (raw ?? '').trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(head) ? head : '';
+};
+
+/** What the review shows beside the values: each field's confidence and the card images. */
+export const ocrToMeta = (
+  r: OcrExtractionDto,
+  uploaded: { front?: string | undefined; back?: string | undefined } = {},
+): NationalIdReviewMeta => {
+  const confidence: NationalIdReviewMeta['confidence'] = {};
+  const fields = [
+    ['fullNameAr', r.fullNameAr],
+    ['nationalId', r.nationalId],
+    ['nationalIdExpiry', r.nationalIdExpiry],
+    ['maritalStatus', r.maritalStatus],
+    ['religion', r.religion],
+    ['addressLine', r.address],
+    ['city', r.city],
+  ] as const;
+  for (const [key, field] of fields) {
+    if (field !== null && field.value.trim() !== '') confidence[key] = field.confidence;
+  }
+  const images = r.images ?? {};
+  return {
+    confidence,
+    ...(images.cardFront === undefined ? {} : { cardFront: images.cardFront }),
+    ...(images.cardBack === undefined ? {} : { cardBack: images.cardBack }),
+    ...(images.portrait === undefined ? {} : { portrait: images.portrait }),
+    ...(uploaded.front === undefined ? {} : { uploadedFront: uploaded.front }),
+    ...(uploaded.back === undefined ? {} : { uploadedBack: uploaded.back }),
   };
 };

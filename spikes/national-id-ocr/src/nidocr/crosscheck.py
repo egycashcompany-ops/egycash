@@ -1,18 +1,4 @@
-"""Checks that hold between fields, applied after every field has been read.
-
-Each field already carries its own evidence: the recognizer's score, a structural check, the
-vote across both sides. What none of them can see is a field that is internally fine and
-inconsistent with the rest of the card — an expiry that is a good date seven years too late, an
-ID whose birth date makes the holder eleven when the card was issued. Those are misreads too, and
-the card itself proves them wrong.
-
-The checks only ever LOWER confidence. A failed check says "one of these values is misread, and a
-person should look"; it never says which, so nothing is corrected here. The codes of the failed
-checks go to the diagnostics; they describe the card's consistency, never its content.
-
-The validity period is configurable because its legal source was not found — Wikipedia and an
-Arabic encyclopedia both say seven years; `CARD_VALIDITY_YEARS` overrides it.
-"""
+"""Checks that hold between fields, applied after every field has been read."""
 
 from __future__ import annotations
 
@@ -23,7 +9,7 @@ from typing import Any
 from .postprocess import cap
 
 CARD_VALIDITY_YEARS = int(os.environ.get("CARD_VALIDITY_YEARS", "7"))
-#: The issue YEAR is read reliably; its month often is not (its slash is misread as a digit), so
+#: The issue year is read reliably; its month often is not (its slash is misread as a digit), so
 #: validity is checked on years, with one year either side for the month boundary.
 VALIDITY_TOLERANCE_YEARS = 1
 #: Egyptians are issued a card at 16. Younger at issue means a digit of the birth date is wrong.
@@ -71,6 +57,10 @@ def cross_check(
     if expiry is not None and not (1990 <= expiry.year <= today.year + CARD_VALIDITY_YEARS + 1):
         lower("nationalIdExpiry", "low", "expiryImplausible")
 
+    if issue_year is not None and today.year < issue_year <= today.year + CARD_VALIDITY_YEARS + 1:
+        # A card cannot be issued after the photo of it was taken: one of the dates was misread.
+        # Reported, and the returned date held for a person to look at.
+        lower("nationalIdExpiry", "medium", "issueAfterToday")
     if issue_year is not None and not (1990 <= issue_year <= today.year):
         issue_year = None  # the issue year itself is misread; check nothing against it
 

@@ -2,6 +2,10 @@
 // extractor and receive the reviewed fields on confirm — see NationalIdOcr.
 export { NationalIdOcr } from './NationalIdOcr';
 export { NationalIdReviewDialog } from './NationalIdReviewDialog';
-export { ocrToReview, deriveFromNationalId, mapMaritalStatus } from './mapping';
+export { ocrToReview, ocrToMeta, deriveFromNationalId, mapMaritalStatus } from './mapping';
 export { transliterateArabicName } from './transliterate';
-export { type NationalIdReviewData, type NationalIdExtractor } from './types';
+export {
+  type NationalIdReviewData,
+  type NationalIdReviewMeta,
+  type NationalIdExtractor,
+} from './types';

@@ -56,7 +56,7 @@ has four packages; the config files above tell it what to build and run.
 | `STORAGE_SIGNING_SECRET` | long random secret (required in production) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_SECURE` | your mail provider |
 | `NOTIFICATIONS_EMAIL_FROM` | e.g. `EGYCASH <no-reply@yourdomain>` |
-| `WHATSAPP_PROVIDER` | `disabled` until Meta/Twilio credentials exist (`meta`/`twilio` + `WHATSAPP_API_TOKEN`, `WHATSAPP_ACCOUNT_ID`, `WHATSAPP_FROM_NUMBER`) |
+| `WHATSAPP_PROVIDER` | `disabled` until a provider is set up. **Telnyx:** `telnyx` + `WHATSAPP_API_TOKEN` (API key), `WHATSAPP_FROM_NUMBER`, `WHATSAPP_ACTIVATION_TEMPLATE`, `WHATSAPP_TEMPLATE_LANGUAGE` — step by step in [whatsapp-telnyx.md](whatsapp-telnyx.md). Meta/Twilio: `meta`/`twilio` + `WHATSAPP_API_TOKEN`, `WHATSAPP_ACCOUNT_ID`, `WHATSAPP_FROM_NUMBER` |
 
 **app only:**
 

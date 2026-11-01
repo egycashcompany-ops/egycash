@@ -4,8 +4,11 @@
 // through the persisted notifications pipeline — notify() stores rendered bodies, which
 // would persist the one-time link (forbidden by R11/R12). Messages exist only in transit;
 // audits record per-channel outcomes, never the link.
+//
+// On WhatsApp the message goes as the approved template when one is configured
+// (`activation-whatsapp-template.ts`) — the only form WhatsApp delivers to someone who has never
+// written to the company. The composed text below is still what the email carries.
 import { type CredentialsDeliveryResultDto } from '@ecms/contracts';
-import { env } from '../../infrastructure/config/env';
 import { sendMail } from '../../infrastructure/email/mailer';
 import { sendWhatsApp } from '../../infrastructure/messaging/whatsapp';
 import { auditService } from '../audit';
@@ -15,6 +18,8 @@ import {
   CREDENTIALS_TEMPLATE_KEY,
   isSendableTemplate,
 } from '../notifications/notification.template-rules';
+import { activationTemplateFor, formatActivationExpiry } from './activation-whatsapp-template';
+import { setupLinkUrl } from './setup-link';
 
 // Re-exported because this module has always been where callers looked for it. The value itself
 // now lives with the template rules, which import nothing — a constant both sides need cannot sit
@@ -36,16 +41,6 @@ export interface DeliverCredentialsInput {
 
 const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-/**
- * The one place the setup link's shape is written.
- *
- * P9-A added a second caller — the endpoint that hands the link to an administrator to deliver by
- * hand — and two copies of this string would be two links that can drift apart, one of which the
- * `/activate` page would silently fail to understand.
- */
-export const setupLinkUrl = (setupToken: string): string =>
-  `${env.WEB_PUBLIC_URL}/activate?token=${setupToken}`;
 
 /** Built-in wording — the fallback when the seeded template has been deleted. */
 const FALLBACK = {
@@ -87,7 +82,7 @@ const composeMessage = async (
     username: input.username,
     employeeCode: input.employeeCode ?? '—',
     setupLink: setupLinkUrl(input.setupToken),
-    expiresAt: `${input.expiresAt.toISOString().replace('T', ' ').slice(0, 16)} UTC`,
+    expiresAt: formatActivationExpiry(input.expiresAt),
   });
   const subject = rendered.subject ?? rendered.body;
   return {
@@ -113,7 +108,14 @@ export const deliverCredentials = async (
   if (input.phone === null || input.phone.trim() === '') {
     results.push({ channel: 'whatsapp', ok: false, detail: 'no phone number on file' });
   } else {
-    const sent = await sendWhatsApp(input.phone, body);
+    const sent = await sendWhatsApp(input.phone, body, {
+      template: activationTemplateFor({
+        username: input.username,
+        employeeCode: input.employeeCode,
+        setupToken: input.setupToken,
+        expiresAt: input.expiresAt,
+      }),
+    });
     results.push({ channel: 'whatsapp', ok: sent.ok, detail: sent.detail });
   }
 

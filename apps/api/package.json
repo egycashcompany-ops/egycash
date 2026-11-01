@@ -26,7 +26,8 @@
     "reset:workforce": "tsx --env-file=../../.env src/reset-workforce.cli.ts",
     "report:org-duplication": "tsx --env-file-if-exists=../../.env src/org-duplication-report.cli.ts",
     "migrate:org-catalog": "tsx --env-file=../../.env src/migrate-org-catalog.cli.ts",
-    "rescan:files": "tsx --env-file=../../.env src/rescan-files.cli.ts"
+    "rescan:files": "tsx --env-file=../../.env src/rescan-files.cli.ts",
+    "whatsapp:template": "tsx --env-file-if-exists=../../.env src/whatsapp-template.cli.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1083.0",

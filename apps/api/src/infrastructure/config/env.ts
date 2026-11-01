@@ -292,13 +292,30 @@ const EnvSchema = z.object({
   /** Absolute base URL of the web app — the login link in credential messages. */
   WEB_PUBLIC_URL: z.string().url().default('http://localhost:5173'),
   /** WhatsApp transport driver: 'disabled' keeps dev/CI hermetic (logs + not-delivered). */
-  WHATSAPP_PROVIDER: z.enum(['disabled', 'meta', 'twilio']).default('disabled'),
-  /** meta: Cloud API access token · twilio: auth token. */
+  WHATSAPP_PROVIDER: z.enum(['disabled', 'meta', 'twilio', 'telnyx']).default('disabled'),
+  /** meta: Cloud API access token · twilio: auth token · telnyx: API key (V2). */
   WHATSAPP_API_TOKEN: z.string().default(''),
-  /** meta: phone-number id · twilio: account SID. */
+  /** meta: phone-number id · twilio: account SID · telnyx: messaging profile id (optional). */
   WHATSAPP_ACCOUNT_ID: z.string().default(''),
-  /** twilio only: the sending WhatsApp number (E.164). */
+  /** twilio + telnyx: the sending WhatsApp number (E.164). */
   WHATSAPP_FROM_NUMBER: z.string().default(''),
+  /**
+   * telnyx: the Meta-approved template the one-time setup link goes out as
+   * (`platform/users/activation-whatsapp-template.ts` defines it; `whatsapp-template.cli` registers
+   * it). EMPTY = the link goes as plain text, which WhatsApp delivers only to someone who wrote to
+   * the company number in the last 24 hours — in practice, to no new employee. Checked at boot:
+   * Meta names are lowercase letters, digits and underscores, and a typo here would otherwise be
+   * found one undelivered message at a time.
+   */
+  WHATSAPP_ACTIVATION_TEMPLATE: z
+    .string()
+    .regex(/^[a-z0-9_]*$/, 'lowercase letters, digits and underscores only')
+    .default(''),
+  /** telnyx: the language the template was registered under — `ar`, `en`, `en_US`. */
+  WHATSAPP_TEMPLATE_LANGUAGE: z
+    .string()
+    .regex(/^[a-z]{2,3}(_[A-Z]{2})?$/, 'a WhatsApp language code such as ar, en or en_US')
+    .default('ar'),
 
   /** Contracts D8/Q1 — chromium binary for worker-side PDF rendering; '' disables. */
   CHROMIUM_PATH: z.string().default(''),

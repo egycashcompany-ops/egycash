@@ -1,8 +1,9 @@
 // The one door outbound HTTP leaves through (Security Architecture §4, SSRF).
 //
 // The api talks to a handful of services: the n8n instance and the OCR sidecar an operator
-// configured, and the SaaS endpoints the code itself names — Microsoft Graph, Meta, Twilio. That is
-// the whole list, and this file is where it is written down. A request to anything else is refused
+// configured, and the SaaS endpoints the code itself names — Microsoft Graph, Meta, Twilio,
+// Telnyx. That is the whole list, and this file is where it is written down. A request to anything
+// else is refused
 // before a socket opens, and so is a request to something on the list that turns out to resolve
 // to a private address: the cloud metadata endpoint at 169.254.169.254, a Redis on the same
 // network, the api's own health route. Server-side request forgery is exactly a request the
@@ -59,6 +60,7 @@ const NAMED_SAAS_HOSTS: readonly string[] = [
   'login.microsoftonline.com', // same — the client-credentials token
   'graph.facebook.com', // infrastructure/messaging/whatsapp.ts — WhatsApp Cloud API
   'api.twilio.com', // same — the Twilio transport
+  'api.telnyx.com', // same — the Telnyx transport; and whatsapp-template.cli.ts, its template
 ];
 
 const normalizeHost = (hostname: string): string =>

@@ -26,6 +26,9 @@ export default defineConfig({
     // db:sync-indexes — the Railway pre-deploy command (railway.json) runs this before every api
     // deploy, so it has to exist on the image like the CLIs above.
     'src/sync-indexes.cli.ts',
+    // whatsapp:template — registers the activation-link template with Meta through Telnyx, from
+    // the service shell where WHATSAPP_API_TOKEN and WEB_PUBLIC_URL are already set.
+    'src/whatsapp-template.cli.ts',
   ],
   format: ['esm'],
   target: 'node22',

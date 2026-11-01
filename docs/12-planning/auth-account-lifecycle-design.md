@@ -347,6 +347,18 @@ warning, reports not-delivered; keeps dev/CI hermetic). Email stays behind the e
 lifecycle depends only on the `credentialsDelivery` interface — switching providers never
 touches lifecycle logic.
 
+> **Addendum (2026-11) — `telnyx`, and templates.** A fourth driver, **`telnyx`**
+> (`POST api.telnyx.com/v2/messages/whatsapp`). WhatsApp delivers a business-initiated message
+> only as a Meta-approved template — free text reaches only someone who wrote to the business in
+> the last 24 hours — so the transport now takes an optional template, which the `telnyx` driver
+> sends instead of the text. The setup link goes as `ecms_account_activation`: username, Employee
+> Code and expiry as body variables, the token as the variable end of an «Activate» URL button
+> built from `setupLinkUrl`. Its registration and its per-send values are defined in one file
+> (`platform/users/activation-whatsapp-template.ts`) and registered by `whatsapp-template.cli`.
+> Still transit-only (R11/R12): a Telnyx error is stored with every sent value cut out of it.
+> `meta` and `twilio` are unchanged and send text. Operator steps:
+> [WhatsApp via Telnyx](../09-guides/whatsapp-telnyx.md).
+
 ### R10 — Temporary-password expiry + re-issue
 
 - New org setting **`auth.tempPassword.ttlHours`** (default **48**, min 1, max 336).

@@ -11,6 +11,18 @@ its entry here in the same PR.
 
 ### Added
 
+- **Activation links go out on WhatsApp through Telnyx.** «I need to make the WhatsApp automation
+  for employees activation links with telnyx.com». `WHATSAPP_PROVIDER=telnyx` sends every one-time
+  setup link — a new employee, a resend or reset, the 48-hour follow-up workflow, the boot
+  backfill — from the company's Telnyx WhatsApp number. Because WhatsApp delivers a message from a
+  business to someone who never wrote to it only as a Meta-approved template, the link goes as
+  the template `ecms_account_activation`: a bilingual notice with the username, Employee Code and
+  expiry, and an «تفعيل الحساب · Activate» button that opens `/activate?token=…`. One file
+  defines both what Meta approves and what each send fills in;
+  `node apps/api/dist/whatsapp-template.cli.js --write` registers it and `--status` says when it is
+  approved. A refused send is recorded with Telnyx's own code and reason — with every value that
+  was sent, the token included, cut out first. Meta and Twilio are unchanged. Steps:
+  [WhatsApp via Telnyx](docs/09-guides/whatsapp-telnyx.md).
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
   «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
   الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn

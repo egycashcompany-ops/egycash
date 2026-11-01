@@ -78,6 +78,10 @@ const RUNTIME_ROOTS = [
   // db:sync-indexes — the models it loads, in the order it loads them. The CLI itself connects at
   // import; this is the graph it reaches after that, on every api deploy.
   './src/sync-indexes.models.ts',
+  // whatsapp:template — the CLI ITSELF, like report:org-duplication, and for the same reason: it
+  // is meant to import almost nothing (no models, no platform boot). Loaded with no flags it prints
+  // the template it would register and touches no network.
+  './src/whatsapp-template.cli.ts',
 ];
 
 describe('runtime import safety', () => {

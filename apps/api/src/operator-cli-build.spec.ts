@@ -36,6 +36,8 @@ describe('the operator CLIs reach the deployed image', () => {
     'src/migrate-org-catalog.cli.ts',
     // The index sync is not run by hand at all — Railway runs it before every api deploy.
     'src/sync-indexes.cli.ts',
+    // The WhatsApp template is registered from the service shell, where the Telnyx key lives.
+    'src/whatsapp-template.cli.ts',
   ];
 
   it('builds every go-live CLI, not only the long-running services', () => {

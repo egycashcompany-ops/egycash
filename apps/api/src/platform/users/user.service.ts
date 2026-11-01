@@ -27,7 +27,8 @@ import { hashPassword, passwordPolicyViolation } from '../../shared/utils/passwo
 import { getCache } from '../../infrastructure/redis/cache';
 import { resolveEmployeeCode, resolveEmployeeCodeOfUser } from '../auth/identity-seams';
 import { userSnapshotKey } from '../auth/user-snapshot-cache';
-import { deliverCredentials, setupLinkUrl } from './credentials-delivery';
+import { deliverCredentials } from './credentials-delivery';
+import { setupLinkUrl } from './setup-link';
 import { auditService } from '../audit';
 import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';

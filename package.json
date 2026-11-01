@@ -42,7 +42,8 @@
     "reset:workforce": "npm run build -w packages/contracts && npm run reset:workforce -w apps/api --",
     "report:org-duplication": "npm run build -w packages/contracts && npm run report:org-duplication -w apps/api --",
     "migrate:org-catalog": "npm run build -w packages/contracts && npm run migrate:org-catalog -w apps/api --",
-    "rescan:files": "npm run build -w packages/contracts && npm run rescan:files -w apps/api --"
+    "rescan:files": "npm run build -w packages/contracts && npm run rescan:files -w apps/api --",
+    "whatsapp:template": "npm run whatsapp:template -w apps/api --"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

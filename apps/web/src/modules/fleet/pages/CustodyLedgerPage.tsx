@@ -13,6 +13,13 @@
 // opens the same drawer at the letter (`&letter=1`). A receipts line's eye goes to «مصروفات العهدة»
 // over its days. «سجل العهدة» is the first tab of SCREEN 1 «العهدة»: the fund's head over it
 // (`CustodyFundHeader`) carries the fund now, its three actions and their dialogs.
+//
+// A replenishment is recorded HELD until its money comes: its line «معلّقة», amber, its amount
+// dashed and not counted, the fund after it unchanged («لم تتغيّر بعد»), and «تأكيد التحويل» between
+// the eye and the printer (`?confirm=<id>`, the head's dialog). Once confirmed it sits on its
+// transfer's day, its letter's day under it, «✓ حُوِّل المبلغ في …» and its reference on a line of
+// their own. A cancelled one stays in the log, muted «ملغاة», its amount struck through, counting
+// for nothing — the eye alone, no printer. Its drawer gives way to the head's dialogs.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -22,6 +29,7 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
@@ -44,6 +52,16 @@ import { FleetPager } from '../components/FleetPager';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { CustodyFundHeader } from '../components/CustodyFundHeader';
+import { useHoldParam } from '../components/CustodyFundDialogs';
+import {
+  ConfirmTransferButton,
+  HeldUnchanged,
+  HoldAmountOr,
+  HoldDetailNote,
+  HoldOpChip,
+  TransferDate,
+  holdRowTint,
+} from '../components/custody-hold-parts';
 import { useOverlayHistory } from '../components/CustodyFundActions';
 import { CustodyOperationDrawer, useLedgerWordsKit } from '../components/CustodyOperationDrawer';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
@@ -73,6 +91,7 @@ import {
   TIGHT,
 } from '../components/custody-memo-parts';
 import { ledgerCount, ledgerWords } from '../lib/custody-ledger-words';
+import { ledgerNoteWithStatus, ledgerStatusNote } from '../lib/custody-hold';
 import { custodyPeriodLink } from '../lib/custody-dashboard-fund';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
@@ -101,6 +120,8 @@ const NEGATIVE_INK = 'text-red-600 dark:text-red-400';
 /** A line's date — a receipts line its first and last day, one over the other, muted. */
 const LedgerDate = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => {
   const t = useT();
+  // A transferred replenishment is dated by its transfer; its letter's day, muted, under it.
+  if (row.letterDate !== null) return <TransferDate day={row.date} letterDay={row.letterDate} />;
   return row.op === 'spend' ? (
     <span className="inline-flex flex-col items-center leading-[18px]" data-ledger-date="span">
       <span dir="ltr" className={cn(FIGURE, MUTED_INK, 'text-sm leading-[18px]')}>
@@ -131,9 +152,12 @@ const spendLink = (row: FleetCustodyLedgerRowDto): string =>
 const LedgerActions = ({
   row,
   open,
+  onConfirm,
 }: {
   row: FleetCustodyLedgerRowDto;
   open: (id: string, letter: boolean) => void;
+  /** A held line's «تأكيد التحويل» — given only to whoever may record it. */
+  onConfirm: ((id: string) => void) | undefined;
 }): JSX.Element => {
   const t = useT();
   return row.op === 'spend' ? (
@@ -160,21 +184,30 @@ const LedgerActions = ({
       >
         <EyeIcon className="h-4 w-4" />
       </button>
-      <button
-        type="button"
-        data-ledger-print={row.id}
-        title={t('fleet.custody.ledger.print')}
-        aria-label={t('fleet.custody.ledger.print')}
-        onClick={() => open(row.id, true)}
-        className={actionTone('print')}
-      >
-        <PrinterIcon className="h-4 w-4" />
-      </button>
+      {row.status === 'held' && onConfirm !== undefined && (
+        <ConfirmTransferButton id={row.id} onConfirm={onConfirm} />
+      )}
+      {/* A cancelled letter is not printed again: the eye alone. */}
+      {row.status !== 'cancelled' && (
+        <button
+          type="button"
+          data-ledger-print={row.id}
+          title={t('fleet.custody.ledger.print')}
+          aria-label={t('fleet.custody.ledger.print')}
+          onClick={() => open(row.id, true)}
+          className={actionTone('print')}
+        >
+          <PrinterIcon className="h-4 w-4" />
+        </button>
+      )}
     </span>
   );
 };
 
-/** «إجمالي العهدة بعدها» — the last line of the whole history with «الآن»; a fund below zero red. */
+/**
+ * «إجمالي العهدة بعدها» — the last line of the whole history with «الآن»; a fund below zero red. A
+ * held or cancelled line moved nothing: the same figure, muted — a held one says «لم تتغيّر بعد».
+ */
 const After = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => {
   const t = useT();
   const ink =
@@ -182,10 +215,10 @@ const After = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => {
       ? NEGATIVE_INK
       : row.latest
         ? NOW_INK
-        : row.op === 'spend'
+        : row.op === 'spend' || row.status !== 'done'
           ? MUTED_INK
           : undefined;
-  return (
+  const after = (
     <span className="inline-flex items-center gap-2" data-ledger-after={row.id}>
       <Money value={row.after} ink={ink} />
       {row.latest && (
@@ -195,15 +228,25 @@ const After = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => {
       )}
     </span>
   );
+  return row.status === 'held' ? (
+    <span className="inline-flex flex-col items-center gap-0.5">
+      {after}
+      <HeldUnchanged />
+    </span>
+  ) : (
+    after
+  );
 };
 
 /** A phone: each line of the log as a card — what, when, how much, the fund after it. */
 const LedgerCard = ({
   row,
   open,
+  onConfirm,
 }: {
   row: FleetCustodyLedgerRowDto;
   open: (id: string, letter: boolean) => void;
+  onConfirm: ((id: string) => void) | undefined;
 }): JSX.Element => {
   const t = useT();
   const kit = useLedgerWordsKit();
@@ -211,10 +254,16 @@ const LedgerCard = ({
   return (
     <li
       data-ledger-card={row.id}
-      className={cn(PHONE_CARD, row.op === 'spend' && 'bg-slate-50 dark:bg-white/[0.025]')}
+      className={cn(
+        PHONE_CARD,
+        row.op === 'spend' && 'bg-slate-50 dark:bg-white/[0.025]',
+        holdRowTint(row.status),
+      )}
     >
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-        <OpChip op={row.op} />
+        <HoldOpChip status={row.status}>
+          <OpChip op={row.op} />
+        </HoldOpChip>
         {row.op === 'spend' ? (
           <span className={cn('whitespace-nowrap text-[13px] font-bold', MUTED_INK)}>
             <span dir="ltr" className={NUM}>
@@ -224,6 +273,10 @@ const LedgerCard = ({
             <span dir="ltr" className={NUM}>
               {ymd(row.dateTo ?? row.date)}
             </span>
+          </span>
+        ) : row.letterDate !== null ? (
+          <span className="text-sm font-bold">
+            <TransferDate day={row.date} letterDay={row.letterDate} />
           </span>
         ) : (
           <span
@@ -237,7 +290,7 @@ const LedgerCard = ({
       <p
         className={cn(
           'mt-2 text-[15px] font-bold leading-snug',
-          row.op === 'spend'
+          row.op === 'spend' || row.status === 'cancelled'
             ? 'text-slate-600 dark:text-slate-300'
             : 'text-slate-900 dark:text-white',
         )}
@@ -245,13 +298,22 @@ const LedgerCard = ({
         {words.title}
       </p>
       <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{words.note}</p>
+      {(row.status !== 'done' || row.transfer !== null) && (
+        <p className="flex flex-col">
+          <HoldDetailNote row={row} />
+        </p>
+      )}
       <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5 dark:border-[#1c273b]">
         <span className="flex flex-col gap-0.5">
           <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
             {t('fleet.custody.ledger.columns.amount')}
           </span>
           <span className="text-[15px] font-bold">
-            <Signed value={row.amount} />
+            <HoldAmountOr
+              status={row.status}
+              value={row.amount}
+              done={<Signed value={row.amount} />}
+            />
           </span>
         </span>
         <span className="flex flex-col items-end gap-0.5">
@@ -264,7 +326,7 @@ const LedgerCard = ({
         </span>
       </div>
       <div className="mt-2 flex justify-end">
-        <LedgerActions row={row} open={open} />
+        <LedgerActions row={row} open={open} onConfirm={onConfirm} />
       </div>
     </li>
   );
@@ -321,6 +383,12 @@ export const CustodyLedgerPage = (): JSX.Element => {
       setSp(next, { replace: true });
     });
   };
+  // «تأكيد التحويل» / «إلغاء الاستعاضة المعلّقة» open in the head's dialogs (`?confirm=` /
+  // `?cancelHeld=`) — from a line, or from the drawer, which gives way to them.
+  const can = useCan();
+  const hold = useHoldParam();
+  const mayHold = can('fleetReceipt.create');
+  const confirmTransfer = mayHold ? (id: string) => hold.openHold('confirm', id) : undefined;
   const hasActiveFilters = from !== '' || to !== '' || ops.length > 0;
   const clearFilters = (): void => patch({ from: null, to: null, op: null });
 
@@ -356,7 +424,11 @@ export const CustodyLedgerPage = (): JSX.Element => {
       key: 'op',
       header: t('fleet.custody.ledger.columns.op'),
       align: 'center',
-      render: (row) => <OpChip op={row.op} />,
+      render: (row) => (
+        <HoldOpChip status={row.status}>
+          <OpChip op={row.op} />
+        </HoldOpChip>
+      ),
     },
     {
       key: 'detail',
@@ -378,7 +450,9 @@ export const CustodyLedgerPage = (): JSX.Element => {
                 'line-clamp-2 max-w-[26rem] whitespace-normal text-balance text-[15px] leading-[22px]',
                 row.op === 'spend'
                   ? 'text-slate-600 dark:text-slate-300'
-                  : 'text-slate-900 dark:text-white',
+                  : row.status === 'cancelled'
+                    ? 'text-slate-500 dark:text-slate-400'
+                    : 'text-slate-900 dark:text-white',
               )}
             >
               {words.title}
@@ -388,6 +462,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
                 {words.note}
               </span>
             )}
+            <HoldDetailNote row={row} />
           </span>
         );
       },
@@ -396,7 +471,9 @@ export const CustodyLedgerPage = (): JSX.Element => {
       key: 'amount',
       header: t('fleet.custody.ledger.columns.amount'),
       align: 'center',
-      render: (row) => <Signed value={row.amount} />,
+      render: (row) => (
+        <HoldAmountOr status={row.status} value={row.amount} done={<Signed value={row.amount} />} />
+      ),
     },
     {
       key: 'after',
@@ -410,7 +487,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
       align: 'center',
-      render: (row) => <LedgerActions row={row} open={openOperation} />,
+      render: (row) => <LedgerActions row={row} open={openOperation} onConfirm={confirmTransfer} />,
     },
   ];
 
@@ -435,7 +512,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
       row.dateTo === null ? '' : ymd(row.dateTo),
       t(opLabelKey(row.op)),
       words.title,
-      words.note,
+      ledgerNoteWithStatus(words.note, ledgerStatusNote(row, kit)),
       row.amount,
       row.after,
     ];
@@ -626,7 +703,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
             data-ledger-cards="true"
           >
             {rows.map((row) => (
-              <LedgerCard key={row.id} row={row} open={openOperation} />
+              <LedgerCard key={row.id} row={row} open={openOperation} onConfirm={confirmTransfer} />
             ))}
           </ul>
           <div
@@ -647,7 +724,9 @@ export const CustodyLedgerPage = (): JSX.Element => {
               onRetry={() => void refetch()}
               empty={t('fleet.custody.ledger.empty')}
               rowProps={(row) => ({ 'data-ledger-row': row.id }) as never}
-              rowClassName={(row) => (row.op === 'spend' ? SPEND_ROW : undefined)}
+              rowClassName={(row) =>
+                holdRowTint(row.status) ?? (row.op === 'spend' ? SPEND_ROW : undefined)
+              }
               sort={sorts}
               onSortChange={changeSort}
               minColumnWidth={4}
@@ -671,6 +750,13 @@ export const CustodyLedgerPage = (): JSX.Element => {
           id={openId}
           toLetter={toLetter}
           onClose={closeOperation}
+          // A held replenishment's two ways out: the drawer gives way to the head's dialog.
+          {...(mayHold
+            ? {
+                onConfirm: () => hold.openHold('confirm', openId, true),
+                onCancel: () => hold.openHold('cancelHeld', openId, true),
+              }
+            : {})}
         />
       )}
     </PageContainer>

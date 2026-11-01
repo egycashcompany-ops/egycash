@@ -742,7 +742,9 @@ describe('«تعديل المذكرة»', () => {
 
   it('a replenished memo is read, not written: the notice, no Save at all, its paper still printable', () => {
     const done = editMemo(
-      memoOf({ replenishment: { id: '660000000000000000000001', date: '2026-10-20' } }),
+      memoOf({
+        replenishment: { id: '660000000000000000000001', date: '2026-10-20', held: false },
+      }),
       receipts,
     );
     expect(done).toContain('data-memo-locked="660000000000000000000001"');
@@ -753,6 +755,20 @@ describe('«تعديل المذكرة»', () => {
     expect(done).toContain('data-memo-print-saved="true"');
     expect(done).toContain('<fieldset disabled=""');
     expect(preview(done)).toContain('data-paper-sheet="true"');
+  });
+
+  it('a memo held for its transfer is locked the same way — saying it waits, not that it was replenished', () => {
+    const held = editMemo(
+      memoOf({
+        replenishment: { id: '660000000000000000000002', date: '2026-10-19', held: true },
+      }),
+      receipts,
+    );
+    expect(held).toContain('data-memo-locked="660000000000000000000002"');
+    expect(text(held)).toContain(ar('fleet.custody.hold.editorLocked', { date: '2026/10/19' }));
+    expect(text(held)).not.toContain(ar('fleet.custody.memoEditor.locked', { date: '2026/10/19' }));
+    expect(held).not.toContain('data-memo-save=');
+    expect(held).toContain('<fieldset disabled=""');
   });
 });
 

@@ -36,7 +36,8 @@ export const CustodyHeldChip = ({ amount }: { amount: number }): JSX.Element => 
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { value, unit } = moneyChip(amount, locale);
-  const [before = '', after = ''] = t('fleet.custody.hold.heldTile', { amount: TOKEN }).split(TOKEN);
+  const sentence = t('fleet.custody.hold.heldTile', { amount: TOKEN });
+  const [before = '', after = ''] = sentence.split(TOKEN);
   const waiting = amount > 0;
   return (
     <span

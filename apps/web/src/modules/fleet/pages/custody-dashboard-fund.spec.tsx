@@ -62,6 +62,7 @@ import {
   custodyPeriodLink,
   custodySettleWaiting,
   custodyWaiting,
+  custodyWaitingShares,
 } from '../lib/custody-dashboard-fund';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -472,10 +473,21 @@ describe('the fund’s arithmetic — ages, waiting money, where a line leads', 
 
   it('waits what was spent and not replenished — always the fund’s spent less its replenished', () => {
     const now = custodyWaiting([], OUTSIDE, FUND.memos.pendingTotal);
-    expect(now).toEqual({ inMemos: 0, outside: 15886, total: 15886, receipts: 33 });
+    expect(now).toEqual({ held: 0, inMemos: 0, outside: 15886, total: 15886, receipts: 33 });
     expect(now.total).toBe(FUND.spent.amount - FUND.replenished.amount);
     const now6 = custodyWaiting([MEMO6], OUTSIDE6, FUND6.memos.pendingTotal);
-    expect(now6).toEqual({ inMemos: 600, outside: 15286, total: 15886, receipts: 33 });
+    expect(now6).toEqual({ held: 0, inMemos: 600, outside: 15286, total: 15886, receipts: 33 });
+    // A replenishment held for its transfer: its memos are spent and not back yet — a third part.
+    const held = custodyWaiting([MEMO6], OUTSIDE6, 600, { amount: 8476, receipts: 12 });
+    expect(held).toEqual({ held: 8476, inMemos: 600, outside: 15286, total: 24362, receipts: 45 });
+    expect(custodyWaitingShares(held).held + custodyWaitingShares(held).inMemos).toBeCloseTo(
+      ((8476 + 600) / 24362) * 100,
+    );
+    expect(custodyWaitingShares({ ...held, total: 0 })).toEqual({
+      held: 0,
+      inMemos: 0,
+      outside: 0,
+    });
     // To the piastre.
     expect(custodyWaiting([], [outsideLine('fuel', 2, 0.1, null)], 0.2).total).toBe(0.3);
     expect(custodySettleWaiting(PARTS)).toBe(69660.75);
@@ -779,7 +791,7 @@ describe('N1 «العهدة الآن» — the formula as five tiles, whatever t
     );
     expect(read('CustodyLedgerPage.tsx')).not.toMatch(/const (LedgerFigures|Term|OpChip) =/u);
     expect(read('../components/CustodyDashboardFund.tsx')).toMatch(
-      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
+      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+held=\{fund\.data\?\.held\.amount \?\? 0\}\s+\/>/u,
     );
   });
 });
@@ -1190,6 +1202,93 @@ describe('«مصروفات العهدة حسب الفلاتر» — five spend c
     const html = draw(<CustodyKpis data={older as FleetCustodyDashboardDto} />);
     expect(html).not.toContain('data-custody-memo-states');
     expect(all(html, 'data-custody-kpi')).toHaveLength(5);
+  });
+});
+
+describe('a replenishment held for its transfer — or cancelled — on «لوحة تحكم العهدة»', () => {
+  const HELD_FUND: FleetCustodyFundSummaryDto = {
+    ...FUND,
+    held: { count: 1, amount: 8476, memos: 2, receipts: 12 },
+    cancelled: { count: 1, amount: 600 },
+    operations: 6,
+  };
+  const HELD_ROWS: FleetCustodyLedgerRowDto[] = [
+    row({
+      id: 'op-h1',
+      op: 'replenish',
+      status: 'held',
+      date: '2026-10-19',
+      amount: 8476,
+      before: 159974.54,
+      after: 159974.54,
+      latest: true,
+      memos: { count: 2, kinds: ['fuel', 'wash'] },
+    }),
+    row({
+      id: 'op-x1',
+      op: 'replenish',
+      status: 'cancelled',
+      date: '2026-10-12',
+      amount: 600,
+      before: 159974.54,
+      after: 159974.54,
+      memos: { count: 1, kinds: ['wash'] },
+    }),
+    ...ROWS.map((line) => ({ ...line, latest: false })),
+  ];
+
+  it('N1: «استعاضة معلّقة: X» under «إجمالي الاستعاضة» and under the fund’s card — none at zero', () => {
+    const html = draw(<CustodyFundNow />, client({ fund: HELD_FUND }));
+    expect(all(html, 'data-ledger-held-line')).toEqual(['replenished', 'board']);
+    expect(text(element(html, 'data-ledger-held-line="board"'))).toBe(
+      ar('fleet.custody.hold.heldTile', { amount: '8,476.00' }),
+    );
+    expect(draw(<CustodyFundNow />)).not.toContain('data-ledger-held-line');
+  });
+
+  it('N2: a third part, «في انتظار التحويل», first in the bar — in the headline and its receipts', () => {
+    const html = draw(<CustodyWaitingCard now={NOW} />, client({ fund: HELD_FUND }));
+    expect(all(html, 'data-custody-waiting-part')).toEqual(['held', 'outside']);
+    expect(element(html, 'data-custody-headline-value=')).toContain(
+      'data-custody-headline-value="24362"',
+    );
+    const legend = element(html, 'data-custody-waiting-legend="held"');
+    expect(legend).toContain('href="/fleet/custody/memos?status=held"');
+    expect(text(legend)).toBe(`${ar('fleet.custody.dashboard.waiting.held')} 8,476.00 ج.م.`);
+    expect(html.indexOf('data-custody-waiting-legend="held"')).toBeLessThan(
+      html.indexOf('data-custody-waiting-legend="inMemos"'),
+    );
+    expect(draw(<CustodyWaitingCard now={NOW} />)).not.toContain(
+      'data-custody-waiting-part="held"',
+    );
+  });
+
+  it('N4: the step line skips held and cancelled lines — the last kept line carries «الآن»', () => {
+    const html = draw(<CustodyFundSteps />, client({ rows: HELD_ROWS }));
+    expect(all(html, 'data-custody-step-op')).toEqual([
+      'charge',
+      'spend',
+      'replenish',
+      'charge',
+      'settle',
+      'spend',
+    ]);
+    expect(text(element(html, 'data-custody-now-label="true"'))).toBe('الآن 159,974.54');
+  });
+
+  it('N5: a held line «معلّقة» in amber, a cancelled one muted «ملغاة», struck through', () => {
+    const html = draw(<CustodyRecentOps />, client({ rows: HELD_ROWS }));
+    const list = element(html, 'data-custody-recent-list="true"');
+    const [held = '', cancelled = ''] = list.split('data-custody-recent-row="replenish"').slice(1);
+    expect(held).toContain('data-ledger-held="true"');
+    expect(held).toContain('data-ledger-amount="held"');
+    expect(held).not.toContain(ar('fleet.custody.hold.notCounted'));
+    expect(cancelled.slice(0, cancelled.indexOf('data-custody-recent-row'))).toContain(
+      'data-ledger-cancelled="true"',
+    );
+    expect(cancelled).toContain('data-ledger-amount="cancelled"');
+    expect(list).toContain('bg-amber-50/70');
+    expect(list).toContain('bg-slate-100/70');
   });
 });
 

@@ -20,6 +20,9 @@ import {
   type CreateFleetCustodyMemo,
   type CreateFleetCustodyReplenishment,
   type CreateFleetCustodySettlement,
+  type CancelFleetCustodyReplenishment,
+  type ConfirmFleetCustodyTransfer,
+  type FleetCustodyOperationDto,
   type FleetCustodyMemoCandidatesQuery,
   type FleetCustodyPaperSettingsDto,
   type SaveFleetCustodyPaperSettings,
@@ -1471,11 +1474,39 @@ export const useChargeCustody = () => {
   });
 };
 /**
- * «استعاضة العهدة» — the memos it brings back are replenished: the custody subtree moves, and the
- * receipts screen, whose rows say their memo was replenished (and lock with it).
+ * «استعاضة العهدة» — recorded held: the memos it takes are reserved for it, so the custody subtree
+ * moves, and the receipts screen, whose rows say their memo is held (and lock with it).
  */
 export const useReplenishCustody = () =>
   useCustodyMemoMutation((body: CreateFleetCustodyReplenishment) => api.replenishCustody(body));
+/**
+ * «تأكيد التحويل» / «إلغاء الاستعاضة المعلّقة» — a held replenishment leaves its hold: the custody
+ * subtree moves (the fund grows on a confirm; its memos read «تمت الاستعاضة ✓», or «لم تُستعَض بعد»
+ * again on a cancel), and the receipts screen too, whose rows lock or unlock with their memo.
+ * Read again whatever the answer: a refusal means it was confirmed or cancelled elsewhere, and the
+ * log must say so. Each dialog words every failure itself.
+ */
+const useCustodyHoldMutation = <TInput>(
+  mutationFn: (input: TInput) => Promise<FleetCustodyOperationDto>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.custody });
+      void qc.invalidateQueries({ queryKey: fleetKeys.receipts });
+    },
+    onError: toastUnlessSaid(SAYS_EVERY_FAILURE),
+  });
+};
+export const useConfirmCustodyTransfer = () =>
+  useCustodyHoldMutation(({ id, body }: { id: string; body: ConfirmFleetCustodyTransfer }) =>
+    api.confirmCustodyTransfer(id, body),
+  );
+export const useCancelCustodyReplenishment = () =>
+  useCustodyHoldMutation(({ id, body }: { id: string; body: CancelFleetCustodyReplenishment }) =>
+    api.cancelCustodyReplenishment(id, body),
+  );
 /** «تسوية العهدة» — the fund moves, and so does «الحالة» of every licence part it settled. */
 export const useSettleCustody = () => {
   const qc = useQueryClient();

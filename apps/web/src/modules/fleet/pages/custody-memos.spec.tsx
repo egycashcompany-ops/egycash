@@ -283,6 +283,32 @@ describe('«المذكرات» — the rows', () => {
     expect(box.match(/disabled=""/gu)).toHaveLength(2);
   });
 
+  it('a memo held for its transfer: «في انتظار التحويل» with its letter’s day, locked, saying why', () => {
+    const held = memo({
+      id: '650000000000000000000009',
+      no: 9,
+      replenishment: { id: '660000000000000000000009', date: '2026-10-19', held: true },
+    });
+    const html = draw({ rows: [held] });
+    const line = row(html, 9);
+    expect(line).toContain('data-status="memo-held"');
+    expect(line).toContain('href="/fleet/custody/log?open=660000000000000000000009"');
+    expect(line).toContain(
+      `title="${ar('fleet.custody.hold.memoChipTitle', { date: '2026/10/19' })}"`,
+    );
+    expect(text(line)).toContain(ar('fleet.custody.hold.memoChip'));
+    expect(line).not.toContain('data-status="memo-replenished"');
+    const box = actionsBox(line);
+    expect(actionOrder(box)).toEqual([
+      'memo-view-open',
+      'locked:custody-memo-edit',
+      'memo-print',
+      'locked:custody-memo-delete',
+    ]);
+    expect(box).toContain(`title="${ar('fleet.custody.hold.lockedEdit')}"`);
+    expect(box).toContain(`title="${ar('fleet.custody.hold.lockedDelete')}"`);
+  });
+
   it('shows the pen and the bin only to whoever may edit and delete custody receipts', () => {
     const viewer = draw({ grants: ['fleetCustody.view'] });
     expect(actionOrder(actionsBox(row(viewer, 6)))).toEqual(['memo-view-open', 'memo-print']);
@@ -328,7 +354,24 @@ describe('«المذكرات» — the filters and the figures', () => {
     expect(html).toContain('data-memos-count="true"');
   });
 
-  it('drops a status that is neither of the two', () => {
+  it('offers the three statuses in order — waiting, held for its transfer, replenished', () => {
+    const page = source('CustodyMemosPage.tsx');
+    const bar = page.slice(page.indexOf('<FilterBar'), page.indexOf('</FilterBar>'));
+    expect(bar).toContain('label: t(`fleet.custody.parts.status.${value}`)');
+    expect(ar('fleet.custody.parts.status.held')).toBe(ar('fleet.custody.hold.memoChip'));
+    const html = draw({ path: '/fleet/custody/memos?status=held', filters: { status: 'held' } });
+    expect(html).toContain('data-memo-row="6"');
+  });
+
+  it('exports a held memo as «في انتظار التحويل», with no replenishment day yet', () => {
+    const page = source('CustodyMemosPage.tsx');
+    expect(page).toContain('t(`fleet.custody.parts.status.${memoStatusKey(memo)}`)');
+    expect(page).toContain(
+      'memo.replenishment === null || memo.replenishment.held ? null : ymd(memo.replenishment.date)',
+    );
+  });
+
+  it('drops a status that is neither of the three', () => {
     const html = draw({ path: '/fleet/custody/memos?status=whatever' });
     expect(html).toContain('data-memo-row="6"');
   });

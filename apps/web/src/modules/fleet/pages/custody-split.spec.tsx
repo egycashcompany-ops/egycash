@@ -196,7 +196,9 @@ describe('`/fleet/custody` — «العهدة» opens «سجل العهدة»; a
     expect(go('?from=2026-10-01')).toContain(
       'data-navigate="/fleet/custody-expenses?from=2026-10-01"',
     );
-    expect(go('?fund=settle&to=2026-10-31')).toContain('data-navigate="/fleet/custody/log?fund=settle"');
+    expect(go('?fund=settle&to=2026-10-31')).toContain(
+      'data-navigate="/fleet/custody/log?fund=settle"',
+    );
   });
 });
 
@@ -207,7 +209,9 @@ describe('SCREEN 1’s head — the fund now, «استعاضة معلّقة», t
     expect(text(now.slice(0, now.indexOf('data-custody-held')))).toContain(
       `${ar('fleet.custody.ledger.tiles.fundNow')} 159,974.54 ج.م.`,
     );
-    expect(tagOf(html, 'data-custody-fund-value=')).toContain('data-custody-fund-value="159974.54"');
+    expect(tagOf(html, 'data-custody-fund-value=')).toContain(
+      'data-custody-fund-value="159974.54"',
+    );
     expect(html).not.toContain('data-custody-fund-negative');
     // Right to left: the fund now, its chip, the three — in the bar — then the tabs under it.
     const order = [
@@ -242,7 +246,8 @@ describe('SCREEN 1’s head — the fund now, «استعاضة معلّقة», t
     expect(waiting).toContain(`title="${ar('fleet.custody.hold.heldTileNote')}"`);
     expect(waiting).toContain('bg-amber-50');
     expect(waiting).toContain('dark:text-amber-300');
-    const chip = waitingHtml.slice(waitingHtml.indexOf('data-custody-held='));
+    const at = waitingHtml.indexOf('data-custody-held=');
+    const chip = waitingHtml.slice(waitingHtml.lastIndexOf('<', at));
     expect(text(chip.slice(0, chip.indexOf('</span></span>') + 14))).toBe(
       'استعاضة معلّقة: 12,500.00 ج.م.',
     );
@@ -262,12 +267,15 @@ describe('SCREEN 1’s head — the fund now, «استعاضة معلّقة», t
     // The tabs and the actions do not wait for it.
     expect(loading).toContain('data-custody-tabs="true"');
     expect(loading).toContain('data-custody-fund-actions="true"');
-    const qc = client();
+    // A read that failed and is not tried again on mount (the screen's own retry is its refetch).
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity } },
+    });
     qc.getQueryCache()
       .build(qc, { queryKey: custodyFundKey })
       .setState({ status: 'error', error: new Error('down'), fetchStatus: 'idle' });
     const failed = head(qc);
-    console.log('DBG', failed.slice(0, 1500));
+    expect(failed).toContain('data-custody-fund-failed="true"');
     const strip = failed.slice(failed.indexOf('data-custody-fund-failed="true"'));
     expect(text(strip.slice(0, strip.indexOf('data-custody-fund-actions')))).toContain(
       `${ar('fleet.custody.ledger.tiles.fundNow')} —`,
@@ -306,9 +314,11 @@ describe('«لوحة تحكم العهدة» — the third tab', () => {
     expect(tagOf(html, 'data-custody-tab="dashboard"')).toContain('aria-selected="true"');
     // «العهدة الآن» over the whole history: no filters on this tab, so no «ولا تتأثر بالفلاتر».
     const heading = html.slice(html.indexOf('data-custody-dashboard-heading="fund"'));
-    expect(text(heading.slice(0, heading.indexOf('</h2>') + 5))).toContain(
+    const scope = heading.slice(heading.indexOf('data-custody-scope="true"'));
+    expect(text(scope.slice(scope.indexOf('>') + 1, scope.indexOf('</span>')))).toBe(
       ar('fleet.custody.dashboard.fund.scopeSince'),
     );
+    expect(html).not.toContain(ar('fleet.custody.dashboard.fund.scope'));
     expect(ar('fleet.custody.dashboard.fund.scopeSince')).toBe('من بداية العهدة');
     // No spend line, no filter bar: those are «لوحة تحكم المصروفات»'s.
     expect(html).not.toContain('data-custody-alert="audit"');
@@ -392,7 +402,9 @@ describe('SCREEN 2 «مصروفات العهدة» — the memo a receipt is a l
     expect(pending.indexOf('data-custody-from="receipt"')).toBeLessThan(
       pending.indexOf('data-receipt-memo="5"'),
     );
-    expect(tagOf(pending, 'data-receipt-memo="5"')).toMatch(/^<a [^>]*href="\/fleet\/custody\/memos\/memo-5"/u);
+    expect(tagOf(pending, 'data-receipt-memo="5"')).toMatch(
+      /^<a [^>]*href="\/fleet\/custody\/memos\/memo-5"/u,
+    );
     expect(tagOf(pending, 'data-receipt-memo="5"')).toContain('data-receipt-memo-state="pending"');
     expect(text(pending)).toContain(ar('fleet.receipts.memo.chip', { no: 5 }));
     expect(tagOf(chipOf(html, 7), 'data-receipt-memo="7"')).toContain(

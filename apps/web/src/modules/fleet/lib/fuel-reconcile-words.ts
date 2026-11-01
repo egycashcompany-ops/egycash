@@ -80,7 +80,10 @@ export const sheetRefusalOf = (error: unknown): ReconcileWords | null => {
   if (!(error instanceof ApiError)) return null;
   const details = fileDetails(error);
   if (error.code === ErrorCodes.FILE_TOO_LARGE) {
-    return { key: 'fleet.fuelCards.reconcile.error.tooLarge', values: { mb: FLEET_FUEL_SHEET_MAX_MB } };
+    return {
+      key: 'fleet.fuelCards.reconcile.error.tooLarge',
+      values: { mb: FLEET_FUEL_SHEET_MAX_MB },
+    };
   }
   if (error.code === ErrorCodes.FLEET_FUEL_SHEET_LAYOUT) {
     const missing = details.filter((detail) => detail.code === 'MISSING_HEADER');
@@ -90,11 +93,9 @@ export const sheetRefusalOf = (error: unknown): ReconcileWords | null => {
         values: { columns: missing.map((detail) => detail.message).join(' · ') },
       };
     }
+    // Over a read cap (rows, time, a zip entry) — not the upload's megabytes.
     if (details.some((detail) => detail.code === 'TOO_LARGE')) {
-      return {
-        key: 'fleet.fuelCards.reconcile.error.tooLarge',
-        values: { mb: FLEET_FUEL_SHEET_MAX_MB },
-      };
+      return { key: 'fleet.fuelCards.reconcile.error.tooMuch' };
     }
     return { key: 'fleet.fuelCards.reconcile.error.unreadable' };
   }

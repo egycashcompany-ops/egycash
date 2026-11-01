@@ -535,7 +535,7 @@ describe('«إجمالي العهدة» on «لوحة تحكم العهدة» �
   it('is one component, fed the unfiltered figures — the board draws it no more', () => {
     expect(read('../components/CustodyFigures.tsx')).not.toMatch(/<CustodyFundCard\b/u);
     expect(read('../components/CustodyDashboardFund.tsx')).toMatch(
-      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
+      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+held=\{fund\.data\?\.held\.amount \?\? 0\}\s+\/>/u,
     );
     expect(read('../components/CustodyDashboard.tsx')).not.toContain('<CustodyFundCard');
     // A spent total of nothing over what was charged: «0%», not a dash.

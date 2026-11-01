@@ -20,6 +20,7 @@ import { BoardIcon, NUM, PATH, ymd } from './FuelCardBoard';
 import { Stroke } from './FuelCardDialog';
 import { CAIRO } from './custody-dashboard-parts';
 import { PILL_BUTTON, PILL_FRAME } from './custody-board-looks';
+import { HeldMemoChip } from './custody-hold-parts';
 
 // ── Looks ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -204,7 +205,11 @@ export const MemoName = ({
   );
 };
 
-/** The memo's status: waiting, or replenished on its day — a link to that «استعاضة» in the log. */
+/**
+ * The memo's status: waiting; reserved by a replenishment held for its transfer («في انتظار
+ * التحويل», its letter's day); or replenished on its transfer's day — the last two a link to that
+ * «استعاضة» in the log.
+ */
 export const MemoStatus = ({
   memo,
 }: {
@@ -213,6 +218,8 @@ export const MemoStatus = ({
   const t = useT();
   return memo.replenishment === null ? (
     <WaitChip label={t('fleet.custody.parts.status.pending')} mark="memo-pending" />
+  ) : memo.replenishment.held ? (
+    <HeldMemoChip replenishment={memo.replenishment} />
   ) : (
     <DoneChip
       label={t('fleet.custody.parts.status.replenished')}

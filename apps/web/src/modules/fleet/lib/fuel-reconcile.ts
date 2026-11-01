@@ -8,8 +8,12 @@
 // it leaves the selection and «تحديد الكل» passes it by; the sheet must be read again.
 import {
   ErrorCodes,
+  type FleetFuelCardCompany,
+  type FleetFuelReconcileDto,
   type FleetFuelReconcileLineDto,
   type FleetFuelReconcileResultDto,
+  type FleetFuelSheetConflictDto,
+  type FleetFuelSheetDuplicateDto,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 
@@ -29,6 +33,36 @@ export const netOf = (lines: readonly FleetFuelReconcileLineDto[]): number =>
 /** The largest |difference| — the bar each row's difference is drawn against. */
 export const largestOf = (lines: readonly FleetFuelReconcileLineDto[]): number =>
   lines.reduce((most, line) => Math.max(most, Math.abs(line.difference)), 0);
+/** Figures summed to the piastre. */
+export const sumOf = (values: readonly number[]): number =>
+  values.reduce((sum, value) => sum + piastres(value), 0) / 100;
+
+/** A bulk decision's figures: the cards' balance now, the net difference, and after a ✓. */
+export interface ConfirmTotals {
+  now: number;
+  net: number;
+  after: number;
+}
+export const confirmTotalsOf = (lines: readonly FleetFuelReconcileLineDto[]): ConfirmTotals => ({
+  now: sumOf(lines.map((line) => line.card.balance)),
+  net: netOf(lines),
+  after: sumOf(lines.map((line) => line.sheet.balance)),
+});
+
+/** The sheet rows that are never decided, counted as rows (one name may hold several). */
+export const conflictRowsOf = (conflicts: readonly FleetFuelSheetConflictDto[]): number =>
+  conflicts.reduce((sum, conflict) => sum + conflict.rows.length, 0);
+/** The repeated rows beyond each card's first — what «صفوف مكررة» counts. */
+export const repeatsOf = (duplicates: readonly FleetFuelSheetDuplicateDto[]): number =>
+  duplicates.reduce((sum, row) => sum + row.times - 1, 0);
+/** The matched cards whose last four digits differ — the differing and the equal alike. */
+export const changedNumbersOf = (result: FleetFuelReconcileDto): FleetFuelReconcileLineDto[] =>
+  [...result.differs, ...result.equal].filter((line) => !line.numberMatches);
+/** The company the sheet's names say, when it is not the one chosen; else `null`. */
+export const wrongCompanyOf = (result: FleetFuelReconcileDto): FleetFuelCardCompany | null =>
+  result.sheetCompany !== null && result.sheetCompany !== result.company
+    ? result.sheetCompany
+    : null;
 
 const two = (n: number): string => String(n).padStart(2, '0');
 /** «2026/10/27 09:41» — the reader's own clock. */
@@ -73,7 +107,11 @@ export interface ReconcileSelection {
   moved: ReadonlySet<string>;
 }
 
-export const NO_SELECTION: ReconcileSelection = { picked: new Set(), decided: {}, moved: new Set() };
+export const NO_SELECTION: ReconcileSelection = {
+  picked: new Set(),
+  decided: {},
+  moved: new Set(),
+};
 
 const idOf = (line: FleetFuelReconcileLineDto): string => line.card.id.toLowerCase();
 

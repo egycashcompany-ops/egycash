@@ -1,9 +1,8 @@
 // «مصروفات العهدة» (`/fleet/custody-expenses`, SCREEN 2) — «شاشه العهده اللى فيها التجميعه بتاعت
 // مصروفات العهده»: everything the custody fund paid, summed per source and per car, with every
 // movement under it. A VIEW over the receipts («خصم الإيصالات») — صيانة, وقود, كاوتش, غسيل — never a
-// copy. «التوكيل لما بسجل فاتوره … ولا تنقص
-// من العهدة وملهاش علاقة ب حاجة»: a dealership invoice is no custody movement, and «صيانة» stands
-// where التوكيل stood.
+// copy. «التوكيل لما بسجل فاتوره … ولا تنقص من العهدة وملهاش علاقة ب حاجة»: a dealership invoice
+// is no custody movement, and «صيانة» stands where التوكيل stood.
 //
 // «تعالى بقى نشتغل على العهده»: what the other Fleet boards were given, given here too — no page
 // title, a toolbar with the count, «الإحصائيات» and the Excel / PDF pill; the dark filter bar with

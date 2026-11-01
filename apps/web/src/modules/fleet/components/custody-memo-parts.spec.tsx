@@ -119,13 +119,29 @@ describe('a memo’s status', () => {
 
   it('once replenished, says so on its day and leads to that «استعاضة» in the log', () => {
     const html = draw(
-      <MemoStatus memo={memo({ replenishment: { id: 'op-1', date: '2026-09-29' } })} />,
+      <MemoStatus
+        memo={memo({ replenishment: { id: 'op-1', date: '2026-09-29', held: false } })}
+      />,
     );
     expect(html).toContain('data-status="memo-replenished"');
     expect(html).toContain('href="/fleet/custody/log?open=op-1"');
     expect(html).toContain(`title="${ar('fleet.custody.parts.status.open')}"`);
     expect(text(html)).toBe(`${ar('fleet.custody.parts.status.replenished')} ✓ 2026/09/29`);
     expect(html).toMatch(/<span dir="ltr" class="[^"]*">2026\/09\/29<\/span>/u);
+  });
+
+  it('while its replenishment waits for the transfer: «في انتظار التحويل», its letter’s day, a way to it', () => {
+    const html = draw(
+      <MemoStatus memo={memo({ replenishment: { id: 'op-2', date: '2026-10-19', held: true } })} />,
+    );
+    expect(html).toContain('data-status="memo-held"');
+    expect(html).toContain('href="/fleet/custody/log?open=op-2"');
+    expect(html).toContain(
+      `title="${ar('fleet.custody.hold.memoChipTitle', { date: '2026/10/19' })}"`,
+    );
+    expect(text(html)).toBe(`${ar('fleet.custody.hold.memoChip')} 2026/10/19`);
+    expect(html).toContain('border-sky-300');
+    expect(html).not.toContain('data-status="memo-replenished"');
   });
 
   it('draws a done chip with no link when there is nowhere to go', () => {

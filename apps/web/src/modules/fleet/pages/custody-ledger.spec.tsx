@@ -437,7 +437,9 @@ describe('«سجل العهدة» — the fund’s formula, as tiles', () => {
     expect(ar('fleet.custody.ledger.tiles.formulaRequests')).toBe(
       'طلبات − مصروفات + استعاضة − تسوية',
     );
-    expect(text(tiles)).toContain(`${ar('fleet.custody.ledger.tiles.requested')} +${figure(300000)}`);
+    expect(text(tiles)).toContain(
+      `${ar('fleet.custody.ledger.tiles.requested')} +${figure(300000)}`,
+    );
     expect(ar('fleet.custody.ledger.tiles.requested')).toBe('إجمالي طلبات العهدة');
     expect(text(tiles)).toContain(ar('fleet.custody.ledger.tiles.requestedNote.two'));
     expect(text(tiles)).not.toContain('شحن');
@@ -719,6 +721,19 @@ describe('the ledger’s words, from the facts', () => {
     );
   });
 
+  it('two memos after «في» and «نظير» are in the genitive — the other counts as they are', () => {
+    const two = { ...(ROWS[4] as FleetCustodyLedgerRowDto), memoNos: [4, 5] };
+    expect(words.ledgerWords(two, kit).note).toContain(
+      'fleet.custody.ledger.detail.inMemos{"memos":"fleet.custody.ledger.detail.twoMemosGenitive"}',
+    );
+    expect(words.memosAfterWord(2, kit)).toBe('fleet.custody.ledger.detail.twoMemosGenitive');
+    for (const n of [1, 3, 5, 11, 100])
+      expect(words.memosAfterWord(n, kit), String(n)).toBe(`${n} memo`);
+    // English has no dual: «in 2 memos» as `count` writes it.
+    const en = { ...kit, form: (n: number) => custodyPlural('en', n) };
+    expect(words.memosAfterWord(2, en)).toBe('2 memo');
+  });
+
   it('a charge with no reason is the action’s own name', () => {
     expect(words.chargeTitle('', kit)).toBe('fleet.custody.actions.request');
     expect(words.chargeTitle(' x ', kit)).toBe(
@@ -763,6 +778,21 @@ describe.skipIf(!merged)('«سجل العهدة» reads as the approved sample d
       '5 مذكرات: كاوتش، وقود، صيانة',
     );
     expect(text(element(html, 'data-ledger-detail="op-s1"'))).toContain('3 مصروفات تراخيص');
+    // «في مذكرتين», never «في مذكرتان».
+    const realKit = {
+      t: ar,
+      count,
+      form: (n: number) => custodyPlural('ar', n),
+      cars: (n: number) => `${n}`,
+      separator: '، ',
+      day: (iso: string) => iso,
+    };
+    const two = { ...(ROWS[4] as FleetCustodyLedgerRowDto), memoNos: [4, 5] };
+    expect(words.ledgerWords(two, realKit).note).toContain('— في مذكرتين،');
+    expect(words.ledgerWords(two, realKit).note).not.toContain('مذكرتان');
+    expect(words.ledgerWords(ROWS[4] as FleetCustodyLedgerRowDto, realKit).note).toContain(
+      '— في 5 مذكرات،',
+    );
     expect(text(element(html, 'data-ledger-detail="spend:2026-09-01:2026-09-28"'))).toContain(
       '97 إيصالًا صُرفت من العهدة',
     );

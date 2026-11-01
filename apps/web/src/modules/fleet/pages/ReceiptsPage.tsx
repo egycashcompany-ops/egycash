@@ -454,9 +454,12 @@ export const ReceiptsPage = (): JSX.Element => {
               <LockedRowAction
                 kind="delete"
                 reason={t(
-                  receiptMemoState(row) === 'replenished'
-                    ? 'fleet.receipts.memo.lockedDeleteReplenished'
-                    : 'fleet.receipts.memo.lockedDelete',
+                  {
+                    none: 'fleet.receipts.memo.lockedDelete',
+                    pending: 'fleet.receipts.memo.lockedDelete',
+                    held: 'fleet.receipts.memo.lockedDeleteHeld',
+                    replenished: 'fleet.receipts.memo.lockedDeleteReplenished',
+                  }[receiptMemoState(row)],
                   { no: row.memo.no },
                 )}
                 mark="receipt-delete"

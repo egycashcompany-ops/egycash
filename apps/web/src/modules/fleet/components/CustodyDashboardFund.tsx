@@ -87,8 +87,11 @@ import {
   custodyPeriodLink,
   custodySettleWaiting,
   custodyWaiting,
+  custodyWaitingShares,
   type CustodyFundAlert,
 } from '../lib/custody-dashboard-fund';
+import { custodyStepRows } from '../lib/custody-hold';
+import { HoldAmountOr, HoldOpChip, WaitingHeldLegend, holdRowTint } from './custody-hold-parts';
 
 const D = 'fleet.custody.dashboard';
 const LATIN = new Intl.NumberFormat('en-US');
@@ -405,6 +408,7 @@ export const CustodyFundNow = ({
           charged={figures.fundCharged}
           spent={figures.fundSpent}
           figure={STRIP_FIGURE}
+          held={fund.data?.held.amount ?? 0}
         />
       </Link>
     );
@@ -556,8 +560,9 @@ export const CustodyWaitingCard = ({
   }
   const memos = cand.data.memos;
   const outside = cand.data.outside;
-  const waiting = custodyWaiting(memos, outside, fund.data.memos.pendingTotal);
-  const pctIn = waiting.total > 0 ? (waiting.inMemos / waiting.total) * 100 : 0;
+  // The held replenishments' memos are spent and not back yet: the bar's third part, first.
+  const waiting = custodyWaiting(memos, outside, fund.data.memos.pendingTotal, fund.data.held);
+  const share = custodyWaitingShares(waiting);
   const shown = memos.slice(0, SHOWN_MEMOS);
   return (
     <section
@@ -582,22 +587,38 @@ export const CustodyWaitingCard = ({
           aria-hidden="true"
           className="flex h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]"
         >
+          {waiting.held > 0 && (
+            <span
+              data-custody-waiting-part="held"
+              className="h-full bg-sky-500"
+              style={{ width: `${share.held}%` }}
+            />
+          )}
           {waiting.inMemos > 0 && (
             <span
               data-custody-waiting-part="inMemos"
               className="h-full bg-amber-500"
-              style={{ width: `${pctIn}%` }}
+              style={{ width: `${share.inMemos}%` }}
             />
           )}
           {waiting.outside > 0 && (
             <span
               data-custody-waiting-part="outside"
               className="h-full bg-slate-400 dark:bg-slate-500"
-              style={{ width: `${100 - pctIn}%` }}
+              style={{ width: `${share.outside}%` }}
             />
           )}
         </div>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs">
+        {/* Three parts do not fit one line of the card: they flow from its start, the third under. */}
+        <div
+          className={cn(
+            'mt-2 flex flex-wrap items-center gap-y-1 text-xs',
+            waiting.held > 0 ? 'justify-start gap-x-8' : 'justify-between gap-x-6',
+          )}
+        >
+          {waiting.held > 0 && (
+            <WaitingHeldLegend figure={money(waiting.held)} className={FOCUS_RING} />
+          )}
           <span
             data-custody-waiting-legend="inMemos"
             className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300"
@@ -1069,8 +1090,9 @@ export const CustodyFundSteps = ({
       />
     );
   }
-  const rows = [...ledger.data.items].reverse();
-  const capped = ledger.data.meta.totalItems > rows.length;
+  // Held and cancelled lines move nothing: no step of their own. The last line kept carries «الآن».
+  const rows = custodyStepRows(ledger.data.items);
+  const capped = ledger.data.meta.totalItems > ledger.data.items.length;
   const n = rows.length;
   const active = picked === null ? n - 1 : Math.min(picked, n - 1);
   const shown = rows[active];
@@ -1513,10 +1535,13 @@ export const CustodyRecentOps = ({
                   ROW_HOVER,
                   FOCUS_RING,
                   row.op === 'spend' && 'bg-slate-100/70 dark:bg-white/[0.025]',
+                  holdRowTint(row.status),
                 )}
               >
                 <span className="w-[8.25rem] shrink-0">
-                  <LedgerOpChip op={row.op} size="xs" />
+                  <HoldOpChip status={row.status} size="xs">
+                    <LedgerOpChip op={row.op} size="xs" />
+                  </HoldOpChip>
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span
@@ -1525,7 +1550,9 @@ export const CustodyRecentOps = ({
                       'truncate text-[13px] font-bold',
                       row.op === 'spend'
                         ? 'text-slate-600 dark:text-slate-300'
-                        : 'text-slate-900 dark:text-white',
+                        : row.status === 'cancelled'
+                          ? 'text-slate-500 dark:text-slate-400'
+                          : 'text-slate-900 dark:text-white',
                       CAIRO,
                     )}
                   >
@@ -1540,7 +1567,12 @@ export const CustodyRecentOps = ({
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-0.5">
                   <span className="text-[13px] font-bold">
-                    <Signed value={row.amount} />
+                    <HoldAmountOr
+                      status={row.status}
+                      value={row.amount}
+                      note={false}
+                      done={<Signed value={row.amount} />}
+                    />
                   </span>
                   <span
                     data-custody-recent-after={row.after}

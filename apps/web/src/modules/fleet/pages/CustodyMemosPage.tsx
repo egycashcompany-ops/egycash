@@ -8,7 +8,8 @@
 // this page's rows. A memo's name is the one he typed, or «مذكرة <النوع> رقم N» in muted ink.
 //
 // Each row: the eye (its paper), the pen, the printer and the bin. A memo the fund has replenished
-// («استعاضة عهدة») is history — its pen and bin stay in their places, faded, saying why. Deleting a
+// («استعاضة عهدة») is history — its pen and bin stay in their places, faded, saying why; so are a
+// memo's reserved by a replenishment held for its transfer («في انتظار التحويل»). Deleting a
 // memo sends its receipts back to «إيصالات لم تدخل أي مذكرة بعد»; the row stays in the database
 // (soft delete) and its number is never given to another memo.
 import { useMemo, useState } from 'react';
@@ -105,6 +106,11 @@ const memoKinds = (raw: string | null): FleetCustodySource[] =>
     (FLEET_CUSTODY_SOURCES as readonly string[]).includes(v),
   );
 /** «الحالة» as the address holds it — one of the two, or no filter at all. */
+/** A memo's status as the filter names it — pending, held for its transfer, or replenished. */
+const memoStatusKey = (
+  memo: Pick<FleetCustodyMemoRowDto, 'replenishment'>,
+): FleetCustodyMemoStatus =>
+  memo.replenishment === null ? 'pending' : memo.replenishment.held ? 'held' : 'replenished';
 const memoStatusOf = (raw: string | null): FleetCustodyMemoStatus | '' =>
   (FLEET_CUSTODY_MEMO_STATUSES as readonly string[]).includes(raw ?? '')
     ? (raw as FleetCustodyMemoStatus)
@@ -131,6 +137,8 @@ const MemoActions = ({
   const t = useT();
   const can = useCan();
   const locked = memo.replenishment !== null;
+  // Reserved by a replenishment held for its transfer: locked as a replenished one, said so.
+  const held = memo.replenishment?.held === true;
   return (
     <span className={ACTION_GROUP} data-row-actions="custody-memo">
       <button
@@ -147,7 +155,7 @@ const MemoActions = ({
         (locked ? (
           <LockedRowAction
             kind="edit"
-            reason={t('fleet.custody.memos.lockedEdit')}
+            reason={t(held ? 'fleet.custody.hold.lockedEdit' : 'fleet.custody.memos.lockedEdit')}
             mark="custody-memo-edit"
           >
             <SquarePenIcon className="h-4 w-4" />
@@ -177,7 +185,9 @@ const MemoActions = ({
         (locked ? (
           <LockedRowAction
             kind="delete"
-            reason={t('fleet.custody.memos.lockedDelete')}
+            reason={t(
+              held ? 'fleet.custody.hold.lockedDelete' : 'fleet.custody.memos.lockedDelete',
+            )}
             mark="custody-memo-delete"
           >
             <Trash2Icon className="h-4 w-4" />
@@ -495,11 +505,10 @@ export const CustodyMemosPage = (): JSX.Element => {
     t('fleet.custody.memos.export.replenishedAt'),
   ];
   const statusText = (memo: FleetCustodyMemoRowDto): string =>
-    t(
-      memo.replenishment === null
-        ? 'fleet.custody.parts.status.pending'
-        : 'fleet.custody.parts.status.replenished',
-    );
+    t(`fleet.custody.parts.status.${memoStatusKey(memo)}`);
+  /** «تاريخ الاستعاضة» — none while its replenishment waits for its transfer. */
+  const replenishedDay = (memo: FleetCustodyMemoRowDto): string | null =>
+    memo.replenishment === null || memo.replenishment.held ? null : ymd(memo.replenishment.date);
   const lineOf = (memo: FleetCustodyMemoRowDto): string[] => [
     String(memo.no),
     memoDisplayName(memo, t),
@@ -522,7 +531,7 @@ export const CustodyMemosPage = (): JSX.Element => {
         ...lineOf(memo),
         memo.total,
         statusText(memo),
-        memo.replenishment === null ? '' : ymd(memo.replenishment.date),
+        replenishedDay(memo) ?? '',
       ]),
       moneyColumns: [6],
     });
@@ -551,7 +560,7 @@ export const CustodyMemosPage = (): JSX.Element => {
           ...lineOf(memo),
           reportMoney(memo.total),
           statusText(memo),
-          memo.replenishment === null ? '—' : ymd(memo.replenishment.date),
+          replenishedDay(memo) ?? '—',
         ]),
         totals:
           figures === undefined
@@ -701,7 +710,7 @@ export const CustodyMemosPage = (): JSX.Element => {
                 onChange={(next) => patch({ kind: next.length === 0 ? null : next.join(',') })}
               />
             </FilterWithIcon>
-            {/* «الحالة»: ONE answer — waiting or replenished; clearing it is «all». */}
+            {/* «الحالة»: ONE answer — waiting, held for its transfer, or replenished; clearing it is «all». */}
             <FilterWithIcon icon={FILTER_ICON.status} tone="text-sky-600 dark:text-sky-400">
               <MultiSelect
                 clearable

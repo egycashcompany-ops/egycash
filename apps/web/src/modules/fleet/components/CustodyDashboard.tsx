@@ -655,10 +655,7 @@ const CustodySpendPart = ({
   const today = now === undefined ? {} : { now };
   return (
     <>
-      <CustodyAlerts
-        alerts={data.alerts}
-        title={t('fleet.custody.dashboard.alerts.spendTitle')}
-      />
+      <CustodyAlerts alerts={data.alerts} title={t('fleet.custody.dashboard.alerts.spendTitle')} />
       <CustodyKpis data={data} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
         <CustodyTimeline data={data} filters={filters} {...today} />

@@ -31,6 +31,7 @@ import {
 import { moneyChip } from './FleetFigures';
 import { BoardIcon, NUM, PATH } from './FuelCardBoard';
 import { CARD_BORDER, CARD_SURFACE, useCount } from './custody-dashboard-parts';
+import { HeldLine } from './custody-hold-parts';
 
 /**
  * «44%» — under one per cent but not nothing, «<1%»; over ninety-nine but not all of it, «>99%»;
@@ -168,6 +169,7 @@ export const CustodyFundCard = ({
   spent,
   board = false,
   figure = TILE_FIGURE,
+  held = 0,
 }: {
   /** The fund in EGP, maybe negative; an older server's `null` or a missing one reads as 0. */
   fundTotal: number | null | undefined;
@@ -179,6 +181,8 @@ export const CustodyFundCard = ({
   board?: boolean;
   /** The sum's classes — the board's tiles' by default, the dashboard's on «لوحة تحكم». */
   figure?: string;
+  /** The replenishments waiting for their money («استعاضة معلّقة») — not in the sum. */
+  held?: number;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -226,6 +230,8 @@ export const CustodyFundCard = ({
           <BoardIcon d={CUSTODY_FUND.icon} className="h-5 w-5" />
         </span>
       </span>
+      {/* Under the figure and its tile — beside the tile, in «العهدة الآن», it has no room. */}
+      <HeldLine amount={held} mark="board" />
       <span className={cn(TILE_RULE, 'flex flex-col gap-1.5')}>
         <span
           data-custody-fund-spent="true"

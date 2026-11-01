@@ -151,7 +151,10 @@ describe('«سجل العهدة · المذكرات · لوحة تحكم الع�
   it('lights no tab off its three pages — the board «مصروفات العهدة» has none', () => {
     for (const path of ['/fleet/custody', '/fleet/custody-expenses']) {
       const found = tabs(draw(path, fund));
-      expect(Object.values(found).filter((tag) => tag.includes('bg-brand-600')), path).toEqual([]);
+      expect(
+        Object.values(found).filter((tag) => tag.includes('bg-brand-600')),
+        path,
+      ).toEqual([]);
     }
   });
 

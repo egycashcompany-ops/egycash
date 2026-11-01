@@ -58,6 +58,8 @@ import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { AlarmReasonCell, NotActiveCell } from '../components/AlarmReasonCell';
+import { reasonRows } from '../lib/alarm-reason-rows';
 
 /**
  * Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept.
@@ -271,16 +273,24 @@ export const OdometerPage = (): JSX.Element => {
 
   // The maintenance figure, per vehicle, from the SAME derived projection the alarms board reads.
   // One call for the whole page; the join here is display only — the level filter is server-side.
+  // The whole row is kept: a car the projection refused carries its reason and its facts with it.
   const alarmsQuery = useMaintenanceAlarms();
   const alarmByVehicle = useMemo(() => {
-    const map = new Map<string, Pick<FleetMaintenanceAlarmDto, 'sinceServiceKm' | 'level'>>();
-    for (const alarm of alarmsQuery.data ?? []) {
-      map.set(alarm.vehicleId, { sinceServiceKm: alarm.sinceServiceKm, level: alarm.level });
-    }
+    const map = new Map<string, FleetMaintenanceAlarmDto>();
+    for (const alarm of alarmsQuery.data ?? []) map.set(alarm.vehicleId, alarm);
     return map;
   }, [alarmsQuery.data]);
+  // «بدل «—» يظهر السبب في سطر آخر قراءة لكل عربية»: the ONE row per car that says why it has no
+  // figure — the row of its latest reading, as the server names it (`reasonRows`). Only once the
+  // projection has ANSWERED: while it loads, every car would read as absent from it.
+  const reasons = useMemo(
+    () => reasonRows(rows, alarmByVehicle, alarmsQuery.isSuccess),
+    [rows, alarmByVehicle, alarmsQuery.isSuccess],
+  );
 
   const [recordOpen, setRecordOpen] = useState(false);
+  // «تسجيل قراءة» from a reason's link opens the dialog on that car; let go when it closes.
+  const [recordCode, setRecordCode] = useState<string | null>(null);
   const [correcting, setCorrecting] = useState<FleetOdometerLogDto | null>(null);
   // «عاوز اقدر امسح قراءه» — the reading asked about, until it is confirmed or let go.
   const [deleting, setDeleting] = useState<FleetOdometerLogDto | null>(null);
@@ -308,9 +318,7 @@ export const OdometerPage = (): JSX.Element => {
    * roster gets an empty map, which is the same degradation the cells make rather than a failed
    * export.
    */
-  const driverNames = async (
-    logs: readonly FleetOdometerLogDto[],
-  ): Promise<Map<string, string>> =>
+  const driverNames = async (logs: readonly FleetOdometerLogDto[]): Promise<Map<string, string>> =>
     fetchEmployeeNames(
       queryClient,
       logs
@@ -340,49 +348,47 @@ export const OdometerPage = (): JSX.Element => {
       fleetApi.listOdometerLogs({ ...filtersOnly(params), page: pageNo, pageSize: size }),
     );
     const names = await driverNames(all);
-    saveSheet(
-      {
-        name: t('fleet.nav.odometer'),
-        serialHeader: t('fleet.violations.report.serial'),
-        header: [
-          t('fleet.odometer.fields.date'),
-          t('fleet.odometer.columns.vehicle'),
-          t('fleet.odometer.columns.driver1'),
-          t('fleet.odometer.columns.driver2'),
-          t('fleet.odometer.columns.outReading'),
-          t('fleet.odometer.columns.inReading'),
-          t('fleet.odometer.columns.km'),
-          t('fleet.odometer.columns.notes'),
-          t('fleet.odometer.columns.sinceService'),
-          t('fleet.odometer.columns.alert'),
-        ],
-        rows: all.map((log) => {
-          // The same join the maintenance column makes, and the same refusal: a car with no rule,
-          // no service on file or no registry row prints nothing rather than a computed distance
-          // the projection deliberately withheld.
-          const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
-          const measured = alarm === undefined || alarm.sinceServiceKm === null ? undefined : alarm;
-          return [
-            formatDate(log.date, locale),
-            log.vehicleCode ?? '',
-            personCell(log.driver1EmployeeId, log.driver1Name, names),
-            personCell(log.driver2EmployeeId, log.driver2Name, names),
-            log.outReading ?? t('fleet.odometer.noReading'),
-            // A day nobody wrote a counter down for closes nothing, so it is not the open period
-            // either — the column is empty there, as the table's dash is.
-            log.outReading === null ? '' : (log.inReading ?? t('fleet.odometer.openPeriod')),
-            log.km ?? '',
-            log.notes ?? '',
-            measured?.sinceServiceKm ?? '',
-            measured === undefined
-              ? ''
-              : measured.level === 'none'
-                ? t('fleet.vehicle.alarmNone')
-                : t(`fleet.dashboard.level.${measured.level}`),
-          ];
-        }),
-      },
-    );
+    saveSheet({
+      name: t('fleet.nav.odometer'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: [
+        t('fleet.odometer.fields.date'),
+        t('fleet.odometer.columns.vehicle'),
+        t('fleet.odometer.columns.driver1'),
+        t('fleet.odometer.columns.driver2'),
+        t('fleet.odometer.columns.outReading'),
+        t('fleet.odometer.columns.inReading'),
+        t('fleet.odometer.columns.km'),
+        t('fleet.odometer.columns.notes'),
+        t('fleet.odometer.columns.sinceService'),
+        t('fleet.odometer.columns.alert'),
+      ],
+      rows: all.map((log) => {
+        // The same join the maintenance column makes, and the same refusal: a car with no rule,
+        // no service on file or no registry row prints nothing rather than a computed distance
+        // the projection deliberately withheld.
+        const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
+        const measured = alarm === undefined || alarm.sinceServiceKm === null ? undefined : alarm;
+        return [
+          formatDate(log.date, locale),
+          log.vehicleCode ?? '',
+          personCell(log.driver1EmployeeId, log.driver1Name, names),
+          personCell(log.driver2EmployeeId, log.driver2Name, names),
+          log.outReading ?? t('fleet.odometer.noReading'),
+          // A day nobody wrote a counter down for closes nothing, so it is not the open period
+          // either — the column is empty there, as the table's dash is.
+          log.outReading === null ? '' : (log.inReading ?? t('fleet.odometer.openPeriod')),
+          log.km ?? '',
+          log.notes ?? '',
+          measured?.sinceServiceKm ?? '',
+          measured === undefined
+            ? ''
+            : measured.level === 'none'
+              ? t('fleet.vehicle.alarmNone')
+              : t(`fleet.dashboard.level.${measured.level}`),
+        ];
+      }),
+    });
   };
   /**
    * The toolbar's «Excel», as `ExportSheetButton` ran it: one file at a time, a spinner while the
@@ -564,13 +570,29 @@ export const OdometerPage = (): JSX.Element => {
       sortKey: 'alarmSinceService',
       render: (log) => {
         const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
-        // No rule, no service on file, or a vehicle that has left the registry: say nothing
-        // rather than print a distance the projection deliberately refused to compute.
-        // A DISTANCE column, and only that. The reason an alarm is unavailable is a fact about the
-        // VEHICLE, and rows here are READINGS — one car has many, so a sentence repeated down all
-        // of them reads as several problems instead of one. It is said once per car, on the
-        // alarms board, where a row IS a vehicle.
+        // No figure: the projection refused to compute one (no rule, no service on file, numbers
+        // that do not compare), or the car is not active and is not measured at all. Never a
+        // distance the projection withheld. The reason is a fact about the VEHICLE and rows here
+        // are READINGS, so it is said ONCE per car — on the row of its latest reading — and every
+        // other reading of the car keeps the dash; a sentence down all of them would read as
+        // several problems instead of one.
         if (alarm === undefined || alarm.sinceServiceKm === null) {
+          const said = reasons.get(log.id);
+          if (said?.kind === 'alarm') {
+            return (
+              <AlarmReasonCell
+                alarm={said.alarm}
+                reason={said.reason}
+                onRecord={(code) => {
+                  setRecordCode(code);
+                  setRecordOpen(true);
+                }}
+              />
+            );
+          }
+          if (said?.kind === 'notActive') {
+            return <NotActiveCell vehicleId={said.vehicleId} code={said.code} />;
+          }
           return DASH;
         }
         return (
@@ -889,15 +911,21 @@ export const OdometerPage = (): JSX.Element => {
 
       <RecordOdometerDialog
         open={recordOpen}
-        onClose={() => setRecordOpen(false)}
+        onClose={() => {
+          setRecordOpen(false);
+          setRecordCode(null);
+        }}
         // Carried over from the filter, as it always was — but only when the filter names ONE
         // car. With several selected there is no single answer to preselect, and guessing one
         // would be worse than asking.
         // The CODE, not an id: the page no longer holds the whole registry to look an id up in,
         // and resolving one against the current search shortlist would drop the carry-over for
         // exactly the cars this change is about — a filtered code the shortlist does not carry.
-        // The dialog asks the registry for the code it is given.
-        initialVehicleCode={vehicleCodes.length === 1 ? (vehicleCodes[0] ?? '') : ''}
+        // The dialog asks the registry for the code it is given. A reason's «تسجيل قراءة» names
+        // its own car, which comes first.
+        initialVehicleCode={
+          recordCode ?? (vehicleCodes.length === 1 ? (vehicleCodes[0] ?? '') : '')
+        }
       />
       <CorrectOdometerDialog
         open={correcting !== null}

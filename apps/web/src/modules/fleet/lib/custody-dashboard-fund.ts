@@ -38,15 +38,20 @@ export const custodyIsLate = (days: number): boolean => days > FLEET_CUSTODY_STA
 
 // ── What waits ──────────────────────────────────────────────────────────────────────────────────
 
-/** «مبالغ صُرفت ولم تُستعَض بعد» — its two parts and what they make. */
+/** «مبالغ صُرفت ولم تُستعَض بعد» — its three parts and what they make. */
 export interface CustodyWaiting {
+  /**
+   * In the memos of a replenishment held for its transfer («في انتظار التحويل») — the fund's
+   * `held.amount`: spent, and not back yet.
+   */
+  held: number;
   /** In memos not replenished yet — the fund's `memos.pendingTotal`. */
   inMemos: number;
   /** In no memo yet — Σ the outside kinds. */
   outside: number;
-  /** The headline: always the fund's spent less its replenished. */
+  /** The headline: always the fund's spent less its replenished (transferred) — the three parts. */
   total: number;
-  /** The receipts behind it: the pending memos' and the outside ones. */
+  /** The receipts behind it: the held memos', the pending memos' and the outside ones. */
   receipts: number;
 }
 
@@ -54,16 +59,29 @@ export const custodyWaiting = (
   memos: readonly Pick<FleetCustodyMemoRowDto, 'receipts'>[],
   outside: readonly Pick<FleetCustodyOutsideKindDto, 'count' | 'total'>[],
   pendingTotal: number,
+  held: { amount: number; receipts: number } = { amount: 0, receipts: 0 },
 ): CustodyWaiting => {
   const out = sumMoney(outside.map((line) => line.total));
   return {
+    held: held.amount,
     inMemos: pendingTotal,
     outside: out,
-    total: sumMoney([pendingTotal, out]),
+    total: sumMoney([held.amount, pendingTotal, out]),
     receipts:
+      held.receipts +
       memos.reduce((sum, memo) => sum + memo.receipts, 0) +
       outside.reduce((sum, line) => sum + line.count, 0),
   };
+};
+
+/** Each part's share of the bar, in its order — held · in memos · outside — summing to 100. */
+export const custodyWaitingShares = (
+  waiting: CustodyWaiting,
+): { held: number; inMemos: number; outside: number } => {
+  if (waiting.total <= 0) return { held: 0, inMemos: 0, outside: 0 };
+  const held = (waiting.held / waiting.total) * 100;
+  const inMemos = (waiting.inMemos / waiting.total) * 100;
+  return { held, inMemos, outside: Math.max(0, 100 - held - inMemos) };
 };
 
 /** «مصروفات تراخيص لم تُسوَّ بعد» — every licensing memo waiting, to the piastre. */

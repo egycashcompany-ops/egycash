@@ -1678,14 +1678,7 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
     const html = body(nothing);
     const ids = [...html.matchAll(/data-custody-dashboard-section="(\w+)"/gu)].map((m) => m[1]);
     // The banner keeps its own rules: nothing to warn about, no banner.
-    expect(ids).toEqual([
-      'kpis',
-      'timeline',
-      'byKindSource',
-      'topCars',
-      'topDrivers',
-      'fuel',
-    ]);
+    expect(ids).toEqual(['kpis', 'timeline', 'byKindSource', 'topCars', 'topDrivers', 'fuel']);
     expect(html).not.toContain(ar('fleet.custody.empty'));
     expect(html).not.toContain(ar('fleet.violations.report.empty'));
     expect(html).not.toMatch(/NaN|Infinity/u);

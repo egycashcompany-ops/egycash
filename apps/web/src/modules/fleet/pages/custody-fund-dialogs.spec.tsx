@@ -626,13 +626,35 @@ describe('«استعاضة العهدة»', () => {
     expect(text(wash)).toContain(ar('fleet.custody.fundForm.replenish.noMemos'));
   });
 
-  it('adds up: the fund now, plus the memos, is the fund after', () => {
-    const result = element(dialog(), 'data-memo-replenish-result="true"');
+  it('adds up, HELD: the fund now, plus the memos held, is the fund once the transfer is confirmed', () => {
+    const html = dialog();
+    const result = element(html, 'data-memo-replenish-result="held"');
     const cell = (mark: string): string => text(element(result, `data-fund-cell="${mark}"`));
+    expect(cell('before')).toContain(ar('fleet.custody.fundForm.before'));
     expect(cell('before')).toContain(figure(17492));
+    expect(cell('change')).toContain(ar('fleet.custody.hold.changeHeld'));
     expect(cell('change')).toContain(figure(81908));
+    expect(cell('after')).toContain(ar('fleet.custody.hold.afterConfirm'));
     expect(cell('after')).toContain(figure(99400));
-    expect(result).not.toContain('data-fund-negative');
+    // Amber, saying it waits — and that the fund stays as it is until then.
+    expect(result).toContain('border-amber-300');
+    // The figures sit in their own face: compared with the spaces between tags dropped.
+    const words = (value: string): string => value.replace(/\s/gu, '');
+    expect(words(text(result))).toContain(
+      words(ar('fleet.custody.hold.resultLine', { amount: figure(81908) })),
+    );
+    expect(words(text(result))).toContain(
+      words(ar('fleet.custody.hold.resultNote', { before: figure(17492) })),
+    );
+    // The dialog says it is held: its subtitle and both saves.
+    expect(text(html)).toContain(ar('fleet.custody.hold.subtitle'));
+    expect(text(element(html, 'data-memo-replenish-save="true"'))).toContain(
+      ar('fleet.custody.hold.save'),
+    );
+    expect(text(element(html, 'data-memo-replenish-print="true"'))).toContain(
+      ar('fleet.custody.hold.savePrint'),
+    );
+    expect(html).not.toContain('data-memo-replenish-result="true"');
   });
 
   it('warns for EVERY kind with receipts in no memo, each with the way to make its memo', () => {
@@ -707,9 +729,7 @@ describe('«استعاضة العهدة»', () => {
         memoIds: ['m1', 'm2', 'm3', 'm4', 'm5'],
       },
     ]);
-    expect(raised).toEqual([
-      { variant: 'success', title: ar('fleet.custody.fundForm.replenish.done') },
-    ]);
+    expect(raised).toEqual([{ variant: 'success', title: ar('fleet.custody.hold.done') }]);
     expect(closed).toHaveBeenCalledTimes(1);
   });
 

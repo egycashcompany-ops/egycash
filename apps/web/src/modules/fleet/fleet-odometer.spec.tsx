@@ -5,7 +5,8 @@
 //     column as the maintenance board stacks its two legs, and every derived number shown as the
 //     server gave it — including the open period, which is a state and not a zero;
 //   • the maintenance column reports the DERIVED distance since service with the design system's
-//     own alarm badge, and says nothing when the projection refused to compute one;
+//     own alarm badge, and never a distance the projection refused to compute — the reason
+//     instead, once per car, on the row of its latest reading;
 //   • the filter bar takes several vehicles and several alert levels at once, syncs with the URL,
 //     and sends every filter to the server;
 //   • a driver NAME is HR's fact, so it is filtered through HR and never applied to a fetched page.
@@ -107,6 +108,23 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   noAlarmReason: null,
   daysWithoutReading: 0,
   latestReading: 12000,
+  // The projection's facts behind the figure, consistent with it: 12,000 − 10,000 = 2,000, read
+  // off the row `log()` draws.
+  latestReadingAt: '2026-08-18T00:00:00.000Z',
+  latestReadingLogId: 'o1',
+  baseline: {
+    visitId: 'visit-1',
+    inDate: '2026-05-30T00:00:00.000Z',
+    outDate: '2026-06-01T00:00:00.000Z',
+    entryCounter: 10000,
+    exitCounter: null,
+    source: 'entry',
+    counter: 10000,
+    counterDate: '2026-05-30T00:00:00.000Z',
+    judgedAgainst: null,
+    exitSetAside: null,
+  },
+  newerUncountedVisit: null,
   ...o,
 });
 
@@ -633,10 +651,11 @@ describe('the distance since the last service', () => {
     expect(red).not.toBe(yellow);
   });
 
-  it('shows a DASH when there is no distance — this column is a distance', () => {
-    // The reason the projection refused is a fact about the VEHICLE, and rows here are READINGS.
-    // Saying it in this cell repeats it down every reading of the same car, which reads as
-    // several problems instead of one. It is said once per car, on the alarms board.
+  // «بدل «—» يظهر السبب في سطر آخر قراءة لكل عربية» — a REVERSAL, on purpose: this column used to
+  // be a distance and only that, with the reason left to the alarms board. The owner asked for the
+  // reason here, ONCE per car, on the row of its latest reading; every other reading of the car
+  // keeps the dash. `fleet-odometer-alarm-reason.spec.tsx` holds the rest of the rule.
+  it('says WHY there is no distance — never a distance the projection withheld', () => {
     const body = tbody(
       render({
         qc: client(
@@ -645,19 +664,20 @@ describe('the distance since the last service', () => {
         ),
       }),
     );
-    expect(body).toContain('—');
-    expect(body, 'no reason sentence in a numeric column').not.toContain(
-      t('fleet.alarms.noAlarmReason.noService'),
-    );
+    expect(body).toContain('data-odo-reason="noService"');
+    expect(body).toContain(`>${t('fleet.alarms.noAlarmReason.noService')}<`);
+    expect(body, 'no figure').not.toContain('>2,000<');
+    expect(body, 'and no level either').not.toContain(t('fleet.vehicle.alarmNone'));
   });
 
-  it('and never prints a reason, whichever one it is', () => {
+  it('in the alarms board’s own words, whichever reason it is — and never as a tooltip', () => {
     for (const reason of [
       'noInterval',
       'noReading',
       'noService',
       'readingOlderThanService',
       'baselineAboveReading',
+      'baselineBelowChain',
     ] as const) {
       const body = tbody(
         render({
@@ -667,13 +687,25 @@ describe('the distance since the last service', () => {
           ),
         }),
       );
-      expect(body, reason).not.toContain(t(`fleet.alarms.noAlarmReason.${reason}`));
+      const sentence = t(`fleet.alarms.noAlarmReason.${reason}`);
+      // The chip carries the fact before the board's dash; the card, on hover, the whole sentence.
+      expect(body, reason).toContain(`>${sentence.split(' — ')[0]}<`);
+      expect(body, `${reason} is no title`).not.toContain(`title="${sentence}`);
     }
   });
 
-  it('says nothing for a vehicle the projection does not cover at all', () => {
-    // Alarms are computed for ACTIVE vehicles; a history row for a disposed car has no entry.
+  it('says a car the projection does not cover is not active — not a dash, not a distance', () => {
+    // Alarms are computed for ACTIVE vehicles; a car out of service or disposed has no entry.
     const body = tbody(render({ qc: client([log()], []) }));
+    expect(body).toContain('data-odo-reason="notActive"');
+    expect(body).toContain(t('fleet.odometer.alarmReason.notActive.chip'));
+  });
+
+  it('says nothing while the projection is still on its way — every car would read as absent', () => {
+    const qc = client([log()], []);
+    qc.removeQueries({ queryKey: ['fleet', 'alarms'] });
+    const body = tbody(render({ qc }));
+    expect(body).not.toContain('data-odo-reason');
     expect(body).toContain('—');
   });
 

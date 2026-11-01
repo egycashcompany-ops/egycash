@@ -291,7 +291,10 @@ describe('«تسوية العهدة» «استعاضة العهدة» «طلب �
     (path) => {
       const html = board(WRITER, path);
       expect(html.match(/data-custody-fund-actions="true"/gu), path).toHaveLength(1);
-      expect(actionButtons(html).map((b) => b.key), path).toEqual([...ORDER]);
+      expect(
+        actionButtons(html).map((b) => b.key),
+        path,
+      ).toEqual([...ORDER]);
       const board2 = board(WRITER, '/fleet/custody-expenses');
       expect(board2).not.toContain('data-custody-fund-actions');
       expect(board2).not.toContain('data-custody-fund-action=');

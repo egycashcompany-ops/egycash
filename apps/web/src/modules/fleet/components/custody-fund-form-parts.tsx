@@ -33,6 +33,7 @@ import {
 } from '../lib/custody-papers';
 import { fundRefusalOf, periodInOrder, type LetterHead } from '../lib/custody-fund-forms';
 import { DesignField, LOOK, MONO, boxTone } from './FuelCardDialog';
+import { ClockGlyph } from './custody-hold-parts';
 
 const BOX = boxTone(LOOK.add);
 /** A date box in the design — the figures' face. */
@@ -239,6 +240,107 @@ export const FundResult = ({
         {op('=')}
         {cell(t('fleet.custody.fundForm.after'), after, 'after', true)}
       </div>
+    </div>
+  );
+};
+
+/**
+ * «استعاضة العهدة» is recorded HELD: `FundResult`'s own markup in amber — the fund now, the
+ * replenishment held, the fund once the transfer is confirmed — and under it what holding means.
+ */
+export const HeldFundResult = ({
+  line,
+  note,
+  before,
+  change,
+  after,
+}: {
+  /** The sentence over the sum (`useFigureLine`). */
+  line: ReactNode;
+  /** What holding means, under the sum. */
+  note: ReactNode;
+  before: number;
+  change: number;
+  after: number;
+}): JSX.Element => {
+  const t = useT();
+  const figure = useFigure();
+  const cell = (
+    label: string,
+    value: number,
+    mark: string,
+    look: 'plain' | 'held' | 'after',
+  ): JSX.Element => (
+    <div
+      data-fund-cell={mark}
+      className={cn(
+        'min-w-0 flex-1 rounded-lg border px-3 py-2 text-center',
+        look === 'plain' && 'border-slate-200 bg-white dark:border-[#2b3b6b] dark:bg-[#0a1233]',
+        look === 'held' &&
+          'border-dashed border-amber-400 bg-white dark:border-amber-500/60 dark:bg-[#0a1233]',
+        look === 'after' &&
+          'border-dashed border-sky-400 bg-sky-50 dark:border-sky-500/50 dark:bg-sky-500/[0.08]',
+      )}
+    >
+      <span
+        className={cn(
+          'block text-xs font-bold',
+          look === 'held'
+            ? 'text-amber-700 dark:text-amber-300'
+            : look === 'after'
+              ? 'text-sky-700 dark:text-sky-300'
+              : 'text-slate-500 dark:text-slate-400',
+        )}
+      >
+        {label}
+      </span>
+      <span
+        dir="ltr"
+        className={cn(
+          MONO,
+          'text-base font-bold',
+          look === 'held'
+            ? 'text-amber-800 dark:text-amber-200'
+            : look === 'after'
+              ? value < 0
+                ? NEGATIVE_INK
+                : 'text-sky-800 dark:text-sky-200'
+              : value < 0
+                ? NEGATIVE_INK
+                : 'text-slate-900 dark:text-white',
+        )}
+      >
+        {figure(value)}
+      </span>
+    </div>
+  );
+  const op = (text: string): JSX.Element => (
+    <span
+      aria-hidden="true"
+      className="shrink-0 text-center text-xl font-black leading-none text-amber-700 dark:text-amber-300"
+    >
+      {text}
+    </span>
+  );
+  return (
+    <div
+      data-memo-replenish-result="held"
+      className="space-y-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-500/40 dark:bg-amber-500/[0.08]"
+    >
+      <p className="flex items-center gap-2 text-[15px] font-bold text-amber-800 dark:text-amber-300">
+        <ClockGlyph className="h-4 w-4 shrink-0" />
+        <span>{line}</span>
+      </p>
+      <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+        {cell(t('fleet.custody.fundForm.before'), before, 'before', 'plain')}
+        {op('+')}
+        {cell(t('fleet.custody.hold.changeHeld'), change, 'change', 'held')}
+        {op('=')}
+        {cell(t('fleet.custody.hold.afterConfirm'), after, 'after', 'after')}
+      </div>
+      <p className="text-[13px] font-semibold leading-5 text-amber-900/90 dark:text-amber-200/90">
+        {note}
+      </p>
     </div>
   );
 };

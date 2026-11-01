@@ -1,16 +1,20 @@
 // «وزود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the custody register's columns.
+// Then «وفى /it/custody بردو عايز الصنف يبقي بعد الفئة ... والأتنين يكونوا Multiselect» — several
+// categories, and «الصنف» as several of the register's asset names.
 //
-// Three things are pinned here, and the second is the one a later tidy-up would most likely break:
+// Four things are pinned here, and the third is the one a later tidy-up would most likely break:
 //   1. how each filter becomes a database condition — pure, so it is asserted on the condition
 //      itself: every filter its own clause, so two that touch one field narrow together;
-//   2. what «الصنف» matches — the asset's code, name or serial, typed in either digit set, its
+//   2. the asset-side filters — any chosen category, any chosen name EXACTLY (a name holding a
+//      comma arriving whole), and the search, all ANDed;
+//   3. what the search matches — the asset's code, name or serial, typed in either digit set, its
 //      characters taken literally;
-//   3. that the sets a filter names (the assets, the signed receipts) are read ONCE, under the
+//   4. that the sets a filter names (the assets, the signed receipts) are read ONCE, under the
 //      right scope, and only when a filter asks — the data layer is mocked so what is tested is
 //      the decision, not Mongo.
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ListItAssignmentsQuerySchema } from '@ecms/contracts';
+import { ListItAssignmentsQuerySchema, joinNameList } from '@ecms/contracts';
 import type * as AssignmentRepositoryModule from './assignment.repository';
 
 const mocks = vi.hoisted(() => ({
@@ -176,7 +180,51 @@ describe('each register filter as a database condition', () => {
   });
 });
 
-describe('what «الصنف» matches', () => {
+describe('the categories and «الصنف» — the asset-side multi-select filters', () => {
+  const LAPTOPS = id();
+  const SCREENS = id();
+  /** The query as the address bar sends it, read the way the route reads it. */
+  const fromWire = (raw: Record<string, string>) =>
+    registerAssetFilter(ListItAssignmentsQuerySchema.parse(raw));
+
+  it('matches an asset in ANY of the chosen categories — and a single id still reads', () => {
+    expect(fromWire({ categoryId: `${String(LAPTOPS)},${String(SCREENS)}` })).toEqual({
+      categoryId: { $in: [LAPTOPS, SCREENS] },
+    });
+    expect(fromWire({ categoryId: String(LAPTOPS) })).toEqual({ categoryId: { $in: [LAPTOPS] } });
+  });
+
+  /** «الصنف» commits the asset register's own names, so a pick is every asset by THAT name. */
+  it('matches ANY of the chosen names, each exactly — never as part of a longer name', () => {
+    expect(fromWire({ assetName: 'Lenovo ThinkPad,شاشة Dell' })).toEqual({
+      name: { $in: ['Lenovo ThinkPad', 'شاشة Dell'] },
+    });
+  });
+
+  it('keeps a name holding a comma whole, from the address bar to the filter', () => {
+    const names = ['Raml, Station', 'HP, LaserJet, M402', 'طابعة'];
+    expect(fromWire({ assetName: joinNameList(names) })).toEqual({ name: { $in: names } });
+  });
+
+  it('ANDs the categories, the names and the search into one asset filter', () => {
+    const filter = fromWire({
+      categoryId: `${String(LAPTOPS)},${String(SCREENS)}`,
+      assetName: 'Lenovo ThinkPad',
+      search: 'PF5',
+    });
+    expect(filter?.categoryId).toEqual({ $in: [LAPTOPS, SCREENS] });
+    expect(filter?.name).toEqual({ $in: ['Lenovo ThinkPad'] });
+    // The search keeps its own clause over code, name and serial — beside the exact names.
+    expect((filter?.$or as unknown[] | undefined)?.length).toBe(3);
+  });
+
+  it('is nothing at all when every list is empty', () => {
+    expect(fromWire({ categoryId: '', assetName: '', search: '' })).toBeNull();
+    expect(registerAssetFilter({ categoryId: undefined, assetName: undefined })).toBeNull();
+  });
+});
+
+describe('what the search box matches', () => {
   const pattern = (search: string): RegExp => {
     const filter = registerAssetFilter({ search });
     const or = (filter?.$or ?? []) as Record<string, RegExp>[];
@@ -228,11 +276,11 @@ describe('what «الصنف» matches', () => {
 
   it('narrows by the category alone, or by the category AND the text', () => {
     const category = id();
-    expect(registerAssetFilter({ categoryId: String(category) })).toEqual({
-      categoryId: category,
+    expect(registerAssetFilter({ categoryId: [String(category)] })).toEqual({
+      categoryId: { $in: [category] },
     });
-    const both = registerAssetFilter({ categoryId: String(category), search: 'Lenovo' });
-    expect(both?.categoryId).toEqual(category);
+    const both = registerAssetFilter({ categoryId: [String(category)], search: 'Lenovo' });
+    expect(both?.categoryId).toEqual({ $in: [category] });
     expect(both?.$or).toHaveLength(3);
   });
 });
@@ -277,17 +325,28 @@ describe('the register reads each set a filter names once, and only when asked',
     expect(params.now).toBeInstanceOf(Date);
   });
 
-  it('reads the matching assets ONCE, under the caller’s scope, for «الصنف» and the category together', async () => {
-    const category = String(id());
+  it('reads the matching assets ONCE, under the caller’s scope, for the categories, «الصنف» and the search together', async () => {
+    const laptops = String(id());
+    const screens = String(id());
     const matched = [id(), id()];
     mocks.idsMatching.mockResolvedValue(matched);
-    await itAssetAssignmentService.list(query({ search: 'Lenovo', categoryId: category }), scope);
+    await itAssetAssignmentService.list(
+      query({
+        search: 'Lenovo',
+        categoryId: `${laptops},${screens}`,
+        assetName: joinNameList(['Lenovo ThinkPad', 'Raml, Station']),
+      }),
+      scope,
+    );
     expect(mocks.idsMatching).toHaveBeenCalledTimes(1);
     const [filter, readScope] = mocks.idsMatching.mock.calls[0] as [
       Record<string, unknown>,
       unknown,
     ];
-    expect(filter.categoryId).toEqual(new Types.ObjectId(category));
+    expect(filter.categoryId).toEqual({
+      $in: [new Types.ObjectId(laptops), new Types.ObjectId(screens)],
+    });
+    expect(filter.name).toEqual({ $in: ['Lenovo ThinkPad', 'Raml, Station'] });
     expect(filter.$or).toHaveLength(3);
     expect(readScope).toBe(scope);
     expect(mocks.listFiltered.mock.calls[0]?.[0]).toMatchObject({ assetIds: matched });

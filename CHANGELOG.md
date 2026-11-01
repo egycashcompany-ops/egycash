@@ -334,6 +334,14 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The IT asset and custody registers filter by several categories and several names, the names
+  following the categories.** «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط)
+  والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا
+  Multiselect · وفى /it/custody بردو عايز الصنف يبقي بعد الفئة (فى الفلتر فقط) ونفس الكلام يتفلتر
+  والأتنين يكونوا Multiselect». On `/it/assets` the filter bar reads search, status, «الفئة», «الاسم»,
+  branch, holder; on `/it/custody` «بحث» (code, name or serial), «الفئة», «الصنف», then the rest.
+  Both category and name filters take several answers, and the names offered are those of the
+  chosen categories. A name holding a comma works. The Excel/PDF name every choice.
 - **The side menu shows itself on hover, over the page; pinned, it takes its place beside it.**
   «الsidebar يظهر لما اعمل hover عليه ويظهر فوق الكونتنت ميخدش حايز» — then «عايزك تخلي موضوع
   توسيع وطى يبقي أيقونة Pin فوق بعد الـ 4 مربعات» and «لما اعمل تثبيت يبقى موجود بس يلخد من الحايز

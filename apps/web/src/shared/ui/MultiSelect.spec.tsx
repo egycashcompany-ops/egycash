@@ -14,6 +14,7 @@ import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import {
   MultiSelect,
+  emptyListText,
   multiSelectKey,
   nextActiveOption,
   optionLabel,
@@ -66,6 +67,22 @@ const DRIVERS = [
   { value: '6a9c87ff7ae99d20407ded49', label: 'محمد حاتم البنداري — 0100022', shortLabel: 'محمد حاتم البنداري' },
   { value: '6a9d579fe017f8c85ade413b', label: 'جمال أحمد محمد — 0100031', shortLabel: 'جمال أحمد محمد' },
 ];
+
+// The IT registers' name filter: a list that could not be READ must not claim nothing matched.
+describe('emptyListText — what an empty list says', () => {
+  const t = (key: string): string => `«${key}»`;
+
+  it('says it is loading while the answer is on its way', () => {
+    expect(emptyListText(t, { searching: true, emptyText: 'failed' })).toBe('«common.loading»');
+  });
+
+  it('says the owner’s words when it has them, and «no results» when it does not', () => {
+    expect(emptyListText(t, { searching: false, emptyText: 'Could not load' })).toBe(
+      'Could not load',
+    );
+    expect(emptyListText(t, { searching: false })).toBe('«common.noResults»');
+  });
+});
 
 describe('optionLabel — what one chosen value is CALLED', () => {
   it('names a car by its code, which is also its value', () => {

@@ -18,7 +18,10 @@ const t = (key: string, params?: Record<string, string | number>): string =>
 
 const context: AssetRegisterContext = {
   t,
-  categoryName: new Map([['c-laptop', 'لاب توب']]),
+  categoryName: new Map([
+    ['c-laptop', 'لاب توب'],
+    ['c-printer', 'طابعات'],
+  ]),
   branchName: new Map([['b-hq', 'المهندسين']]),
 };
 
@@ -112,8 +115,8 @@ describe('the filters the printed page names', () => {
   const screen = {
     search: '',
     status: '',
-    name: '',
-    categoryId: '',
+    names: [] as string[],
+    categoryIds: [] as string[],
     categoryName: context.categoryName,
     branchId: '',
     branchName: context.branchName,
@@ -128,15 +131,15 @@ describe('the filters the printed page names', () => {
     );
   });
 
-  it('name each filter in force, in the bar’s order — the name, the holder and the search included', () => {
+  it('name each filter in force, in the bar’s order — the names right after the categories', () => {
     expect(
       assetRegisterSubtitle(t, {
         ...assetRegisterFilters({
           ...screen,
           search: '  Lenovo ',
           status: 'assigned',
-          name: 'Lenovo ThinkCentre neo 50a 24',
-          categoryId: 'c-laptop',
+          names: ['Lenovo ThinkCentre neo 50a 24'],
+          categoryIds: ['c-laptop'],
           branchId: 'b-hq',
           holderId: 'e-1',
           holderLabel: 'محمد أحمد علي (0100052)',
@@ -144,21 +147,48 @@ describe('the filters the printed page names', () => {
         asOf: 'اليوم',
       }),
     ).toBe(
-      `${t('it.assets.status.assigned')} · الاسم: Lenovo ThinkCentre neo 50a 24 · لاب توب · المهندسين · المستلِم: محمد أحمد علي (0100052) · البحث: Lenovo · بتاريخ اليوم`,
+      `${t('it.assets.status.assigned')} · لاب توب · الاسم: Lenovo ThinkCentre neo 50a 24 · المهندسين · المستلِم: محمد أحمد علي (0100052) · البحث: Lenovo · بتاريخ اليوم`,
+    );
+  });
+
+  // «وعايز الأتنين دول يبقوا Multiselect» — every category and every name the request asked for.
+  it('name every category and every name chosen, in the order they were picked', () => {
+    const filters = assetRegisterFilters({
+      ...screen,
+      categoryIds: ['c-printer', 'c-laptop'],
+      names: ['طابعة HP', 'Raml, Station'],
+    });
+    expect(filters).toMatchObject({
+      categories: ['طابعات', 'لاب توب'],
+      names: ['طابعة HP', 'Raml, Station'],
+    });
+    expect(assetRegisterSubtitle(t, { ...filters, asOf: 'اليوم' })).toBe(
+      'كل الحالات · طابعات، لاب توب · الاسم: طابعة HP، Raml, Station · كل الفروع · بتاريخ اليوم',
     );
   });
 
   it('never drop a filter in force whose name cannot be had', () => {
     const filters = assetRegisterFilters({
       ...screen,
-      categoryId: 'c-gone',
+      categoryIds: ['c-gone'],
       branchId: 'b-closed',
       holderId: 'e-7',
     });
-    expect(filters).toMatchObject({ category: '', branch: '', holder: 'e-7' });
+    expect(filters).toMatchObject({ categories: [''], branch: '', holder: 'e-7' });
     expect(assetRegisterSubtitle(t, { ...filters, asOf: 'اليوم' })).toBe(
       'كل الحالات · فئة محددة · فرع محدد · المستلِم: e-7 · بتاريخ اليوم',
     );
+    // A named category beside one that cannot be named: both are said.
+    expect(
+      assetRegisterSubtitle(t, {
+        ...assetRegisterFilters({ ...screen, categoryIds: ['c-laptop', 'c-gone'] }),
+        asOf: 'اليوم',
+      }),
+    ).toBe('كل الحالات · لاب توب، فئة محددة · كل الفروع · بتاريخ اليوم');
+  });
+
+  it('leave out the name and the category lists when none is chosen', () => {
+    expect(assetRegisterFilters(screen)).toMatchObject({ categories: null, names: null });
   });
 
   /** Arriving on a link, the chip may not have its label yet — but every row it printed is theirs. */

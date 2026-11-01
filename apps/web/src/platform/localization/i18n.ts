@@ -6458,8 +6458,6 @@ const en: Record<string, string> = {
   'it.assets.allStatuses': 'All statuses',
   'it.assets.allCategories': 'All categories',
   'it.assets.allBranches': 'All branches',
-  'it.assets.nameFilter.clear': 'Clear the name',
-  'it.assets.nameFilter.empty': 'No asset has that name',
   'it.assets.printLabels': 'Print labels',
   'it.assets.printLabel': 'Print label',
   'it.assets.labelsPopupBlocked':
@@ -6718,6 +6716,7 @@ const en: Record<string, string> = {
   'it.custody.export.assignedIs': 'Assigned {{range}}',
   'it.custody.export.returnedIs': 'Returned {{range}}',
   'it.custody.export.receiptIs': 'Receipt: {{state}}',
+  'it.custody.export.assetIs': 'Item: {{name}}',
   'it.export.dayRange': 'from {{from}} to {{to}}',
   'it.export.dayFrom': 'from {{from}}',
   'it.export.dayTo': 'until {{to}}',
@@ -17065,8 +17064,6 @@ const ar: Record<string, string> = {
   'it.assets.allStatuses': 'كل الحالات',
   'it.assets.allCategories': 'كل الفئات',
   'it.assets.allBranches': 'كل الفروع',
-  'it.assets.nameFilter.clear': 'مسح الاسم',
-  'it.assets.nameFilter.empty': 'لا يوجد أصل بهذا الاسم',
   'it.assets.printLabels': 'طباعة الملصقات',
   'it.assets.printLabel': 'طباعة الملصق',
   'it.assets.labelsPopupBlocked':
@@ -17318,6 +17315,7 @@ const ar: Record<string, string> = {
   'it.custody.export.assignedIs': 'تاريخ التسليم {{range}}',
   'it.custody.export.returnedIs': 'تاريخ الاسترجاع {{range}}',
   'it.custody.export.receiptIs': 'إيصال الاستلام: {{state}}',
+  'it.custody.export.assetIs': 'الصنف: {{name}}',
   'it.export.dayRange': 'من {{from}} إلى {{to}}',
   'it.export.dayFrom': 'من {{from}}',
   'it.export.dayTo': 'حتى {{to}}',

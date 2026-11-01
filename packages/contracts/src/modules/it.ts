@@ -16,6 +16,7 @@ import {
   asciiDigits,
   booleanQuery,
   listQuery,
+  nameListQuery,
   objectId,
 } from '../common/index.js';
 
@@ -384,16 +385,21 @@ export type UpdateItAsset = z.infer<typeof UpdateItAssetSchema>;
 export const ListItAssetsQuerySchema = PaginationQuerySchema.extend({
   /** Matches assetCode, name, serialNumber and externalTag — the strings an operator has. */
   search: z.string().trim().max(200).optional(),
-  categoryId: objectId().optional(),
+  /**
+   * «الفئات» — one or more categories (`?categoryId=a,b`; a single id still parses): an asset in
+   * any of them.
+   */
+  categoryId: listQuery(objectId()),
   status: ItAssetStatusSchema.optional(),
   branchId: objectId().optional(),
   /** The assets this employee holds right now — an OPEN custody interval, not a past one. */
   holderEmployeeId: objectId().optional(),
   /**
-   * «زود بعد الحالات وقبل الفئة (الاسم)» — the asset's name, EXACTLY: the name filter commits one
-   * of the register's own names (`GET /it/assets/names`), so a pick means every asset by that name.
+   * «الاسم» — one or more of the register's own names (`GET /it/assets/names`), each matched
+   * EXACTLY, so a pick means every asset by that name. A name may hold a comma, so the list is a
+   * name list (`joinNameList`), never a plain comma-split one.
    */
-  name: z.string().trim().min(1).max(200).optional(),
+  name: nameListQuery(),
 }).strict();
 export type ListItAssetsQuery = z.infer<typeof ListItAssetsQuerySchema>;
 
@@ -403,7 +409,21 @@ export type ListItAssetsQuery = z.infer<typeof ListItAssetsQuerySchema>;
  */
 export interface ItAssetNamesDto {
   names: string[];
+  /**
+   * The register holds more names than the list carries (it is capped). A name missing from a
+   * truncated list may still exist, so nothing may be dropped for being absent from it.
+   */
+  truncated: boolean;
 }
+
+/**
+ * The name filter's options follow the category filter («والبيانات اللى فى فلتر الفئات هي نفسها
+ * تتفلتر بناء على الفئات»): with categories chosen, only the names of assets in them.
+ */
+export const ListItAssetNamesQuerySchema = z
+  .object({ categoryId: listQuery(objectId()) })
+  .strict();
+export type ListItAssetNamesQuery = z.infer<typeof ListItAssetNamesQuerySchema>;
 
 /**
  * Label sheet request (design §4.2). Bounded: a print batch, not a bulk read — the sheet grows in
@@ -569,8 +589,13 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   // «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the register's columns.
   /** The asset — its code, name or serial, matched as typed. */
   search: z.string().trim().max(200).optional(),
-  /** The asset's category. */
-  categoryId: objectId().optional(),
+  /** The asset's category — one or more (`?categoryId=a,b`; a single id still parses). */
+  categoryId: listQuery(objectId()),
+  /**
+   * «الصنف» — one or more asset names, each matched exactly: the names the asset register's name
+   * filter offers (`GET /it/assets/names`, narrowed by the categories chosen). A name list.
+   */
+  assetName: nameListQuery(),
   /** «تاريخ التسليم» from / to — either bound alone is a question too. */
   assignedFrom: z.coerce.date().optional(),
   assignedTo: z.coerce.date().optional(),

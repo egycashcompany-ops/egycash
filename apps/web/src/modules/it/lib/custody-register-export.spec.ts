@@ -147,7 +147,8 @@ describe('the register’s columns', () => {
 /** Every filter the register gained, unset — what a page with none of them in force prints. */
 const unset: Omit<CustodyRegisterFilters, 'open' | 'branch' | 'holder'> = {
   search: null,
-  category: null,
+  categories: null,
+  assetNames: null,
   assigned: null,
   overdue: false,
   returned: null,
@@ -207,7 +208,8 @@ describe('what the printed page says it is a view of', () => {
         branch: null,
         holder: null,
         search: 'Lenovo',
-        category: 'كمبيوتر AIO',
+        categories: ['كمبيوتر AIO', 'طابعات'],
+        assetNames: ['لاب توب Lenovo', 'Raml, Station'],
         assigned: { from: '١ أكتوبر ٢٠٢٦', to: '١٥ أكتوبر ٢٠٢٦' },
         overdue: true,
         returned: { from: '٢٠ أكتوبر ٢٠٢٦', to: null },
@@ -219,7 +221,8 @@ describe('what the printed page says it is a view of', () => {
         'الكل',
         'كل الفروع',
         'البحث: Lenovo',
-        'كمبيوتر AIO',
+        'كمبيوتر AIO، طابعات',
+        'الصنف: لاب توب Lenovo، Raml, Station',
         'تاريخ التسليم من ١ أكتوبر ٢٠٢٦ إلى ١٥ أكتوبر ٢٠٢٦',
         'تجاوز موعد الإعادة',
         'تاريخ الاسترجاع من ٢٠ أكتوبر ٢٠٢٦',
@@ -245,7 +248,7 @@ describe('what the printed page says it is a view of', () => {
     expect(line({ receipt: 'signed' })).toContain('إيصال الاستلام: موقّع');
     expect(line({ receipt: 'none' })).toContain('إيصال الاستلام: بدون إيصال');
     // A category set but not among the options is still said to be set.
-    expect(line({ category: '' })).toContain('فئة محددة');
+    expect(line({ categories: [''] })).toContain('فئة محددة');
   });
 });
 
@@ -258,8 +261,12 @@ describe('the filters the printed page names', () => {
     employeeId: '',
     holderLabel: '',
     search: '',
-    categoryId: '',
-    categoryName: new Map([['c-aio', 'كمبيوتر AIO']]),
+    categoryIds: [] as string[],
+    categoryName: new Map([
+      ['c-aio', 'كمبيوتر AIO'],
+      ['c-printer', 'طابعات'],
+    ]),
+    assetNames: [] as string[],
     assignedFrom: '',
     assignedTo: '',
     overdue: false,
@@ -289,7 +296,8 @@ describe('the filters the printed page names', () => {
       custodyRegisterFilters({
         ...screen,
         search: '  PF3ABC12 ',
-        categoryId: 'c-aio',
+        categoryIds: ['c-aio'],
+        assetNames: ['لاب توب Lenovo'],
         assignedFrom: '2026-10-01',
         assignedTo: '2026-10-15',
         overdue: true,
@@ -298,7 +306,8 @@ describe('the filters the printed page names', () => {
       }),
     ).toMatchObject({
       search: 'PF3ABC12',
-      category: 'كمبيوتر AIO',
+      categories: ['كمبيوتر AIO'],
+      assetNames: ['لاب توب Lenovo'],
       assigned: { from: picked('2026-10-01'), to: picked('2026-10-15') },
       overdue: true,
       returned: { from: null, to: picked('2026-10-31') },
@@ -307,8 +316,12 @@ describe('the filters the printed page names', () => {
   });
 
   it('keep a category whose name is not among the options, and drop a receipt state it does not offer', () => {
-    const filters = custodyRegisterFilters({ ...screen, categoryId: 'c-archived', receipt: 'x' });
-    expect(filters.category).toBe('');
+    const filters = custodyRegisterFilters({
+      ...screen,
+      categoryIds: ['c-aio', 'c-archived'],
+      receipt: 'x',
+    });
+    expect(filters.categories).toEqual(['كمبيوتر AIO', '']);
     expect(filters.receipt).toBeNull();
     expect(receiptStateOf('unsigned')).toBe('unsigned');
     expect(receiptStateOf('')).toBeNull();

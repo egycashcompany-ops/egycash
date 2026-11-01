@@ -1,15 +1,23 @@
 // «عايز فى شاشة الأصول تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر
 // زود بعد الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة» — the asset register names
-// who holds each asset, and filters by the register's own names.
+// who holds each asset, and filters by the register's own names. Then «عايز فلتر الأسم يبقي بعد
+// الفئات ... والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا
+// Multiselect» — several categories, several names, and names offered by the categories chosen.
 //
 // With the data layer mocked, what is pinned is what is decided: the holder is the OPEN interval the
 // asset itself points at and nothing else; a person the directory cannot name keeps their id; a page
-// costs one interval read and one directory batch whatever its length; the name filter matches a
-// name exactly, beside the other filters; and the names offered are the reader's scope's, in Arabic
-// order, bounded.
+// costs one interval read and one directory batch whatever its length; the category filter matches
+// any chosen category and the name filter any chosen name EXACTLY (a name holding a comma arriving
+// whole), beside the other filters; and the names offered are the reader's scope's — narrowed to the
+// chosen categories — in Arabic order, bounded.
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { type ListItAssetsQuery } from '@ecms/contracts';
+import {
+  ListItAssetNamesQuerySchema,
+  ListItAssetsQuerySchema,
+  joinNameList,
+  type ListItAssetsQuery,
+} from '@ecms/contracts';
 import { type DirectoryEmployee } from '../../../platform/directory';
 import { toItAssetDto, type ItAssetHolderLabels } from '../it.mappers';
 import { type ItAssetDoc } from './asset.model';
@@ -230,13 +238,19 @@ describe('resolving the holders of a response', () => {
   });
 });
 
-describe('the name filter', () => {
+describe('the category and name filters', () => {
   const scope = { scope: 'organization' } as never;
   const BRANCH = String(new Types.ObjectId());
+  const LAPTOPS = String(new Types.ObjectId());
+  const SCREENS = String(new Types.ObjectId());
+  const oid = (id: string): Types.ObjectId => new Types.ObjectId(id);
   const query = (over: Partial<ListItAssetsQuery>): ListItAssetsQuery =>
     ({ page: 1, pageSize: 25, ...over }) as ListItAssetsQuery;
+  /** The query as the address bar sends it, read the way the route reads it. */
+  const fromWire = (raw: Record<string, string>): ListItAssetsQuery =>
+    ListItAssetsQuerySchema.parse(raw);
   const filterSent = (): Record<string, unknown> =>
-    (mocks.list.mock.calls[0]?.[0] as { filter: Record<string, unknown> }).filter;
+    (mocks.list.mock.lastCall?.[0] as { filter: Record<string, unknown> }).filter;
 
   beforeEach(() => {
     mocks.list.mockResolvedValue({
@@ -247,32 +261,68 @@ describe('the name filter', () => {
 
   it('matches the picked name EXACTLY, beside the status and the branch', async () => {
     await itAssetService.list(
-      query({ name: 'Lenovo ThinkCentre neo 50a 24', status: 'inStock', branchId: BRANCH }),
+      query({ name: ['Lenovo ThinkCentre neo 50a 24'], status: 'inStock', branchId: BRANCH }),
       scope,
     );
     expect(filterSent()).toEqual({
-      name: 'Lenovo ThinkCentre neo 50a 24',
+      name: { $in: ['Lenovo ThinkCentre neo 50a 24'] },
       status: 'inStock',
       branchId: new Types.ObjectId(BRANCH),
     });
   });
 
+  it('matches ANY of several names, each exactly', async () => {
+    await itAssetService.list(fromWire({ name: 'طابعة,HP LaserJet' }), scope);
+    expect(filterSent()).toEqual({ name: { $in: ['طابعة', 'HP LaserJet'] } });
+  });
+
+  /** Names are free text: «Raml, Station» is ONE name, never «Raml» and «Station». */
+  it('keeps a name holding a comma whole, from the address bar to the filter', async () => {
+    const names = ['Raml, Station', 'شاشة 24، بوصة', 'HP, LaserJet, M402'];
+    await itAssetService.list(fromWire({ name: joinNameList(names) }), scope);
+    expect(filterSent()).toEqual({ name: { $in: names } });
+  });
+
+  it('matches an asset in ANY of the chosen categories — and a single id still reads', async () => {
+    await itAssetService.list(fromWire({ categoryId: `${LAPTOPS},${SCREENS}` }), scope);
+    expect(filterSent()).toEqual({ categoryId: { $in: [oid(LAPTOPS), oid(SCREENS)] } });
+    // A link written before the filter took several still means that one category.
+    await itAssetService.list(fromWire({ categoryId: LAPTOPS }), scope);
+    expect(filterSent()).toEqual({ categoryId: { $in: [oid(LAPTOPS)] } });
+    // A malformed id is refused at the edge, never quietly dropped from the list.
+    expect(() => fromWire({ categoryId: `${LAPTOPS},not-an-id` })).toThrow();
+  });
+
+  it('narrows by the categories AND the names together', async () => {
+    await itAssetService.list(
+      fromWire({ categoryId: `${LAPTOPS},${SCREENS}`, name: 'Lenovo ThinkPad,شاشة Dell' }),
+      scope,
+    );
+    expect(filterSent()).toEqual({
+      categoryId: { $in: [oid(LAPTOPS), oid(SCREENS)] },
+      name: { $in: ['Lenovo ThinkPad', 'شاشة Dell'] },
+    });
+  });
+
   /** A pick means every asset by THAT name — not «Lenovo ThinkCentre neo 50a 24 Gen 5» too. */
   it('is an equality, not a search — and still narrows what a search finds', async () => {
-    await itAssetService.list(query({ name: 'طابعة', search: 'HP' }), scope);
+    await itAssetService.list(query({ name: ['طابعة'], search: 'HP' }), scope);
     const filter = filterSent();
-    expect(filter.name).toBe('طابعة');
+    expect(filter.name).toEqual({ $in: ['طابعة'] });
     expect(filter.$or).toHaveLength(4);
   });
 
-  it('asks nothing of the name when none is picked', async () => {
+  it('asks nothing of the category or the name when none is picked — an emptied list too', async () => {
     await itAssetService.list(query({ status: 'assigned' }), scope);
-    expect(filterSent()).not.toHaveProperty('name');
+    expect(filterSent()).toEqual({ status: 'assigned' });
+    await itAssetService.list(fromWire({ status: 'assigned', categoryId: '', name: '' }), scope);
+    expect(filterSent()).toEqual({ status: 'assigned' });
   });
 });
 
 describe('the names the filter offers', () => {
   const scope = { scope: 'branch' } as never;
+  const everyCategory = ListItAssetNamesQuerySchema.parse({});
 
   it('are the reader’s scope’s, in Arabic order — Arabic before Latin, then the alphabet', async () => {
     mocks.distinctNames.mockResolvedValue([
@@ -282,15 +332,44 @@ describe('the names the filter offers', () => {
       'شاشة Dell',
       'طابعة',
     ]);
-    expect(await itAssetService.names(scope)).toEqual({
+    expect(await itAssetService.names(scope, everyCategory)).toEqual({
       names: ['شاشة Dell', 'طابعة', 'ماوس لاسلكي', 'HP LaserJet', 'Lenovo ThinkCentre neo 50a 24'],
+      truncated: false,
     });
-    expect(mocks.distinctNames).toHaveBeenCalledWith(scope);
+    // No category chosen: every name the scope holds, narrowed by nothing.
+    expect(mocks.distinctNames).toHaveBeenCalledWith(scope, {});
+  });
+
+  it('follow the categories chosen beside them — only the names of assets in those', async () => {
+    const laptops = new Types.ObjectId();
+    const screens = new Types.ObjectId();
+    mocks.distinctNames.mockResolvedValue(['Lenovo ThinkPad', 'شاشة Dell']);
+    const query = ListItAssetNamesQuerySchema.parse({
+      categoryId: `${String(laptops)},${String(screens)}`,
+    });
+    expect(await itAssetService.names(scope, query)).toEqual({
+      names: ['شاشة Dell', 'Lenovo ThinkPad'],
+      truncated: false,
+    });
+    expect(mocks.distinctNames).toHaveBeenCalledTimes(1);
+    expect(mocks.distinctNames).toHaveBeenCalledWith(scope, {
+      categoryId: { $in: [laptops, screens] },
+    });
+  });
+
+  it('read an emptied category list as no category at all, and take nothing but categories', async () => {
+    mocks.distinctNames.mockResolvedValue([]);
+    await itAssetService.names(scope, ListItAssetNamesQuerySchema.parse({ categoryId: '' }));
+    expect(mocks.distinctNames).toHaveBeenCalledWith(scope, {});
+    expect(() => ListItAssetNamesQuerySchema.parse({ name: 'طابعة' })).toThrow();
   });
 
   it('leave out what is not a name', async () => {
     mocks.distinctNames.mockResolvedValue([null, '', '   ', 42, 'طابعة']);
-    expect(await itAssetService.names(scope)).toEqual({ names: ['طابعة'] });
+    expect(await itAssetService.names(scope, everyCategory)).toEqual({
+      names: ['طابعة'],
+      truncated: false,
+    });
   });
 
   it('are bounded — a list typed into, never a dump', async () => {
@@ -299,8 +378,10 @@ describe('the names the filter offers', () => {
       (_, i) => `جهاز ${String(i).padStart(4, '0')}`,
     ).reverse();
     mocks.distinctNames.mockResolvedValue(many);
-    const { names } = await itAssetService.names(scope);
+    const { names, truncated } = await itAssetService.names(scope, everyCategory);
     expect(names).toHaveLength(ASSET_NAMES_CAP);
+    // Said, so the screen never drops a chosen name for being past the cap.
+    expect(truncated).toBe(true);
     expect(names[0]).toBe('جهاز 0000');
     expect(names.at(-1)).toBe(`جهاز ${String(ASSET_NAMES_CAP - 1).padStart(4, '0')}`);
   });

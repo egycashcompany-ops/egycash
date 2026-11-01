@@ -38,12 +38,13 @@ import {
   type UpdateAtmMachineArea,
   type UpdateAtmRefLabel,
   ATM_BULK_MAX_IDS,
+  ATM_MACHINES_BULK_MAX,
   ATM_OPEN_MAX_ROWS,
+  normalizeAtmMachineCode,
   joinAtmNameList,
   type AtmMachineSyncDto,
 } from '@ecms/contracts';
 import {
-  ApiError,
   buildQuery,
   del,
   get,
@@ -54,6 +55,16 @@ import {
   upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
+import {
+  BranchChangedError,
+  branchPin,
+  firstOfEach,
+  inPasteBatches,
+  refusedBeforeWriting,
+  type PasteRun,
+} from '../lib/paste-batches';
+
+export { refusedBeforeWriting };
 
 export type AtmListParams = QueryParams;
 
@@ -101,15 +112,6 @@ export interface OpenLinesOutcome<Opened, Row> extends OpenAnswer<Opened> {
 }
 
 /**
- * Pure: did this failure refuse the request before anything was written? The API's 4xx answers to
- * an open — validation, permission, a branch move running, «choose a branch» — are all decided
- * before the first row is created (both open services check first, then write). Anything else
- * leaves the request's outcome unknown.
- */
-export const refusedBeforeWriting = (error: unknown): boolean =>
-  error instanceof ApiError && error.status >= 400 && error.status < 500;
-
-/**
  * An open form's lines, sent in consecutive requests of at most `ATM_OPEN_MAX_ROWS` — a paste can
  * hold more lines than one open request carries (the owner, 2026-11-01: 700 replenishments at once
  * were refused whole, 100 or 200 at a time opened). In order, one request at a time; the answers
@@ -133,8 +135,14 @@ export const openInBatches = async <Row, Opened>(
     uncertain: [],
     failure: null,
   };
+  // Each request resolves the acting branch from the top bar: a switch between two requests stops
+  // the run before the next one, whose lines then come back as unsent (they never went).
+  const pin = branchPin();
   for (let start = 0; start < rows.length; start += ATM_OPEN_MAX_ROWS) {
     const end = start + ATM_OPEN_MAX_ROWS;
+    if (start > 0 && pin.moved()) {
+      return { ...outcome, unsent: rows.slice(start), failure: new BranchChangedError() };
+    }
     let answer: OpenAnswer<Opened>;
     try {
       answer = await send(rows.slice(start, end));
@@ -189,6 +197,43 @@ export const bulkDeleteMachines = (
   body: BulkDeleteAtmMachines,
 ): Promise<BulkDeleteAtmMachinesResultDto> =>
   post<BulkDeleteAtmMachinesResultDto>('/atm/machines/bulk-delete', body);
+
+export type BulkMachineRow = BulkCreateAtmMachines['machines'][number];
+
+/**
+ * The data-edit bulk add for any number of lines (2026-11-01): the first line of each code (the
+ * server keeps the first of a repeated code too — split, a later repeat would read as «مسجلة من
+ * قبل»), in requests of `ATM_MACHINES_BULK_MAX`, one bank and area for all, the acting branch
+ * pinned (`inPasteBatches`). Safe to send again: a machine added already comes back skipped.
+ */
+export const bulkCreateMachinesInBatches = (
+  body: BulkCreateAtmMachines,
+): Promise<PasteRun<BulkMachineRow, BulkCreateAtmMachinesResultDto>> =>
+  inPasteBatches(
+    firstOfEach(body.machines, (row) => normalizeAtmMachineCode(row.machineCode)).kept,
+    ATM_MACHINES_BULK_MAX,
+    (machines) => bulkCreateMachines({ bankName: body.bankName, area: body.area, machines }),
+    // A 423 (a branch move began), 409 or 404 can come after earlier rows were written.
+    { pinBranch: true, refusalWritesNothing: false },
+  );
+
+/**
+ * The data-edit bulk delete for any number of codes: each code once (normalized, as the server
+ * reads it), in requests of `ATM_MACHINES_BULK_MAX`, the acting branch pinned. Safe to send again:
+ * a machine deleted already comes back as an unknown code.
+ */
+export const bulkDeleteMachinesInBatches = (
+  machineCodes: readonly string[],
+): Promise<PasteRun<string, BulkDeleteAtmMachinesResultDto>> =>
+  inPasteBatches(
+    firstOfEach(
+      machineCodes.map(normalizeAtmMachineCode).filter((code) => code !== ''),
+      (code) => code,
+    ).kept,
+    ATM_MACHINES_BULK_MAX,
+    (batch) => bulkDeleteMachines({ machineCodes: batch }),
+    { pinBranch: true, refusalWritesNothing: false },
+  );
 export const reassignMachineArea = (body: ReassignAtmMachineArea): Promise<AtmMachineDto> =>
   post<AtmMachineDto>('/atm/machines/reassign-area', body);
 /**

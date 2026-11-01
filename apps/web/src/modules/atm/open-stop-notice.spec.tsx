@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { translate } from '../../platform/localization/i18n';
+import { BranchChangedError } from './lib/paste-batches';
 import {
   OpenStopNotice,
   emptyOpenStop,
@@ -135,10 +136,18 @@ describe('the uncertain lines stay until the reader puts them back or hides them
       unsent: [row('99990600')],
       uncertain: [row('99990400'), row('99990401')],
     });
-    expect(state).toEqual({ unsent: 1, uncertain: [row('99990400'), row('99990401')] });
+    expect(state).toEqual({
+      unsent: 1,
+      uncertain: [row('99990400'), row('99990401')],
+      pressAgain: true,
+    });
     // 2nd press starts…
     state = openPressStarted(state);
-    expect(state).toEqual({ unsent: 0, uncertain: [row('99990400'), row('99990401')] });
+    expect(state).toEqual({
+      unsent: 0,
+      uncertain: [row('99990400'), row('99990401')],
+      pressAgain: true,
+    });
     // …and every line goes.
     state = openPressEnded(state, { unsent: [], uncertain: [] });
     expect(state.uncertain).toEqual([row('99990400'), row('99990401')]);
@@ -146,7 +155,7 @@ describe('the uncertain lines stay until the reader puts them back or hides them
   });
 
   it('a later stop adds its uncertain lines after the ones still held', () => {
-    const held = { unsent: 0, uncertain: [row('99990400')] };
+    const held = { unsent: 0, uncertain: [row('99990400')], pressAgain: true };
     expect(openPressEnded(held, { unsent: [], uncertain: [row('99990900')] }).uncertain).toEqual([
       row('99990400'),
       row('99990900'),
@@ -179,5 +188,32 @@ describe('the buttons are held while a press runs', () => {
       );
     expect(notice(true).match(/<button[^>]*\sdisabled=""/g)).toHaveLength(2);
     expect(notice(false).match(/<button[^>]*\sdisabled=""/g)).toBeNull();
+  });
+});
+
+describe('after the branch changed under a run (the backstop pin)', () => {
+  it('the unsent line does not say «اضغط … مرة أخرى» — a new press would go to the other branch', () => {
+    const state = openPressEnded(emptyOpenStop<{ machineCode: string }>(), {
+      unsent: [{ machineCode: '99990001' }],
+      uncertain: [],
+      failure: new BranchChangedError(),
+    });
+    expect(state.pressAgain).toBe(false);
+    const markup = render(
+      'ar',
+      <OpenStopNotice
+        unsent={state.unsent}
+        uncertainCodes={[]}
+        action="فتح التغذيات"
+        busy={false}
+        pressAgain={state.pressAgain}
+        onRestore={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(markup).toContain(translate('ar', 'atm.common.pasteLeftOnly'));
+    expect(markup).not.toContain('مرة أخرى');
+    // The next press starts afresh.
+    expect(openPressStarted(state).pressAgain).toBe(true);
   });
 });

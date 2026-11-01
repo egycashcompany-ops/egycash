@@ -19,7 +19,8 @@ import { useAppSelector } from '../../../store';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { errorMessage } from '../../../shared/lib/errors';
+import { runFailureText } from '../lib/paste-batches';
+import { useRunUnloadGuard } from '../lib/useRunUnloadGuard';
 import { useOpenAtmMaintenances } from '../api/atm-queries';
 import { type MaintenanceOpenRow } from '../api/atm-api';
 import { joinCodes } from '../lib/operation-view';
@@ -67,6 +68,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const open = useOpenAtmMaintenances();
+  useRunUnloadGuard(open.isPending);
   const [codes, setCodes] = useState('');
   const [services, setServices] = useState('');
   const [references, setReferences] = useState('');
@@ -102,8 +104,8 @@ export const OpenMaintenancesForm = (): JSX.Element => {
             ? t('atm.common.openUncertain', { count: result.uncertain.length })
             : t('atm.common.openStopped', { count: result.unsent.length }),
           result.uncertain.length > 0
-            ? `${t('atm.common.openUncertainRisk')} ${errorMessage(result.failure, locale)}`
-            : errorMessage(result.failure, locale),
+            ? `${t('atm.common.openUncertainRisk')} ${runFailureText(result.failure, t, locale)}`
+            : runFailureText(result.failure, t, locale),
         );
       } else if (result.opened.length > 0) {
         setCodes('');
@@ -188,6 +190,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
           uncertainCodes={stop.uncertain.map((row) => row.machineCode)}
           action={t('atm.maintenance.openAction')}
           busy={open.isPending}
+          pressAgain={stop.pressAgain}
           onRestore={restoreUncertain}
           onDismiss={dismissUncertain}
         />

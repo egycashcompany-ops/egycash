@@ -282,6 +282,21 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **«إضافة ماكينات» on a settlement plan, and the data-edit bulk add and delete, take any number
+  of lines.** «صلّح كمان إضافة الماكينات والـ bulk add». A paste past one request's cap (200 on the
+  plan, 500 on the data-edit dialog) was refused whole. Both now send the lines in consecutive
+  requests of that size and show one answer. Repeats are decided over the whole paste first, as the
+  server decides them in one request (on the plan, a later repeat reads «مكررة في القائمة»). If a
+  run stops, what went before stands and every line not confirmed goes back into the boxes with
+  «توقف الإرسال قبل آخر … سطر — أُعيدت إلى الخانات»; sending them again is safe — an added line
+  comes back «موجودة في هذه التغذية» or «مسجلة من قبل», a deleted machine as an unknown code — so
+  the lines of the request that stopped go back too, named as possibly done. Inputs, buttons and
+  closing are held while a run goes; the top-bar branch switch waits («يجري إرسال الآن — غيّر الفرع
+  بعد انتهائه») and closing or reloading the page asks first — on these screens and the open forms.
+  A plan still holds at most 400 lines; when it is full the lines go back without «اضغط … مرة
+  أخرى». Every run reads the top-bar branch per request and is pinned to it: if the branch changes
+  under it anyway (a stored branch retired meanwhile), it stops before its next request with its
+  lines back («تغيّر الفرع المختار أثناء الإرسال»).
 - **The open forms take any number of pasted lines.** «كان عندى حوالى 700 تغذية لماكينات لما
   بضيفهم كلهم مره واحده بيجيب الرساله … لكن لما قللتهم 100 او 200 فى المرة بقي يضيف عادى». One open
   request carries at most 200 lines, so a longer paste was refused whole («بعض الحقول تحتاج إلى

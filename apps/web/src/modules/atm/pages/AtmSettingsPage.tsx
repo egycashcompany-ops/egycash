@@ -1,14 +1,16 @@
-// /atm/settings — «إعدادات الصراف الآلي»: the two things about ATM that are one fact for the
-// whole company, so both sit behind `atmSettings.manage` (organization scope on the server):
+// /atm/settings — «إعدادات الصراف الآلي»: the things about ATM that are one fact for the
+// whole company, so all sit behind `atmSettings.manage` (organization scope on the server):
 //   · the Banque Misr maintenance mailbox the central reader polls, and the branches it files
 //     mail for — switched on one at a time, Mohandessin first (the owner, 2026-10-28);
-//   · the branches that work as one in ATM — October as Mohandessin.
+//   · the branches that work as one in ATM — October as Mohandessin;
+//   · whose names the leader pickers offer — the ATM department, by name or as ticked.
 // A THIN shell, as the register import page is: the header carries the title only
 // (page-header-has-no-subtitle.spec.ts) and the work lives in `components/settings/*`. It reads no
 // URL parameter, so the remembered-filters census files it as not filter-capable.
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { BranchLinksCard } from '../components/settings/BranchLinksCard';
+import { LeaderDepartmentsCard } from '../components/settings/LeaderDepartmentsCard';
 import { MailboxSettingsCard } from '../components/settings/MailboxSettingsCard';
 
 export const AtmSettingsPage = (): JSX.Element => {
@@ -19,6 +21,7 @@ export const AtmSettingsPage = (): JSX.Element => {
       <div className="space-y-4">
         <MailboxSettingsCard />
         <BranchLinksCard />
+        <LeaderDepartmentsCard />
       </div>
     </PageContainer>
   );

@@ -2,25 +2,32 @@
 //
 //   · CLOSE (atm_maintenance.ejs:1151-1230): closing REQUIRES assigning an employee from the ATM
 //     department list — the modal's required datalist. Single row or the checked set, one submit.
+//     The list is `/atm/leaders/options` (the ATM department by name, or the departments ticked on
+//     /atm/settings); the box is searchable and shows each person with their HR code.
 //   · EDIT (:1561-1650): service type, notes, open time, leader — a changed leader cascades over
 //     the row's area+shift unconditionally (contad_app.js:2019-2032), stated in the hint — unless
 //     the «الوردية» box beside it is unticked (2026-10-27): then the row, or the checked rows, only.
 //     Ticked on a checked set, it goes over each checked row's area and shift too.
-import { useEffect, useState, type FormEvent } from 'react';
-import { type AtmMaintenanceDto } from '@ecms/contracts';
+import { useEffect, useId, useState, type FormEvent } from 'react';
+import { type AtmLeaderOptionDto, type AtmMaintenanceDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
+import { Combobox } from '../../../shared/ui/Combobox';
+import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
-  useAtmMaintenanceLeaderOptions,
+  useAtmLeaderOptions,
   useBulkUpdateAtmMaintenances,
   useCloseAtmMaintenances,
   useUpdateAtmMaintenance,
 } from '../api/atm-queries';
 import { LeaderField, toLocalInputValue } from './ReplenishmentDialogs';
 import { isAlreadyOpenRefusal } from '../lib/operation-view';
+
+/** Pure: how the close picker shows one person — «name (code)», as the HR pickers do. */
+export const leaderOptionLabel = (option: AtmLeaderOptionDto): string =>
+  `${option.name} (${option.code})`;
 
 export const CloseMaintenanceDialog = ({
   open,
@@ -33,8 +40,11 @@ export const CloseMaintenanceDialog = ({
 }): JSX.Element => {
   const t = useT();
   const close = useCloseAtmMaintenances();
-  const options = useAtmMaintenanceLeaderOptions(open);
+  const options = useAtmLeaderOptions(open);
+  const pickerId = useId();
   const [leaderEmployeeId, setLeaderEmployeeId] = useState('');
+  const people = options.data ?? [];
+  const labels = new Map(people.map((option) => [option.employeeId, leaderOptionLabel(option)]));
 
   useEffect(() => {
     if (open) setLeaderEmployeeId('');
@@ -53,7 +63,13 @@ export const CloseMaintenanceDialog = ({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title={t('atm.maintenance.closeTitle')}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t('atm.maintenance.closeTitle')}
+      // The employee list opens inside the body; a short body would cut it (`Dialog`, `tall`).
+      tall
+    >
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
         <p className="text-sm text-slate-600 dark:text-slate-300">
           {t('atm.maintenance.closeBody', { count: rows.length })}
@@ -67,27 +83,24 @@ export const CloseMaintenanceDialog = ({
         </ul>
         <Field
           label={t('atm.maintenance.assignEmployee')}
+          htmlFor={pickerId}
           required
-          hint={
-            (options.data ?? []).length === 0 && !options.isLoading
+          warning={
+            options.isSuccess && people.length === 0
               ? t('atm.maintenance.noEmployeesHint')
               : undefined
           }
         >
-          <Select
+          <Combobox
+            id={pickerId}
             value={leaderEmployeeId}
-            onChange={(e) => setLeaderEmployeeId(e.target.value)}
-            required
-          >
-            <option value="" disabled>
-              {t('atm.maintenance.pickEmployee')}
-            </option>
-            {(options.data ?? []).map((option) => (
-              <option key={option.employeeId} value={option.employeeId}>
-                {option.name}
-              </option>
-            ))}
-          </Select>
+            options={people.map((option) => option.employeeId)}
+            optionLabel={(employeeId) => labels.get(employeeId) ?? employeeId}
+            onChange={setLeaderEmployeeId}
+            placeholder={t('atm.maintenance.pickEmployee')}
+            emptyText={t('common.noResults')}
+            clearLabel={t('common.clear')}
+          />
         </Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -177,6 +190,8 @@ export const EditMaintenanceDialog = ({
           ? t('atm.maintenance.editTitle', { code: single.machineCode })
           : t('atm.maintenance.editManyTitle', { count: rows.length })
       }
+      // The leader's list opens inside the body; a short body would cut it (`Dialog`, `tall`).
+      tall
     >
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
         {single !== null && (

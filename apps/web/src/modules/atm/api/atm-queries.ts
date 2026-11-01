@@ -509,11 +509,18 @@ export const useDoneAtmMaintenances = (range: { from: string; to: string }) =>
       fetchWholeBoard((page, pageSize) => api.listDoneMaintenances({ ...range, page, pageSize })),
   });
 
-export const useAtmMaintenanceLeaderOptions = (enabled = true) =>
+/** The leader list's entry — exported so the dialogs' specs fill exactly what they read. */
+export const atmLeaderOptionsKey = (): readonly unknown[] =>
+  listKey(MODULE, 'leaders', { kind: 'options' });
+
+/** The names the leader pickers offer — fetched while a dialog that offers them is open. */
+export const useAtmLeaderOptions = (enabled = true) =>
   useQuery({
-    queryKey: listKey(MODULE, 'maintenances', { kind: 'leaderOptions' }),
-    queryFn: () => api.maintenanceLeaderOptions(),
+    queryKey: atmLeaderOptionsKey(),
+    queryFn: () => api.leaderOptions(),
     enabled,
+    // Who works in ATM changes on HR's screens, not between two dialogs a minute apart.
+    staleTime: 5 * 60_000,
   });
 
 const invalidateMaintenances = (client: ReturnType<typeof useQueryClient>) =>

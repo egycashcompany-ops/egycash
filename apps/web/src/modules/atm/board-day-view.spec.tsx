@@ -34,7 +34,7 @@ import { formatNumber } from '../../shared/lib/format';
 import { ReplenishmentsPage } from './pages/ReplenishmentsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { LeaderField } from './components/ReplenishmentDialogs';
-import { atmBoardKeys } from './api/atm-queries';
+import { atmBoardKeys, atmLeaderOptionsKey } from './api/atm-queries';
 import { addDays } from './lib/board-day';
 import { cairoToday } from './lib/operation-view';
 
@@ -327,18 +327,51 @@ describe.each([
 );
 
 describe('the leader field carries the «الوردية» box, ticked by default', () => {
-  const field = (shiftWide: boolean, many: boolean): string =>
-    renderToStaticMarkup(
+  const ATM_PEOPLE = [
+    { employeeId: 'e1', name: 'أحمد سعيد محمد', code: '0101' },
+    { employeeId: 'e2', name: 'محمود علي حسن', code: '0102' },
+  ];
+  const field = (
+    shiftWide: boolean,
+    many: boolean,
+    people: typeof ATM_PEOPLE = ATM_PEOPLE,
+    value = '',
+  ): string => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(atmLeaderOptionsKey(), people);
+    return renderToStaticMarkup(
       <Provider store={store([])}>
-        <LeaderField
-          value=""
-          onChange={() => undefined}
-          shiftWide={shiftWide}
-          onShiftWideChange={() => undefined}
-          many={many}
-        />
+        <QueryClientProvider client={client}>
+          <LeaderField
+            value={value}
+            onChange={() => undefined}
+            shiftWide={shiftWide}
+            onShiftWideChange={() => undefined}
+            many={many}
+          />
+        </QueryClientProvider>
       </Provider>,
     );
+  };
+
+  it('picks from the ATM employees — a list, not a free-text box (2026-11-01)', () => {
+    const html = field(true, false);
+    expect(html).toContain('role="combobox"');
+    expect(html).toContain(`placeholder="${t('atm.common.pickLeader')}"`);
+    // The label points at the box.
+    const id = /<input[^>]*id="([^"]+)"[^>]*role="combobox"/u.exec(html)?.[1];
+    expect(id).toBeDefined();
+    expect(html).toContain(`for="${id ?? ''}"`);
+    expect(html).not.toContain(t('atm.common.noLeadersHint'));
+  });
+
+  it('keeps a name already on the row, even one the list does not carry', () => {
+    expect(field(true, false, ATM_PEOPLE, 'Legacy Leader')).toContain('value="Legacy Leader"');
+  });
+
+  it('says where the list is set when it is empty', () => {
+    expect(field(true, false, [])).toContain(t('atm.common.noLeadersHint'));
+  });
 
   it('names the shift beside the label, and says what each state does', () => {
     const ticked = field(true, false);
@@ -361,6 +394,8 @@ describe('the leader field carries the «الوردية» box, ticked by default
         'atm.common.leaderShiftManyHint',
         'atm.common.leaderRowOnlyHint',
         'atm.common.leaderSelectedOnlyHint',
+        'atm.common.pickLeader',
+        'atm.common.noLeadersHint',
       ]) {
         expect(translate(locale, key)).not.toBe(key);
       }

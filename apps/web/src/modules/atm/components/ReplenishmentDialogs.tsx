@@ -10,14 +10,25 @@
 // Select فقط». Ticked — the default — the leader goes over the shift: the single row's cascade
 // as above, and on a checked set over each checked row's area and shift too (the owner's answer).
 // Unticked, it is written on the row or rows in the dialog and nowhere else.
+//
+// The leader is PICKED, not typed (2026-11-01): «تظهر أسماء الموظفين اللى فى ATM في Drop Down
+// القائد في الصيانة والتغذية». The names are the ATM department's working employees
+// (`/atm/leaders/options`, or the departments ticked on /atm/settings); a name already on the row
+// — typed in the legacy, or by someone since gone — stays pickable, so opening and saving a row
+// never rewrites its leader.
 import { useEffect, useId, useState, type FormEvent } from 'react';
-import { type AtmReplenishmentDto } from '@ecms/contracts';
+import { type AtmLeaderOptionDto, type AtmReplenishmentDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
+import { Combobox } from '../../../shared/ui/Combobox';
 import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { useBulkUpdateAtmReplenishments, useUpdateAtmReplenishment } from '../api/atm-queries';
+import {
+  useAtmLeaderOptions,
+  useBulkUpdateAtmReplenishments,
+  useUpdateAtmReplenishment,
+} from '../api/atm-queries';
 import { isAlreadyOpenRefusal } from '../lib/operation-view';
 
 /** Instant → the value a `datetime-local` input edits (LOCAL wall clock, minute precision). */
@@ -27,10 +38,16 @@ export const toLocalInputValue = (iso: string): string => {
   return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+/** Pure: the leader picker's names — each once, in the server's (Arabic) order. */
+export const leaderNames = (options: readonly AtmLeaderOptionDto[]): string[] => [
+  ...new Set(options.map((option) => option.name)),
+];
+
 /**
  * The leader field with its «الوردية» box beside the label — ticked by default, which is the
  * shift cascade; unticked, the rows in the dialog only. The hint under it says which, in words.
- * Shared by the two kinds' edit dialogs.
+ * Shared by the two kinds' edit dialogs. The box picks from the ATM employees' names; while the
+ * list is empty it says where the list is set, rather than offering nothing silently.
  */
 export const LeaderField = ({
   value,
@@ -48,9 +65,13 @@ export const LeaderField = ({
 }): JSX.Element => {
   const t = useT();
   const id = useId();
+  // Mounted only while its dialog is open (`Dialog` renders nothing closed), so this reads then.
+  const options = useAtmLeaderOptions();
+  const names = leaderNames(options.data ?? []);
   const hint = shiftWide
     ? t(many ? 'atm.common.leaderShiftManyHint' : 'atm.common.leaderShiftHint')
     : t(many ? 'atm.common.leaderSelectedOnlyHint' : 'atm.common.leaderRowOnlyHint');
+  const noNames = options.isSuccess && names.length === 0;
   return (
     <div className="space-y-1.5">
       {/* The box right beside the label — «Check Box بجانب عنوان المجال». */}
@@ -68,8 +89,16 @@ export const LeaderField = ({
           data-leader-shift="true"
         />
       </div>
-      <Field hint={hint}>
-        <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
+      <Field hint={hint} warning={noNames ? t('atm.common.noLeadersHint') : undefined}>
+        <Combobox
+          id={id}
+          value={value}
+          options={names}
+          onChange={onChange}
+          placeholder={t('atm.common.pickLeader')}
+          emptyText={t('common.noResults')}
+          clearLabel={t('common.clear')}
+        />
       </Field>
     </div>
   );
@@ -201,6 +230,8 @@ export const EditReplenishmentDialog = ({
           ? t('atm.replenishments.editTitle', { code: single.machineCode })
           : t('atm.replenishments.editManyTitle', { count: rows.length })
       }
+      // The leader's list opens inside the body; a short body would cut it (`Dialog`, `tall`).
+      tall
     >
       <form onSubmit={(e) => void submit(e)} className="space-y-4">
         <Field label={t('atm.replenishments.scheduleTime')}>

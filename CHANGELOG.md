@@ -11,6 +11,18 @@ its entry here in the same PR.
 
 ### Added
 
+- **«مقارنة بملف» on `/atm/data-edit`: a machines file compared with the branch, then applied.**
+  «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك والكود والأسم
+  والمنطقة». Upload the machine list (Excel: Bank, ID, ATM Name, Area — the old system's export
+  reads as it is) and every row is compared with the machines of the branch the top bar names:
+  what would be added, brought back from the archive, or edited (the old bank, name or area struck
+  through beside the file's), what works in another branch, what the file leaves incomplete, what
+  it lists twice, and the branch's machines it does not list — shown, never deleted. Nothing
+  changes until «تطبيق»; the apply adds through the data-edit add (the register entry included)
+  and edits through the machine edit (audited), row by row, and answers with the comparison made
+  again (`POST /atm/machines/sync`, `atmMachine.manage`). Spaces are folded, so a stray space is
+  neither a change nor a new area; a bank is compared by the catalog bank it names.
+
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
   «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
   الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn

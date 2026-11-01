@@ -1,6 +1,7 @@
 // One session document = one device's rotation family (ADR-006). Refresh tokens are
 // stored HASHED; used hashes are kept (bounded) so replay of a rotated token proves theft.
 import { Schema, model, type Types } from 'mongoose';
+import { SESSION_METHODS, type SessionMethod } from '@ecms/contracts';
 
 export interface SessionDoc {
   _id: Types.ObjectId;
@@ -14,6 +15,8 @@ export interface SessionDoc {
   expiresAt: Date;
   revokedAt: Date | null;
   revokedReason: string | null;
+  /** How the session was opened (ADR-035). Absent on sessions from before the field: a password. */
+  method?: SessionMethod;
 }
 
 const sessionSchema = new Schema<SessionDoc>(
@@ -31,6 +34,7 @@ const sessionSchema = new Schema<SessionDoc>(
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
     revokedReason: { type: String, default: null },
+    method: { type: String, enum: SESSION_METHODS },
   },
   { strict: true, versionKey: false },
 );

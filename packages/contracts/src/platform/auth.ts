@@ -162,6 +162,10 @@ export interface TotpEnabledDto {
   backupCodes: string[];
 }
 
+/** How a session was opened (ADR-035). Sessions from before the field read as `password`. */
+export const SESSION_METHODS = ['password', 'passkey', 'portalChallenge'] as const;
+export type SessionMethod = (typeof SESSION_METHODS)[number];
+
 export interface SessionDto {
   id: string;
   userAgent: string | null;
@@ -169,6 +173,138 @@ export interface SessionDto {
   createdAt: string;
   lastUsedAt: string;
   current: boolean;
+  method: SessionMethod;
+}
+
+// ── Passkeys: sign-in with fingerprint / Face ID (ADR-035) ──────────────────
+
+/**
+ * WebAuthn's JSON encoding of binary fields. Bounded so a request cannot carry megabytes into the
+ * verifier; the real check is cryptographic and happens on the server.
+ */
+const base64url = (max = 4096) => z.string().min(1).max(max).regex(/^[A-Za-z0-9_-]+$/, 'base64url');
+const clientExtensionResults = z.record(z.string(), z.unknown());
+/** WebAuthn allows a credential id of up to 1023 bytes: 1364 characters of unpadded base64url. */
+const CREDENTIAL_ID_MAX = 1364;
+const authenticatorAttachment = z.enum(['platform', 'cross-platform']).nullable().optional();
+
+/** What the browser returns from `navigator.credentials.get()`, in WebAuthn JSON. */
+export const PasskeyAuthenticationResponseSchema = z
+  .object({
+    id: base64url(CREDENTIAL_ID_MAX),
+    rawId: base64url(CREDENTIAL_ID_MAX),
+    type: z.literal('public-key'),
+    response: z
+      .object({
+        clientDataJSON: base64url(),
+        authenticatorData: base64url(),
+        signature: base64url(),
+        userHandle: base64url(512).nullable().optional(),
+      })
+      .strict(),
+    clientExtensionResults,
+    authenticatorAttachment,
+  })
+  .strict();
+export type PasskeyAuthenticationResponse = z.infer<typeof PasskeyAuthenticationResponseSchema>;
+
+export const PasskeyAuthenticationVerifySchema = z
+  .object({ response: PasskeyAuthenticationResponseSchema })
+  .strict();
+export type PasskeyAuthenticationVerify = z.infer<typeof PasskeyAuthenticationVerifySchema>;
+
+/** What the browser returns from `navigator.credentials.create()`, in WebAuthn JSON. */
+export const PasskeyRegistrationResponseSchema = z
+  .object({
+    id: base64url(CREDENTIAL_ID_MAX),
+    rawId: base64url(CREDENTIAL_ID_MAX),
+    type: z.literal('public-key'),
+    response: z
+      .object({
+        clientDataJSON: base64url(),
+        attestationObject: base64url(16384),
+        authenticatorData: base64url(8192).optional(),
+        transports: z.array(z.string().max(32)).max(10).optional(),
+        publicKeyAlgorithm: z.number().int().optional(),
+        publicKey: base64url(4096).optional(),
+      })
+      .strict(),
+    clientExtensionResults,
+    authenticatorAttachment,
+  })
+  .strict();
+export type PasskeyRegistrationResponse = z.infer<typeof PasskeyRegistrationResponseSchema>;
+
+/**
+ * Adding a passkey proves the person again (ADR-035 §5): the current password, and the TOTP code
+ * when the account has one. A session alone is not enough — a stolen one must not be able to plant
+ * a key that outlives a password change.
+ */
+export const PasskeyRegistrationOptionsSchema = z
+  .object({
+    password: z.string().min(1).max(256),
+    totpCode: z
+      .string()
+      .regex(/^\d{6}$/)
+      .optional(),
+  })
+  .strict();
+export type PasskeyRegistrationOptions = z.infer<typeof PasskeyRegistrationOptionsSchema>;
+
+const passkeyName = z.string().trim().min(1).max(60);
+
+export const PasskeyRegistrationVerifySchema = z
+  .object({ response: PasskeyRegistrationResponseSchema, name: passkeyName.optional() })
+  .strict();
+export type PasskeyRegistrationVerify = z.infer<typeof PasskeyRegistrationVerifySchema>;
+
+export const RenamePasskeySchema = z.object({ name: passkeyName }).strict();
+export type RenamePasskey = z.infer<typeof RenamePasskeySchema>;
+
+export const PasskeyIdParamSchema = z.object({ id: objectId() }).strict();
+export type PasskeyIdParam = z.infer<typeof PasskeyIdParamSchema>;
+
+/** A person's own passkey, as the Security page lists it. Never the key material. */
+export interface PasskeyDto {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  /** Kept in the person's cloud keychain (iCloud, Google) and so on their other devices too. */
+  backedUp: boolean;
+}
+
+/** The most passkeys one account may hold. */
+export const PASSKEYS_PER_ACCOUNT = 10;
+
+/**
+ * A sign-in challenge, in the WebAuthn JSON the browser's `get()` takes — plus `origin`, the one
+ * page address the server accepts answers from, so a screen opened anywhere else offers no button
+ * that could only fail. `origin` is not passed to the browser.
+ */
+export interface PasskeyAuthenticationOptionsDto {
+  challenge: string;
+  rpId: string;
+  timeout: number;
+  userVerification: 'required';
+  allowCredentials: [];
+  origin: string;
+}
+
+/** A registration challenge, in the WebAuthn JSON the browser's `create()` takes. */
+export interface PasskeyCreationOptionsDto {
+  challenge: string;
+  rp: { id: string; name: string };
+  user: { id: string; name: string; displayName: string };
+  pubKeyCredParams: { type: 'public-key'; alg: number }[];
+  timeout: number;
+  excludeCredentials: { id: string; type: 'public-key'; transports?: string[] }[];
+  authenticatorSelection: {
+    residentKey: 'required';
+    requireResidentKey: true;
+    userVerification: 'required';
+  };
+  attestation: 'none';
 }
 
 export const ListSessionsQuerySchema = z.object({}).strict();

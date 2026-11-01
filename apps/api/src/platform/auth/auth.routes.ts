@@ -11,6 +11,11 @@ import {
   CompletePortalChallengeSchema,
   EnrollChallengeBodySchema,
   LoginSchema,
+  PasskeyAuthenticationVerifySchema,
+  PasskeyIdParamSchema,
+  PasskeyRegistrationOptionsSchema,
+  PasskeyRegistrationVerifySchema,
+  RenamePasskeySchema,
   SessionIdParamSchema,
   StartPortalChallengeSchema,
   TotpChallengeSchema,
@@ -23,9 +28,16 @@ import {
   completePortalChallenge,
   startPortalChallenge,
   listSessions,
+  listPasskeys,
   login,
   logout,
   me,
+  passkeyAuthenticationOptions,
+  passkeyAuthenticationVerify,
+  passkeyRegistrationOptions,
+  passkeyRegistrationVerify,
+  removePasskey,
+  renamePasskey,
   refresh,
   revokeSession,
   totpChallenge,
@@ -94,7 +106,19 @@ const challengeAccountKey = (req: Request): string | null => {
   return claims === null ? hashedKey(`token:${token}`) : hashedKey(`account:${claims.sub}`);
 };
 
-/** The caller's bearer token, for the one authenticated route limited before `authenticate`. */
+/**
+ * The passkey a sign-in names. The credential id is not a secret — a device hands it to anyone who
+ * asks — so this bucket only stops one key being hammered; what bounds guessing is the
+ * failed-sign-in limit per address, which a refused passkey counts toward.
+ */
+const credentialKey = (req: Request): string | null => {
+  const response = (req.body as { response?: { id?: unknown } } | undefined)?.response;
+  return typeof response?.id === 'string' && response.id !== ''
+    ? hashedKey(`passkey:${response.id}`)
+    : null;
+};
+
+/** The caller's bearer token, for the authenticated routes limited before `authenticate`. */
 const bearerKey = (req: Request): string | null => {
   const header = req.get('authorization');
   return header === undefined || header === '' ? null : hashedKey(header);
@@ -170,6 +194,58 @@ export const buildAuthRouter = (): Router => {
     perSubject('auth-activate', 10, tokenKey('token')),
     validate({ body: ActivateAccountSchema }),
     asyncHandler(activate),
+  );
+
+  // Passkey sign-in (ADR-035). The options are fetched on every visit to the sign-in page — before
+  // the tap, so the device prompt follows it with no network call in between — so they carry only
+  // a per-IP ceiling; they hold nothing about any account. The verify route is a sign-in: the same
+  // ceiling, a bucket per credential, and the failed-sign-in limit per address in the controller.
+  router.post(
+    '/passkeys/authentication/options',
+    // The renewal ceiling, not the sign-in one: a sign-in page asks for two (the button's and the
+    // autofill's) on every visit and refreshes both every four minutes while it stays open, so an
+    // office behind one address would empty the sign-in bucket — and lose the button — long before
+    // anybody was guessing anything. Each one writes a five-minute key and reveals nothing.
+    perIpCeiling('auth-passkey-options', env.AUTH_REFRESH_RATE_LIMIT_PER_IP),
+    asyncHandler(passkeyAuthenticationOptions),
+  );
+  router.post(
+    '/passkeys/authentication/verify',
+    perIpCeiling('auth-passkey-verify', authIpMax),
+    perSubject('auth-passkey-verify', 10, credentialKey),
+    validate({ body: PasskeyAuthenticationVerifySchema }),
+    asyncHandler(passkeyAuthenticationVerify),
+  );
+  // Managing one's own passkeys. Self-service like the TOTP routes: the subject is always the
+  // caller. The two registration steps are limited per caller — the first one checks a password.
+  router.get('/passkeys', authenticate, asyncHandler(listPasskeys));
+  router.post(
+    '/passkeys/registration/options',
+    perIpCeiling('auth-passkey-register', authIpMax),
+    perSubject('auth-passkey-register', 10, bearerKey),
+    authenticate,
+    validate({ body: PasskeyRegistrationOptionsSchema }),
+    asyncHandler(passkeyRegistrationOptions),
+  );
+  router.post(
+    '/passkeys/registration/verify',
+    perIpCeiling('auth-passkey-register-verify', authIpMax),
+    perSubject('auth-passkey-register-verify', 10, bearerKey),
+    authenticate,
+    validate({ body: PasskeyRegistrationVerifySchema }),
+    asyncHandler(passkeyRegistrationVerify),
+  );
+  router.patch(
+    '/passkeys/:id',
+    authenticate,
+    validate({ params: PasskeyIdParamSchema, body: RenamePasskeySchema }),
+    asyncHandler(renamePasskey),
+  );
+  router.delete(
+    '/passkeys/:id',
+    authenticate,
+    validate({ params: PasskeyIdParamSchema }),
+    asyncHandler(removePasskey),
   );
 
   router.post('/logout', authenticate, asyncHandler(logout));

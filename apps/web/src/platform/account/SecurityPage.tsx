@@ -1,5 +1,6 @@
 // Self-service Security page (frozen auth design §6.3): change password, manage the
-// authenticator (enroll with QR / disable), and review + revoke active sessions.
+// authenticator (enroll with QR / disable), the devices that sign in with a fingerprint or face
+// (ADR-035), and review + revoke active sessions.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { QRCodeSVG } from 'qrcode.react';
@@ -13,6 +14,7 @@ import { ApiError } from '../../shared/lib/api-client';
 import { formatDateTime } from '../../shared/lib/format';
 import { usePasswordPolicy } from '../auth/password-policy';
 import { PasswordRequirements } from '../auth/PasswordRequirements';
+import { PasskeysCard } from './PasskeysCard';
 import {
   changePasswordRequest,
   fetchMe,
@@ -229,8 +231,12 @@ const SessionsCard = (): JSX.Element => {
                 <p className="truncate text-slate-700 dark:text-slate-200" dir="ltr">
                   {s.userAgent ?? t('account.security.unknownDevice')}
                 </p>
-                <p className="text-xs text-slate-400" dir="ltr">
-                  {s.ip ?? '—'} · {formatDateTime(s.lastUsedAt, locale)}
+                <p className="text-xs text-slate-400">
+                  <span dir="ltr">
+                    {s.ip ?? '—'} · {formatDateTime(s.lastUsedAt, locale)}
+                  </span>
+                  {' · '}
+                  {t(`account.security.signedInWith.${s.method}`)}
                 </p>
               </div>
               {s.current ? (
@@ -256,6 +262,7 @@ export const SecurityPage = (): JSX.Element => {
       <div className="space-y-6">
         <ChangePasswordCard />
         <TotpCard />
+        <PasskeysCard />
         <SessionsCard />
       </div>
     </PageContainer>

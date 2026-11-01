@@ -291,6 +291,12 @@ const EnvSchema = z.object({
   // ── Credentials delivery (auth design §12 R3/R9) ──────────────────────────
   /** Absolute base URL of the web app — the login link in credential messages. */
   WEB_PUBLIC_URL: z.string().url().default('http://localhost:5173'),
+  /**
+   * The WebAuthn relying-party ID passkeys are bound to (ADR-035). Empty = the host of
+   * WEB_PUBLIC_URL, which is right unless the app must share passkeys with a parent domain. Bound
+   * for good: changing it orphans every passkey already added. Never derived from a request.
+   */
+  WEBAUTHN_RP_ID: z.string().default(''),
   /** WhatsApp transport driver: 'disabled' keeps dev/CI hermetic (logs + not-delivered). */
   WHATSAPP_PROVIDER: z.enum(['disabled', 'meta', 'twilio']).default('disabled'),
   /** meta: Cloud API access token · twilio: auth token. */

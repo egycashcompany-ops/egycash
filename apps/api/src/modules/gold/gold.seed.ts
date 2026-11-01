@@ -1,12 +1,17 @@
 // What the gold module teaches the platform at boot, and the one role it owns.
 //
-// Three registrations, all of them the platform asking the module a question it cannot answer for
+// Four registrations, all of them the platform asking the module a question it cannot answer for
 // itself — the same shape HR uses for employee-code login:
 //
 //   · WHERE an external customer may read (the confinement gate's allow-list);
 //   · WHAT to call the record they belong to (the portal header's greeting);
+//   · that its customers may sign in with a passkey (ADR-035 — «عملاء بوابة الذهب»);
 //   · the role that carries their single grant.
-import { registerExternalSubjectLabel, registerExternalSurface } from '../../platform/auth';
+import {
+  allowPasskeysFor,
+  registerExternalSubjectLabel,
+  registerExternalSurface,
+} from '../../platform/auth';
 import { rbacService } from '../../platform/rbac';
 import { goldCompanyRepository } from './companies/company.repository';
 import { GOLD_PORTAL_SUBJECT } from './portal';
@@ -22,6 +27,10 @@ export const runGoldSeed = async (): Promise<void> => {
     const company = await goldCompanyRepository.findById(subject.subjectId);
     return company === null ? null : company.name;
   });
+
+  // Their sign-in is a username and password, like staff, so a passkey adds a factor rather than
+  // replacing a check (the applicant portal, whose sign-in is the phone on file, never registers).
+  allowPasskeysFor('gold', GOLD_PORTAL_SUBJECT);
 
   // `ensureManagedRole`, not `createRole`: it re-asserts the grant set on every boot, so a role
   // widened by hand in the Roles screen is pulled back at the next deploy. It also creates the role

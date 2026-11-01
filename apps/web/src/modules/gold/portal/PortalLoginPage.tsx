@@ -11,13 +11,16 @@
 // gold wash because that is what this vault looks like, and the picture in it is swappable
 // (`PortalLoginArt`). Two logins, one skeleton.
 //
+// Customers may sign in with a fingerprint or face too (ADR-035, «الموظفين وعملاء بوابة الذهب»): the
+// same button and offer as the staff sign-in, from `platform/auth/PasskeySignIn`.
+//
 // What this screen deliberately does NOT have, however common it is on a screen shaped like this:
 // social sign-in and a "create an account" link. A portal account is issued by EGYCASH staff
 // against a specific customer record — there is no self sign-up to link to, and no Google identity
 // that could be mapped to a vault customer. A button that cannot work is worse than no button.
 import { useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { type MeDto } from '@ecms/contracts';
+import { type LoginResponse, type MeDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../../store';
 import { signedIn } from '../../../store/authSlice';
 import { useT } from '../../../platform/localization/useT';
@@ -25,13 +28,22 @@ import { useDocumentTitle } from '../../../shared/lib/useDocumentTitle';
 import { ThemeToggle } from '../../../platform/layout/ThemeToggle';
 import { LanguageToggle } from '../../../platform/layout/LanguageToggle';
 import { loginRequest, totpChallengeRequest } from '../../../platform/auth/api';
+import {
+  PasskeyOffer,
+  PasskeySignInButton,
+  shouldOfferPasskey,
+  usePasskeySignIn,
+} from '../../../platform/auth/PasskeySignIn';
 import { Button, Field, Form, Input, PasswordInput } from '../../../shared/ui';
 import { AlertIcon } from '../../../shared/ui/icons';
 import { EgycashLogo } from '../../../shared/ui/EgycashLogo';
 import { ApiError } from '../../../shared/lib/api-client';
 import { PortalLoginArt } from './PortalLoginArt';
 
-type Step = { kind: 'credentials' } | { kind: 'totp'; challengeToken: string };
+type Step =
+  | { kind: 'credentials' }
+  | { kind: 'totp'; challengeToken: string }
+  | { kind: 'passkeyOffer'; me: MeDto; proof: { password: string } };
 
 /**
  * EGYCASH, as this screen says it: the company's own logo. On the picture panel, which is
@@ -63,15 +75,37 @@ export const PortalLoginPage = (): JSX.Element => {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const finish = (me: MeDto): void => {
+    dispatch(signedIn(me));
+    navigate('/portal', { replace: true });
+  };
+
+  // Before the early return below: a hook may not be skipped on some renders.
+  const passkey = usePasskeySignIn({
+    autofill: true,
+    onSignedIn: (response) => finish(response.me),
+    onFailure: (failure) => setError(t(failure.key, failure.params)),
+  });
+
   // Already signed in as a customer — go straight in. An EMPLOYEE who lands here is left on the
   // form rather than bounced, because their session is not a portal session.
   if (status === 'signedIn' && external !== null && external.moduleId === 'gold') {
     return <Navigate to="/portal" replace />;
   }
 
-  const finish = (me: MeDto): void => {
-    dispatch(signedIn(me));
-    navigate('/portal', { replace: true });
+  /** A password sign-in went through: offer a passkey on a device that can hold one, or go in. */
+  const signedInWithPassword = async (
+    response: Extract<LoginResponse, { totpRequired: false }>,
+  ): Promise<void> => {
+    if (await shouldOfferPasskey(response, passkey.support)) {
+      setStep({
+        kind: 'passkeyOffer',
+        me: response.me,
+        proof: { password },
+      });
+      return;
+    }
+    finish(response.me);
   };
 
   const submit = async (): Promise<void> => {
@@ -81,14 +115,15 @@ export const PortalLoginPage = (): JSX.Element => {
       if (step.kind === 'credentials') {
         const response = await loginRequest(identifier.trim(), password);
         if (!response.totpRequired) {
-          finish(response.me);
+          await signedInWithPassword(response);
           return;
         }
         setStep({ kind: 'totp', challengeToken: response.challengeToken });
         return;
       }
+      if (step.kind !== 'totp') return;
       const response = await totpChallengeRequest(step.challengeToken, code);
-      if (!response.totpRequired) finish(response.me);
+      if (!response.totpRequired) await signedInWithPassword(response);
     } catch (e) {
       setError(
         e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVATED'
@@ -162,13 +197,19 @@ export const PortalLoginPage = (): JSX.Element => {
                       {t('gold.portal.login.welcomeAccent')}
                     </span>
                   </>
+                ) : step.kind === 'passkeyOffer' ? (
+                  t('platform.auth.passkey.offer.title')
                 ) : (
                   t('gold.portal.login.totp')
                 )}
               </h1>
-              <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
-                {onCredentials ? t('gold.portal.login.subtitle') : t('gold.portal.login.totpHint')}
-              </p>
+              {step.kind !== 'passkeyOffer' && (
+                <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
+                  {onCredentials
+                    ? t('gold.portal.login.subtitle')
+                    : t('gold.portal.login.totpHint')}
+                </p>
+              )}
             </header>
 
             {error === null && idleNotice && (
@@ -191,49 +232,54 @@ export const PortalLoginPage = (): JSX.Element => {
               </div>
             )}
 
-            <Form
-              onSubmit={() => {
-                void submit();
-              }}
-            >
-              {onCredentials ? (
-                <>
-                  <Field label={t('gold.portal.login.username')} required>
-                    <Input
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      autoComplete="username"
-                      placeholder={t('gold.portal.login.usernamePlaceholder')}
-                    />
-                  </Field>
-                  <Field label={t('gold.portal.login.password')} required>
-                    <PasswordInput
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      placeholder={t('gold.portal.login.passwordPlaceholder')}
-                    />
-                  </Field>
-                </>
-              ) : (
-                <Field label={t('gold.portal.login.totp')} required>
-                  <Input
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                  />
-                </Field>
-              )}
-
-              <Button
-                type="submit"
-                disabled={busy}
-                className="w-full justify-center border-0 bg-gradient-to-r from-amber-400 to-amber-600 font-semibold text-black shadow-[0_8px_24px_-10px_rgba(217,119,6,0.9)] hover:from-amber-300 hover:to-amber-500 focus-visible:outline-amber-500 disabled:opacity-60"
+            {step.kind === 'passkeyOffer' ? (
+              <PasskeyOffer me={step.me} proof={step.proof} onDone={() => finish(step.me)} />
+            ) : (
+              <Form
+                onSubmit={() => {
+                  void submit();
+                }}
               >
-                {busy ? t('gold.portal.login.busy') : t('gold.portal.login.submit')}
-              </Button>
-            </Form>
+                {onCredentials ? (
+                  <>
+                    <Field label={t('gold.portal.login.username')} required>
+                      <Input
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        autoComplete="username webauthn"
+                        placeholder={t('gold.portal.login.usernamePlaceholder')}
+                      />
+                    </Field>
+                    <Field label={t('gold.portal.login.password')} required>
+                      <PasswordInput
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="current-password"
+                        placeholder={t('gold.portal.login.passwordPlaceholder')}
+                      />
+                    </Field>
+                  </>
+                ) : (
+                  <Field label={t('gold.portal.login.totp')} required>
+                    <Input
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                    />
+                  </Field>
+                )}
+
+                <Button
+                  type="submit"
+                  disabled={busy}
+                  className="w-full justify-center border-0 bg-gradient-to-r from-amber-400 to-amber-600 font-semibold text-black shadow-[0_8px_24px_-10px_rgba(217,119,6,0.9)] hover:from-amber-300 hover:to-amber-500 focus-visible:outline-amber-500 disabled:opacity-60"
+                >
+                  {busy ? t('gold.portal.login.busy') : t('gold.portal.login.submit')}
+                </Button>
+                {onCredentials && <PasskeySignInButton state={passkey} />}
+              </Form>
+            )}
 
             <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
               {t('gold.portal.login.help')}

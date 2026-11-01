@@ -87,7 +87,7 @@ export const RegisterRowActions = ({
   const t = useT();
   const tone = row.status === 'ended' ? TONE.onDark : TONE.light;
   return (
-    <RowActions className="justify-end">
+    <RowActions always className="justify-end">
       {registerRowActions(row, grants).map((action) => {
         const Icon = ICON[action];
         const label = t(`atm.register.action.${action}`);

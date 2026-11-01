@@ -11,6 +11,14 @@
 // left; and the footer «EGYCASH | IT Dept. |» with the paper's own number and the red block. It is
 // signed by hand and filed, so its wording is the form's, not ours.
 //
+// The form was written for «جهاز», so the words that point back at the item are masculine:
+// «ومواصفاته», «ومشتملاته», and the undertaking's «لاستخدامه … عليه … برده». Now that the item is
+// named by its kind, a page may hand over a «شاشة» or a «طابعة». Asked whether the paper should
+// then say «ومواصفاتها … لاستخدامها … عليها … بردها», the owner answered «شوف أنت الأنسب وأعمله».
+// So each page agrees with its own item's kind (`kindGender`). A masculine page reads exactly as
+// the form does, and nothing else changes: «على ماله الخاص» is the careful person's own property,
+// not the item, so it keeps its «ـه».
+//
 // The form's red marks what is filled in for each paper, and it stays red here — filled with what
 // the system knows: the employee's name and job; «كود …» with their employee code («عايز بردو
 // أضيف كود الموظف هنا»); «بطاقة رقم قومي …» with their national ID («مفروض تملأها تلقائي من
@@ -57,8 +65,8 @@ export interface ReceiptWindowLabels {
   close: string;
 }
 
-/** The form's colours, as its template draws them. */
-const COLORS = {
+/** The form's colours, as its template draws them — every acknowledgment the department prints. */
+export const RECEIPT_COLORS = {
   /** What is filled in for each paper. */
   fill: '#f00',
   /** The table's header row and first column. */
@@ -71,7 +79,8 @@ const COLORS = {
   bar: '#5e60ab',
 } as const;
 
-const esc = (value: string): string =>
+/** Text people typed, made safe for the page. */
+export const esc = (value: string): string =>
   value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -107,9 +116,44 @@ export const signatureName = (fullName: string | null): string =>
 export const receiptNumberLabel = (formNumber: number | null): string =>
   formNumber === null ? IT_CUSTODY_RECEIPT_FORM.prefix : formatCustodyReceiptNumber(formNumber);
 
-/** The undertaking, as the form words it. The employee signs THIS, so it is never paraphrased. */
+/**
+ * The undertaking, as the form words it. The employee signs THIS, so it is never paraphrased. It
+ * is masculine because the form was written for «جهاز»; a page for a feminine item signs
+ * `RECEIPT_UNDERTAKING_FEMININE`.
+ */
 export const RECEIPT_UNDERTAKING =
   'وذلك لاستخدامه في إنهاء أعمال الشركة وأتعهد بالحفاظ عليه حفاظ الشخص الحريص على ماله الخاص وأتعهد برده إلى الشركة متى طلب مني ذلك.';
+
+/**
+ * The same undertaking for a feminine item («شاشة», «طابعة», «كاميرا» …). Only the three pronouns
+ * that stand for the item change: «لاستخدامها … عليها … بردها». «على ماله الخاص» stays as it is,
+ * because it is the careful person's own property, not the item.
+ */
+export const RECEIPT_UNDERTAKING_FEMININE =
+  'وذلك لاستخدامها في إنهاء أعمال الشركة وأتعهد بالحفاظ عليها حفاظ الشخص الحريص على ماله الخاص وأتعهد بردها إلى الشركة متى طلب مني ذلك.';
+
+/** The grammatical gender of what a page hands over. The words that point back at it agree. */
+export type ItemGender = 'masculine' | 'feminine';
+
+/**
+ * The form's words that point back at the item, for each gender: the lead of its specifications
+ * table, the lead of its accessories, and the undertaking. The masculine is the form word for
+ * word; the feminine changes those pronouns and nothing else.
+ */
+export const RECEIPT_AGREEMENT: Readonly<
+  Record<ItemGender, { specs: string; accessories: string; undertaking: string }>
+> = {
+  masculine: {
+    specs: 'ومواصفاته كالتالي:',
+    accessories: 'ومشتملاته كالتالي:',
+    undertaking: RECEIPT_UNDERTAKING,
+  },
+  feminine: {
+    specs: 'ومواصفاتها كالتالي:',
+    accessories: 'ومشتملاتها كالتالي:',
+    undertaking: RECEIPT_UNDERTAKING_FEMININE,
+  },
+};
 
 /**
  * A filled-in part of the form: in its red, or a dotted line where the system has nothing.
@@ -117,7 +161,7 @@ export const RECEIPT_UNDERTAKING =
  * thing; a name or a job title wraps between its words like the rest of the sentence, so a long
  * one never drags a gap across the line before it.
  */
-const fill = (value: string | null | undefined, blank = 24, whole = false): string => {
+export const fill = (value: string | null | undefined, blank = 24, whole = false): string => {
   const text = value?.trim() ?? '';
   return `<span class="fill${whole ? ' whole' : ''}">${text === '' ? '.'.repeat(blank) : `<bdi>${esc(text)}</bdi>`}</span>`;
 };
@@ -174,6 +218,40 @@ export const isComputerKind = (category: string): boolean => {
 export const deviceKind = (line: Pick<ItCustodyReceiptLineDto, 'deviceType'>): string => {
   const category = line.deviceType?.trim() ?? '';
   return category === '' || isComputerKind(category) ? DEFAULT_DEVICE_KIND : category;
+};
+
+/**
+ * Feminine nouns with no ending to show it: a «كاميرا» is «هي». Compared folded, the way category
+ * names are compared, so the hamza can be written either way.
+ */
+const FEMININE_KINDS = new Set(['كاميرا'].map(foldKind));
+
+/**
+ * The first word of a kind, which is the noun the rest of it describes: «طابعة» in «طابعة ليزر»,
+ * «شاشة» in «شاشة/Monitor». Diacritics and the stretching stroke (ـ) are dropped, because they
+ * change how a word looks, not which word it is.
+ */
+const firstWord = (kind: string): string =>
+  (/[\p{L}\p{M}]+/u.exec(kind)?.[0] ?? '').replace(/[\p{M}\u0640]/gu, '');
+
+/**
+ * Is the item «هو» or «هي»? Its kind decides, page by page: the word the statement names it by
+ * (`deviceKind`), and the first word of that. It is feminine when that word ends in a taa marbuta
+ * («شاشة», «طابعة ليزر», «سماعة»), when it is a plural in «ات» («سماعات», «شاشات», since Arabic
+ * calls a plural of things «هي»; the stem must have two letters at least, because «كات» and
+ * «سات» are not plurals), or when it is one of the few feminine nouns with no ending to show it
+ * («كاميرا»). Anything else is masculine: «جهاز», «لاب توب», «ماوس», «كيبورد», «هاتف IP»,
+ * «راوتر», «كارت شاشة» (a card, not a screen), and a kind written in Latin letters. Masculine is
+ * what the form has always printed.
+ *
+ * Only a written «ة» counts. A word that ends in a plain «ه» could as well be masculine («موجه» is
+ * a router), so «شاشه» typed that way keeps the form's masculine, as it always has.
+ */
+export const kindGender = (kind: string): ItemGender => {
+  const word = firstWord(kind);
+  return word.endsWith('ة') || /^\p{L}{2,}ات$/u.test(word) || FEMININE_KINDS.has(foldKind(word))
+    ? 'feminine'
+    : 'masculine';
 };
 
 /** The name without a word for its kind in front — whole words only: «شاشةDell» keeps its own. */
@@ -266,12 +344,88 @@ const accessoryList = (items: readonly string[]): string =>
 
 /** The banner on the right of the letterhead, drawn as the template draws it. */
 const BANNER = `<svg viewBox="0 0 800 67" preserveAspectRatio="none" aria-hidden="true">
-  <polygon points="0,0 80,0 195,67 115,67" fill="${COLORS.stripe1}" />
-  <polygon points="115,0 195,0 309,67 229,67" fill="${COLORS.stripe2}" />
-  <polygon points="231,0 800,0 800,67 346,67" fill="${COLORS.bar}" />
+  <polygon points="0,0 80,0 195,67 115,67" fill="${RECEIPT_COLORS.stripe1}" />
+  <polygon points="115,0 195,0 309,67 229,67" fill="${RECEIPT_COLORS.stripe2}" />
+  <polygon points="231,0 800,0 800,67 346,67" fill="${RECEIPT_COLORS.bar}" />
 </svg>`;
 
-/** One device's page. */
+// ── What every acknowledgment shares ────────────────────────────────────────
+//
+// The department has ONE form, and a line handed over is signed on it as a device is
+// (`mobile-line-receipt-print.ts`): the same letterhead and title, the same undertaking, the same
+// signature block and the same numbered footer. Only what is received differs. So the parts below
+// are the form's, written once — a second copy is how two papers of one department come to look
+// different.
+
+/**
+ * The letterhead (the logo, the department's banner) and its rule — every paper the department
+ * prints, under its own title. The consumables memo («مذكرة صرف مستهلكات», FR-20) was approved
+ * «designed on the device acknowledgment's letterhead», so it stands under this one too.
+ */
+export const RECEIPT_LETTERHEAD = `<header class="letterhead">
+    <img src="${EGYCASH_LOGO}" alt="EGYCASH" />
+    <div class="banner">${BANNER}<span>قطاع تكنولوجيا المعلومات</span></div>
+  </header>
+  <hr class="rule" />`;
+
+/** The letterhead, its rule, and «إقرار استلام». */
+export const RECEIPT_HEAD = `${RECEIPT_LETTERHEAD}
+  <h1>إقرار استلام</h1>`;
+
+/**
+ * The undertaking, «وهذا إقرار مني بذلك», and «المقر بما فيه» — what the employee signs. The
+ * undertaking agrees with what the paper hands over, and is the form's own masculine unless the
+ * paper says otherwise.
+ */
+export const receiptClosing = (
+  employeeName: string | null,
+  issuedAt: string,
+  gender: ItemGender = 'masculine',
+): string =>
+  `<p class="undertaking">${RECEIPT_AGREEMENT[gender].undertaking}</p>
+  <p class="oath">وهذا إقرار مني بذلك ،،،</p>
+  <div class="signs">
+    <div class="by">المقر بما فيه</div>
+    <div>الاسم: ${esc(signatureName(employeeName))}</div>
+    <div>التوقيع:</div>
+    <div>التاريخ: ${receiptDate(issuedAt)}</div>
+  </div>`;
+
+/** The footer: «EGYCASH | IT Dept. |» with the paper's number, and the red block beside it. */
+export const receiptFooter = (number: string, block: string): string =>
+  `<footer class="foot">
+    <span class="mark"><b>EGYCASH</b> | IT Dept. | ${esc(number)}</span>
+    <span class="block">${block}</span>
+  </footer>`;
+
+/**
+ * One sheet of the form: the letterhead, what this paper says it hands over (`body` — the
+ * statement and what follows it), the closing and the footer. `block` is what the footer's red
+ * block says: a page count, or nothing. `gender` is the gender of what the sheet hands over, and
+ * the undertaking agrees with it. It defaults to the form's own masculine, which is right for
+ * «جهاز» and for the line paper's «خط».
+ */
+export const receiptSheet = ({
+  paper,
+  body,
+  block,
+  gender = 'masculine',
+}: {
+  paper: Pick<ItCustodyReceiptDocumentDto, 'formNumber' | 'employeeName' | 'issuedAt'>;
+  body: string;
+  block: string;
+  gender?: ItemGender;
+}): string => `<section class="page">
+  ${RECEIPT_HEAD}
+  ${body}
+  ${receiptClosing(paper.employeeName, paper.issuedAt, gender)}
+  ${receiptFooter(receiptNumberLabel(paper.formNumber), block)}
+</section>`;
+
+/**
+ * One device's page. Its words for the item agree with that item's own kind, so a paper that hands
+ * over a laptop and a screen says «ومواصفاته» on one page and «ومواصفاتها» on the other.
+ */
 const page = (
   paper: ItCustodyReceiptDocumentDto,
   line: ItCustodyReceiptLineDto,
@@ -279,46 +433,25 @@ const page = (
   count: number,
 ): string => {
   const groups = specGroups(line);
-  const number = receiptNumberLabel(paper.formNumber);
   const accessories = line.accessories.filter((item) => item.trim() !== '');
-  return `<section class="page">
-  <header class="letterhead">
-    <img src="${EGYCASH_LOGO}" alt="EGYCASH" />
-    <div class="banner">${BANNER}<span>قطاع تكنولوجيا المعلومات</span></div>
-  </header>
-  <hr class="rule" />
-  <h1>إقرار استلام</h1>
-  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
+  const gender = kindGender(deviceKind(line));
+  const words = RECEIPT_AGREEMENT[gender];
+  return receiptSheet({
+    paper,
+    body: `<p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ` ${words.specs}` : '.'}</p>
   ${groups.length > 0 ? specTable(groups) : ''}
-  ${accessories.length > 0 ? `<p class="lead">ومشتملاته كالتالي:</p><div class="items">${accessoryList(accessories)}</div>` : ''}
-  <p class="undertaking">${RECEIPT_UNDERTAKING}</p>
-  <p class="oath">وهذا إقرار مني بذلك ،،،</p>
-  <div class="signs">
-    <div class="by">المقر بما فيه</div>
-    <div>الاسم: ${esc(signatureName(paper.employeeName))}</div>
-    <div>التوقيع:</div>
-    <div>التاريخ: ${receiptDate(paper.issuedAt)}</div>
-  </div>
-  <footer class="foot">
-    <span class="mark"><b>EGYCASH</b> | IT Dept. | ${esc(number)}</span>
-    <span class="block">${count > 1 ? `${String(index + 1)}/${String(count)}` : ''}</span>
-  </footer>
-</section>`;
+  ${accessories.length > 0 ? `<p class="lead">${words.accessories}</p><div class="items">${accessoryList(accessories)}</div>` : ''}`,
+    block: count > 1 ? `${String(index + 1)}/${String(count)}` : '',
+    gender,
+  });
 };
 
-/** The printable acknowledgment. Exported for its own test — composing it is where the rules live. */
-export const buildCustodyReceiptHtml = (
-  paper: ItCustodyReceiptDocumentDto,
-  labels: Pick<ReceiptWindowLabels, 'print' | 'close'>,
-): string => {
-  const number = receiptNumberLabel(paper.formNumber);
-  const pages = paper.lines
-    .map((line, index) => page(paper, line, index, paper.lines.length))
-    .join('\n');
-  return `<!doctype html>
-<html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>إقرار استلام ${esc(number)} — ${esc(paper.employeeName ?? '')}</title>
-<style>
-  * { box-sizing: border-box; }
+/**
+ * The form's page, letterhead, statement, table, signature block and footer, and the tab's own
+ * toolbar and A4 sheets — the style every acknowledgment prints with. A paper with parts of its
+ * own adds their rules after these (`receiptDocument`'s `style`).
+ */
+export const RECEIPT_STYLE = `  * { box-sizing: border-box; }
   @page { size: A4 portrait; margin: 10mm 12mm; }
   /* The table's shading and the footer's block are part of the form: printed, not dropped. */
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -340,7 +473,7 @@ export const buildCustodyReceiptHtml = (
    * words of a model name, or across the line before it.
    */
   .statement { margin-top: 0; margin-bottom: 3mm; text-align: start; }
-  .fill { color: ${COLORS.fill}; }
+  .fill { color: ${RECEIPT_COLORS.fill}; }
   /* A serial, a national ID, a date, a short device name: read whole, never split across two lines. */
   .fill.whole { white-space: nowrap; }
   .kind { white-space: nowrap; }
@@ -348,8 +481,8 @@ export const buildCustodyReceiptHtml = (
   .specs col.g { width: 13.9%; }
   .specs col.c { width: 38.2%; }
   .specs th, .specs td { border: 0.5pt solid #000; padding: 0.4mm 1.8mm; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
-  .specs th { background: ${COLORS.shade}; font-size: 14pt; text-align: center; }
-  .specs td.g { background: ${COLORS.shade}; }
+  .specs th { background: ${RECEIPT_COLORS.shade}; font-size: 14pt; text-align: center; }
+  .specs td.g { background: ${RECEIPT_COLORS.shade}; }
   .specs tr.group td.g { font-size: 14pt; font-weight: 700; text-align: center; }
   .lead { margin-top: 1mm; margin-bottom: 0; }
   .items { padding-right: 5mm; line-height: 1.5; }
@@ -363,7 +496,7 @@ export const buildCustodyReceiptHtml = (
   .foot { margin-top: auto; display: flex; align-items: flex-start; direction: ltr; padding: 6mm 10.4mm 0; }
   .foot .mark { flex: 1; border-top: 0.5pt solid #000; padding-top: 1.2mm; font-family: Calibri, Carlito, Arial, sans-serif; font-size: 11pt; }
   .foot .mark b { font-family: 'Times New Roman', Times, serif; }
-  .foot .block { width: 17mm; height: 7.3mm; background: ${COLORS.block}; border-top: 0.5pt solid #c0504d; color: #fff; font-family: Arial, sans-serif; font-size: 10pt; display: flex; align-items: center; justify-content: center; }
+  .foot .block { width: 17mm; height: 7.3mm; background: ${RECEIPT_COLORS.block}; border-top: 0.5pt solid #c0504d; color: #fff; font-family: Arial, sans-serif; font-size: 10pt; display: flex; align-items: center; justify-content: center; }
   .bar { display: none; }
   /* The tab: each page an A4 sheet on a grey desk, a toolbar above them. Never printed. */
   @media screen {
@@ -380,7 +513,34 @@ export const buildCustodyReceiptHtml = (
     .page { width: 100%; min-height: 0; padding: 16px; }
     .statement, .lead, .items, .undertaking, .signs { margin-left: 0; margin-right: 0; }
   }
-</style></head>
+`;
+
+/**
+ * The whole document around any of the department's papers: its title, the style, the toolbar
+ * with the paper's number and its print and close buttons — `data-print` / `data-close`, wired by
+ * the app's own script (`shared/lib/print-window.ts`), never by one written into the page. The
+ * acknowledgments come through `receiptDocument`; a paper with a title and a number series of its
+ * own (the consumables memo, FR-20) passes them here, so its tab is this one and not a copy.
+ */
+export const paperDocument = ({
+  title,
+  number,
+  labels,
+  sheets,
+  style = '',
+}: {
+  /** The tab's title — the paper's name, its number and who it is for. */
+  title: string;
+  /** The paper's number as its footer prints it, for the toolbar. */
+  number: string;
+  labels: Pick<ReceiptWindowLabels, 'print' | 'close'>;
+  sheets: string;
+  /** Rules for this paper's own parts, after the shared ones. */
+  style?: string;
+}): string => `<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>${esc(title)}</title>
+<style>
+${RECEIPT_STYLE}${style}</style></head>
 <body>
 <div class="bar">
   <span class="number">${esc(number)}</span>
@@ -389,9 +549,44 @@ export const buildCustodyReceiptHtml = (
     <button type="button" data-close>${esc(labels.close)}</button>
   </span>
 </div>
-${pages}
+${sheets}
 </body></html>`;
+
+/** The acknowledgment's document: «إقرار استلام», its F-14 number, and who signs it. */
+export const receiptDocument = ({
+  paper,
+  labels,
+  sheets,
+  style = '',
+}: {
+  paper: Pick<ItCustodyReceiptDocumentDto, 'formNumber' | 'employeeName'>;
+  labels: Pick<ReceiptWindowLabels, 'print' | 'close'>;
+  sheets: string;
+  /** Rules for this paper's own parts, after the shared ones. */
+  style?: string;
+}): string => {
+  const number = receiptNumberLabel(paper.formNumber);
+  return paperDocument({
+    title: `إقرار استلام ${number} — ${paper.employeeName ?? ''}`,
+    number,
+    labels,
+    sheets,
+    style,
+  });
 };
+
+/** The printable acknowledgment. Exported for its own test — composing it is where the rules live. */
+export const buildCustodyReceiptHtml = (
+  paper: ItCustodyReceiptDocumentDto,
+  labels: Pick<ReceiptWindowLabels, 'print' | 'close'>,
+): string =>
+  receiptDocument({
+    paper,
+    labels,
+    sheets: paper.lines
+      .map((line, index) => page(paper, line, index, paper.lines.length))
+      .join('\n'),
+  });
 
 /** Write the composed acknowledgment into a tab `openPrintWindow` opened; it prints itself. */
 export const writeCustodyReceipt = (

@@ -80,6 +80,31 @@ export const reserveSequenceBlock = async (
   return doc.value - count + 1;
 };
 
+const isDuplicateKey = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+
+/**
+ * Mark one value of a key's series as USED, inside the caller's transaction — once. For a series
+ * that more than one collection records, where each collection's unique index sees only its own
+ * rows: the F-14 papers, kept as device receipts and as mobile-line acknowledgments. The claim is
+ * a row beside the counter, `<key>#<value>`; a second claim of the same value is a duplicate key,
+ * and answers `false` — the caller refuses, and its transaction rolls back. Two transactions
+ * claiming at the same moment conflict, and the one retried finds the other's claim.
+ */
+export const claimSequenceValue = async (
+  key: string,
+  value: number,
+  session: ClientSession,
+): Promise<boolean> => {
+  try {
+    await ItSequenceModel.create([{ _id: `${key}#${String(value)}`, value }], { session });
+    return true;
+  } catch (error) {
+    if (isDuplicateKey(error)) return false;
+    throw error;
+  }
+};
+
 /** The last value handed out for a key — 0 when none has been. Reads, never allocates. */
 export const currentSequenceValue = async (key: string): Promise<number> => {
   const doc = await ItSequenceModel.findById(key).lean<SequenceDoc>().exec();

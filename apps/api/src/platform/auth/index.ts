@@ -12,6 +12,7 @@ export {
   registerExternalWriteSurface,
   externalMayReach,
 } from './external-surfaces';
+export { registerAuthContextRefiner, type AuthContextRefiner } from './context-refiners';
 export { registerPortalIdentityResolver } from './portal-identities';
 export { registerExternalSubjectLabel } from './identity-seams';
 export { userSnapshotKey } from './user-snapshot-cache';

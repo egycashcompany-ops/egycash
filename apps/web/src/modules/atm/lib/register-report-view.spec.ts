@@ -5,15 +5,27 @@
 //
 // The counts come from the contracts' own fold over synthetic groups — the same fold the server
 // runs — so a fixture cannot drift from what the endpoint sends.
+//
+// The banks are the catalog's (DEC-35, DEC-40): a seventh bank gets its bar after BRK and its series
+// after NXT, in its catalog colour, while the six keep the sheet's places; an older server that
+// sends no bank fields still gets the sheet's six.
+//
+// The branches are the top bar's (2026-10-28): a section reads the ECMS name the server sends
+// (`branchNames`) inside the sheet's own pattern. The fixture below sends none, so the labels it
+// pins are the sheet's per-code ones — what a code without a name keeps; the names are pinned in
+// «a branch named as the top bar names it».
 import { describe, expect, it } from 'vitest';
 import {
-  ATM_BANK_REPORT_COLORS,
+  ATM_BANK_SEED,
   ATM_DATA_REPORT_CELLS,
   ATM_REGISTER_BRANCH_CODES,
   ATM_REPORT_TOTALS_COLOR,
+  atmBankSeedOf,
+  atmReportBankOrders,
   foldAtmRegisterReport,
   readAtmReportCell,
   type AtmRegisterBranchCode,
+  type AtmRegisterReportBankDto,
   type AtmRegisterReportDto,
   type AtmRegisterReportGroup,
   type Locale,
@@ -29,6 +41,7 @@ import {
   labelTracks,
   niceStep,
   registerReportView,
+  reportBranchLabel,
   reportCount,
   singleChartLayout,
 } from './register-report-view';
@@ -46,14 +59,40 @@ const GROUPS: AtmRegisterReportGroup[] = [
   { branchCode: null, bankCode: 'BRK', count: 4 },
 ];
 
+/** The six as the catalog seeds them — what the server sends while no bank has been added. */
+const SEED_BANKS: AtmRegisterReportBankDto[] = ATM_BANK_SEED.map((seed) => ({
+  code: seed.code,
+  name: seed.name,
+  color: seed.color,
+  isActive: true,
+  isSeed: true,
+}));
+
+/** A seventh, runtime-added bank (synthetic). */
+const QNB: AtmRegisterReportBankDto = {
+  code: 'QNB',
+  name: { ar: 'بنك تجريبي', en: 'Synthetic Bank' },
+  color: '#7030A0',
+  isActive: true,
+  isSeed: false,
+};
+
+/** The report DTO as the endpoint builds it: the fold over the catalog's banks, and their orders. */
 const dto = (
   shown: readonly AtmRegisterBranchCode[] = ATM_REGISTER_BRANCH_CODES,
   groups: readonly AtmRegisterReportGroup[] = GROUPS,
-): AtmRegisterReportDto => ({
-  generatedAt: '2026-03-16T08:00:00.000Z',
-  branchesShown: [...shown],
-  counts: foldAtmRegisterReport(groups, shown),
-});
+  extras: readonly AtmRegisterReportBankDto[] = [],
+): AtmRegisterReportDto => {
+  const orders = atmReportBankOrders(extras.map((bank) => bank.code));
+  return {
+    generatedAt: '2026-03-16T08:00:00.000Z',
+    branchesShown: [...shown],
+    counts: foldAtmRegisterReport(groups, shown, orders.section3),
+    banks: [...SEED_BANKS, ...extras],
+    section1Banks: orders.section1,
+    section3Banks: orders.section3,
+  };
+};
 
 const viewOf = (report: AtmRegisterReportDto = dto(), locale: Locale = 'ar') =>
   registerReportView(report, locale, (key, params) => translate(locale, key, params));
@@ -171,7 +210,7 @@ describe('section 3 — branches × banks', () => {
       'NXT',
     ]);
     for (const series of section3.series) {
-      expect(series.color).toBe(ATM_BANK_REPORT_COLORS[series.key]);
+      expect(series.color).toBe(atmBankSeedOf(series.key)?.color);
     }
     expect(section3.series[5]?.label).toBe('NXT BANK');
   });
@@ -187,6 +226,142 @@ describe('section 3 — branches × banks', () => {
     expect(row('EGYCASH-6')).toEqual([0, 0, 0, 0, 0, 0]);
     expect(section3.groups.every((group) => group.cells.length === 6)).toBe(true);
     expect(section3.total).toBe(62);
+  });
+});
+
+describe('a branch named as the top bar names it', () => {
+  /** The server's names: Mohandessin under a synthetic ECMS name, Wisal under the one ECMS uses. */
+  const named = (): AtmRegisterReportDto => ({
+    ...dto(),
+    branchNames: {
+      'EGYCASH-1': { ar: 'فرع تجريبي', en: 'Synthetic branch' },
+      'EGYCASH-7': { ar: 'الشروق', en: 'El Shorouk' },
+    },
+  });
+  const label2 = (view: ReturnType<typeof viewOf>, code: string): string | undefined =>
+    view.section2.bars.find((bar) => bar.key === `s2.${code}`)?.label;
+  const label3 = (view: ReturnType<typeof viewOf>, code: string): string | undefined =>
+    view.section3.groups.find((group) => group.key === code)?.label;
+
+  it('reads the ECMS name the server sends, in each section’s own pattern', () => {
+    const ar = viewOf(named());
+    expect(label2(ar, 'EGYCASH-1')).toBe('فرع إيجي كاش فرع تجريبي');
+    expect(label2(ar, 'EGYCASH-7')).toBe('فرع إيجي كاش الشروق');
+    expect(label3(ar, 'EGYCASH-1')).toBe('إيجي كــاش ( فرع تجريبي )');
+    const en = viewOf(named(), 'en');
+    expect(label2(en, 'EGYCASH-7')).toBe('EgyCash El Shorouk branch');
+    expect(label3(en, 'EGYCASH-7')).toBe('EgyCash (El Shorouk)');
+  });
+
+  it('keeps the sheet’s own label for a code it names no branch for', () => {
+    const view = viewOf(named());
+    expect(label2(view, 'EGYCASH-4')).toBe('فرع إيجي كاش الإسكندرية');
+    expect(label3(view, 'EGYCASH-4')).toBe('إيجي كــاش ( الاســكندرية )');
+    const tr = (key: string, params?: Record<string, string | number>): string =>
+      translate('ar', key, params);
+    expect(reportBranchLabel({}, 'EGYCASH-2', 2, 'ar', tr)).toBe(
+      tr('atm.registerReport.branch2.EGYCASH-2'),
+    );
+    expect(reportBranchLabel({ branchNames: {} }, 'EGYCASH-2', 3, 'ar', tr)).toBe(
+      tr('atm.registerReport.branch3.EGYCASH-2'),
+    );
+  });
+
+  it('changes no cell, number or order — only what a branch is called', () => {
+    const plain = viewOf();
+    const view = viewOf(named());
+    const cells = (v: typeof plain) => v.section2.bars.map(({ key, value }) => [key, value]);
+    expect(cells(view)).toEqual(cells(plain));
+    expect(view.section3.groups.map((group) => [group.key, group.cells])).toEqual(
+      plain.section3.groups.map((group) => [group.key, group.cells]),
+    );
+  });
+});
+
+describe('a bank added to the catalog (DEC-40)', () => {
+  const groups: AtmRegisterReportGroup[] = [
+    ...GROUPS,
+    { branchCode: 'EGYCASH-1', bankCode: 'QNB', count: 6 },
+    { branchCode: 'EGYCASH-4', bankCode: 'QNB', count: 1 },
+  ];
+  const view = viewOf(dto(ATM_REGISTER_BRANCH_CODES, groups, [QNB]));
+
+  it('gets a bar after BRK, before the total, named as the catalog names it', () => {
+    expect(view.section1.bars.map((bar) => bar.key)).toEqual([
+      's1.NXT',
+      's1.NBE',
+      's1.BM',
+      's1.CIB',
+      's1.HDB',
+      's1.BRK',
+      's1.QNB',
+      's1.total',
+    ]);
+    expect(view.section1.bars[6]).toMatchObject({ label: 'بنك تجريبي', value: 7 });
+    expect(view.section1.total).toBe(73);
+    expect(
+      viewOf(dto(ATM_REGISTER_BRANCH_CODES, groups, [QNB]), 'en').section1.bars[6]?.label,
+    ).toBe('Synthetic Bank');
+  });
+
+  it('gets a series after NXT in its catalog colour, and a cell in every branch', () => {
+    const { section3 } = view;
+    expect(section3.series.map((series) => series.key)).toEqual([
+      'NBE',
+      'BM',
+      'CIB',
+      'HDB',
+      'BRK',
+      'NXT',
+      'QNB',
+    ]);
+    expect(section3.series[6]).toEqual({ key: 'QNB', label: 'بنك تجريبي', color: '#7030A0' });
+    const row = (code: string) =>
+      section3.groups.find((group) => group.key === code)?.cells.map((cell) => cell.value);
+    expect(row('EGYCASH-1')).toEqual([40, 12, 0, 0, 0, 0, 6]);
+    expect(row('EGYCASH-4')).toEqual([0, 0, 0, 5, 0, 3, 1]);
+    expect(section3.groups.every((group) => group.cells.length === 7)).toBe(true);
+  });
+
+  it('leaves the six exactly as the sheet has them', () => {
+    const six = viewOf();
+    const withSeventh = view;
+    const sixBars = (v: typeof six) => v.section1.bars.filter((bar) => bar.key !== 's1.QNB');
+    expect(sixBars(withSeventh).slice(0, 6)).toEqual(sixBars(six).slice(0, 6));
+    expect(withSeventh.section3.series.slice(0, 6)).toEqual(six.section3.series);
+    expect(withSeventh.section2.bars.map((bar) => bar.key)).toEqual(
+      six.section2.bars.map((bar) => bar.key),
+    );
+  });
+
+  it('names a curated seed as the catalog names it now', () => {
+    const curated = dto();
+    curated.banks = curated.banks.map((bank) =>
+      bank.code === 'NBE' ? { ...bank, name: { ar: 'الأهلي', en: 'NBE' } } : bank,
+    );
+    expect(viewOf(curated).section1.bars[1]?.label).toBe('الأهلي');
+  });
+
+  it('draws a bank the server names without a known colour in the grey of «بنك غير محدد»', () => {
+    const report = dto(ATM_REGISTER_BRANCH_CODES, groups, [QNB]);
+    report.banks = report.banks.filter((bank) => bank.code !== 'QNB');
+    const series = viewOf(report).section3.series[6];
+    expect(series).toEqual({ key: 'QNB', label: 'QNB', color: '#6b7280' });
+  });
+});
+
+describe('an older server that sends no bank fields (a rolling deploy)', () => {
+  it("still draws the sheet's six, in the sheet's orders and colours", () => {
+    const current: Partial<AtmRegisterReportDto> = dto();
+    delete current.banks;
+    delete current.section1Banks;
+    delete current.section3Banks;
+    const view = viewOf(current as AtmRegisterReportDto);
+    expect(view).toEqual(viewOf());
+    expect(view.section1.bars).toHaveLength(7);
+    expect(view.section3.series.map((series) => series.color)).toEqual(
+      ATM_BANK_SEED.map((seed) => seed.color),
+    );
   });
 });
 

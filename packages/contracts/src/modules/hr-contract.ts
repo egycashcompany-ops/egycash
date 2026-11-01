@@ -513,7 +513,6 @@ export interface ContractVerificationDto {
   status?: ContractStatus;
   generatedAt?: string;
   templateVersion?: number;
-  generatorVersion?: string;
 }
 
 // ── Branding profile (A24) ───────────────────────────────────────────────────

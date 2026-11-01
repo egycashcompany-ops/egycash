@@ -29,6 +29,7 @@ import { LinkResolutionCard } from './components/map/LinkResolutionCard';
 import { UnlocatedRow, type UnlocatedRowActions } from './components/map/UnlocatedRow';
 import { UNLOCATED_ROWS_STEP, UnlocatedPanel } from './components/map/UnlocatedPanel';
 import { TileErrorBanner } from './components/map/TileErrorBanner';
+import { makeBankLookup } from './lib/bank-catalog';
 import {
   mapContextKey,
   mapLocationKey,
@@ -36,6 +37,9 @@ import {
   mapPointsKey,
   mapZonesKey,
 } from './api/map-queries';
+
+/** The bank lookup before the catalog answers — the six seeds (DEC-35). */
+const SEED_BANKS = makeBankLookup();
 
 const t = (key: string): string => translate('ar', key);
 
@@ -198,6 +202,7 @@ describe('a long list', () => {
       new QueryClient(),
       <UnlocatedPanel
         locale="ar"
+        banks={SEED_BANKS}
         branchId={null}
         summary={SUMMARY}
         chips={[]}
@@ -234,6 +239,7 @@ describe('a long list', () => {
             branchName=""
             open={false}
             locale="ar"
+            banks={SEED_BANKS}
             actions={actions}
             onToggle={() => undefined}
           />
@@ -298,6 +304,7 @@ describe('an open row', () => {
         branchName="فرع تجريبي أ"
         open
         locale="ar"
+        banks={SEED_BANKS}
         actions={actions}
         onToggle={() => undefined}
       />,

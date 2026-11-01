@@ -54,7 +54,19 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // `q`: the list's search; `branch`: handed over by the map's links and checked against the
   // screen's own context, never remembered (§7.5).
   ['modules/atm/pages/UnlocatedMachinesPage.tsx', ['q', 'branch']],
+  // `date` opens on tomorrow (docs/12-planning/atm-settlements-phase1.md DS-25); `line` is a
+  // selection.
+  ['modules/atm/pages/SettlementPlanPage.tsx', ['date', 'line']],
+  // `q`: the list's search, as `UnlocatedMachinesPage.tsx`; `machine`: a link that opens one
+  // machine's editor (settlements §9.8).
+  ['modules/atm/pages/CassetteLayoutsPage.tsx', ['q', 'machine']],
+  // `date` is the server's suggested day (DS-25); `line` is a selection.
+  ['modules/atm/pages/PreparationPage.tsx', ['date', 'line']],
   ['modules/atm/pages/MaintenancePage.tsx', []],
+  // The mail pages' filter row (2026-10-28). The log keeps its filters but not its range: `from`
+  // opens on cairoToday() — a day of mail, not a chosen narrowing — and `to` follows it.
+  ['modules/atm/pages/MailTicketsPage.tsx', []],
+  ['modules/atm/pages/MailLogPage.tsx', ['from', 'to']],
   ['modules/atm/pages/RegisterPage.tsx', []],
   ['modules/atm/pages/ReplenishmentsPage.tsx', []],
   ['modules/fleet/pages/AccidentsPage.tsx', []],
@@ -123,6 +135,8 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/hr/training/pages/TrainingRecordsPage.tsx', []],
   ['modules/hr/training/pages/TrainingSessionsPage.tsx', []],
   ['modules/it/pages/AssetsListPage.tsx', []],
+  ['modules/it/pages/ConsumableMovementsPage.tsx', []],
+  ['modules/it/pages/ConsumablesPage.tsx', []],
   ['modules/it/pages/CustodyPage.tsx', []],
   ['modules/it/pages/HelpDeskSettingsPage.tsx', []],
   ['modules/it/pages/ItCatalogsPage.tsx', ['kind']],
@@ -130,6 +144,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/it/pages/LicensesPage.tsx', []],
   ['modules/it/pages/MaintenanceOrdersPage.tsx', []],
   ['modules/it/pages/MaintenancePlansPage.tsx', []],
+  ['modules/it/pages/MobileLinesPage.tsx', []],
   ['modules/it/pages/SoftwarePage.tsx', ['tab']],
   ['modules/it/pages/SparePartsPage.tsx', []],
   ['modules/it/pages/TicketsListPage.tsx', []],
@@ -155,7 +170,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
 /** Screens whose query state must not survive a visit. Every reason is a fact about the code. */
 const EXCLUDED: readonly (readonly [string, string])[] = [
   ['modules/atm/pages/DailyReportPage.tsx', '`date` opens on cairoToday() \u2014 the day the report IS'],
-  ['modules/atm/pages/MailLogPage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
+  ['modules/atm/pages/ControlPage.tsx', '`date` is the server\u2019s suggested day \u2014 the day being dispatched (DS-25); `tab` is a view'],
   ['modules/atm/pages/MaintenanceDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
   ['modules/atm/pages/ReplenishmentsDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
   ['modules/operations/mobile/CaptainDayPage.tsx', '`date` is the day being driven'],
@@ -185,8 +200,9 @@ const MIGRATION_PENDING: readonly string[] = [];
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
+  ['modules/atm/pages/AtmSettingsPage.tsx'],
+  ['modules/atm/pages/LayoutImportPage.tsx', 'an upload form: the bank select picks the file\u2019s profile and the table previews one upload; nothing narrows a stored list'],
   ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
-  ['modules/atm/pages/MailTicketsPage.tsx'],
   ['modules/atm/pages/RegisterImportPage.tsx'],
   ['modules/atm/pages/RegisterReportPage.tsx'],
   ['modules/fleet/pages/CustodyMemoEditorPage.tsx'],

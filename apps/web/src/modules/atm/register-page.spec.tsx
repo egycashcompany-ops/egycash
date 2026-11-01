@@ -5,6 +5,15 @@
 // dark green in every cell, and each row offers exactly the actions its state and the reader's keys
 // allow.
 //
+// And the catalog (DEC-35 … DEC-37): the bank select offers the catalog's active banks (a seventh
+// included) with «+» behind `atmBank.create`, the Operations name is a spelling of the chosen bank,
+// an area can be added from the form, «البنوك» opens the catalog, and a row Operations recorded from
+// /atm/data-edit carries «بيانات ناقصة» — which the filter finds and the export takes along.
+//
+// And the branches as the top bar names them (2026-10-28): the grid, the filter, the receipt's
+// picker and the edit form read the ECMS name the server sends, never an EGYCASH code, and a top
+// bar on a linked source (أكتوبر, working as المهندسين) stands for the branch it works as.
+//
 // Every code, name and value below is synthetic. No real ATM ID, key code or combination appears.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -16,8 +25,12 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  ATM_BANK_SEED,
+  type AtmBankDto,
+  type AtmRegisterBranchOptionsDto,
   type AtmRegisterCassettesDto,
   type AtmRegisterEntryDto,
+  type AtmRegisterMetaBranchOptionDto,
   type AtmRegisterMetaDto,
   type Locale,
   type MeDto,
@@ -27,19 +40,34 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
-import { RegisterPage } from './pages/RegisterPage';
+import { RegisterPage, readRegisterFilters, registerFilterParams } from './pages/RegisterPage';
 import { HandoverDialog, handoverBody } from './components/register/HandoverDialog';
 import { registerRowActions } from './components/register/RegisterRowActions';
 import {
+  areaSuggestions,
   entryEditRules,
   entryFormValues,
+  isNewArea,
+  opsLabelChoices,
   receiveBody,
+  registerBankChoices,
   updateBody,
 } from './components/register/EntryFormSections';
 import { EditEntryDialog } from './components/register/EditEntryDialog';
+import { DeleteEntryDialog } from './components/register/DeleteEntryDialog';
 import { ReceiveEntryDialog, defaultReceiptBranch } from './components/register/ReceiveEntryDialog';
+import { BankCatalogDialog } from './components/catalog/BankCatalogDialog';
 import { REGISTER_ENDED_ROW } from './lib/register-grid';
-import { searchParamOf } from './components/register/RegisterFilters';
+import { makeBankLookup } from './lib/bank-catalog';
+import {
+  registerBankFilterOptions,
+  registerBranchChoices,
+  registerBranchFilterValue,
+  searchParamOf,
+  strayRegisterBranch,
+  viewableBranches,
+} from './components/register/RegisterFilters';
+import { atmBanksKey } from './api/atm-queries';
 import { listKey } from '../../shared/lib/query-keys';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -54,6 +82,8 @@ const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
 
 const ALEX = '650000000000000000000104';
+/** Alexandria as ECMS names it — what the top bar, and so the register, shows. */
+const ALEX_NAME = { ar: 'الإسكندرية', en: 'Alexandria' };
 /** A value no row may ever print — it rides on a row as if a server had leaked it. */
 const LEAKED_COMBINATION = 'SENTINEL-AO-VALUE';
 const SYNTHETIC_KEY = 'SYN-KEY-0001';
@@ -84,6 +114,7 @@ const entry = (id: string, over: Partial<AtmRegisterEntryDto> = {}): AtmRegister
   id,
   branchId: ALEX,
   branchCode: 'EGYCASH-4',
+  branchName: ALEX_NAME,
   area: 'SYNTH AREA',
   bankCode: 'NBE',
   opsBankLabel: null,
@@ -114,6 +145,7 @@ const entry = (id: string, over: Partial<AtmRegisterEntryDto> = {}): AtmRegister
   handoverNotes: null,
   status: 'open',
   source: 'manual',
+  dataIncomplete: false,
   importRow: null,
   importIssues: [],
   version: 3,
@@ -143,6 +175,7 @@ const BRANCHLESS = entry('650000000000000000000a05', {
   startDate: null,
   branchId: null,
   branchCode: null,
+  branchName: null,
   machineId: null,
   masterState: null,
 });
@@ -161,29 +194,102 @@ const VISIBLE = entry('650000000000000000000a06', {
   },
 });
 
-const ROWS = [OPEN, ENDED, PENDING, UNLINKED, BRANCHLESS, VISIBLE];
+/** A machine Operations added on /atm/data-edit: an open, linked receipt, flagged (DEC-36/37). */
+const INTAKE = entry('650000000000000000000a08', {
+  source: 'operations',
+  dataIncomplete: true,
+  bankCode: 'BM',
+  effectiveOpsBankLabel: 'MISR',
+  safeCombinationSet: false,
+});
+
+const ROWS = [OPEN, ENDED, PENDING, UNLINKED, BRANCHLESS, VISIBLE, INTAKE];
+
+/** The six seeds as the meta carries them, a seventh active bank, and an archived eighth. */
+const META_BANKS: AtmRegisterMetaDto['banks'] = [
+  ...ATM_BANK_SEED.map((seed) => ({
+    code: seed.code,
+    name: seed.name,
+    opsLabel: seed.opsLabel,
+    color: seed.color,
+    isActive: true,
+    sortOrder: seed.sortOrder,
+    isSeed: true,
+  })),
+  {
+    code: 'QNB',
+    name: { ar: 'بنك تجريبي', en: 'Synthetic Bank' },
+    opsLabel: 'QNB',
+    color: '#7030A0',
+    isActive: true,
+    sortOrder: 70,
+    isSeed: false,
+  },
+  {
+    code: 'OLDB',
+    name: { ar: 'بنك مؤرشف تجريبي', en: 'Archived Synthetic Bank' },
+    opsLabel: 'OLDB',
+    color: '#00B0F0',
+    isActive: false,
+    sortOrder: 80,
+    isSeed: false,
+  },
+];
 
 const META: AtmRegisterMetaDto = {
-  banks: [
-    {
-      code: 'NBE',
-      name: { ar: 'البنك الأهلي المصري', en: 'NBE' },
-      opsLabel: 'NBE',
-      color: '#385723',
-    },
-  ],
+  banks: META_BANKS,
   branches: [
     {
       code: 'EGYCASH-4',
       name: { ar: 'الإسكندرية', en: 'Alexandria' },
       branchId: ALEX,
-      branchName: { ar: 'الإسكندرية', en: 'Alexandria' },
+      branchName: ALEX_NAME,
       branchActive: true,
+      canView: true,
+      canCreate: true,
+      resolvedBranchId: ALEX,
+      resolvedBranchName: ALEX_NAME,
+    },
+  ],
+  branchOptions: [
+    {
+      branchId: ALEX,
+      name: ALEX_NAME,
+      codes: ['EGYCASH-4'],
+      sourceBranchIds: [],
+      active: true,
       canView: true,
       canCreate: true,
     },
   ],
 };
+
+/** META with one more branch the reader may receive in — a choice to make. */
+const TANTA = '650000000000000000000102';
+const withTanta = (meta: AtmRegisterMetaDto = META): AtmRegisterMetaDto => ({
+  ...meta,
+  branches: [
+    ...meta.branches,
+    {
+      ...(meta.branches[0] as AtmRegisterMetaDto['branches'][number]),
+      code: 'EGYCASH-2',
+      branchId: TANTA,
+      resolvedBranchId: TANTA,
+    },
+  ],
+  branchOptions: [
+    ...(meta.branchOptions ?? []),
+    {
+      branchId: TANTA,
+      name: { ar: 'طنطا', en: 'Tanta' },
+      codes: ['EGYCASH-2'],
+      sourceBranchIds: [],
+      active: true,
+      canView: true,
+      canCreate: true,
+    },
+  ],
+});
 
 const ALL_KEYS = [
   'atmRegister.view',
@@ -197,11 +303,11 @@ const ALL_KEYS = [
   'atmRegisterReport.view',
 ];
 
-const store = (permissions: readonly string[]) =>
+const store = (permissions: readonly string[], locale: Locale = 'ar') =>
   configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
-      locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+      locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
       auth: {
         me: {
           id: 'u1',
@@ -222,15 +328,24 @@ const render = (
   permissions: readonly string[] = ALL_KEYS,
   rows: AtmRegisterEntryDto[] = ROWS,
   meta: AtmRegisterMetaDto = META,
+  {
+    url = '/atm/register',
+    filters = {},
+    locale = 'ar',
+  }: { url?: string; filters?: Record<string, unknown>; locale?: Locale } = {},
 ): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  // The page's own first question: page 1, 25 rows, no filter, no sort (the sheet's order).
-  qc.setQueryData(listKey('atm', 'registerEntries', { page: 1, pageSize: 25 }), page(rows));
+  // The page's own first question: page 1, 25 rows, no filter (unless the URL holds one), no sort
+  // (the sheet's order).
+  qc.setQueryData(
+    listKey('atm', 'registerEntries', { ...filters, page: 1, pageSize: 25 }),
+    page(rows),
+  );
   qc.setQueryData(listKey('atm', 'registerMeta'), meta);
   return renderToStaticMarkup(
-    <Provider store={store(permissions)}>
+    <Provider store={store(permissions, locale)}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/atm/register']}>
+        <MemoryRouter initialEntries={[url]}>
           <RegisterPage />
         </MemoryRouter>
       </QueryClientProvider>
@@ -404,7 +519,14 @@ describe('the page around the grid', () => {
   it('says so when no branch code is mapped yet', () => {
     const unmapped: AtmRegisterMetaDto = {
       ...META,
-      branches: META.branches.map((b) => ({ ...b, branchId: null, branchName: null })),
+      branches: META.branches.map((b) => ({
+        ...b,
+        branchId: null,
+        branchName: null,
+        resolvedBranchId: null,
+        resolvedBranchName: null,
+      })),
+      branchOptions: [],
     };
     expect(render(ALL_KEYS, ROWS, unmapped)).toContain(t('atm.register.noMapping'));
     expect(render()).not.toContain('data-register-no-mapping');
@@ -418,7 +540,7 @@ describe('the page around the grid', () => {
     const markup = render();
     expect(markup).toContain('data-page-size');
     expect(markup).toMatch(/<option value="100">/);
-    expect(markup).toContain(t('common.list.count', { count: '٦' }));
+    expect(markup).toContain(t('common.list.count', { count: '٧' }));
   });
 });
 
@@ -565,18 +687,9 @@ describe('the entry form', () => {
   it('starts a receipt on the top bar’s branch when the reader may receive there', () => {
     expect(defaultReceiptBranch(META, ALEX)).toBe(ALEX);
     expect(defaultReceiptBranch(META, null), 'the only branch on offer').toBe(ALEX);
-    const two: AtmRegisterMetaDto = {
-      ...META,
-      branches: [
-        ...META.branches,
-        {
-          ...(META.branches[0] as AtmRegisterMetaDto['branches'][number]),
-          code: 'EGYCASH-2',
-          branchId: '650000000000000000000102',
-        },
-      ],
-    };
+    const two = withTanta();
     expect(defaultReceiptBranch(two, null), 'a choice to make').toBe('');
+    expect(defaultReceiptBranch(two, TANTA)).toBe(TANTA);
     expect(defaultReceiptBranch(two, '650000000000000000000999'), 'out of reach').toBe('');
   });
 
@@ -702,5 +815,499 @@ describe('the entry form', () => {
     expect(visible).toContain('data-register-section="secret"');
     expect(visible).toContain(t('atm.register.form.combinationKeep'));
     expect(visible).toContain(t('atm.register.form.combinationClear'));
+  });
+});
+
+// ── The catalog in the register (DEC-35 … DEC-37) ─────────────────────────────────────────────────
+
+/** The branch's options as `/branch-options` answers them: two spellings, a labelled area. */
+const OPTIONS: AtmRegisterBranchOptionsDto = {
+  branchId: ALEX,
+  areaLabels: ['SYNTH AREA'],
+  bankLabels: ['NBE FOREX', 'MISR SPELLING'],
+  areaOptions: [{ name: 'SYNTH AREA', nameAr: 'منطقة تجريبية', nameEn: null }],
+  bankVariants: [
+    { name: 'NBE FOREX', bankCode: 'NBE' },
+    { name: 'MISR SPELLING', bankCode: 'BM' },
+  ],
+  areas: ['SYNTH AREA', 'Typed Area'],
+  operationTypes: [],
+  vendors: [],
+  models: [],
+  hubs: [],
+};
+
+const withForm = (node: JSX.Element, permissions: readonly string[] = ALL_KEYS): string => {
+  const qc = new QueryClient();
+  qc.setQueryData(listKey('atm', 'registerBranchOptions', { branchId: ALEX }), OPTIONS);
+  return renderToStaticMarkup(
+    <Provider store={store(permissions)}>
+      <QueryClientProvider client={qc}>{node}</QueryClientProvider>
+    </Provider>,
+  );
+};
+
+/** The `<option>`s of one select, by the select's id suffix. */
+const optionsOf = (markup: string, field: string): string[] => {
+  const at = new RegExp(`<select[^>]*id="[^"]*-${field}"[^>]*>`).exec(markup);
+  if (at === null) return [];
+  const body = markup.slice(at.index, markup.indexOf('</select>', at.index));
+  return [...body.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1] as string);
+};
+
+describe('«بيانات ناقصة» in the grid', () => {
+  it('marks a flagged row with the amber pill beside its Name, and only such a row', () => {
+    const markup = render();
+    const name = cell(row(markup, INTAKE.id), 'name');
+    expect(name).toContain('data-register-incomplete="true"');
+    expect(name).toContain(t('atm.register.incomplete'));
+    for (const other of [OPEN, ENDED, PENDING, UNLINKED, VISIBLE]) {
+      expect(cell(row(markup, other.id), 'name'), other.id).not.toContain(
+        'data-register-incomplete',
+      );
+    }
+  });
+
+  it('lists what is still empty in its tooltip, and says Operations recorded the row', () => {
+    const name = cell(row(render(), INTAKE.id), 'name');
+    const tooltip = /data-register-incomplete="true" title="([^"]*)"/.exec(name)?.[1] ?? '';
+    expect(tooltip).toContain(t('atm.register.col.model'));
+    expect(tooltip).toContain(t('atm.register.group.cassettes'));
+    // The reader cannot see this row's keys: whether they are empty is not theirs to know.
+    expect(tooltip).not.toContain(t('atm.register.group.keys'));
+    expect(tooltip).not.toContain(t('atm.register.col.area'));
+    expect(tooltip).toContain(t('atm.register.source.operations'));
+    expect(row(render(), INTAKE.id)).toContain('data-register-source="operations"');
+    // The Name's own tooltip says where the row came from too.
+    expect(name).toContain(`title="${INTAKE.name ?? ''}\n${t('atm.register.source.operations')}"`);
+  });
+
+  it('names the bank of a row by the catalog, a seventh bank included', () => {
+    const qnb = entry('650000000000000000000a09', { bankCode: 'QNB' });
+    expect(cell(row(render(ALL_KEYS, [qnb]), qnb.id), 'bankCode')).toContain('title="بنك تجريبي"');
+  });
+});
+
+describe('the «بيانات ناقصة فقط» filter', () => {
+  it('reads incomplete=1 from the URL and asks the list — and the export — for incomplete=true', () => {
+    const filters = readRegisterFilters(new URLSearchParams('incomplete=1'));
+    expect(filters.incomplete).toBe(true);
+    // The list and the export send exactly these.
+    expect(registerFilterParams(filters)).toEqual({ incomplete: true });
+    expect(registerFilterParams(readRegisterFilters(new URLSearchParams('')))).toEqual({});
+    const markup = render(ALL_KEYS, [INTAKE], META, {
+      url: '/atm/register?incomplete=1',
+      filters: { incomplete: true },
+    });
+    // The page asked the list with incomplete=true (only that cache entry was filled).
+    expect(markup).toContain(`data-register-row="${INTAKE.id}"`);
+    expect(markup).toMatch(
+      /<input(?=[^>]*checked="")(?=[^>]*data-register-filter="incomplete")[^>]*>/,
+    );
+  });
+
+  it('is remembered with the other filters, and cleared with them', () => {
+    const src = readFileSync(join(HERE, 'pages/RegisterPage.tsx'), 'utf8');
+    expect(/const REMEMBERED_FILTERS = \[[^\]]*'incomplete'[^\]]*\] as const;/.test(src)).toBe(
+      true,
+    );
+    expect(src).toMatch(/onClear=\{\(\) =>\s*patch\(\{[^}]*incomplete: null/);
+  });
+
+  it('takes any well-shaped bank code from the URL — a seventh bank is a real filter', () => {
+    expect(readRegisterFilters(new URLSearchParams('bank=NBE,QNB,qnb,X')).banks).toEqual([
+      'NBE',
+      'QNB',
+    ]);
+  });
+
+  it('offers every catalog bank, archived ones marked, and a code the catalog lacks', () => {
+    const lookup = makeBankLookup(META_BANKS);
+    const options = registerBankFilterOptions(lookup, ['ZZZ'], 'ar', t);
+    expect(options.map((o) => o.value)).toEqual([
+      'NBE',
+      'BM',
+      'CIB',
+      'HDB',
+      'BRK',
+      'NXT',
+      'QNB',
+      'OLDB',
+      'ZZZ',
+    ]);
+    expect(options.find((o) => o.value === 'OLDB')?.label).toBe(
+      t('atm.bankCatalog.archivedOption', { name: 'OLDB · بنك مؤرشف تجريبي' }),
+    );
+    expect(options.find((o) => o.value === 'QNB')?.label).toBe('QNB · بنك تجريبي');
+  });
+});
+
+describe('banks and areas in the entry form', () => {
+  it('offers the catalog’s active banks, a seventh included, and never an archived one for a receipt', () => {
+    const markup = withForm(<ReceiveEntryDialog meta={META} onClose={() => undefined} />);
+    expect(optionsOf(markup, 'bankCode')).toEqual([
+      '',
+      'NBE',
+      'BM',
+      'CIB',
+      'HDB',
+      'BRK',
+      'NXT',
+      'QNB',
+    ]);
+  });
+
+  it('keeps an entry’s own archived bank on offer, marked, so an edit can still save it', () => {
+    const old = entry('650000000000000000000a0a', { bankCode: 'OLDB' });
+    const markup = withForm(<EditEntryDialog entry={old} meta={META} onClose={() => undefined} />);
+    expect(optionsOf(markup, 'bankCode')).toContain('OLDB');
+    expect(markup).toContain(
+      t('atm.bankCatalog.archivedOption', { name: 'OLDB · بنك مؤرشف تجريبي' }),
+    );
+    const lookup = makeBankLookup(META_BANKS);
+    expect(registerBankChoices(lookup, ['QNB2']).map((c) => c.code)).toContain('QNB2');
+  });
+
+  it('offers «+» for a bank only to `atmBank.create`', () => {
+    const dialog = <ReceiveEntryDialog meta={META} onClose={() => undefined} />;
+    expect(withForm(dialog, [...ALL_KEYS, 'atmBank.create'])).toContain('data-register-add="bank"');
+    expect(withForm(dialog)).not.toContain('data-register-add="bank"');
+  });
+
+  it('offers «+ منطقة» to the register keys and the Operations label keys, and nobody else', () => {
+    const edit = <EditEntryDialog entry={OPEN} meta={META} onClose={() => undefined} />;
+    expect(withForm(edit, ['atmRegister.edit'])).toContain('data-register-add="area"');
+    expect(withForm(edit, ['atmRegister.create'])).toContain('data-register-add="area"');
+    expect(withForm(edit, ['atmRefLabel.create'])).toContain('data-register-add="area"');
+    expect(withForm(edit, ['atmMachine.manage'])).toContain('data-register-add="area"');
+    expect(withForm(edit, ['atmRegister.view'])).not.toContain('data-register-add="area"');
+    // A receipt whose branch is not chosen yet has nowhere to file an area.
+    const receipt = withForm(<ReceiveEntryDialog meta={withTanta()} onClose={() => undefined} />);
+    expect(receipt).toMatch(/<button(?=[^>]*disabled="")(?=[^>]*data-register-add="area")[^>]*>/);
+  });
+
+  it('offers the Operations names of the CHOSEN bank only (DEC-25)', () => {
+    const markup = withForm(<EditEntryDialog entry={OPEN} meta={META} onClose={() => undefined} />);
+    expect(optionsOf(markup, 'opsBankLabel')).toEqual(['', 'NBE FOREX']);
+    expect(opsLabelChoices(OPTIONS, 'BM', '')).toEqual(['MISR SPELLING']);
+    expect(opsLabelChoices(OPTIONS, 'QNB', '')).toEqual([]);
+    expect(opsLabelChoices(OPTIONS, 'NBE', 'OLD LABEL')).toEqual(['NBE FOREX', 'OLD LABEL']);
+  });
+
+  it('suggests a labelled area by its stored name, with its name in the reader’s language', () => {
+    const markup = withForm(<EditEntryDialog entry={OPEN} meta={META} onClose={() => undefined} />);
+    expect(markup).toContain('<option value="SYNTH AREA" label="منطقة تجريبية">');
+    expect(markup).toContain('<option value="Typed Area">');
+    const suggestions = areaSuggestions(OPTIONS, 'en');
+    expect(suggestions).toHaveLength(2);
+    // No English name: the Arabic one stands in.
+    expect(suggestions).toContainEqual({ value: 'SYNTH AREA', label: 'منطقة تجريبية' });
+    expect(suggestions).toContainEqual({ value: 'Typed Area' });
+  });
+
+  it('says before the save when a typed area is new to the branch', () => {
+    expect(isNewArea(OPTIONS, 'Brand New', null)).toBe(true);
+    expect(isNewArea(OPTIONS, ' SYNTH AREA ', null)).toBe(false);
+    expect(isNewArea(OPTIONS, 'Typed Area', null)).toBe(false);
+    // The entry's own stored value is not new, and nothing is said before the lists answer.
+    expect(isNewArea(OPTIONS, 'Legacy', 'Legacy')).toBe(false);
+    expect(isNewArea(undefined, 'Brand New', null)).toBe(false);
+    expect(t('atm.register.form.newAreaHint')).not.toBe('atm.register.form.newAreaHint');
+  });
+});
+
+describe('the «بيانات ناقصة» tick of an edit', () => {
+  it('opens on the entry’s flag, and sends only a change of it', () => {
+    const initial = entryFormValues(INTAKE);
+    expect(initial.dataIncomplete).toBe('1');
+    expect(updateBody(INTAKE, initial, initial, false)).toEqual({ version: 3 });
+    expect(updateBody(INTAKE, initial, { ...initial, dataIncomplete: '' }, false)).toEqual({
+      version: 3,
+      dataIncomplete: false,
+    });
+    const plain = entryFormValues(OPEN);
+    expect(updateBody(OPEN, plain, { ...plain, dataIncomplete: '1' }, false)).toEqual({
+      version: 3,
+      dataIncomplete: true,
+    });
+    // A receipt never sends it: the mark is the server's (intake) or Efficiency's (edit).
+    expect(
+      receiveBody({ ...entryFormValues(null, ALEX), dataIncomplete: '1' }, false),
+    ).not.toHaveProperty('dataIncomplete');
+  });
+
+  it('is drawn on an edit — ticked for a flagged row, with the Operations note — never on a receipt', () => {
+    const flagged = withForm(
+      <EditEntryDialog entry={INTAKE} meta={META} onClose={() => undefined} />,
+    );
+    expect(flagged).toContain('data-register-incomplete-field="true"');
+    expect(flagged).toMatch(/<input type="checkbox"[^>]*checked=""/);
+    expect(flagged).toContain('data-register-operations-note="true"');
+    const plain = withForm(<EditEntryDialog entry={OPEN} meta={META} onClose={() => undefined} />);
+    expect(plain).toContain('data-register-incomplete-field="true"');
+    expect(plain).not.toContain('data-register-operations-note');
+    const receipt = withForm(<ReceiveEntryDialog meta={META} onClose={() => undefined} />);
+    expect(receipt).not.toContain('data-register-incomplete-field');
+  });
+});
+
+describe('the delete of an Operations receipt', () => {
+  it('says the entry is Operations’ own record of the machine', () => {
+    const intake = withForm(<DeleteEntryDialog entry={INTAKE} onClose={() => undefined} />);
+    expect(intake).toContain(t('atm.register.form.deleteBodyOperations'));
+    const manual = withForm(<DeleteEntryDialog entry={OPEN} onClose={() => undefined} />);
+    expect(manual).toContain(t('atm.register.form.deleteBody'));
+    expect(manual).not.toContain(t('atm.register.form.deleteBodyOperations'));
+  });
+});
+
+describe('«البنوك» in the register', () => {
+  const bank = (seed: (typeof ATM_BANK_SEED)[number]): AtmBankDto => ({
+    id: `65000000000000000000c0${String(seed.sortOrder)}`,
+    code: seed.code,
+    name: seed.name,
+    opsLabel: seed.opsLabel,
+    formerOpsLabels: [],
+    color: seed.color,
+    sortOrder: seed.sortOrder,
+    isActive: true,
+    isSeed: true,
+    hasIdFormat: true,
+    version: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+  const CATALOG = ATM_BANK_SEED.map(bank);
+
+  const catalogDialog = (permissions: readonly string[]): string => {
+    const qc = new QueryClient();
+    qc.setQueryData(atmBanksKey(), CATALOG);
+    return renderToStaticMarkup(
+      <Provider store={store(permissions)}>
+        <QueryClientProvider client={qc}>
+          <BankCatalogDialog open onClose={() => undefined} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+
+  it('opens from the header for whoever keeps the catalog, and for nobody else', () => {
+    expect(render([...ALL_KEYS, 'atmBank.edit'])).toContain('data-register-banks="true"');
+    expect(render([...ALL_KEYS, 'atmBank.create'])).toContain('data-register-banks="true"');
+    expect(render()).not.toContain('data-register-banks');
+  });
+
+  it('lists the whole catalog, with add and edit behind their own keys', () => {
+    const keeper = catalogDialog(['atmBank.create', 'atmBank.edit']);
+    expect(keeper).toContain('data-bank-catalog="true"');
+    expect(keeper).toContain(t('atm.bankCatalog.intro'));
+    expect(keeper).toContain('البنك التجارى الدولى');
+    expect(keeper).toContain('data-bank-catalog-action="add"');
+    expect([...keeper.matchAll(/data-edit-action="edit-bank"/g)]).toHaveLength(6);
+    const editor = catalogDialog(['atmBank.edit']);
+    expect(editor).not.toContain('data-bank-catalog-action="add"');
+    expect([...editor.matchAll(/data-edit-action="edit-bank"/g)]).toHaveLength(6);
+    const adder = catalogDialog(['atmBank.create']);
+    expect(adder).toContain('data-bank-catalog-action="add"');
+    expect(adder).not.toContain('data-edit-action="edit-bank"');
+  });
+});
+
+// ── The branches, as the top bar names them (2026-10-28) ─────────────────────────────────────────
+//
+// The owner: «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي», «الفروع فوق خالص فى البار بتاع
+// السيستم غير اللى فى الفلاتر». Below, أكتوبر works as المهندسين (`atm.branchLinks`) and the
+// workbook's EGYCASH-1 and EGYCASH-5 both resolve there: the meta lists المهندسين once, with أكتوبر
+// among its sources. The names are ECMS's, the ids synthetic.
+
+const MOH = '650000000000000000000101';
+const OCT = '650000000000000000000105';
+const PORT_SAID = '650000000000000000000106';
+
+const branchOption = (
+  over: Partial<AtmRegisterMetaBranchOptionDto> &
+    Pick<AtmRegisterMetaBranchOptionDto, 'branchId' | 'name'>,
+): AtmRegisterMetaBranchOptionDto => ({
+  codes: [],
+  sourceBranchIds: [],
+  active: true,
+  canView: true,
+  canCreate: true,
+  ...over,
+});
+
+const LINKED: AtmRegisterMetaDto = {
+  ...META,
+  // The server's order is the top bar's (by ECMS code); the page keeps it as it comes.
+  branchOptions: [
+    branchOption({ branchId: ALEX, name: ALEX_NAME, codes: ['EGYCASH-4'] }),
+    branchOption({
+      branchId: MOH,
+      name: { ar: 'المهندسين', en: 'Mohandessin' },
+      codes: ['EGYCASH-1', 'EGYCASH-5'],
+      sourceBranchIds: [OCT],
+    }),
+    // Outside what the top bar's choice lets this reader see or receive in.
+    branchOption({
+      branchId: TANTA,
+      name: { ar: 'طنطا', en: 'Tanta' },
+      codes: ['EGYCASH-2'],
+      canView: false,
+      canCreate: false,
+    }),
+    // No longer active in ECMS: its rows stay findable, nothing new is received there.
+    branchOption({
+      branchId: PORT_SAID,
+      name: { ar: 'بورسعيد', en: 'Port Said' },
+      codes: ['EGYCASH-6'],
+      active: false,
+    }),
+  ],
+};
+
+/** One select's options as [value, text], the select found by its opening tag. */
+const selectOptions = (markup: string, opening: RegExp): [string, string][] => {
+  const at = opening.exec(markup);
+  if (at === null) return [];
+  const body = markup.slice(at.index, markup.indexOf('</select>', at.index));
+  return [...body.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [
+    m[1] as string,
+    m[2] as string,
+  ]);
+};
+const BRANCH_FILTER = /<select[^>]*aria-label="الفرع"[^>]*>/;
+const RECEIPT_BRANCH = /<select[^>]*id="[^"]*-branchId"[^>]*>/;
+
+describe('the branches, as the top bar names them', () => {
+  it('names a row’s branch in its cell and tooltip by its ECMS name — never its code', () => {
+    const named = entry('650000000000000000000a0b', {
+      branchId: MOH,
+      branchCode: 'EGYCASH-1',
+      branchName: { ar: 'فرع تجريبي', en: 'Synthetic branch' },
+    });
+    const ar = cell(row(render(ALL_KEYS, [named, BRANCHLESS]), named.id), 'branchCode');
+    expect(ar).toContain('title="فرع تجريبي"');
+    expect(ar).toContain('<span dir="auto">فرع تجريبي</span>');
+    // Not the workbook's name for the code, and not the code.
+    expect(ar).not.toContain('المهندسين');
+    expect(ar).not.toContain('EGYCASH');
+    const en = cell(row(render(ALL_KEYS, [named], META, { locale: 'en' }), named.id), 'branchCode');
+    expect(en).toContain('title="Synthetic branch"');
+    // A branch-less imported row (a blank column A) reads as a dash.
+    const blank = cell(row(render(ALL_KEYS, [named, BRANCHLESS]), BRANCHLESS.id), 'branchCode');
+    expect(blank).toContain('title="—"');
+  });
+
+  it('writes no EGYCASH code anywhere on the page', () => {
+    expect(render(ALL_KEYS, ROWS, LINKED)).not.toContain('EGYCASH');
+    expect(render(ALL_KEYS, ROWS, LINKED, { locale: 'en' })).not.toContain('EGYCASH');
+  });
+
+  it('filters by the branches the server offers: ECMS names alone, in its order, viewable only', () => {
+    expect(selectOptions(render(ALL_KEYS, ROWS, LINKED), BRANCH_FILTER)).toEqual([
+      ['', t('atm.register.filter.allBranches')],
+      [ALEX, 'الإسكندرية'],
+      [MOH, 'المهندسين'],
+      [PORT_SAID, 'بورسعيد'],
+    ]);
+    expect(viewableBranches(LINKED).map((b) => b.branchId)).toEqual([ALEX, MOH, PORT_SAID]);
+  });
+
+  it('reads a filter remembered on a linked source as the branch it works as', () => {
+    const choices = viewableBranches(LINKED);
+    expect(registerBranchFilterValue(choices, OCT)).toBe(MOH);
+    expect(registerBranchFilterValue(choices, MOH)).toBe(MOH);
+    expect(registerBranchFilterValue(choices, '')).toBe('');
+    const markup = render(ALL_KEYS, ROWS, LINKED, {
+      url: `/atm/register?branch=${OCT}`,
+      filters: { branchId: OCT },
+    });
+    expect(markup).toContain(`<option value="${MOH}" selected="">المهندسين</option>`);
+  });
+
+  // The options follow the top bar, so a filter chosen under another top-bar choice (or a link
+  // from another reader's view) can name a branch no option stands for: the select read «كل
+  // الفروع» while the list stayed narrowed to it and answered empty (review finding). The page
+  // drops such a filter once the meta has answered.
+  it('drops a branch filter the server no longer offers — once the meta has answered', () => {
+    expect(
+      strayRegisterBranch(LINKED, TANTA),
+      'outside what the top bar lets this reader see',
+    ).toBe(true);
+    expect(strayRegisterBranch(LINKED, '650000000000000000000199'), 'a branch never offered').toBe(
+      true,
+    );
+    expect(strayRegisterBranch(LINKED, OCT), 'a linked source reads as its target').toBe(false);
+    expect(strayRegisterBranch(LINKED, MOH)).toBe(false);
+    expect(strayRegisterBranch(LINKED, PORT_SAID), 'inactive, still findable').toBe(false);
+    expect(strayRegisterBranch(LINKED, '')).toBe(false);
+    expect(strayRegisterBranch(undefined, TANTA), 'nothing known before the meta').toBe(false);
+  });
+
+  it('receives in the active branches the reader may create in, each named once', () => {
+    const markup = withForm(<ReceiveEntryDialog meta={LINKED} onClose={() => undefined} />);
+    expect(selectOptions(markup, RECEIPT_BRANCH)).toEqual([
+      ['', t('common.select')],
+      [ALEX, 'الإسكندرية'],
+      [MOH, 'المهندسين'],
+    ]);
+  });
+
+  it('starts a receipt on a top bar set to a linked source on the branch it works as', () => {
+    expect(defaultReceiptBranch(LINKED, OCT)).toBe(MOH);
+    expect(defaultReceiptBranch(LINKED, MOH)).toBe(MOH);
+    expect(defaultReceiptBranch(LINKED, null), 'two to choose from').toBe('');
+    expect(defaultReceiptBranch(LINKED, TANTA), 'not one this reader receives in').toBe('');
+  });
+
+  it('shows an edited entry’s branch by the ECMS name of where it is filed, read-only', () => {
+    const filed = entry('650000000000000000000a0c', {
+      branchId: OCT,
+      branchCode: 'EGYCASH-1',
+      branchName: { ar: 'أكتوبر', en: 'October' },
+    });
+    const markup = withForm(
+      <EditEntryDialog entry={filed} meta={LINKED} onClose={() => undefined} />,
+    );
+    const box = /<input[^>]*id="[^"]*-branchId"[^>]*>/.exec(markup)?.[0] ?? '';
+    expect(box).toContain('value="أكتوبر"');
+    expect(box).toContain('disabled=""');
+    expect(markup).not.toContain('EGYCASH');
+    const blank = withForm(
+      <EditEntryDialog entry={BRANCHLESS} meta={LINKED} onClose={() => undefined} />,
+    );
+    expect(/<input[^>]*id="[^"]*-branchId"[^>]*>/.exec(blank)?.[0]).toContain('value="—"');
+  });
+
+  it('lets the per-code rows stand in for an older server that sends no branch list', () => {
+    const older: AtmRegisterMetaDto = {
+      ...META,
+      branches: [
+        ...META.branches,
+        {
+          code: 'EGYCASH-3',
+          name: { ar: 'أسيوط', en: 'Asyut' },
+          branchId: null,
+          branchName: null,
+          branchActive: false,
+          canView: false,
+          canCreate: false,
+        },
+      ],
+    };
+    delete older.branchOptions;
+    expect(registerBranchChoices(older)).toEqual([
+      {
+        branchId: ALEX,
+        name: ALEX_NAME,
+        codes: ['EGYCASH-4'],
+        sourceBranchIds: [],
+        active: true,
+        canView: true,
+        canCreate: true,
+      },
+    ]);
+    expect(defaultReceiptBranch(older, ALEX)).toBe(ALEX);
+    expect(registerBranchChoices(undefined)).toEqual([]);
   });
 });

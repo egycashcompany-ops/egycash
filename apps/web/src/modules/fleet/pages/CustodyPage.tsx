@@ -80,7 +80,7 @@ import { CustodyFigures } from '../components/CustodyFigures';
 import { CUSTODY_KIND, CustodyKindBadge } from '../components/CustodyKinds';
 import { CustodyDashboard } from '../components/CustodyDashboard';
 import { CustodyTabs } from '../components/CustodyTabs';
-import { CustodyFundActions } from '../components/CustodyFundActions';
+import { CustodyFundActions, useFundParam } from '../components/CustodyFundActions';
 import { CustodyFundDialogs } from '../components/CustodyFundDialogs';
 import {
   CustodyCarLog,
@@ -297,6 +297,9 @@ export const CustodyPage = (): JSX.Element => {
   const [statsOpen, setStatsOpen] = useState(false);
   // «لوحة تحكم» — over the whole screen, read only while open.
   const [dashOpen, setDashOpen] = useState(false);
+  // The fund's dialogs, as the toolbar opens them (`?fund=`) — the dashboard's «استعاضة العهدة» and
+  // «تسوية العهدة» too.
+  const [, setFund] = useFundParam();
   // A car's «السجل» from «ملخص لكل سيارة», and the button that opened it.
   const [carLog, setCarLog] = useState<CustodyOpenCarLog | null>(null);
   const clearFilters = (): void =>
@@ -805,7 +808,9 @@ export const CustodyPage = (): JSX.Element => {
         {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the money boards. */}
         {statsOpen && summary.data !== undefined && <CustodyFigures totals={summary.data} />}
         {/* The board's own `filters`: the dashboard asks exactly what the figures ask, and what it
-            changes it changes HERE — clearing them, «المصدر» = صيانة. */}
+            changes it changes HERE — clearing them, «المصدر» = صيانة, a receipts line's «من» /
+            «إلى» (it stays open over them); its «استعاضة العهدة» / «تسوية العهدة» close it and
+            open the board's own dialog. */}
         <CustodyDashboard
           open={dashOpen}
           onClose={() => setDashOpen(false)}
@@ -815,6 +820,11 @@ export const CustodyPage = (): JSX.Element => {
             patch({ source: 'maintenance' });
             setDashOpen(false);
           }}
+          onFundAction={(op) => {
+            setDashOpen(false);
+            setFund(op);
+          }}
+          onShowPeriod={(periodFrom, periodTo) => patch({ from: periodFrom, to: periodTo })}
         />
         {/* A car's «السجل»: its line as the summary holds it now, its share of what the fund paid
             over the same filters (not of the fund itself, `fundTotal`), the board's own filters.

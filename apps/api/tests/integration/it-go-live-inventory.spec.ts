@@ -118,7 +118,7 @@ const device = (key: string, over: Partial<InventoryDevice>): InventoryDevice =>
   ...over,
 });
 
-const settled = { holderCode: '0100006', holder: 'محمد عادل' };
+const settled = { holderCode: '0100006', holder: 'حازم رأفت' };
 const DEVICES: InventoryDevice[] = [
   device('HQ PC#3', {
     ...settled,
@@ -148,7 +148,7 @@ const DEVICES: InventoryDevice[] = [
     model: 'Latitude 5520',
     serial: 'LT0001',
     holderCode: '0100001',
-    holder: 'محمود ونيس',
+    holder: 'شريف ممدوح',
   }),
   // Registered by the IT team since the sheet was made.
   device('IP Phone#9', {
@@ -187,8 +187,8 @@ beforeAll(async () => {
   await plantBranch(HQ, 'HQ', 'المهندسين');
   // The organisation spells it without the hamza; the sheet with it.
   await plantBranch(ASSIUT, 'AST', 'اسيوط');
-  await plantEmployee(EMPLOYEE, '0100006', 'محمد عادل محمد عبد الفتاح', 'active');
-  await plantEmployee(LEAVER, '0100001', 'محمود ونيس غنيمي عبادة', 'exited');
+  await plantEmployee(EMPLOYEE, '0100006', 'حازم رأفت حازم عبد الوهاب', 'active');
+  await plantEmployee(LEAVER, '0100001', 'شريف ممدوح فاروق عزمي', 'exited');
   await plantCategory(AIO_CATEGORY, 'كمبيوتر All');
   await plantCategory(SCREEN_CATEGORY, 'شاشه');
   await ItAssetModel.collection.insertOne({
@@ -273,7 +273,7 @@ describe('importing the IT inventory', () => {
     expect(receipt).toMatchObject({
       formNumber: 1,
       employeeCode: '0100006',
-      employeeName: 'محمد عادل محمد عبد الفتاح',
+      employeeName: 'حازم رأفت حازم عبد الوهاب',
       issuedByUserId: null,
     });
     expect(String(receipt?.employeeId)).toBe(String(EMPLOYEE));
@@ -286,7 +286,7 @@ describe('importing the IT inventory', () => {
     // In stock: the holder who left, the branch device in its branch, the IT store.
     const laptop = await assetBySerial('LT0001');
     expect(laptop).toMatchObject({ status: 'inStock', currentAssignmentId: null });
-    expect(laptop?.notes).toContain('في الجرد مع: محمود ونيس');
+    expect(laptop?.notes).toContain('في الجرد مع: شريف ممدوح');
     const printer = await assetBySerial('PR0001');
     expect(printer?.status).toBe('inStock');
     expect(String(printer?.branchId)).toBe(String(ASSIUT));

@@ -27,7 +27,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from nidocr.preprocess import split_text_lines  # noqa: E402
+from nidocr.preprocess import split_text_lines, trim_to_ink  # noqa: E402
 
 
 def _card(width: int = 600, height: int = 200) -> np.ndarray:
@@ -36,8 +36,13 @@ def _card(width: int = 600, height: int = 200) -> np.ndarray:
 
 
 def _write(image: np.ndarray, *, top: int, bottom: int, left: int = 20, right: int = 580) -> None:
-    """A band of dark pixels standing in for a printed line."""
-    cv2.rectangle(image, (left, top), (right, bottom), (40, 40, 40), thickness=-1)
+    """A band of thin dark strokes standing in for a printed line.
+
+    Strokes, not a solid block: ink is found by its local contrast (`text_ink`), which is what
+    separates print from the picture behind it on a real card, and print is made of strokes.
+    """
+    for x in range(left, right + 1, 6):
+        cv2.line(image, (x, top), (x, bottom), (40, 40, 40), thickness=2)
 
 
 # ── Finding the lines ──
@@ -51,6 +56,21 @@ def test_two_printed_lines_come_back_as_two_strips():
     strips = split_text_lines(image)
     assert len(strips) == 2
     assert all(strip.shape[0] > 0 for strip in strips)
+
+
+def test_a_two_line_name_with_tight_leading_is_split():
+    """The real failure: a name box ~130 px tall holding two lines ~35 px high, 7 px apart.
+
+    The merge threshold used to scale with the CROP, so this gap was treated as one line and the
+    model was handed both lines squashed into one 48 px strip.
+    """
+    image = _card(height=130)
+    _write(image, top=30, bottom=65)
+    _write(image, top=73, bottom=105)
+
+    strips = split_text_lines(image)
+    assert len(strips) == 2
+    assert all(strip.shape[0] < 60 for strip in strips)
 
 
 def test_the_strips_are_returned_top_to_bottom():
@@ -144,3 +164,43 @@ def test_every_row_of_the_crop_survives_into_some_strip():
         for strip in split_text_lines(image)
     )
     assert ink_after == ink_before, "the splitter dropped printed pixels"
+
+
+# ── Trimming a strip to its ink ──
+
+
+def test_a_short_line_is_trimmed_to_its_ink_with_a_margin():
+    """A given name alone at the right end of a field-wide strip: the blank card beside it goes.
+
+    The real model transcribed that blank card as Latin letters ('GNERRLEMGTRRHحم').
+    """
+    strip = _card(width=600, height=40)
+    _write(strip, top=8, bottom=30, left=500, right=580)
+
+    trimmed = trim_to_ink(strip)
+    assert trimmed.shape[0] == strip.shape[0]
+    assert trimmed.shape[1] < 200
+    ink = lambda image: int((cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) < 128).sum())  # noqa: E731
+    assert ink(trimmed) == ink(strip), "trimming dropped printed pixels"
+
+
+def test_a_blank_strip_is_not_trimmed_away():
+    strip = _card(width=600, height=40)
+    assert trim_to_ink(strip).shape == strip.shape
+
+
+def test_two_lines_printed_over_a_picture_are_still_split():
+    """The front of a real card prints the name over a photograph of the pyramids.
+
+    The picture's shading is as dark as some strokes, so "dark pixels per row" found ink in every
+    row and the name's two lines came back as one strip. Ink is now print-like local contrast,
+    which a broad shadow does not have.
+    """
+    image = _card(width=480, height=80)
+    rows, columns = np.mgrid[0:80, 0:480]
+    shadow = 120 * np.exp(-(((columns - 150) / 90.0) ** 2 + ((rows - 40) / 45.0) ** 2))
+    image = np.clip(image.astype(float) - shadow[..., None], 0, 255).astype(np.uint8)
+    _write(image, top=14, bottom=36, left=250, right=460)
+    _write(image, top=46, bottom=70, left=200, right=460)
+
+    assert len(split_text_lines(image)) == 2, "the picture behind the name merged its two lines"

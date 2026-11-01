@@ -52,10 +52,24 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['atm', 'registerEntries'],
     ['atm', 'mapPoints'],
     ['atm', 'mapLocationSummary'],
+    ['atm', 'cassetteLayouts'],
   ],
+  // A label also feeds the data-edit dialogs' options and the register form's branch options
+  // (DEC-38: register and machine saves file area labels, so another screen's save adds one).
   'atm.refLabel': [
     ['atm', 'refLabels'],
     ['atm', 'machines'],
+    ['atm', 'refLabelOptions'],
+    ['atm', 'registerBranchOptions'],
+  ],
+  // The bank catalog (DEC-35): every screen that names, orders or colours a bank — the same
+  // families the catalog's own write hooks invalidate (`atm-queries.ts`).
+  'atm.bank': [
+    ['atm', 'banks'],
+    ['atm', 'registerMeta'],
+    ['atm', 'registerReport'],
+    ['atm', 'refLabelOptions'],
+    ['atm', 'mapPoints'],
   ],
   'atm.replenishment': [['atm', 'replenishments']],
   'atm.maintenance': [['atm', 'maintenances']],
@@ -81,6 +95,40 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['atm', 'mapLocationSummary'],
     ['atm', 'mapLocation'],
   ],
+  // Settlements & Review → Preparation → Control & Supplies (docs/12-planning/atm-settlements-
+  // phase1.md §6.11) — the families their own write hooks invalidate (`settlements-queries.ts`). A
+  // layout change raises `LAYOUT_CHANGED` on plan lines, so the plan listens to it; a capture moves
+  // a line's `preparationStatus`, so the plan listens to that too. The two day signals carry the
+  // plan's branch, so branch-scoped Preparation and Control users hear them (DS-26). The Full list
+  // import (`atm.layoutImport`) is server-excluded: the importing screen refetches itself.
+  'atm.cassetteLayout': [
+    ['atm', 'cassetteLayouts'],
+    ['atm', 'cassetteLayout'],
+    ['atm', 'settlementPlan'],
+  ],
+  'atm.standardLoad': [['atm', 'standardLoads']],
+  'atm.settlementPlan': [['atm', 'settlementPlan']],
+  'atm.planLine': [
+    ['atm', 'settlementPlan'],
+    ['atm', 'preparationLines'],
+    ['atm', 'preparationContext'],
+    ['atm', 'controlDay'],
+  ],
+  'atm.linePreparation': [
+    ['atm', 'preparationLines'],
+    ['atm', 'preparationContext'],
+    ['atm', 'controlDay'],
+    ['atm', 'settlementPlan'],
+  ],
+  'atm.preparationDay': [
+    ['atm', 'preparationLines'],
+    ['atm', 'preparationContext'],
+  ],
+  'atm.controlDay': [['atm', 'controlDay']],
+  'atm.dispatchRoute': [['atm', 'controlDay']],
+  'atm.routeAssignment': [['atm', 'controlDay']],
+  // /atm/settings' mailbox card (`settings-queries.ts`): another administrator's save refreshes it.
+  'atm.mailboxConfig': [['atm', 'mailbox']],
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': goldStockSweep,
@@ -385,6 +433,22 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»).
   'it.custodyReceipt': [['it', 'custody']],
+  // FR-19 — a line moves its register row, its network's card and its history, and its custody
+  // intervals (a person's history page reads those).
+  'it.mobileLine': [
+    ['it', 'mobileLines'],
+    ['it', 'mobileLineAssignments'],
+  ],
+  // A line acknowledgment's signed copy shows on the register's row and on the intervals.
+  'it.mobileLineReceipt': [
+    ['it', 'mobileLines'],
+    ['it', 'mobileLineAssignments'],
+  ],
+  // FR-20 — the consumables are ONE subtree: a movement moves the item's figures, the ledger's rows
+  // (the movements screen, an asset's and a person's cards) and, for an issue, the memo they show.
+  'it.consumable': [['it', 'consumables']],
+  // A memo's signed copy shows on the ledger's rows («موقّع» / «بانتظار التوقيع»).
+  'it.consumableMemo': [['it', 'consumables']],
   'it.catalogItem': [
     ['it', 'catalogs'],
     ['it', 'priorities'],

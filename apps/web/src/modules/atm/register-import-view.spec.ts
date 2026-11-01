@@ -1,5 +1,7 @@
 // The import page's pure decisions (spec §8.6, §10.2): when Apply is offered, what the `apply`
-// field carries, and how the 57 report cells are named.
+// field carries, and how the 57 report cells are named — and, since the branch alignment
+// (2026-10-28), how a branch is named on the page: its code beside the ECMS name the top bar gives
+// it, and «يعمل باسم …» where a code's branch is linked to work as another.
 import { createElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -24,12 +26,16 @@ import { translate } from '../../platform/localization/i18n';
 import { RegisterImportPage } from './pages/RegisterImportPage';
 import { ImportPreviewPanel } from './components/register-import/ImportPreviewPanel';
 import { ImportRunsCard } from './components/register-import/ImportRunsCard';
+import { REGISTER_MAPPING_STALES } from './components/register-import/RegisterSettingsCard';
+import { registerKeys } from './api/register-queries';
 import {
   applyField,
   approvedCategories,
   blockerHintKey,
   canApply,
   canPreview,
+  codeAndName,
+  importBranchText,
   importErrorDetails,
   importErrorText,
   orderedCategories,
@@ -37,6 +43,7 @@ import {
   pageOf,
   reportCellLabel,
   standingBlockers,
+  worksAsTarget,
 } from './lib/register-import-view';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -123,6 +130,14 @@ describe('the 57 cells, named as the Data Report names them', () => {
     expect(labels[15]).toBe('atm.registerReport.branch3.EGYCASH-1 · National Bank of Egypt');
     const nbe = ATM_DATA_REPORT_CELLS.find((cell) => cell.key === 's1.NBE');
     expect(nbe === undefined ? null : reportCellLabel(nbe, t, 'ar')).toBe('البنك الأهلي المصري');
+  });
+
+  it('names a seed as the bank catalog names it now, when the caller has the catalog', () => {
+    const nbe = ATM_DATA_REPORT_CELLS.find((cell) => cell.key === 's3.EGYCASH-1.NBE');
+    const curated = [{ code: 'NBE', name: { ar: 'الأهلي', en: 'NBE (curated)' } }];
+    expect(nbe === undefined ? null : reportCellLabel(nbe, t, 'en', curated)).toBe(
+      'atm.registerReport.branch3.EGYCASH-1 · NBE (curated)',
+    );
   });
 });
 
@@ -232,7 +247,26 @@ describe('the runs card', () => {
 // sends — it carries no key value and no combination, so the page has nothing secret to show.
 
 const META: AtmRegisterMetaDto = {
-  banks: [],
+  banks: [
+    {
+      code: 'NBE',
+      name: { ar: 'البنك الأهلي المصري', en: 'National Bank of Egypt' },
+      opsLabel: 'NBE',
+      color: '#385723',
+      isActive: true,
+      sortOrder: 10,
+      isSeed: true,
+    },
+    {
+      code: 'QNB',
+      name: { ar: 'بنك تجريبي', en: 'Synthetic Bank' },
+      opsLabel: 'QNB OPS',
+      color: '#7030A0',
+      isActive: false,
+      sortOrder: 70,
+      isSeed: false,
+    },
+  ],
   branches: [
     {
       code: 'EGYCASH-4',
@@ -242,6 +276,8 @@ const META: AtmRegisterMetaDto = {
       branchActive: true,
       canView: true,
       canCreate: true,
+      resolvedBranchId: '650000000000000000000104',
+      resolvedBranchName: { ar: 'الإسكندرية', en: 'Alexandria' },
     },
   ],
 };
@@ -275,6 +311,8 @@ const PREVIEW: AtmRegisterImportResultDto = {
       inReach: true,
       rows: 3,
       openRows: 2,
+      resolvedBranchId: '650000000000000000000104',
+      resolvedBranchName: { ar: 'الإسكندرية', en: 'Alexandria' },
     },
   ],
   categories: [
@@ -308,7 +346,7 @@ const PREVIEW: AtmRegisterImportResultDto = {
   applied: null,
 };
 
-const store = () =>
+const store = (extra: readonly string[] = []) =>
   configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
@@ -316,7 +354,9 @@ const store = () =>
       auth: {
         me: {
           id: 'u1',
-          permissions: { 'atmRegister.import': 'organization', 'setting.edit': 'organization' },
+          permissions: Object.fromEntries(
+            ['atmRegister.import', 'setting.edit', ...extra].map((key) => [key, 'organization']),
+          ),
         } as unknown as MeDto,
         status: 'signedIn' as const,
       },
@@ -324,13 +364,17 @@ const store = () =>
     },
   });
 
-const renderWith = (node: ReactElement): string => {
+const renderWith = (
+  node: ReactElement,
+  extra: readonly string[] = [],
+  meta: AtmRegisterMetaDto = META,
+): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(listKey('atm', 'registerMeta'), META);
+  qc.setQueryData(listKey('atm', 'registerMeta'), meta);
   qc.setQueryData(listKey('atm', 'registerImportRuns'), []);
   return renderToStaticMarkup(
     createElement(Provider, {
-      store: store(),
+      store: store(extra),
       children: createElement(QueryClientProvider, { client: qc }, node),
     }),
   );
@@ -394,5 +438,242 @@ describe('rendered', () => {
       html.lastIndexOf('<button', html.lastIndexOf(translate('en', 'atm.registerImport.apply'))),
     );
     expect(apply.slice(0, apply.indexOf('>'))).toContain('disabled');
+  });
+});
+
+// The bank labels the card used to edit are the bank CATALOG's now (DEC-35): the retired setting is
+// read once, by the seed, so an editor here would save values nothing reads.
+describe('the settings card’s banks', () => {
+  it('lists the catalog read-only — archived banks too — and edits only the branch codes', () => {
+    const html = renderWith(createElement(RegisterImportPage));
+    expect(html).toContain('data-register-settings-bank="NBE"');
+    expect(html).toContain('data-register-settings-bank="QNB"');
+    expect(html).toContain('QNB OPS');
+    expect(html).toContain(translate('en', 'atm.dataEdit.archived'));
+    // As React writes it: the hint's quotation marks are escaped in the markup.
+    expect(html).toContain(
+      translate('en', 'atm.registerSettings.bankLabelsHint').replace(/"/g, '&quot;'),
+    );
+    // No box to type a bank label into, for anyone.
+    expect(html).not.toMatch(/<input[^>]*aria-label="[^"]*Name in the Operations list/);
+  });
+
+  it('opens the catalog only for whoever keeps it', () => {
+    const plain = renderWith(createElement(RegisterImportPage));
+    expect(plain).not.toContain('data-register-settings-action="banks"');
+    const keeper = renderWith(createElement(RegisterImportPage), ['atmBank.edit']);
+    expect(keeper).toContain('data-register-settings-action="banks"');
+    expect(keeper).toContain(translate('en', 'atm.registerSettings.manageBanks'));
+  });
+});
+
+// ── A branch on the import page (2026-10-28) ──────────────────────────────────────────────────────
+// The page is about the workbook, so it keeps the codes — beside the ECMS name the top bar gives
+// the branch, never the workbook's name alone. Below, أكتوبر works as المهندسين (`atm.branchLinks`):
+// EGYCASH-5 is mapped to أكتوبر, and its rows are filed under المهندسين.
+
+const MOH = '650000000000000000000101';
+const OCT = '650000000000000000000105';
+const MOH_NAME = { ar: 'المهندسين', en: 'Mohandessin' };
+const OCT_NAME = { ar: 'أكتوبر', en: 'October' };
+const CODELESS = { ar: 'فرع بلا كود', en: 'A branch without a code' };
+
+const LINKED_BRANCHES: AtmRegisterImportResultDto['branches'] = [
+  {
+    code: 'EGYCASH-1',
+    branchId: MOH,
+    branchName: MOH_NAME,
+    active: true,
+    inReach: true,
+    rows: 5,
+    openRows: 4,
+    resolvedBranchId: MOH,
+    resolvedBranchName: MOH_NAME,
+  },
+  {
+    code: 'EGYCASH-5',
+    branchId: OCT,
+    branchName: OCT_NAME,
+    active: true,
+    inReach: true,
+    rows: 2,
+    openRows: 2,
+    resolvedBranchId: MOH,
+    resolvedBranchName: MOH_NAME,
+  },
+  {
+    code: 'EGYCASH-3',
+    branchId: null,
+    branchName: null,
+    active: false,
+    inReach: false,
+    rows: 1,
+    openRows: 0,
+    resolvedBranchId: null,
+    resolvedBranchName: null,
+  },
+];
+
+describe('a branch on the import page', () => {
+  const tr = (key: string, params?: Record<string, string | number>): string =>
+    translate('ar', key, params);
+  const [moh, oct, unmapped] = LINKED_BRANCHES as [
+    AtmRegisterImportResultDto['branches'][number],
+    AtmRegisterImportResultDto['branches'][number],
+    AtmRegisterImportResultDto['branches'][number],
+  ];
+
+  it('names a code by itself and the ECMS branch its rows are filed under', () => {
+    expect(importBranchText('EGYCASH-1', LINKED_BRANCHES, 'ar')).toBe('EGYCASH-1 · المهندسين');
+    // Mapped to a linked source: its rows go to the branch it works as.
+    expect(importBranchText('EGYCASH-5', LINKED_BRANCHES, 'en')).toBe('EGYCASH-5 · Mohandessin');
+    expect(importBranchText('EGYCASH-3', LINKED_BRANCHES, 'ar'), 'mapped to nothing').toBe(
+      'EGYCASH-3',
+    );
+    expect(codeAndName(null, CODELESS, 'ar'), 'a branch in reach with no code').toBe('فرع بلا كود');
+    expect(codeAndName('EGYCASH-2', null, 'ar')).toBe('EGYCASH-2');
+    expect(codeAndName(null, null, 'ar')).toBe('—');
+  });
+
+  it('says where a linked code’s rows go — and nothing where a code files as it is mapped', () => {
+    expect(worksAsTarget(oct, 'ar', tr)).toBe('المهندسين');
+    expect(worksAsTarget(moh, 'ar', tr)).toBeNull();
+    expect(worksAsTarget(unmapped, 'ar', tr)).toBeNull();
+    expect(worksAsTarget({ branchId: OCT }, 'ar', tr), 'an older server says nothing').toBeNull();
+    expect(
+      worksAsTarget({ branchId: OCT, resolvedBranchId: MOH, resolvedBranchName: null }, 'ar', tr),
+      'a target ECMS no longer holds',
+    ).toBe(tr('atm.settings.unknownBranch'));
+  });
+
+  it('draws «code · ECMS name» on the cards and «يعمل باسم …» in the branch table', () => {
+    const preview: AtmRegisterImportResultDto = {
+      ...PREVIEW,
+      branches: LINKED_BRANCHES,
+      categories: [
+        {
+          key: 'activeElsewhere',
+          approvable: false,
+          count: 1,
+          items: [
+            {
+              importRow: 9,
+              branchCode: 'EGYCASH-5',
+              machineCode: '99990002',
+              name: 'Synthetic ATM 2',
+              area: 'Dokki',
+              bankCode: 'NBE',
+              machineId: null,
+              masterBankLabel: null,
+              reason: 'activeElsewhere',
+              differences: [],
+              otherBranchCode: null,
+              otherBranchName: CODELESS,
+              entryId: null,
+              columns: [],
+            },
+          ],
+          pairs: [
+            { fromBranchCode: null, fromBranchName: CODELESS, toBranchCode: 'EGYCASH-5', count: 1 },
+          ],
+        },
+      ],
+    };
+    const html = renderWith(
+      createElement(ImportPreviewPanel, {
+        result: preview,
+        approved: new Set<AtmRegisterImportCategory>(),
+        onToggle: () => undefined,
+        reportOverride: false,
+        onOverride: () => undefined,
+        onApply: () => undefined,
+        applying: false,
+      }),
+    );
+    // The row's own branch, the pair's two ends, and the other branch.
+    expect(html.match(/EGYCASH-5 · Mohandessin/g)?.length).toBe(2);
+    expect(html.match(/A branch without a code/g)?.length).toBe(2);
+    expect(html).toContain('data-import-works-as="EGYCASH-5"');
+    expect(html).toContain(
+      translate('en', 'atm.registerImport.branches.worksAs', { target: 'Mohandessin' }),
+    );
+    expect(html).not.toContain('data-import-works-as="EGYCASH-1"');
+    expect(html).not.toContain('data-import-works-as="EGYCASH-3"');
+  });
+
+  // The server lists one pair per other BRANCH (review finding: keyed by code, two code-less
+  // branches merged under the first one's name); the card draws each, a shared code or none.
+  it('draws one pairs row per other branch, two without a code each with its own name and count', () => {
+    const ASWAN = { ar: 'أسوان', en: 'Aswan' };
+    const pairs: AtmRegisterImportResultDto['categories'][number]['pairs'] = [
+      { fromBranchCode: null, fromBranchName: CODELESS, toBranchCode: 'EGYCASH-5', count: 1 },
+      { fromBranchCode: null, fromBranchName: ASWAN, toBranchCode: 'EGYCASH-5', count: 2 },
+    ];
+    const html = renderWith(
+      createElement(ImportPreviewPanel, {
+        result: {
+          ...PREVIEW,
+          branches: LINKED_BRANCHES,
+          categories: [{ key: 'activeElsewhere', approvable: false, count: 3, items: [], pairs }],
+        },
+        approved: new Set<AtmRegisterImportCategory>(),
+        onToggle: () => undefined,
+        reportOverride: false,
+        onOverride: () => undefined,
+        onApply: () => undefined,
+        applying: false,
+      }),
+    );
+    const rows = [...html.matchAll(/<tr><td[^>]*><span dir="auto">([^<]*)<\/span>/g)].map(
+      (m) => m[1],
+    );
+    expect(rows).toEqual(['A branch without a code', 'Aswan']);
+  });
+});
+
+// The settings card is where the codes are configured, so it keeps them — with the workbook's
+// name, the ECMS branch picked, and «يعمل باسم …» for a picked branch that works as another.
+describe('the settings card’s codes', () => {
+  const linked: AtmRegisterMetaDto = {
+    ...META,
+    branches: [
+      ...META.branches,
+      {
+        code: 'EGYCASH-5',
+        name: { ar: 'أكتوبر', en: 'October' },
+        branchId: OCT,
+        branchName: OCT_NAME,
+        branchActive: true,
+        canView: true,
+        canCreate: true,
+        resolvedBranchId: MOH,
+        resolvedBranchName: MOH_NAME,
+      },
+    ],
+  };
+
+  it('marks a code whose branch works as another, with the reason in its tooltip', () => {
+    for (const extra of [[], ['setting.edit']] as const) {
+      const html = renderWith(createElement(RegisterImportPage), extra, linked);
+      expect(html).toContain('data-register-settings-works-as="EGYCASH-5"');
+      expect(html).toContain(
+        translate('en', 'atm.registerSettings.worksAs', { target: 'Mohandessin' }),
+      );
+      expect(html).toContain(
+        `title="${translate('en', 'atm.registerSettings.worksAsHint', { target: 'Mohandessin' })}"`,
+      );
+      expect(html).not.toContain('data-register-settings-works-as="EGYCASH-4"');
+      // The codes and the workbook's names stay on this card.
+      expect(html).toContain('>EGYCASH-5<');
+      expect(html).toContain('>أكتوبر<');
+    }
+  });
+
+  it('refreshes the entries and the Data Report with the meta when the mapping is saved', () => {
+    expect(REGISTER_MAPPING_STALES).toEqual([
+      registerKeys.meta,
+      registerKeys.entries,
+      registerKeys.report,
+    ]);
   });
 });

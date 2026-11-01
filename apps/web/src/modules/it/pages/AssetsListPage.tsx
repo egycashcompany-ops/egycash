@@ -10,8 +10,12 @@
 // «اعمل نفس الزرارين في شاشة الأصول» — the custody register's Excel and PDF, here too, before the
 // screen's own action: every asset the filters match, in the table's order, not the page on screen
 // (`lib/asset-register-export.ts`).
+//
+// «تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر زود بعد الحالات وقبل
+// الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة» — the holder right after the status, and a name
+// filter between the status and the category that is a list you can type into.
 import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { IT_ASSET_STATUSES, type ItAssetDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -24,6 +28,7 @@ import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Select } from '../../../shared/ui/form';
+import { Combobox } from '../../../shared/ui/Combobox';
 import { BulkActionBar } from '../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -32,6 +37,7 @@ import { formatDate, localized } from '../../../shared/lib/format';
 import * as api from '../api/it-api';
 import {
   useDeleteItAsset,
+  useItAssetNames,
   useItAssets,
   useItBranchOptions,
   useItCatalog,
@@ -59,6 +65,7 @@ const REMEMBERED_FILTERS = [
   'branch',
   'category',
   'holder',
+  'name',
   'q',
   'status',
   'size',
@@ -77,6 +84,8 @@ export const AssetsListPage = (): JSX.Element => {
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
+  // One of the register's own names, matched exactly — every asset by that name.
+  const name = sp.get('name') ?? '';
   const categoryId = sp.get('category') ?? '';
   const branchId = sp.get('branch') ?? '';
   // Who holds it NOW — an employee id, so the filter survives a rename and can be linked.
@@ -104,7 +113,12 @@ export const AssetsListPage = (): JSX.Element => {
     patch({ sort: `${by}:${dir}` }, false);
   };
   const hasActiveFilters =
-    search !== '' || status !== '' || categoryId !== '' || branchId !== '' || holderId !== '';
+    search !== '' ||
+    status !== '' ||
+    name !== '' ||
+    categoryId !== '' ||
+    branchId !== '' ||
+    holderId !== '';
 
   const params = useMemo(
     () => ({
@@ -114,6 +128,7 @@ export const AssetsListPage = (): JSX.Element => {
       sortDir: sort.dir,
       search: search || undefined,
       status: status || undefined,
+      name: name || undefined,
       categoryId: categoryId || undefined,
       branchId: branchId || undefined,
       holderEmployeeId: holderId || undefined,
@@ -135,6 +150,7 @@ export const AssetsListPage = (): JSX.Element => {
       ? ''
       : `${holderPerson.data.fullNameAr} (${holderPerson.data.code})`;
   const rows = data?.items ?? [];
+  const names = useItAssetNames();
 
   const categories = useItCatalog('assetCategory');
   const categoryName = useMemo(() => {
@@ -189,12 +205,14 @@ export const AssetsListPage = (): JSX.Element => {
         ...assetRegisterFilters({
           search,
           status,
+          name,
           categoryId,
           categoryName,
           branchId,
           branchName,
           holderId,
           holderLabel,
+          rows: all,
         }),
         asOf: formatDate(new Date().toISOString(), locale),
       });
@@ -243,6 +261,33 @@ export const AssetsListPage = (): JSX.Element => {
       header: t('it.assets.columns.status'),
       sortable: true,
       render: (a) => <AssetStatusBadge status={a.status} />,
+    },
+    {
+      // Right after the status that says it is out: who has it — their name, a link to everything
+      // they hold, and their code under it, as the custody register shows a holder. An employee
+      // HR cannot name is shown by the id the row carries, never by a guess.
+      key: 'holder',
+      header: t('it.custody.holder'),
+      render: (a) => {
+        const holder = a.holder;
+        if (holder === null) return '—';
+        return (
+          <span className="flex flex-col leading-tight">
+            <Link to={`/it/employees/${holder.employeeId}`} className="hover:underline">
+              {holder.employeeName ?? (
+                <span className="font-mono text-xs" dir="ltr">
+                  {holder.employeeId}
+                </span>
+              )}
+            </Link>
+            {holder.employeeCode === null ? null : (
+              <span className="font-mono text-xs text-slate-500 dark:text-slate-400" dir="ltr">
+                {holder.employeeCode}
+              </span>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: 'actions',
@@ -323,7 +368,14 @@ export const AssetsListPage = (): JSX.Element => {
           hasActiveFilters={hasActiveFilters}
           onClear={() => {
             setPickedHolder({ id: '', label: '' });
-            patch({ q: null, status: null, category: null, branch: null, holder: null });
+            patch({
+              q: null,
+              status: null,
+              name: null,
+              category: null,
+              branch: null,
+              holder: null,
+            });
           }}
         >
           <SearchInput
@@ -346,6 +398,32 @@ export const AssetsListPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
+          {/* After the statuses, before the category: the register's own names, typed into. A pick
+              is always one of them, so the list matches it exactly. Until the names arrive the
+              list says so — and says when they could not be read, retrying when the box is next
+              entered — rather than claiming no asset has the name being typed. */}
+          <div
+            className="w-64"
+            onFocus={() => {
+              if (names.isError) void names.refetch();
+            }}
+          >
+            <Combobox
+              ariaLabel={t('it.assets.columns.name')}
+              placeholder={t('it.assets.columns.name')}
+              value={name}
+              options={names.data?.names ?? []}
+              onChange={(next) => patch({ name: next || null })}
+              emptyText={
+                names.isError
+                  ? t('common.error.title')
+                  : names.isPending
+                    ? t('common.loading')
+                    : t('it.assets.nameFilter.empty')
+              }
+              clearLabel={t('it.assets.nameFilter.clear')}
+            />
+          </div>
           <ItCatalogSelect
             kind="assetCategory"
             value={categoryId}
@@ -429,7 +507,11 @@ export const AssetsListPage = (): JSX.Element => {
             <Button variant="secondary" onClick={() => setDeleting(null)}>
               {t('common.cancel')}
             </Button>
-            <Button variant="danger" loading={remove.isPending} onClick={() => void confirmDelete()}>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => void confirmDelete()}
+            >
               {t('common.delete')}
             </Button>
           </>

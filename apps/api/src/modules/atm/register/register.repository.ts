@@ -82,6 +82,29 @@ class AtmRegisterEntryRepository extends BaseRepository<AtmRegisterEntryDoc> {
       .exec();
   }
 
+  /**
+   * The newest live PENDING entry of a code in one branch (DEC-12 — a receipt recorded before the
+   * machine arrived). The data-edit intake receives it instead of writing a second entry for the
+   * same machine (DEC-36 step e, critic gap 5).
+   */
+  async findNewestPendingByCode(
+    branchId: Types.ObjectId | string,
+    machineCode: string,
+    session?: ClientSession,
+  ): Promise<AtmRegisterEntryDoc | null> {
+    return this.model
+      .findOne({
+        isDeleted: false,
+        status: 'pending',
+        branchId: new Types.ObjectId(String(branchId)),
+        machineCode,
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .session(session ?? null)
+      .lean<AtmRegisterEntryDoc>()
+      .exec();
+  }
+
   /** The batch form, for the import plan (§6.4): code → its open rows. */
   async findOpenByCodes(
     codes: readonly string[],

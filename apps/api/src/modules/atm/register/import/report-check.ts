@@ -7,15 +7,18 @@
 // holds anything, AQ is set and AR is empty. A row whose A holds a code the register does not know
 // is still active to the Excel, so it is counted as the sheet counts it — in its bank cell only
 // (`branchCode: null` in the fold), never in a branch cell.
+//
+// The fold runs with its DEFAULT banks — the workbook's six — whatever the catalog holds (DEC-35,
+// DEC-40): the snapshot is the sheet's, and a bank added at runtime has no cell in it.
 import {
   ATM_DATA_REPORT_CELLS,
   foldAtmRegisterReport,
   isAtmRegisterActive,
   readAtmReportCell,
-  type AtmBankCode,
   type AtmRegisterBranchCode,
   type AtmRegisterImportReportCellDto,
   type AtmRegisterReportGroup,
+  type AtmSeedBankCode,
 } from '@ecms/contracts';
 import { EXPECTED_DATA_REPORT } from './expected-data-report';
 import { type ParsedRow } from './parse-rows';
@@ -36,7 +39,7 @@ export const activeReportGroups = (rows: readonly ParsedRow[]): AtmRegisterRepor
     if (group === undefined) {
       counts.set(key, {
         branchCode: branchCode satisfies AtmRegisterBranchCode | null,
-        bankCode: bankCode satisfies AtmBankCode | null,
+        bankCode: bankCode satisfies AtmSeedBankCode | null,
         count: 1,
       });
     } else {

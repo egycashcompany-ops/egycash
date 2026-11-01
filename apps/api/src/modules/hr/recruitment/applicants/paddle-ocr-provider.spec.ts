@@ -157,3 +157,78 @@ describe('PaddleNationalIdOcrProvider — degradation', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
+
+// The new sidecar answers `quality`, `diagnostics` and `elapsedMs` alongside the fields it always
+// returned. They are ADDITIVE: the provider reads none of them, and nothing about them reaches
+// `RawOcrResult` or the review dialog.
+//
+// So the thing worth pinning is not that they are read — it is that they are IGNORED, and ignored
+// safely. The failure this guards against is a provider that starts walking the new blocks to
+// surface a quality hint, trusting their shape because the type names them; the sidecar is a
+// separate process on its own release cadence, and a block of it arriving malformed must still
+// leave a good read intact. A card someone photographed well should not stop extracting because
+// the sidecar's quality scorer regressed.
+describe('PaddleNationalIdOcrProvider — the sidecar‘s additive blocks', () => {
+  const fields = {
+    nationalId: { value: '28709011202408', confidence: 'high' },
+    fullNameAr: { value: 'ندى محمد', confidence: 'medium' },
+  };
+  const extracted = {
+    nationalId: { value: '28709011202408', confidence: 'high' },
+    fullNameAr: { value: 'ندى محمد', confidence: 'medium' },
+  };
+
+  it('extracts unchanged from a response carrying quality, diagnostics and elapsedMs', async () => {
+    respond({
+      fields,
+      layoutProfile: 'egypt-nid',
+      elapsedMs: 1843.2,
+      quality: {
+        front: { verdict: 'ok', reasons: [], metrics: { cardWidthPx: 1024, sharpness: 182.4 } },
+        back: { verdict: 'degraded', reasons: ['glare'], metrics: { glare: 0.21 } },
+      },
+      diagnostics: {
+        front: { lines: 11, boxes: { profile: 6, detector: 5 } },
+        back: { lines: 7, boxes: { profile: 7 }, detectionFailed: true },
+      },
+    });
+    expect(await provider.extract({ frontFileId: 'f1', backFileId: 'b1', actor: ctx })).toEqual(
+      extracted,
+    );
+  });
+
+  // Each of these is a different way the block can be wrong, and none of them is about the fields.
+  // A `quality` that is a string, an array, null, or an object whose per-side entries are not
+  // objects at all — every one must leave the extraction untouched rather than throw out of
+  // `sanitize` and degrade the whole read to `{}`.
+  it.each([
+    ['a string', 'ok'],
+    ['an array', ['ok']],
+    ['null', null],
+    ['a number', 7],
+    ['per-side primitives', { front: 'ok', back: 3 }],
+    ['per-side nulls', { front: null, back: null }],
+    ['reasons that are not a list', { front: { verdict: 'ok', reasons: 'glare' } }],
+    ['no metrics at all', { front: { verdict: 'reject' } }],
+  ])('still extracts when `quality` is %s', async (_label, quality) => {
+    respond({ fields, quality, diagnostics: null, elapsedMs: 'not-a-number' });
+    expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual(extracted);
+  });
+
+  // The block being absent is the OLD sidecar's response, which must keep working for exactly as
+  // long as someone is still running one.
+  it('still extracts when the blocks are absent entirely, as the old sidecar answered', async () => {
+    respond({ fields, layoutProfile: 'egypt-nid' });
+    expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual(extracted);
+  });
+
+  // A malformed block must not rescue a malformed FIELD. The field rules are unchanged: an
+  // unknown confidence band is still dropped, however healthy the quality verdict beside it.
+  it('does not let a healthy quality verdict admit a field with a bad band', async () => {
+    respond({
+      fields: { nationalId: { value: '28709011202408', confidence: 'excellent' } },
+      quality: { front: { verdict: 'ok', reasons: [], metrics: {} } },
+    });
+    expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual({});
+  });
+});

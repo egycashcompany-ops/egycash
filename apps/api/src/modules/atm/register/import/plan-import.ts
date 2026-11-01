@@ -19,10 +19,17 @@
 //
 // The pure half (`planRegisterImport`) takes the world as a value so its spec can hold the masters
 // in memory; `loadPlanWorld` is the one place that reads the database for it.
+//
+// BRANCHES are read as ATM files them (`atm.branchLinks`, register-settings.ts): a file code mapped
+// to a linked source lands its rows in the target, whose activity and reach are what count, and
+// column A of an already-imported row is compared as BRANCHES — the stored entry's resolved branch
+// against the row's — never as code strings, so remapping a code or moving a branch's data does
+// not turn every imported row into `changedSinceImport` and block the next import. A branch is
+// named by its ECMS name (the owner, 2026-10-28: «أنا عايزك تعتمد التسمية اللى بالعربي
+// والإنجليزي»); the codes stay where the file itself is the subject.
 import {
   ATM_NBE_FOREX_LABEL,
   ATM_REGISTER_BRANCH_CODES,
-  ATM_REGISTER_BRANCH_NAMES,
   ATM_REGISTER_COLUMNS,
   ATM_REGISTER_IMPORT_BLOCKERS,
   type AtmBankCode,
@@ -93,8 +100,14 @@ export interface PlanBranch {
 }
 
 export interface PlanWorld {
-  settings: Pick<RegisterSettings, 'branchIdByCode' | 'codeByBranchId' | 'opsLabel'>;
-  /** The mapped branches of the file's codes, by id. */
+  settings: Pick<
+    RegisterSettings,
+    'rawBranchIdByCode' | 'branchIdByCode' | 'resolveBranch' | 'canonicalCodeOf' | 'opsLabel'
+  >;
+  /**
+   * By id: the file's codes' branches, raw and resolved, and every in-reach branch an item may name
+   * (a master active there, an entry open there).
+   */
   branches: Map<string, PlanBranch>;
   /** Live masters (isDeleted:false): every one in the file's in-reach branches, plus every ACTIVE
    *  one anywhere carrying a code of the file (the DEC-9 check). */
@@ -162,6 +175,9 @@ const SECRET_LETTERS: ReadonlySet<string> = new Set(
   ATM_REGISTER_COLUMNS.filter((c) => c.sensitivity === 'K').map((c) => c.excel),
 );
 
+/** Column A — the branch, compared as branches (header). */
+const BRANCH_LETTER = ATM_REGISTER_COLUMNS.find((c) => c.field === 'branchCode')?.excel ?? 'A';
+
 /** D5 / §6.4: an NBE machine whose area ends with ` FX` is an `NBE FOREX` candidate. */
 export const isNbeForexCandidate = (bankCode: AtmBankCode | null, area: string | null): boolean =>
   bankCode === 'NBE' && area !== null && /\sFX$/i.test(area.trim());
@@ -220,11 +236,13 @@ export const planRegisterImport = (
   const fileRows = new Set(parsed.rows.map((r) => r.importRow));
   const inReachRows = parsed.rows.filter(reach.rowInReach);
 
-  // 1. Branches — every code present, mapped or not; blank/unknown A needs organization reach.
+  // 1. Branches — every code present, mapped or not; blank/unknown A needs organization reach. The
+  //    code's rows land in its RESOLVED branch, so that branch's activity and reach decide.
   const branches: AtmRegisterImportResultDto['branches'] = [];
   for (const code of ATM_REGISTER_BRANCH_CODES) {
     const rows = parsed.rows.filter((r) => r.values.branchCode === code);
     if (rows.length === 0) continue;
+    const rawBranchId = settings.rawBranchIdByCode.get(code) ?? null;
     const branchId = settings.branchIdByCode.get(code) ?? null;
     const branch = branchId === null ? undefined : world.branches.get(branchId);
     const active = branch?.active ?? false;
@@ -234,12 +252,14 @@ export const planRegisterImport = (
     if (branchId !== null && !inReach) blockers.add('branchOutOfReach');
     branches.push({
       code,
-      branchId,
-      branchName: branch?.name ?? null,
+      branchId: rawBranchId,
+      branchName: rawBranchId === null ? null : (world.branches.get(rawBranchId)?.name ?? null),
       active,
       inReach,
       rows: rows.length,
       openRows: rows.filter((r) => r.status === 'open').length,
+      resolvedBranchId: branchId,
+      resolvedBranchName: branch?.name ?? null,
     });
   }
   if (parsed.rows.some((r) => r.values.branchCode === null) && !reach.importOrg) {
@@ -270,9 +290,14 @@ export const planRegisterImport = (
       continue;
     }
     const secretsSeen = reach.secretsCover(stored.branchId);
+    const storedBranch = stored.branchId === null ? null : settings.resolveBranch(stored.branchId);
     const columns: string[] = [];
     for (const [letter, value] of comparableColumns(row)) {
       if (!secretsSeen && SECRET_LETTERS.has(letter)) continue;
+      if (letter === BRANCH_LETTER) {
+        if (storedBranch !== branchIdOf(row)) columns.push(letter);
+        continue;
+      }
       if ((stored.columns.get(letter) ?? null) !== value) columns.push(letter);
     }
     if (columns.length > 0) changed.push(itemOf(row, { entryId: stored.id, columns }));
@@ -290,14 +315,17 @@ export const planRegisterImport = (
   //    (an in-file pair is `duplicateOpen`, DEC-11).
   const notFromThisFile = (entry: PlanOpenEntry): boolean =>
     entry.importRow === null || !fileRows.has(entry.importRow);
+  // Named as `describeBranch` names a refusal's branch: only one the importer reaches (judged as it
+  // works, through the links), by its ECMS name — a branch no code resolves to is named too.
   const nameIfReached = (
     branchId: string | null,
-  ): Pick<AtmRegisterImportItemDto, 'otherBranchCode' | 'otherBranchName'> => {
-    const code = branchId === null ? undefined : settings.codeByBranchId.get(branchId);
-    return branchId !== null && code !== undefined && reach.importReaches(branchId)
-      ? { otherBranchCode: code, otherBranchName: ATM_REGISTER_BRANCH_NAMES[code] }
+  ): Pick<AtmRegisterImportItemDto, 'otherBranchCode' | 'otherBranchName'> =>
+    branchId !== null && reach.importReaches(settings.resolveBranch(branchId))
+      ? {
+          otherBranchCode: settings.canonicalCodeOf(branchId),
+          otherBranchName: world.branches.get(branchId)?.name ?? null,
+        }
       : { otherBranchCode: null, otherBranchName: null };
-  };
   const openInRegister: AtmRegisterImportItemDto[] = [];
   const blockedOpen = new Set<number>();
   for (const row of inReachRows) {
@@ -354,13 +382,18 @@ export const planRegisterImport = (
     if (branchId === null || toCode === null) continue;
     const stored = world.imported.get(row.importRow);
     // Already written: only an OPEN, still-unlinked entry the importer reaches is still to be
-    // coupled (one out of reach is `changedSinceImport` above, and stays out of this plan).
+    // coupled (one out of reach is `changedSinceImport` above, and stays out of this plan) — and
+    // only one filed in the row's own branch. One still filed under a linked source waits for
+    // «نقل البيانات», which moves it with its machines: a master is coupled in its entry's OWN
+    // branch (register-coupling.ts), and the apply reads only entries stored in
+    // `couplingBranchIds` — an approved item for it would be skipped there without a word.
     if (
       stored !== undefined &&
       (!storedInReach(stored) ||
         stored.isDeleted ||
         stored.status !== 'open' ||
-        stored.machineId !== null)
+        stored.machineId !== null ||
+        stored.branchId !== branchId)
     ) {
       continue;
     }
@@ -388,7 +421,13 @@ export const planRegisterImport = (
     if (otherBranchId !== null) {
       const named = nameIfReached(otherBranchId);
       push('activeElsewhere', itemOf(row, { reason: 'activeElsewhere', ...named }));
-      const pairKey = `${named.otherBranchCode ?? ''}>${toCode}`;
+      // One row per other BRANCH (the contract), named as its items are: two branches no code
+      // resolves to — named since they read by their ECMS names — or a linked source and its
+      // target (one canonical code) keep their own rows and counts. Every branch out of reach
+      // stays the one unnamed «—» row, so a pair never tells one such branch from another (F-3).
+      const fromKey =
+        named.otherBranchCode === null && named.otherBranchName === null ? '' : otherBranchId;
+      const pairKey = `${fromKey}>${toCode}`;
       const pair = pairs.get(pairKey) ?? {
         fromBranchCode: named.otherBranchCode,
         fromBranchName: named.otherBranchName,
@@ -446,13 +485,15 @@ export const planRegisterImport = (
   }
 
   // NBE FOREX for entries already coupled under the DEFAULT label (an earlier pass created or
-  // reactivated their master without the category): relabel + the D2 edit sync.
+  // reactivated their master without the category): relabel + the D2 edit sync. Only an entry
+  // filed in the row's own branch, as above: one still under a linked source waits for the move.
   for (const row of inReachRows) {
     const stored = world.imported.get(row.importRow);
     const branchId = branchIdOf(row);
     if (
       stored === undefined ||
       branchId === null ||
+      stored.branchId !== branchId ||
       !storedInReach(stored) ||
       stored.isDeleted ||
       stored.status !== 'open' ||
@@ -511,7 +552,7 @@ export const planRegisterImport = (
     if (openHere) continue;
     push('activeMasterWithoutOpenEntry', {
       importRow: 0,
-      branchCode: settings.codeByBranchId.get(master.branchId) ?? null,
+      branchCode: settings.canonicalCodeOf(master.branchId),
       machineCode: master.machineCode,
       name: master.name,
       area: master.area,
@@ -593,20 +634,17 @@ export const planRegisterImport = (
 
 // ── The database read behind the plan ───────────────────────────────────────────────────────────
 
-/** A stored entry's comparable columns, in the parsed row's vocabulary. */
-const storedColumns = (
-  doc: AtmRegisterEntryDoc,
-  settings: Pick<RegisterSettings, 'codeByBranchId'>,
-): Map<string, string | null> => {
+/**
+ * A stored entry's comparable columns, in the parsed row's vocabulary. Column A is not among them:
+ * it is compared as branches, from the entry's `branchId` (header).
+ */
+const storedColumns = (doc: AtmRegisterEntryDoc): Map<string, string | null> => {
   const out = new Map<string, string | null>();
   for (const column of ATM_REGISTER_COLUMNS) {
     const { field } = column;
-    if (field === 'safeCombination') continue;
+    if (field === 'safeCombination' || field === 'branchCode') continue;
     let value: unknown;
-    if (field === 'branchCode') {
-      value =
-        doc.branchId === null ? null : (settings.codeByBranchId.get(String(doc.branchId)) ?? null);
-    } else if (field === 'startDate' || field === 'endDate') {
+    if (field === 'startDate' || field === 'endDate') {
       value = registerDateString(doc[field]);
     } else if (field.startsWith('keys.')) {
       value = (doc.keys as unknown as Record<string, unknown> | undefined)?.[field.slice(5)];
@@ -631,17 +669,19 @@ export const loadPlanWorld = async (
       parsed.rows.flatMap((r) => (r.values.branchCode === null ? [] : [r.values.branchCode])),
     ),
   ];
-  const mappedIds = codesInFile.flatMap((code) => {
-    const id = settings.branchIdByCode.get(code);
+  // Where the file's rows land: each code's RESOLVED branch (header).
+  const mappedIds = [
+    ...new Set(
+      codesInFile.flatMap((code) => {
+        const id = settings.branchIdByCode.get(code);
+        return id === undefined ? [] : [id];
+      }),
+    ),
+  ];
+  const rawIds = codesInFile.flatMap((code) => {
+    const id = settings.rawBranchIdByCode.get(code);
     return id === undefined ? [] : [id];
   });
-  const branchDocs = await branchRepository.findByIdsSystem(mappedIds);
-  const branches = new Map<string, PlanBranch>(
-    branchDocs.map((b) => [
-      String(b._id),
-      { name: b.name, active: !b.isDeleted && b.status === 'active' },
-    ]),
-  );
   const reachedIds = mappedIds.filter((id) => keyReachesBranch(ctx, 'atmRegister.import', id));
   const reached = reachedIds.map((id) => new Types.ObjectId(id));
   const machineCodes = [
@@ -703,7 +743,7 @@ export const loadPlanWorld = async (
       status: doc.status,
       machineId: doc.machineId === null ? null : String(doc.machineId),
       opsBankLabel: doc.opsBankLabel,
-      columns: storedColumns(doc, settings),
+      columns: storedColumns(doc),
     });
   }
 
@@ -725,6 +765,29 @@ export const loadPlanWorld = async (
       })),
     );
   }
+
+  // Every branch the preview may name: the codes' (raw and resolved), and the in-reach branches an
+  // item points at — a master active there, an entry open there (`nameIfReached`).
+  const namedIds = [
+    ...mappedIds,
+    ...rawIds,
+    ...masters.map((m) => m.branchId),
+    ...[...openByCode.values()].flatMap((list) =>
+      list.flatMap((entry) => (entry.branchId === null ? [] : [entry.branchId])),
+    ),
+  ].filter(
+    (id) =>
+      mappedIds.includes(id) ||
+      rawIds.includes(id) ||
+      keyReachesBranch(ctx, 'atmRegister.import', settings.resolveBranch(id)),
+  );
+  const branchDocs = await branchRepository.findByIdsSystem(namedIds);
+  const branches = new Map<string, PlanBranch>(
+    branchDocs.map((b) => [
+      String(b._id),
+      { name: { ar: b.name.ar, en: b.name.en }, active: !b.isDeleted && b.status === 'active' },
+    ]),
+  );
 
   const forexLabels = await AtmRefLabelModel.find(
     {

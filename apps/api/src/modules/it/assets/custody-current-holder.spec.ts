@@ -45,6 +45,7 @@ vi.mock('./receipt.repository', () => ({
 // The paper's number comes from the counter; here, whatever the hand-over names, or 1.
 vi.mock('./receipt-number', () => ({
   receiptNumberFor: async (printed?: number) => printed ?? 1,
+  claimReceiptNumber: async () => undefined,
 }));
 // What the paper says about the device is not what is decided here.
 vi.mock('./receipt-device', () => ({
@@ -91,7 +92,7 @@ const scope = {} as never;
 const person = (status: DirectoryEmployee['status']): DirectoryEmployee => ({
   employeeId: NEWCOMER,
   code: '0100026',
-  fullNameAr: 'مصطفى عثمان محمود',
+  fullNameAr: 'وليد صفوت جلال',
   status,
   branchId: String(BRANCH),
   departmentId: null,

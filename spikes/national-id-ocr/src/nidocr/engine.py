@@ -16,13 +16,14 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Protocol
 
 import cv2
 import numpy as np
 
-from .preprocess import split_text_lines
+from .preprocess import split_text_lines, trim_to_ink
 
 LOG = logging.getLogger("nidocr.engine")
 
@@ -156,6 +157,13 @@ class PaddleRecognizer:
 
     def __init__(self, model_dir: str | None = None, lang: str = "ar") -> None:
         self._model_dir = model_dir or os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
+        self._lock = threading.Lock()
+        # Every Paddle predictor is BUILT and CALLED on this one thread, for the life of the
+        # process. See `_call`.
+        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle")
+        self._worker.submit(self._load, lang).result()
+
+    def _load(self, lang: str) -> None:
         # Point PaddleX's cache at the baked weights BEFORE importing paddleocr — the module reads
         # this at import time (paddlex/utils/cache.py). With the weights already present, model
         # resolution is a local lookup and nothing is fetched, which is what makes the container
@@ -176,7 +184,6 @@ class PaddleRecognizer:
             use_doc_unwarping=False,
             use_textline_orientation=False,
         )
-        self._lock = threading.Lock()
 
         # The recognition model on its own, for reading a field crop line by line. See
         # `_read_lines`: running detection inside a crop that a field box already located is how a
@@ -200,10 +207,37 @@ class PaddleRecognizer:
                 exc_info=True,
             )
 
+    def _call(self, work):
+        """Run `work` where the predictors live: on the one Paddle thread.
+
+        Serializing the calls (the lock below) was not enough. The service handles each request on
+        a NEW thread, and the detector only works on the thread that first ran it: the first card
+        after start read normally, and every card after it raised `RuntimeError: std::exception`
+        from inside the detector — caught, logged as `detectionFailed`, and the card read on
+        profile geometry alone, which on a real card meant a missing name and a wrong address.
+        Reproduced outside the service with nothing but `threading.Thread`; fixed by never letting
+        any other thread touch a predictor.
+
+        Subclasses built without `__init__` (the model-free tests) have no worker and run inline.
+        """
+        worker = getattr(self, "_worker", None)
+        if worker is None:
+            with self._lock:
+                return work()
+        return worker.submit(work).result()
+
     def _run(self, image: np.ndarray) -> list[tuple[object, str, float]]:
-        """The one place the predictor is touched, under the one lock. See the class docstring."""
-        with self._lock:
-            return _flatten_paddle_polys(self._ocr.ocr(image))
+        """The one place the full pipeline is touched, on the Paddle thread. See `_call`."""
+        return self._call(lambda: _flatten_paddle_polys(self._ocr.ocr(image)))
+
+    def read_page(self, image: np.ndarray) -> list[tuple[object, str, float]]:
+        """Every text line on an arbitrary page, at the page's own resolution — for `/read`.
+
+        Unlike `detect_lines` there is no fixed canvas: a receipt is long and narrow, and
+        letterboxing it into 960x640 would shrink its text below what the recognizer can read.
+        Polygons come back in the page's own pixels.
+        """
+        return self._run(image)
 
     def detect_lines(self, image: np.ndarray) -> list[tuple[object, str, float]]:
         """Full-page detection + recognition, keeping each line's polygon.
@@ -253,20 +287,20 @@ class PaddleRecognizer:
         """
         if self._lines is None:
             return None
-        strips = split_text_lines(crop)
+        strips = [trim_to_ink(strip) for strip in split_text_lines(crop)]
+        predictions = self._call(lambda: [list(self._lines.predict(strip)) for strip in strips])
         reads: list[LineRead] = []
-        with self._lock:
-            for strip in strips:
-                for entry in self._lines.predict(strip):
-                    text = str(_field_of(entry, "rec_text", ""))
-                    if text.strip():
-                        reads.append(
-                            LineRead(
-                                text=text,
-                                score=float(_field_of(entry, "rec_score", 0.0)),
-                                image=strip if self.keep_line_images else None,
-                            )
+        for strip, entries in zip(strips, predictions):
+            for entry in entries:
+                text = str(_field_of(entry, "rec_text", ""))
+                if text.strip():
+                    reads.append(
+                        LineRead(
+                            text=text,
+                            score=float(_field_of(entry, "rec_score", 0.0)),
+                            image=strip if self.keep_line_images else None,
                         )
+                    )
         if not reads:
             return None
         # Strips come out top to bottom, which is reading order for every field on this card. No

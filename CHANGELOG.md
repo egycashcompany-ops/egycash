@@ -11,6 +11,182 @@ its entry here in the same PR.
 
 ### Added
 
+- **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**
+  «عايزك تستخدم اللوجو دا بدل حرف الـ E اللى محطوط دا ! فى الموقع كله وتظهر كمان الـ Version بتاع
+  الـ APP». The company's artwork — the two folded ribbons and the EGYCASH lettering — is drawn
+  from vector paths and follows the theme. The mark alone sits where the tile was, at the
+  same height: the top bar, the sign-in, activation and password screens, the applicant portal.
+  The mark with the lettering appears where the company's name belongs: the customer and
+  applicant portals (sign-in and, for customers, the portal's own header), the public application
+  page, the contract verification page — and those screens name the browser tab «EGYCASH». The
+  installed app's icons, the tab icon and the push notification badge carry the mark too; a
+  shared link previews as EGYCASH. «الإصدار 2.2.0 · 5f1e139» — the version and the commit it was
+  built from, stamped by the build — shows at the foot of the user menu, on the crash screen and
+  under the captain's phone screens, and only to somebody signed in: no public page displays it,
+  and the public contract-verification answer no longer names the generating release.
+- **The platform has one version: 2.2.0.** «أعتمد دا 2.2.0». The package files said 2.1.0 (left
+  over from Sprint 2.1), the kernel's platform contract 2.2.0, and generated contracts a
+  hand-typed «ecms-api/2.1.0». Every workspace now declares 2.2.0 (a spec keeps them equal) and
+  contracts are stamped from it; the next release is cut as 2.2.0
+  ([Development Workflow §6](docs/09-guides/development-workflow.md)). The 0.x headings below
+  stay the pre-GA sprint releases they are.
+- **The IT asset register says who holds each asset, and filters by name.** «وعايز فى شاشة الأصول
+  /it/assets تزودلى بعد الحالة لو متسلم اسم الشخص اللى متسلمله الحاجة · وعايز فى الفلتر زود بعد
+  الحالات وقبل الفئة (الاسم) ويكون Drop Down مع قابليه للكتابة». `/it/assets` shows «المستلِم» after
+  the status — the holder's name, linked to their IT page, and their code — and a name filter you
+  can type into between the status and the category. The Excel/PDF carry the holder too.
+- **The custody register's files carry the serial, and the register filters by every column.**
+  «وكمان فى شاشة عهد الأصول /it/custody عايزك تزود سيريال الأصول لما أعمل Extract وزود الفلتر بتاع
+  الجدول ببيانات الجدول». The Excel/PDF gain «الرقم التسلسلي»; the filter bar follows the table's
+  columns: the item (code, name or serial), category, hand-over dates, overdue, status, branch,
+  holder, return dates and the receipt (signed / awaiting the signature / none).
+- **IT consumables: each branch's stock, what was issued to whom, the scrap, and a printed memo.**
+  «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات … وأقدر أحدد عندي Stock إيه من كل واحده
+  وإيه الهالك وأتبدل لمين واطبعله مذكره ولو حاجة بتتركب فى حاجة تانية … أقدر أذكر الجهاز اللى أتركب
+  عليه من اللأصول». `/it/consumables` «المستهلكات» (under «خطوط المحمول») keeps inks, cables, adapters,
+  mice, keyboards, memory, drives and flash drives per branch: each item's balance, issued and
+  scrapped, flagged at its minimum. Stock moves only by «توريد», «صرف», «هالك» and «مرتجع», each kept
+  in «حركات المستهلكات» (filters, Excel, PDF). «صرف لموظف» gives a current employee one or more items
+  — new, or in place of a damaged one (counted as scrap) — optionally naming the asset each went
+  into, and prints «مذكرة صرف مستهلكات» (EGYCASH-IT-CON-0001…) on the acknowledgment's letterhead,
+  with both signatures; it can be reprinted and its signed copy filed. Asset and employee pages list
+  their consumables. The types are a catalog list on `/it/catalogs`, seeded with nine. Same grants as
+  the assets; no new key ([IT design §2.11, FR-20](docs/12-planning/it-module-design.md)).
+- **97 Lenovo all-in-ones for October, the specifications of 38 devices, and the consumables'
+  opening stock, entered once by the deploy.** From «SN ايجي كاش» and «جرد الأجهزة», as reviewed
+  with the owner («موافق على كل اقتراحاتك، طبّق الأربعة ودخّل الأرصدة»): 97 new «Lenovo ThinkCentre
+  neo 50a 24» in «أكتوبر», in stock, copying the live one's category, make, model, specifications
+  and accessories (the two already registered at the head office stay; a short serial was one of
+  them scanned twice); processor, memory and storage added to 38 registered devices only where
+  empty, a typed value kept; and ten items' counted balances received into the «المهندسين» store.
+  Each runs once, after the steps it depends on.
+- **A maintenance mail accepted or rejected by mistake goes back to pending, and both mail pages
+  filter, with their buttons on the rows.** «هنا /atm/mail-tickets/log وهنا /atm/mail-tickets عايز
+  فلتر وعايز Action Buttons — في /atm/mail-tickets يكون 2 قبول ورفض — في /atm/mail-tickets/log
+  إسترجاع ويقدر يرجعه مفتوح لو قبل أو رفض غلط». On `/atm/mail-tickets/log`, accepted and rejected
+  rows carry «استرجاع»: after a confirm the mail is pending again, to be decided anew. An accepted
+  one also takes its maintenance off `/atm/maintenance`, in one step with the mail, so neither
+  happens alone, and accepting it again opens a fresh one. A maintenance already closed is work
+  done: its mail stays as it is and the message names the machine. So does a mail accepted in the
+  old system: no maintenance is linked to it, so there is nothing to take back, and returning it
+  would leave its maintenance on the board while a second accept could open another. On
+  `/atm/mail-tickets` every row
+  carries «قبول» and «رفض» at its end; on a checked row they act on every checked row, as on the
+  boards, and the accept and reject bar is gone. The confirms, the duplicate warning and the yellow
+  duplicate rows stay. Both pages have a filter row — bank, area, a search by machine code or name,
+  and the red reset — kept in the address and remembered, and the log adds a status choice beside
+  its dates. Both now read the whole list, past the first hundred rows. The buttons, and
+  `POST /atm/mail-tickets/restore` behind them, need `atmMailTicket.decide`, the key that accepts
+  and rejects — now named «قبول رسالة الصيانة أو رفضها أو استرجاعها» in the role editor; a restore
+  is on the audit trail as `restore`, beside the maintenance's `delete`. Mail the legacy import
+  wrote (it carries no timestamps) is listed on both pages instead of failing them
+  ([ATM port §6d](docs/12-planning/atm-operations-port.md)).
+
+- **The Banque Misr maintenance mailbox is set up on a screen and switched on branch by branch,
+  and October works as Mohandessin in ATM.** «عايز نبدأ فى موضوع الـ Automation بتاع الميلات اللى
+  بيجي من بنك مصر لماكينات الصيانة — هنبدأ بفرع المهندسين حالياً وبعدين هنبقى نزود فرع فرع».
+  `/atm/settings` «إعدادات الصراف الآلي», under a new key `atmSettings.manage` that works only when
+  held at organization scope (super-admin holds it after the deploy), has two cards. «بريد الصيانة —
+  بنك مصر»: the Tenant ID, Client ID, Client Secret and mailbox address of the ONE shared mailbox,
+  «تفعيل القراءة», the branches switched on with their Outlook category, «اختبار الاتصال», «قراءة
+  الآن» and the last run. The secret is stored sealed by the platform secret store and is never
+  shown, returned or written to the audit trail; a save that leaves it empty keeps it, and the
+  nightly key rotation re-wraps it. The machine still decides the branch: with the screen saved, a
+  mail is filed only when its machine's branch is switched on, and any other mail stays UNREAD in
+  the mailbox («branch not enabled for mail» on the last-run line) and is filed once its branch is
+  switched on. The shared mailbox is read newest first, so the mail it leaves unread never stands
+  between the reader and a new one, and a sweep walks the older unread mail a page per minute so
+  a backlog is filed too. Until the screen is first saved, the reader runs on the
+  deployment's environment exactly as before; switched off, it reads nothing. «فروع تعمل معاً»:
+  «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين» — with
+  October linked to Mohandessin, an October employee sees Mohandessin's ATM data on every ATM page
+  and what they record is filed under Mohandessin, where Mohandessin's people see it; outside ATM
+  nothing changes. On `/atm/mail-tickets` the header «select all» box is gone; the row boxes and
+  the accept and reject bar stay ([ATM port §6a–§6c](docs/12-planning/atm-operations-port.md)).
+
+- **Banks and areas are one list across the ATM pages, in Arabic and English, and a machine added
+  on data-edit lands in the register.** «وبالنسبة لإضافة الماكينات /atm/data-edit البنوك والمناطق
+  مش مسمعه !! من /atm/register · مع العلم عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا
+  /atm/register بحيث شغل العمليات ميعطلش ويبقى بتاع الكفاءة والتحقيقات يكمل بياناتها براحته وبرضو
+  يقدروا يضيفوا مناطق وبنوك (عربي وأنجليزي)». The register's six fixed banks became a company-wide
+  bank catalog, seeded with the same six. A bank added there — its code, Arabic and English names,
+  the name Operations type, and a colour — is a full bank: register receipts, the Data Report (after
+  BRK and after NXT), the settlements once enabled, and the map all use it. Banks are added and
+  edited from the register's new «البنوك» button and data-edit's «البنوك» tab, under two new keys,
+  `atmBank.create` / `atmBank.edit`, which work only when held at organization scope. After the
+  deploy only super-admin holds them, so an administrator grants them. A bank is archived, never
+  deleted.
+  `/atm/data-edit` now has four tabs: machines; banks; «أسماء البنوك في التشغيل» — each branch's
+  spellings such as NBE FOREX, linked to their bank, with the machines' unlinked bank texts listed
+  to link; and areas, each with an Arabic and an English name. Every area on an active machine or an
+  open or pending register entry now shows there, listed automatically after each save and once at
+  the deploy; a name Operations deleted, archived or renamed — a rename made before this release
+  included, found in the audit trail — is never listed again. A new area entered in both languages is stored on machines under its English name
+  («الإنجليزي تمام»). Efficiency add areas from the register form's «+ منطقة» with the register keys
+  they already hold.
+  A machine added on data-edit, single or bulk, is recorded in the register as an OPEN entry dated
+  the day it was added, linked to it and marked «بيانات ناقصة», for Efficiency to complete at their
+  pace. The register has a «بيانات ناقصة فقط» filter, a badge on those rows listing what is still
+  empty, and a box on the edit form to clear the mark; the export gains a `Data incomplete` column.
+  Nothing is recorded, and the machine still works for Operations, when the branch has no EGYCASH
+  code or the bank text is not linked to a bank yet. Machines already in the Operations list are not
+  moved into the register: Efficiency receive those by hand, and the receipt links the machine
+  ([register spec §1.3, DEC-35–DEC-41](docs/12-planning/atm-efficiency-register.md),
+  [ATM port §9](docs/12-planning/atm-operations-port.md)).
+
+- **The ATM boards show one day at a time, and every ATM operation table goes to Excel and PDF.**
+  «هنا يظهر فقط الماكينات اللى المفروض يتغذى أو يتعمله صيانه في اليوم دا مش عموماً».
+  `/atm/replenishments` and `/atm/maintenance` open on today's operations only; a switch beside the
+  table shows tomorrow, everything scheduled ahead, and the earlier days left open and never
+  closed — each with its count. Every column sorts; one red reset clears the bank and area filters
+  (the day view stays, as on the Fleet day boards); only the bank, the code, the machine name and
+  the schedule time (maintenance: the open time) take a text selection, so a drag or Ctrl+A copies
+  exactly those, a tab between columns; the header's «select all» appears only on F8 — focused, so
+  Space checks it — and goes again at the next click or key. The leader field of both edit dialogs
+  carries a «الوردية» box, ticked by default: ticked, the leader goes over the whole shift as before
+  (and, on a checked set, over each checked row's area and shift); unticked, it is written on the
+  rows in the dialog only. The two boards and the two done pages (now read whole, past the first
+  hundred rows) export the table as it stands — day, filters and order applied — to Excel and PDF
+  under «بيان تغذية/صيانة ماكينات الصراف الآلي عن يوم … / عن الفترة من … إلى …»
+  ([ATM port §4a OD-1a, §10](docs/12-planning/atm-operations-port.md)).
+
+- **Settlements & Review, Preparation and Control & Supplies run the day's ATM replenishment in
+  ECMS, Al Baraka first.** «كل شوال بيشيل ٤ كاسيتات · موافق على مقترحاتك … ممكن تبدأ كدا توريلى
+  الشغل». `/atm/settlements/layouts` «فئات الكاسيتات» keeps each machine's cassettes (4–8 slots:
+  kind, denomination, currency) with their history and the bank's standard loads, and
+  `/atm/settlements/layouts/import` seeds them once from the bank's Full list with a differences
+  report. `/atm/settlements/plans` «خطة التغذية» builds ONE plan per bank per day: machine IDs
+  typed fill the standard counts, any line is edited by hand (several cassettes of a denomination
+  split evenly in hundreds), each line carries its run (1st/2nd/3rd) and time; the plan is issued
+  and prints «بيان التغذية», one numbered Note per line (with which cassette is in which bag — a
+  bag holds 4) and the seals sheet, and exports today's REP. TAPE / ATM_2 columns for Inventory and
+  the daily report. `/atm/preparation` «الشوالات والسيلزات» scans (or types) each cassette's seal
+  and the bag's QR — a repeated value warns, never blocks — and marks the line ready.
+  `/atm/control` «بيانات التغذية والخطوط» shows the data and seals, prints the handover to the ATM
+  vault, distributes the bags across crew lines (from the map's zones where they exist) and prints
+  one sheet per line. Only the banks in the setting `atm.settlements.banks` (default `['BRK']`) are
+  offered. Twelve new keys, seeded to super-admin only — `atmCassetteLayout.view/manage/import`,
+  `atmSettlementPlan.view/print/export/manage`, `atmPreparation.view/capture`,
+  `atmControl.view/print/manage` — so after the deploy an administrator grants them at branch or
+  organization scope (a department grant reads and never writes), then runs `db:sync-indexes` for
+  the ten new collections. Nothing existing is migrated; Excel stays the fallback for the pilot
+  ([settlements phase 1](docs/12-planning/atm-settlements-phase1.md), rollout §11.2).
+- **The company's mobile lines have their own page in IT.** «الـ 3 فايلات دول عبارة عن خطوط موبايل
+  عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة». `/it/mobile-lines`
+  «خطوط المحمول» lists every line with its network's logo beside it, its number, plan, SIM serial,
+  status and holder. The three network cards — Vodafone, Etisalat and Orange, each with its logo,
+  its number of lines, how many are in stock, handed over and suspended, and its account numbers
+  — are the network filter («عايزك تستخدم الـ 3 لوجوهات فى الفلتر وفى الجدول»), next to search,
+  status, branch, holder and «employee or car». A line is registered, edited, handed over to an
+  employee on a printed «إقرار استلام» (print first, numbered in the same EGYCASH-IT-F-14 series as
+  the devices' papers, the signed copy filed against it) or to a car by its code and plate,
+  returned, suspended and reactivated, and every step is in its history; the list goes to Excel and
+  PDF; an employee's IT page shows their lines beside their devices. It rides the asset grants —
+  whoever manages «الأصول» manages the lines — with no new permission. With the deploy, a one-time
+  step loads the 392 lines of the three networks' files as reviewed with the owner: 301 handed to
+  their 285 employees with an acknowledgment each, the 18 tracker SIMs to their cars, 68 in stock
+  (a line registered to someone who has left, or to a name HR does not have, says so in its notes)
+  and 5 suspended ([IT design §17](docs/12-planning/it-module-design.md)).
 - **The ATM machines are on a map, divided into zones the branches draw themselves.** «موافق على
   المقترح كله، ابدأ». `/atm/map` «خريطة الماكينات» shows every active machine of the branches in
   reach on OpenStreetMap, coloured by zone or by bank, with filters, search and per-zone counts; a
@@ -72,6 +248,50 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Every ATM machine shows under the branch it is filed in, the ATM pages name branches as the top
+  bar does, and a linked branch's data moves to the branch it works as.** «أنا عايز كل ماكينه تظهر
+  فى الفرع بتاعها طبقاً للفرع المتسجله فيه» — machine 27720226 showed on `/atm/machines` only under
+  «كل الشركة», its replenishment and maintenance failed in Mohandessin, its mail showed only under
+  «كل الشركة», and `/atm/register` called it Mohandessin's while its filter brought it under
+  October. October works as Mohandessin since the branch links, but a link moves the PERSON, never a
+  row: what the workbook import, the register and the mail reader filed under October before stayed
+  October's. On `/atm/settings` each link now has «نقل البيانات إلى …»: a preview of what is filed
+  under the source, what merges and what refuses the move, then the move itself, under
+  `atmSettings.manage` held company-wide. Machines, register rows, mail, both operation logs, the
+  map, labels and the settlements data are re-filed under the target; a name both branches use is
+  merged or renamed, a duplicate machine is retired the way data-edit deletes one (its cassette
+  layout and map point going to the machine that stays when that one has none), and the mail
+  and register settings that named the source are pointed to the target where it has none of its
+  own (otherwise they keep answering through the link). The move is refused, with
+  each reason named, while something it must not guess past stands — a machine active in both, a
+  duplicate still holding open work (a draft or issued plan line among it), Note
+  serials or a plan of one bank and day in both, the map's limits, an import running — and stopped
+  part-way, with what moved staying moved, if one appears while it runs; running it again carries
+  on. It moves to the target the reader confirmed, refused if the link was re-pointed since, and
+  while it runs, adding or deleting machines, receiving and linking register rows, the register
+  import, saving names, opening or reopening a replenishment or maintenance and accepting mail
+  wait for it (423), so nothing lands between its plan and its writes — a register import already
+  running refuses the move instead, and a move cut off by a restart holds them until it is 30
+  minutes old, when pressing «نقل» again takes it over; an
+  area name deleted or renamed away in one linked branch is not created again as a label by the
+  other's writes or by the boot repair (the move itself still brings the source's own live label
+  of that name across, as before). The card
+  names every linked branch still holding data, and opens the preview when a link just
+  saved has data under it. What is filed from now on follows the link too: a register receipt, the
+  workbook import and a mail of a linked branch's machine land in the branch it works as, and the
+  legacy importer refuses a linked branch. «أنا عايزك تعتمد التسمية اللى بالعربي والإنجليزي»,
+  «الفروع فوق خالص فى البار بتاع السيستم غير اللى فى الفلاتر»: the register's grid, filter, forms,
+  export and Data Report name a branch by its ECMS name in Arabic and English — the EGYCASH codes
+  stay on the register settings card and the import preview — and its branch filter offers only the
+  branches the top bar's choice shows. An organization-wide user placed in a branch filed every
+  machine, label, replenishment and maintenance under that home branch whatever the top bar said,
+  and under «كل الشركة» too; each is now filed where the top bar points — for a holder whose grants
+  name no branch (one whose grants list branches keeps the platform's rule: the top bar inside that
+  reach, else home) — and on «كل الشركة» an add
+  or a delete asks for a branch first («اختر فرعًا محددًا من القائمة العلوية أولًا.»),
+  the data-edit dialogs saying «الفرع: …» before an add and each row's «حذف» waiting for one
+  ([ATM port §6b–§6c](docs/12-planning/atm-operations-port.md),
+  [register DEC-42](docs/12-planning/atm-efficiency-register.md)).
 - **A busy office no longer locks itself out of signing in.** Steps 1 and 2 of the capacity plan.
   Sign-in, TOTP and activation were limited per IP address — 10 tries in five minutes shared by
   everyone behind one office connection, and 60 renewals for all of them — and the address could
@@ -113,6 +333,58 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **Every module tile says what its module is, and no two look alike.** «بص الأيقونات بتاعت
+  الإدارات مش متناسقة مع مدلول الإدارة … وبعدين فى متكرر ! عايز كل أيقونة تكون بتعبر عن اسم
+  الإدارة». In «الوحدات» (and the module rail and the command palette): العمليات is a banknote,
+  الصراف الآلي a cash machine, خزائن الذهب stacked gold bars — no longer the shield the two shared —
+  and الهيكل التنظيمي the building chosen for it before, which the ATM tile no longer wears. HR,
+  Fleet, IT and Administration already said what they are. Existing installations take these four
+  icons once at the next boot, whatever the tile held (the live tiles had been set by hand); the
+  change is audited, and an administrator's own choice after it stands. Reopen the app once after
+  the deploy so it has the new drawings.
+
+- **The device acknowledgment agrees with what it hands over.** A screen or a printer now reads
+  «ومواصفاتها … لاستخدامها … بالحفاظ عليها … بردها»; a device, a laptop or a mouse reads as before
+  («شوف أنت الأنسب وأعمله»).
+- **A mobile line someone holds can move branch.** «عايزك تفتح إنى أعدل الفرع عادي لخط من خطوط
+  الموبايل لأن ممكن القائد يغير الفرع بتاعه». Editing the branch of a handed-over line now moves the
+  line with its current holder and their acknowledgment, so the new branch sees and reprints them.
+
+- **The Data Report's numbers rise with each machine added on `/atm/data-edit`, and data-edit's add
+  answers differently.** «عايز لما يتضاف حاجة هنا /atm/data-edit تتضاف هنا /atm/register بحيث شغل
+  العمليات ميعطلش». Each add in a mapped branch whose bank is known opens a register entry from that
+  day. It counts in the Data Report at once, and the settlements find its bank, so it is no longer
+  refused there as having none. The import's 57-number check still compares the workbook's six banks
+  only. A code archived in the branch is brought back to work with the form's name and area,
+  instead of being refused as already registered (a bulk add lists it as brought back); its bank is
+  the bank of the register entry it is linked to or receives, when that entry has one, so the
+  machine and the register never name two different banks. A code that
+  is active, or has an open register period, in another branch is now refused, and nothing is
+  written. Before, data-edit added it, and the mail reader then stopped matching that code. Adding a
+  machine needs `atmMachine.manage` over the branch it lands in, and an archived bank cannot be
+  chosen for a new machine. Deleting a machine by its code (how a mistyped code is fixed) needs the
+  same reach, and also removes the register entry its add wrote while Efficiency has not touched
+  it, so the code is free again in every branch; an entry Efficiency already edited stays. The register refuses a bank code the catalog does not have, an archived
+  bank on a new receipt, and an Operations bank name that belongs to another bank or to none
+  (DEC-25 now holds on the server too). The setting `atm.register.bankLabels` is retired: each bank's
+  Operations name lives in the catalog, a stored label carried over at the first boot, and the
+  import page's settings card shows the catalog instead of editing it. `atm.settlements.banks` takes
+  any catalog code, up to 50, and a standard load is refused for a bank that is not in the catalog
+  or not enabled for settlements. Deleting a register entry Operations recorded archives its machine, as
+  for any receipt; the delete dialog says so
+  ([register spec DEC-36, DEC-41, R-14–R-19](docs/12-planning/atm-efficiency-register.md),
+  [settlements DS-24](docs/12-planning/atm-settlements-phase1.md)).
+
+- **A machine is refused only when it is already open THAT DAY.** «خلى الرفض دا … يحصل فقط إذا كانت
+  الماكينات مفتوحه في نفس اليوم ولم تُغلق ! مش يرفضها لو مفتوحه أمبارح ومتقفلتش». The owner's rule
+  (OD-1) is now per Cairo day: a replenishment or maintenance left open yesterday no longer blocks
+  today's open, a reopen or a mail accept — a second open on the SAME day still does. The rule now
+  also holds an edit that moves an open operation's time onto a day its machine is already open on
+  (409, said in words on the dialog). Each operation stores its day (`openDay`); the race-proof
+  index is now unique on `{ machineCode, openDay }` (`ux_open_*_per_code_day`), and the boot DROPS
+  the rule's first, any-day index (`ux_open_*_per_code`) — an index, never a document. The mail
+  screen's «Duplicate» flag asks the same question of the ticket's received day.
 
 - **The IT acknowledgment names what is handed over by its category, not always «جهاز».** «عايز
   كلمة جهاز تبقى متغيرة … حسب (الفئة)» — «بأنني قد استلمت شاشة Dell / P2419H», «… ماوس …», «… لاب

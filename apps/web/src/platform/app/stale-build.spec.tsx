@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
+import { authSlice } from '../../store/authSlice';
 import { localeSlice } from '../../store/localeSlice';
 import { translate } from '../localization/i18n';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -97,8 +98,12 @@ describe('reloading — once', () => {
 describe('the error boundary', () => {
   const render = (node: unknown, locale: 'ar' | 'en' = 'ar'): string => {
     const store = configureStore({
-      reducer: { locale: localeSlice.reducer },
-      preloadedState: { locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) } },
+      // `auth` because the crash screen asks whether anybody is signed in before showing the version.
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
+      preloadedState: {
+        locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
+        auth: { me: null, status: 'signedOut' as const },
+      },
     });
     return renderToStaticMarkup(<Provider store={store}>{node as JSX.Element}</Provider>);
   };

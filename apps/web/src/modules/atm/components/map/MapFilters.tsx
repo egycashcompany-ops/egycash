@@ -10,10 +10,9 @@
 // has no point says so instead (§8.8).
 import { useEffect, useState } from 'react';
 import {
-  ATM_BANK_CODES,
-  ATM_BANK_NAMES,
   ATM_MAP_STATUS_FILTERS,
   joinAtmNameList,
+  type AtmBankCode,
   type AtmMapStatusFilter,
   type Locale,
 } from '@ecms/contracts';
@@ -26,6 +25,7 @@ import { MultiSelect, type MultiSelectOption } from '../../../../shared/ui/Multi
 import { StrokeIcon } from '../../../../shared/ui/StrokeIcon';
 import { DARK_FILTER_BAR } from '../../../../shared/ui/dark-filter-bar';
 import { MACHINE_ICON } from '../MachineFigures';
+import { type BankLookup } from '../../lib/bank-catalog';
 import {
   BANK_NONE,
   MAP_LOCATION_FILTERS,
@@ -93,6 +93,8 @@ const SingleFilter = ({
 export const MapFilters = ({
   filters,
   locale,
+  banks,
+  bankCodes,
   areas,
   zoneOptions,
   patch,
@@ -100,6 +102,10 @@ export const MapFilters = ({
 }: {
   filters: Filters;
   locale: Locale;
+  /** The catalog's names (DEC-35). */
+  banks: BankLookup;
+  /** The banks offered, in order (`banksOnShow`: the active ones and any the points carry). */
+  bankCodes: readonly AtmBankCode[];
   /** The areas the branch's machines carry. */
   areas: readonly string[];
   /** The zones on offer (with «كل الفروع», labelled "name — branch"). */
@@ -114,9 +120,9 @@ export const MapFilters = ({
   useEffect(() => setText(filters.q), [filters.q]);
 
   const bankOptions: MultiSelectOption[] = [
-    ...ATM_BANK_CODES.map((code) => ({
+    ...bankCodes.map((code) => ({
       value: code,
-      label: ATM_BANK_NAMES[code][locale],
+      label: banks.name(code, locale),
       shortLabel: code,
     })),
     { value: BANK_NONE, label: t('atm.map.filters.bankNone') },

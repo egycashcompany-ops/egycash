@@ -6,7 +6,8 @@
 //     does not offer — remembered, or from an old link — never reaches a query key;
 //   · ZoneDetail offers «تعديل» only on a zone of the edit branch;
 //   · in edit mode the header is the title alone;
-//   · the map itself is lazy: the page renders its Suspense fallback, and no subtitle.
+//   · the map itself is lazy: the page renders its Suspense fallback, and no subtitle;
+//   · a bank added to the catalog (DEC-35) is named, coloured and filterable like the six.
 //
 // The rules underneath are the `lib/` specs; the API's answers are tests/integration/atm-map.spec.ts.
 // Every branch, machine and zone below is synthetic.
@@ -17,6 +18,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 import {
+  ATM_BANK_SEED,
+  type AtmBankDto,
   type AtmMapContextDto,
   type AtmMapPointDto,
   type AtmMapPointsDto,
@@ -32,8 +35,11 @@ import { MachineMapPage } from './pages/MachineMapPage';
 import { MapPageHeader } from './components/map/MapPageHeader';
 import { ZoneDetail } from './components/map/ZoneDetail';
 import { MachinePopup } from './components/map/MachinePopup';
+import { BankLegend } from './components/map/BankLegend';
 import { mapContextKey, mapKeys, mapPointsKey, mapZonesKey } from './api/map-queries';
+import { atmBanksKey } from './api/atm-queries';
 import { zoneBreakdown, zoneEditableFromDetail } from './lib/map-view';
+import { banksOnShow, makeBankLookup } from './lib/bank-catalog';
 
 const t = (key: string): string => translate('ar', key);
 
@@ -105,6 +111,33 @@ const ZONE_A = {
 };
 const ZONES: AtmMapZonesDto = { sets: [{ branchId: BRANCH_A, revision: 1, zones: [ZONE_A] }] };
 
+/** `GET /atm/banks`: the six seeds and a synthetic seventh bank added at runtime. */
+const catalogBank = (over: Partial<AtmBankDto> & Pick<AtmBankDto, 'code'>): AtmBankDto => ({
+  id: `66d0000000000000000000${over.code.length.toString().padStart(2, '0')}`,
+  name: { ar: over.code, en: over.code },
+  opsLabel: over.code,
+  formerOpsLabels: [],
+  color: '#000000',
+  sortOrder: 0,
+  isActive: true,
+  isSeed: false,
+  hasIdFormat: false,
+  version: 1,
+  createdAt: '2026-10-18T00:00:00.000Z',
+  updatedAt: '2026-10-18T00:00:00.000Z',
+  ...over,
+});
+const CATALOG: AtmBankDto[] = [
+  ...ATM_BANK_SEED.map((seed) => catalogBank({ ...seed, isSeed: true, hasIdFormat: true })),
+  catalogBank({
+    code: 'QNB',
+    name: { ar: 'بنك تجريبي سابع', en: 'SYN Seventh Bank' },
+    color: '#7030A0',
+    sortOrder: 70,
+  }),
+];
+const BANKS = makeBankLookup(CATALOG);
+
 const store = (permissions: Record<string, string>) =>
   configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
@@ -126,15 +159,18 @@ const render = ({
   permissions = VIEWER,
   search = '',
   withContext = true,
+  points = POINTS,
 }: {
   permissions?: Record<string, string>;
   search?: string;
   withContext?: boolean;
+  points?: AtmMapPointsDto;
 } = {}): { html: string; qc: QueryClient } => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(atmBanksKey(), CATALOG);
   if (withContext) {
     qc.setQueryData(mapContextKey(), CONTEXT);
-    qc.setQueryData(mapPointsKey({ branchId: BRANCH_A, status: 'active' }), POINTS);
+    qc.setQueryData(mapPointsKey({ branchId: BRANCH_A, status: 'active' }), points);
     qc.setQueryData(mapZonesKey({ branchId: BRANCH_A }), ZONES);
   }
   const html = renderToStaticMarkup(
@@ -237,6 +273,7 @@ describe('ZoneDetail', () => {
           breakdown={zoneBreakdown(zone.id, POINTS.points, new Map())}
           overlaps={0}
           locale="ar"
+          banks={BANKS}
           onBack={() => undefined}
           onEdit={editable ? () => undefined : null}
           onPickMachine={() => undefined}
@@ -261,6 +298,7 @@ describe('ZoneDetail', () => {
           breakdown={zoneBreakdown(ZONE_A.id, POINTS.points, membership)}
           overlaps={3}
           locale="ar"
+          banks={BANKS}
           onBack={() => undefined}
           onEdit={null}
           onPickMachine={() => undefined}
@@ -287,6 +325,7 @@ describe('MachinePopup', () => {
             branchName="فرع تجريبي أ"
             zone={{ primary: null, all: [] }}
             locale="ar"
+            banks={BANKS}
             canOpenRegister={false}
             canMove={false}
             onClose={() => undefined}
@@ -300,6 +339,85 @@ describe('MachinePopup', () => {
   it('says when the pin is outside Egypt — a warning no other screen would show (DM-35)', () => {
     expect(popup(['outsideEgypt'])).toContain(t('atm.map.location.outsideEgypt'));
     expect(popup([])).not.toContain('data-popup-outside');
+  });
+});
+
+describe('a bank added to the catalog (DEC-35)', () => {
+  const QNB_POINTS: AtmMapPointsDto = {
+    ...POINTS,
+    points: [...POINTS.points, point(4, { bankCode: 'QNB' })],
+  };
+
+  it('the legend names it in its own colour, after the six, before «بنك غير محدد»', () => {
+    const html = renderToStaticMarkup(
+      <Provider store={store(EDITOR)}>
+        <BankLegend
+          locale="ar"
+          banks={BANKS}
+          codes={banksOnShow(
+            BANKS,
+            QNB_POINTS.points.map((p) => p.bankCode),
+          )}
+        />
+      </Provider>,
+    );
+    const rows = [...html.matchAll(/data-map-legend-bank="([^"]+)"/g)].map((m) => m[1]);
+    expect(rows).toEqual(['NBE', 'BM', 'CIB', 'HDB', 'BRK', 'NXT', 'QNB', 'none']);
+    expect(html).toContain('بنك تجريبي سابع');
+    expect(html).toContain('background-color:#7030A0');
+  });
+
+  it('the popup names it from the catalog, with its code and its colour', () => {
+    const html = renderToStaticMarkup(
+      <Provider store={store(EDITOR)}>
+        <MemoryRouter>
+          <MachinePopup
+            point={point(4, { bankCode: 'QNB' })}
+            branchName="فرع تجريبي أ"
+            zone={{ primary: null, all: [] }}
+            locale="ar"
+            banks={BANKS}
+            canOpenRegister={false}
+            canMove={false}
+            onClose={() => undefined}
+            onMove={() => undefined}
+            onNavigate={() => undefined}
+          />
+        </MemoryRouter>
+      </Provider>,
+    );
+    expect(html).toContain('بنك تجريبي سابع (QNB)');
+    expect(html).toContain('background-color:#7030A0');
+  });
+
+  it('a `banks=QNB` link survives the page and filters the figures to its machines', () => {
+    const { html } = render({ permissions: EDITOR, search: 'banks=QNB', points: QNB_POINTS });
+    const value = (key: string): string | undefined =>
+      new RegExp(`data-map-figure-value="${key}"[^>]*>([^<]*)<`).exec(html)?.[1];
+    expect(value('onMap')).toBe('١');
+    expect(value('unlocated')).toBe('٠');
+  });
+
+  it('ZoneDetail lists it with its catalog name', () => {
+    const membership = new Map(
+      QNB_POINTS.points.map((p) => [p.machineId, { primary: ZONE_A.id, all: [ZONE_A.id] }]),
+    );
+    const html = renderToStaticMarkup(
+      <Provider store={store(EDITOR)}>
+        <ZoneDetail
+          zone={ZONE_A}
+          breakdown={zoneBreakdown(ZONE_A.id, QNB_POINTS.points, membership, BANKS.codes)}
+          overlaps={0}
+          locale="ar"
+          banks={BANKS}
+          onBack={() => undefined}
+          onEdit={null}
+          onPickMachine={() => undefined}
+        />
+      </Provider>,
+    );
+    expect(html).toContain('بنك تجريبي سابع');
+    expect(html.indexOf('البنك الأهلي المصري')).toBeLessThan(html.indexOf('بنك تجريبي سابع'));
   });
 });
 

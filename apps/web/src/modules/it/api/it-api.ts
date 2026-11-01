@@ -55,6 +55,7 @@ import {
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
+  type ItAssetNamesDto,
   type ItCatalogItemDto,
   type ItVendorDto,
   type ItPersonDto,
@@ -64,6 +65,29 @@ import {
   type ItCustodyReceiptDto,
   type ItHandOverResultDto,
   type PreviewItCustodyReceipt,
+  type AssignItMobileLine,
+  type CreateItMobileLine,
+  type ItMobileLineAssignResultDto,
+  type ItMobileLineAssignmentDto,
+  type ItMobileLineDto,
+  type ItMobileLineHistoryEntryDto,
+  type ItMobileLineReceiptDocumentDto,
+  type ItMobileLineReceiptDto,
+  type ItMobileLineStatusAction,
+  type ItMobileLinesSummaryDto,
+  type PreviewItMobileLineReceipt,
+  type ReturnItMobileLine,
+  type UpdateItMobileLine,
+  type CreateItConsumable,
+  type IssueItConsumables,
+  type ItConsumableDto,
+  type ItConsumableIssueResultDto,
+  type ItConsumableMemoDto,
+  type ItConsumableMovementDto,
+  type ReceiveItConsumable,
+  type ReturnItConsumable,
+  type ScrapItConsumable,
+  type UpdateItConsumable,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -174,6 +198,9 @@ export const updateVendor = (id: string, body: UpdateItVendor): Promise<ItVendor
 // ── Asset register (design §2.2, §4.1) ──────────────────────────────────────
 export const listAssets = (params: ItListParams): Promise<Paginated<ItAssetDto>> =>
   getPage<ItAssetDto>(`/it/assets${buildQuery(params)}`);
+/** The name filter's options — the register's own names, as far as the reader's scope reaches. */
+export const listAssetNames = (): Promise<ItAssetNamesDto> =>
+  get<ItAssetNamesDto>('/it/assets/names');
 export const getAsset = (id: string): Promise<ItAssetDto> => get<ItAssetDto>(`/it/assets/${id}`);
 /** Scan resolve (design §4.2): the QR payload is the plain asset code, so this takes the code. */
 export const getAssetByCode = (code: string): Promise<ItAssetDto> =>
@@ -258,6 +285,140 @@ export const listAssignments = (
   params: ItListParams,
 ): Promise<Paginated<ItAssetAssignmentDto>> =>
   getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);
+
+// ── Mobile lines — خطوط المحمول (FR-19) ─────────────────────────────────────
+// «عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة مع بيانات كل شبكة». The register, each
+// network's figures, and the same NAMED custody actions an asset has — each answering with the
+// line in its new state, so `status` stays the server's (it is on no write schema at all).
+
+export const listMobileLines = (params: ItListParams): Promise<Paginated<ItMobileLineDto>> =>
+  getPage<ItMobileLineDto>(`/it/mobile-lines${buildQuery(params)}`);
+/** «مع بيانات كل شبكة» — every network's counts, accounts and plans under the same filters. */
+export const getMobileLinesSummary = (params: ItListParams): Promise<ItMobileLinesSummaryDto> =>
+  get<ItMobileLinesSummaryDto>(`/it/mobile-lines/summary${buildQuery(params)}`);
+export const getMobileLine = (id: string): Promise<ItMobileLineDto> =>
+  get<ItMobileLineDto>(`/it/mobile-lines/${id}`);
+export const createMobileLine = (body: CreateItMobileLine): Promise<ItMobileLineDto> =>
+  post<ItMobileLineDto>('/it/mobile-lines', body);
+export const updateMobileLine = (id: string, body: UpdateItMobileLine): Promise<ItMobileLineDto> =>
+  patch<ItMobileLineDto>(`/it/mobile-lines/${id}`, body);
+/** The line's business history, newest first — rendered from its own events, not the audit. */
+export const listMobileLineHistory = (
+  id: string,
+  params: ItListParams,
+): Promise<Paginated<ItMobileLineHistoryEntryDto>> =>
+  getPage<ItMobileLineHistoryEntryDto>(`/it/mobile-lines/${id}/history${buildQuery(params)}`);
+
+/** To an employee (who signs an acknowledgment, recorded with the hand-over) or to a car. */
+export const assignMobileLine = (
+  id: string,
+  body: AssignItMobileLine,
+): Promise<ItMobileLineAssignResultDto> =>
+  post<ItMobileLineAssignResultDto>(`/it/mobile-lines/${id}/assign`, body);
+export const returnMobileLine = (id: string, body: ReturnItMobileLine): Promise<ItMobileLineDto> =>
+  post<ItMobileLineDto>(`/it/mobile-lines/${id}/return`, body);
+export const suspendMobileLine = (
+  id: string,
+  body: ItMobileLineStatusAction,
+): Promise<ItMobileLineDto> => post<ItMobileLineDto>(`/it/mobile-lines/${id}/suspend`, body);
+export const reactivateMobileLine = (
+  id: string,
+  body: ItMobileLineStatusAction,
+): Promise<ItMobileLineDto> => post<ItMobileLineDto>(`/it/mobile-lines/${id}/reactivate`, body);
+
+/** The lines' custody intervals — one line's chain, or one employee's lines, held or returned. */
+export const listMobileLineAssignments = (
+  params: ItListParams,
+): Promise<Paginated<ItMobileLineAssignmentDto>> =>
+  getPage<ItMobileLineAssignmentDto>(`/it/mobile-line-assignments${buildQuery(params)}`);
+
+// The line acknowledgment (إقرار استلام, F-14) — the device receipt's four steps: printed BEFORE
+// the hand-over (`preview` writes nothing), recorded WITH it (the hand-over answers it), printed
+// again after, and the employee's signed copy filed against it.
+export const previewMobileLineReceipt = (
+  body: PreviewItMobileLineReceipt,
+): Promise<ItMobileLineReceiptDocumentDto> =>
+  post<ItMobileLineReceiptDocumentDto>('/it/mobile-line-receipts/preview', body);
+export const getMobileLineReceipt = (id: string): Promise<ItMobileLineReceiptDto> =>
+  get<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}`);
+/** Print a stored acknowledgment again — it keeps its number. */
+export const printMobileLineReceipt = (id: string): Promise<ItMobileLineReceiptDto> =>
+  post<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}/print`, {});
+export const uploadMobileLineReceiptSignedCopy = (
+  id: string,
+  file: File,
+): Promise<ItMobileLineReceiptDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}/signed-copy`, form);
+};
+export const fetchMobileLineReceiptSignedCopy = (id: string): Promise<Blob> =>
+  fetchBlob(`/it/mobile-line-receipts/${id}/signed-copy`);
+export const deleteMobileLineReceiptSignedCopy = (id: string): Promise<ItMobileLineReceiptDto> =>
+  del<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}/signed-copy`);
+
+// ── Consumables — المستهلكات (FR-20) ────────────────────────────────────────
+// «أقدر أحدد عندي Stock إيه من كل واحده وإيه الهالك وأتبدل لمين واطبعله مذكره»: each branch's
+// store of ink, cables, mice …, an append-only ledger behind every figure, and the memo an issue
+// prints. The quantities are on no write here: only the NAMED movements below move them.
+
+export const listConsumables = (params: ItListParams): Promise<Paginated<ItConsumableDto>> =>
+  getPage<ItConsumableDto>(`/it/consumables${buildQuery(params)}`);
+export const getConsumable = (id: string): Promise<ItConsumableDto> =>
+  get<ItConsumableDto>(`/it/consumables/${id}`);
+/** An opening quantity, when given, is written as the item's first receipt in the same step. */
+export const createConsumable = (body: CreateItConsumable): Promise<ItConsumableDto> =>
+  post<ItConsumableDto>('/it/consumables', body);
+export const updateConsumable = (id: string, body: UpdateItConsumable): Promise<ItConsumableDto> =>
+  patch<ItConsumableDto>(`/it/consumables/${id}`, body);
+
+// The three movements of one item, each answering with the item as it now stands — its figures
+// moved by the movement itself, never by this client.
+export const receiveConsumable = (
+  id: string,
+  body: ReceiveItConsumable,
+): Promise<ItConsumableDto> => post<ItConsumableDto>(`/it/consumables/${id}/receive`, body);
+export const scrapConsumable = (id: string, body: ScrapItConsumable): Promise<ItConsumableDto> =>
+  post<ItConsumableDto>(`/it/consumables/${id}/scrap`, body);
+export const returnConsumable = (id: string, body: ReturnItConsumable): Promise<ItConsumableDto> =>
+  post<ItConsumableDto>(`/it/consumables/${id}/return`, body);
+
+/**
+ * «صرف لموظف» — ONE employee, one or more items from one branch's store, ONE memo, in one
+ * transaction. Answers the memo to print at once and the items as they now stand.
+ */
+export const issueConsumables = (body: IssueItConsumables): Promise<ItConsumableIssueResultDto> =>
+  post<ItConsumableIssueResultDto>('/it/consumables/issue', body);
+
+/**
+ * The ledger across items, newest first, each row labelled — the movements screen, one item's
+ * movements (`consumableId`), what an asset had installed on it (`assetId`) and what a person was
+ * handed or gave back (`employeeId`).
+ */
+export const listConsumableMovements = (
+  params: ItListParams,
+): Promise<Paginated<ItConsumableMovementDto>> =>
+  getPage<ItConsumableMovementDto>(`/it/consumable-movements${buildQuery(params)}`);
+
+// The memo (مذكرة صرف مستهلكات): recorded by the issue, printed again any time with the same
+// number, and the employee's signed copy filed against it — the line acknowledgment's steps.
+export const getConsumableMemo = (id: string): Promise<ItConsumableMemoDto> =>
+  get<ItConsumableMemoDto>(`/it/consumable-memos/${id}`);
+/** Print a memo again — it keeps its number. */
+export const printConsumableMemo = (id: string): Promise<ItConsumableMemoDto> =>
+  post<ItConsumableMemoDto>(`/it/consumable-memos/${id}/print`, {});
+export const uploadConsumableMemoSignedCopy = (
+  id: string,
+  file: File,
+): Promise<ItConsumableMemoDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<ItConsumableMemoDto>(`/it/consumable-memos/${id}/signed-copy`, form);
+};
+export const fetchConsumableMemoSignedCopy = (id: string): Promise<Blob> =>
+  fetchBlob(`/it/consumable-memos/${id}/signed-copy`);
+export const deleteConsumableMemoSignedCopy = (id: string): Promise<ItConsumableMemoDto> =>
+  del<ItConsumableMemoDto>(`/it/consumable-memos/${id}/signed-copy`);
 
 // ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
 export const listTicketPriorities = (

@@ -6,11 +6,11 @@
 // register needs `atmRegister.view`, a move needs `atmMachine.locate` for the machine's branch.
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ATM_BANK_NAMES, type AtmMapPointDto, type Locale } from '@ecms/contracts';
+import { type AtmMapPointDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { formatDateTime } from '../../../../shared/lib/format';
 import { CloseIcon } from '../../../../shared/ui/icons';
-import { bankColor } from '../../lib/map-colors';
+import { type BankLookup } from '../../lib/bank-catalog';
 import { googleMapsUrl, registerSearchUrl } from '../../lib/map-links';
 
 export interface PopupZone {
@@ -24,6 +24,7 @@ export const MachinePopup = ({
   branchName,
   zone,
   locale,
+  banks,
   canOpenRegister,
   canMove,
   onClose,
@@ -34,6 +35,8 @@ export const MachinePopup = ({
   branchName: string;
   zone: PopupZone;
   locale: Locale;
+  /** The catalog's names and colours (DEC-35). */
+  banks: BankLookup;
   canOpenRegister: boolean;
   canMove: boolean;
   onClose: () => void;
@@ -50,7 +53,7 @@ export const MachinePopup = ({
   const bank =
     point.bankCode === null
       ? t('atm.map.filters.bankNone')
-      : `${ATM_BANK_NAMES[point.bankCode][locale]} (${point.bankCode})`;
+      : `${banks.name(point.bankCode, locale)} (${point.bankCode})`;
   const zoneText =
     zone.all.length > 1 && zone.primary !== null
       ? t('atm.map.popup.zoneMulti', { names: zone.all.join('، '), primary: zone.primary.name })
@@ -91,7 +94,7 @@ export const MachinePopup = ({
         <span
           aria-hidden="true"
           className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(15,23,42,0.3)]"
-          style={{ backgroundColor: bankColor(point.bankCode) }}
+          style={{ backgroundColor: banks.color(point.bankCode) }}
         />
         <span
           className={

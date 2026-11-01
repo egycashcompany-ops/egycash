@@ -9,15 +9,38 @@
 // collection into being BEFORE its first insert, which otherwise happens inside a transaction.
 //
 // The two operation logs joined the list with the owner's rule (2026-10-13, port doc OD-1): their
-// `ux_open_replenishment_per_code` / `ux_open_maintenance_per_code` are the race-proof half of "a
-// machine is never open twice". Legacy data may already hold two open rows for one code (the
-// legacy had no guard), so these are the likeliest to be reported and skipped — and their report
-// names the collection and the counts ONLY (`rowsInLog: false`): an operation row is somebody's
-// work record, and nothing of it belongs in a boot log.
+// `ux_open_replenishment_per_code_day` / `ux_open_maintenance_per_code_day` are the race-proof
+// half of "a machine is never open twice on one day" (per day since 2026-10-27). Legacy data may
+// already hold two open rows for one code and day (the legacy had no guard), so these are the
+// likeliest to be reported and skipped — and their report names the collection and the counts
+// ONLY (`rowsInLog: false`): an operation row is somebody's work record, and nothing of it belongs
+// in a boot log.
+//
+// RETIRED INDEXES ARE DROPPED — the one thing this step removes, and only by name from the list
+// below. The rule's first form was any-day (`ux_open_*_per_code`); a database that built it would
+// go on refusing a machine left open yesterday, which is exactly what the owner withdrew. Dropping
+// an index removes no document.
 //
 // The machine map's three collections joined the first group (docs/12-planning/atm-map-zones.md
 // §3.4): their keys are ids, never a K or S value, and building them here also brings each one into
 // being before its first insert, which otherwise happens inside the zone save's transaction.
+//
+// The settlements' ten collections joined too (docs/12-planning/atm-settlements-phase1.md §4.10):
+// layouts, their versions, standard loads, plans, routes, import runs and the Note counters in the
+// first group (ids, codes, dates and counter keys); plan lines, line preparations and route
+// assignments in the second — operation records holding counts and seals, whose duplicate report
+// is the collection and the counts only, the operation logs' rule.
+//
+// The bank catalog (DEC-35) joined the first group: `ux_bank_code` and `ux_bank_ops_label_keys`
+// must exist before the boot seed inserts the six — they are what makes a second instance's
+// concurrent seed, or a duplicate label, an E11000 instead of a second NBE. Its keys are bank codes
+// and label keys, never a K or S value.
+//
+// The maintenance mailbox document (/atm/settings) joined the first group: `ux_mailbox_key` is what
+// makes a second "first save" a stale 409 instead of a second mailbox. Its key is a fixed word.
+//
+// The branch-move runs («نقل البيانات», /atm/settings) joined the first group: `ux_one_running` is
+// the lock that keeps two moves from merging one source twice. A run holds ids and counts only.
 //
 // THE DEFINITIONS ARE READ FROM THE SCHEMAS (`schema.indexes()`), never restated here. ONE INDEX AT
 // A TIME, so a duplicate costs exactly its own index. DUPLICATES ARE REPORTED, NEVER RESOLVED — a
@@ -28,6 +51,7 @@ import { type Model } from 'mongoose';
 import { logger } from '../../infrastructure/logging/logger';
 import { AtmMachineModel } from './machines/machine.model';
 import { AtmRefLabelModel } from './catalogs/ref-label.model';
+import { AtmBankModel } from './catalogs/bank.model';
 import { AtmRegisterEntryModel } from './register/register.model';
 import { AtmRegisterImportRunModel } from './register/import/register-import-run.model';
 import { AtmReplenishmentModel } from './replenishments/replenishment.model';
@@ -35,10 +59,25 @@ import { AtmMaintenanceModel } from './maintenances/maintenance.model';
 import { AtmMapZoneModel } from './map/zone.model';
 import { AtmMapZoneSetModel } from './map/zone-set.model';
 import { AtmMachineLocationModel } from './map/machine-location.model';
+import { AtmCassetteLayoutModel } from './settlements/layouts/cassette-layout.model';
+import { AtmCassetteLayoutVersionModel } from './settlements/layouts/cassette-layout-version.model';
+import { AtmStandardLoadModel } from './settlements/standard-loads/standard-load.model';
+import { AtmReplenishmentPlanModel } from './settlements/plans/plan.model';
+import { AtmPlanLineModel } from './settlements/plans/plan-line.model';
+import { AtmNoteCounterModel } from './settlements/plans/note-counter.model';
+import { AtmLinePreparationModel } from './settlements/preparation/line-preparation.model';
+import { AtmDispatchRouteModel } from './settlements/control/dispatch-route.model';
+import { AtmRouteAssignmentModel } from './settlements/control/route-assignment.model';
+import { AtmLayoutImportRunModel } from './settlements/import/layout-import-run.model';
+import { AtmMailboxConfigModel } from './mail-tickets/mailbox-config.model';
+import { AtmBranchMoveRunModel } from './branch-links/branch-move-run.model';
+import { RETIRED_OPEN_OPERATION_INDEX_NAMES } from './shared/open-operation';
 
 export interface AtmIndexedModel {
   collection: string;
   model: Model<never>;
+  /** Indexes this collection must NOT carry any more — dropped by name when present. */
+  retired?: readonly string[];
   /**
    * May a duplicate report carry the offending groups' keys and ids? Yes for the master and the
    * register (a machine code or an Excel row number, never a K/S value); NO for the operation
@@ -47,23 +86,56 @@ export interface AtmIndexedModel {
   rowsInLog: boolean;
 }
 
+/**
+ * The indexes a collection must not carry any more — the open-operation rule's any-day form on the
+ * two operation logs (OD-1a). Read by collection name, so the list below stays one list.
+ */
+const retiredIndexes = (collection: string): readonly string[] => {
+  if (collection === AtmReplenishmentModel.collection.name) {
+    return [RETIRED_OPEN_OPERATION_INDEX_NAMES.replenishment];
+  }
+  if (collection === AtmMaintenanceModel.collection.name) {
+    return [RETIRED_OPEN_OPERATION_INDEX_NAMES.maintenance];
+  }
+  return [];
+};
+
 /** The collections whose indexes this step owns — listed, never discovered. */
 export const atmIndexedModels = (): AtmIndexedModel[] => [
   ...(
     [
       AtmMachineModel,
       AtmRefLabelModel,
+      AtmBankModel,
       AtmRegisterEntryModel,
       AtmRegisterImportRunModel,
       AtmMapZoneModel,
       AtmMapZoneSetModel,
       AtmMachineLocationModel,
+      AtmCassetteLayoutModel,
+      AtmCassetteLayoutVersionModel,
+      AtmStandardLoadModel,
+      AtmReplenishmentPlanModel,
+      AtmDispatchRouteModel,
+      AtmLayoutImportRunModel,
+      AtmNoteCounterModel,
+      AtmMailboxConfigModel,
+      AtmBranchMoveRunModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model, rowsInLog: true })),
-  ...([AtmReplenishmentModel, AtmMaintenanceModel] as unknown as Model<never>[]).map((model) => ({
+  ...(
+    [
+      AtmReplenishmentModel,
+      AtmMaintenanceModel,
+      AtmPlanLineModel,
+      AtmLinePreparationModel,
+      AtmRouteAssignmentModel,
+    ] as unknown as Model<never>[]
+  ).map((model) => ({
     collection: model.collection.name,
     model,
     rowsInLog: false,
+    retired: retiredIndexes(model.collection.name),
   })),
 ];
 
@@ -135,6 +207,8 @@ export const redactedErrorText = (error: unknown): string => {
 export interface AtmIndexMigrationResult {
   built: number;
   alreadyPresent: number;
+  /** Retired indexes found and dropped, by collection. */
+  dropped: { collection: string; index: string }[];
   skippedDuplicates: { collection: string; index: string; groups: number }[];
   failed: { collection: string; index: string; reason: string }[];
 }
@@ -144,16 +218,33 @@ export const migrateAtmIndexes = async (): Promise<AtmIndexMigrationResult> => {
   const result: AtmIndexMigrationResult = {
     built: 0,
     alreadyPresent: 0,
+    dropped: [],
     skippedDuplicates: [],
     failed: [],
   };
 
-  for (const { collection, model, rowsInLog } of atmIndexedModels()) {
+  for (const { collection, model, rowsInLog, retired = [] } of atmIndexedModels()) {
     const existing = await model.collection
       .listIndexes()
       .toArray()
       .catch(() => [] as { name?: string }[]);
     const present = new Set(existing.map((index) => String(index.name)));
+
+    for (const name of retired) {
+      if (!present.has(name)) continue;
+      try {
+        await model.collection.dropIndex(name);
+        present.delete(name);
+        result.dropped.push({ collection, index: name });
+        logger.info({ collection, index: name }, 'atm: retired index dropped');
+      } catch (error) {
+        logger.warn(
+          { collection, index: name, reason: redactedErrorText(error) },
+          'atm: retired index not dropped',
+        );
+        result.failed.push({ collection, index: name, reason: redactedErrorText(error) });
+      }
+    }
 
     for (const entry of atmIndexBuildPlan(model.schema.indexes())) {
       const name = String(entry.options['name'] ?? Object.keys(entry.keys).join('_'));
@@ -202,6 +293,7 @@ export const migrateAtmIndexes = async (): Promise<AtmIndexMigrationResult> => {
     {
       built: result.built,
       alreadyPresent: result.alreadyPresent,
+      dropped: result.dropped.length,
       skipped: result.skippedDuplicates.length,
       failed: result.failed.length,
     },

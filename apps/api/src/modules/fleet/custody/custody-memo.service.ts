@@ -11,7 +11,6 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   FLEET_CUSTODY_MEMO_MAX_LINES,
-  FLEET_CUSTODY_SOURCES,
   parseFleetSort,
   type ApiErrorDetail,
   type CreateFleetCustodyMemo,
@@ -55,7 +54,17 @@ import {
 } from './custody-memo.model';
 import { signalReceiptsOfMemo } from './custody-memo-guard';
 import { assertCustodyMemoWritable, fleetCustodyMemoRepository } from './custody-memo.repository';
-import { dayAfter, dayKey, lineChanges, orderLines, periodOf, utcDay } from './custody-memo-rules';
+import {
+  custodyOutsideKinds,
+  custodyStaleCutoff,
+  dayAfter,
+  dayKey,
+  lineChanges,
+  orderLines,
+  periodOf,
+  utcDay,
+  type CustodyOutsideGroup,
+} from './custody-memo-rules';
 import {
   RECEIPT_PIASTRES,
   readMemoTotals,
@@ -212,28 +221,26 @@ class FleetCustodyMemoService {
    * «إيصالات لم تدخل أي مذكرة بعد» — the live custody receipts no memo holds, per kind: always the
    * four kinds, in `FLEET_CUSTODY_SOURCES` order, zeros kept. A receipt written before memos
    * existed has no `memoId` at all, which `memoId: null` matches — it counts as outside.
+   *
+   * Each kind also carries its oldest receipt's day and the ones late past
+   * `FLEET_CUSTODY_STALE_DAYS` (counted from `now`'s UTC day) — in the same one group.
    */
-  async outside(): Promise<FleetCustodyOutsideKindDto[]> {
-    const rows = await FleetReceiptModel.aggregate<{
-      _id: FleetCustodySource;
-      count: number;
-      piastres: number;
-    }>([
+  async outside(now: Date = new Date()): Promise<FleetCustodyOutsideKindDto[]> {
+    const late = { $lt: ['$date', custodyStaleCutoff(now)] };
+    const groups = await FleetReceiptModel.aggregate<CustodyOutsideGroup>([
       { $match: { isDeleted: false, source: 'custody', memoId: null } },
       {
         $group: {
           _id: '$kind',
           count: { $sum: 1 },
           piastres: { $sum: RECEIPT_PIASTRES },
+          oldest: { $min: '$date' },
+          staleCount: { $sum: { $cond: [late, 1, 0] } },
+          stalePiastres: { $sum: { $cond: [late, RECEIPT_PIASTRES, 0] } },
         },
       },
     ]).exec();
-    const byKind = new Map(rows.map((row) => [row._id, row]));
-    return FLEET_CUSTODY_SOURCES.map((kind) => ({
-      kind,
-      count: byKind.get(kind)?.count ?? 0,
-      total: Math.round(byKind.get(kind)?.piastres ?? 0) / 100,
-    }));
+    return custodyOutsideKinds(groups);
   }
 
   async get(id: string): Promise<FleetCustodyMemoDto> {

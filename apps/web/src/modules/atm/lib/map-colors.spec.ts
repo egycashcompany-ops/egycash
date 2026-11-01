@@ -1,16 +1,9 @@
 // Map colours (spec §9.4): the suggested colour, the casing rule (WCAG non-text contrast against the
-// map), and the bank colours with their grey for «بنك غير محدد».
+// map), and the bank colours — the catalog's since DEC-35 — with their grey for «بنك غير محدد».
 import { describe, expect, it } from 'vitest';
-import { ATM_BANK_CODES, ATM_BANK_REPORT_COLORS, ATM_MAP_ZONE_PALETTE } from '@ecms/contracts';
-import {
-  NO_ZONE_GREY,
-  ZONE_PALETTE,
-  bankColor,
-  contrastRatio,
-  needsCasing,
-  paleBank,
-  suggestColor,
-} from './map-colors';
+import { ATM_BANK_SEED, ATM_MAP_ZONE_PALETTE } from '@ecms/contracts';
+import { NO_ZONE_GREY, ZONE_PALETTE, contrastRatio, needsCasing, suggestColor } from './map-colors';
+import { makeBankLookup, type LookupBank } from './bank-catalog';
 import { boxOf } from './map-geometry';
 
 const ring = (lat: number) => [
@@ -61,17 +54,36 @@ describe('contrast', () => {
   });
 });
 
-describe('banks', () => {
-  it('bankColor is the Data Report colour, and grey without a bank', () => {
-    for (const code of ATM_BANK_CODES) expect(bankColor(code)).toBe(ATM_BANK_REPORT_COLORS[code]);
-    expect(bankColor(null)).toBe(NO_ZONE_GREY);
+describe('banks (through the catalog lookup)', () => {
+  const seeds = makeBankLookup();
+  // A synthetic seventh bank in a pale colour, and NXT curated to a lighter blue.
+  const catalog: LookupBank[] = [
+    ...ATM_BANK_SEED.map((seed) => ({ ...seed, isActive: true })),
+    {
+      code: 'QNB',
+      name: { ar: 'بنك تجريبي', en: 'SYN Bank' },
+      color: '#92D050',
+      sortOrder: 70,
+      isActive: true,
+    },
+  ].map((bank) => (bank.code === 'NXT' ? { ...bank, color: '#B4C7E7' } : bank));
+  const lookup = makeBankLookup(catalog);
+
+  it('a dot is the catalog colour, and grey without a bank (DM-17)', () => {
+    for (const seed of ATM_BANK_SEED) expect(seeds.color(seed.code)).toBe(seed.color);
+    expect(lookup.color('QNB')).toBe('#92D050');
+    expect(lookup.color('NXT')).toBe('#B4C7E7');
+    expect(lookup.color(null)).toBe(NO_ZONE_GREY);
   });
 
-  it('CIB, HDB and BRK are pale (a dark ring); the rest are not', () => {
-    expect(ATM_BANK_CODES.filter((code) => paleBank(code))).toEqual(['CIB', 'HDB', 'BRK']);
-    expect(paleBank(null)).toBe(false);
-    for (const code of ATM_BANK_CODES) {
-      expect(paleBank(code)).toBe(contrastRatio(ATM_BANK_REPORT_COLORS[code], '#f2efe9') < 3);
+  it('the ring is decided by contrast against the map, not by a list of three', () => {
+    expect(seeds.codes.filter((code) => seeds.isPale(code))).toEqual(['CIB', 'HDB', 'BRK']);
+    // A seventh bank's pale green and a curated pale NXT get the ring; grey never does.
+    expect(lookup.isPale('QNB')).toBe(true);
+    expect(lookup.isPale('NXT')).toBe(true);
+    expect(lookup.isPale(null)).toBe(false);
+    for (const bank of catalog) {
+      expect(lookup.isPale(bank.code)).toBe(contrastRatio(bank.color, '#f2efe9') < 3);
     }
   });
 });

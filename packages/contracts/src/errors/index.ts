@@ -127,7 +127,10 @@ export const ErrorCodes = {
   ATM_REGISTER_OPEN_PERIOD_EXISTS: 'ATM_REGISTER_OPEN_PERIOD_EXISTS',
   /** DEC-9: an ACTIVE Operations machine with this code exists in another branch. */
   ATM_REGISTER_CODE_ACTIVE_ELSEWHERE: 'ATM_REGISTER_CODE_ACTIVE_ELSEWHERE',
-  /** DEC-10: the branch has no `EGYCASH-n` code in the register settings. */
+  /**
+   * DEC-10: no register code resolves to the branch — the register settings map none to it, nor to
+   * a branch linked to work as it (`atm.branchLinks`).
+   */
   ATM_REGISTER_BRANCH_UNMAPPED: 'ATM_REGISTER_BRANCH_UNMAPPED',
   /** DEC-12: a branch-less (imported) pending entry cannot be received. */
   ATM_REGISTER_BRANCH_REQUIRED: 'ATM_REGISTER_BRANCH_REQUIRED',
@@ -149,6 +152,18 @@ export const ErrorCodes = {
   /** One running import at a time (DEC-15). */
   ATM_REGISTER_IMPORT_RUNNING: 'ATM_REGISTER_IMPORT_RUNNING',
 
+  // ── ATM bank catalog (DEC-35; atm-efficiency-register.md) ─────────────────────────────────────
+  /** A catalog bank already holds this code (409). Codes are never reused: they key stored data. */
+  ATM_BANK_CODE_TAKEN: 'ATM_BANK_CODE_TAKEN',
+  /**
+   * The Operations label is already a bank's — another catalog bank's current or former label, or
+   * a branch spelling mapped to a bank (409). Two banks sharing a label would make a machine's
+   * bank text mean either.
+   */
+  ATM_BANK_LABEL_TAKEN: 'ATM_BANK_LABEL_TAKEN',
+  /** Another catalog bank already has this Arabic or English name, case ignored (409). */
+  ATM_BANK_NAME_TAKEN: 'ATM_BANK_NAME_TAKEN',
+
   // ── ATM machine map and zones (docs/12-planning/atm-map-zones.md) ─────────────────────────────
   /** DM-7: the branch's zone set moved since the editor loaded it (409); nothing was written. */
   ATM_MAP_ZONES_STALE: 'ATM_MAP_ZONES_STALE',
@@ -158,6 +173,62 @@ export const ErrorCodes = {
   ATM_MAP_PARSE_CHANGED: 'ATM_MAP_PARSE_CHANGED',
   /** Approve on a location that is not waiting for review (422). */
   ATM_MAP_NOT_UNDER_REVIEW: 'ATM_MAP_NOT_UNDER_REVIEW',
+
+  // ── ATM settlements, preparation, control (docs/12-planning/atm-settlements-phase1.md §6.1) ───
+  /** DS-22: no work branch can be resolved (422); details carry CHOOSE_BRANCH or NO_BRANCH. */
+  ATM_WORK_BRANCH_REQUIRED: 'ATM_WORK_BRANCH_REQUIRED',
+  /** DS-24: the bank is not in `atm.settlements.banks` (422). */
+  ATM_SETTLEMENT_BANK_NOT_ENABLED: 'ATM_SETTLEMENT_BANK_NOT_ENABLED',
+  /** §5.1: a sheet or header is missing, or the master workbook is beyond a limit (422). */
+  ATM_LAYOUT_IMPORT_LAYOUT: 'ATM_LAYOUT_IMPORT_LAYOUT',
+  /** §5.2: the bank has no master import profile (422). */
+  ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK: 'ATM_LAYOUT_IMPORT_UNSUPPORTED_BANK',
+  /** §5.4: the applied bytes are not the previewed bytes (409). */
+  ATM_LAYOUT_IMPORT_FILE_CHANGED: 'ATM_LAYOUT_IMPORT_FILE_CHANGED',
+  /** §5.4: another apply of this branch × bank is running (409). */
+  ATM_LAYOUT_IMPORT_RUNNING: 'ATM_LAYOUT_IMPORT_RUNNING',
+  /** A standard load is deleted while live layouts or draft lines point at it (409). */
+  ATM_STANDARD_LOAD_IN_USE: 'ATM_STANDARD_LOAD_IN_USE',
+  /** DS-1: a plan for this branch × bank × date already exists (409); the detail carries its id. */
+  ATM_PLAN_EXISTS: 'ATM_PLAN_EXISTS',
+  /** DS-30: more than 400 non-cancelled lines (422). */
+  ATM_PLAN_FULL: 'ATM_PLAN_FULL',
+  /** The action does not fit the line's status (409); the detail carries `{ status }`. */
+  ATM_PLAN_LINE_STATE: 'ATM_PLAN_LINE_STATE',
+  /** Reopening a line whose preparation holds a value, or changed since it was read (409). */
+  ATM_PLAN_LINE_HAS_CAPTURES: 'ATM_PLAN_LINE_HAS_CAPTURES',
+  /** Issue with line errors (422); details `{ field: 'lines[i]', code }`. */
+  ATM_PLAN_ISSUE_BLOCKED: 'ATM_PLAN_ISSUE_BLOCKED',
+  /** Saving captures on a prepared (or cancelled) line (409). */
+  ATM_PREPARATION_LOCKED: 'ATM_PREPARATION_LOCKED',
+  /** DS-16: mark prepared with values missing (422); details name bags or slots, never values. */
+  ATM_PREPARATION_INCOMPLETE: 'ATM_PREPARATION_INCOMPLETE',
+
+  // ── ATM settings: moving a linked source's data (atm-settings.ts) ─────────────────────────────
+  /**
+   * The move refused (409) before the run wrote anything: its preview carries blockers — another
+   * move running among them. The details name each one (`{ field: 'blockers', code: <kind> }`);
+   * nothing was moved.
+   */
+  ATM_BRANCH_MOVE_BLOCKED: 'ATM_BRANCH_MOVE_BLOCKED',
+  /**
+   * A run stopped part-way (409): a step's re-check met a blocker that appeared after the run
+   * began. What the steps before it moved stays moved (the run ends `failed`, and its audit row
+   * counts it); the details name the blockers as above, and running the move again carries on.
+   */
+  ATM_BRANCH_MOVE_STOPPED: 'ATM_BRANCH_MOVE_STOPPED',
+  /**
+   * The move refused (409) because the link it would follow is no longer the one the reader
+   * confirmed (`expectedTargetBranchId`): another administrator re-pointed it. Nothing moved.
+   */
+  ATM_BRANCH_MOVE_TARGET_CHANGED: 'ATM_BRANCH_MOVE_TARGET_CHANGED',
+  /**
+   * A write that would make or change what a running «نقل البيانات» re-files waits for it (423
+   * Locked — never 409, which the data-edit dialogs read as "already exists"): a register receipt,
+   * coupling or import, a machine or label save, an operation opened or reopened, a mail accepted.
+   * Retried after the move; a run left 30 minutes (its process died) no longer holds them.
+   */
+  ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

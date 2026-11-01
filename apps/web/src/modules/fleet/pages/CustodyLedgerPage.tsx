@@ -5,8 +5,9 @@
 //
 // Over the table, the fund's formula as tiles — «إجمالي الشحن» − «مصروفات الإيصالات» + «إجمالي
 // الاستعاضة» − «إجمالي التسوية» = «إجمالي العهدة — الآن» — over the WHOLE history, whatever the
-// filters (a fund below zero in red). The filters choose the lines, never what is after them: a
-// line's «بعدها» is its place in the whole history.
+// filters (a fund below zero in red); the same tiles stand on «لوحة تحكم العهدة» as «العهدة الآن»
+// (`LedgerFigures`). The filters choose the lines, never what is after them: a line's «بعدها» is
+// its place in the whole history.
 //
 // An operation's eye opens its drawer (`?open=<id>`) — what it carried and its letter; its printer
 // opens the same drawer at the letter (`&letter=1`). A receipts line's eye goes to «العهدة» over its
@@ -15,7 +16,6 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   FLEET_CUSTODY_LEDGER_OPS,
-  type FleetCustodyFundSummaryDto,
   type FleetCustodyLedgerOp,
   type FleetCustodyLedgerRowDto,
   type Locale,
@@ -29,7 +29,6 @@ import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
-import { formatMoneyParts } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
@@ -43,18 +42,18 @@ import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
-import { CUSTODY_FUND } from '../components/CustodyKinds';
 import { CustodyTabs } from '../components/CustodyTabs';
-import {
-  CUSTODY_OPS,
-  CustodyFundActions,
-  useOverlayHistory,
-} from '../components/CustodyFundActions';
+import { CustodyFundActions, useOverlayHistory } from '../components/CustodyFundActions';
 import { CustodyFundDialogs } from '../components/CustodyFundDialogs';
 import { CustodyOperationDrawer, useLedgerWordsKit } from '../components/CustodyOperationDrawer';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
-import { BoardIcon, NUM, ymd } from '../components/FuelCardBoard';
-import { CAIRO, CARD_BORDER, CARD_SURFACE, TITLE } from '../components/custody-dashboard-parts';
+import { NUM, ymd } from '../components/FuelCardBoard';
+import { CAIRO, TITLE } from '../components/custody-dashboard-parts';
+import { LedgerFigures } from '../components/CustodyLedgerFigures';
+import {
+  LedgerOpChip as OpChip,
+  ledgerOpLabel as opLabelKey,
+} from '../components/custody-ledger-parts';
 import {
   CUSTODY_FILTER_LOOK,
   CUSTODY_TAB_TABLE,
@@ -70,12 +69,11 @@ import {
   MUTED_INK,
   Money,
   PHONE_CARD,
-  RECEIPT_ICON,
-  SPEND_LOOK,
   Signed,
   TIGHT,
 } from '../components/custody-memo-parts';
-import { ledgerCount, ledgerWords, partsPhrase } from '../lib/custody-ledger-words';
+import { ledgerCount, ledgerWords } from '../lib/custody-ledger-words';
+import { custodyPeriodLink } from '../lib/custody-dashboard-fund';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
@@ -86,7 +84,6 @@ const REMEMBERED_FILTERS = ['from', 'to', 'op', 'size', 'sort'] as const;
 const DEFAULT_PAGE_SIZE = 25;
 /** Newest first — the line with «الآن» on top. Only the date orders the log. */
 const DEFAULT_SORT = 'date:desc';
-const COUNT = new Intl.NumberFormat('en-US');
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 /** «العملية» as the address holds it, kept to what the server knows. */
 const ledgerOps = (raw: string | null): FleetCustodyLedgerOp[] =>
@@ -94,37 +91,12 @@ const ledgerOps = (raw: string | null): FleetCustodyLedgerOp[] =>
     (FLEET_CUSTODY_LEDGER_OPS as readonly string[]).includes(v),
   );
 
-/** A line's own words for its operation — the three actions' names, and the receipts'. */
-const opLabelKey = (op: FleetCustodyLedgerOp): string =>
-  op === 'spend' ? 'fleet.custody.ledger.op.spend' : CUSTODY_OPS[op].label;
-
 /** The receipts' line, muted: it is what was paid, not an operation. */
 const SPEND_ROW = 'bg-slate-50/80 dark:bg-white/[0.025]';
 const NOW_CHIP =
   'rounded-full bg-emerald-100 px-2 py-px text-[11px] leading-4 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300';
 const NOW_INK = 'text-emerald-800 dark:text-emerald-300';
 const NEGATIVE_INK = 'text-red-600 dark:text-red-400';
-
-const OpChip = ({ op }: { op: FleetCustodyLedgerOp }): JSX.Element => {
-  const t = useT();
-  const look =
-    op === 'spend'
-      ? { chip: SPEND_LOOK.chip, icon: RECEIPT_ICON }
-      : { chip: CUSTODY_OPS[op].chip, icon: CUSTODY_OPS[op].icon };
-  return (
-    <span
-      data-ledger-op={op}
-      className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[14px] leading-5',
-        CAIRO,
-        look.chip,
-      )}
-    >
-      <BoardIcon d={look.icon} className="h-3.5 w-3.5" />
-      {t(opLabelKey(op))}
-    </span>
-  );
-};
 
 /** A line's date — a receipts line its first and last day, one over the other, muted. */
 const LedgerDate = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => {
@@ -154,7 +126,7 @@ const LedgerDate = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => 
 
 /** The receipts of a line, on «العهدة» over its days. */
 const spendLink = (row: FleetCustodyLedgerRowDto): string =>
-  `/fleet/custody?from=${row.date}&to=${row.dateTo ?? row.date}`;
+  custodyPeriodLink(row.date, row.dateTo ?? row.date);
 
 const LedgerActions = ({
   row,
@@ -222,198 +194,6 @@ const After = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => {
         </span>
       )}
     </span>
-  );
-};
-
-// ── The formula, as tiles ─────────────────────────────────────────────────────────────────────
-
-const OPERATOR =
-  'absolute -start-[1.3rem] top-1/2 z-10 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 bg-white text-base font-black text-slate-700 shadow-sm xl:flex dark:border-slate-600 dark:bg-[#0b0f19] dark:text-slate-200';
-
-/** One term of «إجمالي العهدة = شحن − مصروفات + استعاضة − تسوية». */
-const Term = ({
-  term,
-  label,
-  value,
-  sign,
-  note,
-  icon,
-  tile,
-  accent,
-  operator,
-}: {
-  term: string;
-  label: string;
-  value: number;
-  sign: '+' | '−';
-  note: string;
-  icon: readonly string[];
-  tile: string;
-  accent: string;
-  operator: string | null;
-}): JSX.Element => {
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { figure, currency } = formatMoneyParts(value, 'EGP', locale);
-  return (
-    <div className="relative" data-ledger-term={term}>
-      {operator !== null && (
-        <span aria-hidden="true" className={cn(OPERATOR, NUM)}>
-          {operator}
-        </span>
-      )}
-      <div
-        className={cn(
-          CARD_SURFACE,
-          CARD_BORDER,
-          'flex h-full min-w-0 flex-col justify-between rounded-2xl p-3 sm:p-4 xl:p-3 min-[1700px]:p-4',
-          accent,
-        )}
-      >
-        <span className="flex items-start justify-between gap-2">
-          <span className="min-w-0">
-            <span className="block truncate text-xs font-bold text-slate-800 dark:font-semibold dark:text-slate-300">
-              {label}
-            </span>
-            <span className="mt-1 flex flex-wrap items-baseline gap-1 xl:flex-nowrap">
-              <span
-                dir="ltr"
-                data-ledger-term-value={value}
-                className={cn(
-                  'text-base font-black tracking-tight sm:text-2xl xl:text-lg min-[1700px]:text-2xl',
-                  NUM,
-                  sign === '+' ? 'text-emerald-700 dark:text-emerald-400' : NEGATIVE_INK,
-                )}
-              >
-                {sign}
-                {figure}
-              </span>
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {currency}
-              </span>
-            </span>
-          </span>
-          <span
-            className={cn(
-              'hidden shrink-0 rounded-xl p-2.5 sm:inline-flex xl:p-2 min-[1700px]:p-2.5',
-              tile,
-            )}
-          >
-            <BoardIcon
-              d={icon}
-              className="h-5 w-5 xl:h-4 xl:w-4 min-[1700px]:h-5 min-[1700px]:w-5"
-            />
-          </span>
-        </span>
-        <span className="mt-1.5 truncate border-t border-slate-100 pt-1.5 text-[11px] text-slate-600 sm:text-xs dark:border-[#1c273b] dark:text-slate-400">
-          {note}
-        </span>
-      </div>
-    </div>
-  );
-};
-
-/** The four terms and the fund they make — over the whole history, whatever the filters. */
-const LedgerFigures = ({ fund }: { fund: FleetCustodyFundSummaryDto }): JSX.Element => {
-  const t = useT();
-  const kit = useLedgerWordsKit();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const now = formatMoneyParts(Math.abs(fund.fundTotal), 'EGP', locale);
-  const negative = fund.fundTotal < 0;
-  return (
-    <section
-      data-ledger-figures="true"
-      className="grid shrink-0 grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.15fr)] xl:gap-5"
-    >
-      <Term
-        term="charged"
-        label={t('fleet.custody.ledger.tiles.charged')}
-        value={fund.charged.amount}
-        sign="+"
-        note={t(`fleet.custody.ledger.tiles.chargedNote.${kit.form(fund.charged.count)}`, {
-          count: COUNT.format(fund.charged.count),
-        })}
-        icon={CUSTODY_OPS.charge.icon}
-        tile={CUSTODY_OPS.charge.tile}
-        accent={CUSTODY_OPS.charge.accent}
-        operator={null}
-      />
-      <Term
-        term="spent"
-        label={t('fleet.custody.ledger.tiles.spent')}
-        value={fund.spent.amount}
-        sign="−"
-        note={kit.count('receipt', fund.spent.count)}
-        icon={RECEIPT_ICON}
-        tile={SPEND_LOOK.tile}
-        accent={SPEND_LOOK.accent}
-        operator="−"
-      />
-      <Term
-        term="replenished"
-        label={t('fleet.custody.ledger.tiles.replenished')}
-        value={fund.replenished.amount}
-        sign="+"
-        note={kit.count('memo', fund.replenished.memos)}
-        icon={CUSTODY_OPS.replenish.icon}
-        tile={CUSTODY_OPS.replenish.tile}
-        accent={CUSTODY_OPS.replenish.accent}
-        operator="+"
-      />
-      <Term
-        term="settled"
-        label={t('fleet.custody.ledger.tiles.settled')}
-        value={fund.settled.amount}
-        sign="−"
-        note={partsPhrase(fund.settled.parts, kit)}
-        icon={CUSTODY_OPS.settle.icon}
-        tile={CUSTODY_OPS.settle.tile}
-        accent={CUSTODY_OPS.settle.accent}
-        operator="−"
-      />
-      <div className="relative col-span-2 xl:col-span-1">
-        <span aria-hidden="true" className={cn(OPERATOR, NUM)}>
-          =
-        </span>
-        <div
-          data-ledger-fund-now={fund.fundTotal}
-          {...(negative ? { 'data-ledger-fund-negative': 'true' } : {})}
-          className={cn(
-            CARD_SURFACE,
-            'flex h-full min-w-0 flex-col justify-between rounded-2xl border p-3 sm:p-4 xl:p-3 min-[1700px]:p-4',
-            CUSTODY_FUND.card,
-            CUSTODY_FUND.accent,
-          )}
-        >
-          <span className="flex items-start justify-between gap-2">
-            <span className="min-w-0">
-              <span className={cn('block text-xs', CUSTODY_FUND.label)}>
-                {t('fleet.custody.ledger.tiles.fundNow')}
-              </span>
-              <span className="mt-1 flex flex-wrap items-baseline gap-1">
-                <span
-                  dir="ltr"
-                  className={cn(
-                    'text-xl font-black tracking-tight sm:text-2xl xl:text-lg min-[1700px]:text-2xl',
-                    NUM,
-                    negative ? NEGATIVE_INK : 'text-slate-900 dark:text-white',
-                  )}
-                >
-                  {negative ? '−' : ''}
-                  {now.figure}
-                </span>
-                <span className={cn('text-xs', CUSTODY_FUND.unit)}>{now.currency}</span>
-              </span>
-            </span>
-            <span className={cn('shrink-0 rounded-xl p-2.5 xl:p-2', CUSTODY_FUND.tile)}>
-              <BoardIcon d={CUSTODY_FUND.icon} className="h-5 w-5 xl:h-4 xl:w-4" />
-            </span>
-          </span>
-          <span className="mt-1.5 whitespace-nowrap border-t border-slate-200 pt-1.5 text-[11px] text-slate-600 dark:border-[#1c273b] dark:text-slate-400">
-            {t('fleet.custody.ledger.tiles.formula')}
-          </span>
-        </div>
-      </div>
-    </section>
   );
 };
 

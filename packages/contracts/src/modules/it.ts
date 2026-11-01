@@ -10,11 +10,20 @@
 // `inStock` — the full vocabulary is declared now so IT-2 extends behaviour, not shapes.
 import { z } from 'zod';
 import { LocalizedStringSchema } from '../common/localized.js';
-import { PaginationQuerySchema, booleanQuery, objectId } from '../common/index.js';
+import {
+  PaginationQuerySchema,
+  PhoneNumberSchema,
+  asciiDigits,
+  booleanQuery,
+  listQuery,
+  objectId,
+} from '../common/index.js';
 
 // ── Simple catalogs (design §2.4 — one collection, kind-discriminated) ──────
 
-export const IT_CATALOG_KINDS = ['assetCategory', 'ticketCategory'] as const;
+// `consumableType` — the consumables' types («حبارات», «كابلات», «محولات» …, FR-20): localized names
+// the IT team edits, exactly what this collection already is for the asset categories.
+export const IT_CATALOG_KINDS = ['assetCategory', 'ticketCategory', 'consumableType'] as const;
 export const ItCatalogKindSchema = z.enum(IT_CATALOG_KINDS);
 export type ItCatalogKind = z.infer<typeof ItCatalogKindSchema>;
 
@@ -198,9 +207,24 @@ export interface ItAssetDto {
   specs: ItAssetSpecsDto | null;
   /** What is handed over with it («مشتملاته» — a charger, a bag…), one item per entry. */
   accessories: string[];
+  /**
+   * Who holds it right now — «لو متسلم اسم الشخص اللى متسلمله الحاجة». The OPEN custody
+   * interval's employee, read at response time through the platform directory like every
+   * holder label IT prints; null while nobody holds it (or the interval cannot be read).
+   */
+  holder: ItAssetHolderDto | null;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The holder an asset row names: the open interval's employee and when they received it. */
+export interface ItAssetHolderDto {
+  employeeId: string;
+  /** Null when the directory cannot name the employee — the screen falls back to the id. */
+  employeeCode: string | null;
+  employeeName: string | null;
+  assignedAt: string;
 }
 
 // ── The device's specifications (the custody acknowledgment's table, FR-18) ──
@@ -365,8 +389,21 @@ export const ListItAssetsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
   /** The assets this employee holds right now — an OPEN custody interval, not a past one. */
   holderEmployeeId: objectId().optional(),
+  /**
+   * «زود بعد الحالات وقبل الفئة (الاسم)» — the asset's name, EXACTLY: the name filter commits one
+   * of the register's own names (`GET /it/assets/names`), so a pick means every asset by that name.
+   */
+  name: z.string().trim().min(1).max(200).optional(),
 }).strict();
 export type ListItAssetsQuery = z.infer<typeof ListItAssetsQuerySchema>;
+
+/**
+ * The register's distinct asset names, for the name filter («Drop Down مع قابليه للكتابة»): every
+ * name the reader's scope holds, sorted — a list typed into, not a page.
+ */
+export interface ItAssetNamesDto {
+  names: string[];
+}
 
 /**
  * Label sheet request (design §4.2). Bounded: a print batch, not a bulk read — the sheet grows in
@@ -404,6 +441,11 @@ export interface ItAssetAssignmentDto {
    */
   assetCode: string | null;
   assetName: string | null;
+  /**
+   * The asset's serial — «تزود سيريال الأصول لما أعمل Extract». Read with the code and the name,
+   * under the same scope; null when the asset has none or cannot be read.
+   */
+  assetSerialNumber: string | null;
   assignedByUserId: string | null;
   assignedAt: string;
   conditionOnIssue: string | null;
@@ -513,12 +555,32 @@ export const DisposeItAssetSchema = z
   .strict();
 export type DisposeItAsset = z.infer<typeof DisposeItAssetSchema>;
 
+/** The custody register's receipt filter: the paper signed and filed, waiting, or none at all. */
+export const IT_ASSIGNMENT_RECEIPT_STATES = ['signed', 'unsigned', 'none'] as const;
+export const ItAssignmentReceiptStateSchema = z.enum(IT_ASSIGNMENT_RECEIPT_STATES);
+export type ItAssignmentReceiptState = z.infer<typeof ItAssignmentReceiptStateSchema>;
+
 export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   /** `true` → only the open interval; `false` → only closed ones. Omitted → both. */
   open: booleanQuery().optional(),
   assetId: objectId().optional(),
   employeeId: objectId().optional(),
   branchId: objectId().optional(),
+  // «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the register's columns.
+  /** The asset — its code, name or serial, matched as typed. */
+  search: z.string().trim().max(200).optional(),
+  /** The asset's category. */
+  categoryId: objectId().optional(),
+  /** «تاريخ التسليم» from / to — either bound alone is a question too. */
+  assignedFrom: z.coerce.date().optional(),
+  assignedTo: z.coerce.date().optional(),
+  /** «تاريخ الاسترجاع» from / to — only a closed interval has one. */
+  returnedFrom: z.coerce.date().optional(),
+  returnedTo: z.coerce.date().optional(),
+  /** «موعد الإعادة» passed and the asset still out. */
+  overdue: booleanQuery().optional(),
+  /** «إيصال الاستلام» — signed, waiting for the signature, or none. */
+  receipt: ItAssignmentReceiptStateSchema.optional(),
 }).strict();
 export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema>;
 
@@ -1792,3 +1854,650 @@ export type ItAssetWarrantyExpiringPayload = z.infer<typeof ItAssetWarrantyExpir
 
 export const ItAssetWarrantyExpiredPayloadV1 = ItAssetWarrantyExpiringPayloadV1;
 export type ItAssetWarrantyExpiredPayload = z.infer<typeof ItAssetWarrantyExpiredPayloadV1>;
+
+// ── Mobile lines — خطوط المحمول (FR-19) ─────────────────────────────────────
+//
+// «الـ 3 فايلات دول عبارة عن خطوط موبايل عايز أعملهم صفحة لإدارتهم وتسليمهم وبردو بفلتر لكل شبكة
+// مع بيانات كل شبكة».
+//
+// The company's SIM lines on its three networks' business accounts: a register of its own, beside
+// the assets rather than inside them — a line is a number on a network's account, not a device
+// with a serial, a category and a specifications table. It is handed over and returned the way a
+// device is, on the same grants (`itAsset.*`, page «الأصول»), and an employee signs the same
+// department form for it («إقرار استلام», the F-14 series); a tracker SIM is held by a CAR instead,
+// written as the car's code and plate the way the network's sheet names it.
+//
+// As with assets, `status` and `currentAssignmentId` are on no write schema: they follow from the
+// named actions (hand over / return / suspend / reactivate) and nothing else.
+
+export const IT_MOBILE_NETWORKS = ['vodafone', 'etisalat', 'orange'] as const;
+export const ItMobileNetworkSchema = z.enum(IT_MOBILE_NETWORKS);
+export type ItMobileNetwork = z.infer<typeof ItMobileNetworkSchema>;
+
+/** The networks' own names — what a paper prints, in either language. */
+export const IT_MOBILE_NETWORK_NAMES: Readonly<
+  Record<ItMobileNetwork, { ar: string; en: string }>
+> = {
+  vodafone: { ar: 'فودافون', en: 'Vodafone' },
+  etisalat: { ar: 'اتصالات', en: 'Etisalat' },
+  orange: { ar: 'أورانج', en: 'Orange' },
+};
+
+/**
+ * `inStock` — with IT, nobody holds it; `assigned` — an employee or a car holds it (one OPEN
+ * custody interval); `suspended` — stopped on the network, and held by nobody until reactivated.
+ */
+export const IT_MOBILE_LINE_STATUSES = ['inStock', 'assigned', 'suspended'] as const;
+export const ItMobileLineStatusSchema = z.enum(IT_MOBILE_LINE_STATUSES);
+export type ItMobileLineStatus = z.infer<typeof ItMobileLineStatusSchema>;
+
+/** A physical SIM carries its ICCID; an eSIM has no card to read one from. */
+export const IT_MOBILE_SIM_KINDS = ['physical', 'esim'] as const;
+export const ItMobileSimKindSchema = z.enum(IT_MOBILE_SIM_KINDS);
+export type ItMobileSimKind = z.infer<typeof ItMobileSimKindSchema>;
+
+/** Who holds a line: an employee, or a car (the SIM inside its tracker). */
+export const IT_MOBILE_LINE_HOLDER_KINDS = ['employee', 'vehicle'] as const;
+export const ItMobileLineHolderKindSchema = z.enum(IT_MOBILE_LINE_HOLDER_KINDS);
+export type ItMobileLineHolderKind = z.infer<typeof ItMobileLineHolderKindSchema>;
+
+/**
+ * «مسلسل الشريحة» — the ICCID printed on the card: 18 to 22 digits, typed in either digit set and
+ * with any spaces or dashes the card groups it by; stored as ASCII digits, as a STRING (a number
+ * of that length loses its last digits).
+ */
+export const ItMobileSimSerialSchema = z
+  .string()
+  .transform((raw) => asciiDigits(raw).replace(/[\s-]/gu, ''))
+  .pipe(z.string().regex(/^\d{18,22}$/u, 'a SIM serial is 18 to 22 digits'));
+
+/** The open custody interval of a line, as the register shows it beside the line. */
+export interface ItMobileLineHolderDto {
+  assignmentId: string;
+  kind: ItMobileLineHolderKind;
+  /** An employee holder; null for a car. */
+  employeeId: string | null;
+  /** Read through the platform directory at response time — null when it cannot be read. */
+  employeeCode: string | null;
+  employeeName: string | null;
+  /** A car holder — its code and plate as written when it was handed over; null for an employee. */
+  vehicleCode: string | null;
+  vehiclePlate: string | null;
+  assignedAt: string;
+  /** The acknowledgment the employee signed — null for a car, which signs nothing. */
+  receiptId: string | null;
+  receiptSigned: boolean | null;
+}
+
+export interface ItMobileLineDto {
+  id: string;
+  network: ItMobileNetwork;
+  /** The 11-digit local number («01…»), ASCII. Unique in the register. */
+  phoneNumber: string;
+  /** The network account the line is billed on («6.293541»). */
+  accountNumber: string | null;
+  /** «الباقة» — the network's own name for the plan. */
+  ratePlan: string | null;
+  simKind: ItMobileSimKind;
+  /** The ICCID; null for an eSIM, or a card nobody read. Unique in the register when present. */
+  simSerial: string | null;
+  status: ItMobileLineStatus;
+  /** The branch the line is kept by — the scope it is read and written under. */
+  branchId: string;
+  notes: string | null;
+  /** Head of the OPEN custody interval — null unless `assigned`. */
+  currentAssignmentId: string | null;
+  /** The open interval itself, resolved for the register; null unless `assigned`. */
+  holder: ItMobileLineHolderDto | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const mobileLineCore = {
+  network: ItMobileNetworkSchema,
+  phoneNumber: PhoneNumberSchema,
+  accountNumber: z.string().trim().min(1).max(40).optional(),
+  ratePlan: z.string().trim().min(1).max(120).optional(),
+  simKind: ItMobileSimKindSchema.default('physical'),
+  simSerial: ItMobileSimSerialSchema.optional(),
+  branchId: objectId(),
+  notes: z.string().trim().max(2000).optional(),
+};
+
+const refuseEsimSerial = (
+  value: { simKind?: ItMobileSimKind | undefined; simSerial?: string | null | undefined },
+  ctx: z.RefinementCtx,
+): void => {
+  if (value.simKind === 'esim' && typeof value.simSerial === 'string') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['simSerial'],
+      message: 'an eSIM has no card serial',
+    });
+  }
+};
+
+export const CreateItMobileLineSchema = z
+  .object(mobileLineCore)
+  .strict()
+  .superRefine(refuseEsimSerial);
+export type CreateItMobileLine = z.infer<typeof CreateItMobileLineSchema>;
+
+/** The register's facts, edited — never the status or the holder, which only the actions move. */
+export const UpdateItMobileLineSchema = z
+  .object({
+    network: ItMobileNetworkSchema.optional(),
+    phoneNumber: PhoneNumberSchema.optional(),
+    accountNumber: mobileLineCore.accountNumber.unwrap().nullable().optional(),
+    ratePlan: mobileLineCore.ratePlan.unwrap().nullable().optional(),
+    simKind: ItMobileSimKindSchema.optional(),
+    simSerial: ItMobileSimSerialSchema.nullable().optional(),
+    branchId: objectId().optional(),
+    notes: mobileLineCore.notes.unwrap().nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .superRefine(refuseEsimSerial);
+export type UpdateItMobileLine = z.infer<typeof UpdateItMobileLineSchema>;
+
+export const ListItMobileLinesQuerySchema = PaginationQuerySchema.extend({
+  /** Matches the number, the SIM serial, the plan, the account, a car's code or plate, the notes. */
+  search: z.string().trim().max(100).optional(),
+  /** Comma-separated; absent or empty → every network. */
+  networks: listQuery(ItMobileNetworkSchema, IT_MOBILE_NETWORKS.length),
+  status: ItMobileLineStatusSchema.optional(),
+  branchId: objectId().optional(),
+  /** The lines this employee holds right now — an OPEN interval, not a past one. */
+  holderEmployeeId: objectId().optional(),
+  /** Lines held by an employee, or by a car. */
+  holderKind: ItMobileLineHolderKindSchema.optional(),
+}).strict();
+export type ListItMobileLinesQuery = z.infer<typeof ListItMobileLinesQuerySchema>;
+
+/**
+ * «مع بيانات كل شبكة» — each network's figures under the register's filters (everything but the
+ * network itself and the paging): how many lines, in which state, on which accounts and plans.
+ */
+export const ItMobileLinesSummaryQuerySchema = z
+  .object({
+    search: ListItMobileLinesQuerySchema.shape.search,
+    status: ListItMobileLinesQuerySchema.shape.status,
+    branchId: ListItMobileLinesQuerySchema.shape.branchId,
+    holderEmployeeId: ListItMobileLinesQuerySchema.shape.holderEmployeeId,
+    holderKind: ListItMobileLinesQuerySchema.shape.holderKind,
+  })
+  .strict();
+export type ItMobileLinesSummaryQuery = z.infer<typeof ItMobileLinesSummaryQuerySchema>;
+
+export interface ItMobileLineCountDto {
+  /** An account number or a plan name; null for the lines that have none. */
+  value: string | null;
+  count: number;
+}
+
+export interface ItMobileNetworkSummaryDto {
+  network: ItMobileNetwork;
+  total: number;
+  inStock: number;
+  assigned: number;
+  suspended: number;
+  /** Largest first. */
+  accounts: ItMobileLineCountDto[];
+  /** Largest first. */
+  ratePlans: ItMobileLineCountDto[];
+}
+
+/** One entry per network, in `IT_MOBILE_NETWORKS` order — a network with no lines counts zero. */
+export interface ItMobileLinesSummaryDto {
+  networks: ItMobileNetworkSummaryDto[];
+}
+
+/**
+ * Hand a line over (named, like every custody action — no `version`): to an EMPLOYEE, who signs an
+ * acknowledgment for it, or to a CAR, written by its code and/or plate. Exactly one of the two.
+ */
+export const AssignItMobileLineSchema = z
+  .object({
+    employeeId: objectId().optional(),
+    vehicleCode: z.string().trim().min(1).max(40).optional(),
+    vehiclePlate: z.string().trim().min(1).max(40).optional(),
+    assignedAt: z.coerce.date().optional(),
+    notes: z.string().trim().max(500).optional(),
+    /** The number printed on the acknowledgment the employee signed (F-14). Employees only. */
+    formNumber: ItCustodyReceiptNumberSchema.optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const toCar = value.vehicleCode !== undefined || value.vehiclePlate !== undefined;
+    if ((value.employeeId === undefined) === !toCar) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['employeeId'],
+        message: 'a line is handed over to an employee or to a car — exactly one',
+      });
+    }
+    if (toCar && value.formNumber !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['formNumber'],
+        message: 'a car signs no acknowledgment',
+      });
+    }
+  });
+export type AssignItMobileLine = z.infer<typeof AssignItMobileLineSchema>;
+
+export const ReturnItMobileLineSchema = z
+  .object({
+    returnedAt: z.coerce.date().optional(),
+    notes: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type ReturnItMobileLine = z.infer<typeof ReturnItMobileLineSchema>;
+
+/** Suspend (a line in stock) or reactivate (a suspended one): when, and why. */
+export const ItMobileLineStatusActionSchema = z
+  .object({
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type ItMobileLineStatusAction = z.infer<typeof ItMobileLineStatusActionSchema>;
+
+export const ItMobileLineIdParamSchema = z.object({ id: objectId() }).strict();
+
+// ── Mobile lines: custody intervals ─────────────────────────────────────────
+
+export interface ItMobileLineAssignmentDto {
+  id: string;
+  lineId: string;
+  /** The line's network, number and plan, read at response time under the caller's scope. */
+  network: ItMobileNetwork | null;
+  phoneNumber: string | null;
+  ratePlan: string | null;
+  holderKind: ItMobileLineHolderKind;
+  assignedToEmployeeId: string | null;
+  assignedToEmployeeCode: string | null;
+  assignedToEmployeeName: string | null;
+  vehicleCode: string | null;
+  vehiclePlate: string | null;
+  assignedByUserId: string | null;
+  assignedAt: string;
+  /** `null` while the interval is OPEN. */
+  returnedAt: string | null;
+  returnedToUserId: string | null;
+  notes: string | null;
+  /** The line's branch when the interval opened. */
+  branchId: string;
+  receiptId: string | null;
+  receiptSigned: boolean | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ListItMobileLineAssignmentsQuerySchema = PaginationQuerySchema.extend({
+  /** `true` → only open intervals; `false` → only closed ones. Omitted → both. */
+  open: booleanQuery().optional(),
+  lineId: objectId().optional(),
+  employeeId: objectId().optional(),
+  branchId: objectId().optional(),
+}).strict();
+export type ListItMobileLineAssignmentsQuery = z.infer<
+  typeof ListItMobileLineAssignmentsQuerySchema
+>;
+
+// ── Mobile lines: the acknowledgment (إقرار استلام, F-14) ──────────────────
+//
+// The department's form, with the line's facts where a device's would be: «بأنني قد استلمت خط
+// محمول رقم … وبياناته كالتالي:» and a table — network, number, SIM serial, plan. ONE line per
+// paper, so the form's wording (لاستخدامه، عليه، برده) is the form's own. Its number comes from the
+// same F-14 counter as the devices' papers: one department, one series, every print one more.
+
+/** The Files category a signed line acknowledgment is filed under. */
+export const IT_MOBILE_LINE_RECEIPT_FILE_CATEGORY = 'it-mobile-line-receipts';
+
+/** Print before the hand-over: the employee and the line, checked exactly as the hand-over will. */
+export const PreviewItMobileLineReceiptSchema = z
+  .object({
+    lineId: objectId(),
+    employeeId: objectId(),
+    assignedAt: z.coerce.date().optional(),
+  })
+  .strict();
+export type PreviewItMobileLineReceipt = z.infer<typeof PreviewItMobileLineReceiptSchema>;
+
+export interface ItMobileLineReceiptLineDto {
+  lineId: string;
+  /** The interval it opened — null on a preview, which opens nothing. */
+  assignmentId: string | null;
+  network: ItMobileNetwork;
+  phoneNumber: string;
+  simKind: ItMobileSimKind;
+  simSerial: string | null;
+  ratePlan: string | null;
+  accountNumber: string | null;
+}
+
+/** The paper: the device acknowledgment's header, and the one line it is for. */
+export interface ItMobileLineReceiptDocumentDto extends Omit<ItCustodyReceiptDocumentDto, 'lines'> {
+  line: ItMobileLineReceiptLineDto;
+}
+
+export interface ItMobileLineReceiptDto extends ItMobileLineReceiptDocumentDto {
+  id: string;
+  issuedByUserId: string | null;
+  branchId: string;
+  signedCopy: ItCustodyReceiptSignedCopyDto | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A hand-over's answer: the line, and the acknowledgment it recorded (null for a car). */
+export interface ItMobileLineAssignResultDto {
+  line: ItMobileLineDto;
+  receipt: ItMobileLineReceiptDto | null;
+}
+
+// ── Mobile lines: history ───────────────────────────────────────────────────
+
+export const IT_MOBILE_LINE_EVENT_TYPES = [
+  'registered',
+  'updated',
+  'assigned',
+  'returned',
+  'suspended',
+  'reactivated',
+] as const;
+export const ItMobileLineEventTypeSchema = z.enum(IT_MOBILE_LINE_EVENT_TYPES);
+export type ItMobileLineEventType = z.infer<typeof ItMobileLineEventTypeSchema>;
+
+export interface ItMobileLineHistoryEntryDto {
+  id: string;
+  lineId: string;
+  type: ItMobileLineEventType;
+  at: string;
+  actorUserId: string | null;
+  actorName: string;
+  /** Per type, never probed: `assigned` → holder; `updated` → fields; … (as for assets). */
+  metadata: Record<string, unknown>;
+  notes: string | null;
+}
+
+export const ListItMobileLineHistoryQuerySchema = PaginationQuerySchema.extend({
+  type: ItMobileLineEventTypeSchema.optional(),
+}).strict();
+export type ListItMobileLineHistoryQuery = z.infer<typeof ListItMobileLineHistoryQuerySchema>;
+
+// ── Consumables — المستهلكات (FR-20) ────────────────────────────────────────
+//
+// «وعايز بقى شاشة تانية تحت خطوط المحمول تكون للمستهلكات زي: حبارات - كابلات بأنواعها - كونفرترات
+// (محولات) بأنواعها - ماوس - كيبرود - رامات - هاردات - فلاشات - وهكذا .. وأقدر أحدد عندي Stock إيه من
+// كل واحده وإيه الهالك وأتبدل لمين واطبعله مذكره ولو حاجة بتتركب فى حاجة تانية زى الهرد والماوس
+// والكابلات أقدر أذكر الجهاز اللى أتركب عليه من اللأصول».
+//
+// A store of its own, beside the spare parts rather than inside them: a spare part leaves the store
+// only through a maintenance order (FR-9), a consumable is handed to a person — on a memo they sign
+// — and may be named as installed on one of the register's assets. Each branch keeps its own stock,
+// so an item is a row PER BRANCH; its quantities are derived from an append-only ledger and moved
+// atomically with it, and are on no write schema. Same grants as the assets (`itAsset.*`).
+
+/** Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person. */
+export const IT_CONSUMABLE_MOVEMENT_KINDS = ['received', 'issued', 'scrapped', 'returned'] as const;
+export const ItConsumableMovementKindSchema = z.enum(IT_CONSUMABLE_MOVEMENT_KINDS);
+export type ItConsumableMovementKind = z.infer<typeof ItConsumableMovementKindSchema>;
+
+/**
+ * Why an item is issued: a new need, or in place of a damaged one («بدل تالف») — the damaged unit
+ * is then counted as scrap, though it was never on hand.
+ */
+export const IT_CONSUMABLE_ISSUE_REASONS = ['new', 'replacement'] as const;
+export const ItConsumableIssueReasonSchema = z.enum(IT_CONSUMABLE_ISSUE_REASONS);
+export type ItConsumableIssueReason = z.infer<typeof ItConsumableIssueReasonSchema>;
+
+export interface ItConsumableDto {
+  id: string;
+  /** Server-allocated, permanent («CON-00001»). */
+  code: string;
+  /** «حبر HP 85A», «كابل HDMI 3 متر» — a plain name, as the IT team calls it. */
+  name: string;
+  /** Its type — an IT catalog row of kind `consumableType` («حبارات», «كابلات» …). */
+  typeId: string;
+  /** «قطعة», «علبة», «متر». */
+  unit: string;
+  /** The branch whose store keeps it — the scope it is read and written under. */
+  branchId: string;
+  minQty: number | null;
+  notes: string | null;
+  active: boolean;
+  /** What the store holds now. */
+  onHandQty: number;
+  /** Everything ever issued from it. */
+  issuedQty: number;
+  /** Everything ever scrapped — from the store, and the damaged units issues replaced. */
+  scrappedQty: number;
+  /** On hand at or below the minimum — a reorder hint, not a stored state. */
+  belowMin: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const consumableQty = z.number().int().min(1).max(1_000_000);
+
+const consumableCore = {
+  name: z.string().trim().min(1).max(200),
+  typeId: objectId(),
+  unit: z.string().trim().min(1).max(20),
+  branchId: objectId(),
+  minQty: z.number().int().min(0).max(1_000_000).optional(),
+  notes: z.string().trim().max(2000).optional(),
+};
+
+/** No quantity is a field: an opening quantity is a `received` movement written with the item. */
+export const CreateItConsumableSchema = z
+  .object({ ...consumableCore, openingQty: consumableQty.optional() })
+  .strict();
+export type CreateItConsumable = z.infer<typeof CreateItConsumableSchema>;
+
+/** The store's facts, edited — never a quantity, and never the branch: a store's item stays in it. */
+export const UpdateItConsumableSchema = z
+  .object({
+    name: consumableCore.name.optional(),
+    typeId: objectId().optional(),
+    unit: consumableCore.unit.optional(),
+    minQty: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    active: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItConsumable = z.infer<typeof UpdateItConsumableSchema>;
+
+export const ListItConsumablesQuerySchema = PaginationQuerySchema.extend({
+  /** Matches the code and the name. */
+  search: z.string().trim().max(200).optional(),
+  typeId: objectId().optional(),
+  branchId: objectId().optional(),
+  /** `true` → on hand at or below the item's own minimum. */
+  belowMin: booleanQuery().optional(),
+  active: booleanQuery().optional(),
+}).strict();
+export type ListItConsumablesQuery = z.infer<typeof ListItConsumablesQuerySchema>;
+
+/** «توريد» — stock in. */
+export const ReceiveItConsumableSchema = z
+  .object({
+    qty: consumableQty,
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+export type ReceiveItConsumable = z.infer<typeof ReceiveItConsumableSchema>;
+
+/** «هالك» — out of the store as scrap; why is the record. */
+export const ScrapItConsumableSchema = z
+  .object({
+    qty: consumableQty,
+    reason: z.string().trim().min(1).max(500),
+    at: z.coerce.date().optional(),
+  })
+  .strict();
+export type ScrapItConsumable = z.infer<typeof ScrapItConsumableSchema>;
+
+/** «مرتجع» — back to the store in working order, from a person when known. */
+export const ReturnItConsumableSchema = z
+  .object({
+    qty: consumableQty,
+    employeeId: objectId().optional(),
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+export type ReturnItConsumable = z.infer<typeof ReturnItConsumableSchema>;
+
+/** One item of an issue — one row of the memo. */
+export const ItConsumableIssueLineSchema = z
+  .object({
+    consumableId: objectId(),
+    qty: consumableQty,
+    reason: ItConsumableIssueReasonSchema.default('new'),
+    /** «الجهاز اللى أتركب عليه» — the register's asset it was installed on, if any. */
+    assetId: objectId().optional(),
+  })
+  .strict();
+export type ItConsumableIssueLine = z.infer<typeof ItConsumableIssueLineSchema>;
+
+/** A memo is a page, not a register — and an item is on it once. */
+export const IT_CONSUMABLE_ISSUE_MAX_LINES = 20;
+
+/**
+ * «صرف لموظف»: one employee, one or more items from ONE branch's store, ONE memo — in one
+ * transaction, so the paper never lists what the store did not give, nor the reverse.
+ */
+export const IssueItConsumablesSchema = z
+  .object({
+    employeeId: objectId(),
+    issuedAt: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+    lines: z.array(ItConsumableIssueLineSchema).min(1).max(IT_CONSUMABLE_ISSUE_MAX_LINES),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.lines.forEach((line, index) => {
+      if (seen.has(line.consumableId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'consumableId'],
+          message: 'an item appears on the memo twice',
+        });
+      }
+      seen.add(line.consumableId);
+    });
+  });
+export type IssueItConsumables = z.infer<typeof IssueItConsumablesSchema>;
+
+export const ItConsumableIdParamSchema = z.object({ id: objectId() }).strict();
+
+/** One movement of the ledger, labelled for the register at response time. */
+export interface ItConsumableMovementDto {
+  id: string;
+  consumableId: string;
+  kind: ItConsumableMovementKind;
+  /** Always positive — the kind says which way it moved. */
+  qty: number;
+  at: string;
+  branchId: string;
+  consumableCode: string | null;
+  consumableName: string | null;
+  typeId: string | null;
+  /** The person an issue went to, or a return came from. */
+  employeeId: string | null;
+  employeeCode: string | null;
+  employeeName: string | null;
+  /** The asset an issued item was installed on. */
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+  /** Issued: `new` | `replacement`; scrapped: why. Null otherwise. */
+  reason: string | null;
+  memoId: string | null;
+  memoNumber: number | null;
+  /** Whether the memo's signed copy is filed; null when there is no memo (or it is gone). */
+  memoSigned: boolean | null;
+  byUserId: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend({
+  kind: ItConsumableMovementKindSchema.optional(),
+  consumableId: objectId().optional(),
+  typeId: objectId().optional(),
+  employeeId: objectId().optional(),
+  assetId: objectId().optional(),
+  branchId: objectId().optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  /** The item's code or name. */
+  search: z.string().trim().max(200).optional(),
+}).strict();
+export type ListItConsumableMovementsQuery = z.infer<typeof ListItConsumableMovementsQuerySchema>;
+
+// ── Consumables: the memo (مذكرة صرف مستهلكات) ─────────────────────────────
+
+/** The Files category a signed memo is filed under. */
+export const IT_CONSUMABLE_MEMO_FILE_CATEGORY = 'it-consumable-memos';
+
+/** The memo's own series — «EGYCASH-IT-CON-0001», one more on every issue. */
+export const IT_CONSUMABLE_MEMO_FORM = { prefix: 'EGYCASH-IT-CON', digits: 4 } as const;
+
+export const formatConsumableMemoNumber = (memoNumber: number): string =>
+  `${IT_CONSUMABLE_MEMO_FORM.prefix}-${String(memoNumber).padStart(IT_CONSUMABLE_MEMO_FORM.digits, '0')}`;
+
+export interface ItConsumableMemoLineDto {
+  consumableId: string;
+  movementId: string;
+  code: string;
+  name: string;
+  /** The item's type, as it was named when the memo was written. */
+  typeName: { ar: string; en: string } | null;
+  unit: string;
+  qty: number;
+  reason: ItConsumableIssueReason;
+  assetId: string | null;
+  assetCode: string | null;
+  assetName: string | null;
+}
+
+/** The paper — what the printed memo shows, as it was written (a snapshot). */
+export interface ItConsumableMemoDocumentDto {
+  memoNumber: number;
+  issuedAt: string;
+  employeeId: string;
+  employeeName: string | null;
+  employeeCode: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  /** Who issued it — the IT signature block's name. */
+  issuedByName: string | null;
+  notes: string | null;
+  lines: ItConsumableMemoLineDto[];
+}
+
+export interface ItConsumableMemoDto extends ItConsumableMemoDocumentDto {
+  id: string;
+  branchId: string;
+  issuedByUserId: string | null;
+  signedCopy: ItCustodyReceiptSignedCopyDto | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** An issue's answer: the memo to print at once, and the items as they now stand. */
+export interface ItConsumableIssueResultDto {
+  memo: ItConsumableMemoDto;
+  consumables: ItConsumableDto[];
+}

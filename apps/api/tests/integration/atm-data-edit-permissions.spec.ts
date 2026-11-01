@@ -12,7 +12,11 @@
 //     `manage` holder still adds labels in the branch they are placed in (review finding F1);
 //   · the nav row's key is corrected through `previousPermission` — and an administrator's own
 //     choice is not (lead override O-1: there is NO role or delegation widening, so nothing is
-//     asserted about roles gaining keys).
+//     asserted about roles gaining keys);
+//   · since the bank catalog and the intake (DEC-36, DEC-38) a manage holder's add is also an open
+//     register receipt in a mapped branch, a spelling carries its bank, and an area a machine save
+//     leaves behind becomes a label of its own — the full intake table is atm-data-edit-register.spec.ts,
+//     the labels atm-area-labels.spec.ts.
 //
 // Every machine code below is synthetic.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
@@ -24,8 +28,10 @@ import {
   AtmSettingKeys,
   SettingKeys,
   platformPermissions,
+  type AtmMachineCreateResultDto,
   type AtmMachineDto,
   type AtmRefLabelDto,
+  type AtmRefLabelOptionsDto,
   type AtmRegisterEntryDto,
   type AtmRegisterWriteResultDto,
 } from '@ecms/contracts';
@@ -384,6 +390,9 @@ describe('the Operations routes (D2, DEC-3, DEC-4)', () => {
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const label = data<AtmRefLabelDto>(created);
     expect(label.branchId).toBe(alexBranchId);
+    // An older screen's `{ name }` alone: the spelling gets the bank the boot backfill would give
+    // it — `NBE FOREX` is NBE (DEC-16), so the register can take it as an NBE override at once.
+    expect(label).toMatchObject({ kind: 'bank', bankCode: 'NBE', origin: 'manual' });
 
     const renamed = await call('patch', `/atm/ref-labels/bank/${label.id}`, opsAlexToken, {
       name: 'NBE FOREX ATM',
@@ -499,6 +508,11 @@ describe('a manage holder keeps every route (regression)', () => {
       area: 'Smouha',
     });
     expect(single.status, JSON.stringify(single.body)).toBe(201);
+    // DEC-36: Alexandria is mapped, so the add is also an open, flagged receipt in the register.
+    expect(data<AtmMachineCreateResultDto>(single)).toMatchObject({
+      reactivated: false,
+      register: { action: 'created', reason: null, bankCode: 'NBE' },
+    });
     const bulk = await call('post', '/atm/machines/bulk', manageToken, {
       bankName: 'NBE',
       area: 'Smouha',
@@ -553,11 +567,22 @@ describe('a manage holder keeps every route (regression)', () => {
     });
     expect(deleted.status, JSON.stringify(deleted.body)).toBe(200);
 
-    const label = await call('post', '/atm/ref-labels/area', manageToken, { name: 'Gleem' });
+    // DEC-38: the area move above left an active machine on «Gleem», so Gleem is now a label of the
+    // branch, written by the save itself — typing it again is the existing-label 409.
+    const automatic = await call('get', '/atm/ref-labels/options', manageToken);
+    expect(automatic.status, JSON.stringify(automatic.body)).toBe(200);
+    expect(data<AtmRefLabelOptionsDto>(automatic).areas.map((area) => area.name)).toContain(
+      'Gleem',
+    );
+    expect(
+      (await call('post', '/atm/ref-labels/area', manageToken, { name: 'Gleem' })).status,
+    ).toBe(409);
+
+    const label = await call('post', '/atm/ref-labels/area', manageToken, { name: 'Mandara' });
     expect(label.status, JSON.stringify(label.body)).toBe(201);
     const labelDto = data<AtmRefLabelDto>(label);
     const relabelled = await call('patch', `/atm/ref-labels/area/${labelDto.id}`, manageToken, {
-      name: 'Gleem Bay',
+      name: 'Mandara Bay',
       version: labelDto.version,
     });
     expect(relabelled.status, JSON.stringify(relabelled.body)).toBe(200);

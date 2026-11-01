@@ -40,6 +40,17 @@ import {
   type CreateItVendor,
   type DisposeItAsset,
   type HandOverItAssets,
+  type AssignItMobileLine,
+  type CreateItMobileLine,
+  type ItMobileLineStatusAction,
+  type ReturnItMobileLine,
+  type UpdateItMobileLine,
+  type CreateItConsumable,
+  type IssueItConsumables,
+  type ReceiveItConsumable,
+  type ReturnItConsumable,
+  type ScrapItConsumable,
+  type UpdateItConsumable,
   type ItCatalogKind,
   type ReturnItAsset,
   type TransferItAsset,
@@ -75,6 +86,21 @@ const itKeys = {
   licenses: featureKey(MODULE, 'licenses'),
   /** The people IT names — each carries how many assets they hold, which custody moves. */
   people: featureKey(MODULE, 'people'),
+  /**
+   * The mobile-line register, each network's figures and each line's history — one subtree,
+   * because every line action moves all three (a hand-over changes the row, the counts on its
+   * network's card, and the history).
+   */
+  mobileLines: featureKey(MODULE, 'mobileLines'),
+  /** The lines' custody intervals and their acknowledgments — an employee's lines, a line's chain. */
+  mobileLineAssignments: featureKey(MODULE, 'mobileLineAssignments'),
+  /**
+   * The consumables (FR-20): the items, the ledger and the memos — one subtree, because a movement
+   * moves all three at once (an issue writes the movements, the items' figures and the memo in one
+   * transaction), and `onHandQty` is denormalized from the movements, so they are never refreshed
+   * apart. An asset's «installed on it» card and a person's card read the same ledger.
+   */
+  consumables: featureKey(MODULE, 'consumables'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -191,6 +217,16 @@ export const useItAssets = (params: ItListParams, enabled = true) =>
     queryFn: () => api.listAssets(params),
     placeholderData: (prev) => prev,
     enabled,
+  });
+
+/**
+ * The name filter's options — «Drop Down مع قابليه للكتابة». Keyed under the ASSETS subtree, so a
+ * registration or a rename refreshes the names along with the register itself.
+ */
+export const useItAssetNames = () =>
+  useQuery({
+    queryKey: listKey(MODULE, 'assets', { names: true }),
+    queryFn: api.listAssetNames,
   });
 
 export const useItAsset = (id: string) =>
@@ -350,6 +386,196 @@ export const useUploadReceiptSignedCopy = () =>
   );
 export const useDeleteReceiptSignedCopy = () =>
   useReceiptMutation((id: string) => api.deleteReceiptSignedCopy(id));
+
+// ── Mobile lines — خطوط المحمول (FR-19) ─────────────────────────────────────
+
+/** The register. `enabled` mirrors the caller's grant, so a card never fetches what it may not show. */
+export const useItMobileLines = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'mobileLines', params),
+    queryFn: () => api.listMobileLines(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/** «مع بيانات كل شبكة» — the network cards' figures, under the register's filters. */
+export const useItMobileLinesSummary = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'mobileLines', { summary: true, ...params }),
+    queryFn: () => api.getMobileLinesSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useItMobileLineHistory = (lineId: string, params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'mobileLines', { history: lineId, ...params }),
+    queryFn: () => api.listMobileLineHistory(lineId, params),
+    placeholderData: (prev) => prev,
+    enabled: enabled && lineId !== '',
+  });
+
+/** Custody intervals of lines: one line's chain, or one employee's lines. */
+export const useItMobileLineAssignments = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'mobileLineAssignments', params),
+    queryFn: () => api.listMobileLineAssignments(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * A line action moves the line (its `status`, its holder), its network's counts, its history,
+ * its custody intervals — and what a PERSON holds, which their history page shows. So every one
+ * invalidates the three subtrees, the way an asset's custody action does.
+ */
+const useMobileLineMutation = <TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.mobileLines });
+      void qc.invalidateQueries({ queryKey: itKeys.mobileLineAssignments });
+      void qc.invalidateQueries({ queryKey: itKeys.people });
+    },
+  });
+};
+
+export const useCreateItMobileLine = () =>
+  useMobileLineMutation((body: CreateItMobileLine) => api.createMobileLine(body));
+export const useUpdateItMobileLine = () =>
+  useMobileLineMutation(({ id, body }: { id: string; body: UpdateItMobileLine }) =>
+    api.updateMobileLine(id, body),
+  );
+export const useAssignItMobileLine = () =>
+  useMobileLineMutation(({ id, body }: { id: string; body: AssignItMobileLine }) =>
+    api.assignMobileLine(id, body),
+  );
+export const useReturnItMobileLine = () =>
+  useMobileLineMutation(({ id, body }: { id: string; body: ReturnItMobileLine }) =>
+    api.returnMobileLine(id, body),
+  );
+export const useSuspendItMobileLine = () =>
+  useMobileLineMutation(({ id, body }: { id: string; body: ItMobileLineStatusAction }) =>
+    api.suspendMobileLine(id, body),
+  );
+export const useReactivateItMobileLine = () =>
+  useMobileLineMutation(({ id, body }: { id: string; body: ItMobileLineStatusAction }) =>
+    api.reactivateMobileLine(id, body),
+  );
+
+/** A stored line acknowledgment — what its signed copy hangs off. */
+export const useItMobileLineReceipt = (id: string | null) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'mobileLineAssignments', `receipt:${id ?? ''}`),
+    queryFn: () => api.getMobileLineReceipt(id ?? ''),
+    enabled: id !== null && id !== '',
+  });
+
+/**
+ * Filing or withdrawing a line acknowledgment's signed copy changes «موقّع» / «بانتظار التوقيع»
+ * on the register's row (the holder carries it) and on the intervals that show it.
+ */
+const useMobileLineReceiptMutation = <TInput, TOutput>(
+  mutationFn: (input: TInput) => Promise<TOutput>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.mobileLines });
+      void qc.invalidateQueries({ queryKey: itKeys.mobileLineAssignments });
+    },
+  });
+};
+
+export const useUploadMobileLineReceiptSignedCopy = () =>
+  useMobileLineReceiptMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadMobileLineReceiptSignedCopy(id, file),
+  );
+export const useDeleteMobileLineReceiptSignedCopy = () =>
+  useMobileLineReceiptMutation((id: string) => api.deleteMobileLineReceiptSignedCopy(id));
+
+// ── Consumables — المستهلكات (FR-20) ────────────────────────────────────────
+
+/** The store's items. `enabled` mirrors the caller's grant, so a card never fetches what it may not show. */
+export const useItConsumables = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'consumables', params),
+    queryFn: () => api.listConsumables(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/** One item — what a picker shows once it has an id and no search text. */
+export const useItConsumable = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'consumables', id),
+    queryFn: () => api.getConsumable(id),
+    enabled: enabled && id !== '',
+  });
+
+/** The ledger: the movements screen, one item's movements, an asset's card, a person's card. */
+export const useItConsumableMovements = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'consumables', { movements: true, ...params }),
+    queryFn: () => api.listConsumableMovements(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/** A stored memo — what its signed copy hangs off. */
+export const useItConsumableMemo = (id: string | null) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'consumables', `memo:${id ?? ''}`),
+    queryFn: () => api.getConsumableMemo(id ?? ''),
+    enabled: id !== null && id !== '',
+  });
+
+/**
+ * Every consumables write moves the one subtree: the item's figures, the ledger's rows, and — for
+ * an issue, or a memo's signed copy — the memo the rows point at.
+ */
+const useConsumableMutation = <TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.consumables });
+    },
+  });
+};
+
+export const useCreateItConsumable = () =>
+  useConsumableMutation((body: CreateItConsumable) => api.createConsumable(body));
+export const useUpdateItConsumable = () =>
+  useConsumableMutation(({ id, body }: { id: string; body: UpdateItConsumable }) =>
+    api.updateConsumable(id, body),
+  );
+export const useReceiveItConsumable = () =>
+  useConsumableMutation(({ id, body }: { id: string; body: ReceiveItConsumable }) =>
+    api.receiveConsumable(id, body),
+  );
+export const useScrapItConsumable = () =>
+  useConsumableMutation(({ id, body }: { id: string; body: ScrapItConsumable }) =>
+    api.scrapConsumable(id, body),
+  );
+export const useReturnItConsumable = () =>
+  useConsumableMutation(({ id, body }: { id: string; body: ReturnItConsumable }) =>
+    api.returnConsumable(id, body),
+  );
+export const useIssueItConsumables = () =>
+  useConsumableMutation((body: IssueItConsumables) => api.issueConsumables(body));
+export const useUploadConsumableMemoSignedCopy = () =>
+  useConsumableMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadConsumableMemoSignedCopy(id, file),
+  );
+export const useDeleteConsumableMemoSignedCopy = () =>
+  useConsumableMutation((id: string) => api.deleteConsumableMemoSignedCopy(id));
 
 // ── People: the employees IT names ──────────────────────────────────────────
 

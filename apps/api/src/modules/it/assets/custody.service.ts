@@ -41,7 +41,7 @@ import { type ItAssetDoc } from './asset.model';
 import { itCustodyReceiptRepository } from './receipt.repository';
 import { type ItCustodyReceiptDoc, type ItCustodyReceiptLineSub } from './receipt.model';
 import { readReceiptHolder, type ReceiptHolder } from './receipt-holder';
-import { receiptNumberFor } from './receipt-number';
+import { claimReceiptNumber, receiptNumberFor } from './receipt-number';
 import { readDeviceTypesOf, receiptDeviceFields } from './receipt-device';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
@@ -267,6 +267,9 @@ class ItAssetCustodyService {
     const receiptId = new Types.ObjectId();
 
     const result = await unitOfWork(async (session) => {
+      // The paper's number first — before anything this attempt audits: a number another paper
+      // already records refuses the hand-over, and a race on it retries, before any write.
+      await claimReceiptNumber(formNumber, session);
       const assets: ItAssetDoc[] = [];
       const assignments: ItAssetAssignmentDoc[] = [];
       const lines: ItCustodyReceiptLineSub[] = [];
@@ -542,6 +545,7 @@ class ItAssetCustodyService {
 
       if (!sameHolder && receiptId !== null && named !== null) {
         formNumber ??= await receiptNumberFor(input.formNumber);
+        await claimReceiptNumber(formNumber, session);
         await itCustodyReceiptRepository.create(
           {
             _id: receiptId,

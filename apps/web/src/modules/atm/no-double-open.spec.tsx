@@ -31,6 +31,7 @@ import {
   reopenRefusalKey,
 } from './lib/operation-view';
 import { OpenRefusalNotice } from './components/OpenRefusalNotice';
+import { repeatsAnOpenMachine } from './components/ReplenishmentDialogs';
 import { AcceptRefusalNotice } from './pages/MailTicketsPage';
 import { useReopenAtmMaintenance, useReopenAtmReplenishment } from './api/atm-queries';
 import type * as AtmApiModule from './api/atm-api';
@@ -143,10 +144,10 @@ describe('the open forms name the codes they did not open', () => {
 
   it('prints the Arabic in the formal register the catalog is held to', () => {
     expect(translate('ar', 'atm.replenishments.alreadyOpenCodes', { codes: '99990001' })).toBe(
-      'لم تُفتح لأن للماكينة تغذية مفتوحة بالفعل أو لأن الكود مُدخل مرتين: 99990001',
+      'لم تُفتح لأن للماكينة تغذية مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: 99990001',
     );
     expect(translate('ar', 'atm.maintenance.alreadyOpenCodes', { codes: '99990001' })).toBe(
-      'لم تُفتح لأن للماكينة صيانة مفتوحة بالفعل أو لأن الكود مُدخل مرتين: 99990001',
+      'لم تُفتح لأن للماكينة صيانة مفتوحة في نفس اليوم أو لأن الكود مُدخل مرتين: 99990001',
     );
   });
 
@@ -171,8 +172,8 @@ describe('a done page words a refused reopen itself', () => {
       }
       expect(translate('ar', reopenRefusalKey(kind), { code: '99990001' })).toBe(
         kind === 'replenishment'
-          ? 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 تغذية مفتوحة أخرى بالفعل.'
-          : 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 صيانة مفتوحة أخرى بالفعل.',
+          ? 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 تغذية مفتوحة أخرى في نفس اليوم.'
+          : 'لا يمكن إعادة فتح هذه العملية لأن للماكينة 99990001 صيانة مفتوحة أخرى في نفس اليوم.',
       );
     },
   );
@@ -279,5 +280,22 @@ describe('the accept confirm says which selected mails will be refused, before t
     expect(translate('ar', 'atm.mail.acceptBodyFlagged', { count: 2 })).toBe(
       'باستثناء 2 منها، إذ إن لماكيناتها صيانة مفتوحة بالفعل (الصفوف المميزة)، فلن تُقبل وستبقى معلقة.',
     );
+  });
+});
+
+describe('a bulk move of the open time is refused before it is sent when it would double a machine', () => {
+  it('is two OPEN rows of one machine — they would share the day the rule allows once', () => {
+    const open = (machineCode: string) => ({ machineCode, closedAt: null });
+    expect(repeatsAnOpenMachine([open('99990001'), open('99990002')])).toBe(false);
+    expect(repeatsAnOpenMachine([open('99990001'), open('99990002'), open('99990001')])).toBe(true);
+  });
+
+  it('a closed row does not count — the rule holds open rows only', () => {
+    expect(
+      repeatsAnOpenMachine([
+        { machineCode: '99990001', closedAt: null },
+        { machineCode: '99990001', closedAt: '2026-10-27T10:00:00.000Z' },
+      ]),
+    ).toBe(false);
   });
 });

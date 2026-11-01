@@ -69,9 +69,19 @@ has four packages; the config files above tell it what to build and run.
 | `CORS_ORIGINS` | `https://<app-domain>` |
 | `COOKIE_SECURE` | `true` |
 | `STORAGE_DRIVER` | `railway` (local disk rooted at the volume; Railway injects `RAILWAY_VOLUME_MOUNT_PATH`) |
+| `VITE_APP_VERSION` / `VITE_APP_BUILD` | leave unset — see below |
 
 `PORT` is injected by Railway and honored automatically. Changing `VITE_API_BASE_URL` or
 any `VITE_*` value requires a **redeploy** — it is a build-time value.
+
+**The version on screen.** The user menu, the crash screen and the captain's phone screens show
+«Version 2.2.0 · 5f1e139» — displayed only to somebody signed in; no public page shows it — the
+root `package.json` version and the commit the bundle was built
+from. Both are stamped by `apps/web/vite.config.ts` at build time, so nothing needs setting. The
+commit comes from `RAILWAY_GIT_COMMIT_SHA`, which Railway provides to a build deployed from
+GitHub; a `railway up` upload carries no commit, and then only the version shows. Set
+`VITE_APP_VERSION` or `VITE_APP_BUILD` only to show something else. After a deploy, open the
+user menu: the hash there should be the commit you deployed.
 
 > **Why `?family=0` on `REDIS_URL`:** Railway private networking is IPv6-only; without it
 > ioredis resolves the private hostname over IPv4 and the queues fail with

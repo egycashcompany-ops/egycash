@@ -9,6 +9,12 @@ export interface ApplicationCategoryDoc extends BaseDocFields {
   icon: string | null;
   sortOrder: number;
   status: 'active' | 'inactive';
+  /**
+   * Which revision of the navigation catalog's icon this tile has taken (`seed-navigation.ts`,
+   * `iconRevision`). Not part of the API: it only tells the boot sync that a deliberate icon change
+   * was already applied, so an administrator's later choice is not overwritten. Absent = 0.
+   */
+  iconRevision?: number;
 }
 
 const localizedField = {
@@ -22,6 +28,7 @@ const applicationCategorySchema = new Schema<ApplicationCategoryDoc>(
     icon: { type: String, default: null, trim: true },
     sortOrder: { type: Number, required: true, default: 0 },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+    iconRevision: { type: Number, default: 0 },
     ...baseFields,
   },
   baseSchemaOptions,

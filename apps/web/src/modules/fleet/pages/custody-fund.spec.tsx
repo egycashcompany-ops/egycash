@@ -32,6 +32,7 @@ import {
   custodySpentOfFundPct,
 } from '../components/CustodyFigures';
 import { CustodyDashboardContent, CustodyKpis } from '../components/CustodyDashboard';
+import { CustodyFundNow } from '../components/CustodyDashboardFund';
 import { CUSTODY_FUND, CUSTODY_KIND, CUSTODY_KINDS } from '../components/CustodyKinds';
 import { CAIRO, CARD_SURFACE } from '../components/custody-dashboard-parts';
 import { NUM } from '../components/FuelCardBoard';
@@ -150,6 +151,13 @@ const figure = (html: string, id: string): string => {
   return html.slice(at, next === -1 ? undefined : html.lastIndexOf('<', next));
 };
 
+/** Every kind at zero — a memo state's split, where this suite reads none of it. */
+const noKinds = (): FleetCustodyDashboardDto['memoStates']['outside']['byKind'] => ({
+  maintenance: { count: 0, amount: 0 },
+  fuel: { count: 0, amount: 0 },
+  tyres: { count: 0, amount: 0 },
+  wash: { count: 0, amount: 0 },
+});
 /** The dashboard's answer — the same figures, nothing else in it read here. */
 const dashboard = (over: Partial<FleetCustodyDashboardDto> = {}): FleetCustodyDashboardDto => ({
   ...summary,
@@ -175,15 +183,17 @@ const dashboard = (over: Partial<FleetCustodyDashboardDto> = {}): FleetCustodyDa
     receiptsWithoutPhoto: 0,
     duplicateReceipts: 0,
   },
+  memoStates: {
+    replenished: { count: 0, amount: 0, byKind: noKinds() },
+    pending: { count: 0, amount: 0, byKind: noKinds() },
+    outside: { count: 6, amount: 4335.5, byKind: noKinds() },
+  },
   ...over,
 });
-/** One KPI card's markup on the dashboard, up to the next one. */
-const kpi = (html: string, id: string): string => {
-  const at = html.indexOf(`data-custody-kpi="${id}"`);
-  expect(at, id).toBeGreaterThan(-1);
-  const next = html.indexOf('data-custody-kpi="', at + 10);
-  const end = next === -1 ? html.indexOf('data-custody-tile') : next;
-  return html.slice(at, html.lastIndexOf('<', end));
+/** «إجمالي العهدة» at the end of «العهدة الآن» — the fund's card, to the end of the section. */
+const fundNow = (data: FleetCustodyDashboardDto): string => {
+  const html = mount(<CustodyFundNow data={data} />);
+  return html.slice(html.indexOf('data-custody-fund-now="true"'));
 };
 
 describe('«صُرف من إجمالي الشحن X%» — what was spent of all that was charged', () => {
@@ -302,11 +312,8 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
     expect(fund).not.toMatch(/NaN|Infinity|-4,335/u);
     // A positive fund wears no red.
     expect(figure(mount(<CustodyFigures totals={summary} />), 'fund')).not.toContain('red-');
-    // …and the dashboard's card, the same component.
-    const card = kpi(
-      mount(<CustodyKpis data={dashboard({ fundTotal: -124_139.46, fundCharged: 300_000 })} />),
-      'fund',
-    );
+    // …and the dashboard's card in «العهدة الآن», the same component.
+    const card = fundNow(dashboard({ fundTotal: -124_139.46, fundCharged: 300_000 }));
     expect(card).toContain('data-custody-fund-negative="true"');
     expect(text(card)).toContain('−124,139.46 ج.م.');
   });
@@ -400,18 +407,13 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
       expect(tile, String(odd)).not.toMatch(/NaN|Infinity|undefined|ليس رقمًا/u);
       expect(tile, String(odd)).toContain('style="width:0%"');
     }
-    // …and the dashboard's card, the same component.
-    const card = kpi(
-      mount(
-        <CustodyKpis
-          data={dashboard({
-            fundTotal: undefined as unknown as number,
-            fundCharged: undefined as unknown as number,
-            fundSpent: undefined as unknown as number,
-          })}
-        />,
-      ),
-      'fund',
+    // …and the dashboard's card in «العهدة الآن», the same component.
+    const card = fundNow(
+      dashboard({
+        fundTotal: undefined as unknown as number,
+        fundCharged: undefined as unknown as number,
+        fundSpent: undefined as unknown as number,
+      }),
     );
     expect(text(card)).toBe(
       `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
@@ -463,15 +465,9 @@ describe('«إجمالي العهدة» on the board — «الإحصائيات�
   });
 });
 
-describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
-  it('leads the KPI row — six of them — in the dashboard’s own figure, with no bar', () => {
-    const html = mount(<CustodyKpis data={dashboard()} />);
-    expect([...html.matchAll(/data-custody-kpi="(\w+)"/gu)].map((m) => m[1])).toEqual([
-      'fund',
-      'total',
-      ...CUSTODY_KINDS,
-    ]);
-    const fund = kpi(html, 'fund');
+describe('«إجمالي العهدة» on «لوحة تحكم» — the last tile of «العهدة الآن»', () => {
+  it('ends the fund’s formula in the dashboard’s own figure, with no bar — and leaves the spend’s row', () => {
+    const fund = fundNow(dashboard());
     expect(text(fund)).toContain(
       `${ar('fleet.custody.fund.title')} 50,000.00 ج.م. ${ar('fleet.custody.fund.spent')} 8.7%`,
     );
@@ -480,17 +476,24 @@ describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
     expect(value).toEqual(expect.arrayContaining(esc(CAIRO).split(' ')));
     expect(value.join(' ')).not.toContain('ui-monospace');
     expect(fund).not.toContain('style="width:');
-    // The same card as the board's.
+    // The same card as the board's — and a way into «سجل العهدة».
     expect(fund).toContain(CUSTODY_FUND.tile);
     expect(classesOf(fund, 'data-custody-fund="true"')).toEqual(
       expect.arrayContaining(CUSTODY_FUND.accent.split(' ')),
     );
+    const html = mount(<CustodyFundNow data={dashboard()} />);
+    const link = html.slice(html.lastIndexOf('<a', html.indexOf('data-custody-fund-now')));
+    expect(link.slice(0, link.indexOf('>'))).toContain('href="/fleet/custody/log"');
+    // No longer one of the spend's figures.
+    expect(mount(<CustodyKpis data={dashboard()} />)).not.toContain('data-custody-fund=');
   });
 
-  it('fits six to the row: three from `lg`, all six from `2xl` — and loads six', () => {
+  it('leaves five to the spend’s row: three from `lg`, all five from `2xl` — and loads five', () => {
     const html = mount(<CustodyKpis data={dashboard()} />);
-    const grid = classesOf(html, 'data-custody-kpi="fund"');
-    expect(grid).toEqual(['flex', 'min-w-0', 'flex-col']);
+    expect([...html.matchAll(/data-custody-kpi="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'total',
+      ...CUSTODY_KINDS,
+    ]);
     const row = html.slice(html.indexOf('<div', html.indexOf('data-custody-dashboard-section')));
     expect(classesOf(row, '<div')).toEqual([
       'grid',
@@ -498,12 +501,31 @@ describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
       'gap-3.5',
       'sm:grid-cols-2',
       'lg:grid-cols-3',
-      '2xl:grid-cols-6',
+      '2xl:grid-cols-5',
     ]);
     const loading = mount(
       <CustodyDashboardContent view="loading" data={undefined} error={null} onRetry={() => {}} />,
     );
-    expect(loading.match(/h-\[120px\]/gu)).toHaveLength(6);
+    // Five spend cards shimmering at their own height — the memos' bars in them (N7).
+    expect(loading.match(/ h-\[266px\]/gu)).toHaveLength(5);
+    expect(loading).toContain('data-custody-dashboard-loading="true"');
+    // Over them, «العهدة الآن» is never a shimmer of the filtered answer: its own cards, each on its
+    // own read, at the heights they land at — the formula's five tiles and its two rows of cards.
+    expect(loading).toContain('data-custody-dashboard-heading="fund"');
+    expect(loading.match(/min-h-\[124px\]/gu)).toHaveLength(5);
+    expect(loading.match(/min-h-\[475px\]/gu)).toHaveLength(2);
+    expect(loading.match(/min-h-\[542px\]/gu)).toHaveLength(2);
+    expect([...loading.matchAll(/data-custody-card-loading="(\w+)"/gu)].map((m) => m[1])).toEqual([
+      'formula',
+      'formula',
+      'formula',
+      'formula',
+      'fundNow',
+      'waiting',
+      'settle',
+      'steps',
+      'recent',
+    ]);
     // The shared look: no font-family twice on one element.
     for (const m of html.matchAll(/class="([^"]*)"/gu)) {
       expect((m[1] ?? '').match(/\[font-family:/gu)?.length ?? 0, m[1]).toBeLessThanOrEqual(1);
@@ -511,28 +533,24 @@ describe('«إجمالي العهدة» on «لوحة تحكم»', () => {
   });
 
   it('shows «0.00 ج.م.» while the fund holds nothing, its share «—», with no bar', () => {
-    const card = kpi(
-      mount(<CustodyKpis data={dashboard({ fundTotal: 0, fundCharged: 0, fundSpent: 0 })} />),
-      'fund',
-    );
+    const card = fundNow(dashboard({ fundTotal: 0, fundCharged: 0, fundSpent: 0 }));
     expect(text(card)).toBe(
       `${ar('fleet.custody.fund.title')} 0.00 ج.م. ${ar('fleet.custody.fund.spent')} —`,
     );
     expect(card).toMatch(/data-custody-fund-value="true"[^>]*>0\.00</u);
     expect(card).not.toContain('style="width:');
-    expect(card).not.toContain('href=');
     expect(card).not.toMatch(/NaN|Infinity/u);
   });
 
   it('is one component, drawn by both, fed the unfiltered figures', () => {
     const figures = read('../components/CustodyFigures.tsx');
-    const modal = read('../components/CustodyDashboard.tsx');
     expect(figures).toMatch(
       /<CustodyFundCard\s+fundTotal=\{totals\.fundTotal\}\s+charged=\{totals\.fundCharged\}\s+spent=\{totals\.fundSpent\}\s+board\s+\/>/u,
     );
-    expect(modal).toMatch(
-      /<CustodyFundCard\s+fundTotal=\{data\.fundTotal\}\s+charged=\{data\.fundCharged\}\s+spent=\{data\.fundSpent\}\s+figure=\{FIGURE\}\s+\/>/u,
+    expect(read('../components/CustodyDashboardFund.tsx')).toMatch(
+      /<CustodyFundCard\s+fundTotal=\{figures\.fundTotal\}\s+charged=\{figures\.fundCharged\}\s+spent=\{figures\.fundSpent\}\s+figure=\{STRIP_FIGURE\}\s+\/>/u,
     );
+    expect(read('../components/CustodyDashboard.tsx')).not.toContain('<CustodyFundCard');
     // A spent total of nothing over what was charged: «0%», not a dash.
     const zero = mount(<CustodyFundCard fundTotal={50_000} charged={50_000} spent={0} />);
     expect(text(zero)).toContain(`${ar('fleet.custody.fund.spent')} 0%`);

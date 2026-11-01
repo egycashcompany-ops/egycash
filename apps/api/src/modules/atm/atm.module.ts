@@ -4,9 +4,10 @@
 // owner scoped (/atm_replenishment ±done, /atm_maintenance ±done, /mail_maintenance ±log,
 // /all_atm) plus /data_edit_atm, added to scope by the owner after approval. The Efficiency &
 // Investigations slice is here too (docs/12-planning/atm-efficiency-register.md): the machine
-// register and its Data Report, from the owner's workbook. The other legacy ATM sections (back
-// office, vaults, supplies, review, preparation) are NOT here — this manifest grows with those
-// slices exactly as Fleet's and Operations' did, never a second one.
+// register and its Data Report, from the owner's workbook. Settlements & Review, Preparation and
+// Control & Supplies are here too (phase 1, below); the other legacy ATM sections (back office,
+// vaults) are NOT — this manifest grows with those slices exactly as Fleet's and Operations' did,
+// never a second one.
 //
 // Legacy privilege strings → grants (port doc §7.3): atm-user = the operating bundle,
 // atm-user-review = view+complete on the done surfaces, atm-admin = everything incl. the mail
@@ -15,10 +16,16 @@
 // resource. Every legacy POST was unauthenticated (contad_app.js:632 …) — closed here by RBAC,
 // the port's one non-negotiable behaviour change (port doc T-auth).
 // The machine map and its owner-drawn zones sit here too (docs/12-planning/atm-map-zones.md).
+// Settlements & Review → Preparation → Control & Supplies, phase 1 (Al Baraka first), too
+// (docs/12-planning/atm-settlements-phase1.md).
+// And /atm/settings (the owner, 2026-10-28): the Banque Misr maintenance mailbox the central reader
+// polls, and the branches that work as one in ATM (port doc §6).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
+import { registerAuthContextRefiner } from '../../platform/auth';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildAtmMachinesRouter } from './machines/machine.routes';
 import { buildAtmRefLabelsRouter } from './catalogs/ref-label.routes';
+import { buildAtmBanksRouter } from './catalogs/bank.routes';
 import { buildAtmReplenishmentsRouter } from './replenishments/replenishment.routes';
 import { buildAtmMaintenancesRouter } from './maintenances/maintenance.routes';
 import { buildAtmMailTicketsRouter } from './mail-tickets/mail-ticket.routes';
@@ -26,11 +33,18 @@ import { buildAtmReportsRouter } from './reports/report.routes';
 import { buildAtmRegisterRouter } from './register/register.routes';
 import { buildAtmRegisterImportRouter } from './register/import/register-import.routes';
 import { buildAtmMapRouter } from './map/map.routes';
+import { buildAtmSettlementsRouter } from './settlements/settlements.routes';
+import { buildAtmPreparationRouter } from './settlements/preparation/preparation.routes';
+import { buildAtmControlRouter } from './settlements/control/control.routes';
 import { rotateRegisterCombinationKeys } from './register/register-secrets';
 import { registerAtmSettings } from './atm.settings';
 import { seedAtm } from './atm.seed';
 import { pollAtmMailbox } from './mail-tickets/mail-poll.service';
 import { registerGraphMailSource } from './mail-tickets/graph-mail.source';
+import { buildAtmMailboxRouter } from './mail-tickets/mailbox.routes';
+import { rotateMailboxSecretKey } from './mail-tickets/mailbox-secret-rotation';
+import { buildAtmBranchLinksRouter } from './branch-links/branch-links.routes';
+import { refineAtmAuthContext } from './branch-links/link-context';
 
 const replenishmentPermissions = declarePermissions(
   'atm',
@@ -69,10 +83,16 @@ const mailTicketPermissions = declarePermissions(
   { en: 'ATM maintenance mail', ar: 'رسائل صيانة الصراف الآلي' },
   ['view'],
   [
-    // Accept and reject are one screen and one authority — the two-direction-cell precedent.
+    // Accept and reject are one screen and one authority — the two-direction-cell precedent. The
+    // log's restore (2026-10-28) is the undo of that decision and rides the same key, as close and
+    // reopen share one: restoring an accepted mail also soft-deletes the OPEN maintenance its accept
+    // opened, so the label names it.
     {
       action: 'decide',
-      name: { en: 'Accept or reject a maintenance mail', ar: 'قبول رسالة الصيانة أو رفضها' },
+      name: {
+        en: 'Accept, reject or restore a maintenance mail',
+        ar: 'قبول رسالة الصيانة أو رفضها أو استرجاعها',
+      },
     },
     // The legacy log page had a strictly smaller privilege set than the pending page
     // (contad_app.js:2901 admin-only vs :2634) — a separate grant is that fact, kept.
@@ -119,6 +139,20 @@ const refLabelPermissions = declarePermissions(
   ['create', 'edit'],
   [],
   'atm.machines',
+);
+
+// The company-wide bank catalog (DEC-35): the owner's call is that a bank added at runtime is a
+// FULL register bank, so adding one is a fact about the company — the service requires both keys at
+// ORGANIZATION scope. It sits on the register's page: the catalog belongs to Efficiency and the
+// administrators, Operations keep their per-branch spellings (`atmRefLabel.*`). Reading needs no key
+// of its own — any ATM key reads it (bank.routes.ts).
+const bankPermissions = declarePermissions(
+  'atm',
+  'atmBank',
+  { en: 'ATM banks', ar: 'بنوك الصراف الآلي' },
+  ['create', 'edit'],
+  [],
+  'atm.register',
 );
 
 // The Efficiency register (D1–D8). Reading is per branch (DEC-29); the three specials are the
@@ -206,10 +240,111 @@ const locatePermissions = declarePermissions(
   'atm.map',
 );
 
+// Settlements & Review's cassette layouts and standard loads (docs/12-planning/atm-settlements-phase1.md §7.1).
+const layoutPermissions = declarePermissions(
+  'atm',
+  'atmCassetteLayout',
+  { en: 'ATM cassette denominations', ar: 'فئات كاسيتات الماكينات' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Edit cassette denominations and standard loads',
+        ar: 'تعديل فئات الكاسيتات والحمولات القياسية',
+      },
+    },
+    {
+      action: 'import',
+      name: { en: 'Import a bank master workbook', ar: 'استيراد ملف Full list للبنك' },
+    },
+  ],
+  'atm.cassette-layouts',
+);
+
+// Settlements & Review's daily replenishment plan and its papers (docs/12-planning/atm-settlements-phase1.md §7.1).
+const planPermissions = declarePermissions(
+  'atm',
+  'atmSettlementPlan',
+  { en: 'ATM replenishment plans', ar: 'خطط تغذية الماكينات' },
+  ['view', 'print', 'export'],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Build, issue, reopen and cancel plan lines',
+        ar: 'إعداد سطور الخطة واعتمادها وإعادتها وإلغاؤها',
+      },
+    },
+  ],
+  'atm.settlement-plans',
+);
+
+// Preparation's bags and seals (docs/12-planning/atm-settlements-phase1.md §7.1).
+const preparationPermissions = declarePermissions(
+  'atm',
+  'atmPreparation',
+  { en: 'ATM bag and seal preparation', ar: 'تجهيز الشوالات والسيلزات' },
+  ['view'],
+  [
+    {
+      action: 'capture',
+      name: {
+        en: 'Record bag QR codes and cassette seals',
+        ar: 'تسجيل QR الشوالات وسيلزات الكاسيتات',
+      },
+    },
+  ],
+  'atm.preparation',
+);
+
+// Control & Supplies' dispatch data and crew lines (docs/12-planning/atm-settlements-phase1.md §7.1).
+const controlPermissions = declarePermissions(
+  'atm',
+  'atmControl',
+  { en: 'ATM control and supplies', ar: 'الرقابة والمستلزمات' },
+  ['view', 'print'],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Create crew lines and distribute the bags',
+        ar: 'إنشاء الخطوط وتوزيع الشوالات عليها',
+      },
+    },
+  ],
+  'atm.control',
+);
+
+// /atm/settings (the owner, 2026-10-28): ONE key for the mailbox and the branch links, required at
+// ORGANIZATION scope by both services (shared/settings-authority.ts, the `atmBank.*` rule) — one
+// mailbox serves every branch, and which branch works as which is one fact about the company.
+const settingsPermissions = declarePermissions(
+  'atm',
+  'atmSettings',
+  { en: 'ATM settings', ar: 'إعدادات الصراف الآلي' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Manage the maintenance mailbox and the branches that work together',
+        ar: 'إدارة بريد الصيانة والفروع التي تعمل معاً',
+      },
+    },
+  ],
+  'atm.settings',
+);
+
 registerAtmSettings();
 // Opt-in and silent when no mailbox is configured (the OCR-sidecar precedent): without the four
-// `ATM_MAIL_GRAPH_*` settings nothing registers and the poll task below does nothing at all.
+// `ATM_MAIL_GRAPH_*` settings and without a document saved on /atm/settings, the poll task below
+// does nothing at all.
 registerGraphMailSource();
+// «فرع أكتوبر شغال هو والمهندسين مع بعض» — for ATM only: on this module's routes a caller placed in
+// a linked branch is read as placed in the branch it acts as (branch-links/link-context.ts); on
+// every other route nothing changes.
+registerAuthContextRefiner('/atm', refineAtmAuthContext);
 
 export const atmPermissions: PermissionDef[] = [
   ...replenishmentPermissions,
@@ -217,11 +352,17 @@ export const atmPermissions: PermissionDef[] = [
   ...mailTicketPermissions,
   ...machinePermissions,
   ...refLabelPermissions,
+  ...bankPermissions,
   ...registerPermissions,
   ...registerReportPermissions,
   ...mapPermissions,
   ...zonePermissions,
   ...locatePermissions,
+  ...layoutPermissions,
+  ...planPermissions,
+  ...preparationPermissions,
+  ...controlPermissions,
+  ...settingsPermissions,
 ];
 
 export const atmPages: PageDef[] = [
@@ -274,6 +415,41 @@ export const atmPages: PageDef[] = [
     route: '/atm/register/report',
     sortOrder: 60,
   },
+  {
+    id: 'atm.settlement-plans',
+    moduleId: 'atm',
+    name: { en: 'Replenishment plan', ar: 'خطة التغذية' },
+    route: '/atm/settlements/plans',
+    sortOrder: 70,
+  },
+  {
+    id: 'atm.cassette-layouts',
+    moduleId: 'atm',
+    name: { en: 'Cassette denominations', ar: 'فئات الكاسيتات' },
+    route: '/atm/settlements/layouts',
+    sortOrder: 75,
+  },
+  {
+    id: 'atm.preparation',
+    moduleId: 'atm',
+    name: { en: 'Bags and seals', ar: 'الشوالات والسيلزات' },
+    route: '/atm/preparation',
+    sortOrder: 80,
+  },
+  {
+    id: 'atm.control',
+    moduleId: 'atm',
+    name: { en: 'Dispatch data and lines', ar: 'بيانات التغذية والخطوط' },
+    route: '/atm/control',
+    sortOrder: 85,
+  },
+  {
+    id: 'atm.settings',
+    moduleId: 'atm',
+    name: { en: 'ATM settings', ar: 'إعدادات الصراف الآلي' },
+    route: '/atm/settings',
+    sortOrder: 90,
+  },
 ];
 
 export const atmModule: ModuleManifest = {
@@ -287,6 +463,11 @@ export const atmModule: ModuleManifest = {
     { prefix: '/atm/machines', router: buildAtmMachinesRouter() },
     { prefix: '/atm/map', router: buildAtmMapRouter() },
     { prefix: '/atm/ref-labels', router: buildAtmRefLabelsRouter() },
+    // Read by ANY ATM key — the list is derived from the manifest's own keys, so it cannot drift.
+    {
+      prefix: '/atm/banks',
+      router: buildAtmBanksRouter(atmPermissions.map((permission) => permission.key)),
+    },
     { prefix: '/atm/replenishments', router: buildAtmReplenishmentsRouter() },
     { prefix: '/atm/maintenances', router: buildAtmMaintenancesRouter() },
     { prefix: '/atm/mail-tickets', router: buildAtmMailTicketsRouter() },
@@ -295,10 +476,17 @@ export const atmModule: ModuleManifest = {
     // The import BEFORE the register: its prefix sits inside the register's.
     { prefix: '/atm/register/import', router: buildAtmRegisterImportRouter() },
     { prefix: '/atm/register', router: buildAtmRegisterRouter() },
+    { prefix: '/atm/settlements', router: buildAtmSettlementsRouter() },
+    { prefix: '/atm/preparation', router: buildAtmPreparationRouter() },
+    { prefix: '/atm/control', router: buildAtmControlRouter() },
+    // /atm/settings' two cards.
+    { prefix: '/atm/mailbox', router: buildAtmMailboxRouter() },
+    { prefix: '/atm/branch-links', router: buildAtmBranchLinksRouter() },
   ],
   collections: [
     'atm_machines',
     'atm_ref_labels',
+    'atm_banks',
     'atm_replenishments',
     'atm_maintenances',
     'atm_mail_tickets',
@@ -307,6 +495,20 @@ export const atmModule: ModuleManifest = {
     'atm_machine_locations',
     'atm_map_zone_sets',
     'atm_map_zones',
+    'atm_cassette_layouts',
+    'atm_cassette_layout_versions',
+    'atm_standard_loads',
+    'atm_replenishment_plans',
+    'atm_plan_lines',
+    'atm_note_counters',
+    'atm_line_preparations',
+    'atm_dispatch_routes',
+    'atm_route_assignments',
+    'atm_layout_import_runs',
+    'atm_mailbox_config',
+    // «نقل البيانات» (branch-links/branch-move-run.model.ts): one row per move of a linked source's
+    // data to its target — the run lock and the run's record.
+    'atm_branch_move_runs',
   ],
   eventSubscriptions: [],
   scheduledTasks: [
@@ -320,7 +522,10 @@ export const atmModule: ModuleManifest = {
       cron: '* * * * *',
       ownerService: 'atm',
       handler: async () => {
-        await pollAtmMailbox();
+        // A mailbox that failed as a whole (token refused, unreachable) is the run's `error` — on
+        // the screen's last-run line — and still a FAILED scheduled run, as it was before.
+        const run = await pollAtmMailbox();
+        if (run.error !== null) throw new Error(run.error);
       },
     },
     {
@@ -328,12 +533,16 @@ export const atmModule: ModuleManifest = {
       // old key after the re-wrap, so without this sweep every reveal would fail afterwards.
       key: 'atm.rotateRegisterCombinationKeys',
       description:
-        'Re-wrap register safe-door combinations still sealed under a retired key. Touches the data key only — no plaintext exists at any point.',
+        'Re-wrap register safe-door combinations, and the maintenance mailbox secret, still sealed under a retired key. Touches the data key only — no plaintext exists at any point.',
       // Nightly, after the automation sweep at 02:30.
       cron: '45 2 * * *',
       ownerService: 'atm',
       handler: async () => {
         await rotateRegisterCombinationKeys();
+        // The mailbox secret rides the same nightly pass (the key is the task's, not renamed, so
+        // its schedule row survives): a secret left on a key the rotation drops would stop the
+        // reader until somebody typed it again.
+        await rotateMailboxSecretKey();
       },
     },
   ],

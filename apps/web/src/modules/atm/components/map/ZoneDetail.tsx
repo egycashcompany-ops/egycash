@@ -6,11 +6,11 @@
 // «تعديل» shows only for a zone of the edit branch: edit mode always opens that branch (§8.6), so a
 // button on another branch's zone would open a different branch's zones.
 import { useState } from 'react';
-import { ATM_BANK_NAMES, type Locale } from '@ecms/contracts';
+import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { formatNumber } from '../../../../shared/lib/format';
 import { NumberedPager } from '../../../../shared/ui/NumberedPager';
-import { bankColor } from '../../lib/map-colors';
+import { type BankLookup } from '../../lib/bank-catalog';
 import { machineCountText } from '../../lib/map-count-text';
 import { type ZoneBreakdown } from '../../lib/map-view';
 
@@ -21,6 +21,7 @@ export const ZoneDetail = ({
   breakdown,
   overlaps,
   locale,
+  banks,
   onBack,
   onEdit,
   onPickMachine,
@@ -30,6 +31,8 @@ export const ZoneDetail = ({
   /** How many other zones of its branch it overlaps. */
   overlaps: number;
   locale: Locale;
+  /** The catalog's names and colours (DEC-35); `breakdown` was built in its order. */
+  banks: BankLookup;
   onBack: () => void;
   /** Null: the zone is not of the edit branch, or the reader cannot edit. */
   onEdit: (() => void) | null;
@@ -38,7 +41,7 @@ export const ZoneDetail = ({
   const t = useT();
   const [page, setPage] = useState(1);
   const bankLabel = (code: (typeof breakdown.banks)[number]['code']): string =>
-    code === null ? t('atm.map.filters.bankNone') : ATM_BANK_NAMES[code][locale];
+    code === null ? t('atm.map.filters.bankNone') : banks.name(code, locale);
   const pages = Math.max(1, Math.ceil(breakdown.machines.length / MACHINES_PER_PAGE));
   const at = Math.min(page, pages);
   const machines = breakdown.machines.slice((at - 1) * MACHINES_PER_PAGE, at * MACHINES_PER_PAGE);
@@ -93,7 +96,7 @@ export const ZoneDetail = ({
           {breakdown.banks.map((bank) => (
             <span
               key={bank.code ?? 'none'}
-              style={{ width: `${String(bank.pct)}%`, backgroundColor: bankColor(bank.code) }}
+              style={{ width: `${String(bank.pct)}%`, backgroundColor: banks.color(bank.code) }}
             />
           ))}
         </div>
@@ -105,7 +108,7 @@ export const ZoneDetail = ({
             <span
               aria-hidden="true"
               className="h-2.5 w-2.5 shrink-0 rounded-[3px] shadow-[inset_0_0_0_1px_rgba(15,23,42,0.25)]"
-              style={{ backgroundColor: bankColor(bank.code) }}
+              style={{ backgroundColor: banks.color(bank.code) }}
             />
             <span className="min-w-0 flex-1 truncate">{bankLabel(bank.code)}</span>
             <strong className="tabular-nums">{formatNumber(bank.count, locale)}</strong>

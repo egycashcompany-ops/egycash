@@ -7,6 +7,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { formatNumber } from '../../../../shared/lib/format';
 import { cn } from '../../../../shared/lib/cn';
+import { useAtmBankLookup } from '../../api/atm-queries';
 import { reportCellLabel } from '../../lib/register-import-view';
 
 const TH = 'p-2 text-start text-xs font-medium text-slate-500 dark:text-slate-400';
@@ -19,6 +20,8 @@ export const ReportCheckTable = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The six seeds' names as the catalog holds them now (a curated name reads here too).
+  const lookup = useAtmBankLookup();
   return (
     <Card>
       <CardHeader title={t('atm.registerImport.reportCheck.title')} />
@@ -50,7 +53,7 @@ export const ReportCheckTable = ({
                 >
                   <td className={TD}>{t(`atm.registerReport.section${String(cell.section)}`)}</td>
                   <td className={TD}>
-                    <span dir="auto">{reportCellLabel(cell, t, locale)}</span>
+                    <span dir="auto">{reportCellLabel(cell, t, locale, lookup.ordered)}</span>
                   </td>
                   <td className={`${TD} font-mono`} dir="ltr">
                     {cell.cell}

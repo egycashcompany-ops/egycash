@@ -14,7 +14,6 @@
 // A row exists only for a branch where the reader can locate (§8.3), so its actions always apply.
 import { memo, useId, useState } from 'react';
 import {
-  ATM_BANK_NAMES,
   ErrorCodes,
   type AtmMachineLocationDetailDto,
   type AtmMapLatLng,
@@ -29,7 +28,7 @@ import { Button } from '../../../../shared/ui/Button';
 import { Spinner } from '../../../../shared/ui/Spinner';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useApproveLocation, useMachineLocation, useParseLocation } from '../../api/map-queries';
-import { bankColor } from '../../lib/map-colors';
+import { type BankLookup } from '../../lib/bank-catalog';
 import { approveFailureKey } from '../../lib/map-errors';
 import { originalLinkHref } from '../../lib/map-links';
 import { locatedToast } from '../../lib/map-toasts';
@@ -81,6 +80,7 @@ export const UnlocatedRow = memo(function UnlocatedRow({
   branchName,
   open,
   locale,
+  banks,
   actions,
   onToggle,
 }: {
@@ -88,15 +88,15 @@ export const UnlocatedRow = memo(function UnlocatedRow({
   branchName: string;
   open: boolean;
   locale: Locale;
+  /** The catalog's names and colours (DEC-35), handed down: a closed row holds no query. */
+  banks: BankLookup;
   actions: UnlocatedRowActions;
   onToggle: (machineId: string) => void;
 }): JSX.Element {
   const t = useT();
   const chip = chipOf(point);
   const bank =
-    point.bankCode === null
-      ? t('atm.map.filters.bankNone')
-      : ATM_BANK_NAMES[point.bankCode][locale];
+    point.bankCode === null ? t('atm.map.filters.bankNone') : banks.name(point.bankCode, locale);
 
   return (
     <div
@@ -123,7 +123,7 @@ export const UnlocatedRow = memo(function UnlocatedRow({
             <span
               aria-hidden="true"
               className="h-2 w-2 rounded-full shadow-[inset_0_0_0_1px_rgba(15,23,42,0.3)]"
-              style={{ backgroundColor: bankColor(point.bankCode) }}
+              style={{ backgroundColor: banks.color(point.bankCode) }}
             />
             {bank}
           </span>

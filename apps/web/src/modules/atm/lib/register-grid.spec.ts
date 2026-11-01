@@ -22,6 +22,8 @@ import {
   registerGroupSpans,
   registerHeaderTitle,
   registerPanesFreeze,
+  missingForCompletion,
+  registerGapLabelKey,
 } from './register-grid';
 
 const letters = (from: string, to: string): string[] => {
@@ -74,8 +76,10 @@ describe('the widths', () => {
     expect(registerColumnWidth(0)).toBe(72);
   });
 
-  // Review finding LIVE-3: 87 px left 70 px for text, and «EGYCASH-4» measures 70.3 px at 12 px.
-  it('gives the Branch column room for its nine-character codes', () => {
+  // Review finding LIVE-3: 87 px left 70 px for text, and «EGYCASH-4» measured 70.3 px at 12 px.
+  // The column names the ECMS branch now (2026-10-28): the same 96 px holds a short name whole and
+  // cuts a long one, read whole in the tooltip — and the frozen panes after it keep their offsets.
+  it('keeps the Branch column at its 96 px floor, past the sheet’s width', () => {
     const branch = ATM_REGISTER_COLUMNS.find((c) => c.field === 'branchCode');
     expect(branch === undefined ? 0 : registerWidthOf(branch)).toBe(REGISTER_BRANCH_MIN_WIDTH);
     expect(REGISTER_BRANCH_MIN_WIDTH - 16 - 1).toBeGreaterThanOrEqual(76);
@@ -192,5 +196,96 @@ describe('the actions column', () => {
     ).toBe(0);
     expect(registerActionsWidth(0)).toBe(0);
     expect(registerActionsWidth(5)).toBe(5 * 28 + 4 * 2 + 16);
+  });
+});
+
+describe('what a flagged entry still lacks (DEC-37)', () => {
+  const NO_CASSETTES = Object.fromEntries(
+    ATM_REGISTER_COLUMNS.filter((c) => c.group === 'cassettes').map((c) => [
+      c.field.slice('cassettes.'.length),
+      null,
+    ]),
+  );
+  /** What the data-edit intake records: identity only, everything else blank. */
+  const intake = {
+    branchId: 'b1',
+    area: 'SYNTH AREA',
+    bankCode: 'BM',
+    machineCode: '99990001',
+    name: 'Synthetic ATM',
+    operationType: null,
+    vendor: null,
+    model: null,
+    serial: null,
+    secretsVisible: false,
+    keys: null,
+    cassettes: NO_CASSETTES,
+    openTime: null,
+    closeTime: null,
+    accessHoursNotes: null,
+    receiptNotes: null,
+    safeCombinationSet: false,
+    locationPlusCode: null,
+    locationUrl: null,
+    hub: null,
+    startDate: '2026-10-28',
+    endDate: null,
+    receivedByName: null,
+    handoverName: null,
+    handoverNotes: null,
+  } as unknown as AtmRegisterEntryDto;
+
+  const labels = (entry: AtmRegisterEntryDto): string[] =>
+    missingForCompletion(entry).map(registerGapLabelKey);
+
+  it('names the expected columns still empty, and whole groups with nothing in them, in grid order', () => {
+    expect(labels(intake)).toEqual([
+      'atm.register.col.operationType',
+      'atm.register.col.vendor',
+      'atm.register.col.model',
+      'atm.register.col.serial',
+      'atm.register.group.cassettes',
+      'atm.register.col.openTime',
+      'atm.register.col.closeTime',
+      'atm.register.group.location',
+      'atm.register.col.receivedByName',
+      'atm.register.col.hub',
+    ]);
+  });
+
+  it('never counts a key or the combination for a reader who may not see them', () => {
+    expect(labels(intake)).not.toContain('atm.register.group.keys');
+    expect(labels(intake)).not.toContain('atm.register.group.secret');
+    const seen = { ...intake, secretsVisible: true, keys: {} } as unknown as AtmRegisterEntryDto;
+    expect(labels(seen)).toContain('atm.register.group.keys');
+    expect(labels(seen)).toContain('atm.register.group.secret');
+    const withKey = {
+      ...seen,
+      keys: { supervisorCode: 'SYN-KEY' },
+      safeCombinationSet: true,
+    } as unknown as AtmRegisterEntryDto;
+    expect(labels(withKey)).not.toContain('atm.register.group.keys');
+    expect(labels(withKey)).not.toContain('atm.register.group.secret');
+  });
+
+  it('takes one filled cell of a group as the group filled, and a blank-only value as empty', () => {
+    const partly = {
+      ...intake,
+      cassettes: { ...NO_CASSETTES, withdrawal1: '4' },
+      locationUrl: 'https://maps.example/x',
+      model: '   ',
+    } as unknown as AtmRegisterEntryDto;
+    expect(labels(partly)).not.toContain('atm.register.group.cassettes');
+    expect(labels(partly)).not.toContain('atm.register.group.location');
+    expect(labels(partly)).toContain('atm.register.col.model');
+  });
+
+  it('names an identity column only when it is the one missing', () => {
+    const pending = { ...intake, area: null, bankCode: null } as unknown as AtmRegisterEntryDto;
+    expect(labels(pending).slice(0, 2)).toEqual([
+      'atm.register.col.area',
+      'atm.register.col.bankCode',
+    ]);
+    expect(labels(intake)).not.toContain('atm.register.col.area');
   });
 });

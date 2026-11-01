@@ -1,7 +1,9 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type AtmMachineCreateResultDto,
   type AtmMachinesSummaryQuery,
+  type BulkCreateAtmMachinesResultDto,
   type BulkCreateAtmMachines,
   type BulkDeleteAtmMachines,
   type CreateAtmMachine,
@@ -28,10 +30,11 @@ export const summarizeMachines = async (req: Request, res: Response): Promise<vo
 export const bulkCreateMachines = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<BulkCreateAtmMachines>(req);
   const result = await atmMachineService.bulkCreate(body, authContext(req));
-  ok(res, {
+  const dto: BulkCreateAtmMachinesResultDto = {
+    ...result,
     created: result.created.map(toAtmMachineDto),
-    skippedCodes: result.skippedCodes,
-  });
+  };
+  ok(res, dto);
 };
 
 export const bulkDeleteMachines = async (req: Request, res: Response): Promise<void> => {
@@ -46,7 +49,15 @@ export const reassignMachineArea = async (req: Request, res: Response): Promise<
 
 export const createMachine = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<CreateAtmMachine>(req);
-  created(res, toAtmMachineDto(await atmMachineService.create(body, authContext(req))));
+  const result = await atmMachineService.create(body, authContext(req));
+  // 201 either way — a new machine, or an archived one back at work (`reactivated`) — with what the
+  // register recorded for it (DEC-36).
+  const dto: AtmMachineCreateResultDto = {
+    ...toAtmMachineDto(result.machine),
+    reactivated: result.reactivated,
+    register: result.register,
+  };
+  created(res, dto);
 };
 
 export const updateMachine = async (req: Request, res: Response): Promise<void> => {

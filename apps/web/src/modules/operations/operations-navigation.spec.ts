@@ -44,7 +44,7 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
   {
     id: 'cat-ops',
     name: { en: 'Operations', ar: 'العمليات' },
-    icon: 'shield',
+    icon: 'cash',
     sections: [],
     applications: [
       ['Operations Home', '/operations', 'home'],

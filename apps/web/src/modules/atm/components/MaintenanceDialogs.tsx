@@ -3,7 +3,9 @@
 //   · CLOSE (atm_maintenance.ejs:1151-1230): closing REQUIRES assigning an employee from the ATM
 //     department list — the modal's required datalist. Single row or the checked set, one submit.
 //   · EDIT (:1561-1650): service type, notes, open time, leader — a changed leader cascades over
-//     the row's area+shift unconditionally (contad_app.js:2019-2032), stated in the hint.
+//     the row's area+shift unconditionally (contad_app.js:2019-2032), stated in the hint — unless
+//     the «الوردية» box beside it is unticked (2026-10-27): then the row, or the checked rows, only.
+//     Ticked on a checked set, it goes over each checked row's area and shift too.
 import { useEffect, useState, type FormEvent } from 'react';
 import { type AtmMaintenanceDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -17,7 +19,8 @@ import {
   useCloseAtmMaintenances,
   useUpdateAtmMaintenance,
 } from '../api/atm-queries';
-import { toLocalInputValue } from './ReplenishmentDialogs';
+import { LeaderField, toLocalInputValue } from './ReplenishmentDialogs';
+import { isAlreadyOpenRefusal } from '../lib/operation-view';
 
 export const CloseMaintenanceDialog = ({
   open,
@@ -117,6 +120,7 @@ export const EditMaintenanceDialog = ({
   const [notes, setNotes] = useState('');
   const [openedAt, setOpenedAt] = useState('');
   const [leaderName, setLeaderName] = useState('');
+  const [shiftWide, setShiftWide] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -124,6 +128,7 @@ export const EditMaintenanceDialog = ({
     setNotes(single?.notes ?? '');
     setOpenedAt(single === null ? '' : toLocalInputValue(single.openedAt));
     setLeaderName(single?.leaderName ?? '');
+    setShiftWide(true);
   }, [open, single]);
 
   const submit = async (event: FormEvent): Promise<void> => {
@@ -137,21 +142,28 @@ export const EditMaintenanceDialog = ({
             notes: notes === '' ? null : notes,
             ...(openedAt === '' ? {} : { openedAt: new Date(openedAt).toISOString() }),
             leaderName: leaderName === '' ? null : leaderName,
+            cascadeLeader: shiftWide,
             version: single.version,
           },
         });
       } else {
         // The legacy checked-set maintenance edit writes the leader and nothing else
         // (contad_app.js:2042-2050; its schedule write never landed — port doc T6).
+        // An empty field clears the CHECKED rows' leader, as it always did — it never goes over
+        // their shifts, whatever the box says.
         await updateMany.mutateAsync({
           ids: rows.map((row) => row.id),
-          leaderName: leaderName === '' ? null : leaderName,
+          ...(leaderName === '' ? { leaderName: null } : { leaderName, cascadeLeader: shiftWide }),
         });
       }
       toast.success(t('atm.common.saved'));
       onClose();
-    } catch {
-      toast.error(t('atm.common.actionFailed'));
+    } catch (error) {
+      // The per-day rule (port doc OD-1): moving the open time onto a day the machine is already
+      // open on is refused — say so, rather than a bare «failed».
+      toast.error(
+        t(isAlreadyOpenRefusal(error) ? 'atm.common.moveAlreadyOpen' : 'atm.common.actionFailed'),
+      );
     }
   };
 
@@ -184,12 +196,13 @@ export const EditMaintenanceDialog = ({
             </Field>
           </>
         )}
-        <Field
-          label={t('atm.common.leader')}
-          hint={single !== null ? t('atm.maintenance.leaderCascadeHint') : undefined}
-        >
-          <Input value={leaderName} onChange={(e) => setLeaderName(e.target.value)} />
-        </Field>
+        <LeaderField
+          value={leaderName}
+          onChange={setLeaderName}
+          shiftWide={shiftWide}
+          onShiftWideChange={setShiftWide}
+          many={single === null}
+        />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('atm.common.cancel')}

@@ -3,6 +3,8 @@
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import {
+  custodyOutsideKinds,
+  custodyStaleCutoff,
   dayAfter,
   dayKey,
   lineChanges,
@@ -31,6 +33,86 @@ describe('days', () => {
       to: d('2026-09-05T00:00:00Z'),
     });
     expect(periodOf([])).toBeNull();
+  });
+});
+
+describe('a receipt in no memo is late past 30 days — counted in whole UTC days', () => {
+  it('the cutoff is the UTC start of today less 30 days, whatever the hour', () => {
+    for (const now of [
+      '2026-10-19T00:00:00.000Z',
+      '2026-10-19T12:34:56.000Z',
+      '2026-10-19T23:59:59.999Z',
+    ]) {
+      expect(custodyStaleCutoff(d(now)).toISOString(), now).toBe('2026-09-19T00:00:00.000Z');
+    }
+    // Across a month, a year and a leap day.
+    expect(custodyStaleCutoff(d('2026-03-01T08:00:00Z')).toISOString()).toBe(
+      '2026-01-30T00:00:00.000Z',
+    );
+    expect(custodyStaleCutoff(d('2027-01-10T08:00:00Z')).toISOString()).toBe(
+      '2026-12-11T00:00:00.000Z',
+    );
+    expect(custodyStaleCutoff(d('2028-03-30T08:00:00Z')).toISOString()).toBe(
+      '2028-02-29T00:00:00.000Z',
+    );
+  });
+
+  it('30 days old is not late; 31 is, from the first moment of its day to the last', () => {
+    const cutoff = custodyStaleCutoff(d('2026-10-19T09:00:00Z'));
+    const late = (iso: string): boolean => d(iso).getTime() < cutoff.getTime();
+    expect(late('2026-09-19T00:00:00.000Z'), '30 days').toBe(false);
+    expect(late('2026-09-19T23:59:59.000Z'), '30 days, late in the day').toBe(false);
+    expect(late('2026-09-18T23:59:59.999Z'), '31 days, its last moment').toBe(true);
+    expect(late('2026-09-18T00:00:00.000Z'), '31 days').toBe(true);
+    expect(late('2026-09-07T00:00:00.000Z'), '42 days').toBe(true);
+  });
+
+  it('every kind, in order, zeros kept; the oldest day as YYYY-MM-DD, none for an empty kind', () => {
+    expect(
+      custodyOutsideKinds([
+        {
+          _id: 'wash',
+          count: 4,
+          piastres: 60000,
+          oldest: d('2026-09-07T00:00:00Z'),
+          staleCount: 2,
+          stalePiastres: 30000,
+        },
+        {
+          _id: 'maintenance',
+          count: 3,
+          piastres: 572000,
+          oldest: d('2026-10-08T21:30:00Z'),
+          staleCount: 0,
+          stalePiastres: 0,
+        },
+      ]),
+    ).toEqual([
+      {
+        kind: 'maintenance',
+        count: 3,
+        total: 5720,
+        oldest: '2026-10-08',
+        stale: { count: 0, total: 0 },
+      },
+      { kind: 'fuel', count: 0, total: 0, oldest: null, stale: { count: 0, total: 0 } },
+      { kind: 'tyres', count: 0, total: 0, oldest: null, stale: { count: 0, total: 0 } },
+      { kind: 'wash', count: 4, total: 600, oldest: '2026-09-07', stale: { count: 2, total: 300 } },
+    ]);
+  });
+
+  it('keeps the piastres exact — 10 + 20 piastres is 0.3', () => {
+    const [, fuel] = custodyOutsideKinds([
+      {
+        _id: 'fuel',
+        count: 2,
+        piastres: 30,
+        oldest: d('2026-01-01T00:00:00Z'),
+        staleCount: 2,
+        stalePiastres: 30,
+      },
+    ]);
+    expect(fuel).toMatchObject({ total: 0.3, stale: { count: 2, total: 0.3 } });
   });
 });
 

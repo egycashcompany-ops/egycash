@@ -81,7 +81,7 @@ describe('the custody holder label', () => {
 
 describe('the custody asset label', () => {
   const labels: ItAssetLabels = new Map([
-    [String(ASSET), { assetCode: 'IT-LAP-0007', name: 'Dell Latitude 5440' }],
+    [String(ASSET), { assetCode: 'IT-LAP-0007', name: 'Dell Latitude 5440', serialNumber: null }],
   ]);
 
   /**
@@ -104,7 +104,30 @@ describe('the custody asset label', () => {
     const dto = toItAssetAssignmentDto(assignment(), undefined, new Map());
     expect(dto.assetName).toBeNull();
     expect(dto.assetCode).toBeNull();
+    expect(dto.assetSerialNumber).toBeNull();
     expect(dto.assetId).toBe(String(ASSET));
+  });
+
+  /**
+   * «تزود سيريال الأصول لما أعمل Extract» — the register's files name each asset by its serial too,
+   * so the row carries it, read with the code and the name under the same scope.
+   */
+  it('carries the serial with the code and the name', () => {
+    const serialled: ItAssetLabels = new Map([
+      [
+        String(ASSET),
+        { assetCode: 'AST-00121', name: 'Lenovo ThinkCentre neo 50a 24', serialNumber: 'PF5KX8ZT' },
+      ],
+    ]);
+    const dto = toItAssetAssignmentDto(assignment(), undefined, serialled);
+    expect(dto.assetSerialNumber).toBe('PF5KX8ZT');
+    expect(dto.assetCode).toBe('AST-00121');
+    expect(dto.assetName).toBe('Lenovo ThinkCentre neo 50a 24');
+  });
+
+  it('answers null for an asset registered without a serial — never an empty string', () => {
+    expect(toItAssetAssignmentDto(assignment(), undefined, labels).assetSerialNumber).toBeNull();
+    expect(toItAssetAssignmentDto(assignment()).assetSerialNumber).toBeNull();
   });
 
   it('and the two labels are independent — one resolving does not require the other', () => {

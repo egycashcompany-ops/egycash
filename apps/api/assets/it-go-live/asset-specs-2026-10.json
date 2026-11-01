@@ -1,0 +1,309 @@
+{
+  "source": "جرد الأجهزة.xlsx — الصفحة الثانية: سيريال الجهاز والرام والبروسيسور والمساحة، بعد مراجعة المالك (2026-10-28)",
+  "devices": [
+    {
+      "key": "جرد الأجهزة صف 2",
+      "serial": "JSJSZXMS3",
+      "registerSerial": "JSZXMS3",
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 3",
+      "serial": "B6K1QD3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 4",
+      "serial": "4S58033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 5",
+      "serial": "DQ8L933",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 6",
+      "serial": "7F65YQ3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 7",
+      "serial": "4F65YQ3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 8",
+      "serial": "5GZXMS3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 9",
+      "serial": "JZ24WF3",
+      "registerSerial": "JZ24VF3",
+      "processor": "Intel Core i7",
+      "memory": "16 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 10",
+      "serial": "DB6CN33",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "16 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 11",
+      "serial": "2700DN3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 12",
+      "serial": "FY6WSH3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "12 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 13",
+      "serial": "G753DN3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 14",
+      "serial": "5GHK1M3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "12 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 15",
+      "serial": "DL43DN3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 16",
+      "serial": "9FZXMS3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 17",
+      "serial": "9900DN3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 18",
+      "serial": "4S26033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 19",
+      "serial": "57L6033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 20",
+      "serial": "4TX5033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 21",
+      "serial": "6GZXMS3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 23",
+      "serial": "6M43DN3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 24",
+      "serial": "8C00DN3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 25",
+      "serial": "DHSXKX3",
+      "registerSerial": null,
+      "processor": "Intel Core i5",
+      "memory": "16 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 26",
+      "serial": "4RZ6033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 27",
+      "serial": "1G65YQ3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 28",
+      "serial": "53MD033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 29",
+      "serial": "DNRP933",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 30",
+      "serial": "6N65YQ3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 31",
+      "serial": "8VPL8F3",
+      "registerSerial": "BVPL8F3",
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 32",
+      "serial": "4T749L3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 33",
+      "serial": "4Z77033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 34",
+      "serial": "6B749L3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 35",
+      "serial": "8WVGNQT3",
+      "registerSerial": "8WVGNJ3",
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 36",
+      "serial": "8FTSV53",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "HDD"
+    },
+    {
+      "key": "جرد الأجهزة صف 38",
+      "serial": "58FC033",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 40",
+      "serial": "CZC8407219",
+      "registerSerial": null,
+      "processor": "Intel Core i5",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 41",
+      "serial": "DPPN933",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    },
+    {
+      "key": "جرد الأجهزة صف 42",
+      "serial": "J4G5YQ3",
+      "registerSerial": null,
+      "processor": "Intel Core i7",
+      "memory": "8 GB",
+      "storage": "SSD"
+    }
+  ]
+}

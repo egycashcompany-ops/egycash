@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   custodyDashboard,
   custodyGranularity,
+  custodyMemoStateOf,
   custodyPeriodDays,
   type CustodyDashboardRow,
 } from './custody-dashboard';
@@ -26,6 +27,7 @@ const row = (over: Partial<CustodyDashboardRow> = {}): CustodyDashboardRow => ({
   litres: 20,
   hasImage: true,
   amount: 315,
+  memoState: 'outside',
   ...over,
 });
 
@@ -41,6 +43,13 @@ const maintenance = (over: Partial<CustodyDashboardRow> = {}): CustodyDashboardR
 
 const sum = (values: readonly number[]): number =>
   Math.round(values.reduce((total, value) => total + value, 0) * 100) / 100;
+
+const noKinds = {
+  maintenance: { count: 0, amount: 0 },
+  fuel: { count: 0, amount: 0 },
+  tyres: { count: 0, amount: 0 },
+  wash: { count: 0, amount: 0 },
+};
 
 describe('custodyGranularity', () => {
   it('goes by the day only when both dates are chosen and a month at most apart', () => {
@@ -81,6 +90,11 @@ describe('custodyDashboard', () => {
         doubleFuel: [],
         receiptsWithoutPhoto: 0,
         duplicateReceipts: 0,
+      },
+      memoStates: {
+        replenished: { count: 0, amount: 0, byKind: noKinds },
+        pending: { count: 0, amount: 0, byKind: noKinds },
+        outside: { count: 0, amount: 0, byKind: noKinds },
       },
     });
   });
@@ -477,5 +491,112 @@ describe('custodyDashboard', () => {
       'receiptsWithoutPhoto',
       'duplicateReceipts',
     ]);
+  });
+});
+
+describe('custodyMemoStateOf — a receipt against the memos', () => {
+  const memos = new Map([
+    ['m-replenished', true],
+    ['m-pending', false],
+  ]);
+
+  it('is outside on no memo, else its live memo’s own state', () => {
+    expect(custodyMemoStateOf(null, memos)).toBe('outside');
+    expect(custodyMemoStateOf('m-replenished', memos)).toBe('replenished');
+    expect(custodyMemoStateOf('m-pending', memos)).toBe('pending');
+  });
+
+  it('is outside on a memo that is no live memo — never guessed into a waiting one', () => {
+    expect(custodyMemoStateOf('m-deleted', memos)).toBe('outside');
+    expect(custodyMemoStateOf('m-pending', new Map())).toBe('outside');
+  });
+});
+
+describe('custodyDashboard — memoStates, the spend against the memos', () => {
+  // His scenario at «now»: memos 1–5 replenished, memo 6 (washing) waiting, October in no memo.
+  const scenario = (): CustodyDashboardRow[] => [
+    row({ source: 'tyres', fuelType: null, litres: null, amount: 1690, memoState: 'replenished' }),
+    row({ source: 'tyres', fuelType: null, litres: null, amount: 960, memoState: 'replenished' }),
+    row({ amount: 49844, memoState: 'replenished' }),
+    maintenance({ amount: 5720, memoState: 'replenished' }),
+    maintenance({ amount: 23694, memoState: 'replenished' }),
+    row({ source: 'wash', fuelType: null, litres: null, amount: 150, memoState: 'pending' }),
+    row({ source: 'wash', fuelType: null, litres: null, amount: 150, memoState: 'pending' }),
+    row({ source: 'wash', fuelType: null, litres: null, amount: 300, memoState: 'pending' }),
+    row({ source: 'tyres', fuelType: null, litres: null, amount: 900 }),
+    row({ source: 'tyres', fuelType: null, litres: null, amount: 790 }),
+    row({ amount: 7876 }),
+    maintenance({ amount: 5720 }),
+  ];
+
+  it('counts each state and each kind inside it — every state and kind there, zeros kept', () => {
+    const { memoStates } = custodyDashboard(scenario(), {});
+    expect(Object.keys(memoStates)).toEqual(['replenished', 'pending', 'outside']);
+    expect(memoStates.replenished).toEqual({
+      count: 5,
+      amount: 81908,
+      byKind: {
+        maintenance: { count: 2, amount: 29414 },
+        fuel: { count: 1, amount: 49844 },
+        tyres: { count: 2, amount: 2650 },
+        wash: { count: 0, amount: 0 },
+      },
+    });
+    expect(memoStates.pending).toEqual({
+      count: 3,
+      amount: 600,
+      byKind: { ...noKinds, wash: { count: 3, amount: 600 } },
+    });
+    expect(memoStates.outside).toEqual({
+      count: 4,
+      amount: 15286,
+      byKind: {
+        maintenance: { count: 1, amount: 5720 },
+        fuel: { count: 1, amount: 7876 },
+        tyres: { count: 2, amount: 1690 },
+        wash: { count: 0, amount: 0 },
+      },
+    });
+  });
+
+  it('adds up to the whole: the three states to every row, a kind’s three to that kind', () => {
+    const rows = scenario();
+    const { memoStates, counts } = custodyDashboard(rows, {});
+    const states = Object.values(memoStates);
+    expect(states.reduce((n, state) => n + state.count, 0)).toBe(rows.length);
+    expect(sum(states.map((state) => state.amount))).toBe(sum(rows.map((r) => r.amount)));
+    for (const kind of ['maintenance', 'fuel', 'tyres', 'wash'] as const) {
+      const mine = rows.filter((r) => r.source === kind);
+      expect(
+        states.reduce((n, state) => n + state.byKind[kind].count, 0),
+        kind,
+      ).toBe(counts[kind]);
+      expect(sum(states.map((state) => state.byKind[kind].amount)), kind).toBe(
+        sum(mine.map((r) => r.amount)),
+      );
+    }
+  });
+
+  it('folds only the rows it is given — the board’s filters decide them, as for every figure', () => {
+    const washOnly = scenario().filter((r) => r.source === 'wash');
+    const { memoStates } = custodyDashboard(washOnly, {});
+    expect(memoStates.replenished.count).toBe(0);
+    expect(memoStates.pending).toMatchObject({ count: 3, amount: 600 });
+    expect(memoStates.outside).toMatchObject({ count: 0, amount: 0 });
+  });
+
+  it('adds to the piastre — 0.1 + 0.2 is 0.3, and many small receipts stay exact', () => {
+    const rows = [
+      row({ source: 'tyres', fuelType: null, amount: 0.1, memoState: 'pending' }),
+      row({ source: 'tyres', fuelType: null, amount: 0.2, memoState: 'pending' }),
+      ...Array.from({ length: 1000 }, () =>
+        row({ source: 'wash', fuelType: null, amount: 0.01, memoState: 'outside' }),
+      ),
+    ];
+    const { memoStates } = custodyDashboard(rows, {});
+    expect(memoStates.pending.amount).toBe(0.3);
+    expect(memoStates.pending.byKind.tyres.amount).toBe(0.3);
+    expect(memoStates.outside.amount).toBe(10);
+    expect(memoStates.outside.byKind.wash).toEqual({ count: 1000, amount: 10 });
   });
 });

@@ -15,7 +15,6 @@ import { authContext } from '../../../platform/auth';
 import { scopeSelector, type ScopeSelector } from '../../../shared/types';
 import {
   toItAssetAssignmentDto,
-  toItAssetDto,
   toItAssetHistoryEntryDto,
   type ItAssetLabels,
   type ItHolderLabels,
@@ -25,6 +24,8 @@ import { getDirectoryEmployees } from '../../../platform/directory';
 import { type ItAssetAssignmentDoc } from './assignment.model';
 import { itAssetRepository } from './asset.repository';
 import { itAssetCustodyService } from './custody.service';
+// The asset each action answers with, its holder resolved — whom it was just handed to, or nobody.
+import { itAssetDto } from './asset.controller';
 import { itAssetAssignmentService } from './assignment.service';
 import { itCustodyReceiptRepository } from './receipt.repository';
 
@@ -37,7 +38,7 @@ export const assignItAsset = async (req: Request, res: Response): Promise<void> 
   const { body, params } = validated<AssignItAsset, never, IdParam>(req);
   const ctx = authContext(req);
   const { asset } = await itAssetCustodyService.assign(params.id, body, ctx, custodyScope(req));
-  ok(res, toItAssetDto(asset));
+  ok(res, await itAssetDto(asset));
 };
 
 export const returnItAsset = async (req: Request, res: Response): Promise<void> => {
@@ -49,23 +50,21 @@ export const returnItAsset = async (req: Request, res: Response): Promise<void> 
     ctx,
     custodyScope(req),
   );
-  ok(res, toItAssetDto(asset));
+  ok(res, await itAssetDto(asset));
 };
 
 export const transferItAsset = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<TransferItAsset, never, IdParam>(req);
   const ctx = authContext(req);
   const { asset } = await itAssetCustodyService.transfer(params.id, body, ctx, custodyScope(req));
-  ok(res, toItAssetDto(asset));
+  ok(res, await itAssetDto(asset));
 };
 
 export const disposeItAsset = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<DisposeItAsset, never, IdParam>(req);
   const ctx = authContext(req);
-  ok(
-    res,
-    toItAssetDto(await itAssetCustodyService.dispose(params.id, body, ctx, custodyScope(req))),
-  );
+  const asset = await itAssetCustodyService.dispose(params.id, body, ctx, custodyScope(req));
+  ok(res, await itAssetDto(asset));
 };
 
 export const listItAssetHistory = async (req: Request, res: Response): Promise<void> => {
@@ -107,7 +106,10 @@ const assetLabels = async (
   const ids = [...new Set(rows.map((row) => String(row.assetId)))];
   const assets = await itAssetRepository.findManyByIds(ids, scope);
   return new Map(
-    assets.map((asset) => [String(asset._id), { assetCode: asset.assetCode, name: asset.name }]),
+    assets.map((asset) => [
+      String(asset._id),
+      { assetCode: asset.assetCode, name: asset.name, serialNumber: asset.serialNumber },
+    ]),
   );
 };
 

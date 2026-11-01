@@ -7,12 +7,12 @@
 // formulas and the register's one definition of "active" (D7).
 import {
   ATM_REPORT_SECTION3_BANKS,
-  type AtmBankCode,
   type AtmRegisterBranchCode,
+  type AtmSeedBankCode,
 } from '@ecms/contracts';
 
-/** Section 1 (AD3..AI3 + AJ3): machines in operation per bank. */
-const SECTION1: Record<AtmBankCode, number> = {
+/** Section 1 (AD3..AI3 + AJ3): machines in operation per bank — the workbook's six (DEC-35). */
+const SECTION1: Record<AtmSeedBankCode, number> = {
   NXT: 4,
   NBE: 1212,
   BM: 1101,

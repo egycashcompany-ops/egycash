@@ -1,4 +1,4 @@
-import { Types, type ClientSession } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { NotFoundError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
@@ -38,6 +38,15 @@ class ItAssetRepository extends BaseRepository<ItAssetDoc> {
     return this.findOne({ assetCode }, scope);
   }
 
+  /**
+   * The names the register actually holds, within the caller's scope — the name filter's options
+   * («Drop Down مع قابليه للكتابة»). Not ordered here: Mongo would order them by code point, and the
+   * list is read in Arabic order, which the service applies.
+   */
+  async distinctNames(scope: ScopeSelector): Promise<unknown[]> {
+    return this.model.distinct('name', this.baseFilter(scope)).exec();
+  }
+
   /** Uniqueness pre-check — deliberately UNscoped: a serial is unique company-wide (FR-1). */
   async findBySerial(serialNumber: string): Promise<ItAssetDoc | null> {
     return this.model.findOne({ serialNumber, isDeleted: false }).lean<ItAssetDoc>().exec();
@@ -59,6 +68,23 @@ class ItAssetRepository extends BaseRepository<ItAssetDoc> {
       const doc = byId.get(id);
       return doc === undefined ? [] : [doc];
     });
+  }
+
+  /**
+   * The ids of the assets a filter matches, as the caller may see them — for a register that is
+   * narrowed by what its rows point at (the custody register's «الصنف» and category). Ids only, in
+   * ONE read: the caller wants the set, never the documents.
+   */
+  async idsMatching(
+    filter: FilterQuery<ItAssetDoc>,
+    scope?: ScopeSelector,
+  ): Promise<Types.ObjectId[]> {
+    const rows = await this.model
+      .find(this.baseFilter(scope, filter))
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => row._id);
   }
 }
 

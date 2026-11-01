@@ -5,6 +5,9 @@
 // the same request (D2); on an open entry that is not linked yet, entering the area links it
 // (DEC-30) — the toast says what happened in Operations either way. The branch never changes
 // (D4). The combination box is empty: empty keeps the recorded value, "clear" removes it.
+//
+// An edit is also where Efficiency complete a receipt Operations recorded from /atm/data-edit
+// (DEC-36): the form opens on its «بيانات ناقصة» tick (DEC-37), which they clear once done.
 import { useState } from 'react';
 import { type AtmRegisterEntryDto, type AtmRegisterMetaDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
@@ -24,6 +27,8 @@ import {
   type EntryFormValues,
 } from './EntryFormSections';
 
+const holdStill = (): void => undefined;
+
 export const EditEntryDialog = ({
   entry,
   meta,
@@ -39,6 +44,8 @@ export const EditEntryDialog = ({
   const [values, setValues] = useState<EntryFormValues>(initial);
   const [combinationClear, setCombinationClear] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A bank or area dialog is open over the form: this one holds still until it closes.
+  const [overlay, setOverlay] = useState(false);
   const options = useRegisterBranchOptions(entry.branchId);
   const update = useUpdateRegisterEntry();
   const rules = entryEditRules(entry);
@@ -77,7 +84,7 @@ export const EditEntryDialog = ({
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={overlay ? holdStill : onClose}
       title={t('atm.register.form.editTitle', {
         code: entry.machineCode ?? entry.name ?? '—',
       })}
@@ -109,6 +116,7 @@ export const EditEntryDialog = ({
           options={options.data}
           secrets={entry.secretsVisible}
           isMissing={required.isMissing}
+          onOverlayChange={setOverlay}
         />
       </div>
     </Dialog>

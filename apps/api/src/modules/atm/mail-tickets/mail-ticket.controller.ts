@@ -5,9 +5,11 @@ import { type z } from 'zod';
 import {
   PaginationQuerySchema,
   type AtmMailAcceptMetaDto,
+  type AtmMailRestoreMetaDto,
   type AtmMailTicketDto,
   type DecideAtmMailTickets,
   type ListAtmMailLogQuery,
+  type RestoreAtmMailTickets,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
@@ -54,5 +56,18 @@ export const rejectMailTickets = async (req: Request, res: Response): Promise<vo
   ok(
     res,
     decided.map((doc) => toAtmMailTicketDto(doc)),
+  );
+};
+
+// Accept's answer, mirrored: `data` is the tickets RESTORED to pending, and the ones refused (their
+// maintenance is already closed) ride in `meta`, so the log can name the machine that stayed
+// decided.
+export const restoreMailTickets = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<RestoreAtmMailTickets>(req);
+  const { restored, refused } = await atmMailTicketService.restore(body, authContext(req));
+  ok<AtmMailTicketDto[], AtmMailRestoreMetaDto>(
+    res,
+    restored.map((doc) => toAtmMailTicketDto(doc)),
+    { refused },
   );
 };

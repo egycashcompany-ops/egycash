@@ -13,7 +13,7 @@ const receipt = (overrides: Partial<ItCustodyReceiptDoc> = {}): ItCustodyReceipt
     formNumber: 11,
     employeeId: new Types.ObjectId(),
     employeeCode: '0100026',
-    employeeName: 'بسام هشام رضوان محمد حسنين',
+    employeeName: 'كريم سامح فؤاد منير حمدي',
     jobTitle: { ar: 'أخصائي تسويات', en: 'Settlements specialist' },
     nationalId: '29801011234567',
     section: { ar: 'التسويات', en: 'Settlements' },

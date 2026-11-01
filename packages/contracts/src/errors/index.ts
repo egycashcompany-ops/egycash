@@ -236,6 +236,11 @@ export const ErrorCodes = {
   ATM_MACHINE_SYNC_LAYOUT: 'ATM_MACHINE_SYNC_LAYOUT',
   /** 409 — the machines file applied is not the one compared (its hash differs); nothing written. */
   ATM_MACHINE_SYNC_FILE_CHANGED: 'ATM_MACHINE_SYNC_FILE_CHANGED',
+  /**
+   * 409 — the branch changed since the machines file was compared (a machine edited, added,
+   * archived or moved): the comparison is no longer the one the reader approved. Nothing written.
+   */
+  ATM_MACHINE_SYNC_PLAN_CHANGED: 'ATM_MACHINE_SYNC_PLAN_CHANGED',
 
   // ── Fleet fuel-card sheet reconciliation («مطابقة أرصدة الكروت») ─────────────────────────────
   /** 422 — the sheet is not the company's layout (a header is missing, no sheet), or over a cap. */

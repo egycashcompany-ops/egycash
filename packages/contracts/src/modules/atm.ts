@@ -193,6 +193,11 @@ export interface AtmMachineSyncRowDto {
   issue: AtmMachineSyncIssue | null;
   /** For `duplicate`: the row of the code's first listing, the one that counts. */
   firstRow: number | null;
+  /**
+   * For `elsewhere`: why the code cannot work here — ACTIVE in another branch, or holding an OPEN
+   * register period in another branch (the bulk add's own two refusals).
+   */
+  elsewhere: AtmMachineBulkRefusal | null;
 }
 
 /** A machine active on the branch that the file does not list — reported, never deleted. */
@@ -210,7 +215,7 @@ export interface AtmMachineSyncAppliedDto {
   updated: string[];
   /** Refused at the write: active, or holding an open register period, in another branch. */
   refused: { machineCode: string; reason: AtmMachineBulkRefusal }[];
-  /** Rows that changed under the apply (a concurrent edit or delete) — left as they were. */
+  /** Rows changed by somebody else WHILE the apply ran (an edit or delete) — left as they were. */
   skipped: string[];
   /** The register outcome of the added and reactivated rows, as the bulk add answers it. */
   register: {
@@ -230,6 +235,12 @@ export interface AtmMachineSyncDto {
   fileName: string;
   /** Sent back with `apply`, so the server knows the applied bytes are the compared ones. */
   fileSha256: string;
+  /**
+   * The comparison itself, hashed (the branch, and every row's outcome and values). Sent back with
+   * `apply`: the server compares again and writes nothing (409 `ATM_MACHINE_SYNC_PLAN_CHANGED`)
+   * unless it is the comparison the reader saw — an apply never writes a row it did not show.
+   */
+  planDigest: string;
   branchId: string;
   branchName: LocalizedString | null;
   /** Rows per status, plus `extra`. */

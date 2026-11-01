@@ -6,8 +6,10 @@
 //   · reactivate  an ARCHIVED machine of this code here — brought back with the file's three;
 //   · update      ACTIVE here, and its bank, name or area is not the file's (`changes`);
 //   · same        ACTIVE here with the file's three;
-//   · elsewhere   not here, but ACTIVE in another branch — never added here (the mail matcher needs
-//                 one active machine per code, DEC-9); the branch move re-files it;
+//   · elsewhere   not working here, and ACTIVE in another branch (the mail matcher needs one active
+//                 machine per code, DEC-9) or holding an OPEN register period there (D6) — never
+//                 added or brought back here; the bulk add would refuse it the same way. The branch
+//                 move re-files it;
 //   · invalid     a row that cannot be read (`issue`);
 //   · duplicate   a code the file listed further up — the first listing counts.
 // And a machine ACTIVE here that the file does not list is `extra`: reported, never deleted.
@@ -20,6 +22,7 @@
 import {
   normalizeAtmMachineCode,
   type AtmBankCode,
+  type AtmMachineBulkRefusal,
   type AtmMachineSyncField,
   type AtmMachineSyncIssue,
   type AtmMachineSyncRowDto,
@@ -114,12 +117,12 @@ export const emptySyncCounts = (): Record<AtmMachineSyncStatus | 'extra', number
 
 /**
  * Pure: the plan. `machines` are the branch's machines of every state but deleted; `elsewhere` the
- * codes ACTIVE in another branch.
+ * codes that cannot work here, with why — ACTIVE in another branch, or OPEN in its register.
  */
 export const planMachineSync = (
   fileRows: readonly MachineFileRow[],
   machines: readonly SyncMachine[],
-  elsewhere: ReadonlySet<string>,
+  elsewhere: ReadonlyMap<string, AtmMachineBulkRefusal>,
   catalog: SyncBankCatalog,
 ): SyncPlan => {
   const byCode = new Map<string, SyncMachine>();
@@ -153,6 +156,7 @@ export const planMachineSync = (
       changes: [] as AtmMachineSyncField[],
       issue: null,
       firstRow: null,
+      elsewhere: null,
       machineId: null,
     };
     const issue = issueOf(fileRow, code, bankCode);
@@ -164,13 +168,18 @@ export const planMachineSync = (
     } else {
       firstRowOf.set(code, fileRow.row);
       const machine = byCode.get(code);
+      const away = elsewhere.get(code) ?? null;
       if (machine === undefined) {
-        planned = elsewhere.has(code)
-          ? { ...base, status: 'elsewhere' }
-          : catalog.isActive(bankCode)
-            ? { ...base, status: 'add' }
-            : // A new machine may not carry an archived bank (the bulk add's `INACTIVE`).
-              { ...base, status: 'invalid', issue: 'archivedBank' };
+        planned =
+          away !== null
+            ? { ...base, status: 'elsewhere', elsewhere: away }
+            : catalog.isActive(bankCode)
+              ? { ...base, status: 'add' }
+              : // A new machine may not carry an archived bank (the bulk add's `INACTIVE`).
+                { ...base, status: 'invalid', issue: 'archivedBank' };
+      } else if (!machine.isActive && away !== null) {
+        // Archived here and working (or open) elsewhere: bringing it back would be refused.
+        planned = { ...base, status: 'elsewhere', elsewhere: away, machineId: machine.id };
       } else if (!machine.isActive && !catalog.isActive(bankCode)) {
         planned = { ...base, status: 'invalid', issue: 'archivedBank', machineId: machine.id };
       } else {
@@ -198,3 +207,24 @@ export const planMachineSync = (
   counts.extra = extra.length;
   return { rows, extra, counts };
 };
+
+/**
+ * Pure: the comparison as one hash — the branch, and every row's outcome, values and machine. An
+ * apply writes only when the comparison it makes again hashes the same (`planDigest`).
+ */
+export const planDigestOf = (branchId: string, plan: SyncPlan): string =>
+  JSON.stringify([
+    branchId,
+    plan.rows.map((row) => [
+      row.row,
+      row.machineCode,
+      row.status,
+      row.issue,
+      row.firstRow,
+      row.elsewhere,
+      row.machineId,
+      row.changes,
+      row.file,
+      row.current,
+    ]),
+  ]);

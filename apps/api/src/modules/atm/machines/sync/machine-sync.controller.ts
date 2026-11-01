@@ -23,19 +23,27 @@ export const syncMachines = async (req: Request, res: Response): Promise<void> =
   const apply = body.apply === 'true';
   const fileSha256 =
     typeof body.fileSha256 === 'string' && body.fileSha256 !== '' ? body.fileSha256 : null;
-  if (apply && fileSha256 === null) {
+  const planDigest =
+    typeof body.planDigest === 'string' && body.planDigest !== '' ? body.planDigest : null;
+  if (apply && (fileSha256 === null || planDigest === null)) {
     throw new ValidationError([
       {
-        field: 'fileSha256',
+        field: fileSha256 === null ? 'fileSha256' : 'planDigest',
         code: 'REQUIRED',
-        message: 'the comparison hash is required to apply',
+        message: 'the comparison is required to apply',
       },
     ]);
   }
   ok(
     res,
     await atmMachineSyncService.run(
-      { buffer: file.buffer, fileName: fileNameOf(file.originalname ?? ''), apply, fileSha256 },
+      {
+        buffer: file.buffer,
+        fileName: fileNameOf(file.originalname ?? ''),
+        apply,
+        fileSha256,
+        planDigest,
+      },
       authContext(req),
     ),
   );

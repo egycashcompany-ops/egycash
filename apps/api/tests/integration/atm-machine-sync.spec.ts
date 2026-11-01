@@ -91,7 +91,13 @@ const machinesFile = async (rows: (string | number)[][]): Promise<Buffer> => {
 
 const sync = (
   file: Buffer,
-  opts: { token?: string; branch?: string | null; apply?: boolean; hash?: string } = {},
+  opts: {
+    token?: string;
+    branch?: string | null;
+    apply?: boolean;
+    hash?: string;
+    plan?: string;
+  } = {},
 ) => {
   let req = request(app)
     .post('/api/v1/atm/machines/sync')
@@ -100,6 +106,7 @@ const sync = (
   req = req.attach('file', file, 'ATM (4).xlsx');
   if (opts.apply === true) req = req.field('apply', 'true');
   if (opts.hash !== undefined) req = req.field('fileSha256', opts.hash);
+  if (opts.plan !== undefined) req = req.field('planDigest', opts.plan);
   return req;
 };
 
@@ -132,6 +139,7 @@ const branchMachines = async (branchId: string): Promise<Map<string, AtmMachineD
 
 let file: Buffer;
 let fileHash: string;
+let planDigest: string;
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
@@ -255,6 +263,7 @@ describe('the comparison', () => {
       { machineCode: '7199', bank: 'NBE', name: 'Not in the file', area: 'Zamalek' },
     ]);
     expect(dto.applied).toBeNull();
+    planDigest = dto.planDigest;
 
     const after = await branchMachines(mohandessinId);
     expect(after.has('7102')).toBe(false);
@@ -263,10 +272,12 @@ describe('the comparison', () => {
 });
 
 describe('the apply', () => {
-  it('needs the comparison’s hash, and refuses a different file', async () => {
+  it('needs the comparison, and refuses a different file', async () => {
     const missing = await sync(file, { apply: true });
     expect(missing.status).toBe(400);
-    const other = await sync(file, { apply: true, hash: 'f'.repeat(64) });
+    const noPlan = await sync(file, { apply: true, hash: fileHash });
+    expect(noPlan.status).toBe(400);
+    const other = await sync(file, { apply: true, hash: 'f'.repeat(64), plan: planDigest });
     expect(other.status).toBe(409);
     expect((other.body as { error: { code: string } }).error.code).toBe(
       ErrorCodes.ATM_MACHINE_SYNC_FILE_CHANGED,
@@ -274,14 +285,42 @@ describe('the apply', () => {
     expect((await branchMachines(mohandessinId)).has('7102')).toBe(false);
   });
 
+  it('writes nothing when the branch changed since the comparison — even a machine that matched', async () => {
+    const before = (await branchMachines(mohandessinId)).get('7105');
+    const moved = await request(app)
+      .patch(`/api/v1/atm/machines/${before?.id ?? ''}/area`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ area: 'Moved by operator', version: before?.version ?? 0 });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+
+    const stale = await sync(file, { apply: true, hash: fileHash, plan: planDigest });
+    expect(stale.status).toBe(409);
+    expect((stale.body as { error: { code: string } }).error.code).toBe(
+      ErrorCodes.ATM_MACHINE_SYNC_PLAN_CHANGED,
+    );
+    const after = await branchMachines(mohandessinId);
+    expect(after.get('7105')?.area).toBe('Moved by operator');
+    expect(after.has('7102')).toBe(false);
+
+    // Compared again, the move is shown — as an edit back to the file's area.
+    const again = data<AtmMachineSyncDto>(await sync(file));
+    expect(again.rows.find((r) => r.machineCode === '7105')).toMatchObject({
+      status: 'update',
+      changes: ['area'],
+      current: { area: 'Moved by operator' },
+      file: { area: 'Dokki' },
+    });
+    planDigest = again.planDigest;
+  });
+
   it('adds, edits and brings back — and then compares again, the branch matching the file', async () => {
-    const res = await sync(file, { apply: true, hash: fileHash });
+    const res = await sync(file, { apply: true, hash: fileHash, plan: planDigest });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const dto = data<AtmMachineSyncDto>(res);
     expect(dto.applied).toMatchObject({
       added: ['7102'],
       reactivated: ['7104'],
-      updated: ['7101'],
+      updated: ['7101', '7105'],
       refused: [],
       skipped: [],
     });
@@ -312,13 +351,37 @@ describe('the apply', () => {
   });
 
   it('applied again, changes nothing', async () => {
-    const res = await sync(file, { apply: true, hash: fileHash });
+    const fresh = data<AtmMachineSyncDto>(await sync(file));
+    const res = await sync(file, { apply: true, hash: fileHash, plan: fresh.planDigest });
     expect(res.status).toBe(200);
     expect(data<AtmMachineSyncDto>(res).applied).toMatchObject({
       added: [],
       reactivated: [],
       updated: [],
     });
+  });
+});
+
+describe('a machine archived here and working in another branch', () => {
+  it('is shown as working elsewhere — never offered to bring back', async () => {
+    await addMachines(mohandessinId, 'NBE', 'Giza', [{ machineCode: '7107', name: 'Moved out' }]);
+    const here = (await branchMachines(mohandessinId)).get('7107');
+    const archive = await request(app)
+      .patch(`/api/v1/atm/machines/${here?.id ?? ''}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: here?.version ?? 0 });
+    expect(archive.status).toBe(200);
+    await addMachines(octoberId, 'NBE', 'Giza', [{ machineCode: '7107', name: 'Moved out' }]);
+
+    const res = await sync(await machinesFile([['NBE', '7107', 'Moved out', 'Giza']]));
+    expect(res.status).toBe(200);
+    const dto = data<AtmMachineSyncDto>(res);
+    expect(dto.rows[0]).toMatchObject({
+      machineCode: '7107',
+      status: 'elsewhere',
+      elsewhere: 'activeElsewhere',
+    });
+    expect(dto.counts.reactivate).toBe(0);
   });
 });
 

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { type AtmBankCode } from '@ecms/contracts';
 import {
   foldSpaces,
+  planDigestOf,
   planMachineSync,
   type SyncBankCatalog,
   type SyncMachine,
@@ -50,7 +51,7 @@ describe('planMachineSync', () => {
         row('300', 'MISR', 'Away', 'Giza'),
       ],
       [machine({ machineCode: '100' })],
-      new Set(['300']),
+      new Map([['300', 'activeElsewhere' as const]]),
       catalog,
     );
     expect(plan.rows.map((r) => [r.machineCode, r.status])).toEqual([
@@ -65,7 +66,7 @@ describe('planMachineSync', () => {
     const plan = planMachineSync(
       [row('100', 'MISR', 'Renamed', 'Dokki')],
       [machine({ machineCode: '100', bankName: 'NBE', name: 'ATM 100', area: 'Zamalek' })],
-      new Set(),
+      new Map(),
       catalog,
     );
     const [only] = plan.rows;
@@ -82,7 +83,7 @@ describe('planMachineSync', () => {
     const plan = planMachineSync(
       [row('100', 'Banque Misr', 'ATM 100', 'Zamalek')],
       [machine({ machineCode: '100', bankName: 'MISR' })],
-      new Set(),
+      new Map(),
       catalog,
     );
     expect(plan.rows[0]).toMatchObject({ status: 'same', file: { bank: 'MISR' } });
@@ -92,7 +93,7 @@ describe('planMachineSync', () => {
     const plan = planMachineSync(
       [row(' 0100 ', ' NBE ', '  ATM   100 ', 'Omrania /  ElHaram')],
       [machine({ machineCode: '100', name: 'ATM 100', area: 'Omrania / ElHaram' })],
-      new Set(),
+      new Map(),
       catalog,
     );
     expect(plan.rows[0]).toMatchObject({
@@ -107,7 +108,7 @@ describe('planMachineSync', () => {
     const plan = planMachineSync(
       [row('100', 'NBE', 'ATM 100', 'ZAMALEK')],
       [machine({ machineCode: '100', area: 'Zamalek' })],
-      new Set(),
+      new Map(),
       catalog,
     );
     expect(plan.rows[0]).toMatchObject({ status: 'update', changes: ['area'] });
@@ -117,10 +118,27 @@ describe('planMachineSync', () => {
     const plan = planMachineSync(
       [row('100', 'NBE', 'ATM 100', 'Zamalek')],
       [machine({ machineCode: '100', isActive: false })],
-      new Set(['100']),
+      new Map(),
       catalog,
     );
     expect(plan.rows[0]).toMatchObject({ status: 'reactivate', changes: [] });
+  });
+
+  it('never offers what the add would refuse: archived here but working elsewhere, or open in another register', () => {
+    const plan = planMachineSync(
+      [row('100', 'NBE', 'ATM 100', 'Zamalek'), row('200', 'NBE', 'ATM 200', 'Zamalek')],
+      [machine({ machineCode: '100', isActive: false })],
+      new Map([
+        ['100', 'activeElsewhere' as const],
+        ['200', 'openElsewhere' as const],
+      ]),
+      catalog,
+    );
+    expect(plan.rows.map((r) => [r.machineCode, r.status, r.elsewhere, r.machineId])).toEqual([
+      ['100', 'elsewhere', 'activeElsewhere', 'id-100'],
+      ['200', 'elsewhere', 'openElsewhere', null],
+    ]);
+    expect(plan.counts).toMatchObject({ elsewhere: 2, add: 0, reactivate: 0 });
   });
 
   it('prefers the active machine of a code over an archived one', () => {
@@ -130,7 +148,7 @@ describe('planMachineSync', () => {
         machine({ machineCode: '100', id: 'old', isActive: false }),
         machine({ machineCode: '100', id: 'live' }),
       ],
-      new Set(),
+      new Map(),
       catalog,
     );
     expect(plan.rows[0]).toMatchObject({ status: 'same', machineId: 'live' });
@@ -148,7 +166,7 @@ describe('planMachineSync', () => {
         row('0105', 'NBE', 'Second', 'Giza'),
       ],
       [],
-      new Set(),
+      new Map(),
       catalog,
     );
     expect(plan.rows.map((r) => [r.status, r.issue])).toEqual([
@@ -175,7 +193,7 @@ describe('planMachineSync', () => {
         machine({ machineCode: '200', isActive: false, bankName: 'OLD' }),
         machine({ machineCode: '300', bankName: 'OLD' }),
       ],
-      new Set(),
+      new Map(),
       catalog,
     );
     expect(plan.rows.map((r) => [r.status, r.issue])).toEqual([
@@ -195,11 +213,27 @@ describe('planMachineSync', () => {
         machine({ machineCode: '500', isActive: false }),
         machine({ machineCode: '400' }),
       ],
-      new Set(),
+      new Map(),
       catalog,
     );
     // 400 is named by an unreadable row: named, so not extra.
     expect(plan.extra.map((m) => m.machineCode)).toEqual(['200', '300']);
     expect(plan.counts.extra).toBe(2);
+  });
+
+  it('hashes the comparison: a machine edited since — even one that matched — changes it', () => {
+    const fileRows = [row('100', 'NBE', 'ATM 100', 'Zamalek')];
+    const before = planMachineSync(fileRows, [machine({ machineCode: '100' })], new Map(), catalog);
+    const again = planMachineSync(fileRows, [machine({ machineCode: '100' })], new Map(), catalog);
+    const moved = planMachineSync(
+      fileRows,
+      [machine({ machineCode: '100', area: 'Moved by operator' })],
+      new Map(),
+      catalog,
+    );
+    expect(planDigestOf('b1', before)).toBe(planDigestOf('b1', again));
+    expect(planDigestOf('b1', before)).not.toBe(planDigestOf('b1', moved));
+    // The branch is part of it.
+    expect(planDigestOf('b1', before)).not.toBe(planDigestOf('b2', before));
   });
 });

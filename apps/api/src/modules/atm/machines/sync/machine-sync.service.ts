@@ -8,17 +8,22 @@
 //     entry it couples with (DEC-36), a refusal for a code active or open elsewhere;
 //   · update → the machine edit (`writeMaster`): the file's bank, name and area on the master, the
 //     area following onto its open register entries (DEC-4), one `update` audit per machine.
-// Each row is its own unit, so one refusal does not undo the rest; a row the branch changed since
-// the compare is left as it is (`skipped`). Nothing is deleted. The same `File` is posted twice and
-// the compare's `fileSha256` comes back with the apply (the register import's rule): a 409 if the
-// bytes are not the ones that were looked at. After an apply the file is compared again, so the
-// answer shows the branch as it now is. `atmMachine.manage` must reach the acting branch, and an
-// organization-wide holder picks the branch in the top bar (GM-20) — the bulk add's own rules.
+// AN APPLY WRITES ONLY WHAT THE READER SAW. The same `File` is posted twice; the compare's
+// `fileSha256` comes back with the apply (the register import's rule: 409 if the bytes are not the
+// ones looked at), and so does its `planDigest` — the comparison itself, the branch included. The
+// apply compares again and writes nothing (409 `ATM_MACHINE_SYNC_PLAN_CHANGED`) unless it is the
+// same comparison: a machine an operator moved after the compare is never put back silently, and a
+// row that was `same` never becomes a write nobody was shown (review finding). Each row is then its
+// own unit, so one refusal does not undo the rest; a row somebody changes WHILE the apply runs is
+// left as they made it (`skipped`). Nothing is deleted. After an apply the file is compared again,
+// so the answer shows the branch as it now is. `atmMachine.manage` must reach the acting branch, and
+// an organization-wide holder picks the branch in the top bar (GM-20) — the bulk add's own rules.
 import { createHash } from 'node:crypto';
 import {
   ErrorCodes,
   normalizeAtmMachineCode,
   type AtmBankCode,
+  type AtmMachineBulkRefusal,
   type AtmMachineSyncAppliedDto,
   type AtmMachineSyncDto,
 } from '@ecms/contracts';
@@ -34,11 +39,14 @@ import {
   recordOperationsIntake,
   resolveIntakeBank,
 } from '../../register/operations-intake';
+import { isPlaceholderMachineCode } from '../../register/register-coupling';
+import { atmRegisterEntryRepository } from '../../register/register.repository';
 import { resolveRegisterSettings, type RegisterSettings } from '../../register/register-settings';
 import { atmMachineRepository } from '../machine.repository';
 import { addBranchOf, settleMasterWrite, writeMaster } from '../machine.service';
 import {
   changesOf,
+  planDigestOf,
   planMachineSync,
   type SyncBankCatalog,
   type SyncPlan,
@@ -51,7 +59,11 @@ export interface MachineSyncRequest {
   fileName: string;
   apply: boolean;
   fileSha256: string | null;
+  /** The compare's `planDigest` — required with `apply`. */
+  planDigest: string | null;
 }
+
+const sha256 = (data: Buffer | string): string => createHash('sha256').update(data).digest('hex');
 
 const emptyApplied = (): AtmMachineSyncAppliedDto => ({
   added: [],
@@ -65,7 +77,7 @@ const emptyApplied = (): AtmMachineSyncAppliedDto => ({
 class AtmMachineSyncService {
   async run(request: MachineSyncRequest, ctx: AuthContext): Promise<AtmMachineSyncDto> {
     const branchId = await addBranchOf(ctx);
-    const fileSha256 = createHash('sha256').update(request.buffer).digest('hex');
+    const fileSha256 = sha256(request.buffer);
     if (request.apply && request.fileSha256 !== fileSha256) {
       throw new ConflictError(
         'the file changed since it was compared — compare it again',
@@ -77,6 +89,12 @@ class AtmMachineSyncService {
     let plan = await this.plan(branchId, fileRows, settings);
     let applied: AtmMachineSyncAppliedDto | null = null;
     if (request.apply) {
+      if (request.planDigest !== sha256(planDigestOf(branchId, plan))) {
+        throw new ConflictError(
+          'the branch changed since the file was compared — compare it again',
+          ErrorCodes.ATM_MACHINE_SYNC_PLAN_CHANGED,
+        );
+      }
       applied = await this.apply(branchId, plan, settings, ctx);
       plan = await this.plan(branchId, fileRows, settings);
     }
@@ -84,6 +102,7 @@ class AtmMachineSyncService {
     return {
       fileName: request.fileName,
       fileSha256,
+      planDigest: sha256(planDigestOf(branchId, plan)),
       branchId,
       branchName:
         branch === undefined || branch.isDeleted
@@ -121,16 +140,43 @@ class AtmMachineSyncService {
       area: doc.area,
       isActive: doc.isActive,
     }));
-    const here = new Set(machines.map((machine) => machine.machineCode));
-    const missingCodes = [
+    // The codes an add or a reactivation would write: not working here (missing, or archived).
+    const working = new Set(machines.filter((m) => m.isActive).map((m) => m.machineCode));
+    const candidates = [
       ...new Set(
         fileRows
           .map((row) => normalizeAtmMachineCode(row.code))
-          .filter((code) => code !== '' && !here.has(code)),
+          .filter((code) => code !== '' && !working.has(code)),
       ),
     ];
-    const elsewhere = await atmMachineRepository.activeCodesElsewhere(branchId, missingCodes);
+    const elsewhere = await this.elsewhereOf(branchId, candidates);
     return planMachineSync(fileRows, machines, elsewhere, this.catalogOf(settings, spellings));
+  }
+
+  /**
+   * Why each of these codes cannot work here — the data-edit add's two refusals, read in two
+   * queries: ACTIVE in another branch (DEC-9), else an OPEN register period held by another branch
+   * or by none (D6; `openElsewhereOf`). A placeholder code is "no real code" to the register.
+   */
+  private async elsewhereOf(
+    branchId: string,
+    codes: readonly string[],
+  ): Promise<Map<string, AtmMachineBulkRefusal>> {
+    const out = new Map<string, AtmMachineBulkRefusal>();
+    if (codes.length === 0) return out;
+    const [active, open] = await Promise.all([
+      atmMachineRepository.activeCodesElsewhere(branchId, codes),
+      atmRegisterEntryRepository.findOpenByCodes(
+        codes.filter((code) => !isPlaceholderMachineCode(code)),
+      ),
+    ]);
+    for (const [code, rows] of open) {
+      if (rows.some((row) => row.branchId === null || String(row.branchId) !== branchId)) {
+        out.set(code, 'openElsewhere');
+      }
+    }
+    for (const code of active) out.set(code, 'activeElsewhere');
+    return out;
   }
 
   private catalogOf(

@@ -858,10 +858,16 @@ export const BulkUpdateAtmMaintenancesSchema = z
   .strict();
 export type BulkUpdateAtmMaintenances = z.infer<typeof BulkUpdateAtmMaintenancesSchema>;
 
-/** One row of the close modal's employee datalist (atm_maintenance.ejs:1189-1193). */
+/**
+ * One name the leader pickers offer (atm_maintenance.ejs:1189-1193 — the close modal's employee
+ * datalist; since 2026-11-01 also both kinds' edit dialogs). `GET /atm/leaders/options`.
+ */
 export interface AtmLeaderOptionDto {
   employeeId: string;
+  /** HR's full Arabic name — what the close writes as `leaderName`. */
   name: string;
+  /** HR's employee code — tells two people of one name apart in the picker. */
+  code: string;
 }
 
 // ── Mail tickets (legacy `atm_mails`) ───────────────────────────────────────────────────────────
@@ -1038,9 +1044,10 @@ export const AtmSettingKeys = {
    * HR department ids whose employees populate the maintenance close-modal's assignee list. The
    * legacy hardcoded the Arabic department NAME — `department: "الصراف الالى"`
    * (contad_app.js:1110-1112); a name cannot be hardcoded against ECMS's org chart, so the port
-   * of that constant is this setting (the operations CrewDepartmentIds precedent). DEFAULT EMPTY,
-   * meaning an unconfigured install offers nobody — closing maintenance names a real employee or
-   * does not happen, which is the legacy rule.
+   * of that constant is this setting (the operations CrewDepartmentIds precedent), ticked on
+   * /atm/settings. DEFAULT EMPTY, which since 2026-11-01 means the legacy rule itself: every active
+   * department whose NAME is the ATM department's (`atm/leaders`). Closing maintenance still names
+   * a real employee or does not happen.
    */
   MaintenanceLeaderDepartmentIds: 'atm.maintenanceLeaderDepartmentIds',
   /**

@@ -198,8 +198,12 @@ export const listDoneMaintenances = (
   params: AtmListParams,
 ): Promise<Paginated<AtmMaintenanceDto>> =>
   getPage<AtmMaintenanceDto>(`/atm/maintenances/done${buildQuery(params)}`);
-export const maintenanceLeaderOptions = (): Promise<AtmLeaderOptionDto[]> =>
-  get<AtmLeaderOptionDto[]>('/atm/maintenances/leader-options');
+/**
+ * The leader pickers' names — the ATM department's working employees (or the departments ticked on
+ * /atm/settings). Read by either board: the maintenance close and both kinds' edit dialogs.
+ */
+export const leaderOptions = (): Promise<AtmLeaderOptionDto[]> =>
+  get<AtmLeaderOptionDto[]>('/atm/leaders/options');
 export const openMaintenances = (body: {
   rows: { machineCode: string; serviceType: string | null; referenceNumber: string | null }[];
   openedAt: string | null;

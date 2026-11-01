@@ -15,6 +15,7 @@ import { type ScopeSelector } from '../../../shared/types';
 import { MedicalProfileModel, type MedicalProfileDoc } from './profiles/medical-profile.model';
 import { MedicalEventModel, type MedicalEventDoc } from './events/medical-event.model';
 import { InsuranceCardModel, type InsuranceCardDoc } from './insurance/insurance-card.model';
+import { codeNumberKey, employeeCodeSort } from '../shared/employee-code-sort';
 
 /** One escaper for the whole feature — a second copy is a second chance to forget a character. */
 const escaped = (search: string): RegExp =>
@@ -71,7 +72,8 @@ class MedicalProfileRepository extends BaseRepository<MedicalProfileDoc> {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      sortableFields: ['employeeCode', 'updatedAt'],
+      sortableFields: ['employeeCode', codeNumberKey('employeeCode'), 'updatedAt'],
+      ...employeeCodeSort('employeeCode', query.sortBy, query.sortDir ?? 'desc'),
       scope,
     });
   }
@@ -218,7 +220,8 @@ class InsuranceCardRepository extends BaseRepository<InsuranceCardDoc> {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      sortableFields: ['startsOn', 'employeeCode'],
+      sortableFields: ['startsOn', 'employeeCode', codeNumberKey('employeeCode')],
+      ...employeeCodeSort('employeeCode', query.sortBy, query.sortDir ?? 'desc'),
       scope,
     });
   }

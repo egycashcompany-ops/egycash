@@ -23,6 +23,7 @@ import {
   type PerformanceReviewDoc,
 } from './reviews/performance-review.model';
 import { PerformanceGoalModel, type PerformanceGoalDoc } from './goals/performance-goal.model';
+import { codeNumberKey, employeeCodeSort } from '../shared/employee-code-sort';
 
 export interface CycleListFilter {
   status?: readonly PerformanceCycleStatus[] | undefined;
@@ -159,7 +160,8 @@ class PerformanceReviewRepository extends BaseRepository<PerformanceReviewDoc> {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      sortableFields: ['employeeCode', 'createdAt'],
+      sortableFields: ['employeeCode', codeNumberKey('employeeCode'), 'createdAt'],
+      ...employeeCodeSort('employeeCode', query.sortBy, query.sortDir ?? 'desc'),
       scope,
     });
   }

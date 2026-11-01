@@ -5,6 +5,7 @@ import { type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
 import { EmployeeFileModel, type EmployeeFileDoc } from './employee-file.model';
+import { codeNumberKey, employeeCodeSort } from '../../shared/employee-code-sort';
 
 export interface EmployeeFileListFilter {
   status?: string | undefined;
@@ -59,7 +60,8 @@ class EmployeeFileRepository extends BaseRepository<EmployeeFileDoc> {
       pageSize: params.pageSize,
       sortBy: params.sortBy,
       sortDir: params.sortDir,
-      sortableFields: ['createdAt', 'employeeCode'],
+      sortableFields: ['createdAt', 'employeeCode', codeNumberKey('employeeCode')],
+      ...employeeCodeSort('employeeCode', params.sortBy, params.sortDir ?? 'desc'),
       ...(params.scope === undefined ? {} : { scope: params.scope }),
     });
   }

@@ -55,6 +55,7 @@ import {
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
+  type ItAssetNamesDto,
   type ItCatalogItemDto,
   type ItVendorDto,
   type ItPersonDto,
@@ -77,6 +78,16 @@ import {
   type PreviewItMobileLineReceipt,
   type ReturnItMobileLine,
   type UpdateItMobileLine,
+  type CreateItConsumable,
+  type IssueItConsumables,
+  type ItConsumableDto,
+  type ItConsumableIssueResultDto,
+  type ItConsumableMemoDto,
+  type ItConsumableMovementDto,
+  type ReceiveItConsumable,
+  type ReturnItConsumable,
+  type ScrapItConsumable,
+  type UpdateItConsumable,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -187,6 +198,9 @@ export const updateVendor = (id: string, body: UpdateItVendor): Promise<ItVendor
 // ── Asset register (design §2.2, §4.1) ──────────────────────────────────────
 export const listAssets = (params: ItListParams): Promise<Paginated<ItAssetDto>> =>
   getPage<ItAssetDto>(`/it/assets${buildQuery(params)}`);
+/** The name filter's options — the register's own names, as far as the reader's scope reaches. */
+export const listAssetNames = (): Promise<ItAssetNamesDto> =>
+  get<ItAssetNamesDto>('/it/assets/names');
 export const getAsset = (id: string): Promise<ItAssetDto> => get<ItAssetDto>(`/it/assets/${id}`);
 /** Scan resolve (design §4.2): the QR payload is the plain asset code, so this takes the code. */
 export const getAssetByCode = (code: string): Promise<ItAssetDto> =>
@@ -342,6 +356,69 @@ export const fetchMobileLineReceiptSignedCopy = (id: string): Promise<Blob> =>
   fetchBlob(`/it/mobile-line-receipts/${id}/signed-copy`);
 export const deleteMobileLineReceiptSignedCopy = (id: string): Promise<ItMobileLineReceiptDto> =>
   del<ItMobileLineReceiptDto>(`/it/mobile-line-receipts/${id}/signed-copy`);
+
+// ── Consumables — المستهلكات (FR-20) ────────────────────────────────────────
+// «أقدر أحدد عندي Stock إيه من كل واحده وإيه الهالك وأتبدل لمين واطبعله مذكره»: each branch's
+// store of ink, cables, mice …, an append-only ledger behind every figure, and the memo an issue
+// prints. The quantities are on no write here: only the NAMED movements below move them.
+
+export const listConsumables = (params: ItListParams): Promise<Paginated<ItConsumableDto>> =>
+  getPage<ItConsumableDto>(`/it/consumables${buildQuery(params)}`);
+export const getConsumable = (id: string): Promise<ItConsumableDto> =>
+  get<ItConsumableDto>(`/it/consumables/${id}`);
+/** An opening quantity, when given, is written as the item's first receipt in the same step. */
+export const createConsumable = (body: CreateItConsumable): Promise<ItConsumableDto> =>
+  post<ItConsumableDto>('/it/consumables', body);
+export const updateConsumable = (id: string, body: UpdateItConsumable): Promise<ItConsumableDto> =>
+  patch<ItConsumableDto>(`/it/consumables/${id}`, body);
+
+// The three movements of one item, each answering with the item as it now stands — its figures
+// moved by the movement itself, never by this client.
+export const receiveConsumable = (
+  id: string,
+  body: ReceiveItConsumable,
+): Promise<ItConsumableDto> => post<ItConsumableDto>(`/it/consumables/${id}/receive`, body);
+export const scrapConsumable = (id: string, body: ScrapItConsumable): Promise<ItConsumableDto> =>
+  post<ItConsumableDto>(`/it/consumables/${id}/scrap`, body);
+export const returnConsumable = (id: string, body: ReturnItConsumable): Promise<ItConsumableDto> =>
+  post<ItConsumableDto>(`/it/consumables/${id}/return`, body);
+
+/**
+ * «صرف لموظف» — ONE employee, one or more items from one branch's store, ONE memo, in one
+ * transaction. Answers the memo to print at once and the items as they now stand.
+ */
+export const issueConsumables = (body: IssueItConsumables): Promise<ItConsumableIssueResultDto> =>
+  post<ItConsumableIssueResultDto>('/it/consumables/issue', body);
+
+/**
+ * The ledger across items, newest first, each row labelled — the movements screen, one item's
+ * movements (`consumableId`), what an asset had installed on it (`assetId`) and what a person was
+ * handed or gave back (`employeeId`).
+ */
+export const listConsumableMovements = (
+  params: ItListParams,
+): Promise<Paginated<ItConsumableMovementDto>> =>
+  getPage<ItConsumableMovementDto>(`/it/consumable-movements${buildQuery(params)}`);
+
+// The memo (مذكرة صرف مستهلكات): recorded by the issue, printed again any time with the same
+// number, and the employee's signed copy filed against it — the line acknowledgment's steps.
+export const getConsumableMemo = (id: string): Promise<ItConsumableMemoDto> =>
+  get<ItConsumableMemoDto>(`/it/consumable-memos/${id}`);
+/** Print a memo again — it keeps its number. */
+export const printConsumableMemo = (id: string): Promise<ItConsumableMemoDto> =>
+  post<ItConsumableMemoDto>(`/it/consumable-memos/${id}/print`, {});
+export const uploadConsumableMemoSignedCopy = (
+  id: string,
+  file: File,
+): Promise<ItConsumableMemoDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<ItConsumableMemoDto>(`/it/consumable-memos/${id}/signed-copy`, form);
+};
+export const fetchConsumableMemoSignedCopy = (id: string): Promise<Blob> =>
+  fetchBlob(`/it/consumable-memos/${id}/signed-copy`);
+export const deleteConsumableMemoSignedCopy = (id: string): Promise<ItConsumableMemoDto> =>
+  del<ItConsumableMemoDto>(`/it/consumable-memos/${id}/signed-copy`);
 
 // ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
 export const listTicketPriorities = (

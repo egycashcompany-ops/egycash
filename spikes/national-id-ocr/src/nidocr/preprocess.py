@@ -231,13 +231,49 @@ TARGET_FIELD_HEIGHT = 64
 
 
 #: A row carrying at least this fraction of the crop's width in ink counts as part of a text line.
-#: Low on purpose: the thinnest row of a line is where only the ascenders and the dots reach, and
-#: those are the rows that decide whether a line's true top edge is found or shaved off.
-_INK_ROW = 0.008
+#: Low, because the thinnest rows of a line are where only the ascenders and the dots reach. It
+#: was briefly 0.002 to keep those dots, but at that level single stray pixels of background
+#: picture bridged the gap between a name's two lines; `text_ink` now removes the picture, and a
+#: few-pixel floor removes the strays.
+_INK_ROW = 0.006
 
-#: Bands closer together than this fraction of the crop's height are one line. Arabic descenders
-#: (ج, ع, م) drop below the baseline and leave a gap between themselves and the body of the line.
-_SAME_LINE_GAP = 0.18
+#: Bands closer together than this fraction of the TALLEST band's height are one line. Arabic
+#: descenders (ج, ع, م) drop below the baseline and leave a gap between themselves and the body of
+#: the line.
+#:
+#: Relative to the line, not to the crop. It used to be 0.18 of the CROP height, which for a field
+#: box tall enough to hold a two-line name is ~23 px — while the real gap between the name's two
+#: printed lines is ~7 px. Every two-line name and address was therefore handed to the recognizer
+#: as one strip, squashed to 48 px high, and came back as fragments ('كرا لحني عبي' for a
+#: five-word name) — the first thing the real model showed when it was finally run.
+_SAME_LINE_GAP = 0.15
+
+
+#: Smallest local contrast, in grey levels, that counts as ink. Keeps a blank strip blank: with
+#: nothing printed, Otsu would still split pure noise into "ink" and "paper".
+_MIN_INK_CONTRAST = 25
+
+
+def text_ink(gray: np.ndarray) -> np.ndarray:
+    """1 where there is printed text, 0 elsewhere — text, not merely dark.
+
+    A plain Otsu threshold answers "dark or light", and on a real Egyptian card that is the wrong
+    question: the name and address are printed over a photograph of the pyramids and the sphinx,
+    whose shading is as dark as some strokes. Every row of the name box then had "ink" in it, the
+    two printed lines of the name were never separated, and the recognizer was handed both at once.
+    The synthetic cards have a plain background, which is why nothing caught it before a real
+    card's template was read.
+
+    A morphological black-hat keeps exactly what distinguishes print from picture: dark detail
+    THINNER than the kernel. A stroke is a few pixels wide; a pyramid's shadow is hundreds. Otsu then
+    runs on that contrast map, never below `_MIN_INK_CONTRAST`.
+    """
+    height = gray.shape[0]
+    size = max(9, (height // 4) | 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (size, size))
+    contrast = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
+    threshold, _ = cv2.threshold(contrast, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    return (contrast > max(threshold, _MIN_INK_CONTRAST)).astype(np.uint8)
 
 
 def split_text_lines(crop: np.ndarray, *, max_lines: int = 6) -> list[np.ndarray]:
@@ -268,33 +304,83 @@ def split_text_lines(crop: np.ndarray, *, max_lines: int = 6) -> list[np.ndarray
         return [crop]
 
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-    _, ink = cv2.threshold(gray, 0, 1, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    rows = ink.sum(axis=1) >= max(1.0, _INK_ROW * width)
+    ink = text_ink(gray)
+    rows = ink.sum(axis=1) >= max(2.0, _INK_ROW * width)
 
-    bands: list[list[int]] = []
+    # Contiguous runs of inked rows, before any judgement about which runs belong together.
+    runs: list[list[int]] = []
     for index, inked in enumerate(rows):
         if not inked:
             continue
-        if bands and index - bands[-1][1] <= max(1, int(_SAME_LINE_GAP * height)):
-            bands[-1][1] = index
+        if runs and index - runs[-1][1] <= 1:
+            runs[-1][1] = index
         else:
-            bands.append([index, index])
+            runs.append([index, index])
+    if not runs:
+        return [crop]
+
+    # Merge runs separated by less than a fraction of a line's height: what remains between them
+    # is the gap under a descender or above a dot, not the gap between two printed lines.
+    merge_gap = max(2, int(_SAME_LINE_GAP * max(bottom - top + 1 for top, bottom in runs)))
+    bands: list[list[int]] = [list(runs[0])]
+    for top, bottom in runs[1:]:
+        if top - bands[-1][1] - 1 < merge_gap:
+            bands[-1][1] = bottom
+        else:
+            bands.append([top, bottom])
 
     if len(bands) < 2 or len(bands) > max_lines:
         return [crop]
 
-    # A band far thinner than its neighbours is a smudge or a piece of border, not a line of print.
+    # A band far thinner than its neighbours is a stray mark, not a line of print. It is joined to
+    # the nearest band rather than dropped: the splitter may discard blank rows, never ink.
     tallest = max(bottom - top for top, bottom in bands)
-    kept = [(top, bottom) for top, bottom in bands if (bottom - top) >= tallest * 0.35]
-    if len(kept) < 2:
+    while len(bands) > 1:
+        small = next(
+            (i for i, (top, bottom) in enumerate(bands) if (bottom - top) < tallest * 0.35), None
+        )
+        if small is None:
+            break
+        gap_above = bands[small][0] - bands[small - 1][1] if small > 0 else None
+        gap_below = bands[small + 1][0] - bands[small][1] if small < len(bands) - 1 else None
+        if gap_below is None or (gap_above is not None and gap_above <= gap_below):
+            bands[small - 1][1] = bands[small][1]
+        else:
+            bands[small + 1][0] = bands[small][0]
+        del bands[small]
+    if len(bands) < 2:
         return [crop]
 
-    # Half the gap on each side, so a descender clipped by the profile still lands in its own strip.
-    pad = max(1, int(0.02 * height))
+    # Pad each strip by half the narrowest gap between lines, so rows below the ink bar (the faint
+    # edge of a dot, the tail of a descender) still land in a strip without reaching the next line.
+    gaps = [bands[i + 1][0] - bands[i][1] - 1 for i in range(len(bands) - 1)]
+    pad = max(1, min(gaps) // 2)
     return [
         crop[max(0, top - pad) : min(height, bottom + pad + 1)]
-        for top, bottom in kept
+        for top, bottom in bands
     ]
+
+
+def trim_to_ink(strip: np.ndarray) -> np.ndarray:
+    """Drop the blank card on either side of a line strip, keeping a margin of one line height.
+
+    A short line — a given name alone on its line, 'أحمد' — sits at the right end of a strip as wide
+    as the field box. The recognizer resizes the strip to a fixed height and reads ALL of it, and
+    the real model, handed 500 px of guilloche beside one word, transcribed the guilloche:
+    'GNERRLEMGTRRHحم'. Cutting by ink rather than by detection keeps every inked column, so this
+    can drop background but never a glyph; the margin keeps a stroke's faint edge inside.
+    """
+    height, width = strip.shape[:2]
+    if height < 8 or width < 8:
+        return strip
+    gray = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY) if strip.ndim == 3 else strip
+    ink = text_ink(gray)
+    columns = np.flatnonzero(ink.sum(axis=0) >= 2)
+    if columns.size == 0:
+        return strip
+    left = max(0, int(columns[0]) - height)
+    right = min(width, int(columns[-1]) + height + 1)
+    return strip[:, left:right]
 
 
 def _upscaled(crop: np.ndarray, max_upscale: float) -> np.ndarray:

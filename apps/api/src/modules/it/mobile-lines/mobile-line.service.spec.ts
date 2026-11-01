@@ -1,9 +1,9 @@
 // The register's own rules — «صفحة لإدارتهم … وبردو بفلتر لكل شبكة مع بيانات كل شبكة».
 //
 // With the data layer mocked, what is pinned is what the service decides: a line is filed only in
-// a branch the caller reaches, an edit cannot leave an eSIM with a card serial nor move a line
-// somebody holds, the register filters as the screen asks, and the network cards always name the
-// three networks, a network with no lines counting zero.
+// a branch the caller reaches, an edit cannot leave an eSIM with a card serial, a line somebody
+// holds moves branch WITH its current custody and paper, the register filters as the screen asks,
+// and the network cards always name the three networks, a network with no lines counting zero.
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BusinessRuleError, ForbiddenError } from '../../../shared/errors';
@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   countsByNetwork: vi.fn(),
   openIdsMatching: vi.fn(),
   appendEvent: vi.fn(),
+  moveOpen: vi.fn(),
+  moveReceipt: vi.fn(),
 }));
 
 const ready = () => vi.fn(async () => undefined);
@@ -38,6 +40,7 @@ vi.mock('./mobile-line.repository', () => ({
 vi.mock('./line-assignment.repository', () => ({
   itMobileLineAssignmentRepository: {
     openIdsMatching: mocks.openIdsMatching,
+    moveOpenToBranch: mocks.moveOpen,
     ensureCollection: ready(),
   },
 }));
@@ -45,7 +48,11 @@ vi.mock('./line-event.repository', () => ({
   itMobileLineEventRepository: { append: mocks.appendEvent, ensureCollection: ready() },
 }));
 vi.mock('./line-receipt.repository', () => ({
-  itMobileLineReceiptRepository: { ensureCollection: ready(), findByIdsSystem: async () => [] },
+  itMobileLineReceiptRepository: {
+    ensureCollection: ready(),
+    findByIdsSystem: async () => [],
+    moveToBranch: mocks.moveReceipt,
+  },
 }));
 
 const { itMobileLineService, summarizeMobileLines } = await import('./mobile-line.service');
@@ -62,6 +69,16 @@ const ctx = {
   departmentId: null,
   sectionId: null,
   permissions: { 'itAsset.create': 'branch', 'itAsset.edit': 'branch' },
+  identity: { displayName: { ar: 'فني', en: 'Technician' } },
+} as never;
+/** The same technician, reaching every branch — to move a line between two of them. */
+const everywhere = {
+  userId: String(new Types.ObjectId()),
+  locale: 'ar',
+  branchId: HOME,
+  departmentId: null,
+  sectionId: null,
+  permissions: { 'itAsset.create': 'organization', 'itAsset.edit': 'organization' },
   identity: { displayName: { ar: 'فني', en: 'Technician' } },
 } as never;
 const scope = {} as never;
@@ -122,17 +139,38 @@ describe('registering a line', () => {
 });
 
 describe('editing a line', () => {
-  it('refuses to move a line somebody holds to another branch — it is returned first', async () => {
+  // «عايزك تفتح إنى أعدل الفرع عادي لخط من خطوط الموبايل لأن ممكن القائد يغير الفرع بتاعه».
+  it('moves a line somebody holds to another branch, with its open interval and its paper', async () => {
+    const paper = new Types.ObjectId();
     mocks.findLine.mockResolvedValue(line({ status: 'assigned' }));
-    const attempt = itMobileLineService.update(
+    mocks.updateLine.mockImplementation(async (_id: string, set: Record<string, unknown>) => ({
+      ...line({ status: 'assigned' }),
+      ...set,
+    }));
+    mocks.moveOpen.mockResolvedValue(paper);
+    await itMobileLineService.update(LINE, { branchId: ELSEWHERE, version: 2 }, everywhere, scope);
+
+    const to = new Types.ObjectId(ELSEWHERE);
+    expect(mocks.updateLine).toHaveBeenCalledWith(
       LINE,
-      { branchId: ELSEWHERE, version: 2 },
-      ctx,
-      scope,
+      { branchId: to },
+      expect.objectContaining({ version: 2 }),
     );
-    await expect(attempt).rejects.toBeInstanceOf(BusinessRuleError);
-    await expect(attempt).rejects.toThrow(/return it before moving it/);
-    expect(mocks.updateLine).not.toHaveBeenCalled();
+    expect(mocks.moveOpen).toHaveBeenCalledWith(LINE, to, expect.anything());
+    expect(mocks.moveReceipt).toHaveBeenCalledWith(paper, to, expect.anything());
+  });
+
+  it('moves a line in stock alone — there is no custody to carry', async () => {
+    mocks.findLine.mockResolvedValue(line());
+    mocks.updateLine.mockImplementation(async (_id: string, set: Record<string, unknown>) => ({
+      ...line(),
+      ...set,
+    }));
+    await itMobileLineService.update(LINE, { branchId: ELSEWHERE, version: 2 }, everywhere, scope);
+
+    expect(mocks.updateLine).toHaveBeenCalled();
+    expect(mocks.moveOpen).not.toHaveBeenCalled();
+    expect(mocks.moveReceipt).not.toHaveBeenCalled();
   });
 
   it('still edits a held line’s other facts', async () => {

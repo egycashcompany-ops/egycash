@@ -46,9 +46,34 @@ const ALLOWED_FIELDS = [
 
 type AllowedField = (typeof ALLOWED_FIELDS)[number];
 
+/**
+ * What the sidecar answers on `/extract`.
+ *
+ * Every member is optional and `quality`/`diagnostics` are typed loosely ON PURPOSE. The sidecar
+ * is a separate process on its own release cadence, so its body is untrusted input, not a shared
+ * contract — the same reason `fields` carries `unknown` values that `sanitize` narrows one at a
+ * time. A newer sidecar adding a member must not make an older API reject the response.
+ *
+ * `fields` and `layoutProfile` are the only members this provider reads. The three below are
+ * additive and declared so the type matches what actually arrives on the wire:
+ *
+ *   * `elapsedMs`   — recognition time, already rounded by the sidecar.
+ *   * `quality`     — per side ('front' | 'back'), the actionable verdict: `{verdict, reasons[],
+ *                     metrics{}}`, where the reasons are codes like 'too_small' or 'blurred'.
+ *   * `diagnostics` — per side, counts and coordinates explaining a poor read. Carries no card
+ *                     content, by the sidecar's own design.
+ *
+ * Nothing here reaches `RawOcrResult`: the review dialog and its model are unchanged. They are
+ * declared so that a future caller reading them starts from the real shape rather than a cast,
+ * and so that a sidecar sending a malformed `quality` block is a value this type already admits
+ * rather than a parse that throws.
+ */
 interface SidecarResponse {
   fields?: Record<string, { value?: unknown; confidence?: unknown } | undefined>;
   layoutProfile?: string;
+  elapsedMs?: number;
+  quality?: Record<string, unknown>;
+  diagnostics?: Record<string, unknown>;
 }
 
 export interface PaddleOcrProviderOptions {

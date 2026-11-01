@@ -67,6 +67,29 @@ describe('zoneBreakdown', () => {
       ['منطقة تجريبية 1', 2],
     ]);
   });
+
+  // DEC-35: the rows follow the catalog's order, and a bank the order does not name still counts.
+  it('orders the banks by the catalog, and never drops one it does not list', () => {
+    const mixed = [
+      point(1, { bankCode: 'QNB' }),
+      point(2, { bankCode: 'NBE' }),
+      point(4, { bankCode: 'AAIB' }),
+      point(5, { bankCode: 'CIB' }),
+      point(3, { bankCode: null }),
+    ];
+    const zoned = membershipOf(
+      mixed,
+      membershipZones([{ id: 'z', branchId: B, points: square(30, 31, 0.0055) }]),
+    );
+    const codes = (order?: readonly string[]) =>
+      zoneBreakdown('z', mixed, zoned, order).banks.map((b) => b.code);
+    // The catalog puts its seventh bank first; AAIB is not in it, so it follows, then «غير محدد».
+    expect(codes(['QNB', 'NBE', 'BM', 'CIB'])).toEqual(['QNB', 'NBE', 'CIB', 'AAIB', null]);
+    // Without an order: the six seeds, then the rest sorted.
+    expect(codes()).toEqual(['NBE', 'CIB', 'AAIB', 'QNB', null]);
+    const total = zoneBreakdown('z', mixed, zoned).banks.reduce((sum, b) => sum + b.count, 0);
+    expect(total).toBe(mixed.length);
+  });
 });
 
 describe('saveSummary', () => {

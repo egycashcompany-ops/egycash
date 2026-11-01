@@ -167,6 +167,17 @@ def test_precropped_is_distinguished_from_not_located():
     assert not missed.located
 
 
+@pytest.mark.parametrize("path", sorted(FIXTURES.glob("synthetic-*-front.jpg")), ids=lambda p: p.stem)
+def test_printed_photo_on_a_tilted_crop_is_not_taken_for_the_card(path):
+    """A slightly tilted card-shaped crop: the printed photo clears MIN_SCORE, the card does not.
+
+    Only synthetic-000 is square-on, and it was the only fixture these tests looked at — the other
+    fronts were being warped onto their photo while every test passed.
+    """
+    result = rectify(cv2.imread(str(path)), CANONICAL)
+    assert result.method == "precropped", f"located {result.method} quad {result.quad}"
+
+
 # ── Corner bookkeeping ──
 
 

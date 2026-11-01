@@ -212,8 +212,11 @@ export const MobileLineFormDialog = ({
   const serial = ItMobileSimSerialSchema.safeParse(form.simSerial);
   const serialError = physical && form.simSerial.trim() !== '' && !serial.success;
   const serialValue = physical && serial.success ? serial.data : null;
-  // A held line keeps its branch: the server refuses the move until the line is returned.
-  const branchLocked = line !== null && line.status === 'assigned';
+  // A held line moves branch with its holder («ممكن القائد يغير الفرع بتاعه») — its current custody,
+  // and the acknowledgment it was handed over on when there is one, go with it, which the form says
+  // before it is saved. A car signs nothing, and an interval from before the papers has none.
+  const heldMoves = line !== null && line.status === 'assigned' && form.branchId !== line.branchId;
+  const paperMoves = heldMoves && line !== null && line.holder?.receiptId != null;
 
   const complete = form.network !== '' && phone.success && form.branchId !== '';
   const busy = create.isPending || update.isPending;
@@ -327,11 +330,7 @@ export const MobileLineFormDialog = ({
           />
         </Field>
         <Field label={t('it.assets.columns.branch')} required>
-          <Select
-            value={form.branchId}
-            disabled={branchLocked}
-            onChange={(e) => set('branchId', e.target.value)}
-          >
+          <Select value={form.branchId} onChange={(e) => set('branchId', e.target.value)}>
             <option value="">{t('it.mobileLines.chooseBranch')}</option>
             {(branches.data ?? []).map((branch) => (
               <option key={branch.id} value={branch.id}>
@@ -339,9 +338,11 @@ export const MobileLineFormDialog = ({
               </option>
             ))}
           </Select>
-          {branchLocked && (
+          {heldMoves && (
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t('it.mobileLines.fields.branchLocked')}
+              {paperMoves
+                ? t('it.mobileLines.fields.branchMovesCustody')
+                : t('it.mobileLines.fields.branchMovesHolder')}
             </p>
           )}
         </Field>
@@ -935,10 +936,13 @@ export const MobileLineHistoryDialog = ({
   ];
 
   return (
+    // A row's paper opens its signed copy in a viewer of its own, a second dialog beside this one:
+    // a click inside that viewer is «outside» this panel, and must not close the two of them.
     <Dialog
       open={open}
       onClose={onClose}
       size="lg"
+      dismissOnOutsideClick={false}
       title={t('it.mobileLines.history.title')}
       description={caption(line)}
       footer={

@@ -22,6 +22,13 @@ import { MAX_PAGE_SIZE, type Paginated } from '@ecms/contracts';
  */
 export const MAX_BOARD_PAGES = 200;
 
+/**
+ * Did the walk stop at `MAX_BOARD_PAGES` — rows on the server the board does not hold? A done
+ * range long enough for that is not a statement of the period, and its page says so.
+ */
+export const isBoardCutShort = (meta: { totalPages: number }): boolean =>
+  meta.totalPages > MAX_BOARD_PAGES;
+
 /** How many pages the board has, from the first page's own meta. */
 export const boardPageCount = (totalPages: number): number =>
   Math.min(Math.max(totalPages, 0), MAX_BOARD_PAGES);

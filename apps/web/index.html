@@ -15,6 +15,12 @@
     -->
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%icons/icon-192.png" />
+    <!--
+      The tab icon: the mark alone, as a vector, so it stays sharp at 16px and follows the system
+      theme. Listed after the PNG so a browser that reads SVG icons takes it; one that does not
+      keeps the PNG.
+    -->
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <!-- iOS reads none of the manifest's icons; this is the one it takes. -->
     <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="ECMS" />
@@ -25,6 +31,21 @@
     -->
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#4f46e5" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#312e81" />
+    <!--
+      What a link preview says — a recruitment link posted on WhatsApp or a job board, a contract
+      verification link. One document serves every route, so it names the company, not a screen.
+    -->
+    <meta
+      name="description"
+      content="إيجي كاش للحلول النقدية — EGYCASH, Technological Cash Solutions."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="EGYCASH" />
+    <meta property="og:title" content="EGYCASH" />
+    <meta
+      property="og:description"
+      content="إيجي كاش للحلول النقدية — EGYCASH, Technological Cash Solutions."
+    />
   </head>
   <body>
     <div id="root"></div>

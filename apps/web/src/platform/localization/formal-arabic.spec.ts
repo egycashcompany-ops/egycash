@@ -76,13 +76,15 @@ describe('the Arabic the product speaks is formal Arabic', () => {
   });
 });
 
-// His printed papers are exempt — by FILE, two of them, and nothing else. «عاوز زيهم بالظبط»: the
+// His printed papers are exempt — by FILE, three of them, and nothing else. «عاوز زيهم بالظبط»: the
 // custody's memos and letters print his words, his spelling included («الاجمالى النهائى»), so the
 // file holding those words and the file holding his default names are listed in `VERBATIM_PAPERS`
-// and not corrected. What keeps that exemption from quietly growing is pinned here: exactly those
-// two files; every other file of the paper engine carries no Arabic letter at all (the
-// Arabic-Indic digits, «٫» and the tatweel are built from code points, and they are not letters);
-// and the rule itself is untouched — his words written anywhere else are still caught.
+// and not corrected; the ATM settlement papers (the Note, «بيان التغذية», «سيلزات») print the bank
+// master's words the same way (docs/12-planning/atm-settlements-phase1.md §8.1). What keeps that
+// exemption from quietly growing is pinned here: exactly those three files; every other file of
+// either paper engine carries no Arabic letter at all (the Arabic-Indic digits, «٫» and the tatweel
+// are built from code points, and they are not letters); and the rule itself is untouched — his
+// words written anywhere else are still caught.
 describe('his printed papers — the one exemption, held narrow', () => {
   const PAPER_LIB = 'apps/web/src/modules/fleet/lib';
   /** His scenario's data for the papers' specs: scanned like any other file (and formal). */
@@ -94,8 +96,9 @@ describe('his printed papers — the one exemption, held narrow', () => {
       .replace(/\/\*[^]*?\*\//gu, ' ')
       .replace(/(^|[^:'"`\\])\/\/[^\n]*/gu, '$1');
 
-  it('exempts exactly his papers’ wording and his default names — both files exist', () => {
+  it('exempts exactly his papers’ wording and his default names — the three files exist', () => {
     expect([...VERBATIM_PAPERS].sort()).toEqual([
+      'apps/web/src/modules/atm/lib/papers/settlement-paper-wording.ts',
       'apps/web/src/modules/fleet/lib/custody-paper-wording.ts',
       'packages/contracts/src/modules/fleet-custody-paper-defaults.ts',
     ]);
@@ -121,6 +124,19 @@ describe('his printed papers — the one exemption, held narrow', () => {
     // Arabic LETTERS (ء … ي): a digit, «٫» or the tatweel would be built from its code point.
     const offenders = files.filter((file) => /[\u0621-\u064A]/u.test(code(file)));
     expect(offenders).toEqual([]);
+  });
+
+  it('keeps every non-spec file of the ATM papers but the wording file free of Arabic letters', () => {
+    const ATM_PAPERS = 'apps/web/src/modules/atm/lib/papers';
+    const files = readdirSync(join(ROOT, ATM_PAPERS))
+      .filter((name) => /\.ts$/u.test(name) && !name.includes('.spec.'))
+      .map((name) => `${ATM_PAPERS}/${name}`)
+      .filter((file) => !VERBATIM_PAPERS.includes(file));
+    expect(files.length).toBeGreaterThanOrEqual(6);
+    const offenders = files.filter((file) => /[\u0621-\u064A]/u.test(code(file)));
+    expect(offenders).toEqual([]);
+    // The papers' own words still read as the bank's master prints them — the guard would flag them.
+    expect(offendersIn('إجمالى قيمة الماكينة')).toContain('«إجمالى» → «إجمالي»');
   });
 
   it('still catches his spelling anywhere else — the exemption is the file, not a softer rule', () => {

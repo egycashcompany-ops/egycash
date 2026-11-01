@@ -25,6 +25,16 @@ describe('isSecretBodyUrl', () => {
     expect(isSecretBodyUrl('http://localhost:4000/api/v1/atm/machines')).toBe(false);
     expect(isSecretBodyUrl('http://localhost:4000/api/v1/atm/replenishments')).toBe(false);
   });
+
+  // /atm/settings: `PUT /atm/mailbox` carries the Graph client secret in plaintext until it is
+  // sealed — every spelling Express routes there (it ignores case, lets a doubled slash through).
+  it('matches the maintenance mailbox, however its path is spelled', () => {
+    expect(isSecretBodyUrl('http://localhost:4000/api/v1/atm/mailbox')).toBe(true);
+    expect(isSecretBodyUrl('https://ecms.example/ecms/api/v1/atm/mailbox/test')).toBe(true);
+    expect(isSecretBodyUrl('http://localhost:4000/API/V1/ATM/Mailbox')).toBe(true);
+    expect(isSecretBodyUrl('http://localhost:4000/api/v1//atm/mailbox')).toBe(true);
+    expect(isSecretBodyUrl('http://localhost:4000/api/v1/atm/mail-tickets')).toBe(false);
+  });
 });
 
 describe('scrubSentryEvent', () => {
@@ -76,6 +86,21 @@ describe('scrubSentryEvent', () => {
     };
     const scrubbed = scrubSentryEvent(event);
     expect(JSON.parse(String(scrubbed.request?.data))).toEqual({ area: 'North', nested: {} });
+  });
+
+  it('drops the whole body of a mailbox save, and the secret anywhere else', () => {
+    const event: Event = {
+      request: {
+        method: 'PUT',
+        url: 'http://localhost:4000/api/v1/atm/mailbox',
+        data: JSON.stringify({ tenantId: 'syn.example', clientSecret: FAKE }),
+      },
+      extra: { input: { clientSecret: FAKE, enabled: true } },
+    };
+    const scrubbed = scrubSentryEvent(event);
+    expect(scrubbed.request?.data).toBeUndefined();
+    expect(scrubbed.extra?.input).toEqual({ enabled: true });
+    expect(JSON.stringify(scrubbed)).not.toContain(FAKE);
   });
 
   it('leaves an unrelated event unchanged', () => {

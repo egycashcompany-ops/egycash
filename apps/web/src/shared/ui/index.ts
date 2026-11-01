@@ -2,6 +2,9 @@
 // component's file), keeping the kit's surface swappable in one place (Software Architecture §6).
 export { Button, type ButtonProps } from './Button';
 export { BrandMark } from './BrandMark';
+// Not `EgycashLogo`: this barrel is in the main bundle, and the logo's lettering is ~21 KB of path
+// data that only the portal and public pages draw. Import it from './EgycashLogo' directly, so it
+// stays in their chunks.
 export { Badge, StatusBadge, type Tone } from './Badge';
 export { Card, CardHeader, CardBody } from './Card';
 export { Spinner } from './Spinner';

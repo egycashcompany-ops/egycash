@@ -7,6 +7,9 @@
 //    Leaving the box with an unmatched query restores the last committed value rather than
 //    silently storing something the catalog does not contain.
 //  • Filtering is diacritic- and alef-insensitive, so "الاسماعيليه" finds "الإسماعيلية".
+//  • An option may be SHOWN differently from what it commits (`optionLabel`): the ATM register's
+//    area filter matches the stored name (MOHNDESSEN) and shows it in the reader's language. Typing
+//    finds either.
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { fold } from '../lib/fold';
@@ -29,6 +32,7 @@ export const Combobox = ({
   testId,
   ariaLabel,
   tallList = false,
+  optionLabel,
 }: {
   value: string;
   options: readonly string[];
@@ -70,6 +74,8 @@ export const Combobox = ({
    * the whole vehicle registry, where seven rows at a time is a keyhole.
    */
   tallList?: boolean;
+  /** What an option READS as, when that is not the value it commits. The value by default. */
+  optionLabel?: (option: string) => string;
 }): JSX.Element => {
   // A `Field` marked missing turns this box red, as it does an `Input`.
   const missing = useFieldMissing();
@@ -81,8 +87,9 @@ export const Combobox = ({
   const boxRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
+  const shown = (option: string): string => optionLabel?.(option) ?? option;
   // While closed the box shows the committed value; while open it shows what you are typing.
-  const text = open ? query : value;
+  const text = open ? query : value === '' ? '' : shown(value);
 
   const remote = onSearch !== undefined;
   // A stored value the catalog does not carry — a record written before the catalog existed, or
@@ -103,8 +110,8 @@ export const Combobox = ({
   const matches = useMemo(() => {
     const q = fold(query);
     if (remote || !open || q === '') return all;
-    return all.filter((o) => fold(o).includes(q));
-  }, [open, query, all, remote]);
+    return all.filter((o) => fold(optionLabel?.(o) ?? o).includes(q) || fold(o).includes(q));
+  }, [open, query, all, remote, optionLabel]);
 
   useEffect(() => {
     if (!open) return;
@@ -261,7 +268,7 @@ export const Combobox = ({
                   : 'text-slate-700 dark:text-slate-300',
               )}
             >
-              {option}
+              {shown(option)}
             </li>
           ))}
         </ul>

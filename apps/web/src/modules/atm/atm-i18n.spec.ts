@@ -2,7 +2,15 @@
 // catalog-half test operations and IT carry. A missing key does not throw (`translate` falls
 // back to the key), so without this an Arabic operator would read `atm.mail.duplicate` on screen.
 import { describe, expect, it } from 'vitest';
-import { ATM_MAIL_TICKET_STATUSES, type Locale } from '@ecms/contracts';
+import {
+  ATM_BRANCH_LINK_ISSUES,
+  ATM_BRANCH_MOVE_BLOCKERS,
+  ATM_BRANCH_MOVE_COLLECTIONS,
+  ATM_BRANCH_MOVE_MERGES,
+  ATM_MAIL_TICKET_STATUSES,
+  ErrorCodes,
+  type Locale,
+} from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { ATM_SHORTCUTS } from './pages/AtmOverviewPage';
 
@@ -39,11 +47,34 @@ const KEYS = [
   'atm.common.deleteTitle',
   'atm.common.deleteBody',
   'atm.common.unknownCodes',
+  'atm.common.shift',
+  'atm.common.leaderShiftHint',
+  'atm.common.leaderShiftManyHint',
+  'atm.common.leaderRowOnlyHint',
+  'atm.common.leaderSelectedOnlyHint',
+  'atm.common.moveAlreadyOpen',
+  'atm.board.day.label',
+  'atm.board.day.today',
+  'atm.board.day.tomorrow',
+  'atm.board.day.upcoming',
+  'atm.board.day.earlier',
+  'atm.export.department',
+  'atm.export.serial',
+  'atm.export.empty',
+  'atm.export.repTitleDay',
+  'atm.export.repTitleRange',
+  'atm.export.maintTitleDay',
+  'atm.export.maintTitleRange',
+  'atm.export.banksAre',
+  'atm.export.areasAre',
+  'atm.export.repFile',
+  'atm.export.maintFile',
   'atm.replenishments.title',
   'atm.replenishments.scheduleTime',
-  'atm.replenishments.todayGroup',
-  'atm.replenishments.carriedGroup',
-  'atm.replenishments.emptyToday',
+  'atm.replenishments.empty.today',
+  'atm.replenishments.empty.tomorrow',
+  'atm.replenishments.empty.upcoming',
+  'atm.replenishments.empty.earlier',
   'atm.replenishments.closed',
   'atm.replenishments.closeTitle',
   'atm.replenishments.closeBody',
@@ -57,12 +88,12 @@ const KEYS = [
   'atm.replenishments.alreadyOpenCodes',
   'atm.replenishments.editTitle',
   'atm.replenishments.editManyTitle',
-  'atm.replenishments.leaderCascadeHint',
   'atm.done.from',
   'atm.done.to',
   'atm.done.repTitle',
   'atm.done.maintTitle',
   'atm.done.empty',
+  'atm.done.rangeTooLarge',
   'atm.done.reopen',
   'atm.done.reopened',
   'atm.done.reopenTitle',
@@ -80,7 +111,10 @@ const KEYS = [
   'atm.maintenance.openAction',
   'atm.maintenance.openedCount',
   'atm.maintenance.alreadyOpenCodes',
-  'atm.maintenance.emptyToday',
+  'atm.maintenance.empty.today',
+  'atm.maintenance.empty.tomorrow',
+  'atm.maintenance.empty.upcoming',
+  'atm.maintenance.empty.earlier',
   'atm.maintenance.closed',
   'atm.maintenance.closeTitle',
   'atm.maintenance.closeBody',
@@ -90,7 +124,6 @@ const KEYS = [
   'atm.maintenance.fromMail',
   'atm.maintenance.editTitle',
   'atm.maintenance.editManyTitle',
-  'atm.maintenance.leaderCascadeHint',
   'atm.mail.title',
   'atm.mail.subtitle',
   'atm.mail.issue',
@@ -113,6 +146,19 @@ const KEYS = [
   'atm.mail.logEmpty',
   'atm.mail.actionBy',
   'atm.mail.actionAt',
+  // The mail pages' row buttons, filter row and the log's restore (2026-10-28).
+  'atm.mail.acceptSelected',
+  'atm.mail.rejectSelected',
+  'atm.mail.search',
+  'atm.mail.emptyFiltered',
+  'atm.mail.allStatuses',
+  'atm.mail.restore',
+  'atm.mail.restoreTitle',
+  'atm.mail.restoreBodyAccepted',
+  'atm.mail.restoreBodyRejected',
+  'atm.mail.restoredCount',
+  'atm.mail.restoreRefusedClosed',
+  'atm.mail.restoreRefusedLegacy',
   'atm.machines.title',
   'atm.machines.subtitle',
   'atm.machines.export',
@@ -165,6 +211,72 @@ const KEYS = [
   'atm.dataEdit.labelSaved',
   'atm.dataEdit.bulkTitle',
   'atm.dataEdit.lineAlignHint',
+  // The four tabs, the spellings and their unmapped callout, bilingual areas, and what an add
+  // recorded in the register (DEC-35 … DEC-38).
+  'atm.dataEdit.tab.bankLabel',
+  'atm.dataEdit.addSpelling',
+  'atm.dataEdit.editSpelling',
+  'atm.dataEdit.notLinked',
+  'atm.dataEdit.spellingBankHint',
+  'atm.dataEdit.spellingIsBankLabel',
+  'atm.dataEdit.unmappedTitle',
+  'atm.dataEdit.unmappedBody',
+  'atm.dataEdit.labelsUnscoped',
+  'atm.dataEdit.linkToBank',
+  'atm.dataEdit.storedName',
+  'atm.dataEdit.nameAr',
+  'atm.dataEdit.nameEn',
+  'atm.dataEdit.displayNameHint',
+  'atm.dataEdit.storedAs',
+  'atm.dataEdit.renameKeepsMachines',
+  'atm.dataEdit.areaExists',
+  'atm.dataEdit.origin.title',
+  'atm.dataEdit.origin.backfill',
+  'atm.dataEdit.origin.auto',
+  'atm.dataEdit.notRegisterMapped',
+  // The add dialogs name the branch an add is filed in, or ask for one (2026-10-28).
+  'atm.dataEdit.addInBranch',
+  'atm.dataEdit.chooseBranch',
+  'atm.dataEdit.machineReactivated',
+  'atm.dataEdit.register.recorded',
+  'atm.dataEdit.register.linked',
+  'atm.dataEdit.register.branchUnmapped',
+  'atm.dataEdit.register.placeholderCode',
+  'atm.dataEdit.register.noBank',
+  'atm.dataEdit.error.activeElsewhere',
+  'atm.dataEdit.error.openElsewhere',
+  'atm.dataEdit.error.bankInactive',
+  'atm.dataEdit.machinesRecorded',
+  'atm.dataEdit.machinesLinked',
+  'atm.dataEdit.machinesReactivated',
+  'atm.dataEdit.machinesRefused.activeElsewhere',
+  'atm.dataEdit.machinesRefused.openElsewhere',
+  'atm.dataEdit.notRecorded.branchUnmapped',
+  'atm.dataEdit.notRecorded.placeholderCode',
+  'atm.dataEdit.notRecorded.noBank',
+  // The bank catalog's dialog (DEC-35), on data-edit and in the register.
+  'atm.bankCatalog.add',
+  'atm.bankCatalog.edit',
+  'atm.bankCatalog.code',
+  'atm.bankCatalog.codeHint',
+  'atm.bankCatalog.codeInvalid',
+  'atm.bankCatalog.codeFixed',
+  'atm.bankCatalog.nameAr',
+  'atm.bankCatalog.nameEn',
+  'atm.bankCatalog.opsLabel',
+  'atm.bankCatalog.opsLabelHint',
+  'atm.bankCatalog.opsLabelChanged',
+  'atm.bankCatalog.color',
+  'atm.bankCatalog.colorHint',
+  'atm.bankCatalog.isActive',
+  'atm.bankCatalog.activeHint',
+  'atm.bankCatalog.settlementsWarning',
+  'atm.bankCatalog.added',
+  'atm.bankCatalog.saved',
+  // The catalog as the register shows it: «البنوك», and an archived bank in a picker.
+  'atm.bankCatalog.title',
+  'atm.bankCatalog.intro',
+  'atm.bankCatalog.archivedOption',
   'atm.reports.title',
   'atm.reports.subtitle',
   'atm.reports.day',
@@ -174,6 +286,77 @@ const KEYS = [
   'atm.reports.total',
   'atm.reports.totalsLine',
   'atm.reports.empty',
+  // /atm/settings (2026-10-28): the maintenance mailbox and the branches that work as one.
+  'atm.settings.title',
+  'atm.settings.pickBranch',
+  'atm.settings.unknownBranch',
+  'atm.settings.mailbox.title',
+  'atm.settings.mailbox.notSaved',
+  'atm.settings.mailbox.tenantId',
+  'atm.settings.mailbox.tenantIdInvalid',
+  'atm.settings.mailbox.clientId',
+  'atm.settings.mailbox.clientIdInvalid',
+  'atm.settings.mailbox.clientSecret',
+  'atm.settings.mailbox.secretStored',
+  'atm.settings.mailbox.userEmail',
+  'atm.settings.mailbox.userEmailInvalid',
+  'atm.settings.mailbox.enabled',
+  'atm.settings.mailbox.enabledHint',
+  'atm.settings.mailbox.branches',
+  'atm.settings.mailbox.branchesHint',
+  'atm.settings.mailbox.branch',
+  'atm.settings.mailbox.category',
+  'atm.settings.mailbox.noBranches',
+  'atm.settings.mailbox.addBranch',
+  'atm.settings.mailbox.removeBranch',
+  'atm.settings.mailbox.worksAs',
+  'atm.settings.mailbox.worksAsListed',
+  'atm.settings.mailbox.test',
+  'atm.settings.mailbox.pollNow',
+  'atm.settings.mailbox.probeHint',
+  'atm.settings.mailbox.readingOffHint',
+  'atm.settings.mailbox.testOk',
+  'atm.settings.mailbox.testFailed',
+  'atm.settings.mailbox.pollDone',
+  'atm.settings.mailbox.pollFailed',
+  'atm.settings.mailbox.lastPoll',
+  'atm.settings.mailbox.lastPollAt',
+  'atm.settings.mailbox.neverPolled',
+  'atm.settings.mailbox.counts.read',
+  'atm.settings.mailbox.counts.created',
+  'atm.settings.mailbox.counts.duplicates',
+  'atm.settings.mailbox.counts.unmatched',
+  'atm.settings.mailbox.counts.failed',
+  'atm.settings.mailbox.unmatchedReasons',
+  'atm.settings.links.title',
+  'atm.settings.links.hint',
+  'atm.settings.links.row',
+  'atm.settings.links.none',
+  'atm.settings.links.branch',
+  'atm.settings.links.actsAs',
+  'atm.settings.links.add',
+  'atm.settings.links.remove',
+  'atm.settings.links.added',
+  'atm.settings.links.removed',
+  // «نقل البيانات» on the links card (2026-10-28) — its page-level texts; the collections, merges
+  // and refusals are checked below from the contract's own vocabularies.
+  'atm.settings.move.action',
+  'atm.settings.move.title',
+  'atm.settings.move.intro',
+  'atm.settings.move.counts',
+  'atm.settings.move.total',
+  'atm.settings.move.merges',
+  'atm.settings.move.blockers',
+  'atm.settings.move.blockersHint',
+  'atm.settings.move.more',
+  'atm.settings.move.confirm',
+  'atm.settings.move.done',
+  'atm.settings.move.remaining',
+  'atm.settings.move.nothing',
+  'atm.settings.move.banner',
+  'atm.settings.move.blocked',
+  'atm.settings.move.stopped',
+  'systemAdmin.users.audit.atmBranchMove',
 ];
 
 describe('atm i18n catalog', () => {
@@ -187,6 +370,56 @@ describe('atm i18n catalog', () => {
       (key) => translate(locale, key) === key,
     );
     expect(missing).toEqual([]);
+  });
+
+  // The catalog's own refusals are worded by name (`bankErrorText`), so a code added to the
+  // contracts without its text would reach the reader as `atm.bankCatalog.error.…`.
+  it.each(LOCALES)('every bank catalog refusal resolves in %s', (locale) => {
+    const codes = Object.values(ErrorCodes).filter((code) => code.startsWith('ATM_BANK_'));
+    expect(codes.length).toBe(3);
+    const missing = codes
+      .map((code) => `atm.bankCatalog.error.${code}`)
+      .filter((key) => translate(locale, key) === key);
+    expect(missing).toEqual([]);
+  });
+
+  // The links card words a refused pair by the contract's own issue (`atmBranchLinkIssues`), so an
+  // issue added there without its text would reach the reader as `atm.settings.links.issue.…`.
+  it.each(LOCALES)('every branch-link refusal resolves in %s', (locale) => {
+    const missing = ATM_BRANCH_LINK_ISSUES.map(
+      (issue) => `atm.settings.links.issue.${issue}`,
+    ).filter((key) => translate(locale, key) === key);
+    expect(missing).toEqual([]);
+  });
+
+  // The move dialog words each count, merge and refusal by the contract's own key, so a collection,
+  // merge or blocker added there without its text would reach the reader as `atm.settings.move.…`.
+  it.each(LOCALES)(
+    'every collection, merge and refusal of a branch move resolves in %s',
+    (locale) => {
+      const keys = [
+        ...ATM_BRANCH_MOVE_COLLECTIONS.map((key) => `atm.settings.move.collection.${key}`),
+        ...ATM_BRANCH_MOVE_MERGES.map((key) => `atm.settings.move.merge.${key}`),
+        ...ATM_BRANCH_MOVE_BLOCKERS.map((kind) => `atm.settings.move.blocker.${kind}`),
+      ];
+      expect(keys).toHaveLength(17 + 9 + 8);
+      expect(keys.filter((key) => translate(locale, key) === key)).toEqual([]);
+    },
+  );
+
+  // The texts a blocker fills in, by name — a placeholder the dialog does not send would show raw.
+  it.each(LOCALES)('a refusal names what stops the move, in %s', (locale) => {
+    const filled = (kind: string, params: Record<string, string | number>): string =>
+      translate(locale, `atm.settings.move.blocker.${kind}`, params);
+    expect(filled('machineActiveInBoth', { codes: '99990001' })).toContain('99990001');
+    expect(filled('machineTwinOpen', { codes: '99990002' })).toContain('99990002');
+    expect(filled('planSerialCollision', { banks: 'BRK' })).toContain('BRK');
+    expect(filled('planSameDay', { items: 'BRK 2026-10-28' })).toContain('BRK 2026-10-28');
+    expect(
+      filled('zoneCaps', { target: 'T', zones: 201, maxZones: 200, points: 19, maxPoints: 20 }),
+    ).not.toMatch(/\{\{/);
+    expect(filled('layoutImportRunning', { source: 'S', banks: 'BRK' })).not.toMatch(/\{\{/);
+    expect(filled('moveRunning', {})).not.toMatch(/\{\{/);
   });
 
   it.each(LOCALES)('every overview card resolves in %s', (locale) => {

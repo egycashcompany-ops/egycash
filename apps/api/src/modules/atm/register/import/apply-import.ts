@@ -14,6 +14,10 @@
 //
 // Secrets: AO is sealed per entry BEFORE its batch's transaction (the id is minted first so the
 // sealing context can name it) and the plaintext never reaches the run, the audit or a log line.
+//
+// Area labels (DEC-38): once the run has completed, every area its open or pending rows carry
+// becomes a data-edit label of its branch — one pass after the run, outside every batch, best
+// effort (`ensureAreaLabels` never throws), so the 118 raw workbook areas reach Operations' lists.
 import {
   ATM_NBE_FOREX_LABEL,
   ATM_REGISTER_IMPORT_OUTCOMES,
@@ -23,10 +27,13 @@ import {
   type SecretRef,
 } from '@ecms/contracts';
 import { Types, type ClientSession } from 'mongoose';
+import { logger } from '../../../../infrastructure/logging/logger';
 import { auditService } from '../../../../platform/audit';
 import { unitOfWork } from '../../../../platform/kernel/unit-of-work';
 import { AppError, ConflictError } from '../../../../shared/errors';
 import { type AuthContext } from '../../../../shared/types';
+import { assertNoBranchMoveRunning } from '../../branch-links/move-fence';
+import { ensureAreaLabels } from '../../catalogs/area-labels';
 import { AtmRefLabelModel } from '../../catalogs/ref-label.model';
 import { AtmMachineModel, type AtmMachineDoc } from '../../machines/machine.model';
 import {
@@ -181,6 +188,39 @@ const hasForexLabel = async (branchId: Types.ObjectId, session: ClientSession): 
     .session(session)
     .exec()) !== null;
 
+/**
+ * DEC-38, once the run has completed: a data-edit label for every area the run's open or pending
+ * rows carry. Never fails the run it follows — a miss is logged and the next boot's backfill
+ * repairs it.
+ */
+const labelRunAreas = async (runId: Types.ObjectId, actorId: string): Promise<void> => {
+  try {
+    const written = await AtmRegisterEntryModel.aggregate<{
+      _id: { branchId: Types.ObjectId; area: string };
+    }>([
+      {
+        $match: {
+          importRunId: runId,
+          isDeleted: false,
+          status: { $in: ['open', 'pending'] },
+          branchId: { $ne: null },
+          area: { $type: 'string' },
+        },
+      },
+      { $group: { _id: { branchId: '$branchId', area: '$area' } } },
+    ]).exec();
+    await ensureAreaLabels(
+      written.map((row) => row._id),
+      { actorId, origin: 'import' },
+    );
+  } catch (error) {
+    logger.warn(
+      { err: error instanceof Error ? error.name : 'Error' },
+      'atm: the import run’s area labels were not written — the next boot repairs them',
+    );
+  }
+};
+
 /** Write the approved categories. Throws (after marking the run `failed`) on any error. */
 export const applyRegisterImport = async (
   plan: ImportPlan,
@@ -189,6 +229,8 @@ export const applyRegisterImport = async (
   headerFills: ParsedRegisterFile['headerFills'],
   ctx: AuthContext,
 ): Promise<ApplyImportResult> => {
+  // Its couplings and inserts would land between a running «نقل البيانات»'s plan and its writes.
+  await assertNoBranchMoveRunning();
   const approved = new Set(request.categories);
   const actor = new Types.ObjectId(ctx.userId);
   const now = new Date();
@@ -224,6 +266,16 @@ export const applyRegisterImport = async (
     }
     throw error;
   }
+  // Again, now that this run is visible to a move (review finding): the move takes its lock and
+  // then looks for a running import (`registerImportRunning`); the import takes its run row and
+  // then looks for a running move — so of two that start together, one always sees the other.
+  // Refused here, the run wrote nothing: its row goes.
+  try {
+    await assertNoBranchMoveRunning();
+  } catch (error) {
+    await AtmRegisterImportRunModel.deleteOne({ _id: runId, state: 'running' }).exec();
+    throw error;
+  }
 
   const counts = Object.fromEntries(ATM_REGISTER_IMPORT_OUTCOMES.map((o) => [o, 0])) as Record<
     AtmRegisterImportOutcome,
@@ -242,6 +294,8 @@ export const applyRegisterImport = async (
       { $push: { rows: { $each: rows } }, $set: { counts } },
     ).exec();
   };
+  // The code's RESOLVED branch (`atm.branchLinks`, register-settings.ts) — the plan's own: a row of
+  // a code mapped to a linked source is filed, and its master coupled, under the target.
   const branchIdOf = (row: ParsedRow): string | null =>
     row.values.branchCode === null
       ? null
@@ -478,6 +532,7 @@ export const applyRegisterImport = async (
         { field: 'counts', old: null, new: { ...counts } },
       ],
     });
+    await labelRunAreas(runId, ctx.userId);
     return { runId: String(runId), counts };
   } catch (error) {
     // Never a cell value: an error code, or the error's class name.

@@ -16,19 +16,39 @@
 // This service is the ONLY writer of tickets. The transport that feeds it is deliberately kept
 // outside: `mail-source.ts` is the mailbox seam and `mail-poll.service.ts` the loop, so swapping
 // Microsoft Graph for IMAP — or for n8n posting in once A-6b lands — moves nothing in here.
+//
+// The machine's branch is read as ATM files it (`atm.branchLinks`): a machine still filed under a
+// linked source is its target's, so its mail is switched on, filed and coloured as the target's.
+// The owner (2026-10-28) saw a Mohandessin machine's mail only under «كل الشركة»: it was filed
+// under the linked October, which nobody is answered as any more (link-context.ts).
 import { type AtmMailIngest, type AtmMailIngestResultDto } from '@ecms/contracts';
+import { Types } from 'mongoose';
 import { logger } from '../../../infrastructure/logging/logger';
 import { ConflictError } from '../../../shared/errors';
 import { AtmMachineModel, type AtmMachineDoc } from '../machines/machine.model';
 import { atmMaintenanceRepository } from '../maintenances/maintenance.repository';
+import { linkedBranchOf, loadAtmBranchLinks } from '../shared/atm-context';
+import { openDayOf } from '../shared/open-operation';
 import { atmMailTicketRepository } from './mail-ticket.repository';
 import { parseAtmMailBody } from './parse-mail';
 
 /** System writes carry no user — the audit trail shows the platform actor, as sweeps do. */
 const SYSTEM_ACTOR = null;
 
+/** The outcome reason for a machine whose branch the mailbox document has not switched on. */
+export const BRANCH_NOT_ENABLED_REASON = 'branch not enabled for mail';
+
+/**
+ * Which branches may receive tickets. Absent = every branch (the environment mode, as before);
+ * present = only these — the mailbox document's switched-on branches (mailbox-source.ts), as ATM
+ * files them (a linked source's row switches its target on).
+ */
+export interface AtmMailIngestGate {
+  branchIds: ReadonlySet<string>;
+}
+
 class AtmMailIngestionService {
-  async ingest(message: AtmMailIngest): Promise<AtmMailIngestResultDto> {
+  async ingest(message: AtmMailIngest, gate?: AtmMailIngestGate): Promise<AtmMailIngestResultDto> {
     const existing = await atmMailTicketRepository.findByProviderMessageId(
       message.providerMessageId,
     );
@@ -80,20 +100,36 @@ class AtmMailIngestionService {
       };
     }
     const machine = machines[0] as AtmMachineDoc;
+    const branchId = linkedBranchOf(await loadAtmBranchLinks(), String(machine.branchId));
+
+    // Still the machine that decides the branch — the gate only says whether that branch takes mail
+    // yet. The owner switches branches on one at a time («هنبدأ بفرع المهندسين حالياً وبعدين هنبقى
+    // نزود فرع فرع»), and mail for a branch not on yet is NOT ECMS's: it stays unread for whoever
+    // still reads that mailbox by hand, and the first run after the branch is switched on files it.
+    if (gate !== undefined && !gate.branchIds.has(branchId)) {
+      return {
+        outcome: 'unmatched',
+        ticketId: null,
+        branchId: null,
+        reason: BRANCH_NOT_ENABLED_REASON,
+      };
+    }
 
     // The ingest-time flags, as the legacy reader computed them (index.js:168-175): found = the
     // master lookup above succeeded; duplication = the machine already has an open maintenance.
-    // The legacy asked "opened TODAY"; the owner's rule (OD-1) made duplication mean exactly what
-    // accept refuses — an open maintenance on any day, in any branch — and the stored value the
-    // log page shows asks the same question the pending screen does.
+    // The owner's rule (OD-1) made duplication mean exactly what accept refuses — an open
+    // maintenance, in any branch, on the day the mail was received (the day accept opens it on,
+    // D6; per day since 2026-10-27) — and the stored value the log page shows asks the same
+    // question the pending screen does.
     const duplicationAtIngest = await atmMaintenanceRepository.hasOpenOperation(
       machine.machineCode,
+      openDayOf(message.receivedAt),
     );
 
     try {
       const ticket = await atmMailTicketRepository.create(
         {
-          branchId: machine.branchId,
+          branchId: new Types.ObjectId(branchId),
           machineId: machine._id,
           machineCode: machine.machineCode,
           bankName: machine.bankName,

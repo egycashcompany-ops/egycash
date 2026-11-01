@@ -23,6 +23,17 @@ interface FetchEvent {
 }
 type Listener = (event: FetchEvent) => void;
 
+interface PushEvent {
+  data: { json: () => unknown } | null;
+  waitUntil: (promise: unknown) => void;
+}
+
+/** What the worker asked the browser to show for one push. */
+interface Shown {
+  title: string;
+  options: { icon?: string; badge?: string; body?: string };
+}
+
 interface Harness {
   /** Dispatch a GET at the worker; null when it declined to intercept. */
   get: (url: string, mode?: string) => Promise<'network' | 'cache' | null>;
@@ -32,6 +43,8 @@ interface Harness {
   matched: string[];
   /** URLs it stored into a cache. */
   stored: string[];
+  /** Deliver a push message; resolves to the notification the worker showed for it. */
+  push: (payload: unknown) => Promise<Shown | undefined>;
 }
 
 /** How the stand-in network answers one URL. Unlisted URLs get a 200 JavaScript response. */
@@ -49,6 +62,8 @@ interface Answer {
  */
 const load = (scope: string, answers: ReadonlyMap<string, Answer> = new Map()): Harness => {
   const listeners = new Map<string, Listener>();
+  const pushListeners: ((event: PushEvent) => void)[] = [];
+  const shown: Shown[] = [];
   const fetched: string[] = [];
   const matched: string[] = [];
   const stored: string[] = [];
@@ -66,11 +81,20 @@ const load = (scope: string, answers: ReadonlyMap<string, Answer> = new Map()): 
   };
 
   const self = {
-    registration: { scope: `${ORIGIN}${scope}` },
+    registration: {
+      scope: `${ORIGIN}${scope}`,
+      showNotification: (title: string, options: Shown['options']) => {
+        shown.push({ title, options });
+        return Promise.resolve(undefined);
+      },
+    },
     location: { origin: ORIGIN },
     skipWaiting: () => Promise.resolve(undefined),
     clients: { claim: () => Promise.resolve(undefined) },
-    addEventListener: (type: string, listener: Listener) => listeners.set(type, listener),
+    addEventListener: (type: string, listener: Listener) => {
+      if (type === 'push') pushListeners.push(listener as unknown as (event: PushEvent) => void);
+      else listeners.set(type, listener);
+    },
   };
 
   const sandbox = {
@@ -111,6 +135,14 @@ const load = (scope: string, answers: ReadonlyMap<string, Answer> = new Map()): 
     fetched,
     matched,
     stored,
+    push: async (payload) => {
+      const pending: unknown[] = [];
+      for (const listener of pushListeners) {
+        listener({ data: { json: () => payload }, waitUntil: (promise) => pending.push(promise) });
+      }
+      await Promise.all(pending);
+      return shown.at(-1);
+    },
     get: async (url, mode = 'no-cors') => {
       const listener = listeners.get('fetch');
       if (listener === undefined) throw new Error('the worker registered no fetch listener');
@@ -169,6 +201,37 @@ describe('the shell and the build output', () => {
   it('declines anything else same-origin rather than guessing', async () => {
     // No rule covers it, so it is not the worker's to answer.
     expect(await sw.get(`${ORIGIN}/robots.txt`)).toBeNull();
+  });
+
+  it.each(['favicon.svg', 'icons/icon-192.png', 'icons/badge-96.png', 'apple-touch-icon.png'])(
+    'never answers the logo file %s from a cache, so a new logo is never hidden behind an old one',
+    async (file) => {
+      expect(await sw.get(`${ORIGIN}/${file}`)).toBeNull();
+    },
+  );
+});
+
+// Android paints a notification's badge from its alpha alone, in the status bar's colour: the
+// full-colour app icon there is a plain square. The badge is the mark, white on transparent.
+describe('a push notification carries the logo', () => {
+  const PAYLOAD = {
+    title: 'طلب جديد',
+    body: 'تمت إضافة طلب',
+    url: '/approvals',
+    notificationId: 'n1',
+  };
+
+  it('shows the app icon, and the mark alone as the status-bar badge', async () => {
+    const notification = await load('/').push(PAYLOAD);
+    expect(notification?.title).toBe('طلب جديد');
+    expect(notification?.options.icon).toBe('/icons/icon-192.png');
+    expect(notification?.options.badge).toBe('/icons/badge-96.png');
+  });
+
+  it('points at the prefixed copies under a subpath deployment', async () => {
+    const notification = await load('/ecms/').push(PAYLOAD);
+    expect(notification?.options.icon).toBe('/ecms/icons/icon-192.png');
+    expect(notification?.options.badge).toBe('/ecms/icons/badge-96.png');
   });
 });
 

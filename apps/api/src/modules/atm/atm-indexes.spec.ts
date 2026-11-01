@@ -40,11 +40,52 @@ describe('redactedErrorText', () => {
 });
 
 describe('atmIndexedModels', () => {
+  // The bank catalog (DEC-35): its unique code and label-key indexes must exist before the boot
+  // seed writes the six; codes and label keys are not K/S values, so its rows may be logged.
+  it('lists the bank catalog with its rows allowed in the log', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    expect(listed.get('atm_banks')).toBe(true);
+  });
+
   // The machine map (docs/12-planning/atm-map-zones.md §3.4): its keys are ids, never K/S values.
   it('lists the map collections with their rows allowed in the log', () => {
     const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
     for (const collection of ['atm_map_zones', 'atm_map_zone_sets', 'atm_machine_locations']) {
       expect(listed.get(collection), collection).toBe(true);
     }
+  });
+
+  // Settlements phase 1 (docs/12-planning/atm-settlements-phase1.md §4.10): all ten are built at
+  // boot; the three operation records keep their rows out of the log.
+  it('lists the ten settlements collections, the operation records with their rows kept out', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    for (const collection of [
+      'atm_cassette_layouts',
+      'atm_cassette_layout_versions',
+      'atm_standard_loads',
+      'atm_replenishment_plans',
+      'atm_dispatch_routes',
+      'atm_layout_import_runs',
+      'atm_note_counters',
+    ]) {
+      expect(listed.get(collection), collection).toBe(true);
+    }
+    for (const collection of ['atm_plan_lines', 'atm_line_preparations', 'atm_route_assignments']) {
+      expect(listed.get(collection), collection).toBe(false);
+    }
+  });
+
+  // /atm/settings: `ux_mailbox_key` is what turns a second "first save" into a stale 409 instead
+  // of a second mailbox. Its key is a fixed word, so its rows may be logged.
+  it('lists the mailbox document with its rows allowed in the log', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    expect(listed.get('atm_mailbox_config')).toBe(true);
+  });
+
+  // «نقل البيانات»: `ux_one_running` is the lock that keeps two moves from merging one source twice;
+  // it must exist in production, where nothing else builds it. A run holds ids and counts only.
+  it('lists the branch-move runs with their rows allowed in the log', () => {
+    const listed = new Map(atmIndexedModels().map((entry) => [entry.collection, entry.rowsInLog]));
+    expect(listed.get('atm_branch_move_runs')).toBe(true);
   });
 });

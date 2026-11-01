@@ -11,10 +11,12 @@
 // `<form>` defaults to `submit` and would send the form on the first click — which on the login
 // screen would attempt a sign-in with a half-typed password.
 //
-// Placement is `end-0`, a LOGICAL edge, so it follows the writing direction without a second rule
-// for Arabic. The fields themselves stay `dir="ltr"` (a password is not prose), which puts the eye
-// on the visual right in both locales — the same arrangement `SearchInput` already uses for its
-// clear button.
+// The field stays `dir="ltr"` (a password is not prose), so the eye goes on the visual right in
+// both locales, and the WRAPPER is `dir="ltr"` too. The button's `end-0` and the input's `pe-10` are
+// both logical, and each resolves against its own element's direction: with only the input
+// left-to-right, Arabic put the room for the button on the right and the button itself on the left
+// (the page's end), on top of the characters being typed — «العين بتيجي فوق الباسورد وأنا بكتبه».
+// One direction for the whole control keeps the two on the same side.
 import { forwardRef, useId, useState, type InputHTMLAttributes } from 'react';
 import { useT } from '../../platform/localization/useT';
 import { cn } from '../lib/cn';
@@ -37,7 +39,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
     const label = t(revealed ? 'common.password.hide' : 'common.password.show');
 
     return (
-      <div className="relative">
+      <div className="relative" dir="ltr">
         <Input
           {...rest}
           id={inputId}

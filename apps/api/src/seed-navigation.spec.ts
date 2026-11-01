@@ -57,7 +57,20 @@ describe('the seeded navigation catalog', () => {
     //
     // So adding a row fails HERE first, on the author's machine, naming the number to change —
     // rather than eight minutes into CI in the one suite that cannot run without a mongod.
-    expect(rows).toHaveLength(133);
+    expect(rows).toHaveLength(139);
+  });
+
+  it('offers the consumables right under the mobile lines, on the asset grants', () => {
+    // «شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — under the lines, and keyed like them: the
+    // store has no permission of its own («same permissions as assets»).
+    const itRows = rows.filter((row) => row.route.startsWith('/it'));
+    const consumables = itRows.find((row) => row.route === '/it/consumables');
+    expect(consumables?.permission).toBe('itAsset.view');
+    expect(itRows.indexOf(consumables as (typeof itRows)[number])).toBe(
+      itRows.findIndex((row) => row.route === '/it/mobile-lines') + 1,
+    );
+    // The movements screen nests under it and has no row of its own.
+    expect(rows.some((row) => row.route === '/it/consumables/movements')).toBe(false);
   });
 
   it('offers the machine map right after the machine list, behind its own key', () => {
@@ -71,6 +84,22 @@ describe('the seeded navigation catalog', () => {
       atm.findIndex((row) => row.route === '/atm/machines') + 1,
     );
     expect(rows.some((row) => row.route === '/atm/map/unlocated')).toBe(false);
+  });
+
+  it('offers the four settlement rows after the Data Report, in this order, each behind its page key', () => {
+    // docs/12-planning/atm-settlements-phase1.md §7.3: each row's key equals the web route guard;
+    // the import page nests under the layouts and has no row of its own.
+    const atm = rows.filter((row) => row.route.startsWith('/atm'));
+    const report = atm.findIndex((row) => row.route === '/atm/register/report');
+    expect(
+      atm.slice(report + 1, report + 5).map((row) => [row.route, row.permission, row.icon]),
+    ).toEqual([
+      ['/atm/settlements/plans', 'atmSettlementPlan.view', 'receipt'],
+      ['/atm/settlements/layouts', 'atmCassetteLayout.view', 'layers'],
+      ['/atm/preparation', 'atmPreparation.view', 'qr'],
+      ['/atm/control', 'atmControl.view', 'truck'],
+    ]);
+    expect(rows.some((row) => row.route === '/atm/settlements/layouts/import')).toBe(false);
   });
 
   it('corrects a permission only where the key actually changes', () => {

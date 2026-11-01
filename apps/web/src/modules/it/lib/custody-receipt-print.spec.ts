@@ -1,16 +1,19 @@
 // The printed acknowledgment is the IT department's «إقرار استلام» — every part the owner's form
 // has, in its words, one page per device, filled in with what the system knows: the employee's
 // name and job, the device's kind, serial, specifications and accessories, and the paper's own
-// number in the footer. And since the tab inherits the app's Content-Security-Policy, nothing in it
-// may depend on a script of its own.
+// number in the footer. Each page's words for the item agree with that item's kind. And since the
+// tab inherits the app's Content-Security-Policy, nothing in it may depend on a script of its own.
 import { describe, expect, it } from 'vitest';
 import { type ItCustodyReceiptDocumentDto, type ItCustodyReceiptLineDto } from '@ecms/contracts';
 import {
   buildCustodyReceiptHtml,
   formDigits,
+  kindGender,
   RECEIPT_UNDERTAKING,
+  RECEIPT_UNDERTAKING_FEMININE,
   receiptDate,
   receiptNumberLabel,
+  receiptSheet,
   signatureName,
   specGroups,
 } from './custody-receipt-print';
@@ -321,9 +324,10 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
   it('a device with nothing on file prints no table and no accessories — the sentence ends there', () => {
     const [bare] = pages(buildCustodyReceiptHtml(paper({ lines: [SCREEN] }), LABELS));
     expect(bare).toContain('برقم مسلسل <span class="fill whole"><bdi>49WNRS3</bdi></span>.</p>');
-    expect(bare).not.toContain('ومواصفاته كالتالي');
+    // A screen is «هي», so neither lead is checked by its masculine alone: in no gender at all.
+    expect(bare).not.toContain('ومواصفات');
     expect(bare).not.toContain('<table');
-    expect(bare).not.toContain('ومشتملاته');
+    expect(bare).not.toContain('ومشتملات');
   });
 
   it('a receipt with no kind on file keeps the form’s «جهاز», then the asset’s own name', () => {
@@ -405,6 +409,132 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(hostile).toContain('&lt;script&gt;');
     expect(hostile).toContain('١. &lt;img src=x&gt;.');
     expect(hostile).toContain('Dell / &lt;b&gt;');
+  });
+});
+
+// «شوف أنت الأنسب وأعمله»: asked whether the form's «ومواصفاته … لاستخدامه … عليه … برده» should
+// agree with a feminine item such as a «شاشة», the owner left the choice to us. Each page agrees
+// with its own item's kind, and a masculine page is the form word for word.
+describe('the paper agrees with the item it hands over', () => {
+  it.each(['شاشة', 'طابعة ليزر', 'سماعات', 'كاميرا', 'كاميرا مراقبة', 'شاشات', 'سماعة رأس'])(
+    'a «%s» is «هي»',
+    (kind) => {
+      expect(kindGender(kind)).toBe('feminine');
+    },
+  );
+
+  it.each(['جهاز', 'لاب توب', 'ماوس', 'كيبورد', 'هاتف IP', 'راوتر', 'جهاز كمبيوتر مكتبي', 'UPS'])(
+    'a «%s» is «هو»',
+    (kind) => {
+      expect(kindGender(kind)).toBe('masculine');
+    },
+  );
+
+  it('goes by the first word, the noun the rest describes', () => {
+    // «كارت شاشة» is a card for a screen, so it is a card.
+    expect(kindGender('كارت شاشة')).toBe('masculine');
+    expect(kindGender('شاشة لمس')).toBe('feminine');
+  });
+
+  it('reads the same word however it is spaced, punctuated, marked or written with its hamza', () => {
+    for (const kind of [
+      '  شاشة  ',
+      'طابعة   ليزر',
+      'شاشة/Monitor',
+      'شاشـة',
+      'شاشةٌ',
+      'كامـيرا',
+      'آلة تصوير',
+      'الة تصوير',
+      'أداة',
+      'اداة',
+    ]) {
+      expect(kindGender(kind), kind).toBe('feminine');
+    }
+    for (const kind of ['هاتف   IP', 'لاب  توب', ' ماوس ', 'إكسسوار', 'اكسسوار']) {
+      expect(kindGender(kind), kind).toBe('masculine');
+    }
+  });
+
+  it('counts a plural in «ات» only when it has a stem: «كات 6» is a cable, not a plural', () => {
+    expect(kindGender('كات 6')).toBe('masculine');
+  });
+
+  it('counts only a written «ة», since a plain «ه» may as well end a masculine word', () => {
+    // «موجه» is a router. «شاشه» typed that way keeps the form's masculine, as it always has.
+    expect(kindGender('موجه')).toBe('masculine');
+    expect(kindGender('شاشه')).toBe('masculine');
+  });
+
+  it('words the feminine undertaking as the form does, with only the item’s three pronouns changed', () => {
+    expect(RECEIPT_UNDERTAKING_FEMININE).toBe(
+      'وذلك لاستخدامها في إنهاء أعمال الشركة وأتعهد بالحفاظ عليها حفاظ الشخص الحريص على ماله الخاص وأتعهد بردها إلى الشركة متى طلب مني ذلك.',
+    );
+    const masculine = RECEIPT_UNDERTAKING.split(' ');
+    const feminine = RECEIPT_UNDERTAKING_FEMININE.split(' ');
+    expect(feminine).toHaveLength(masculine.length);
+    expect(feminine.filter((word, i) => word !== masculine[i])).toEqual([
+      'لاستخدامها',
+      'عليها',
+      'بردها',
+    ]);
+    // «على ماله الخاص» is the careful person's own property, not the item, so it keeps its «ـه».
+    expect(RECEIPT_UNDERTAKING_FEMININE).toContain('على ماله الخاص');
+  });
+
+  it('agrees page by page when one paper hands over a laptop and a screen', () => {
+    const screen = { ...SCREEN, manufacturer: 'Dell', model: 'P2419H', accessories: ['كابل HDMI'] };
+    const two = buildCustodyReceiptHtml(paper({ lines: [LAPTOP, screen] }), LABELS);
+    const [laptopPage, screenPage] = pages(two);
+    // The laptop's page is the form word for word…
+    expect(laptopPage).toContain('<bdi>B600DN3</bdi></span> ومواصفاته كالتالي:</p>');
+    expect(laptopPage).toContain('<p class="lead">ومشتملاته كالتالي:</p>');
+    expect(laptopPage).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING}</p>`);
+    expect(laptopPage).not.toContain('ومواصفاتها');
+    expect(laptopPage).not.toContain('ومشتملاتها');
+    expect(laptopPage).not.toContain(RECEIPT_UNDERTAKING_FEMININE);
+    // …and the screen's page, right after it, says «ها».
+    expect(screenPage).toContain('<bdi>49WNRS3</bdi></span> ومواصفاتها كالتالي:</p>');
+    expect(screenPage).toContain('<p class="lead">ومشتملاتها كالتالي:</p>');
+    expect(screenPage).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING_FEMININE}</p>`);
+    expect(screenPage).not.toContain('ومواصفاته كالتالي');
+    expect(screenPage).not.toContain('ومشتملاته كالتالي');
+    expect(screenPage).not.toContain(RECEIPT_UNDERTAKING);
+    // And it still carries no script of its own.
+    expect(two).not.toMatch(/<script/iu);
+    expect(two).not.toMatch(/\son[a-z]+=/iu);
+  });
+
+  it('changes those words and nothing else on the page', () => {
+    const as = (deviceType: string): string =>
+      buildCustodyReceiptHtml(paper({ lines: [{ ...LAPTOP, deviceType }] }), LABELS);
+    expect(
+      as('طابعة')
+        .replace('<span class="kind">طابعة</span>', '<span class="kind">ماوس</span>')
+        .replace('ومواصفاتها كالتالي:', 'ومواصفاته كالتالي:')
+        .replace('ومشتملاتها كالتالي:', 'ومشتملاته كالتالي:')
+        .replace(RECEIPT_UNDERTAKING_FEMININE, RECEIPT_UNDERTAKING),
+    ).toBe(as('ماوس'));
+  });
+
+  it('keeps a computer and a receipt with no kind masculine, since both are «جهاز»', () => {
+    for (const deviceType of ['كمبيوتر All', null]) {
+      const [page] = pages(
+        buildCustodyReceiptHtml(paper({ lines: [{ ...LAPTOP, deviceType }] }), LABELS),
+      );
+      expect(page, String(deviceType)).toContain(
+        `<p class="undertaking">${RECEIPT_UNDERTAKING}</p>`,
+      );
+    }
+  });
+
+  it('closes in the form’s masculine when a paper names no gender, as the line paper’s «خط» does', () => {
+    expect(receiptSheet({ paper: paper(), body: '', block: '' })).toContain(
+      `<p class="undertaking">${RECEIPT_UNDERTAKING}</p>`,
+    );
+    expect(receiptSheet({ paper: paper(), body: '', block: '', gender: 'feminine' })).toContain(
+      `<p class="undertaking">${RECEIPT_UNDERTAKING_FEMININE}</p>`,
+    );
   });
 });
 

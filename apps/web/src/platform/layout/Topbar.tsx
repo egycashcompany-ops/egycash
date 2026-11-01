@@ -19,6 +19,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { NavLayoutToggle } from './NavLayoutToggle';
 import { BranchSwitcher } from './BranchSwitcher';
+import { AppVersion } from '../app/AppVersion';
 
 const UserMenu = (): JSX.Element => {
   const t = useT();
@@ -129,6 +130,10 @@ const UserMenu = (): JSX.Element => {
             <LogOutIcon className="h-4 w-4" />
             {t('platform.shell.signOut')}
           </button>
+          <AppVersion
+            role="none"
+            className="mt-1 border-t border-slate-100 px-4 pb-1 pt-2 dark:border-slate-700"
+          />
         </div>
       )}
     </div>

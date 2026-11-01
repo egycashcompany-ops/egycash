@@ -30,6 +30,27 @@ class ItMobileLineAssignmentRepository extends BaseRepository<ItMobileLineAssign
     return query.lean<ItMobileLineAssignmentDoc>().exec();
   }
 
+  /**
+   * Move a line's OPEN interval to the branch the line moved to — inside the line edit's own
+   * transaction — and answer the paper it names (null when none). A closed interval keeps the
+   * branch it was held in: that is where it happened.
+   */
+  async moveOpenToBranch(
+    lineId: string,
+    branchId: Types.ObjectId,
+    session: ClientSession,
+  ): Promise<Types.ObjectId | null> {
+    const moved = await this.model
+      .findOneAndUpdate(
+        { lineId: new Types.ObjectId(lineId), returnedAt: null, isDeleted: false },
+        { $set: { branchId }, $inc: { __v: 1 } },
+        { new: true, session },
+      )
+      .lean<ItMobileLineAssignmentDoc>()
+      .exec();
+    return moved?.receiptId ?? null;
+  }
+
   /** Every line an employee holds right now — the exit safety net's question. */
   async listOpenForEmployee(employeeId: string): Promise<ItMobileLineAssignmentDoc[]> {
     return this.model

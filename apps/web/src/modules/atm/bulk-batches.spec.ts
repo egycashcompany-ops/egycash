@@ -1,6 +1,7 @@
 // A board read whole can hold more checked rows than one bulk request carries
 // (`ATM_BULK_MAX_IDS`). Close, edit and delete — on both boards — send them in consecutive
 // requests the API accepts, keep everything else the request says, and join the answers as one.
+// So do accept and reject on /atm/mail-tickets, whose pending list is read whole since 2026-10-28.
 //
 // Every id below is synthetic.
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,9 +11,11 @@ import {
   BulkUpdateAtmMaintenancesSchema,
   BulkUpdateAtmReplenishmentsSchema,
   CloseAtmMaintenancesSchema,
+  DecideAtmMailTicketsSchema,
 } from '@ecms/contracts';
 import type * as ApiClientModule from '../../shared/lib/api-client';
 import {
+  acceptMailTickets,
   bulkUpdateMaintenances,
   bulkUpdateReplenishments,
   closeMaintenances,
@@ -20,6 +23,7 @@ import {
   deleteMaintenances,
   deleteReplenishments,
   inBulkBatches,
+  rejectMailTickets,
 } from './api/atm-api';
 
 const sent: { method: 'post' | 'patch'; path: string; body: { ids: string[] } }[] = [];
@@ -45,6 +49,19 @@ vi.mock('../../shared/lib/api-client', async () => {
     patch: (path: string, body: { ids: string[] }) => {
       sent.push({ method: 'patch', path, body });
       return answer(path, body);
+    },
+    // The mail accept: the first mail of every request is refused (the owner's rule, OD-1) and
+    // rides in `meta`, the rest are accepted — so the join of both halves can be seen.
+    postWithMeta: async (path: string, body: { ids: string[] }) => {
+      sent.push({ method: 'post', path, body });
+      if (failOn !== null && sent.length === failOn) throw new Error('refused');
+      const [first, ...rest] = body.ids;
+      return {
+        data: rest.map((id) => ({ id })),
+        meta: {
+          refused: [{ ticketId: first, machineCode: 'SYN', reason: 'maintenanceAlreadyOpen' }],
+        },
+      };
     },
   };
 });
@@ -101,6 +118,37 @@ describe('a checked selection larger than one request', () => {
     expect(await deleteReplenishments(ids(230))).toEqual({ removed: 230 });
     expect(await deleteMaintenances(ids(30))).toEqual({ removed: 30 });
     expect(sent.map((call) => call.body.ids.length)).toEqual([200, 30, 30]);
+  });
+
+  it('accepts every checked mail in requests the API accepts — accepted and refused joined in order', async () => {
+    const all = ids(450);
+    const { accepted, refused } = await acceptMailTickets(all);
+    expect(sent.map((call) => [call.path, call.body.ids.length])).toEqual([
+      ['/atm/mail-tickets/accept', 200],
+      ['/atm/mail-tickets/accept', 200],
+      ['/atm/mail-tickets/accept', 50],
+    ]);
+    for (const call of sent) {
+      expect(() => DecideAtmMailTicketsSchema.parse(call.body)).not.toThrow();
+    }
+    expect(refused.map((one) => one.ticketId)).toEqual([all[0], all[200], all[400]]);
+    expect(accepted.map((row) => row.id)).toEqual(all.filter((_id, index) => index % 200 !== 0));
+  });
+
+  it('rejects every checked mail in requests the API accepts', async () => {
+    const all = ids(201);
+    const rejected = await rejectMailTickets(all);
+    expect(sent.map((call) => [call.path, call.body.ids.length])).toEqual([
+      ['/atm/mail-tickets/reject', 200],
+      ['/atm/mail-tickets/reject', 1],
+    ]);
+    expect(rejected.map((row) => row.id)).toEqual(all);
+  });
+
+  it('a mail decision that fits one request is ONE request, as it always was', async () => {
+    await acceptMailTickets(ids(3));
+    await rejectMailTickets(ids(200));
+    expect(sent.map((call) => call.body.ids.length)).toEqual([3, 200]);
   });
 
   it('a selection that fits one request is ONE request, exactly as before', async () => {

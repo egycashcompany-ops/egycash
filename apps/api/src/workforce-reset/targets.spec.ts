@@ -84,6 +84,7 @@ describe('what the classification decides', () => {
     ['fleet_receipts', 'a record about the vehicle and the money'],
     ['atm_maintenances', 'a record about the machine'],
     ['it_mobile_line_assignments', 'custody a car holds too'],
+    ['it_consumable_movements', 'the stock ledger every on-hand figure sums'],
     ['hr_job_offers', 'recruitment history'],
   ])('leaves %s completely alone (%s)', (collection) => {
     expect(find(collection)?.action).toBe('keep');
@@ -103,6 +104,7 @@ describe('what the classification decides', () => {
       'operations_crew_assignments',
       'fleet_driver_profiles',
       'it_asset_assignments',
+      'it_consumable_memos',
     ]) {
       expect(find(collection)?.action, collection).toBe('purge');
     }

@@ -28,16 +28,25 @@ import {
 
 /**
  * The branch a receipt starts on: the top bar's branch when the reader may receive there, else
- * the only branch they may receive in — and otherwise nothing, so the choice is theirs.
+ * the only branch they may receive in — and otherwise nothing, so the choice is theirs. A top bar
+ * on a linked source (أكتوبر, working as المهندسين) starts on the branch it works as
+ * (`sourceBranchIds`): the stored choice is the source's own id, and the receipt is filed under the
+ * target whichever of the two is sent.
  */
 export const defaultReceiptBranch = (
   meta: AtmRegisterMetaDto | undefined,
   active: string | null,
 ): string => {
-  const ids = creatableBranches(meta).map((b) => b.branchId ?? '');
-  if (active !== null && ids.includes(active)) return active;
-  return ids.length === 1 ? (ids[0] ?? '') : '';
+  const branches = creatableBranches(meta);
+  const chosen =
+    active === null
+      ? undefined
+      : branches.find((b) => b.branchId === active || b.sourceBranchIds.includes(active));
+  if (chosen !== undefined) return chosen.branchId;
+  return branches.length === 1 ? (branches[0]?.branchId ?? '') : '';
 };
+
+const holdStill = (): void => undefined;
 
 export const ReceiveEntryDialog = ({
   meta,
@@ -54,6 +63,8 @@ export const ReceiveEntryDialog = ({
     entryFormValues(null, defaultReceiptBranch(meta, readStoredBranch())),
   );
   const [error, setError] = useState<string | null>(null);
+  // A bank or area dialog is open over the form: this one holds still until it closes.
+  const [overlay, setOverlay] = useState(false);
   const options = useRegisterBranchOptions(values.branchId === '' ? null : values.branchId);
   const receive = useReceiveRegisterEntry();
 
@@ -90,7 +101,7 @@ export const ReceiveEntryDialog = ({
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={overlay ? holdStill : onClose}
       title={t('atm.register.form.receiveTitle')}
       size="xl"
       tall
@@ -120,6 +131,7 @@ export const ReceiveEntryDialog = ({
           options={options.data}
           secrets={secrets}
           isMissing={required.isMissing}
+          onOverlayChange={setOverlay}
         />
       </div>
     </Dialog>

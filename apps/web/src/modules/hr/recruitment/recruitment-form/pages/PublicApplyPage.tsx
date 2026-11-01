@@ -5,8 +5,9 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { type PublicRecruitmentFormDto } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
+import { useDocumentTitle } from '../../../../../shared/lib/useDocumentTitle';
 import { useAppSelector } from '../../../../../store';
-import { BrandMark } from '../../../../../shared/ui/BrandMark';
+import { EgycashLogo } from '../../../../../shared/ui/EgycashLogo';
 import { Button } from '../../../../../shared/ui/Button';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Form, FormActions } from '../../../../../shared/ui/form';
@@ -23,6 +24,7 @@ type Phase =
 
 export const PublicApplyPage = (): JSX.Element => {
   const t = useT();
+  useDocumentTitle('EGYCASH');
   const locale = useAppSelector((state) => state.locale.locale);
   const { token = '' } = useParams();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
@@ -55,7 +57,7 @@ export const PublicApplyPage = (): JSX.Element => {
     <div className="min-h-screen bg-slate-50 py-8 dark:bg-slate-950">
       <div className="mx-auto w-full max-w-3xl px-4">
         <div className="mb-6 flex justify-center">
-          <BrandMark />
+          <EgycashLogo className="h-10" />
         </div>
         {children}
       </div>

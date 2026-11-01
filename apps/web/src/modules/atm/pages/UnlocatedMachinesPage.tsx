@@ -36,6 +36,7 @@ import {
   useParseLocation,
 } from '../api/map-queries';
 import { MovePinBar } from '../components/map/MovePinBar';
+import { useAtmBankLookup } from '../api/atm-queries';
 import { UnlocatedPanel } from '../components/map/UnlocatedPanel';
 import { type UnlocatedRowActions } from '../components/map/UnlocatedRow';
 import {
@@ -74,6 +75,8 @@ interface Moving {
 export const UnlocatedMachinesPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The bank catalog's names and colours (DEC-35), read once here and handed to every row.
+  const banks = useAtmBankLookup();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
@@ -308,6 +311,7 @@ export const UnlocatedMachinesPage = (): JSX.Element => {
           >
             <UnlocatedPanel
               locale={locale}
+              banks={banks}
               branchId={branchId}
               summary={summary.data}
               chips={chips}

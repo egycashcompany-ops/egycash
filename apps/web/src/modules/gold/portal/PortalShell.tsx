@@ -3,7 +3,8 @@
 // A customer holds one permission and has no place in the org tree, so the staff shell would give
 // them an icon rail with nothing in it, a launcher with nothing to launch and a command palette
 // over an empty catalog. The portal is its own frame instead: their organisation's name and logo,
-// the nine tabs, and a way out.
+// the nine tabs, and a way out — and, where there is room, EGYCASH's logo, since the portal is
+// EGYCASH's service to them.
 //
 // Nothing here is forked from the platform's layout — the theme and language toggles are the same
 // standalone components the login screen uses, and everything else is a handful of divs.
@@ -13,9 +14,11 @@ import { useAppDispatch } from '../../../store';
 import { signedOut } from '../../../store/authSlice';
 import { logoutRequest } from '../../../platform/auth/api';
 import { useT } from '../../../platform/localization/useT';
+import { useDocumentTitle } from '../../../shared/lib/useDocumentTitle';
 import { ThemeToggle } from '../../../platform/layout/ThemeToggle';
 import { LanguageToggle } from '../../../platform/layout/LanguageToggle';
 import { Button } from '../../../shared/ui';
+import { EgycashLogo } from '../../../shared/ui/EgycashLogo';
 import { CompanyLogo } from '../components/CompanyLogo';
 import { useGoldPortalMe } from './api/portal-queries';
 
@@ -33,6 +36,7 @@ const TABS = [
 
 export const PortalShell = (): JSX.Element => {
   const t = useT();
+  useDocumentTitle('EGYCASH');
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const me = useGoldPortalMe();
@@ -60,11 +64,20 @@ export const PortalShell = (): JSX.Element => {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          {/* Never shrinks: when the row is tight the customer's name (truncating) gives way, not
+              the sign-out button's label. */}
+          <div className="flex shrink-0 items-center gap-1">
+            {/* The customer's own name leads; EGYCASH's logo sits with the controls, from sm up. */}
+            <EgycashLogo className="hidden h-7 sm:block" />
+            <span
+              aria-hidden="true"
+              className="mx-2 hidden h-6 w-px shrink-0 bg-slate-200 dark:bg-slate-700 sm:block"
+            />
             <ThemeToggle />
             <LanguageToggle />
             <Button
               variant="secondary"
+              className="whitespace-nowrap"
               onClick={() => {
                 void signOut();
               }}

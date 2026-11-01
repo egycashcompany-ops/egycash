@@ -67,6 +67,8 @@ describe('every endpoint the IT client calls exists on the API', () => {
       new Set([
         // IT-1 — the registry
         'get /',
+        // The name filter's options — «Drop Down مع قابليه للكتابة».
+        'get /names',
         'get /by-code/:code',
         'post /labels',
         'get /:id',
@@ -84,6 +86,12 @@ describe('every endpoint the IT client calls exists on the API', () => {
     );
     // …and the client calls exactly those.
     expect(CLIENT).toContain("`/it/assets${buildQuery(params)}`");
+    expect(CLIENT).toContain("get<ItAssetNamesDto>('/it/assets/names')");
+    // A literal segment registered after '/:id' would be swallowed by the id matcher — and 400.
+    const registered = (path: string): number =>
+      ASSET_ROUTES.search(new RegExp(`router\\.get\\(\\s*'${path}'`));
+    expect(registered('/names')).toBeGreaterThan(-1);
+    expect(registered('/names')).toBeLessThan(registered('/:id'));
     expect(CLIENT).toContain('`/it/assets/${id}`');
     expect(CLIENT).toContain('`/it/assets/by-code/${encodeURIComponent(code)}`');
     expect(CLIENT).toContain("post<ItAssetDto>('/it/assets'");
@@ -432,6 +440,199 @@ describe('the mobile lines the IT client calls exist on the API, on the assets�
   });
 });
 
+// FR-20 — the consumables: the store's items and their NAMED movements, the ledger across items,
+// and the memo an issue writes. Each router is found through the manifest — the builder a prefix
+// mounts, then that builder's own body in whichever routes file declares it — so this reads the
+// API's wiring rather than a file name it guessed, and `declared()` never mixes two routers.
+describe('the consumables the IT client calls exist on the API, on the assets’ grants', () => {
+  const routeFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) return routeFiles(full);
+      return entry.name.endsWith('.routes.ts') ? [full] : [];
+    });
+  const ROUTE_FILES = routeFiles(API_SRC).map((file) => readFileSync(file, 'utf8'));
+  /** The body of the router the manifest mounts at `prefix`, or '' when nothing is mounted. */
+  const router = (prefix: string): string => {
+    const builder = new RegExp(`prefix: '${prefix}', router: (\\w+)\\(\\)`).exec(MANIFEST)?.[1];
+    if (builder === undefined) return '';
+    for (const text of ROUTE_FILES) {
+      const body = new RegExp(`export const ${builder} = [\\s\\S]*?\\n};`).exec(text)?.[0];
+      if (body !== undefined) return body;
+    }
+    return '';
+  };
+  const ITEMS = router('/it/consumables');
+  const LEDGER = router('/it/consumable-movements');
+  const MEMOS = router('/it/consumable-memos');
+
+  /** The grants one route rides — `authorize('x')` and every key of `authorizeAny('x', 'y')`. */
+  const gates = (routes: string, verb: string, path: string): string[] => {
+    const route =
+      new RegExp(`router\\.${verb}\\(\\s*'${path}'[\\s\\S]*?\\);`).exec(routes)?.[0] ?? '';
+    return [...route.matchAll(/authorize(?:Any)?\(([^)]*)\)/g)].flatMap((m) =>
+      [...(m[1] ?? '').matchAll(/'([^']+)'/g)].flatMap((k) => (k[1] ? [k[1]] : [])),
+    );
+  };
+
+  it('mounts the three routers', () => {
+    for (const prefix of ['/it/consumables', '/it/consumable-movements', '/it/consumable-memos']) {
+      expect(MANIFEST, `manifest does not mount ${prefix}`).toContain(`prefix: '${prefix}'`);
+    }
+  });
+
+  it('the store: list, read, add, edit, one item’s movements — and four NAMED movements', () => {
+    expect(declared(ITEMS)).toEqual(
+      new Set([
+        'get /',
+        'post /',
+        'get /:id',
+        'patch /:id',
+        'get /:id/movements',
+        // Stock moves only by a named movement, never by a PATCH of a quantity (ADR-024) — and
+        // the issue is ONE action for one memo, however many items it carries.
+        'post /issue',
+        'post /:id/receive',
+        'post /:id/scrap',
+        'post /:id/return',
+      ]),
+    );
+    expect(CLIENT).toContain('getPage<ItConsumableDto>(`/it/consumables${buildQuery(params)}`)');
+    expect(CLIENT).toContain("post<ItConsumableDto>('/it/consumables'");
+    expect(CLIENT).toContain("post<ItConsumableIssueResultDto>('/it/consumables/issue'");
+    expect(CLIENT).toContain('`/it/consumables/${id}`');
+    for (const action of ['receive', 'scrap', 'return']) {
+      expect(CLIENT, `client never calls /${action}`).toContain(`/it/consumables/\${id}/${action}`);
+    }
+  });
+
+  it('the ledger: one read-only list — the screen, an item, an asset, a person', () => {
+    expect(declared(LEDGER)).toEqual(new Set(['get /']));
+    expect(CLIENT).toContain('`/it/consumable-movements${buildQuery(params)}`');
+  });
+
+  it('the memo: read, print again with the same number, and the signed copy', () => {
+    expect(declared(MEMOS)).toEqual(
+      new Set([
+        'get /:id',
+        'post /:id/print',
+        'get /:id/signed-copy',
+        'post /:id/signed-copy',
+        'delete /:id/signed-copy',
+      ]),
+    );
+    expect(CLIENT).toContain('`/it/consumable-memos/${id}`');
+    expect(CLIENT).toContain('`/it/consumable-memos/${id}/print`');
+    expect(CLIENT).toContain('`/it/consumable-memos/${id}/signed-copy`');
+  });
+
+  // «same permissions as assets», no key of its own: reads (and the memo's reprint) on view, adding
+  // an item on create, editing it, receiving and scrapping on edit, and the custody surface — the
+  // issue, the return, the memo's signed copy — on the ONE custody grant.
+  it('every route rides the gate the asset beside it rides', () => {
+    const expected: [string, string, string, string][] = [
+      [ITEMS, 'get', '/', 'itAsset.view'],
+      [ITEMS, 'post', '/', 'itAsset.create'],
+      [ITEMS, 'get', '/:id', 'itAsset.view'],
+      [ITEMS, 'patch', '/:id', 'itAsset.edit'],
+      [ITEMS, 'get', '/:id/movements', 'itAsset.view'],
+      [ITEMS, 'post', '/issue', 'itAsset.assign'],
+      [ITEMS, 'post', '/:id/receive', 'itAsset.edit'],
+      [ITEMS, 'post', '/:id/scrap', 'itAsset.edit'],
+      [ITEMS, 'post', '/:id/return', 'itAsset.assign'],
+      [LEDGER, 'get', '/', 'itAsset.view'],
+      [MEMOS, 'get', '/:id', 'itAsset.view'],
+      [MEMOS, 'post', '/:id/print', 'itAsset.view'],
+      [MEMOS, 'get', '/:id/signed-copy', 'itAsset.view'],
+      [MEMOS, 'post', '/:id/signed-copy', 'itAsset.assign'],
+      [MEMOS, 'delete', '/:id/signed-copy', 'itAsset.assign'],
+    ];
+    for (const [routes, verb, path, permission] of expected) {
+      expect(gates(routes, verb, path), `${verb} ${path}`).toEqual([permission]);
+    }
+  });
+
+  // The client's params are an open record and the schemas are strict, so a filter name only one
+  // side knows typechecks on both and answers 400. Read from each screen's own request.
+  it('sends only filters the contract declares — the store’s and the ledger’s', () => {
+    const CONTRACTS = readFileSync(
+      resolve(HERE, '../../../../../packages/contracts/src/modules/it.ts'),
+      'utf8',
+    );
+    const schema = (name: string): string =>
+      new RegExp(`${name} = PaginationQuerySchema\\.extend\\(\\{([\\s\\S]*?)\\}\\)`).exec(
+        CONTRACTS,
+      )?.[1] ?? '';
+    const request = /const params = useMemo\(\s*\(\) => \(\{([\s\S]*?)\}\),\s*\[paramsKey\]/;
+    const sent = (page: string): string[] => {
+      const body = request.exec(readFileSync(resolve(HERE, page), 'utf8'))?.[1] ?? '';
+      // Paging and the sort travel on the shared pagination schema.
+      return [...body.matchAll(/(\w+):/g)]
+        .map((match) => match[1] as string)
+        .filter((key) => !['page', 'pageSize', 'sortBy', 'sortDir'].includes(key));
+    };
+    const store = sent('pages/ConsumablesPage.tsx');
+    expect(store).toEqual(
+      expect.arrayContaining(['search', 'typeId', 'branchId', 'belowMin', 'active']),
+    );
+    for (const field of store) {
+      expect(schema('ListItConsumablesQuerySchema'), `${field} is not a store filter`).toContain(
+        `${field}:`,
+      );
+    }
+    // The ledger's screen, and the three narrowed reads: one item's dialog, an asset's card and a
+    // person's card.
+    const ledger = [...sent('pages/ConsumableMovementsPage.tsx'), 'consumableId'];
+    expect(ledger).toEqual(
+      expect.arrayContaining([
+        'kind',
+        'typeId',
+        'branchId',
+        'employeeId',
+        'assetId',
+        'from',
+        'to',
+        'search',
+      ]),
+    );
+    for (const field of ledger) {
+      expect(
+        schema('ListItConsumableMovementsQuerySchema'),
+        `${field} is not a ledger filter`,
+      ).toContain(`${field}:`);
+    }
+  });
+
+  // An undeclared `sortBy` does not error — the repository falls back to its own order — so a
+  // header the API does not sort by would look like it worked and sorted by something else.
+  it('offers only sort headers the store’s register sorts by', () => {
+    const dir = resolve(API_SRC, 'consumables');
+    const sortable = new Set(
+      (existsSync(dir) ? readdirSync(dir) : [])
+        .filter((file) => file.endsWith('.ts') && !file.includes('.spec.'))
+        .flatMap((file) =>
+          [
+            ...readFileSync(resolve(dir, file), 'utf8').matchAll(
+              /(?:sortableFields:\s*|SORTABLE\w*\s*=\s*)\[([^\]]*)\]/g,
+            ),
+          ].flatMap((m) => [...(m[1] ?? '').matchAll(/'([^']+)'/g)].map((k) => k[1] as string)),
+        ),
+    );
+    for (const field of [
+      'code',
+      'name',
+      'typeName',
+      'unit',
+      'onHandQty',
+      'issuedQty',
+      'scrappedQty',
+      'minQty',
+    ]) {
+      expect(sortable, `${field} is not a sortable store column`).toContain(field);
+    }
+  });
+});
+
 describe('the permissions the API enforces are the ones the UI gates on', () => {
   // Matches both `authorize('x')` and every key inside `authorizeAny('x', 'y')`.
   const enforced = (routes: string): Set<string> =>
@@ -750,10 +951,40 @@ describe('the client sends only filters the API declares', () => {
     return found ?? '';
   };
 
-  it('assets: search, categoryId, status, branchId', () => {
+  it('assets: search, categoryId, status, branchId, name', () => {
     const schema = filters('ListItAssetsQuerySchema');
-    for (const field of ['search', 'categoryId', 'status', 'branchId']) {
+    for (const field of ['search', 'categoryId', 'status', 'branchId', 'name']) {
       expect(schema, `${field} is not a declared asset filter`).toContain(`${field}:`);
+    }
+  });
+
+  // «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the custody register's columns.
+  // The client's params are an open record and the schema is strict, so a name only one side
+  // knows typechecks on both and answers 400: the register would not load at all. Read from the
+  // screen's own request, so a rename on either side fails here.
+  it('custody register: a filter for each column, and none the API does not declare', () => {
+    const schema = filters('ListItAssignmentsQuerySchema');
+    const page = readFileSync(resolve(HERE, 'pages/CustodyPage.tsx'), 'utf8');
+    const request = /const params = useMemo\(\s*\(\) => \(\{([\s\S]*?)\}\),\s*\[paramsKey\]/;
+    const sent = [...(request.exec(page)?.[1] ?? '').matchAll(/(\w+):/g)]
+      .map((match) => match[1] as string)
+      // The sort travels on the shared pagination schema, not the register's own.
+      .filter((key) => key !== 'sortBy' && key !== 'sortDir');
+    // The scan must not silently match nothing: the column filters are all found.
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        'search',
+        'categoryId',
+        'assignedFrom',
+        'assignedTo',
+        'returnedFrom',
+        'returnedTo',
+        'overdue',
+        'receipt',
+      ]),
+    );
+    for (const field of sent) {
+      expect(schema, `${field} is not a declared custody register filter`).toContain(`${field}:`);
     }
   });
 

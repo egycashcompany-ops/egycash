@@ -262,6 +262,17 @@ describe('refusals', () => {
     ]);
   });
 
+  // SEC-13 (settlements §5.1): JSZip builds every entry before any cap applies, so the count is
+  // read from the end-of-central-directory record first.
+  it('a zip of 501 entries → TOO_LARGE entries, before JSZip opens it', async () => {
+    const zip = new JSZip();
+    for (let i = 0; i < 501; i += 1) zip.file(`e${String(i)}.txt`, '');
+    const upload = await zip.generateAsync({ type: 'nodebuffer' });
+    const error = await caught(reduceRegisterWorkbook(upload));
+    expect(error.code).toBe(ErrorCodes.ATM_REGISTER_IMPORT_LAYOUT);
+    expect(error.details).toEqual([{ field: 'file', code: 'TOO_LARGE', message: 'entries' }]);
+  });
+
   it('the time limit → TOO_LARGE', async () => {
     const upload = await buildRegisterWorkbook({ rows });
     const error = await caught(

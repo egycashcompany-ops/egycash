@@ -25,6 +25,8 @@
 //   /it/employees          itAsset.view   (HR's people, current and departed)    owner request
 //   /it/employees/:id      itAsset.view   (one person's custody and tickets)     owner request
 //   /it/mobile-lines       itAsset.view   (the SIM lines and who holds them)     FR-19
+//   /it/consumables        itAsset.view   (each branch's store of consumables)    FR-20
+//   /it/consumables/movements  itAsset.view   (the store's ledger, no nav row)    FR-20
 // The custody, ticket, maintenance and installation ACTIONS are not routes — they are dialogs on
 // the record, which is where the decision is actually taken. Dashboards get their routes with IT-6.
 import { Route, Routes } from 'react-router-dom';
@@ -51,6 +53,8 @@ import { LicenseDetailPage } from './pages/LicenseDetailPage';
 import { ItEmployeesPage } from './pages/ItEmployeesPage';
 import { ItEmployeeHistoryPage } from './pages/ItEmployeeHistoryPage';
 import { MobileLinesPage } from './pages/MobileLinesPage';
+import { ConsumablesPage } from './pages/ConsumablesPage';
+import { ConsumableMovementsPage } from './pages/ConsumableMovementsPage';
 
 export default function ItRoutes(): JSX.Element {
   return (
@@ -115,6 +119,25 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itAsset.view">
               <MobileLinesPage />
+            </RequirePermission>
+          }
+        />
+        {/* «المستهلكات» (FR-20) — on the assets' grants too: whoever keeps the devices keeps the
+            store. The ledger is a second route under it, reached from the register, with no row
+            of its own in the rail. */}
+        <Route
+          path="consumables"
+          element={
+            <RequirePermission permission="itAsset.view">
+              <ConsumablesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="consumables/movements"
+          element={
+            <RequirePermission permission="itAsset.view">
+              <ConsumableMovementsPage />
             </RequirePermission>
           }
         />

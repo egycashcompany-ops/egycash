@@ -4,6 +4,7 @@
 //   • custody — what they hold NOW, and every asset they held before, with when and in what
 //     condition it came back (the custody register, narrowed to them);
 //   • mobile lines — the SIM lines they hold now, and the ones they held before (FR-19);
+//   • consumables — what the store issued to them, on which memo, and what they gave back (FR-20);
 //   • tickets — the ones they opened, and the ones they worked as a technician.
 // A leaver's history is exactly as complete as anybody's: the reason this page exists is that the
 // person who left with a laptop is still somebody the company has to be able to look up.
@@ -42,6 +43,7 @@ import {
 } from '../api/it-queries';
 import { PersonStatusBadge } from '../components/PersonStatusBadge';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
+import { EmployeeConsumablesCard } from '../components/ConsumableMovements';
 import { MobileLineReceiptActions } from '../components/MobileLineReceipt';
 import { MobileNetworkBadge } from '../components/MobileNetworkLogo';
 import { TicketStatusBadge } from '../components/TicketStatusBadge';
@@ -455,6 +457,10 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
             </div>
           </CardBody>
         </Card>
+
+        {/* «المستهلكات» (FR-20) — «وأتبدل لمين»: what the store issued to this person and what they
+            gave back, each issue with the memo they signed. The page's own grant reads it. */}
+        <EmployeeConsumablesCard employeeId={employeeId} />
 
         {can('itTicket.view') && (
           <Card>

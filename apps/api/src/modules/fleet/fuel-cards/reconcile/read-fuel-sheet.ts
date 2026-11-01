@@ -3,8 +3,9 @@
 // NOTHING TOUCHES THE DISK. The companies' sheets write every text cell inline and carry no
 // shared-strings part, so ExcelJS's streaming reader, handed the file as it came, would always
 // spill the sheet to a temp file. The upload is reduced in memory to its FIRST tab first
-// (`shared/xlsx/one-sheet-zip.ts`, the ATM register import's reducer), then streamed row by row.
-// ExcelJS is CommonJS and loaded with `await import` here, never at module scope.
+// (`shared/xlsx/one-sheet-zip.ts`: the entry count is checked before JSZip opens anything, SEC-13,
+// and every part is inflated under its cap), then streamed row by row. ExcelJS is CommonJS and
+// loaded with `await import` here, never at module scope.
 //
 // What it returns is the rows as read, each with its Excel row number. A row whose three cells
 // are blank is padding; a row with no name, or a balance that is not a figure of zero or more (a

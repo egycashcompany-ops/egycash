@@ -97,9 +97,12 @@ const sources = (dir = HERE): string[] =>
 
 /**
  * The only places a person is HANDED something: custody hand-overs, a mobile line's hand-over
- * (FR-19) and a ticket's technician.
+ * (FR-19), a ticket's technician, and the consumables' issue (FR-20). The consumables' return
+ * names who brought an item back in the same file: recording it is ADDING a record — «لكن فى
+ * حاله الاضافه اللى موجود بس» — so it asks for the same population.
  */
 const HAND_OVERS = [
+  'components/ConsumableDialogs.tsx',
   'components/CustodyDialogs.tsx',
   'components/MobileLineDialogs.tsx',
   'components/TicketDialogs.tsx',
@@ -117,11 +120,12 @@ describe('which box asks for which population', () => {
 
   it('every filter, on every screen, finds leavers too', () => {
     const filters = using.filter((rel) => rel.startsWith('pages/'));
-    // The custody register, the asset register, the mobile lines and the help desk — the screens
-    // that narrow a list by a person.
+    // The custody register, the asset register, the mobile lines, the consumables' ledger and the
+    // help desk — the screens that narrow a list by a person.
     expect(filters.sort()).toEqual(
       [
         'pages/AssetsListPage.tsx',
+        'pages/ConsumableMovementsPage.tsx',
         'pages/CustodyPage.tsx',
         'pages/MobileLinesPage.tsx',
         'pages/TicketsListPage.tsx',
@@ -142,6 +146,8 @@ describe('which box asks for which population', () => {
     }
     // Assign and transfer choose a holder; the ticket dialog chooses a TECHNICIAN — IT's people.
     expect(pickers(code('components/CustodyDialogs.tsx'))).toHaveLength(2);
+    // The consumables' issue chooses who receives; their return, who brought an item back.
+    expect(pickers(code('components/ConsumableDialogs.tsx'))).toHaveLength(2);
     expect(pickers(code('components/TicketDialogs.tsx')).join('')).toContain('<TechnicianPicker');
   });
 

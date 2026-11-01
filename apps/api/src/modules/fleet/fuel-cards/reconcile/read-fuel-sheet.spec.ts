@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ErrorCodes } from '@ecms/contracts';
 import { AppError } from '../../../../shared/errors';
@@ -236,6 +237,15 @@ describe('refusals', () => {
     expect(await tooLarge({ maxDataRows: 2 })).toBe('rows');
     expect(await tooLarge({ sheetBytes: 64 })).toBe('xl/worksheets/sheet1.xml');
     expect(await tooLarge({ timeMs: -1 })).toBe('time');
+  });
+
+  it('more zip entries than a workbook carries → TOO_LARGE entries, before JSZip opens it', async () => {
+    const zip = new JSZip();
+    for (let i = 0; i < 501; i += 1) zip.file(`e${String(i)}`, '');
+    const error = await caught(readFuelSheet(await zip.generateAsync({ type: 'nodebuffer' })));
+    expect(error.code).toBe(ErrorCodes.FLEET_FUEL_SHEET_LAYOUT);
+    expect(error.httpStatus).toBe(422);
+    expect(error.details).toEqual([{ field: 'file', code: 'TOO_LARGE', message: 'entries' }]);
   });
 
   it('exactly the data-row cap is still read', async () => {

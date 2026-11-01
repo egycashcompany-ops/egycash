@@ -40,6 +40,8 @@ describe('everything with a stable name must revalidate', () => {
     ['the web app manifest', ['manifest.webmanifest']],
     ['an app icon', ['icons', 'icon-512.png']],
     ['the apple touch icon', ['apple-touch-icon.png']],
+    ['the tab icon', ['favicon.svg']],
+    ['the push notification badge', ['icons', 'badge-96.png']],
   ])('does not freeze %s', (_what, segments) => {
     expect(isHashedAsset(inBundle(...segments))).toBe(false);
   });

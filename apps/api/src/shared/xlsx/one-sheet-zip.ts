@@ -1,6 +1,8 @@
 // One worksheet of an uploaded .xlsx, re-zipped IN MEMORY so ExcelJS's streaming reader can parse
-// it without ever writing to disk. Shared by every upload that reads a workbook (the ATM register
-// import, the fuel-card sheet reconciliation), so the no-spill rule lives in one place.
+// it without ever writing to disk — the fuel-card sheet reconciliation's reducer. (The ATM register
+// and settlements imports read their workbooks through their own module's reader,
+// `modules/atm/register/import/read-register-workbook.ts`, under the same rules; a business module
+// never imports another module's code, so this one lives in shared.)
 //
 // WHY. ExcelJS's streaming `WorkbookReader` writes every worksheet that comes before
 // `xl/sharedStrings.xml` in the zip to an OS temp file and removes it only after its loop ends
@@ -8,6 +10,10 @@
 // (every text cell inline, as the fuel companies' sheets are) would always spill. So the upload is
 // never handed to the reader as it came:
 //
+//   0. before JSZip builds a single entry, the end-of-central-directory record and the directory
+//      itself are checked: more than 500 entries, or any ZIP64 marker, is refused (SEC-13) —
+//      `loadAsync` builds every entry before any cap here applies, and no deadline can interrupt
+//      it;
 //   1. the zip is opened in memory (JSZip) and only five entries are ever inflated — the workbook,
 //      its relationships, the styles, the shared strings, and the ONE worksheet asked for — each
 //      through a byte counter that stops the inflation past its cap (a zip bomb cannot grow
@@ -37,7 +43,10 @@ export interface OneSheetZipLimits {
 export interface OneSheetZipErrors {
   /** Not a zip, or not a workbook (no workbook part, an entry that will not inflate). */
   unreadable(): Error;
-  /** An entry past its cap (`what` is its path), or the deadline (`what` is `'time'`). */
+  /**
+   * An entry past its cap (`what` is its path), the deadline (`what` is `'time'`), or more entries
+   * than a workbook carries (`what` is `'entries'`).
+   */
   tooLarge(what: string): Error;
   /** The sheet asked for is not in the workbook. */
   missingSheet(): Error;
@@ -68,6 +77,69 @@ const READER_SHEET_PATH = /^xl\/worksheets\/sheet\d+\.xml$/;
 export const EMPTY_SHARED_STRINGS =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
   '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"/>';
+
+// ── The entry count, before JSZip builds anything (SEC-13) ──────────────────────────────────────
+
+/** More entries than this is not a workbook an upload reads (the companies' sheets carry ~10). */
+export const ZIP_MAX_ENTRIES = 500;
+
+const EOCD_SIGNATURE = 0x06054b50;
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50;
+const CENTRAL_HEADER_SIGNATURE = 0x02014b50;
+/** The record's 22 bytes plus the largest comment it can carry. */
+const EOCD_SEARCH_BYTES = 22 + 0xffff;
+const CENTRAL_HEADER_BYTES = 46;
+
+/**
+ * Refuse more than `ZIP_MAX_ENTRIES` entries, or any ZIP64 marker, from the end-of-central-
+ * directory record and the central directory itself — the records JSZip will build. The EOCD is the
+ * LAST signature of the final 65,557 bytes (JSZip reads the last one too); the central directory is
+ * walked from where JSZip will start it (data prepended to the zip moves it by the same offset), so
+ * an entry count the EOCD understates is counted all the same. Linear in the directory's size. The
+ * same check as the ATM reader's `checkZipEntryCount`, in the caller's own errors.
+ */
+export const checkZipEntryCount = (upload: Buffer, errors: OneSheetZipErrors): void => {
+  const from = Math.max(0, upload.length - EOCD_SEARCH_BYTES);
+  let eocd = -1;
+  for (let at = upload.length - 22; at >= from; at -= 1) {
+    if (upload.readUInt32LE(at) === EOCD_SIGNATURE) {
+      eocd = at;
+      break;
+    }
+  }
+  if (eocd === -1) throw errors.unreadable();
+  const entriesOnDisk = upload.readUInt16LE(eocd + 8);
+  const entries = upload.readUInt16LE(eocd + 10);
+  const directorySize = upload.readUInt32LE(eocd + 12);
+  const directoryOffset = upload.readUInt32LE(eocd + 16);
+  const zip64 =
+    upload.readUInt16LE(eocd + 4) === 0xffff ||
+    upload.readUInt16LE(eocd + 6) === 0xffff ||
+    entriesOnDisk === 0xffff ||
+    entries === 0xffff ||
+    directorySize === 0xffffffff ||
+    directoryOffset === 0xffffffff ||
+    (eocd >= 20 && upload.readUInt32LE(eocd - 20) === ZIP64_LOCATOR_SIGNATURE);
+  if (zip64 || entries > ZIP_MAX_ENTRIES || entriesOnDisk > ZIP_MAX_ENTRIES) {
+    throw errors.tooLarge('entries');
+  }
+  const prepended = eocd - (directoryOffset + directorySize);
+  if (prepended < 0) throw errors.unreadable();
+  let at = directoryOffset + prepended;
+  let count = 0;
+  while (at + CENTRAL_HEADER_BYTES <= upload.length) {
+    if (upload.readUInt32LE(at) !== CENTRAL_HEADER_SIGNATURE) break;
+    count += 1;
+    if (count > ZIP_MAX_ENTRIES) throw errors.tooLarge('entries');
+    at +=
+      CENTRAL_HEADER_BYTES +
+      upload.readUInt16LE(at + 28) +
+      upload.readUInt16LE(at + 30) +
+      upload.readUInt16LE(at + 32);
+  }
+};
+
+// ── Zip: the parts the reader needs, inflated under caps, re-zipped in reading order ──────────
 
 /**
  * Inflate one entry, counting bytes as they arrive. Past the cap (or the deadline) the stream is
@@ -208,8 +280,9 @@ const pickedSheetPath = (
 };
 
 /**
- * Open the upload in memory, inflate exactly five entries under their caps, and re-zip them in the
- * order the streaming reader needs. `'first'` takes the workbook's first tab.
+ * Check the entry count, open the upload in memory, inflate exactly five entries under their caps,
+ * and re-zip them in the order the streaming reader needs. `'first'` takes the workbook's first
+ * tab.
  */
 export const reduceToOneSheet = async (
   upload: Buffer,
@@ -218,6 +291,7 @@ export const reduceToOneSheet = async (
   deadline: number,
   errors: OneSheetZipErrors,
 ): Promise<ReducedOneSheetWorkbook> => {
+  checkZipEntryCount(upload, errors);
   const { default: JSZip } = await import('jszip');
   let zip: InstanceType<typeof JSZip>;
   try {

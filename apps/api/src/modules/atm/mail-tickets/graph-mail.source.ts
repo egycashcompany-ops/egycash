@@ -9,11 +9,22 @@
 // platform secret store when a sealed ref is configured, so a deployment never has to put it in
 // plaintext env — but plaintext env still works, because that is what the legacy had and a
 // migration that demands a secret-store rollout first is a migration that does not happen.
+//
+// Since /atm/settings (the owner, 2026-10-28: the credentials are typed on a screen, the secret
+// stored encrypted) the same transport also reads the mailbox the screen's document names — built
+// per document by `createGraphMailboxSource`, with the secret opened from its sealed ref on demand.
 import { outboundFetch } from '../../../infrastructure/http/outbound';
 import { logger } from '../../../infrastructure/logging/logger';
 import { env } from '../../../infrastructure/config/env';
 import { getSecretStore } from '../../../platform/secrets';
-import { registerAtmMailSource, type AtmMailMessage, type AtmMailSource } from './mail-source';
+import {
+  registerAtmMailSource,
+  registerAtmMailSourceFactory,
+  type AtmMailMessage,
+  type AtmMailPage,
+  type AtmMailSource,
+  type AtmMailSourceFactory,
+} from './mail-source';
 
 const GRAPH_ROOT = 'https://graph.microsoft.com/v1.0';
 const SECRET_CONTEXT = 'atm.mail.graphClientSecret';
@@ -32,12 +43,47 @@ const text = (value: unknown): string => (typeof value === 'string' ? value : ''
 export interface GraphMailConfig {
   tenantId: string;
   clientId: string;
-  /** Plaintext, or a JSON `SecretRef` the platform store can open. */
-  clientSecret: string;
+  /**
+   * The client secret, produced when a token is due — from the environment (plaintext, or a JSON
+   * `SecretRef` the platform store opens) or from the mailbox document's sealed ref.
+   */
+  clientSecret: () => Promise<string>;
   /** The mailbox to read — `/users/{userEmail}/messages`, as the legacy did. */
   userEmail: string;
   timeoutMs: number;
 }
+
+/** The environment's secret: plaintext as configured, or opened when configured as a sealed ref. */
+const environmentSecret = (raw: string) => async (): Promise<string> => {
+  if (!raw.trimStart().startsWith('{')) return raw;
+  const ref: unknown = JSON.parse(raw);
+  return getSecretStore().open(ref as never, SECRET_CONTEXT);
+};
+
+/** Graph's messages as the ingestion seam reads them; one it cannot use is left out, unread. */
+const toMailMessages = (listed: readonly GraphMessage[]): AtmMailMessage[] => {
+  const out: AtmMailMessage[] = [];
+  for (const message of listed) {
+    const id = text(message.id);
+    const bodyText = text(message.body?.content);
+    // A message with no id cannot be marked read, and one with no body cannot be parsed — the
+    // legacy skipped the second case explicitly (index.js:128-131) and never met the first.
+    if (id === '' || bodyText === '') continue;
+    const received = new Date(text(message.receivedDateTime));
+    out.push({
+      providerMessageId: id,
+      // The TRUE receipt time. The legacy captured it and then overwrote it with "now"
+      // (index.js:134 vs :137), which is why its log page timestamps were ingest times; the
+      // port doc records that as the one legacy bug this transport does not reproduce.
+      receivedAt: Number.isNaN(received.getTime()) ? new Date() : received,
+      senderEmail: text(message.from?.emailAddress?.address),
+      subject: text(message.subject),
+      bodyText,
+      isRead: message.isRead === true,
+    });
+  }
+  return out;
+};
 
 class GraphMailSource implements AtmMailSource {
   readonly providerId = 'microsoftGraph';
@@ -51,14 +97,6 @@ class GraphMailSource implements AtmMailSource {
     return true;
   }
 
-  /** The client secret, opened through the platform store when it was configured as a ref. */
-  private async clientSecret(): Promise<string> {
-    const raw = this.config.clientSecret;
-    if (!raw.trimStart().startsWith('{')) return raw;
-    const ref: unknown = JSON.parse(raw);
-    return getSecretStore().open(ref as never, SECRET_CONTEXT);
-  }
-
   /**
    * Client-credentials token, cached until a minute before expiry — the legacy's own margin
    * (index.js:45), which keeps a long poll from being cut off mid-flight by an expiring token.
@@ -68,7 +106,7 @@ class GraphMailSource implements AtmMailSource {
     const body = new URLSearchParams({
       client_id: this.config.clientId,
       scope: 'https://graph.microsoft.com/.default',
-      client_secret: await this.clientSecret(),
+      client_secret: await this.config.clientSecret(),
       grant_type: 'client_credentials',
     });
     const response = await this.fetchJson<{ access_token?: unknown; expires_in?: unknown }>(
@@ -113,28 +151,23 @@ class GraphMailSource implements AtmMailSource {
       `?$filter=isRead%20eq%20false&$orderby=receivedDateTime%20asc&$top=${String(limit)}` +
       `&$select=id,subject,from,body,receivedDateTime,isRead`;
     const payload = await this.fetchJson<{ value?: GraphMessage[] }>(path, { method: 'GET' });
+    return toMailMessages(payload.value ?? []);
+  }
 
-    const out: AtmMailMessage[] = [];
-    for (const message of payload.value ?? []) {
-      const id = text(message.id);
-      const bodyText = text(message.body?.content);
-      // A message with no id cannot be marked read, and one with no body cannot be parsed — the
-      // legacy skipped the second case explicitly (index.js:128-131) and never met the first.
-      if (id === '' || bodyText === '') continue;
-      const received = new Date(text(message.receivedDateTime));
-      out.push({
-        providerMessageId: id,
-        // The TRUE receipt time. The legacy captured it and then overwrote it with "now"
-        // (index.js:134 vs :137), which is why its log page timestamps were ingest times; the
-        // port doc records that as the one legacy bug this transport does not reproduce.
-        receivedAt: Number.isNaN(received.getTime()) ? new Date() : received,
-        senderEmail: text(message.from?.emailAddress?.address),
-        subject: text(message.subject),
-        bodyText,
-        isRead: message.isRead === true,
-      });
-    }
-    return out;
+  /**
+   * Newest first, `$skip` past the unread mail already looked at. `receivedDateTime` leads the
+   * `$filter` because Graph requires every `$orderby` property to appear there, first and in the
+   * same order — otherwise it refuses the listing (`InefficientFilter`). The bound is every date.
+   */
+  async listUnreadPage(limit: number, skip: number): Promise<AtmMailPage> {
+    const path =
+      `${GRAPH_ROOT}/users/${encodeURIComponent(this.config.userEmail)}/messages` +
+      `?$filter=receivedDateTime%20ge%201900-01-01T00:00:00Z%20and%20isRead%20eq%20false` +
+      `&$orderby=receivedDateTime%20desc&$top=${String(limit)}&$skip=${String(skip)}` +
+      `&$select=id,subject,from,body,receivedDateTime,isRead`;
+    const payload = await this.fetchJson<{ value?: GraphMessage[] }>(path, { method: 'GET' });
+    const listed = payload.value ?? [];
+    return { messages: toMailMessages(listed), listed: listed.length };
   }
 
   async markHandled(providerMessageId: string, category: string | null): Promise<void> {
@@ -151,12 +184,25 @@ class GraphMailSource implements AtmMailSource {
   }
 }
 
+/** The source for a mailbox document saved on /atm/settings — Graph is the one provider today. */
+export const createGraphMailboxSource: AtmMailSourceFactory = (connection) =>
+  new GraphMailSource({
+    tenantId: connection.tenantId,
+    clientId: connection.clientId,
+    clientSecret: connection.openSecret,
+    userEmail: connection.userEmail,
+    timeoutMs: env.ATM_MAIL_GRAPH_TIMEOUT_MS,
+  });
+
 /**
- * Registers the Graph source when the deployment configured a mailbox. Called at module load;
- * silent and inert when the four settings are not all present, which is the pre-existing
- * behaviour of every install that has no mailbox.
+ * Registers Graph as the provider for a mailbox document (always — whether one exists is the
+ * poll's question, asked per run), and the environment's Graph source when the deployment
+ * configured a mailbox there. Called at module load; the environment half is silent and inert when
+ * the four settings are not all present, which is the pre-existing behaviour of every install that
+ * has no mailbox.
  */
 export const registerGraphMailSource = (): void => {
+  registerAtmMailSourceFactory(createGraphMailboxSource);
   const {
     ATM_MAIL_GRAPH_TENANT_ID,
     ATM_MAIL_GRAPH_CLIENT_ID,
@@ -175,7 +221,7 @@ export const registerGraphMailSource = (): void => {
     new GraphMailSource({
       tenantId: ATM_MAIL_GRAPH_TENANT_ID,
       clientId: ATM_MAIL_GRAPH_CLIENT_ID,
-      clientSecret: ATM_MAIL_GRAPH_CLIENT_SECRET,
+      clientSecret: environmentSecret(ATM_MAIL_GRAPH_CLIENT_SECRET),
       userEmail: ATM_MAIL_GRAPH_USER,
       timeoutMs: env.ATM_MAIL_GRAPH_TIMEOUT_MS,
     }),

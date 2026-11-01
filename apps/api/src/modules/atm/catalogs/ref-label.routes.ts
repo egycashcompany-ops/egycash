@@ -4,9 +4,15 @@
 // labels on their own keys — `atmRefLabel.create` / `atmRefLabel.edit`, or `atmMachine.manage` as
 // before — and the service asks that the key reach the label's branch (DEC-29). Deleting a label
 // stays `atmMachine.manage` only.
+//
+// DEC-38/39: Efficiency add AREAS from the register with the register keys they hold, so the add
+// also opens to `atmRegister.create` / `.edit` (the service limits them to areas, in a branch they
+// reach). `GET /options` is what the data-edit dialogs offer for one branch — any key of the page,
+// reaching that branch — and is declared BEFORE `/:kind`, which would otherwise read it as a kind.
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import {
+  AtmRefLabelOptionsQuerySchema,
   CreateAtmRefLabelSchema,
   ListAtmRefLabelsQuerySchema,
   UpdateAtmRefLabelSchema,
@@ -25,9 +31,10 @@ import {
 } from '../../../platform/web';
 import { toAtmRefLabelDto } from '../atm.mappers';
 import { ATM_REF_LABEL_KINDS, type AtmRefLabelKind } from './ref-label.model';
-import { atmRefLabelService } from './ref-label.service';
+import { ATM_REF_LABEL_OPTIONS_KEYS, atmRefLabelService } from './ref-label.service';
 
 import {
+  type AtmRefLabelOptionsQuery,
   type CreateAtmRefLabel,
   type ListAtmRefLabelsQuery,
   type UpdateAtmRefLabel,
@@ -43,6 +50,11 @@ const listLabels = async (req: Request, res: Response): Promise<void> => {
     await atmRefLabelService.list(params.kind, query, authContext(req)),
     toAtmRefLabelDto,
   );
+};
+
+const labelOptions = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, AtmRefLabelOptionsQuery>(req);
+  ok(res, await atmRefLabelService.options(query, authContext(req)));
 };
 
 const createLabel = async (req: Request, res: Response): Promise<void> => {
@@ -67,6 +79,13 @@ const removeLabel = async (req: Request, res: Response): Promise<void> => {
 export const buildAtmRefLabelsRouter = (): Router => {
   const router = Router();
   router.get(
+    '/options',
+    authenticate,
+    authorizeAny(...ATM_REF_LABEL_OPTIONS_KEYS),
+    validate({ query: AtmRefLabelOptionsQuerySchema }),
+    asyncHandler(labelOptions),
+  );
+  router.get(
     '/:kind',
     authenticate,
     authorize('atmMachine.view'),
@@ -76,7 +95,12 @@ export const buildAtmRefLabelsRouter = (): Router => {
   router.post(
     '/:kind',
     authenticate,
-    authorizeAny('atmRefLabel.create', 'atmMachine.manage'),
+    authorizeAny(
+      'atmRefLabel.create',
+      'atmMachine.manage',
+      'atmRegister.create',
+      'atmRegister.edit',
+    ),
     validate({ body: CreateAtmRefLabelSchema, params: KindParamSchema }),
     asyncHandler(createLabel),
   );

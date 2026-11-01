@@ -53,8 +53,13 @@ def _threshold(name: str, default: float) -> float:
 #: at 600 px of card width each digit gets ~26 px of width and ~50 px of height — around the floor
 #: at which PP-OCR's recognition input stops being interpolation. Below 900 it works but the margin
 #: for a smudge or a fold is gone, which is what `degraded` means.
-MIN_CARD_WIDTH_PX = _threshold("MIN_CARD_WIDTH", 600.0)
-GOOD_CARD_WIDTH_PX = _threshold("GOOD_CARD_WIDTH", 800.0)
+#:
+#: Measured since, on one real card photographed small in a 4000 px frame and zoomed to before
+#: reading: at 560 px of card width every field read correctly; at 440 px the name, the dates and
+#: the words still read but the national ID lost its last digit to a valid-looking wrong one. So
+#: below 450 is a reject (every field capped at `low`), and up to 700 is `degraded`.
+MIN_CARD_WIDTH_PX = _threshold("MIN_CARD_WIDTH", 450.0)
+GOOD_CARD_WIDTH_PX = _threshold("GOOD_CARD_WIDTH", 700.0)
 
 #: Variance of the Laplacian, measured on the canonical 1024 px card so the number is comparable
 #: across captures regardless of the source camera.

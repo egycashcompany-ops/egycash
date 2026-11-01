@@ -12,6 +12,7 @@ that can pull a wheel at build time.
 Endpoints
   GET  /health   → readiness, model directory, active layout profile
   POST /extract  → {frontImageBase64?, backImageBase64?} → RawOcrResult-shaped fields
+  POST /read     → {imageBase64} → any document's text in reading order (receipts, letters, …)
 
 Images arrive as base64 in a JSON body rather than as multipart because the caller already holds
 them in memory (it read them from the Files service) and the payloads are small — a card photo is
@@ -32,15 +33,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .diagnose import diagnose
+from .document import read_document
 from .extract import extract
 from .layout import active_profile_name
+from .preprocess import load_bgr
 from .trace import Trace, render_html
 
 LOG = logging.getLogger("nidocr.service")
 
 #: Refuse oversized bodies outright. A National-ID photo is well under this; anything larger is a
 #: mistake or an attempt to exhaust memory, and both deserve a 413 rather than an OOM.
-MAX_BODY_BYTES = 12 * 1024 * 1024
+# Two full-resolution phone photos, base64-encoded. Sized for the 4000 px the test page now sends:
+# shrinking photos to fit the old 12 MB cut far-away cards below the size they can be read at.
+MAX_BODY_BYTES = 32 * 1024 * 1024
 
 _recognizer = None
 
@@ -53,10 +58,13 @@ def get_recognizer():
     """
     global _recognizer  # noqa: PLW0603 — process-wide singleton is the point
     if _recognizer is None:
-        from .engine import PaddleRecognizer
+        from .vlm import build_recognizer  # noqa: PLC0415 — lazy: the models are heavy
 
         started = time.perf_counter()
-        _recognizer = PaddleRecognizer(model_dir=os.environ.get("PADDLE_OCR_MODEL_DIR", "/models"))
+        # OCR_TEXT_RECOGNIZER picks paddle (default) | paddleocr_vl | qwen — see vlm.py.
+        _recognizer = build_recognizer(
+            model_dir=os.environ.get("PADDLE_OCR_MODEL_DIR", "/models")
+        )
         LOG.info("recognizer ready in %.1f s", time.perf_counter() - started)
     return _recognizer
 
@@ -81,6 +89,23 @@ def _decode(value: str | None, suffix: str) -> str | None:
     finally:
         handle.close()
     return handle.name
+
+
+#: Longest side of an oriented-image preview. Enough to see which way up the photo was read,
+#: small enough not to double the response for a card the caller already has at full size.
+PREVIEW_MAX_SIDE = 900
+
+
+def _preview(image) -> str:
+    """A photo as the pipeline read it → base64 JPEG, shrunk. Only ever sent when asked for."""
+    import cv2  # noqa: PLC0415 — already loaded by the pipeline; kept local to this helper
+
+    height, width = image.shape[:2]
+    scale = min(1.0, PREVIEW_MAX_SIDE / max(height, width, 1))
+    if scale < 1.0:
+        image = cv2.resize(image, (round(width * scale), round(height * scale)), interpolation=cv2.INTER_AREA)
+    ok, buffer = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    return base64.b64encode(buffer.tobytes()).decode("ascii") if ok else ""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -113,6 +138,35 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_document(self, payload: dict) -> None:
+        """POST /read — any document, no fields. See document.py."""
+        path = None
+        try:
+            path = _decode(payload.get("imageBase64"), "-page.jpg")
+            if path is None:
+                self._send(400, {"error": "imageBase64 is required"})
+                return
+            result = read_document(load_bgr(path), get_recognizer())
+            upright_image = result.pop("uprightImage", None)
+            if payload.get("returnOrientedImages") and upright_image is not None:
+                result["orientedImage"] = _preview(upright_image)
+            # Counts and timing only, like /extract: a document's text is its owner's business.
+            LOG.info(
+                "read a document: %d lines in %.0f ms (rotated %d)",
+                len(result["lines"]),
+                result["elapsedMs"],
+                result["rotated"],
+            )
+            self._send(200, result)
+        except ValueError as error:
+            self._send(400, {"error": str(error)})
+        except Exception:  # noqa: BLE001 — a failed read must not take the service down
+            LOG.exception("document read failed")
+            self._send(500, {"error": "document read failed"})
+        finally:
+            if path:
+                Path(path).unlink(missing_ok=True)
+
     def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         if self.path.rstrip("/") != "/health":
             self._send(404, {"error": "not found"})
@@ -126,12 +180,13 @@ class Handler(BaseHTTPRequestHandler):
                 "modelsPresent": model_dir.is_dir() and any(model_dir.rglob("*")),
                 "layoutProfile": active_profile_name(),
                 "recognizerLoaded": _recognizer is not None,
+                "textRecognizer": os.environ.get("OCR_TEXT_RECOGNIZER") or "paddle",
             },
         )
 
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
         route = self.path.rstrip("/")
-        if route not in ("/extract", "/diagnose", "/trace"):
+        if route not in ("/extract", "/diagnose", "/trace", "/read"):
             self._send(404, {"error": "not found"})
             return
         if route == "/trace" and os.environ.get("OCR_TRACE_DISABLED") == "1":
@@ -150,6 +205,10 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._send(400, {"error": "body is not valid JSON"})
+            return
+
+        if route == "/read":
+            self._read_document(payload)
             return
 
         front = back = None
@@ -259,6 +318,17 @@ class Handler(BaseHTTPRequestHandler):
                         side: report.as_dict() for side, report in result.quality.items()
                     },
                     "diagnostics": result.diagnostics,
+                    # Opt-in, for the test page: each side as it was read, so a reader can SEE
+                    # the turn that `diagnostics.rotated` only reports. The API never asks for it.
+                    **(
+                        {
+                            "orientedImages": {
+                                side: _preview(image) for side, image in result.oriented.items()
+                            }
+                        }
+                        if payload.get("returnOrientedImages")
+                        else {}
+                    ),
                 },
             )
         except ValueError as error:

@@ -1,10 +1,11 @@
-// The in-memory reducer both workbook uploads share (ATM register import, fuel-card sheet): which
-// sheet it keeps, in what order, the stand-in shared strings, and its refusals. Its caller-facing
-// behaviour on the ATM workbook stays pinned, unchanged, by read-register-workbook.spec.ts.
+// The in-memory one-sheet reducer (the fuel-card sheet reconciliation's): which sheet it keeps, in
+// what order, the stand-in shared strings, the entry count before JSZip opens anything (SEC-13),
+// and its refusals. Its caller-facing behaviour stays pinned by read-fuel-sheet.spec.ts.
 import JSZip from 'jszip';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   EMPTY_SHARED_STRINGS,
+  ZIP_MAX_ENTRIES,
   attributes,
   reduceToOneSheet,
   startTags,
@@ -220,6 +221,85 @@ describe('refusals', () => {
     expect([capped.kind, capped.what]).toEqual(['tooLarge', 'xl/worksheets/sheet1.xml']);
     const late = await refusedBy(reduceToOneSheet(upload, 'first', LIMITS, Date.now() - 1, ERRORS));
     expect([late.kind, late.what]).toEqual(['tooLarge', 'time']);
+  });
+});
+
+describe('the entry count, before JSZip opens the file (SEC-13)', () => {
+  const opened = () => vi.spyOn(JSZip, 'loadAsync');
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A zip of `count` empty entries — not a workbook, so past the count it is unreadable. */
+  const zipOf = async (count: number): Promise<Buffer> => {
+    const zip = new JSZip();
+    for (let i = 0; i < count; i += 1) zip.file(`e${String(i)}`, '');
+    return zip.generateAsync({ type: 'nodebuffer' });
+  };
+
+  const EOCD = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+
+  it('one entry over the limit → tooLarge(entries), and JSZip never opens it', async () => {
+    const loadAsync = opened();
+    const refused = await refusedBy(
+      reduceToOneSheet(await zipOf(ZIP_MAX_ENTRIES + 1), 'first', LIMITS, later(), ERRORS),
+    );
+    expect([refused.kind, refused.what]).toEqual(['tooLarge', 'entries']);
+    expect(loadAsync).not.toHaveBeenCalled();
+  });
+
+  it('exactly the limit passes the count (control: the spy sees the reducer’s JSZip)', async () => {
+    const loadAsync = opened();
+    const refused = await refusedBy(
+      reduceToOneSheet(await zipOf(ZIP_MAX_ENTRIES), 'first', LIMITS, later(), ERRORS),
+    );
+    expect(refused.kind).toBe('unreadable');
+    expect(loadAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('an end record that understates its entries is caught by the directory walk', async () => {
+    const upload = await zipOf(ZIP_MAX_ENTRIES + 1);
+    const eocd = upload.lastIndexOf(EOCD);
+    upload.writeUInt16LE(1, eocd + 8);
+    upload.writeUInt16LE(1, eocd + 10);
+    const loadAsync = opened();
+    const refused = await refusedBy(reduceToOneSheet(upload, 'first', LIMITS, later(), ERRORS));
+    expect([refused.kind, refused.what]).toEqual(['tooLarge', 'entries']);
+    expect(loadAsync).not.toHaveBeenCalled();
+  });
+
+  it('data prepended to the zip moves the directory, and the walk still counts it', async () => {
+    const upload = Buffer.concat([Buffer.alloc(64, 0x20), await zipOf(ZIP_MAX_ENTRIES + 1)]);
+    const eocd = upload.lastIndexOf(EOCD);
+    upload.writeUInt16LE(1, eocd + 8);
+    upload.writeUInt16LE(1, eocd + 10);
+    const refused = await refusedBy(reduceToOneSheet(upload, 'first', LIMITS, later(), ERRORS));
+    expect([refused.kind, refused.what]).toEqual(['tooLarge', 'entries']);
+  });
+
+  it('a ZIP64 marker or a ZIP64 end locator → tooLarge(entries); no end record → unreadable', async () => {
+    const upload = await workbook(TWO_TABS);
+    const eocd = upload.lastIndexOf(EOCD);
+    const loadAsync = opened();
+
+    const marked = Buffer.from(upload);
+    marked.writeUInt16LE(0xffff, eocd + 10);
+    const first = await refusedBy(reduceToOneSheet(marked, 'first', LIMITS, later(), ERRORS));
+    expect([first.kind, first.what]).toEqual(['tooLarge', 'entries']);
+
+    const locator = Buffer.alloc(20);
+    locator.writeUInt32LE(0x07064b50, 0);
+    locator.writeUInt32LE(1, 16);
+    const withLocator = Buffer.concat([upload.subarray(0, eocd), locator, upload.subarray(eocd)]);
+    const second = await refusedBy(reduceToOneSheet(withLocator, 'first', LIMITS, later(), ERRORS));
+    expect([second.kind, second.what]).toEqual(['tooLarge', 'entries']);
+
+    const cut = await refusedBy(
+      reduceToOneSheet(upload.subarray(0, eocd), 'first', LIMITS, later(), ERRORS),
+    );
+    expect(cut.kind).toBe('unreadable');
+    expect(loadAsync).not.toHaveBeenCalled();
   });
 });
 

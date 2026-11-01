@@ -326,15 +326,18 @@ const trigger = (markup: string, label: string): string => {
 
 describe.each(['replenishments', 'maintenances'] as const)('the %s screen', (kind) => {
   const emptyToday =
-    kind === 'replenishments' ? 'atm.replenishments.emptyToday' : 'atm.maintenance.emptyToday';
+    kind === 'replenishments' ? 'atm.replenishments.empty.today' : 'atm.maintenance.empty.today';
+  const today = (rows: Row[]): Row[] => rows.filter((r) => r.openedAt === TODAY);
+  const earlier = (rows: Row[]): Row[] => rows.filter((r) => r.openedAt !== TODAY);
 
-  it('shows every row of a board past one page, in its two groups', () => {
+  it('shows every row of a board past one page — one day view at a time', () => {
     const rows = busyDay();
-    const markup = renderBoard(kind, { rows });
-    for (const r of rows) expect(markup).toContain(`>${r.machineCode}<`);
-    const carried = markup.slice(markup.indexOf(t('atm.replenishments.carriedGroup')));
-    expect(carried).toContain('>99990121<');
-    expect(carried).not.toContain('>99990001<');
+    const onToday = renderBoard(kind, { rows });
+    for (const r of today(rows)) expect(onToday).toContain(`>${r.machineCode}<`);
+    expect(onToday).not.toContain('>99990121<');
+    const onEarlier = renderBoard(kind, { search: 'day=earlier', rows });
+    for (const r of earlier(rows)) expect(onEarlier).toContain(`>${r.machineCode}<`);
+    expect(onEarlier).not.toContain('>99990001<');
   });
 
   it('an area chosen with no bank reaches its board, and the trigger counts the choice', () => {
@@ -345,7 +348,7 @@ describe.each(['replenishments', 'maintenances'] as const)('the %s screen', (kin
       rows,
       offered: { banks: ['SYN Bank, Ltd', 'SYN NBE'], areas: ['SYN Miami', 'SYN Smouha'] },
     });
-    for (const r of rows) expect(markup).toContain(`>${r.machineCode}<`);
+    for (const r of today(rows)) expect(markup).toContain(`>${r.machineCode}<`);
     expect(trigger(markup, t('atm.common.area'))).toContain('>1</span>');
     expect(trigger(markup, t('atm.common.bank'))).not.toContain('>1</span>');
   });
@@ -359,7 +362,7 @@ describe.each(['replenishments', 'maintenances'] as const)('the %s screen', (kin
       rows,
     });
     expect(rows).toHaveLength(20);
-    for (const r of rows) expect(markup).toContain(`>${r.machineCode}<`);
+    for (const r of today(rows)) expect(markup).toContain(`>${r.machineCode}<`);
     expect(trigger(markup, t('atm.common.bank'))).toContain('>1</span>');
   });
 

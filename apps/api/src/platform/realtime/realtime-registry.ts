@@ -19,6 +19,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // ── ATM ────────────────────────────────────────────────────────────────────
   'atm.machine': { permission: 'atmMachine.view' },
   'atm.refLabel': { permission: 'atmMachine.view' },
+  // The bank catalog (DEC-35): a bank added, renamed or archived refreshes the pickers, the
+  // register, the report and the map legend. The machine view key, as for the labels beside it.
+  'atm.bank': { permission: 'atmMachine.view' },
   'atm.replenishment': { permission: 'atmReplenishment.view' },
   'atm.maintenance': { permission: 'atmMaintenance.view' },
   'atm.mailTicket': { permission: 'atmMailTicket.view' },
@@ -30,6 +33,21 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // set's revision check is their guard, and their screens refetch.
   'atm.mapZone': { permission: 'atmMap.view' },
   'atm.machineLocation': { permission: 'atmMap.view' },
+  // Settlements & Review → Preparation → Control & Supplies (docs/12-planning/
+  // atm-settlements-phase1.md §6.11): each entity follows the key that reads its page.
+  'atm.cassetteLayout': { permission: 'atmCassetteLayout.view' },
+  'atm.standardLoad': { permission: 'atmCassetteLayout.view' },
+  'atm.settlementPlan': { permission: 'atmSettlementPlan.view' },
+  'atm.planLine': { permission: 'atmSettlementPlan.view' },
+  'atm.linePreparation': { permission: 'atmPreparation.view' },
+  'atm.dispatchRoute': { permission: 'atmControl.view' },
+  'atm.routeAssignment': { permission: 'atmControl.view' },
+  // Day signals (DS-26): no audit row of their own; each carries the plan's branch.
+  'atm.preparationDay': { permission: 'atmPreparation.view' },
+  'atm.controlDay': { permission: 'atmControl.view' },
+  // /atm/settings' mailbox card: a save refreshes the card for whoever administers it. The branch
+  // links are a platform setting and are audited — and signalled — as `platform.setting`.
+  'atm.mailboxConfig': { permission: 'atmSettings.manage' },
 
   // ── Gold ───────────────────────────────────────────────────────────────────
   'gold.bar': { permission: 'goldBar.view' },
@@ -179,6 +197,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // exactly whoever sees the asset register and the custody papers.
   'it.mobileLine': { permission: 'itAsset.view' },
   'it.mobileLineReceipt': { permission: 'itAsset.view' },
+  // FR-20 — the consumables ride the asset grants too: a store's item, its stock and the memo an
+  // employee signs are shown to exactly whoever sees the asset register.
+  'it.consumable': { permission: 'itAsset.view' },
+  'it.consumableMemo': { permission: 'itAsset.view' },
   'it.catalogItem': { permission: 'itCatalog.manage' },
   'it.license': { permission: 'itLicense.view' },
   'it.maintenanceOrder': { permission: 'itMaintenance.view' },
@@ -258,4 +280,11 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
     'one audit row per batch call (the register-import shape); the calling screen refetches itself',
   'atm.mapLinkResolution':
     'one audit row per batch call (the register-import shape); the calling screen refetches itself',
+  // One audit row per applied Full list import (docs/12-planning/atm-settlements-phase1.md §6.11).
+  'atm.layoutImport':
+    'one audit row per import run (the register-import shape); the importing screen refetches itself',
+  // One audit row per «نقل البيانات» run of a linked source branch (/atm/settings, 2026-10-28). The
+  // run itself signals each topic it touched once, with the target's branch; the card refetches.
+  'atm.branchMove':
+    'one audit row per branch-move run (the register-import shape); the run signals each affected topic once and the settings card refetches itself',
 };

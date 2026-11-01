@@ -1,7 +1,7 @@
 // The Data Report's body (spec §8.5): the sheet's three sections in the sheet's order, each its
 // chart with the table of its own cells under it, and above them the two notes the sheet could not
-// make — machines in operation whose branch has no register code (counted in the bank figures
-// only) and machines in operation with no bank (counted in the branch figures only).
+// make — machines in operation in a branch the register is not mapped to (counted in the bank
+// figures only) and machines in operation with no bank (counted in the branch figures only).
 //
 // Which branches appear is the server's answer (`branchesShown`, DEC-27): a branch outside the
 // reader's reach is not drawn as a zero, it is simply not on the page. Every number is the

@@ -14,13 +14,13 @@ import {
   ATM_REGISTER_COLUMNS,
   atmRegisterIdFormatOk,
   deriveAtmRegisterStatus,
-  type AtmBankCode,
   type AtmRegisterBranchCode,
   type AtmRegisterCassettesDto,
   type AtmRegisterField,
   type AtmRegisterImportIssueCode,
   type AtmRegisterKeysDto,
   type AtmRegisterStatus,
+  type AtmSeedBankCode,
 } from '@ecms/contracts';
 import { isPlaceholderMachineCode } from '../register-coupling';
 import { REGISTER_CASSETTE_FIELDS, REGISTER_KEY_FIELDS } from '../register.mapper';
@@ -45,7 +45,8 @@ import { type RegisterWorkbookRead } from './read-register-workbook';
 export interface RegisterRowValues {
   branchCode: AtmRegisterBranchCode | null;
   area: string | null;
-  bankCode: AtmBankCode | null;
+  /** One of the workbook's six (DEC-35): the sheet knows no bank added at runtime. */
+  bankCode: AtmSeedBankCode | null;
   machineCode: string | null;
   name: string | null;
   operationType: string | null;

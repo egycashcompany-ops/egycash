@@ -543,17 +543,30 @@ describe('suspend and reactivate', () => {
 });
 
 describe('editing a line', () => {
-  it('keeps a held line in its branch, edits its other facts, and keeps an eSIM serial-free', async () => {
+  it('moves a held line with its custody and paper, edits its other facts, and keeps an eSIM serial-free', async () => {
     const line = await register();
-    await handOver(line.id, { employeeId: String(EMPLOYEE) });
+    const handed = data<ItMobileLineAssignResultDto>(
+      await handOver(line.id, { employeeId: String(EMPLOYEE) }),
+    );
     const current = (): Promise<ItMobileLineDto> =>
       api.get(`/mobile-lines/${line.id}`).then((res) => data<ItMobileLineDto>(res));
 
+    // «ممكن القائد يغير الفرع بتاعه» — the holder moved branch, and the line goes with them: its
+    // open interval and the paper they signed move too, so the new branch sees and reprints them.
     const moved = await api.patch(`/mobile-lines/${line.id}`, {
       branchId: branchBId,
       version: (await current()).version,
     });
-    expect(moved.status).toBe(422);
+    expect(moved.status).toBe(200);
+    expect(data<ItMobileLineDto>(moved)).toMatchObject({ branchId: branchBId, status: 'assigned' });
+    const [open] = data<ItMobileLineAssignmentDto[]>(
+      await api.get(`/mobile-line-assignments?lineId=${line.id}&open=true`),
+    );
+    expect(open?.branchId).toBe(branchBId);
+    const paper = await api.get(`/mobile-line-receipts/${handed.receipt?.id ?? ''}`);
+    expect(paper.status).toBe(200);
+    expect(data<ItMobileLineReceiptDto>(paper).branchId).toBe(branchBId);
+
     const replanned = await api.patch(`/mobile-lines/${line.id}`, {
       ratePlan: 'Flex 120',
       version: (await current()).version,
@@ -564,13 +577,18 @@ describe('editing a line', () => {
       status: 'assigned',
     });
 
+    // Returned, it moves back alone; the closed interval keeps the branch it was held in.
     await api.post(`/mobile-lines/${line.id}/return`);
-    const movedNow = await api.patch(`/mobile-lines/${line.id}`, {
-      branchId: branchBId,
+    const movedBack = await api.patch(`/mobile-lines/${line.id}`, {
+      branchId: branchAId,
       version: (await current()).version,
     });
-    expect(movedNow.status).toBe(200);
-    expect(data<ItMobileLineDto>(movedNow).branchId).toBe(branchBId);
+    expect(movedBack.status).toBe(200);
+    expect(data<ItMobileLineDto>(movedBack).branchId).toBe(branchAId);
+    const [closed] = data<ItMobileLineAssignmentDto[]>(
+      await api.get(`/mobile-line-assignments?lineId=${line.id}&open=false`),
+    );
+    expect(closed?.branchId).toBe(branchBId);
 
     const withSerial = await register({ simSerial: '8920022022712841111' });
     const esimKeepingSerial = await api.patch(`/mobile-lines/${withSerial.id}`, {

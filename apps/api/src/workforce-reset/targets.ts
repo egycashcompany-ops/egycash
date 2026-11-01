@@ -173,6 +173,12 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
     action: 'purge',
     why: 'the paper somebody signed for a line they hold',
   },
+  // The memo names its signer as HR did that day; the ledger rows that point at it then offer no
+  // paper — a memo that is gone is not offered (`it.mappers.ts`, the lines' `paperOf`).
+  it_consumable_memos: {
+    action: 'purge',
+    why: 'the memo somebody signed for the consumables they were issued',
+  },
   fleet_duty_assignments: { action: 'purge', why: 'a day’s duty roster, made of specific people' },
   fleet_fixed_crews: { action: 'purge', why: 'a fixed crew IS the pairing of two drivers' },
 
@@ -210,6 +216,14 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   it_mobile_line_assignments: {
     action: 'keep',
     why: 'who holds each SIM line — cars as well as people; the line says it is handed over',
+  },
+  // NOT purged: it is the consumables' stock LEDGER. Every item's on-hand, issued and scrapped
+  // figures are the sum of these rows — deleting the issues that name somebody would leave each
+  // store's quantities with no movements to explain them. Kept, an issue simply names somebody
+  // who is gone, as a gold receipt does.
+  it_consumable_movements: {
+    action: 'keep',
+    why: 'the consumables stock ledger — every on-hand figure is the sum of its rows',
   },
   gold_receiving_receipts: { action: 'keep', why: 'a printed financial record of received metal' },
   gold_delivery_receipts: { action: 'keep', why: 'a printed financial record of delivered metal' },

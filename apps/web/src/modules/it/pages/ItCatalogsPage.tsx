@@ -1,10 +1,12 @@
-// IT catalogs (design §2.4): the two kinds as URL-synced tabs, each the live list the asset
-// forms read. Rows ARCHIVE instead of delete (FR-11) — assets and, later, tickets point at them —
-// so the row action is edit only and the status column tells the truth.
+// IT catalogs (design §2.4): the kinds as URL-synced tabs, each the live list the forms read. Rows
+// ARCHIVE instead of delete (FR-11) — assets and, later, tickets point at them — so the row action
+// is edit only and the status column tells the truth.
 //
 // `ticketCategory` is managed here from day one even though tickets are IT-3: the collection and
 // the grant are one, the screen is one, and an admin can seed the categories before the help desk
-// opens rather than on the day it does.
+// opens rather than on the day it does. `consumableType` (FR-20) is the third tab for the same
+// reason: the consumables' types («حبارات», «كابلات», «محولات» …) are localized names the IT team
+// edits, which is exactly what this collection already is — one tab per kind, read off the enum.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { IT_CATALOG_KINDS, type ItCatalogItemDto, type ItCatalogKind } from '@ecms/contracts';

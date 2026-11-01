@@ -9,7 +9,7 @@
 // active points, whatever the filters say.
 import {
   ATM_MAP_EARTH_RADIUS_METERS,
-  ATM_BANK_CODES,
+  ATM_SEED_BANK_CODES,
   type AtmBankCode,
   type AtmMapPointDto,
   type Locale,
@@ -62,7 +62,10 @@ export const mapFitKey = (view: {
 
 export interface ZoneBreakdown {
   count: number;
-  /** Bank codes in the register's order, then «بنك غير محدد» (null); zero rows left out. */
+  /**
+   * Bank codes in the catalog's order (any code it does not hold after them, sorted), then «بنك غير
+   * محدد» (null); zero rows left out.
+   */
   banks: { code: AtmBankCode | null; count: number; pct: number }[];
   /** Areas by count, then by name. */
   areas: { name: string; count: number }[];
@@ -70,11 +73,15 @@ export interface ZoneBreakdown {
   machines: AtmMapPointDto[];
 }
 
-/** One zone's figures over the points the caller counts (§8.8 ZoneDetail: visible points only). */
+/**
+ * One zone's figures over the points the caller counts (§8.8 ZoneDetail: visible points only).
+ * `bankOrder` is the catalog's (`BankLookup.codes`); the six seeds when the caller has none.
+ */
 export const zoneBreakdown = (
   zoneId: string,
   points: readonly AtmMapPointDto[],
   membership: ReadonlyMap<string, Membership>,
+  bankOrder: readonly AtmBankCode[] = ATM_SEED_BANK_CODES,
 ): ZoneBreakdown => {
   const machines = points
     .filter((p) => (membership.get(p.machineId) ?? NO_MEMBERSHIP).primary === zoneId)
@@ -86,10 +93,15 @@ export const zoneBreakdown = (
     byBank.set(p.bankCode, (byBank.get(p.bankCode) ?? 0) + 1);
     byArea.set(p.area, (byArea.get(p.area) ?? 0) + 1);
   }
-  const bankOrder: (AtmBankCode | null)[] = [...ATM_BANK_CODES, null];
+  // A bank the order does not name is still counted — after the named ones, sorted — so the rows
+  // always add up to the zone's count (the report's fold does the same with an unlisted bank).
+  const unlisted = [...byBank.keys()]
+    .filter((code): code is AtmBankCode => code !== null && !bankOrder.includes(code))
+    .sort();
+  const order: (AtmBankCode | null)[] = [...bankOrder, ...unlisted, null];
   return {
     count,
-    banks: bankOrder
+    banks: order
       .filter((code) => (byBank.get(code) ?? 0) > 0)
       .map((code) => {
         const n = byBank.get(code) ?? 0;

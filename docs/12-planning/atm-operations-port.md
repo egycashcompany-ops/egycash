@@ -770,6 +770,38 @@ Operations' hands — gated, never deleted:
 
   Any key of the page that reaches the branch can read it.
 
+### 9a. «مقارنة بملف» — a machines file, compared, then applied (2026-11-01)
+
+«ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك والكود والأسم
+والمنطقة». The owner's list is the old system's machine export («ATM (4).xlsx»: sheet «ATM»,
+header «Bank | ID | ATM Name | Area», ~1,840 rows). `/atm/data-edit` → «مقارنة بملف»
+(`POST /atm/machines/sync`, `atmMachine.manage` reaching the branch the top bar names):
+
+- **The file** is read by the register import's reader (memory only, capped, one deadline): the
+  sheet «ATM», else the first; the header is the first of the opening rows naming the four columns
+  (English or Arabic, any order).
+- **The comparison** (`plan-machine-sync.ts`), per row against the branch: `add`, `reactivate`
+  (archived here), `update` (bank, name or area differ), `same`, `elsewhere` (not working here and
+  ACTIVE in another branch — DEC-9 — or holding an OPEN register period there — D6: the bulk add's
+  two refusals, so never offered), `invalid` (no code / name / area / bank, a bank the catalog
+  does not know, or an archived bank on a new machine) and `duplicate` (the first listing counts);
+  plus `extra`, the branch's active machines the file does not list — shown, never deleted.
+  Names and areas are compared and written with their spaces folded (a stray space is neither a
+  change nor a new area); a bank is compared by the catalog bank it names and written as the
+  catalog's label.
+- **The apply writes only the comparison the reader saw.** It posts the same file with the
+  comparison's `fileSha256` (409 `ATM_MACHINE_SYNC_FILE_CHANGED` otherwise) and `planDigest` — the
+  comparison itself, the branch included. The server compares again and writes nothing (409
+  `ATM_MACHINE_SYNC_PLAN_CHANGED`) unless it is the same comparison: a machine an operator moved
+  after the compare is never put back silently. Then it walks the rows one by one: adds and
+  reactivations through the data-edit add (`recordOperationsIntake`, register included, refusals
+  reported), edits through the machine edit (`writeMaster`: audited, the area following onto open
+  register entries). A row somebody changes WHILE the apply runs is left as they made it
+  (`skipped`). The answer is the comparison made again, and the dialog names every code an apply
+  could not write and why. The branch move's fence applies, per row.
+- **Before using it on Mohandessin:** run «نقل البيانات إلى المهندسين» first — a machine still
+  filed under October is `elsewhere` until it moves.
+
 ## 10. The boards, one day at a time — and the four tables as files (2026-10-27)
 
 The owner's requests of 2026-10-27 for `/atm/replenishments` and `/atm/maintenance` (and, for the

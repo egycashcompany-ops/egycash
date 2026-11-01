@@ -129,6 +129,131 @@ export const BulkCreateAtmMachinesSchema = z
   .strict();
 export type BulkCreateAtmMachines = z.infer<typeof BulkCreateAtmMachinesSchema>;
 
+// ── Machines from a file — compare, then make the branch match (2026-11-01) ──────────────────────
+//
+// The owner, with the old system's list of Mohandessin's machines («ATM (4).xlsx»: Bank, ID, ATM
+// Name, Area): «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك
+// والكود والأسم والمنطقة». POST /atm/machines/sync uploads the workbook: without `apply` it only
+// compares, row by row, with the machines of the branch the top bar points at; with `apply` and
+// the preview's `fileSha256` it adds the missing ones (as the bulk add does — register included),
+// brings archived ones back, and writes the file's bank, name and area on the ones that differ. It
+// never deletes: a machine on the branch the file does not list is only reported (`extra`).
+
+/** The three things the file can change on a machine the branch already has (the code is identity). */
+export const ATM_MACHINE_SYNC_FIELDS = ['bank', 'name', 'area'] as const;
+export type AtmMachineSyncField = (typeof ATM_MACHINE_SYNC_FIELDS)[number];
+
+/**
+ * One row's outcome against the branch: `add` (no machine of this code here), `reactivate` (an
+ * archived one here), `update` (active here, and `changes` lists what differs), `same`, `elsewhere`
+ * (active in another branch — never added here; the branch move re-files it), `invalid` (the row
+ * cannot be read: `issue` says why) and `duplicate` (a code the file already listed above).
+ */
+export const ATM_MACHINE_SYNC_STATUSES = [
+  'add',
+  'reactivate',
+  'update',
+  'same',
+  'elsewhere',
+  'invalid',
+  'duplicate',
+] as const;
+export type AtmMachineSyncStatus = (typeof ATM_MACHINE_SYNC_STATUSES)[number];
+
+/**
+ * Why a row cannot be read. `unknownBank`: a bank the bank catalog (or the branch's bank spellings)
+ * does not know; `archivedBank`: a bank archived in the catalog, which no add may use.
+ */
+export const ATM_MACHINE_SYNC_ISSUES = [
+  'noCode',
+  'noName',
+  'noArea',
+  'noBank',
+  'unknownBank',
+  'archivedBank',
+] as const;
+export type AtmMachineSyncIssue = (typeof ATM_MACHINE_SYNC_ISSUES)[number];
+
+/** A machine's bank, name and area — as the file writes them, or as the branch holds them. */
+export interface AtmMachineSyncValuesDto {
+  bank: string;
+  name: string;
+  area: string;
+}
+
+export interface AtmMachineSyncRowDto {
+  /** The Excel row. */
+  row: number;
+  /** Normalized (`normalizeAtmMachineCode`); blank for `noCode`. */
+  machineCode: string;
+  status: AtmMachineSyncStatus;
+  /** What the file says, spaces folded (what an apply writes). */
+  file: AtmMachineSyncValuesDto;
+  /** What the branch holds now — null for `add`, `elsewhere`, `invalid`, `duplicate`. */
+  current: AtmMachineSyncValuesDto | null;
+  /** For `update` (and `reactivate`): what differs. */
+  changes: AtmMachineSyncField[];
+  issue: AtmMachineSyncIssue | null;
+  /** For `duplicate`: the row of the code's first listing, the one that counts. */
+  firstRow: number | null;
+  /**
+   * For `elsewhere`: why the code cannot work here — ACTIVE in another branch, or holding an OPEN
+   * register period in another branch (the bulk add's own two refusals).
+   */
+  elsewhere: AtmMachineBulkRefusal | null;
+}
+
+/** A machine active on the branch that the file does not list — reported, never deleted. */
+export interface AtmMachineSyncExtraDto {
+  machineCode: string;
+  bank: string;
+  name: string;
+  area: string;
+}
+
+/** What an apply did. */
+export interface AtmMachineSyncAppliedDto {
+  added: string[];
+  reactivated: string[];
+  updated: string[];
+  /** Refused at the write: active, or holding an open register period, in another branch. */
+  refused: { machineCode: string; reason: AtmMachineBulkRefusal }[];
+  /** Rows changed by somebody else WHILE the apply ran (an edit or delete) — left as they were. */
+  skipped: string[];
+  /** The register outcome of the added and reactivated rows, as the bulk add answers it. */
+  register: {
+    created: string[];
+    received: string[];
+    linked: string[];
+    existing: string[];
+    notRecorded: { machineCode: string; reason: AtmMachineRegisterReason }[];
+  };
+}
+
+/**
+ * The comparison — after an apply, the comparison made again against the branch as it now is,
+ * with `applied` saying what the apply did.
+ */
+export interface AtmMachineSyncDto {
+  fileName: string;
+  /** Sent back with `apply`, so the server knows the applied bytes are the compared ones. */
+  fileSha256: string;
+  /**
+   * The comparison itself, hashed (the branch, and every row's outcome and values). Sent back with
+   * `apply`: the server compares again and writes nothing (409 `ATM_MACHINE_SYNC_PLAN_CHANGED`)
+   * unless it is the comparison the reader saw — an apply never writes a row it did not show.
+   */
+  planDigest: string;
+  branchId: string;
+  branchName: LocalizedString | null;
+  /** Rows per status, plus `extra`. */
+  counts: Record<AtmMachineSyncStatus | 'extra', number>;
+  /** Every row except `same` ones, in the file's order. */
+  rows: AtmMachineSyncRowDto[];
+  extra: AtmMachineSyncExtraDto[];
+  applied: AtmMachineSyncAppliedDto | null;
+}
+
 // ── A data-edit add lands in the register (DEC-36) ──────────────────────────────────────────────
 //
 // The owner's call (final): a machine added on /atm/data-edit is recorded in the Efficiency

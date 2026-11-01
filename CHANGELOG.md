@@ -11,6 +11,20 @@ its entry here in the same PR.
 
 ### Added
 
+- **«مقارنة بملف» on `/atm/data-edit`: a machines file compared with the branch, then applied.**
+  «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك والكود والأسم
+  والمنطقة». Upload the machine list (Excel: Bank, ID, ATM Name, Area — the old system's export
+  reads as it is) and every row is compared with the machines of the branch the top bar names:
+  what would be added, brought back from the archive, or edited (the old bank, name or area struck
+  through beside the file's), what works in another branch, what the file leaves incomplete, what
+  it lists twice, and the branch's machines it does not list — shown, never deleted. Nothing
+  changes until «تطبيق», and the apply writes only the comparison the reader saw: if the branch
+  changed meanwhile it writes nothing and asks for a new comparison. It adds through the data-edit
+  add (the register entry included) and edits through the machine edit (audited), row by row,
+  names every code it could not write and why, and answers with the comparison made again
+  (`POST /atm/machines/sync`, `atmMachine.manage`). Spaces are folded, so a stray space is
+  neither a change nor a new area; a bank is compared by the catalog bank it names.
+
 - **Sign in with a fingerprint or Face ID instead of typing the password.** «عايز الدخول يبقي ممكن
   من خلال الـ Fingerprint أو FaceID للموبايل بحيث مش كل مره يكتب الباسورد». Passkeys (WebAuthn,
   [ADR-035](docs/03-decisions/ADR-035-passkey-sign-in.md)): the device keeps a private key and

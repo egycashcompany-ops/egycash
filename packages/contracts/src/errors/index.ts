@@ -245,6 +245,18 @@ export const ErrorCodes = {
    * Retried after the move; a run left 30 minutes (its process died) no longer holds them.
    */
   ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
+  /**
+   * 422 — the machines file cannot be compared: no sheet with a Bank / ID / ATM Name / Area header
+   * row, or over a cap. `details` name the missing column or the cap, never a cell's content.
+   */
+  ATM_MACHINE_SYNC_LAYOUT: 'ATM_MACHINE_SYNC_LAYOUT',
+  /** 409 — the machines file applied is not the one compared (its hash differs); nothing written. */
+  ATM_MACHINE_SYNC_FILE_CHANGED: 'ATM_MACHINE_SYNC_FILE_CHANGED',
+  /**
+   * 409 — the branch changed since the machines file was compared (a machine edited, added,
+   * archived or moved): the comparison is no longer the one the reader approved. Nothing written.
+   */
+  ATM_MACHINE_SYNC_PLAN_CHANGED: 'ATM_MACHINE_SYNC_PLAN_CHANGED',
 
   // ── Fleet fuel-card sheet reconciliation («مطابقة أرصدة الكروت») ─────────────────────────────
   /** 422 — the sheet is not the company's layout (a header is missing, no sheet), or over a cap. */

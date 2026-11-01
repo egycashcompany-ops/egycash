@@ -88,7 +88,7 @@ export const snapshot = machineSnapshot;
  * (DEC-4) — all in the caller's transaction. A legacy row without `__v`/timestamps is backfilled
  * first (DEC-23), so the version the client read (`__v ?? 0`) matches. Returns the audits owed.
  */
-const writeMaster = async (
+export const writeMaster = async (
   before: AtmMachineDoc,
   set: Record<string, unknown>,
   meta: {
@@ -124,7 +124,7 @@ const recordAll = async (audits: readonly PendingAudit[]): Promise<void> => {
  * did not carry before (moved, or brought back from the archive) — that area's data-edit label
  * (DEC-38; best effort, never fails the write).
  */
-const settleMasterWrite = async (
+export const settleMasterWrite = async (
   before: AtmMachineDoc,
   updated: AtmMachineDoc,
   audits: readonly PendingAudit[],
@@ -143,7 +143,7 @@ const settleMasterWrite = async (
  * The data-edit add's branch: the acting one, and `manage` must reach it (DEC-39). An
  * organization-wide `manage` holder acts where the top bar points (GM-20, atm-context.ts).
  */
-const addBranchOf = async (ctx: AuthContext): Promise<string> => {
+export const addBranchOf = async (ctx: AuthContext): Promise<string> => {
   const branchId = await resolveAtmBranchId(ctx, 'atmMachine.manage');
   if (!manageActsInBranch(ctx, branchId)) {
     throw new ForbiddenError('atmMachine.manage does not reach this branch');

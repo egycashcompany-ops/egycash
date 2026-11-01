@@ -50,10 +50,13 @@ const AddPasskeyDialog = ({
   open,
   onClose,
   onAdded,
+  onSaved,
 }: {
   open: boolean;
   onClose: () => void;
   onAdded: () => void;
+  /** Refresh the list without touching the dialog (it may already be closed). */
+  onSaved: () => void;
 }): JSX.Element => {
   const t = useT();
   const totpEnabled = useAppSelector((state) => state.auth.me?.totpEnabled ?? false);
@@ -86,8 +89,12 @@ const AddPasskeyDialog = ({
       );
       if (!current()) return;
       await addPasskey(options);
-      if (!current()) return;
+      // Added, whether or not the dialog is still open: the list must show it either way.
       if (userId !== null) rememberPasskeyOffer(userId, 'added');
+      if (!current()) {
+        onSaved();
+        return;
+      }
       toast.success(t('account.security.passkeyAdded'));
       setPassword('');
       setCode('');
@@ -381,6 +388,7 @@ export const PasskeysCard = (): JSX.Element | null => {
           setAdding(false);
           void refetch();
         }}
+        onSaved={() => void refetch()}
       />
       <RenamePasskeyDialog
         passkey={renaming}

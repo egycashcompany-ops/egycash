@@ -205,8 +205,8 @@ class GoldPortalAccountService {
   async resendSetupLink(id: string): Promise<void> {
     await this.portalUser(id);
     await userService.resetViaSetupLink(id);
-    await authService.revokeAllSessionsForUser(id, 'admin-password-reset');
     await passkeyStore.removeAllForUser(id, 'admin-password-reset');
+    await authService.revokeAllSessionsForUser(id, 'admin-password-reset');
   }
 
   /**

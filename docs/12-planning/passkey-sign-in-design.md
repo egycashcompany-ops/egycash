@@ -88,9 +88,12 @@ where the browser supports it, and shows «الدخول بالبصمة أو ال
 authenticator exists → `authentication/verify`: take the challenge once; find the credential; the
 owner's gates (lock, status, cleared password, audience); verify signature, origin, RP ID, user
 verification, counter; update counter and `lastUsedAt`; `completeLogin(method: 'passkey')`. While the
-page stays open both its challenges (the button's and the autofill's) are renewed before they are
-four minutes old, so neither is ever spent on one the server has dropped; the autofill never starts
-while the button's prompt is open, and once the person has picked a passkey from it, the server's
+page stays open both its challenges (the button's and the autofill's) are renewed once they are
+three minutes old — the button never uses one older than four, so a tap always finds a fresh one —
+and the autofill is never re-armed while its field is focused or the window has handed focus to the
+device's prompt, nor started while the button's prompt is open; nothing is renewed once the form
+has left the screen (TOTP step, offer). The offer asks a TOTP account for a current code rather
+than resending the one typed at sign-in, which has usually rolled over; and once the person has picked a passkey from it, the server's
 answer (locked, rate-limited, offline) is shown like the button's.
 
 ## 5. Audience

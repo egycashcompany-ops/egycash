@@ -23,11 +23,12 @@ its entry here in the same PR.
   customers may use them (the portal has a new *Security* tab); applicants may not. By the owner's
   decision a passkey sign-in counts as the second factor, so no TOTP code follows it (amends R13 —
   the password path still asks). Adding one asks for the password again (and the TOTP code); an
-  administrator's password or TOTP reset, and suspending, archiving or deleting the account,
-  remove the account's passkeys. Every challenge is held by the server and used once; a locked or
-  inactive account stays refused; only attestation `none` is accepted, so no certificate the
-  client sends can make the server fetch a URL. The organization setting
-  `auth.passkeys.enabled` (on by default) switches it off for every route. The ten-minute idle
+  administrator's password or TOTP reset, the gold portal's «رابط تفعيل جديد», and suspending,
+  archiving, reactivating or deleting the account, remove the account's passkeys. Every challenge
+  is held by the server and used once; a locked or inactive account stays refused; only
+  attestation `none` is accepted, so no certificate the client sends can make the server fetch a
+  URL. The organization setting `auth.passkeys.enabled` (on by default) switches it off for every
+  route. The ten-minute idle
   sign-out is unchanged («نسيبها 10 دقايق»); coming back is now one touch.
 
 - **The EGYCASH logo replaces the letter «E», everywhere; and the app says which version it is.**

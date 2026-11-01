@@ -43,7 +43,7 @@ import { PortalLoginArt } from './PortalLoginArt';
 type Step =
   | { kind: 'credentials' }
   | { kind: 'totp'; challengeToken: string }
-  | { kind: 'passkeyOffer'; me: MeDto; proof: { password: string; totpCode?: string } };
+  | { kind: 'passkeyOffer'; me: MeDto; proof: { password: string } };
 
 /**
  * EGYCASH, as this screen says it: the company's own logo. On the picture panel, which is
@@ -96,13 +96,12 @@ export const PortalLoginPage = (): JSX.Element => {
   /** A password sign-in went through: offer a passkey on a device that can hold one, or go in. */
   const signedInWithPassword = async (
     response: Extract<LoginResponse, { totpRequired: false }>,
-    totpCode?: string,
   ): Promise<void> => {
     if (await shouldOfferPasskey(response, passkey.support)) {
       setStep({
         kind: 'passkeyOffer',
         me: response.me,
-        proof: totpCode === undefined ? { password } : { password, totpCode },
+        proof: { password },
       });
       return;
     }
@@ -124,8 +123,7 @@ export const PortalLoginPage = (): JSX.Element => {
       }
       if (step.kind !== 'totp') return;
       const response = await totpChallengeRequest(step.challengeToken, code);
-      const totpCode = /^\d{6}$/.test(code.trim()) ? code.trim() : undefined;
-      if (!response.totpRequired) await signedInWithPassword(response, totpCode);
+      if (!response.totpRequired) await signedInWithPassword(response);
     } catch (e) {
       setError(
         e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVATED'

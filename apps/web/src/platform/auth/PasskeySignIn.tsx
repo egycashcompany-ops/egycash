@@ -41,13 +41,25 @@ import {
 } from './passkeys';
 
 /**
- * A challenge lives five minutes on the server. One older than four is never used: the button's
- * is fetched afresh in the background and the autofill suggestion is re-armed with a new one, so
- * neither is ever spent on a challenge the server has already dropped.
+ * A challenge lives five minutes on the server. The button never uses one older than four (it
+ * would fetch a new one between the tap and the prompt instead); the background renews both at
+ * three, a full check interval and more before that, so a tap always finds a fresh one and neither
+ * is ever spent on a challenge the server has already dropped.
  */
 const OPTIONS_FRESH_MS = 4 * 60_000;
+const RENEW_AFTER_MS = 3 * 60_000;
 /** How often an open sign-in page checks whether its challenges need renewing. */
 const FRESHNESS_CHECK_MS = 30_000;
+
+/** The field the autofill suggestion lives in. Gone (TOTP step, offer), there is nothing to arm. */
+const autofillField = (): Element | null =>
+  document.querySelector("input[autocomplete$='webauthn']");
+
+/** A withdrawn or timed-out conditional request — the only device failures worth re-arming after. */
+const endedQuietly = (error: unknown): boolean => {
+  const { name, code } = (error ?? {}) as { name?: unknown; code?: unknown };
+  return name === 'AbortError' || name === 'NotAllowedError' || code === 'ERROR_CEREMONY_ABORTED';
+};
 
 type SignedIn = Extract<LoginResponse, { totpRequired: false }>;
 
@@ -106,6 +118,7 @@ export const usePasskeySignIn = ({
     /** The username field's suggestion, armed with its own challenge. */
     const armAutofill = async (): Promise<void> => {
       if (disposed || modalActive.current || !autofill || !detected.autofill) return;
+      if (autofillField() === null) return;
       const mine = (generation += 1);
       let options: PasskeyAuthenticationOptionsDto;
       try {
@@ -119,12 +132,16 @@ export const usePasskeySignIn = ({
       let answer: Awaited<ReturnType<typeof passkeyAssertion>>;
       try {
         answer = await passkeyAssertion(options, true);
-      } catch {
+      } catch (error) {
         // The device side never speaks: withdrawn (a newer arm, the button, leaving the page),
-        // timed out, or unsupported. A timed-out one is re-armed by the freshness check.
-        if (mine === generation) armedAt = 0;
+        // timed out, or unsupported. Withdrawn or timed out, the freshness check re-arms it; any
+        // other failure waits out the normal cadence rather than retrying every tick.
+        if (mine === generation && endedQuietly(error)) armedAt = 0;
         return;
       }
+      // This arm is spent whatever the server says next; if re-arming after a refusal fails (no
+      // connection yet), the freshness check tries again on its next tick.
+      if (mine === generation) armedAt = 0;
       // The person picked a passkey: from here on a refusal — a locked account, a rate limit, a
       // dropped connection — is theirs to see, and the suggestion is offered again.
       try {
@@ -138,13 +155,24 @@ export const usePasskeySignIn = ({
       }
     };
 
-    /** Keep both challenges younger than the server's five minutes while the page stays open. */
+    /**
+     * Keep both challenges younger than the server's five minutes while the sign-in form is on
+     * screen. Never while the person may be using the autofill suggestion — its field focused, or
+     * the window handed to the device's own prompt — because re-arming withdraws whatever the
+     * suggestion has started (a fingerprint sheet, a phone QR code). A challenge that does run out
+     * during a long prompt is answered «expired, try again» and re-armed.
+     */
     const keepFresh = (): void => {
       if (disposed || modalActive.current || !detected.webauthn) return;
+      const field = autofillField();
+      if (field === null) return;
       const now = Date.now();
       const entry = prefetched.current;
-      if (entry === null || now - entry.at > OPTIONS_FRESH_MS) void prefetch();
-      if (autofill && detected.autofill && now - armedAt > OPTIONS_FRESH_MS) void armAutofill();
+      if (entry === null || now - entry.at > RENEW_AFTER_MS) void prefetch();
+      const inUse = document.activeElement === field || !document.hasFocus();
+      if (autofill && detected.autofill && !inUse && now - armedAt > RENEW_AFTER_MS) {
+        void armAutofill();
+      }
     };
 
     mount.current = {
@@ -169,15 +197,18 @@ export const usePasskeySignIn = ({
     })();
 
     const timer = window.setInterval(keepFresh, FRESHNESS_CHECK_MS);
-    // Background tabs run timers late; coming back to the tab is when a stale challenge matters.
+    // Background tabs run timers late, and a window that was elsewhere skipped its renewals:
+    // coming back to it is when a stale challenge matters.
     const onVisible = (): void => {
       if (document.visibilityState === 'visible') keepFresh();
     };
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', keepFresh);
     return () => {
       disposed = true;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', keepFresh);
       cancelPasskeyPrompt();
     };
     // Once per mount: the handlers are read through a ref, so nothing here goes stale.
@@ -273,15 +304,18 @@ export const PasskeyOffer = ({
   onDone,
 }: {
   me: MeDto;
-  /** What the person typed to sign in, used once to add the passkey and then dropped. */
-  proof: { password: string; totpCode?: string };
+  /** The password the person typed to sign in, used once to add the passkey and then dropped. */
+  proof: { password: string };
   onDone: () => void;
 }): JSX.Element => {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The code typed at sign-in may have expired by the time «turn on» is pressed; then ask again.
-  const [askCode, setAskCode] = useState(false);
+  // An account with TOTP is asked for a CURRENT code here. The one typed at sign-in has usually
+  // rolled over by the time «turn on» is pressed (a code lives thirty seconds, and a backup code
+  // cannot confirm this at all) — resending it would only burn one of the account's TOTP attempts
+  // and write a failed sign-in for somebody who made no mistake.
+  const askCode = me.totpEnabled;
   const [code, setCode] = useState('');
 
   useEffect(() => () => cancelPasskeyPrompt(), []);
@@ -294,11 +328,10 @@ export const PasskeyOffer = ({
     }
     setBusy(true);
     setError(null);
-    const totpCode = askCode ? code.trim() : proof.totpCode;
     try {
       const options = await passkeyRegistrationOptionsRequest({
         password: proof.password,
-        ...(totpCode === undefined ? {} : { totpCode }),
+        ...(askCode ? { totpCode: code.trim() } : {}),
       });
       await addPasskey(options);
       rememberPasskeyOffer(me.id, 'added');
@@ -306,8 +339,7 @@ export const PasskeyOffer = ({
       onDone();
     } catch (e) {
       if (e instanceof ApiError && e.code === 'AUTH_TOTP_INVALID') {
-        if (askCode) setError(t('platform.auth.login.badCode'));
-        setAskCode(true);
+        setError(t('platform.auth.login.badCode'));
         return;
       }
       // Already on this device: nothing to add, and nothing to offer again.

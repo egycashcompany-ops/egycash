@@ -15,8 +15,10 @@
 //   sees it: the library's certificate-path code fetches revocation lists from URLs inside the
 //   certificates — client-supplied ones, for android-key — which would be outbound HTTP on attacker
 //   input, outside ADR-033's door. The trust anchors are emptied too, belt and braces;
-// - a sign-in refusal says one thing (`AUTH_PASSKEY_INVALID`) whatever went wrong before the
-//   signature was proven; account states are named only after it, to the key's holder.
+// - a sign-in refusal says one thing (`AUTH_PASSKEY_INVALID`) whatever went wrong with the key or
+//   the account before the signature was proven — only a spent or unknown challenge, which is
+//   checked before any account is looked at, has its own uncounted answer
+//   (`AUTH_PASSKEY_EXPIRED`); account states are named only after the signature, to its holder.
 import { createHash } from 'node:crypto';
 import { Types } from 'mongoose';
 import { authenticator } from 'otplib';

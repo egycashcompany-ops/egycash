@@ -30,7 +30,7 @@ type Step =
   | { kind: 'credentials' }
   | { kind: 'totp'; challengeToken: string; enroll: Enrollment | null }
   // After a password sign-in on a device that can hold a passkey: «sign in faster next time?».
-  | { kind: 'passkeyOffer'; me: MeDto; proof: { password: string; totpCode?: string } };
+  | { kind: 'passkeyOffer'; me: MeDto; proof: { password: string } };
 
 export const LoginPage = (): JSX.Element => {
   const t = useT();
@@ -69,13 +69,12 @@ export const LoginPage = (): JSX.Element => {
   /** A password sign-in went through: offer a passkey on a device that can hold one, or go in. */
   const signedInWithPassword = async (
     response: Extract<LoginResponse, { totpRequired: false }>,
-    totpCode?: string,
   ): Promise<void> => {
     if (await shouldOfferPasskey(response, passkey.support)) {
       setStep({
         kind: 'passkeyOffer',
         me: response.me,
-        proof: totpCode === undefined ? { password } : { password, totpCode },
+        proof: { password },
       });
       return;
     }
@@ -114,9 +113,7 @@ export const LoginPage = (): JSX.Element => {
     setError(null);
     try {
       const response = await totpChallengeRequest(step.challengeToken, code);
-      // A backup code cannot confirm adding a passkey; the offer then asks for a current code.
-      const totpCode = /^\d{6}$/.test(code.trim()) ? code.trim() : undefined;
-      if (!response.totpRequired) await signedInWithPassword(response, totpCode);
+      if (!response.totpRequired) await signedInWithPassword(response);
     } catch (e) {
       // A wrong six-digit code is the common case here and now says so, instead of reading as
       // though the password that already passed had been rejected.

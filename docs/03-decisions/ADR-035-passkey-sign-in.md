@@ -65,7 +65,10 @@ revision.
    never-activated, suspended or archived account, and an account whose password an administrator
    cleared are refused before any session is made. A failed assertion counts toward the per-address
    failed-sign-in limit; it does not count toward the account lockout, because a credential id is
-   not a secret and anyone holding one could otherwise lock its owner out.
+   not a secret and anyone holding one could otherwise lock its owner out. An unknown, expired or
+   already-used challenge is answered on its own (`AUTH_PASSKEY_EXPIRED`) and not counted: it is
+   checked before any account is looked at, so it reveals and guesses nothing, and a sign-in page
+   left open must not use up an office's allowance.
 
 8. **Lifecycle.** An administrator's password reset removes all of the account's passkeys, so «reset»
    still locks the account out — the gold portal's «new setup link», which clears the password too,

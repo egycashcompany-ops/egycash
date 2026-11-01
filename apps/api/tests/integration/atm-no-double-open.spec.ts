@@ -316,7 +316,7 @@ describe('the race-proof index exists after boot — on the maintenance log only
   });
 
   it.each(['atm_replenishments', 'atm_maintenances'])(
-    '%s carries the index the board’s day question runs on — not a scan of the log',
+    '%s carries the index the per-day question runs on (maintenance asks it; replenishment keeps it) — not a scan of the log',
     async (collection) => {
       const indexes = await mongoose.connection.db?.collection(collection).listIndexes().toArray();
       const index = indexes?.find((entry) => entry.name === 'ix_open_code_opened');

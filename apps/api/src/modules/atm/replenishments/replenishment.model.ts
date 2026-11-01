@@ -66,10 +66,12 @@ const replenishmentSchema = new Schema<AtmReplenishmentDoc>(
 replenishmentSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 replenishmentSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 replenishmentSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
-// The board's company-wide question "is this code open on that day?" (`openMachineCodes`,
-// shared/operation-log.repository.ts) runs on this one instead of a scan of the whole log. Since
-// OD-1b (2026-11-01) a machine may have several open replenishments: no unique index holds one per
-// machine and day any more — atm-indexes.ts drops the one an older database built.
+// Open rows by code and open time — the index the per-day rule's question ("is this code open on
+// that day?", `openMachineCodes` in shared/operation-log.repository.ts) ran on while the rule held
+// replenishments. Since OD-1b (2026-11-01) a machine may have several open replenishments and no
+// live path asks that of this log; the index is kept (it is small, partial on open rows, and
+// dropping it would change an existing database for nothing). No unique index holds one open row
+// per machine and day any more — atm-indexes.ts drops the one an older database built.
 replenishmentSchema.index(
   { machineCode: 1, openedAt: 1 },
   { name: 'ix_open_code_opened', partialFilterExpression: { closedAt: null, isDeleted: false } },

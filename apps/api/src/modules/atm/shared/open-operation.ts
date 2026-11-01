@@ -14,9 +14,9 @@
 //     already uses — so a maintenance open in another branch blocks too, and a refusal names only
 //     the code the caller typed, never where the open operation is;
 //   · every path that creates or re-opens an open maintenance enforces it (the batch open, the
-//     reopen, the mail accept), and so does every edit that MOVES an open maintenance to another
-//     day (the single and the bulk edit of the open time). A partial unique index on
-//     `{ machineCode, openDay }` makes it race-proof.
+//     reopen, the mail accept), and so does the edit that MOVES an open maintenance to another day
+//     (the single edit of the open time — the maintenance bulk edit sets the leader only). A
+//     partial unique index on `{ machineCode, openDay }` makes it race-proof.
 //
 // The legacy had no such guard (contad_app.js:637-768 opened one row per pasted line, and the
 // maintenance open :1896-1957 likewise) — an owner decision overriding legacy, port doc OD-1.

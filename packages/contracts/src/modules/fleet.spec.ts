@@ -28,9 +28,18 @@ import {
   CreateFleetCustodyMemoSchema,
   CreateFleetCustodyReplenishmentSchema,
   CreateFleetCustodySettlementSchema,
+  CancelFleetCustodyReplenishmentSchema,
+  ConfirmFleetCustodyTransferSchema,
+  DecideFleetFuelReconcileSchema,
   FLEET_CUSTODY_MEMO_MAX_LINES,
+  FLEET_CUSTODY_MEMO_STATE_OF_STATUS,
   FLEET_CUSTODY_MEMO_STATES,
   FLEET_CUSTODY_MEMO_STATUSES,
+  FLEET_CUSTODY_OPERATION_STATUSES,
+  FLEET_FUEL_MOVEMENT_KINDS,
+  FLEET_FUEL_RECONCILE_MAX_CARDS,
+  FleetCustodyMemoStatusSchema,
+  UploadFleetFuelSheetSchema,
   FLEET_CUSTODY_STALE_DAYS,
   FleetCustodyLedgerSummaryQuerySchema,
   FleetCustodyMemoStateSchema,
@@ -977,10 +986,19 @@ describe('custody memos and the fund’s operations — «ومش عاوز اى �
   it('the dashboard splits the spend three ways against the memos; a receipt is late after 30 days', () => {
     // «تمت الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات» — in the bars' order.
     expect(FLEET_CUSTODY_MEMO_STATES).toEqual(['replenished', 'pending', 'outside']);
-    // A memo's own two statuses are two of the three; «خارج المذكرات» is a receipt on none.
+    // Every memo status lands in one of the three — a held memo's money is not back yet, so it
+    // still waits; «خارج المذكرات» is a receipt on none.
     for (const status of FLEET_CUSTODY_MEMO_STATUSES) {
-      expect(FLEET_CUSTODY_MEMO_STATES).toContain(status);
+      expect(FLEET_CUSTODY_MEMO_STATES).toContain(FLEET_CUSTODY_MEMO_STATE_OF_STATUS[status]);
     }
+    expect(FLEET_CUSTODY_MEMO_STATE_OF_STATUS).toEqual({
+      pending: 'pending',
+      held: 'pending',
+      replenished: 'replenished',
+    });
+    expect(Object.keys(FLEET_CUSTODY_MEMO_STATE_OF_STATUS).sort()).toEqual(
+      [...FLEET_CUSTODY_MEMO_STATUSES].sort(),
+    );
     expect(FleetCustodyMemoStateSchema.parse('outside')).toBe('outside');
     expect(FleetCustodyMemoStateSchema.safeParse('settled').success).toBe(false);
     expect(FLEET_CUSTODY_STALE_DAYS).toBe(30);
@@ -1112,5 +1130,126 @@ describe('custody memos and the fund’s operations — «ومش عاوز اى �
       expect(schema.parse({}).status).toBeUndefined();
       expect(schema.safeParse({ status: 'pending' }).success).toBe(false);
     }
+  });
+});
+
+describe('a held replenishment — «استعاضة معلّقة لحين التحويل»', () => {
+  it('a replenishment is held, then done or cancelled; a memo is pending, held or replenished', () => {
+    expect(FLEET_CUSTODY_OPERATION_STATUSES).toEqual(['held', 'done', 'cancelled']);
+    expect(FLEET_CUSTODY_MEMO_STATUSES).toEqual(['pending', 'held', 'replenished']);
+    expect(FleetCustodyMemoStatusSchema.parse('held')).toBe('held');
+    expect(ListFleetCustodyMemosQuerySchema.parse({ status: 'held' }).status).toBe('held');
+  });
+
+  it('«تأكيد التحويل» needs its day and nothing else', () => {
+    expect(ConfirmFleetCustodyTransferSchema.parse({ date: '2026-10-20' })).toEqual({
+      date: new Date('2026-10-20'),
+      reference: '',
+      note: '',
+    });
+    expect(
+      ConfirmFleetCustodyTransferSchema.parse({
+        date: '2026-10-20',
+        reference: '  TRX-77  ',
+        note: 'بنك مصر',
+      }),
+    ).toMatchObject({ reference: 'TRX-77', note: 'بنك مصر' });
+    expect(ConfirmFleetCustodyTransferSchema.safeParse({}).success).toBe(false);
+    expect(ConfirmFleetCustodyTransferSchema.safeParse({ reference: 'TRX-77' }).success).toBe(
+      false,
+    );
+    expect(ConfirmFleetCustodyTransferSchema.safeParse({ date: 'not a day' }).success).toBe(false);
+    expect(
+      ConfirmFleetCustodyTransferSchema.safeParse({
+        date: '2026-10-20',
+        reference: 'x'.repeat(121),
+      }).success,
+    ).toBe(false);
+    expect(
+      ConfirmFleetCustodyTransferSchema.safeParse({ date: '2026-10-20', amount: 5 }).success,
+    ).toBe(false);
+  });
+
+  it('«إلغاء الاستعاضة المعلّقة» needs nothing; its reason is optional free text', () => {
+    expect(CancelFleetCustodyReplenishmentSchema.parse({})).toEqual({ reason: '' });
+    expect(CancelFleetCustodyReplenishmentSchema.parse({ reason: '  خطأ في المذكرات  ' })).toEqual({
+      reason: 'خطأ في المذكرات',
+    });
+    expect(
+      CancelFleetCustodyReplenishmentSchema.safeParse({ reason: 'x'.repeat(501) }).success,
+    ).toBe(false);
+    expect(CancelFleetCustodyReplenishmentSchema.safeParse({ date: '2026-10-20' }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('a fuel-card sheet — «مطابقة أرصدة الكروت»', () => {
+  it('the log gains the sheet’s two kinds at the end; the first four keep their order', () => {
+    expect(FLEET_FUEL_MOVEMENT_KINDS).toEqual([
+      'charge',
+      'transferIn',
+      'transferOut',
+      'receipt',
+      'sheetAdjust',
+      'sheetReject',
+    ]);
+  });
+
+  it('a sheet is read for one of the two companies — nothing else rides beside the file', () => {
+    expect(UploadFleetFuelSheetSchema.parse({ company: 'wataniya' })).toEqual({
+      company: 'wataniya',
+    });
+    expect(UploadFleetFuelSheetSchema.parse({ company: 'chillout' }).company).toBe('chillout');
+    expect(UploadFleetFuelSheetSchema.safeParse({}).success).toBe(false);
+    expect(UploadFleetFuelSheetSchema.safeParse({ company: 'shell' }).success).toBe(false);
+    expect(
+      UploadFleetFuelSheetSchema.safeParse({ company: 'wataniya', sheet: 'Sheet1' }).success,
+    ).toBe(false);
+  });
+
+  it('a decision is ✓ or ✗ on 1–500 cards, each once however its id is spelled', () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => oid(String(i + 1)));
+    expect(DecideFleetFuelReconcileSchema.parse({ decision: 'apply', cardIds: ids(1) })).toEqual({
+      decision: 'apply',
+      cardIds: ids(1),
+    });
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'reject',
+        cardIds: ids(FLEET_FUEL_RECONCILE_MAX_CARDS),
+      }).success,
+    ).toBe(true);
+    expect(FLEET_FUEL_RECONCILE_MAX_CARDS).toBe(500);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({ decision: 'apply', cardIds: ids(501) }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({ decision: 'apply', cardIds: [] }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({ decision: 'apply', cardIds: [oid('1'), oid('1')] })
+        .success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'apply',
+        cardIds: ['ABCDEF0123456789ABCDEF01', 'abcdef0123456789abcdef01'],
+      }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({ decision: 'apply', cardIds: ['7'] }).success,
+    ).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({ decision: 'keep', cardIds: ids(1) }).success,
+    ).toBe(false);
+    expect(DecideFleetFuelReconcileSchema.safeParse({ cardIds: ids(1) }).success).toBe(false);
+    expect(
+      DecideFleetFuelReconcileSchema.safeParse({
+        decision: 'apply',
+        cardIds: ids(1),
+        balance: 100,
+      }).success,
+    ).toBe(false);
   });
 });

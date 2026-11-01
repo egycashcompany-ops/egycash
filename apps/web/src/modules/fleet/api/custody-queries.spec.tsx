@@ -55,6 +55,8 @@ vi.mock('./fleet-api', async (original) => {
     chargeCustody: doc('chargeCustody'),
     replenishCustody: doc('replenishCustody'),
     settleCustody: doc('settleCustody'),
+    confirmCustodyTransfer: doc('confirmCustodyTransfer'),
+    cancelCustodyReplenishment: doc('cancelCustodyReplenishment'),
     saveCustodyPaperSettings: doc('saveCustodyPaperSettings'),
     createLicenseExpense: doc('createLicenseExpense'),
     updateLicenseExpense: doc('updateLicenseExpense'),
@@ -164,10 +166,65 @@ describe('every custody write throws away what it moves', () => {
     ['a memo changed', queries.useUpdateCustodyMemo, { id: ID, body: { version: 0 } }],
     ['a memo deleted', queries.useDeleteCustodyMemo, ID],
     ['a replenish', queries.useReplenishCustody, { memoIds: [ID] }],
+    [
+      'a transfer confirmed',
+      queries.useConfirmCustodyTransfer,
+      { id: ID, body: { date: new Date(), reference: '', note: '' } },
+    ],
+    [
+      'a held replenishment cancelled',
+      queries.useCancelCustodyReplenishment,
+      { id: ID, body: { reason: '' } },
+    ],
   ])('%s — the custody subtree and the receipts (each says its memo)', async (_, hook, input) => {
     const { keys } = await run(hook, input);
     expect(keys).toContain(CUSTODY);
     expect(keys).toContain(RECEIPTS);
+  });
+
+  it('a transfer confirmed or a held one cancelled — to its own address, read again even when refused', async () => {
+    await run(queries.useConfirmCustodyTransfer, {
+      id: ID,
+      body: { date: new Date('2026-10-01T00:00:00.000Z'), reference: 'TRF-1', note: '' },
+    });
+    await run(queries.useCancelCustodyReplenishment, { id: ID, body: { reason: 'لا' } });
+    expect(calls).toEqual([
+      {
+        fn: 'confirmCustodyTransfer',
+        args: [ID, { date: new Date('2026-10-01T00:00:00.000Z'), reference: 'TRF-1', note: '' }],
+      },
+      { fn: 'cancelCustodyReplenishment', args: [ID, { reason: 'لا' }] },
+    ]);
+    // Refused because somebody else confirmed or cancelled it: the log must say so — read again.
+    refuse.with = new Error('409');
+    for (const [hook, input] of [
+      [
+        queries.useConfirmCustodyTransfer,
+        { id: ID, body: { date: new Date(), reference: '', note: '' } },
+      ],
+      [queries.useCancelCustodyReplenishment, { id: ID, body: { reason: '' } }],
+    ] as const) {
+      const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+      const spy = vi.spyOn(qc, 'invalidateQueries');
+      let mutation: { mutateAsync: (input: unknown) => Promise<unknown> } | null = null;
+      const Probe = (): null => {
+        mutation = (hook as unknown as () => typeof mutation)();
+        return null;
+      };
+      renderToStaticMarkup(
+        <QueryClientProvider client={qc}>
+          <Probe />
+        </QueryClientProvider>,
+      );
+      await expect(
+        (mutation as unknown as { mutateAsync: (input: unknown) => Promise<unknown> }).mutateAsync(
+          input,
+        ),
+      ).rejects.toThrow('409');
+      const keys = spy.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey));
+      expect(keys).toContain(CUSTODY);
+      expect(keys).toContain(RECEIPTS);
+    }
   });
 
   it('a charge — the custody subtree', async () => {
@@ -289,6 +346,16 @@ describe('a failure is said once — by the screen when it names it, by the usua
     ['a replenish', queries.useReplenishCustody, { memoIds: [ID] }],
     ['a settle', queries.useSettleCustody, { parts: [{ expenseId: ID, part: 'renewal' }] }],
     ['a charge', queries.useChargeCustody, { amount: 100, reason: '' }],
+    [
+      'a transfer confirmed',
+      queries.useConfirmCustodyTransfer,
+      { id: ID, body: { date: new Date(), reference: '', note: '' } },
+    ],
+    [
+      'a held replenishment cancelled',
+      queries.useCancelCustodyReplenishment,
+      { id: ID, body: { reason: '' } },
+    ],
     ['a licence record added', queries.useCreateLicenseExpense, { date: new Date() }],
     ['a licence record changed', queries.useUpdateLicenseExpense, { id: ID, body: { version: 0 } }],
     ['a licence record deleted', queries.useDeleteLicenseExpense, ID],

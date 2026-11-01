@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   ApproveFleetFuelChargeSchema,
   CreateFleetFuelCardSchema,
+  DecideFleetFuelReconcileSchema,
   FleetFuelCardSummaryQuerySchema,
   ListFleetFuelCardMovementsQuerySchema,
   ListFleetFuelCardsQuerySchema,
@@ -11,6 +12,7 @@ import {
   TransferFleetFuelBatchSchema,
   UpdateFleetFuelCardMovementSchema,
   UpdateFleetFuelCardSchema,
+  UploadFleetFuelSheetSchema,
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
@@ -36,6 +38,8 @@ import {
   updateFuelCard,
   uploadFuelCardImage,
 } from './fuel-card.controller';
+import { decideFuelReconcile, uploadFuelSheet } from './reconcile/fuel-reconcile.controller';
+import { fuelSheetUpload, noStore } from './reconcile/fuel-sheet-upload';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -94,6 +98,26 @@ export const buildFleetFuelCardsRouter = (): Router => {
     authorize('fleetFuelCharge.transfer'),
     validate({ body: TransferFleetFuelBatchSchema }),
     asyncHandler(transferFuelBatch),
+  );
+  // «مطابقة أرصدة الكروت» — BEFORE the `/:id` group, so `reconcile` is never read as a card id.
+  // Reading the company's sheet writes no balance: the charging screen's view grant. Deciding on
+  // it sets balances: the grant that approves a charge.
+  router.post(
+    '/reconcile',
+    authenticate,
+    authorize('fleetFuelCharge.view'),
+    noStore,
+    fuelSheetUpload(),
+    validate({ body: UploadFleetFuelSheetSchema }),
+    asyncHandler(uploadFuelSheet),
+  );
+  router.post(
+    '/reconcile/:id/decisions',
+    authenticate,
+    authorize('fleetFuelCharge.approve'),
+    noStore,
+    validate({ body: DecideFleetFuelReconcileSchema, params: IdParamSchema }),
+    asyncHandler(decideFuelReconcile),
   );
   router.get(
     '/:id',

@@ -46,6 +46,8 @@ const FORMS: Record<string, number> = {
   'modules/fleet/components/CustodyChargeDialog.tsx': 1,
   'modules/fleet/components/CustodyReplenishDialog.tsx': 1,
   'modules/fleet/components/CustodySettleDialog.tsx': 1,
+  // «تأكيد التحويل» — the transfer's day.
+  'modules/fleet/components/CustodyConfirmTransferDialog.tsx': 1,
   'modules/fleet/components/DealershipInvoiceDialog.tsx': 1,
   // The drivers' counting bar and its cards.
   'modules/fleet/components/DriverViolationsPanel.tsx': 1,
@@ -64,6 +66,8 @@ const FORMS: Record<string, number> = {
   'modules/fleet/pages/CustodyMemoEditorPage.tsx': 1,
   // The values card.
   'modules/fleet/pages/FleetSettingsPage.tsx': 1,
+  // A vehicle supply contract: its date, and each line's make and count.
+  'modules/fleet/pages/VehicleContractEditorPage.tsx': 1,
 };
 
 /**

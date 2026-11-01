@@ -11,6 +11,11 @@ export interface LatestReading {
   /** max(outReading, inReading) of the newest entry — the vehicle's latest known reading. */
   reading: number;
   date: Date;
+  /**
+   * The log row `reading` came from — the very row the `$first` below picked, so a screen can mark
+   * the reading the alarm measured rather than work out a «latest row» of its own.
+   */
+  logId: string;
 }
 
 /** One end of the bracket: a reading and the date it was taken on. */
@@ -64,7 +69,12 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
 
   async findOpen(vehicleId: string, session?: ClientSession): Promise<FleetOdometerLogDoc | null> {
     return this.model
-      .findOne({ vehicleId: new Types.ObjectId(vehicleId), inReading: null, isDeleted: false, ...ON_THE_CHAIN })
+      .findOne({
+        vehicleId: new Types.ObjectId(vehicleId),
+        inReading: null,
+        isDeleted: false,
+        ...ON_THE_CHAIN,
+      })
       .session(session ?? null)
       .lean<FleetOdometerLogDoc>()
       .exec();
@@ -109,7 +119,10 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
    */
   async restore(id: Types.ObjectId, inReading: number | null, km: number | null): Promise<void> {
     await this.model
-      .updateOne({ _id: id }, { $set: { isDeleted: false, deletedAt: null, deletedBy: null, inReading, km } })
+      .updateOne(
+        { _id: id },
+        { $set: { isDeleted: false, deletedAt: null, deletedBy: null, inReading, km } },
+      )
       .exec();
   }
 
@@ -245,7 +258,10 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         vehicleId: new Types.ObjectId(vehicleId),
         isDeleted: false,
         outReading: null,
-        date: { $gte: FleetOdometerRepository.dayOf(on), $lt: FleetOdometerRepository.dayAfter(on) },
+        date: {
+          $gte: FleetOdometerRepository.dayOf(on),
+          $lt: FleetOdometerRepository.dayAfter(on),
+        },
       })
       .session(session ?? null)
       .lean<FleetOdometerLogDoc>()
@@ -273,6 +289,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       outReading: number;
       inReading: number | null;
       date: Date;
+      logId: Types.ObjectId;
     }>([
       {
         $match: {
@@ -288,6 +305,9 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
           outReading: { $first: '$outReading' },
           inReading: { $first: '$inReading' },
           date: { $first: '$date' },
+          // The same `$first` on the same total order, so the id is the row the reading and the
+          // date were taken from.
+          logId: { $first: '$_id' },
         },
       },
     ]);
@@ -298,6 +318,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
           vehicleId: String(row._id),
           reading: Math.max(row.outReading, row.inReading ?? row.outReading),
           date: row.date,
+          logId: String(row.logId),
         },
       ]),
     );
@@ -406,13 +427,20 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
 
   /**
    * The LOWER bound for many vehicles at once, each against its OWN date — the alarm projection's
-   * read, where a per-vehicle round trip would be one query per car in the fleet.
+   * read, where a per-vehicle round trip would be one query per car in the fleet. One pair per
+   * vehicle per call: the answer is keyed by the car.
    *
    * Only the lower side: the projection already holds each vehicle's latest reading, which is the
    * tightest upper bound available to it without a second pass.
+   *
+   * `includeDay: false` cuts BEFORE the day `on` names instead of after it — the readings the chain
+   * held before that day, none of that day's own. The alarm judges a workshop counter that way
+   * (R4): the register keeps no time of day, so a reading dated on the service day may well have
+   * been taken after the counter was. The default keeps the day, as the bracket always has.
    */
   async lowerBoundsAt(
     pairs: readonly { vehicleId: string; on: Date }[],
+    { includeDay = true }: { includeDay?: boolean } = {},
   ): Promise<Map<string, ChainBound>> {
     if (pairs.length === 0) return new Map();
     const rows = await this.model.aggregate<{
@@ -426,7 +454,11 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
           ...ON_THE_CHAIN,
           $or: pairs.map((pair) => ({
             vehicleId: new Types.ObjectId(pair.vehicleId),
-            date: { $lt: FleetOdometerRepository.dayAfter(pair.on) },
+            date: {
+              $lt: includeDay
+                ? FleetOdometerRepository.dayAfter(pair.on)
+                : FleetOdometerRepository.dayOf(pair.on),
+            },
           })),
         },
       },
@@ -441,7 +473,9 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     ]);
     // The opening reading only, for the reason spelled out on `chainBounds` — the closing one was
     // measured on the NEXT row's date and does not belong to a bound cut at this one.
-    return new Map(rows.map((row) => [String(row._id), { reading: row.outReading, date: row.date }]));
+    return new Map(
+      rows.map((row) => [String(row._id), { reading: row.outReading, date: row.date }]),
+    );
   }
 
   async listLogs(params: ListParams<FleetOdometerLogDoc>): Promise<Paginated<FleetOdometerLogDoc>> {

@@ -11,8 +11,12 @@
 // dealership invoice never do. The fund may be negative: more was spent, or settled, than was ever
 // charged into it (his own settlement letter does that). It is read here and nowhere else; the
 // figures, the dashboard and «سجل العهدة» all carry this, and no filter changes it.
+//
+// Only what is `done` moves it: a «استعاضة» waiting for its transfer (`held`) and a cancelled one
+// add nothing — they are counted on their own (`held`, `cancelled`). An operation stored before
+// the statuses has none and is `done`.
 import { type ClientSession } from 'mongoose';
-import { type FleetCustodyOperationKind } from '@ecms/contracts';
+import { type FleetCustodyOperationKind, type FleetCustodyOperationStatus } from '@ecms/contracts';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { RECEIPT_PIASTRES } from './custody-memo-totals';
 import { FleetCustodyOperationModel } from './custody-operation.model';
@@ -51,8 +55,12 @@ export interface CustodyFundTerms {
   charged: CustodyFundCount;
   /** The custody receipts — `count` is receipts. */
   spent: CustodyFundCount;
-  /** «استعاضة عهدة», with the memos they brought back. */
+  /** «استعاضة عهدة» transferred (and legacy ones), with the memos they brought back. */
   replenished: CustodyFundCount & { memos: number };
+  /** «استعاضة عهدة» waiting for the transfer — not in the fund — with their memos and receipts. */
+  held: CustodyFundCount & { memos: number; receipts: number };
+  /** Cancelled «استعاضة عهدة» — never in the fund. */
+  cancelled: CustodyFundCount;
   /** «تسوية عهدة», with the licensing memos they took off. */
   settled: CustodyFundCount & { parts: number };
   fundTotal: number;
@@ -63,10 +71,12 @@ interface ReceiptSumRow {
   piastres: number;
 }
 interface OperationSumRow {
-  _id: FleetCustodyOperationKind;
+  _id: { kind: FleetCustodyOperationKind; status: FleetCustodyOperationStatus };
   count: number;
   piastres: number;
   memos: number;
+  /** Σ the receipts its memos' snapshots name. */
+  receipts: number;
   parts: number;
 }
 
@@ -88,10 +98,12 @@ const readOperationSums = async (session?: ClientSession): Promise<OperationSumR
     { $match: { isDeleted: false } },
     {
       $group: {
-        _id: '$kind',
+        // A row from before the statuses has none: it is `done`.
+        _id: { kind: '$kind', status: { $ifNull: ['$status', 'done'] } },
         count: { $sum: 1 },
         piastres: PIASTRES,
         memos: { $sum: { $size: { $ifNull: ['$memos', []] } } },
+        receipts: { $sum: { $sum: { $ifNull: ['$memos.receipts', []] } } },
         parts: { $sum: { $size: { $ifNull: ['$parts', []] } } },
       },
     },
@@ -108,7 +120,8 @@ export const readCustodyFundTerms = async (session?: ClientSession): Promise<Cus
     session === undefined
       ? await Promise.all([readReceiptSums(), readOperationSums()])
       : [await readReceiptSums(session), await readOperationSums(session)];
-  const op = (kind: FleetCustodyOperationKind) => operations.find((row) => row._id === kind);
+  const op = (kind: FleetCustodyOperationKind, status: FleetCustodyOperationStatus = 'done') =>
+    operations.find((row) => row._id.kind === kind && row._id.status === status);
   const countOf = (row: { count: number; piastres: number } | undefined): CustodyFundCount => ({
     count: row?.count ?? 0,
     amount: fromPiastres(row?.piastres ?? 0),
@@ -116,11 +129,20 @@ export const readCustodyFundTerms = async (session?: ClientSession): Promise<Cus
   const charged = countOf(op('charge'));
   const spent = countOf(receipts);
   const replenished = { ...countOf(op('replenish')), memos: op('replenish')?.memos ?? 0 };
+  const waiting = op('replenish', 'held');
+  const held = {
+    ...countOf(waiting),
+    memos: waiting?.memos ?? 0,
+    receipts: waiting?.receipts ?? 0,
+  };
+  const cancelled = countOf(op('replenish', 'cancelled'));
   const settled = { ...countOf(op('settle')), parts: op('settle')?.parts ?? 0 };
   return {
     charged,
     spent,
     replenished,
+    held,
+    cancelled,
     settled,
     fundTotal: fundOf({
       charged: charged.amount,
@@ -138,7 +160,8 @@ export const readCustodyFundTotal = async (): Promise<number> =>
 /**
  * The bracket figure his letter prints, frozen on the operation so a reprint never changes:
  * «عهده اداره الحركه ( X )» on a replenishment is everything ever charged into the fund (his
- * 100,000), «من العهده ( X )» on a settlement is the fund just before it. A charge prints none.
+ * 100,000), «من العهده ( X )» on a settlement is the fund just before it — a held replenishment's
+ * money not in it. A charge prints none. «تأكيد التحويل» never rewrites it.
  */
 export const letterFigureOf = (
   kind: FleetCustodyOperationKind,

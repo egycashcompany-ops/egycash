@@ -96,8 +96,10 @@ const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
   updatedAt: '2026-09-14T00:00:00.000Z',
   ...over,
 });
-const PENDING = { id: 'm-7', no: 7, replenishedAt: null };
-const REPLENISHED = { id: 'm-7', no: 7, replenishedAt: '2026-09-29' };
+const PENDING = { id: 'm-7', no: 7, replenishedAt: null, held: false };
+const REPLENISHED = { id: 'm-7', no: 7, replenishedAt: '2026-09-29', held: false };
+/** On a replenishment held for its transfer: no day yet, locked as a replenished one. */
+const HELD = { id: 'm-7', no: 7, replenishedAt: null, held: true };
 
 const TOTALS: FleetReceiptTotalsDto = {
   count: 3,
@@ -217,6 +219,16 @@ describe('what a custody memo holds of its receipt', () => {
     expect(memoDay('2026-09-29')).toBe('2026/09/29');
     expect(memoDay('2026-09-29T00:00:00.000Z')).toBe('2026/09/29');
   });
+
+  it('holds what a replenished memo holds while its replenishment waits for the transfer', () => {
+    expect(receiptMemoState(receipt({ memo: HELD }))).toBe('held');
+    expect(receiptMemoLocks(receipt({ memo: HELD }))).toEqual(
+      receiptMemoLocks(receipt({ memo: REPLENISHED })),
+    );
+    // An older answer with no `held` reads as before.
+    const older = { id: 'm-7', no: 7, replenishedAt: null } as unknown as typeof PENDING;
+    expect(receiptMemoState(receipt({ memo: older }))).toBe('pending');
+  });
 });
 
 describe('the receipts table names the memo and locks the bin', () => {
@@ -224,6 +236,7 @@ describe('the receipts table names the memo and locks the bin', () => {
     receipt({ id: 'free', amount: 101 }),
     receipt({ id: 'waits', amount: 102, memo: PENDING }),
     receipt({ id: 'done', amount: 103, memo: { ...REPLENISHED, id: 'm-8', no: 8 } }),
+    receipt({ id: 'held', amount: 104, memo: { ...HELD, id: 'm-9', no: 9 } }),
   ];
 
   it('writes «مذكرة رقم N» under «العهدة» — amber while it waits, emerald once replenished', () => {
@@ -247,6 +260,11 @@ describe('the receipts table names the memo and locks the bin', () => {
     expect(done).toContain(
       `title="${attr(ar('fleet.receipts.memo.replenishedTitle', { no: 8, date: '2026/09/29' }))}"`,
     );
+    // Held for its transfer: the amber look stays — only the hover tells it apart.
+    const held = tagOf(rowOf(html, '104.00'), 'data-receipt-memo="9"');
+    expect(held).toContain('data-receipt-memo-state="held"');
+    expect(held).toContain('border-amber-300');
+    expect(held).toContain(`title="${attr(ar('fleet.receipts.memo.heldTitle', { no: 9 }))}"`);
   });
 
   it('opens the memo from its chip only for whoever may open the memo page', () => {
@@ -268,6 +286,7 @@ describe('the receipts table names the memo and locks the bin', () => {
     for (const [amount, id, reason] of [
       ['102.00', 'waits', ar('fleet.receipts.memo.lockedDelete', { no: 7 })],
       ['103.00', 'done', ar('fleet.receipts.memo.lockedDeleteReplenished', { no: 8 })],
+      ['104.00', 'held', ar('fleet.receipts.memo.lockedDeleteHeld', { no: 9 })],
     ] as const) {
       const row = rowOf(html, amount);
       expect(row, id).toContain(`data-receipt-edit="${id}"`);
@@ -348,6 +367,26 @@ describe('the receipt form on a memo', () => {
     expect(field.slice(0, field.indexOf('</div></div>'))).toMatch(
       /<button[^>]*data-date-picker-button="true"[^>]*disabled=""|<button[^>]*disabled=""[^>]*data-date-picker-button="true"/u,
     );
+    expect(tagOf(html, 'data-receipt-driver="true"')).not.toMatch(/\sdisabled=""/u);
+  });
+
+  it('on a memo held for its transfer: locked as a replenished one, saying it waits', () => {
+    const html = form(receipt({ memo: HELD }));
+    expect(html).toContain('data-receipt-memo-lock="held"');
+    expect(html).toContain(ar('fleet.receipts.memo.heldNotice', { no: 7 }));
+    const reason = attr(ar('fleet.receipts.memo.lockedHeld', { no: 7 }));
+    for (const marker of [
+      'data-receipt-kind-locked="true"',
+      'data-receipt-source-locked="true"',
+      'data-receipt-vehicle-locked="true"',
+    ]) {
+      expect(tagOf(html, marker), marker).toContain(`<fieldset disabled="" title="${reason}"`);
+    }
+    for (const marker of ['data-receipt-date="true"', 'data-receipt-amount="true"']) {
+      const box = tagOf(html, marker);
+      expect(box, marker).toContain('disabled=""');
+      expect(box, marker).toContain(`title="${reason}"`);
+    }
     expect(tagOf(html, 'data-receipt-driver="true"')).not.toMatch(/\sdisabled=""/u);
   });
 });

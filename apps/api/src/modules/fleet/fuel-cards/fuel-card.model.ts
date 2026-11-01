@@ -1,8 +1,9 @@
 // A fuel card (الفيز) — one company's card on one car, and the balance it holds.
 //
 // The balance is STORED here and every change to it is a movement in `fleet_fuel_card_movements`:
-// a charge the clerk approved, a transfer from or to another card, a fuel receipt. The two are
-// written in one transaction, so the balance and its log cannot disagree.
+// a charge the clerk approved, a transfer from or to another card, a fuel receipt, a company
+// sheet's figure taken (✓) — and a sheet's figure refused (✗), a line that moves nothing. The two
+// are written in one transaction, so the balance and its log cannot disagree.
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_FUEL_CARD_COMPANIES,
@@ -92,6 +93,20 @@ export const FleetFuelCardModel = model<FleetFuelCardDoc>(
   'fleet_fuel_cards',
 );
 
+/**
+ * The company sheet behind a `sheetAdjust` (✓) or `sheetReject` (✗) line — «مطابقة أرصدة الكروت»:
+ * the session it was decided in, the file, and the two balances it stood between.
+ */
+export interface FleetFuelMovementReconciliation {
+  reconciliationId: Types.ObjectId;
+  fileName: string;
+  sheetBalance: number;
+  /** The card's balance when the decision was made. */
+  systemBalance: number;
+  /** The Excel row the sheet's figure came from. */
+  sheetRow: number | null;
+}
+
 export interface FleetFuelCardMovementDoc extends BaseDocFields {
   cardId: Types.ObjectId;
   kind: FleetFuelMovementKind;
@@ -102,7 +117,20 @@ export interface FleetFuelCardMovementDoc extends BaseDocFields {
   /** The receipt that took this, when `kind` is `receipt`. */
   receiptId: Types.ObjectId | null;
   at: Date;
+  /** Only on the two sheet kinds; ABSENT on every other line (and on every line before them). */
+  reconciliation?: FleetFuelMovementReconciliation | null;
 }
+
+const movementReconciliationSchema = new Schema<FleetFuelMovementReconciliation>(
+  {
+    reconciliationId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, default: '' },
+    sheetBalance: { type: Number, required: true },
+    systemBalance: { type: Number, required: true },
+    sheetRow: { type: Number, default: null },
+  },
+  { _id: false },
+);
 
 const movementSchema = new Schema<FleetFuelCardMovementDoc>(
   {
@@ -113,6 +141,9 @@ const movementSchema = new Schema<FleetFuelCardMovementDoc>(
     counterpartCardId: { type: Schema.Types.ObjectId, default: null },
     receiptId: { type: Schema.Types.ObjectId, default: null },
     at: { type: Date, required: true },
+    // NO default: a line written without it — every line before the sheet kinds, and every other
+    // kind since — stays without the field; read as `null`. Nothing is backfilled.
+    reconciliation: { type: movementReconciliationSchema, required: false },
     ...baseFields,
   },
   baseSchemaOptions,

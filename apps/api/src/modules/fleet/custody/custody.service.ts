@@ -11,6 +11,7 @@ import {
   parseFleetSort,
   type FleetCustodyDashboardDto,
   type FleetCustodyDashboardQuery,
+  type FleetCustodyMemoStatus,
   type FleetCustodyMovementDto,
   type FleetCustodySource,
   type FleetCustodySummaryDto,
@@ -18,6 +19,7 @@ import {
   type FleetCustodyVehicleRowDto,
   type FleetFuelCardCompany,
   type FleetFuelType,
+  type FleetReceiptMemoLinkDto,
   type ListFleetCustodyMovementsQuery,
   type Paginated,
 } from '@ecms/contracts';
@@ -26,9 +28,10 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { sortCustodyMovements } from './custody-sort';
-import { custodyDashboard, custodyMemoStateOf } from './custody-dashboard';
+import { custodyDashboard, custodyMemoStateOf, custodyMemoStatusOf } from './custody-dashboard';
 import { readCustodyFundTerms, type CustodyFundTerms } from './custody-fund';
 import { FleetCustodyMemoModel } from './custody-memo.model';
+import { fleetCustodyMemoRepository } from './custody-memo.repository';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -64,12 +67,22 @@ interface Movement {
   /** Whether a receipt has its photo — the dashboard's alert, never on «كل الحركات». */
   hasImage: boolean;
   amount: number;
-  /** The memo holding the receipt, `null` when none — the dashboard's, never on «كل الحركات». */
+  /**
+   * The memo holding the receipt, `null` when none — the dashboard's states read it, and «كل
+   * الحركات» shows it as `memo` (the receipts screen's link, joined for the page only).
+   */
   memoId: string | null;
 }
 
-/** A movement as «كل الحركات» lists it — field by field, so nothing the dashboard reads leaks out. */
-const toMovementDto = (row: Movement): FleetCustodyMovementDto => ({
+/**
+ * A movement as «كل الحركات» lists it — field by field, so nothing the dashboard reads leaks out.
+ * Its memo is the receipts screen's own link (`links`, read for the page's rows): `null` on no memo,
+ * or on a memo since deleted.
+ */
+const toMovementDto = (
+  row: Movement,
+  links: ReadonlyMap<string, FleetReceiptMemoLinkDto>,
+): FleetCustodyMovementDto => ({
   id: row.id,
   ref: row.ref,
   source: row.source,
@@ -82,6 +95,7 @@ const toMovementDto = (row: Movement): FleetCustodyMovementDto => ({
   company: row.company,
   detail: row.detail,
   amount: row.amount,
+  memo: row.memoId === null ? null : (links.get(row.memoId) ?? null),
 });
 
 /** Each movement with its car's code, from the registry — one read for all of them. */
@@ -96,12 +110,14 @@ const withCodes = async (rows: Movement[]): Promise<Movement[]> => {
 };
 
 /**
- * Which of the memos the movements name are replenished — where each movement stands against the
- * memos («تمت الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات»): ONE read of the live memos
- * the rows name, their `replenishmentId` only. The dashboard's alone: the figures and «كل الحركات»
- * never pay for it. It needs the rows' `memoId`s only, so it runs beside the cars' codes.
+ * The status of each memo the movements name — where each movement stands against the memos
+ * («تمت الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات»): ONE read of the live memos the
+ * rows name, their replenishment only. The dashboard's alone: the figures and «كل الحركات» never
+ * pay for it. It needs the rows' `memoId`s only, so it runs beside the cars' codes.
  */
-const replenishedMemos = async (rows: readonly Movement[]): Promise<Map<string, boolean>> => {
+const memoStatuses = async (
+  rows: readonly Movement[],
+): Promise<Map<string, FleetCustodyMemoStatus>> => {
   const ids = [...new Set(rows.flatMap((row) => (row.memoId === null ? [] : [row.memoId])))];
   const memos =
     ids.length === 0
@@ -110,10 +126,16 @@ const replenishedMemos = async (rows: readonly Movement[]): Promise<Map<string, 
           _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
           isDeleted: false,
         })
-          .select({ replenishmentId: 1 })
-          .lean<{ _id: Types.ObjectId; replenishmentId?: Types.ObjectId | null }[]>()
+          .select({ replenishmentId: 1, replenishmentHeld: 1 })
+          .lean<
+            {
+              _id: Types.ObjectId;
+              replenishmentId?: Types.ObjectId | null;
+              replenishmentHeld?: boolean;
+            }[]
+          >()
           .exec();
-  return new Map(memos.map((memo) => [String(memo._id), memo.replenishmentId != null]));
+  return new Map(memos.map((memo) => [String(memo._id), custodyMemoStatusOf(memo)]));
 };
 
 /**
@@ -220,10 +242,10 @@ class FleetCustodyService {
     const vehicleIds = await this.vehicleIdsFor(query);
     const [rows, terms] = await Promise.all([
       this.receiptsFor(query, vehicleIds).then(async (found) => {
-        const [named, replenished] = await Promise.all([withCodes(found), replenishedMemos(found)]);
+        const [named, statuses] = await Promise.all([withCodes(found), memoStatuses(found)]);
         return named.map((row) => ({
           ...row,
-          memoState: custodyMemoStateOf(row.memoId, replenished),
+          memoState: custodyMemoStateOf(row.memoId, statuses),
         }));
       }),
       readCustodyFundTerms(),
@@ -276,7 +298,8 @@ class FleetCustodyService {
 
   /**
    * «كل الحركات» — one page of the ledger, in the arrows' order over the WHOLE filtered set
-   * (newest first when none is chosen). The order never changes which rows are counted.
+   * (newest first when none is chosen). The order never changes which rows are counted. Each row
+   * names its memo («مذكرة رقم N» under «من») — one `_id $in` read of the page's memos only.
    */
   async movements(
     query: ListFleetCustodyMovementsQuery,
@@ -292,8 +315,12 @@ class FleetCustodyService {
       sorts,
     );
     const start = (page - 1) * pageSize;
+    const pageRows = rows.slice(start, start + pageSize);
+    const links = await fleetCustodyMemoRepository.linksByIds(
+      pageRows.flatMap((row) => (row.memoId === null ? [] : [row.memoId])),
+    );
     return {
-      items: rows.slice(start, start + pageSize).map(toMovementDto),
+      items: pageRows.map((row) => toMovementDto(row, links)),
       meta: {
         page,
         pageSize,

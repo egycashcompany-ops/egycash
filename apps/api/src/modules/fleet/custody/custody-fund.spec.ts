@@ -1,5 +1,6 @@
 // «إجمالي العهدة» = Σ شحن − Σ custody receipts + Σ استعاضة − Σ تسوية — to the piastre, and allowed
-// below zero. The reads themselves run against a real mongo in the integration suite.
+// below zero; only a transferred «استعاضة» (or one from before the hold) is in Σ استعاضة. The reads
+// themselves run against a real mongo in the integration suite.
 import { describe, expect, it } from 'vitest';
 import {
   chargeReasonOf,
@@ -11,6 +12,7 @@ import {
   toPiastres,
   utcDay,
 } from './custody-fund';
+import { cancellationDtoOf, operationStatusOf, transferDtoOf } from './custody-operation.model';
 
 const day = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
 
@@ -45,6 +47,46 @@ describe('letterFigureOf — the bracket figure his letters print', () => {
     expect(letterFigureOf('replenish', terms)).toBe(300000);
     expect(letterFigureOf('settle', terms)).toBe(299400);
     expect(letterFigureOf('charge', terms)).toBeNull();
+  });
+});
+
+describe('an operation’s status — «استعاضة معلّقة لحين التحويل»', () => {
+  it('reads a row from before the statuses as done, with no transfer and no cancellation', () => {
+    expect(operationStatusOf({})).toBe('done');
+    expect(transferDtoOf({})).toBeNull();
+    expect(cancellationDtoOf({ cancellation: null })).toBeNull();
+  });
+
+  it('keeps a stored status as it is', () => {
+    expect(operationStatusOf({ status: 'held' })).toBe('held');
+    expect(operationStatusOf({ status: 'cancelled' })).toBe('cancelled');
+    expect(operationStatusOf({ status: 'done' })).toBe('done');
+  });
+
+  it('writes a transfer and a cancellation as the wire carries them', () => {
+    expect(
+      transferDtoOf({
+        transfer: {
+          date: day('2026-10-01'),
+          reference: 'TRF-2026-4471',
+          note: '',
+          by: null,
+          byName: 'أحمد علي',
+          at: new Date('2026-10-01T09:15:00.000Z'),
+        },
+      }),
+    ).toEqual({
+      date: '2026-10-01',
+      reference: 'TRF-2026-4471',
+      note: '',
+      byName: 'أحمد علي',
+      at: '2026-10-01T09:15:00.000Z',
+    });
+    expect(
+      cancellationDtoOf({
+        cancellation: { reason: '', by: null, byName: null, at: day('2026-09-30') },
+      }),
+    ).toEqual({ reason: '', byName: null, at: '2026-09-30T00:00:00.000Z' });
   });
 });
 

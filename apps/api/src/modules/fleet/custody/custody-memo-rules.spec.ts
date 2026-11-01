@@ -225,4 +225,16 @@ describe('what a receipt on a memo may still change — compared by value', () =
       'locked',
     );
   });
+
+  it('a memo held for its replenishment’s transfer is frozen the same — its letter printed the figure', () => {
+    // The guard hands a held memo over as taken (`replenished`) and held.
+    const held = { replenished: true, held: true };
+    expect(receiptChangeVerdict(live, resent({ amount: 1690.01 }), held)).toBe('locked');
+    expect(receiptChangeVerdict(live, resent({ date: d('2026-09-21T00:00:00Z') }), held)).toBe(
+      'locked',
+    );
+    expect(receiptChangeVerdict(live, resent({ kind: 'wash' }), held)).toBe('locked');
+    // A driver-only edit still goes through.
+    expect(receiptChangeVerdict(live, resent(), held)).toBe('ok');
+  });
 });

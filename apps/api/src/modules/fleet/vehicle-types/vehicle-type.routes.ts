@@ -25,13 +25,20 @@ const IdParamSchema = z.object({ id: objectId() }).strict();
 
 export const buildFleetVehicleTypesRouter = (): Router => {
   const router = Router();
-  // The list — also from «قوائم الحركة» (fleetCatalog.manage) and the settings page that arranges
-  // the makes (fleetMaintenanceRule.manage): a catalog manager without vehicle-view must not get
-  // an error on the makes' tab. Reading make names exposes nothing else.
+  // The list — also from «قوائم الحركة» (fleetCatalog.manage), the settings page that arranges
+  // the makes (fleetMaintenanceRule.manage) and «عقود توريد السيارات», whose lines name a make
+  // (fleetVehicleContract.view): a catalog manager without vehicle-view must not get an error on
+  // the makes' tab, nor a contracts clerk on the make picker. Reading make names exposes nothing
+  // else.
   router.get(
     '/',
     authenticate,
-    authorizeAny('fleetVehicle.view', 'fleetCatalog.manage', 'fleetMaintenanceRule.manage'),
+    authorizeAny(
+      'fleetVehicle.view',
+      'fleetCatalog.manage',
+      'fleetMaintenanceRule.manage',
+      'fleetVehicleContract.view',
+    ),
     validate({ query: PaginationQuerySchema.strict() }),
     asyncHandler(listVehicleTypes),
   );

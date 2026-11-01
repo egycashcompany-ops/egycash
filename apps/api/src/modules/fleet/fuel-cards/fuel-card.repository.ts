@@ -70,6 +70,21 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
       .exec();
   }
 
+  /** Every live card of one company — what a company's sheet is compared with. */
+  async liveOfCompany(company: FleetFuelCardCompany): Promise<FleetFuelCardDoc[]> {
+    return this.model.find({ company, isDeleted: false }).lean<FleetFuelCardDoc[]>().exec();
+  }
+
+  /** The live cards among `ids`, read inside `session`; a deleted or unknown id is absent. */
+  async liveByIds(ids: readonly string[], session: ClientSession): Promise<FleetFuelCardDoc[]> {
+    if (ids.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .session(session)
+      .lean<FleetFuelCardDoc[]>()
+      .exec();
+  }
+
   async totals(filter: FilterQuery<FleetFuelCardDoc>, now: Date): Promise<FleetFuelCardTotalsDto> {
     const pipeline: PipelineStage[] = [
       { $match: this.baseFilter(undefined, filter) },
@@ -119,6 +134,27 @@ export const fleetFuelCardRepository = new FleetFuelCardRepository();
 class FleetFuelCardMovementRepository extends BaseRepository<FleetFuelCardMovementDoc> {
   constructor() {
     super(FleetFuelCardMovementModel, {});
+  }
+
+  /**
+   * The cards among `cardIds` whose log changed at or after `since` — a line written, edited or
+   * removed (a removed line is still on file, so deleted lines count too), read inside `session`.
+   * `updatedAt`, not `at`: a receipt line carries the receipt's own (past) day.
+   */
+  async cardsMovedSince(
+    cardIds: readonly string[],
+    since: Date,
+    session: ClientSession,
+  ): Promise<Set<string>> {
+    if (cardIds.length === 0) return new Set();
+    const moved = await this.model
+      .distinct('cardId', {
+        cardId: { $in: cardIds.map((id) => new Types.ObjectId(id)) },
+        updatedAt: { $gte: since },
+      })
+      .session(session)
+      .exec();
+    return new Set(moved.map((id) => String(id)));
   }
 }
 

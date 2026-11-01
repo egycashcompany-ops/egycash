@@ -137,6 +137,10 @@ const NOT_A_CODE_SELECTOR = [
     file: 'modules/fleet/pages/LicenseExpenseEditorPage.tsx',
     why: 'a code→id-and-plate map so a picked car writes its plate on the memo; the cars themselves are picked with VehicleCodeFilter',
   },
+  {
+    file: 'modules/fleet/components/AlarmReasonCell.tsx',
+    why: 'an id→status-and-reason lookup for the odometer’s «السيارة غير نشطة» card, read from the whole registry (every status) VehicleCodeFilter already holds; nothing is picked',
+  },
 ] as const;
 
 /**

@@ -170,6 +170,7 @@ const movement = (over: Partial<FleetCustodyMovementDto> = {}): FleetCustodyMove
   company: null,
   detail: null,
   amount: 1350,
+  memo: null,
   ...over,
 });
 
@@ -280,7 +281,7 @@ const renderCustody = (
       meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 },
     },
   );
-  return mount(qc, permissions, '/fleet/custody', <CustodyPage />, search);
+  return mount(qc, permissions, '/fleet/custody-expenses', <CustodyPage />, search);
 };
 
 /** A class string as the markup writes it — `&` and `>` escaped. */
@@ -814,7 +815,7 @@ describe('the custody ledger', () => {
     const opened = mount(
       client(),
       ['fleetCustody.view'],
-      '/fleet/custody',
+      '/fleet/custody-expenses',
       <CustodyFigures totals={custodySummary} />,
     );
     expect(opened).toContain('data-custody-figures="true"');
@@ -834,16 +835,17 @@ describe('the custody ledger', () => {
     expect(opened).toMatch(/>4,220\.00<\/span><span[^>]*>ج\.م\.<\/span>/u);
   });
 
-  it('shows six figures — the fund, the total, then each kind on its own tile in its own colour', () => {
+  it('shows five figures — the total, then each kind on its own tile in its own colour', () => {
     const opened = mount(
       client(),
       ['fleetCustody.view'],
-      '/fleet/custody',
+      '/fleet/custody-expenses',
       <CustodyFigures totals={custodySummary} />,
     );
     const order = [...opened.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1]);
-    // «وتظهر فى مكان التوكيل»: «صيانة» first among the kinds, where التوكيل was.
-    expect(order).toEqual(['fund', 'total', 'maintenance', 'fuel', 'tyres', 'wash']);
+    // «وتظهر فى مكان التوكيل»: «صيانة» first among the kinds, where التوكيل was. «خلاص افصلهم»: the
+    // fund's own card heads SCREEN 1 «العهدة» now, not this board.
+    expect(order).toEqual(['total', 'maintenance', 'fuel', 'tyres', 'wash']);
     for (const kind of ['maintenance', 'fuel', 'tyres', 'wash'] as const) {
       const at = opened.indexOf(`data-custody-figure="${kind}"`);
       const tile = opened.slice(at, opened.indexOf('</div></div>', at));
@@ -851,13 +853,11 @@ describe('the custody ledger', () => {
       expect(tile, `${kind} wears its kind's tile`).toContain(CUSTODY_KIND[kind].tile);
       expect(tile, `${kind} wears its kind's edge`).toContain(CUSTODY_KIND[kind].accent);
     }
-    // One to a row on a phone, two from `sm`, three from `xl`, the six in one row only from
-    // 1,680px — never `2xl`, where «ج.م.» would not fit — and «ج.م.» goes under a figure too long
-    // for its tile rather than off it.
-    expect(opened).toContain(
-      'grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 min-[1680px]:grid-cols-6',
-    );
+    // One to a row on a phone, two from `sm`, the five in one row from `xl` — the sums a size down
+    // there — and «ج.م.» goes under a figure too long for its tile rather than off it.
+    expect(opened).toContain('grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5');
     expect(opened).not.toMatch(/(?:^|[\s"])(?:lg|2xl):grid-cols-[56]/u);
+    expect(opened).not.toMatch(/grid-cols-6/u);
     expect(opened).toContain('[&amp;_.items-baseline]:flex-wrap');
     // «فى شاشه العهد … فى اللايت سيم والدارك سيم»: on this screen fuel is the design's amber,
     // the total its emerald — the house rule keeping amber for states holds on the other boards.

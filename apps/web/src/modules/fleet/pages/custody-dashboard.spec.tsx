@@ -155,13 +155,13 @@ const client = () =>
   new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
-const mount = (qc: QueryClient, node: JSX.Element, path = '/fleet/custody'): string =>
+const mount = (qc: QueryClient, node: JSX.Element, path = '/fleet/custody-expenses'): string =>
   renderToStaticMarkup(
     <Provider store={store()}>
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route path="/fleet/custody" element={node} />
+            <Route path="/fleet/custody-expenses" element={node} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -442,6 +442,7 @@ const movement = (over: Partial<FleetCustodyMovementDto>): FleetCustodyMovementD
   company: 'chillout',
   detail: null,
   amount: 150,
+  memo: null,
   ...over,
 });
 const logRows: FleetCustodyMovementDto[] = [
@@ -489,7 +490,7 @@ const board = (
     }),
     { items: rows, meta: { page: 1, pageSize: 25, totalItems: rows.length, totalPages: 1 } },
   );
-  return mount(qc, <CustodyPage />, `/fleet/custody${search}`);
+  return mount(qc, <CustodyPage />, `/fleet/custody-expenses${search}`);
 };
 
 /**
@@ -589,8 +590,9 @@ describe('«لوحة تحكم» on the custody board', () => {
     const button = html.slice(html.lastIndexOf('<button', open), html.indexOf('</button>', open));
     expect(button).toContain('aria-haspopup="dialog"');
     expect(button).toContain('aria-expanded="false"');
-    expect(ar('fleet.custody.dashboard.open')).toBe('لوحة تحكم');
-    expect(button).toContain(ar('fleet.custody.dashboard.open'));
+    // «لوحة تحكم المصروفات» — the spend's half of the dashboard; the fund's is SCREEN 1's tab.
+    expect(ar('fleet.custody.dashboard.spendOpen')).toBe('لوحة تحكم المصروفات');
+    expect(text(button)).toBe(ar('fleet.custody.dashboard.spendOpen'));
     expect(html, 'closed on the way in').not.toContain('data-custody-dashboard="true"');
     // The very `filters` the figures read — never a second copy of them.
     expect(PAGE).toContain('filters={filters}');
@@ -669,7 +671,11 @@ describe('«لوحة تحكم» on the custody board', () => {
     const labelledBy = /aria-labelledby="([^"]+)"/u.exec(shell)?.[1];
     expect(labelledBy).toBeDefined();
     expect(shell).toContain(`id="${labelledBy ?? ''}"`);
-    expect(shell).toContain(ar('fleet.custody.dashboard.title'));
+    expect(text(shell.slice(shell.indexOf(`id="${labelledBy ?? ''}"`)))).toContain(
+      ar('fleet.custody.dashboard.spendTitle'),
+    );
+    expect(ar('fleet.custody.dashboard.spendTitle')).toBe('لوحة تحكم المصروفات');
+    expect(shell).not.toContain(ar('fleet.custody.dashboard.title'));
     expect(shell).toContain('data-custody-dashboard-close="true"');
     expect(shell).toContain(`aria-label="${ar('common.close')}"`);
     // The design's body — #f8fafc and slate-800 on the light page, #0b0f19 and slate-200 dark —
@@ -750,11 +756,10 @@ describe('«لوحة تحكم» on the custody board', () => {
   it('draws the design’s sections in its order — and nothing the design tool added', () => {
     const html = body({ ...dashboard, alerts: alerting });
     const ids = [...html.matchAll(/data-custody-dashboard-section="(\w+)"/gu)].map((m) => m[1]);
-    // «العهدة الآن» first — its four cards shimmer here, their reads on their way (their own suite
-    // draws them) — then the filtered spend under its heading, in the design's order.
+    // The spend alone, in the design's order: «العهدة الآن» and its cards are «لوحة تحكم العهدة»'s,
+    // the third tab of SCREEN 1 — and the heading «مصروفات العهدة حسب الفلاتر» is not repeated.
     expect(ids).toEqual([
       'alerts',
-      'fund',
       'kpis',
       'timeline',
       'byKindSource',
@@ -762,6 +767,13 @@ describe('«لوحة تحكم» on the custody board', () => {
       'topDrivers',
       'fuel',
     ]);
+    expect(html).not.toContain('data-custody-dashboard-heading');
+    expect(html).not.toContain('data-custody-card-loading');
+    // Its banner under the spend's own heading, with the spend's lines only.
+    const alerts = section(html, 'alerts');
+    expect(text(alerts)).toContain(ar('fleet.custody.dashboard.alerts.spendTitle'));
+    expect(text(alerts)).not.toContain(ar('fleet.custody.dashboard.alerts.title'));
+    expect(alerts).not.toContain('data-custody-alert="fund-');
     // Latin digits throughout, money with «ج.م.» in a span of its own.
     expect(html, 'no Arabic-Indic digit anywhere').not.toMatch(/[٠-٩]/u);
     expect(html).toMatch(/>4,335\.50<\/span><span[^>]*>ج\.م\.<\/span>/u);
@@ -782,32 +794,19 @@ describe('«لوحة تحكم» on the custody board', () => {
   });
 });
 
-describe('«العهدة · المذكرات · سجل العهدة» — the board is the first of three tabs', () => {
-  /** The opening tag of the tab `key`. */
-  const tabTag = (html: string, key: string): string => {
-    const at = html.indexOf(`data-custody-tab="${key}"`);
-    expect(at, key).toBeGreaterThan(-1);
-    return html.slice(html.lastIndexOf('<', at), html.indexOf('>', at));
-  };
-
-  it('opens on the tabs, over its toolbar, «العهدة» the one it is on', () => {
-    const html = board();
-    const tabs = html.indexOf('data-custody-tabs="true"');
-    expect(tabs, 'the tabs are drawn').toBeGreaterThan(-1);
-    expect(tabs, 'over the toolbar').toBeLessThan(html.indexOf('data-custody-toolbar="true"'));
-    expect([...html.matchAll(/data-custody-tab="(\w+)"/gu)].map((m) => m[1])).toEqual([
-      'board',
-      'memos',
-      'log',
-    ]);
-    expect(tabTag(html, 'board')).toContain('aria-selected="true"');
-    expect(tabTag(html, 'board')).toContain('href="/fleet/custody"');
-    expect(tabTag(html, 'memos')).toContain('aria-selected="false"');
-    expect(tabTag(html, 'memos')).toContain('href="/fleet/custody/memos"');
-    expect(tabTag(html, 'log')).toContain('aria-selected="false"');
-    expect(tabTag(html, 'log')).toContain('href="/fleet/custody/log"');
-    // Mounted once, from its own file: the board's source carries none of the tabs' purple.
-    expect(PAGE.match(/<CustodyTabs \/>/gu)).toHaveLength(1);
+describe('«مصروفات العهدة» — one board: no tabs, no fund actions', () => {
+  it('opens on its toolbar — the tabs, the fund’s buttons and dialogs are SCREEN 1’s', () => {
+    const html = board([movement({})], '?fund=charge');
+    expect(html).toContain('data-custody-toolbar="true"');
+    expect(html).not.toContain('data-custody-tabs');
+    expect(html).not.toContain('data-custody-tab=');
+    expect(html).not.toContain('data-custody-fund-header');
+    expect(html).not.toContain('data-custody-fund-actions');
+    expect(html).not.toMatch(/data-memo-(?:settle|replenish|charge)="true"/u);
+    expect(PAGE).not.toContain('CustodyTabs');
+    expect(PAGE).not.toContain('CustodyFundActions');
+    expect(PAGE).not.toContain('CustodyFundDialogs');
+    // The board's source carries none of the tabs' purple.
     expect(PAGE).not.toContain('bg-brand-600');
   });
 });
@@ -1678,17 +1677,8 @@ describe('«عاوز الداش بورد بكل حاجة تكون ظاهره ح�
   it('draws every section in the design’s order — never the old card «لم يُخصم شيء من العهدة بعد»', () => {
     const html = body(nothing);
     const ids = [...html.matchAll(/data-custody-dashboard-section="(\w+)"/gu)].map((m) => m[1]);
-    // The banner keeps its own rules: nothing to warn about, no banner. «العهدة الآن» is there
-    // whatever the spend — the fund is the fund.
-    expect(ids).toEqual([
-      'fund',
-      'kpis',
-      'timeline',
-      'byKindSource',
-      'topCars',
-      'topDrivers',
-      'fuel',
-    ]);
+    // The banner keeps its own rules: nothing to warn about, no banner.
+    expect(ids).toEqual(['kpis', 'timeline', 'byKindSource', 'topCars', 'topDrivers', 'fuel']);
     expect(html).not.toContain(ar('fleet.custody.empty'));
     expect(html).not.toContain(ar('fleet.violations.report.empty'));
     expect(html).not.toMatch(/NaN|Infinity/u);
@@ -3233,7 +3223,9 @@ describe('«والنسب باينه» — every share in Latin digits, left to r
       }
       expect(tag, `«${share}» sits in a left-to-right span`).toMatch(/^<span [^>]*dir="ltr"/u);
     }
-    expect(ofFund).toBe(1);
+    // «خلاص افصلهم»: «لوحة تحكم المصروفات» draws no fund card — the fund's «صُرف من … X%» stands on
+    // SCREEN 1's «لوحة تحكم العهدة» (`CustodyFundNow`), its one decimal pinned in custody-fund.spec.
+    expect(ofFund).toBe(0);
     // A car's share of all the custody spent, at the top of its «السجل»: one decimal, as designed.
     const log = draw(
       <CustodyCarLogBody car={dashboard.vehicles[1]!} spendTotal={dashboard.total} filters={{}} />,
@@ -3384,8 +3376,8 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
       const at = part.indexOf('<div');
       return (/class="([^"]*)"/u.exec(part.slice(at, part.indexOf('>', at)))?.[1] ?? '').split(' ');
     };
+    // «خلاص افصلهم»: five figures — the fund's own card heads SCREEN 1 «العهدة» now.
     expect([...html.matchAll(/data-custody-figure="(\w+)"/gu)].map((m) => m[1])).toEqual([
-      'fund',
       'total',
       ...CUSTODY_KINDS,
     ]);
@@ -3425,8 +3417,7 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
         `<span class="block h-full rounded-full ${look.fill}" style="width:${custodySharePct(dashboard[kind], dashboard.total)}%"></span>`,
       );
     }
-    // The kinds' bars add up to the whole: four shares of one total. (The fund's bar, first, is
-    // what was spent of the fund — a share of another whole.)
+    // The kinds' bars add up to the whole: four shares of one total.
     const widths = [
       ...html
         .slice(html.indexOf('data-custody-figure="total"'))
@@ -3464,8 +3455,7 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
     // Not the boards' small `FigureChip` any more.
     expect(FIGURES).not.toContain('FigureChip');
     expect(html).not.toContain('dark:bg-[#111827]');
-    // Of nothing, no share and no bar — never «NaN%» nor a bar of «NaN%» width. The fund's bar is
-    // drawn, empty: nothing in it yet to spend.
+    // Of nothing, no share and no bar — never «NaN%» nor a bar of «NaN%» width.
     const none = draw(
       <CustodyFigures
         totals={{
@@ -3483,7 +3473,7 @@ describe('the kinds’ colours on the WHOLE custody screen — the owner’s des
       />,
     );
     expect(none).not.toContain('data-custody-figure-share');
-    expect([...none.matchAll(/style="width:([^"]*)"/gu)].map((m) => m[1])).toEqual(['0%']);
+    expect([...none.matchAll(/style="width:([^"]*)"/gu)].map((m) => m[1])).toEqual([]);
     expect(html + none).not.toMatch(/NaN/u);
   });
 

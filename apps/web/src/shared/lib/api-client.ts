@@ -109,12 +109,12 @@ const rawEnvelope = async <T, M>(
   const body = (await response.json()) as ApiEnvelope<T, M>;
   if (body.success) return { data: body.data, meta: body.meta };
   throw new ApiError(
-      body.error.code,
-      body.error.message,
-      response.status,
-      body.error.details,
-      body.error.requestId,
-    );
+    body.error.code,
+    body.error.message,
+    response.status,
+    body.error.details,
+    body.error.requestId,
+  );
 };
 
 const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =>
@@ -334,9 +334,15 @@ export const getText = async (path: string): Promise<string> => {
     if (accessToken !== null) h.set('Authorization', `Bearer ${accessToken}`);
     return h;
   };
-  let response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
+  let response = await fetch(`${BASE_URL}${path}`, {
+    headers: authHeaders(),
+    credentials: 'include',
+  });
   if (response.status === 401 && (await tryRefresh())) {
-    response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
+    response = await fetch(`${BASE_URL}${path}`, {
+      headers: authHeaders(),
+      credentials: 'include',
+    });
   }
   if (!response.ok) throw new ApiError('FETCH_FAILED', 'text fetch failed', response.status);
   return response.text();
@@ -354,7 +360,6 @@ export const del = <T>(path: string, body?: unknown): Promise<T> =>
     method: 'DELETE',
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-
 
 /** Build a `?a=1&b=2` query string, dropping empty/undefined values (API Standards §4). */
 /** What a list endpoint's query may carry. Arrays are the multi-valued filters. */
@@ -394,12 +399,12 @@ const rawUpload = async <T>(path: string, form: FormData): Promise<T> => {
   const body = (await response.json()) as ApiEnvelope<T>;
   if (body.success) return body.data;
   throw new ApiError(
-      body.error.code,
-      body.error.message,
-      response.status,
-      body.error.details,
-      body.error.requestId,
-    );
+    body.error.code,
+    body.error.message,
+    response.status,
+    body.error.details,
+    body.error.requestId,
+  );
 };
 
 /** Hand a blob to the browser as a download. Shared by every binary path below. */
@@ -428,9 +433,15 @@ export const fetchBlob = async (path: string): Promise<Blob> => {
     if (accessToken !== null) h.set('Authorization', `Bearer ${accessToken}`);
     return h;
   };
-  let response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
+  let response = await fetch(`${BASE_URL}${path}`, {
+    headers: authHeaders(),
+    credentials: 'include',
+  });
   if (response.status === 401 && (await tryRefresh())) {
-    response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders(), credentials: 'include' });
+    response = await fetch(`${BASE_URL}${path}`, {
+      headers: authHeaders(),
+      credentials: 'include',
+    });
   }
   if (!response.ok) throw new ApiError('EXPORT_FAILED', 'export failed', response.status);
   return response.blob();
@@ -458,7 +469,7 @@ export const postBinary = async (
   const request = (): RequestInit => {
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (accessToken !== null) headers.set('Authorization', `Bearer ${accessToken}`);
-  if (activeBranch !== null) headers.set('X-Active-Branch', activeBranch);
+    if (activeBranch !== null) headers.set('X-Active-Branch', activeBranch);
     return { method: 'POST', headers, body: JSON.stringify(body), credentials: 'include' };
   };
   let response = await fetch(`${BASE_URL}${path}`, request());
@@ -492,6 +503,109 @@ export const upload = async <T>(path: string, form: FormData): Promise<T> => {
       (error.code === 'AUTH_TOKEN_EXPIRED' || error.code === 'AUTH_TOKEN_INVALID')
     ) {
       if (await tryRefresh()) return rawUpload<T>(path, form);
+    }
+    throw error;
+  }
+};
+
+/** What an upload that reports its progress may be told. */
+export interface UploadProgressOptions {
+  /** 0–100, as the bytes leave — called often; the last call is 100. */
+  onProgress?: (percent: number) => void;
+  /** Aborting it cancels the upload; the promise then rejects with an `AbortError`. */
+  signal?: AbortSignal;
+}
+
+/** The DOM's own name for a cancelled request — what `fetch` rejects with when aborted. */
+const abortError = (): DOMException => new DOMException('The upload was cancelled.', 'AbortError');
+
+const rawUploadWithProgress = <T>(
+  path: string,
+  form: FormData,
+  options: UploadProgressOptions,
+): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const { onProgress, signal } = options;
+    if (signal?.aborted === true) {
+      reject(abortError());
+      return;
+    }
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE_URL}${path}`);
+    // The same credentials and headers as `upload`; no Content-Type — the browser sets the boundary.
+    xhr.withCredentials = true;
+    if (accessToken !== null) xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    if (activeBranch !== null) xhr.setRequestHeader('X-Active-Branch', activeBranch);
+    xhr.upload.onprogress = (event: ProgressEvent): void => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+    const stop = (): void => xhr.abort();
+    signal?.addEventListener('abort', stop, { once: true });
+    const settle = (): void => signal?.removeEventListener('abort', stop);
+    xhr.onload = (): void => {
+      settle();
+      if (xhr.status === 204) {
+        resolve(undefined as T);
+        return;
+      }
+      let body: ApiEnvelope<T>;
+      try {
+        body = JSON.parse(xhr.responseText) as ApiEnvelope<T>;
+      } catch {
+        // A gateway's HTML page, not the envelope: no answer about the file.
+        reject(new ApiError('UPLOAD_FAILED', 'upload failed', xhr.status));
+        return;
+      }
+      if (body.success) {
+        onProgress?.(100);
+        resolve(body.data);
+        return;
+      }
+      reject(
+        new ApiError(
+          body.error.code,
+          body.error.message,
+          xhr.status,
+          body.error.details,
+          body.error.requestId,
+        ),
+      );
+    };
+    // A dropped connection reads as `fetch`'s own failure, so `errorMessage` words it the same way.
+    xhr.onerror = (): void => {
+      settle();
+      reject(new TypeError('Network request failed'));
+    };
+    xhr.onabort = (): void => {
+      settle();
+      reject(abortError());
+    };
+    xhr.send(form);
+  });
+
+/**
+ * Multipart upload that REPORTS ITS PROGRESS — `fetch` cannot, so this one rides an
+ * `XMLHttpRequest`. Same headers, credentials and one-shot silent-refresh retry as `upload`; the
+ * retry starts the bytes again from 0%.
+ */
+export const uploadWithProgress = async <T>(
+  path: string,
+  form: FormData,
+  options: UploadProgressOptions = {},
+): Promise<T> => {
+  try {
+    return await rawUploadWithProgress<T>(path, form, options);
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.code === 'AUTH_TOKEN_EXPIRED' || error.code === 'AUTH_TOKEN_INVALID')
+    ) {
+      if (await tryRefresh()) {
+        options.onProgress?.(0);
+        return rawUploadWithProgress<T>(path, form, options);
+      }
     }
     throw error;
   }

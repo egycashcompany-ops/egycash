@@ -135,11 +135,15 @@ export const buildFleetFuelCardsRouter = (): Router => {
     validate({ body: DecideFleetFuelLinksSchema, params: IdParamSchema }),
     asyncHandler(decideFuelReconcileLinks),
   );
-  // «إضافة» a sheet-only card — the grant that adds a card there.
+  // «إضافة» a sheet-only card — the grant that adds a card there, AND the one that puts money on a
+  // card: the new card opens at the sheet's balance (its opening `sheetAdjust`), as the balance ✓
+  // on the same sheet does — the person who keeps the card list is not always the one who releases
+  // money onto it.
   router.post(
     '/reconcile/:id/cards',
     authenticate,
     authorize('fleetFuelCard.create'),
+    authorize('fleetFuelCharge.approve'),
     noStore,
     validate({ body: AddFleetFuelSheetCardSchema, params: IdParamSchema }),
     asyncHandler(addFuelReconcileCard),

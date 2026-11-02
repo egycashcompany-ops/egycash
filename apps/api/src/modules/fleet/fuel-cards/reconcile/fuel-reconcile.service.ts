@@ -53,7 +53,14 @@ import {
   chargeDto,
   latestLiveChargeAt,
 } from './fuel-reconcile-charges';
-import { cardRef, notInSheet, piastres, refusal, rowDto } from './fuel-reconcile-parts';
+import {
+  cardRef,
+  notInSheet,
+  piastres,
+  refusal,
+  refuseWrongCompany,
+  rowDto,
+} from './fuel-reconcile-parts';
 import { linkWorldOf } from './fuel-reconcile-links';
 
 const oid = (id: string | null): Types.ObjectId | null =>
@@ -137,6 +144,11 @@ class FleetFuelReconcileService {
         rowsRead: sheet.rowsRead,
         sheetCompany: plan.sheetCompany,
         sheetDate,
+        // A sheet of the other company judges none of these cards (the wrong-company stop).
+        equalCardIds:
+          plan.sheetCompany !== null && plan.sheetCompany !== input.company
+            ? []
+            : plan.equal.map((match) => new Types.ObjectId(match.cardId)),
         lines: plan.differs.map((match) => ({
           cardId: new Types.ObjectId(match.cardId),
           name: match.sheet.builtName,
@@ -307,6 +319,8 @@ class FleetFuelReconcileService {
       decided = [];
       const reading = await fleetFuelReconciliationRepository.findLive(id, session);
       if (reading === null) throw new NotFoundError();
+      // Another company's sheet decides nothing here — as the screen's stop says.
+      refuseWrongCompany(reading);
       sessionId = String(reading._id);
       const lines = new Map(reading.lines.map((line) => [String(line.cardId), line]));
 

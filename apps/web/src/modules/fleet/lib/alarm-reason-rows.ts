@@ -83,3 +83,22 @@ export const reasonRows = (
   }
   return out;
 };
+
+/**
+ * The «فارق عداد الصيانة» and «التنبيه» cells of one reading in the register's Excel file — split
+ * exactly as the screen splits them, so the file and the page it came from agree: the car's NEWEST
+ * row in the file carries the car NOW (the projection's figure and its level, when it measured
+ * one); every other reading the gap AT THAT READING (`serviceGapKm` — null before any service, on
+ * a day without a reading, and for a car the server does not measure) and no level.
+ */
+export const sheetGapOf = (
+  log: Pick<FleetOdometerLogDto, 'id' | 'vehicleId' | 'serviceGapKm'>,
+  alarm: FleetMaintenanceAlarmDto | undefined,
+  newestRowOf: ReadonlyMap<string, string>,
+): { km: number | null; level: FleetMaintenanceAlarmDto['level'] | null } => {
+  const newest = log.vehicleId !== null && newestRowOf.get(log.vehicleId) === log.id;
+  if (newest && alarm !== undefined && alarm.sinceServiceKm !== null) {
+    return { km: alarm.sinceServiceKm, level: alarm.level };
+  }
+  return { km: log.serviceGapKm, level: null };
+};

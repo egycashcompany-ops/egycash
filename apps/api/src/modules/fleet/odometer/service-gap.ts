@@ -154,11 +154,17 @@ export const loadServiceGaps = async (
   const cars = (await fleetVehicleRepository.findByIdsSystem(carIds)).filter(
     (car) => !car.isDeleted && car.status === 'active',
   );
-  const byMake = new Map<string, number>();
-  for (const typeId of new Set(cars.map((car) => String(car.typeId)))) {
-    const make = await fleetVehicleTypeRepository.findById(typeId);
-    byMake.set(typeId, make?.maintenanceIntervalKm ?? 0);
-  }
+  // The makes in ONE read, with the counting work types beside it. A deleted make has no interval
+  // (as `findById`, which reads live ones only, answered).
+  const [makes, countingIds] = await Promise.all([
+    fleetVehicleTypeRepository.findByIdsSystem([...new Set(cars.map((car) => String(car.typeId)))]),
+    fleetCatalogItemRepository.countingWorkTypeIds(),
+  ]);
+  const byMake = new Map(
+    makes
+      .filter((make) => !make.isDeleted)
+      .map((make) => [String(make._id), make.maintenanceIntervalKm ?? 0]),
+  );
   const intervals = new Map<string, number>();
   for (const car of cars) {
     const intervalKm = byMake.get(String(car.typeId)) ?? 0;
@@ -169,7 +175,6 @@ export const loadServiceGaps = async (
   // Every counting visit of those cars checked out before the newest day on the page — the only
   // ones a row on it can fall under.
   const newestDay = measured.reduce((max, row) => Math.max(max, dayStart(row.date)), 0);
-  const countingIds = await fleetCatalogItemRepository.countingWorkTypeIds();
   const visits = groupByCar(
     await fleetMaintenanceRepository.countingVisitsOf(
       [...intervals.keys()],

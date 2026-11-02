@@ -465,6 +465,24 @@ describe('«كيف حُسب الفارق» — the card of a computed figure', (
     expect(fact(markup, 'days')).toContain('>44<');
   });
 
+  it('the days nobody wrote the counter, in Arabic’s five forms — never «1 يومًا»', () => {
+    const days = (n: number, locale: Locale = 'ar'): string =>
+      fact(card(car157({ daysWithoutReading: n }), locale), 'days')
+        .replace(/<[^>]*>/gu, '')
+        .split(t('fleet.alarms.daysWithoutReadingHint'))[0] as string;
+    expect(days(1)).toContain('يوم واحد');
+    expect(days(2)).toContain('يومان');
+    expect(days(5)).toContain('5 أيام');
+    expect(days(44)).toContain('44 يومًا');
+    expect(days(100)).toContain('100 يوم');
+    for (const n of [1, 2, 5]) expect(days(n)).not.toContain('يومًا');
+    expect(days(1, 'en')).toContain('1 day');
+    expect(days(1, 'en')).not.toContain('1 days');
+    expect(days(3, 'en')).toContain('3 days');
+    // Nothing on a car that has a reading every day.
+    expect(fact(card(car157({ daysWithoutReading: 0 })), 'days')).toBe('');
+  });
+
   it('an open visit of a work type that counts: it counts once closed', () => {
     const markup = card(
       car157({ newerUncountedVisit: { ...openRepair, workType: SERVICE, counts: true } }),

@@ -19,6 +19,8 @@ import { FLEET_CUSTODY_OPERATION_KINDS, type FleetCustodyOperationDto } from '@e
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
+import { Spinner } from '../../../shared/ui/Spinner';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
@@ -317,7 +319,17 @@ export const CustodyDeletedPage = (): JSX.Element => {
             </span>
             <span className={cn(NOTE, 'whitespace-normal')}>{t(`${DELETED}.note`)}</span>
           </div>
-          {rows.length === 0 && !isLoading && !isError ? (
+          {/* A phone has no table: its failure and its loading are said here, in the table's own
+              order — never an empty card that reads as «nothing deleted». */}
+          {isError && !isLoading ? (
+            <div className="sm:hidden" data-deleted-error-phone="true">
+              <ErrorState error={error} onRetry={() => void refetch()} />
+            </div>
+          ) : isLoading ? (
+            <p className="flex justify-center py-6 sm:hidden" data-deleted-loading-phone="true">
+              <Spinner className="h-5 w-5" />
+            </p>
+          ) : rows.length === 0 ? (
             <div className="sm:hidden" data-deleted-empty-phone="true">
               {emptyFace}
             </div>

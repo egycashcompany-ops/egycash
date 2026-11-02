@@ -22,6 +22,7 @@ import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
 import { localized } from '../../../shared/lib/format';
 import { figureFacts, type FigureNewer } from '../lib/alarm-reason-card';
+import { custodyPlural } from '../lib/custody-words';
 import { AlarmBadge } from './AlarmBadge';
 import { Glyph } from './AlarmReasonCell';
 import { CounterLine, DOT, Day, FACTS, Fact, Km, ROW, Sentence, Tag } from './AlarmReasonFacts';
@@ -284,8 +285,11 @@ export const HowComputedCard = ({
           <Fact label={t('fleet.alarms.columns.daysWithoutReading')} mark="days">
             <span className="flex flex-col gap-0.5">
               <span className="text-amber-700 dark:text-amber-300">
+                {/* «يوم واحد» · «يومان» · «5 أيام» · «44 يومًا» · «100 يوم» — Arabic's five forms. */}
                 <Sentence
-                  template={t(`${F}daysWithout`)}
+                  template={t(
+                    `${F}daysWithoutCount.${custodyPlural(locale, facts.daysWithoutReading)}`,
+                  )}
                   parts={{ days: <Num value={facts.daysWithoutReading} /> }}
                 />
               </span>

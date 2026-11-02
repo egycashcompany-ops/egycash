@@ -3472,6 +3472,13 @@ export const FLEET_FUEL_PRICE_KEY: Record<FleetFuelType, string> = {
   diesel: FleetSettingKeys.FuelPriceDiesel,
 };
 
+/**
+ * A card's label and name as every card schema bounds them — exported so a value a company's sheet
+ * puts on a card («ربط الكروت بالسيارات», «إضافة») is held to the same limits as one typed.
+ */
+export const FleetFuelCardLabelSchema = z.string().trim().min(1).max(60);
+export const FleetFuelCardNameSchema = z.string().trim().min(1).max(120);
+
 const fuelCardCore = {
   /**
    * The car the card is on — or `null` for a card that is on none («كروت زيادة ملهمش عربيات»: the
@@ -3479,9 +3486,9 @@ const fuelCardCore = {
    */
   vehicleId: objectId().nullable(),
   /** What a card on no car is called on the fuel screens («سفر 1», «اسبير»). */
-  label: z.string().trim().min(1).max(60).nullish(),
+  label: FleetFuelCardLabelSchema.nullish(),
   company: FleetFuelCardCompanySchema,
-  name: z.string().trim().min(1).max(120),
+  name: FleetFuelCardNameSchema,
   number: z.string().trim().min(4).max(40),
   /**
    * REQUIRED — «تاريخ انتهاء الكارت اجبارى». The DTO still reads `null` for the few imported cards
@@ -4216,7 +4223,7 @@ export const DecideFleetFuelLinksSchema = z
           .object({
             cardId: objectId(),
             vehicleId: objectId().nullable(),
-            label: z.string().trim().min(1).max(60).nullable().default(null),
+            label: FleetFuelCardLabelSchema.nullable().default(null),
           })
           .strict()
           .superRefine(cardOnACarOrNamed),

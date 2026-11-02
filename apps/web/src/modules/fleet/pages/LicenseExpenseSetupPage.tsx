@@ -343,8 +343,10 @@ const LicenseExpenseSetup = ({
   const qc = useQueryClient();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const save = useSaveLicenseExpenseSettings();
-  const updateItem = useUpdateCatalogItem();
-  const createItem = useCreateCatalogItem();
+  // Each write below words its own failure (`toast.error` in its catch) — so none of them leaves
+  // one to the global toast as well: one refusal, one toast.
+  const updateItem = useUpdateCatalogItem(() => true);
+  const createItem = useCreateCatalogItem(() => true);
   const removeItem = useDeleteCatalogItem();
   const addToCatalog = useAddToCatalog();
   const mayManageList = can('fleetCatalog.manage');

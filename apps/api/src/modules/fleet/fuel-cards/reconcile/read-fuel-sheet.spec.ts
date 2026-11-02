@@ -512,6 +512,44 @@ describe('refusals', () => {
     expect(error.details).toEqual([{ field: 'file', code: 'TOO_LARGE', message: 'entries' }]);
   });
 
+  it('a stray cell far to the right (column XFD) on every row: every card read, nothing kept past the header', async () => {
+    // Formatting junk at XFD (column 16,384) — each data row is kept only as wide as the columns
+    // the reading uses, so it costs nothing per row.
+    const far = (cells: (string | number | null)[], junk: string): (string | number | null)[] => [
+      ...cells,
+      ...Array<null>(16_384 - 1 - cells.length).fill(null),
+      junk,
+    ];
+    const rows = [
+      far(['Card Number', 'Card Name', 'Card Balance'], 'x'),
+      ...Array.from({ length: 40 }, (_, i) =>
+        far([`548**********${String(1000 + i)}`, `EGYCASH-${String(i)}`, i], 'junk'),
+      ),
+    ];
+    expect(columnLetter((rows[0] as unknown[]).length - 1)).toBe('XFD');
+    const read = await readFuelSheet(await buildFuelSheet({ rows }));
+    expect(read.rowsRead).toBe(40);
+    expect(read.rows.map((r) => r.balance)).toEqual(Array.from({ length: 40 }, (_, i) => i));
+    expect(read.layout.map((c) => c.column)).toEqual(['A', 'B', 'C']);
+    expect(read.skipped).toEqual([]);
+  });
+
+  it('a column the reading uses beyond the column cap → TOO_LARGE columns', async () => {
+    const wide = [
+      [...Array<null>(300).fill(null), 'Card Number', 'Card Name', 'Card Balance'],
+      [...Array<null>(300).fill(null), '548**********0021', 'EGYCASH-1', 1],
+    ];
+    const error = await caught(readFuelSheet(await buildFuelSheet({ rows: wide })));
+    expect(error.code).toBe(ErrorCodes.FLEET_FUEL_SHEET_LAYOUT);
+    expect(error.details).toEqual([{ field: 'file', code: 'TOO_LARGE', message: 'columns' }]);
+    // Within it, the same sheet is read.
+    const read = await readFuelSheet(await buildFuelSheet({ rows: wide }), {
+      ...FUEL_SHEET_LIMITS,
+      maxColumns: 400,
+    });
+    expect(read.rows.map((r) => r.name)).toEqual(['EGYCASH-1']);
+  });
+
   it('exactly the data-row cap is still read', async () => {
     const read = await readFuelSheet(await buildFuelSheet({ rows: ROWS }), {
       ...FUEL_SHEET_LIMITS,

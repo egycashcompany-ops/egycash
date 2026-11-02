@@ -36,7 +36,7 @@ let actor = '';
 /** The app and the tokens, filled by `useFuelReconcileWorld()`'s beforeAll. */
 export const world = {
   app: undefined as unknown as Express,
-  tokens: { cardsOnly: '', viewer: '', clerk: '', linker: '' },
+  tokens: { cardsOnly: '', viewer: '', clerk: '', linker: '', creator: '' },
 };
 
 const resolveMongoUri = async (tag: string): Promise<string> => {
@@ -225,6 +225,12 @@ export const useFuelReconcileWorld = (tag: string): void => {
       ],
       { ar: 'منى', last: 'حسن' },
     );
+    // Keeps the card list (adds cards) but does not release money onto one.
+    world.tokens.creator = await tokenWith('reconcile-creator@ecms.local', [
+      'fleetFuelCard.view',
+      'fleetFuelCard.create',
+      'fleetFuelCharge.view',
+    ]);
   }, 240_000);
 
   beforeEach(async () => {

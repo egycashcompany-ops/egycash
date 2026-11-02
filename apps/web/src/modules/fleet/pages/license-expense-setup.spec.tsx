@@ -15,7 +15,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { QueryClient, QueryClientProvider, type QueryClientConfig } from '@tanstack/react-query';
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+  type QueryClientConfig,
+} from '@tanstack/react-query';
 import {
   CreateFleetCatalogItemSchema,
   type FleetCatalogItemDto,
@@ -48,7 +53,13 @@ import {
   withoutDeleted,
 } from './LicenseExpenseSetupPage';
 import { PaidGroup } from '../components/LicenseExpensePaidGroup';
-import { licenseExpenseSettingsKey, useDeleteCatalogItem } from '../api/fleet-queries';
+import {
+  licenseExpenseSettingsKey,
+  useCreateCatalogItem,
+  useDeleteCatalogItem,
+  useUpdateCatalogItem,
+} from '../api/fleet-queries';
+import { ApiError } from '../../../shared/lib/api-client';
 import { DEFAULT_SIGNATURES, type LicenseExpenseItemLine } from '../lib/license-expense-memo';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -57,16 +68,31 @@ vi.mock('react-dom', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('react-dom');
   return { ...actual, createPortal: (node: unknown) => node };
 });
-// The delete's request, stood in: the hook's own cache work is what is proven here.
+// The delete's request, stood in: the hook's own cache work is what is proven here. When `refuse`
+// holds a failure, the item writes fail with it.
 const deleted = vi.hoisted(() => [] as string[]);
-vi.mock('../api/fleet-api', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  deleteCatalogItem: vi.fn(async (id: string) => {
-    deleted.push(id);
-  }),
-}));
+const refuse = vi.hoisted(() => ({ with: null as unknown }));
+vi.mock('../api/fleet-api', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, (...args: unknown[]) => unknown>>();
+  const refusable =
+    (fn: string) =>
+    async (...args: unknown[]): Promise<unknown> => {
+      if (refuse.with !== null) throw refuse.with;
+      return actual[fn]?.(...args);
+    };
+  return {
+    ...actual,
+    createCatalogItem: vi.fn(refusable('createCatalogItem')),
+    updateCatalogItem: vi.fn(refusable('updateCatalogItem')),
+    deleteCatalogItem: vi.fn(async (id: string) => {
+      if (refuse.with !== null) throw refuse.with;
+      deleted.push(id);
+    }),
+  };
+});
 afterEach(() => {
   deleted.length = 0;
+  refuse.with = null;
 });
 
 const ar = (key: string): string => translate('ar', key);
@@ -864,6 +890,58 @@ describe('«او امسح بند انا ضيفته» — the bin on the rows som
       </Provider>,
     );
     expect(html).not.toContain('i-9');
+  });
+
+  it('a refused item write raises ONE toast — the page’s own; the global one stays quiet', async () => {
+    const global: string[] = [];
+    const qc = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+      mutationCache: new MutationCache({
+        onError: (_error, _variables, _context, mutation) => {
+          if (mutation.options.onError === undefined) global.push('GLOBAL');
+        },
+      }),
+    });
+    type Write = { mutateAsync: (input: unknown) => Promise<unknown> };
+    const hooks: Record<'remove' | 'update' | 'create' | 'elsewhere', Write | null> = {
+      remove: null,
+      update: null,
+      create: null,
+      elsewhere: null,
+    };
+    const Probe = (): null => {
+      // As the set-up page holds them …
+      hooks.remove = useDeleteCatalogItem() as Write;
+      hooks.update = useUpdateCatalogItem(() => true) as Write;
+      hooks.create = useCreateCatalogItem(() => true) as Write;
+      // … and as every other screen does, which keeps the global toast.
+      hooks.elsewhere = useUpdateCatalogItem() as Write;
+      return null;
+    };
+    renderToStaticMarkup(
+      <QueryClientProvider client={qc}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    for (const failure of [
+      new ApiError('NOT_FOUND', 'Not found', 404),
+      new ApiError('CONFLICT', 'Conflict', 409),
+      new ApiError('FORBIDDEN', 'Forbidden', 403),
+    ]) {
+      refuse.with = failure;
+      await expect(hooks.remove!.mutateAsync('i-3')).rejects.toBe(failure);
+      await expect(hooks.update!.mutateAsync({ id: 'i-3', body: {} })).rejects.toBe(failure);
+      await expect(hooks.create!.mutateAsync({})).rejects.toBe(failure);
+    }
+    expect(global).toEqual([]);
+    await expect(hooks.elsewhere!.mutateAsync({ id: 'i-3', body: {} })).rejects.toBeInstanceOf(
+      ApiError,
+    );
+    expect(global).toEqual(['GLOBAL']);
+    // The page's own catch is the one toast each write raises.
+    const page = readFileSync(join(HERE, 'LicenseExpenseSetupPage.tsx'), 'utf8');
+    expect(page).toContain('useUpdateCatalogItem(() => true)');
+    expect(page).toContain('useCreateCatalogItem(() => true)');
   });
 
   it('deletes through the server and re-reads the lists and the set-up — not the memos', async () => {

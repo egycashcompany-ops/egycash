@@ -191,6 +191,65 @@ describe('a top-up the sheet does not show — cancelled by the ✓', () => {
     dto = await read('wataniya', [rowOf(lower, 900)]);
     expect(dto.differs[0]?.charges).toEqual([]);
   });
+
+  it('«اعتماد طلب الرصيد» is a sheet judgement too: the charge it wrote is never offered by a later, lower sheet', async () => {
+    // Morning: the sheet higher by exactly the pending 500 — ✓ approves it, a `charge` line.
+    const a = await mkCard('wataniya', 'EGYCASH-MORNING', 1000, { requestedAmount: 500 });
+    const morning = await read('wataniya', [rowOf(a, 1500)]);
+    const approved = await decide(morning.id, 'apply', [String(a._id)], tokens.clerk, {
+      approveRequests: [String(a._id)],
+    });
+    expect(approved.status, approved.text).toBe(200);
+    expect((await log(a._id)).map((m) => [m.kind, m.amount])).toEqual([['charge', 500]]);
+    const greenSince = (await card(a._id)).lastChargedAt;
+    const counted = await chargedToday();
+
+    // Afternoon: a newer sheet 500 lower — fuel used, the receipts not entered yet. The 10:00
+    // charge the morning sheet confirmed is no «شحن لا يظهر في الشيت»: nothing to tick.
+    const afternoon = await read('wataniya', [rowOf(a, 1000)]);
+    expect(afternoon.differs[0]?.difference).toBe(-500);
+    expect(afternoon.differs[0]?.charges).toEqual([]);
+    const stored = await FleetFuelReconciliationModel.findById(afternoon.id).lean().exec();
+    expect(stored?.lines[0]?.charges).toEqual([]);
+    // So no ✓ can cancel it: the green row and «شحن اليوم» stand.
+    const [chargeLine] = await log(a._id);
+    const refused = await decide(afternoon.id, 'apply', [String(a._id)], tokens.clerk, {
+      cancelCharges: [chargeLine?.id ?? ''],
+    });
+    expect([refused.status, failure(refused).details?.[0]?.code]).toEqual([422, 'NOT_A_CANDIDATE']);
+    expect((await card(a._id)).lastChargedAt).toEqual(greenSince);
+    expect(await chargedToday()).toBe(counted);
+  });
+
+  it('a sheet that MATCHED the card judged its charges up to that read — a later one is still offered', async () => {
+    const b = await mkCard('wataniya', 'EGYCASH-EQUAL', 2000);
+    await charge(b._id, 300);
+    // The sheet shows 2,300: equal — nothing is written, and the session says it judged the card.
+    const equal = await read('wataniya', [rowOf(b, 2300)]);
+    expect(equal.equal.map((l) => l.card.id)).toEqual([String(b._id)]);
+    const raw = await FleetFuelReconciliationModel.findById(equal.id).lean().exec();
+    expect(raw?.equalCardIds?.map(String)).toEqual([String(b._id)]);
+
+    await charge(b._id, 200);
+    // 2,500 in the system, the next sheet 2,000: only the 200 after the matching sheet is offered —
+    // the 300 that sheet already showed is not.
+    const lower = await read('wataniya', [rowOf(b, 2000)]);
+    expect(lower.differs[0]?.difference).toBe(-500);
+    expect(lower.differs[0]?.charges.map((c) => c.amount)).toEqual([200]);
+  });
+
+  it('a session read before the equal cards were kept (no `equalCardIds`) judges only by its decided lines', async () => {
+    const c = await mkCard('wataniya', 'EGYCASH-OLDSESSION', 1000);
+    await charge(c._id, 100);
+    const first = await read('wataniya', [rowOf(c, 1100)]);
+    // As a session stored before this batch: the field is absent.
+    await FleetFuelReconciliationModel.collection.updateOne(
+      { _id: new Types.ObjectId(first.id) },
+      { $unset: { equalCardIds: '' } },
+    );
+    const next = await read('wataniya', [rowOf(c, 1000)]);
+    expect(next.differs[0]?.charges.map((ch) => ch.amount)).toEqual([100]);
+  });
 });
 
 describe('a cancel that cannot be — refused, nothing written', () => {

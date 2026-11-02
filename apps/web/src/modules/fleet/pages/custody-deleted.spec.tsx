@@ -359,6 +359,45 @@ describe('«العمليات المحذوفة» — the lines', () => {
     expect(card).toContain(ar('fleet.custody.deleted.col.reason'));
   });
 
+  // The table that carries loading and failure is hidden on a phone; the phone says them itself.
+  const bare = (): QueryClient => {
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, retryOnMount: false, staleTime: Infinity, refetchOnMount: false },
+      },
+    });
+    qc.setQueryData(custodyQueryKeys.fund(), FUND);
+    return qc;
+  };
+
+  it('a phone while the list loads: a spinner — not an empty card, not «nothing deleted»', () => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    qc.setQueryData(custodyQueryKeys.fund(), FUND);
+    const html = page('/fleet/custody/log/deleted', qc);
+    expect(element(html, 'data-deleted-loading-phone="true"')).toContain('sm:hidden');
+    expect(html).not.toContain('data-deleted-cards="true"');
+    expect(html).not.toContain('data-deleted-empty-phone="true"');
+    expect(html).not.toContain('data-deleted-error-phone="true"');
+  });
+
+  it('a phone when the list fails: the failure in words, and a retry', () => {
+    const qc = bare();
+    qc.getQueryCache()
+      .build(qc, { queryKey: custodyDeletedKeys.list(LIST) })
+      .setState({ status: 'error', error: new Error('down'), fetchStatus: 'idle' });
+    const html = page('/fleet/custody/log/deleted', qc);
+    const phone = element(html, 'data-deleted-error-phone="true"');
+    expect(phone).toContain('sm:hidden');
+    expect(text(phone)).toContain(ar('common.error.title'));
+    expect(text(phone)).toContain('down');
+    expect(text(phone)).toContain(ar('common.retry'));
+    expect(html).not.toContain('data-deleted-cards="true"');
+    expect(html).not.toContain('data-deleted-empty-phone="true"');
+    expect(html).not.toContain('data-deleted-loading-phone="true"');
+  });
+
   it('a way back to «سجل العهدة», under the fund’s head', () => {
     const html = page();
     const back = element(html, 'data-deleted-back="true"');

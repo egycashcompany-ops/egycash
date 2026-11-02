@@ -31,7 +31,10 @@ export const ReconcileNewCards = ({
   company: FleetFuelCardCompany;
   /** Rows added on this screen, by sheet row → the new card's id. */
   added: Readonly<Record<number, string>>;
-  /** `fleetFuelCard.create` — without it «إضافة» is not offered. */
+  /**
+   * `fleetFuelCard.create` AND `fleetFuelCharge.approve` (the card opens at the sheet's balance) —
+   * without both «إضافة» is not offered; the server asks both too.
+   */
   mayAdd: boolean;
   onAdd: (row: FleetFuelReconcileNewCardDto) => void;
 }): JSX.Element | null => {

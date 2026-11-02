@@ -3,6 +3,7 @@
 // `fuel-reconcile.service.ts`, so the link and the new-card decisions use the same words.
 import {
   ErrorCodes,
+  type FleetFuelCardCompany,
   type FleetFuelCardRefDto,
   type FleetFuelLinkPlaceDto,
   type FleetFuelSheetRowDto,
@@ -95,3 +96,21 @@ export const linkRefusal = (
 /** 400 — ids the session does not offer for this decision. */
 export const notInSheet = (field: string, ids: readonly string[]): ValidationError =>
   new ValidationError(ids.map((id) => ({ field, code: 'NOT_IN_SHEET', message: id })));
+
+/**
+ * The wrong-company stop, held by the server as the screen holds it: a session whose sheet's names
+ * are all another company's decides nothing on this company's cards — no ✓ / ✗, no link, no
+ * «إضافة» — whoever calls. 422 `FLEET_FUEL_SHEET_LAYOUT` / `WRONG_COMPANY`, naming the sheet's.
+ */
+export const refuseWrongCompany = (reading: {
+  company: FleetFuelCardCompany;
+  sheetCompany: FleetFuelCardCompany | null;
+}): void => {
+  if (reading.sheetCompany === null || reading.sheetCompany === reading.company) return;
+  throw new AppError(
+    ErrorCodes.FLEET_FUEL_SHEET_LAYOUT,
+    422,
+    'the sheet is another company’s — nothing was written; read it under its own company',
+    { details: [{ field: 'company', code: 'WRONG_COMPANY', message: reading.sheetCompany }] },
+  );
+};

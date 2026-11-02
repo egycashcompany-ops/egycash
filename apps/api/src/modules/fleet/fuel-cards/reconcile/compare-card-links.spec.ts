@@ -157,6 +157,23 @@ describe('resolving the sheet’s code', () => {
     expect(resolver.resolve('  ', null)).toBeNull();
   });
 
+  it('a label word longer than a card’s label may be is no label — the reader picks the place', () => {
+    const none = linkResolver(worldOf([], new Map()));
+    const sixty = `سفر ${'ب'.repeat(56)}`;
+    expect(sixty).toHaveLength(60);
+    expect(none.resolve(sixty, null)?.place.label).toBe(sixty);
+    expect(none.resolve(`${sixty}ب`, null)).toBeNull();
+    expect(none.resolve(`سفر ${'x'.repeat(2000)}`, null)).toBeNull();
+    // On a matched card it is an unknown code, never a 2,000-character label on ✓.
+    const [link] = compareCardLinks({
+      matches: [{ cardId: 'c1', sheet: row('EGYCASH-LONG', `سفر ${'x'.repeat(2000)}`) }],
+      sheetOnly: [],
+      carColumn: true,
+      world: worldOf([card('c1', '5485640000000001', '150')], new Map()),
+    }).links;
+    expect([link?.kind, link?.to]).toEqual(['unknownCode', null]);
+  });
+
   it('an alias the owner taught names the car by id; a car gone falls back to the code', () => {
     const taught = new Map<string, LinkAlias>([
       ['جيلى', { vehicleId: 'v-150', vehicleCode: null, label: null }],

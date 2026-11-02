@@ -8,8 +8,12 @@
 //
 // AT THE READ the candidates are found and STORED on the session's line — a decision never takes
 // the body's word for which charges were candidates. A candidate is a live, uncancelled `charge`
-// of a card the sheet is lower on, written after the card's last sheet decision (that sheet has
-// already judged anything earlier) and within the last 31 days, newest first.
+// of a card the sheet is lower on, written after the card's last sheet JUDGEMENT (that sheet has
+// already judged anything earlier) and within the last 31 days, newest first. A judgement is any
+// sheet that said something about the card: a ✓ or ✗ decided on it — its `sheetAdjust` /
+// `sheetReject` line, or the `charge` a «اعتماد طلب الرصيد» wrote (no reconciliation line of its
+// own: the session's decided line says it) — or a read that showed it EQUAL (nothing written
+// then: the session's `equalCardIds` say it).
 //
 // AT THE DECISION each named charge must be one of its card's stored candidates, still live and
 // uncancelled, and the charges named for one card may not add up to more than the system holds
@@ -20,6 +24,7 @@ import { AppError } from '../../../../shared/errors';
 import { cairoDayOf } from '../../fleet-cairo-day';
 import { FleetFuelCardMovementModel, type FleetFuelCardMovementDoc } from '../fuel-card.model';
 import { type FleetFuelReconcileCharge, type FleetFuelReconcileLine } from './fuel-reconcile.model';
+import { fleetFuelReconciliationRepository } from './fuel-reconcile.repository';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How far back a charge may be a candidate. */
@@ -34,7 +39,7 @@ export interface ChargeCandidate extends FleetFuelReconcileCharge {
 
 /**
  * The candidates of each card, newest first — for the cards the sheet is LOWER on. One read of the
- * cards' last sheet decisions, one of their charges.
+ * cards' last sheet lines, one of the sessions that judged them, one of their charges.
  */
 export const chargeCandidatesOf = async (
   cardIds: readonly string[],
@@ -44,19 +49,25 @@ export const chargeCandidatesOf = async (
   if (cardIds.length === 0) return out;
   const ids = cardIds.map((id) => new Types.ObjectId(id));
   const floor = new Date(now.getTime() - CANDIDATE_WINDOW_DAYS * DAY_MS);
-  const decided = await FleetFuelCardMovementModel.aggregate<{ _id: Types.ObjectId; at: Date }>([
-    {
-      $match: {
-        cardId: { $in: ids },
-        kind: { $in: ['sheetAdjust', 'sheetReject'] },
-        isDeleted: false,
+  const [decided, judged] = await Promise.all([
+    FleetFuelCardMovementModel.aggregate<{ _id: Types.ObjectId; at: Date }>([
+      {
+        $match: {
+          cardId: { $in: ids },
+          kind: { $in: ['sheetAdjust', 'sheetReject'] },
+          isDeleted: false,
+        },
       },
-    },
-    { $group: { _id: '$cardId', at: { $max: '$at' } } },
-  ]).exec();
-  const since = new Map(
-    decided.map((row) => [String(row._id), row.at.getTime() > floor.getTime() ? row.at : floor]),
-  );
+      { $group: { _id: '$cardId', at: { $max: '$at' } } },
+    ]).exec(),
+    fleetFuelReconciliationRepository.judgedAt(ids),
+  ]);
+  const since = new Map<string, Date>();
+  const later = (cardId: string, at: Date): void => {
+    if (at.getTime() > (since.get(cardId) ?? floor).getTime()) since.set(cardId, at);
+  };
+  for (const row of decided) later(String(row._id), row.at);
+  for (const [cardId, at] of judged) later(cardId, at);
   const charges = await FleetFuelCardMovementModel.find({
     kind: 'charge',
     isDeleted: false,

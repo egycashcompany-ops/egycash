@@ -18,7 +18,11 @@
 // move away is `slotHeldBy` it; a card that frees this one's slot (a swap, a chain) is `pairWith`.
 // The 0849 pair waits for the card-number repair (`inRepair`): its names and balances sit on the
 // wrong records, so a move by the sheet would put each number on the wrong car.
-import { type FleetFuelLinkKind, type FleetFuelLinkResolver } from '@ecms/contracts';
+import {
+  FleetFuelCardLabelSchema,
+  type FleetFuelLinkKind,
+  type FleetFuelLinkResolver,
+} from '@ecms/contracts';
 import { foldSheetCode } from './compare-fuel-sheet';
 import { type FuelSheetRow } from './read-fuel-sheet';
 
@@ -133,9 +137,13 @@ export const linkResolver = (world: LinkWorld) => {
     const v = byCode.get(key);
     if (v !== undefined) return { place: car(v), by: 'code' };
     const own = card?.vehicleId === null && card.label && foldSheetCode(card.label) === key;
+    // A label word taken from the sheet as printed becomes the card's label on ✓ — so only one a
+    // card's label may be (the card schemas' limit); a longer one is an unknown code the reader
+    // picks the place of.
+    const printed = isLabelWord(code) ? FleetFuelCardLabelSchema.safeParse(code) : null;
     const label = own
       ? (card.label as string)
-      : (labels.get(key) ?? (isLabelWord(code) ? code.trim() : null));
+      : (labels.get(key) ?? (printed?.success === true ? printed.data : null));
     return label === null
       ? null
       : { place: { vehicleId: null, vehicleCode: null, label }, by: 'label' };

@@ -259,7 +259,14 @@ export const ErrorCodes = {
   ATM_MACHINE_SYNC_PLAN_CHANGED: 'ATM_MACHINE_SYNC_PLAN_CHANGED',
 
   // ── Fleet fuel-card sheet reconciliation («مطابقة أرصدة الكروت») ─────────────────────────────
-  /** 422 — the sheet is not the company's layout (a header is missing, no sheet), or over a cap. */
+  /**
+   * 422 — the sheet is not the company's layout (a header is missing, no sheet), or over a cap.
+   * Also on a decision («✓ / ✗», «ربط الكروت بالسيارات», «إضافة») against a session whose sheet's
+   * names are another company's — the screen's wrong-company stop, held by the server too: nothing
+   * written, `{ field: 'company', code: 'WRONG_COMPANY', message: <the sheet's company> }`; and on
+   * «إضافة» of a row whose own name carries another company's prefix, or a name longer than a card
+   * name may be (`{ field: 'name', code: 'WRONG_COMPANY' | 'TOO_LONG', message: 'name' }`).
+   */
   FLEET_FUEL_SHEET_LAYOUT: 'FLEET_FUEL_SHEET_LAYOUT',
   /**
    * 409 — a named card changed after the sheet was read; nothing was written. One detail per card:

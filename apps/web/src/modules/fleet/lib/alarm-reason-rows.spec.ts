@@ -2,7 +2,7 @@
 // the car's NEWEST row on the page (batch 3, C2), and nothing before the projection has answered.
 import { describe, expect, it } from 'vitest';
 import { type FleetMaintenanceAlarmDto, type FleetNoAlarmReason } from '@ecms/contracts';
-import { newestRows, reasonRows } from './alarm-reason-rows';
+import { newestRows, reasonRows, sheetGapOf } from './alarm-reason-rows';
 
 const CAR = 'v295';
 
@@ -151,5 +151,64 @@ describe('newestRows — the row that speaks for the car now', () => {
 
   it('a row of no car is nobody’s newest', () => {
     expect(newestRows([row('old', '2026-10-26', { vehicleId: null })]).size).toBe(0);
+  });
+});
+
+// «مش بيزود على فارق الصيانه» must not come back in the Excel file: each row says what its row on
+// the screen says.
+describe('sheetGapOf — the Excel file’s «فارق عداد الصيانة» and «التنبيه»', () => {
+  // Car 295, 10/19 → 11/01: the column grows 2,841 … 5,380; the newest row is the car now, 5,507.
+  const days = [
+    ['r1019', '2026-10-19', 2_841],
+    ['r1025', '2026-10-25', 4_102],
+    ['r1031', '2026-10-31', 5_380],
+    ['r1101', '2026-11-01', 5_507],
+  ] as const;
+  const logs = days.map(([id, day, gap]) => ({
+    ...row(id, day),
+    serviceGapKm: gap as number | null,
+  }));
+  const now = alarm({
+    noAlarmReason: null,
+    sinceServiceKm: 5_507,
+    remainingKm: 1_993,
+    level: 'none',
+    latestReadingLogId: 'r1101',
+  });
+
+  it('every reading its own gap and no level; the newest the car now, with its level', () => {
+    const newest = newestRows(logs);
+    expect(logs.map((log) => sheetGapOf(log, now, newest))).toEqual([
+      { km: 2_841, level: null },
+      { km: 4_102, level: null },
+      { km: 5_380, level: null },
+      { km: 5_507, level: 'none' },
+    ]);
+  });
+
+  it('a file that stops before the latest reading: its newest row still says the car now', () => {
+    const shorter = logs.slice(0, 3);
+    expect(sheetGapOf(shorter[2] as (typeof logs)[number], now, newestRows(shorter))).toEqual({
+      km: 5_507,
+      level: 'none',
+    });
+  });
+
+  it('a car the projection does not measure: the gap the server gave, never a level', () => {
+    const newest = newestRows(logs);
+    const refused = alarm({ sinceServiceKm: null, noAlarmReason: 'noService' });
+    const last = logs[3] as (typeof logs)[number];
+    expect(sheetGapOf({ ...last, serviceGapKm: null }, refused, newest)).toEqual({
+      km: null,
+      level: null,
+    });
+    expect(sheetGapOf(logs[0] as (typeof logs)[number], undefined, newest)).toEqual({
+      km: 2_841,
+      level: null,
+    });
+    // A day without a reading: the server's null, an empty cell.
+    expect(
+      sheetGapOf({ ...(logs[1] as (typeof logs)[number]), serviceGapKm: null }, now, newest),
+    ).toEqual({ km: null, level: null });
   });
 });

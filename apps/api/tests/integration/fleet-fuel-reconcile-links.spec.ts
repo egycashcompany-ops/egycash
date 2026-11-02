@@ -471,6 +471,108 @@ describe('«إضافة» a card the sheet lists and the system does not', () => 
     ).toBe(403);
     expect(String((await card(x._id)).vehicleId)).toBe(String(va._id));
   });
+
+  it('«إضافة» puts the sheet’s balance on a card — so it takes the balance grant too', async () => {
+    const dto = await readSheet('wataniya', [
+      HEADER,
+      ['5485640000006161', 'EGYCASH-X', 50_000, null],
+    ]);
+    const body = {
+      sheetRow: dto.newCards[0]?.sheetRow ?? 0,
+      expiresAt: '2027-05-31',
+      password: '1',
+      vehicleId: null,
+      label: 'سفر 6',
+    };
+    // He keeps the card list (`fleetFuelCard.create`) but releases no money (no approve): refused.
+    const movements = await movementCount();
+    expect((await addCard(dto.id, body, tokens.creator)).status).toBe(403);
+    expect(await movementCount()).toBe(movements);
+    expect(await FleetFuelCardModel.countDocuments({ name: 'EGYCASH-X' }).exec()).toBe(0);
+    // With both grants it is added, at the sheet's balance.
+    const added = await addCard(dto.id, body);
+    expect(added.status, added.text).toBe(201);
+    expect(data<FleetFuelCardDto>(added)).toMatchObject({ name: 'EGYCASH-X', balance: 50_000 });
+  });
+});
+
+describe('another company’s sheet — the wrong-company stop held by the server too', () => {
+  const stop = [
+    422,
+    ErrorCodes.FLEET_FUEL_SHEET_LAYOUT,
+    [{ field: 'company', code: 'WRONG_COMPANY', message: 'chillout' }],
+  ];
+  const said = (res: request.Response) => [res.status, failure(res).code, failure(res).details];
+
+  it('a Chill Out sheet read as Wataniya: no ✓ / ✗, no link, no «إضافة» — nothing written', async () => {
+    const va = await mkVehicle('W-A1');
+    await mkVehicle('W-B1');
+    // A Wataniya card that happens to carry an «EGYCASHTCS-» name, so a line differs too.
+    const x = await mkCard('wataniya', 'EGYCASHTCS-1001-A', 100, {
+      vehicleId: va._id,
+      label: null,
+    });
+    const dto = await readSheet('wataniya', [
+      HEADER,
+      rowAt(x, 'W-B1', 900),
+      ['5485640000004545', 'EGYCASHTCS-NEW-9', 7_000, null],
+    ]);
+    expect(dto.sheetCompany).toBe('chillout');
+    expect(dto.differs.map((l) => l.card.id)).toEqual([String(x._id)]);
+    expect(dto.newCards.map((n) => n.name)).toEqual(['EGYCASHTCS-NEW-9']);
+    const movements = await movementCount();
+
+    expect(said(await decide(dto.id, 'apply', [String(x._id)], tokens.linker))).toEqual(stop);
+    expect(said(await decide(dto.id, 'reject', [String(x._id)], tokens.linker))).toEqual(stop);
+    expect(said(await decideLinks(dto.id, 'apply', [String(x._id)]))).toEqual(stop);
+    const add = await addCard(dto.id, {
+      sheetRow: dto.newCards[0]?.sheetRow ?? 0,
+      expiresAt: '2027-05-31',
+      password: '1',
+      vehicleId: null,
+      label: 'سفر 7',
+    });
+    expect(said(add)).toEqual(stop);
+
+    expect(await movementCount()).toBe(movements);
+    expect(await card(x._id)).toMatchObject({ balance: 100 });
+    expect(String((await card(x._id)).vehicleId)).toBe(String(va._id));
+    expect(await FleetFuelCardModel.countDocuments({ name: 'EGYCASHTCS-NEW-9' }).exec()).toBe(0);
+    const stored = await FleetFuelReconciliationModel.findById(dto.id).lean().exec();
+    expect(stored?.lines[0]?.decision).toBeNull();
+    // And it judged none of these cards: the next sheet's candidates are not moved by it.
+    expect(stored?.equalCardIds).toEqual([]);
+  });
+
+  it('a mixed sheet: a row named for the other company, or a name too long, is not added', async () => {
+    const keep = await mkCard('wataniya', 'EGYCASH-KEEP', 1);
+    const long = `EGYCASH-${'7'.repeat(130)}`;
+    const dto = await readSheet('wataniya', [
+      HEADER,
+      rowAt(keep, null),
+      ['5485640000002323', 'EGYCASHTCS-STRAY', 10, null],
+      ['5485640000003434', long, 20, null],
+    ]);
+    // Mixed prefixes: no company for the whole sheet — so the screen shows no stop.
+    expect(dto.sheetCompany).toBeNull();
+    const rowOfName = (name: string) => dto.newCards.find((n) => n.name === name)?.sheetRow ?? 0;
+    const body = { expiresAt: '2027-05-31', password: '1', vehicleId: null, label: 'سفر 5' };
+    const movements = await movementCount();
+    const stray = await addCard(dto.id, { ...body, sheetRow: rowOfName('EGYCASHTCS-STRAY') });
+    expect(said(stray)).toEqual([
+      422,
+      ErrorCodes.FLEET_FUEL_SHEET_LAYOUT,
+      [{ field: 'name', code: 'WRONG_COMPANY', message: 'name' }],
+    ]);
+    const tooLong = await addCard(dto.id, { ...body, sheetRow: rowOfName(long) });
+    expect(said(tooLong)).toEqual([
+      422,
+      ErrorCodes.FLEET_FUEL_SHEET_LAYOUT,
+      [{ field: 'name', code: 'TOO_LONG', message: 'name' }],
+    ]);
+    expect(await movementCount()).toBe(movements);
+    expect(await FleetFuelCardModel.countDocuments({ company: 'wataniya' }).exec()).toBe(1);
+  });
 });
 
 describe('the go-live spellings', () => {

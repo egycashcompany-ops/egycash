@@ -32,7 +32,7 @@ import { fuelCardEntityRef } from '../fuel-card.service';
 import { type LinkCard, type LinkVehicle, type LinkWorld } from './compare-card-links';
 import { fleetFuelReconciliationRepository } from './fuel-reconcile.repository';
 import { type FleetFuelReconcileLink } from './fuel-reconcile.model';
-import { linkRefusal, notInSheet, refusal } from './fuel-reconcile-parts';
+import { linkRefusal, notInSheet, refusal, refuseWrongCompany } from './fuel-reconcile-parts';
 import { fuelSheetCodeAliases, rememberFuelSheetCode } from './fuel-sheet-codes';
 
 /** A card as the link comparison reads it. */
@@ -111,6 +111,7 @@ export const decideFuelLinks = async (
     moved = [];
     const reading = await fleetFuelReconciliationRepository.findLive(id, session);
     if (reading === null) throw new NotFoundError();
+    refuseWrongCompany(reading);
     sessionId = String(reading._id);
     const links = new Map((reading.links ?? []).map((link) => [String(link.cardId), link]));
 

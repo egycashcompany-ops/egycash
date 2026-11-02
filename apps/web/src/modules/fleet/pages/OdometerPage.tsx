@@ -60,7 +60,7 @@ import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { AlarmReasonCell, NotActiveCell } from '../components/AlarmReasonCell';
 import { NewestGapCell, RowGapCell } from '../components/AlarmFigureCell';
-import { newestRows, reasonRows } from '../lib/alarm-reason-rows';
+import { newestRows, reasonRows, sheetGapOf } from '../lib/alarm-reason-rows';
 
 /**
  * Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept.
@@ -344,7 +344,9 @@ export const OdometerPage = (): JSX.Element => {
    *
    * TWO CELLS ARE SPLIT, because a spreadsheet cell cannot stack a value and a badge. The
    * maintenance cell shows the distance since the last counting service AND the alarm level it
-   * has reached; each takes a column. The reading columns keep their WORDS — «بدون قراءة» and the
+   * has reached; each takes a column — and each row says what the screen's row says
+   * (`sheetGapOf`): the gap at its own reading, and the car's figure now with its level on the
+   * car's newest row in the file only («مش بيزود على فارق الصيانه» must not come back in the file). The reading columns keep their WORDS — «بدون قراءة» and the
    * open period are facts about the day, not blanks, and the column says so exactly as the table
    * does. Every genuine number goes in as a number, so the sheet stays summable; nothing here is
    * money, so there are no money columns. The row's correct action is a control, so it is left out.
@@ -354,6 +356,7 @@ export const OdometerPage = (): JSX.Element => {
       fleetApi.listOdometerLogs({ ...filtersOnly(params), page: pageNo, pageSize: size }),
     );
     const names = await driverNames(all);
+    const newestOf = newestRows(all);
     saveSheet({
       name: t('fleet.nav.odometer'),
       serialHeader: t('fleet.violations.report.serial'),
@@ -370,11 +373,14 @@ export const OdometerPage = (): JSX.Element => {
         t('fleet.odometer.columns.alert'),
       ],
       rows: all.map((log) => {
-        // The same join the maintenance column makes, and the same refusal: a car with no rule,
+        // The same split the maintenance column makes, and the same refusal: a car with no rule,
         // no service on file or no registry row prints nothing rather than a computed distance
         // the projection deliberately withheld.
-        const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
-        const measured = alarm === undefined || alarm.sinceServiceKm === null ? undefined : alarm;
+        const gap = sheetGapOf(
+          log,
+          log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId),
+          newestOf,
+        );
         return [
           formatDate(log.date, locale),
           log.vehicleCode ?? '',
@@ -386,12 +392,12 @@ export const OdometerPage = (): JSX.Element => {
           log.outReading === null ? '' : (log.inReading ?? t('fleet.odometer.openPeriod')),
           log.km ?? '',
           log.notes ?? '',
-          measured?.sinceServiceKm ?? '',
-          measured === undefined
+          gap.km ?? '',
+          gap.level === null
             ? ''
-            : measured.level === 'none'
+            : gap.level === 'none'
               ? t('fleet.vehicle.alarmNone')
-              : t(`fleet.dashboard.level.${measured.level}`),
+              : t(`fleet.dashboard.level.${gap.level}`),
         ];
       }),
     });

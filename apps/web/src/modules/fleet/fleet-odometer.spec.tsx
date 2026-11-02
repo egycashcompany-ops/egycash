@@ -402,6 +402,18 @@ describe('the odometer table', () => {
     );
   });
 
+  it('writes each reading’s own gap in the Excel file — the car’s figure and level on its newest row only', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    const sheet = source.slice(
+      source.indexOf('const exportSheet'),
+      source.indexOf('const runExport'),
+    );
+    // The screen's own split (`sheetGapOf`, lib/alarm-reason-rows.spec.ts), over the file's rows.
+    expect(sheet).toContain('const newestOf = newestRows(all)');
+    expect(sheet).toContain('sheetGapOf(');
+    expect(sheet, 'never the car’s figure now on every row').not.toContain('sinceServiceKm');
+  });
+
   it('prints only the shifts the row actually recorded — never a cell saying «null»', () => {
     const oneDriver = tbody(
       render({ qc: client([log({ driver1EmployeeId: 'e1', driver2EmployeeId: null })]) }),

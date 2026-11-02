@@ -382,6 +382,15 @@ describe('«كروت في الشيت وليست في النظام»', () => {
     expect(newOf({}, false)).not.toContain('data-recon-add=');
   });
 
+  it('the page offers «إضافة» only with both grants — the card opens at the sheet’s balance', () => {
+    // As the server asks: `fleetFuelCard.create` for the card, `fleetFuelCharge.approve` for the
+    // money it opens with.
+    const PAGE = readFileSync(join(HERE, 'FuelReconcilePage.tsx'), 'utf8');
+    expect(PAGE).toContain(
+      "mayAdd={can('fleetFuelCard.create') && can('fleetFuelCharge.approve')}",
+    );
+  });
+
   it('«إضافة» opens «إضافة كارت» filled from the sheet: car, name, the opening balance', () => {
     const from = fromSheetOf(NEW[0]!, {
       id: 's-1',

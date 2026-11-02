@@ -231,7 +231,8 @@ export const ReconcileResult = ({
         rows={result.newCards}
         company={result.company}
         added={sheet.added}
-        mayAdd={can('fleetFuelCard.create')}
+        // The new card opens at the sheet's balance: money on a card — the balance grant too.
+        mayAdd={can('fleetFuelCard.create') && can('fleetFuelCharge.approve')}
         onAdd={onAdd}
       />
       <ReconcileFolds

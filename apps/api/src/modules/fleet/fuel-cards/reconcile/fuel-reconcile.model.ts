@@ -13,7 +13,8 @@
 // Batch 3 adds, each OPTIONAL and without a default (a session read before it simply lacks them,
 // and reads as none): the sheet's car code on a line, the charges a line may cancel («شحن لا يظهر
 // في الشيت», stored at the read so a decision never trusts the body about them), «تاريخ الشيت»,
-// and «ربط الكروت بالسيارات» — the links the sheet proposes and the sheet-only cards «إضافة» may
+// the cards the sheet showed equal (a judgement the next sheet's candidates start after), and
+// «ربط الكروت بالسيارات» — the links the sheet proposes and the sheet-only cards «إضافة» may
 // create. No PIN is ever stored here: the sheet's «pass» column is never read.
 import { Schema, model, type Types } from 'mongoose';
 import {
@@ -134,6 +135,12 @@ export interface FleetFuelReconciliationDoc extends BaseDocFields {
   /** «تاريخ الشيت» as given at upload (UTC midnight); absent on a session read before it. */
   sheetDate?: Date | null;
   lines: FleetFuelReconcileLine[];
+  /**
+   * The cards the sheet showed EQUAL to the system at `readAt` — a judgement on them as much as a
+   * decided line is: their charges up to the read are on the company's books, and no later sheet
+   * offers one as «شحن لا يظهر في الشيت». Absent on a session read before it (read as none).
+   */
+  equalCardIds?: Types.ObjectId[];
   /** Absent on a session read before 6b. */
   links?: FleetFuelReconcileLink[];
   newCards?: FleetFuelReconcileNewCard[];
@@ -233,6 +240,8 @@ const reconciliationSchema = new Schema<FleetFuelReconciliationDoc>(
     // NO default: absent on a session read before «تاريخ الشيت» — read as none.
     sheetDate: { type: Date, required: false },
     lines: { type: [lineSchema], default: [] },
+    // NO default: absent on a session read before it — read as none.
+    equalCardIds: { type: [Schema.Types.ObjectId], default: undefined },
     links: { type: [linkSchema], default: undefined },
     newCards: { type: [newCardSchema], default: undefined },
     counts: { type: countsSchema, required: true },

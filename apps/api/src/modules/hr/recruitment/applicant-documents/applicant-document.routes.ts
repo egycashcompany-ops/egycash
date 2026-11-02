@@ -17,6 +17,7 @@ import {
 } from 'express';
 import multer from 'multer';
 import {
+  BulkDeleteApplicantFoldersSchema,
   ErrorCodes,
   ListApplicantDocumentSetsQuerySchema,
   ListApplicantFoldersQuerySchema,
@@ -30,6 +31,8 @@ import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
+  bulkDeleteApplicantFolders,
+  deleteApplicantFolder,
   getApplicantDocuments,
   getMyDocuments,
   getMyStatus,
@@ -63,7 +66,11 @@ const multipartSingle = (): RequestHandler => {
       }
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
         next(
-          new AppError(ErrorCodes.FILE_TOO_LARGE, 422, `File exceeds the ${DOCUMENT_MAX_MB} MB cap`),
+          new AppError(
+            ErrorCodes.FILE_TOO_LARGE,
+            422,
+            `File exceeds the ${DOCUMENT_MAX_MB} MB cap`,
+          ),
         );
         return;
       }
@@ -82,12 +89,7 @@ const multipartSingle = (): RequestHandler => {
 export const buildApplicantPortalDocumentsRouter = (): Router => {
   const router = Router();
 
-  router.get(
-    '/status',
-    authenticate,
-    authorize('applicantPortal.view'),
-    asyncHandler(getMyStatus),
-  );
+  router.get('/status', authenticate, authorize('applicantPortal.view'), asyncHandler(getMyStatus));
   router.get(
     '/documents',
     authenticate,
@@ -143,12 +145,33 @@ export const buildApplicantDocumentsRouter = (): Router => {
     validate({ query: ListApplicantFoldersQuerySchema }),
     asyncHandler(listApplicantFolders),
   );
+  // Emptying folders. `/folders/bulk-delete` is a POST and `/folders/:applicantId` a DELETE, so
+  // neither path can read the other's segment as an id — but the bulk route is declared first
+  // anyway, because the next person to add a verb here will copy whatever is at the top.
+  //
+  // `applicantDocument.delete`, not `.review`: ruling on a document and emptying somebody's file
+  // are different acts. A folder belonging to a hired applicant — or to one who is about to be —
+  // is refused here by the service, whatever key the caller holds.
+  router.post(
+    '/folders/bulk-delete',
+    authenticate,
+    authorize('applicantDocument.delete'),
+    validate({ body: BulkDeleteApplicantFoldersSchema }),
+    asyncHandler(bulkDeleteApplicantFolders),
+  );
   router.get(
     '/folders/:applicantId',
     authenticate,
     authorize('applicantDocument.view'),
     validate({ params: ApplicantParamSchema }),
     asyncHandler(getApplicantFolder),
+  );
+  router.delete(
+    '/folders/:applicantId',
+    authenticate,
+    authorize('applicantDocument.delete'),
+    validate({ params: ApplicantParamSchema }),
+    asyncHandler(deleteApplicantFolder),
   );
   router.get(
     '/:applicantId',

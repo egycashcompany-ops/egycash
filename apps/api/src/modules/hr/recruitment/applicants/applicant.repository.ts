@@ -204,6 +204,20 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
       .exec();
   }
 
+  /**
+   * Nothing is attached any more — set, not adjusted.
+   *
+   * Called when the applicant's documents folder is emptied, which soft-deletes every file filed
+   * against the applicant. Zero is then provably the count, whatever the counter had drifted to,
+   * and that is a stronger statement than subtracting the number this particular pass happened to
+   * remove.
+   */
+  async clearAttachmentCount(id: string): Promise<void> {
+    await this.model
+      .updateOne({ _id: new Types.ObjectId(id) }, { $set: { attachmentCount: 0 } })
+      .exec();
+  }
+
   async adjustAttachmentCount(id: string, delta: number): Promise<void> {
     await this.model
       .updateOne({ _id: new Types.ObjectId(id) }, { $inc: { attachmentCount: delta } })

@@ -97,7 +97,10 @@ describe('the file entity authorizer registry', () => {
       { entityType: 'ticket', authorize: async () => false },
       { entityType: 'ticketComment', authorize: async () => false },
     ]);
-    registerFileEntityAuthorizer('hr', { entityType: 'employeeFile', authorize: async () => false });
+    registerFileEntityAuthorizer('hr', {
+      entityType: 'employeeFile',
+      authorize: async () => false,
+    });
     registerFileEntityAuthorizers('it', [{ entityType: 'ticket', authorize: async () => false }]);
     expect(hasFileEntityAuthorizer('it', 'ticket')).toBe(true);
     expect(hasFileEntityAuthorizer('it', 'ticketComment')).toBe(false);
@@ -114,5 +117,60 @@ describe('the file entity authorizer registry', () => {
     await expect(authorizeFileEntity(ctx, ref('it', 'ticket'), 'read')).resolves.toBe(true);
     allowed = false;
     await expect(authorizeFileEntity(ctx, ref('it', 'ticket'), 'read')).resolves.toBe(false);
+  });
+});
+
+describe('the delete intent is opt-in, and safe for everything that has not opted in', () => {
+  /**
+   * The asymmetry that let a third intent be added without revisiting ten authorizers.
+   *
+   * Most of them decide with `intent === 'write' ? EDIT : VIEW`. An unannounced third intent would
+   * fall into their VIEW branch — a view-only reader would become somebody who can delete. So an
+   * authorizer that has not said it understands a delete is asked about a WRITE, and answers
+   * exactly what it answered before the intent existed.
+   */
+  it('asks an authorizer that has not opted in about a WRITE instead', async () => {
+    const authorize = vi.fn().mockResolvedValue(true);
+    registerFileEntityAuthorizer('it', { entityType: 'ticket', authorize });
+    await authorizeFileEntity(ctx, ref('it', 'ticket', 'T7'), 'delete');
+    expect(authorize).toHaveBeenCalledWith({ ctx, entityId: 'T7', intent: 'write' });
+  });
+
+  it('refuses a delete wherever it would have refused a write', async () => {
+    registerFileEntityAuthorizer('it', {
+      // The shape ten authorizers in Fleet and IT actually use.
+      entityType: 'ticket',
+      authorize: async ({ intent }) => intent !== 'write',
+    });
+    await expect(authorizeFileEntity(ctx, ref('it', 'ticket'), 'read')).resolves.toBe(true);
+    await expect(authorizeFileEntity(ctx, ref('it', 'ticket'), 'write')).resolves.toBe(false);
+    await expect(authorizeFileEntity(ctx, ref('it', 'ticket'), 'delete')).resolves.toBe(false);
+  });
+
+  it('passes the delete through to an authorizer that declares it understands one', async () => {
+    const authorize = vi.fn().mockResolvedValue(true);
+    registerFileEntityAuthorizer('hr', {
+      entityType: 'applicantDocuments',
+      understandsDelete: true,
+      authorize,
+    });
+    await authorizeFileEntity(ctx, ref('hr', 'applicantDocuments', 'A1'), 'delete');
+    expect(authorize).toHaveBeenCalledWith({ ctx, entityId: 'A1', intent: 'delete' });
+  });
+
+  it('still leaves an unclaimed type alone, delete included', async () => {
+    await expect(authorizeFileEntity(ctx, ref('hr', 'employeeFile'), 'delete')).resolves.toBe(true);
+  });
+
+  /** `understandsDelete: false` is a statement too, and it must read as "ask me about a write". */
+  it('treats an explicit false the same as saying nothing', async () => {
+    const authorize = vi.fn().mockResolvedValue(true);
+    registerFileEntityAuthorizer('it', {
+      entityType: 'ticket',
+      understandsDelete: false,
+      authorize,
+    });
+    await authorizeFileEntity(ctx, ref('it', 'ticket'), 'delete');
+    expect(authorize).toHaveBeenCalledWith({ ctx, entityId: 'e1', intent: 'write' });
   });
 });

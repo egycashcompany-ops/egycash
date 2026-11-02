@@ -66,6 +66,9 @@ const externalSubjectOf = async (
 export const hrApplicantDocumentFileAuthorizers: FileEntityAuthorizer[] = [
   {
     entityType: APPLICANT_DOCUMENT_ENTITY_TYPE,
+    // Removing is not overwriting, and here the two answers differ — see the `intent === 'delete'`
+    // branch below.
+    understandsDelete: true,
     authorize: async ({ ctx, entityId, intent }) => {
       const subject = await externalSubjectOf(ctx);
       if (subject !== null) {
@@ -77,6 +80,17 @@ export const hrApplicantDocumentFileAuthorizers: FileEntityAuthorizer[] = [
         }
         return subject.subjectId === entityId;
       }
+      // Staff, REMOVING: the one staff write there is, and it is a removal rather than a change.
+      // HR must be able to clear out the folder of a candidate who will not continue, and the
+      // folder holds what the candidate handed in as well as what HR attached. `.delete` and not
+      // `.review`: ruling on a document and emptying somebody's file are different acts, and
+      // whoever may do the second should have been handed the key on purpose.
+      //
+      // This grants no new ROUTE. `DELETE /platform/files/:id` is behind `file.delete` and the
+      // folder delete is behind `applicantDocument.delete`; this gate is the second of the two,
+      // never the only one. What it does NOT open is the rest of writing — replacing a
+      // candidate's certificate or editing its metadata still falls to the refusal below.
+      if (intent === 'delete') return hasPermission(ctx, 'applicantDocument.delete');
       // Staff: reading is the reviewer's job; WRITING is not staff work at all. Nobody in HR
       // uploads a certificate on a candidate's behalf through this door — a document is evidence
       // about a person, and evidence somebody else could file in your name is worth less than

@@ -64,6 +64,28 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .exec();
   }
 
+  /**
+   * Which of these applicants already became an employee — the post-hire guard, asked about a
+   * whole page at once.
+   *
+   * One query against `ix_applicantId` instead of one per row, because the caller (the applicant
+   * documents folders) asks about twenty-four applicants at a time and the answer decides whether
+   * each folder may be deleted. Unscoped like its single-row sibling: "is this person on the
+   * payroll" is one answer company-wide.
+   */
+  async findApplicantIdsWithEmployeeSystem(applicantIds: readonly string[]): Promise<Set<string>> {
+    const ids = applicantIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (ids.length === 0) return new Set();
+    const rows = await this.model
+      .find({ applicantId: { $in: ids }, isDeleted: false })
+      .select({ applicantId: 1 })
+      .lean<{ applicantId: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((row) => String(row.applicantId)));
+  }
+
   /** The employee created from a given applicant, if any — the post-hire guard (RW13). */
   async findByApplicantIdSystem(applicantId: string): Promise<EmployeeDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;

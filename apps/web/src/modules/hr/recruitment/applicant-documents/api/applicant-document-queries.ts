@@ -4,6 +4,8 @@ import {
   type ApplicantDocumentSetDto,
   type ApplicantFolderDetailDto,
   type ApplicantFolderDto,
+  type DeleteApplicantFoldersResultDto,
+  type DeletedApplicantFolderDto,
   type DownloadTicketDto,
   type Paginated,
 } from '@ecms/contracts';
@@ -63,6 +65,46 @@ export const useApplicantFolder = (applicantId: string): UseQueryResult<Applican
     queryFn: () => api.fetchApplicantFolder(applicantId),
     enabled: applicantId !== '',
   });
+
+/**
+ * Empty one folder, or several.
+ *
+ * Both invalidate the whole `applicantFolders` feature rather than patching a row out of the list:
+ * what an emptied folder looks like is the server's answer (it still exists — the applicant is
+ * still registered — it is simply empty now), and which page the remaining folders fall on is too.
+ * The DETAIL cache for each emptied applicant is dropped as well, so reopening that folder asks
+ * again instead of showing the files it held a moment ago.
+ */
+const useFolderInvalidation = (): ((applicantIds: readonly string[]) => void) => {
+  const queryClient = useQueryClient();
+  return (applicantIds) => {
+    for (const id of applicantIds) {
+      queryClient.removeQueries({ queryKey: detailKey(MODULE, 'applicantFolders', id) });
+    }
+    void queryClient.invalidateQueries({ queryKey: listKey(MODULE, 'applicantFolders') });
+    // The review queue counts the same documents, and emptying a folder empties that person's set.
+    void queryClient.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
+  };
+};
+
+export const useDeleteApplicantFolder = () => {
+  const invalidate = useFolderInvalidation();
+  return useMutation<DeletedApplicantFolderDto, Error, string>({
+    mutationFn: api.deleteApplicantFolder,
+    onSuccess: (result) => invalidate([result.applicantId]),
+  });
+};
+
+export const useBulkDeleteApplicantFolders = () => {
+  const invalidate = useFolderInvalidation();
+  return useMutation<DeleteApplicantFoldersResultDto, Error, readonly string[]>({
+    mutationFn: (applicantIds) =>
+      api.bulkDeleteApplicantFolders({ applicantIds: [...applicantIds] }),
+    // Every id that was ASKED about, not only the ones that went: a refused folder was read to
+    // find out it was refused, and its row now carries a reason the list did not have before.
+    onSuccess: (_result, applicantIds) => invalidate(applicantIds),
+  });
+};
 
 /**
  * A signed link to show one image. Links are short-lived, so one is asked for when the image is

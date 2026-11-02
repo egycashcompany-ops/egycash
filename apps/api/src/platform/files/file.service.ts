@@ -316,7 +316,11 @@ class FileService {
       size: source.size,
       buffer,
     };
-    const entityRef = { moduleId: target.moduleId, entityType: target.entityType, entityId: target.entityId };
+    const entityRef = {
+      moduleId: target.moduleId,
+      entityType: target.entityType,
+      entityId: target.entityId,
+    };
     const group = await fileRepository.createGroup(entityRef);
     const doc = await this.storeVersion({
       binary,
@@ -358,7 +362,11 @@ class FileService {
     return doc;
   }
 
-  async listVersions(id: string, scope: ScopeSelector | undefined, ctx: AuthContext): Promise<FileDoc[]> {
+  async listVersions(
+    id: string,
+    scope: ScopeSelector | undefined,
+    ctx: AuthContext,
+  ): Promise<FileDoc[]> {
     const doc = await this.getById(id, scope, ctx);
     return fileRepository.listVersions(doc.groupId);
   }
@@ -494,7 +502,10 @@ class FileService {
   // ── Delete (soft by default; permanent is break-glass) ───────────────────
 
   async softDelete(ctx: AuthContext, id: string, scope?: ScopeSelector): Promise<void> {
-    await this.assertEntityAccess(ctx, await fileRepository.getById(id, scope), 'write');
+    // `delete`, not `write`: an owning module may permit removing a file it would never permit
+    // overwriting. An authorizer that has not opted into the distinction is asked about a write,
+    // so this reads exactly as it did before (ADR-023, `understandsDelete`).
+    await this.assertEntityAccess(ctx, await fileRepository.getById(id, scope), 'delete');
     const doc = await fileRepository.softDeleteById(id, { by: ctx.userId, scope });
     await auditService.record({ entityRef: entityRefOf(id), action: 'delete' });
     await emit(PlatformEvents.FileDeleted, fileEventPayload(doc), { reliable: true });

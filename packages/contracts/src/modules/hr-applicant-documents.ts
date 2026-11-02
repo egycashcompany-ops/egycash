@@ -61,9 +61,7 @@ export type ApplicantDocumentReviewStatus = z.infer<typeof ApplicantDocumentRevi
  */
 export const PROFESSIONAL_DRIVING_LICENSE_CLASSES = ['first', 'second'] as const;
 export const ProfessionalDrivingLicenseClassSchema = z.enum(PROFESSIONAL_DRIVING_LICENSE_CLASSES);
-export type ProfessionalDrivingLicenseClass = z.infer<
-  typeof ProfessionalDrivingLicenseClassSchema
->;
+export type ProfessionalDrivingLicenseClass = z.infer<typeof ProfessionalDrivingLicenseClassSchema>;
 
 // ── The catalogue (D-APP-4) ─────────────────────────────────────────────────
 
@@ -102,9 +100,7 @@ export type UpdateApplicantDocumentType = z.infer<typeof UpdateApplicantDocument
 export const ListApplicantDocumentTypesQuerySchema = PaginationQuerySchema.extend({
   active: z.coerce.boolean().optional(),
 }).strict();
-export type ListApplicantDocumentTypesQuery = z.infer<
-  typeof ListApplicantDocumentTypesQuerySchema
->;
+export type ListApplicantDocumentTypesQuery = z.infer<typeof ListApplicantDocumentTypesQuerySchema>;
 
 export interface ApplicantDocumentTypeDto {
   id: string;
@@ -306,6 +302,18 @@ export const ListApplicantFoldersQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListApplicantFoldersQuery = z.infer<typeof ListApplicantFoldersQuerySchema>;
 
+/**
+ * Why a folder may not be deleted, when it may not.
+ *
+ * Three ways of being the same thing — this person's card is a kept record — and they are told
+ * apart because the screen says a different sentence for each and because they do not all show up
+ * in the same place: a hired applicant says so on their own row, an employee row says so from the
+ * other module, and an accepted offer is the window between the two where neither does.
+ */
+export const APPLICANT_FOLDER_DELETE_BLOCKS = ['hired', 'employed', 'acceptedOffer'] as const;
+export const ApplicantFolderDeleteBlockSchema = z.enum(APPLICANT_FOLDER_DELETE_BLOCKS);
+export type ApplicantFolderDeleteBlock = z.infer<typeof ApplicantFolderDeleteBlockSchema>;
+
 export interface ApplicantFolderDto {
   applicantId: string;
   applicantCode: string;
@@ -317,6 +325,15 @@ export interface ApplicantFolderDto {
   /** The holder's photograph cut from the card, shown on the folder; null when none was kept. */
   portraitFileId: string | null;
   registeredAt: string;
+  /**
+   * Why this folder refuses deletion, or `null` when it does not.
+   *
+   * On the LIST and not only on the refusal, so the screen can say why before somebody tries —
+   * «تم تعيين هذا المتقدم» on a disabled button is an explanation, and the same words arriving as
+   * an error after a confirmation dialog are a waste of the reader's time. The API refuses on its
+   * own account regardless: this field is an explanation, never the gate.
+   */
+  deleteBlock: ApplicantFolderDeleteBlock | null;
 }
 
 /** What a file in the folder is, so the folder can show the card first and name each side. */
@@ -333,9 +350,74 @@ export type ApplicantFolderFileKind = (typeof APPLICANT_FOLDER_FILE_KINDS)[numbe
 export interface ApplicantFolderFileDto {
   kind: ApplicantFolderFileKind;
   file: FileDto;
+  /**
+   * For a handed-in document (`kind: 'document'`), the catalogue TYPE it was handed in for — so
+   * the folder can head «شهادة الميلاد» over the right file instead of listing five anonymous
+   * uploads.
+   *
+   * It is carried here rather than read off the file because a portal upload is stored under the
+   * type's ARABIC name as its display name: heading an English screen with it would be a
+   * translation bug visible only to an English reader. `null` for every other kind, and also for a
+   * document whose catalogue row has gone — the file is still the candidate's, so it is still
+   * shown, just unnamed.
+   */
+  documentType: LocalizedString | null;
 }
 
 export interface ApplicantFolderDetailDto extends ApplicantFolderDto {
   /** The card first (front, back, face), then attachments and handed-in documents, newest first. */
   files: ApplicantFolderFileDto[];
+}
+
+// ── Deleting a folder (HR, `applicantDocument.delete`) ──────────────────────
+
+/**
+ * Empty one candidate's folder, or several.
+ *
+ * WHAT IS DELETED IS THE FILES, NEVER THE PERSON. The applicant record, their stage history and
+ * the decisions taken about them all stay: what goes is the card images, what they handed in
+ * through the portal and what HR attached — exactly what the folder shows. The applicant's own
+ * lifecycle already has a word for «this person is not continuing» and it is `withdraw`, which is
+ * a different act with a different key and a reason attached.
+ *
+ * SOFT, by the platform's ordinary soft delete: the rows are flagged and the bytes stay in the
+ * store, so an administrator can still recover them from the database.
+ */
+export const BulkDeleteApplicantFoldersSchema = z
+  .object({
+    /**
+     * Capped well below the usual two hundred on purpose: one folder is N file deletions, each
+     * with its own audit row and event, so a hundred folders is a request that runs for minutes
+     * and reports nothing until it finishes. Fifty is more than a screenful.
+     */
+    applicantIds: z.array(objectId()).min(1).max(50),
+  })
+  .strict();
+export type BulkDeleteApplicantFolders = z.infer<typeof BulkDeleteApplicantFoldersSchema>;
+
+export interface DeletedApplicantFolderDto {
+  applicantId: string;
+  applicantCode: string;
+  applicantName: string;
+  /** How many files were removed — what the toast and the audit row both report. */
+  filesRemoved: number;
+}
+
+export interface RefusedApplicantFolderDto {
+  applicantId: string;
+  applicantCode: string;
+  applicantName: string;
+  reason: ApplicantFolderDeleteBlock;
+}
+
+/**
+ * What a delete of several folders did.
+ *
+ * Partial by design. A selection of twelve that holds one hired candidate deletes the other
+ * eleven and names the one it would not touch — refusing the whole request would make the caller
+ * pick the selection apart by hand to find out which row was the problem.
+ */
+export interface DeleteApplicantFoldersResultDto {
+  deleted: DeletedApplicantFolderDto[];
+  refused: RefusedApplicantFolderDto[];
 }

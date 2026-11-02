@@ -2,6 +2,7 @@
 // see below, it is the whole of D-APP-9.
 import { type Request, type Response } from 'express';
 import {
+  type BulkDeleteApplicantFolders,
   type ListApplicantDocumentSetsQuery,
   type ListApplicantFoldersQuery,
   type ListApplicantDocumentTypesQuery,
@@ -94,6 +95,24 @@ export const listApplicantFolders = async (req: Request, res: Response): Promise
 export const getApplicantFolder = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<unknown, unknown, { applicantId: string }>(req);
   ok(res, await applicantFolderService.get(params.applicantId));
+};
+
+/**
+ * Empty one applicant's folder. The files go; the applicant stays.
+ *
+ * A kept record (hired, already an employee, or holding an accepted offer) is refused with
+ * `APPLICANT_FOLDER_KEPT_RECORD` — the service decides, so hiding the button is a courtesy and
+ * never the gate.
+ */
+export const deleteApplicantFolder = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<unknown, unknown, { applicantId: string }>(req);
+  ok(res, await applicantFolderService.deleteFolder(authContext(req), params.applicantId));
+};
+
+/** Empty several folders at once, reporting what was emptied and what was refused. */
+export const bulkDeleteApplicantFolders = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<BulkDeleteApplicantFolders>(req);
+  ok(res, await applicantFolderService.deleteFolders(authContext(req), body.applicantIds));
 };
 
 export const getApplicantDocuments = async (req: Request, res: Response): Promise<void> => {

@@ -1,0 +1,559 @@
+// Emptying an applicant's documents folder, end to end — the half only a running server answers.
+//
+// Three of the claims here cannot be made anywhere else:
+//
+//   · a candidate's handed-in document is reachable by NO staff write (`applicant-document.files.ts`
+//     refuses every `write` intent, and that refusal is the whole reason the file exists), so
+//     whether a delete gets through at all is decided by the platform's authorizer registry rather
+//     than by this module's code;
+//   · the SET ROW must go with the bytes. A row still naming a soft-deleted file leaves the slot
+//     bricked — the reviewer's queue goes on showing the document as waiting and the candidate's
+//     next upload is refused — and nothing throws, so only a re-upload discovers it;
+//   · the guard reads three different collections, and the clause that matters most is the one
+//     about a row in ANOTHER module.
+//
+// The three applicants are deliberately kept apart: the one whose folder is emptied, the one that
+// proves nothing else was touched, and the one who was hired.
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import request from 'supertest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { type Express } from 'express';
+import { Types } from 'mongoose';
+import {
+  ErrorCodes,
+  platformPermissions,
+  SettingKeys,
+  type ApplicantDocumentSetDto,
+  type ApplicantDocumentTypeDto,
+  type ApplicantDto,
+  type ApplicantFolderDeleteBlock,
+  type ApplicantFolderDetailDto,
+  type ApplicantFolderDto,
+  type DeleteApplicantFoldersResultDto,
+  type DeletedApplicantFolderDto,
+  type FileDto,
+  type ScreeningDto,
+} from '@ecms/contracts';
+import { bootPlatform } from '../../src/platform/kernel/bootstrap';
+import { buildApp } from '../../src/app';
+import { moduleManifests } from '../../src/modules';
+import { hrPermissions } from '../../src/modules/hr/hr.module';
+import { APPLICANT_PORTAL_SUBJECT } from '../../src/modules/hr/recruitment/applicant-portal';
+import { ApplicantModel } from '../../src/modules/hr/recruitment/applicants/applicant.model';
+import { resolveNationalIdCardCategoryId } from '../../src/modules/hr/recruitment/applicants/national-id-card.files';
+import { ApplicantDocumentSetModel } from '../../src/modules/hr/recruitment/applicant-documents/applicant-document.model';
+import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { JobOfferModel } from '../../src/modules/hr/recruitment/job-offers/job-offer.model';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { fileCategoryService } from '../../src/platform/files';
+import { FileModel } from '../../src/platform/files/file.model';
+import { rbacService } from '../../src/platform/rbac';
+import { authService } from '../../src/platform/auth';
+import { userService, type UserDoc } from '../../src/platform/users';
+import { settingsService } from '../../src/platform/settings';
+import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { type AuthContext } from '../../src/shared/types';
+import { mutated } from './helpers/workflow-envelope';
+
+const PASSWORD = 'Str0ng#Pass!';
+
+let replSet: MongoMemoryReplSet | null = null;
+let app: Express;
+let adminToken: string;
+/** Holds `applicantDocument.view` and `.review` and NOT `.delete` — the refusal under test. */
+let readerToken: string;
+let generalCategoryId: string;
+
+const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
+const code = (res: request.Response): string =>
+  (res.body as { error?: { code?: string } }).error?.code ?? '';
+
+const waitFor = async (predicate: () => Promise<boolean>, ms = 2000): Promise<void> => {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+};
+
+const resolveMongoUri = async (): Promise<string> => {
+  const external = process.env.MONGO_TEST_URI;
+  const dbName = `ecms-applicant-folder-delete-${String(Date.now())}`;
+  if (external !== undefined && external !== '') {
+    const url = new URL(external);
+    url.pathname = `/${dbName}`;
+    return url.toString();
+  }
+  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  return replSet.getUri(dbName);
+};
+
+const account = async (email: string, roleId: string): Promise<string> => {
+  const { user: created } = await userService.create(
+    {
+      email,
+      firstName: { ar: 'م', en: 'A' },
+      lastName: { ar: 'م', en: 'A' },
+      locale: 'en',
+      organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+    },
+    null,
+  );
+  const id = String(created._id);
+  await userService.setPassword(id, PASSWORD, 'passwordReset');
+  await userService.forceActivate(id);
+  await rbacService.ensureAssignment(id, roleId, 'organization');
+  return id;
+};
+
+const login = async (email: string): Promise<string> => {
+  const res = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD });
+  expect(res.status, `login ${email}`).toBe(200);
+  return data<{ accessToken: string }>(res).accessToken;
+};
+
+const registerApplicant = async (nationalId: string, phone: string): Promise<ApplicantDto> => {
+  const sources = await request(app)
+    .get('/api/v1/hr/applicant-sources')
+    .query({ pageSize: 50 })
+    .set('Authorization', `Bearer ${adminToken}`);
+  const source = data<{ id: string; key: string }[]>(sources).find((s) => s.key === 'internalHr');
+  if (source === undefined) throw new Error('source internalHr not seeded');
+  const res = await request(app)
+    .post('/api/v1/hr/applicants')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      sourceId: source.id,
+      intakeChannel: 'internal',
+      identity: { fullNameAr: 'محمد أحمد عبد الله سالم', nationality: 'Egyptian', nationalId },
+      contact: { primaryPhone: phone },
+    });
+  expect(res.status, 'register applicant').toBe(201);
+  return mutated<ApplicantDto>(res);
+};
+
+/** An HR attachment and a card image — both filed against the applicant, both in the folder. */
+const attach = async (
+  applicantId: string,
+  categoryId: string,
+  filename: string,
+  tags: string[] = [],
+): Promise<FileDto> => {
+  let req = request(app)
+    .post('/api/v1/platform/files')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .field('moduleId', 'hr')
+    .field('entityType', 'applicant')
+    .field('entityId', applicantId)
+    .field('categoryId', categoryId);
+  for (const tag of tags) req = req.field('tags[]', tag);
+  const res = await req.attach('file', Buffer.from(`bytes-of-${filename}`), {
+    filename,
+    contentType: 'image/png',
+  });
+  expect(res.status, `upload ${filename}`).toBe(201);
+  return data<FileDto>(res);
+};
+
+/**
+ * Hand a document in AS THE CANDIDATE, which is the only way one gets into the folder.
+ *
+ * No staff key can do this — `hrApplicantDocumentFileAuthorizers` refuses every staff write — so
+ * the portal account is not a convenience here, it is the only door.
+ */
+const handInDocument = async (
+  applicant: ApplicantDto,
+  nationalId: string,
+  phone: string,
+): Promise<string> => {
+  const screening = mutated<ScreeningDto>(
+    await request(app)
+      .post('/api/v1/hr/screenings')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId: applicant.id }),
+  );
+  const decided = await request(app)
+    .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ outcome: 'accepted', version: screening.version });
+  expect(decided.status, 'accept screening').toBe(200);
+
+  // The account is created and activated in two steps; a half-built one hands out a token that
+  // fails on the next call, so wait for `active` exactly as the portal suite does.
+  let account: UserDoc | null = null;
+  for (let attempt = 0; attempt < 200 && account?.status !== 'active'; attempt += 1) {
+    account = await userService.findByExternalSubject('hr', APPLICANT_PORTAL_SUBJECT, applicant.id);
+    if (account?.status !== 'active') await new Promise((r) => setTimeout(r, 50));
+  }
+  expect(account?.status, 'portal account active').toBe('active');
+
+  const spy = vi.spyOn(authService, 'generatePortalCode');
+  await request(app)
+    .post('/api/v1/auth/portal/challenge')
+    .send({ subjectType: APPLICANT_PORTAL_SUBJECT, identifier: nationalId, phone });
+  const issued = spy.mock.results.at(-1);
+  spy.mockRestore();
+  const otp = issued?.type === 'return' ? (issued.value as string) : '';
+  const verified = await request(app)
+    .post('/api/v1/auth/portal/verify')
+    .send({ subjectType: APPLICANT_PORTAL_SUBJECT, identifier: nationalId, phone, code: otp });
+  expect(verified.status, 'portal verify').toBe(200);
+  const portalToken = data<{ accessToken: string }>(verified).accessToken;
+
+  const types = await request(app)
+    .get('/api/v1/hr/applicant-portal/documents')
+    .set('Authorization', `Bearer ${portalToken}`);
+  expect(types.status, 'portal documents').toBe(200);
+  const slot = data<ApplicantDocumentSetDto>(types).missing[0];
+  if (slot === undefined) throw new Error('no document slot is asked of this candidate');
+
+  const uploaded = await request(app)
+    .post('/api/v1/hr/applicant-portal/documents')
+    .set('Authorization', `Bearer ${portalToken}`)
+    .field('typeId', slot.typeId)
+    .attach('file', Buffer.from('handed-in-bytes'), {
+      filename: 'certificate.png',
+      contentType: 'image/png',
+    });
+  expect(uploaded.status, 'hand in a document').toBe(201);
+  const set = mutated<ApplicantDocumentSetDto>(uploaded);
+  const handed = set.documents[0];
+  if (handed === undefined) throw new Error('the upload did not land in the set');
+  return handed.fileId;
+};
+
+const folder = async (
+  applicantId: string,
+  token = adminToken,
+): Promise<ApplicantFolderDetailDto> => {
+  const res = await request(app)
+    .get(`/api/v1/hr/applicant-documents/folders/${applicantId}`)
+    .set('Authorization', `Bearer ${token}`);
+  expect(res.status, 'read folder').toBe(200);
+  return data<ApplicantFolderDetailDto>(res);
+};
+
+const deleteFolder = (applicantId: string, token = adminToken): request.Test =>
+  request(app)
+    .delete(`/api/v1/hr/applicant-documents/folders/${applicantId}`)
+    .set('Authorization', `Bearer ${token}`);
+
+const live = async (fileId: string): Promise<boolean> =>
+  (await FileModel.countDocuments({ _id: new Types.ObjectId(fileId), isDeleted: false })) === 1;
+
+// ── The world ─────────────────────────────────────────────────────────────
+
+/** Emptied. Carries a card, an HR attachment and a handed-in document. */
+let subject: ApplicantDto;
+let subjectFiles: { card: FileDto; attachment: FileDto; handedIn: string };
+/** The control: never named in any request, and must come out untouched. */
+let bystander: ApplicantDto;
+let bystanderFile: FileDto;
+/** Hired. Their folder is a kept record. */
+let hired: ApplicantDto;
+
+beforeAll(async () => {
+  await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
+  app = buildApp();
+
+  const everything = [...platformPermissions, ...hrPermissions].map((p) => p.key);
+  const superAdmin = await rbacService.ensureSystemRole(
+    'super-admin',
+    { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
+    everything,
+  );
+  const adminId = await account('folder-admin@ecms.local', String(superAdmin._id));
+  // The refusal under test is a MISSING key, so this role is spelled out rather than derived: it
+  // may read the folder and rule on documents, and that is all.
+  const reader = await rbacService.createRole(
+    {
+      name: { en: 'Applicant documents reviewer', ar: 'مراجع مستندات المتقدمين' },
+      permissionKeys: [
+        'applicantDocument.view',
+        'applicantDocument.review',
+        'file.view',
+        'file.download',
+      ],
+    },
+    adminId,
+  );
+  await account('folder-reader@ecms.local', String(reader._id));
+
+  const ctx: AuthContext = {
+    userId: adminId,
+    sessionId: 'seed',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  };
+  await settingsService.set(ctx, {
+    key: SettingKeys.TotpEnforcedForPrivileged,
+    scope: 'organization',
+    value: false,
+  });
+
+  adminToken = await login('folder-admin@ecms.local');
+  readerToken = await login('folder-reader@ecms.local');
+
+  const general = await fileCategoryService.ensure({
+    key: 'folder-delete-spec-general',
+    name: { ar: 'مستندات عامة', en: 'General documents' },
+    allowedMimeTypes: ['image/png'],
+    maxSizeMb: 5,
+    retentionDays: null,
+  });
+  generalCategoryId = String(general._id);
+  const cardCategoryId = await resolveNationalIdCardCategoryId();
+
+  subject = await registerApplicant('29001011590011', '01099880011');
+  bystander = await registerApplicant('29001011590022', '01099880022');
+  hired = await registerApplicant('29001011590033', '01099880033');
+
+  subjectFiles = {
+    card: await attach(subject.id, cardCategoryId, 'card-front.png', ['nid:front']),
+    attachment: await attach(subject.id, generalCategoryId, 'cv.png'),
+    handedIn: await handInDocument(subject, '29001011590011', '01099880011'),
+  };
+  bystanderFile = await attach(bystander.id, generalCategoryId, 'other-cv.png');
+
+  // The guard reads `status`; this is the field the workflow's `hire` transition writes.
+  await ApplicantModel.updateOne({ _id: hired.id }, { $set: { status: 'hired' } }).exec();
+}, 300_000);
+
+afterAll(async () => {
+  await disconnectMongo();
+  if (replSet !== null) await replSet.stop();
+});
+
+describe('the folder says, before anybody tries, whether it may be emptied', () => {
+  it('reports no block for an ordinary candidate', async () => {
+    expect((await folder(subject.id)).deleteBlock).toBeNull();
+  });
+
+  it('reports `hired` for a candidate who was hired', async () => {
+    expect((await folder(hired.id)).deleteBlock).toBe<ApplicantFolderDeleteBlock>('hired');
+  });
+
+  it('carries the same answer on the LIST, so a disabled button can explain itself', async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/applicant-documents/folders')
+      .query({ pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<ApplicantFolderDto[]>(res);
+    expect(rows.find((row) => row.applicantId === hired.id)?.deleteBlock).toBe('hired');
+    expect(rows.find((row) => row.applicantId === subject.id)?.deleteBlock).toBeNull();
+  });
+});
+
+describe('the key is checked on the server, not on the screen', () => {
+  it('refuses a reviewer who holds view and review but not delete', async () => {
+    const res = await deleteFolder(subject.id, readerToken);
+    expect(res.status).toBe(403);
+    // And nothing moved.
+    expect(await live(subjectFiles.attachment.id)).toBe(true);
+  });
+
+  it('refuses an unauthenticated caller outright', async () => {
+    const res = await request(app).delete(`/api/v1/hr/applicant-documents/folders/${subject.id}`);
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('a kept record is refused, and says which rule refused it', () => {
+  it('refuses a HIRED applicant with its own error code', async () => {
+    const res = await deleteFolder(hired.id);
+    expect(res.status).toBe(422);
+    expect(code(res)).toBe(ErrorCodes.APPLICANT_FOLDER_KEPT_RECORD);
+  });
+
+  /**
+   * The clause that matters most, and the one a status check would miss.
+   *
+   * `employeeService.nationalIdCard` copies the card out of the applicant's folder the first time
+   * anybody opens an employee's card and finds none of their own — for as long as the person works
+   * here. The row below carries only the two fields the guard reads; it is a fixture for that
+   * query, not a realistic employee.
+   */
+  it('refuses an applicant an employee record was created from, even with status `new`', async () => {
+    const employed = await registerApplicant('29001011590044', '01099880044');
+    await EmployeeModel.collection.insertOne({
+      applicantId: new Types.ObjectId(employed.id),
+      isDeleted: false,
+    });
+    expect((await folder(employed.id)).deleteBlock).toBe<ApplicantFolderDeleteBlock>('employed');
+    const res = await deleteFolder(employed.id);
+    expect(res.status).toBe(422);
+    expect(code(res)).toBe(ErrorCodes.APPLICANT_FOLDER_KEPT_RECORD);
+  });
+
+  it('refuses an applicant holding an accepted offer — the window before the employee exists', async () => {
+    const offered = await registerApplicant('29001011590055', '01099880055');
+    await JobOfferModel.collection.insertOne({
+      applicantId: new Types.ObjectId(offered.id),
+      status: 'accepted',
+      supersededAt: null,
+      isDeleted: false,
+    });
+    expect((await folder(offered.id)).deleteBlock).toBe<ApplicantFolderDeleteBlock>(
+      'acceptedOffer',
+    );
+    expect((await deleteFolder(offered.id)).status).toBe(422);
+  });
+});
+
+describe('emptying one folder', () => {
+  it('removes every file it showed, and only that applicant’s', async () => {
+    const before = await folder(subject.id);
+    expect(before.files.length).toBe(3);
+
+    const res = await deleteFolder(subject.id);
+    expect(res.status).toBe(200);
+    const result = data<DeletedApplicantFolderDto>(res);
+    expect(result.applicantId).toBe(subject.id);
+    expect(result.filesRemoved).toBe(3);
+
+    expect(await live(subjectFiles.card.id)).toBe(false);
+    expect(await live(subjectFiles.attachment.id)).toBe(false);
+    expect(await live(subjectFiles.handedIn)).toBe(false);
+    // The control, never named in the request.
+    expect(await live(bystanderFile.id)).toBe(true);
+    expect((await folder(bystander.id)).files.length).toBe(1);
+  });
+
+  it('leaves an EMPTY folder rather than a missing one — the applicant still exists', async () => {
+    const after = await folder(subject.id);
+    expect(after.files).toEqual([]);
+    expect(after.fileCount).toBe(0);
+    expect(after.applicantCode).toBe(subject.code);
+  });
+
+  /** The pointers went with the bytes; otherwise the candidate's slot would be bricked. */
+  it('drops the handed-in documents set, so the slot is free again', async () => {
+    expect(
+      await ApplicantDocumentSetModel.countDocuments({
+        applicantId: new Types.ObjectId(subject.id),
+        isDeleted: false,
+      }),
+    ).toBe(0);
+  });
+
+  it('zeroes the attachment counter on the applicant’s own record', async () => {
+    const row = await ApplicantModel.findById(subject.id).lean<{ attachmentCount: number }>();
+    expect(row?.attachmentCount).toBe(0);
+  });
+
+  it('soft-deletes, never destroys — the rows and their bytes are still recoverable', async () => {
+    const row = await FileModel.findOne({ _id: new Types.ObjectId(subjectFiles.card.id) })
+      .lean<{ isDeleted: boolean; deletedAt: Date | null; storage: { key: string } }>()
+      .exec();
+    expect(row?.isDeleted).toBe(true);
+    expect(row?.deletedAt).not.toBeNull();
+    expect(row?.storage.key).toBeTruthy();
+  });
+
+  it('writes one audit row for the act, naming the applicant and the count', async () => {
+    await waitFor(
+      async () =>
+        (await AuditLogModel.countDocuments({
+          action: 'applicantFolderDeleted',
+          'entityRef.entityId': subject.id,
+        })) > 0,
+    );
+    const row = await AuditLogModel.findOne({
+      action: 'applicantFolderDeleted',
+      'entityRef.entityId': subject.id,
+    })
+      .lean<{
+        entityRef: { moduleId: string; entityType: string };
+        actor: { userId: string | null };
+        changes: { field: string; old: unknown; new: unknown }[];
+      }>()
+      .exec();
+    expect(row?.entityRef).toMatchObject({ moduleId: 'hr', entityType: 'applicant' });
+    expect(row?.actor.userId).toBeTruthy();
+    expect(row?.changes.find((c) => c.field === 'filesRemoved')?.new).toBe(3);
+    expect(row?.changes.find((c) => c.field === 'applicantCode')?.new).toBe(subject.code);
+  });
+
+  it('is safe to repeat — an already-empty folder is not an error', async () => {
+    const again = await deleteFolder(subject.id);
+    expect(again.status).toBe(200);
+    expect(data<DeletedApplicantFolderDto>(again).filesRemoved).toBe(0);
+  });
+});
+
+describe('emptying several at once', () => {
+  it('empties what it may and names what it kept, in one answer', async () => {
+    const first = await registerApplicant('29001011590066', '01099880066');
+    const second = await registerApplicant('29001011590077', '01099880077');
+    const firstFile = await attach(first.id, generalCategoryId, 'first.png');
+    const secondFile = await attach(second.id, generalCategoryId, 'second.png');
+
+    const res = await request(app)
+      .post('/api/v1/hr/applicant-documents/folders/bulk-delete')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantIds: [first.id, hired.id, second.id] });
+    expect(res.status).toBe(200);
+    const result = data<DeleteApplicantFoldersResultDto>(res);
+
+    expect(result.deleted.map((row) => row.applicantId).sort()).toEqual(
+      [first.id, second.id].sort(),
+    );
+    expect(result.refused).toHaveLength(1);
+    expect(result.refused[0]?.applicantId).toBe(hired.id);
+    expect(result.refused[0]?.reason).toBe<ApplicantFolderDeleteBlock>('hired');
+
+    expect(await live(firstFile.id)).toBe(false);
+    expect(await live(secondFile.id)).toBe(false);
+    // The hired candidate's folder was not touched at all.
+    expect((await folder(hired.id)).fileCount).toBe(0);
+  });
+
+  it('needs the delete key for the bulk route too', async () => {
+    const res = await request(app)
+      .post('/api/v1/hr/applicant-documents/folders/bulk-delete')
+      .set('Authorization', `Bearer ${readerToken}`)
+      .send({ applicantIds: [bystander.id] });
+    expect(res.status).toBe(403);
+    expect(await live(bystanderFile.id)).toBe(true);
+  });
+
+  it('refuses an empty selection and one past the cap', async () => {
+    const empty = await request(app)
+      .post('/api/v1/hr/applicant-documents/folders/bulk-delete')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantIds: [] });
+    expect(empty.status).toBe(422);
+    const tooMany = await request(app)
+      .post('/api/v1/hr/applicant-documents/folders/bulk-delete')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantIds: Array.from({ length: 51 }, () => new Types.ObjectId().toString()) });
+    expect(tooMany.status).toBe(422);
+  });
+});
+
+describe('the handed-in document’s type reaches the folder', () => {
+  it('names each portal upload by the catalogue type it was handed in for', async () => {
+    const applicant = await registerApplicant('29001011590088', '01099880088');
+    await handInDocument(applicant, '29001011590088', '01099880088');
+    const types = await request(app)
+      .get('/api/v1/hr/applicant-documents/types')
+      .query({ pageSize: 50, active: true })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const catalogue = data<ApplicantDocumentTypeDto[]>(types);
+
+    const open = await folder(applicant.id);
+    const handed = open.files.find((f) => f.kind === 'document');
+    expect(handed?.documentType).not.toBeNull();
+    expect(catalogue.map((row) => row.name.ar)).toContain(handed?.documentType?.ar);
+    // Nothing else claims a type.
+    for (const file of open.files.filter((f) => f.kind !== 'document')) {
+      expect(file.documentType).toBeNull();
+    }
+  });
+});

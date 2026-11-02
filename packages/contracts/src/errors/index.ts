@@ -78,6 +78,17 @@ export const ErrorCodes = {
   /** A17 — only a PUBLISHED template version can generate. */
   CONTRACT_TEMPLATE_NOT_PUBLISHED: 'CONTRACT_TEMPLATE_NOT_PUBLISHED',
 
+  // recruitment (hr module)
+  /**
+   * The applicant's documents folder is a KEPT RECORD and refuses deletion: they were hired, an
+   * employee row was created from them, or they hold an accepted offer and are about to be.
+   *
+   * Its own code rather than a bare `BUSINESS_RULE_VIOLATION` because the screen has one thing to
+   * say back («تم تعيين هذا المتقدم…») and a bulk delete reports it per applicant — a caller that
+   * has to read the message to find out which rule refused cannot do either.
+   */
+  APPLICANT_FOLDER_KEPT_RECORD: 'APPLICANT_FOLDER_KEPT_RECORD',
+
   // files
   FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',

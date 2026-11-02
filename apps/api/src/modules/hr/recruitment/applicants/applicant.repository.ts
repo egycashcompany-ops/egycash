@@ -205,16 +205,20 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
   }
 
   /**
-   * Nothing is attached any more — set, not adjusted.
+   * The documents folder has just been emptied: record both facts in one write.
    *
-   * Called when the applicant's documents folder is emptied, which soft-deletes every file filed
-   * against the applicant. Zero is then provably the count, whatever the counter had drifted to,
-   * and that is a stronger statement than subtracting the number this particular pass happened to
-   * remove.
+   * They are one write because they are one event. The count is SET rather than adjusted — every
+   * file filed against the applicant has just been soft-deleted, so zero is provably the count
+   * whatever the counter had drifted to, which is a stronger statement than subtracting however
+   * many this particular pass removed. And the date is what lets the folders grid tell an emptied
+   * folder from one that never held anything, so the emptied one can leave the grid.
    */
-  async clearAttachmentCount(id: string): Promise<void> {
+  async markDocumentsFolderEmptied(id: string): Promise<void> {
     await this.model
-      .updateOne({ _id: new Types.ObjectId(id) }, { $set: { attachmentCount: 0 } })
+      .updateOne(
+        { _id: new Types.ObjectId(id) },
+        { $set: { attachmentCount: 0, documentsFolderDeletedAt: new Date() } },
+      )
       .exec();
   }
 

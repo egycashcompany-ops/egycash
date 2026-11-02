@@ -18,6 +18,7 @@ import {
 import multer from 'multer';
 import {
   BulkDeleteApplicantFoldersSchema,
+  DeleteApplicantFolderSchema,
   ErrorCodes,
   ListApplicantDocumentSetsQuerySchema,
   ListApplicantFoldersQuerySchema,
@@ -166,11 +167,14 @@ export const buildApplicantDocumentsRouter = (): Router => {
     validate({ params: ApplicantParamSchema }),
     asyncHandler(getApplicantFolder),
   );
+  // A body on a DELETE, as ten other routes in this codebase already do: the optional «withdraw
+  // the application too» rides with the request rather than in the query string, where a reason of
+  // up to five hundred characters does not belong.
   router.delete(
     '/folders/:applicantId',
     authenticate,
     authorize('applicantDocument.delete'),
-    validate({ params: ApplicantParamSchema }),
+    validate({ body: DeleteApplicantFolderSchema, params: ApplicantParamSchema }),
     asyncHandler(deleteApplicantFolder),
   );
   router.get(

@@ -34,6 +34,10 @@ vi.mock('react-dom', async () => {
 
 const { ApplicantFolderBody } = await import('./components/ApplicantFolderDialog');
 const { ApplicantFolders } = await import('./components/ApplicantFolders');
+const { DeleteFoldersDialog } = await import('./components/DeleteFoldersDialog');
+const { APPLICANT_WITHDRAW_REASONS, withdrawReasonKey } = await import(
+  './components/applicant-withdraw-reasons'
+);
 
 const PAGE_SIZE = 24;
 const t = (key: string, params?: Record<string, string | number>): string =>
@@ -212,4 +216,72 @@ describe('who is offered the bin', () => {
       expect(markup).toContain(t(`hr.applicantFolders.blocked.${deleteBlock}`));
     },
   );
+});
+
+describe('the confirmation, and the second act it offers', () => {
+  const renderConfirm = (folders: ApplicantFolderDto[], permissions: string[]): string =>
+    renderToStaticMarkup(
+      <Provider store={store(permissions)}>
+        <QueryClientProvider client={client()}>
+          <DeleteFoldersDialog
+            folders={folders}
+            onClose={() => undefined}
+            onConfirm={async () => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+  const BOTH = ['applicantDocument.view', 'applicantDocument.delete', 'applicant.edit'];
+  const FOLDER_ONLY = ['applicantDocument.view', 'applicantDocument.delete'];
+
+  it('offers the withdrawal ticked, with every reason to choose from', () => {
+    const markup = renderConfirm([summary()], BOTH);
+    expect(markup).toContain(t('hr.applicantFolders.alsoWithdraw'));
+    expect(markup).toContain('checked');
+    expect(markup).toContain(t('hr.applicantFolders.withdrawReasonLabel'));
+    for (const reason of APPLICANT_WITHDRAW_REASONS) {
+      expect(markup, reason).toContain(t(withdrawReasonKey(reason)));
+    }
+  });
+
+  /**
+   * Withdrawing is the applicants module's act and needs its key. The API refuses a request that
+   * asks for one the caller may not perform, so this is the courtesy half — but it has to be here,
+   * or the operator ticks a box that turns their delete into an error.
+   */
+  it('does not offer it to a caller who may empty folders but not edit applicants', () => {
+    const markup = renderConfirm([summary()], FOLDER_ONLY);
+    expect(markup).toContain(t('common.delete'));
+    expect(markup).not.toContain(t('hr.applicantFolders.alsoWithdraw'));
+    expect(markup).not.toContain(t('hr.applicantFolders.withdrawReasonLabel'));
+  });
+
+  /**
+   * The note may not promise a restore this system does not have. There is no recovery screen —
+   * the files are kept and an administrator gets them back on request — and the sentence has to
+   * say that rather than implying a button somewhere.
+   */
+  it('promises recovery by the administrator, not a screen the product lacks', () => {
+    const markup = renderConfirm([summary()], BOTH);
+    expect(markup).toContain(t('hr.applicantFolders.deleteSoftNote'));
+    expect(t('hr.applicantFolders.deleteSoftNote')).toContain('مدير النظام');
+    expect(translate('en', 'hr.applicantFolders.deleteSoftNote')).toContain(
+      'system administrator on request',
+    );
+  });
+
+  /** A selection may hold folders the API will keep. They are not withdrawn either, and it says so. */
+  it('warns that a kept folder is not withdrawn either', () => {
+    const markup = renderConfirm(
+      [summary(), summary({ applicantId: 'a2', deleteBlock: 'hired' })],
+      BOTH,
+    );
+    expect(markup).toContain(t('hr.applicantFolders.withdrawSkipsKept', { n: 1 }));
+  });
+
+  it('says nothing about kept folders when the selection holds none', () => {
+    const markup = renderConfirm([summary(), summary({ applicantId: 'a2' })], BOTH);
+    expect(markup).not.toContain(t('hr.applicantFolders.withdrawSkipsKept', { n: 1 }));
+  });
 });

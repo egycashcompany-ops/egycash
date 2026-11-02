@@ -7,6 +7,7 @@ import {
   type ApplicantFolderDetailDto,
   type ApplicantFolderDto,
   type BulkDeleteApplicantFolders,
+  type DeleteApplicantFolder,
   type DeleteApplicantFoldersResultDto,
   type DeletedApplicantFolderDto,
   type DownloadTicketDto,
@@ -60,8 +61,10 @@ export const fetchApplicantFolder = (applicantId: string): Promise<ApplicantFold
  * Empty one applicant's folder. `applicantDocument.delete`, and refused outright for a candidate
  * who was hired or is being hired — the API decides, so a disabled button is a courtesy.
  */
-export const deleteApplicantFolder = (applicantId: string): Promise<DeletedApplicantFolderDto> =>
-  del(`${BASE}/folders/${applicantId}`);
+export const deleteApplicantFolder = (
+  applicantId: string,
+  body: DeleteApplicantFolder,
+): Promise<DeletedApplicantFolderDto> => del(`${BASE}/folders/${applicantId}`, body);
 
 /** Empty several. Partial by contract: the answer says what went and what was kept. */
 export const bulkDeleteApplicantFolders = (

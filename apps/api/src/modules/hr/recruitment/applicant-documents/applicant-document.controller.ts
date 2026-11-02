@@ -3,6 +3,7 @@
 import { type Request, type Response } from 'express';
 import {
   type BulkDeleteApplicantFolders,
+  type DeleteApplicantFolder,
   type ListApplicantDocumentSetsQuery,
   type ListApplicantFoldersQuery,
   type ListApplicantDocumentTypesQuery,
@@ -14,6 +15,7 @@ import {
 import { ok, created, validated } from '../../../../platform/web';
 import { applicantFolderService } from './applicant-folder.service';
 import { authContext } from '../../../../platform/auth';
+import { scopeSelector } from '../../../../shared/types';
 import { NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
 import { applicantDocumentService } from './applicant-document.service';
@@ -104,15 +106,46 @@ export const getApplicantFolder = async (req: Request, res: Response): Promise<v
  * `APPLICANT_FOLDER_KEPT_RECORD` — the service decides, so hiding the button is a courtesy and
  * never the gate.
  */
+/**
+ * The withdrawal instruction, or null when none was asked for.
+ *
+ * The scope is resolved against `applicant.edit` — the key withdrawing actually needs — and not
+ * against the `applicantDocument.delete` key that opened this route, so a caller whose applicant
+ * reach is narrower than their folder reach stays inside it. The service refuses outright if they
+ * do not hold that key at all.
+ *
+ * `withdrawReason` is guaranteed present by the schema whenever `withdraw` is true; the fallback
+ * is here so this reads without the reader having to go and check that.
+ */
+const withdrawalFrom = (
+  ctx: ReturnType<typeof authContext>,
+  body: { withdraw: boolean; withdrawReason?: string | undefined },
+): { reason: string; scope: ReturnType<typeof scopeSelector> } | null =>
+  body.withdraw && body.withdrawReason !== undefined
+    ? { reason: body.withdrawReason, scope: scopeSelector(ctx, 'applicant.edit') }
+    : null;
+
 export const deleteApplicantFolder = async (req: Request, res: Response): Promise<void> => {
-  const { params } = validated<unknown, unknown, { applicantId: string }>(req);
-  ok(res, await applicantFolderService.deleteFolder(authContext(req), params.applicantId));
+  const ctx = authContext(req);
+  const { body, params } = validated<DeleteApplicantFolder, unknown, { applicantId: string }>(req);
+  ok(
+    res,
+    await applicantFolderService.deleteFolder(ctx, params.applicantId, {
+      withdraw: withdrawalFrom(ctx, body),
+    }),
+  );
 };
 
 /** Empty several folders at once, reporting what was emptied and what was refused. */
 export const bulkDeleteApplicantFolders = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
   const { body } = validated<BulkDeleteApplicantFolders>(req);
-  ok(res, await applicantFolderService.deleteFolders(authContext(req), body.applicantIds));
+  ok(
+    res,
+    await applicantFolderService.deleteFolders(ctx, body.applicantIds, {
+      withdraw: withdrawalFrom(ctx, body),
+    }),
+  );
 };
 
 export const getApplicantDocuments = async (req: Request, res: Response): Promise<void> => {

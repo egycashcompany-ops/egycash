@@ -19,6 +19,11 @@ import {
 } from '@ecms/contracts';
 import { translate } from '../../../../platform/localization/i18n';
 import { APPLICANT_SUB_FOLDERS } from './components/applicant-folder-groups';
+import {
+  APPLICANT_WITHDRAW_REASONS,
+  withdrawReasonKey,
+  withdrawReasonText,
+} from './components/applicant-withdraw-reasons';
 
 const LOCALES: Locale[] = ['en', 'ar'];
 const HERE = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -71,6 +76,9 @@ describe('the applicant documents feature speaks both languages', () => {
     { prefix: 'hr.applicantFolders.kind', values: APPLICANT_FOLDER_FILE_KINDS },
     { prefix: 'hr.applicantFolders.sub', values: APPLICANT_SUB_FOLDERS },
     { prefix: 'hr.applicantFolders.blocked', values: APPLICANT_FOLDER_DELETE_BLOCKS },
+    // Built by `withdrawReasonKey` from a template, so the literal scan above cannot see any of
+    // them — which is exactly the case a vocabulary walk is for.
+    { prefix: 'hr.applicantFolders.withdrawReasons', values: APPLICANT_WITHDRAW_REASONS },
   ];
 
   for (const locale of LOCALES) {
@@ -95,4 +103,46 @@ describe('the applicant documents feature speaks both languages', () => {
       }
     });
   }
+});
+
+/**
+ * The sentence that goes on the applicant's record.
+ *
+ * It is the one piece of the withdrawal the operator composes, and it outlives the screen: it is
+ * read years later by somebody asking why this candidate stopped. So what travels is the reason
+ * they READ before clicking, and the «أخرى» branch is held to a real sentence rather than a
+ * character that happens to pass `min(1)` on the wire.
+ */
+describe('the reason a withdrawal carries', () => {
+  const t = (key: string): string => translate('ar', key);
+
+  it('sends the chosen reason’s own words, in the operator’s language', () => {
+    expect(withdrawReasonText('candidateWithdrew', '', t)).toBe(
+      translate('ar', 'hr.applicantFolders.withdrawReasons.candidateWithdrew'),
+    );
+    expect(withdrawReasonText('positionClosed', 'ignored', t)).toBe(
+      translate('ar', 'hr.applicantFolders.withdrawReasons.positionClosed'),
+    );
+  });
+
+  it('sends what was typed when the reason is «أخرى»', () => {
+    expect(withdrawReasonText('other', '  المتقدم غيّر رأيه  ', t)).toBe('المتقدم غيّر رأيه');
+  });
+
+  /** Null, not an empty string, so one check at the call site covers «nothing yet». */
+  it('withholds a reason of nothing but spaces, so the red button waits', () => {
+    expect(withdrawReasonText('other', '   ', t)).toBeNull();
+    expect(withdrawReasonText('other', '', t)).toBeNull();
+  });
+
+  it('every reason it can return is a real sentence in both languages', () => {
+    for (const locale of LOCALES) {
+      for (const reason of APPLICANT_WITHDRAW_REASONS) {
+        const key = withdrawReasonKey(reason);
+        const text = translate(locale, key);
+        expect(text, `${locale}/${reason}`).not.toBe(key);
+        expect(text.length, `${locale}/${reason}`).toBeGreaterThan(4);
+      }
+    }
+  });
 });

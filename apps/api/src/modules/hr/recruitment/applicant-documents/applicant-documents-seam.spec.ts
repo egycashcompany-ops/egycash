@@ -110,6 +110,53 @@ describe('emptying a folder is the one staff write, and it is a removal', () => 
     expect(ROUTES.slice(read, read + 260)).toContain("authorize('applicantDocument.view')");
   });
 
+  /**
+   * The withdrawal that may ride along is VALIDATED, on both routes.
+   *
+   * It arrives in the body of a DELETE, which is the kind of thing a later refactor tidies away
+   * on the grounds that «a DELETE has no body» — and the tidying would leave `withdraw` and a
+   * five-hundred-character reason reaching the controller unparsed.
+   */
+  it('validates the withdrawal on both delete routes', () => {
+    for (const [route, schema] of [
+      ["router.delete(\n    '/folders/:applicantId',", 'DeleteApplicantFolderSchema'],
+      ["router.post(\n    '/folders/bulk-delete',", 'BulkDeleteApplicantFoldersSchema'],
+    ] as const) {
+      const at = ROUTES.indexOf(route);
+      expect(at, route).toBeGreaterThan(-1);
+      expect(ROUTES.slice(at, at + 260)).toContain(`body: ${schema}`);
+    }
+  });
+
+  /**
+   * The lifecycle is CALLED, never copied.
+   *
+   * Writing `status: 'withdrawn'` here instead would skip the engine, and a withdrawn candidate
+   * would go on matching every stage queue (I13/I14) — the exact bug the applicants service
+   * carries a comment about. The call also has to stay deferred, or this module drags the whole
+   * applicant stage in front of itself at load and closes a cycle through the platform's
+   * organization and directory services.
+   */
+  it('withdraws through the applicants service, loaded on demand', () => {
+    expect(FOLDER).toContain("await import('../applicants/applicant.service')");
+    expect(FOLDER).toContain('applicantService.withdraw(');
+    expect(FOLDER).not.toContain("status: 'withdrawn'");
+  });
+
+  /**
+   * An emptied folder leaves the grid by a rule the FILES settle, and the marker only nominates.
+   *
+   * A marker trusted on its own would hide a folder that has papers in it again, so the probe is
+   * the load-bearing half — and the exclusion has to land in the filter before `skip`, or the page
+   * is ragged and the total counts folders nobody can see.
+   */
+  it('settles the grid’s exclusions against the files, before the page is cut', () => {
+    expect(FOLDER).toContain('entityIdsWithLiveFiles');
+    const applied = FOLDER.indexOf('filter._id = { $nin: hidden }');
+    expect(applied).toBeGreaterThan(-1);
+    expect(applied).toBeLessThan(FOLDER.indexOf('.skip((query.page - 1) * query.pageSize)'));
+  });
+
   /** «حذف مبدئي» is the whole promise: an administrator can still get the files back. */
   it('never reaches for a hard or permanent delete', () => {
     for (const forbidden of ['permanentDelete', 'hardDelete', 'deleteOne(', 'deleteMany(']) {

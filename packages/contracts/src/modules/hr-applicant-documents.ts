@@ -383,6 +383,48 @@ export interface ApplicantFolderDetailDto extends ApplicantFolderDto {
  * SOFT, by the platform's ordinary soft delete: the rows are flagged and the bytes stay in the
  * store, so an administrator can still recover them from the database.
  */
+/**
+ * Emptying the folder may also WITHDRAW the application, which is a second act and says so.
+ *
+ * The two belong on one screen because they are one intention — «this candidate is not
+ * continuing, and we are not keeping their papers» — but they stay two acts in the API: the files
+ * go through the Files service's soft delete, and the application is withdrawn through the
+ * applicant's own `withdraw` transition, with its version check, its lifecycle event and its own
+ * audit row. Nothing about the lifecycle is reimplemented here.
+ *
+ * It is OPT-IN on the wire (`false` by default) even though the screen ticks it by default. A
+ * caller that forgets the field empties a folder and changes nobody's status, which is the
+ * harmless reading; the screen is where the helpful default lives.
+ *
+ * `withdrawReason` is REQUIRED when `withdraw` is true, because the transition requires one — the
+ * reason is what the applicant's record will carry for the rest of its life, and a withdrawal
+ * whose reason reads «» explains nothing to whoever opens that record next year.
+ */
+const withdrawFields = {
+  withdraw: z.boolean().default(false),
+  withdrawReason: z.string().trim().min(1).max(500).optional(),
+};
+
+const reasonRequiredWithWithdrawal = (
+  value: { withdraw: boolean; withdrawReason?: string | undefined },
+  ctx: z.RefinementCtx,
+): void => {
+  if (value.withdraw && value.withdrawReason === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['withdrawReason'],
+      message: 'withdrawReason is required when withdraw is true',
+    });
+  }
+};
+
+/** Empty ONE folder, optionally withdrawing the application with it. */
+export const DeleteApplicantFolderSchema = z
+  .object({ ...withdrawFields })
+  .strict()
+  .superRefine(reasonRequiredWithWithdrawal);
+export type DeleteApplicantFolder = z.infer<typeof DeleteApplicantFolderSchema>;
+
 export const BulkDeleteApplicantFoldersSchema = z
   .object({
     /**
@@ -391,8 +433,10 @@ export const BulkDeleteApplicantFoldersSchema = z
      * and reports nothing until it finishes. Fifty is more than a screenful.
      */
     applicantIds: z.array(objectId()).min(1).max(50),
+    ...withdrawFields,
   })
-  .strict();
+  .strict()
+  .superRefine(reasonRequiredWithWithdrawal);
 export type BulkDeleteApplicantFolders = z.infer<typeof BulkDeleteApplicantFoldersSchema>;
 
 export interface DeletedApplicantFolderDto {
@@ -401,6 +445,16 @@ export interface DeletedApplicantFolderDto {
   applicantName: string;
   /** How many files were removed — what the toast and the audit row both report. */
   filesRemoved: number;
+  /**
+   * Whether the application was withdrawn along with the files.
+   *
+   * Reported per applicant rather than assumed from the request, because it is not guaranteed by
+   * asking: a candidate already withdrawn stays withdrawn without a second transition, and one
+   * whose lifecycle refuses the move keeps their status while their folder still empties. The
+   * screen counts these to say «N withdrawn» beside «N emptied», so a difference between the two
+   * is visible instead of silent.
+   */
+  withdrawn: boolean;
 }
 
 export interface RefusedApplicantFolderDto {

@@ -371,6 +371,22 @@ class FileService {
     return fileRepository.listVersions(doc.groupId);
   }
 
+  /**
+   * Which of these entities still hold at least one live file.
+   *
+   * For a caller that needs to know whether a shelf is EMPTY without reading what is on it — the
+   * applicant documents grid asks this to decide whether an emptied folder has been filled again.
+   * It returns a subset of the ids it was given and nothing else, so it carries no file metadata
+   * past the boundary and needs no per-file authorization to do so.
+   */
+  async entityIdsWithLiveFiles(
+    moduleId: string,
+    entityTypes: readonly string[],
+    entityIds: readonly string[],
+  ): Promise<Set<string>> {
+    return fileRepository.entityIdsWithLiveFiles(moduleId, entityTypes, entityIds);
+  }
+
   async list(
     query: ListFilesQuery,
     scope: ScopeSelector,

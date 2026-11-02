@@ -20,11 +20,12 @@ import {
   type LocalizedString,
   type RefusedApplicantFolderDto,
 } from '@ecms/contracts';
-import { type FilterQuery } from 'mongoose';
+import { type FilterQuery, type Types } from 'mongoose';
+import { logger } from '../../../../infrastructure/logging/logger';
 import { auditService } from '../../../../platform/audit';
 import { fileService, type FileDoc } from '../../../../platform/files';
-import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
-import { BusinessRuleError, NotFoundError } from '../../../../shared/errors';
+import { hasPermission, type AuthContext, type ScopeSelector } from '../../../../shared/types';
+import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../../shared/errors';
 import { normalizeArabic } from '../../shared/arabic';
 import { ApplicantModel, type ApplicantDoc } from '../applicants/applicant.model';
 import { applicantRepository } from '../applicants/applicant.repository';
@@ -76,6 +77,26 @@ const KIND_ORDER: Record<ApplicantFolderFileKind, number> = {
 
 const escapeRegex = (v: string): string => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * The two entity types a folder is made of: what HR filed against the applicant, and what the
+ * candidate handed in through the portal. Named once because two different questions ask it — what
+ * is IN a folder, and whether a folder is empty.
+ */
+const FOLDER_ENTITY_TYPES = ['applicant', APPLICANT_DOCUMENT_ENTITY_TYPE] as const;
+
+/** What a caller wants done beyond emptying the folder. */
+export interface FolderDeleteOptions {
+  /**
+   * Withdraw the application too, with this reason, under the caller's OWN applicant scope.
+   *
+   * The scope is the caller's rather than the folder service's because withdrawing is the
+   * applicants module's act: a caller who may empty folders across the company but whose applicant
+   * reach is one branch must not reach past it here, and passing their real selector is what makes
+   * that true rather than merely intended.
+   */
+  withdraw: { reason: string; scope: ScopeSelector } | null;
+}
+
 class ApplicantFolderService {
   /**
    * Every live file kept against one applicant, whichever feature filed it.
@@ -102,10 +123,8 @@ class ApplicantFolderService {
       out.push(...result.items);
       if (result.items.length < FOLDER_PAGE_SIZE) break;
     }
-    return out.filter(
-      (f) =>
-        f.entityRef.entityType === 'applicant' ||
-        f.entityRef.entityType === APPLICANT_DOCUMENT_ENTITY_TYPE,
+    return out.filter((f) =>
+      (FOLDER_ENTITY_TYPES as readonly string[]).includes(f.entityRef.entityType),
     );
   }
 
@@ -202,6 +221,45 @@ class ApplicantFolderService {
       .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
   }
 
+  /**
+   * The folders HR emptied and nobody has filed anything for since.
+   *
+   * These leave the grid. An emptied folder sitting there as a nought-file shelf is the thing this
+   * exists to prevent — HR removed it, so the shelf should be gone, not blank.
+   *
+   * TWO QUERIES, AND THE SECOND IS THE ONE THAT MATTERS. The marker alone would be a lie waiting
+   * to happen: file a new document for someone whose folder was emptied last year and the marker
+   * still says «emptied», so their folder would stay invisible while holding their papers. So the
+   * marker only NOMINATES a folder for hiding and the files have the final say — asked of the
+   * Files service, which is the same source the count on the shelf comes from. Nothing has to be
+   * reset when a folder fills up again; it simply stops being hidden.
+   *
+   * It is computed against the SAME filter as the page, so the set is bounded by what the search
+   * already narrowed to, and it is applied BEFORE `skip`/`limit` — filtering a page after the fact
+   * would leave ragged pages, a total that counts folders nobody can see, and, with enough emptied
+   * folders, a page that comes back blank while later pages have folders on them.
+   */
+  private async hiddenFolderIds(
+    filter: FilterQuery<ApplicantDoc>,
+  ): Promise<Types.ObjectId[]> {
+    const nominated = await ApplicantModel.find({
+      ...filter,
+      // Spelled `$type` and not `$ne: null` so `ix_documentsFolderDeletedAt` — a partial index
+      // holding only the emptied folders — is provably usable. See the index's own note.
+      documentsFolderDeletedAt: { $type: 'date' },
+    })
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    if (nominated.length === 0) return [];
+    const refilled = await fileService.entityIdsWithLiveFiles(
+      'hr',
+      FOLDER_ENTITY_TYPES,
+      nominated.map((row) => String(row._id)),
+    );
+    return nominated.filter((row) => !refilled.has(String(row._id))).map((row) => row._id);
+  }
+
   /** The folders, newest applicant first, narrowed by name, code or national ID. */
   async list(
     query: ListApplicantFoldersQuery,
@@ -217,6 +275,8 @@ class ApplicantFolderService {
         ...(digits.length === 14 ? [{ nationalId: digits }] : []),
       ];
     }
+    const hidden = await this.hiddenFolderIds(filter);
+    if (hidden.length > 0) filter._id = { $nin: hidden };
     const [applicants, total] = await Promise.all([
       ApplicantModel.find(filter)
         .sort({ createdAt: -1 })
@@ -275,6 +335,7 @@ class ApplicantFolderService {
   private async removeFiles(
     ctx: AuthContext,
     applicant: ApplicantDoc,
+    options: FolderDeleteOptions,
   ): Promise<DeletedApplicantFolderDto> {
     const applicantId = String(applicant._id);
     await applicantDocumentRepository.softDeleteForApplicant(applicantId, ctx.userId);
@@ -287,9 +348,10 @@ class ApplicantFolderService {
         .catch(() => false);
       if (removed) filesRemoved += 1;
     }
-    // Nothing is filed against the applicant any more, so the counter on their own page is zero —
-    // a stronger statement than subtracting however many this pass happened to remove.
-    await applicantRepository.clearAttachmentCount(applicantId);
+    // Nothing is filed against the applicant any more, so the counter on their own page is zero,
+    // and this folder is now an emptied one rather than an empty one — which is what takes it off
+    // the folders grid instead of leaving a nought-file shelf behind.
+    await applicantRepository.markDocumentsFolderEmptied(applicantId);
     // ONE row for the act, beside the platform's own row per file. The per-file rows answer «what
     // happened to this file»; this one answers «who emptied this person's folder, and when», which
     // is the question an HR review actually asks and which no amount of reading N file rows makes
@@ -313,7 +375,95 @@ class ApplicantFolderService {
       applicantCode: applicant.code,
       applicantName: applicant.fullNameAr,
       filesRemoved,
+      // AFTER the files, deliberately. Emptying the folder is what was asked for; withdrawing is
+      // the second half of the same intention but it can fail on its own account — a stale version,
+      // a lifecycle that will not make the move from where this candidate stands — and none of
+      // that is a reason to leave the papers in place.
+      withdrawn: await this.withdrawApplication(ctx, applicant, options.withdraw),
     };
+  }
+
+  /**
+   * Withdraw the application as well, when that was asked for.
+   *
+   * It goes through `applicantService.withdraw`, so this adds NOTHING to the lifecycle: the
+   * version check, the engine's propagation onto the stage records, the `statusChange` audit row
+   * and the `hr.applicant.withdrawn` event are all the applicants module's, exactly as they are
+   * when somebody presses Withdraw on the applicant's own page.
+   *
+   * A FAILURE IS REPORTED, NOT RAISED. The files are already gone by the time this runs, so
+   * throwing would answer a request that half succeeded with an error that reads as though nothing
+   * had — and in a selection of twelve it would abandon the other eleven. Instead the caller gets
+   * `withdrawn: false` for this applicant, the screen counts the withdrawals beside the emptied
+   * folders so a shortfall is visible, and the reason lands in the log rather than nowhere.
+   *
+   * Already withdrawn counts as withdrawn: the transition is idempotent and says so by returning
+   * the applicant untouched, so reporting `false` here would describe a problem that is not one.
+   */
+  private async withdrawApplication(
+    ctx: AuthContext,
+    applicant: ApplicantDoc,
+    withdraw: FolderDeleteOptions['withdraw'],
+  ): Promise<boolean> {
+    if (withdraw === null) return false;
+    // READ FRESH, and not from the document this delete started with. The lifecycle matches on
+    // `__v` and throws when it misses, and by the time this runs the folder's own writes have all
+    // happened — so a version carried in from the top would only ever be as good as the assumption
+    // that none of them touched the applicant, and in a selection of fifty it would also be as old
+    // as forty-nine deletions ago. Reading it here makes the check mean what it says: refuse if
+    // somebody ELSE moved this applicant while we were working. The status comes along for the
+    // same reason.
+    const current = await ApplicantModel.findOne({ _id: applicant._id, isDeleted: false })
+      .select({ __v: 1, status: 1 })
+      .lean<{ __v: number; status: string }>()
+      .exec();
+    if (current === null) return false;
+    if (current.status === 'withdrawn') return true;
+    try {
+      // LOADED DYNAMICALLY, and not out of taste. A static import of the applicants service from
+      // this file puts the applicant stage's whole dependency tree in front of this module at load
+      // time, and that tree reaches the platform's organization and directory services, which
+      // import each other — entering that pair through a new door leaves one of them half built
+      // and its index helper undefined. Deferring the import to the first withdrawal keeps the
+      // graph acyclic at load, the same trick the workflow envelope uses to reach the stage
+      // counters. The import itself is memoized by the module system, so this costs nothing twice.
+      //
+      // The SERVICE and not the repository: withdrawing is a LIFECYCLE move. The engine propagates
+      // it onto the stage records, writes the `statusChange` row and raises the event — a
+      // repository write would set a column and leave a withdrawn candidate matching every stage
+      // queue (I13/I14).
+      const { applicantService } = await import('../applicants/applicant.service');
+      await applicantService.withdraw(
+        ctx,
+        String(applicant._id),
+        { reason: withdraw.reason, version: current.__v },
+        withdraw.scope,
+      );
+      return true;
+    } catch (error) {
+      logger.warn(
+        { err: error, applicantId: String(applicant._id), code: applicant.code },
+        'documents folder emptied; the application was not withdrawn with it',
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Withdrawing needs the applicants module's own key, and it is checked HERE.
+   *
+   * `applicantDocument.delete` buys the right to empty a folder, not the right to move somebody's
+   * application to a terminal state — those are different acts with different keys, and the screen
+   * only offers the tick-box to a caller holding both. A request that asks for a withdrawal it may
+   * not perform is refused WHOLE rather than half-done: silently emptying the folder and skipping
+   * the withdrawal would answer «delete and withdraw» with «deleted», which the caller would have
+   * no way to notice.
+   */
+  private assertMayWithdraw(ctx: AuthContext, options: FolderDeleteOptions): void {
+    if (options.withdraw === null) return;
+    if (!hasPermission(ctx, 'applicant.edit')) {
+      throw new ForbiddenError('withdrawing an application requires applicant.edit');
+    }
   }
 
   /** The sentence a refusal carries, so the API says why and not merely no. */
@@ -329,14 +479,19 @@ class ApplicantFolderService {
   }
 
   /** Empty ONE folder. Refuses a kept record, and says which rule refused it. */
-  async deleteFolder(ctx: AuthContext, applicantId: string): Promise<DeletedApplicantFolderDto> {
+  async deleteFolder(
+    ctx: AuthContext,
+    applicantId: string,
+    options: FolderDeleteOptions = { withdraw: null },
+  ): Promise<DeletedApplicantFolderDto> {
+    this.assertMayWithdraw(ctx, options);
     const applicant = await ApplicantModel.findOne({ _id: applicantId, isDeleted: false })
       .lean<ApplicantDoc>()
       .exec();
     if (applicant === null) throw new NotFoundError();
     const block = (await this.blocksFor([applicant])).get(applicantId);
     if (block !== undefined) this.refuse(block);
-    return this.removeFiles(ctx, applicant);
+    return this.removeFiles(ctx, applicant, options);
   }
 
   /**
@@ -349,11 +504,18 @@ class ApplicantFolderService {
    *
    * An id that names no applicant appears in neither list: there is no folder there to empty and
    * nothing to refuse.
+   *
+   * A REFUSED FOLDER IS NOT WITHDRAWN EITHER. The refusal is «this person's papers are a kept
+   * record», which is said of people who were hired or are being hired — withdrawing them would
+   * be the opposite of true, and it is the one thing worse here than doing nothing. Because the
+   * withdrawal rides along inside `removeFiles`, a refused applicant cannot reach it.
    */
   async deleteFolders(
     ctx: AuthContext,
     applicantIds: readonly string[],
+    options: FolderDeleteOptions = { withdraw: null },
   ): Promise<DeleteApplicantFoldersResultDto> {
+    this.assertMayWithdraw(ctx, options);
     const applicants = await ApplicantModel.find({ _id: { $in: applicantIds }, isDeleted: false })
       .lean<ApplicantDoc[]>()
       .exec();
@@ -371,7 +533,7 @@ class ApplicantFolderService {
         });
         continue;
       }
-      deleted.push(await this.removeFiles(ctx, applicant));
+      deleted.push(await this.removeFiles(ctx, applicant, options));
     }
     return { deleted, refused };
   }

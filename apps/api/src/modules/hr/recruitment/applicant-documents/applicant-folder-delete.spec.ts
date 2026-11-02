@@ -5,11 +5,14 @@
 //   (b) a HIRED candidate's folder is a kept record and is refused by CODE, not by a message;
 //   (c) exactly the files of the applicant asked for are soft-deleted, and no others;
 //   (d) one audit row is written for the act, naming the applicant and the count;
-//   (e) a bulk delete empties what it may and names what it would not touch.
+//   (e) a bulk delete empties what it may and names what it would not touch;
+//   (f) the application is withdrawn with the folder when asked, under its own key, and never for
+//       a folder that was refused;
+//   (g) an emptied folder leaves the grid, and comes back if anything is filed for that person.
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ErrorCodes, nationalIdCardTag } from '@ecms/contracts';
-import { BusinessRuleError, NotFoundError } from '../../../../shared/errors';
+import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../../shared/errors';
 
 const mocks = vi.hoisted(() => {
   /** A mongoose query builder that answers whatever its call site was told to answer. */
@@ -30,7 +33,9 @@ const mocks = vi.hoisted(() => {
     applicantFindOne: vi.fn(),
     applicantFind: vi.fn(),
     applicantCount: vi.fn(),
-    clearAttachmentCount: vi.fn(),
+    markFolderEmptied: vi.fn(),
+    withdraw: vi.fn(),
+    liveFileOwners: vi.fn(),
     softDeleteSet: vi.fn(),
     setFindOne: vi.fn(),
     employed: vi.fn(),
@@ -43,6 +48,7 @@ vi.mock('../../../../platform/files', () => ({
   fileService: {
     list: mocks.listFiles,
     softDelete: mocks.softDelete,
+    entityIdsWithLiveFiles: mocks.liveFileOwners,
     toDto: (file: unknown) => file,
   },
   fileCategoryService: { ensure: mocks.ensureCategory },
@@ -61,7 +67,12 @@ vi.mock('../applicants/applicant.model', () => ({
   },
 }));
 vi.mock('../applicants/applicant.repository', () => ({
-  applicantRepository: { clearAttachmentCount: mocks.clearAttachmentCount },
+  applicantRepository: { markDocumentsFolderEmptied: mocks.markFolderEmptied },
+}));
+// Reached by a DEFERRED import inside the service, so the whole applicant stage is not dragged in
+// front of this module — `vi.mock` intercepts it either way.
+vi.mock('../applicants/applicant.service', () => ({
+  applicantService: { withdraw: mocks.withdraw },
 }));
 vi.mock('../applicants/national-id-card.files', () => ({
   resolveNationalIdCardCategoryId: mocks.cardCategory,
@@ -129,7 +140,9 @@ beforeEach(() => {
   mocks.offered.mockResolvedValue(new Set<string>());
   mocks.softDeleteSet.mockResolvedValue(0);
   mocks.softDelete.mockResolvedValue(undefined);
-  mocks.clearAttachmentCount.mockResolvedValue(undefined);
+  mocks.markFolderEmptied.mockResolvedValue(undefined);
+  mocks.withdraw.mockResolvedValue(undefined);
+  mocks.liveFileOwners.mockResolvedValue(new Set<string>());
   mocks.setFindOne.mockResolvedValue(null);
   mocks.listFiles.mockImplementation(async (query: { entityId?: string }) => ({
     items: folders.get(query.entityId ?? '') ?? [],
@@ -255,12 +268,15 @@ describe('(c) exactly this applicant’s files, and (d) one row for the act', ()
     expect(mocks.softDeleteSet.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.softDelete.mock.invocationCallOrder[0] ?? Infinity,
     );
-    expect(mocks.clearAttachmentCount).toHaveBeenCalledWith(mineId);
+    expect(mocks.markFolderEmptied).toHaveBeenCalledWith(mineId);
     expect(result).toEqual({
       applicantId: mineId,
       applicantCode: 'APP-00001',
       applicantName: 'محمد أحمد',
       filesRemoved: 2,
+      // Nobody asked for a withdrawal here, and the answer says so rather than leaving the caller
+      // to assume it from the absence of a field.
+      withdrawn: false,
     });
   });
 
@@ -354,5 +370,170 @@ describe('(e) several folders at once — partial on purpose', () => {
     expect(mocks.employed).toHaveBeenCalledTimes(1);
     expect(mocks.offered).toHaveBeenCalledTimes(1);
     expect(mocks.employed).toHaveBeenCalledWith([String(ok1._id), String(ok2._id)]);
+  });
+});
+
+describe('(f) withdrawing the application with the folder', () => {
+  /** The same caller, now also holding the key withdrawing needs. */
+  const editor = {
+    ...(ctx as unknown as Record<string, unknown>),
+    permissions: { 'applicantDocument.delete': 'organization', 'applicant.edit': 'organization' },
+  } as never;
+  const scope = { scope: 'organization', userId: ACTOR, branchId: null } as never;
+  const asking = { withdraw: { reason: 'انسحب المتقدم من التقديم', scope } };
+
+  it('does not touch the lifecycle when nobody asked', async () => {
+    const mine = applicant();
+    folders.set(String(mine._id), [file(String(mine._id))]);
+    mocks.applicantFindOne.mockResolvedValue(mine);
+
+    const result = await applicantFolderService.deleteFolder(editor, String(mine._id));
+
+    expect(mocks.withdraw).not.toHaveBeenCalled();
+    expect(result.withdrawn).toBe(false);
+  });
+
+  it('goes through the applicants service, with the reason, the version and the caller’s scope', async () => {
+    const mine = applicant({ __v: 7 });
+    folders.set(String(mine._id), [file(String(mine._id))]);
+    mocks.applicantFindOne.mockResolvedValue(mine);
+
+    const result = await applicantFolderService.deleteFolder(editor, String(mine._id), asking);
+
+    expect(mocks.withdraw).toHaveBeenCalledWith(
+      editor,
+      String(mine._id),
+      { reason: 'انسحب المتقدم من التقديم', version: 7 },
+      scope,
+    );
+    expect(result.withdrawn).toBe(true);
+  });
+
+  /**
+   * The refusal is the point. `applicantDocument.delete` buys emptying a folder, not moving
+   * somebody's application to a terminal state — and the request is refused WHOLE, so a caller
+   * cannot lose the files to a request that was going to be half-performed anyway.
+   */
+  it('refuses the whole request when the caller lacks applicant.edit, deleting nothing', async () => {
+    const mine = applicant();
+    folders.set(String(mine._id), [file(String(mine._id))]);
+    mocks.applicantFindOne.mockResolvedValue(mine);
+
+    await expect(
+      applicantFolderService.deleteFolder(ctx, String(mine._id), asking),
+    ).rejects.toThrow(ForbiddenError);
+    expect(softDeleted()).toHaveLength(0);
+    expect(mocks.withdraw).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
+
+  it('counts an already-withdrawn candidate as withdrawn without a second transition', async () => {
+    const mine = applicant({ status: 'withdrawn' });
+    folders.set(String(mine._id), [file(String(mine._id))]);
+    mocks.applicantFindOne.mockResolvedValue(mine);
+
+    const result = await applicantFolderService.deleteFolder(editor, String(mine._id), asking);
+
+    expect(mocks.withdraw).not.toHaveBeenCalled();
+    expect(result.withdrawn).toBe(true);
+  });
+
+  /**
+   * The files are already gone by the time the lifecycle is asked, so a refusal there cannot be
+   * allowed to answer as though nothing had happened. It is reported instead.
+   */
+  it('still empties the folder when the lifecycle refuses the move, and says so', async () => {
+    const mine = applicant();
+    folders.set(String(mine._id), [file(String(mine._id))]);
+    mocks.applicantFindOne.mockResolvedValue(mine);
+    mocks.withdraw.mockRejectedValueOnce(new Error('stale version'));
+
+    const result = await applicantFolderService.deleteFolder(editor, String(mine._id), asking);
+
+    expect(result.filesRemoved).toBe(1);
+    expect(result.withdrawn).toBe(false);
+  });
+
+  /**
+   * A kept record is somebody who was hired or is being hired. Withdrawing them would be the
+   * opposite of true, and it is the one thing here worse than doing nothing.
+   */
+  it('never withdraws an applicant whose folder it refused to empty', async () => {
+    const ok = applicant({ code: 'APP-00030' });
+    const kept = applicant({ code: 'APP-00031', status: 'hired' });
+    for (const one of [ok, kept]) folders.set(String(one._id), [file(String(one._id))]);
+    mocks.applicantFind.mockResolvedValue([ok, kept]);
+    // The withdrawal re-reads the applicant to take its version from the freshest row.
+    mocks.applicantFindOne.mockResolvedValue(ok);
+
+    const result = await applicantFolderService.deleteFolders(
+      editor,
+      [String(ok._id), String(kept._id)],
+      asking,
+    );
+
+    expect(mocks.withdraw).toHaveBeenCalledTimes(1);
+    expect(mocks.withdraw).toHaveBeenCalledWith(editor, String(ok._id), expect.anything(), scope);
+    expect(result.deleted.map((d) => d.withdrawn)).toEqual([true]);
+    expect(result.refused.map((r) => r.applicantCode)).toEqual(['APP-00031']);
+  });
+});
+
+describe('(g) an emptied folder leaves the grid', () => {
+  /** The filter the page itself was read with — the second `find`, not the nomination probe. */
+  const pageFilter = (): Record<string, unknown> => {
+    const call = mocks.applicantFind.mock.calls.find(
+      ([filter]) => (filter as Record<string, unknown>).documentsFolderDeletedAt === undefined,
+    );
+    return (call?.[0] ?? {}) as Record<string, unknown>;
+  };
+
+  const listOnce = async (nominated: { _id: Types.ObjectId }[]): Promise<void> => {
+    mocks.applicantFind.mockImplementation(async (filter: Record<string, unknown>) =>
+      filter.documentsFolderDeletedAt === undefined ? [] : nominated,
+    );
+    mocks.applicantCount.mockResolvedValue(0);
+    await applicantFolderService.list({ page: 1, pageSize: 24 } as never);
+  };
+
+  it('asks only about the folders it emptied, by the date the partial index holds', async () => {
+    const emptied = { _id: new Types.ObjectId() };
+    await listOnce([emptied]);
+
+    expect(mocks.applicantFind).toHaveBeenCalledWith(
+      expect.objectContaining({ documentsFolderDeletedAt: { $type: 'date' } }),
+    );
+    expect(mocks.liveFileOwners).toHaveBeenCalledWith(
+      'hr',
+      ['applicant', 'applicantDocuments'],
+      [String(emptied._id)],
+    );
+  });
+
+  it('leaves an emptied folder out of the page', async () => {
+    const emptied = { _id: new Types.ObjectId() };
+    await listOnce([emptied]);
+
+    expect(pageFilter()._id).toEqual({ $nin: [emptied._id] });
+  });
+
+  /**
+   * The marker NOMINATES, the files DECIDE. File anything new for somebody whose folder was
+   * emptied last year and their folder is back — with nothing to reset, and no way for a stale
+   * marker to hide a folder that has papers in it.
+   */
+  it('brings a folder back the moment anything is filed for that person again', async () => {
+    const refilled = { _id: new Types.ObjectId() };
+    mocks.liveFileOwners.mockResolvedValue(new Set([String(refilled._id)]));
+    await listOnce([refilled]);
+
+    expect(pageFilter()._id).toBeUndefined();
+  });
+
+  it('does not ask the Files service anything when it has emptied nothing', async () => {
+    await listOnce([]);
+
+    expect(mocks.liveFileOwners).not.toHaveBeenCalled();
+    expect(pageFilter()._id).toBeUndefined();
   });
 });

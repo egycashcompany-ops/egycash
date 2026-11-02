@@ -9771,7 +9771,25 @@ const en: Record<string, string> = {
   'hr.applicantFolders.deleteBulkBody':
     '{{folders}} folders will be emptied, {{n}} files in all. The applicant records themselves stay.',
   'hr.applicantFolders.deleteSoftNote':
-    'The files are marked as deleted rather than destroyed, so an administrator can still recover them.',
+    'The files are kept in the system rather than destroyed. There is no restore screen: recovery is done by the system administrator on request.',
+  'hr.applicantFolders.alsoWithdraw': 'Also withdraw the application',
+  'hr.applicantFolders.withdrawReasonLabel': 'Reason for the withdrawal',
+  'hr.applicantFolders.withdrawReasonOther': 'State the reason',
+  'hr.applicantFolders.withdrawNote':
+    'The applicant record stays. Its status becomes withdrawn, with this reason recorded against it.',
+  'hr.applicantFolders.withdrawSkipsKept':
+    '{{n}} kept folders are neither emptied nor withdrawn.',
+  'hr.applicantFolders.withdrawn': 'Application withdrawn',
+  'hr.applicantFolders.withdrawnMany': '{{n}} applications withdrawn',
+  'hr.applicantFolders.withdrawReasons.candidateWithdrew': 'The candidate withdrew',
+  'hr.applicantFolders.withdrawReasons.candidateAskedToRemove':
+    'The candidate asked for their documents to be removed',
+  'hr.applicantFolders.withdrawReasons.unreachable': 'The candidate could not be reached',
+  'hr.applicantFolders.withdrawReasons.notSuitable':
+    'The candidate does not meet the requirements of the role',
+  'hr.applicantFolders.withdrawReasons.positionClosed': 'The vacancy was closed',
+  'hr.applicantFolders.withdrawReasons.duplicate': 'A duplicate record of an existing applicant',
+  'hr.applicantFolders.withdrawReasons.other': 'Another reason',
   'hr.applicantFolders.deleted': 'Folder deleted',
   'hr.applicantFolders.deletedMany': '{{n}} folders deleted',
   'hr.applicantFolders.deleteFailed': 'The folder could not be deleted.',
@@ -21191,7 +21209,24 @@ const ar: Record<string, string> = {
   'hr.applicantFolders.deleteBulkBody':
     'سيُفرَغ {{folders}} مجلدات بإجمالي {{n}} ملفات. وتبقى سجلات المتقدمين نفسها كما هي.',
   'hr.applicantFolders.deleteSoftNote':
-    'تُعلَّم الملفات كمحذوفة ولا تُدمَّر، فيمكن لمدير النظام استعادتها.',
+    'تبقى الملفات محفوظة في النظام ولا تُدمَّر. ولا توجد شاشة لاستعادتها؛ تُستعاد بطلب يُوجَّه إلى مدير النظام.',
+  'hr.applicantFolders.alsoWithdraw': 'سحب الطلب أيضًا',
+  'hr.applicantFolders.withdrawReasonLabel': 'سبب السحب',
+  'hr.applicantFolders.withdrawReasonOther': 'اذكر السبب',
+  'hr.applicantFolders.withdrawNote':
+    'يبقى سجل المتقدم، وتتحول حالته إلى «منسحب» مع تدوين هذا السبب في سجله.',
+  'hr.applicantFolders.withdrawSkipsKept':
+    'لا يُفرَّغ {{n}} من المجلدات المحفوظة ولا تُسحب طلباتها.',
+  'hr.applicantFolders.withdrawn': 'تم سحب الطلب',
+  'hr.applicantFolders.withdrawnMany': 'تم سحب {{n}} طلبات',
+  'hr.applicantFolders.withdrawReasons.candidateWithdrew': 'انسحب المتقدم من التقديم',
+  'hr.applicantFolders.withdrawReasons.candidateAskedToRemove':
+    'طلب المتقدم حذف مستنداته',
+  'hr.applicantFolders.withdrawReasons.unreachable': 'تعذّر الوصول إلى المتقدم',
+  'hr.applicantFolders.withdrawReasons.notSuitable': 'المتقدم غير مطابق لشروط الوظيفة',
+  'hr.applicantFolders.withdrawReasons.positionClosed': 'أُغلقت الوظيفة المتقدَّم إليها',
+  'hr.applicantFolders.withdrawReasons.duplicate': 'سجل مكرر لمتقدم مسجَّل بالفعل',
+  'hr.applicantFolders.withdrawReasons.other': 'سبب آخر',
   'hr.applicantFolders.deleted': 'تم حذف المجلد',
   'hr.applicantFolders.deletedMany': 'تم حذف {{n}} مجلدات',
   'hr.applicantFolders.deleteFailed': 'تعذّر حذف المجلد.',

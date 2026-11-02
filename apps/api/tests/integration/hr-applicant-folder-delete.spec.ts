@@ -62,6 +62,8 @@ let app: Express;
 let adminToken: string;
 /** Holds `applicantDocument.view` and `.review` and NOT `.delete` — the refusal under test. */
 let readerToken: string;
+/** Holds `applicantDocument.delete` and NOT `applicant.edit` — may empty, may not withdraw. */
+let emptierToken: string;
 let generalCategoryId: string;
 
 const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
@@ -218,7 +220,9 @@ const handInDocument = async (
       contentType: 'image/png',
     });
   expect(uploaded.status, 'hand in a document').toBe(201);
-  const set = mutated<ApplicantDocumentSetDto>(uploaded);
+  // The portal upload answers `created(res, set)` — the set itself, with no workflow envelope
+  // around it. It is the candidate's own write, not a stage transition.
+  const set = data<ApplicantDocumentSetDto>(uploaded);
   const handed = set.documents[0];
   if (handed === undefined) throw new Error('the upload did not land in the set');
   return handed.fileId;
@@ -239,6 +243,26 @@ const deleteFolder = (applicantId: string, token = adminToken): request.Test =>
   request(app)
     .delete(`/api/v1/hr/applicant-documents/folders/${applicantId}`)
     .set('Authorization', `Bearer ${token}`);
+
+/**
+ * The folders grid, as the screen reads it — rows AND the total.
+ *
+ * The total matters as much as the rows here: an emptied folder has to leave the count too, or the
+ * pager promises a page that comes back with a hole in it.
+ */
+const listFolders = async (
+  token = adminToken,
+): Promise<{ rows: ApplicantFolderDto[]; total: number }> => {
+  const res = await request(app)
+    .get('/api/v1/hr/applicant-documents/folders')
+    .query({ pageSize: 50 })
+    .set('Authorization', `Bearer ${token}`);
+  expect(res.status, 'list folders').toBe(200);
+  return {
+    rows: data<ApplicantFolderDto[]>(res),
+    total: (res.body as { meta: { totalItems: number } }).meta.totalItems,
+  };
+};
 
 const live = async (fileId: string): Promise<boolean> =>
   (await FileModel.countDocuments({ _id: new Types.ObjectId(fileId), isDeleted: false })) === 1;
@@ -280,6 +304,22 @@ beforeAll(async () => {
     adminId,
   );
   await account('folder-reader@ecms.local', String(reader._id));
+  // May empty a folder and may NOT touch an applicant — the pair the withdrawal's own refusal
+  // turns on. `applicantDocument.delete` is not a licence to move somebody's application to a
+  // terminal state, and this role is what proves the server agrees.
+  const emptier = await rbacService.createRole(
+    {
+      name: { en: 'Applicant folder emptier', ar: 'مُفرِّغ مجلدات المتقدمين' },
+      permissionKeys: [
+        'applicantDocument.view',
+        'applicantDocument.delete',
+        'file.view',
+        'file.download',
+      ],
+    },
+    adminId,
+  );
+  await account('folder-emptier@ecms.local', String(emptier._id));
 
   const ctx: AuthContext = {
     userId: adminId,
@@ -300,6 +340,7 @@ beforeAll(async () => {
 
   adminToken = await login('folder-admin@ecms.local');
   readerToken = await login('folder-reader@ecms.local');
+  emptierToken = await login('folder-emptier@ecms.local');
 
   const general = await fileCategoryService.ensure({
     key: 'folder-delete-spec-general',
@@ -427,7 +468,23 @@ describe('emptying one folder', () => {
     expect((await folder(bystander.id)).files.length).toBe(1);
   });
 
-  it('leaves an EMPTY folder rather than a missing one — the applicant still exists', async () => {
+  /**
+   * The SHELF is gone, the PERSON is not.
+   *
+   * An emptied folder sitting in the grid as a nought-file tile is the thing this behaviour exists
+   * to prevent: HR removed what was there, so there is nothing left to show. What must survive is
+   * everything else — the applicant's record, their code, their history — and the folder itself
+   * still answers when asked for by name, which is what keeps a link to it from breaking.
+   */
+  it('drops out of the folders grid, while the applicant record stays', async () => {
+    const { rows } = await listFolders();
+    expect(rows.find((row) => row.applicantId === subject.id)).toBeUndefined();
+    expect(
+      await ApplicantModel.countDocuments({
+        _id: new Types.ObjectId(subject.id),
+        isDeleted: false,
+      }),
+    ).toBe(1);
     const after = await folder(subject.id);
     expect(after.files).toEqual([]);
     expect(after.fileCount).toBe(0);
@@ -557,5 +614,163 @@ describe('the handed-in document’s type reaches the folder', () => {
     for (const file of open.files.filter((f) => f.kind !== 'document')) {
       expect(file.documentType).toBeNull();
     }
+  });
+});
+
+/**
+ * The grid's rule, end to end: a folder HR emptied is gone, and it comes back if anything is
+ * filed for that person again.
+ *
+ * Self-contained on purpose — its own applicant, its own files — because it both reads and WRITES
+ * the folder it is about, and sharing `subject` would make every test after it depend on the order
+ * this one happened to run in.
+ */
+describe('an emptied folder leaves the grid, and returns with the next document', () => {
+  it('is on the grid while it holds something, gone once emptied, back when refilled', async () => {
+    const person = await registerApplicant('29001011590088', '01099880088');
+    const first = await attach(person.id, generalCategoryId, 'before.png');
+
+    const before = await listFolders();
+    expect(before.rows.find((row) => row.applicantId === person.id)?.fileCount).toBe(1);
+
+    expect((await deleteFolder(person.id)).status).toBe(200);
+
+    const emptied = await listFolders();
+    expect(emptied.rows.find((row) => row.applicantId === person.id)).toBeUndefined();
+    // The count went with the row. A total that still included it would promise a page with a
+    // hole in it.
+    expect(emptied.total).toBe(before.total - 1);
+    expect(await live(first.id)).toBe(false);
+
+    // Nothing is reset to bring it back: the marker only nominates a folder for hiding and the
+    // FILES settle it, so filing anything new is enough.
+    const second = await attach(person.id, generalCategoryId, 'after.png');
+    const refilled = await listFolders();
+    expect(refilled.rows.find((row) => row.applicantId === person.id)?.fileCount).toBe(1);
+    expect(refilled.total).toBe(before.total);
+    expect(await live(second.id)).toBe(true);
+    // And the file that was removed stays removed — coming back is not undoing.
+    expect(await live(first.id)).toBe(false);
+  });
+});
+
+/**
+ * Withdrawing the application along with the folder.
+ *
+ * The lifecycle move itself is the applicants module's, with its own key, its own audit row and
+ * its own event. What is pinned here is that this route reaches it rather than reimplementing it,
+ * that it needs the applicants module's key, and that a folder it REFUSED to empty is never
+ * withdrawn — that last one is the dangerous case: a refusal means this person was hired or is
+ * being hired, and withdrawing them would be the opposite of true.
+ */
+describe('withdrawing the application with the folder', () => {
+  const REASON = 'انسحب المتقدم من التقديم';
+
+  const statusOf = async (applicantId: string): Promise<string> => {
+    const row = await ApplicantModel.findById(applicantId)
+      .lean<{ status: string; withdrawnReason: string | null }>()
+      .exec();
+    return row?.status ?? '';
+  };
+
+  it('moves the application to withdrawn, with the reason on the record', async () => {
+    const person = await registerApplicant('29001011590099', '01099880099');
+    const theirFile = await attach(person.id, generalCategoryId, 'withdraw-me.png');
+
+    const res = await deleteFolder(person.id).send({ withdraw: true, withdrawReason: REASON });
+    expect(res.status).toBe(200);
+    const result = data<DeletedApplicantFolderDto>(res);
+    expect(result.filesRemoved).toBe(1);
+    expect(result.withdrawn).toBe(true);
+
+    expect(await statusOf(person.id)).toBe('withdrawn');
+    const row = await ApplicantModel.findById(person.id)
+      .lean<{ withdrawnReason: string | null; withdrawnAt: Date | null }>()
+      .exec();
+    expect(row?.withdrawnReason).toBe(REASON);
+    expect(row?.withdrawnAt).not.toBeNull();
+    expect(await live(theirFile.id)).toBe(false);
+  });
+
+  /** The applicants module's own audit row, not a second one invented here. */
+  it('leaves the lifecycle’s own audit trail behind it', async () => {
+    const person = await registerApplicant('29001011590111', '01099880111');
+    await attach(person.id, generalCategoryId, 'audit-me.png');
+    expect(
+      (await deleteFolder(person.id).send({ withdraw: true, withdrawReason: REASON })).status,
+    ).toBe(200);
+
+    await waitFor(
+      async () =>
+        (await AuditLogModel.countDocuments({
+          action: 'statusChange',
+          'entityRef.entityId': person.id,
+        })) > 0,
+    );
+    const row = await AuditLogModel.findOne({
+      action: 'statusChange',
+      'entityRef.entityId': person.id,
+    })
+      .lean<{ changes: { field: string; new: unknown }[] }>()
+      .exec();
+    expect(row?.changes.find((c) => c.field === 'status')?.new).toBe('withdrawn');
+  });
+
+  it('leaves the application alone when nobody asked', async () => {
+    const person = await registerApplicant('29001011590122', '01099880122');
+    await attach(person.id, generalCategoryId, 'keep-status.png');
+
+    const res = await deleteFolder(person.id);
+    expect(res.status).toBe(200);
+    expect(data<DeletedApplicantFolderDto>(res).withdrawn).toBe(false);
+    expect(await statusOf(person.id)).not.toBe('withdrawn');
+  });
+
+  /**
+   * Refused WHOLE, files included. Emptying the folder and quietly skipping the withdrawal would
+   * answer «delete and withdraw» with «deleted» and give the caller no way to notice.
+   */
+  it('refuses a caller holding the folder key but not applicant.edit, and deletes nothing', async () => {
+    const person = await registerApplicant('29001011590133', '01099880133');
+    const theirFile = await attach(person.id, generalCategoryId, 'not-yours.png');
+
+    const res = await deleteFolder(person.id, emptierToken).send({
+      withdraw: true,
+      withdrawReason: REASON,
+    });
+    expect(res.status).toBe(403);
+    expect(await live(theirFile.id)).toBe(true);
+    expect(await statusOf(person.id)).not.toBe('withdrawn');
+  });
+
+  /** The same caller may still do the thing their key IS for. */
+  it('lets that caller empty the folder when they do not ask for a withdrawal', async () => {
+    const person = await registerApplicant('29001011590144', '01099880144');
+    const theirFile = await attach(person.id, generalCategoryId, 'mine-to-empty.png');
+
+    expect((await deleteFolder(person.id, emptierToken)).status).toBe(200);
+    expect(await live(theirFile.id)).toBe(false);
+  });
+
+  it('will not withdraw without a reason to put on the record', async () => {
+    const person = await registerApplicant('29001011590155', '01099880155');
+    const theirFile = await attach(person.id, generalCategoryId, 'no-reason.png');
+
+    const res = await deleteFolder(person.id).send({ withdraw: true });
+    expect(res.status).toBe(400);
+    expect(await live(theirFile.id)).toBe(true);
+  });
+
+  it('never withdraws an applicant whose folder it kept', async () => {
+    const res = await request(app)
+      .post('/api/v1/hr/applicant-documents/folders/bulk-delete')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantIds: [hired.id], withdraw: true, withdrawReason: REASON });
+
+    expect(res.status).toBe(200);
+    const result = data<DeleteApplicantFoldersResultDto>(res);
+    expect(result.deleted).toEqual([]);
+    expect(result.refused.map((row) => row.reason)).toEqual(['hired']);
+    expect(await statusOf(hired.id)).toBe('hired');
   });
 });

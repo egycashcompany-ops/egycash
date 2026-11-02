@@ -105,6 +105,35 @@ class FileRepository extends BaseRepository<FileDoc> {
     return result.modifiedCount;
   }
 
+  /**
+   * Which of these entities still hold at least one LIVE file — one query for the whole set.
+   *
+   * It answers a question about PRESENCE, not about contents: the only thing that comes back is a
+   * subset of the entity ids the caller already named, so there is nothing here for a caller to
+   * learn that it did not already know. That is why it needs no scope and no ADR-023 pass, and it
+   * is deliberately the only shape this method has — widen it to return files and it would need
+   * both.
+   *
+   * «Live» is the same three clauses the listing uses — not soft-deleted, the latest version, and
+   * `active` rather than archived — so a caller cannot see a file here that the listing would hide.
+   */
+  async entityIdsWithLiveFiles(
+    moduleId: string,
+    entityTypes: readonly string[],
+    entityIds: readonly string[],
+  ): Promise<Set<string>> {
+    if (entityIds.length === 0) return new Set<string>();
+    const found = await this.model.distinct('entityRef.entityId', {
+      isDeleted: false,
+      isLatest: true,
+      status: 'active',
+      'entityRef.moduleId': moduleId,
+      'entityRef.entityType': { $in: [...entityTypes] },
+      'entityRef.entityId': { $in: [...entityIds] },
+    } as FilterQuery<FileDoc>);
+    return new Set(found.map((value) => String(value)));
+  }
+
   /** Live files whose scan has been `pending` since before `uploadedBefore`, oldest first. */
   async listPendingScans(uploadedBefore: Date, limit: number): Promise<FileDoc[]> {
     return this.model

@@ -33,6 +33,7 @@ import {
   useApplicantFolders,
   useBulkDeleteApplicantFolders,
   useDeleteApplicantFolder,
+  type FolderWithdrawal,
 } from '../api/applicant-document-queries';
 import { ApplicantFolderDialog } from './ApplicantFolderDialog';
 import { DeleteFoldersDialog } from './DeleteFoldersDialog';
@@ -184,12 +185,27 @@ export const ApplicantFolders = (): JSX.Element => {
    * واحد: …» are two sentences and not one: the second names the people whose folders were kept,
    * because the only useful thing to know about a refusal is whose it was.
    */
-  const report = (deleted: number, refused: { applicantName: string }[]): void => {
+  const report = (
+    deleted: number,
+    withdrawn: number,
+    refused: { applicantName: string }[],
+  ): void => {
     if (deleted > 0) {
       toast.success(
         deleted === 1
           ? t('hr.applicantFolders.deleted')
           : t('hr.applicantFolders.deletedMany', { n: deleted }),
+      );
+    }
+    // Said separately, and only when it happened. The withdrawal is a second act on somebody's
+    // record and «تم سحب الطلب» is the only confirmation they get that it went through — while a
+    // count SHORT of the folders emptied is how an operator finds out that one of them did not,
+    // which is the case this exists for.
+    if (withdrawn > 0) {
+      toast.success(
+        withdrawn === 1
+          ? t('hr.applicantFolders.withdrawn')
+          : t('hr.applicantFolders.withdrawnMany', { n: withdrawn }),
       );
     }
     if (refused.length > 0) {
@@ -202,14 +218,27 @@ export const ApplicantFolders = (): JSX.Element => {
     }
   };
 
-  const confirm = async (chosen: ApplicantFolderDto[]): Promise<void> => {
+  const confirm = async (
+    chosen: ApplicantFolderDto[],
+    withdrawal: FolderWithdrawal,
+  ): Promise<void> => {
     try {
       if (chosen.length === 1 && chosen[0] !== undefined) {
-        await deleteOne.mutateAsync(chosen[0].applicantId);
-        report(1, []);
+        const result = await deleteOne.mutateAsync({
+          applicantId: chosen[0].applicantId,
+          withdrawal,
+        });
+        report(1, result.withdrawn ? 1 : 0, []);
       } else {
-        const result = await deleteMany.mutateAsync(chosen.map((folder) => folder.applicantId));
-        report(result.deleted.length, result.refused);
+        const result = await deleteMany.mutateAsync({
+          applicantIds: chosen.map((folder) => folder.applicantId),
+          withdrawal,
+        });
+        report(
+          result.deleted.length,
+          result.deleted.filter((row) => row.withdrawn).length,
+          result.refused,
+        );
       }
       setConfirming([]);
       setOpen(null);

@@ -196,6 +196,18 @@ export const exportApplicants = async (req: Request, res: Response): Promise<voi
   res.status(200).send(csv);
 };
 
+/**
+ * One card photograph, filed server-side.
+ *
+ * Behind `applicant.create` — the same key registering an applicant needs — so reading a card
+ * costs no file permission at all. The category is resolved in the service, which is what let the
+ * browser stop listing `/platform/file-categories` to find it.
+ */
+export const uploadNationalIdCardScan = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  created(res, await applicantService.uploadNationalIdCardScan(ctx, binaryOf(req)));
+};
+
 export const ocrExtractNationalId = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<OcrExtractNationalId>(req);
   // The actor rides along so a provider that reads the stored images does it under the caller's

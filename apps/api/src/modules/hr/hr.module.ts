@@ -23,6 +23,7 @@ import {
   buildApplicantPortalDocumentsRouter,
   hrApplicantDocumentFileAuthorizers,
 } from './recruitment/applicant-documents';
+import { hrApplicantCardScanFileAuthorizers } from './recruitment/applicants/national-id-scan.files';
 import { logger } from '../../infrastructure/logging/logger';
 import {
   buildPublicRecruitmentFormRouter,
@@ -1663,6 +1664,7 @@ export const hrModule: ModuleManifest = {
     // ADR-023 + D-APP-9 — a candidate reaches their OWN uploads and nothing else, decided against
     // the subject on their session rather than anything in the request.
     ...hrApplicantDocumentFileAuthorizers,
+    ...hrApplicantCardScanFileAuthorizers,
     // P-HR-TRN D9 — a certificate is filed against the RECORD it certifies. Reading follows the
     // record's own key; writing follows the conducting key, because the person who taught the
     // session is the person holding the paper.

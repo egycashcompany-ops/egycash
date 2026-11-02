@@ -25,6 +25,7 @@ import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer
 import { computeAlarm, computeAlarms } from '../../src/modules/fleet/maintenance/maintenance-alarm';
 import { fleetOdometerRepository } from '../../src/modules/fleet/odometer/odometer.repository';
 import { fleetMaintenanceRepository } from '../../src/modules/fleet/maintenance/maintenance.repository';
+import { fleetOdometerService } from '../../src/modules/fleet/odometer/odometer.service';
 
 let replset: MongoMemoryReplSet | undefined;
 
@@ -422,7 +423,8 @@ describe('the reading the alarm measured', () => {
  * كده دخول بتاع تاني يوم 200، يبقى هي مشيت 50، بيكتب لي كيلومتر 50 وما بيضيفش 50 دي على فرق
  * الصيانة». Two rows sharing the top OPENING reading — a parked day (150 → 150) and the next day
  * (150 → 200) — used to be told apart by `_id` alone, so when the 0-km row was written last the
- * car's reading stayed 150. It is ranked by the row's effective reading now.
+ * car's reading stayed 150. The later DAY settles that tie now, and its closing reading is the one
+ * reported.
  */
 describe('the day’s km reach the gap — two rows share the top opening reading', () => {
   /** A counting service on 1 October at 100 km, the chain at 90 the day before. */
@@ -474,7 +476,7 @@ describe('the day’s km reach the gap — two rows share the top opening readin
     expect(row?.newestReading).toEqual({ reading: 200, date: at('2026-10-11') });
   });
 
-  it('a tie on the effective reading goes to the later DAY, whatever was written last', async () => {
+  it('a tie on the opening reading goes to the later DAY, whatever was written last', async () => {
     const id = await car();
     const later = await FleetOdometerLogModel.create({
       vehicleId: id,
@@ -513,6 +515,134 @@ describe('the day’s km reach the gap — two rows share the top opening readin
     expect(row?.latestReading).toBe(79_200);
     expect(row?.latestReadingAt).toBe(at('2026-07-30'));
     expect(row?.newestReading).toEqual({ reading: 25_631, date: at('2026-10-26') });
+  });
+});
+
+/**
+ * PR #639's REGRESSION, PINNED. Ranking a car's rows by `max(out, in)` let an OLD row's closing
+ * reading become the car's latest reading — the old book's rows do not always chain (a row's
+ * عداد الدخول above the next row's عداد الخروج), and closing readings carry typos and test figures:
+ * car 255 read 128,457 and the record dialog said «الخادم يتوقع 1,008,500 كم أو أكثر». The latest
+ * reading is the row with the highest عداد الخروج again — the row the FR-2 guard takes its floor
+ * from — the later day first on a tie, reported as how far that row got.
+ */
+describe('the latest reading is picked by عداد الخروج — an old closing reading never wins', () => {
+  /** Rows exactly as given — the old book's, which need not chain. */
+  const rowsOf = async (
+    vehicleId: Types.ObjectId,
+    rows: readonly (readonly [string, number, number | null])[],
+  ): Promise<Types.ObjectId[]> => {
+    const ids = [];
+    for (const [date, outReading, inReading] of rows) {
+      const doc = await FleetOdometerLogModel.create({
+        vehicleId,
+        date: day(date),
+        outReading,
+        inReading,
+      });
+      ids.push(doc._id as Types.ObjectId);
+    }
+    return ids;
+  };
+  const latestOf = async (id: Types.ObjectId) =>
+    (await fleetOdometerRepository.latestReadings([String(id)])).get(String(id));
+  const expectedOf = async (id: Types.ObjectId) => {
+    const expected = await fleetOdometerService.expectedReading(String(id));
+    return { reading: expected.reading, asOf: expected.asOf?.toISOString() ?? null };
+  };
+  /** The FR-2 floor for a reading taken today — the guard the hint must agree with. */
+  const floorOf = async (id: Types.ObjectId) => {
+    const bracket = await fleetOdometerService.bracket(String(id), day('2026-11-02'));
+    return { reading: bracket.lowerBound, asOf: bracket.lowerBoundAt?.toISOString() ?? null };
+  };
+
+  it('(A) an old row closing above the next row’s opening does not become the latest', async () => {
+    const id = await car();
+    await visitOf(id, { inDate: '2026-07-20', outDate: '2026-07-20', exit: 39_500 });
+    const [, , , open] = await rowsOf(id, [
+      // The book closed 1 August at 47,000 — the next row opens at 41,000.
+      ['2026-08-01', 40_000, 47_000],
+      ['2026-08-02', 41_000, 42_000],
+      ['2026-08-03', 42_000, 43_000],
+      ['2026-08-04', 43_000, null],
+    ]);
+    const latest = await latestOf(id);
+    expect(latest).toMatchObject({ reading: 43_000, logId: String(open) });
+    expect(latest?.date.toISOString()).toBe(at('2026-08-04'));
+
+    const expected = await expectedOf(id);
+    expect(expected).toEqual({ reading: 43_000, asOf: at('2026-08-04') });
+    // The hint and the guard name ONE row now.
+    expect(await floorOf(id)).toEqual(expected);
+
+    const row = await alarmOf(id);
+    expect(row?.latestReading).toBe(43_000);
+    expect(row?.latestReadingLogId).toBe(String(open));
+    expect(row?.sinceServiceKm).toBe(3_500);
+    expect(row?.remainingKm).toBe(1_500);
+    expect(row?.level).toBe('none');
+    expect(row?.newestReading).toEqual({ reading: 43_000, date: at('2026-08-04') });
+  });
+
+  it('(B) an extra digit on an OLD closing reading leaves the car at 52,000, not 500,500', async () => {
+    const id = await car();
+    await visitOf(id, { inDate: '2026-09-01', outDate: '2026-09-01', exit: 49_000 });
+    const [, , , open] = await rowsOf(id, [
+      ['2026-09-10', 50_000, 500_500],
+      ['2026-09-11', 50_500, 51_000],
+      ['2026-09-12', 51_000, 52_000],
+      ['2026-09-13', 52_000, null],
+    ]);
+    const latest = await latestOf(id);
+    expect(latest).toMatchObject({ reading: 52_000, logId: String(open) });
+    expect(latest?.date.toISOString()).toBe(at('2026-09-13'));
+
+    const expected = await expectedOf(id);
+    expect(expected).toEqual({ reading: 52_000, asOf: at('2026-09-13') });
+    expect(await floorOf(id)).toEqual(expected);
+
+    // A sane alarm: 3,000 km since the 49,000 service — not 451,500 and red.
+    const row = await alarmOf(id);
+    expect(row?.latestReading).toBe(52_000);
+    expect(row?.latestReadingAt).toBe(at('2026-09-13'));
+    expect(row?.sinceServiceKm).toBe(3_000);
+    expect(row?.remainingKm).toBe(2_000);
+    expect(row?.level).toBe('none');
+    expect(row?.newestReading).toEqual({ reading: 52_000, date: at('2026-09-13') });
+  });
+
+  it.each([
+    ['the parked day written first', true],
+    ['the parked day written LAST', false],
+  ])(
+    '(C) a parked day and the next day opening where it stood → the LATER day (%s)',
+    async (_label, parkedFirst) => {
+      const id = await car();
+      const parked: readonly [string, number, number | null] = ['2026-10-10', 150, 150];
+      const moving: readonly [string, number, number | null] = ['2026-10-11', 150, 200];
+      const ids = await rowsOf(id, parkedFirst ? [parked, moving] : [moving, parked]);
+      const movingId = parkedFirst ? ids[1] : ids[0];
+      const latest = await latestOf(id);
+      expect(latest).toMatchObject({ reading: 200, logId: String(movingId) });
+      expect(latest?.date.toISOString()).toBe(at('2026-10-11'));
+      expect(await expectedOf(id)).toEqual({ reading: 200, asOf: at('2026-10-11') });
+    },
+  );
+
+  it('(D) the newest row’s own closing reading still counts', async () => {
+    const id = await car();
+    const [, closed] = await rowsOf(id, [
+      ['2026-10-01', 128_000, 128_457],
+      ['2026-10-02', 128_457, 128_500],
+    ]);
+    const latest = await latestOf(id);
+    expect(latest).toMatchObject({ reading: 128_500, logId: String(closed) });
+    expect(latest?.date.toISOString()).toBe(at('2026-10-02'));
+    expect(await expectedOf(id)).toEqual({ reading: 128_500, asOf: at('2026-10-02') });
+    expect((await alarmOf(id))?.newestReading).toEqual({
+      reading: 128_500,
+      date: at('2026-10-02'),
+    });
   });
 });
 

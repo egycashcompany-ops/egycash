@@ -401,10 +401,11 @@ class FleetOdometerService {
    * those. Nothing here is a rule: `expectedReading` is a hint, and `record` is the authority.
    */
   async expectedReading(vehicleId: string): Promise<ExpectedReading> {
-    // The alarm's own read, so the hint and «فارق عداد الصيانة» name the same reading: ranked by
-    // each row's EFFECTIVE reading, `max(out, in)`, never by the opening one alone — a parked day
-    // that shares the top opening reading must not hide the next day's closing one. Days with no
-    // reading are on no chain and never answer.
+    // The alarm's own read, so the hint and «فارق عداد الصيانة» name the same reading — and the
+    // row the FR-2 floor is taken from: the highest OPENING reading, the later day first on a tie
+    // (a parked day must not hide the next day's closing reading), reported as how far that row
+    // got. An old row's closing reading — a book that did not chain, a typo — never answers here,
+    // nor does a day with no reading, which is on no chain.
     const latest = (await fleetOdometerRepository.latestReadings([vehicleId])).get(vehicleId);
     if (latest === undefined) return { reading: null, asOf: null };
     return { reading: latest.reading, asOf: latest.date };

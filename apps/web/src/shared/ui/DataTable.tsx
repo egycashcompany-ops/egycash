@@ -4,6 +4,7 @@
 import { type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { hasError } from '../lib/errors';
+import { ColumnFilterBox } from './ColumnFilterBox';
 import { Skeleton } from './Skeleton';
 import { ChevronIcon } from './icons';
 import { EmptyState } from './states/EmptyState';
@@ -33,6 +34,11 @@ export interface Column<T> {
   align?: 'start' | 'center' | 'end';
   className?: string;
   headerClassName?: string;
+  /**
+   * The column takes a box in the table's filter row (`columnFilters`). The page filters the rows
+   * itself, on the text this column's cell shows (`shared/lib/column-filter.ts`).
+   */
+  filterable?: boolean;
 }
 
 export interface SortState {
@@ -161,6 +167,19 @@ export interface DataTableProps<T> {
    * the whole row, the selection box included, and takes no part in the selection, the sort or
    * a row's `index`.
    */
+  /**
+   * A ROW OF FILTER BOXES UNDER THE HEAD, one per `filterable` column — the ATM tables' «فلتر لكل
+   * عمود» (2026-11-02). The table draws the boxes and reports what is typed (`onChange`, after the
+   * typist pauses); the PAGE filters the rows, before it counts, groups, selects or exports them,
+   * so the rows handed in here are already the filtered ones. The row sticks with the head.
+   */
+  columnFilters?: {
+    values: Readonly<Record<string, string>>;
+    onChange: (key: string, typed: string) => void;
+    /** The box's accessible name, from the column's header — the table holds no locale. */
+    label: (header: string) => string;
+    placeholder?: string;
+  };
   group?: {
     of: (row: T) => string;
     label: (group: string) => ReactNode;
@@ -213,6 +232,7 @@ export const DataTable = <T,>({
   stickyHead = false,
   rowProps,
   group,
+  columnFilters,
 }: DataTableProps<T>): JSX.Element => {
   // One shape inside, whichever shape came in: the single-column callers (every module but Fleet)
   // and the multi-column ones read the same way from here down.
@@ -488,6 +508,39 @@ export const DataTable = <T,>({
               );
             })}
           </tr>
+          {columnFilters !== undefined && columns.some((c) => c.filterable === true) && (
+            <tr
+              data-column-filters="true"
+              className={cn(
+                'bg-slate-50',
+                stickyHead ? 'dark:bg-slate-800' : 'dark:bg-slate-800/60',
+              )}
+            >
+              {isSelectable && <th className="px-4 pb-2" />}
+              {columns.map((c) => (
+                <th
+                  key={c.key}
+                  className={cn(
+                    dense ? (tightGutter ? 'px-2' : 'px-3') : 'px-4',
+                    'pb-2 font-normal',
+                    c.headerClassName,
+                  )}
+                >
+                  {c.filterable === true && (
+                    <ColumnFilterBox
+                      value={columnFilters.values[c.key] ?? ''}
+                      onValueChange={(typed) => columnFilters.onChange(c.key, typed)}
+                      label={columnFilters.label(c.header)}
+                      columnKey={c.key}
+                      {...(columnFilters.placeholder === undefined
+                        ? {}
+                        : { placeholder: columnFilters.placeholder })}
+                    />
+                  )}
+                </th>
+              ))}
+            </tr>
+          )}
         </thead>
         <tbody>{body}</tbody>
       </table>

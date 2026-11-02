@@ -51,10 +51,22 @@ export const PageHeader = ({
   actions,
   aside,
   figures,
+  toolbar,
 }: {
   title: string;
   breadcrumbs?: Crumb[];
   actions?: ReactNode;
+  /**
+   * THE PAGE'S OWN ROW, ON THE TITLE'S LINE — a form, a filter band, a date bar — so the table
+   * under it gets that row's height back. The ATM screens: «عايز تطلع الصف بتاع الـ Form يبقي
+   * بجانب العنوان عشان نستفيد بالمساحة» (2026-11-02).
+   *
+   * From `lg` it sits between the title and the actions and takes the width left; its content
+   * wraps INSIDE it when that width runs short, so the band never jumps under the title as a
+   * reader fills it in. Below `lg` it takes a full line of its own under the title, as the row did
+   * before. A header without one is exactly what it always was.
+   */
+  toolbar?: ReactNode;
   /**
    * Sits on the breadcrumb row, opposite the trail — for status about the record rather than about
    * navigation. Wraps below on narrow screens rather than squeezing the breadcrumb.
@@ -66,7 +78,14 @@ export const PageHeader = ({
    */
   figures?: ReactNode;
 }): JSX.Element => (
-  <div className="mb-6 border-b border-slate-200/80 pb-5 dark:border-slate-800">
+  // With a toolbar the header already holds the page's row, so it keeps less space under itself:
+  // the point of moving the row up is the height it gives back to the table.
+  <div
+    className={cn(
+      'border-b border-slate-200/80 dark:border-slate-800',
+      toolbar === undefined ? 'mb-6 pb-5' : 'mb-2 pb-4',
+    )}
+  >
     {(breadcrumbs !== undefined && breadcrumbs.length > 0) || aside !== undefined ? (
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         {breadcrumbs !== undefined && breadcrumbs.length > 0 ? (
@@ -77,29 +96,56 @@ export const PageHeader = ({
         {aside !== undefined && <div className="min-w-0">{aside}</div>}
       </div>
     ) : null}
-    {/* The title line WRAPS: actions that do not fit beside the whole title go to a line of their
+    {toolbar !== undefined ? (
+      // The title, the page's row and the actions on ONE line from `lg`, by `order`: below `lg`
+      // the title and the actions share the first line and the row takes the next one whole
+      // (`basis-full`); from `lg` the row moves between them and grows into the width left
+      // (`basis-0 flex-1`), shrinking to wrap its own content (`min-w-0`) rather than pushing the
+      // actions off the line.
+      <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap lg:gap-4">
+        <div className="order-1 flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 lg:shrink-0">
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            {title}
+          </h1>
+          {figures}
+        </div>
+        {actions !== undefined && (
+          <div className="order-2 ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2 lg:order-3">
+            {actions}
+          </div>
+        )}
+        <div
+          className="order-3 min-w-0 basis-full lg:order-2 lg:flex-1 lg:basis-0"
+          data-page-toolbar="true"
+        >
+          {toolbar}
+        </div>
+      </div>
+    ) : (
+      /* The title line WRAPS: actions that do not fit beside the whole title go to a line of their
         own, at its end, and wrap there — instead of squeezing the title to nothing and running off
         the screen (a `shrink-0` action row cannot wrap). The title column claims only the title's
         own width (`flex-1` from 0, its minimum is its content, capped at the line): figures wrap
-        under the title before the actions move, so a header that fit before looks the same. */}
-    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-      <div
-        className={
-          figures === undefined
-            ? 'min-w-0 sm:min-w-[auto] sm:max-w-full sm:flex-1'
-            : 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:min-w-[auto] sm:max-w-full sm:flex-1'
-        }
-      >
-        <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-          {title}
-        </h1>
-        {figures}
-      </div>
-      {actions !== undefined && (
-        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ms-auto sm:justify-end">
-          {actions}
+        under the title before the actions move, so a header that fit before looks the same. */
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div
+          className={
+            figures === undefined
+              ? 'min-w-0 sm:min-w-[auto] sm:max-w-full sm:flex-1'
+              : 'flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 sm:min-w-[auto] sm:max-w-full sm:flex-1'
+          }
+        >
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            {title}
+          </h1>
+          {figures}
         </div>
-      )}
-    </div>
+        {actions !== undefined && (
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ms-auto sm:justify-end">
+            {actions}
+          </div>
+        )}
+      </div>
+    )}
   </div>
 );

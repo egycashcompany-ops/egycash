@@ -5,7 +5,7 @@
 // Read WHOLE — every row closed in the range, not the first hundred — so every column sorts in the
 // browser and the table leaves as Excel and PDF, «بيان صيانة ماكينات الصراف الآلي عن يوم … / عن
 // الفترة من … إلى …» of the days it closed on (2026-10-27).
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type AtmMaintenanceDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -20,8 +20,13 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { hasError } from '../../../shared/lib/errors';
 import { useDoneAtmMaintenances, useReopenAtmMaintenance } from '../api/atm-queries';
 import { cairoToday, doneRange } from '../lib/operation-view';
-import { maintenanceColumns } from '../lib/operation-sheet';
-import { useReaderOrder } from '../lib/useBoardView';
+import {
+  columnFilterEntries,
+  maintenanceColumns,
+  statementFilterLine,
+} from '../lib/operation-sheet';
+import { useColumnFiltered, useReaderOrder } from '../lib/useBoardView';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { DoneRangeBar, DoneRangeCutShort, doneRangeWhole } from '../components/DoneRangeBar';
@@ -58,13 +63,19 @@ export const MaintenanceDonePage = (): JSX.Element => {
 
   // The table is the sheet's columns, in its order, sortable, with the reopen at the end.
   const sheetColumns = maintenanceColumns(t, locale, 'done');
-  const order = useReaderOrder([sp, setSp], list.data?.items ?? [], sheetColumns);
+  // The boxes under the head (2026-11-02, «فلتر لكل عمود») narrow the range's rows before the
+  // reader's order, so the table and its statement show the same rows.
+  const columnFilters = useColumnFilters();
+  const items = useMemo(() => list.data?.items ?? [], [list.data]);
+  const kept = useColumnFiltered(items, sheetColumns, columnFilters.values);
+  const order = useReaderOrder([sp, setSp], kept, sheetColumns);
   const columns: Column<AtmMaintenanceDto>[] = [
     ...sheetColumns.map((column) => ({
       key: column.key,
       header: column.header,
       sortable: true,
       render: (row: AtmMaintenanceDto) => column.text(row, '—'),
+      filterable: true,
     })),
     {
       key: 'actions',
@@ -91,27 +102,38 @@ export const MaintenanceDonePage = (): JSX.Element => {
       {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27): on a computer the title and the
           day range keep their place, and only the table's rows scroll, under a head that stays. */}
       <div className={BOARD_FRAME}>
-        <PageHeader title={t('atm.done.maintTitle')} />
-        <DoneRangeBar
-          from={from}
-          to={to}
-          onChange={setRange}
-          trailing={
-            // Only once the rows on screen are the answer — never «nothing» while loading or failed.
-            // And only for a range read whole: a part titled as the period would misstate it.
-            list.isLoading ||
-            hasError(list.error) ||
-            !doneRangeWhole(list.data?.meta) ? undefined : (
-              <StatementExportButtons
-                kind="maintenance"
-                name="atm-maintenance-done"
-                sheetName={t('atm.done.maintTitle')}
-                range={{ from, to }}
-                rows={order.rows}
-                columns={sheetColumns}
-                filterLine=""
-              />
-            )
+        {/* The range and its files on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form
+            يبقي بجانب العنوان»). */}
+        <PageHeader
+          title={t('atm.done.maintTitle')}
+          toolbar={
+            <DoneRangeBar
+              from={from}
+              to={to}
+              onChange={setRange}
+              trailing={
+                // Only once the rows on screen are the answer — never «nothing» while loading or failed.
+                // And only for a range read whole: a part titled as the period would misstate it.
+                list.isLoading ||
+                hasError(list.error) ||
+                !doneRangeWhole(list.data?.meta) ? undefined : (
+                  <StatementExportButtons
+                    kind="maintenance"
+                    name="atm-maintenance-done"
+                    sheetName={t('atm.done.maintTitle')}
+                    range={{ from, to }}
+                    rows={order.rows}
+                    columns={sheetColumns}
+                    // A statement narrowed by a box says so (`columnFilterEntries`).
+                    filterLine={statementFilterLine(t, locale, {
+                      banks: [],
+                      areas: [],
+                      columns: columnFilterEntries(sheetColumns, columnFilters.values),
+                    })}
+                  />
+                )
+              }
+            />
           }
         />
         <DoneRangeCutShort meta={list.data?.meta} />
@@ -123,7 +145,13 @@ export const MaintenanceDonePage = (): JSX.Element => {
             loading={list.isLoading}
             error={list.error}
             onRetry={() => void list.refetch()}
-            empty={t('atm.done.empty')}
+            empty={columnFilters.active ? t('atm.common.emptyColumnFiltered') : t('atm.done.empty')}
+            columnFilters={{
+              values: columnFilters.values,
+              onChange: columnFilters.set,
+              label: (header) => t('atm.common.filterColumn', { column: header }),
+              placeholder: t('atm.common.filterPlaceholder'),
+            }}
             sort={order.sorts}
             onSortChange={order.changeSort}
             stickyHead

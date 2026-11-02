@@ -881,9 +881,12 @@ answers in the same conversation):
 - **«Select all» on F8.** «شيل الـ Select all من فوق الجدول … خليها تظهر فقط عند الضغط على F8 …
   بس تختفى لو مدوستش عليها ودوست على اى حاجة تانية». The head's box is drawn only after F8 and goes
   again at the next key or press anywhere but on it — F8 also gives it the focus, and Space or Enter
-  on it is using it, so it works without a mouse; the row boxes stay, and checking rows or the
-  revealed box shows the bulk bar exactly as before (the owner's answer: «F8 يظهر تحديد الكل بس»).
-  The shared `DataTable` gained `selectAll` (default on) for it (`lib/select-all-reveal.ts`).
+  on it is using it, so it works without a mouse; the row boxes stay (the owner's answer: «F8 يظهر
+  تحديد الكل بس»), and a row's button on a checked row acts on every checked row (the bulk bar went
+  in #613). The shared `DataTable` gained `selectAll` (default on) for it
+  (`lib/select-all-reveal.ts`). The pending mail page has it too since 2026-11-02 — «في رسائل
+  الصيانة /atm/mail-tickets عايزك تزود موضوع الـ Select All من خلال F8» (on 2026-10-28 its box had
+  been removed outright); it checks the rows on screen only, never one a filter hides.
 - **Sort and reset.** Every text column sorts in the browser — the board is whole — through the
   shared `table-sort` (`?sort=`, remembered) and `sort-rows` (moved from Fleet to `shared/lib`, as
   `table-sort` was); the server's order breaks ties. On the two open boards the area decides first
@@ -909,6 +912,33 @@ answers in the same conversation):
   a selection or the export, and the Excel and PDF carry the rows in the same order. The done pages
   are not grouped. The shared `DataTable` gained `group` for it
   (`apps/web/src/modules/atm/lib/area-groups.ts`).
+- **The page's row beside the title.** «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد
+  بالمساحة (واعمل الحركة دي في كل الصفحات بتاعت ATM)» (2026-11-02). `PageHeader` gained a
+  `toolbar` slot: from `lg` the page's row sits on the title's line, between the title (and its
+  figures) and the actions, takes the width left and wraps inside itself; it never narrows below
+  24rem — a header with wide figures and actions (the settlement plan) wraps instead, and the row
+  takes a line of its own. Below `lg` it stacks under the title as before. Moved: the boards' form
+  and filters, the mail pages' filter rows, the done pages' range and files, the daily report's
+  date, control's day and tabs, the plan's bank, day and manage buttons, preparation's day, bank
+  and find field, the layouts' filters, data-edit's tabs. Left where they were: the machine list's
+  and the register's filter bars (they are the table's own filters, over server-paged data), the
+  map's bar, and the import pages' upload cards.
+- **A filter box under every column.** «في كل الصفحات بردو عايزك تعمل فلتر لكل الجدول فوق الجدول …
+  بس الفلتر اللى فوق الجدول يتفلتر مع الفلتر اللى فوق», and asked which kind: «فلتر لكل عمود»
+  (2026-11-02). A row of boxes under the table's head (`DataTable` `columnFilters`, or
+  `ColumnFilterBox` in a table built by hand), one per text column: a box keeps the rows whose cell
+  contains what was typed — matched as every search box matches (`fold`: hamza forms, ى/ي, ة/ه,
+  Arabic or Latin digits), several words in one box all in that cell — and the boxes add up with
+  each other and with the filters above (`shared/lib/column-filter.ts`). The PAGE filters, before
+  it counts, groups, selects, sorts or exports: on the boards the day buttons' counts and the area
+  lines follow the boxes, a selection never covers a row they hide, and a statement names them on
+  its filter line («الكود: «70»»). The page's reset clears them; an empty table says «لا توجد سطور
+  تطابق فلاتر الأعمدة». They live in the page's state — not the address, not remembered — so a
+  narrowing typed for a moment never hides rows on tomorrow's visit. On: both boards, both done
+  pages, both mail pages, the plan's lines, preparation, control's data tab, the layouts, the daily
+  report (its totals follow the boxes) and data-edit's bank tab. Not on the server-paged tables
+  (the machine list, the register, data-edit's machines and labels tabs): a browser box there would
+  search one page only — those keep their server filters.
 - **The «الوردية» box.** «يكون في Check Box بجانب عنوان المجال اسمة مثلاً شيفت. الطبيعي بتاعه انه
   يبقي متعلم ودا اللى هينفذ الحالي … بس لو شيلت من عليه الـ Check يغير القائد للى معمول عليهم Select
   فقط». Beside the leader label in both edit dialogs, ticked on open. `cascadeLeader` on the edit

@@ -6,7 +6,9 @@
 //   · the fields are the wedge's: left-to-right, no autocomplete, no spell check, in the scan order
 //     (bag 1's cassettes, bag 1's QR, bag 2's cassettes, bag 2's QR);
 //   · a 0-note cassette and an all-zero bag's QR are optional;
-//   · «المسلسل أو رقم الماكينة» finds a line by its serial, a voided serial, or its code.
+//   · «المسلسل أو رقم الماكينة» finds a line by its serial, a voided serial, or its code;
+//   · the day, the bank and the find sit in the header, on the title's line (2026-11-02), and the
+//     lines list has a filter box per column — which never narrows what the find searches.
 //
 // Every code, seal and count below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -25,7 +27,14 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
-import { PreparationPage, findLine, linesOfCode } from './pages/PreparationPage';
+import {
+  PREP_LINE_COLUMNS,
+  PreparationPage,
+  filterPrepLines,
+  findLine,
+  linesOfCode,
+  prepLineText,
+} from './pages/PreparationPage';
 import { preparationContextKey, preparationLinesKey } from './api/settlements-queries';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
@@ -115,6 +124,21 @@ const render = (lines: AtmPreparationLineDto[], open: string | null): string => 
       </QueryClientProvider>
     </Provider>,
   );
+};
+
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
 };
 
 const CANCELLED = line(1, {
@@ -265,5 +289,48 @@ describe('«المسلسل أو رقم الماكينة»', () => {
       second.lineId,
     ]);
     expect(linesOfCode([first], '')).toEqual([]);
+  });
+});
+
+describe('the toolbar on the title’s line (2026-11-02)', () => {
+  it('puts the day, the bank and the find inside the header — the find keeps its id', () => {
+    const html = render([OPEN], null);
+    const toolbar = toolbarOf(html);
+    expect(toolbar).toContain('data-prep-toolbar="true"');
+    expect(toolbar).toContain('id="prep-day"');
+    expect(toolbar).toContain('id="prep-bank"');
+    expect(toolbar).toContain('id="prep-find"');
+    expect(toolbar).toContain('for="prep-find"');
+    expect(html.indexOf('<h1')).toBeLessThan(html.indexOf('data-page-toolbar'));
+  });
+});
+
+describe('the lines’ filter boxes (2026-11-02, «فلتر لكل عمود»)', () => {
+  it('draws one box per column under the head', () => {
+    const html = render([CANCELLED, OPEN], null);
+    const head = html.slice(html.indexOf('data-prep-lines'), html.indexOf('</thead>'));
+    expect(head).toContain('data-column-filters="true"');
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual(
+      PREP_LINE_COLUMNS.map((c) => c.key),
+    );
+  });
+
+  it('matches what each cell shows, and keeps the lines every box matches', () => {
+    expect(prepLineText(OPEN, 'serial', t, 'ar')).toBe('٢٠٢');
+    expect(prepLineText(CANCELLED, 'status', t, 'ar')).toBe(t('atm.settlement.status.cancelled'));
+    expect(prepLineText(OPEN, 'route', t, 'ar')).toBeNull();
+    const lines = [CANCELLED, OPEN, line(3)];
+    const ids = (values: Record<string, string>): string[] =>
+      filterPrepLines(lines, values, t, 'ar').map((l) => l.lineId);
+    expect(ids({ serial: '202' })).toEqual([OPEN.lineId]);
+    expect(ids({ status: t('atm.settlement.status.cancelled') })).toEqual([CANCELLED.lineId]);
+    expect(ids({ code: 'brkn91', serial: '٢٠٣' })).toEqual([line(3).lineId]);
+    expect(ids({})).toEqual(lines.map((l) => l.lineId));
+  });
+
+  it('never narrows the find: a scan of a line the boxes hide still finds it', () => {
+    const lines = [CANCELLED, OPEN];
+    expect(filterPrepLines(lines, { serial: '201' }, t, 'ar')).toEqual([CANCELLED]);
+    expect(findLine(lines, '202')?.line.lineId).toBe(OPEN.lineId);
   });
 });

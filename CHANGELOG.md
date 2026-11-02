@@ -418,6 +418,24 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Every ATM page puts its row beside the title.** «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان
+  عشان نستفيد بالمساحة (واعمل الحركة دي في كل الصفحات بتاعت ATM)». The form, filters or date bar
+  that sat under the title now share the title's line on a computer, and the table gets that
+  height back: the boards, the mail pages, the done pages, the daily report, control, the plan,
+  preparation, the layouts and data-edit. When the line runs short the row wraps inside itself, or
+  takes a line of its own under the title; a phone stacks as before. The machine list's and the
+  register's filter bars stay above their tables.
+- **A filter box under every column of the ATM tables.** «فلتر لكل عمود». Under each column's name
+  a box keeps the rows whose cell contains what was typed (Arabic or Latin digits, any hamza form,
+  several words in any order); the boxes add up with each other and with the bank and area filters
+  above. On the boards the day buttons' counts and the area lines follow them, a checked row they
+  hide is never acted on, Excel and PDF name them under the title, and the reset clears them. On
+  the boards, the done pages, both mail pages, the plan, preparation, control, the layouts, the
+  daily report and data-edit's banks. The machine list and the register, read page by page from
+  the server, keep their own filters.
+- **«تحديد الكل» on F8 in رسائل الصيانة.** «في رسائل الصيانة /atm/mail-tickets عايزك تزود موضوع
+  الـ Select All من خلال F8». As on the boards: F8 shows the head's box until the next key or press
+  elsewhere, and it checks the mails on screen only.
 - **The replenishment and maintenance boards are grouped by area, areas in alphabetical order.**
   «عايز كمان إن التغذيات والأعطال يبقي معمولها Group by المناطق + Sorting بالمناطق بردو · يعني كل
   منطقة تظهر اعطالها وتغذياتها تحت بعض + بترتيب ابجدى للمناطق». On `/atm/replenishments` and

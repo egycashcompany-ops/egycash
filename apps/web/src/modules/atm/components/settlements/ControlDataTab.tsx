@@ -2,38 +2,147 @@
 // every enabled bank, with its bags' QRs and its cassette seals as Preparation captured them, and
 // the crew line it travels on. «النوع» and «المنطقة» are the seals sheet's TYPE and HUB. A
 // duplicate shows ⚠ with Preparation's own words (DS-15); expanding a row lists its seals.
+//
+// A ROW OF FILTER BOXES under the head, one per column (2026-11-02, «فلتر لكل عمود»): the PAGE
+// keeps what they hold and hands this tab the lines they keep (`filterControlLines`). Each box
+// matches the text its cell shows — the QR itself, «٢ من ٢» for the seals, the route's name.
 import { Fragment, useState } from 'react';
 import { type AtmControlDayDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
+import { filterRowsByColumns, type ColumnFilterValues } from '../../../../shared/lib/column-filter';
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
+import { ColumnFilterBox } from '../../../../shared/ui/ColumnFilterBox';
+import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { ChevronIcon } from '../../../../shared/ui/icons';
+import { formatTime12 } from '../../lib/settlement-dates';
 import {
   PREPARATION_STATUS_TONE,
   formatEgp,
   lineCode,
   preparationStatusKey,
+  runLabel,
 } from '../../lib/settlement-view';
 import { type BankLookup } from '../../lib/bank-catalog';
 import { DuplicateNote, duplicateTexts } from './DuplicateNote';
 import { RunChip } from './RunChip';
 
 type ControlLine = AtmControlDayDto['lines'][number];
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+/** The table's columns after the seals toggle, in order — the head and the filter row alike. */
+export const CONTROL_LINE_COLUMNS = [
+  { key: 'serial', header: 'atm.settlement.serial' },
+  { key: 'bank', header: 'atm.settlement.bank' },
+  { key: 'code', header: 'atm.settlement.machineCode' },
+  { key: 'name', header: 'atm.settlement.machineName' },
+  { key: 'type', header: 'atm.control.column.type' },
+  { key: 'area', header: 'atm.settlement.area' },
+  { key: 'run', header: 'atm.settlement.run' },
+  { key: 'total', header: 'atm.settlement.total', className: 'text-end' },
+  { key: 'qr1', header: 'atm.control.column.qr1' },
+  { key: 'qr2', header: 'atm.control.column.qr2' },
+  { key: 'seals', header: 'atm.control.column.seals' },
+  { key: 'preparation', header: 'atm.control.column.preparation' },
+  { key: 'route', header: 'atm.control.column.route' },
+] as const;
+
+/** What a line's cells are written with: the reader's words, the bank names, the day's routes. */
+export interface ControlTextContext {
+  t: Translate;
+  locale: Locale;
+  banks: BankLookup;
+  /** The day's live routes by id — a line on a deleted one reads as unassigned. */
+  routeName: ReadonlyMap<string, string>;
+}
+
+/** A bag's QR, or «—» when the line has no such bag or it is not captured yet. */
+const qrOf = (line: ControlLine, bag: 1 | 2): string =>
+  line.bags.find((b) => b.bag === bag)?.qr ?? '—';
+
+/** «٢ من ٢» — the seals captured over the line's cassettes. */
+const sealsText = (line: ControlLine, t: Translate, locale: Locale): string =>
+  t('atm.control.sealsProgress', {
+    n: formatNumber(line.seals.filter((s) => s.value !== null).length, locale),
+    m: formatNumber(line.seals.length, locale),
+  });
+
+/**
+ * Pure: what a line's cell in that column shows, as text — what its filter box matches. Null for a
+ * column the table does not have.
+ */
+export const controlLineText = (
+  line: ControlLine,
+  key: string,
+  { t, locale, banks, routeName }: ControlTextContext,
+): string | null => {
+  switch (key) {
+    case 'serial':
+      return line.serial === null ? '—' : formatNumber(line.serial, locale);
+    case 'bank':
+      return banks.name(line.bankCode, locale);
+    case 'code':
+      return lineCode(line);
+    case 'name':
+      return line.kind === 'spare'
+        ? `${t('atm.paper.spareSet')} ${line.typeLabel ?? ''}`.trim()
+        : (line.machineName ?? '—');
+    case 'type':
+      return line.typeLabel ?? '—';
+    case 'area':
+      return line.hubLabel ?? line.area ?? '—';
+    case 'run':
+      return `${runLabel(line.run, t)} ${formatTime12(line.scheduleTime, locale)}`.trim();
+    case 'total':
+      return formatEgp(line.egpTotalMinor, locale);
+    case 'qr1':
+      return qrOf(line, 1);
+    case 'qr2':
+      return line.bags.some((b) => b.bag === 2) ? qrOf(line, 2) : '—';
+    case 'seals':
+      return sealsText(line, t, locale);
+    case 'preparation':
+      return line.lineStatus === 'cancelled'
+        ? t('atm.settlement.status.cancelled')
+        : t(preparationStatusKey(line.preparationStatus));
+    case 'route':
+      // A route that is not live (deleted) holds nothing: the line is unassigned.
+      return (
+        (line.routeId === null ? undefined : routeName.get(line.routeId)) ??
+        t('atm.control.unassignedOption')
+      );
+    default:
+      return null;
+  }
+};
+
+/** The day's live routes by id, for the route column. */
+export const routeNames = (day: Pick<AtmControlDayDto, 'routes'>): Map<string, string> =>
+  new Map(day.routes.map((r) => [r.id, r.name]));
+
+/** Pure: the day's lines every box keeps, in the server's order. */
+export const filterControlLines = (
+  lines: readonly ControlLine[],
+  values: ColumnFilterValues,
+  context: ControlTextContext,
+): ControlLine[] =>
+  filterRowsByColumns(lines, values, (line, key) => controlLineText(line, key, context));
 
 const TH = 'px-3 py-2.5 text-start text-xs font-semibold text-slate-600 dark:text-slate-300';
+/** The filter row's cells: the head's side gutter, so each box sits under its own header. */
+const FILTER_TH = 'px-3 pb-2 font-normal';
 const TD = 'px-3 py-2.5 align-middle text-sm text-slate-700 dark:text-slate-200';
 
 /** A bag's QR cell: the value, or «—», with ⚠ and the warning's words when it is a duplicate. */
 const QrCell = ({ line, bag }: { line: ControlLine; bag: 1 | 2 }): JSX.Element => {
   const t = useT();
-  const qr = line.bags.find((b) => b.bag === bag)?.qr ?? null;
   const duplicate = line.duplicates.find((d) => d.field === 'bag' && d.bag === bag);
   const words = duplicate === undefined ? [] : duplicateTexts(undefined, duplicate, t);
   return (
     <span className="inline-flex items-center gap-1">
       <span dir="ltr" className="font-mono text-xs">
-        {qr ?? '—'}
+        {qrOf(line, bag)}
       </span>
       {words.length > 0 && (
         <span
@@ -50,17 +159,24 @@ const QrCell = ({ line, bag }: { line: ControlLine; bag: 1 | 2 }): JSX.Element =
 
 export const ControlDataTab = ({
   day,
+  lines,
   locale,
   banks,
+  columnFilters,
 }: {
   day: AtmControlDayDto;
+  /** The day's lines the filter boxes keep (`filterControlLines`) — the page filters. */
+  lines: readonly ControlLine[];
   locale: Locale;
   /** The catalog's bank names (DEC-35): a line of a bank added since the workbook is named too. */
   banks: BankLookup;
+  columnFilters: ColumnFilters;
 }): JSX.Element => {
   const t = useT();
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
-  const routeName = new Map(day.routes.map((r) => [r.id, r.name]));
+  const routeName = routeNames(day);
+  const text = (line: ControlLine, key: string): string =>
+    controlLineText(line, key, { t, locale, banks, routeName }) ?? '';
   const toggle = (id: string): void =>
     setOpen((current) => {
       const next = new Set(current);
@@ -80,23 +196,40 @@ export const ControlDataTab = ({
             <th className={cn(TH, 'w-8')}>
               <span className="sr-only">{t('atm.control.column.seals')}</span>
             </th>
-            <th className={TH}>{t('atm.settlement.serial')}</th>
-            <th className={TH}>{t('atm.settlement.bank')}</th>
-            <th className={TH}>{t('atm.settlement.machineCode')}</th>
-            <th className={TH}>{t('atm.settlement.machineName')}</th>
-            <th className={TH}>{t('atm.control.column.type')}</th>
-            <th className={TH}>{t('atm.settlement.area')}</th>
-            <th className={TH}>{t('atm.settlement.run')}</th>
-            <th className={cn(TH, 'text-end')}>{t('atm.settlement.total')}</th>
-            <th className={TH}>{t('atm.control.column.qr1')}</th>
-            <th className={TH}>{t('atm.control.column.qr2')}</th>
-            <th className={TH}>{t('atm.control.column.seals')}</th>
-            <th className={TH}>{t('atm.control.column.preparation')}</th>
-            <th className={TH}>{t('atm.control.column.route')}</th>
+            {CONTROL_LINE_COLUMNS.map((column) => (
+              <th key={column.key} className={cn(TH, 'className' in column && column.className)}>
+                {t(column.header)}
+              </th>
+            ))}
+          </tr>
+          {/* The filter row sticks with the head: the seals toggle's column takes no box. */}
+          <tr data-column-filters="true">
+            <th className={FILTER_TH} />
+            {CONTROL_LINE_COLUMNS.map((column) => (
+              <th key={column.key} className={FILTER_TH}>
+                <ColumnFilterBox
+                  value={columnFilters.values[column.key] ?? ''}
+                  onValueChange={(typed) => columnFilters.set(column.key, typed)}
+                  label={t('atm.common.filterColumn', { column: t(column.header) })}
+                  columnKey={column.key}
+                  placeholder={t('atm.common.filterPlaceholder')}
+                />
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {day.lines.map((line) => {
+          {lines.length === 0 && columnFilters.active && (
+            <tr data-control-lines-empty="true">
+              <td
+                colSpan={CONTROL_LINE_COLUMNS.length + 1}
+                className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400"
+              >
+                {t('atm.common.emptyColumnFiltered')}
+              </td>
+            </tr>
+          )}
+          {lines.map((line) => {
             const sealsCaptured = line.seals.filter((s) => s.value !== null).length;
             const complete = line.seals.length > 0 && sealsCaptured === line.seals.length;
             const sealDuplicate = line.duplicates.some((d) => d.field === 'seal');
@@ -124,28 +257,20 @@ export const ControlDataTab = ({
                       />
                     </button>
                   </td>
-                  <td className={cn(TD, 'tabular-nums')}>
-                    {line.serial === null ? '—' : formatNumber(line.serial, locale)}
-                  </td>
-                  <td className={TD}>{banks.name(line.bankCode, locale)}</td>
+                  <td className={cn(TD, 'tabular-nums')}>{text(line, 'serial')}</td>
+                  <td className={TD}>{text(line, 'bank')}</td>
                   <td className={TD}>
                     <span dir="ltr" className="font-medium">
                       {lineCode(line)}
                     </span>
                   </td>
-                  <td className={TD}>
-                    {line.kind === 'spare'
-                      ? `${t('atm.paper.spareSet')} ${line.typeLabel ?? ''}`.trim()
-                      : (line.machineName ?? '—')}
-                  </td>
-                  <td className={TD}>{line.typeLabel ?? '—'}</td>
-                  <td className={TD}>{line.hubLabel ?? line.area ?? '—'}</td>
+                  <td className={TD}>{text(line, 'name')}</td>
+                  <td className={TD}>{text(line, 'type')}</td>
+                  <td className={TD}>{text(line, 'area')}</td>
                   <td className={TD}>
                     <RunChip run={line.run} time={line.scheduleTime} locale={locale} />
                   </td>
-                  <td className={cn(TD, 'text-end tabular-nums')}>
-                    {formatEgp(line.egpTotalMinor, locale)}
-                  </td>
+                  <td className={cn(TD, 'text-end tabular-nums')}>{text(line, 'total')}</td>
                   <td className={TD}>
                     <QrCell line={line} bag={1} />
                   </td>
@@ -163,10 +288,7 @@ export const ControlDataTab = ({
                             : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
                       )}
                     >
-                      {t('atm.control.sealsProgress', {
-                        n: formatNumber(sealsCaptured, locale),
-                        m: formatNumber(line.seals.length, locale),
-                      })}
+                      {text(line, 'seals')}
                       {complete && ' ✓'}
                     </span>
                     {sealDuplicate && (
@@ -183,16 +305,10 @@ export const ControlDataTab = ({
                       size="sm"
                       tone={cancelled ? 'neutral' : PREPARATION_STATUS_TONE[line.preparationStatus]}
                     >
-                      {cancelled
-                        ? t('atm.settlement.status.cancelled')
-                        : t(preparationStatusKey(line.preparationStatus))}
+                      {text(line, 'preparation')}
                     </Badge>
                   </td>
-                  <td className={TD}>
-                    {/* A route that is not live (deleted) holds nothing: the line is unassigned. */}
-                    {(line.routeId === null ? undefined : routeName.get(line.routeId)) ??
-                      t('atm.control.unassignedOption')}
-                  </td>
+                  <td className={TD}>{text(line, 'route')}</td>
                 </tr>
                 {expanded && (
                   <tr

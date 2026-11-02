@@ -1,6 +1,7 @@
 // /atm/settlements/layouts «فئات الكاسيتات» and its import page, rendered from a pre-filled query
 // cache (docs/12-planning/atm-settlements-phase1.md §9.5), with the pure pieces behind them: the
-// history line's diff, an apply's estimate, a slot's kind change, the duplicate sentences.
+// history line's diff, an apply's estimate, a slot's kind change, the duplicate sentences — and the
+// filters on the title's line with a filter box per column under the table's head (2026-11-02).
 //
 // Every code, name and count below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -23,7 +24,8 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
-import { CassetteLayoutsPage } from './pages/CassetteLayoutsPage';
+import { CassetteLayoutsPage, layoutRowText } from './pages/CassetteLayoutsPage';
+import { filterRowsByColumns } from '../../shared/lib/column-filter';
 import { LayoutImportPage, applyEstimate } from './pages/LayoutImportPage';
 import { layoutContentChanged, versionDiff } from './components/settlements/LayoutEditor';
 import { withKind } from './components/settlements/SlotEditor';
@@ -180,6 +182,21 @@ const layouts = (
     qc.setQueryData(cassetteLayoutKey(DETAIL.machineId), DETAIL);
   });
 
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
+
 describe('the layouts page', () => {
   it('says to choose a branch when none resolves', () => {
     const html = layouts(context('layouts', { branch: null, blocked: 'chooseBranch' }), LIST);
@@ -231,6 +248,56 @@ describe('the layouts page', () => {
       t('atm.layouts.editor.historyDiff', { slot: 3, before: '100', after: '50' }),
     );
     expect(html).toContain(t('atm.layouts.editor.save'));
+  });
+});
+
+describe('the layouts page’s toolbar and filter boxes (2026-11-02)', () => {
+  const html = layouts(context('layouts'), LIST);
+  const textContext = { t, locale: 'ar' as const, loadName: new Map<string, string>() };
+
+  it('puts the bank, the status and the search inside the header; the last import stays below', () => {
+    const toolbar = toolbarOf(html);
+    expect(toolbar).toContain('data-layouts-filters="true"');
+    expect(toolbar).toContain('id="layouts-bank"');
+    expect(toolbar).toContain('id="layouts-status"');
+    expect(toolbar).toContain(`placeholder="${t('atm.layouts.search')}"`);
+    expect(toolbar).not.toContain('data-last-import');
+    expect(html.indexOf('data-page-toolbar')).toBeLessThan(html.indexOf('data-last-import'));
+  });
+
+  it('draws a box under every column of the table', () => {
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    expect(head).toContain('data-column-filters="true"');
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      'code',
+      'name',
+      'area',
+      'type',
+      'cassettes',
+      'load',
+      'changed',
+    ]);
+  });
+
+  it('matches what each cell shows: the chips, the flags, the load', () => {
+    expect(layoutRowText(row(1), 'cassettes', textContext)).toBe('200 100 50 ↻20');
+    const flagged = row(2, { layout: null, flags: ['noLayout'] });
+    expect(layoutRowText(flagged, 'cassettes', textContext)).toBe(t('atm.layouts.flag.noLayout'));
+    expect(layoutRowText(row(1), 'load', textContext)).toBe(t('atm.plan.panel.standardDefault'));
+    expect(layoutRowText(flagged, 'load', textContext)).toBe('—');
+    expect(layoutRowText(row(1), 'nothing', textContext)).toBeNull();
+  });
+
+  it('keeps the rows every box matches, on top of what the status and the search kept', () => {
+    const rows = [row(1), row(2, { layout: null, flags: ['noLayout'] }), row(3)];
+    const codes = (values: Record<string, string>): string[] =>
+      filterRowsByColumns(rows, values, (r, key) => layoutRowText(r, key, textContext)).map(
+        (r) => r.machineCode,
+      );
+    expect(codes({ cassettes: '↻20' })).toEqual(['BRKN9401', 'BRKN9403']);
+    expect(codes({ cassettes: t('atm.layouts.flag.noLayout') })).toEqual(['BRKN9402']);
+    expect(codes({ code: '9403', type: 'syn' })).toEqual(['BRKN9403']);
+    expect(codes({ changed: t('atm.layouts.source.import') })).toEqual([]);
   });
 });
 

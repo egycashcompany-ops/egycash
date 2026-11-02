@@ -100,9 +100,11 @@ export const PageHeader = ({
       // The title, the page's row and the actions on ONE line from `lg`, by `order`: below `lg`
       // the title and the actions share the first line and the row takes the next one whole
       // (`basis-full`); from `lg` the row moves between them and grows into the width left
-      // (`basis-0 flex-1`), shrinking to wrap its own content (`min-w-0`) rather than pushing the
-      // actions off the line.
-      <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap lg:gap-4">
+      // (`basis-0 flex-1`), wrapping its own content as it narrows — but never below 24rem: a
+      // header whose title, figures and actions leave less than that (the settlement plan's four
+      // prints) wraps instead, and the row takes a line of its own under the title rather than
+      // being squeezed to nothing over the actions.
+      <div className="flex flex-wrap items-center gap-3 lg:gap-4">
         <div className="order-1 flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 lg:shrink-0">
           <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
             {title}
@@ -115,7 +117,7 @@ export const PageHeader = ({
           </div>
         )}
         <div
-          className="order-3 min-w-0 basis-full lg:order-2 lg:flex-1 lg:basis-0"
+          className="order-3 min-w-0 basis-full lg:order-2 lg:min-w-[24rem] lg:flex-1 lg:basis-0"
           data-page-toolbar="true"
         >
           {toolbar}

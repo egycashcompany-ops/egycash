@@ -11,7 +11,9 @@
 //     the filters and a visit restores them, but never the range, which opens on today as before;
 //   · a DECIDED mail carries «استرجاع»: it goes back to pending, and an accepted one's maintenance
 //     leaves /atm/maintenance with it while that maintenance is still open — a closed one is
-//     finished work, and the server refuses the restore (`meta.refused`), which a toast names.
+//     finished work, and the server refuses the restore (`meta.refused`), which a toast names;
+//   · (2026-11-02) that row sits on the title's line («عايز تطلع الصف بتاع الـ Form يبقي بجانب
+//     العنوان»), and a box under every column narrows the rows further («فلتر لكل عمود»).
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type AtmMailTicketDto, type AtmMailTicketStatus } from '@ecms/contracts';
@@ -31,6 +33,8 @@ import { UndoIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { filterRowsByColumns } from '../../../shared/lib/column-filter';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { useAtmMailLog, useRestoreAtmMailTickets } from '../api/atm-queries';
 import { cairoToday, doneRange, joinCodes } from '../lib/operation-view';
 import { withBoardFilter } from '../lib/board-filters';
@@ -40,6 +44,7 @@ import {
   filterMailTickets,
   isMailFiltered,
   isRestorable,
+  mailCellText,
   mailFilterOptions,
   readMailFilters,
   readMailStatus,
@@ -86,7 +91,18 @@ export const MailLogPage = (): JSX.Element => {
   const read = useMemo(() => list.data?.items ?? [], [list.data]);
   const filters = useMemo(() => readMailFilters(sp), [sp]);
   const status = readMailStatus(sp);
-  const rows = useMemo(() => filterMailTickets(read, filters, status), [read, filters, status]);
+  const filtered = useMemo(() => filterMailTickets(read, filters, status), [read, filters, status]);
+  // The boxes under the head narrow what the filters above kept, on what each cell shows.
+  const columnFilters = useColumnFilters();
+  const rows = useMemo(
+    () =>
+      filterRowsByColumns(
+        filtered,
+        columnFilters.values,
+        mailCellText(t, locale, { duplicateBadge: false }),
+      ),
+    [filtered, columnFilters.values, t, locale],
+  );
   const options = useMemo(() => mailFilterOptions(read, filters), [read, filters]);
 
   const restore = useRestoreAtmMailTickets();
@@ -120,18 +136,30 @@ export const MailLogPage = (): JSX.Element => {
   };
 
   const columns: Column<AtmMailTicketDto>[] = [
-    { key: 'bank', header: t('atm.common.bank'), render: (row) => row.bankName },
-    { key: 'code', header: t('atm.common.machineId'), render: (row) => row.machineCode },
-    { key: 'name', header: t('atm.common.machineName'), render: (row) => row.machineName },
-    { key: 'issue', header: t('atm.mail.issue'), render: (row) => row.issueText },
-    { key: 'area', header: t('atm.common.area'), render: (row) => row.area },
+    { key: 'bank', header: t('atm.common.bank'), render: (row) => row.bankName, filterable: true },
+    {
+      key: 'code',
+      header: t('atm.common.machineId'),
+      render: (row) => row.machineCode,
+      filterable: true,
+    },
+    {
+      key: 'name',
+      header: t('atm.common.machineName'),
+      render: (row) => row.machineName,
+      filterable: true,
+    },
+    { key: 'issue', header: t('atm.mail.issue'), render: (row) => row.issueText, filterable: true },
+    { key: 'area', header: t('atm.common.area'), render: (row) => row.area, filterable: true },
     {
       key: 'received',
+      filterable: true,
       header: t('atm.mail.receivedAt'),
       render: (row) => formatDateTime(row.receivedAt, locale),
     },
     {
       key: 'status',
+      filterable: true,
       header: t('atm.common.status'),
       render: (row) => (
         <StatusBadge tone={STATUS_TONE[row.status]} label={t(`atm.mail.status.${row.status}`)} />
@@ -139,15 +167,22 @@ export const MailLogPage = (): JSX.Element => {
     },
     {
       key: 'actionBy',
+      filterable: true,
       header: t('atm.mail.actionBy'),
       render: (row) => row.actionByName ?? '—',
     },
     {
       key: 'actionAt',
+      filterable: true,
       header: t('atm.mail.actionAt'),
       render: (row) => (row.actionAt === null ? '—' : formatDateTime(row.actionAt, locale)),
     },
-    { key: 'sender', header: t('atm.mail.sender'), render: (row) => row.senderEmail },
+    {
+      key: 'sender',
+      header: t('atm.mail.sender'),
+      render: (row) => row.senderEmail,
+      filterable: true,
+    },
     {
       key: 'actions',
       header: '',
@@ -180,53 +215,60 @@ export const MailLogPage = (): JSX.Element => {
           range and the filters keep their place, and only the table's rows scroll, under a head
           that stays. */}
       <div className={BOARD_FRAME}>
-        <PageHeader title={t('atm.mail.logTitle')} />
-
-        {/* One row, as on the boards: the range and the status at its start, the bank, area and
-            search narrowing at the far end — the LEFT in Arabic, mirrored in English. */}
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-          <DoneRangeBar from={from} to={to} onChange={setRange} />
-          <Field label={t('atm.common.status')} htmlFor="mail-log-status">
-            <Select
-              id="mail-log-status"
-              value={status}
-              onChange={(e) => setSp(withMailParam(sp, 'status', e.target.value))}
-            >
-              {MAIL_STATUS_FILTERS.map((option) => (
-                <option key={option} value={option}>
-                  {t(option === 'all' ? 'atm.mail.allStatuses' : `atm.mail.status.${option}`)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="ms-auto flex flex-wrap items-end gap-2">
-            <MultiSelect
-              label={t('atm.common.bank')}
-              options={options.bankOptions}
-              value={filters.banks}
-              // A bank change drops the areas the new banks do not hold, as on the boards.
-              onChange={(next) => setSp(withMailBanks(sp, next, list.data?.items))}
-            />
-            <MultiSelect
-              label={t('atm.common.area')}
-              options={options.areaOptions}
-              value={filters.areas}
-              onChange={(next) => setSp(withBoardFilter(sp, 'areas', next))}
-            />
-            <SearchInput
-              className="w-56"
-              value={filters.q}
-              placeholder={t('atm.mail.search')}
-              // `replace`: a pause in typing is not a step the Back button should walk through.
-              onChange={(text) => setSp(withMailParam(sp, 'q', text), { replace: true })}
-            />
-            {/* Clears the status too — every narrowing, but never the range. */}
-            <BoardResetButton
-              active={isMailFiltered(filters, status)}
-              onReset={() => setSp(withoutMailFilters(sp), { replace: true })}
-            />
-          </div>
-        </div>
+        {/* One row, as on the boards, on the title's line (2026-11-02): the range and the status at
+            its start, the bank, area and search narrowing at the far end — the LEFT in Arabic,
+            mirrored in English. */}
+        <PageHeader
+          title={t('atm.mail.logTitle')}
+          toolbar={
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+              <DoneRangeBar from={from} to={to} onChange={setRange} />
+              <Field label={t('atm.common.status')} htmlFor="mail-log-status">
+                <Select
+                  id="mail-log-status"
+                  value={status}
+                  onChange={(e) => setSp(withMailParam(sp, 'status', e.target.value))}
+                >
+                  {MAIL_STATUS_FILTERS.map((option) => (
+                    <option key={option} value={option}>
+                      {t(option === 'all' ? 'atm.mail.allStatuses' : `atm.mail.status.${option}`)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="ms-auto flex flex-wrap items-end gap-2">
+                <MultiSelect
+                  label={t('atm.common.bank')}
+                  options={options.bankOptions}
+                  value={filters.banks}
+                  // A bank change drops the areas the new banks do not hold, as on the boards.
+                  onChange={(next) => setSp(withMailBanks(sp, next, list.data?.items))}
+                />
+                <MultiSelect
+                  label={t('atm.common.area')}
+                  options={options.areaOptions}
+                  value={filters.areas}
+                  onChange={(next) => setSp(withBoardFilter(sp, 'areas', next))}
+                />
+                <SearchInput
+                  className="w-56"
+                  value={filters.q}
+                  placeholder={t('atm.mail.search')}
+                  // `replace`: a pause in typing is not a step the Back button should walk through.
+                  onChange={(text) => setSp(withMailParam(sp, 'q', text), { replace: true })}
+                />
+                {/* Clears the status and the column boxes too — every narrowing, but never the range. */}
+                <BoardResetButton
+                  active={isMailFiltered(filters, status) || columnFilters.active}
+                  onReset={() => {
+                    setSp(withoutMailFilters(sp), { replace: true });
+                    columnFilters.clear();
+                  }}
+                />
+              </div>
+            </div>
+          }
+        />
 
         {/* A range too long to read whole says so, as the done pages do. */}
         <DoneRangeCutShort meta={list.data?.meta} />
@@ -239,7 +281,19 @@ export const MailLogPage = (): JSX.Element => {
             loading={list.isLoading}
             error={list.error}
             onRetry={() => void list.refetch()}
-            empty={read.length === 0 ? t('atm.mail.logEmpty') : t('atm.mail.emptyFiltered')}
+            empty={
+              read.length === 0
+                ? t('atm.mail.logEmpty')
+                : columnFilters.active && filtered.length > 0
+                  ? t('atm.common.emptyColumnFiltered')
+                  : t('atm.mail.emptyFiltered')
+            }
+            columnFilters={{
+              values: columnFilters.values,
+              onChange: columnFilters.set,
+              label: (header) => t('atm.common.filterColumn', { column: header }),
+              placeholder: t('atm.common.filterPlaceholder'),
+            }}
             // The outcome's paint, reaching the pinned button's cell too (`MAIL_ROW_PAINT`).
             rowClassName={(row) => ROW_CLASS[row.status]}
             stickyHead

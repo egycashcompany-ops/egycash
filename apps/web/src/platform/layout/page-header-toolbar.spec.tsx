@@ -36,10 +36,20 @@ describe('a page header with a toolbar', () => {
     const line = (/<div class="([^"]*)"><div class="order-1/.exec(withToolbar)?.[1] ?? '').split(
       ' ',
     );
-    expect(line).toEqual(expect.arrayContaining(['flex', 'flex-wrap', 'lg:flex-nowrap']));
+    expect(line).toEqual(expect.arrayContaining(['flex', 'flex-wrap']));
+    // The line may wrap at every width: a row that cannot keep 24rem beside a wide title and
+    // wide actions takes a line of its own rather than being squeezed over them.
+    expect(line).not.toContain('lg:flex-nowrap');
     const toolbar = classOf(withToolbar, '<form data-band');
     expect(toolbar).toEqual(
-      expect.arrayContaining(['min-w-0', 'basis-full', 'lg:order-2', 'lg:flex-1', 'lg:basis-0']),
+      expect.arrayContaining([
+        'min-w-0',
+        'basis-full',
+        'lg:order-2',
+        'lg:flex-1',
+        'lg:basis-0',
+        'lg:min-w-[24rem]',
+      ]),
     );
     const title = classOf(withToolbar, '<h1 ');
     expect(title).toEqual(expect.arrayContaining(['order-1', 'lg:shrink-0']));

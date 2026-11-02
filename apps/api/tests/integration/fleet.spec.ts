@@ -4003,12 +4003,6 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     await mkDriverProfile(employeeId);
     return employeeId;
   };
-  /**
-   * A plan day `n` days after the real clock's UTC day. Planning refuses a past date (PAST_DATE in
-   * `roster.service.ts`), so a hard-coded day turned into a 400 the morning it passed.
-   */
-  const planDay = (n: number): string =>
-    new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const savePlan = (date: string, rows: unknown[]) =>
     request(app)
       .post('/api/v1/fleet/roster')
@@ -4019,6 +4013,21 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       .get('/api/v1/fleet/roster')
       .query({ date })
       .set('Authorization', `Bearer ${adminToken}`);
+
+  /**
+   * A day this far ahead of TODAY.
+   *
+   * Relative, never a literal: the plan endpoint refuses a date in the past (`PAST_DATE`), so a
+   * hardcoded future date is a test with an expiry — `operations.spec.ts` had three and they took
+   * the suite down when they went stale, and this block's own literals did the same on
+   * 2026-11-02, when «2026-11-01» became yesterday. Every roster day this block plans or reads is
+   * one of these, each test on offsets of its own, so no two tests share a day.
+   */
+  const futureDay = (days: number): string => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
   const changedFor = (vehicleId: string): number =>
     seenEvents.filter(
       (e) =>
@@ -4031,7 +4040,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     // was `fleet_driver_profiles`; the registry is the ORG CHART, and a driver nobody has enrolled
     // in Fleet yet is still a driver the dispatcher can put on a car today.
     const unenrolled = await mkEmployee({ fullNameAr: 'سائق بلا ملف مركبات' });
-    const date = '2026-11-21';
+    const date = futureDay(81);
 
     const board = data<BoardDto & { availableDrivers: { employeeId: string }[] }>(
       await getBoard(date),
@@ -4058,7 +4067,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     //
     // A second implementation of a rule is a second place for it to be wrong, so this pins the two
     // together: same drivers, same day, same verdict and same reason, whichever way it is asked.
-    const date = '2026-11-25';
+    const date = futureDay(85);
     const day = new Date(`${date}T00:00:00.000Z`);
 
     const free = await mkEmployee({ fullNameAr: 'سائق متاح' });
@@ -4125,7 +4134,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
         availableDrivers: { employeeId: string }[];
         unavailableDrivers: { employeeId: string }[];
       }
-    >(await getBoard('2026-11-22'));
+    >(await getBoard(futureDay(82)));
     const pooled = [
       ...board.availableDrivers.map((d) => d.employeeId),
       ...board.unavailableDrivers.map((d) => d.employeeId),
@@ -4140,7 +4149,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     // check conditional would leave the whole suite green while the roster accepted a clerk.
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const clerk = await mkOfficeEmployee('موظف مكتب لا يُخطط');
-    const refused = await savePlan('2026-11-23', [
+    const refused = await savePlan(futureDay(83), [
       { vehicleId: v.id, driver1EmployeeId: clerk, driver2EmployeeId: null },
     ]);
     expect(refused.status, 'an office seat cannot be put on a car').toBe(409);
@@ -4151,7 +4160,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
     const missionTypeId = await missionTypeIdSeeded();
-    const date = planDay(1);
+    const date = futureDay(61);
 
     const save = await savePlan(date, [
       { vehicleId: v.id, missionTypeId, driver1EmployeeId: driver },
@@ -4188,7 +4197,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const vA = data<FleetVehicleDto>(await createVehicle(adminToken));
     const vB = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const date = planDay(2);
+    const date = futureDay(62);
 
     expect((await savePlan(date, [{ vehicleId: vA.id, driver1EmployeeId: driver }])).status).toBe(
       200,
@@ -4210,7 +4219,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('FR-5 — an in-workshop vehicle is flagged and unassignable; clearing it stays allowed', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const date = planDay(3);
+    const date = futureDay(63);
 
     const workshop = await request(app)
       .post('/api/v1/fleet/catalog-items')
@@ -4248,7 +4257,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('FR-6 — the availability seam is the only authority, and the pool names the reason', async () => {
     const driver = await mkDriver();
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const date = planDay(4);
+    const date = futureDay(64);
 
     await request(app)
       .post('/api/v1/fleet/availability')
@@ -4268,11 +4277,11 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('schema guards — the same person in both slots, or a vehicle twice, never reach the service', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const twoSlots = await savePlan(planDay(5), [
+    const twoSlots = await savePlan(futureDay(65), [
       { vehicleId: v.id, driver1EmployeeId: driver, driver2EmployeeId: driver },
     ]);
     expect(twoSlots.status).toBe(400);
-    const twice = await savePlan(planDay(5), [{ vehicleId: v.id }, { vehicleId: v.id }]);
+    const twice = await savePlan(futureDay(65), [{ vehicleId: v.id }, { vehicleId: v.id }]);
     expect(twice.status).toBe(400);
   });
 
@@ -4287,7 +4296,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('SPELLING — an UPPERCASE vehicleId edits the existing row, it does not add a second', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [d1, d2] = [await mkDriver(), await mkDriver()];
-    const date = '2026-11-20';
+    const date = futureDay(80);
     expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: d1 }])).status).toBe(200);
 
     // The same car, spelled the other way.
@@ -4305,7 +4314,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('SPELLING — FR-5 still refuses an in-workshop vehicle written in UPPERCASE', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const date = '2026-11-21';
+    const date = futureDay(81);
     const workshop = await request(app)
       .post('/api/v1/fleet/catalog-items')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -4344,7 +4353,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       data<FleetVehicleDto>(await createVehicle(adminToken)),
     ];
     const driver = await mkDriver();
-    const date = '2026-11-22';
+    const date = futureDay(82);
     expect((await savePlan(date, [{ vehicleId: a.id, driver1EmployeeId: driver }])).status).toBe(
       200,
     );
@@ -4367,7 +4376,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       data<FleetVehicleDto>(await createVehicle(adminToken)),
     ];
     const driver = await mkDriver();
-    const date = '2026-11-23';
+    const date = futureDay(83);
     expect((await savePlan(date, [{ vehicleId: a.id, driver1EmployeeId: driver }])).status).toBe(
       200,
     );
@@ -4389,7 +4398,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('SPELLING — ordinary lowercase planning is completely unchanged', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const date = '2026-11-24';
+    const date = futureDay(84);
     const first = await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: driver }]);
     expect(first.status).toBe(200);
     expect(data<BoardDto>(first).changedCount).toBe(1);
@@ -4407,7 +4416,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('SPELLING — the fix writes nothing outside fleet_duty_assignments', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const date = '2026-11-25';
+    const date = futureDay(85);
     const counts = async () => ({
       drivers: await mongoose.connection.collection('fleet_driver_profiles').countDocuments({}),
       vehicles: await mongoose.connection.collection('fleet_vehicles').countDocuments({}),
@@ -4437,7 +4446,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     // service with an uppercase id. Another service could. This calls `plan` directly.
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [d1, d2] = [await mkDriver(), await mkDriver()];
-    const date = new Date('2026-11-26T00:00:00.000Z');
+    const date = new Date(`${futureDay(86)}T00:00:00.000Z`);
     // The selector the HTTP path hands an admin, spelled out rather than cast: `scopeSelector`
     // builds this from the request context, and an `organization` grant makes `scopeFilter`
     // return `{}` — no narrowing — which is the condition this test means to reproduce.
@@ -4480,7 +4489,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       (
         await request(app)
           .get('/api/v1/fleet/roster')
-          .query({ date: '2026-11-06' })
+          .query({ date: futureDay(66) })
           .set('Authorization', `Bearer ${branchAToken}`)
       ).status,
     ).toBe(403);
@@ -4489,7 +4498,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
         await request(app)
           .post('/api/v1/fleet/roster')
           .set('Authorization', `Bearer ${branchAToken}`)
-          .send({ date: '2026-11-06', rows: [{ vehicleId: '64b1f0cccccccccccccccc99' }] })
+          .send({ date: futureDay(66), rows: [{ vehicleId: '64b1f0cccccccccccccccc99' }] })
       ).status,
     ).toBe(403);
   });
@@ -4574,12 +4583,12 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       ).status,
     ).toBe(200);
 
-    const row = dayRow(data<BoardDto>(await getBoard('2026-12-01')), v.id);
+    const row = dayRow(data<BoardDto>(await getBoard(futureDay(91))), v.id);
     expect(row?.driver1EmployeeId, 'the standing crew is where the day starts').toBe(a);
     expect(row?.driver2EmployeeId).toBe(b);
     expect(row?.missionTypeId, 'and its mission comes with it').toBe(missionTypeId);
     // …and the pool says so, rather than offering somebody already visibly seated.
-    const board = data<BoardDto>(await getBoard('2026-12-01'));
+    const board = data<BoardDto>(await getBoard(futureDay(91)));
     expect(board.availableDrivers.find((d) => d.employeeId === a)?.assignedVehicleId).toBe(v.id);
   });
 
@@ -4590,7 +4599,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [a, b] = [await mkDriver(), await mkDriver()];
     await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a, driver2EmployeeId: b }]);
-    const date = '2026-12-02';
+    const date = futureDay(92);
 
     // Plan the day with somebody, then clear it — that leaves a document with null drivers.
     expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(200);
@@ -4611,7 +4620,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [a, b, c] = [await mkDriver(), await mkDriver(), await mkDriver()];
     await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a, driver2EmployeeId: b }]);
-    const date = '2026-12-03';
+    const date = futureDay(93);
     expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: c }])).status).toBe(200);
 
     const row = dayRow(data<BoardDto>(await getBoard(date)), v.id);
@@ -4623,7 +4632,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [a, b] = [await mkDriver(), await mkDriver()];
     await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a, driver2EmployeeId: b }]);
-    const date = '2026-12-04';
+    const date = futureDay(94);
     await putInWorkshop(v.id, date);
 
     const board = data<BoardDto>(await getBoard(date));
@@ -4637,20 +4646,6 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     // …and the server still refuses to WRITE them onto it (FR-5, unchanged).
     expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(409);
   });
-
-  /**
-   * A day this far ahead of TODAY.
-   *
-   * Relative, not a literal like the dates above it: the plan endpoint refuses a date in the
-   * past (`PAST_DATE`), so a hardcoded future date is a test with an expiry — `operations.spec.ts`
-   * had three and they took the suite down when they went stale. The offsets are large and unique
-   * to this block so these days cannot collide with a day another test plans.
-   */
-  const futureDay = (days: number): string => {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() + days);
-    return d.toISOString().slice(0, 10);
-  };
 
   // ── the inheritance contract, stated as the sequence a dispatcher performs ──
   //
@@ -4751,10 +4746,10 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       .findOne({ vehicleId: new Types.ObjectId(v.id) });
 
     // Read a day, plan a day, put the car in the workshop, read the day again.
-    await getBoard('2026-12-05');
-    await savePlan('2026-12-05', [{ vehicleId: v.id, driver1EmployeeId: a }]);
-    await putInWorkshop(v.id, '2026-12-06');
-    await getBoard('2026-12-06');
+    await getBoard(futureDay(95));
+    await savePlan(futureDay(95), [{ vehicleId: v.id, driver1EmployeeId: a }]);
+    await putInWorkshop(v.id, futureDay(96));
+    await getBoard(futureDay(96));
 
     expect(
       await mongoose.connection

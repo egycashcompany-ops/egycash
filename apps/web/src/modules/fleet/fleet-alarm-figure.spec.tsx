@@ -3,9 +3,10 @@
 // Batch 3, item 1, as the owner approved it (samples A-odometer 02–08):
 //   · every reading row of the odometer register shows the gap AT THAT READING (`serviceGapKm`),
 //     so the column grows day by day; «—» before any service and on a day without a reading;
-//   · the car's NEWEST row on the page carries the car NOW: its figure, the level badge,
-//     «المتبقي X من Y كم», the amber mark of a newer visit that does not count yet, and the
-//     «كيف حُسب الفارق» card on the figure;
+//   · the car's NEWEST row on the page carries the car NOW: its figure and the ⓘ that opens
+//     «كيف حُسب الفارق», and nothing else (the owner, after batch 3: «I want the rest of it
+//     removed, leaving only the exclamation mark next to the reading») — the level, «المتبقي»,
+//     the reading the figure stands on and the amber mark of a newer visit are in the card;
 //   · «إنذارات الصيانة»: «منذ الخدمة» opens the same card; «المتبقي» says «من Y كم».
 // Proven on the real pages and the real card, rendered to markup (no DOM: the card's opening
 // rules are `lib/alarm-reason-card.spec.ts`'s, under fake timers).
@@ -273,19 +274,20 @@ describe('the odometer register — each row its own gap, the newest row the car
     }
   });
 
-  it('the newest row: today’s figure (the card’s trigger), the level, and «المتبقي 1,993 من 7,500 كم»', () => {
+  // REWRITTEN ON PURPOSE (the owner, after batch 3: «I want the rest of it removed, leaving only
+  // the exclamation mark next to the reading»): the level badge and «المتبقي 1,993 من 7,500 كم»
+  // used to sit under the figure. They are the card's now.
+  it('the newest row: today’s figure and its ⓘ — the card’s trigger — and nothing else', () => {
     expect(newest).toContain('data-odo-gap="newest"');
     expect(newest).toContain('data-odo-figure-trigger="true"');
     expect(newest).toContain('>5,507<');
-    expect(newest).toContain(t('fleet.vehicle.alarmNone'));
-    const remaining = newest.slice(newest.indexOf('data-odo-remaining'));
-    expect(remaining).toContain('data-odo-remaining="left"');
-    expect(remaining).toContain('>1,993<');
-    expect(remaining).toContain('>7,500<');
-    for (const piece of pieces(`${F}remainingOf`)) expect(remaining).toContain(piece);
-    // The figure IS the car's latest reading's row: no «آخر قراءة» line under it, no amber mark.
-    expect(newest).not.toContain('data-odo-latest-on');
-    expect(newest).not.toContain('data-odo-newer-mark');
+    expect(newest, 'the ⓘ beside it').toContain('<svg');
+    expect(newest, 'no level badge').not.toContain(t('fleet.vehicle.alarmNone'));
+    expect(newest, 'no «المتبقي … من … كم»').not.toContain('data-odo-remaining');
+    expect(newest).not.toContain('>1,993<');
+    expect(newest).not.toContain('>7,500<');
+    expect(newest, 'no «آخر قراءة» line').not.toContain('data-odo-latest-on');
+    expect(newest, 'no amber mark').not.toContain('data-odo-newer-mark');
   });
 
   it('«—» before any service and on a day without a reading — the server’s null, never a guess', () => {
@@ -307,44 +309,64 @@ describe('the odometer register — each row its own gap, the newest row the car
     }
   });
 
-  it('the lines under the figure take the row’s type, a step smaller — relative, never a pinned size', () => {
+  it('one line, in the row’s own type — no second line under the figure, no pinned size', () => {
     // «عاوز الخط … زى شاشة انذار الصيانه فى كل العواميد»: every column wears the alarms board's
-    // type; the secondary lines are sized against it, so they follow it on a wide screen too.
-    expect(newest).toContain('text-[0.8125em]');
+    // type, and the figure is the only thing in the cell.
+    expect(newest).not.toContain('flex-col');
     expect(newest).not.toMatch(/text-\[1[1-4](?:\.5)?px\]/u);
     expect(newest).not.toContain('text-xs');
   });
 
-  it('157: the newest row is a day without a reading — it shows 290, «آخر قراءة 2026/09/23» and the amber mark', () => {
+  it('157: the newest row is a day without a reading — it shows 290 and its ⓘ, nothing more', () => {
     const cells = rows(draw(<OdometerPage />, client(ROWS_157, [car157()]))).map(gapCell);
     const [first, second] = cells as [string, string];
     expect(first).toContain('data-odo-gap="newest"');
+    expect(first).toContain('data-odo-figure-trigger="true"');
     expect(first).toContain('>290<');
-    expect(first).toContain('>4,710<');
-    expect(first).toContain('>5,000<');
-    expect(first).toContain('data-odo-latest-on="true"');
-    expect(first).toContain(t('fleet.odometer.alarmReason.card.latestReading'));
-    expect(first).toContain('>2026/09/23<');
-    expect(first).toContain('data-odo-newer-mark="open"');
-    expect(first).toContain(t(`${F}mark.open`));
+    // What used to sit under it — what is left, «آخر قراءة 2026/09/23», the amber mark — is not
+    // in the cell; the card below says all of it.
+    expect(first).not.toContain('>4,710<');
+    expect(first).not.toContain('>5,000<');
+    expect(first).not.toContain('data-odo-latest-on');
+    expect(first).not.toContain(t('fleet.odometer.alarmReason.card.latestReading'));
+    expect(first).not.toContain('>2026/09/23<');
+    expect(first).not.toContain('data-odo-newer-mark');
+    expect(first).not.toContain(t(`${F}mark.open`));
     // The day before carries no reading, so no gap — and nothing about the car.
     expect(second).toContain('data-odo-gap="none"');
     expect(second).not.toContain('data-odo-newer-mark');
   });
 
-  it('past the interval: «متأخر … كم عن … كم», in red', () => {
+  it('…and every piece the cell let go of is in its card: the level, what is left, the reading’s day, the newer visit', () => {
+    const markup = draw(<HowComputedCard alarm={car157()} footer="FOOTER" />, client([], []));
+    const fact = (mark: string): string => {
+      const at = markup.indexOf(`data-odo-fact="${mark}"`);
+      return at === -1 ? '' : markup.slice(at, markup.indexOf('</dd>', at));
+    };
+    expect(fact('thresholds')).toContain('data-odo-level-words="none"');
+    expect(fact('thresholds')).toContain(t(`${F}level.none`));
+    for (const figure of ['5,000', '290', '4,710'])
+      expect(fact('remaining')).toContain(`>${figure}<`);
+    expect(fact('latest')).toContain('>173,634<');
+    expect(fact('latest')).toContain('>2026/09/23<');
+    expect(markup).toContain('data-odo-newer="open"');
+    expect(markup).toContain(t(`${F}mark.open`));
+  });
+
+  it('past the interval: the figure alone, in the red tint — «متأخر» is the card’s', () => {
     const late = car295({ level: 'red', sinceServiceKm: 8_000, remainingKm: -500 });
     const [cell] = rows(draw(<OdometerPage />, client(ROWS_295.slice(0, 1), [late]))).map(
       gapCell,
     ) as [string];
-    expect(cell).toContain('data-odo-remaining="overdue"');
-    expect(cell).toContain('>500<');
-    expect(cell).toContain('>7,500<');
-    for (const piece of pieces(`${F}overdueOf`)) expect(cell).toContain(piece);
-    expect(cell).toContain('text-red-700');
+    expect(cell).toContain('>8,000<');
+    expect(cell).toContain('data-odo-figure-trigger="true"');
+    expect(cell, 'the level’s tint on the figure').toContain('bg-red-100/80');
+    expect(cell).not.toContain('data-odo-remaining');
+    expect(cell).not.toContain('>500<');
+    expect(cell).not.toContain(t('fleet.dashboard.level.red'));
   });
 
-  it('a make with no interval says no «من … كم» — there is no rule to be left of', () => {
+  it('a make with no interval: the figure and its ⓘ, as for any car', () => {
     const noRule = car295({
       rule: { vehicleType: null, intervalKm: 0, yellowKm: 1_000, redKm: 300 },
     });
@@ -352,6 +374,7 @@ describe('the odometer register — each row its own gap, the newest row the car
       gapCell,
     ) as [string];
     expect(cell).toContain('>5,507<');
+    expect(cell).toContain('data-odo-figure-trigger="true"');
     expect(cell).not.toContain('data-odo-remaining');
   });
 

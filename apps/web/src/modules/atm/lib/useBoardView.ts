@@ -8,6 +8,10 @@
 // (the server's: by area on a board, by close time on a done page — the legacy's) carries no arrow
 // and breaks every tie, so rows the reader's columns cannot separate stay where they were (the ATM
 // machine list's way: `chosenSorts`).
+//
+// The two OPEN boards are grouped by area, areas alphabetical («Group by المناطق», 2026-11-02 —
+// `area-groups.ts`): the reader's columns order the rows inside each area. The done pages are not
+// grouped and keep the plain reader's order.
 import { useMemo } from 'react';
 import { type useSearchParams } from 'react-router-dom';
 import { sortRows } from '../../../shared/lib/sort-rows';
@@ -24,6 +28,7 @@ import {
   rowsInDayView,
   type BoardDayView,
 } from './board-day';
+import { boardAreaOrder, clickBoardSort, groupRowsByArea } from './area-groups';
 import { knownSorts, operationSortValue, type AtmOperationRow } from './operation-sheet';
 import { cairoDay } from './operation-view';
 
@@ -38,9 +43,13 @@ const patchParam = ([sp, setSp]: SearchParams, key: string, value: string | null
 };
 
 export interface ReaderOrder<T> {
-  /** The rows, in the reader's order. */
+  /** The rows, in the reader's order — on an open board, grouped by area first. */
   rows: T[];
-  /** The reader's order — empty until they click a header. */
+  /**
+   * What the head's arrows show. On a done page: the reader's order, empty until they click a
+   * header. On an open board (`useAreaGroupedOrder`): the area first — always, an untouched board
+   * included — then the reader's columns.
+   */
   sorts: TableSort[];
   changeSort: (key: string) => void;
 }
@@ -78,7 +87,41 @@ export interface BoardView<T> extends ReaderOrder<T> {
   range: { from: string; to: string };
 }
 
-/** An open board: the rows of its day view (`?day=`, today by default), in the reader's order. */
+/**
+ * An open board's order: grouped by area, the areas alphabetical (`area-groups.ts`). Inside an
+ * area, the reader's other columns decide, and the rows' own order breaks every tie. The head
+ * shows the area's arrow first, because the area is what orders the board.
+ */
+export const useAreaGroupedOrder = <T extends AtmOperationRow>(
+  params: SearchParams,
+  rows: readonly T[],
+  columns: readonly { key: string }[],
+): ReaderOrder<T> => {
+  const sortParam = params[0].get('sort');
+  const keys = columns.map((column) => column.key).join(',');
+  const chosen = useMemo(() => knownSorts(chosenSorts(sortParam), columns), [sortParam, keys]);
+  const { areaDir, within, shown } = useMemo(() => boardAreaOrder(chosen), [chosen]);
+  const ordered = useMemo(() => {
+    const position = new Map(rows.map((row, index) => [row.id, index]));
+    const inside = sortRows(
+      rows,
+      within,
+      operationSortValue,
+      (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
+    );
+    return groupRowsByArea(inside, areaDir);
+  }, [rows, within, areaDir]);
+  return {
+    rows: ordered,
+    sorts: shown,
+    changeSort: (key) => patchParam(params, 'sort', writeSorts(clickBoardSort(chosen, key))),
+  };
+};
+
+/**
+ * An open board: the rows of its day view (`?day=`, today by default), grouped by area, in the
+ * reader's order inside each area.
+ */
 export const useBoardView = <T extends AtmOperationRow>(
   params: SearchParams,
   rows: readonly T[],
@@ -90,7 +133,7 @@ export const useBoardView = <T extends AtmOperationRow>(
   const today = cairoDay(now);
   const inView = useMemo(() => rowsInDayView(rows, view, now), [rows, view, today]);
   const counts = useMemo(() => dayViewCounts(rows, now), [rows, today]);
-  const order = useReaderOrder(params, inView, columns);
+  const order = useAreaGroupedOrder(params, inView, columns);
   return {
     ...order,
     view,

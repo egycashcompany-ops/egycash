@@ -9,7 +9,7 @@
 // a narrow table is exactly as wide as it always was, and a wide one asks for the room it needs.
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DataTable, type Column } from './DataTable';
+import { DataTable, groupRuns, type Column } from './DataTable';
 
 interface Row {
   id: string;
@@ -80,5 +80,97 @@ describe('a wide table stays inside its own scroll', () => {
       <DataTable columns={columns(12)} rows={ROWS} rowKey={(row) => row.id} />,
     );
     expect(markup).toMatch(/^<div class="relative overflow-x-auto/);
+  });
+});
+
+describe('a line above each group of rows', () => {
+  // The ATM open boards, by area: «كل منطقة تظهر اعطالها وتغذياتها تحت بعض». The table only draws
+  // the lines; the rows come in group order.
+  interface Grouped {
+    id: string;
+    area: string;
+  }
+  const rows: Grouped[] = [
+    { id: 'r1', area: 'الدقي' },
+    { id: 'r2', area: 'الدقي' },
+    { id: 'r3', area: 'زايد' },
+  ];
+  const render = (extra: Record<string, unknown> = {}): string =>
+    renderToStaticMarkup(
+      <DataTable
+        columns={[
+          { key: 'id', header: 'id', render: (row: Grouped, index) => `${row.id}#${index}` },
+          { key: 'area', header: 'area', render: (row: Grouped) => row.area },
+        ]}
+        rows={rows}
+        rowKey={(row) => row.id}
+        group={{ of: (row: Grouped) => row.area, label: (g: string) => `«${g}»`, count: String }}
+        {...extra}
+      />,
+    );
+
+  it('draws one line where each group starts, naming it and counting its rows', () => {
+    const markup = render();
+    const lines = [...markup.matchAll(/<tr data-row-group="([^"]*)"/g)].map((m) => m[1]);
+    expect(lines).toEqual(['الدقي', 'زايد']);
+    expect(markup).toContain('«الدقي»');
+    expect(markup).toMatch(/«الدقي»<span[^>]*>2<\/span>/);
+    expect(markup).toMatch(/«زايد»<span[^>]*>1<\/span>/);
+    // Each line sits right before its group's first row.
+    expect(markup.indexOf('data-row-group="الدقي"')).toBeLessThan(markup.indexOf('r1#0'));
+    expect(markup.indexOf('r2#1')).toBeLessThan(markup.indexOf('data-row-group="زايد"'));
+    expect(markup.indexOf('data-row-group="زايد"')).toBeLessThan(markup.indexOf('r3#2'));
+  });
+
+  it('keeps the name in view when a wide table scrolls sideways', () => {
+    // The name sticks to the start edge, at the cell's own gutter — a board wider than the screen
+    // must not turn its group lines into blank bars.
+    const line = (extra: Record<string, unknown> = {}): string => {
+      const markup = render(extra);
+      const at = markup.indexOf('data-row-group="الدقي"');
+      return markup.slice(at, markup.indexOf('</tr>', at));
+    };
+    expect(line()).toMatch(/<span class="sticky inline-flex[^"]*start-4/);
+    expect(line({ dense: true })).toMatch(/<span class="sticky inline-flex[^"]*start-3/);
+    expect(line({ dense: true, tightGutter: true })).toMatch(
+      /<span class="sticky inline-flex[^"]*start-2/,
+    );
+  });
+
+  it('leaves the rows’ own index alone — the lines are not rows', () => {
+    const markup = render();
+    expect(markup).toContain('r1#0');
+    expect(markup).toContain('r3#2');
+  });
+
+  it('spans the whole row, the selection box included', () => {
+    expect(render()).toContain('colSpan="2"');
+    const selectable = render({
+      selection: { selectedIds: new Set<string>(), toggleRow: () => {}, toggleAll: () => {} },
+    });
+    expect(selectable).toContain('colSpan="3"');
+    // The line holds no box of its own.
+    expect(selectable.match(/aria-label="select row"/g)).toHaveLength(3);
+  });
+
+  it('draws no line at all without `group`', () => {
+    const markup = renderToStaticMarkup(
+      <DataTable
+        columns={[{ key: 'id', header: 'id', render: (row: Grouped) => row.id }]}
+        rows={rows}
+        rowKey={(row) => row.id}
+      />,
+    );
+    expect(markup).not.toContain('data-row-group');
+  });
+
+  it('splits a group that comes in two pieces into two runs — the caller orders the rows', () => {
+    expect(
+      groupRuns(['a', 'a', 'b', 'a'], (value) => value).map((run) => [run.group, run.size]),
+    ).toEqual([
+      ['a', 2],
+      ['b', 1],
+      ['a', 1],
+    ]);
   });
 });

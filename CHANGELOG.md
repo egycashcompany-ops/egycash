@@ -454,6 +454,15 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The replenishment and maintenance boards are grouped by area, areas in alphabetical order.**
+  «عايز كمان إن التغذيات والأعطال يبقي معمولها Group by المناطق + Sorting بالمناطق بردو · يعني كل
+  منطقة تظهر اعطالها وتغذياتها تحت بعض + بترتيب ابجدى للمناطق». On `/atm/replenishments` and
+  `/atm/maintenance` each area's rows sit together under a line with the area's name and how many
+  rows it holds. Arabic names run أ → ي, then Latin ones A → Z, and rows with no area come last,
+  under «بدون منطقة». A spelling that differs only by spaces is one area. A click on «المنطقة»
+  turns the areas round; a click on any other column orders the rows inside each area. On a board
+  wider than the screen, the area's name stays in view as the table scrolls sideways. Excel and PDF
+  follow the same order. The done pages are unchanged.
 - **The maintenance board copies the service type, not the open time.** «فى الـ Selection بتاع
   بيانات الجدول فى الأعطال مش عايز التوقيت .. لكن عايز نوع الخدمة يبقى Selectable معاهم». A drag
   across the rows of `/atm/maintenance` (or Ctrl+A) now picks up the bank, the code, the machine

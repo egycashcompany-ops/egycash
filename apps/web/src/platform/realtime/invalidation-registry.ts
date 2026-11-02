@@ -429,6 +429,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // «فواتير التوكيل» figures.
   'fleet.dealershipInvoice': [['fleet', 'dealership'], ...fleetDashboardBoth],
   'fleet.fuelCard': [['fleet', 'fuelCards'], ...fleetDashboardNow],
+  // A card photo's thumbnail (a Files row owned by `fuelCardThumb`) lives on the cards screen.
+  'fleet.fuelCardThumb': [['fleet', 'fuelCards'], ...fleetDashboardNow],
   // A receipt is its own row, a line of the ledger, and money off a card.
   'fleet.receipt': [
     ['fleet', 'receipts'],

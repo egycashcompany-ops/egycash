@@ -187,6 +187,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'fleet.vehicleContract': { permission: 'fleetVehicleContract.view' },
   'fleet.dealershipInvoice': { permission: 'fleetDealership.view' },
   'fleet.fuelCard': { permission: 'fleetFuelCard.view' },
+  // 6d — a card photo's thumbnail is a Files row owned by `fuelCardThumb`; it is what every reader
+  // of the cards sees (the full photo, PIN sticker and all, is `fleetFuelCard.reveal`), so it rides
+  // the cards' own view grant.
+  'fleet.fuelCardThumb': { permission: 'fleetFuelCard.view' },
   'fleet.receipt': { permission: 'fleetReceipt.view' },
   // «المذكرات», «سجل العهدة» and «إعداد المذكرات» are tabs of the custody screen: whoever may see
   // it refreshes when a memo, a fund operation or the papers' names change.

@@ -116,8 +116,6 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
         // uses for `/hiring-documents`: its subject is a CANDIDATE, and the set is collected
         // before anybody is hired.
         '/applicant-documents',
-        '/evaluation-batches/phase/securityCheck',
-        '/evaluation-batches/phase/drivingTest',
         '/job-offers',
         '/applicant-sources',
         '/recruitment-form',

@@ -71,6 +71,19 @@ interface CategoryDef {
    * catalog raises the revision again. A tile this seed creates records the revision as it is born.
    */
   iconRevision?: number;
+  /**
+   * Rows this catalog no longer offers, which a live installation still has.
+   *
+   * Removing a row from `apps` stops a FRESH install from creating it, and nothing more: the boot
+   * sync never deletes, so every installation seeded before keeps showing it. Each entry here makes
+   * the named routes INACTIVE on a live installation — once, at its revision, recorded on the module
+   * tile — so the sidebar loses them without anything being destroyed, and an administrator who
+   * switches one back on afterwards is not overruled by the next boot.
+   *
+   * Inactive, not deleted: the page itself may still exist and be reached another way, and an
+   * inactive row is one click from back in the Applications screen.
+   */
+  retired?: readonly { revision: number; routes: readonly string[] }[];
   apps: AppDef[];
 }
 
@@ -86,6 +99,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
     ar: 'الموارد البشرية',
     icon: 'users',
     sortOrder: 10,
+    retired: [
+      // «شيل بقي دفعات الفحص الأمني ودفعات اختبار القيادة من المينو اللى في الجنب (كدا كدا
+      // هنوصلهم بالزرارين من داخل كل صفحة)». Each phase's batches are reached from that phase's
+      // own page now, whose button opens exactly that phase's list.
+      {
+        revision: 1,
+        routes: ['/evaluation-batches/phase/securityCheck', '/evaluation-batches/phase/drivingTest'],
+      },
+    ],
     apps: [
       // Three of these rows are catching up with pages that shipped without one. They were routed
       // and permission-gated but absent from this catalog and unlinked from every screen, so the
@@ -164,25 +186,6 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         route: '/evaluations/phases',
         icon: 'layers',
         permission: 'evaluationPhase.manage',
-      },
-      // ONE ROW PER BATCH PHASE, and that is the point (RW7). A security check and a driving test
-      // are two different errands, run by two different people, against two different forms — and
-      // until now they shared a single screen with a `phase` COLUMN as the only thing telling them
-      // apart. Each row carries its own phase's key, so a driving examiner who holds no security
-      // grant sees one row rather than a mixed list they are half-authorized to read.
-      {
-        en: 'Security Check Batches',
-        ar: 'دفعات الفحص الأمني',
-        route: '/evaluation-batches/phase/securityCheck',
-        icon: 'shield',
-        permission: 'securityCheck.view',
-      },
-      {
-        en: 'Driving Test Batches',
-        ar: 'دفعات اختبار القيادة',
-        route: '/evaluation-batches/phase/drivingTest',
-        icon: 'car',
-        permission: 'drivingTest.view',
       },
       {
         en: 'Job Offers',
@@ -1394,6 +1397,37 @@ export const correctCategoryIcon = async (def: CategoryDef, by: string): Promise
   );
 };
 
+/**
+ * Make the rows a catalog entry retired INACTIVE on a live installation — once per revision.
+ *
+ * Through the service, so each lands in the audit log like any edit (the boot, not a person). A row
+ * already inactive is left as it is; a route this installation never had is skipped. The revision is
+ * then recorded on the module tile, so the next boot leaves alone a row an administrator switched
+ * back on — the same bargain `correctCategoryIcon` strikes for icons.
+ */
+export const retireApplications = async (def: CategoryDef, by: string): Promise<void> => {
+  const latest = Math.max(0, ...(def.retired ?? []).map((entry) => entry.revision));
+  if (latest === 0) return;
+  const category = await findCatalogCategory(def);
+  if (category === null) return;
+  const done = category.retiredRevision ?? 0;
+  if (done >= latest) return;
+  for (const entry of def.retired ?? []) {
+    if (entry.revision <= done) continue;
+    for (const route of entry.routes) {
+      const row = await applicationRepository.findOne({ route });
+      if (row === null || row.status !== 'active') continue;
+      await applicationService.update(String(row._id), { status: 'inactive', version: row.__v }, by);
+    }
+  }
+  const current = await applicationCategoryRepository.getById(String(category._id));
+  await applicationCategoryRepository.updateById(
+    String(current._id),
+    { retiredRevision: latest },
+    { by, version: current.__v },
+  );
+};
+
 const ensureApplication = async (
   def: AppDef,
   categoryId: string,
@@ -1526,6 +1560,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
   for (const category of NAVIGATION_CATALOG) {
     await backfillCategoryIcon(category, actor);
     await correctCategoryIcon(category, actor);
+    await retireApplications(category, actor);
     for (const app of category.apps) {
       await backfillApplicationPermission(app, actor);
       await backfillApplicationIcon(app, actor);

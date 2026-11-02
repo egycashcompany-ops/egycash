@@ -7,9 +7,11 @@
 // them. Reached through `phase/:phaseKey` the list is scoped, and the phase column disappears
 // because every row now carries the same value.
 //
-// The unscoped route still answers — a caller who typed `/evaluation-batches` gets everything they
-// may see — but nothing links there any more. And an UNKNOWN key never falls back to "everything":
-// silently widening the very filter this page exists to apply is how the old bug would come back.
+// There is no unscoped list any more: «شيل دا /evaluation-batches … وخلي الزرار في الفحص الأمني
+// يودي علي /evaluation-batches/phase/securityCheck». `/evaluation-batches` itself redirects to the
+// evaluations, and each phase's page links here with its own key. An UNKNOWN key never falls back
+// to "everything": silently widening the very filter this page exists to apply is how the old bug
+// would come back.
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { type EvaluationBatchStatus, type EvaluationBatchSummaryDto, type Locale } from '@ecms/contracts';
@@ -108,15 +110,6 @@ export const EvaluationBatchesPage = (): JSX.Element => {
         </span>
       ),
     },
-    ...(phaseKey === undefined
-      ? [
-          {
-            key: 'phase',
-            header: t('batches.columns.phase'),
-            render: (b: EvaluationBatchSummaryDto) => localized(b.phaseName, locale),
-          },
-        ]
-      : []),
     { key: 'title', header: t('batches.columns.title'), render: (b) => b.title ?? '—' },
     { key: 'status', header: t('batches.columns.status'), render: (b) => <BatchStatusBadge status={b.status} /> },
     {
@@ -146,9 +139,16 @@ export const EvaluationBatchesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={phase === undefined ? t('batches.title') : localized(phase.name, locale)}
+        // The way back is the phase's own page — the sidebar no longer lists the batches.
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
-          { label: phase === undefined ? t('batches.title') : localized(phase.name, locale) },
+          { label: t('recruitment.nav.evaluations'), to: '/evaluations' },
+          ...(phase === undefined
+            ? [{ label: t('batches.title') }]
+            : [
+                { label: localized(phase.name, locale), to: `/evaluations/phase/${phase.id}` },
+                { label: t('batches.title') },
+              ]),
         ]}
       />
 

@@ -15,6 +15,13 @@ export interface ApplicationCategoryDoc extends BaseDocFields {
    * was already applied, so an administrator's later choice is not overwritten. Absent = 0.
    */
   iconRevision?: number;
+  /**
+   * Which revision of the catalog's RETIREMENTS this module has taken (`seed-navigation.ts`,
+   * `retired`): rows the catalog stopped offering, made inactive on a live installation once. Not
+   * part of the API — it only stops the boot from re-retiring a row an administrator turned back
+   * on. Absent = 0.
+   */
+  retiredRevision?: number;
 }
 
 const localizedField = {
@@ -29,6 +36,7 @@ const applicationCategorySchema = new Schema<ApplicationCategoryDoc>(
     sortOrder: { type: Number, required: true, default: 0 },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' },
     iconRevision: { type: Number, default: 0 },
+    retiredRevision: { type: Number, default: 0 },
     ...baseFields,
   },
   baseSchemaOptions,

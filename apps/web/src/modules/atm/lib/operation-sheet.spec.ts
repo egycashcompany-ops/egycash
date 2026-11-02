@@ -7,6 +7,7 @@ import { translate } from '../../../platform/localization/i18n';
 import { sortRows } from '../../../shared/lib/sort-rows';
 import {
   codeSortValue,
+  columnFilterEntries,
   knownSorts,
   maintenanceColumns,
   operationSortValue,
@@ -214,6 +215,35 @@ describe('the statement', () => {
     );
     expect(statementFilterLine(en, 'en', { banks: ['A'], areas: ['X'] })).toBe('Bank: A · Area: X');
     expect(statementFilterLine(ar, 'ar', { banks: [], areas: [] })).toBe('');
+  });
+
+  it('prints the column filters in force too, each under its header with its picks', () => {
+    // «فلتر لكل عمود», as multi-pick lists (2026-11-02): a statement of two codes says which.
+    const columns = replenishmentColumns(ar, 'ar', 'open');
+    const entries = columnFilterEntries(columns, {
+      area: ['الدقي'],
+      code: ['70493', '70492'],
+      nope: ['x'],
+      name: [],
+    });
+    // In the table's column order, only columns that narrow, only columns the table has.
+    expect(entries).toEqual([
+      { header: translate('ar', 'atm.common.machineId'), picked: ['70493', '70492'] },
+      { header: translate('ar', 'atm.common.area'), picked: ['الدقي'] },
+    ]);
+    expect(statementFilterLine(ar, 'ar', { banks: ['SYN NBE'], areas: [], columns: entries })).toBe(
+      `البنك: SYN NBE · ${translate('ar', 'atm.common.machineId')}: «70493، 70492» · ${translate('ar', 'atm.common.area')}: «الدقي»`,
+    );
+    expect(
+      statementFilterLine(en, 'en', {
+        banks: [],
+        areas: [],
+        columns: columnFilterEntries(replenishmentColumns(en, 'en', 'open'), {
+          code: ['70', ''],
+        }),
+      }),
+    ).toBe(`${translate('en', 'atm.common.machineId')}: “70, (Blank)”`);
+    expect(statementFilterLine(ar, 'ar', { banks: [], areas: [], columns: [] })).toBe('');
   });
 
   it('names the file by what it is and the day or days', () => {

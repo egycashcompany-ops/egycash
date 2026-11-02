@@ -1,7 +1,7 @@
 // The boot index builder's report for a collection whose rows stay out of the log — the two
-// operation logs since the owner's rule (port doc OD-1). Legacy data may hold two open rows for
-// one machine, so their unique index is the likeliest to be reported; the report must name the
-// collection and the counts, never a machine code, a row id or a server message quoting a key.
+// operation logs since the owner's rule (port doc OD-1; their unique index today is the maintenance
+// log's one live maintenance per mail ticket, OD-1c). The report must name the collection and the
+// counts, never a machine code, a row id or a server message quoting a key.
 import { describe, expect, it } from 'vitest';
 import { atmIndexedModels, duplicateCounts, redactedErrorText } from './atm-indexes';
 

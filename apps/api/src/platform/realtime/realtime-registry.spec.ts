@@ -35,6 +35,7 @@ const DYNAMIC_ENTITY_KEYS = [
   'hr.trainingRecord', // training-record.files.ts TRAINING_RECORD_ENTITY_TYPE
   'hr.medicalEvent', // medical-event.files.ts MEDICAL_EVENT_ENTITY_TYPE
   'hr.employeeNationalIdCard', // contracts hr-recruitment EMPLOYEE_NATIONAL_ID_CARD_ENTITY_TYPE
+  'hr.applicantOcr', // national-id-scan.files.ts APPLICANT_CARD_SCAN_ENTITY_TYPE
 ];
 // P-HR-APP phase 3 adds TWO sites for one entity, both in `applicant-document.service.ts`: the
 // audit ref and the file's owning ref, each reaching for the same shared constant rather than
@@ -49,7 +50,9 @@ const DYNAMIC_ENTITY_KEYS = [
 // The national-ID card adds TWO sites, both in `employee.service.ts`: the copy made at hire and
 // the back-fill an employee hired earlier gets on first view. Both reach for the shared constant
 // rather than retyping the entity type, which is the trade this count exists to make visible.
-const EXPECTED_DYNAMIC_SITES = 12; // the nine above + workflow-consumers relaying hr event refs
+// The applicant card scan adds ONE site: `applicant.service.ts` files a freshly photographed card
+// against the scratch reference, reaching for the shared constant rather than retyping it.
+const EXPECTED_DYNAMIC_SITES = 13; // the ten above + workflow-consumers relaying hr event refs
 
 const collectSources = (dir: string, files: string[] = []): string[] => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

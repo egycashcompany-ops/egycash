@@ -89,10 +89,10 @@ class AtmReplenishmentService {
    *
    * MORE THAN ONE OPEN REPLENISHMENT PER MACHINE IS ALLOWED (the owner, 2026-11-01 — port doc
    * OD-1b: «عايزك تسمح فى التغذيات بإنى افتح تغذيه أكتر من واحده لنفس الماكينة عادى»). The
-   * one-open-per-day rule (OD-1, OD-1a) is lifted for replenishments and kept for maintenance: every
-   * line of a known code opens its own row — a code pasted twice opens twice, and a machine already
-   * open today opens again — exactly as the legacy did. `alreadyOpenCodes` stays in the answer, and
-   * is always empty here.
+   * one-open-per-day rule (OD-1, OD-1a) is lifted for replenishments (and, since 2026-11-02, for
+   * maintenance too — OD-1c): every line of a known code opens its own row — a code pasted twice
+   * opens twice, and a machine already open today opens again — exactly as the legacy did.
+   * `alreadyOpenCodes` stays in the answer, and is always empty here.
    */
   async open(
     input: OpenAtmReplenishments,

@@ -78,6 +78,17 @@ export const ErrorCodes = {
   /** A17 — only a PUBLISHED template version can generate. */
   CONTRACT_TEMPLATE_NOT_PUBLISHED: 'CONTRACT_TEMPLATE_NOT_PUBLISHED',
 
+  // recruitment (hr module)
+  /**
+   * The applicant's documents folder is a KEPT RECORD and refuses deletion: they were hired, an
+   * employee row was created from them, or they hold an accepted offer and are about to be.
+   *
+   * Its own code rather than a bare `BUSINESS_RULE_VIOLATION` because the screen has one thing to
+   * say back («تم تعيين هذا المتقدم…») and a bulk delete reports it per applicant — a caller that
+   * has to read the message to find out which rule refused cannot do either.
+   */
+  APPLICANT_FOLDER_KEPT_RECORD: 'APPLICANT_FOLDER_KEPT_RECORD',
+
   // files
   FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',
@@ -132,11 +143,10 @@ export const ErrorCodes = {
 
   // ── ATM operations (docs/12-planning/atm-operations-port.md) ──────────────────────────────────
   /**
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per Cairo day since 2026-10-27;
-   * maintenance only since 2026-11-01 — port doc OD-1b): the machine code already has an OPEN
-   * maintenance that day — at most one per machine code and day, company-wide. Answered by the
-   * maintenance reopen and by an edit moving its open time; the batch open and the mail accept
-   * report such codes instead. No replenishment path answers it: a machine may have several open.
+   * The owner's rule of 2026-10-13 («مينفعش أضيف ماكينة مرتين»; per Cairo day since 2026-10-27)
+   * answered this: the machine code already had an OPEN operation that day. Replenishments left
+   * the rule 2026-11-01 (port doc OD-1b) and maintenance 2026-11-02 (OD-1c), so NO path answers it
+   * any more — a machine may have several open of either kind. Kept reserved, never reused.
    */
   ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
 

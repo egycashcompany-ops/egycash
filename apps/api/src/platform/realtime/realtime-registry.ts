@@ -263,6 +263,17 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // Security signals are audit records about the audit stream itself; they surface on the audit
   // screen (via the audit stream), and broadcasting them as an entity topic adds nothing.
   'platform.security': 'audit-stream only — the audit screen is where alerts surface',
+  // The scratch reference a National-ID photograph lands on in the seconds before the applicant
+  // exists (`national-id-scan.files.ts`). Its route and its ADR-023 authorizer both enforce
+  // `applicant.create`, so that is the key that gates knowing about it — but it gets no TOPIC,
+  // for two reasons that both have to hold for a topic to earn its place. Nothing could arrive on
+  // one: `publishAuditedChange` keys off an AUDIT entityRef, and the only row an upload writes is
+  // `platform.file` — the owning ref travels in that row's `entity` field, not as its subject. And
+  // nothing would be listening: no screen lists a scratch scan, so there is no query key to mark
+  // stale. The images reach a screen seconds later as COPIES onto the applicant, where
+  // `hr.applicant` is the topic that fires.
+  'hr.applicantOcr':
+    'a scratch pre-applicant scan — no screen lists one, and the images reach a screen as copies under the applicant’s own topic',
   // An export is an artifact, not a record with a list screen to refresh.
   'hr.applicantExport': 'export artifact — no screen lists exports',
   // AT-D1 ships the device registry as an API with no screen; the surface it belongs on is the

@@ -20,7 +20,8 @@ export interface AtmReplenishmentDoc extends BaseDocFields {
   openedAt: Date;
   /**
    * The Cairo day of `openedAt` (`YYYY-MM-DD`), written with it — the key the owner's per-day rule
-   * is held by (shared/open-operation.ts). Null on a row stored before the field existed.
+   * was held by until it was lifted (OD-1b, shared/open-operation.ts). Null on a row stored before
+   * the field existed.
    */
   openDay: string | null;
   closedAt: Date | null;

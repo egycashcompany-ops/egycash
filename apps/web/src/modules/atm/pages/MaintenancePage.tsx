@@ -39,7 +39,11 @@ import { COPY_COLUMN_CLASS, COPY_TABLE_CLASS, useSelectBoardText } from '../lib/
 import { useSelectAllReveal } from '../lib/select-all-reveal';
 import { useBoardView } from '../lib/useBoardView';
 import { areaGroupLine } from '../lib/area-groups';
-import { maintenanceColumns, statementFilterLine } from '../lib/operation-sheet';
+import {
+  columnFilterEntries,
+  maintenanceColumns,
+  statementFilterLine,
+} from '../lib/operation-sheet';
 import { actionTargets } from '../lib/operation-view';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenMaintenancesForm } from '../components/OpenMaintenancesForm';
@@ -50,6 +54,7 @@ import { BoardResetButton } from '../components/BoardResetButton';
 import { StatementExportButtons } from '../components/StatementExportButtons';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useBoardFilters } from '../lib/useBoardFilters';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 
 /**
  * Remembered across visits: this screen's filters and order. `page` is derived, never kept — and
@@ -70,7 +75,11 @@ export const MaintenancePage = (): JSX.Element => {
   const now = useNowTick();
   const rows = list.data?.items ?? [];
   const sheetColumns = maintenanceColumns(t, locale, 'open');
-  const board = useBoardView([sp, setSp], rows, sheetColumns, now);
+  // The row of lists under the table's head, one per column (2026-11-02, «فلتر لكل عمود», as
+  // multi-pick drop-downs): they narrow the rows the bank and area filters brought back, before
+  // the day view and its counts.
+  const columnFilters = useColumnFilters();
+  const board = useBoardView([sp, setSp], rows, sheetColumns, now, columnFilters.values);
 
   // Selection is over the rows of the view on screen — another day's rows are another table.
   const selection = useTableSelection(board.rows.map((row) => row.id));
@@ -119,6 +128,7 @@ export const MaintenancePage = (): JSX.Element => {
             </span>
           )
         : (row: AtmMaintenanceDto) => column.text(row, '—'),
+    filterable: true,
     ...(column.copy === true ? { className: COPY_COLUMN_CLASS } : {}),
   }));
   const timerColumn: Column<AtmMaintenanceDto> = {
@@ -197,31 +207,45 @@ export const MaintenancePage = (): JSX.Element => {
           بس هو اللى يعمل Scroll»): on a computer the title, the form, the filters and the day switch
           keep their place, and only the table's rows scroll, under a head that stays. */}
       <div className={BOARD_FRAME}>
-        <PageHeader title={t('atm.maintenance.title')} />
+        {/* Entry and narrowing share ONE row, on the title's line (2026-11-02, «عايز تطلع الصف
+          بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): the form runs from the start of
+          it, the filters sit at the far end — the LEFT in Arabic, and mirrored in English, because
+          `ms-auto` follows the writing direction rather than picking a physical side. When the
+          line runs short the row wraps inside itself, down to 24rem; below that it takes a line
+          of its own under the title (`PageHeader`'s toolbar). */}
+        <PageHeader
+          title={t('atm.maintenance.title')}
+          toolbar={
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+              {can('atmMaintenance.create') && <OpenMaintenancesForm />}
 
-        {/* Entry and narrowing share ONE row: the form runs from the start of it, the filters sit
-          at the far end — the LEFT in Arabic, and mirrored in English, because `ms-auto` follows
-          the writing direction rather than picking a physical side. */}
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-          {can('atmMaintenance.create') && <OpenMaintenancesForm />}
-
-          <div className="ms-auto flex flex-wrap items-end gap-2">
-            <MultiSelect
-              label={t('atm.common.bank')}
-              options={filters.bankOptions}
-              value={filters.banks}
-              onChange={filters.setBanks}
-            />
-            <MultiSelect
-              label={t('atm.common.area')}
-              options={filters.areaOptions}
-              value={filters.areas}
-              onChange={filters.setAreas}
-              searching={filters.areasLoading}
-            />
-            <BoardResetButton active={filters.filtered} onReset={filters.reset} />
-          </div>
-        </div>
+              <div className="ms-auto flex flex-wrap items-end gap-2">
+                <MultiSelect
+                  label={t('atm.common.bank')}
+                  options={filters.bankOptions}
+                  value={filters.banks}
+                  onChange={filters.setBanks}
+                />
+                <MultiSelect
+                  label={t('atm.common.area')}
+                  options={filters.areaOptions}
+                  value={filters.areas}
+                  onChange={filters.setAreas}
+                  searching={filters.areasLoading}
+                />
+                {/* One reset for everything that narrows the board: the bank and area filters
+                  and the column filters. */}
+                <BoardResetButton
+                  active={filters.filtered || columnFilters.active}
+                  onReset={() => {
+                    filters.reset();
+                    columnFilters.clear();
+                  }}
+                />
+              </div>
+            </div>
+          }
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <BoardDayToggle value={board.view} counts={board.counts} onChange={board.setView} />
@@ -236,7 +260,11 @@ export const MaintenancePage = (): JSX.Element => {
                 range={board.range}
                 rows={board.rows}
                 columns={sheetColumns}
-                filterLine={statementFilterLine(t, locale, filters)}
+                filterLine={statementFilterLine(t, locale, {
+                  banks: filters.banks,
+                  areas: filters.areas,
+                  columns: columnFilterEntries(sheetColumns, columnFilters.values),
+                })}
               />
             </div>
           )}
@@ -261,14 +289,23 @@ export const MaintenancePage = (): JSX.Element => {
             error={list.error}
             onRetry={() => void list.refetch()}
             empty={
-              rows.length === 0 && filters.filtered
-                ? t('atm.common.emptyFiltered')
-                : t(`atm.maintenance.empty.${board.view}`)
+              columnFilters.active && board.beforeBoxes > 0
+                ? t('atm.common.emptyColumnFiltered')
+                : rows.length === 0 && filters.filtered
+                  ? t('atm.common.emptyFiltered')
+                  : t(`atm.maintenance.empty.${board.view}`)
             }
             selection={selection}
             selectAll={selectAllShown}
             sort={board.sorts}
             onSortChange={board.changeSort}
+            columnFilters={{
+              values: columnFilters.values,
+              onChange: columnFilters.set,
+              choices: board.choices,
+              generation: columnFilters.generation,
+              label: (header) => t('atm.common.filterColumn', { column: header }),
+            }}
             group={areaGroupLine(t, locale)}
             stickyHead
           />

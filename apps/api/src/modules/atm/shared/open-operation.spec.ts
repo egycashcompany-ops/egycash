@@ -1,118 +1,55 @@
-// The owner's rule (2026-10-13, per day since 2026-10-27 — port doc OD-1; maintenance only since
-// 2026-11-01, OD-1b) in its pure parts: which lines of a batch open, what counts as the rule's
-// refusal, and that the maintenance schema declares the index that makes it race-proof — with the
-// partial filter the service check's own "open" query matches — while the replenishment schema
-// declares none, and the boot drops the one an older database built.
+// The owner's rule (2026-10-13, per day since 2026-10-27 — port doc OD-1), lifted for
+// replenishments 2026-11-01 (OD-1b) and for maintenance 2026-11-02 (OD-1c): neither operation
+// schema declares an open-operation index any more, and the boot drops the ones older databases
+// built. What the maintenance log declares instead is one live maintenance per MAIL TICKET — the
+// race-proof half of a mail accepted twice at once — and how its refusal is recognized.
 import { describe, expect, it } from 'vitest';
 import { ErrorCodes } from '@ecms/contracts';
-import { ConflictError, StaleDocumentError } from '../../../shared/errors';
+import { BusinessRuleError, ConflictError, StaleDocumentError } from '../../../shared/errors';
 import { AtmReplenishmentModel } from '../replenishments/replenishment.model';
-import { AtmMaintenanceModel } from '../maintenances/maintenance.model';
+import {
+  AtmMaintenanceModel,
+  MAINTENANCE_PER_MAIL_TICKET_INDEX_NAME,
+  maintenancePerMailTicketFilter,
+} from '../maintenances/maintenance.model';
+import { isMailTicketTaken } from '../maintenances/maintenance.service';
 import { atmIndexBuildPlan, atmIndexedModels } from '../atm-indexes';
 import { leaderCascadeGroups } from './operation-log.repository';
-import {
-  OPEN_MAINTENANCE_INDEX_NAME,
-  RETIRED_OPEN_OPERATION_INDEX_NAMES,
-  alreadyOpenError,
-  decideOpenLines,
-  isAlreadyOpenError,
-  isOpenOperationDuplicate,
-  openDayOf,
-  openOperationPartialFilter,
-} from './open-operation';
+import { RETIRED_OPEN_OPERATION_INDEX_NAMES, openDayOf } from './open-operation';
 import { Types } from 'mongoose';
 
-const known = (...codes: string[]) => {
-  const set = new Set(codes);
-  return (code: string): boolean => set.has(code);
-};
-
-describe('decideOpenLines — one batch, in input order', () => {
-  it('opens a known code that has no open operation', () => {
-    expect(decideOpenLines(['101'], known('101'), new Set())).toEqual(['open']);
+describe('no open-operation index on either log — a machine may have several open (OD-1b, OD-1c)', () => {
+  it('replenishment: no unique index at all', () => {
+    const plan = atmIndexBuildPlan(AtmReplenishmentModel.schema.indexes());
+    expect(plan.filter((p) => p.unique)).toEqual([]);
   });
 
-  it('refuses a code that already has an open operation', () => {
-    expect(decideOpenLines(['101', '102'], known('101', '102'), new Set(['101']))).toEqual([
-      'alreadyOpen',
-      'open',
-    ]);
-  });
-
-  it('opens a code repeated in the batch ONCE — on its first line — and refuses the repeats', () => {
-    expect(decideOpenLines(['101', '102', '101', '101'], known('101', '102'), new Set())).toEqual([
-      'open',
-      'open',
-      'alreadyOpen',
-      'alreadyOpen',
-    ]);
-  });
-
-  it('keeps unknown before the rule: a code no machine answers for is unknown, every time', () => {
-    expect(decideOpenLines(['999', '999'], known(), new Set(['999']))).toEqual([
-      'unknown',
-      'unknown',
-    ]);
-  });
-
-  it('skips blank lines without claiming anything', () => {
-    expect(decideOpenLines(['', '101', ''], known('101'), new Set())).toEqual([
-      'blank',
-      'open',
-      'blank',
-    ]);
-  });
-
-  it('does not mutate the already-open set it was handed', () => {
-    const open = new Set<string>();
-    decideOpenLines(['101'], known('101'), open);
-    expect(open.size).toBe(0);
-  });
-});
-
-describe('the refusal and the race', () => {
-  it('answers 409 under one stable code, naming only the machine code', () => {
-    const error = alreadyOpenError('replenishment', '101');
-    expect(error.httpStatus).toBe(409);
-    expect(error.code).toBe(ErrorCodes.ATM_OPERATION_ALREADY_OPEN);
-    expect(error.message).toBe('machine 101 already has an open replenishment that day');
-    expect(isAlreadyOpenError(error)).toBe(true);
-    expect(isAlreadyOpenError(new ConflictError())).toBe(false);
-    expect(isAlreadyOpenError(new StaleDocumentError())).toBe(false);
-  });
-
-  it('reads a lost race in both forms the repository surfaces it', () => {
-    // `create` maps E11000 to a DUPLICATE ConflictError; `findOneAndUpdate` lets the driver's through.
-    expect(isOpenOperationDuplicate(new ConflictError())).toBe(true);
-    expect(isOpenOperationDuplicate({ code: 11000, keyPattern: { machineCode: 1 } })).toBe(true);
-    expect(isOpenOperationDuplicate(new StaleDocumentError())).toBe(false);
-    expect(isOpenOperationDuplicate(alreadyOpenError('maintenance', '101'))).toBe(false);
-    expect(isOpenOperationDuplicate(new Error('boom'))).toBe(false);
-    expect(isOpenOperationDuplicate(null)).toBe(false);
-  });
-});
-
-describe('the race-proof index — on the maintenance log only', () => {
-  it('maintenance: unique on the code AND day, over open live rows with a non-empty code and a stored day', () => {
+  it('maintenance: its ONE unique index is per mail ticket — over live rows opened from a ticket', () => {
     const plan = atmIndexBuildPlan(AtmMaintenanceModel.schema.indexes());
-    const entry = plan.find((p) => p.options['name'] === OPEN_MAINTENANCE_INDEX_NAME);
-    expect(entry).toBeDefined();
-    expect(entry?.keys).toEqual({ machineCode: 1, openDay: 1 });
-    expect(entry?.unique).toBe(true);
-    expect(entry?.options['partialFilterExpression']).toEqual({
-      closedAt: null,
+    const unique = plan.filter((p) => p.unique);
+    expect(unique.map((p) => p.options['name'])).toEqual([MAINTENANCE_PER_MAIL_TICKET_INDEX_NAME]);
+    expect(MAINTENANCE_PER_MAIL_TICKET_INDEX_NAME).toBe('ux_maintenance_per_mail_ticket');
+    expect(unique[0]?.keys).toEqual({ mailTicketId: 1 });
+    // Closed rows are covered (no `closedAt` in the filter); deleted rows and rows with no ticket
+    // (`mailTicketId: null` — every manual and imported row) are not.
+    expect(unique[0]?.options['partialFilterExpression']).toEqual({
+      mailTicketId: { $type: 'objectId' },
       isDeleted: false,
-      machineCode: { $gt: '' },
-      openDay: { $gt: '' },
     });
   });
 
-  it('replenishment: no unique index at all — a machine may have several open (OD-1b)', () => {
-    const plan = atmIndexBuildPlan(AtmReplenishmentModel.schema.indexes());
-    expect(plan.filter((p) => p.unique)).toEqual([]);
-    // The board's company-wide "open that day" question keeps its non-unique index.
-    expect(plan.some((p) => p.options['name'] === 'ix_open_code_opened')).toBe(true);
-  });
+  it.each([
+    ['replenishment', AtmReplenishmentModel],
+    ['maintenance', AtmMaintenanceModel],
+  ] as const)(
+    '%s: keeps the non-unique open-rows index the mail duplication question runs on',
+    (_kind, model) => {
+      const plan = atmIndexBuildPlan(model.schema.indexes());
+      const entry = plan.find((p) => p.options['name'] === 'ix_open_code_opened');
+      expect(entry?.keys).toEqual({ machineCode: 1, openedAt: 1 });
+      expect(entry?.unique).toBe(false);
+    },
+  );
 
   it.each([
     ['replenishment', AtmReplenishmentModel],
@@ -124,7 +61,7 @@ describe('the race-proof index — on the maintenance log only', () => {
     }
   });
 
-  it('lists the retired indexes on each operation log for the boot to drop', () => {
+  it('lists the retired indexes on each operation log for the boot to drop — the per-day forms included', () => {
     const retired = Object.fromEntries(
       atmIndexedModels().map((entry) => [entry.collection, entry.retired ?? []]),
     );
@@ -132,11 +69,14 @@ describe('the race-proof index — on the maintenance log only', () => {
       'ux_open_replenishment_per_code',
       'ux_open_replenishment_per_code_day',
     ]);
-    expect(retired['atm_maintenances']).toEqual(['ux_open_maintenance_per_code']);
+    expect(retired['atm_maintenances']).toEqual([
+      'ux_open_maintenance_per_code',
+      'ux_open_maintenance_per_code_day',
+    ]);
   });
 
-  it('hands every schema its own filter object', () => {
-    expect(openOperationPartialFilter()).not.toBe(openOperationPartialFilter());
+  it('hands the schema its own filter object', () => {
+    expect(maintenancePerMailTicketFilter()).not.toBe(maintenancePerMailTicketFilter());
   });
 
   it('is built at boot: both collections are on the index builder’s list, rows kept out of its log', () => {
@@ -169,6 +109,27 @@ describe('the race-proof index — on the maintenance log only', () => {
         .filter((entry) => !rowsOut.includes(entry.collection))
         .every((entry) => entry.rowsInLog),
     ).toBe(true);
+  });
+});
+
+describe('a mail accepted twice at once — the per-ticket index’s refusal, recognized', () => {
+  it('is the DUPLICATE create maps E11000 to, and nothing else', () => {
+    // `create` maps E11000 to a DUPLICATE ConflictError (base.repository.ts); on the maintenance
+    // log the per-ticket index is the only unique index besides `_id`.
+    expect(isMailTicketTaken(new ConflictError())).toBe(true);
+    expect(
+      isMailTicketTaken(
+        new ConflictError('another record already holds this mailTicketId', ErrorCodes.DUPLICATE),
+      ),
+    ).toBe(true);
+    expect(isMailTicketTaken(new ConflictError('x', ErrorCodes.ATM_OPERATION_ALREADY_OPEN))).toBe(
+      false,
+    );
+    expect(isMailTicketTaken(new StaleDocumentError())).toBe(false);
+    expect(isMailTicketTaken(new BusinessRuleError('x'))).toBe(false);
+    expect(isMailTicketTaken({ code: 11000 })).toBe(false);
+    expect(isMailTicketTaken(new Error('boom'))).toBe(false);
+    expect(isMailTicketTaken(null)).toBe(false);
   });
 });
 

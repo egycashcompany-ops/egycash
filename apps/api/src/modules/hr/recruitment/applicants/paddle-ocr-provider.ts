@@ -162,7 +162,13 @@ const readImages = async (
 ): Promise<{ front?: string; back?: string }> => {
   const load = async (fileId: string | undefined): Promise<string | undefined> => {
     if (fileId === undefined) return undefined;
-    const { buffer } = await fileService.readBuffer(ctx, fileId);
+    // `readEntityOwnedBuffer` and not `readBuffer`: the generic file-level grant
+    // (`file.download` for a private file) is the rule for the GENERIC file surface, and an
+    // HR role does not hold it. The scan's entity type is claimed by
+    // `hrApplicantCardScanFileAuthorizers`, which re-asks the question against
+    // `applicant.create` — so this is a narrower check than the one it replaces, not a wider
+    // one, and an unclaimed entity type is refused outright rather than waved through.
+    const { buffer } = await fileService.readEntityOwnedBuffer(ctx, fileId);
     return buffer.toString('base64');
   };
   const [front, back] = await Promise.all([load(input.frontFileId), load(input.backFileId)]);

@@ -28,9 +28,11 @@ describe('the assembled page registry', () => {
   // Fleet's vehicle supply contracts (عقود توريد السيارات) added one page and its five keys.
   // Changing an employee's code by hand (`employee.changeCode`, ADR-017 amended) added one key and
   // no page — it is a power over the employees screen.
-  it('declares 82 pages over 311 permissions', () => {
+  // Emptying an applicant's documents folder (`applicantDocument.delete`) added one key and no
+  // page — it is a power over the applicant documents screen (see below).
+  it('declares 82 pages over 312 permissions', () => {
     expect(pages).toHaveLength(82);
-    expect(permissions).toHaveLength(311);
+    expect(permissions).toHaveLength(312);
   });
 
   /**
@@ -94,10 +96,14 @@ describe('the assembled page registry', () => {
    * `employee.changeCode` adds ONE key and no page: changing a code by hand is a power over the
    * employees screen, routed to `hr.employees` with the rest of `employee.*`, so the unassigned
    * count does not move.
+   *
+   * `applicantDocument.delete` adds ONE key and no page: emptying a candidate's documents folder
+   * is a power over the applicant documents screen, routed to `hr.applicant-documents` with the
+   * rest of `applicantDocument.*`, so the unassigned count does not move either.
    */
-  it('assigns 282 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 283 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(282);
+    expect(assigned).toHaveLength(283);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.

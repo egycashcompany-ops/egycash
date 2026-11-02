@@ -4,8 +4,8 @@
 // the data-edit bulk add, «مسجلة من قبل» (`skippedCodes`); the bulk delete, an unknown code. So
 // when a run stops, every line not confirmed goes back into the boxes — the failed request's own
 // lines too, which may have partly gone through; the screen says so, and that sending them again
-// is safe. (The open forms are NOT such screens: a replenishment opens again on every send, so
-// `openInBatches` keeps a request's lines of unknown result apart.)
+// is safe. (The open forms are NOT such screens: a replenishment or a maintenance opens again on
+// every send, so `openInBatches` keeps a request's lines of unknown result apart.)
 //
 // Owner, 2026-11-01: «صلّح كمان إضافة الماكينات والـ bulk add» — after the open forms took any
 // number of lines.

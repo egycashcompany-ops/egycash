@@ -9,7 +9,6 @@
 import { Schema, model, type Types } from 'mongoose';
 import { ATM_MAINTENANCE_SOURCES, type AtmMaintenanceSource } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
-import { OPEN_MAINTENANCE_INDEX_NAME, openOperationPartialFilter } from '../shared/open-operation';
 
 export interface AtmMaintenanceDoc extends BaseDocFields {
   branchId: Types.ObjectId;
@@ -22,7 +21,8 @@ export interface AtmMaintenanceDoc extends BaseDocFields {
   openedAt: Date;
   /**
    * The Cairo day of `openedAt` (`YYYY-MM-DD`), written with it — the key the owner's per-day rule
-   * is held by (shared/open-operation.ts). Null on a row stored before the field existed.
+   * was held by until it was lifted (OD-1c, shared/open-operation.ts). Null on a row stored before
+   * the field existed.
    */
   openDay: string | null;
   closedAt: Date | null;
@@ -39,6 +39,19 @@ export interface AtmMaintenanceDoc extends BaseDocFields {
   closedById: Types.ObjectId | null;
   closedByName: string | null;
 }
+
+/** The unique index that admits one live maintenance per mail ticket (see its declaration). */
+export const MAINTENANCE_PER_MAIL_TICKET_INDEX_NAME = 'ux_maintenance_per_mail_ticket';
+
+/**
+ * The rows that index covers: live (not soft-deleted) and opened from a ticket — `mailTicketId` an
+ * ObjectId, so the null of every manual and imported row is outside it. A fresh object per call —
+ * Mongoose keeps the options it is handed.
+ */
+export const maintenancePerMailTicketFilter = (): Record<string, unknown> => ({
+  mailTicketId: { $type: 'objectId' },
+  isDeleted: false,
+});
 
 const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
   {
@@ -75,28 +88,34 @@ const maintenanceSchema = new Schema<AtmMaintenanceDoc>(
 maintenanceSchema.index({ branchId: 1, closedAt: 1, area: -1 }, { name: 'ix_branch_open_area' });
 maintenanceSchema.index({ branchId: 1, closedAt: -1 }, { name: 'ix_branch_closed' });
 maintenanceSchema.index({ branchId: 1, area: 1, openedAt: 1 }, { name: 'ix_branch_area_opened' });
-// The per-day rule's QUESTION — "is this code open on that day?" — asks by the open time's day range
-// (so a row stored before `openDay` existed still counts), which the unique index below cannot
-// answer: its filter needs `openDay`. This one is what that company-wide query runs on, instead of
-// a scan of the whole log (`openMachineCodes`, shared/operation-log.repository.ts).
+// Open rows by code and open time — what the mail `duplication` question runs on ("does this
+// machine have an open maintenance on the ticket's day?", `openMachineCodes` in
+// shared/operation-log.repository.ts), company-wide, instead of a scan of the whole log. It asks
+// by the open time's day range, so a row stored before `openDay` existed still counts. The flag is
+// a warning only since OD-1c (2026-11-02): a machine may have several open maintenances, and no
+// unique index holds one per machine and day any more — atm-indexes.ts drops the one an older
+// database built (`ux_open_maintenance_per_code_day`). A database that built the legacy-shaped
+// `ix_branch_machine_open` (contad_app.js:2674) keeps it unused.
 maintenanceSchema.index(
   { machineCode: 1, openedAt: 1 },
   { name: 'ix_open_code_opened', partialFilterExpression: { closedAt: null, isDeleted: false } },
 );
-// The owner's rule (2026-10-13, narrowed to the day 2026-10-27 — port doc OD-1): at most ONE open
-// maintenance per machine code PER DAY, company-wide — the race-proof half of the service check
-// (maintenance.service.ts); the mail `duplication` question asks the same thing of the ticket's
-// day. It replaces `ix_branch_machine_open` (the legacy's per-branch "open TODAY" form of that
-// question, contad_app.js:2674 — a database that built it keeps it unused) and the rule's any-day
-// index of the first form, which the boot drops. Built at boot by atm-indexes.ts; where existing
-// rows already violate it the boot names this collection and skips the index, and the service
-// check still refuses every new duplicate.
+// ONE LIVE MAINTENANCE PER MAIL TICKET — what keeps two concurrent accepts of the same mail (a
+// double click, two people on one screen) from opening two maintenances for it. Until OD-1c the
+// per-day index refused the second as a side effect; with it gone, this is the race-proof half of
+// accept's "an already-decided ticket is skipped": the loser's insert is refused, nothing of it is
+// written, and accept skips the ticket (mail-ticket.service.ts). Covers CLOSED rows too — a ticket
+// whose maintenance is closed stays accepted (the restore refuses to take it back) — and leaves
+// DELETED rows out, so a ticket restored to pending (its maintenance soft-deleted) is accepted
+// again. Manual and imported rows carry no ticket (`mailTicketId: null`) and are outside it. The
+// log's only unique index besides `_id`. Built at boot by atm-indexes.ts, which reports and skips
+// it if stored rows already violate it.
 maintenanceSchema.index(
-  { machineCode: 1, openDay: 1 },
+  { mailTicketId: 1 },
   {
     unique: true,
-    name: OPEN_MAINTENANCE_INDEX_NAME,
-    partialFilterExpression: openOperationPartialFilter(),
+    name: MAINTENANCE_PER_MAIL_TICKET_INDEX_NAME,
+    partialFilterExpression: maintenancePerMailTicketFilter(),
   },
 );
 

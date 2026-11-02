@@ -190,6 +190,17 @@ export const AUDIT_ACTIONS = [
   // collection and the merges: the `atmRegisterImport` shape, one administrator's decision over
   // thousands of rows. Not broadcast — the run signals each affected topic once, on the target.
   'atmBranchMove',
+  // The applicant documents folder, emptied (/hr/applicant-documents, 2026-11-02). One row per
+  // applicant whose folder HR removed, carrying the code and how many files went — the question an
+  // HR review asks is «who emptied this person's file, and how much of it», and reading the Files
+  // service's own row per file never adds up to that answer.
+  //
+  // Its OWN verb rather than `delete`, for two reasons that are both visible in the product.
+  // `delete` is labelled «حُذف الحساب» on the audit screen, and the applicant's account was not
+  // deleted — the files were. And `delete` is in `REALTIME_BROADCAST_ACTIONS`, so a row on the
+  // applicant would tell every open applicant screen that the candidate had been deleted, which
+  // is the one thing this act does not do.
+  'applicantFolderDeleted',
 ] as const;
 export const AuditActionSchema = z.enum(AUDIT_ACTIONS);
 export type AuditAction = z.infer<typeof AuditActionSchema>;

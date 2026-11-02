@@ -3,9 +3,11 @@
 // Three links in a chain that no runtime test in this package can observe end to end, and each one
 // silently produced nothing before:
 //
-//   1. THE SCAN IS FILED BY KIND. It used to go to whichever category happened to allow an image
-//      first — which could be the applicant-source ICON category — so nothing downstream could
-//      tell a scanned card from any other picture.
+//   1. THE SCAN IS FILED BY KIND, BY THE SERVER. It used to go to whichever category happened to
+//      allow an image first — which could be the applicant-source ICON category — so nothing
+//      downstream could tell a scanned card from any other picture. Choosing the category in the
+//      BROWSER was then its own bug: finding it meant listing `/platform/file-categories`, which
+//      needs `file.view`, so an HR user got an empty list and «لا توجد فئة ملفات للصور مُهيّأة».
 //   2. THE IDS REACH THE REGISTER CALL. The scan runs before the applicant exists, so its uploads
 //      land on a scratch reference; unless the ids travel with the registration, nothing ever
 //      connects them to the person they were read from.
@@ -25,15 +27,31 @@ const code = (source: string): string =>
 
 const OCR = code(read('./components/ApplicantNationalIdOcr.tsx'));
 const FORM = code(read('./components/ApplicantForm.tsx'));
+const API = code(read('./api/applicant-api.ts'));
 
-describe('the scan is filed by kind', () => {
-  it('picks the National-ID category by key, not by "first one allowing an image"', () => {
-    expect(OCR).toContain('APPLICANT_NATIONAL_ID_FILE_CATEGORY');
-    expect(OCR).toContain('c.key === APPLICANT_NATIONAL_ID_FILE_CATEGORY');
+describe('the scan is filed by kind, and the server picks the kind', () => {
+  const SERVICE = code(read('../../../../../../../apps/api/src/modules/hr/recruitment/applicants/applicant.service.ts'));
+
+  it('uploads through HR’s own endpoint, not the generic Files route', () => {
+    expect(API).toContain("upload<{ fileId: string }>('/hr/applicants/national-id-card/upload'");
+    expect(OCR).toContain('uploadNationalIdCardScan');
   });
 
-  it('keeps a fallback so a database seeded before the category still scans', () => {
-    expect(OCR).toContain("m.startsWith('image/')");
+  /**
+   * The screen must not ask what categories exist. That request is the bug: it needs `file.view`,
+   * an HR role does not hold it, and the empty answer was reported as a missing category.
+   */
+  it('never lists file categories, and never names one in the upload', () => {
+    expect(OCR).not.toContain('useFileCategories');
+    expect(OCR).not.toContain('categoryId');
+    expect(OCR).not.toContain('APPLICANT_NATIONAL_ID_FILE_CATEGORY');
+    expect(OCR).not.toContain('noCategory');
+  });
+
+  /** The category is resolved — and ensured — server-side, so a database missing it still scans. */
+  it('resolves the National-ID category on the server, creating it if absent', () => {
+    expect(SERVICE).toContain('uploadNationalIdCardScan');
+    expect(SERVICE).toContain('await resolveNationalIdCardCategoryId()');
   });
 });
 

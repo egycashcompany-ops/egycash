@@ -145,6 +145,20 @@ export interface ApplicantDoc extends BaseDocFields {
   duplicateFlag: boolean;
   duplicateOf: Types.ObjectId[];
   attachmentCount: number;
+  /**
+   * When HR last emptied this applicant's documents folder, or null if they never have.
+   *
+   * It exists so an emptied folder can LEAVE the folders grid instead of sitting there as an empty
+   * shelf. The grid cannot tell «nothing was ever filed here» from «HR removed what was here» by
+   * counting files — both are zero — and the two deserve opposite treatment: the first is a folder
+   * waiting for documents, the second is a folder that is finished with.
+   *
+   * It is a marker, NOT the rule. A folder is hidden only when this is set AND the folder is still
+   * empty, which is checked against the files themselves on every read. So filing anything new for
+   * this person brings their folder back on its own, with nothing to reset and no way for a stale
+   * marker to hide a folder that has documents in it.
+   */
+  documentsFolderDeletedAt: Date | null;
   // Withdrawal (Stage-1 terminal)
   withdrawnReason: string | null;
   withdrawnAt: Date | null;
@@ -349,6 +363,7 @@ const applicantSchema = new Schema<ApplicantDoc>(
     duplicateFlag: { type: Boolean, required: true, default: false },
     duplicateOf: { type: [Schema.Types.ObjectId], default: [] },
     attachmentCount: { type: Number, required: true, default: 0 },
+    documentsFolderDeletedAt: { type: Date, default: null },
     withdrawnReason: { type: String, default: null },
     withdrawnAt: { type: Date, default: null },
     movedToOfferAt: { type: Date, default: null },
@@ -367,6 +382,17 @@ applicantSchema.index(
     unique: true,
     name: 'ux_live_nationalId',
     partialFilterExpression: { nationalId: { $type: 'string' }, isDeleted: false, status: 'new' },
+  },
+);
+// Only the emptied folders are in here, which is the whole point: the grid asks «which folders did
+// HR empty» on every read, and that set is a handful beside the applicants collection. The query
+// spells its predicate `$type: 'date'` to match this filter exactly — `$ne: null` would be the same
+// set but the planner cannot prove it is covered, so it would scan.
+applicantSchema.index(
+  { documentsFolderDeletedAt: 1 },
+  {
+    name: 'ix_documentsFolderDeletedAt',
+    partialFilterExpression: { documentsFolderDeletedAt: { $type: 'date' } },
   },
 );
 applicantSchema.index({ searchName: 1 }, { name: 'ix_searchName' });

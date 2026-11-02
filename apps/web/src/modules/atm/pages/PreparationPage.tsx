@@ -16,6 +16,12 @@
 //
 // THE DAY IS THE SERVER'S SUGGESTION (DS-25) — the earliest day from today with issued lines not yet
 // prepared — and is never remembered; `bank` is; `line` is a selection.
+//
+// A ROW OF FILTER LISTS under the lines' head, one multi-pick drop-down per column (2026-11-02,
+// «فلتر لكل عمود», «يكون Drop Down بـ Multi select»),
+// narrows the list the page shows. «المسلسل أو رقم الماكينة» still searches the whole day — a scan
+// must always find its Note — and the line it opens shows in the capture whole, under its code,
+// even while a list hides its row.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -28,11 +34,18 @@ import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
+import {
+  columnFilterChoices,
+  filterRowsByColumns,
+  type ColumnFilterValues,
+} from '../../../shared/lib/column-filter';
 import { formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
 import { BOARD_FRAME } from '../../../shared/ui/board-scroll';
+import { ColumnFilterSelect } from '../../../shared/ui/ColumnFilterSelect';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -75,11 +88,15 @@ import {
   PREPARATION_STATUS_TONE,
   preparationStatusKey,
   prepStateOf,
+  runFirst,
   runLabel,
   settlementErrorText,
   settlementErrorToast,
 } from '../lib/settlement-view';
+import { formatTime12 } from '../lib/settlement-dates';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
+
+type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 /** Remembered across visits: the bank. The day is the server's suggestion; `line` a selection. */
 const REMEMBERED_FILTERS = ['bank'] as const;
@@ -123,6 +140,55 @@ export const findLine = (
   return first === undefined ? null : { line: first, voided: false };
 };
 
+/** The lines table's columns, in order — the head and the filter row alike. */
+export const PREP_LINE_COLUMNS = [
+  { key: 'serial', header: 'atm.settlement.serial' },
+  { key: 'code', header: 'atm.settlement.machineCode' },
+  { key: 'run', header: 'atm.settlement.run' },
+  { key: 'status', header: 'atm.settlement.status' },
+] as const;
+
+/** «ملغاة» for a cancelled line, its preparation's state otherwise. */
+const prepStatusText = (line: AtmPreparationLineDto, t: Translate): string => {
+  const state = prepStateOf(line);
+  return state === 'cancelled'
+    ? t('atm.settlement.status.cancelled')
+    : t(preparationStatusKey(state));
+};
+
+/**
+ * Pure: what a line's cell in that column shows, as text — what its filter box matches. Null for
+ * a column the table does not have.
+ */
+export const prepLineText = (
+  line: AtmPreparationLineDto,
+  key: string,
+  t: Translate,
+  locale: Locale,
+): string | null => {
+  switch (key) {
+    case 'serial':
+      return line.serial === null ? '—' : formatNumber(line.serial, locale);
+    case 'code':
+      return lineCode(line);
+    case 'run':
+      return `${runLabel(line.run, t)} ${formatTime12(line.scheduleTime, locale)}`.trim();
+    case 'status':
+      return prepStatusText(line, t);
+    default:
+      return null;
+  }
+};
+
+/** Pure: the day's lines every column filter keeps, in the server's order. */
+export const filterPrepLines = (
+  lines: readonly AtmPreparationLineDto[],
+  values: ColumnFilterValues,
+  t: Translate,
+  locale: Locale,
+): AtmPreparationLineDto[] =>
+  filterRowsByColumns(lines, values, (line, key) => prepLineText(line, key, t, locale));
+
 export const PreparationPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -153,6 +219,12 @@ export const PreparationPage = (): JSX.Element => {
   const lines = useMemo(() => linesQuery.data ?? [], [linesQuery.data]);
   const lineParam = sp.get('line');
   const selected = lines.find((l) => l.lineId === lineParam) ?? null;
+  // The column filters narrow what the list shows; the find and the open line read the whole day.
+  const columnFilters = useColumnFilters();
+  const shownLines = useMemo(
+    () => filterPrepLines(lines, columnFilters.values, t, locale),
+    [lines, columnFilters.values, locale],
+  );
 
   // ── The form: seeded once per line, kept while unsaved ──────────────────────────────────────
   // What the user holds is `stored`; what the page shows is `seedOnce(stored, line)` — the stored
@@ -362,6 +434,11 @@ export const PreparationPage = (): JSX.Element => {
           بس هو اللى يعمل Scroll»): on a computer the title and the toolbar keep their place, and
           only the lines — and the capture beside them — scroll. */}
       <div className={BOARD_FRAME}>
+        {/* The day, the bank and the find on the title's line (2026-11-02, «عايز تطلع الصف بتاع
+          الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): they wrap inside their slot while it
+          keeps 24rem beside the title and the figures, and take a line of their own under the
+          title when it cannot (`PageHeader`'s toolbar). The find keeps its id, so the scanner's
+          focus still comes back to it after a save. */}
         <PageHeader
           title={t('atm.prep.title')}
           figures={
@@ -384,56 +461,60 @@ export const PreparationPage = (): JSX.Element => {
               ]}
             />
           }
+          toolbar={
+            <div className="flex flex-wrap items-end gap-3" data-prep-toolbar="true">
+              <DayField
+                id="prep-day"
+                value={day}
+                onChange={(next) => guard.confirmLeave(() => patch({ date: next, line: null }))}
+              />
+              <Field label={t('atm.settlement.bank')} htmlFor="prep-bank">
+                <Select
+                  id="prep-bank"
+                  value={plan?.bankCode ?? ''}
+                  disabled={plans.length === 0}
+                  onChange={(e) =>
+                    guard.confirmLeave(() => patch({ bank: e.target.value, line: null }))
+                  }
+                >
+                  {plans.map((p) => (
+                    <option key={p.planId} value={p.bankCode}>
+                      {bankLookup.name(p.bankCode, locale)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="min-w-64 space-y-1.5">
+                <label
+                  htmlFor={FIND_ID}
+                  className="block text-sm font-medium text-slate-700 dark:text-slate-200"
+                >
+                  {t('atm.prep.find')}
+                </label>
+                <Input
+                  id={FIND_ID}
+                  dir="ltr"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={find}
+                  onChange={(e) => setFind(e.target.value)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    onFind();
+                  }}
+                />
+                <p
+                  aria-live="polite"
+                  className="min-h-4 text-xs text-amber-700 dark:text-amber-400"
+                >
+                  {findNote ?? ''}
+                </p>
+              </div>
+            </div>
+          }
         />
-
-        <div className="flex flex-wrap items-end gap-3" data-prep-toolbar="true">
-          <DayField
-            id="prep-day"
-            value={day}
-            onChange={(next) => guard.confirmLeave(() => patch({ date: next, line: null }))}
-          />
-          <Field label={t('atm.settlement.bank')} htmlFor="prep-bank">
-            <Select
-              id="prep-bank"
-              value={plan?.bankCode ?? ''}
-              disabled={plans.length === 0}
-              onChange={(e) =>
-                guard.confirmLeave(() => patch({ bank: e.target.value, line: null }))
-              }
-            >
-              {plans.map((p) => (
-                <option key={p.planId} value={p.bankCode}>
-                  {bankLookup.name(p.bankCode, locale)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="min-w-64 space-y-1.5">
-            <label
-              htmlFor={FIND_ID}
-              className="block text-sm font-medium text-slate-700 dark:text-slate-200"
-            >
-              {t('atm.prep.find')}
-            </label>
-            <Input
-              id={FIND_ID}
-              dir="ltr"
-              autoComplete="off"
-              spellCheck={false}
-              value={find}
-              onChange={(e) => setFind(e.target.value)}
-              onFocus={(e) => e.currentTarget.select()}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                onFind();
-              }}
-            />
-            <p aria-live="polite" className="min-h-4 text-xs text-amber-700 dark:text-amber-400">
-              {findNote ?? ''}
-            </p>
-          </div>
-        </div>
 
         {context.isLoading ? (
           <LoadingState />
@@ -469,14 +550,50 @@ export const PreparationPage = (): JSX.Element => {
               <table className="w-full border-collapse text-sm" data-prep-lines="true">
                 <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
                   <tr className="text-xs text-slate-600 dark:text-slate-300">
-                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.serial')}</th>
-                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.machineCode')}</th>
-                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.run')}</th>
-                    <th className="px-3 py-2.5 text-start">{t('atm.settlement.status')}</th>
+                    {PREP_LINE_COLUMNS.map((column) => (
+                      <th key={column.key} className="px-3 py-2.5 text-start">
+                        {t(column.header)}
+                      </th>
+                    ))}
+                  </tr>
+                  {/* The filter row, one list per column, sticking with the head. */}
+                  <tr
+                    key={`filters-${String(columnFilters.generation)}`}
+                    data-column-filters="true"
+                  >
+                    {PREP_LINE_COLUMNS.map((column) => (
+                      <th key={column.key} className="px-3 pb-2 font-normal">
+                        <ColumnFilterSelect
+                          value={columnFilters.values[column.key] ?? []}
+                          choices={() =>
+                            columnFilterChoices(
+                              lines,
+                              columnFilters.values,
+                              column.key,
+                              (line, key) => prepLineText(line, key, t, locale),
+                              runFirst,
+                            )
+                          }
+                          onChange={(picked) => columnFilters.set(column.key, picked)}
+                          label={t('atm.common.filterColumn', { column: t(column.header) })}
+                          columnKey={column.key}
+                        />
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((line) => {
+                  {shownLines.length === 0 && columnFilters.active && lines.length > 0 && (
+                    <tr data-prep-lines-empty="true">
+                      <td
+                        colSpan={PREP_LINE_COLUMNS.length}
+                        className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400"
+                      >
+                        {t('atm.common.emptyColumnFiltered')}
+                      </td>
+                    </tr>
+                  )}
+                  {shownLines.map((line) => {
                     const state = prepStateOf(line);
                     return (
                       <tr
@@ -496,7 +613,7 @@ export const PreparationPage = (): JSX.Element => {
                         )}
                       >
                         <td className="px-3 py-2.5 tabular-nums">
-                          {line.serial === null ? '—' : formatNumber(line.serial, locale)}
+                          {prepLineText(line, 'serial', t, locale)}
                         </td>
                         <td className="px-3 py-2.5">
                           <span dir="ltr" className="font-medium">
@@ -513,9 +630,7 @@ export const PreparationPage = (): JSX.Element => {
                               state === 'cancelled' ? 'neutral' : PREPARATION_STATUS_TONE[state]
                             }
                           >
-                            {state === 'cancelled'
-                              ? t('atm.settlement.status.cancelled')
-                              : t(preparationStatusKey(state))}
+                            {prepStatusText(line, t)}
                           </Badge>
                         </td>
                       </tr>

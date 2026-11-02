@@ -11,6 +11,7 @@
 // live timer, the row's buttons. That is what keeps a file from drifting away from the screen it
 // was taken from.
 import { type AtmMaintenanceDto, type AtmReplenishmentDto, type Locale } from '@ecms/contracts';
+import { activeColumnFilters, type ColumnFilterValues } from '../../../shared/lib/column-filter';
 import { formatBusinessDateTime, formatDate } from '../../../shared/lib/format';
 import { type SortValue } from '../../../shared/lib/sort-rows';
 import { type TableSort } from '../../../shared/lib/table-sort';
@@ -39,6 +40,11 @@ export interface SheetColumn<T> {
    * التغذية». The open boards keep every other cell out of a selection.
    */
   copy?: boolean;
+  /**
+   * What the column's filter lists, when the cell SHOWS more than `text` — the maintenance
+   * board's service with its «بريد» badge, a value of its own. Absent: the list holds `text`.
+   */
+  filterText?: (row: T) => string;
 }
 
 const orEmpty = (value: string | null, empty: string): string =>
@@ -155,6 +161,15 @@ export const maintenanceColumns = (
       header: t('atm.maintenance.serviceType'),
       text: (row, empty) => orEmpty(row.serviceType, empty),
       copy: page === 'open',
+      // The open board draws a «بريد» badge beside a mail-opened service; its list names it too.
+      ...(page === 'open'
+        ? {
+            filterText: (row: AtmMaintenanceDto) =>
+              row.source === 'mail'
+                ? `${orEmpty(row.serviceType, '')} ${t('atm.maintenance.fromMail')}`
+                : orEmpty(row.serviceType, ''),
+          }
+        : {}),
     },
     { key: 'area', header: t('atm.common.area'), text: (row) => row.area },
     {
@@ -293,14 +308,20 @@ export const statementTitle = (
 };
 
 /**
- * The line under the printed title: the bank and area filters in force, by name. A filter in force
- * is never left off the page — a statement narrowed to one bank that printed without saying so
- * would read as the company's. Empty when nothing narrows it.
+ * The line under the printed title: the bank and area filters in force, by name, then the column
+ * filters, each under its column's header with the values picked in it. A filter in force is never
+ * left off the page — a statement narrowed to one bank, or to two codes, that printed without
+ * saying so would read as the company's. Empty when nothing narrows it.
  */
 export const statementFilterLine = (
   t: Translate,
   locale: Locale,
-  filters: { banks: readonly string[]; areas: readonly string[] },
+  filters: {
+    banks: readonly string[];
+    areas: readonly string[];
+    /** The column filters in force, by header — «الكود: «704، 705»» (`columnFilterEntries`). */
+    columns?: readonly { header: string; picked: readonly string[] }[];
+  },
 ): string =>
   [
     filters.banks.length === 0
@@ -309,9 +330,36 @@ export const statementFilterLine = (
     filters.areas.length === 0
       ? null
       : t('atm.export.areasAre', { names: filters.areas.join(listSeparator(locale)) }),
+    ...(filters.columns ?? []).map((entry) =>
+      t('atm.export.columnIs', {
+        column: entry.header,
+        // An empty cell picked is named as its list names it: «(فارغ)».
+        value: entry.picked
+          .map((value) => (value === '' ? t('common.filters.blank') : value))
+          .join(listSeparator(locale)),
+      }),
+    ),
   ]
     .filter((part): part is string => part !== null)
     .join(' · ');
+
+/**
+ * Pure: the column filters that narrow the table, in the table's column order, each under its
+ * header with its picks — what the statement's filter line names. A filter for a column the table
+ * lacks is left out.
+ */
+export const columnFilterEntries = (
+  columns: readonly { key: string; header: string }[],
+  values: ColumnFilterValues,
+): { header: string; picked: readonly string[] }[] => {
+  const pickedByKey = new Map(
+    activeColumnFilters(values).map((entry) => [entry.key, entry.picked]),
+  );
+  return columns.flatMap((column) => {
+    const picked = pickedByKey.get(column.key);
+    return picked === undefined ? [] : [{ header: column.header, picked }];
+  });
+};
 
 /** What the file is called in the reader's downloads — what it is, then the day or the days. */
 export const statementFileName = (

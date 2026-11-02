@@ -5,7 +5,12 @@
 // Screening), Stage 3 (Interviews), Stage 4 (Job Offer), Stage 5 (Employee Creation),
 // Stage 6 (Hiring Documents), and Stage 7 (Electronic Employee File) — the final stage of the
 // approved seven-stage workflow and the handoff artifact to the Employee module (BD-008).
-import { PlatformEvents, declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
+import {
+  PlatformEvents,
+  declarePermissions,
+  type PageDef,
+  type PermissionDef,
+} from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import {
   applicantService,
@@ -18,6 +23,7 @@ import {
   buildApplicantPortalDocumentsRouter,
   hrApplicantDocumentFileAuthorizers,
 } from './recruitment/applicant-documents';
+import { hrApplicantCardScanFileAuthorizers } from './recruitment/applicants/national-id-scan.files';
 import { logger } from '../../infrastructure/logging/logger';
 import {
   buildPublicRecruitmentFormRouter,
@@ -335,7 +341,11 @@ const applicantDocumentPermissions = declarePermissions(
   'hr',
   'applicantDocument',
   { en: 'applicant documents', ar: 'مستندات المتقدمين' },
-  ['view'],
+  // `delete` empties one candidate's folder — the card, what they handed in, and what HR attached
+  // — and it is separate from `review` for the same reason `review` is separate from `view`:
+  // ruling on a document and throwing a person's file away are not the same act, and the second is
+  // refused outright for anybody who was hired or is being hired (their card is a kept record).
+  ['view', 'delete'],
   [
     {
       action: 'review',
@@ -1654,6 +1664,7 @@ export const hrModule: ModuleManifest = {
     // ADR-023 + D-APP-9 — a candidate reaches their OWN uploads and nothing else, decided against
     // the subject on their session rather than anything in the request.
     ...hrApplicantDocumentFileAuthorizers,
+    ...hrApplicantCardScanFileAuthorizers,
     // P-HR-TRN D9 — a certificate is filed against the RECORD it certifies. Reading follows the
     // record's own key; writing follows the conducting key, because the person who taught the
     // session is the person holding the paper.
@@ -1722,7 +1733,10 @@ export const hrModule: ModuleManifest = {
           await applicantPortalService.openFor(applicant);
           await applicantPortalService.sendPortalLink(payload.applicantId, 'system');
         } catch (error) {
-          logger.error({ err: error, applicantId: payload.applicantId }, 'opening the applicant portal failed');
+          logger.error(
+            { err: error, applicantId: payload.applicantId },
+            'opening the applicant portal failed',
+          );
         }
       },
     },

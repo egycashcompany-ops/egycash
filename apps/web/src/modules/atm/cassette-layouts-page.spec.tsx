@@ -1,6 +1,10 @@
 // /atm/settlements/layouts «فئات الكاسيتات» and its import page, rendered from a pre-filled query
 // cache (docs/12-planning/atm-settlements-phase1.md §9.5), with the pure pieces behind them: the
-// history line's diff, an apply's estimate, a slot's kind change, the duplicate sentences.
+// history line's diff, an apply's estimate, a slot's kind change, the duplicate sentences — and the
+// filters on the title's line with a column filter under each of the table's columns (2026-11-02,
+// «فلتر لكل عمود», then «لأ عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select»):
+// a drop-down list of the values the column's cells show, several of them pickable — a row stays
+// when its cell is one of a column's picks, in every column with picks.
 //
 // Every code, name and count below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -8,7 +12,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   type AtmCassetteLayoutDetailDto,
   type AtmCassetteLayoutRowDto,
@@ -23,7 +27,8 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
-import { CassetteLayoutsPage } from './pages/CassetteLayoutsPage';
+import { CassetteLayoutsPage, layoutRowText } from './pages/CassetteLayoutsPage';
+import { filterRowsByColumns } from '../../shared/lib/column-filter';
 import { LayoutImportPage, applyEstimate } from './pages/LayoutImportPage';
 import { layoutContentChanged, versionDiff } from './components/settlements/LayoutEditor';
 import { withKind } from './components/settlements/SlotEditor';
@@ -35,6 +40,19 @@ import {
   settlementContextKey,
   standardLoadsKey,
 } from './api/settlements-queries';
+
+// The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
+// by default, so every other test renders the layouts unfiltered.
+let columnValues: Record<string, string[]> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
+  }),
+}));
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -180,6 +198,21 @@ const layouts = (
     qc.setQueryData(cassetteLayoutKey(DETAIL.machineId), DETAIL);
   });
 
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
+
 describe('the layouts page', () => {
   it('says to choose a branch when none resolves', () => {
     const html = layouts(context('layouts', { branch: null, blocked: 'chooseBranch' }), LIST);
@@ -231,6 +264,115 @@ describe('the layouts page', () => {
       t('atm.layouts.editor.historyDiff', { slot: 3, before: '100', after: '50' }),
     );
     expect(html).toContain(t('atm.layouts.editor.save'));
+  });
+});
+
+describe('the layouts page’s toolbar and column lists (2026-11-02)', () => {
+  const html = layouts(context('layouts'), LIST);
+  const textContext = { t, locale: 'ar' as const, loadName: new Map<string, string>() };
+  const COLUMNS = [
+    ['code', 'atm.settlement.machineCode'],
+    ['name', 'atm.settlement.machineName'],
+    ['area', 'atm.settlement.area'],
+    ['type', 'atm.layouts.column.type'],
+    ['cassettes', 'atm.layouts.column.cassettes'],
+    ['load', 'atm.layouts.column.standardLoad'],
+    ['changed', 'atm.layouts.column.changed'],
+  ] as const;
+  const noLayout = t('atm.layouts.flag.noLayout');
+  const chips = '200 100 50 ↻20';
+  /** One column's list in the filter row: its trigger, from the list's marker to its cell's end. */
+  const listOf = (markup: string, key: string): string => {
+    const at = markup.indexOf(`data-column-filter="${key}"`);
+    return at < 0 ? '' : markup.slice(at, markup.indexOf('</th>', at));
+  };
+  /** The page, its lists holding these picks. */
+  const withPicks = (values: Record<string, string[]>): string => {
+    columnValues = values;
+    try {
+      return layouts(context('layouts'), LIST);
+    } finally {
+      columnValues = {};
+    }
+  };
+  const codesShown = (markup: string): string[] => {
+    const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
+    return [...body.matchAll(/>(BRKN94\d\d)</g)].map((m) => m[1] ?? '');
+  };
+
+  it('puts the bank, the status and the search inside the header; the last import stays below', () => {
+    const toolbar = toolbarOf(html);
+    expect(toolbar).toContain('data-layouts-filters="true"');
+    expect(toolbar).toContain('id="layouts-bank"');
+    expect(toolbar).toContain('id="layouts-status"');
+    expect(toolbar).toContain(`placeholder="${t('atm.layouts.search')}"`);
+    expect(toolbar).not.toContain('data-last-import');
+    expect(html.indexOf('data-page-toolbar')).toBeLessThan(html.indexOf('data-last-import'));
+  });
+
+  it('draws a list under every column of the table', () => {
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    expect(head).toContain('data-column-filters="true"');
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual(
+      COLUMNS.map(([key]) => key),
+    );
+    // Each a drop-down named after its column, saying «الكل» while nothing is picked.
+    for (const [key, header] of COLUMNS) {
+      const list = listOf(head, key);
+      expect(list).toContain('aria-haspopup="listbox"');
+      expect(list).toContain(`aria-label="${t('atm.common.filterColumn', { column: t(header) })}"`);
+      expect(list).toContain(`>${t('common.filters.all')}<`);
+    }
+    expect(head).not.toContain('type="search"');
+  });
+
+  it('names the picks on the list’s trigger, and shows only the rows they keep', () => {
+    expect(codesShown(html)).toEqual(['BRKN9401', 'BRKN9402']);
+    const picked = withPicks({ cassettes: [noLayout] });
+    expect(listOf(picked, 'cassettes')).toContain(`>${noLayout}<`);
+    expect(listOf(picked, 'code')).toContain(`>${t('common.filters.all')}<`);
+    expect(codesShown(picked)).toEqual(['BRKN9402']);
+    expect(listOf(withPicks({ code: ['BRKN9401', 'BRKN9402'] }), 'code')).toContain(
+      '>BRKN9401, BRKN9402<',
+    );
+  });
+
+  it('says the lists hid every row when no row holds their picks — and only then', () => {
+    const none = withPicks({ code: ['BRKN9401'], cassettes: [noLayout] });
+    expect(codesShown(none)).toEqual([]);
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    expect(html).not.toContain(t('atm.common.emptyColumnFiltered'));
+  });
+
+  it('lists what each cell shows: the chips, the flags, the load', () => {
+    expect(layoutRowText(row(1), 'cassettes', textContext)).toBe(chips);
+    const flagged = row(2, { layout: null, flags: ['noLayout'] });
+    expect(layoutRowText(flagged, 'cassettes', textContext)).toBe(noLayout);
+    expect(layoutRowText(row(1), 'load', textContext)).toBe(t('atm.plan.panel.standardDefault'));
+    expect(layoutRowText(flagged, 'load', textContext)).toBe('—');
+    expect(layoutRowText(row(1), 'nothing', textContext)).toBeNull();
+  });
+
+  it('keeps the rows every column’s picks keep, on top of what the status and the search kept', () => {
+    const rows = [row(1), row(2, { layout: null, flags: ['noLayout'] }), row(3)];
+    const codes = (values: Record<string, string[]>): string[] =>
+      filterRowsByColumns(rows, values, (r, key) => layoutRowText(r, key, textContext)).map(
+        (r) => r.machineCode,
+      );
+    // A cell's whole text is its value: the chips as they read, not one chip of them.
+    expect(codes({ cassettes: [chips] })).toEqual(['BRKN9401', 'BRKN9403']);
+    expect(codes({ cassettes: ['↻20'] })).toEqual([]);
+    expect(codes({ cassettes: [noLayout] })).toEqual(['BRKN9402']);
+    // Two picks in one column: either keeps the row.
+    expect(codes({ cassettes: [chips, noLayout] })).toEqual(['BRKN9401', 'BRKN9402', 'BRKN9403']);
+    // Two columns: both must.
+    expect(codes({ code: ['BRKN9402', 'BRKN9403'], type: ['SYN (S2)'] })).toEqual(['BRKN9403']);
+    expect(codes({ code: ['BRKN9402'], type: ['SYN (S2)'] })).toEqual([]);
+    const changed = layoutRowText(row(1), 'changed', textContext) ?? '';
+    expect(codes({ changed: [changed] })).toEqual(['BRKN9401', 'BRKN9403']);
+    // A value no row shows hides them all — the source alone is a part of the cell, not its value.
+    expect(codes({ changed: [t('atm.layouts.source.import')] })).toEqual([]);
+    expect(codes({})).toEqual(['BRKN9401', 'BRKN9402', 'BRKN9403']);
   });
 });
 

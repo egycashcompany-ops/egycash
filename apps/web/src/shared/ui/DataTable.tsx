@@ -4,6 +4,7 @@
 import { type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { hasError } from '../lib/errors';
+import { ColumnFilterSelect } from './ColumnFilterSelect';
 import { Skeleton } from './Skeleton';
 import { ChevronIcon } from './icons';
 import { EmptyState } from './states/EmptyState';
@@ -33,6 +34,11 @@ export interface Column<T> {
   align?: 'start' | 'center' | 'end';
   className?: string;
   headerClassName?: string;
+  /**
+   * The column takes a list in the table's filter row (`columnFilters`). The page filters the rows
+   * itself, on the text this column's cell shows (`shared/lib/column-filter.ts`).
+   */
+  filterable?: boolean;
 }
 
 export interface SortState {
@@ -152,6 +158,25 @@ export interface DataTableProps<T> {
    */
   rowProps?: (row: T) => HTMLAttributes<HTMLTableRowElement> | undefined;
   /**
+   * A ROW OF FILTER LISTS UNDER THE HEAD, one per `filterable` column — the ATM tables' «فلتر لكل
+   * عمود», as multi-pick drop-downs (2026-11-02). The table draws the lists and reports what is
+   * picked (`onChange`); the PAGE filters the rows, before it counts, groups, selects or exports
+   * them, so the rows handed in here are already the filtered ones. The row sticks with the head.
+   */
+  columnFilters?: {
+    values: Readonly<Record<string, readonly string[]>>;
+    onChange: (key: string, picked: readonly string[]) => void;
+    /**
+     * One column's values to list — asked for when its list opens (`columnFilterChoicesOf`), from
+     * the rows the filters above the table keep, before this row's own picks.
+     */
+    choices: (key: string) => readonly string[];
+    /** The list's accessible name, from the column's header — the table holds no locale. */
+    label: (header: string) => string;
+    /** `useColumnFilters().generation`: the row remounts on a reset, closing an open list. */
+    generation?: number;
+  };
+  /**
    * A HEADER LINE BEFORE EACH RUN OF ROWS THAT SHARE A GROUP. The ATM open boards use it, grouped
    * by area: «كل منطقة تظهر اعطالها وتغذياتها تحت بعض».
    *
@@ -184,6 +209,9 @@ export const groupRuns = <T,>(
   return runs;
 };
 
+/** A column with nothing picked — one array, so its list is not handed a new one each render. */
+const NO_PICKS: readonly string[] = [];
+
 const alignClass: Record<'start' | 'center' | 'end', string> = {
   start: 'text-start',
   center: 'text-center',
@@ -213,6 +241,7 @@ export const DataTable = <T,>({
   stickyHead = false,
   rowProps,
   group,
+  columnFilters,
 }: DataTableProps<T>): JSX.Element => {
   // One shape inside, whichever shape came in: the single-column callers (every module but Fleet)
   // and the multi-column ones read the same way from here down.
@@ -488,6 +517,38 @@ export const DataTable = <T,>({
               );
             })}
           </tr>
+          {columnFilters !== undefined && columns.some((c) => c.filterable === true) && (
+            <tr
+              key={`filters-${String(columnFilters.generation ?? 0)}`}
+              data-column-filters="true"
+              className={cn(
+                'bg-slate-50',
+                stickyHead ? 'dark:bg-slate-800' : 'dark:bg-slate-800/60',
+              )}
+            >
+              {isSelectable && <th className="px-4 pb-2" />}
+              {columns.map((c) => (
+                <th
+                  key={c.key}
+                  className={cn(
+                    dense ? (tightGutter ? 'px-2' : 'px-3') : 'px-4',
+                    'pb-2 font-normal',
+                    c.headerClassName,
+                  )}
+                >
+                  {c.filterable === true && (
+                    <ColumnFilterSelect
+                      value={columnFilters.values[c.key] ?? NO_PICKS}
+                      choices={() => columnFilters.choices(c.key)}
+                      onChange={(picked) => columnFilters.onChange(c.key, picked)}
+                      label={columnFilters.label(c.header)}
+                      columnKey={c.key}
+                    />
+                  )}
+                </th>
+              ))}
+            </tr>
+          )}
         </thead>
         <tbody>{body}</tbody>
       </table>

@@ -6,7 +6,11 @@
 //   · tab 1 carries the seals paper's TYPE and HUB as «النوع» and «المنطقة»;
 //   · the routes tab is for manage, the prints for print;
 //   · a duplicate shows ⚠ (warning only);
-//   · a line of a bank added to the catalog (DEC-35) is named from `GET /atm/banks`.
+//   · a line of a bank added to the catalog (DEC-35) is named from `GET /atm/banks`;
+//   · the day and the tabs sit in the header, on the title's line, before the prints
+//     (2026-11-02), and the data tab has a column filter per column («فلتر لكل عمود», then «لأ
+//     عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select»): a drop-down list of
+//     the values its cells show, several of them pickable; the routes tab has none.
 //
 // Every code, QR, seal and name below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -14,7 +18,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ATM_BANK_SEED,
   type AtmBankDto,
@@ -27,9 +31,29 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { ControlPage } from './pages/ControlPage';
+import {
+  CONTROL_LINE_COLUMNS,
+  controlLineText,
+  filterControlLines,
+  routeNames,
+} from './components/settlements/ControlDataTab';
+import { makeBankLookup } from './lib/bank-catalog';
 import { sortItems } from './components/settlements/ControlRoutesTab';
 import { controlDayKey } from './api/settlements-queries';
 import { atmBanksKey } from './api/atm-queries';
+
+// The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
+// by default, so every other test renders the day unfiltered.
+let columnValues: Record<string, string[]> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
+  }),
+}));
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -168,6 +192,21 @@ const render = (dto: AtmControlDayDto, tab: 'data' | 'routes'): string => {
   );
 };
 
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
+
 describe('the routes tab', () => {
   it('offers «إنشاء الخطوط من القطاعات» only with map reach', () => {
     expect(render(day(), 'routes')).toContain(t('atm.control.fromZones'));
@@ -294,5 +333,121 @@ describe('sorting the items of a group', () => {
     expect(sortItems([a, b, c], 'serial').map((l) => l.serial)).toEqual([2, 4, 9]);
     expect(sortItems([a, b, c], 'area').map((l) => l.serial)).toEqual([2, 4, 9]);
     expect(sortItems([a, c, b], 'area').map((l) => l.hubLabel)).toEqual(['أ', 'ب', 'ب']);
+  });
+});
+
+describe('the toolbar on the title’s line (2026-11-02)', () => {
+  it('puts the day and the tabs inside the header; the prints stay its actions', () => {
+    const html = render(day(), 'data');
+    const toolbar = toolbarOf(html);
+    expect(toolbar).toContain('data-control-toolbar="true"');
+    expect(toolbar).toContain('id="control-day"');
+    expect(toolbar).toContain('role="tablist"');
+    expect(toolbar).toContain('data-control-tab="routes"');
+    expect(toolbar).not.toContain('data-control-action');
+    expect(html).toContain('data-control-action="handover"');
+    expect(html.indexOf('<h1')).toBeLessThan(html.indexOf('data-page-toolbar'));
+  });
+});
+
+describe('the data tab’s column lists (2026-11-02, «فلتر لكل عمود», a Multi select drop-down)', () => {
+  const context = {
+    t,
+    locale: 'ar' as const,
+    banks: makeBankLookup(CATALOG),
+    routeName: routeNames(day()),
+  };
+  const unassigned = t('atm.control.unassignedOption');
+  const ids = (values: Record<string, string[]>): string[] =>
+    filterControlLines(day().lines, values, context).map((l) => l.lineId);
+  /** The data tab, its lists holding these picks. */
+  const withPicks = (values: Record<string, string[]>): string => {
+    columnValues = values;
+    try {
+      return render(day(), 'data');
+    } finally {
+      columnValues = {};
+    }
+  };
+  /** One column's list in the filter row: its trigger, from the list's marker to its cell's end. */
+  const listOf = (html: string, key: string): string => {
+    const at = html.indexOf(`data-column-filter="${key}"`);
+    return at < 0 ? '' : html.slice(at, html.indexOf('</th>', at));
+  };
+  const shownLines = (html: string): string[] =>
+    [...html.matchAll(/data-control-line="([^"]+)"/g)].map((m) => m[1] ?? '');
+
+  it('draws one list per column under the head, none for the seals toggle', () => {
+    const html = render(day(), 'data');
+    const head = html.slice(html.indexOf('data-control-lines'), html.indexOf('</thead>'));
+    expect(head).toContain('data-column-filters="true"');
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual(
+      CONTROL_LINE_COLUMNS.map((c) => c.key),
+    );
+    // Each a drop-down named after its column, saying «الكل» while nothing is picked.
+    for (const column of CONTROL_LINE_COLUMNS) {
+      const list = listOf(head, column.key);
+      expect(list).toContain('aria-haspopup="listbox"');
+      expect(list).toContain(
+        `aria-label="${t('atm.common.filterColumn', { column: t(column.header) })}"`,
+      );
+      expect(list).toContain(`>${t('common.filters.all')}<`);
+    }
+    expect(head).not.toContain('type="search"');
+  });
+
+  it('leaves the routes tab — lists, not a table — without column filters', () => {
+    expect(render(day(), 'routes')).not.toContain('data-column-filter');
+  });
+
+  it('names the picks on the list’s trigger, and shows only the lines they keep', () => {
+    const html = withPicks({ area: ['HUB-T-1', 'HUB-T-3'] });
+    expect(listOf(html, 'area')).toContain('>HUB-T-1, HUB-T-3<');
+    expect(listOf(html, 'qr1')).toContain(`>${t('common.filters.all')}<`);
+    expect(shownLines(html)).toEqual([line(1).lineId, line(3).lineId]);
+    expect(html).not.toContain('data-control-lines-empty');
+  });
+
+  it('says the lists hid every line when no line holds their picks — and only then', () => {
+    const none = withPicks({ area: ['HUB-T-2'], serial: ['٣٠١'] });
+    expect(shownLines(none)).toEqual([]);
+    expect(none).toContain('data-control-lines-empty="true"');
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    expect(render(day(), 'data')).not.toContain(t('atm.common.emptyColumnFiltered'));
+  });
+
+  it('lists what each cell shows: the QR, the seals’ progress, the route’s name', () => {
+    const [prepared, open] = day().lines;
+    if (prepared === undefined || open === undefined) throw new Error('fixture');
+    expect(controlLineText(prepared, 'serial', context)).toBe('٣٠١');
+    expect(controlLineText(prepared, 'qr1', context)).toBe('QR-T-0301');
+    expect(controlLineText(open, 'qr2', context)).toBe('—');
+    expect(controlLineText(prepared, 'seals', context)).toBe(
+      t('atm.control.sealsProgress', { n: '٢', m: '٢' }),
+    );
+    expect(controlLineText(prepared, 'route', context)).toBe('خط تجريبي 1');
+    expect(controlLineText(open, 'route', context)).toBe(unassigned);
+    expect(controlLineText(open, 'bank', context)).toBe('بنك البركة');
+    expect(controlLineText(open, 'nothing', context)).toBeNull();
+  });
+
+  it('keeps the lines whose cell IS a pick — whole values, as the cells write them', () => {
+    expect(ids({ qr1: ['QR-T-0301'] })).toEqual([line(1).lineId]);
+    expect(ids({ qr1: ['—'] })).toEqual([line(2).lineId, line(3).lineId]);
+    expect(ids({ route: ['خط تجريبي 1'] })).toEqual([line(1).lineId]);
+    // A whole value, not a part of one.
+    expect(ids({ route: ['خط تجريبي'] })).toEqual([]);
+    expect(ids({ route: [unassigned] })).toEqual([line(2).lineId, line(3).lineId]);
+    expect(ids({ preparation: [t('atm.settlement.status.cancelled')] })).toEqual([line(3).lineId]);
+    // The serial is picked as the page writes it: «302» in Latin digits is no value it shows.
+    expect(ids({ serial: ['٣٠٢'] })).toEqual([line(2).lineId]);
+    expect(ids({ serial: ['302'] })).toEqual([]);
+  });
+
+  it('keeps a line that is ANY pick of a column, and only lines every column keeps', () => {
+    expect(ids({ area: ['HUB-T-1', 'HUB-T-3'] })).toEqual([line(1).lineId, line(3).lineId]);
+    expect(ids({ area: ['HUB-T-2'], serial: ['٣٠٢'] })).toEqual([line(2).lineId]);
+    expect(ids({ area: ['HUB-T-1', 'HUB-T-2'], route: [unassigned] })).toEqual([line(2).lineId]);
+    expect(ids({ area: ['HUB-T-2'], serial: ['٣٠١'] })).toEqual([]);
   });
 });

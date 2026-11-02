@@ -11,7 +11,13 @@
 // handover prints a QR only for a prepared line — any other prints a blank box — so the page warns
 // before printing when lines are not prepared, and before the route sheets when lines are left
 // undistributed (§8.4, §9.7).
-import { useState } from 'react';
+//
+// A ROW OF FILTER LISTS under the data tab's head, one multi-pick drop-down per column (2026-11-02,
+// «فلتر لكل عمود», «يكون Drop Down بـ Multi select»),
+// narrows the lines the tab shows. The papers stay whole: the handover is a bank plan's record and
+// the route sheets the day's — neither is a print of the table. The routes tab is a set of lists,
+// not a table, and takes no lists.
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   type AssignAtmRoutes,
@@ -28,6 +34,7 @@ import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { Button } from '../../../shared/ui/Button';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { PrinterIcon } from '../../../shared/ui/icons';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -43,7 +50,11 @@ import {
   useUpdateRoute,
 } from '../api/settlements-queries';
 import { useAtmBankLookup } from '../api/atm-queries';
-import { ControlDataTab } from '../components/settlements/ControlDataTab';
+import {
+  ControlDataTab,
+  filterControlLines,
+  routeNames,
+} from '../components/settlements/ControlDataTab';
 import { ControlRoutesTab } from '../components/settlements/ControlRoutesTab';
 import { BlockedNotice, DayField } from '../components/settlements/DayField';
 import { MenuButton } from '../components/settlements/MenuButton';
@@ -92,6 +103,21 @@ export const ControlPage = (): JSX.Element => {
   const day = dayQuery.data;
   const blocked = blockedOf(dayQuery.error);
   const tab = sp.get('tab') === 'routes' && day?.can.manage === true ? 'routes' : 'data';
+
+  // The data tab's column filters, kept while the page is open — across a switch to the routes and back.
+  const columnFilters = useColumnFilters();
+  const shownLines = useMemo(
+    () =>
+      day === undefined
+        ? []
+        : filterControlLines(day.lines, columnFilters.values, {
+            t,
+            locale,
+            banks: bankLookup,
+            routeName: routeNames(day),
+          }),
+    [day, columnFilters.values, locale, bankLookup],
+  );
 
   const print = usePrintControl();
   const assign = useAssignRoutes();
@@ -297,37 +323,49 @@ export const ControlPage = (): JSX.Element => {
           and only the tab's body scrolls — the lines under a head that stays, or the routes' cards
           under their toolbar. */}
       <div className={BOARD_FRAME}>
-        <PageHeader title={t('atm.control.title')} actions={actions} />
-
-        <div className="flex flex-wrap items-end gap-3" data-control-toolbar="true">
-          <DayField
-            id="control-day"
-            value={day?.date ?? askedDay ?? ''}
-            onChange={(next) => setParam('date', next)}
-          />
-          <div role="tablist" aria-label={t('atm.control.title')} className="ms-auto flex gap-2">
-            {(['data', 'routes'] as const)
-              .filter((k) => k === 'data' || day?.can.manage === true)
-              .map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === k}
-                  data-control-tab={k}
-                  onClick={() => setParam('tab', k === 'data' ? null : k)}
-                  className={cn(
-                    'h-9 rounded-lg border px-4 text-sm font-medium',
-                    tab === k
-                      ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
-                  )}
-                >
-                  {t(k === 'data' ? 'atm.control.tab.data' : 'atm.control.tab.routes')}
-                </button>
-              ))}
-          </div>
-        </div>
+        {/* The day and the tabs on the title's line, before the prints (2026-11-02, «عايز تطلع
+          الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): they wrap inside their
+          slot while it keeps 24rem beside the title and the prints, and take a line of their own
+          under the title when it cannot (`PageHeader`'s toolbar). */}
+        <PageHeader
+          title={t('atm.control.title')}
+          actions={actions}
+          toolbar={
+            <div className="flex flex-wrap items-end gap-3" data-control-toolbar="true">
+              <DayField
+                id="control-day"
+                value={day?.date ?? askedDay ?? ''}
+                onChange={(next) => setParam('date', next)}
+              />
+              <div
+                role="tablist"
+                aria-label={t('atm.control.title')}
+                className="ms-auto flex gap-2"
+              >
+                {(['data', 'routes'] as const)
+                  .filter((k) => k === 'data' || day?.can.manage === true)
+                  .map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === k}
+                      data-control-tab={k}
+                      onClick={() => setParam('tab', k === 'data' ? null : k)}
+                      className={cn(
+                        'h-9 rounded-lg border px-4 text-sm font-medium',
+                        tab === k
+                          ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300'
+                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200',
+                      )}
+                    >
+                      {t(k === 'data' ? 'atm.control.tab.data' : 'atm.control.tab.routes')}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          }
+        />
 
         {dayQuery.isLoading ? (
           <LoadingState />
@@ -370,7 +408,13 @@ export const ControlPage = (): JSX.Element => {
           </div>
         ) : (
           <div className={BOARD_TABLE_FILL}>
-            <ControlDataTab day={day} locale={locale} banks={bankLookup} />
+            <ControlDataTab
+              day={day}
+              lines={shownLines}
+              locale={locale}
+              banks={bankLookup}
+              columnFilters={columnFilters}
+            />
           </div>
         )}
       </div>

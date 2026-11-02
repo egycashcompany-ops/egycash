@@ -4,7 +4,7 @@
 // that quietly omits a key is worse than no screen at all — the value is still in force, still
 // unreachable, and now there is a page that implies otherwise. Every filter and grouping case below
 // exists to pin that a definition survives the trip to the screen even when this file does not
-// recognise its owner, its type, or its name.
+// recognise its department, its type, or its name.
 import { describe, expect, it } from 'vitest';
 import {
   SETTING_SCOPES,
@@ -14,21 +14,27 @@ import {
 } from '@ecms/contracts';
 import { translate } from '../../../../platform/localization/i18n';
 import {
-  KNOWN_OWNERS,
-  OTHER_OWNER,
   PARSE_FAILURES,
   ROW_EDITABILITIES,
   buildSettingGroups,
+  countRows,
   editorFor,
   filterSettingGroups,
   listElementKind,
-  ownerOf,
   parseValue,
   rowEditability,
   serializeValue,
   settingLabelKey,
   type SettingRowModel,
 } from './settings-view';
+import {
+  MANAGED_ELSEWHERE,
+  PLACEMENTS,
+  RETIRED_SETTINGS,
+  SETTING_DEPARTMENTS,
+  SETTING_SECTIONS,
+  placementOf,
+} from './settings-catalog';
 
 const define = (
   key: string,
@@ -51,36 +57,82 @@ const resolve = (
 
 const row = (over: Partial<SettingRowModel> = {}): SettingRowModel => ({
   key: 'auth.password.minLength',
-  owner: 'auth',
+  placement: { department: 'general', section: 'signIn' },
   definition: define('auth.password.minLength', 'number', 10),
   resolved: resolve('auth.password.minLength', 12, 'organization'),
   editor: 'number',
   shadowed: false,
+  managedAt: null,
+  retired: false,
   ...over,
 });
 
-describe('ownerOf — the first segment IS the owner', () => {
+describe('placementOf — by department, then section, not by the code that declared it', () => {
   it.each([
-    ['auth.password.minLength', 'auth'],
-    ['audit.export.maxRows', 'audit'],
-    ['notifications.email.enabled', 'notifications'],
-    ['contracts.numberFormat', 'contracts'],
-    ['hr.leave.approvalReminderDays', 'hr'],
-    ['fleet.alarm.redKm', 'fleet'],
-    ['it.sla.atRiskPercent', 'it'],
-  ])('%s → %s', (key, owner) => {
-    expect(ownerOf(key)).toBe(owner);
+    ['auth.password.minLength', 'general', 'signIn'],
+    ['audit.export.maxRows', 'general', 'audit'],
+    ['notifications.email.enabled', 'general', 'notifications'],
+    ['hr.attendance.selfPunchEnabled', 'hr', 'attendance'],
+    ['hr.workCalendar.weekendDays', 'hr', 'leave'],
+    ['hr.leave.approvalReminderDays', 'hr', 'leave'],
+    // The contracts module is HR's, though its keys never carried the `hr.` namespace.
+    ['contracts.numberFormat', 'hr', 'contracts'],
+    ['fleet.alarm.redKm', 'fleet', 'maintenance'],
+    ['fleet.odometer.missingReadingDays', 'fleet', 'maintenance'],
+    ['fleet.license.driverWarnDays', 'fleet', 'licences'],
+    ['fleet.roster.refuseExpiredLicence', 'fleet', 'licences'],
+    ['fleet.vehicle.defaultBranchName', 'fleet', 'vehicles'],
+    ['fleet.fuel.price.diesel', 'fleet', 'fuelPrices'],
+    ['fleet.fuelCard.balanceRed', 'fleet', 'fuelCards'],
+    ['fleet.report.endorsedByName', 'fleet', 'reports'],
+    ['operations.crewDepartmentIds', 'operations', 'crew'],
+    ['atm.maintenanceLeaderDepartmentIds', 'atm', 'maintenance'],
+    ['atm.mail.branchCategories', 'atm', 'mail'],
+    ['atm.register.branchCodes', 'atm', 'register'],
+    ['atm.settlements.banks', 'atm', 'register'],
+    ['atm.branchLinks', 'atm', 'register'],
+    ['it.sla.atRiskPercent', 'it', 'helpdesk'],
+    ['it.technicianDepartmentIds', 'it', 'helpdesk'],
+    ['it.warranty.warnDays', 'it', 'assets'],
+  ])('%s → %s / %s', (key, department, section) => {
+    expect(placementOf(key)).toEqual({ department, section });
   });
 
   // Feature flags declare as `flag.<key>` at boot. The catalog is empty today, which is exactly
   // why this is asserted now: the first flag would otherwise land under Other on the day it ships.
   it('knows the feature-flag namespace even though no flag exists yet', () => {
-    expect(ownerOf('flag.hr.ocrIntake')).toBe('flag');
+    expect(placementOf('flag.hr.ocrIntake')).toEqual({ department: 'general', section: 'featureFlags' });
   });
 
-  it('sends an owner it does not know to Other rather than losing it', () => {
-    expect(ownerOf('warehouse.reorderPoint')).toBe(OTHER_OWNER);
-    expect(ownerOf('noDotsAtAll')).toBe(OTHER_OWNER);
+  it('puts a new key of a known department in that department’s «more» section, not in Other', () => {
+    expect(placementOf('fleet.somethingNew')).toEqual({ department: 'fleet', section: 'more' });
+    expect(placementOf('atm.branchLinksArchive')).toEqual({ department: 'atm', section: 'more' });
+  });
+
+  it('sends a department it does not know to Other rather than losing it', () => {
+    expect(placementOf('warehouse.reorderPoint')).toEqual({ department: 'other', section: 'more' });
+    expect(placementOf('noDotsAtAll')).toEqual({ department: 'other', section: 'more' });
+  });
+
+  it('gives every department a «more» section for what no rule places', () => {
+    for (const department of SETTING_DEPARTMENTS) {
+      expect(SETTING_SECTIONS[department], department).toContain('more');
+    }
+  });
+
+  // A rule naming a section its department does not list would place rows nowhere on screen.
+  it('names, in every rule, a section its department lists', () => {
+    const unlisted = PLACEMENTS.filter(
+      ([, department, section]) => !SETTING_SECTIONS[department].includes(section),
+    ).map(([prefix, department, section]) => `${prefix} → ${department}/${section}`);
+    expect(unlisted).toEqual([]);
+  });
+
+  it('places every rule’s own keys where the rule says', () => {
+    for (const [prefix, department, section] of PLACEMENTS) {
+      const key = prefix.endsWith('.') ? `${prefix}example` : prefix;
+      expect(placementOf(key), prefix).toEqual({ department, section });
+    }
   });
 });
 
@@ -107,17 +159,33 @@ describe('buildSettingGroups', () => {
     define('it.sla.atRiskPercent', 'number', 80),
     define('auth.password.minLength', 'number', 10),
     define('auth.lockout.minutes', 'number', 15),
+    define('audit.export.maxRows', 'number', 50_000),
+    define('contracts.numberFormat', 'string', 'CT-{year}-{seq:5}'),
     define('warehouse.reorderPoint', 'number', 5),
   ];
+  const rowsOf = (groups: ReturnType<typeof buildSettingGroups>): SettingRowModel[] =>
+    groups.flatMap((g) => g.sections).flatMap((s) => s.rows);
 
-  it('groups by owner and orders owners the way the screen shows them', () => {
+  it('groups by department and orders departments the way the screen shows them', () => {
     const groups = buildSettingGroups(definitions, []);
-    expect(groups.map((g) => g.owner)).toEqual(['auth', 'it', OTHER_OWNER]);
+    expect(groups.map((g) => g.department)).toEqual(['general', 'hr', 'it', 'other']);
   });
 
-  it('sorts rows inside a group by key, so two loads render identically', () => {
-    const groups = buildSettingGroups(definitions, []);
-    expect(groups[0]?.rows.map((r) => r.key)).toEqual([
+  it('orders the sections inside a department as the catalog declares them', () => {
+    const general = buildSettingGroups(definitions, [])[0];
+    expect(general?.sections.map((s) => s.id)).toEqual(['signIn', 'audit']);
+  });
+
+  it('keeps the declaration order inside a section — the order the module wrote them in', () => {
+    const general = buildSettingGroups(definitions, [])[0];
+    expect(general?.sections[0]?.rows.map((r) => r.key)).toEqual([
+      'auth.password.minLength',
+      'auth.lockout.minutes',
+    ]);
+    // It is the order the definitions ARRIVE in (one section's keys are one file's declarations),
+    // not an alphabetical one: reversed input, reversed rows.
+    const shuffled = buildSettingGroups([...definitions].reverse(), [])[0];
+    expect(shuffled?.sections[0]?.rows.map((r) => r.key)).toEqual([
       'auth.lockout.minutes',
       'auth.password.minLength',
     ]);
@@ -126,8 +194,9 @@ describe('buildSettingGroups', () => {
   // The invariant. Definitions in, the same number of rows out — whatever this file made of them.
   it('never drops a definition', () => {
     const groups = buildSettingGroups(definitions, []);
-    const rows = groups.flatMap((g) => g.rows);
+    const rows = rowsOf(groups);
     expect(rows).toHaveLength(definitions.length);
+    expect(countRows(groups)).toBe(definitions.length);
     expect(rows.map((r) => r.key).sort()).toEqual(definitions.map((d) => d.key).sort());
   });
 
@@ -135,7 +204,7 @@ describe('buildSettingGroups', () => {
     const groups = buildSettingGroups(definitions, [
       resolve('auth.password.minLength', 14, 'organization'),
     ]);
-    const rows = Object.fromEntries(groups.flatMap((g) => g.rows).map((r) => [r.key, r]));
+    const rows = Object.fromEntries(rowsOf(groups).map((r) => [r.key, r]));
     expect(rows['auth.password.minLength']?.resolved?.value).toBe(14);
     expect(rows['auth.lockout.minutes']?.resolved).toBeNull();
   });
@@ -152,12 +221,36 @@ describe('buildSettingGroups', () => {
       [define('notifications.email.enabled', 'boolean', true, ['organization', 'branch', 'user'])],
       [resolve('notifications.email.enabled', false, resolvedFrom)],
     );
-    expect(groups[0]?.rows[0]?.shadowed).toBe(shadowed);
+    expect(rowsOf(groups)[0]?.shadowed).toBe(shadowed);
   });
 
-  it('lists every known owner it is given, in the declared order', () => {
-    const all = KNOWN_OWNERS.map((owner) => define(`${owner}.something`, 'boolean', true));
-    expect(buildSettingGroups(all, []).map((g) => g.owner)).toEqual([...KNOWN_OWNERS]);
+  it('lists every department it is given, in the declared order', () => {
+    const all = [
+      define('auth.x', 'boolean', true),
+      define('hr.x', 'boolean', true),
+      define('fleet.x', 'boolean', true),
+      define('operations.x', 'boolean', true),
+      define('atm.x', 'boolean', true),
+      define('it.x', 'boolean', true),
+      define('warehouse.x', 'boolean', true),
+    ];
+    expect(buildSettingGroups(all, []).map((g) => g.department)).toEqual([...SETTING_DEPARTMENTS]);
+  });
+
+  it('marks a structure edited on its own screen, and a retired setting', () => {
+    const [managedKey] = Object.keys(MANAGED_ELSEWHERE);
+    const [retiredKey] = [...RETIRED_SETTINGS];
+    const rows = rowsOf(
+      buildSettingGroups(
+        [define(managedKey ?? '', 'array', []), define(retiredKey ?? '', 'array', [])],
+        [],
+      ),
+    );
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+    expect(byKey[managedKey ?? '']?.managedAt).toEqual(MANAGED_ELSEWHERE[managedKey ?? '']);
+    expect(byKey[managedKey ?? '']?.retired).toBe(false);
+    expect(byKey[retiredKey ?? '']?.retired).toBe(true);
+    expect(byKey[retiredKey ?? '']?.managedAt).toBeNull();
   });
 });
 
@@ -175,53 +268,83 @@ describe('filterSettingGroups', () => {
     'auth.lockout.minutes': 'مدة القفل',
     'it.sla.atRiskPercent': 'عتبة الخطر',
   };
-  const labelOf = (key: string): string => labels[key] ?? key;
+  const textOf = (r: SettingRowModel): string => labels[r.key] ?? r.key;
+  const keysOf = (found: ReturnType<typeof filterSettingGroups>): string[] =>
+    found.flatMap((g) => g.sections).flatMap((s) => s.rows).map((r) => r.key);
 
   it('returns everything when nothing is filtered', () => {
-    expect(filterSettingGroups(groups, '', '', labelOf).flatMap((g) => g.rows)).toHaveLength(3);
+    expect(keysOf(filterSettingGroups(groups, '', '', textOf))).toHaveLength(3);
   });
 
   it('matches the key', () => {
-    const found = filterSettingGroups(groups, 'lockout', '', labelOf).flatMap((g) => g.rows);
-    expect(found.map((r) => r.key)).toEqual(['auth.lockout.minutes']);
+    expect(keysOf(filterSettingGroups(groups, 'lockout', '', textOf))).toEqual([
+      'auth.lockout.minutes',
+    ]);
   });
 
-  // The search box is the only way through twenty-nine rows, and half the users type Arabic.
-  it('matches the translated label, not only the key', () => {
-    const found = filterSettingGroups(groups, 'كلمة المرور', '', labelOf).flatMap((g) => g.rows);
-    expect(found.map((r) => r.key)).toEqual(['auth.password.minLength']);
+  // The search box is the only way through the rows, and half the users type Arabic.
+  it('matches the text a row reads as (label and description), not only the key', () => {
+    expect(keysOf(filterSettingGroups(groups, 'كلمة المرور', '', textOf))).toEqual([
+      'auth.password.minLength',
+    ]);
   });
 
   it('matches the English description the server sends', () => {
-    const found = filterSettingGroups(groups, 'description of it.sla', '', labelOf);
-    expect(found.flatMap((g) => g.rows).map((r) => r.key)).toEqual(['it.sla.atRiskPercent']);
+    expect(keysOf(filterSettingGroups(groups, 'description of it.sla', '', textOf))).toEqual([
+      'it.sla.atRiskPercent',
+    ]);
   });
 
   it('is case-insensitive and ignores surrounding space', () => {
-    expect(filterSettingGroups(groups, '  LOCKOUT  ', '', labelOf).flatMap((g) => g.rows))
-      .toHaveLength(1);
+    expect(keysOf(filterSettingGroups(groups, '  LOCKOUT  ', '', textOf))).toHaveLength(1);
   });
 
-  it('filters by owner', () => {
-    const found = filterSettingGroups(groups, '', 'it', labelOf);
-    expect(found).toHaveLength(1);
-    expect(found[0]?.owner).toBe('it');
+  // The app's one folding: hamza forms, ta marbuta and Arabic-Indic digits match as typed.
+  it('folds Arabic as every search box in the app does', () => {
+    const arabic = buildSettingGroups(
+      [define('hr.leave.annualDays', 'number', 21), define('auth.lockout.minutes', 'number', 15)],
+      [],
+    );
+    const said: Record<string, string> = {
+      'hr.leave.annualDays': 'رصيد الإجازة السنوية ٢١ يومًا',
+      'auth.lockout.minutes': 'مدة القفل',
+    };
+    const readAs = (r: SettingRowModel): string => said[r.key] ?? r.key;
+    expect(keysOf(filterSettingGroups(arabic, 'الاجازه', '', readAs))).toEqual([
+      'hr.leave.annualDays',
+    ]);
+    expect(keysOf(filterSettingGroups(arabic, '21', '', readAs))).toEqual(['hr.leave.annualDays']);
   });
 
-  it('drops a group that loses every row, and keeps one that does not', () => {
-    const found = filterSettingGroups(groups, 'password', '', labelOf);
-    expect(found.map((g) => g.owner)).toEqual(['auth']);
-    expect(found[0]?.rows).toHaveLength(1);
+  it('filters by department', () => {
+    const found = filterSettingGroups(groups, '', 'it', textOf);
+    expect(found.map((g) => g.department)).toEqual(['it']);
   });
 
-  it('returns nothing when the two filters disagree', () => {
-    expect(filterSettingGroups(groups, 'password', 'it', labelOf)).toEqual([]);
+  it('drops a section and a department that lose every row, and keeps ones that do not', () => {
+    const found = filterSettingGroups(groups, 'password', '', textOf);
+    expect(found.map((g) => g.department)).toEqual(['general']);
+    expect(found[0]?.sections.map((s) => s.id)).toEqual(['signIn']);
+    expect(found[0]?.sections[0]?.rows).toHaveLength(1);
+  });
+
+  it('returns nothing when the search and the department disagree', () => {
+    expect(filterSettingGroups(groups, 'password', 'it', textOf)).toEqual([]);
   });
 });
 
-describe('rowEditability — four different answers, never one silent disabled control', () => {
+describe('rowEditability — different answers, never one silent disabled control', () => {
   it('is editable for a normal row held by an actor who may edit', () => {
     expect(rowEditability(row(), true)).toBe('editable');
+  });
+
+  it('offers no field for a retired setting, nor for one edited on its own screen', () => {
+    expect(rowEditability(row({ retired: true }), true)).toBe('retired');
+    expect(
+      rowEditability(row({ managedAt: { route: '/atm/settings', screen: 'atm.settings.title' } }), true),
+    ).toBe('managed-elsewhere');
+    // The missing permission still comes first: it explains every row on the screen.
+    expect(rowEditability(row({ retired: true }), false)).toBe('no-permission');
   });
 
   it('reports the missing permission first, because it explains every other control too', () => {
@@ -391,11 +514,32 @@ describe('every reason this screen can give has a label in both locales', () => 
       }
     });
 
-    it(`owner names, including Other — ${locale}`, () => {
-      for (const owner of [...KNOWN_OWNERS, OTHER_OWNER]) {
-        const key = `systemAdmin.settings.owners.${owner}`;
+    it(`department and section names, including Other and «more» — ${locale}`, () => {
+      for (const department of ['all', ...SETTING_DEPARTMENTS]) {
+        const key = `systemAdmin.settings.departments.${department}`;
         expect(translate(locale, key), `${key} has no ${locale} label`).not.toBe(key);
       }
+      for (const department of SETTING_DEPARTMENTS) {
+        for (const section of SETTING_SECTIONS[department]) {
+          const key = `systemAdmin.settings.sections.${department}.${section}`;
+          expect(translate(locale, key), `${key} has no ${locale} label`).not.toBe(key);
+        }
+      }
+    });
+
+    it(`the screens a managed setting links to, by their own titles — ${locale}`, () => {
+      for (const { screen } of Object.values(MANAGED_ELSEWHERE)) {
+        expect(translate(locale, screen), `${screen} has no ${locale} label`).not.toBe(screen);
+      }
+    });
+
+    it(`a managed row's own words, and the clearing of a fallback — ${locale}`, () => {
+      for (const word of ['count', 'empty', 'open', 'goTo', 'clear', 'clearTitle', 'clearBody']) {
+        const key = `systemAdmin.settings.managed.${word}`;
+        expect(translate(locale, key), `${key} has no ${locale} label`).not.toBe(key);
+      }
+      const key = 'systemAdmin.settings.emptyDefault';
+      expect(translate(locale, key), `${key} has no ${locale} label`).not.toBe(key);
     });
   }
 });

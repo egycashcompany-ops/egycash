@@ -6,15 +6,22 @@
 //   · the fields are the wedge's: left-to-right, no autocomplete, no spell check, in the scan order
 //     (bag 1's cassettes, bag 1's QR, bag 2's cassettes, bag 2's QR);
 //   · a 0-note cassette and an all-zero bag's QR are optional;
-//   · «المسلسل أو رقم الماكينة» finds a line by its serial, a voided serial, or its code.
+//   · «المسلسل أو رقم الماكينة» finds a line by its serial, a voided serial, or its code;
+//   · the day, the bank and the find sit in the header, on the title's line (2026-11-02), and the
+//     lines list has a column filter per column («فلتر لكل عمود», then «لأ عايز الفلتر الكبير اللى
+//     فوق الجداول يكون Drop Down بـ Multi select»): a drop-down list of the values its cells show,
+//     several of them pickable — which never narrows what the find searches.
 //
 // Every code, seal and count below is synthetic.
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   type AtmPreparationContextDto,
   type AtmPreparationLineDto,
@@ -25,8 +32,28 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
-import { PreparationPage, findLine, linesOfCode } from './pages/PreparationPage';
+import {
+  PREP_LINE_COLUMNS,
+  PreparationPage,
+  filterPrepLines,
+  findLine,
+  linesOfCode,
+  prepLineText,
+} from './pages/PreparationPage';
 import { preparationContextKey, preparationLinesKey } from './api/settlements-queries';
+
+// The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
+// by default, so every other test renders the day unfiltered.
+let columnValues: Record<string, string[]> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
+  }),
+}));
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -115,6 +142,21 @@ const render = (lines: AtmPreparationLineDto[], open: string | null): string => 
       </QueryClientProvider>
     </Provider>,
   );
+};
+
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
 };
 
 const CANCELLED = line(1, {
@@ -265,5 +307,111 @@ describe('«المسلسل أو رقم الماكينة»', () => {
       second.lineId,
     ]);
     expect(linesOfCode([first], '')).toEqual([]);
+  });
+});
+
+describe('the toolbar on the title’s line (2026-11-02)', () => {
+  it('puts the day, the bank and the find inside the header — the find keeps its id', () => {
+    const html = render([OPEN], null);
+    const toolbar = toolbarOf(html);
+    expect(toolbar).toContain('data-prep-toolbar="true"');
+    expect(toolbar).toContain('id="prep-day"');
+    expect(toolbar).toContain('id="prep-bank"');
+    expect(toolbar).toContain('id="prep-find"');
+    expect(toolbar).toContain('for="prep-find"');
+    expect(html.indexOf('<h1')).toBeLessThan(html.indexOf('data-page-toolbar'));
+  });
+});
+
+describe('the lines’ column lists (2026-11-02, «فلتر لكل عمود», a Multi select drop-down)', () => {
+  const cancelled = t('atm.settlement.status.cancelled');
+  const lines = [CANCELLED, OPEN, line(3)];
+  const ids = (values: Record<string, string[]>): string[] =>
+    filterPrepLines(lines, values, t, 'ar').map((l) => l.lineId);
+  /** The page, its lists holding these picks. */
+  const withPicks = (values: Record<string, string[]>): string => {
+    columnValues = values;
+    try {
+      return render(lines, null);
+    } finally {
+      columnValues = {};
+    }
+  };
+  /** One column's list in the filter row: its trigger, from the list's marker to its cell's end. */
+  const listOf = (html: string, key: string): string => {
+    const at = html.indexOf(`data-column-filter="${key}"`);
+    return at < 0 ? '' : html.slice(at, html.indexOf('</th>', at));
+  };
+  const shownLines = (html: string): string[] =>
+    [...html.matchAll(/data-prep-line="([^"]+)"/g)].map((m) => m[1] ?? '');
+
+  it('draws one list per column under the head', () => {
+    const html = render([CANCELLED, OPEN], null);
+    const head = html.slice(html.indexOf('data-prep-lines'), html.indexOf('</thead>'));
+    expect(head).toContain('data-column-filters="true"');
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual(
+      PREP_LINE_COLUMNS.map((c) => c.key),
+    );
+    // Each a drop-down named after its column, saying «الكل» while nothing is picked.
+    for (const column of PREP_LINE_COLUMNS) {
+      const list = listOf(head, column.key);
+      expect(list).toContain('aria-haspopup="listbox"');
+      expect(list).toContain(
+        `aria-label="${t('atm.common.filterColumn', { column: t(column.header) })}"`,
+      );
+      expect(list).toContain(`>${t('common.filters.all')}<`);
+    }
+    expect(head).not.toContain('type="search"');
+  });
+
+  it('names the picks on the list’s trigger, and lists only the lines they keep', () => {
+    const html = withPicks({ serial: ['٢٠١', '٢٠٣'] });
+    expect(listOf(html, 'serial')).toContain('>٢٠١, ٢٠٣<');
+    expect(listOf(html, 'status')).toContain(`>${t('common.filters.all')}<`);
+    expect(shownLines(html)).toEqual([CANCELLED.lineId, line(3).lineId]);
+    expect(html).not.toContain('data-prep-lines-empty');
+  });
+
+  it('says the lists hid every line when no line holds their picks — and only then', () => {
+    const none = withPicks({ code: ['BRKN9103'], serial: ['٢٠٢'] });
+    expect(shownLines(none)).toEqual([]);
+    expect(none).toContain('data-prep-lines-empty="true"');
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    expect(render(lines, null)).not.toContain(t('atm.common.emptyColumnFiltered'));
+  });
+
+  it('keeps the lines whose cell IS a pick — the serial picked as the page writes it', () => {
+    expect(prepLineText(OPEN, 'serial', t, 'ar')).toBe('٢٠٢');
+    expect(prepLineText(CANCELLED, 'status', t, 'ar')).toBe(cancelled);
+    expect(prepLineText(OPEN, 'route', t, 'ar')).toBeNull();
+    expect(ids({ serial: ['٢٠٢'] })).toEqual([OPEN.lineId]);
+    // The pick is the cell's own text: «202» in Latin digits is no value the column shows.
+    expect(ids({ serial: ['202'] })).toEqual([]);
+    expect(ids({ status: [cancelled] })).toEqual([CANCELLED.lineId]);
+    // A whole value, not a part of one.
+    expect(ids({ code: ['BRKN91'] })).toEqual([]);
+    expect(ids({})).toEqual(lines.map((l) => l.lineId));
+    expect(ids({ code: [] })).toEqual(lines.map((l) => l.lineId));
+  });
+
+  it('keeps a line that is ANY pick of a column, and only lines every column keeps', () => {
+    expect(ids({ serial: ['٢٠١', '٢٠٣'] })).toEqual([CANCELLED.lineId, line(3).lineId]);
+    expect(ids({ code: ['BRKN9102', 'BRKN9103'], serial: ['٢٠٣'] })).toEqual([line(3).lineId]);
+    expect(ids({ code: ['BRKN9103'], serial: ['٢٠٢'] })).toEqual([]);
+  });
+
+  it('never narrows the find: a scan of a line the lists hide still finds it', () => {
+    const two = [CANCELLED, OPEN];
+    expect(filterPrepLines(two, { serial: ['٢٠١'] }, t, 'ar')).toEqual([CANCELLED]);
+    expect(findLine(two, '202')?.line.lineId).toBe(OPEN.lineId);
+    // …and the page hands the find the WHOLE day, never the lines the lists keep: read from the
+    // source, as a static render cannot scan.
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), './pages/PreparationPage.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('findLine(lines, find)');
+    expect(source).toContain('linesOfCode(lines, find)');
+    expect(source).not.toMatch(/findLine\(shownLines|linesOfCode\(shownLines/);
   });
 });

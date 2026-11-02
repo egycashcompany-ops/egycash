@@ -1,35 +1,23 @@
-// The red lines under an open form: the codes the master does not know (the legacy's
-// `mach_arr_not_found`, now per request) and — on the maintenance form — the codes the owner's
-// rule left unopened because the machine already has an open maintenance that day, or the code was
-// pasted twice in the batch (port doc OD-1). Both are named, never silently dropped; the other
-// lines of the batch opened. The replenishment form has no second line: every line of a known
-// code opens (OD-1b, 2026-11-01).
+// The red line under an open form: the codes the master does not know (the legacy's
+// `mach_arr_not_found`, now per request) — named, never silently dropped; the other lines of the
+// batch opened. Every line of a known code opens on both forms: a code pasted twice opens twice,
+// and a machine already open opens again (replenishments since OD-1b, 2026-11-01; maintenance
+// since OD-1c, 2026-11-02).
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { joinCodes } from '../lib/operation-view';
 
 export const OpenRefusalNotice = ({
   unknownCodes,
-  alreadyOpenCodes = [],
 }: {
   unknownCodes: readonly string[];
-  /** The maintenance form's refused lines (OD-1). */
-  alreadyOpenCodes?: readonly string[];
-}): JSX.Element => {
+}): JSX.Element | null => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
+  if (unknownCodes.length === 0) return null;
   return (
-    <>
-      {unknownCodes.length > 0 && (
-        <p className="w-full text-sm text-red-600 dark:text-red-400">
-          {t('atm.common.unknownCodes', { codes: joinCodes(unknownCodes, locale) })}
-        </p>
-      )}
-      {alreadyOpenCodes.length > 0 && (
-        <p className="w-full text-sm text-red-600 dark:text-red-400" data-refusal="already-open">
-          {t('atm.maintenance.alreadyOpenCodes', { codes: joinCodes(alreadyOpenCodes, locale) })}
-        </p>
-      )}
-    </>
+    <p className="w-full text-sm text-red-600 dark:text-red-400">
+      {t('atm.common.unknownCodes', { codes: joinCodes(unknownCodes, locale) })}
+    </p>
   );
 };

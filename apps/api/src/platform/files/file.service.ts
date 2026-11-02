@@ -316,7 +316,11 @@ class FileService {
       size: source.size,
       buffer,
     };
-    const entityRef = { moduleId: target.moduleId, entityType: target.entityType, entityId: target.entityId };
+    const entityRef = {
+      moduleId: target.moduleId,
+      entityType: target.entityType,
+      entityId: target.entityId,
+    };
     const group = await fileRepository.createGroup(entityRef);
     const doc = await this.storeVersion({
       binary,
@@ -377,15 +381,45 @@ class FileService {
     return doc;
   }
 
-  async listVersions(id: string, scope: ScopeSelector | undefined, ctx: AuthContext): Promise<FileDoc[]> {
+  async listVersions(
+    id: string,
+    scope: ScopeSelector | undefined,
+    ctx: AuthContext,
+  ): Promise<FileDoc[]> {
     const doc = await this.getById(id, scope, ctx);
     return fileRepository.listVersions(doc.groupId);
   }
 
+  /**
+   * Which of these entities still hold at least one live file.
+   *
+   * For a caller that needs to know whether a shelf is EMPTY without reading what is on it — the
+   * applicant documents grid asks this to decide whether an emptied folder has been filled again.
+   * It returns a subset of the ids it was given and nothing else, so it carries no file metadata
+   * past the boundary and needs no per-file authorization to do so.
+   */
+  async entityIdsWithLiveFiles(
+    moduleId: string,
+    entityTypes: readonly string[],
+    entityIds: readonly string[],
+  ): Promise<Set<string>> {
+    return fileRepository.entityIdsWithLiveFiles(moduleId, entityTypes, entityIds);
+  }
+
+  /**
+   * `intent` is what the caller is about to DO with the rows, and it defaults to reading.
+   *
+   * An owning module that is about to REMOVE an entity's files has to be able to see them first,
+   * and the question ADR-023 should be asked is the one that matches the act. Listing a folder
+   * about to be emptied with a read question would hide exactly the rows the delete is for —
+   * the delete would then report success having skipped them, which is the silent kind of wrong.
+   * Each row is still authorized individually when it is actually removed.
+   */
   async list(
     query: ListFilesQuery,
     scope: ScopeSelector,
     ctx?: AuthContext,
+    intent: FileAccessIntent = 'read',
   ): Promise<Paginated<FileDoc>> {
     const filter: Record<string, unknown> = {
       isLatest: true,
@@ -423,7 +457,7 @@ class FileService {
         const id = `${doc.entityRef.moduleId}/${doc.entityRef.entityType}/${doc.entityRef.entityId}`;
         let decision = decisions.get(id);
         if (decision === undefined) {
-          decision = authorizeFileEntity(ctx, doc.entityRef, 'read');
+          decision = authorizeFileEntity(ctx, doc.entityRef, intent);
           decisions.set(id, decision);
         }
         return decision;
@@ -513,7 +547,10 @@ class FileService {
   // ── Delete (soft by default; permanent is break-glass) ───────────────────
 
   async softDelete(ctx: AuthContext, id: string, scope?: ScopeSelector): Promise<void> {
-    await this.assertEntityAccess(ctx, await fileRepository.getById(id, scope), 'write');
+    // `delete`, not `write`: an owning module may permit removing a file it would never permit
+    // overwriting. An authorizer that has not opted into the distinction is asked about a write,
+    // so this reads exactly as it did before (ADR-023, `understandsDelete`).
+    await this.assertEntityAccess(ctx, await fileRepository.getById(id, scope), 'delete');
     const doc = await fileRepository.softDeleteById(id, { by: ctx.userId, scope });
     await auditService.record({ entityRef: entityRefOf(id), action: 'delete' });
     await emit(PlatformEvents.FileDeleted, fileEventPayload(doc), { reliable: true });

@@ -65,6 +65,7 @@ const APPLICANT_FIELD_DEFAULTS: Record<string, unknown> = {
   duplicateFlag: false,
   duplicateOf: [],
   attachmentCount: 0,
+  documentsFolderDeletedAt: null,
   withdrawnReason: null,
   withdrawnAt: null,
   movedToOfferAt: null,

@@ -37,16 +37,17 @@ export const mailUnreadCount = async (req: Request, res: Response): Promise<void
   ok(res, { count: await atmMailTicketService.unreadCount(authContext(req)) });
 };
 
-// `data` stays the ACCEPTED tickets, as it always was; the tickets the owner's rule refused (their
-// machine already has an open maintenance — OD-1) ride in `meta`, so a client reading only `data`
-// keeps working and the screen can still say which tickets stayed pending and why.
+// `data` stays the ACCEPTED tickets, as it always was. `meta.refused` named the tickets the owner's
+// rule left pending (their machine already had an open maintenance — OD-1); since OD-1c
+// (2026-11-02) such a ticket is accepted, so it is always empty — kept, so the answer's shape does
+// not change for a client that reads it.
 export const acceptMailTickets = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<DecideAtmMailTickets>(req);
-  const { decided, refused } = await atmMailTicketService.accept(body, authContext(req));
+  const decided = await atmMailTicketService.accept(body, authContext(req));
   ok<AtmMailTicketDto[], AtmMailAcceptMetaDto>(
     res,
     decided.map((doc) => toAtmMailTicketDto(doc)),
-    { refused },
+    { refused: [] },
   );
 };
 

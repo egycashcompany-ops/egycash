@@ -33,6 +33,7 @@ import {
   restoreApplicant,
   updateApplicant,
   updateApplicantSource,
+  uploadNationalIdCardScan,
   withdrawApplicant,
 } from './applicant.controller';
 import {
@@ -83,6 +84,17 @@ export const buildApplicantsRouter = (): Router => {
   const router = Router();
 
   // Static segments before '/:id'.
+  // The card photographs themselves, filed by the module rather than through the generic Files
+  // route. `applicant.create` and no `file.*`: an HR role holds the first and none of the second,
+  // and `file.view` — which the browser needed only to find the category — lists files across the
+  // whole system. The category is resolved server-side instead.
+  router.post(
+    '/national-id-card/upload',
+    authenticate,
+    authorize('applicant.create'),
+    multipartSingle(),
+    asyncHandler(uploadNationalIdCardScan),
+  );
   router.post(
     '/ocr/national-id',
     authenticate,

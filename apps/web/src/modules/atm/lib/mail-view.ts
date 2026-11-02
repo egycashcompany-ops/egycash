@@ -14,8 +14,10 @@ import {
   type AtmMailRestoreRefusalReason,
   type AtmMailTicketDto,
   type AtmMailTicketStatus,
+  type Locale,
 } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
+import { formatDateTime } from '../../../shared/lib/format';
 import { type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { boardFilterOptions, readBoardFilters, withBoardFilter } from './board-filters';
 
@@ -227,3 +229,46 @@ export const restoreRefusalToasts = (
     ];
     return codes.length === 0 ? [] : [t(RESTORE_REFUSAL_TEXT[reason], { codes: join(codes) })];
   });
+
+/**
+ * What a mail table's cell SAYS, as text — for its row of column boxes (`shared/lib/column-filter`,
+ * «فلتر لكل عمود», 2026-11-02). The same text the cell renders: the issue with its «مكررة» badge
+ * on a duplicate, the status by its label, a time on the reader's clock as the table prints it,
+ * «—» never (an empty cell matches only an empty box). A key the table has no column for answers
+ * null, which narrows nothing.
+ */
+export const mailCellText =
+  (
+    t: (key: string) => string,
+    locale: Locale,
+    /** The pending page draws the «مكررة» badge beside the issue; the log does not. */
+    { duplicateBadge }: { duplicateBadge: boolean },
+  ) =>
+  (row: AtmMailTicketDto, key: string): string | null => {
+    switch (key) {
+      case 'bank':
+        return row.bankName;
+      case 'code':
+        return row.machineCode;
+      case 'name':
+        return row.machineName;
+      case 'issue':
+        return duplicateBadge && row.duplication
+          ? `${row.issueText} ${t('atm.mail.duplicate')}`
+          : row.issueText;
+      case 'area':
+        return row.area;
+      case 'received':
+        return formatDateTime(row.receivedAt, locale);
+      case 'status':
+        return t(`atm.mail.status.${row.status}`);
+      case 'actionBy':
+        return row.actionByName ?? '';
+      case 'actionAt':
+        return row.actionAt === null ? '' : formatDateTime(row.actionAt, locale);
+      case 'sender':
+        return row.senderEmail;
+      default:
+        return null;
+    }
+  };

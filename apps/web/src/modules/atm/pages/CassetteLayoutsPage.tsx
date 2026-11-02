@@ -6,6 +6,11 @@
 // ONE BRANCH, THE SERVER'S (DS-22), as on the plan page. `bank` and `status` are remembered; `q` is
 // the list's search (as on the unlocated screen) and `machine` a link that opens one machine's
 // editor — neither is a narrowing worth keeping.
+//
+// A ROW OF FILTER BOXES under the table's head, one per column (2026-11-02, «فلتر لكل عمود»),
+// narrows what the status and the search above keep — the boxes and the filters add up. The bank's
+// machines come whole in one answer, so a box searches every one of them. A machine open in the
+// editor stays open when a box hides its row: the editor shows it whole.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -14,6 +19,7 @@ import {
   type Locale,
   type SaveAtmCassetteLayout,
 } from '@ecms/contracts';
+import { filterRowsByColumns } from '../../../shared/lib/column-filter';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
@@ -27,6 +33,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { Field, Select } from '../../../shared/ui/form';
 import { SearchInput } from '../../../shared/ui/SearchInput';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -39,7 +46,7 @@ import {
 } from '../api/settlements-queries';
 import { useAtmBankLookup } from '../api/atm-queries';
 import { BlockedNotice } from '../components/settlements/DayField';
-import { LayoutChips } from '../components/settlements/LineChips';
+import { LayoutChips, layoutChipsText } from '../components/settlements/LineChips';
 import { LayoutEditor } from '../components/settlements/LayoutEditor';
 import { standardLoadLabel } from '../components/settlements/PlanLinePanel';
 import { SettlementFigures } from '../components/settlements/SettlementFigures';
@@ -58,6 +65,71 @@ const REMEMBERED_FILTERS = ['bank', 'status'] as const;
 
 const STATUSES = ['all', 'withLayout', 'withoutLayout'] as const;
 type Status = (typeof STATUSES)[number];
+
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+/** What a row's cells are written with: the reader's words and the standard loads' names. */
+export interface LayoutTextContext {
+  t: Translate;
+  locale: Locale;
+  /** The bank's standard loads by id, by name. */
+  loadName: ReadonlyMap<string, string>;
+}
+
+/** The standard load a layout fills with: «الافتراضية للبنك», a load's name, or «—». */
+const loadText = (row: AtmCassetteLayoutRowDto, { t, loadName }: LayoutTextContext): string =>
+  row.layout === null
+    ? '—'
+    : row.layout.standardLoadId === null
+      ? t('atm.plan.panel.standardDefault')
+      : (loadName.get(row.layout.standardLoadId) ?? '—');
+
+/** Every flag but the other bank's load, which «الحمولة القياسية» says instead. */
+const cassetteFlags = (row: AtmCassetteLayoutRowDto): AtmCassetteLayoutRowDto['flags'] =>
+  row.flags.filter((flag) => flag !== 'standardLoadOtherBank');
+
+/**
+ * Pure: what a row's cell in that column shows, as text — the cassettes' chips and flags, the
+ * load and its warning — what its filter box matches. Null for a column the table does not have.
+ */
+export const layoutRowText = (
+  row: AtmCassetteLayoutRowDto,
+  key: string,
+  context: LayoutTextContext,
+): string | null => {
+  const { t, locale } = context;
+  switch (key) {
+    case 'code':
+      return row.machineCode;
+    case 'name':
+      return row.machineName;
+    case 'area':
+      return row.area;
+    case 'type':
+      return row.layout?.typeLabel ?? '—';
+    case 'cassettes':
+      return [
+        row.layout === null ? '' : layoutChipsText(row.layout.slots, t),
+        ...cassetteFlags(row).map((flag) => t(`atm.layouts.flag.${flag}`)),
+      ]
+        .filter((part) => part !== '')
+        .join(' ');
+    case 'load':
+      return row.flags.includes('standardLoadOtherBank')
+        ? `${loadText(row, context)} ${t('atm.layouts.flag.standardLoadOtherBank')}`
+        : loadText(row, context);
+    case 'changed':
+      return row.layout === null
+        ? '—'
+        : [
+            formatBusinessDateTime(row.layout.changedAt, locale),
+            row.layout.changedByName ?? '—',
+            t(`atm.layouts.source.${row.layout.source}`),
+          ].join(' · ');
+    default:
+      return null;
+  }
+};
 
 export const CassetteLayoutsPage = (): JSX.Element => {
   const t = useT();
@@ -111,6 +183,17 @@ export const CassetteLayoutsPage = (): JSX.Element => {
       return row.machineCode.toLowerCase().startsWith(text) || foldIncludes(row.machineName, query);
     });
   }, [dto, status, query]);
+  // The boxes narrow what the status and the search kept.
+  const columnFilters = useColumnFilters();
+  const shown = useMemo(
+    () =>
+      filterRowsByColumns(rows, columnFilters.values, (row, key) =>
+        layoutRowText(row, key, { t, locale, loadName }),
+      ),
+    [rows, columnFilters.values, locale, loadName],
+  );
+  const textOf = (row: AtmCassetteLayoutRowDto, key: string): string =>
+    layoutRowText(row, key, { t, locale, loadName }) ?? '';
 
   const onSave = (body: SaveAtmCassetteLayout): void => {
     if (machineId === null) return;
@@ -128,6 +211,7 @@ export const CassetteLayoutsPage = (): JSX.Element => {
     );
   };
 
+  // Every column is text, so every column takes a box (`layoutRowText` reads each cell's words).
   const columns: Column<AtmCassetteLayoutRowDto>[] = [
     {
       key: 'code',
@@ -137,13 +221,20 @@ export const CassetteLayoutsPage = (): JSX.Element => {
           {row.machineCode}
         </span>
       ),
+      filterable: true,
     },
-    { key: 'name', header: t('atm.settlement.machineName'), render: (row) => row.machineName },
-    { key: 'area', header: t('atm.settlement.area'), render: (row) => row.area },
+    {
+      key: 'name',
+      header: t('atm.settlement.machineName'),
+      render: (row) => row.machineName,
+      filterable: true,
+    },
+    { key: 'area', header: t('atm.settlement.area'), render: (row) => row.area, filterable: true },
     {
       key: 'type',
       header: t('atm.layouts.column.type'),
-      render: (row) => row.layout?.typeLabel ?? '—',
+      render: (row) => textOf(row, 'type'),
+      filterable: true,
     },
     {
       key: 'cassettes',
@@ -151,26 +242,21 @@ export const CassetteLayoutsPage = (): JSX.Element => {
       render: (row) => (
         <span className="inline-flex flex-wrap items-center gap-1.5">
           {row.layout !== null && <LayoutChips slots={row.layout.slots} />}
-          {row.flags
-            .filter((flag) => flag !== 'standardLoadOtherBank')
-            .map((flag) => (
-              <Badge key={flag} tone="warning" size="sm">
-                {t(`atm.layouts.flag.${flag}`)}
-              </Badge>
-            ))}
+          {cassetteFlags(row).map((flag) => (
+            <Badge key={flag} tone="warning" size="sm">
+              {t(`atm.layouts.flag.${flag}`)}
+            </Badge>
+          ))}
         </span>
       ),
+      filterable: true,
     },
     {
       key: 'load',
       header: t('atm.layouts.column.standardLoad'),
       render: (row) => (
         <span className="inline-flex flex-wrap items-center gap-1.5">
-          {row.layout === null
-            ? '—'
-            : row.layout.standardLoadId === null
-              ? t('atm.plan.panel.standardDefault')
-              : (loadName.get(row.layout.standardLoadId) ?? '—')}
+          {loadText(row, { t, locale, loadName })}
           {row.flags.includes('standardLoadOtherBank') && (
             <Badge tone="danger" size="sm">
               {t('atm.layouts.flag.standardLoadOtherBank')}
@@ -178,18 +264,13 @@ export const CassetteLayoutsPage = (): JSX.Element => {
           )}
         </span>
       ),
+      filterable: true,
     },
     {
       key: 'changed',
       header: t('atm.layouts.column.changed'),
-      render: (row) =>
-        row.layout === null
-          ? '—'
-          : [
-              formatBusinessDateTime(row.layout.changedAt, locale),
-              row.layout.changedByName ?? '—',
-              t(`atm.layouts.source.${row.layout.source}`),
-            ].join(' · '),
+      render: (row) => textOf(row, 'changed'),
+      filterable: true,
     },
   ];
 
@@ -213,6 +294,12 @@ export const CassetteLayoutsPage = (): JSX.Element => {
           بس هو اللى يعمل Scroll»): on a computer the title, the last import and the filters keep
           their place, and only the table's rows — and the editor beside them — scroll. */}
       <div className={BOARD_FRAME}>
+        {/* The bank, the status and the search on the title's line, before the actions
+          (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»):
+          they wrap inside their slot while it keeps 24rem beside the title, the figures and the
+          actions, and take a line of their own under the title when it cannot (`PageHeader`'s
+          toolbar). The last import stays under the header — it is news about the data, not a way
+          to narrow it. */}
         <PageHeader
           title={t('atm.layouts.title')}
           figures={
@@ -237,6 +324,44 @@ export const CassetteLayoutsPage = (): JSX.Element => {
                 },
               ]}
             />
+          }
+          toolbar={
+            <div className="flex flex-wrap items-end gap-3" data-layouts-filters="true">
+              <Field label={t('atm.settlement.bank')} htmlFor="layouts-bank">
+                <Select
+                  id="layouts-bank"
+                  value={bank ?? ''}
+                  onChange={(e) => patch({ bank: e.target.value, machine: null })}
+                >
+                  {banks.map((b) => (
+                    <option key={b} value={b}>
+                      {bankLookup.name(b, locale)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label={t('atm.settlement.status')} htmlFor="layouts-status">
+                <Select
+                  id="layouts-status"
+                  value={status}
+                  onChange={(e) =>
+                    patch({ status: e.target.value === 'all' ? null : e.target.value })
+                  }
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {t(`atm.layouts.filter.${s}`)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <SearchInput
+                className="min-w-64"
+                value={query}
+                placeholder={t('atm.layouts.search')}
+                onChange={(text) => patch({ q: text })}
+              />
+            </div>
           }
           actions={
             <>
@@ -281,41 +406,6 @@ export const CassetteLayoutsPage = (): JSX.Element => {
           </div>
         )}
 
-        <div className="flex flex-wrap items-end gap-3" data-layouts-filters="true">
-          <Field label={t('atm.settlement.bank')} htmlFor="layouts-bank">
-            <Select
-              id="layouts-bank"
-              value={bank ?? ''}
-              onChange={(e) => patch({ bank: e.target.value, machine: null })}
-            >
-              {banks.map((b) => (
-                <option key={b} value={b}>
-                  {bankLookup.name(b, locale)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('atm.settlement.status')} htmlFor="layouts-status">
-            <Select
-              id="layouts-status"
-              value={status}
-              onChange={(e) => patch({ status: e.target.value === 'all' ? null : e.target.value })}
-            >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {t(`atm.layouts.filter.${s}`)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <SearchInput
-            className="min-w-64"
-            value={query}
-            placeholder={t('atm.layouts.search')}
-            onChange={(text) => patch({ q: text })}
-          />
-        </div>
-
         {context.isLoading ? (
           <LoadingState />
         ) : ctx === undefined && context.error !== null ? (
@@ -334,7 +424,7 @@ export const CassetteLayoutsPage = (): JSX.Element => {
             >
               <DataTable
                 columns={columns}
-                rows={rows}
+                rows={shown}
                 rowKey={(row) => row.machineId}
                 loading={ready && list.isLoading}
                 error={list.error}
@@ -345,6 +435,16 @@ export const CassetteLayoutsPage = (): JSX.Element => {
                 rowClassName={(row) =>
                   row.machineId === machineId ? 'bg-brand-50/70 dark:bg-brand-950/40' : undefined
                 }
+                {...(columnFilters.active && rows.length > 0
+                  ? { empty: t('atm.common.emptyColumnFiltered') }
+                  : {})}
+                columnFilters={{
+                  values: columnFilters.values,
+                  onChange: columnFilters.set,
+                  generation: columnFilters.generation,
+                  label: (header) => t('atm.common.filterColumn', { column: header }),
+                  placeholder: t('atm.common.filterPlaceholder'),
+                }}
                 dense
                 stickyHead
               />

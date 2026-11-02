@@ -50,8 +50,9 @@ vi.mock('../../shared/lib/api-client', async () => {
       sent.push({ method: 'patch', path, body });
       return answer(path, body);
     },
-    // The mail accept: the first mail of every request is refused (the owner's rule, OD-1) and
-    // rides in `meta`, the rest are accepted — so the join of both halves can be seen.
+    // The mail accept: the first mail of every request comes back in `meta.refused`, the rest are
+    // accepted — so the join of both halves can be seen. The server answers `refused` empty since
+    // OD-1c (2026-11-02); the client still joins whatever it carries.
     postWithMeta: async (path: string, body: { ids: string[] }) => {
       sent.push({ method: 'post', path, body });
       if (failOn !== null && sent.length === failOn) throw new Error('refused');

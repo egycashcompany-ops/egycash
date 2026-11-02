@@ -39,6 +39,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Select } from '../../../shared/ui/form';
 import { DownloadIcon, PrinterIcon } from '../../../shared/ui/icons';
@@ -69,7 +70,12 @@ import { BlockedNotice, DayField } from '../components/settlements/DayField';
 import { IssueDialog, type ServerIssue } from '../components/settlements/IssueDialog';
 import { MenuButton } from '../components/settlements/MenuButton';
 import { PlanLinePanel, type LinePatch } from '../components/settlements/PlanLinePanel';
-import { PlanLinesTable, printable } from '../components/settlements/PlanLinesTable';
+import {
+  PlanLinesTable,
+  filterPlanLines,
+  printable,
+  shownTicks,
+} from '../components/settlements/PlanLinesTable';
 import { PrintReceiptDialog } from '../components/settlements/PrintReceiptDialog';
 import { ReasonDialog } from '../components/settlements/ReasonDialog';
 import { SettlementFigures } from '../components/settlements/SettlementFigures';
@@ -163,6 +169,20 @@ export const SettlementPlanPage = (): JSX.Element => {
       return kept.length === current.size ? current : new Set(kept);
     });
   }, [plan]);
+
+  // The row of boxes under the lines' head, one per column (2026-11-02, «فلتر لكل عمود»): they
+  // narrow the bank's lines of the day before the table shows them. The plan's own papers — the
+  // receipt, the Notes of every or every unprinted line, the handover, the REP. TAPE — stay the
+  // whole plan's, as do the header's figures and the footer's «إجمالي الخطة»: they are the plan's
+  // records, not the table's. A line open in the panel stays open when a box hides its row — the
+  // panel shows that one line whole, under its code, so nothing is changed unseen.
+  const columnFilters = useColumnFilters();
+  const shownLines = useMemo(
+    () => filterPlanLines(plan?.lines ?? [], columnFilters.values, t, locale),
+    [plan, columnFilters.values, locale],
+  );
+  // «السطور المحددة» prints the ticked lines the table SHOWS (`shownTicks`).
+  const checkedShown = useMemo(() => shownTicks(shownLines, checked), [shownLines, checked]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────────────────────
   const create = useCreatePlan();
@@ -494,8 +514,8 @@ export const SettlementPlanPage = (): JSX.Element => {
               {
                 key: 'selected',
                 label: t('atm.plan.action.notesSelected'),
-                disabled: checked.size === 0,
-                onSelect: () => printNotes({ kind: 'notes', lineIds: [...checked] }),
+                disabled: checkedShown.length === 0,
+                onSelect: () => printNotes({ kind: 'notes', lineIds: checkedShown }),
               },
             ]}
           />
@@ -545,58 +565,71 @@ export const SettlementPlanPage = (): JSX.Element => {
           totals keep theirs under the table, and only the lines — and the panel beside them —
           scroll. */}
       <div className={BOARD_FRAME}>
-        <PageHeader title={t('atm.plan.title')} figures={figures} actions={actions} />
-
-        {/* ── The toolbar ── */}
-        <div className="flex flex-wrap items-end gap-3" data-plan-toolbar="true">
-          <Field label={t('atm.settlement.bank')} htmlFor="plan-bank">
-            <Select
-              id="plan-bank"
-              value={bank ?? ''}
-              onChange={(e) => patch({ bank: e.target.value, line: null })}
-            >
-              {banks.map((b) => (
-                <option key={b} value={b}>
-                  {bankLookup.name(b, locale)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <DayField
-            id="plan-day"
-            value={date}
-            onChange={(day) => patch({ date: day === cairoTomorrow() ? null : day, line: null })}
-          />
-          {state !== null && (
-            <span data-plan-state={state} className="pb-2">
-              <Badge tone={PLAN_STATE_TONE[state]}>{t(`atm.settlement.planState.${state}`)}</Badge>
-            </span>
-          )}
-          {plan !== null && plan.can.manage && (
-            <div className="ms-auto flex flex-wrap gap-2">
-              <Button
-                onClick={() => {
-                  setAddError(null);
-                  setAddOpen(true);
-                }}
-              >
-                {t('atm.plan.action.addMachines')}
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setSpareError(null);
-                  setSpareOpen(true);
-                }}
-              >
-                {t('atm.plan.action.addSpare')}
-              </Button>
-              <Button variant="secondary" disabled={drafts.length === 0} onClick={openIssue}>
-                {t('atm.plan.action.issue', { n: formatNumber(drafts.length, locale) })}
-              </Button>
+        {/* ── The toolbar, on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي
+          بجانب العنوان عشان نستفيد بالمساحة») — between the figures and the prints. It wraps
+          inside itself while it keeps 24rem there; with the four prints beside three figures it
+          usually cannot, and the header wraps: the prints take a line of their own
+          (`PageHeader`'s toolbar). ── */}
+        <PageHeader
+          title={t('atm.plan.title')}
+          figures={figures}
+          actions={actions}
+          toolbar={
+            <div className="flex flex-wrap items-end gap-3" data-plan-toolbar="true">
+              <Field label={t('atm.settlement.bank')} htmlFor="plan-bank">
+                <Select
+                  id="plan-bank"
+                  value={bank ?? ''}
+                  onChange={(e) => patch({ bank: e.target.value, line: null })}
+                >
+                  {banks.map((b) => (
+                    <option key={b} value={b}>
+                      {bankLookup.name(b, locale)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <DayField
+                id="plan-day"
+                value={date}
+                onChange={(day) =>
+                  patch({ date: day === cairoTomorrow() ? null : day, line: null })
+                }
+              />
+              {state !== null && (
+                <span data-plan-state={state} className="pb-2">
+                  <Badge tone={PLAN_STATE_TONE[state]}>
+                    {t(`atm.settlement.planState.${state}`)}
+                  </Badge>
+                </span>
+              )}
+              {plan !== null && plan.can.manage && (
+                <div className="ms-auto flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => {
+                      setAddError(null);
+                      setAddOpen(true);
+                    }}
+                  >
+                    {t('atm.plan.action.addMachines')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSpareError(null);
+                      setSpareOpen(true);
+                    }}
+                  >
+                    {t('atm.plan.action.addSpare')}
+                  </Button>
+                  <Button variant="secondary" disabled={drafts.length === 0} onClick={openIssue}>
+                    {t('atm.plan.action.issue', { n: formatNumber(drafts.length, locale) })}
+                  </Button>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          }
+        />
 
         {context.isLoading || (ready && planQuery.isLoading) ? (
           <LoadingState />
@@ -649,7 +682,9 @@ export const SettlementPlanPage = (): JSX.Element => {
                 </p>
               )}
               <PlanLinesTable
-                lines={plan.lines}
+                lines={shownLines}
+                totalLines={plan?.lines.length ?? 0}
+                columnFilters={columnFilters}
                 locale={locale}
                 selectedId={selected?.id ?? null}
                 checked={checked}

@@ -6,7 +6,9 @@
 //   · the filter row: the range and the status select beside it, the pending page's bank, area and
 //     code-or-name narrowing, the red reset — over the range read WHOLE, narrowed in the browser;
 //   · a range too long to read whole says so, as the done pages do;
-//   · the board frame, and the outcome's paint reaching the pinned button's cell.
+//   · the board frame, and the outcome's paint reaching the pinned button's cell;
+//   · (2026-11-02) the filter row on the title's line, and a box under every text column that
+//     narrows the rows the filters kept — the status by its label.
 //
 // Every code below is synthetic.
 import { describe, expect, it, vi } from 'vitest';
@@ -39,6 +41,17 @@ vi.mock('react-dom', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('react-dom');
   return { ...actual, createPortal: (node: unknown) => node };
 });
+
+/** The column boxes' state — a static render cannot type into them. Empty unless a test sets it. */
+let columnValues: Record<string, string> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.trim() !== ''),
+  }),
+}));
 
 const t = (key: string): string => translate('ar', key);
 const STAMP = '2026-10-28T08:00:00.000Z';
@@ -118,6 +131,21 @@ const render = (
 
 const DECIDE = ['atmMailTicket.viewLog', 'atmMailTicket.decide'];
 const count = (markup: string, needle: string): number => markup.split(needle).length - 1;
+
+/** The header's toolbar slot alone, from its `<div` to the `</div>` that closes it. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
 const restoreButton = `title="${t('atm.mail.restore')}"`;
 
 /** One row's markup, from its `<tr` to its end, found by the machine code it shows. */
@@ -234,5 +262,52 @@ describe('the log’s filter row', () => {
     expect(markup).toContain('flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto');
     expect(markup).toContain('h-full overflow-auto');
     expect(markup).toContain('<thead class="sticky top-0 z-10">');
+  });
+});
+
+describe('the log on the title’s line, with a box under every column (2026-11-02)', () => {
+  const withBoxes = (values: Record<string, string>): string => {
+    columnValues = values;
+    try {
+      return render(DECIDE);
+    } finally {
+      columnValues = {};
+    }
+  };
+  const codesShown = (markup: string): string[] =>
+    [...markup.matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
+
+  it('puts the range, the status and the narrowing in the header', () => {
+    const toolbar = toolbarOf(render(DECIDE));
+    expect(toolbar).toContain('type="date"');
+    expect(toolbar).toContain('id="mail-log-status"');
+    expect(toolbar).toContain(`placeholder="${t('atm.mail.search')}"`);
+  });
+
+  it('draws a box under every text column — none for the button', () => {
+    const boxes = [...render(DECIDE).matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
+    expect(boxes).toEqual([
+      'bank',
+      'code',
+      'name',
+      'issue',
+      'area',
+      'received',
+      'status',
+      'actionBy',
+      'actionAt',
+      'sender',
+    ]);
+  });
+
+  it('narrows the rows on what each cell shows — the status by its label', () => {
+    expect(codesShown(withBoxes({ status: t('atm.mail.status.accepted') }))).toEqual([
+      ACCEPTED.machineCode,
+    ]);
+    expect(codesShown(withBoxes({ bank: 'CIB' }))).toEqual([REJECTED.machineCode]);
+    const none = withBoxes({ code: '12345678' });
+    expect(codesShown(none)).toEqual([]);
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    expect(none).toContain('data-board-reset');
   });
 });

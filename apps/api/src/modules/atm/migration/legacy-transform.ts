@@ -152,7 +152,10 @@ export interface ImportedOperation {
   zone: string;
   area: string;
   openedAt: Date;
-  /** The Cairo day of `openedAt` — the per-day rule's key (shared/open-operation.ts). */
+  /**
+   * The Cairo day of `openedAt`, stored with it as on every open — the per-day rule's key until
+   * that rule was lifted (OD-1b, OD-1c; shared/open-operation.ts).
+   */
   openDay: string;
   closedAt: Date | null;
   leaderName: string | null;
@@ -231,7 +234,8 @@ export const replenishmentFromLegacy = (
  * Maintenance rows import as `source: 'manual'` WITHOUT exception, including the ones an operator
  * accepted from a mail. That is not a guess: the legacy accept path wrote a plain maintenance row
  * and kept no link back to the ticket (contad_app.js:2806-2823), so the provenance genuinely does
- * not exist in the data. Rows created in ECMS carry it from here on.
+ * not exist in the data. Rows created in ECMS carry it from here on. With no ticket
+ * (`mailTicketId: null`) an imported row is outside `ux_maintenance_per_mail_ticket` too.
  */
 export const maintenanceFromLegacy = (
   doc: LegacyOperation,
@@ -251,59 +255,6 @@ export const maintenanceFromLegacy = (
     mailTicketId: null,
     leaderEmployeeId: null,
   };
-};
-
-// ── The owner's rule vs. history (port doc OD-1) ────────────────────────────────────────────────
-//
-// Since 2026-10-13 a machine has at most ONE open maintenance — per Cairo day since 2026-10-27 —
-// held by a partial unique index on `{ machineCode, openDay }` (replenishments were held too until
-// 2026-11-01, OD-1b). The legacy had no such guard, so a deployment's history can hold two open
-// maintenances for one machine on one day. The importer is EXEMPT from the rule's service check —
-// it writes history as it was and decides nothing — but it cannot make the index accept a second
-// open row. These two helpers are how it reports that instead of crashing.
-
-/**
- * Pure: the rows the open-maintenance index would refuse WITHIN one deployment's list — every open,
- * live row whose code AND day an earlier open, live row already holds. A dry run's prediction; the
- * real run reports what the index actually refused (which also counts rows already in ECMS).
- */
-export const openDuplicateRowIds = (
-  rows: readonly Pick<
-    ImportedOperation,
-    '_id' | 'machineCode' | 'openDay' | 'closedAt' | 'isDeleted'
-  >[],
-): string[] => {
-  const held = new Set<string>();
-  const refused: string[] = [];
-  for (const row of rows) {
-    if (row.closedAt !== null || row.isDeleted || row.machineCode === '') continue;
-    const key = `${row.machineCode}|${row.openDay}`;
-    if (held.has(key)) refused.push(String(row._id));
-    else held.add(key);
-  }
-  return refused;
-};
-
-/**
- * Pure: the bulk-operation positions a failed `bulkWrite` refused with E11000 — or null when the
- * failure is anything else (another code among the write errors, a write-concern error, not a
- * bulk error at all), which the caller must rethrow. Positions only: a write error's message
- * quotes the duplicate key, and nothing here needs to read it.
- */
-export const duplicateKeyWriteIndexes = (error: unknown): number[] | null => {
-  if (typeof error !== 'object' || error === null) return null;
-  const { writeErrors, err } = error as { writeErrors?: unknown; err?: unknown };
-  if (err !== undefined && err !== null) return null;
-  if (writeErrors === undefined || writeErrors === null) return null;
-  const list: unknown[] = Array.isArray(writeErrors) ? writeErrors : [writeErrors];
-  if (list.length === 0) return null;
-  const indexes: number[] = [];
-  for (const item of list) {
-    const { code, index } = (item ?? {}) as { code?: unknown; index?: unknown };
-    if (code !== 11000 || typeof index !== 'number') return null;
-    indexes.push(index);
-  }
-  return indexes;
 };
 
 export interface LegacyMail {

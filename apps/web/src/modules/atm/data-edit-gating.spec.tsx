@@ -6,7 +6,9 @@
 //     moved to another area. No machine add, no bulk add or delete-by-codes, no archive, no delete.
 //   · `atmMachine.manage`: everything, exactly as before the split — the add stays its own.
 //   · the bank CATALOG tab (DEC-35): add under `atmBank.create`, edit under `atmBank.edit`, and
-//     neither Operations' keys nor `manage` reach it — it belongs to Efficiency and the admins.
+//     neither Operations' keys nor `manage` reach it — it belongs to Efficiency and the admins;
+//   · the tabs sit in the header, on the title's line, as a segmented switch (2026-11-02), and only
+//     the bank tab — the whole catalog — has a filter box per column; the paged tabs have none.
 //
 // Every code, name and label below is synthetic.
 import { describe, expect, it, vi } from 'vitest';
@@ -32,7 +34,8 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
-import { ATM_DATA_TABS, DataEditPage, type AtmDataTab } from './pages/DataEditPage';
+import { ATM_DATA_TABS, DataEditPage, bankCellText, type AtmDataTab } from './pages/DataEditPage';
+import { filterRowsByColumns } from '../../shared/lib/column-filter';
 import { atmBanksKey, atmRefLabelOptionsKey } from './api/atm-queries';
 import {
   MachineAreaDialog,
@@ -216,6 +219,21 @@ const renderDialog = (permissions: readonly string[], node: ReactNode): string =
   qc.setQueryData(atmBanksKey(), CATALOG);
   qc.setQueryData(atmRefLabelOptionsKey(ALEX), OPTIONS);
   return wrap(permissions, qc, node);
+};
+
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (markup: string): string => {
+  const at = markup.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = markup.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(markup); m !== null; m = tags.exec(markup)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return markup.slice(open, m.index + m[0].length);
+  }
+  return '';
 };
 
 /** Every gated control on the screen, by kind, in document order. */
@@ -461,5 +479,56 @@ describe('a refused label save says why', () => {
     const forbidden = refLabelErrorText(new ApiError('FORBIDDEN', 'Forbidden', 403), tr, 'ar');
     expect(forbidden).not.toBe(tr('atm.dataEdit.labelExists'));
     expect(forbidden).toBe('ليس لديك صلاحية للقيام بذلك.');
+  });
+});
+
+describe('the tabs on the title’s line (2026-11-02)', () => {
+  it('puts the four tabs inside the header, a segmented switch; the FilterBar stays over the table', () => {
+    const markup = renderPage(OPERATIONS);
+    const toolbar = toolbarOf(markup);
+    expect(toolbar).toContain('role="tablist"');
+    expect([...toolbar.matchAll(/role="tab"/g)]).toHaveLength(ATM_DATA_TABS.length);
+    expect(tagWith(toolbar, 'button', 'aria-selected', 'true')).toContain('bg-brand-600');
+    expect(toolbar).not.toContain(`aria-label="${t('atm.dataEdit.status')}"`);
+    expect(markup).toContain(`aria-label="${t('atm.dataEdit.status')}"`);
+    expect(markup.indexOf('<h1')).toBeLessThan(markup.indexOf('data-page-toolbar'));
+  });
+});
+
+describe('the filter boxes (2026-11-02, «فلتر لكل عمود»): the bank tab only', () => {
+  it('draws a box under every text column of the catalog, none under the edit button', () => {
+    const markup = renderPage([VIEW_ONLY, 'atmBank.edit'], 'bank');
+    const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      'code',
+      'nameAr',
+      'nameEn',
+      'opsLabel',
+      'color',
+      'status',
+    ]);
+  });
+
+  it.each(['machines', 'bankLabel', 'area'] as const)(
+    'leaves the %s tab — read a page at a time from the server — without boxes',
+    (tab) => {
+      expect(renderPage(MANAGE, tab)).not.toContain('data-column-filter');
+    },
+  );
+
+  it('matches what each cell shows, and keeps the banks every box matches', () => {
+    const nbe = CATALOG.find((bank) => bank.code === 'NBE');
+    if (nbe === undefined) throw new Error('fixture');
+    expect(bankCellText(nbe, 'nameAr', t)).toBe(nbe.name.ar);
+    expect(bankCellText(nbe, 'status', t)).toBe(t('atm.dataEdit.active'));
+    expect(bankCellText(nbe, 'actions', t)).toBeNull();
+    const codes = (values: Record<string, string>): string[] =>
+      filterRowsByColumns(CATALOG, values, (bank, key) => bankCellText(bank, key, t)).map(
+        (bank) => bank.code,
+      );
+    expect(codes({ code: 'nbe' })).toEqual(['NBE']);
+    expect(codes({ nameAr: 'الاهلي' })).toEqual(['NBE']);
+    expect(codes({ status: t('atm.dataEdit.archived') })).toEqual([]);
+    expect(codes({})).toEqual(CATALOG.map((bank) => bank.code));
   });
 });

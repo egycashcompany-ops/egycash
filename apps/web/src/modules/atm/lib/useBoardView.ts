@@ -14,6 +14,7 @@
 // grouped and keep the plain reader's order.
 import { useMemo } from 'react';
 import { type useSearchParams } from 'react-router-dom';
+import { filterRowsByColumns, type ColumnFilterValues } from '../../../shared/lib/column-filter';
 import { sortRows } from '../../../shared/lib/sort-rows';
 import {
   chosenSorts,
@@ -29,10 +30,18 @@ import {
   type BoardDayView,
 } from './board-day';
 import { boardAreaOrder, clickBoardSort, groupRowsByArea } from './area-groups';
-import { knownSorts, operationSortValue, type AtmOperationRow } from './operation-sheet';
+import {
+  knownSorts,
+  operationSortValue,
+  type AtmOperationRow,
+  type SheetColumn,
+} from './operation-sheet';
 import { cairoDay } from './operation-view';
 
 type SearchParams = ReturnType<typeof useSearchParams>;
+
+/** No box narrows anything — one shared value, so a page without boxes keeps its memos. */
+const NO_COLUMN_FILTERS: ColumnFilterValues = {};
 
 /** Replaces rather than pushes: a view of a table is not a place to go Back to. */
 const patchParam = ([sp, setSp]: SearchParams, key: string, value: string | null): void => {
@@ -85,6 +94,11 @@ export interface BoardView<T> extends ReaderOrder<T> {
   counts: Record<BoardDayView, number>;
   /** The day or days the view's statement is «عن». */
   range: { from: string; to: string };
+  /**
+   * How many rows the view holds BEFORE the column boxes — so an empty table blames the boxes only
+   * when they are what emptied it, not a day that has nothing at all.
+   */
+  beforeBoxes: number;
 }
 
 /**
@@ -119,20 +133,49 @@ export const useAreaGroupedOrder = <T extends AtmOperationRow>(
 };
 
 /**
+ * The rows the table's column boxes keep (`shared/lib/column-filter.ts`), matched on the text each
+ * column's cell shows. A key the table has no column for narrows nothing.
+ */
+export const useColumnFiltered = <T>(
+  rows: readonly T[],
+  columns: readonly SheetColumn<T>[],
+  values: ColumnFilterValues,
+): T[] => {
+  // The headers are in the key, not only the keys: the cells' text is the reader's language (a
+  // time on the Cairo clock, in its digits), and a language switch must refilter on the new text.
+  const identity = columns.map((column) => `${column.key}:${column.header}`).join('|');
+  return useMemo(() => {
+    const byKey = new Map(columns.map((column) => [column.key, column]));
+    return filterRowsByColumns(rows, values, (row, key) => {
+      const column = byKey.get(key);
+      if (column === undefined) return null;
+      return column.filterText === undefined ? column.text(row, '') : column.filterText(row);
+    });
+  }, [rows, values, identity]);
+};
+
+/**
  * An open board: the rows of its day view (`?day=`, today by default), grouped by area, in the
- * reader's order inside each area.
+ * reader's order inside each area. The column boxes narrow the rows FIRST, so the day buttons'
+ * counts and the area lines follow them, as they follow the bank and area filters.
  */
 export const useBoardView = <T extends AtmOperationRow>(
   params: SearchParams,
   rows: readonly T[],
-  columns: readonly { key: string }[],
+  columns: readonly SheetColumn<T>[],
   now: Date,
+  columnFilters: ColumnFilterValues = NO_COLUMN_FILTERS,
 ): BoardView<T> => {
   const view = readBoardDayView(params[0].get('day'));
   // The view moves on at Cairo midnight, not every second the timer ticks.
   const today = cairoDay(now);
-  const inView = useMemo(() => rowsInDayView(rows, view, now), [rows, view, today]);
-  const counts = useMemo(() => dayViewCounts(rows, now), [rows, today]);
+  const kept = useColumnFiltered(rows, columns, columnFilters);
+  const inView = useMemo(() => rowsInDayView(kept, view, now), [kept, view, today]);
+  const beforeBoxes = useMemo(
+    () => (kept.length === rows.length ? inView.length : rowsInDayView(rows, view, now).length),
+    [rows, kept, inView, view, today],
+  );
+  const counts = useMemo(() => dayViewCounts(kept, now), [kept, today]);
   const order = useAreaGroupedOrder(params, inView, columns);
   return {
     ...order,
@@ -140,5 +183,6 @@ export const useBoardView = <T extends AtmOperationRow>(
     setView: (next) => patchParam(params, 'day', next === 'today' ? null : next),
     counts,
     range: dayViewRange(view, order.rows, now),
+    beforeBoxes,
   };
 };

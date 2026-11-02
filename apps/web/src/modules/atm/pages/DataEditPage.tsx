@@ -38,6 +38,11 @@
 // What the legacy could NOT do and this can: fix one machine's name or bank, and ARCHIVE a
 // machine or a label instead of deleting it (`isActive`) — the row leaves the forms and the mail
 // matcher, which read active only, while its code stays taken and its history stays readable.
+//
+// A ROW OF FILTER BOXES, one per column (2026-11-02, «فلتر لكل عمود»), only on the bank tab: its
+// table is the whole catalog, read at once. The machines, spellings and areas tabs are read a page
+// at a time from the server — a box in the browser would search the page on screen only and pass
+// for a search of them all — so they keep the FilterBar's server search and status alone.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -50,6 +55,8 @@ import { useT } from '../../../platform/localization/useT';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
+import { filterRowsByColumns } from '../../../shared/lib/column-filter';
+import { cn } from '../../../shared/lib/cn';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
@@ -59,6 +66,7 @@ import { Badge, StatusBadge } from '../../../shared/ui/Badge';
 import { Input, Select } from '../../../shared/ui/form';
 import { EditIcon, PinIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import {
   useAtmBanks,
   useAtmMachines,
@@ -97,6 +105,33 @@ const isTab = (value: string | null): value is AtmDataTab =>
 
 const actionButton =
   'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
+
+/**
+ * Pure: what a catalog bank's cell in that column shows, as text (`bankCatalogColumns`) — what the
+ * bank tab's filter box matches. Null for a column that shows no text (the edit button).
+ */
+export const bankCellText = (
+  bank: AtmBankDto,
+  key: string,
+  t: (key: string) => string,
+): string | null => {
+  switch (key) {
+    case 'code':
+      return bank.code;
+    case 'nameAr':
+      return bank.name.ar;
+    case 'nameEn':
+      return bank.name.en;
+    case 'opsLabel':
+      return bank.opsLabel;
+    case 'color':
+      return bank.color;
+    case 'status':
+      return bank.isActive ? t('atm.dataEdit.active') : t('atm.dataEdit.archived');
+    default:
+      return null;
+  }
+};
 
 /** Where an area label came from, as its badge says it — none for one typed on this page. */
 const originBadgeKey = (origin: AtmRefLabelDto['origin']): string | null =>
@@ -197,12 +232,21 @@ export const DataEditPage = (): JSX.Element => {
   // spellings tab shows for each spelling's bank.
   const catalog = useAtmBanks();
   const lookup = useMemo(() => makeBankLookup(catalog.data), [catalog.data]);
-  const bankRows = useMemo(
+  // The bank tab's boxes narrow what the status filter kept; a tab change empties them.
+  const columnFilters = useColumnFilters();
+  const bankRowsBeforeBoxes = useMemo(
     () =>
       sortByCatalogOrder(catalog.data ?? []).filter(
         (bank) => active === '' || bank.isActive === (active === 'true'),
       ),
     [catalog.data, active],
+  );
+  const bankRows = useMemo(
+    () =>
+      filterRowsByColumns(bankRowsBeforeBoxes, columnFilters.values, (bank, key) =>
+        bankCellText(bank, key, t),
+      ),
+    [bankRowsBeforeBoxes, columnFilters.values, locale],
   );
   // The acting branch's bank texts that link to no bank — the spellings tab's callout — each with
   // the row of this branch that already holds it, if any (`unmappedBankLabels`).
@@ -347,8 +391,12 @@ export const DataEditPage = (): JSX.Element => {
       : []),
   ];
 
-  // The register's «البنوك» dialog shows the same table (`bankCatalogColumns`).
-  const bankColumns = bankCatalogColumns({ t, onEdit: canEditBank ? setEditingBank : undefined });
+  // The register's «البنوك» dialog shows the same table (`bankCatalogColumns`); here every column
+  // that shows text takes a box.
+  const bankColumns = bankCatalogColumns({
+    t,
+    onEdit: canEditBank ? setEditingBank : undefined,
+  }).map((column) => (column.key === 'actions' ? column : { ...column, filterable: true }));
 
   const spellingColumns: Column<AtmRefLabelDto>[] = [
     {
@@ -406,12 +454,43 @@ export const DataEditPage = (): JSX.Element => {
           place, the pager keeps its place below, and only the table's rows scroll, under a head
           that stays. */}
       <div className={BOARD_FRAME}>
+        {/* The tabs on the title's line, as a segmented switch (the interviews queue's), before the
+          tab's actions (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد
+          بالمساحة»). The FilterBar stays over the table: it is the table's own filter. */}
         <PageHeader
           title={t('atm.dataEdit.title')}
           breadcrumbs={[
             { label: t('atm.overview.title'), to: '/atm' },
             { label: t('atm.dataEdit.title') },
           ]}
+          toolbar={
+            <div
+              className="inline-flex max-w-full flex-wrap rounded-lg border border-slate-200 p-0.5 dark:border-slate-700"
+              role="tablist"
+              data-edit-tabs="true"
+            >
+              {ATM_DATA_TABS.map((key) => (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={tab === key}
+                  type="button"
+                  onClick={() => {
+                    columnFilters.clear();
+                    patch({ tab: key === 'machines' ? null : key, sort: null, q: null });
+                  }}
+                  className={cn(
+                    'rounded-md px-3 py-1 text-xs font-medium',
+                    tab === key
+                      ? 'bg-brand-600 text-white'
+                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400',
+                  )}
+                >
+                  {t(`atm.dataEdit.tab.${key}`)}
+                </button>
+              ))}
+            </div>
+          }
           actions={
             tab === 'machines' ? (
               <Can permission="atmMachine.manage">
@@ -473,31 +552,15 @@ export const DataEditPage = (): JSX.Element => {
           }
         />
 
-        <div
-          className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
-          role="tablist"
-        >
-          {ATM_DATA_TABS.map((key) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={tab === key}
-              type="button"
-              onClick={() => patch({ tab: key === 'machines' ? null : key, sort: null, q: null })}
-              className={`rounded-t-lg px-4 py-2 text-sm ${
-                tab === key
-                  ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              {t(`atm.dataEdit.tab.${key}`)}
-            </button>
-          ))}
-        </div>
-
+        {/* Its clear empties the bank tab's boxes too, and lights up while one narrows the table. */}
         <FilterBar
-          hasActiveFilters={active !== '' || search !== ''}
-          onClear={() => patch({ active: null, q: null })}
+          hasActiveFilters={
+            active !== '' || search !== '' || (tab === 'bank' && columnFilters.active)
+          }
+          onClear={() => {
+            columnFilters.clear();
+            patch({ active: null, q: null });
+          }}
         >
           {tab === 'machines' && (
             <Input
@@ -587,6 +650,16 @@ export const DataEditPage = (): JSX.Element => {
               loading={catalog.isLoading}
               error={catalog.isError ? catalog.error : undefined}
               onRetry={() => void catalog.refetch()}
+              {...(columnFilters.active && bankRowsBeforeBoxes.length > 0
+                ? { empty: t('atm.common.emptyColumnFiltered') }
+                : {})}
+              columnFilters={{
+                values: columnFilters.values,
+                onChange: columnFilters.set,
+                generation: columnFilters.generation,
+                label: (header) => t('atm.common.filterColumn', { column: header }),
+                placeholder: t('atm.common.filterPlaceholder'),
+              }}
               stickyHead
             />
           ) : (

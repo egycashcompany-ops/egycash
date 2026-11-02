@@ -120,8 +120,10 @@ export interface OpenLinesOutcome<Opened, Row> extends OpenAnswer<Opened> {
  * A request the API REFUSES wrote nothing: if it is the first, the open fails exactly as before
  * (nothing was opened anywhere); if a later one, the run stops and its lines join `unsent` with
  * the rest. A request that fails WITHOUT an answer stops the run too, but its own lines go to
- * `uncertain`: some may have opened, and since OD-1b a replenishment opens again on every send, so
- * the form must not offer them as unsent. Either way what the earlier requests opened stands.
+ * `uncertain`: some may have opened, and a replenishment (since OD-1b) or a maintenance (since
+ * OD-1c) opens again on every send, so the form must not offer them as unsent. Either way what the
+ * earlier requests opened stands. `alreadyOpenCodes` is joined as the answers carry it — always
+ * empty since OD-1c.
  */
 export const openInBatches = async <Row, Opened>(
   rows: readonly Row[],
@@ -424,13 +426,14 @@ export const listMailLog = (params: AtmListParams): Promise<Paginated<AtmMailTic
 export const mailUnreadCount = (): Promise<AtmMailUnreadCountDto> =>
   get<AtmMailUnreadCountDto>('/atm/mail-tickets/unread-count');
 /**
- * Accept: `data` is the tickets ACCEPTED; the tickets the owner's rule refused — their machine
- * already has an open maintenance — come back in `meta.refused` and stay pending (port doc OD-1).
+ * Accept: `data` is the tickets ACCEPTED. `meta.refused` named the tickets the owner's rule left
+ * pending (their machine already had an open maintenance — port doc OD-1); since OD-1c
+ * (2026-11-02) such a mail is accepted and opens another maintenance, so the server answers it
+ * empty. It is still read, so the answer keeps one shape.
  *
  * In batches, as the boards' checked rows are (`inBulkBatches`): the pending list is read whole
  * since 2026-10-28, so the rows checked are no longer bounded by one page of a hundred, while one
- * request still carries at most `ATM_BULK_MAX_IDS`. The batches run in order, so a machine
- * accepted in an earlier batch refuses its second mail in a later one, as inside one request.
+ * request still carries at most `ATM_BULK_MAX_IDS`. The batches run in order.
  */
 export const acceptMailTickets = async (
   ids: string[],

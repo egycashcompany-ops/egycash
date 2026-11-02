@@ -116,11 +116,11 @@ class AtmMailIngestionService {
     }
 
     // The ingest-time flags, as the legacy reader computed them (index.js:168-175): found = the
-    // master lookup above succeeded; duplication = the machine already has an open maintenance.
-    // The owner's rule (OD-1) made duplication mean exactly what accept refuses — an open
-    // maintenance, in any branch, on the day the mail was received (the day accept opens it on,
-    // D6; per day since 2026-10-27) — and the stored value the log page shows asks the same
-    // question the pending screen does.
+    // master lookup above succeeded; duplication = the machine already has an open maintenance —
+    // in any branch, on the day the mail was received (the day accept opens it on, D6) — so the
+    // stored value the log page shows asks the same question the pending screen does. A warning
+    // only since OD-1c (2026-11-02): accept opens another maintenance all the same; while the
+    // owner's rule held (OD-1) it was the condition accept refused.
     const duplicationAtIngest = await atmMaintenanceRepository.hasOpenOperation(
       machine.machineCode,
       openDayOf(message.receivedAt),

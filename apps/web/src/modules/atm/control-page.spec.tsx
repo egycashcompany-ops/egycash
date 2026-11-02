@@ -6,7 +6,9 @@
 //   · tab 1 carries the seals paper's TYPE and HUB as «النوع» and «المنطقة»;
 //   · the routes tab is for manage, the prints for print;
 //   · a duplicate shows ⚠ (warning only);
-//   · a line of a bank added to the catalog (DEC-35) is named from `GET /atm/banks`.
+//   · a line of a bank added to the catalog (DEC-35) is named from `GET /atm/banks`;
+//   · the day and the tabs sit in the header, on the title's line, before the prints
+//     (2026-11-02), and the data tab has a filter box per column; the routes tab has none.
 //
 // Every code, QR, seal and name below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -27,6 +29,13 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { ControlPage } from './pages/ControlPage';
+import {
+  CONTROL_LINE_COLUMNS,
+  controlLineText,
+  filterControlLines,
+  routeNames,
+} from './components/settlements/ControlDataTab';
+import { makeBankLookup } from './lib/bank-catalog';
 import { sortItems } from './components/settlements/ControlRoutesTab';
 import { controlDayKey } from './api/settlements-queries';
 import { atmBanksKey } from './api/atm-queries';
@@ -168,6 +177,21 @@ const render = (dto: AtmControlDayDto, tab: 'data' | 'routes'): string => {
   );
 };
 
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
+
 describe('the routes tab', () => {
   it('offers «إنشاء الخطوط من القطاعات» only with map reach', () => {
     expect(render(day(), 'routes')).toContain(t('atm.control.fromZones'));
@@ -294,5 +318,66 @@ describe('sorting the items of a group', () => {
     expect(sortItems([a, b, c], 'serial').map((l) => l.serial)).toEqual([2, 4, 9]);
     expect(sortItems([a, b, c], 'area').map((l) => l.serial)).toEqual([2, 4, 9]);
     expect(sortItems([a, c, b], 'area').map((l) => l.hubLabel)).toEqual(['أ', 'ب', 'ب']);
+  });
+});
+
+describe('the toolbar on the title’s line (2026-11-02)', () => {
+  it('puts the day and the tabs inside the header; the prints stay its actions', () => {
+    const html = render(day(), 'data');
+    const toolbar = toolbarOf(html);
+    expect(toolbar).toContain('data-control-toolbar="true"');
+    expect(toolbar).toContain('id="control-day"');
+    expect(toolbar).toContain('role="tablist"');
+    expect(toolbar).toContain('data-control-tab="routes"');
+    expect(toolbar).not.toContain('data-control-action');
+    expect(html).toContain('data-control-action="handover"');
+    expect(html.indexOf('<h1')).toBeLessThan(html.indexOf('data-page-toolbar'));
+  });
+});
+
+describe('the data tab’s filter boxes (2026-11-02, «فلتر لكل عمود»)', () => {
+  const context = {
+    t,
+    locale: 'ar' as const,
+    banks: makeBankLookup(CATALOG),
+    routeName: routeNames(day()),
+  };
+
+  it('draws one box per column under the head, none for the seals toggle', () => {
+    const html = render(day(), 'data');
+    const head = html.slice(html.indexOf('data-control-lines'), html.indexOf('</thead>'));
+    expect(head).toContain('data-column-filters="true"');
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual(
+      CONTROL_LINE_COLUMNS.map((c) => c.key),
+    );
+  });
+
+  it('leaves the routes tab — lists, not a table — without boxes', () => {
+    expect(render(day(), 'routes')).not.toContain('data-column-filter');
+  });
+
+  it('matches what each cell shows: the QR, the seals’ progress, the route’s name', () => {
+    const [prepared, open] = day().lines;
+    if (prepared === undefined || open === undefined) throw new Error('fixture');
+    expect(controlLineText(prepared, 'qr1', context)).toBe('QR-T-0301');
+    expect(controlLineText(open, 'qr2', context)).toBe('—');
+    expect(controlLineText(prepared, 'seals', context)).toBe(
+      t('atm.control.sealsProgress', { n: '٢', m: '٢' }),
+    );
+    expect(controlLineText(prepared, 'route', context)).toBe('خط تجريبي 1');
+    expect(controlLineText(open, 'route', context)).toBe(t('atm.control.unassignedOption'));
+    expect(controlLineText(open, 'bank', context)).toBe('بنك البركة');
+    expect(controlLineText(open, 'nothing', context)).toBeNull();
+  });
+
+  it('keeps the lines every box matches', () => {
+    const lines = day().lines;
+    const ids = (values: Record<string, string>): string[] =>
+      filterControlLines(lines, values, context).map((l) => l.lineId);
+    expect(ids({ qr1: 'qr-t-0301' })).toEqual([line(1).lineId]);
+    expect(ids({ route: 'خط تجريبي' })).toEqual([line(1).lineId]);
+    expect(ids({ preparation: t('atm.settlement.status.cancelled') })).toEqual([line(3).lineId]);
+    expect(ids({ area: 'HUB-T-2', serial: '302' })).toEqual([line(2).lineId]);
+    expect(ids({ area: 'HUB-T-2', serial: '301' })).toEqual([]);
   });
 });

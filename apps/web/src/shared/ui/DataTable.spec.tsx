@@ -174,3 +174,96 @@ describe('a line above each group of rows', () => {
     ]);
   });
 });
+
+describe('a row of filter boxes under the head', () => {
+  // «فلتر لكل عمود» (2026-11-02): one box per filterable column; the page filters the rows.
+  interface Row {
+    id: string;
+  }
+  const render = (extra: Record<string, unknown> = {}, values: Record<string, string> = {}) =>
+    renderToStaticMarkup(
+      <DataTable
+        columns={[
+          { key: 'code', header: 'الكود', render: (row: Row) => row.id, filterable: true },
+          { key: 'name', header: 'الاسم', render: (row: Row) => row.id, filterable: true },
+          {
+            key: 'actions',
+            header: '',
+            render: () => 'x',
+            headerClassName: 'sticky end-0 PINNED',
+          },
+        ]}
+        rows={[{ id: 'r1' }]}
+        rowKey={(row) => row.id}
+        columnFilters={{
+          values,
+          onChange: () => {},
+          label: (header: string) => `فلترة ${header}`,
+          placeholder: 'فلترة',
+        }}
+        {...extra}
+      />,
+    );
+  const filterRow = (markup: string): string => {
+    const at = markup.indexOf('data-column-filters="true"');
+    return markup.slice(at, markup.indexOf('</tr>', at));
+  };
+
+  it('draws a box for each filterable column only, inside the head, named by its header', () => {
+    const markup = render();
+    const row = filterRow(markup);
+    expect(markup.indexOf('data-column-filters="true"')).toBeLessThan(markup.indexOf('</thead>'));
+    expect(row.match(/data-column-filter="/g)).toHaveLength(2);
+    expect(row).toContain('data-column-filter="code"');
+    expect(row).toContain('data-column-filter="name"');
+    expect(row).toContain('aria-label="فلترة الكود"');
+    expect(row).toContain('placeholder="فلترة"');
+    expect(row).toContain('type="search"');
+  });
+
+  it('fills the column and never sizes it', () => {
+    const box = /<input[^>]*data-column-filter="code"[^>]*>/.exec(render())?.[0] ?? '';
+    expect(box).toContain('size="1"');
+    expect(box).toMatch(/class="[^"]*\bw-full\b/);
+  });
+
+  it('shows what each box holds, and keeps a pinned column pinned', () => {
+    const markup = render({}, { code: '704' });
+    expect(/<input[^>]*data-column-filter="code"[^>]*>/.exec(markup)?.[0]).toContain('value="704"');
+    // The actions column's head is pinned; its cell in the filter row is too.
+    expect(filterRow(markup)).toContain('sticky end-0 PINNED');
+  });
+
+  it('keeps an empty cell for the selection box, so the boxes stay under their columns', () => {
+    const selectable = render({
+      selection: { selectedIds: new Set<string>(), toggleRow: () => {}, toggleAll: () => {} },
+    });
+    expect(filterRow(selectable)).toMatch(
+      /^data-column-filters="true"[^>]*><th class="px-4 pb-2"><\/th>/,
+    );
+  });
+
+  it('draws no row without `columnFilters`, or when no column is filterable', () => {
+    expect(
+      renderToStaticMarkup(
+        <DataTable
+          columns={[
+            { key: 'code', header: 'الكود', render: (row: Row) => row.id, filterable: true },
+          ]}
+          rows={[{ id: 'r1' }]}
+          rowKey={(row) => row.id}
+        />,
+      ),
+    ).not.toContain('data-column-filters');
+    expect(
+      renderToStaticMarkup(
+        <DataTable
+          columns={[{ key: 'code', header: 'الكود', render: (row: Row) => row.id }]}
+          rows={[{ id: 'r1' }]}
+          rowKey={(row) => row.id}
+          columnFilters={{ values: {}, onChange: () => {}, label: (h: string) => h }}
+        />,
+      ),
+    ).not.toContain('data-column-filters');
+  });
+});

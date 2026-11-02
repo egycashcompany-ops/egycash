@@ -5,10 +5,10 @@
 // the maintenance it opened — gone from /atm/maintenance, in the same transaction as the ticket's
 // return — and is refused, with nothing written, once that maintenance is closed, or when no
 // maintenance carries the ticket at all (a legacy accept). Proven here over real HTTP, real RBAC
-// and a real mongod: both returns, the board, a second accept after the restore (the per-day rule
-// does not count the removed maintenance), both refusals — the close also when it lands while the
-// restore runs — the silent skips (already pending, outside the caller's scope, a concurrent
-// restore that won), the 403, and the trail each write leaves.
+// and a real mongod: both returns, the board, a second accept after the restore (the one live
+// maintenance per ticket does not count the removed one), both refusals — the close also when it
+// lands while the restore runs — the silent skips (already pending, outside the caller's scope, a
+// concurrent restore that won), the 403, and the trail each write leaves.
 //
 // Every code below is synthetic.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
@@ -339,8 +339,8 @@ describe('mail restore — a decided ticket back to pending', () => {
     const { ticketId, maintenanceId } = await acceptedTicket('7003');
     expect(restoredIds(await restore(alexToken, [ticketId]))).toEqual([ticketId]);
 
-    // The same machine, the same day (the ticket's received day, D6) — the per-day rule (OD-1)
-    // counts live maintenances only, and the restore removed the first.
+    // The same ticket again: `ux_maintenance_per_mail_ticket` admits one LIVE maintenance per
+    // ticket, and the restore removed (soft-deleted) the first.
     const again = await accept(alexToken, [ticketId]);
     expect(again.status).toBe(200);
     expect(data<AtmMailTicketDto[]>(again).map((ticket) => ticket.id)).toEqual([ticketId]);

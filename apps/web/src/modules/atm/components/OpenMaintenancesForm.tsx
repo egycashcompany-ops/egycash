@@ -1,8 +1,9 @@
 // The maintenance open form — legacy atm_maintenance.ejs:707-735 by parity: machine codes,
 // service types and reference numbers aligned BY LINE, plus one free datetime for the batch
 // (datetime-local, empty → now). The two extra line columns and the free time are exactly what
-// distinguishes it from the replenishment form. Unknown codes and the codes the owner's rule left
-// unopened (an open maintenance already, or pasted twice — port doc OD-1) are shown in red.
+// distinguishes it from the replenishment form. Unknown codes are shown in red. Every line of a
+// known code opens — a code pasted twice opens twice, and a machine already in maintenance opens
+// again (the owner, 2026-11-02 — port doc OD-1c), as in the legacy.
 //
 // Any number of lines: they go in consecutive requests of `ATM_OPEN_MAX_ROWS` (`openInBatches`).
 // If the run stops, what went before stays opened and ONLY the lines certainly not sent stay in
@@ -74,7 +75,6 @@ export const OpenMaintenancesForm = (): JSX.Element => {
   const [references, setReferences] = useState('');
   const [openedAt, setOpenedAt] = useState('');
   const [unknownCodes, setUnknownCodes] = useState<string[]>([]);
-  const [alreadyOpenCodes, setAlreadyOpenCodes] = useState<string[]>([]);
   const [stop, setStop] = useState<OpenStopState<MaintenanceOpenRow>>(emptyOpenStop);
 
   const submit = async (event: FormEvent): Promise<void> => {
@@ -88,7 +88,6 @@ export const OpenMaintenancesForm = (): JSX.Element => {
         openedAt: openedAt === '' ? null : new Date(openedAt).toISOString(),
       });
       setUnknownCodes(result.unknownCodes);
-      setAlreadyOpenCodes(result.alreadyOpenCodes);
       if (result.opened.length > 0) {
         toast.success(t('atm.maintenance.openedCount', { count: result.opened.length }));
       }
@@ -115,14 +114,6 @@ export const OpenMaintenancesForm = (): JSX.Element => {
       if (result.unknownCodes.length > 0) {
         toast.error(
           t('atm.common.unknownCodes', { codes: joinCodes(result.unknownCodes, locale) }),
-        );
-      }
-      // The owner's rule (OD-1): a machine already open — or pasted twice — was not opened again.
-      if (result.alreadyOpenCodes.length > 0) {
-        toast.error(
-          t('atm.maintenance.alreadyOpenCodes', {
-            codes: joinCodes(result.alreadyOpenCodes, locale),
-          }),
         );
       }
     } catch {
@@ -183,7 +174,7 @@ export const OpenMaintenancesForm = (): JSX.Element => {
       <Button type="submit" loading={open.isPending}>
         {t('atm.maintenance.openAction')}
       </Button>
-      <OpenRefusalNotice unknownCodes={unknownCodes} alreadyOpenCodes={alreadyOpenCodes} />
+      <OpenRefusalNotice unknownCodes={unknownCodes} />
       {(stop.unsent > 0 || stop.uncertain.length > 0) && (
         <OpenStopNotice
           unsent={stop.unsent}

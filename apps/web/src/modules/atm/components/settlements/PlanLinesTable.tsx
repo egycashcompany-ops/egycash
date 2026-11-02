@@ -1,27 +1,120 @@
 // The plan's lines (§9.4 «Table»): one row per line, in the server's order (serial first, then run,
 // time and position). A click selects the line for the side panel; the checkbox picks the issued
 // lines «السطور المحددة» prints. A real table (§9.10): the status is written, never colour only.
+//
+// A ROW OF FILTER BOXES under the head, one per column (2026-11-02, «فلتر لكل عمود»): the PAGE
+// keeps what they hold and hands this table the lines they keep (`filterPlanLines`), so what the
+// table shows is what «السطور المحددة» may print. Each box matches the text its cell shows.
 import { type AtmPlanLineDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
+import { filterRowsByColumns, type ColumnFilterValues } from '../../../../shared/lib/column-filter';
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
+import { ColumnFilterBox } from '../../../../shared/ui/ColumnFilterBox';
+import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { AlertIcon } from '../../../../shared/ui/icons';
+import { formatTime12 } from '../../lib/settlement-dates';
 import {
   LINE_STATUS_TONE,
   formatEgp,
   lineBags,
   lineCode,
   lineStatusKey,
+  runLabel,
 } from '../../lib/settlement-view';
-import { LineChips } from './LineChips';
+import { LineChips, lineChipsText } from './LineChips';
 import { RunChip } from './RunChip';
+
+type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 /** Only an issued or prepared line has a Note to print (§6.7 `notes`). */
 export const printable = (line: Pick<AtmPlanLineDto, 'status'>): boolean =>
   line.status === 'issued' || line.status === 'prepared';
 
+/** The table's columns after the print checkbox, in order — the head and the filter row alike. */
+export const PLAN_LINE_COLUMNS = [
+  { key: 'serial', header: 'atm.settlement.serial' },
+  { key: 'code', header: 'atm.settlement.machineCode' },
+  { key: 'name', header: 'atm.settlement.machineName' },
+  { key: 'run', header: 'atm.settlement.run' },
+  { key: 'cassettes', header: 'atm.plan.column.cassettes' },
+  { key: 'bags', header: 'atm.plan.column.bags' },
+  { key: 'total', header: 'atm.settlement.total', className: 'text-end' },
+  { key: 'status', header: 'atm.settlement.status' },
+] as const;
+
+/** «طقم سبير S2» for a spare, the machine's name otherwise. */
+const lineName = (line: AtmPlanLineDto, t: Translate): string =>
+  line.kind === 'spare'
+    ? `${t('atm.paper.spareSet')} ${line.typeLabel ?? ''}`.trim()
+    : (line.machineName ?? '—');
+
+/** «أخطاء: ١ · تنبيهات: ٠» — the line's issues, counted in the page's digits. */
+const issuesText = (line: AtmPlanLineDto, t: Translate, locale: Locale): string => {
+  const errors = line.issues.filter((i) => i.severity === 'error').length;
+  return t('atm.plan.issuesCount', {
+    errors: formatNumber(errors, locale),
+    warnings: formatNumber(line.issues.length - errors, locale),
+  });
+};
+
+/**
+ * Pure: what a line's cell in that column shows, as text — the run chip's run and time, the
+ * cassette chips, the status with its issues — so a box finds what a reader sees. Null for a
+ * column the table does not have.
+ */
+export const planLineText = (
+  line: AtmPlanLineDto,
+  key: string,
+  t: Translate,
+  locale: Locale,
+): string | null => {
+  switch (key) {
+    case 'serial':
+      return line.serial === null ? '—' : formatNumber(line.serial, locale);
+    case 'code':
+      return lineCode(line);
+    case 'name':
+      return lineName(line, t);
+    case 'run':
+      return `${runLabel(line.run, t)} ${formatTime12(line.scheduleTime, locale)}`.trim();
+    case 'cassettes':
+      return lineChipsText(line.slots, locale);
+    case 'bags':
+      return formatNumber(lineBags(line.slots).length, locale);
+    case 'total':
+      return formatEgp(line.egpTotalMinor, locale);
+    case 'status':
+      return line.issues.length === 0
+        ? t(lineStatusKey(line.status))
+        : `${t(lineStatusKey(line.status))} ${issuesText(line, t, locale)}`;
+    default:
+      return null;
+  }
+};
+
+/** Pure: the lines every box keeps, in the plan's order. */
+export const filterPlanLines = (
+  lines: readonly AtmPlanLineDto[],
+  values: ColumnFilterValues,
+  t: Translate,
+  locale: Locale,
+): AtmPlanLineDto[] =>
+  filterRowsByColumns(lines, values, (line, key) => planLineText(line, key, t, locale));
+
+/**
+ * Pure: the ticked lines «السطور المحددة» may print — those the table shows, in its order. A tick
+ * on a line a box hides is kept, and shows again with the line, but is never printed unseen.
+ */
+export const shownTicks = (
+  shown: readonly Pick<AtmPlanLineDto, 'id'>[],
+  checked: ReadonlySet<string>,
+): string[] => shown.filter((line) => checked.has(line.id)).map((line) => line.id);
+
 const TH = 'px-3 py-2.5 text-start text-xs font-semibold text-slate-600 dark:text-slate-300';
+/** The filter row's cells: the head's side gutter, so each box sits under its own header. */
+const FILTER_TH = 'px-3 pb-2 font-normal';
 const TD = 'px-3 py-2.5 align-middle text-sm text-slate-700 dark:text-slate-200';
 
 export const PlanLinesTable = ({
@@ -31,13 +124,19 @@ export const PlanLinesTable = ({
   checked,
   onSelect,
   onCheck,
+  columnFilters,
+  totalLines,
 }: {
+  /** The lines the filter boxes keep (`filterPlanLines`) — the page filters, the table shows. */
   lines: readonly AtmPlanLineDto[];
+  /** How many lines the plan holds before the boxes — the empty row blames them only when > 0. */
+  totalLines: number;
   locale: Locale;
   selectedId: string | null;
   checked: ReadonlySet<string>;
   onSelect: (lineId: string) => void;
   onCheck: (lineId: string, on: boolean) => void;
+  columnFilters: ColumnFilters;
 }): JSX.Element => {
   const t = useT();
   return (
@@ -51,20 +150,41 @@ export const PlanLinesTable = ({
             <th className={cn(TH, 'w-10')}>
               <span className="sr-only">{t('atm.plan.column.select')}</span>
             </th>
-            <th className={TH}>{t('atm.settlement.serial')}</th>
-            <th className={TH}>{t('atm.settlement.machineCode')}</th>
-            <th className={TH}>{t('atm.settlement.machineName')}</th>
-            <th className={TH}>{t('atm.settlement.run')}</th>
-            <th className={TH}>{t('atm.plan.column.cassettes')}</th>
-            <th className={TH}>{t('atm.plan.column.bags')}</th>
-            <th className={cn(TH, 'text-end')}>{t('atm.settlement.total')}</th>
-            <th className={TH}>{t('atm.settlement.status')}</th>
+            {PLAN_LINE_COLUMNS.map((column) => (
+              <th key={column.key} className={cn(TH, 'className' in column && column.className)}>
+                {t(column.header)}
+              </th>
+            ))}
+          </tr>
+          {/* The filter row sticks with the head: the print checkbox's column takes no box. */}
+          <tr key={`filters-${String(columnFilters.generation)}`} data-column-filters="true">
+            <th className={FILTER_TH} />
+            {PLAN_LINE_COLUMNS.map((column) => (
+              <th key={column.key} className={FILTER_TH}>
+                <ColumnFilterBox
+                  value={columnFilters.values[column.key] ?? ''}
+                  onValueChange={(typed) => columnFilters.set(column.key, typed)}
+                  label={t('atm.common.filterColumn', { column: t(column.header) })}
+                  columnKey={column.key}
+                  placeholder={t('atm.common.filterPlaceholder')}
+                />
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
+          {lines.length === 0 && columnFilters.active && totalLines > 0 && (
+            <tr data-plan-lines-empty="true">
+              <td
+                colSpan={PLAN_LINE_COLUMNS.length + 1}
+                className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-400"
+              >
+                {t('atm.common.emptyColumnFiltered')}
+              </td>
+            </tr>
+          )}
           {lines.map((line) => {
             const errors = line.issues.filter((i) => i.severity === 'error').length;
-            const warnings = line.issues.length - errors;
             const selected = line.id === selectedId;
             return (
               <tr
@@ -94,18 +214,14 @@ export const PlanLinesTable = ({
                   )}
                 </td>
                 <td className={cn(TD, 'tabular-nums')} data-plan-serial={line.id}>
-                  {line.serial === null ? '—' : formatNumber(line.serial, locale)}
+                  {planLineText(line, 'serial', t, locale)}
                 </td>
                 <td className={TD}>
                   <span dir="ltr" className="font-medium">
                     {lineCode(line)}
                   </span>
                 </td>
-                <td className={TD}>
-                  {line.kind === 'spare'
-                    ? `${t('atm.paper.spareSet')} ${line.typeLabel ?? ''}`.trim()
-                    : (line.machineName ?? '—')}
-                </td>
+                <td className={TD}>{lineName(line, t)}</td>
                 <td className={TD}>
                   <RunChip run={line.run} time={line.scheduleTime} locale={locale} />
                 </td>
@@ -126,10 +242,7 @@ export const PlanLinesTable = ({
                     {line.issues.length > 0 && (
                       <span
                         data-line-issues={line.id}
-                        title={t('atm.plan.issuesCount', {
-                          errors: formatNumber(errors, locale),
-                          warnings: formatNumber(warnings, locale),
-                        })}
+                        title={issuesText(line, t, locale)}
                         className={cn(
                           'inline-flex items-center gap-1 text-xs',
                           errors > 0
@@ -138,12 +251,7 @@ export const PlanLinesTable = ({
                         )}
                       >
                         <AlertIcon className="h-4 w-4" aria-hidden="true" />
-                        <span>
-                          {t('atm.plan.issuesCount', {
-                            errors: formatNumber(errors, locale),
-                            warnings: formatNumber(warnings, locale),
-                          })}
-                        </span>
+                        <span>{issuesText(line, t, locale)}</span>
                       </span>
                     )}
                   </span>

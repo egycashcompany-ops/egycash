@@ -6,7 +6,9 @@
 //   · the print actions only with `can.print`, the Excel export only with `can.export`;
 //   · the header figures are counts — the money total stays in the footer (UI-30);
 //   · lines issued after the last «بيان التغذية» print raise the stale notice;
-//   · a bank added to the catalog and enabled for settlements (DEC-35) is named from the catalog.
+//   · a bank added to the catalog and enabled for settlements (DEC-35) is named from the catalog;
+//   · the toolbar sits in the header, on the title's line (2026-11-02), and the lines table has a
+//     filter box per column whose rules — and «السطور المحددة» — follow what the table shows.
 //
 // Every code, name, count and amount below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -30,6 +32,12 @@ import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { SettlementPlanPage } from './pages/SettlementPlanPage';
 import { PlanLinePanel, schedulePatch } from './components/settlements/PlanLinePanel';
+import {
+  PLAN_LINE_COLUMNS,
+  filterPlanLines,
+  planLineText,
+  shownTicks,
+} from './components/settlements/PlanLinesTable';
 import {
   settlementContextKey,
   settlementPlanKey,
@@ -199,6 +207,21 @@ const render = (
       </QueryClientProvider>
     </Provider>,
   );
+};
+
+/** The markup of the header's toolbar slot (`PageHeader toolbar`), alone — '' when there is none. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
 };
 
 /** The header's figures block, alone. */
@@ -418,5 +441,71 @@ describe('the bank select (DEC-35)', () => {
       'بنك البركة',
       'QNB',
     ]);
+  });
+});
+
+describe('the toolbar on the title’s line (2026-11-02)', () => {
+  it('puts the bank, the day, the plan’s state and the manage buttons inside the header', () => {
+    const html = render(context(), plan());
+    const toolbar = toolbarOf(html);
+    expect(toolbar).toContain('data-plan-toolbar="true"');
+    expect(toolbar).toContain('id="plan-bank"');
+    expect(toolbar).toContain('id="plan-day"');
+    expect(toolbar).toContain('data-plan-state=');
+    expect(toolbar).toContain(t('atm.plan.action.addMachines'));
+    // The title before it; the prints stay the header's actions, not the toolbar's.
+    expect(html.indexOf('<h1')).toBeLessThan(html.indexOf('data-page-toolbar'));
+    expect(toolbar).not.toContain('data-plan-action="receipt"');
+    expect(html).toContain('data-plan-action="receipt"');
+  });
+
+  it('keeps it there on a day without a plan, so the day can still be changed', () => {
+    expect(toolbarOf(render(context(), null))).toContain('id="plan-day"');
+  });
+});
+
+describe('the lines table’s filter boxes (2026-11-02, «فلتر لكل عمود»)', () => {
+  const t2 = (key: string, params?: Record<string, string | number>): string =>
+    translate('ar', key, params);
+
+  it('draws one box per column under the head, none for the print checkbox', () => {
+    const html = render(context(), plan());
+    const head = html.slice(html.indexOf('data-plan-lines'), html.indexOf('</thead>'));
+    expect(head).toContain('data-column-filters="true"');
+    const boxes = [...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
+    expect(boxes).toEqual(PLAN_LINE_COLUMNS.map((c) => c.key));
+    expect(head).toContain(
+      `aria-label="${t('atm.common.filterColumn', { column: t('atm.settlement.machineCode') })}"`,
+    );
+  });
+
+  it('matches the text each cell shows: the serial in the page’s digits, the run, the status', () => {
+    const issued = line(1);
+    expect(planLineText(issued, 'serial', t2, 'ar')).toBe('١٠١');
+    expect(planLineText(issued, 'code', t2, 'ar')).toBe('BRKN9001');
+    expect(planLineText(issued, 'run', t2, 'ar')).toContain(t('atm.settlement.run.1'));
+    expect(planLineText(issued, 'status', t2, 'ar')).toBe(t('atm.settlement.status.issued'));
+    expect(planLineText(issued, 'unknown', t2, 'ar')).toBeNull();
+  });
+
+  it('keeps only the lines every box matches — Latin digits find Arabic ones', () => {
+    const lines = [line(1), line(2, { status: 'draft', serial: null }), line(3)];
+    const codes = (values: Record<string, string>): string[] =>
+      filterPlanLines(lines, values, t2, 'ar').map((l) => l.machineCode ?? '');
+    expect(codes({})).toEqual(['BRKN9001', 'BRKN9002', 'BRKN9003']);
+    expect(codes({ serial: '103' })).toEqual(['BRKN9003']);
+    expect(codes({ status: t('atm.settlement.status.draft') })).toEqual(['BRKN9002']);
+    expect(codes({ code: '9001', status: t('atm.settlement.status.draft') })).toEqual([]);
+    expect(codes({ cassettes: '200 1,000' })).toEqual(['BRKN9001', 'BRKN9002', 'BRKN9003']);
+    expect(codes({ name: '   ' })).toEqual(['BRKN9001', 'BRKN9002', 'BRKN9003']);
+  });
+
+  it('«السطور المحددة» prints only the ticked lines the boxes leave on screen', () => {
+    const lines = [line(1), line(2), line(3)];
+    const ticked = new Set([line(1).id, line(3).id]);
+    expect(shownTicks(lines, ticked)).toEqual([line(1).id, line(3).id]);
+    const shown = filterPlanLines(lines, { serial: '103' }, t2, 'ar');
+    expect(shownTicks(shown, ticked)).toEqual([line(3).id]);
+    expect(shownTicks(filterPlanLines(lines, { serial: '102' }, t2, 'ar'), ticked)).toEqual([]);
   });
 });

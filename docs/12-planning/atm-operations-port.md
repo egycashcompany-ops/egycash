@@ -86,11 +86,14 @@ ECMS" means.
   **Amended again 2026-10-27:** the boards no longer draw two groups at once — they show ONE day
   view (§10), today's by default; the earlier days left open are the «أيام سابقة لم تُغلق» view,
   and its rows keep the close control and the checkbox. With OD-1 narrowed to the day such a row no
-  longer blocks today's open, but it is still open and still needs a place to be closed.
+  longer blocks today's open, and since OD-1b and OD-1c (2026-11-01, 2026-11-02) no open row blocks
+  anything, but it is still open and still needs a place to be closed.
 - **D5 — mail `duplication` computed at read, not written back during GET.** The legacy GET
   recomputed AND wrote it per render (contad_app.js:2674-2698); the screen shows the same live
   answer either way. The ingest-time value stays on the row for parity. (What it MEANS changed
-  with OD-1, §4a: an open maintenance on any day, in any branch.)
+  with OD-1, §4a: an open maintenance on the ticket's day, in any branch. Under OD-1 it was the
+  condition accept refused; since OD-1c, 2026-11-02, it is the legacy's warning again — a flagged
+  mail is accepted and opens another maintenance.)
 - **D6 — accepted mail opens maintenance at the ticket's stored `receivedAt`.** The legacy took
   it from the rendered cell text re-parsed client-side (mail_maintenance.ejs:903) — the same
   intent, minus a timezone round-trip through `document.write`.
@@ -139,8 +142,9 @@ ECMS" means.
     held while it runs. A request the API refuses (a 4xx, decided before any row is written) wrote
     nothing: the first one fails the open as before, a later one stops the run and its lines go
     back into the boxes with the rest. A request with no answer (a dropped connection, a 5xx — the
-    server writes row by row) may have opened some of its lines, and a replenishment opens again on
-    every send (OD-1b), so its lines are NOT put back: the form names them apart (`OpenStopNotice`),
+    server writes row by row) may have opened some of its lines, and a replenishment or a
+    maintenance opens again on every send (OD-1b, OD-1c), so its lines are NOT put back: the form
+    names them apart (`OpenStopNotice`),
     to be checked in the table, keeps them through later presses (a later stop adds to them), and
     puts them back or hides them only when asked. What earlier requests opened stands either way.
     Each request resolves the acting branch from the top bar, and a top-bar switch reloads the page,
@@ -209,8 +213,9 @@ ECMS" means.
 
 **Preserved quirks worth naming** (because a reviewer will ask): ~~a code pasted twice opens two
 operations (no duplicate guard on open — the paste is the operator's statement)~~ — **withdrawn
-2026-10-13 by the owner's decision OD-1 below, and restored for replenishments 2026-11-01
-(OD-1b)**: a code pasted twice opens two replenishments, never two maintenances; the
+2026-10-13 by the owner's decision OD-1 below, restored for replenishments 2026-11-01 (OD-1b)
+and for maintenance 2026-11-02 (OD-1c)**: a code pasted twice opens two operations again, of
+either kind; the
 replenishment leader cascade fires only when open-time is NOT moved in the same submit
 (contad_app.js:854-859) while maintenance's cascades unconditionally (:2019-2032); the cascade's
 night window is anchored to the open time's own calendar day even before 06:00 (:815-817) —
@@ -227,13 +232,17 @@ does not stop future mails for the same machine; force-date ≠ today opens at 0
 | OD-1 | 2026-10-13 | «في ملحوظه مهمه جداً .. إن مينفعش أضيف ماكينة مرتين سواء فى عملية التغذية أو الصيانة» | No duplicate guard anywhere: the replenishment open (contad_app.js:637-768) and the maintenance open (:1896-1957) inserted one row per submitted line, so a pasted-twice code, a second paste later in the day, or a mail accepted for a machine already in maintenance each opened a second live row | **A machine has at most ONE open replenishment and at most ONE open maintenance** (open = `closedAt: null`, not deleted). The two kinds are independent; after a close the machine may open again. Enforced on every path that creates or re-opens an open row, with a partial unique index per collection behind it |
 | OD-1a | 2026-10-27 | «خلى الرفض دا "لم تُفتح لأن للماكينة تغذية مفتوحة بالفعل أو لأن الكود مُدخل مرتين" يحصل فقط إذا كانت الماكينات مفتوحه في نفس اليوم ولم تُغلق ! مش يرفضها لو مفتوحه أمبارح ومتقفلتش» | — (OD-1 itself overrode the legacy) | **OD-1 is per Cairo day.** A machine has at most one open replenishment and at most one open maintenance ON ONE DAY — the Cairo calendar day of the open time, the day the boards show it on. One left open on an earlier day does not block a new open, a reopen or a mail accept; a second one on the same day still does. Moving an open operation's time onto a day its machine is already open on is refused too (new: the edits) |
 | OD-1b | 2026-11-01 | «عايزك تسمح فى التغذيات بإنى افتح تغذيه أكتر من واحده لنفس الماكينة عادى .. لأنه بيمنع دلوقتى» | One row per submitted line, no guard (contad_app.js:637-768) | **OD-1 no longer holds replenishments — the legacy again.** A machine may have several open replenishments on any day: every line of a known code opens (a repeat in the batch, or a machine already open, in any branch, included), a reopen is never refused for it, and an edit moves the open time onto any day. `alreadyOpenCodes` stays in the open's answer, always empty. Maintenance keeps OD-1 and OD-1a as they are, and an open replenishment never blocks a maintenance. The replenishment log's unique index is dropped at boot |
+| OD-1c | 2026-11-02 | «في الصيانة عايزك تسمح إنه يضيف أكتر من صيانة عادي» | One row per submitted line, no guard (contad_app.js:1896-1957); a mail accepted for a machine already in maintenance opened a second live row (:2806-2823) | **OD-1 no longer holds maintenance either — the legacy again; nothing of the rule is enforced.** A machine may have several open maintenances on any day: every line of a known code opens (a repeat in the batch, or a machine already in maintenance, in any branch, included), a reopen is never refused for it, an edit moves the open time onto any day, and the mail accept opens another maintenance for a ticket painted «مكررة» — `duplication` stays, a warning only (D5). `alreadyOpenCodes` and `meta.refused` stay in the answers, always empty; no path answers `ATM_OPERATION_ALREADY_OPEN`. The maintenance log's per-day unique index is dropped at boot; a new one, `ux_maintenance_per_mail_ticket` (one live maintenance per mail ticket), keeps two concurrent accepts of the same mail from opening two |
 
-**OD-1 in detail** (`apps/api/src/modules/atm/shared/open-operation.ts`). **Since OD-1b
-(2026-11-01) everything below holds for MAINTENANCE only**; the replenishment paths named in it
-open, reopen and move without the check, and their log carries no unique index (the boot drops
-`ux_open_replenishment_per_code_day`). Since OD-1a every "open" below means "open on that day": the
-day is `openDayOf(openedAt)` (Cairo); the service checks ask by the open time's own day range, so a
-row stored before the day was (`openDay: null`) blocks its day all the same.
+**OD-1 in detail — HISTORICAL since OD-1c (2026-11-02).** Nothing below is enforced any more:
+replenishments left the rule with OD-1b (2026-11-01), maintenance with OD-1c, and the boot drops
+both per-day indexes (`ux_open_replenishment_per_code_day`, `ux_open_maintenance_per_code_day`,
+`RETIRED_OPEN_OPERATION_INDEX_NAMES` in `apps/api/src/modules/atm/shared/open-operation.ts`). It is
+kept as the record of what the rule did, and of why `openDay`, `alreadyOpenCodes`, `meta.refused`
+and `ATM_OPERATION_ALREADY_OPEN` exist; what outlived it follows the list. While it held, since
+OD-1a every "open" below meant "open on that day": the day is `openDayOf(openedAt)` (Cairo); the
+service checks asked by the open time's own day range, so a row stored before the day was
+(`openDay: null`) blocked its day all the same.
 
 - **Identity is the machine code, company-wide.** The normalized `machineCode` — the identity the
   mail matcher already uses (§6) — so an operation open in ANOTHER branch blocks too, including a
@@ -293,6 +302,35 @@ row stored before the day was (`openDay: null`) blocks its day all the same.
   carries is refused by the index and REPORTED (`openDuplicate`, `openDuplicateIds`), never a crashed
   run; where the index is absent the report says so (`openIndexMissing`) and the duplicate lands
   (§7). Since OD-1b every replenishment row lands, and its line reports no open duplicate.
+
+**What outlived the rule (OD-1c).**
+
+- **Every open stores its Cairo day** (`openDay`), as it did for the index; nothing reads it
+  today.
+- **The mail `duplication` flag** asks the rule's old question — an open maintenance of the
+  ticket's machine on the ticket's day, in any branch (`openMachineCodes`, on `ix_open_code_opened`)
+  — on the pending screen and at ingest. It is a warning only: the yellow row, the «مكررة» badge
+  and the accept confirm's second sentence say that accepting such a mail opens another
+  maintenance, and accept does.
+- **One live maintenance per mail ticket.** The per-day index used to be what kept two concurrent
+  accepts of the SAME ticket (a double click, two people on one screen) from opening two
+  maintenances. `ux_maintenance_per_mail_ticket` holds it now: unique on `mailTicketId` over rows
+  opened from a ticket (`mailTicketId` an ObjectId) that are not deleted, closed ones included. A
+  closed maintenance keeps its ticket accepted (the restore refuses it, §6d); a soft-deleted one
+  does not, so a restored ticket is accepted again. Manual and imported rows carry no ticket and
+  are outside it. Built at boot by `atm-indexes.ts`, reported (collection, index, counts) and
+  skipped over stored duplicates like every unique index there.
+- **Accept writes a ticket's two halves in one transaction.** The maintenance and the ticket's flip
+  to accepted commit together (`unitOfWork`, as the restore does). A concurrent decision of the
+  same ticket — the loser of a double click, or an accept racing a reject — rolls back whole: its
+  insert collides with the winner's maintenance (the index), or its flip is stale, and accept
+  skips the ticket like any decided one — never a refusal, never a 409, never a maintenance left
+  behind on the board. Before this, an accept whose flip failed kept its maintenance, and the
+  index then refused every later accept of the ticket; such a leftover is now ADOPTED: a pending
+  ticket that a live maintenance already carries is accepted onto it, no second one opened
+  (audited `adopted: true`).
+- **A carried-over row is still closable where it is shown** (D4).
+- **The legacy importer writes every row** (§7).
 
 ## 5. GAPs (no clear legacy implementation — recorded, not guessed)
 
@@ -570,7 +608,8 @@ The answer mirrors accept's: `data` is the tickets restored, and the refused one
 INSIDE the transaction, so a close that lands while a restore runs makes its delete a write
 conflict, and the retry reads the row closed and refuses: a closed maintenance is never deleted.
 Accepting a restored ticket again opens a FRESH maintenance on the ticket's day (D6) — the removed
-one is deleted, and OD-1 counts live rows only. The trail: the ticket gets a `restore` row — the
+one is deleted, and `ux_maintenance_per_mail_ticket` (one live maintenance per ticket) counts live
+rows only. The trail: the ticket gets a `restore` row — the
 status and, when the restore took a maintenance back, the `maintenanceId` it removed (accept's
 change reversed; the accept or reject row already there keeps who decided and when) — and that
 maintenance gets the board's own `delete` row, by the caller, both after commit. A maintenance
@@ -587,8 +626,9 @@ never fail on one.
 - `/atm/mail-tickets`: «قبول» and «رفض» on every row, always shown and pinned to the row's end, for
   `atmMailTicket.decide`. On a checked row they act on every checked row, on an unchecked row on
   that row alone — the boards' rule (#613) — and the accept and reject bar is gone. The confirms,
-  the duplicate warning in the accept confirm, the refusal notice and the yellow duplicate rows
-  stay.
+  the duplicate warning in the accept confirm and the yellow duplicate rows stay. The refusal
+  notice went with OD-1c (2026-11-02): a flagged mail is accepted, and the warning says that
+  accepting it opens another maintenance (§4a).
 - `/atm/mail-tickets/log`: «استرجاع» on accepted and rejected rows, always shown and pinned, for
   `atmMailTicket.decide`, behind a confirm that says what happens — accepted: the mail returns to
   pending and the maintenance opened from it leaves `/atm/maintenance` if it is still open;
@@ -663,21 +703,13 @@ Properties worth knowing before running it:
 - **Two fields stay null by design**: `actionAt` (the legacy never recorded when a mail was decided
   — GAP G1; stamping the import time would be a false fact) and `providerMessageId` (these rows
   predate the key; NULL is exempt from its partial unique index).
-- **Open maintenance duplicates are reported, not imported** (OD-1). Replenishments are all
-  written since OD-1b — their log has no unique index, and their report line always reads
-  `openDuplicate: 0`, `openIndexMissing: false`. The importer is exempt from the one-open-maintenance
-  rule's service check — it decides nothing about history — but the partial unique index admits one
-  OPEN maintenance per machine code and day. A legacy row it refuses is counted in
-  `openDuplicate` and named (first 100) in `openDuplicateIds` by its preserved `_id`; every other
-  row still lands (the bulk write is unordered). A dry run PREDICTS the count within the deployment.
-  Close the stale row in the legacy database and re-run — the import is idempotent. **Only while
-  the index exists:** if the boot skipped it (the database already holds two open rows for one
-  code — likely after an earlier import, since nothing guarded it before OD-1), nothing can refuse.
-  The report then carries `openIndexMissing: true` (dry run and real run alike), `openDuplicate` /
-  `openDuplicateIds` name the deployment's open duplicates that were WRITTEN anyway, and a warning
-  names the collection, the index and the count. Resolve the stored duplicates so the next boot
-  builds the index, then import — or proceed knowingly; the live paths refuse every new duplicate
-  either way.
+- **Open duplicates are imported like every other row** (OD-1, lifted). Replenishments since
+  OD-1b and maintenances since OD-1c (2026-11-02): neither log has a one-open-per-day index any
+  more, so a legacy machine open twice on one day lands twice, as it was. Until then the importer
+  was exempt from the rule's service check but not from its index, and reported the rows the index
+  refused. The report keeps `openDuplicate`, `openDuplicateIds` and `openIndexMissing`, always `0`,
+  `[]` and `false`. The maintenance log's one unique index, `ux_maintenance_per_mail_ticket`,
+  covers rows opened from a mail ticket only, and the import links none (`mailTicketId: null`).
 - **Maintenance provenance imports as `manual` without exception.** The legacy accept path kept no
   link back to the ticket (contad_app.js:2806-2823), so `source: 'mail'` genuinely cannot be
   recovered — only rows created in ECMS carry it.
@@ -721,6 +753,7 @@ argument for the suite existing at all:
 | — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
 | — | OD-1a: the rule per Cairo day, the edits guarded, the any-day index dropped (§4a); the boards one day at a time, sort, reset, copy columns, F8, the «الوردية» box, Excel/PDF on the four tables (§10) | delivered |
 | — | OD-1b: the rule lifted for replenishments — several open per machine, the replenishment index dropped at boot, every legacy replenishment imported (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
+| — | OD-1c: the rule lifted for maintenance — several open per machine, a flagged mail accepted, the per-day index dropped at boot, one live maintenance per mail ticket (`ux_maintenance_per_mail_ticket`), every legacy maintenance imported (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
 | — | D8: bank/area filters — area without a bank, bank-change cascade, whole-board read, comma and spacing in names (§3); suite `tests/integration/atm-board-filters.spec.ts` | delivered |
 | — | Efficiency register, Data Report and the data-edit split — [atm-efficiency-register.md](atm-efficiency-register.md), §9 below | in progress (ships as one release) |
 | — | The bank catalog, bilingual areas and data-edit adds recorded in the register — register spec §1.3 (DEC-35–DEC-41), §9 below; suites `tests/integration/atm-banks.spec.ts`, `atm-area-labels.spec.ts`, `atm-data-edit-register.spec.ts` | in progress (ships as one release) |
@@ -855,9 +888,12 @@ answers in the same conversation):
 - **«Select all» on F8.** «شيل الـ Select all من فوق الجدول … خليها تظهر فقط عند الضغط على F8 …
   بس تختفى لو مدوستش عليها ودوست على اى حاجة تانية». The head's box is drawn only after F8 and goes
   again at the next key or press anywhere but on it — F8 also gives it the focus, and Space or Enter
-  on it is using it, so it works without a mouse; the row boxes stay, and checking rows or the
-  revealed box shows the bulk bar exactly as before (the owner's answer: «F8 يظهر تحديد الكل بس»).
-  The shared `DataTable` gained `selectAll` (default on) for it (`lib/select-all-reveal.ts`).
+  on it is using it, so it works without a mouse; the row boxes stay (the owner's answer: «F8 يظهر
+  تحديد الكل بس»), and a row's button on a checked row acts on every checked row (the bulk bar went
+  in #613). The shared `DataTable` gained `selectAll` (default on) for it
+  (`lib/select-all-reveal.ts`). The pending mail page has it too since 2026-11-02 — «في رسائل
+  الصيانة /atm/mail-tickets عايزك تزود موضوع الـ Select All من خلال F8» (on 2026-10-28 its box had
+  been removed outright); it checks the rows on screen only, never one a filter hides.
 - **Sort and reset.** Every text column sorts in the browser — the board is whole — through the
   shared `table-sort` (`?sort=`, remembered) and `sort-rows` (moved from Fleet to `shared/lib`, as
   `table-sort` was); the server's order breaks ties. On the two open boards the area decides first
@@ -883,6 +919,35 @@ answers in the same conversation):
   a selection or the export, and the Excel and PDF carry the rows in the same order. The done pages
   are not grouped. The shared `DataTable` gained `group` for it
   (`apps/web/src/modules/atm/lib/area-groups.ts`).
+- **The page's row beside the title.** «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد
+  بالمساحة (واعمل الحركة دي في كل الصفحات بتاعت ATM)» (2026-11-02). `PageHeader` gained a
+  `toolbar` slot: from `lg` the page's row sits on the title's line, between the title (and its
+  figures) and the actions — in that DOM order, so the Tab key follows the screen — takes the width
+  left and wraps inside itself; it never narrows below 24rem — a header with wide figures and
+  actions (the settlement plan) wraps instead: the actions take a line of their own, and the row
+  too if 24rem still does not fit beside the title. Below `lg` it stacks under the title as
+  before. Moved: the boards' form
+  and filters, the mail pages' filter rows, the done pages' range and files, the daily report's
+  date, control's day and tabs, the plan's bank, day and manage buttons, preparation's day, bank
+  and find field, the layouts' filters, data-edit's tabs. Left where they were: the machine list's
+  and the register's filter bars (they are the table's own filters, over server-paged data), the
+  map's bar, and the import pages' upload cards.
+- **A filter box under every column.** «في كل الصفحات بردو عايزك تعمل فلتر لكل الجدول فوق الجدول …
+  بس الفلتر اللى فوق الجدول يتفلتر مع الفلتر اللى فوق», and asked which kind: «فلتر لكل عمود»
+  (2026-11-02). A row of boxes under the table's head (`DataTable` `columnFilters`, or
+  `ColumnFilterBox` in a table built by hand), one per text column: a box keeps the rows whose cell
+  contains what was typed — matched as every search box matches (`fold`: hamza forms, ى/ي, ة/ه,
+  Arabic or Latin digits), several words in one box all in that cell — and the boxes add up with
+  each other and with the filters above (`shared/lib/column-filter.ts`). The PAGE filters, before
+  it counts, groups, selects, sorts or exports: on the boards the day buttons' counts and the area
+  lines follow the boxes, a selection never covers a row they hide, and a statement names them on
+  its filter line («الكود: «70»»). The page's reset clears them; an empty table says «لا توجد سطور
+  تطابق فلاتر الأعمدة». They live in the page's state — not the address, not remembered — so a
+  narrowing typed for a moment never hides rows on tomorrow's visit. On: both boards, both done
+  pages, both mail pages, the plan's lines, preparation, control's data tab, the layouts, the daily
+  report (its totals follow the boxes) and data-edit's bank tab. Not on the server-paged tables
+  (the machine list, the register, data-edit's machines and labels tabs): a browser box there would
+  search one page only — those keep their server filters.
 - **The «الوردية» box.** «يكون في Check Box بجانب عنوان المجال اسمة مثلاً شيفت. الطبيعي بتاعه انه
   يبقي متعلم ودا اللى هينفذ الحالي … بس لو شيلت من عليه الـ Check يغير القائد للى معمول عليهم Select
   فقط». Beside the leader label in both edit dialogs, ticked on open. `cascadeLeader` on the edit

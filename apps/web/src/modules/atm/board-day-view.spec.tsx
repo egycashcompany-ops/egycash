@@ -14,6 +14,9 @@
 //   · Excel and PDF sit above the table.
 //
 // Every code and name below is synthetic.
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -38,6 +41,7 @@ import { MaintenancePage } from './pages/MaintenancePage';
 import { LeaderField } from './components/ReplenishmentDialogs';
 import { atmBoardKeys, atmLeaderOptionsKey } from './api/atm-queries';
 import { addDays } from './lib/board-day';
+import { maintenanceColumns, replenishmentColumns } from './lib/operation-sheet';
 import { cairoToday } from './lib/operation-view';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -46,6 +50,18 @@ vi.mock('react-dom', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('react-dom');
   return { ...actual, createPortal: (node: unknown) => node };
 });
+
+// The column boxes' state, set per test: a static render cannot type into them. Empty by default,
+// so every other test renders the board unfiltered.
+let columnValues: Record<string, string> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.trim() !== ''),
+  }),
+}));
 
 const t = (key: string): string => translate('ar', key);
 
@@ -144,6 +160,21 @@ const table = (markup: string): string => {
   return markup.slice(markup.lastIndexOf('<div', at), markup.indexOf('</table>', at));
 };
 const count = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+
+/** The header's toolbar slot alone, from its `<div` to the `</div>` that closes it. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
 const closeButton = `title="${t('atm.common.close')}"`;
 /** One day-view button, from its tag to its end. */
 const dayButton = (markup: string, view: string): string => {
@@ -309,6 +340,33 @@ describe.each([
       expect(board).toContain('<thead class="sticky top-0 z-10">');
     });
 
+    it('puts the form and the filters on the title’s line (2026-11-02)', () => {
+      const markup = renderBoard(kind, rows, keys);
+      const toolbar = toolbarOf(markup);
+      expect(markup.indexOf('<h1')).toBeLessThan(markup.indexOf('data-page-toolbar="true"'));
+      // The open form and the bank/area filters are inside the slot itself.
+      expect(toolbar).toContain('<form');
+      expect(toolbar).toContain(`>${t('atm.common.bank')}<`);
+      expect(toolbar).toContain(`>${t('atm.common.area')}<`);
+    });
+
+    it('draws a filter box under every text column — none for the timer or the buttons', () => {
+      const board = table(renderBoard(kind, rows, keys));
+      const columns =
+        kind === 'replenishments'
+          ? replenishmentColumns(t, 'ar', 'open')
+          : maintenanceColumns(t, 'ar', 'open');
+      const boxes = [...board.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
+      expect(boxes).toEqual(columns.map((column) => column.key));
+      for (const column of columns) {
+        expect(board).toContain(
+          `aria-label="${translate('ar', 'atm.common.filterColumn', { column: column.header })}"`,
+        );
+      }
+      expect(boxes).not.toContain('timer');
+      expect(boxes).not.toContain('actions');
+    });
+
     it('paints the row’s buttons all the time — not only under the pointer — and has no bulk bar', () => {
       const markup = renderBoard(kind, rows, keys);
       expect(markup).toContain('data-row-actions="always"');
@@ -432,6 +490,104 @@ describe.each([
     expect(line).not.toContain('select-text');
     // The copy columns of every row still do: one cell each, and none on a line.
     expect(count(board, 'select-text')).toBe(rows.length * 4);
+  });
+});
+
+describe.each([
+  { kind: 'replenishments' as const, make: rep, keys: ['atmReplenishment.view'] },
+  { kind: 'maintenances' as const, make: maint, keys: ['atmMaintenance.view'] },
+])('the $kind board’s column boxes (2026-11-02, «فلتر لكل عمود»)', ({ kind, make, keys }) => {
+  const rows = [
+    { ...make('650000000000000000000d01', '99990201', NOW), area: 'الدقي' },
+    { ...make('650000000000000000000d02', '99990202', NOW), area: 'زايد' },
+    { ...make('650000000000000000000d03', '99990213', NOW), area: 'الدقي' },
+    { ...make('650000000000000000000d04', '99990204', TOMORROW), area: 'الدقي' },
+  ];
+  const codesShown = (markup: string): string[] =>
+    [...table(markup).matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
+  const withBoxes = (values: Record<string, string>, search = ''): string => {
+    columnValues = values;
+    try {
+      return renderBoard(kind, rows, keys, search);
+    } finally {
+      columnValues = {};
+    }
+  };
+
+  it('narrow the rows, and add up across columns', () => {
+    expect(codesShown(withBoxes({ code: '9999020' }))).toEqual(['99990201', '99990202']);
+    expect(codesShown(withBoxes({ code: '9999020', area: 'دقي' }))).toEqual(['99990201']);
+    // Arabic digits are the same number.
+    expect(codesShown(withBoxes({ code: '٩٩٩٩٠٢١٣' }))).toEqual(['99990213']);
+  });
+
+  it('narrow before the day view: its counts and the area lines follow them', () => {
+    const markup = withBoxes({ area: 'دقي' });
+    expect(dayButton(markup, 'today')).toContain(`>${formatNumber(2, 'ar')}<`);
+    expect(dayButton(markup, 'tomorrow')).toContain(`>${formatNumber(1, 'ar')}<`);
+    expect([...table(markup).matchAll(/data-row-group="([^"]*)"/g)].map((m) => m[1])).toEqual([
+      'الدقي',
+    ]);
+  });
+
+  it('are cleared by the reset, with the bank and area filters', () => {
+    // A static render cannot press it; the wiring is read from the source.
+    const page = kind === 'replenishments' ? 'ReplenishmentsPage' : 'MaintenancePage';
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), `./pages/${page}.tsx`),
+      'utf8',
+    );
+    const reset = source.slice(source.indexOf('<BoardResetButton'));
+    expect(reset.slice(0, reset.indexOf('/>'))).toMatch(
+      /filters\.reset\(\);\s*columnFilters\.clear\(\);/,
+    );
+  });
+
+  it('blame themselves only when they emptied the view — a day with nothing says so', () => {
+    // Tomorrow has one row, in «الدقي»; a box for «زايد» empties it — the boxes' message.
+    expect(withBoxes({ area: 'زايد' }, 'day=tomorrow')).toContain(
+      t('atm.common.emptyColumnFiltered'),
+    );
+    // «أيام سابقة» has no row at all: its own message, whatever the boxes hold.
+    const earlier = withBoxes({ area: 'دقي' }, 'day=earlier');
+    expect(earlier).not.toContain(t('atm.common.emptyColumnFiltered'));
+    expect(earlier).toContain(
+      t(`atm.${kind === 'replenishments' ? 'replenishments' : 'maintenance'}.empty.earlier`),
+    );
+  });
+
+  it('light the reset, and say so when they hide every row', () => {
+    const none = withBoxes({ code: '12345678' });
+    expect(none).toContain('data-board-reset');
+    expect(codesShown(none)).toEqual([]);
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    // Without a box, no reset and no such message.
+    const plain = renderBoard(kind, rows, keys);
+    expect(plain).not.toContain('data-board-reset');
+    expect(plain).not.toContain(t('atm.common.emptyColumnFiltered'));
+  });
+});
+
+describe('the maintenance board’s «نوع الخدمة» box matches the «بريد» badge its cell shows', () => {
+  it('finds the mail-opened maintenances by the badge, and by the service as before', () => {
+    const rows = [
+      { ...maint('650000000000000000000e01', '99990301', NOW), source: 'mail' as const },
+      maint('650000000000000000000e02', '99990302', NOW),
+    ];
+    const shown = (values: Record<string, string>): string[] => {
+      columnValues = values;
+      try {
+        return [
+          ...table(renderBoard('maintenances', rows, ['atmMaintenance.view'])).matchAll(
+            />(9999\d{4})</g,
+          ),
+        ].map((m) => m[1] as string);
+      } finally {
+        columnValues = {};
+      }
+    };
+    expect(shown({ service: t('atm.maintenance.fromMail') })).toEqual(['99990301']);
+    expect(shown({ service: 'SYN SERVICE' })).toEqual(['99990301', '99990302']);
   });
 });
 

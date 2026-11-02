@@ -235,8 +235,9 @@ its entry here in the same PR.
   «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين» — with
   October linked to Mohandessin, an October employee sees Mohandessin's ATM data on every ATM page
   and what they record is filed under Mohandessin, where Mohandessin's people see it; outside ATM
-  nothing changes. On `/atm/mail-tickets` the header «select all» box is gone; the row boxes and
-  the accept and reject bar stay ([ATM port §6a–§6c](docs/12-planning/atm-operations-port.md)).
+  nothing changes. On `/atm/mail-tickets` the header «select all» box is gone (F8 brought it back
+  on 2026-11-02, below); the row boxes stay
+  ([ATM port §6a–§6c](docs/12-planning/atm-operations-port.md)).
 
 - **Banks and areas are one list across the ATM pages, in Arabic and English, and a machine added
   on data-edit lands in the register.** «وبالنسبة لإضافة الماكينات /atm/data-edit البنوك والمناطق
@@ -518,6 +519,24 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Every ATM page puts its row beside the title.** «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان
+  عشان نستفيد بالمساحة (واعمل الحركة دي في كل الصفحات بتاعت ATM)». The form, filters or date bar
+  that sat under the title now share the title's line on a computer, and the table gets that
+  height back: the boards, the mail pages, the done pages, the daily report, control, the plan,
+  preparation, the layouts and data-edit. When the line runs short the row wraps inside itself, or
+  takes a line of its own under the title; a phone stacks as before. The machine list's and the
+  register's filter bars stay above their tables.
+- **A filter box under every column of the ATM tables.** «فلتر لكل عمود». Under each column's name
+  a box keeps the rows whose cell contains what was typed (Arabic or Latin digits, any hamza form,
+  several words in any order); the boxes add up with each other and with the bank and area filters
+  above. On the boards the day buttons' counts and the area lines follow them, a checked row they
+  hide is never acted on, Excel and PDF name them under the title, and the reset clears them. On
+  the boards, the done pages, both mail pages, the plan, preparation, control, the layouts, the
+  daily report and data-edit's banks. The machine list and the register, read page by page from
+  the server, keep their own filters.
+- **«تحديد الكل» on F8 in رسائل الصيانة.** «في رسائل الصيانة /atm/mail-tickets عايزك تزود موضوع
+  الـ Select All من خلال F8». As on the boards: F8 shows the head's box until the next key or press
+  elsewhere, and it checks the mails on screen only.
 - **The replenishment and maintenance boards are grouped by area, areas in alphabetical order.**
   «عايز كمان إن التغذيات والأعطال يبقي معمولها Group by المناطق + Sorting بالمناطق بردو · يعني كل
   منطقة تظهر اعطالها وتغذياتها تحت بعض + بترتيب ابجدى للمناطق». On `/atm/replenishments` and
@@ -538,10 +557,26 @@ its entry here in the same PR.
   already open today (in this branch or another) opens again, as in the old system. The done page
   reopens a replenishment beside another open one, and the edit dialogs move the open time onto any
   day, the checked set's two rows of one machine included. The «لم تُفتح لأن للماكينة تغذية مفتوحة»
-  line and its reopen and move refusals are gone from the replenishment screens. Maintenance is
-  unchanged: one open per machine per day, the mail accept included. The boot drops the
-  replenishment log's unique index (`ux_open_replenishment_per_code_day`) from an existing database,
-  and the legacy importer writes every replenishment row as it was.
+  line and its reopen and move refusals are gone from the replenishment screens. Maintenance
+  followed a day later (the next entry). The boot drops the replenishment log's unique index
+  (`ux_open_replenishment_per_code_day`) from an existing database, and the legacy importer writes
+  every replenishment row as it was.
+- **A machine may have more than one open maintenance.** «في الصيانة عايزك تسمح إنه يضيف أكتر من
+  صيانة عادي». The rule «a machine is never open twice on one day» is now gone for maintenance too
+  (port doc OD-1c), so nothing is left of it. On `/atm/maintenance`, every pasted code the branch
+  knows opens its own operation: a code pasted twice opens twice, and a machine already in
+  maintenance today (in this branch or another) opens again, as in the old system. The done page
+  reopens a maintenance beside another open one, and the edit dialog moves the open time onto any
+  day. On `/atm/mail-tickets`, a mail whose machine already has an open maintenance that day is
+  accepted and opens another one. Its row stays yellow with «مكررة», as a warning, and the accept
+  confirm says that accepting it opens another maintenance. The refusal lines are gone from these
+  screens. Two clicks on «قبول» for the same mail at the same time still open one maintenance: a new
+  index allows one live maintenance per mail (`ux_maintenance_per_mail_ticket`), and a mail's
+  maintenance and its «accepted» are now written together, so an accept racing a reject of the
+  same mail leaves nothing behind. A maintenance an earlier accept left without its mail marked
+  accepted is taken up by the next accept of that mail instead of blocking it. The boot drops the
+  maintenance log's per-day index (`ux_open_maintenance_per_code_day`) from an existing database,
+  and the legacy importer writes every maintenance row as it was.
 - **The IT asset and custody registers filter by several categories and several names, the names
   following the categories.** «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط)
   والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا

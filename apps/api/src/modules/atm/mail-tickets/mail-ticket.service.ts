@@ -4,12 +4,12 @@
 // GAP G1). Both decisions were terminal, as in the legacy, until the owner asked for a way back
 // from the log: «إسترجاع ويقدر يرجعه مفتوح لو قبل أو رفض غلط» (2026-10-28 — `restore`).
 //
-// The owner's rule (2026-10-13, per day since 2026-10-27 — port doc OD-1) reaches this screen
-// twice: a ticket whose machine already has an open maintenance ON THE TICKET'S DAY (the day it was
-// received, the day accept opens it on — D6) is NOT accepted (it stays pending and the answer says
-// so), and the `duplication` flag the screen paints is that very condition — any branch.
+// The `duplication` flag the pending screen paints asks whether the ticket's machine already has an
+// open maintenance ON THE TICKET'S DAY (the day it was received, the day accept opens it on — D6),
+// any branch. A WARNING ONLY since 2026-11-02 (port doc OD-1c: «في الصيانة عايزك تسمح إنه يضيف أكتر
+// من صيانة عادي»): accepting such a ticket opens another maintenance for the machine, as the legacy
+// did. From 2026-10-13 to then the owner's rule (OD-1) refused it and left it pending.
 import {
-  type AtmMailAcceptRefusalDto,
   type AtmMailRestoreRefusalDto,
   type AtmMailRestoreRefusalReason,
   type AtmMailTicketStatus,
@@ -27,9 +27,9 @@ import { type AuthContext, type ScopeSelector, scopeSelector } from '../../../sh
 import { diffChanges } from '../../../shared/utils/diff';
 import { assertNoBranchMoveRunning } from '../branch-links/move-fence';
 import { actorName } from '../shared/atm-context';
-import { isAlreadyOpenError, openDayOf } from '../shared/open-operation';
+import { openDayOf } from '../shared/open-operation';
 import { cairoDateString } from '../shared/cairo-time';
-import { atmMaintenanceService } from '../maintenances/maintenance.service';
+import { atmMaintenanceService, isMailTicketTaken } from '../maintenances/maintenance.service';
 import { atmMaintenanceRepository } from '../maintenances/maintenance.repository';
 import { type AtmMaintenanceDoc } from '../maintenances/maintenance.model';
 import { atmMailTicketRepository } from './mail-ticket.repository';
@@ -105,8 +105,8 @@ class AtmMailTicketService {
   /**
    * Pending list with duplication RECOMPUTED per row — the legacy GET re-ran its check on every
    * render and wrote it back (contad_app.js:2674-2698). The recompute is kept; the write-back on
-   * a read is not (decision D5). The check itself is the owner's rule now (OD-1): "this machine
-   * has an open maintenance", any day, any branch — exactly what `accept` refuses.
+   * a read is not (decision D5). The check: "this machine has an open maintenance on the ticket's
+   * day", any branch — a warning since OD-1c; `accept` opens another one all the same.
    */
   async listPending(
     query: { page: number; pageSize: number },
@@ -147,88 +147,95 @@ class AtmMailTicketService {
    * selection are skipped, which is what the legacy's `status:0`-only screen guaranteed by
    * construction.
    *
-   * A ticket whose machine already has an open maintenance on the ticket's day — anywhere,
-   * including one accepted earlier in this same selection — is REFUSED (the owner's rule, OD-1): nothing is written, the
-   * ticket stays pending, and it is named in `refused` so the screen can say which and why.
+   * A ticket whose machine already has an open maintenance on the ticket's day — the row painted
+   * `duplication`, or one accepted earlier in this same selection — is ACCEPTED and opens another
+   * one (OD-1c, 2026-11-02; until then it was refused and left pending).
+   *
+   * Each ticket's two writes — its maintenance and its flip to accepted — are ONE transaction, so
+   * neither ever lands alone. A concurrent decision of the same ticket (a double click, two people
+   * on one screen, an accept racing a reject) makes the flip stale or the insert collide with the
+   * one-live-maintenance-per-ticket index; ours rolls back, writes nothing, and the ticket is
+   * skipped like any decided one. A live maintenance that already carries a still-PENDING ticket
+   * — left by an accept from before this transaction existed, whose flip never landed — is
+   * ADOPTED: the ticket is accepted onto it rather than stuck behind it forever.
    */
-  async accept(
-    input: DecideAtmMailTickets,
-    ctx: AuthContext,
-  ): Promise<{ decided: AtmMailTicketDoc[]; refused: AtmMailAcceptRefusalDto[] }> {
+  async accept(input: DecideAtmMailTickets, ctx: AuthContext): Promise<AtmMailTicketDoc[]> {
     // Each accept opens a maintenance (work the move's twin plan reads): refused before the first
     // ticket, so a selection is never half accepted while a move runs.
     await assertNoBranchMoveRunning();
     const scope = scopeSelector(ctx, 'atmMailTicket.decide');
     const decided: AtmMailTicketDoc[] = [];
-    const refused: AtmMailAcceptRefusalDto[] = [];
     for (const id of input.ids) {
       const ticket = await atmMailTicketRepository.findById(id, scope);
       if (ticket === null || ticket.status !== 'pending') continue;
-      let maintenanceId: string;
+      let accepted: { updated: AtmMailTicketDoc; maintenanceId: string; adopted: boolean };
       try {
-        const maintenance = await atmMaintenanceService.openFromMail(
-          {
-            branchId: ticket.branchId,
-            machineId: ticket.machineId,
-            machineCode: ticket.machineCode,
-            bankName: ticket.bankName,
-            machineName: ticket.machineName,
-            area: ticket.area,
-            openedAt: ticket.receivedAt,
-            serviceType: ticket.issueText,
-            mailTicketId: ticket._id,
-          },
-          ctx,
-        );
-        maintenanceId = String(maintenance._id);
+        accepted = await unitOfWork(async (session) => {
+          // Read INSIDE the transaction, so a maintenance a concurrent accept commits after this
+          // read makes our own insert a write conflict, and the retry reads it here.
+          const live = (
+            await atmMaintenanceRepository.findFromTicket(ticket.branchId, ticket._id, session)
+          ).filter((row) => row.isDeleted !== true);
+          const carrier = live[0];
+          const maintenanceId =
+            carrier === undefined
+              ? String(
+                  (
+                    await atmMaintenanceService.openFromMail(
+                      {
+                        branchId: ticket.branchId,
+                        machineId: ticket.machineId,
+                        machineCode: ticket.machineCode,
+                        bankName: ticket.bankName,
+                        machineName: ticket.machineName,
+                        area: ticket.area,
+                        openedAt: ticket.receivedAt,
+                        serviceType: ticket.issueText,
+                        mailTicketId: ticket._id,
+                      },
+                      ctx,
+                      session,
+                    )
+                  )._id,
+                )
+              : String(carrier._id);
+          const updated = await atmMailTicketRepository.updateById(
+            id,
+            {
+              status: 'accepted',
+              actionById: new Types.ObjectId(ctx.userId),
+              actionByName: actorName(ctx),
+              actionAt: new Date(),
+            },
+            { by: ctx.userId, version: ticket.__v, scope, session },
+          );
+          return { updated, maintenanceId, adopted: carrier !== undefined };
+        });
       } catch (error) {
-        if (isAlreadyOpenError(error)) {
-          if (await this.acceptedConcurrently(ticket, scope)) continue;
-          refused.push({
-            ticketId: String(ticket._id),
-            machineCode: ticket.machineCode,
-            reason: 'maintenanceAlreadyOpen',
-          });
+        // A concurrent decision of this very ticket won: an accept whose maintenance holds the
+        // ticket's slot in the per-ticket index, or any accept or reject that flipped it first
+        // (our version is stale). Ours rolled back — nothing written — and the ticket is skipped
+        // like any decided one.
+        if (isMailTicketTaken(error)) continue;
+        if (error instanceof StaleDocumentError && (await this.decidedConcurrently(id, scope))) {
           continue;
         }
         throw error;
       }
-      const updated = await atmMailTicketRepository.updateById(
-        id,
-        {
-          status: 'accepted',
-          actionById: new Types.ObjectId(ctx.userId),
-          actionByName: actorName(ctx),
-          actionAt: new Date(),
-        },
-        { by: ctx.userId, version: ticket.__v, scope },
-      );
+      // After commit, once — `withTransaction` may have run the callback twice.
       await auditService.record({
         entityRef: entityRef(id),
         action: 'accept',
-        changes: diffChanges({}, { maintenanceId }),
+        changes: diffChanges(
+          {},
+          accepted.adopted
+            ? { maintenanceId: accepted.maintenanceId, adopted: true }
+            : { maintenanceId: accepted.maintenanceId },
+        ),
       });
-      decided.push(updated);
+      decided.push(accepted.updated);
     }
-    return { decided, refused };
-  }
-
-  /**
-   * Did a CONCURRENT accept of this very ticket win? Then the open maintenance that refused it is
-   * the one opened from it — the ticket was accepted, not refused, and `refused` (which promises
-   * "still pending") must not name it. The loser skips it like any already-decided ticket. Asked
-   * two ways, because the winner opens the maintenance BEFORE it flips the ticket: the maintenance
-   * from this ticket covers the moment between those two writes, the re-read covers the rest.
-   */
-  private async acceptedConcurrently(
-    ticket: AtmMailTicketDoc,
-    scope: ScopeSelector,
-  ): Promise<boolean> {
-    if (await atmMaintenanceRepository.hasOpenFromTicket(ticket.branchId, ticket._id)) {
-      return true;
-    }
-    const current = await atmMailTicketRepository.findById(String(ticket._id), scope);
-    return current === null || current.status !== 'pending';
+    return decided;
   }
 
   /** Reject (contad_app.js:2761-2783): the ticket flips to rejected; nothing is created. */
@@ -329,6 +336,16 @@ class AtmMailTicketService {
    * on one log? Then its write is what made ours stale, and the ticket is pending, which is all
    * this request asked: skipped like one already pending, never answered as a conflict.
    */
+  /**
+   * Did a CONCURRENT decision of this very ticket land first — an accept (a double click) or a
+   * reject (another person on the screen)? Then its write is what made ours stale, and the ticket
+   * is decided: ours is skipped, as a decided ticket always is.
+   */
+  private async decidedConcurrently(id: string, scope: ScopeSelector): Promise<boolean> {
+    const current = await atmMailTicketRepository.findById(id, scope);
+    return current === null || current.status !== 'pending';
+  }
+
   private async restoredConcurrently(id: string, scope: ScopeSelector): Promise<boolean> {
     const current = await atmMailTicketRepository.findById(id, scope);
     return current === null || current.status === 'pending';
@@ -337,9 +354,9 @@ class AtmMailTicketService {
   /**
    * Live duplication for a set of tickets: "this machine has an OPEN maintenance on the ticket's
    * day" — the Cairo day it was received, which is the day accept would open it on (D6) — in any
-   * branch (OD-1). One query per distinct day on the page. A code only goes in and a yes/no comes
-   * out, so a maintenance in a branch the reader cannot see flags the row without describing
-   * anything.
+   * branch. A warning (OD-1c): accept opens another one all the same. One query per distinct day on
+   * the page. A code only goes in and a yes/no comes out, so a maintenance in a branch the reader
+   * cannot see flags the row without describing anything.
    */
   async duplicationFor(tickets: readonly AtmMailTicketDoc[]): Promise<Map<string, boolean>> {
     const byDay = new Map<string, AtmMailTicketDoc[]>();

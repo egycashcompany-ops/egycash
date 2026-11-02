@@ -9,6 +9,21 @@ import { DENOMINATION_COLOURS, lineChips } from '../../lib/settlement-view';
 
 const CHIP = 'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums';
 
+/** Pure: one planned slot's chip, as it reads — «200 × 2,000». */
+export const lineChipText = (
+  chip: { denomination: number; notes: number },
+  locale: Locale,
+): string => `${String(chip.denomination)} × ${formatNumber(chip.notes, locale)}`;
+
+/**
+ * Pure: a line's chips as one text, in slot order — what the lines tables' «الكاسيتات» box
+ * matches (`shared/lib/column-filter.ts`), so it finds exactly what the chips show.
+ */
+export const lineChipsText = (slots: readonly AtmPlanSlot[], locale: Locale): string =>
+  lineChips(slots)
+    .map((chip) => lineChipText(chip, locale))
+    .join(' ');
+
 /** «200 × 2,000» per planned slot, in slot order (DS-4: only planned slots carry notes). */
 export const LineChips = ({
   slots,
@@ -28,7 +43,7 @@ export const LineChips = ({
           className={CHIP}
           style={{ background: chip.background, color: chip.colour }}
         >
-          {`${String(chip.denomination)} × ${formatNumber(chip.notes, locale)}`}
+          {lineChipText(chip, locale)}
         </span>
       ))}
     </span>
@@ -42,6 +57,21 @@ const slotText = (slot: AtmCassetteSlot): string => {
   const currency = slot.currency !== null && slot.currency !== 'EGP' ? ` ${slot.currency}` : '';
   return `${slot.kind === 'recycle' ? '↻' : ''}${denomination}${currency}`;
 };
+
+/**
+ * Pure: a layout's chips as one text, in slot order — a deposit slot by its kind, the rest as
+ * `slotText` — what the layouts table's «الكاسيتات» box matches.
+ */
+export const layoutChipsText = (
+  slots: readonly AtmCassetteSlot[],
+  t: (key: string) => string,
+): string =>
+  [...slots]
+    .sort((a, b) => a.slot - b.slot)
+    .map((slot) =>
+      slot.kind === 'deposit' ? t(`atm.settlement.slotKind.${slot.kind}`) : slotText(slot),
+    )
+    .join(' ');
 
 /** A layout's cassettes in slot order: «—» empty, «↻» recycle, a deposit slot by its kind. */
 export const LayoutChips = ({ slots }: { slots: readonly AtmCassetteSlot[] }): JSX.Element => {

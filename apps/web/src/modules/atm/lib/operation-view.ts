@@ -1,8 +1,7 @@
 // Pure view logic for the operation grids — the Cairo day and the live timer, ported from the
 // legacy templates and kept out of the components so the behaviour is testable. Which day a board
 // shows is `board-day.ts`.
-import { ATM_TIMER_THRESHOLD_HOURS, ErrorCodes, type Locale } from '@ecms/contracts';
-import { ApiError } from '../../../shared/lib/api-client';
+import { ATM_TIMER_THRESHOLD_HOURS, type Locale } from '@ecms/contracts';
 import { listSeparator } from './register-import-view';
 
 const CAIRO_TZ = 'Africa/Cairo';
@@ -78,8 +77,9 @@ export const doneRange = (
   return from <= to ? { from, to } : { from: to, to: from };
 };
 
-// ── The owner's rule: a machine's maintenance is never open twice a day (port doc OD-1) ─────────
-// Replenishments are outside it since 2026-11-01 (OD-1b): a machine may have several open.
+// ── Machine-code lines and the mail accept confirm ───────────────────────────────────────────────
+// The owner's rule «a machine is never open twice a day» (port doc OD-1) is lifted for both kinds:
+// replenishments 2026-11-01 (OD-1b), maintenance 2026-11-02 (OD-1c). Nothing on screen refuses it.
 
 /**
  * A list of machine codes as every ATM refusal line prints it, joined in the reader's language —
@@ -88,17 +88,13 @@ export const doneRange = (
 export const joinCodes = (codes: readonly string[], locale: Locale): string =>
   codes.join(listSeparator(locale));
 
-/** Was this failure the rule's refusal — the machine already has another open maintenance? */
-export const isAlreadyOpenRefusal = (error: unknown): boolean =>
-  error instanceof ApiError && error.code === ErrorCodes.ATM_OPERATION_ALREADY_OPEN;
-
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 /**
  * The accept confirm's words. When some of the selected mails are painted DUPLICATE, a second
- * sentence says those will NOT be accepted and stay pending — the page already knows it, because
- * `duplication` is exactly the condition accept refuses (OD-1). Without it the dialog promised a
- * maintenance for every mail and the refusal arrived only afterwards.
+ * sentence says their machines already have an open maintenance that day and that accepting them
+ * opens another — a warning before the accept, as the yellow row is. Since OD-1c (2026-11-02) such
+ * a mail is accepted like any other; until then it was refused and stayed pending.
  */
 export const acceptConfirmBody = (
   t: Translate,
@@ -110,11 +106,6 @@ export const acceptConfirmBody = (
   const body = t('atm.mail.acceptBody', { count: ids.length });
   return flagged === 0 ? body : `${body} ${t('atm.mail.acceptBodyFlagged', { count: flagged })}`;
 };
-
-/** The machine codes of the tickets accept refused, each once, in the order the server named them. */
-export const refusedMachineCodes = (refused: readonly { machineCode: string }[]): string[] => [
-  ...new Set(refused.map((row) => row.machineCode)),
-];
 
 // ── A row's own buttons, over the checked rows ───────────────────────────────────────────────────
 

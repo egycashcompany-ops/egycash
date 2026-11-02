@@ -26,7 +26,9 @@ export const NumberRepairEntryBox = ({
       data-repair-entry={repair.state}
       className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3.5 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/[0.08]"
     >
-      <span className="flex min-w-0 flex-1 items-start gap-3">
+      {/* At least 20rem of text before the button may share its line: on a phone the button
+          drops under the words, the width of the box. */}
+      <span className="flex min-w-[min(100%,20rem)] flex-1 items-start gap-3">
         <span className="rounded-lg bg-amber-500/15 p-2 text-amber-700 dark:text-amber-300">
           <BoardIcon d={ICON.fix} className="h-5 w-5" />
         </span>
@@ -53,7 +55,7 @@ export const NumberRepairEntryBox = ({
       <Link
         to={NUMBER_REPAIR_PATH}
         data-repair-entry-open="true"
-        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-[14px] font-bold text-white shadow-[0_6px_22px_rgba(245,158,11,0.35)] transition hover:bg-amber-400 dark:bg-amber-500 dark:text-slate-950"
+        className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-[14px] font-bold text-white shadow-[0_6px_22px_rgba(245,158,11,0.35)] transition hover:bg-amber-400 sm:w-auto dark:bg-amber-500 dark:text-slate-950"
       >
         {t(`${N}entry.open`)}
         {/* «onwards»: pointing the way the line reads (mirrored in Arabic). */}

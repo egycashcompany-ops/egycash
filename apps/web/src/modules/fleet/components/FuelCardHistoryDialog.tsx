@@ -617,7 +617,10 @@ export const FuelCardHistoryDialog = ({
                           </span>
                         )}
                         {line.byName !== null && (
-                          <span className="ms-auto">
+                          // 6d (the approved sample): on the repair's line and on a line written
+                          // before it, «بواسطة» follows its tag and words; elsewhere it keeps the
+                          // far end, as before.
+                          <span className={before || fixWords.length > 0 ? undefined : 'ms-auto'}>
                             {t('fleet.fuelCards.history.by', { name: line.byName })}
                           </span>
                         )}

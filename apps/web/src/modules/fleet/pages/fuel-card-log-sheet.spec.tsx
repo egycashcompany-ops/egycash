@@ -367,6 +367,11 @@ describe('6d — the repair’s line «تصحيح بيانات»', () => {
     expect(lineOf(html, 'charge-4')).not.toContain(tag);
     expect(lineOf(html, 'fix-1')).not.toContain(tag);
     expect(logOf([BEFORE_FIX])).not.toContain(tag);
+    // As the approved sample draws it: «بواسطة» follows the tag (and the repair's words) on those
+    // lines; a line after the repair keeps it at the far end, as every log line did before.
+    expect(lineOf(html, 'charge-3')).not.toContain('class="ms-auto"');
+    expect(lineOf(html, 'fix-1')).not.toContain('class="ms-auto"');
+    expect(lineOf(html, 'charge-4')).toContain('class="ms-auto"');
   });
 
   it('shows last fours only — never a full number, never a PIN', () => {

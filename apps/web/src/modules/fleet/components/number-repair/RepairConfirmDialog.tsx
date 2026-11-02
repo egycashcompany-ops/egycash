@@ -72,6 +72,7 @@ export const RepairConfirmDialog = ({
       })}
       icon={ICON.fix}
       width="3xl"
+      wrapTitle
       panelProps={{ 'data-repair-confirm': 'true' }}
       footer={
         <>

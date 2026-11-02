@@ -324,6 +324,12 @@ describe('the confirmation (sample 05)', () => {
     // And off again while the execution is on its way.
     const busy = view(REPAIR_CLEAN, { confirming: true, reviewed: true, busy: true });
     expect(busy).toMatch(/data-repair-confirm-run="true"[^>]*disabled=""/u);
+    // Its title is read whole: on a phone it wraps, never «تنفيذ تصحيح أرقام الكر…».
+    const title = /<h2 class="([^"]*)"/u.exec(
+      ticked.slice(ticked.indexOf('data-repair-confirm="true"')),
+    )?.[1];
+    expect(title).toContain('break-words');
+    expect(title).not.toContain('truncate');
   });
 
   it('says what moves, the five left without a PIN, each cycle, the pair’s Δ, and the log line', () => {
@@ -481,6 +487,8 @@ describe('the box on «مطابقة أرصدة الكروت» (sample 00)', () =
     expect(textOf(html)).toContain('2026/10/04');
     expect(html).toContain(`href="${NUMBER_REPAIR_PATH}"`);
     expect(html).toContain(ar(`${N}entry.open`));
+    // On a phone the button drops under the words, the box's width; beside them from `sm` up.
+    expect(html).toMatch(/data-repair-entry-open="true" class="[^"]*\bw-full\b[^"]*\bsm:w-auto\b/u);
   });
   it('takes no room once done, without the grant, or before the dry run is read', () => {
     expect(wrap(<NumberRepairEntry />, VIEW, repairDone())).toBe('');

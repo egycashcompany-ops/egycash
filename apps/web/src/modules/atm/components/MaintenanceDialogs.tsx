@@ -23,7 +23,6 @@ import {
   useUpdateAtmMaintenance,
 } from '../api/atm-queries';
 import { LeaderField, toLocalInputValue } from './ReplenishmentDialogs';
-import { isAlreadyOpenRefusal } from '../lib/operation-view';
 
 /** Pure: the one leader every row shares — blank when they differ, or none has one. */
 export const sharedLeader = (rows: readonly { leaderName: string | null }[]): string => {
@@ -162,6 +161,8 @@ export const EditMaintenanceDialog = ({
     event.preventDefault();
     try {
       if (single !== null) {
+        // The open time moves onto any day — one the machine is already in maintenance on
+        // included: several open maintenances of a machine are allowed (port doc OD-1c).
         await updateOne.mutateAsync({
           id: single.id,
           body: {
@@ -186,12 +187,8 @@ export const EditMaintenanceDialog = ({
       }
       toast.success(t('atm.common.saved'));
       onClose();
-    } catch (error) {
-      // The per-day rule (port doc OD-1): moving the open time onto a day the machine is already
-      // open on is refused — say so, rather than a bare «failed».
-      toast.error(
-        t(isAlreadyOpenRefusal(error) ? 'atm.common.moveAlreadyOpen' : 'atm.common.actionFailed'),
-      );
+    } catch {
+      toast.error(t('atm.common.actionFailed'));
     }
   };
 

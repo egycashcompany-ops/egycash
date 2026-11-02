@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import {
-  duplicateKeyWriteIndexes,
   linkedSourceRefusal,
   machineFromLegacy,
   machineJoinCodes,
   mailTicketFromLegacy,
   maintenanceFromLegacy,
-  openDuplicateRowIds,
   refLabelNamesFromLegacy,
   repairLegacyInstant,
   replenishmentFromLegacy,
@@ -237,91 +235,6 @@ describe('refLabelNamesFromLegacy', () => {
 
   it('answers empty for a missing array', () => {
     expect(refLabelNamesFromLegacy(undefined)).toEqual([]);
-  });
-});
-
-// The owner's rule vs. history (port doc OD-1): the importer is exempt from the rule's service
-// check, but the open-operation index refuses a second OPEN row per machine code — reported, never
-// a crashed run.
-describe('openDuplicateRowIds — the dry run’s prediction', () => {
-  const row = (
-    machineCode: string,
-    over: { closedAt?: Date | null; isDeleted?: boolean; openDay?: string } = {},
-  ): {
-    _id: Types.ObjectId;
-    machineCode: string;
-    openDay: string;
-    closedAt: Date | null;
-    isDeleted: boolean;
-  } => ({
-    _id: id(),
-    machineCode,
-    openDay: over.openDay ?? '2026-01-15',
-    closedAt: over.closedAt ?? null,
-    isDeleted: over.isDeleted ?? false,
-  });
-
-  it('names every open live row whose code AND day an earlier open live row already holds', () => {
-    const first = row('101');
-    const second = row('101');
-    const third = row('101');
-    expect(openDuplicateRowIds([first, row('102'), second, third])).toEqual([
-      String(second._id),
-      String(third._id),
-    ]);
-  });
-
-  it('lets one machine stay open on two different days — the rule is per day', () => {
-    expect(
-      openDuplicateRowIds([
-        row('101', { openDay: '2026-01-14' }),
-        row('101', { openDay: '2026-01-15' }),
-      ]),
-    ).toEqual([]);
-  });
-
-  it('ignores closed, deleted and code-less rows — the index does not cover them', () => {
-    expect(
-      openDuplicateRowIds([
-        row('101'),
-        row('101', { closedAt: NOW }),
-        row('101', { isDeleted: true }),
-        row(''),
-        row(''),
-      ]),
-    ).toEqual([]);
-  });
-});
-
-describe('duplicateKeyWriteIndexes — what the real run reports', () => {
-  it('returns the positions of an all-E11000 bulk failure', () => {
-    expect(
-      duplicateKeyWriteIndexes({
-        writeErrors: [
-          { code: 11000, index: 3 },
-          { code: 11000, index: 7 },
-        ],
-      }),
-    ).toEqual([3, 7]);
-    // The driver hands a single write error unwrapped.
-    expect(duplicateKeyWriteIndexes({ writeErrors: { code: 11000, index: 0 } })).toEqual([0]);
-  });
-
-  it('is null for anything that must still fail the run', () => {
-    expect(duplicateKeyWriteIndexes(new Error('network'))).toBeNull();
-    expect(duplicateKeyWriteIndexes(null)).toBeNull();
-    expect(duplicateKeyWriteIndexes({ writeErrors: [] })).toBeNull();
-    expect(
-      duplicateKeyWriteIndexes({
-        writeErrors: [
-          { code: 11000, index: 1 },
-          { code: 121, index: 2 },
-        ],
-      }),
-    ).toBeNull();
-    expect(
-      duplicateKeyWriteIndexes({ writeErrors: [{ code: 11000, index: 1 }], err: { code: 64 } }),
-    ).toBeNull();
   });
 });
 

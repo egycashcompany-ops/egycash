@@ -12,14 +12,13 @@
 //   3. **Dry-run counts without writing**, so an operator sees the shape of a deployment — and its
 //      unresolved rows — before committing to it.
 //
-// One thing it cannot write: a SECOND open maintenance for one machine on one day. The owner's rule
-// (port doc OD-1) put a partial unique index on the maintenance log, and legacy history predates
-// it. The importer is exempt from the rule's service check (history is written as it was), and a
-// row the index refuses is reported as `openDuplicate` with its legacy `_id` — never a crashed
-// run. Where the index is ABSENT (the boot skipped it over duplicates already stored) nothing can
-// refuse that row: the report says so (`openIndexMissing`) and still names the deployment's
-// duplicates, which then land. Replenishments are outside the rule since OD-1b (2026-11-01): every
-// row is written, and their line reports no open duplicate.
+// Every operation row is written as it was. While the owner's rule held (port doc OD-1) a partial
+// unique index on each operation log refused a SECOND open row for one machine on one day, and the
+// importer reported those rows instead; the rule is lifted — replenishments 2026-11-01 (OD-1b),
+// maintenance 2026-11-02 (OD-1c) — so nothing refuses them any more, and the report's open-duplicate
+// fields always read 0 / [] / false. (The maintenance log's one unique index left,
+// `ux_maintenance_per_mail_ticket`, covers rows opened from a mail ticket only, and the import
+// links none — `maintenanceFromLegacy` writes `mailTicketId: null`.)
 //
 // It writes through the MODELS rather than the repositories, deliberately: a migration is system
 // work with no actor, no per-row audit and no optimistic-concurrency story, and forcing it through
@@ -32,18 +31,14 @@ import { AtmReplenishmentModel } from '../replenishments/replenishment.model';
 import { AtmMaintenanceModel } from '../maintenances/maintenance.model';
 import { AtmMailTicketModel } from '../mail-tickets/mail-ticket.model';
 import { loadAtmBranchLinks } from '../shared/atm-context';
-import { OPEN_MAINTENANCE_INDEX_NAME } from '../shared/open-operation';
 import {
-  duplicateKeyWriteIndexes,
   linkedSourceRefusal,
   machineFromLegacy,
   machineJoinCodes,
   mailTicketFromLegacy,
   maintenanceFromLegacy,
-  openDuplicateRowIds,
   refLabelNamesFromLegacy,
   replenishmentFromLegacy,
-  type ImportedOperation,
   type LegacyMachine,
   type LegacyMail,
   type LegacyOperation,
@@ -64,17 +59,11 @@ export interface AtmImportOptions {
 }
 
 /**
- * One operation log's line of the report. `openDuplicate` counts the rows the open-maintenance
- * index refused (the owner's rule, OD-1 — predicted within the deployment on a dry run; always 0
- * for replenishments, which the rule no longer holds — OD-1b), and
- * `openDuplicateIds` names the first of them by their preserved legacy `_id`, findable in both
- * databases: close the stale row in the legacy system and re-run.
- *
- * `openIndexMissing: true` changes that meaning: the index does not exist (the boot skipped it
- * because the collection already holds two open rows for one code), so NOTHING was refused —
- * `openDuplicate` / `openDuplicateIds` then name the deployment's open duplicates that were
- * WRITTEN anyway (the same rows a dry run names), and `written` counts them. A dry run reports the
- * same flag, so it still predicts the real run.
+ * One operation log's line of the report. `openDuplicate`, `openDuplicateIds` and
+ * `openIndexMissing` reported the rows the owner's one-open-per-day index refused (OD-1), and
+ * whether that index was missing. Both logs left the rule — replenishments with OD-1b, maintenance
+ * with OD-1c (2026-11-02) — so every row is written and they ALWAYS read 0, [] and false. Kept so a
+ * script reading the report keeps working.
  */
 export interface AtmImportOperationReport {
   read: number;
@@ -112,111 +101,19 @@ const writeRows = async <T extends { _id: Types.ObjectId }>(
   return rows.length;
 };
 
-/** How many refused ids the report names; the count is always whole. */
-const OPEN_DUPLICATE_IDS_SHOWN = 100;
-
-interface OperationWrite {
-  written: number;
-  openDuplicateIds: string[];
-  openIndexMissing: boolean;
-}
-
-/** Does the maintenance log carry the open-maintenance index? A missing collection has none. */
-const hasOpenMaintenanceIndex = async (model: mongoose.Model<never>): Promise<boolean> => {
-  const indexes = await model.collection
-    .listIndexes()
-    .toArray()
-    .catch(() => [] as { name?: string }[]);
-  return indexes.some((index) => index.name === OPEN_MAINTENANCE_INDEX_NAME);
-};
-
-/**
- * The maintenance log's write — `writeRows`, plus the owner's rule (OD-1). The importer is EXEMPT
- * from the rule's service check: it is history, written as it was, and it neither refuses, closes
- * nor merges a legacy row. But the partial unique index admits one OPEN maintenance per machine
- * code and day, and the legacy had no such guard, so a second open row is refused by the database.
- * That refusal is REPORTED — never a crash of the whole run (the bulk write is unordered, so every
- * other row still lands).
- *
- * If the index is ABSENT (the boot skipped it over duplicates already stored), nothing can refuse:
- * every row lands, and the report says so — `openIndexMissing`, with the deployment's duplicates
- * still named — and a warning names the collection, the index and the count. A dry run checks the
- * same thing, so its prediction matches the real run in both states.
- */
-const writeMaintenanceRows = async (
-  model: mongoose.Model<never>,
-  rows: readonly ImportedOperation[],
-  dryRun: boolean,
-): Promise<OperationWrite> => {
-  const predicted = openDuplicateRowIds(rows);
-  if (!(await hasOpenMaintenanceIndex(model))) {
-    if (predicted.length > 0) {
-      logger.warn(
-        {
-          collection: model.collection.name,
-          index: OPEN_MAINTENANCE_INDEX_NAME,
-          openDuplicate: predicted.length,
-        },
-        'atm import: open-operation index absent — open duplicates are NOT refused and land',
-      );
-    }
-    return {
-      written: await writeRows(model, rows, dryRun),
-      openDuplicateIds: predicted,
-      openIndexMissing: true,
-    };
-  }
-  if (dryRun) {
-    return {
-      written: rows.length - predicted.length,
-      openDuplicateIds: predicted,
-      openIndexMissing: false,
-    };
-  }
-  try {
-    return {
-      written: await writeRows(model, rows, false),
-      openDuplicateIds: [],
-      openIndexMissing: false,
-    };
-  } catch (error) {
-    const refused = duplicateKeyWriteIndexes(error);
-    if (refused === null) throw error;
-    return {
-      written: rows.length - refused.length,
-      openDuplicateIds: refused.map((index) => String(rows[index]?._id)),
-      openIndexMissing: false,
-    };
-  }
-};
-
-/**
- * The replenishment log's write: every row, as it was — several open replenishments of a machine
- * are allowed (OD-1b), so nothing is predicted or refused.
- */
-const writeReplenishmentRows = async (
-  model: mongoose.Model<never>,
-  rows: readonly ImportedOperation[],
-  dryRun: boolean,
-): Promise<OperationWrite> => ({
-  written: await writeRows(model, rows, dryRun),
-  openDuplicateIds: [],
-  openIndexMissing: false,
-});
-
 const operationReport = (
   read: number,
-  write: OperationWrite,
+  written: number,
   unresolvedMachine: number,
   noOpenTime: number,
 ): AtmImportOperationReport => ({
   read,
-  written: write.written,
+  written,
   unresolvedMachine,
   noOpenTime,
-  openDuplicate: write.openDuplicateIds.length,
-  openDuplicateIds: write.openDuplicateIds.slice(0, OPEN_DUPLICATE_IDS_SHOWN),
-  openIndexMissing: write.openIndexMissing,
+  openDuplicate: 0,
+  openDuplicateIds: [],
+  openIndexMissing: false,
 });
 
 export const importLegacyAtmDeployment = async (
@@ -319,7 +216,8 @@ export const importLegacyAtmDeployment = async (
       if (row === null) repNoOpen += 1;
       else reps.push(row);
     }
-    const repsWrite = await writeReplenishmentRows(
+    // Every row, as it was — several open replenishments of a machine are allowed (OD-1b).
+    const repsWritten = await writeRows(
       AtmReplenishmentModel as unknown as mongoose.Model<never>,
       reps,
       options.dryRun,
@@ -342,7 +240,8 @@ export const importLegacyAtmDeployment = async (
       if (row === null) maintNoOpen += 1;
       else maints.push(row);
     }
-    const maintsWrite = await writeMaintenanceRows(
+    // Every row, as it was — several open maintenances of a machine are allowed (OD-1c).
+    const maintsWritten = await writeRows(
       AtmMaintenanceModel as unknown as mongoose.Model<never>,
       maints,
       options.dryRun,
@@ -375,8 +274,13 @@ export const importLegacyAtmDeployment = async (
     return {
       machines: { read: legacyMachines.length, written: machinesWritten },
       refLabels: { read: labelRows.length, written: labelsWritten },
-      replenishments: operationReport(legacyReps.length, repsWrite, repUnresolved, repNoOpen),
-      maintenances: operationReport(legacyMaints.length, maintsWrite, maintUnresolved, maintNoOpen),
+      replenishments: operationReport(legacyReps.length, repsWritten, repUnresolved, repNoOpen),
+      maintenances: operationReport(
+        legacyMaints.length,
+        maintsWritten,
+        maintUnresolved,
+        maintNoOpen,
+      ),
       mailTickets: {
         read: legacyMails.length,
         written: mailsWritten,

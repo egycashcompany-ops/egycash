@@ -34,10 +34,6 @@ import {
   type UpdateAtmRefLabel,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
-import { errorMessage } from '../../../shared/lib/errors';
-import { store } from '../../../store';
-import { toast } from '../../../shared/ui/toast/toast-store';
-import { isAlreadyOpenRefusal } from '../lib/operation-view';
 import { boardQuery } from '../lib/board-filters';
 import { makeBankLookup, type BankLookup } from '../lib/bank-catalog';
 import { fetchWholeBoard } from '../lib/whole-board';
@@ -474,20 +470,6 @@ export const useCloseAtmReplenishments = () => {
   });
 };
 
-/**
- * A maintenance reopen — or an edit moving its open time — the owner's rule refused (port doc
- * OD-1: the machine already has another open maintenance that day) is worded by its own screen,
- * in the reader's language. Replenishments are outside the rule (OD-1b), so their hooks keep the
- * global toast. Every OTHER
- * failure still gets the global toast exactly as before — declaring `onError` is what opts a hook
- * out of it (`shared/lib/query-client.ts`), so the hook raises that same toast for the rest.
- */
-const toastUnlessAlreadyOpen = (error: unknown): void => {
-  if (!isAlreadyOpenRefusal(error)) {
-    toast.error(errorMessage(error, store.getState().locale.locale));
-  }
-};
-
 export const useReopenAtmReplenishment = () => {
   const client = useQueryClient();
   return useMutation({
@@ -592,7 +574,6 @@ export const useReopenAtmMaintenance = () => {
     mutationFn: ({ id, version }: { id: string; version: number }) =>
       api.reopenMaintenance(id, version),
     onSuccess: () => invalidateMaintenances(client),
-    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -614,9 +595,6 @@ export const useUpdateAtmMaintenance = () => {
       };
     }) => api.updateMaintenance(id, body),
     onSuccess: () => invalidateMaintenances(client),
-    // An edit moving the open time onto a day the machine is already open on is the rule's
-    // refusal (OD-1): the dialog words it, so it raises no second toast.
-    onError: toastUnlessAlreadyOpen,
   });
 };
 
@@ -625,9 +603,6 @@ export const useBulkUpdateAtmMaintenances = () => {
   return useMutation({
     mutationFn: (body: BulkUpdateAtmMaintenances) => api.bulkUpdateMaintenances(body),
     onSuccess: () => invalidateMaintenances(client),
-    // An edit moving the open time onto a day the machine is already open on is the rule's
-    // refusal (OD-1): the dialog words it, so it raises no second toast.
-    onError: toastUnlessAlreadyOpen,
   });
 };
 

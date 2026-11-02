@@ -97,14 +97,15 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   }
 
   /**
-   * The owner's rule (shared/open-operation.ts): which of these machine codes already have an
-   * OPEN operation of this kind ON `day` (a Cairo calendar day). COMPANY-WIDE and therefore
-   * unscoped on purpose — a code open in a branch the caller cannot read still blocks — so it
-   * answers with codes only, never a row: nothing about the other branch can leave through it.
+   * Which of these machine codes already have an OPEN operation of this kind ON `day` (a Cairo
+   * calendar day). It was the owner's rule's question (shared/open-operation.ts) and is now the
+   * mail `duplication` flag's only — a warning, asked of the maintenance log (OD-1c). COMPANY-WIDE
+   * and therefore unscoped on purpose — a code open in a branch the caller cannot read still flags
+   * — so it answers with codes only, never a row: nothing about the other branch can leave through
+   * it.
    *
    * Asked by the open time's day RANGE, not by the stored `openDay`, so a row written before that
-   * field existed blocks its day all the same. `exceptIds` leaves rows out — a write never blocks
-   * itself (a reopen, an edit moving its own rows).
+   * field existed counts for its day all the same. `exceptIds` leaves rows out.
    */
   async openMachineCodes(
     machineCodes: readonly string[],
@@ -133,9 +134,9 @@ export class AtmOperationLogRepository<T extends AtmOperationLogFields> extends 
   }
 
   /**
-   * The same question for one code on one day, not counting `exceptId` — a reopen never blocks
-   * itself. An empty code identifies no machine, so it never blocks: the same exclusion
-   * `openMachineCodes` makes and the index's partial filter (`machineCode: { $gt: '' }`) encodes.
+   * The same question for one code on one day, not counting `exceptId` — the mail ingest's
+   * `duplicationAtIngest`. An empty code identifies no machine, so it is never open: the same
+   * exclusion `openMachineCodes` makes.
    */
   async hasOpenOperation(machineCode: string, day: string, exceptId?: string): Promise<boolean> {
     if (machineCode === '') return false;

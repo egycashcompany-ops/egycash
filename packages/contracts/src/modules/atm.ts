@@ -921,12 +921,11 @@ export interface OpenAtmMaintenancesResultDto {
   opened: AtmMaintenanceDto[];
   unknownCodes: string[];
   /**
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per day since 2026-10-27; maintenance
-   * only since 2026-11-01 — port doc OD-1b): one entry per submitted line that was NOT opened
-   * because its machine already has an open maintenance ON THE BATCH'S DAY — anywhere in the
-   * company — or because the same code appeared earlier in this batch (that earlier line opened).
-   * The other lines still open, the same partial semantics as `unknownCodes`. A code only, never
-   * where the open operation is.
+   * ALWAYS EMPTY since 2026-11-02 (port doc OD-1c: «في الصيانة عايزك تسمح إنه يضيف أكتر من صيانة
+   * عادي»). It named the lines the owner's one-open-maintenance-per-day rule left unopened; the
+   * rule is lifted, so every line of a known code opens — a code pasted twice opens twice, and a
+   * machine already in maintenance opens again, as in the legacy. Kept so the answer's shape does
+   * not change for a client that reads it — the replenishment answer's twin (OD-1b).
    */
   alreadyOpenCodes: string[];
 }
@@ -1001,12 +1000,13 @@ export interface AtmMailTicketDto {
   /** Legacy `found` — machine existed in the master at ingest. Stored, never rendered (GAP G2). */
   foundInMaster: boolean;
   /**
-   * Legacy `duplication` — "this machine already has an OPEN maintenance", on ANY day and in any
-   * branch. The legacy asked "opened TODAY" (contad_app.js:2674); the owner's rule (2026-10-13,
-   * «مينفعش أضيف ماكينة مرتين») made it exactly the condition under which accept REFUSES the
-   * ticket, so what the screen flags is what accept will refuse (port doc OD-1). Recomputed at
-   * every pending-list read as the legacy GET did; the ingest-time value is kept on the row for
-   * the log page (decision D5).
+   * Legacy `duplication` — "this machine already has an OPEN maintenance on the ticket's day"
+   * (the Cairo day it was received, the day accept opens it on — D6), in any branch. The legacy
+   * asked "opened TODAY" (contad_app.js:2674). A WARNING ONLY since 2026-11-02 (port doc OD-1c):
+   * accepting such a ticket opens another maintenance for the machine, as the legacy did; from
+   * 2026-10-13 to then the owner's rule made it the condition under which accept refused the
+   * ticket. Recomputed at every pending-list read as the legacy GET did; the ingest-time value is
+   * kept on the row for the log page (decision D5).
    */
   duplication: boolean;
   /** Legacy `action_by` + NEW `actionAt` — the legacy log never recorded WHEN (GAP G1). */
@@ -1026,9 +1026,13 @@ export const DecideAtmMailTicketsSchema = z
 export type DecideAtmMailTickets = z.infer<typeof DecideAtmMailTicketsSchema>;
 
 /**
- * Why a selected ticket was NOT accepted and stays pending. One reason today: the owner's rule —
- * the ticket's machine already has an open maintenance (the row the screen flags `duplication`).
- * A ticket already decided, or outside the caller's scope, is skipped silently as before.
+ * Why a selected ticket was NOT accepted and stays pending. The one reason was the owner's rule —
+ * the ticket's machine already had an open maintenance that day (the row the screen flags
+ * `duplication`). NO LONGER ANSWERED since 2026-11-02 (port doc OD-1c): such a ticket is accepted
+ * and opens another maintenance, so `meta.refused` is always empty. Kept so the accept answer's
+ * shape does not change for a client that reads it. A ticket already decided, or outside the
+ * caller's scope, is skipped silently as before — and so is one a concurrent accept of the same
+ * ticket opened first.
  */
 export const ATM_MAIL_ACCEPT_REFUSAL_REASONS = ['maintenanceAlreadyOpen'] as const;
 export const AtmMailAcceptRefusalReasonSchema = z.enum(ATM_MAIL_ACCEPT_REFUSAL_REASONS);
@@ -1043,7 +1047,8 @@ export interface AtmMailAcceptRefusalDto {
 
 /**
  * The accept answer's `meta`. The `data` stays the array of tickets ACCEPTED, exactly as before,
- * so a client that reads only `data` keeps working; the refusals ride beside it.
+ * so a client that reads only `data` keeps working; the refusals rode beside it, and `refused` is
+ * always empty since OD-1c (`ATM_MAIL_ACCEPT_REFUSAL_REASONS`).
  */
 export interface AtmMailAcceptMetaDto {
   refused: AtmMailAcceptRefusalDto[];

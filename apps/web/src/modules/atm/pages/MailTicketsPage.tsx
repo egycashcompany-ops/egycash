@@ -3,10 +3,9 @@
 // and two decisions: accept (opens maintenance operations) or reject. Final here — the log can put
 // a decided mail back (`MailLogPage.tsx`).
 //
-// The owner's rule (2026-10-13, port doc OD-1): a machine is never in maintenance twice. A row is
-// painted DUPLICATE exactly when its machine already has an open maintenance — any day, any
-// branch, no longer only "today" — and accept REFUSES those tickets: they stay pending, and the
-// answer names them, which this page prints in red beside the accepted count.
+// A row is painted DUPLICATE when its machine already has an open maintenance on the mail's day,
+// in any branch — a warning, as in the legacy: accept opens another maintenance for it (the owner,
+// 2026-11-02 — port doc OD-1c). From 2026-10-13 to then (OD-1) accept refused such a mail.
 //
 // «عايز فلتر وعايز Action Buttons — في /atm/mail-tickets يكون 2 قبول ورفض» (2026-10-28):
 //
@@ -18,7 +17,7 @@
 //     carries it, a visit restores it, and the red reset clears it, as on the boards.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type AtmMailAcceptRefusalDto, type AtmMailTicketDto } from '@ecms/contracts';
+import { type AtmMailTicketDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -42,12 +41,7 @@ import {
 } from '../api/atm-queries';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { BoardResetButton } from '../components/BoardResetButton';
-import {
-  acceptConfirmBody,
-  actionTargets,
-  joinCodes,
-  refusedMachineCodes,
-} from '../lib/operation-view';
+import { acceptConfirmBody, actionTargets } from '../lib/operation-view';
 import { withBoardFilter } from '../lib/board-filters';
 import {
   MAIL_ROW_PAINT,
@@ -62,25 +56,6 @@ import {
 
 /** Remembered across visits: the filters — the only thing this page keeps in its address bar. */
 const REMEMBERED_FILTERS = ['banks', 'areas', 'q'] as const;
-
-/** The tickets accept refused (OD-1) and why — the machine already has an open maintenance. */
-export const AcceptRefusalNotice = ({
-  refused,
-}: {
-  refused: readonly AtmMailAcceptRefusalDto[];
-}): JSX.Element | null => {
-  const t = useT();
-  const locale = useAppSelector((state) => state.locale.locale);
-  if (refused.length === 0) return null;
-  return (
-    <p className="text-sm text-red-600 dark:text-red-400" data-refusal="maintenance-open">
-      {t('atm.mail.refusedOpenMaintenance', {
-        count: refused.length,
-        codes: joinCodes(refusedMachineCodes(refused), locale),
-      })}
-    </p>
-  );
-};
 
 export const MailTicketsPage = (): JSX.Element => {
   const t = useT();
@@ -106,7 +81,6 @@ export const MailTicketsPage = (): JSX.Element => {
   const reject = useRejectAtmMailTickets();
   const [accepting, setAccepting] = useState<string[] | null>(null);
   const [rejecting, setRejecting] = useState<string[] | null>(null);
-  const [refused, setRefused] = useState<AtmMailAcceptRefusalDto[]>([]);
 
   const decide = async (kind: 'accept' | 'reject'): Promise<void> => {
     const ids = kind === 'accept' ? accepting : rejecting;
@@ -114,22 +88,9 @@ export const MailTicketsPage = (): JSX.Element => {
     try {
       if (kind === 'accept') {
         const result = await accept.mutateAsync(ids);
-        setRefused(result.refused);
-        // Nothing accepted only because every ticket was refused: the red line says it all.
-        if (result.accepted.length > 0 || result.refused.length === 0) {
-          toast.success(t('atm.mail.acceptedCount', { count: result.accepted.length }));
-        }
-        if (result.refused.length > 0) {
-          toast.error(
-            t('atm.mail.refusedOpenMaintenance', {
-              count: result.refused.length,
-              codes: joinCodes(refusedMachineCodes(result.refused), locale),
-            }),
-          );
-        }
+        toast.success(t('atm.mail.acceptedCount', { count: result.accepted.length }));
       } else {
         const decided = await reject.mutateAsync(ids);
-        setRefused([]);
         toast.success(t('atm.mail.rejectedCount', { count: decided.length }));
       }
       selection.clear();
@@ -206,8 +167,8 @@ export const MailTicketsPage = (): JSX.Element => {
   return (
     <PageContainer fullHeight>
       {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
-          بس هو اللى يعمل Scroll»): on a computer the title, the filters and the refusal line keep
-          their place, and only the table's rows scroll, under a head that stays. */}
+          بس هو اللى يعمل Scroll»): on a computer the title and the filters keep their place, and
+          only the table's rows scroll, under a head that stays. */}
       <div className={BOARD_FRAME}>
         <PageHeader title={t('atm.mail.title')} />
 
@@ -241,8 +202,6 @@ export const MailTicketsPage = (): JSX.Element => {
             />
           </div>
         </div>
-
-        <AcceptRefusalNotice refused={refused} />
 
         <div className={BOARD_TABLE_FILL}>
           <DataTable

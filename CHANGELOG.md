@@ -438,10 +438,23 @@ its entry here in the same PR.
   already open today (in this branch or another) opens again, as in the old system. The done page
   reopens a replenishment beside another open one, and the edit dialogs move the open time onto any
   day, the checked set's two rows of one machine included. The «لم تُفتح لأن للماكينة تغذية مفتوحة»
-  line and its reopen and move refusals are gone from the replenishment screens. Maintenance is
-  unchanged: one open per machine per day, the mail accept included. The boot drops the
-  replenishment log's unique index (`ux_open_replenishment_per_code_day`) from an existing database,
-  and the legacy importer writes every replenishment row as it was.
+  line and its reopen and move refusals are gone from the replenishment screens. Maintenance
+  followed a day later (the next entry). The boot drops the replenishment log's unique index
+  (`ux_open_replenishment_per_code_day`) from an existing database, and the legacy importer writes
+  every replenishment row as it was.
+- **A machine may have more than one open maintenance.** «في الصيانة عايزك تسمح إنه يضيف أكتر من
+  صيانة عادي». The rule «a machine is never open twice on one day» is now gone for maintenance too
+  (port doc OD-1c), so nothing is left of it. On `/atm/maintenance`, every pasted code the branch
+  knows opens its own operation: a code pasted twice opens twice, and a machine already in
+  maintenance today (in this branch or another) opens again, as in the old system. The done page
+  reopens a maintenance beside another open one, and the edit dialog moves the open time onto any
+  day. On `/atm/mail-tickets`, a mail whose machine already has an open maintenance that day is
+  accepted and opens another one. Its row stays yellow with «مكررة», as a warning, and the accept
+  confirm says that accepting it opens another maintenance. The refusal lines are gone from these
+  screens. Two clicks on «قبول» for the same mail at the same time still open one maintenance: a new
+  index allows one live maintenance per mail (`ux_maintenance_per_mail_ticket`). The boot drops the
+  maintenance log's per-day index (`ux_open_maintenance_per_code_day`) from an existing database,
+  and the legacy importer writes every maintenance row as it was.
 - **The IT asset and custody registers filter by several categories and several names, the names
   following the categories.** «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط)
   والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا

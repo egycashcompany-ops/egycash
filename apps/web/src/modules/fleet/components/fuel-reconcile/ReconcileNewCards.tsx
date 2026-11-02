@@ -3,7 +3,9 @@
 // the sheet's balance, the car the sheet's code names (and whether it already has a card of this
 // company), the chassis in the name as evidence, and «إضافة», which opens «إضافة كارت» filled from
 // the row — he types the full number (a statement masks it), the expiry and the PIN; the opening
-// balance is the sheet's. Nothing is added on its own.
+// balance is the sheet's. Nothing is added on its own. A row the server would refuse — its name
+// carries the other company's prefix, or is longer than a card name may be — is not offered
+// «إضافة»: it says why instead.
 import { type FleetFuelCardCompany, type FleetFuelReconcileNewCardDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
@@ -12,7 +14,7 @@ import { MOVES_CHIP, SECTION_CARD, SECTION_STRIP } from '../custody-board-looks'
 import { TITLE } from '../custody-dashboard-parts';
 import { CodeChip } from '../custody-memo-parts';
 import { maskedOf } from '../../lib/fuel-reconcile';
-import { chassisOfName } from '../../lib/fuel-reconcile-links';
+import { CARD_NAME_MAX, addCardBlockOf, chassisOfName } from '../../lib/fuel-reconcile-links';
 import { useReconcileCount } from '../../lib/fuel-reconcile-words';
 import { Figure } from './reconcile-cells';
 
@@ -76,6 +78,7 @@ export const ReconcileNewCards = ({
           <tbody>
             {rows.map((row) => {
               const done = row.cardId !== null || added[row.sheetRow] !== undefined;
+              const blocked = addCardBlockOf(row, company);
               return (
                 <tr
                   key={row.sheetRow}
@@ -179,6 +182,16 @@ export const ReconcileNewCards = ({
                         className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[13px] font-bold text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
                       >
                         ✓ {t(`${N}added`)}
+                      </span>
+                    ) : blocked !== null ? (
+                      <span
+                        data-recon-add-blocked={row.sheetRow}
+                        className="inline-flex max-w-[16rem] items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[12px] font-bold text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300"
+                      >
+                        <BoardIcon d={PATH.warn} className="h-3 w-3 shrink-0" />
+                        {blocked === 'nameOtherCompany'
+                          ? t(`${N}blockedOtherCompany`)
+                          : t(`${N}blockedTooLong`, { max: CARD_NAME_MAX })}
                       </span>
                     ) : (
                       mayAdd && (

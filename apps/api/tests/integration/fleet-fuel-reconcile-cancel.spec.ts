@@ -192,6 +192,23 @@ describe('a top-up the sheet does not show — cancelled by the ✓', () => {
     expect(dto.differs[0]?.charges).toEqual([]);
   });
 
+  it('a ✗ judges as of its sheet’s READ: a top-up written before a late ✗ is still offered by the next, lower sheet', async () => {
+    const x = await mkCard('wataniya', 'EGYCASH-LATE', 1000);
+    // S1 read at 900; its line is left undecided.
+    const s1 = await read('wataniya', [rowOf(x, 900)]);
+    expect(s1.differs.map((l) => l.card.id)).toEqual([String(x._id)]);
+    // After the read: a 500 top-up — S1 could never have shown it.
+    await charge(x._id, 500);
+    expect((await card(x._id)).balance).toBe(1500);
+    // Days later the reader gives S1's line a ✗ — allowed: a ✗ moves nothing.
+    const rejected = await decide(s1.id, 'reject', [String(x._id)]);
+    expect(rejected.status, rejected.text).toBe(200);
+    // S2 is 500 lower — the 500 never reached the company: it is offered, so a ✓ may cancel it.
+    const s2 = await read('wataniya', [rowOf(x, 1000)]);
+    expect(s2.differs[0]?.difference).toBe(-500);
+    expect(s2.differs[0]?.charges.map((c) => c.amount)).toEqual([500]);
+  });
+
   it('«اعتماد طلب الرصيد» is a sheet judgement too: the charge it wrote is never offered by a later, lower sheet', async () => {
     // Morning: the sheet higher by exactly the pending 500 — ✓ approves it, a `charge` line.
     const a = await mkCard('wataniya', 'EGYCASH-MORNING', 1000, { requestedAmount: 500 });

@@ -11,6 +11,7 @@ import {
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
+  addCardBlockOf,
   addCardRefusalOf,
   cardAfterLink,
   chassisOfName,
@@ -290,6 +291,29 @@ describe('the refusals', () => {
     );
     // A number another card holds: the usual «already exists».
     expect(addCardRefusalOf(new ApiError(ErrorCodes.DUPLICATE, 'x', 409))).toBeNull();
+  });
+
+  it('«إضافة»: the sheet’s name not this company’s card name, or the whole sheet another company’s', () => {
+    const layout = (field: string, code: string): ApiError =>
+      new ApiError(ErrorCodes.FLEET_FUEL_SHEET_LAYOUT, 'x', 422, [{ field, code, message: field }]);
+    expect(addCardRefusalOf(layout('name', 'WRONG_COMPANY'))).toBe('nameOtherCompany');
+    expect(addCardRefusalOf(layout('name', 'TOO_LONG'))).toBe('nameTooLong');
+    expect(addCardRefusalOf(layout('company', 'WRONG_COMPANY'))).toBe('wrongCompany');
+    // A layout refusal of the upload is not «إضافة»'s.
+    expect(addCardRefusalOf(layout('file', 'MISSING_HEADER'))).toBeNull();
+  });
+
+  it('«إضافة» is not offered on a row the server would refuse — as it reads the name', () => {
+    // A Wataniya sheet of mixed prefixes: the Chill Out row — the longer prefix wins.
+    expect(addCardBlockOf({ name: 'EGYCASHTCS-STRAY' }, 'wataniya')).toBe('nameOtherCompany');
+    expect(addCardBlockOf({ name: ' egycash-1781 ' }, 'chillout')).toBe('nameOtherCompany');
+    expect(addCardBlockOf({ name: 'EGYCASHTCS-1781-312986' }, 'chillout')).toBeNull();
+    expect(addCardBlockOf({ name: 'EGYCASH-1781' }, 'wataniya')).toBeNull();
+    // No company prefix: nothing to refuse on it.
+    expect(addCardBlockOf({ name: 'TRAVEL 1' }, 'wataniya')).toBeNull();
+    // `FleetFuelCardNameSchema`: at most 120.
+    expect(addCardBlockOf({ name: `EGYCASH-${'9'.repeat(112)}` }, 'wataniya')).toBeNull();
+    expect(addCardBlockOf({ name: `EGYCASH-${'9'.repeat(113)}` }, 'wataniya')).toBe('nameTooLong');
   });
 });
 

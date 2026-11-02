@@ -14,7 +14,7 @@ import { useAppSelector } from '../../../store';
 import { ApiError } from '../../../shared/lib/api-client';
 import { custodyPlural, type CustodyCountForm } from './custody-words';
 import { decidedCardIds, movedCardIds } from './fuel-reconcile';
-import { addCardRefusalOf, linkRefusalOf } from './fuel-reconcile-links';
+import { CARD_NAME_MAX, addCardRefusalOf, linkRefusalOf } from './fuel-reconcile-links';
 
 export type ReconcileCountNoun =
   'card' | 'cardOf' | 'cardUnit' | 'row' | 'repeatedRow' | 'times' | 'daysAgo';
@@ -175,6 +175,10 @@ export const addCardRefusalWords = (error: unknown): ReconcileWords | null => {
           numberRequired: 'fleet.fuelCards.reconcile.refusal.numberRequired',
           numberMismatch: 'fleet.fuelCards.reconcile.refusal.numberMismatch',
           added: 'fleet.fuelCards.reconcile.refusal.cardAdded',
+          nameOtherCompany: 'fleet.fuelCards.reconcile.refusal.nameOtherCompany',
+          nameTooLong: 'fleet.fuelCards.reconcile.refusal.nameTooLong',
+          wrongCompany: 'fleet.fuelCards.reconcile.refusal.wrongCompany',
         }[refusal],
+        ...(refusal === 'nameTooLong' ? { values: { max: CARD_NAME_MAX } } : {}),
       };
 };

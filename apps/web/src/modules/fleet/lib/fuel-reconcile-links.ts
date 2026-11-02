@@ -8,6 +8,8 @@
 // its own; a pair waiting for the card-number repair (`inRepair`) is shown with its ✓ off.
 import {
   ErrorCodes,
+  FLEET_FUEL_SHEET_NAME_PREFIX,
+  FleetFuelCardNameSchema,
   type DecideFleetFuelLinks,
   type FleetFuelCardCompany,
   type FleetFuelCardDto,
@@ -228,15 +230,64 @@ export const numberFitsSheet = (typed: string, from: FromSheet): boolean => {
   return digits.endsWith(from.last4) && digits.startsWith(from.prefix);
 };
 
-/** What the server refused «إضافة» for: the number missing or not the sheet's; else `null`. */
-export const addCardRefusalOf = (
-  error: unknown,
-): 'numberRequired' | 'numberMismatch' | 'added' | null => {
+/** The most a card's name may hold (`FleetFuelCardNameSchema`) — what «إضافة» is held to. */
+export const CARD_NAME_MAX = FleetFuelCardNameSchema.maxLength ?? 120;
+
+/** The company a card name's prefix says («EGYCASH-» / «EGYCASHTCS-»), as the server reads it. */
+const companyOfName = (name: string): FleetFuelCardCompany | null => {
+  const normal = name.normalize('NFKC').trim().replace(/\s+/gu, ' ').toUpperCase();
+  const prefixes = (
+    Object.entries(FLEET_FUEL_SHEET_NAME_PREFIX) as [FleetFuelCardCompany, string][]
+  )
+    .map(([company, prefix]) => ({ company, prefix: prefix.toUpperCase() }))
+    // The longer first: «EGYCASHTCS-» is not read as «EGYCASH-».
+    .sort((a, b) => b.prefix.length - a.prefix.length);
+  return (
+    prefixes.find(({ prefix }) => normal === prefix.replace(/-$/u, '') || normal.startsWith(prefix))
+      ?.company ?? null
+  );
+};
+
+/**
+ * Why a sheet-only row cannot be added from the sheet — as the server would refuse it: its name
+ * carries the other company's prefix, or is not a card name (longer than `CARD_NAME_MAX`). `null`
+ * when «إضافة» may be offered.
+ */
+export const addCardBlockOf = (
+  row: Pick<FleetFuelReconcileNewCardDto, 'name'>,
+  company: FleetFuelCardCompany,
+): 'nameOtherCompany' | 'nameTooLong' | null => {
+  const own = companyOfName(row.name);
+  if (own !== null && own !== company) return 'nameOtherCompany';
+  return FleetFuelCardNameSchema.safeParse(row.name).success ? null : 'nameTooLong';
+};
+
+export type AddCardRefusal =
+  | 'numberRequired'
+  | 'numberMismatch'
+  | 'added'
+  | 'nameOtherCompany'
+  | 'nameTooLong'
+  | 'wrongCompany';
+
+/**
+ * What the server refused «إضافة» for: the number missing or not the sheet's, the row already
+ * added, the sheet's name not this company's card name (another company's prefix, too long), or
+ * the whole sheet another company's; else `null`.
+ */
+export const addCardRefusalOf = (error: unknown): AddCardRefusal | null => {
   if (!(error instanceof ApiError)) return null;
   if (error.code === ErrorCodes.FLEET_FUEL_SHEET_CARD_NUMBER) {
     return (error.details ?? []).some((detail) => detail.code === 'REQUIRED')
       ? 'numberRequired'
       : 'numberMismatch';
+  }
+  if (error.code === ErrorCodes.FLEET_FUEL_SHEET_LAYOUT) {
+    const said = (field: string, code: string): boolean =>
+      (error.details ?? []).some((detail) => detail.field === field && detail.code === code);
+    if (said('name', 'WRONG_COMPANY')) return 'nameOtherCompany';
+    if (said('name', 'TOO_LONG')) return 'nameTooLong';
+    return said('company', 'WRONG_COMPANY') ? 'wrongCompany' : null;
   }
   return error.code === ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED ? 'added' : null;
 };

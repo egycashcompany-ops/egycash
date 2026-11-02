@@ -22,9 +22,11 @@ class FleetFuelReconciliationRepository extends BaseRepository<FleetFuelReconcil
   }
 
   /**
-   * When a company sheet last JUDGED each of `cardIds`, newest first per card: a line decided on it
-   * (✓ or ✗ — `decidedAt`, which is also when a «اعتماد طلب الرصيد» wrote its charge), or a read
-   * that showed it equal (`readAt`). A card no sheet judged is absent.
+   * When a company sheet last JUDGED each of `cardIds`, newest first per card: a line decided ✓ on
+   * it (`decidedAt`, which is also when a «اعتماد طلب الرصيد» wrote its charge — a ✓ is refused
+   * when the card moved after the read, so nothing lies between the two), a line decided ✗ on it,
+   * or a read that showed it equal (both `readAt`: a ✗ has no such check, and a sheet read before a
+   * top-up never showed it, however late its ✗). A card no sheet judged is absent.
    */
   async judgedAt(cardIds: readonly Types.ObjectId[]): Promise<Map<string, Date>> {
     if (cardIds.length === 0) return new Map();
@@ -59,7 +61,16 @@ class FleetFuelReconciliationRepository extends BaseRepository<FleetFuelReconcil
                       },
                     },
                     as: 'line',
-                    in: { cardId: '$$line.cardId', at: '$$line.decidedAt' },
+                    in: {
+                      cardId: '$$line.cardId',
+                      at: {
+                        $cond: [
+                          { $eq: ['$$line.decision', 'reject'] },
+                          '$readAt',
+                          '$$line.decidedAt',
+                        ],
+                      },
+                    },
                   },
                 },
                 {

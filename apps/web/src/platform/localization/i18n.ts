@@ -4312,6 +4312,16 @@ const en: Record<string, string> = {
   'fleet.fuelCards.history.cancelledNote': 'Not changed or removed',
   'fleet.fuelCards.history.kind.sheetLink': 'Moved by the company sheet',
   'fleet.fuelCards.history.sheetLink': 'Moved from {{from}} to {{to}} — company sheet',
+  'fleet.fuelCards.reconcile.refusal.nameOtherCompany':
+    'The sheet names this card as another company’s card — nothing was written.',
+  'fleet.fuelCards.reconcile.refusal.nameTooLong':
+    'The card’s name in the sheet is longer than {{max}} characters — nothing was written.',
+  'fleet.fuelCards.reconcile.refusal.wrongCompany':
+    'The sheet is another company’s — nothing was written. Upload it again under its own company.',
+  'fleet.fuelCards.reconcile.newCards.blockedOtherCompany':
+    'Not added from here: the sheet names it as another company’s card',
+  'fleet.fuelCards.reconcile.newCards.blockedTooLong':
+    'Not added from here: its name is longer than {{max}} characters',
   'fleet.fuelCards.history.kind.sheetAdjust': 'Adjusted from the company sheet',
   'fleet.fuelCards.history.kind.sheetReject': 'Sheet adjustment rejected',
   'fleet.fuelCards.history.by': 'By {{name}}',
@@ -15588,6 +15598,16 @@ const ar: Record<string, string> = {
   'fleet.fuelCards.history.cancelledNote': 'لا يُعدَّل ولا يُحذف',
   'fleet.fuelCards.history.kind.sheetLink': 'نقل من شيت الشركة',
   'fleet.fuelCards.history.sheetLink': 'نُقل من {{from}} إلى {{to}} — شيت الشركة',
+  'fleet.fuelCards.reconcile.refusal.nameOtherCompany':
+    'الشيت يذكر هذا الكارت باسم كارت لشركة أخرى — لم يُسجَّل شيء.',
+  'fleet.fuelCards.reconcile.refusal.nameTooLong':
+    'اسم الكارت في الشيت أطول من {{max}} حرفًا — لم يُسجَّل شيء.',
+  'fleet.fuelCards.reconcile.refusal.wrongCompany':
+    'الشيت لشركة أخرى — لم يُسجَّل شيء. ارفعه مرة أخرى مع اختيار شركته.',
+  'fleet.fuelCards.reconcile.newCards.blockedOtherCompany':
+    'لا يُضاف من هنا: الشيت يذكره باسم كارت لشركة أخرى',
+  'fleet.fuelCards.reconcile.newCards.blockedTooLong':
+    'لا يُضاف من هنا: اسمه أطول من {{max}} حرفًا',
   'fleet.fuelCards.history.kind.sheetAdjust': 'تعديل من شيت الشركة',
   'fleet.fuelCards.history.kind.sheetReject': 'رفض تعديل الشيت',
   'fleet.fuelCards.history.by': 'بواسطة {{name}}',

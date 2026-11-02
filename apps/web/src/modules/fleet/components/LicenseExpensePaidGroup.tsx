@@ -461,7 +461,9 @@ export const useAddToCatalog = (): ((
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const catalog = useFleetCatalog('licenseExpenseItem');
-  const createCatalogItem = useCreateCatalogItem();
+  // Its catch words every failure, on the setup page and in the editor alike — so the global toast
+  // is not raised as well: one refusal, one toast.
+  const createCatalogItem = useCreateCatalogItem(() => true);
   return async (kind, label) => {
     // ALREADY ON THE LIST — under the other memo, or archived: the line is linked to it instead of
     // being refused as a duplicate and left a loose line. Which memo it belongs to stays as

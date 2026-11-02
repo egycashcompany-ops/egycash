@@ -942,6 +942,11 @@ describe('«او امسح بند انا ضيفته» — the bin on the rows som
     const page = readFileSync(join(HERE, 'LicenseExpenseSetupPage.tsx'), 'utf8');
     expect(page).toContain('useUpdateCatalogItem(() => true)');
     expect(page).toContain('useCreateCatalogItem(() => true)');
+    // «إضافة إلى القائمة» from a template line (`useAddToCatalog`, here and in the editor) words
+    // every failure in its own catch — so it opts out of the global toast too.
+    const group = readFileSync(join(HERE, '../components/LicenseExpensePaidGroup.tsx'), 'utf8');
+    expect(group).toContain('useCreateCatalogItem(() => true)');
+    expect(group).not.toContain('useCreateCatalogItem()');
   });
 
   it('deletes through the server and re-reads the lists and the set-up — not the memos', async () => {

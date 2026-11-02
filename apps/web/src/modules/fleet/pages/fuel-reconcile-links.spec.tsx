@@ -382,6 +382,33 @@ describe('«كروت في الشيت وليست في النظام»', () => {
     expect(newOf({}, false)).not.toContain('data-recon-add=');
   });
 
+  it('a row the server would refuse is not offered «إضافة»: the other company’s name, a name too long', () => {
+    const blocked = (rows: FleetFuelReconcileNewCardDto[]): string =>
+      renderToStaticMarkup(
+        <Provider store={storeOf(ALL)}>
+          <ReconcileNewCards
+            rows={rows}
+            company="wataniya"
+            added={{}}
+            mayAdd
+            onAdd={() => undefined}
+          />
+        </Provider>,
+      );
+    // A Wataniya sheet of mixed prefixes (no wrong-company stop): the stray Chill Out row.
+    const stray = blocked([{ ...NEW[0]!, sheetRow: 7, name: 'EGYCASHTCS-STRAY' }]);
+    expect(stray).not.toContain('data-recon-add="7"');
+    expect(stray).toContain('data-recon-add-blocked="7"');
+    expect(stray).toContain(ar(`${N}blockedOtherCompany`));
+    const long = blocked([{ ...NEW[0]!, sheetRow: 8, name: `EGYCASH-${'9'.repeat(120)}` }]);
+    expect(long).not.toContain('data-recon-add="8"');
+    expect(long).toContain(ar(`${N}blockedTooLong`, { max: 120 }));
+    // Its own company's name: offered as usual.
+    const own = blocked([{ ...NEW[0]!, sheetRow: 9, name: 'EGYCASH-1781-312986' }]);
+    expect(own).toContain('data-recon-add="9"');
+    expect(own).not.toContain('data-recon-add-blocked=');
+  });
+
   it('the page offers «إضافة» only with both grants — the card opens at the sheet’s balance', () => {
     // As the server asks: `fleetFuelCard.create` for the card, `fleetFuelCharge.approve` for the
     // money it opens with.

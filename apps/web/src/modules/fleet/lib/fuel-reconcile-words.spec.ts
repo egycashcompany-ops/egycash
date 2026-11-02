@@ -22,6 +22,7 @@ import {
   useReconcileCount,
   type ReconcileCount,
 } from './fuel-reconcile-words';
+import { isAddCardRefusal } from './fuel-reconcile-links';
 
 /** The hook, read once under a store in `locale`. */
 const countIn = (locale: Locale): ReconcileCount => {
@@ -210,8 +211,9 @@ describe('6a: a refused cancel, in the screen’s words', () => {
 describe('6b: a refused link or «إضافة», in the screen’s words', () => {
   const refused = (code: string, detail: string, field = 'cardIds', status = 409): ApiError =>
     new ApiError(code, 'x', status, [{ field, code: detail, message: 'A1' }]);
-  const said = (words: { key: string } | null): string | null =>
-    words === null ? null : translate('ar', words.key);
+  const said = (
+    words: { key: string; values?: Record<string, string | number> } | null,
+  ): string | null => (words === null ? null : translate('ar', words.key, words.values));
 
   it('a changed card, one decided, a held slot, the repair, a missing pick', () => {
     const R = 'fleet.fuelCards.reconcile.refusal.';
@@ -249,5 +251,29 @@ describe('6b: a refused link or «إضافة», in the screen’s words', () => 
       said(addCardRefusalWords(refused(ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED, 'DECIDED'))),
     ).toBe(translate('ar', `${R}cardAdded`));
     expect(addCardRefusalWords(new ApiError(ErrorCodes.DUPLICATE, 'x', 409))).toBeNull();
+  });
+
+  it('«إضافة»: a name the server refuses, or another company’s sheet — worded, never English', () => {
+    const R = 'fleet.fuelCards.reconcile.refusal.';
+    const layout = (field: string, code: string): ApiError =>
+      new ApiError(
+        ErrorCodes.FLEET_FUEL_SHEET_LAYOUT,
+        'the sheet names this card as another company’s — nothing was written',
+        422,
+        [{ field, code, message: field }],
+      );
+    expect(said(addCardRefusalWords(layout('name', 'WRONG_COMPANY')))).toBe(
+      translate('ar', `${R}nameOtherCompany`),
+    );
+    expect(said(addCardRefusalWords(layout('name', 'TOO_LONG')))).toBe(
+      translate('ar', `${R}nameTooLong`, { max: 120 }),
+    );
+    expect(said(addCardRefusalWords(layout('company', 'WRONG_COMPANY')))).toBe(
+      translate('ar', `${R}wrongCompany`),
+    );
+    // So the hook's global toast stays quiet: one refusal, one toast — the dialog's.
+    expect(isAddCardRefusal(layout('name', 'WRONG_COMPANY'))).toBe(true);
+    expect(isAddCardRefusal(layout('name', 'TOO_LONG'))).toBe(true);
+    expect(isAddCardRefusal(layout('company', 'WRONG_COMPANY'))).toBe(true);
   });
 });

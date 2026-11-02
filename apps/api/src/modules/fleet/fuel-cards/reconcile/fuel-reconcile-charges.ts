@@ -10,10 +10,13 @@
 // the body's word for which charges were candidates. A candidate is a live, uncancelled `charge`
 // of a card the sheet is lower on, written after the card's last sheet JUDGEMENT (that sheet has
 // already judged anything earlier) and within the last 31 days, newest first. A judgement is any
-// sheet that said something about the card: a ✓ or ✗ decided on it — its `sheetAdjust` /
-// `sheetReject` line, or the `charge` a «اعتماد طلب الرصيد» wrote (no reconciliation line of its
-// own: the session's decided line says it) — or a read that showed it EQUAL (nothing written
-// then: the session's `equalCardIds` say it).
+// sheet that said something about the card: a ✓ decided on it — its `sheetAdjust` line, or the
+// `charge` a «اعتماد طلب الرصيد» wrote (no reconciliation line of its own: the session's decided
+// line says it) — a ✗ decided on it, or a read that showed it EQUAL (nothing written then: the
+// session's `equalCardIds` say it). A ✗ judges AS OF ITS SHEET'S READ, never its decision: unlike
+// a ✓ it is not refused when the card moved since, and a top-up written between the read and a
+// late ✗ is one that sheet never showed — so its `sheetReject` line's time is not the start point
+// (sessions are never deleted: the session's `readAt` stands for every ✗).
 //
 // AT THE DECISION each named charge must be one of its card's stored candidates, still live and
 // uncancelled, and the charges named for one card may not add up to more than the system holds
@@ -54,7 +57,8 @@ export const chargeCandidatesOf = async (
       {
         $match: {
           cardId: { $in: ids },
-          kind: { $in: ['sheetAdjust', 'sheetReject'] },
+          // A ✗'s `sheetReject` is its DECISION time — the session's read stands for it instead.
+          kind: 'sheetAdjust',
           isDeleted: false,
         },
       },

@@ -47,7 +47,7 @@ from .geometry import (
 )
 from .orientation import face_turn, layout_turn, looks_like_back, turn, upright
 from .layout import BACK_FIELDS, FRONT_FIELDS, FieldBox
-from .nid import Repair, gender_agrees, is_structurally_valid, salvage_digits
+from .nid import DIGIT_CONFUSIONS, Repair, gender_agrees, is_structurally_valid, salvage_digits
 from .preprocess import (
     DIGIT_VARIANTS,
     TEXT_MARGIN,
@@ -451,7 +451,11 @@ def _process_side(
 
     # Read first, assign second (see rows.py).
     started = time.perf_counter()
-    rows = read_by_rows(image, side, recognizer)
+    # A photo rejected for blur or glare is read once: the retries cannot sharpen it, the review
+    # asks for a new photo, and they cost a live card 25 s. Too small is still retried, since a
+    # zoomed read is what rescues a card held far away.
+    hopeless = prepared.quality.verdict == "reject" and "too_small" not in prepared.quality.reasons
+    rows = read_by_rows(image, side, recognizer, retry=not hopeless)
     timings.record(f"{side}:rows", started)
     if rows is not None:
         result.lines = list(rows.lines)
@@ -470,6 +474,9 @@ def _process_side(
             data = _row_field(
                 source, name, raw, score, bounds, recognizer, result, trace, side,
                 fence=rows.fences.get(name, (None, None)),
+                # The back's copy of the number only cross-checks the front's. On a back already
+                # rejected it cannot, and its six filters and widened re-reads took 12 s of 25.
+                quick=hopeless and side == "back",
             )
             _unbind(recognizer)
             timings.record(f"recognize:{side}:{name}", started)
@@ -555,8 +562,12 @@ def _row_field(
     trace: Trace,
     side: str,
     fence: tuple[float | None, float | None] = (None, None),
+    quick: bool = False,
 ) -> dict[str, Any]:
-    """Finalize a field the row reader placed. Where it was read stays the row reader's answer."""
+    """Finalize a field the row reader placed. Where it was read stays the row reader's answer.
+
+    `quick`: the number as the row reader read it, with no filters and no widened re-reads.
+    """
     height, width = image.shape[:2]
     left, top, right, bottom = bounds
     box = FieldBox(
@@ -568,6 +579,13 @@ def _row_field(
         kind="digits" if name in ("nationalId", "nationalIdExpiry") else "text",
     )
     label = f"{side} / {name}"
+    if name == "nationalId" and quick:
+        page = Candidate(variant="page", digits=_digits_only(raw), score=score)
+        result.nid_candidates = [page]
+        settled = combine([page])
+        if settled is None:
+            return _finalize(name, raw, score)
+        return _finalize(name, settled.value, settled.score, settled)
     if name == "nationalId":
         page = Candidate(variant="page", digits=_digits_only(raw), score=score)
         bind = getattr(recognizer, "bind", None)
@@ -680,11 +698,51 @@ def _check_birth(
         data["confidence"] = cap(band(best.score), "medium")
         return
     data["birthDateMismatch"] = True
+    # Neither agrees exactly, and on a soft photo the date and the number blur the same way (on a
+    # live card a ٥ in the printed day read ٠, and the chosen number had a ٣ read ٢, while another
+    # filter had the number right). A read whose date digits differ from the printed ones only by digits
+    # a blur swaps, and in fewer places than the chosen one, is the nearer to both reads: it wins,
+    # at medium at most. Strictly fewer, so a tie keeps what was chosen.
+    nearest = _nearest_to_birth(value, prefix, candidates)
+    if nearest is not None:
+        data.update(value=nearest.digits, valid=True, score=nearest.score, birthDateNear=True)
+        data["confidence"] = cap(band(nearest.score), "medium")
+        return
     # The printed date is the faint one, partly under the emblem, and was misread more often than
     # the number in the photos tried: it is held against the number, not above it. A number read
     # the same way by most filters stands; one read once, or assembled, is not trusted past medium.
     if data.get("agreement") not in ("unanimous", "majority", "both-sides") or not data.get("valid"):
         data["confidence"] = cap(data.get("confidence", "low"), "medium" if data.get("valid") else "low")
+
+
+def _blur_distance(digits: str, prefix: str) -> int | None:
+    """Places where a number's first seven digits differ from the printed date's, or None when one
+    of them differs by a digit a blur does not make of the other."""
+    differences = 0
+    for read, printed in zip(digits[:7], prefix):
+        if read == printed:
+            continue
+        if read not in DIGIT_CONFUSIONS.get(printed, ()) and printed not in DIGIT_CONFUSIONS.get(read, ()):
+            return None
+        differences += 1
+    return differences
+
+
+def _nearest_to_birth(value: str, prefix: str, candidates: list[Candidate]) -> Candidate | None:
+    """The valid read strictly nearer the printed date than `value`, by blur-confusable digits."""
+    current = _blur_distance(value, prefix) if len(value) == 14 else None
+    scored = [
+        (distance, c) for c in candidates
+        if len(c.digits) == 14 and c.digits != value and is_structurally_valid(c.digits)
+        and (distance := _blur_distance(c.digits, prefix)) is not None
+    ]
+    if not scored:
+        return None
+    best = min(distance for distance, _ in scored)
+    if current is not None and best >= current:
+        return None
+    nearest = [c for distance, c in scored if distance == best]
+    return max(nearest, key=lambda c: (sum(o.digits == c.digits for o in candidates), c.score))
 
 
 #: How much a widened ID row is enlarged before the ensemble reads it.
@@ -785,7 +843,7 @@ def _printed_gender(lines: list[Line]) -> str | None:
 _BACK_MARKERS = frozenset(
     rasm_fold(word)
     for word in ("ذكر", "أنثى", "مسلم", "مسلمة", "مسيحي", "مسيحية", "أعزب", "عزباء", "متزوج",
-                 "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة", "سارية", "الرقم")
+                 "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة", "آنسة", "سارية", "الرقم")
 )
 
 

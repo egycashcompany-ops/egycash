@@ -11,6 +11,7 @@ import {
   type OcrExtractionDto,
   type OcrFieldDto,
   type OcrImagesDto,
+  type OcrSideQualityDto,
 } from '@ecms/contracts';
 import { type AuthContext } from '../../../../shared/types';
 
@@ -42,6 +43,12 @@ export interface RawOcrResult {
   nationalIdExpiry?: OcrFieldDto;
   /** The card as read and the holder's photograph, for the review to show. Never stored. */
   images?: OcrImagesDto;
+  /**
+   * What the reader thought of each photograph. The review needs it, not only the log: a side the
+   * reader rejected produced guesses, and a guess shown as a value is how a wrong religion gets
+   * into a record. Optional — a provider that reports none leaves the review as it was.
+   */
+  quality?: { front?: OcrSideQualityDto; back?: OcrSideQualityDto };
 }
 
 export interface NationalIdOcrProvider {
@@ -115,5 +122,6 @@ export const extractNationalIdFields = async (input: OcrInput): Promise<OcrExtra
             governorate: parsed.governorate,
           },
     ...(raw.images === undefined ? {} : { images: raw.images }),
+    ...(raw.quality === undefined ? {} : { quality: raw.quality }),
   };
 };

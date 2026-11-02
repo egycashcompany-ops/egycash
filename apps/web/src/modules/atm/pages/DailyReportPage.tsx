@@ -165,7 +165,7 @@ export const DailyReportPage = (): JSX.Element => {
   return (
     <PageContainer fullHeight>
       {/* The board frame (`shared/ui/board-scroll.ts`, 2026-10-27 «تثبت الفورم والفلتر وتخلي الجدول
-          بس هو اللى يعمل Scroll»): on a computer the title and the day keep their place, and the two
+          بس هو اللى يعمل Scroll»): on a computer the title and the period keep their place, and the two
           tables side by side take the height that is left — each column scrolls its own rows. */}
       <div className={BOARD_FRAME}>
         {/* The period on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي بجانب

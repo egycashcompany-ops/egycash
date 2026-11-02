@@ -80,9 +80,10 @@ ECMS" means.
   single `date`, which a link from before the period still carries). The answer names the period
   it counted (`from`, `to`; `date` is the first day, for a screen older than the period). The
   page takes the done pages' «من / إلى» fields and ladder (`doneRange`, `DoneRangeBar`); an empty
-  period says «لا توجد عمليات في هذه الفترة». No cap on the period: the answer is one row per bank
-  per kind whatever its length, and the counts are one aggregation per kind over the branch's
-  operations.
+  period of more than one day says «لا توجد عمليات في هذه الفترة», a single day still «لا توجد
+  عمليات في هذا اليوم». No cap on the period: the answer is one row per bank per kind whatever its
+  length, and the counts are one aggregation per kind over the operations in the caller's scope —
+  one branch, or every branch on «كل الشركة».
 - **D4 — no `openedAt >= today` floor on the open lists.** The legacy floor (contad_app.js:263)
   made an open row with a past open date invisible on every screen forever — un-closable. Open is
   open; the client still renders non-today rows as the grey carried-over group with no timer,

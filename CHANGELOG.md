@@ -536,8 +536,9 @@ its entry here in the same PR.
   place of the one day, today in both by default. For each bank the two tables count every
   replenishment and maintenance opened from the first day to the last, both included, and how many
   of them are still open. One day filled in serves as both, a «إلى» before the «من» reads the days
-  between, and a link that names a single day (`?date=`) still opens on that day. An empty period
-  says «لا توجد عمليات في هذه الفترة».
+  between, and a link that names a single day (`?date=`) still opens on that day. An empty period of
+  more than one day says «لا توجد عمليات في هذه الفترة»; a single day, today's included, still says
+  «لا توجد عمليات في هذا اليوم».
 - **Every ATM page puts its row beside the title.** «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان
   عشان نستفيد بالمساحة (واعمل الحركة دي في كل الصفحات بتاعت ATM)». The form, filters or date bar
   that sat under the title now share the title's line on a computer, and the table gets that

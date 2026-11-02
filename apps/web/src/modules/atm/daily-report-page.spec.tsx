@@ -1,7 +1,11 @@
 // /atm/reports/daily «تقرير اليوم», rendered from a pre-filled query cache:
 //
-//   · the day sits in the header, on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form
-//     يبقي بجانب العنوان عشان نستفيد بالمساحة»);
+//   · the period, «من … إلى …», sits in the header, on the title's line (2026-11-02, «عايز تطلع
+//     الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»);
+//   · it is a period, today by default (2026-11-02, «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار
+//     فترة من إلى .. بس الـ Default يكون اليوم»): one bound serves as both, a «إلى» before the «من»
+//     reads the days between, a `?date=` link opens on its day, and an empty period of more than
+//     one day says so in its own words;
 //   · each of the two tables has a column filter per column (2026-11-02, «فلتر لكل عمود», then «لأ
 //     عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select»): a drop-down list of the
 //     values the column's cells show, several of them pickable — and the totals line under a table

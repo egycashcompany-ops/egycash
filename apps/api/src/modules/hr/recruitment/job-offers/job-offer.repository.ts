@@ -146,6 +146,28 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
     return rows.map((row) => ({ applicantId: String(row._id), since: row.since }));
   }
 
+  /**
+   * Which of these applicants hold an accepted offer — the same gate as below, asked about a page
+   * at once.
+   *
+   * One query against `ix_applicant_createdAt` rather than one per row. The caller is the folders
+   * view, which must know for every folder on screen whether its applicant is about to be hired:
+   * in the window between accepting an offer and the employee row existing, neither the applicant's
+   * status nor an employee row says so, and that is exactly when the card is about to be copied.
+   */
+  async findApplicantIdsWithAcceptedOffer(applicantIds: readonly string[]): Promise<Set<string>> {
+    const ids = applicantIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (ids.length === 0) return new Set();
+    const rows = await this.model
+      .find({ applicantId: { $in: ids }, status: 'accepted', supersededAt: null, isDeleted: false })
+      .select({ applicantId: 1 })
+      .lean<{ applicantId: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((row) => String(row.applicantId)));
+  }
+
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
   async findAcceptedByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
@@ -163,7 +185,12 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   /** Sent offers whose validity has lapsed as of `asOf` — the automatic-expiration sweep. */
   async findOverdueSent(asOf: Date, limit = 500): Promise<JobOfferDoc[]> {
     return this.model
-      .find({ status: 'sent', isDeleted: false, supersededAt: null, 'terms.validUntil': { $lte: asOf } })
+      .find({
+        status: 'sent',
+        isDeleted: false,
+        supersededAt: null,
+        'terms.validUntil': { $lte: asOf },
+      })
       .limit(limit)
       .lean<JobOfferDoc[]>()
       .exec();
@@ -172,11 +199,14 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   private buildFilter(f: JobOfferListFilter): FilterQuery<JobOfferDoc> {
     const clauses: FilterQuery<JobOfferDoc>[] = [];
     if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
-    if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
+    if (f.applicantId !== undefined)
+      clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.hired !== undefined) {
       clauses.push(
-        (f.hired ? { hiredEmployeeId: { $ne: null } } : { hiredEmployeeId: null }) as FilterQuery<JobOfferDoc>,
+        (f.hired
+          ? { hiredEmployeeId: { $ne: null } }
+          : { hiredEmployeeId: null }) as FilterQuery<JobOfferDoc>,
       );
     }
     if (f.search !== undefined && f.search.trim() !== '') {

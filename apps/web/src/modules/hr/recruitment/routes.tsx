@@ -3,7 +3,7 @@
 // permission-gated and renders its real screen — all seven recruitment stages are now built
 // (Applicants → … → Hiring Documents). Employees + Employee Files moved to the
 // employee-management module (frozen Employee design). Default export so React.lazy can import it.
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { RecruitmentLayout } from './RecruitmentLayout';
@@ -143,7 +143,9 @@ export default function RecruitmentRoutes(): JSX.Element {
             evaluations subtree next door addresses phases by id because its links are built at
             runtime from the catalog it just read. */}
         <Route path="evaluation-batches">
-          <Route index element={<EvaluationBatchesPage />} />
+          {/* No unscoped list: «شيل دا /evaluation-batches». Every batch belongs to one phase and
+              is reached from that phase's page; an old bookmark lands on the evaluations. */}
+          <Route index element={<Navigate to="/evaluations" replace />} />
           <Route path="phase/:phaseKey" element={<EvaluationBatchesPage />} />
           <Route path=":id" element={<EvaluationBatchDetailPage />} />
         </Route>

@@ -22,7 +22,7 @@ import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
-import { applicationRepository } from '../../src/platform/applications';
+import { applicationRepository, applicationService } from '../../src/platform/applications';
 import { applicationCategoryRepository } from '../../src/platform/application-categories';
 import { userApplicationRepository } from '../../src/platform/user-applications';
 import { syncNavigationCatalog } from '../../src/seed-navigation';
@@ -276,6 +276,49 @@ describe('navigation catalog boot sync', () => {
       applicationId: leaveApp?._id,
     });
     expect(grant, 'the boot sync must not write application grants any more').toBeNull();
+  });
+
+  /**
+   * «شيل بقي دفعات الفحص الأمني ودفعات اختبار القيادة من المينو اللى في الجنب». A live install
+   * already holds both rows, and the sync never deletes — so the catalog retires them: inactive,
+   * ONCE, and a row an administrator switches back on afterwards stays on.
+   */
+  it('retires the rows the catalog stopped offering, once, and leaves one switched back on', async () => {
+    const retired = ['/evaluation-batches/phase/securityCheck', '/evaluation-batches/phase/drivingTest'];
+    const hr = await applicationCategoryRepository.findOne({ 'name.en': 'HR' });
+    expect(hr).not.toBeNull();
+    // A pre-retirement install: both rows live and active, the tile at no retirement yet.
+    for (const [index, route] of retired.entries()) {
+      if ((await applicationRepository.findOne({ route })) !== null) continue;
+      await applicationService.create(
+        {
+          name: { ar: 'دفعات', en: 'Batches' },
+          icon: 'shield',
+          route,
+          categoryId: String(hr?._id),
+          sortOrder: 900 + index,
+          permissionKey: index === 0 ? 'securityCheck.view' : 'drivingTest.view',
+        },
+        adminId,
+      );
+    }
+    const tile = await applicationCategoryRepository.findOne({ 'name.en': 'HR' });
+    await applicationCategoryRepository.updateById(
+      String(tile?._id),
+      { retiredRevision: 0 },
+      { by: adminId, version: tile?.__v ?? 0 },
+    );
+
+    await syncNavigationCatalog();
+    for (const route of retired) {
+      expect((await applicationRepository.findOne({ route }))?.status, route).toBe('inactive');
+    }
+
+    // An administrator switches one back on; the next boot leaves it on.
+    const back = await applicationRepository.findOne({ route: retired[0] as string });
+    await applicationService.update(String(back?._id), { status: 'active', version: back?.__v ?? 0 }, adminId);
+    await syncNavigationCatalog();
+    expect((await applicationRepository.findOne({ route: retired[0] as string }))?.status).toBe('active');
   });
 });
 

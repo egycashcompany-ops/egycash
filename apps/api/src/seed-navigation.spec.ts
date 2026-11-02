@@ -57,7 +57,45 @@ describe('the seeded navigation catalog', () => {
     //
     // So adding a row fails HERE first, on the author's machine, naming the number to change —
     // rather than eight minutes into CI in the one suite that cannot run without a mongod.
-    expect(rows).toHaveLength(139);
+    //
+    // 139 → 137: the two batch rows (security check, driving test) left the sidebar — each phase's
+    // page links to its own batches — and are RETIRED on live installations (see below).
+    expect(rows).toHaveLength(137);
+  });
+
+  /**
+   * A RETIRED ROUTE IS ONE THE CATALOG NO LONGER SEEDS. Retiring a row it still creates would switch
+   * it off on every live installation while a fresh one keeps showing it, and filing one into a
+   * section would put a group heading over a row nobody sees.
+   */
+  it('retires only rows it no longer seeds, and files none of them', () => {
+    const seeded = new Set(rows.map((row) => row.route));
+    const filed = new Set(
+      Object.values(APPLICATION_SECTION_DEFAULTS)
+        .flat()
+        .flatMap((section) => section.routes),
+    );
+    const retired = NAVIGATION_CATALOG.flatMap((c) => c.retired ?? []).flatMap((e) => e.routes);
+    expect(retired.filter((route) => seeded.has(route))).toEqual([]);
+    expect(retired.filter((route) => filed.has(route))).toEqual([]);
+  });
+
+  /** Revisions only climb: a lower one would never be applied on a tile that took a higher one. */
+  it('numbers each module\'s retirements upward, from 1', () => {
+    for (const category of NAVIGATION_CATALOG) {
+      const revisions = (category.retired ?? []).map((entry) => entry.revision);
+      expect(revisions, category.en).toEqual(revisions.map((_, i) => i + 1));
+    }
+  });
+
+  it('retires the two batch rows from HR', () => {
+    const hr = NAVIGATION_CATALOG.find((c) => c.en === 'HR');
+    expect(hr?.retired?.flatMap((e) => e.routes)).toEqual(
+      expect.arrayContaining([
+        '/evaluation-batches/phase/securityCheck',
+        '/evaluation-batches/phase/drivingTest',
+      ]),
+    );
   });
 
   it('offers the consumables right under the mobile lines, on the asset grants', () => {

@@ -162,11 +162,8 @@ describe('candidate and employee do not mix', () => {
       '/evaluations/phases',
       // P-HR-APP §5 — a candidate's own documents, collected before anybody is hired.
       '/applicant-documents',
-      // RW7 — one row per BATCH phase, not one row for "batches". A security check and a driving
-      // test are two errands run by two people; the single mixed screen they used to share is the
-      // thing this pair replaced.
-      '/evaluation-batches/phase/securityCheck',
-      '/evaluation-batches/phase/drivingTest',
+      // No batch rows: each phase's batches are opened from that phase's own page, so the sidebar
+      // no longer lists them («كدا كدا هنوصلهم بالزرارين من داخل كل صفحة»).
       '/job-offers',
       '/applicant-sources',
       '/recruitment-form',

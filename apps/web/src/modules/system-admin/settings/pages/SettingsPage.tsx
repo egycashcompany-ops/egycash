@@ -17,8 +17,10 @@
 //     with a 422 whose message is the only description of the rule that cannot go stale, and the
 //     row prints it verbatim.
 //
-// Grouping is by the key's first segment, which IS the owner by the convention every declaration
-// follows. A key whose owner this screen does not know still appears, under Other.
+// «وحاول تظبط الـ UI بتاعت الصفحة دي عموماً وتقسم الحاجات طبقاً للإدارات أو General». The settings
+// are grouped by DEPARTMENT — General (sign-in, audit, notifications), then each module — and by
+// section inside it (`settings-catalog.ts`). The department tabs filter; «الكل» shows every one of
+// them, one after another. Every row reads in the page's language.
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useT } from '../../../../platform/localization/useT';
@@ -28,40 +30,57 @@ import {
   useMySettings,
   useSettingDefinitions,
 } from '../../../../platform/settings/settings-api';
+import { cn } from '../../../../shared/lib/cn';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { FilterBar } from '../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
-import { Select } from '../../../../shared/ui/form';
 import { EmptyState } from '../../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
-import { SettingRow } from '../components/SettingRow';
+import { SettingRow, useSettingText } from '../components/SettingRow';
+import { SETTING_DEPARTMENTS } from '../lib/settings-catalog';
 import {
-  KNOWN_OWNERS,
-  OTHER_OWNER,
   buildSettingGroups,
+  countRows,
   filterSettingGroups,
-  settingLabelKey,
+  type SettingDepartmentModel,
 } from '../lib/settings-view';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
-  'owner',
+  'dept',
   'q',
 ] as const;
+
+// A count is a bare figure in a pill, as on the tabs: «1 settings» and «2 إعداد» are what a
+// counted noun gets wrong, and the figure needs no noun beside a heading that already names it.
+const CountPill = ({ count }: { count: number }): JSX.Element => (
+  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+    {count}
+  </span>
+);
+
+const tabClass = (selected: boolean): string =>
+  cn(
+    'inline-flex items-center gap-1.5 rounded-t-lg px-4 py-2 text-sm transition-colors',
+    selected
+      ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
+      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',
+  );
 
 export const SettingsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const canEdit = can('setting.edit');
+  const textOf = useSettingText();
 
   // Addressable, like every other list in this module: the filters live in the URL so a screen
   // full of them can be sent to somebody else.
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const query = sp.get('q') ?? '';
-  const owner = sp.get('owner') ?? '';
+  const requested = sp.get('dept') ?? '';
   const setParam = (name: string, value: string): void => {
     const next = new URLSearchParams(sp);
     if (value === '') next.delete(name);
@@ -76,14 +95,30 @@ export const SettingsPage = (): JSX.Element => {
     () => buildSettingGroups(definitions.data ?? [], values.data ?? []),
     [definitions.data, values.data],
   );
-  const visible = useMemo(
-    () => filterSettingGroups(groups, query, owner, (key) => t(settingLabelKey(key))),
-    // `t` is rebuilt on every locale change, which is exactly when the search must be re-run.
-    [groups, query, owner, t],
+  // The search runs over every department, so each tab can say how many of ITS settings match.
+  const searched = useMemo(
+    () =>
+      filterSettingGroups(groups, query, '', (row) => {
+        const text = textOf(row);
+        return `${text.label} ${text.description}`;
+      }),
+    // `t` (inside `textOf`) is rebuilt on every locale change, which is exactly when the search
+    // must be re-run.
+    [groups, query, textOf],
   );
+  // A department the registry has nothing for (or a stale remembered one) falls back to «all».
+  const department = SETTING_DEPARTMENTS.some(
+    (id) => id === requested && groups.some((group) => group.department === id),
+  )
+    ? requested
+    : '';
+  const visible: SettingDepartmentModel[] =
+    department === '' ? searched : searched.filter((group) => group.department === department);
 
-  const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
-  const shown = visible.reduce((sum, group) => sum + group.rows.length, 0);
+  const total = countRows(groups);
+  const shown = countRows(visible);
+  const matchesIn = (id: string): number =>
+    countRows(searched.filter((group) => group.department === id));
 
   return (
     <PageContainer>
@@ -99,8 +134,40 @@ export const SettingsPage = (): JSX.Element => {
         <LoadingState label={t('common.loading')} />
       ) : (
         <div className="space-y-4">
+          <div
+            role="tablist"
+            aria-label={t('systemAdmin.settings.departmentsLabel')}
+            className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={department === ''}
+              className={tabClass(department === '')}
+              onClick={() => setParam('dept', '')}
+            >
+              {t('systemAdmin.settings.departments.all')}
+              <span className="text-xs text-slate-500 dark:text-slate-400">{countRows(searched)}</span>
+            </button>
+            {groups.map((group) => (
+              <button
+                key={group.department}
+                type="button"
+                role="tab"
+                aria-selected={department === group.department}
+                className={tabClass(department === group.department)}
+                onClick={() => setParam('dept', group.department)}
+              >
+                {t(`systemAdmin.settings.departments.${group.department}`)}
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {matchesIn(group.department)}
+                </span>
+              </button>
+            ))}
+          </div>
+
           <FilterBar
-            hasActiveFilters={query !== '' || owner !== ''}
+            hasActiveFilters={query !== '' || department !== ''}
             onClear={() => setSp(new URLSearchParams(), { replace: true })}
           >
             <SearchInput
@@ -108,19 +175,6 @@ export const SettingsPage = (): JSX.Element => {
               onChange={(value) => setParam('q', value)}
               placeholder={t('systemAdmin.settings.searchPlaceholder')}
             />
-            <Select
-              aria-label={t('systemAdmin.settings.ownerFilter')}
-              value={owner}
-              onChange={(event) => setParam('owner', event.target.value)}
-              className="w-auto"
-            >
-              <option value="">{t('systemAdmin.settings.allOwners')}</option>
-              {[...KNOWN_OWNERS, OTHER_OWNER].map((id) => (
-                <option key={id} value={id}>
-                  {t(`systemAdmin.settings.owners.${id}`)}
-                </option>
-              ))}
-            </Select>
             <span className="text-xs text-slate-500 dark:text-slate-400">
               {t('systemAdmin.settings.count', { shown, total })}
             </span>
@@ -136,17 +190,35 @@ export const SettingsPage = (): JSX.Element => {
             <EmptyState title={t('systemAdmin.settings.empty')} />
           ) : (
             visible.map((group) => (
-              <Card key={group.owner}>
-                <CardHeader
-                  title={t(`systemAdmin.settings.owners.${group.owner}`)}
-                  description={t('systemAdmin.settings.groupCount', { count: group.rows.length })}
-                />
-                <CardBody>
-                  {group.rows.map((row) => (
-                    <SettingRow key={row.key} row={row} canEdit={canEdit} />
-                  ))}
-                </CardBody>
-              </Card>
+              <section
+                key={group.department}
+                data-settings-department={group.department}
+                aria-label={t(`systemAdmin.settings.departments.${group.department}`)}
+                className="space-y-3"
+              >
+                {/* Under «all», each department is introduced; under its own tab the tab says it. */}
+                {department === '' && (
+                  <h2 className="flex items-center gap-2 pt-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+                    {t(`systemAdmin.settings.departments.${group.department}`)}
+                    <CountPill count={countRows([group])} />
+                  </h2>
+                )}
+                {group.sections.map((section) => (
+                  <Card key={section.id}>
+                    <CardHeader
+                      title={t(`systemAdmin.settings.sections.${group.department}.${section.id}`)}
+                      actions={<CountPill count={section.rows.length} />}
+                    />
+                    <CardBody>
+                      <div data-settings-section={`${group.department}.${section.id}`}>
+                        {section.rows.map((row) => (
+                          <SettingRow key={row.key} row={row} canEdit={canEdit} />
+                        ))}
+                      </div>
+                    </CardBody>
+                  </Card>
+                ))}
+              </section>
             ))
           )}
         </div>

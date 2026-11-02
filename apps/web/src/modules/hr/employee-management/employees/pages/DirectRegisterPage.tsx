@@ -19,7 +19,6 @@ import { useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
-import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
@@ -33,6 +32,7 @@ import {
   useSectionOptions,
 } from '../../../../organization/shared/references';
 import { useRegisterEmployeeDirect, useRehireCheck } from '../api/employee-queries';
+import { SalaryCard } from '../components/SalaryCard';
 
 const MARITAL: MaritalStatus[] = ['single', 'married', 'divorced', 'widowed'];
 const EMPLOYMENT_TYPES: EmploymentType[] = ['fullTime', 'partTime', 'contract', 'temporary'];
@@ -317,11 +317,6 @@ export const DirectRegisterPage = (): JSX.Element => {
               <Field label={t('employees.register.hiringDate')} hint={t('employees.register.hiringDateHint')}>
                 <Input type="date" value={hiringDate} onChange={(e) => setHiringDate(e.target.value)} />
               </Field>
-              {canComp && (
-                <Field label={t('offers.form.salary')} hint={t('offers.form.optional')}>
-                  <MoneyInput value={salary} onChange={(next) => setSalary(next)} />
-                </Field>
-              )}
               <Field label={t('employees.register.entryStatus')} hint={t('employees.register.entryStatusHint')}>
                 <Select value={entryStatus} onChange={(e) => setEntryStatus(e.target.value as 'probation' | 'active')}>
                   <option value="probation">{t('employees.status.probation')}</option>
@@ -331,6 +326,9 @@ export const DirectRegisterPage = (): JSX.Element => {
             </div>
           </CardBody>
         </Card>
+
+        {/* «اعملها سكشن لوحدها» — the salary is its own section, after the employment terms. */}
+        {canComp && <SalaryCard value={salary} onChange={setSalary} />}
 
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => navigate('/employees')}>

@@ -15,7 +15,10 @@
 //
 // No permission is minted here. The authorizer only asks questions the module could already
 // answer; what changes is that the FILES service now asks them too.
-import { EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE } from '@ecms/contracts';
+import {
+  EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE,
+  EMPLOYEE_NATIONAL_ID_CARD_ENTITY_TYPE,
+} from '@ecms/contracts';
 import { hasPermission, scopeSelector, type AuthContext } from '../../../../shared/types';
 import { type FileEntityAuthorizer } from '../../../../platform/files';
 import { employeeRepository } from '../employees';
@@ -44,4 +47,17 @@ const attachmentAuthorizer: FileEntityAuthorizer = {
   },
 };
 
-export const hrFileEntityAuthorizers: FileEntityAuthorizer[] = [attachmentAuthorizer];
+/**
+ * The employee's National-ID card, copied from their applicant file at hire. Seeing it is seeing
+ * the employee (`employee.view`, in scope); replacing it is a personal-data edit.
+ */
+const nationalIdCardAuthorizer: FileEntityAuthorizer = {
+  entityType: EMPLOYEE_NATIONAL_ID_CARD_ENTITY_TYPE,
+  authorize: async ({ ctx, entityId, intent }) =>
+    canReach(ctx, entityId, intent === 'read' ? 'employee.view' : 'employee.editPersonal'),
+};
+
+export const hrFileEntityAuthorizers: FileEntityAuthorizer[] = [
+  attachmentAuthorizer,
+  nationalIdCardAuthorizer,
+];

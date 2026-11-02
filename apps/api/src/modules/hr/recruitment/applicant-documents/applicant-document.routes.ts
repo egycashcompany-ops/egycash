@@ -19,6 +19,7 @@ import multer from 'multer';
 import {
   ErrorCodes,
   ListApplicantDocumentSetsQuerySchema,
+  ListApplicantFoldersQuerySchema,
   ListApplicantDocumentTypesQuerySchema,
   ReviewApplicantDocumentSchema,
   UpdateApplicantDocumentTypeSchema,
@@ -33,6 +34,8 @@ import {
   getMyDocuments,
   getMyStatus,
   listApplicantDocumentSets,
+  listApplicantFolders,
+  getApplicantFolder,
   listApplicantDocumentTypes,
   reviewApplicantDocument,
   submitMyDocument,
@@ -129,6 +132,23 @@ export const buildApplicantDocumentsRouter = (): Router => {
     authorize('applicantDocument.view'),
     validate({ query: ListApplicantDocumentSetsQuerySchema }),
     asyncHandler(listApplicantDocumentSets),
+  );
+  // The folders view: everything kept for each applicant — their National-ID card (front, back,
+  // face), HR's attachments and what they handed in. Before `/:applicantId`, which would
+  // otherwise read «folders» as an id.
+  router.get(
+    '/folders',
+    authenticate,
+    authorize('applicantDocument.view'),
+    validate({ query: ListApplicantFoldersQuerySchema }),
+    asyncHandler(listApplicantFolders),
+  );
+  router.get(
+    '/folders/:applicantId',
+    authenticate,
+    authorize('applicantDocument.view'),
+    validate({ params: ApplicantParamSchema }),
+    asyncHandler(getApplicantFolder),
   );
   router.get(
     '/:applicantId',

@@ -1,15 +1,4 @@
-"""Dot-tolerant Arabic matching, and the places it must refuse to help.
-
-Arabic letters are a small set of skeletons plus dots: ب ت ث ن ي are one shape with different
-dotting, and so are ج ح خ, د ذ, ر ز, س ش, ص ض, ط ظ, ع غ, ف ق. Dots are the smallest marks on the
-card, and they are the first thing a JPEG artefact swallows or a reflection erases. A recognizer
-that reads مسلمه for مسلمة got the shape exactly right and one dot wrong — and plain string
-comparison scores that as a miss, so a reviewer retypes a field the model effectively got right.
-
-Folding to the skeleton ignores exactly the information that was destroyed. But it also
-deliberately conflates real, distinct words, so it is only safe against a closed vocabulary whose
-members are known not to collide — and half of these tests are about where that stops being true.
-"""
+"""Dot-tolerant Arabic matching, and the places it must refuse to help."""
 
 from __future__ import annotations
 
@@ -39,12 +28,7 @@ def test_dotting_differences_fold_together():
 
 
 def test_the_feminine_ending_survives_the_fold():
-    """The one property that makes rasm folding safe for these vocabularies.
-
-    ة folds onto ه rather than being deleted, so مسلم and مسلمة stay distinct. Were the ending
-    dropped, every masculine/feminine pair would collapse and the fold would be silently choosing
-    someone's marital status for them.
-    """
+    """The one property that makes rasm folding safe for these vocabularies."""
     assert rasm_fold("مسلم") != rasm_fold("مسلمة")
     assert rasm_fold("متزوج") != rasm_fold("متزوجة")
     assert rasm_fold("مسلمة") == rasm_fold("مسلمه")
@@ -89,11 +73,7 @@ def test_a_word_outside_the_vocabulary_is_left_alone():
 
 
 def test_no_two_vocabulary_terms_share_a_skeleton():
-    """The safety precondition for the whole approach, asserted rather than assumed.
-
-    If two terms ever folded together, snapping between them would become a coin flip that looks
-    like a correction. This is here so that adding a term later cannot quietly introduce one.
-    """
+    """The safety precondition for the whole approach, asserted rather than assumed."""
     for vocabulary in (
         ("مسلم", "مسلمة", "مسيحي", "مسيحية"),
         ("أعزب", "عزباء", "متزوج", "متزوجة", "مطلق", "مطلقة", "أرمل", "أرملة"),
@@ -121,13 +101,7 @@ def test_governorate_names_survive_ordinary_misreads(read, expected):
 
 
 def test_confusable_governorates_refuse_approximate_matching():
-    """البحيرة and الجيزة are one edit apart once dotting is folded away.
-
-    They are also three hundred kilometres apart, so snapping a near-miss to either is a coin flip
-    dressed as a correction. Requiring a unique match does not save this — a read one edit from
-    Beheira and two from Giza is 'unique' and still a guess — so names with a close relative accept
-    only exact or rasm-exact matches.
-    """
+    """البحيرة and الجيزة are one edit apart once dotting is folded away."""
     from nidocr.governorates import _FUZZY_ELIGIBLE
 
     assert levenshtein(rasm_fold("البحيرة"), rasm_fold("الجيزة"), limit=2) <= 1
@@ -135,7 +109,7 @@ def test_confusable_governorates_refuse_approximate_matching():
     assert "البحيرة" not in eligible and "الجيزة" not in eligible
     assert "مطروح" in eligible, "a name with no close relative can still absorb a dropped letter"
 
-    # Exact and rasm-exact matching still resolve both — the fold keeps them one edit apart, so
+    # Exact and rasm-exact matching still resolve both, the fold keeps them one edit apart, so
     # only the approximate pass was ever at risk of confusing them.
     assert match_governorate("البحيرة") == "البحيرة"
     assert match_governorate("الجيزة") == "الجيزة"
@@ -148,10 +122,7 @@ def test_a_word_that_is_not_a_governorate_matches_nothing():
 
 
 def test_only_the_address_tail_is_rewritten():
-    """Street and district are free text with nothing to check them against.
-
-    Correcting the governorate is repair; rewriting the rest would be invention.
-    """
+    """Street and district are free text with nothing to check them against."""
     address, snapped = snap_address_tail("٣٤ ش الجمهورية المنصورة أول - الدقهلىه")
     assert snapped
     assert address.endswith("الدقهلية")
@@ -165,11 +136,7 @@ def test_an_address_with_no_recognisable_governorate_is_untouched():
 
 
 def test_the_governorate_table_matches_the_contract_codes():
-    """Kept in step with `EGYPT_GOVERNORATE_CODES` in the contracts package.
-
-    28 entries, not 27: Egypt has 27 governorates, and code 88 is the separate 'born abroad'
-    marker that the same field carries.
-    """
+    """Kept in step with `EGYPT_GOVERNORATE_CODES` in the contracts package."""
     assert len(GOVERNORATES_AR) == 28
     assert set(GOVERNORATES_AR) >= {"01", "12", "21", "88"}
     assert all(normalize_arabic(name) for name in GOVERNORATES_AR.values())
@@ -185,30 +152,17 @@ def test_the_governorate_table_matches_the_contract_codes():
         ("أنثى مسلمة متزوج", "مسلمة", "متزوجة"),  # the ة dropped from marital
         ("أنثى مسلم متزوج", "مسلمة", "متزوجة"),  # dropped from both
         ("ذكر مسلم متزوج", "مسلم", "متزوج"),
-        ("أنثى مسلمة أعزب", "مسلمة", "عزباء"),  # not a suffix rule — a different word
+        ("أنثى مسلمة أعزب", "مسلمة", "عزباء"),  # not a suffix rule, a different word
     ],
 )
 def test_the_row_corrects_a_dropped_feminine_ending(row, religion, marital):
-    """The failure this catches is silent, which is what makes it worth catching.
-
-    The card prints sex, religion and marital status on one row and Arabic makes the last two agree
-    with the first. The feminine marker is a single trailing ة — the first thing a recognizer drops
-    — and dropping it turns متزوجة into متزوج: still a real vocabulary term, so it snaps cleanly and
-    records the wrong marital status with nothing downstream able to tell.
-
-    The row itself carries the answer, so it is used. This never returns a sex and never populates
-    one: `parseNationalId` remains the only source of gender.
-    """
+    """The failure this catches is silent, which is what makes it worth catching."""
     assert clean_religion(row)[0] == religion
     assert clean_marital_status(row)[0] == marital
 
 
 def test_without_a_sex_word_the_read_is_left_exactly_as_found():
-    """The correction is licensed by the row stating a sex. No sex, no licence.
-
-    A crop that caught only the marital word has no evidence about gender, and guessing from the
-    term's own ending would just re-assert what the recognizer already said.
-    """
+    """The correction is licensed by the row stating a sex. No sex, no licence."""
     assert clean_marital_status("متزوج") == ("متزوج", True)
     assert clean_marital_status("مطلقة") == ("مطلقة", True)
     assert clean_religion("مسلم") == ("مسلم", True)

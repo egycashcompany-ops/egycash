@@ -1,8 +1,4 @@
-"""Reading any paper as text in reading order — the `/read` path, without a model.
-
-The fake recognizer returns lines in a deliberately scrambled order, the way detection does; what
-is under test is that they come back in the order a person reads them.
-"""
+"""Reading any paper as text in reading order, the `/read` path, without a model."""
 
 from __future__ import annotations
 

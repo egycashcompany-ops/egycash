@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 188" role="img" aria-label="EGY CASH">
+  <!-- The white logo: the traced mark and the wordmark, no tagline. For dark backgrounds. -->
+  <g fill="#ffffff">
+    <path d="M44,102 L33,111 L22,132 L22,140 L51,183 L55,185 L73,150 L49,119 L46,110 L47,102Z"/>
+    <path d="M77,1 L59,37 L83,68 L86,77 L85,85 L88,85 L99,76 L110,55 L110,47 L79,1Z"/>
+    <path d="M47,110 L50,119 L64,138 L113,138 L131,102 L48,102Z" fill-opacity=".82"/>
+    <path d="M1,83 L1,85 L84,85 L85,77 L82,68 L68,49 L19,49Z" fill-opacity=".82"/>
+    <text x="160" y="125" font-family="Segoe UI, Arial, sans-serif" font-size="96" textLength="390" lengthAdjust="spacingAndGlyphs"><tspan font-weight="800">EGY</tspan><tspan font-weight="300">CASH</tspan></text>
+  </g>
+</svg>

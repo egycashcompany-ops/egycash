@@ -11,6 +11,20 @@ its entry here in the same PR.
 
 ### Added
 
+- **«مقارنة بملف» on `/atm/data-edit`: a machines file compared with the branch, then applied.**
+  «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك والكود والأسم
+  والمنطقة». Upload the machine list (Excel: Bank, ID, ATM Name, Area — the old system's export
+  reads as it is) and every row is compared with the machines of the branch the top bar names:
+  what would be added, brought back from the archive, or edited (the old bank, name or area struck
+  through beside the file's), what works in another branch, what the file leaves incomplete, what
+  it lists twice, and the branch's machines it does not list — shown, never deleted. Nothing
+  changes until «تطبيق», and the apply writes only the comparison the reader saw: if the branch
+  changed meanwhile it writes nothing and asks for a new comparison. It adds through the data-edit
+  add (the register entry included) and edits through the machine edit (audited), row by row,
+  names every code it could not write and why, and answers with the comparison made again
+  (`POST /atm/machines/sync`, `atmMachine.manage`). Spaces are folded, so a stray space is
+  neither a change nor a new area; a bank is compared by the catalog bank it names.
+
 - **Sign in with a fingerprint or Face ID instead of typing the password.** «عايز الدخول يبقي ممكن
   من خلال الـ Fingerprint أو FaceID للموبايل بحيث مش كل مره يكتب الباسورد». Passkeys (WebAuthn,
   [ADR-035](docs/03-decisions/ADR-035-passkey-sign-in.md)): the device keeps a private key and
@@ -268,6 +282,36 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **«إضافة ماكينات» on a settlement plan, and the data-edit bulk add and delete, take any number
+  of lines.** «صلّح كمان إضافة الماكينات والـ bulk add». A paste past one request's cap (200 on the
+  plan, 500 on the data-edit dialog) was refused whole. Both now send the lines in consecutive
+  requests of that size and show one answer. Repeats are decided over the whole paste first, as the
+  server decides them in one request (on the plan, a later repeat reads «مكررة في القائمة»). If a
+  run stops, what went before stands and every line not confirmed goes back into the boxes with
+  «توقف الإرسال قبل آخر … سطر — أُعيدت إلى الخانات»; sending them again is safe — an added line
+  comes back «موجودة في هذه التغذية» or «مسجلة من قبل», a deleted machine as an unknown code — so
+  the lines of the request that stopped go back too, named as possibly done. Inputs, buttons and
+  closing are held while a run goes; the top-bar branch switch waits («يجري إرسال الآن — غيّر الفرع
+  بعد انتهائه») and closing or reloading the page asks first — on these screens and the open forms.
+  A plan still holds at most 400 lines; when it is full the lines go back without «اضغط … مرة
+  أخرى». Every run reads the top-bar branch per request and is pinned to it: if the branch changes
+  under it anyway (a stored branch retired meanwhile), it stops before its next request with its
+  lines back («تغيّر الفرع المختار أثناء الإرسال»).
+- **The open forms take any number of pasted lines.** «كان عندى حوالى 700 تغذية لماكينات لما
+  بضيفهم كلهم مره واحده بيجيب الرساله … لكن لما قللتهم 100 او 200 فى المرة بقي يضيف عادى». One open
+  request carries at most 200 lines, so a longer paste was refused whole («بعض الحقول تحتاج إلى
+  مراجعة» then «لم تنجح العملية»). The replenishment and maintenance forms now send the lines in
+  consecutive requests of 200 (`ATM_OPEN_MAX_ROWS`), in order, with one date or open time for all,
+  and show one answer: the opened count, the unknown codes, and on maintenance the codes already
+  open that day. The boxes are held while the run goes. If it stops, what went before stays
+  opened, and the form says what happened under the boxes as well as in a toast:
+  - lines certainly not sent (after the failed request, or in a request the API refused, which
+    writes nothing) go back into the boxes: «توقف الإرسال قبل آخر … سطر»; pressing open sends them;
+  - the lines of a request whose result is unknown (a dropped connection, a 5xx) may have opened,
+    and a replenishment opens again on every send, so they are NOT put back: they are named apart,
+    «لم تتأكد نتيجة … سطر — قد يكون بعضها فُتح. راجع الجدول قبل فتحها مرة أخرى», and stay there
+    through later presses until «إعادتها إلى الخانات» puts them back (after checking the table) or
+    «إخفاء القائمة» hides them.
 - **The leader pickers offer the ATM employees' names — the maintenance close above all.**
   «تظهر أسماء الموظفين اللى فى ATM في Drop Down القائد في الصيانة والتغذية .. وخصوصاً عند تقفيل
   ماكينات الصيانة». The close's employee list read `atm.maintenanceLeaderDepartmentIds`, which
@@ -374,6 +418,17 @@ its entry here in the same PR.
 
 ### Changed
 
+- **A machine may have more than one open replenishment.** «عايزك تسمح فى التغذيات بإنى افتح تغذيه
+  أكتر من واحده لنفس الماكينة عادى .. لأنه بيمنع دلوقتى». The rule «a machine is never open twice on
+  one day» now holds for maintenance only (port doc OD-1b). On `/atm/replenishments`, every pasted
+  code the branch knows opens its own operation: a code pasted twice opens twice, and a machine
+  already open today (in this branch or another) opens again, as in the old system. The done page
+  reopens a replenishment beside another open one, and the edit dialogs move the open time onto any
+  day, the checked set's two rows of one machine included. The «لم تُفتح لأن للماكينة تغذية مفتوحة»
+  line and its reopen and move refusals are gone from the replenishment screens. Maintenance is
+  unchanged: one open per machine per day, the mail accept included. The boot drops the
+  replenishment log's unique index (`ux_open_replenishment_per_code_day`) from an existing database,
+  and the legacy importer writes every replenishment row as it was.
 - **The IT asset and custody registers filter by several categories and several names, the names
   following the categories.** «في الـ it/assets عايز فلتر الأسم يبقي بعد الفئات (فى الفلتر فقط)
   والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على الفئات وعايز الأتنين دول يبقوا

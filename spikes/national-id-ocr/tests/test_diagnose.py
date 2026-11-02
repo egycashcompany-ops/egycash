@@ -1,11 +1,4 @@
-"""The calibration report — and the promise that it carries no card text.
-
-The privacy property is the reason this endpoint can exist at all: correcting the field boxes
-needs a real card, and a real card belongs to a real person. Returning geometry instead of
-content is what lets the numbers be shared while the card's contents never leave the container.
-That is a property worth a test rather than a comment, because it is the kind of thing a later
-"just add the text, it's useful for debugging" change would quietly undo.
-"""
+"""The calibration report, and the promise that it carries no card text."""
 
 from __future__ import annotations
 
@@ -55,16 +48,18 @@ def test_regions_are_normalized_fractions(report):
 
 
 def test_digit_lines_are_flagged_through_the_arabic_fold(report):
-    """The ID prints Arabic-Indic numerals; without folding, `isdigit` would miss them and the
-    one region that identifies itself unambiguously would look like ordinary text."""
+    """The ID prints Arabic-Indic numerals; without folding, `isdigit` would miss them and the one
+    region that identifies itself unambiguously would look like ordinary text.
+    """
     digit_regions = [r for r in report["regions"] if r["digits"]]
     assert len(digit_regions) == 1
     assert digit_regions[0]["chars"] == 14  # the national ID's length is its signature
 
 
 def test_reports_whether_the_card_was_located(report):
-    """`rectify` silently resizes the frame when no quad is found. Without this bit, a card that
-    was never located is indistinguishable from boxes that are simply misplaced."""
+    """`rectify` silently resizes the frame when no quad is found. Without this bit, a card that was
+    never located is indistinguishable from boxes that are simply misplaced.
+    """
     assert isinstance(report["cardDetected"], bool)
 
 

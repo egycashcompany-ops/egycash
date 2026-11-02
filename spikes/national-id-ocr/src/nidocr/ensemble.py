@@ -1,45 +1,21 @@
-"""Reading the number more than once, and deciding what several disagreeing reads mean.
-
-THE PROBLEM THIS EXISTS FOR, STATED PRECISELY. A real card came back as 29208151202457 when it
-printed 29208151203457 — one digit, ٢ read as ٣, at position eleven. Both strings are perfectly
-valid national IDs: same century, same birth date, same governorate, differing only inside the
-sequence. `is_structurally_valid` returns True for each, `parseNationalId` decodes each into a
-consistent person, and every downstream check agrees. Validation cannot catch this error, and no
-amount of making validation stricter will, because the information that would distinguish the two
-numbers is not in the number.
-
-It is in the PIXELS, and it is recoverable — but only by looking at them more than once. So the
-number is read several times from the same crop under different preprocessing, and the reads are
-combined. This works because the errors are largely independent: an adaptive threshold that breaks
-٢ against the pyramid watermark does not break it the same way a plain greyscale read does, so the
-variants that get it wrong tend to get it wrong differently while the variants that get it right
-all agree. Majority at each position is then real evidence rather than a tie-break.
-
-Two rules keep this honest:
-
-  * **Agreement is reported, not just used.** A number four variants produced identically is a
-    different thing from one assembled position-by-position out of reads that disagreed, and the
-    caller bands them differently. Assembling a value nothing actually read is a deduction, and
-    deductions do not get the top confidence band in this pipeline.
-  * **Structure is a filter, never a source.** Where voting produces something that cannot be a
-    national ID, a valid candidate is preferred over it. Where nothing valid exists, that is
-    reported as such — the number still goes to the reviewer, at `low`, rather than being quietly
-    presented as read.
-"""
+"""Reading the number more than once, and deciding what several disagreeing reads mean."""
 
 from __future__ import annotations
 
 import datetime as _dt
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .nid import is_structurally_valid
 
-#: Enough independent agreement to stop reading. Three variants landing on the same fourteen digits
-#: is far stronger evidence than any single model score: they share the crop but not the
-#: preprocessing, so a shared error has to survive a threshold, a histogram equalisation and a
-#: plain greyscale read to reach all three.
+#: Enough independent agreement to stop reading.
 ENOUGH_AGREEMENT = 3
+
+#: A partial read shorter than this says too little to back or contradict a number: eight digits
+#: fit inside almost any two numbers that share a birth date.
+MIN_BACKING_DIGITS = 8
+#: A partial read is completed from a full one only when it lost at most four digits.
+MIN_SPLICE_DIGITS = 10
 
 
 @dataclass(frozen=True)
@@ -64,24 +40,25 @@ class Consensus:
     #: How many variants produced a fourteen-digit reading at all.
     total: int
     valid: bool
+    #: How much more of the evidence separating this value from its closest rival backs it (see
+    #: `_separating`). Infinite when nothing that separates them backs the rival.
+    margin: float = float("inf")
+    #: How many separate sources (filters, per side) read digits that fit this value, partial
+    #: reads included (see `backing`). Zero when it was not measured.
+    sources: int = 0
 
     @property
     def deduced(self) -> bool:
-        """True when no single read produced this value — it was assembled from several."""
-        return self.agreement == "voted"
+        """True when no single read produced this value outright, or it beat the outright reads."""
+        return self.agreement in ("voted", "backed")
 
     def as_diagnostics(self) -> dict[str, object]:
-        """Counts only. Never the value — this goes into logs and API diagnostics."""
+        """Counts only. Never the value, this goes into logs and API diagnostics."""
         return {"agreement": self.agreement, "support": self.support, "reads": self.total}
 
 
 def _vote(candidates: list[Candidate]) -> str:
-    """The digit each position was most often read as.
-
-    Ties are broken by the highest-scoring candidate that voted for one of the tied digits, which
-    is the only tie-break available that is not arbitrary: with two variants disagreeing and nothing
-    else to separate them, the model's own confidence is the remaining evidence.
-    """
+    """The digit each position was most often read as."""
     ordered = sorted(candidates, key=lambda item: item.score, reverse=True)
     digits = []
     for position in range(14):
@@ -97,20 +74,122 @@ def _vote(candidates: list[Candidate]) -> str:
     return "".join(digits)
 
 
+def _source(variant: str) -> str:
+    """The preprocessing a read came from: 'front:widened2:grey' and 'front:grey' are one source.
+    """
+    return ":".join(part for part in variant.split(":") if not part.startswith("widened"))
+
+
+def fits_inside(digits: str, value: str) -> bool:
+    """Whether `digits` is `value` with some digits lost, read in order, nothing added."""
+    return _within(digits, value)
+
+
+def _within(digits: str, value: str) -> bool:
+    """Whether `digits` is `value` with some digits lost, read in order, nothing added."""
+    remaining = iter(value)
+    return all(digit in remaining for digit in digits)
+
+
+def _backers(candidates: list[Candidate], value: str) -> dict[str, float]:
+    """Each source whose reads fit inside `value`, at its best score."""
+    best: dict[str, float] = {}
+    for candidate in candidates:
+        digits = candidate.digits
+        if MIN_BACKING_DIGITS <= len(digits) <= 14 and _within(digits, value):
+            key = _source(candidate.variant)
+            best[key] = max(best.get(key, 0.0), candidate.score)
+    return best
+
+
+def backers(candidates: list[Candidate], value: str) -> dict[str, float]:
+    """The sources whose reads fit inside `value`, each at its best score (see `backing`)."""
+    return _backers(candidates, value)
+
+
+def backing(candidates: list[Candidate], value: str) -> float:
+    """How much of what was read supports `value`, counting partial reads too."""
+    return sum(_backers(candidates, value).values())
+
+
+def _separating(mine: dict[str, float], theirs: dict[str, float]) -> float:
+    """How much more of the evidence that tells two numbers apart backs the first one."""
+    only_mine = sum(score for source, score in mine.items() if source not in theirs)
+    only_theirs = sum(score for source, score in theirs.items() if source not in mine)
+    if only_theirs == 0:
+        return float("inf") if only_mine > 0 else 1.0
+    return only_mine / only_theirs
+
+
+def _spliced(candidates: list[Candidate]) -> set[str]:
+    """Partial reads completed with the digits a full read has where the partial lost them."""
+    full = {c.digits for c in candidates if len(c.digits) == 14}
+    out: set[str] = set()
+    for candidate in candidates:
+        digits = candidate.digits
+        if not MIN_SPLICE_DIGITS <= len(digits) < 14:
+            continue
+        for value in full:
+            out.add(value[: 14 - len(digits)] + digits)
+            out.add(digits + value[len(digits) :])
+    return out
+
+
 def combine(
     candidates: list[Candidate], *, today: _dt.date | None = None
 ) -> Consensus | None:
-    """Several readings of one number → the one to report, and how much to trust it.
+    """Several readings of one number → the one to report, and how much to trust it."""
+    chosen = _counted(candidates, today=today)
+    if chosen is None:
+        return None
+    return _backed(candidates, chosen, today=today)
 
-    Returns None when no variant produced fourteen digits at all; the caller then falls back to
-    whatever the single best read was, which is still worth showing a human.
 
-    The preference order is deliberate. A value several variants produced independently beats one
-    assembled from disagreeing reads, because agreement between independent reads is the strongest
-    evidence anywhere in this pipeline — it is the same reasoning that makes the front and back of
-    the card corroborate each other. Only where no agreed value can be a national ID does structure
-    override agreement, and then the result is capped rather than trusted.
+def _backed(
+    candidates: list[Candidate], chosen: Consensus, *, today: _dt.date | None
+) -> Consensus:
+    """`chosen`, unless another valid number is backed by more of the reads, partial ones included.
     """
+    contenders = {
+        value
+        for value in {c.digits for c in candidates if len(c.digits) == 14} | _spliced(candidates)
+        if is_structurally_valid(value, today=today)
+    }
+    if chosen.valid:
+        contenders.add(chosen.value)
+    if not contenders:
+        return chosen
+    backers = {value: _backers(candidates, value) for value in contenders}
+    weight = {value: sum(found.values()) for value, found in backers.items()}
+    best = max(contenders, key=lambda value: (weight[value], value == chosen.value))
+    margin = min(
+        (_separating(backers[best], backers[value]) for value in contenders if value != best),
+        default=float("inf"),
+    )
+    # One source alone never overrules the count: reads that each got a different digit wrong are
+    # each backed by themselves only, and the position vote that rebuilt the true number from them
+    # is backed by none, that vote stands.
+    if best == chosen.value or len(backers[best]) < 2:
+        if best == chosen.value:
+            return replace(chosen, margin=margin, sources=len(backers[best]))
+        return chosen
+    support = sum(c.digits == best for c in candidates)
+    return Consensus(
+        value=best,
+        score=max((c.score for c in candidates if c.digits == best), default=chosen.score),
+        agreement="backed",
+        support=support,
+        total=chosen.total,
+        valid=True,
+        margin=margin,
+        sources=len(backers[best]),
+    )
+
+
+def _counted(
+    candidates: list[Candidate], *, today: _dt.date | None = None
+) -> Consensus | None:
+    """Several readings of one number → the one to report, and how much to trust it."""
     usable = [candidate for candidate in candidates if len(candidate.digits) == 14]
     if not usable:
         return None
@@ -142,7 +221,7 @@ def combine(
             valid=is_structurally_valid(value, today=today),
         )
 
-    # Most-agreed first, then by the model's own confidence — so a two-way split at one read each
+    # Most-agreed first, then by the model's own confidence, so a two-way split at one read each
     # is settled by the score rather than by dictionary order.
     ranked = sorted(tally.items(), key=lambda item: (item[1], scored[item[0]]), reverse=True)
 
@@ -157,7 +236,7 @@ def combine(
     if agreed:
         return _describe(*agreed[0])
 
-    # 2. No two variants agreed outright — but they may still agree position by position. Reads
+    # 2. No two variants agreed outright, but they may still agree position by position. Reads
     #    that differ in one digit each still have a clear majority at every other digit, and taking
     #    the majority per position recovers a number no single read got entirely right.
     voted = _vote(usable)

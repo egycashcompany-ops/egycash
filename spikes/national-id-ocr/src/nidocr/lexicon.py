@@ -1,30 +1,8 @@
-"""Correcting misread letters in names and addresses against words the card is likely to carry.
-
-WHY. On a soft photo the recognizer keeps a word's shape and loses its dots: ح comes back خ or ج,
-ب comes back ي, ث comes back ن. Worse, a few letters that differ in shape still blur into each
-other — ح and ع — so المحروسة is read المعروسة. The result looks right at a glance and is not a
-word at all, and a reviewer skims past it.
-
-HOW, and how far. Each token that is not already a known word is compared with the word lists
-below on its dotless skeleton (`arabic.rasm_fold`):
-
-  1. Same skeleton, different dots — a known word that differs only in dotting. Taken only when
-     EXACTLY ONE known word has that skeleton; two candidates leave the token alone.
-  2. One look-alike letter apart on the skeleton (ح↔ع, د↔ر) — ADDRESS words only, four letters or
-     more, only when no known word shares its skeleton, and only when exactly one is that close.
-     Never names: it turned a real, uncommon name into a common one.
-
-Nothing else is ever changed: a name that is not in the lists is somebody's real name and stays as
-read. A field this corrects is capped at 'medium' by the caller — a correction is a deduction, and
-a reviewer must still look.
-
-The lists are deliberately built in and small: common Egyptian given names, the compounds of عبد,
-and the vocabulary of Egyptian addresses. They are a floor, not a gazetteer; a district or street
-list can be added later without changing the rules above.
-"""
+"""Correcting misread letters in names and addresses against words the card is likely to carry."""
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 
 from .arabic import normalize_arabic, rasm_fold
@@ -71,6 +49,33 @@ _ADDRESS_WORDS = """
 """.split()
 
 
+#: Districts (مراكز وأقسام) by governorate, the part of an Egyptian address with the most varied
+#: words and the most to gain from a list. A floor, not a gazetteer: villages are not here.
+_DISTRICTS = """
+بني سويف الواسطى ناصر اهناسيا ببا سمسطا الفشن
+المنيا العدوة مغاغة بني مزار مطاي سمالوط ملوي دير مواس ابو قرقاص
+اسيوط ديروط القوصية منفلوط ابنوب الفتح ساحل سليم البداري صدفا الغنايم ابو تيج
+سوهاج اخميم ساقلتة المراغة طهطا جهينة طما المنشاة جرجا البلينا دار السلام العسيرات
+قنا ابو تشت فرشوط نجع حمادي الوقف دشنا قفط قوص نقادة
+الاقصر اسنا ارمنت الطود اسوان دراو كوم امبو النوبة ادفو
+الفيوم طامية سنورس اطسا يوسف الصديق ابشواي
+الجيزة العياط الصف اطفيح البدرشين اوسيم كرداسة منشاة القناطر الحوامدية الواحات
+بنها قليوب شبرا الخيمة القناطر الخيرية الخانكة كفر شكر طوخ شبين
+الزقازيق بلبيس منيا القمح ابو حماد ابو كبير فاقوس الحسينية ههيا ديرب نجم صقر اولاد
+الابراهيمية مشتول السوق القرين صان الحجر الصالحية
+المنصورة طلخا ميت غمر دكرنس اجا منية السنبلاوين بلقاس المطرية شربين تمي الامديد
+الجمالية نبروه بني عبيد سلسيل المنزلة
+طنطا المحلة الكبرى الزيات زفتى السنطة قطور بسيون سمنود
+الكوم منوف اشمون الباجور قويسنا بركة السبع تلا الشهداء السادات
+دمنهور الدوار رشيد ادكو المطامير حمص الدلنجات المحمودية الرحمانية ايتاي البارود
+حوش عيسى شبراخيت كوم حمادة وادي النطرون
+دسوق فوه مطوبس بيلا الحامول سيدي سالم الرياض قلين البرلس
+دمياط فارسكور الزرقا سعد البطيخ
+الاسماعيلية فايد القنطرة التل الكبير صوير
+عين شمس النزهة الشرابية الاميرية الزاوية الحمراء التبين مايو الوايلي حلوان المعصرة
+""".split()
+
+
 @lru_cache(maxsize=1)
 def _names() -> frozenset[str]:
     words = set(_GIVEN_NAMES) | {"عبد"}
@@ -81,7 +86,7 @@ def _names() -> frozenset[str]:
 @lru_cache(maxsize=1)
 def _address() -> frozenset[str]:
     # Streets are named after people as often as anything else, so the address knows names too.
-    words = set(_ADDRESS_WORDS) | set(_names())
+    words = set(_ADDRESS_WORDS) | set(_DISTRICTS) | set(_names())
     for name in GOVERNORATES_AR.values():
         words.update(name.split())
     return frozenset(words)
@@ -113,11 +118,7 @@ def _one_lookalike_apart(left: str, right: str) -> bool:
 
 
 def _abd_compound(token: str) -> str | None:
-    """عبد + a name of God, with a blurred عبد: 'جيدالحميد' → 'عبدالحميد'.
-
-    The one place a look-alike letter is corrected in a name, because it is not a name being
-    guessed: the tail is one of a closed list, and عبد is the only word that ever precedes it.
-    """
+    """عبد + a name of God, with a blurred عبد: 'جيدالحميد' → 'عبدالحميد'."""
     head, tail = token[:3], token[3:]
     divine = {normalize_arabic(word) for word in _DIVINE}
     if normalize_arabic(tail) not in divine or head == "عبد":
@@ -150,9 +151,7 @@ def _correct_token(token: str, kind: str) -> str:
         same = by_skeleton.get(skeleton, frozenset())
         if len(same) == 1:
             return prefix + next(iter(same))
-        # Look-alike letters for ADDRESS words only. On names it turned a real, uncommon name
-        # (بدوى) into a common one (ثروت) — د and ر — which is invention, not correction; dots are
-        # the only thing a name is corrected on.
+        # Look-alike letters for address words only.
         if kind == "address" and len(stem) >= 4 and not same:
             near = {
                 word
@@ -162,11 +161,82 @@ def _correct_token(token: str, kind: str) -> str:
             }
             if len(near) == 1:
                 return prefix + next(iter(near))
+        # One tooth letter too many or too few (ب ت ث ن ي share one shape, ٮ, on the skeleton): a
+        # soft photo adds a tooth to a word or merges two away, سمسطا read سمسيطا.
+        if kind == "address" and len(stem) >= 5 and not same:
+            near = {
+                word
+                for key, words in by_skeleton.items()
+                if _one_tooth_apart(skeleton, key)
+                for word in words
+            }
+            if len(near) == 1:
+                return prefix + next(iter(near))
     return token
+
+
+def _one_tooth_apart(left: str, right: str) -> bool:
+    """Does deleting a single interior tooth (ٮ) from the longer skeleton give the shorter one?"""
+    if abs(len(left) - len(right)) != 1:
+        return False
+    longer, shorter = (left, right) if len(left) > len(right) else (right, left)
+    return any(
+        longer[i] == "ٮ" and longer[:i] + longer[i + 1 :] == shorter
+        for i in range(1, len(longer) - 1)
+    )
+
+
+#: Arabic vowel marks (fatha … sukun, the superscript alef) and the tatweel.
+_HARAKAT = re.compile(r"[ً-ْٰـ]")
+
+
+def _join_split_names(tokens: list[str]) -> list[str]:
+    """Rejoin a name the recognizer split at a gap the card prints inside it.
+
+    Some names are printed with their letters spaced out — 'هدى' as 'هـ دى' — and the recognizer
+    puts a space there: 'هد ى'. Two neighbours are joined only when one of them is not a listed
+    name on its own and the two together are: two real names side by side stay apart.
+    """
+    known = _index("name")[0]
+    out: list[str] = []
+    for token in tokens:
+        if out:
+            joined = out[-1] + token
+            apart_known = normalize_arabic(out[-1]) in known and normalize_arabic(token) in known
+            if not apart_known and normalize_arabic(joined) in known:
+                out[-1] = joined
+                continue
+        out.append(token)
+    return out
 
 
 def correct(text: str, kind: str) -> tuple[str, bool]:
     """Correct misread letters in a name ('name') or an address ('address'). → (text, changed)."""
     tokens = text.split()
-    fixed = [_correct_token(token, kind) for token in tokens]
+    if kind == "name":
+        # A card prints names without vowel marks; one in a read ('علْى') is the recognizer's.
+        tokens = [token for token in (_HARAKAT.sub("", token) for token in tokens) if token]
+    joined = _join_split_names(tokens) if kind == "name" else tokens
+    fixed = [_correct_token(token, kind) for token in joined]
     return " ".join(fixed), fixed != tokens
+
+
+def near_miss(text: str, kind: str) -> bool:
+    """Is a word of `text` NOT a listed word but one edit (a letter added, lost or changed) from one?
+
+    That is the shape of a misread: a real card's given name lost a letter and still scored 0.91.
+    A word far from every listed one (most family names) says nothing, and a listed word is fine.
+    A three-letter word may be two edits off: there a lost letter changes most of the word (a real
+    card's given name came back that way at 0.915).
+    """
+    from .arabic import levenshtein  # noqa: PLC0415 - local, like the rest of this module's helpers
+
+    known, _ = _index(kind)
+    for token in text.split():
+        word = normalize_arabic(token)
+        if len(word) < 3 or word in known:
+            continue
+        edits = 2 if len(word) == 3 else 1
+        if any(abs(len(word) - len(other)) <= edits and levenshtein(word, other, limit=edits) <= edits for other in known):
+            return True
+    return False

@@ -1,17 +1,4 @@
-"""Arabic text normalization — a deliberate mirror of `apps/api/src/modules/hr/shared/arabic.ts`.
-
-Two jobs, and they are different:
-
-* `normalize_arabic` folds orthographic variants so that comparing OCR output against ground
-  truth measures RECOGNITION quality, not the model's choice of hamza carrier. It is the same
-  fold the API already applies for search, so a name the OCR reads and a name a recruiter types
-  compare identically. Kept byte-for-byte equivalent to the TypeScript version on purpose: if the
-  two ever disagree, the spike's accuracy numbers stop predicting production behaviour.
-
-* `to_western_digits` converts Eastern Arabic-Indic numerals (٠١٢٣…) to ASCII. Egyptian ID cards
-  print every number — the national ID itself, the expiry date — in Indic form, while
-  `parseNationalId` and every date parser downstream expect ASCII. This conversion is the single
-  most load-bearing line in the whole pipeline: get it wrong and the national ID never validates.
+"""Arabic text normalization, a deliberate mirror of `apps/api/src/modules/hr/shared/arabic.ts`.
 """
 
 from __future__ import annotations
@@ -19,7 +6,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# Arabic diacritics (tashkeel) + tatweel — stripped entirely, exactly as the TS version does.
+# Arabic diacritics (tashkeel) + tatweel, stripped entirely, exactly as the TS version does.
 _DIACRITICS = re.compile(
     "[ؐ-ًؚ-ٰٟۖ-ۜ۟-۪ۨ-ۭـ]"
 )
@@ -57,7 +44,7 @@ def normalize_arabic(value: str) -> str:
 
 
 def collapse_spaces(value: str) -> str:
-    """Whitespace-only cleanup, preserving orthography — for values shown back to a human."""
+    """Whitespace-only cleanup, preserving orthography, for values shown back to a human."""
     return re.sub(r"\s+", " ", value).strip()
 
 
@@ -69,13 +56,13 @@ def collapse_spaces(value: str) -> str:
 # Dots are exactly what an OCR model loses first. They are the smallest marks on the card, they are
 # the first thing a JPEG artefact swallows, and on a laminated card they are the first thing a
 # reflection erases. A recogniser that reads مسلمة as مسلمه has read the *shape* perfectly and
-# guessed one dot wrong — but string comparison scores that as a miss, and the reviewer retypes a
+# guessed one dot wrong, but string comparison scores that as a miss, and the reviewer retypes a
 # field the model effectively got right.
 #
 # Folding to the skeleton makes the comparison ignore precisely the information that was destroyed,
 # and nothing else. That is why it is safe here and would not be safe as a general normalization:
 # it deliberately conflates real, distinct words, so it is only ever used to match against a small
-# CLOSED vocabulary where the members are known not to collide. `postprocess` checks that.
+# Closed vocabulary where the members are known not to collide. `postprocess` checks that.
 _RASM = {
     "ب": "ٮ", "ت": "ٮ", "ث": "ٮ", "ن": "ٮ", "ي": "ٮ", "ى": "ٮ", "ئ": "ٮ", "پ": "ٮ",
     "ج": "ح", "خ": "ح", "چ": "ح",
@@ -94,18 +81,13 @@ _RASM = {
 
 
 def rasm_fold(value: str) -> str:
-    """Strip Arabic dotting to the bare letter skeleton. Comparison only — never for storage."""
+    """Strip Arabic dotting to the bare letter skeleton. Comparison only, never for storage."""
     text = normalize_arabic(value)
     return "".join(_RASM.get(character, character) for character in text)
 
 
 def levenshtein(left: str, right: str, *, limit: int = 2) -> int:
-    """Edit distance, abandoned once it provably exceeds `limit`.
-
-    The limit is not just an optimisation. Every caller here is asking "is this near-miss the same
-    word?", and beyond a couple of edits the answer is no regardless of the exact number — so
-    computing it precisely would be spending work to produce a value that is then thrown away.
-    """
+    """Edit distance, abandoned once it provably exceeds `limit`."""
     if abs(len(left) - len(right)) > limit:
         return limit + 1
     if left == right:

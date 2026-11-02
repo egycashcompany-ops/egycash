@@ -132,9 +132,11 @@ export const ErrorCodes = {
 
   // ── ATM operations (docs/12-planning/atm-operations-port.md) ──────────────────────────────────
   /**
-   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»): the machine code already has an
-   * OPEN operation of this kind — at most one open replenishment and one open maintenance per
-   * machine, company-wide. Answered by a reopen; the batch opens report such codes instead.
+   * The owner's rule (2026-10-13, «مينفعش أضيف ماكينة مرتين»; per Cairo day since 2026-10-27;
+   * maintenance only since 2026-11-01 — port doc OD-1b): the machine code already has an OPEN
+   * maintenance that day — at most one per machine code and day, company-wide. Answered by the
+   * maintenance reopen and by an edit moving its open time; the batch open and the mail accept
+   * report such codes instead. No replenishment path answers it: a machine may have several open.
    */
   ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
 
@@ -245,6 +247,18 @@ export const ErrorCodes = {
    * Retried after the move; a run left 30 minutes (its process died) no longer holds them.
    */
   ATM_BRANCH_MOVE_RUNNING: 'ATM_BRANCH_MOVE_RUNNING',
+  /**
+   * 422 — the machines file cannot be compared: no sheet with a Bank / ID / ATM Name / Area header
+   * row, or over a cap. `details` name the missing column or the cap, never a cell's content.
+   */
+  ATM_MACHINE_SYNC_LAYOUT: 'ATM_MACHINE_SYNC_LAYOUT',
+  /** 409 — the machines file applied is not the one compared (its hash differs); nothing written. */
+  ATM_MACHINE_SYNC_FILE_CHANGED: 'ATM_MACHINE_SYNC_FILE_CHANGED',
+  /**
+   * 409 — the branch changed since the machines file was compared (a machine edited, added,
+   * archived or moved): the comparison is no longer the one the reader approved. Nothing written.
+   */
+  ATM_MACHINE_SYNC_PLAN_CHANGED: 'ATM_MACHINE_SYNC_PLAN_CHANGED',
 
   // ── Fleet fuel-card sheet reconciliation («مطابقة أرصدة الكروت») ─────────────────────────────
   /** 422 — the sheet is not the company's layout (a header is missing, no sheet), or over a cap. */

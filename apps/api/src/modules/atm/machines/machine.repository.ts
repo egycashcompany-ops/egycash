@@ -53,6 +53,35 @@ class AtmMachineRepository extends BaseRepository<AtmMachineDoc> {
       .exec();
     return new Map(rows.map((row) => [row.machineCode, row]));
   }
+
+  /**
+   * Every machine of one branch that is not deleted — active and archived — as the machine sync
+   * compares a file with it (machines/sync). One query for the whole branch.
+   */
+  async listForSync(branchId: string): Promise<AtmMachineDoc[]> {
+    return this.model
+      .find({ isDeleted: false, branchId: new Types.ObjectId(branchId) })
+      .select({ machineCode: 1, bankName: 1, name: 1, area: 1, isActive: 1 })
+      .lean<AtmMachineDoc[]>()
+      .exec();
+  }
+
+  /** Which of these codes are ACTIVE in a branch other than this one — never added here (DEC-9). */
+  async activeCodesElsewhere(
+    branchId: string,
+    machineCodes: readonly string[],
+  ): Promise<Set<string>> {
+    if (machineCodes.length === 0) return new Set();
+    const codes = (await this.model
+      .distinct('machineCode', {
+        isDeleted: false,
+        isActive: true,
+        branchId: { $ne: new Types.ObjectId(branchId) },
+        machineCode: { $in: [...machineCodes] },
+      })
+      .exec()) as string[];
+    return new Set(codes);
+  }
 }
 
 export const atmMachineRepository = new AtmMachineRepository();

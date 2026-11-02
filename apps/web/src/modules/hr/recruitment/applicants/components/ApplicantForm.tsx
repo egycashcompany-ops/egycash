@@ -34,14 +34,35 @@ import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { formatDate } from '../../../../../shared/lib/format';
 import { validationDetails } from '../../../../../shared/lib/errors';
-import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
+import { CardBody } from '../../../../../shared/ui/Card';
 import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Button } from '../../../../../shared/ui/Button';
 import { Combobox } from '../../../../../shared/ui/Combobox';
 import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../../shared/ui/form';
-import { PlusIcon, TrashIcon } from '../../../../../shared/ui/icons';
-import { transliterateArabicName, type NationalIdReviewData } from '../../../../../shared/national-id';
-import { ApplicantNationalIdOcr } from './ApplicantNationalIdOcr';
+import {
+  BadgeIcon,
+  BriefcaseIcon,
+  ClipboardIcon,
+  PhoneIcon,
+  PinIcon,
+  PlusIcon,
+  ShieldIcon,
+  StarIcon,
+  TrashIcon,
+  TruckIcon,
+  UserIcon,
+  UsersIcon,
+} from '../../../../../shared/ui/icons';
+import {
+  FormSection,
+  FormSectionNav,
+  type FormSectionItem,
+} from '../../../../../shared/ui/FormSection';
+import {
+  transliterateArabicName,
+  type NationalIdReviewData,
+} from '../../../../../shared/national-id';
+import { ApplicantNationalIdOcr, type ScannedCardFile } from './ApplicantNationalIdOcr';
 import {
   firstErrorField,
   validateField,
@@ -117,7 +138,8 @@ const fromDto = (a: ApplicantDto): FormState => ({
     a.education?.graduationYear === undefined ? '' : String(a.education.graduationYear),
   educationGrade: a.education?.grade ?? '',
   militaryStatus: a.military?.status ?? '',
-  militaryCompletedAt: a.military?.completedAt === undefined ? '' : a.military.completedAt.slice(0, 10),
+  militaryCompletedAt:
+    a.military?.completedAt === undefined ? '' : a.military.completedAt.slice(0, 10),
   experience: a.experience.map((e) => ({
     employer: e.employer,
     position: e.position ?? '',
@@ -175,8 +197,46 @@ const emptyForm = (): FormState => ({
 const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
 const num = (v: string): number | undefined => (v.trim() === '' ? undefined : Number(v));
 
+/** Folds the spellings a card and a catalog disagree on: hamzas, alef maqsura, ta marbuta. */
+const foldArabic = (v: string): string =>
+  v
+    .replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * The catalog city of `governorate` named in a card's address line, if any. Whole words only, and
+ * the longest name wins (so «قنا الجديدة» beats «قنا»); the governorate's own capital counts only
+ * when no other city of it is named, since a line usually ends with the governorate's name.
+ */
+export const cityInAddressLine = (governorate: string, line: string): string | undefined => {
+  const text = ` ${foldArabic(line)} `;
+  const named = citiesOfGovernorate(governorate)
+    .filter((c) => text.includes(` ${foldArabic(c)} `))
+    .sort((a, b) => b.length - a.length);
+  return named.find((c) => foldArabic(c) !== foldArabic(governorate)) ?? named[0];
+};
+
+/**
+ * The governorate a card's address line ends with, if any — matched as whole words against the
+ * catalog, the one named LAST winning (a line reads street, district, city, governorate).
+ */
+export const placeInAddressLine = (line: string): { governorate: string } | undefined => {
+  const text = ` ${foldArabic(line)} `;
+  let best: { governorate: string; at: number } | undefined;
+  for (const g of EGYPT_GOVERNORATES) {
+    const at = text.lastIndexOf(` ${foldArabic(g.ar)} `);
+    if (at >= 0 && (best === undefined || at > best.at)) best = { governorate: g.ar, at };
+  }
+  return best === undefined ? undefined : { governorate: best.governorate };
+};
+
 const buildAddress = (a: AddressForm): Address | undefined => {
-  if (a.line1.trim() === '' || a.city.trim() === '' || a.governorate.trim() === '') return undefined;
+  if (a.line1.trim() === '' || a.city.trim() === '' || a.governorate.trim() === '')
+    return undefined;
   return {
     line1: a.line1.trim(),
     city: a.city.trim(),
@@ -219,13 +279,20 @@ const buildCommon = (f: FormState): Record<string, unknown> => {
       primaryPhone: f.primaryPhone.trim(),
       ...(str(f.secondaryPhone) ? { secondaryPhone: f.secondaryPhone.trim() } : {}),
       ...(str(f.email) ? { email: f.email.trim() } : {}),
-      ...(f.preferredContactChannel === '' ? {} : { preferredContactChannel: f.preferredContactChannel }),
+      ...(f.preferredContactChannel === ''
+        ? {}
+        : { preferredContactChannel: f.preferredContactChannel }),
     },
     ...(official === undefined ? {} : { officialAddress: official }),
     ...(current === undefined ? {} : { currentAddress: current }),
     ...(num(f.expectedSalaryAmount) === undefined
       ? {}
-      : { expectedSalary: { amount: num(f.expectedSalaryAmount), currency: f.expectedSalaryCurrency } }),
+      : {
+          expectedSalary: {
+            amount: num(f.expectedSalaryAmount),
+            currency: f.expectedSalaryCurrency,
+          },
+        }),
     ...(str(f.earliestStartDate) ? { earliestStartDate: f.earliestStartDate } : {}),
     willingToRelocate: f.willingToRelocate,
     willingToTravel: f.willingToTravel,
@@ -293,8 +360,10 @@ export const ApplicantForm = ({
   const [extracted, setExtracted] = useState(false);
 
   const set = (patch: Partial<FormState>): void => setF((prev) => ({ ...prev, ...patch }));
-  const setAddr = (which: 'officialAddress' | 'currentAddress', patch: Partial<AddressForm>): void =>
-    setF((prev) => ({ ...prev, [which]: { ...prev[which], ...patch } }));
+  const setAddr = (
+    which: 'officialAddress' | 'currentAddress',
+    patch: Partial<AddressForm>,
+  ): void => setF((prev) => ({ ...prev, [which]: { ...prev[which], ...patch } }));
 
   /**
    * Tidy a phone the moment its field is left: "+20 10 1234-5678" and "٠١٠١٢٣٤٥٦٧٨" are the same
@@ -349,14 +418,19 @@ export const ApplicantForm = ({
    *  Reviewed values win; empty fields leave the current form value untouched. */
   // The scanned card images, held only until the register call can name them: the applicant does
   // not exist while the scan runs, so the server files them once it does.
-  const [cardFileIds, setCardFileIds] = useState<string[]>([]);
+  const [cardFileIds, setCardFileIds] = useState<ScannedCardFile[]>([]);
 
   const applyReview = (r: NationalIdReviewData): void => {
     setExtracted(true);
     setF((prev) => {
       // The card's governorate arrives as free text (or as an English name derived from the
       // number); resolve it to the catalog so the city list below it is the right one.
-      const governorate = toCatalogGovernorate(r.governorate) || prev.officialAddress.governorate;
+      // The address line names where the person LIVES; the governorate derived from the number is
+      // where they were BORN. When the line names a governorate, it wins.
+      const place = placeInAddressLine(r.addressLine);
+      const governorate =
+        place?.governorate ??
+        (toCatalogGovernorate(r.governorate) || prev.officialAddress.governorate);
       const city = r.city.trim();
       return {
         ...prev,
@@ -372,7 +446,11 @@ export const ApplicantForm = ({
           governorate,
           // Only keep the read city when the catalog agrees it belongs to that governorate;
           // otherwise leave the picker empty rather than store a place that does not exist.
-          city: citiesOfGovernorate(governorate).includes(city) ? city : prev.officialAddress.city,
+          // A card rarely prints the city on a line of its own: when none was read, the city is
+          // looked for inside the address line itself («… مركز فرشوط قنا» → فرشوط).
+          city: citiesOfGovernorate(governorate).includes(city)
+            ? city
+            : (cityInAddressLine(governorate, r.addressLine) ?? prev.officialAddress.city),
         },
       };
     });
@@ -405,7 +483,9 @@ export const ApplicantForm = ({
         ...(str(f.religion) ? { religion: f.religion.trim() } : {}),
         ...(str(f.motherName) ? { motherName: f.motherName.trim() } : {}),
         ...(str(f.nationalIdExpiry) ? { nationalIdExpiry: f.nationalIdExpiry } : {}),
-        ...(num(f.dependentsCount) === undefined ? {} : { dependentsCount: num(f.dependentsCount) }),
+        ...(num(f.dependentsCount) === undefined
+          ? {}
+          : { dependentsCount: num(f.dependentsCount) }),
       };
       const rest = Object.fromEntries(
         Object.entries(common).filter(([k]) => k !== 'fullNameAr' && k !== 'fullNameEn'),
@@ -416,9 +496,17 @@ export const ApplicantForm = ({
         ...(presetRequisitionId !== undefined && presetRequisitionId.trim() !== ''
           ? { jobRequisitionId: presetRequisitionId.trim() }
           : {}),
-        ...(presetBranchId !== undefined && presetBranchId.trim() !== '' ? { branchId: presetBranchId.trim() } : {}),
-        ...(cardFileIds.length === 0 ? {} : { nationalIdCardFileIds: cardFileIds }),
-        sourceId: internalSourceId ?? '',
+        ...(presetBranchId !== undefined && presetBranchId.trim() !== ''
+          ? { branchId: presetBranchId.trim() }
+          : {}),
+        ...(cardFileIds.length === 0
+          ? {}
+          : {
+              nationalIdCardFileIds: cardFileIds.map((c) => c.id),
+              nationalIdCardSides: cardFileIds.map((c) => c.side),
+            }),
+        // With no internal source set up, the server files it as a direct registration.
+        ...(internalSourceId === null ? {} : { sourceId: internalSourceId }),
         intakeChannel: 'internal',
         identity,
         ...rest,
@@ -455,7 +543,10 @@ export const ApplicantForm = ({
               onChange={(governorate) =>
                 // Only a real change invalidates the city; re-picking the same governorate
                 // (or clearing the box and choosing it again) must not throw a valid city away.
-                setAddr(which, governorate === a.governorate ? { governorate } : { governorate, city: '' })
+                setAddr(
+                  which,
+                  governorate === a.governorate ? { governorate } : { governorate, city: '' },
+                )
               }
               onBlur={() => check(`${which}.governorate`, a.governorate)}
               error={fieldErr[`${which}.governorate`] !== undefined}
@@ -516,8 +607,61 @@ export const ApplicantForm = ({
     );
   };
 
+  const sectionNav: FormSectionItem[] = [
+    {
+      id: 'applicant-identity',
+      label: t('applicants.form.identity'),
+      icon: <UserIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-contact',
+      label: t('applicants.form.contact'),
+      icon: <PhoneIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-addresses',
+      label: t('applicants.form.addresses'),
+      icon: <PinIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-preferences',
+      label: t('applicants.form.preferences'),
+      icon: <StarIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-education',
+      label: t('applicants.form.education'),
+      icon: <ClipboardIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-military',
+      label: t('applicants.form.military'),
+      icon: <ShieldIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-experience',
+      label: t('applicants.form.experience'),
+      icon: <BriefcaseIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-references',
+      label: t('applicants.form.references'),
+      icon: <UsersIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-licenses',
+      label: t('applicants.form.licenses'),
+      icon: <TruckIcon className="h-4 w-4" />,
+    },
+    {
+      id: 'applicant-certifications',
+      label: t('applicants.form.certifications'),
+      icon: <BadgeIcon className="h-4 w-4" />,
+    },
+  ];
+
   return (
-    <Form onSubmit={() => void submit()}>
+    <Form onSubmit={() => void submit()} className="applicant-form !space-y-5">
       {errors.length > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
           <p className="mb-1 font-medium">{t('applicants.form.serverErrors')}</p>
@@ -537,16 +681,17 @@ export const ApplicantForm = ({
               {t('applicants.ocr.reviewBanner')}
             </p>
           )}
-          {internalSourceId === null && (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              {t('applicants.form.noInternalSource')}
-            </p>
-          )}
         </>
       )}
 
-      <Card>
-        <CardHeader title={t('applicants.form.identity')} />
+      <FormSectionNav items={sectionNav} />
+
+      <FormSection
+        id="applicant-identity"
+        index={1}
+        icon={<UserIcon className="h-5 w-5" />}
+        title={t('applicants.form.identity')}
+      >
         <CardBody className={sectionCls}>
           <Field
             label={t('applicants.form.fullNameAr')}
@@ -564,7 +709,11 @@ export const ApplicantForm = ({
           >
             <Input
               value={f.fullNameAr}
-              onChange={(e) => (mode === 'create' ? setArabicName(e.target.value) : set({ fullNameAr: e.target.value }))}
+              onChange={(e) =>
+                mode === 'create'
+                  ? setArabicName(e.target.value)
+                  : set({ fullNameAr: e.target.value })
+              }
               {...bind('fullNameAr', f.fullNameAr)}
             />
           </Field>
@@ -590,7 +739,9 @@ export const ApplicantForm = ({
               >
                 <Input
                   value={f.nationalId}
-                  onChange={(e) => set({ nationalId: asciiDigits(e.target.value).replace(/\D/g, '') })}
+                  onChange={(e) =>
+                    set({ nationalId: asciiDigits(e.target.value).replace(/\D/g, '') })
+                  }
                   dir="ltr"
                   inputMode="numeric"
                   maxLength={14}
@@ -598,23 +749,38 @@ export const ApplicantForm = ({
                 />
               </Field>
               <Field label={t('applicants.form.nationality')}>
-                <Select value={f.nationality} onChange={(e) => set({ nationality: e.target.value })}>
+                <Select
+                  value={f.nationality}
+                  onChange={(e) => set({ nationality: e.target.value })}
+                >
                   {Object.entries(NATIONALITY_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{locale === 'ar' ? label.ar : label.en}</option>
+                    <option key={value} value={value}>
+                      {locale === 'ar' ? label.ar : label.en}
+                    </option>
                   ))}
                 </Select>
               </Field>
               <Field label={t('applicants.form.maritalStatus')}>
-                <Select value={f.maritalStatus} onChange={(e) => set({ maritalStatus: e.target.value as FormState['maritalStatus'] })}>
+                <Select
+                  value={f.maritalStatus}
+                  onChange={(e) =>
+                    set({ maritalStatus: e.target.value as FormState['maritalStatus'] })
+                  }
+                >
                   <option value="">{t('applicants.form.unspecified')}</option>
                   {MARITAL_STATUSES.map((m) => (
-                    <option key={m} value={m}>{t(`applicants.marital.${m}`)}</option>
+                    <option key={m} value={m}>
+                      {t(`applicants.marital.${m}`)}
+                    </option>
                   ))}
                 </Select>
               </Field>
               {/* Asked for by the SECURITY CHECK form and by nothing else. Typed by hand: the OCR
                   seam does not carry it, so what is entered here is what the form prints. */}
-              <Field label={t('applicants.form.motherName')} hint={t('applicants.form.motherNameHint')}>
+              <Field
+                label={t('applicants.form.motherName')}
+                hint={t('applicants.form.motherNameHint')}
+              >
                 <Input
                   value={f.motherName}
                   onChange={(e) => set({ motherName: e.target.value })}
@@ -625,7 +791,9 @@ export const ApplicantForm = ({
                 <Select value={f.religion} onChange={(e) => set({ religion: e.target.value })}>
                   <option value="">{t('applicants.form.unspecified')}</option>
                   {RELIGIONS.map((r) => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
                   ))}
                   {/* A legacy value the catalog does not carry stays selectable rather than
                       silently turning into "unspecified" the next time the record is saved. */}
@@ -635,7 +803,12 @@ export const ApplicantForm = ({
                 </Select>
               </Field>
               <Field label={t('applicants.form.nationalIdExpiry')}>
-                <Input type="date" value={f.nationalIdExpiry} onChange={(e) => set({ nationalIdExpiry: e.target.value })} dir="ltr" />
+                <Input
+                  type="date"
+                  value={f.nationalIdExpiry}
+                  onChange={(e) => set({ nationalIdExpiry: e.target.value })}
+                  dir="ltr"
+                />
               </Field>
               <Field label={t('applicants.form.dependents')} error={msg('dependentsCount')}>
                 <Input
@@ -654,15 +827,25 @@ export const ApplicantForm = ({
                   </p>
                   <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
                     <div className="flex justify-between gap-2 sm:block">
-                      <dt className="text-slate-500 dark:text-slate-400">{t('applicants.detail.birthDate')}</dt>
-                      <dd className="font-medium text-slate-700 dark:text-slate-200">{formatDate(derived.birthDate.toISOString(), locale)}</dd>
+                      <dt className="text-slate-500 dark:text-slate-400">
+                        {t('applicants.detail.birthDate')}
+                      </dt>
+                      <dd className="font-medium text-slate-700 dark:text-slate-200">
+                        {formatDate(derived.birthDate.toISOString(), locale)}
+                      </dd>
                     </div>
                     <div className="flex justify-between gap-2 sm:block">
-                      <dt className="text-slate-500 dark:text-slate-400">{t('applicants.detail.gender')}</dt>
-                      <dd className="font-medium text-slate-700 dark:text-slate-200">{t(`applicants.gender.${derived.gender}`)}</dd>
+                      <dt className="text-slate-500 dark:text-slate-400">
+                        {t('applicants.detail.gender')}
+                      </dt>
+                      <dd className="font-medium text-slate-700 dark:text-slate-200">
+                        {t(`applicants.gender.${derived.gender}`)}
+                      </dd>
                     </div>
                     <div className="flex justify-between gap-2 sm:block">
-                      <dt className="text-slate-500 dark:text-slate-400">{t('applicants.detail.governorate')}</dt>
+                      <dt className="text-slate-500 dark:text-slate-400">
+                        {t('applicants.detail.governorate')}
+                      </dt>
                       <dd className="font-medium text-slate-700 dark:text-slate-200">
                         {findGovernorate(derived.governorate)?.ar ?? derived.governorate}
                       </dd>
@@ -673,10 +856,14 @@ export const ApplicantForm = ({
             </>
           )}
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader title={t('applicants.form.contact')} />
+      <FormSection
+        id="applicant-contact"
+        index={2}
+        icon={<PhoneIcon className="h-5 w-5" />}
+        title={t('applicants.form.contact')}
+      >
         <CardBody className={sectionCls}>
           <Field
             label={t('applicants.form.primaryPhone')}
@@ -719,25 +906,42 @@ export const ApplicantForm = ({
             />
           </Field>
           <Field label={t('applicants.form.preferredChannel')}>
-            <Select value={f.preferredContactChannel} onChange={(e) => set({ preferredContactChannel: e.target.value as FormState['preferredContactChannel'] })}>
+            <Select
+              value={f.preferredContactChannel}
+              onChange={(e) =>
+                set({
+                  preferredContactChannel: e.target.value as FormState['preferredContactChannel'],
+                })
+              }
+            >
               <option value="">{t('applicants.form.unspecified')}</option>
               {CONTACT_CHANNELS.map((c) => (
-                <option key={c} value={c}>{t(`applicants.contactChannel.${c}`)}</option>
+                <option key={c} value={c}>
+                  {t(`applicants.contactChannel.${c}`)}
+                </option>
               ))}
             </Select>
           </Field>
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader title={t('applicants.form.addresses')} />
+      <FormSection
+        id="applicant-addresses"
+        index={3}
+        icon={<PinIcon className="h-5 w-5" />}
+        title={t('applicants.form.addresses')}
+      >
         <CardBody className="space-y-4">
           {(['officialAddress', 'currentAddress'] as const).map(addressBlock)}
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader title={t('applicants.form.preferences')} />
+      <FormSection
+        id="applicant-preferences"
+        index={4}
+        icon={<StarIcon className="h-5 w-5" />}
+        title={t('applicants.form.preferences')}
+      >
         <CardBody className="space-y-4">
           <div className={sectionCls}>
             <Field label={t('applicants.form.expectedSalary')} error={msg('expectedSalaryAmount')}>
@@ -747,37 +951,76 @@ export const ApplicantForm = ({
                   onChange={(next) => set({ expectedSalaryAmount: next })}
                   {...bind('expectedSalaryAmount', f.expectedSalaryAmount)}
                 />
-                <Input className="w-24" value={f.expectedSalaryCurrency} onChange={(e) => set({ expectedSalaryCurrency: e.target.value })} dir="ltr" />
+                <Input
+                  className="w-24"
+                  value={f.expectedSalaryCurrency}
+                  onChange={(e) => set({ expectedSalaryCurrency: e.target.value })}
+                  dir="ltr"
+                />
               </div>
             </Field>
             <Field label={t('applicants.form.earliestStart')}>
-              <Input type="date" value={f.earliestStartDate} onChange={(e) => set({ earliestStartDate: e.target.value })} dir="ltr" />
+              <Input
+                type="date"
+                value={f.earliestStartDate}
+                onChange={(e) => set({ earliestStartDate: e.target.value })}
+                dir="ltr"
+              />
             </Field>
           </div>
           <div className="flex flex-wrap gap-4">
-            <Checkbox label={t('applicants.form.willingRelocate')} checked={f.willingToRelocate} onChange={(e) => set({ willingToRelocate: e.target.checked })} />
-            <Checkbox label={t('applicants.form.willingTravel')} checked={f.willingToTravel} onChange={(e) => set({ willingToTravel: e.target.checked })} />
-            <Checkbox label={t('applicants.form.willingShift')} checked={f.willingToShiftWork} onChange={(e) => set({ willingToShiftWork: e.target.checked })} />
+            <Checkbox
+              label={t('applicants.form.willingRelocate')}
+              checked={f.willingToRelocate}
+              onChange={(e) => set({ willingToRelocate: e.target.checked })}
+            />
+            <Checkbox
+              label={t('applicants.form.willingTravel')}
+              checked={f.willingToTravel}
+              onChange={(e) => set({ willingToTravel: e.target.checked })}
+            />
+            <Checkbox
+              label={t('applicants.form.willingShift')}
+              checked={f.willingToShiftWork}
+              onChange={(e) => set({ willingToShiftWork: e.target.checked })}
+            />
           </div>
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader title={t('applicants.form.education')} />
+      <FormSection
+        id="applicant-education"
+        index={5}
+        icon={<ClipboardIcon className="h-5 w-5" />}
+        title={t('applicants.form.education')}
+      >
         <CardBody className={sectionCls}>
           <Field label={t('applicants.form.educationLevel')}>
-            <Select value={f.educationLevel} onChange={(e) => set({ educationLevel: e.target.value as FormState['educationLevel'] })}>
+            <Select
+              value={f.educationLevel}
+              onChange={(e) =>
+                set({ educationLevel: e.target.value as FormState['educationLevel'] })
+              }
+            >
               <option value="">{t('applicants.form.unspecified')}</option>
               {EDUCATION_LEVELS.map((l) => (
-                <option key={l} value={l}>{t(`applicants.education.${l}`)}</option>
+                <option key={l} value={l}>
+                  {t(`applicants.education.${l}`)}
+                </option>
               ))}
             </Select>
           </Field>
           <Field label={t('applicants.form.institution')}>
-            <Input value={f.educationInstitution} onChange={(e) => set({ educationInstitution: e.target.value })} />
+            <Input
+              value={f.educationInstitution}
+              onChange={(e) => set({ educationInstitution: e.target.value })}
+            />
           </Field>
           <Field label={t('applicants.form.specialization')}>
-            <Input value={f.educationSpecialization} onChange={(e) => set({ educationSpecialization: e.target.value })} />
+            <Input
+              value={f.educationSpecialization}
+              onChange={(e) => set({ educationSpecialization: e.target.value })}
+            />
           </Field>
           <Field label={t('applicants.form.graduationYear')} error={msg('educationGraduationYear')}>
             <Input
@@ -791,122 +1034,324 @@ export const ApplicantForm = ({
             />
           </Field>
           <Field label={t('applicants.form.grade')}>
-            <Input value={f.educationGrade} onChange={(e) => set({ educationGrade: e.target.value })} />
+            <Input
+              value={f.educationGrade}
+              onChange={(e) => set({ educationGrade: e.target.value })}
+            />
           </Field>
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader title={t('applicants.form.military')} />
+      <FormSection
+        id="applicant-military"
+        index={6}
+        icon={<ShieldIcon className="h-5 w-5" />}
+        title={t('applicants.form.military')}
+      >
         <CardBody className={sectionCls}>
           <Field label={t('applicants.form.militaryStatus')}>
-            <Select value={f.militaryStatus} onChange={(e) => set({ militaryStatus: e.target.value as FormState['militaryStatus'] })}>
+            <Select
+              value={f.militaryStatus}
+              onChange={(e) =>
+                set({ militaryStatus: e.target.value as FormState['militaryStatus'] })
+              }
+            >
               <option value="">{t('applicants.form.unspecified')}</option>
               {MILITARY_STATUSES.map((m) => (
-                <option key={m} value={m}>{t(`applicants.military.${m}`)}</option>
+                <option key={m} value={m}>
+                  {t(`applicants.military.${m}`)}
+                </option>
               ))}
             </Select>
           </Field>
           <Field label={t('applicants.form.completedAt')}>
-            <Input type="date" value={f.militaryCompletedAt} onChange={(e) => set({ militaryCompletedAt: e.target.value })} dir="ltr" />
+            <Input
+              type="date"
+              value={f.militaryCompletedAt}
+              onChange={(e) => set({ militaryCompletedAt: e.target.value })}
+              dir="ltr"
+            />
           </Field>
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader
-          title={t('applicants.form.experience')}
-          actions={
-            <Button size="sm" variant="secondary" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => set({ experience: [...f.experience, { employer: '', position: '', from: '', to: '', leavingReason: '' }] })}>
-              {t('applicants.form.addRow')}
-            </Button>
-          }
-        />
+      <FormSection
+        id="applicant-experience"
+        index={7}
+        icon={<BriefcaseIcon className="h-5 w-5" />}
+        title={t('applicants.form.experience')}
+        actions={
+          <Button
+            size="sm"
+            variant="secondary"
+            leftIcon={<PlusIcon className="h-4 w-4" />}
+            onClick={() =>
+              set({
+                experience: [
+                  ...f.experience,
+                  { employer: '', position: '', from: '', to: '', leavingReason: '' },
+                ],
+              })
+            }
+          >
+            {t('applicants.form.addRow')}
+          </Button>
+        }
+      >
         <CardBody className="space-y-3">
-          {f.experience.length === 0 && <p className="text-sm text-slate-400">{t('applicants.form.noRows')}</p>}
+          {f.experience.length === 0 && (
+            <p className="text-sm text-slate-400">{t('applicants.form.noRows')}</p>
+          )}
           {f.experience.map((row, i) => (
-            <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-5">
-              <Input placeholder={t('applicants.form.employer')} value={row.employer} onChange={(e) => set({ experience: f.experience.map((r, idx) => (idx === i ? { ...r, employer: e.target.value } : r)) })} />
-              <Input placeholder={t('applicants.form.position')} value={row.position} onChange={(e) => set({ experience: f.experience.map((r, idx) => (idx === i ? { ...r, position: e.target.value } : r)) })} />
-              <Input type="date" value={row.from} onChange={(e) => set({ experience: f.experience.map((r, idx) => (idx === i ? { ...r, from: e.target.value } : r)) })} dir="ltr" />
-              <Input type="date" value={row.to} onChange={(e) => set({ experience: f.experience.map((r, idx) => (idx === i ? { ...r, to: e.target.value } : r)) })} dir="ltr" />
+            <div
+              key={i}
+              className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-5"
+            >
+              <Input
+                placeholder={t('applicants.form.employer')}
+                value={row.employer}
+                onChange={(e) =>
+                  set({
+                    experience: f.experience.map((r, idx) =>
+                      idx === i ? { ...r, employer: e.target.value } : r,
+                    ),
+                  })
+                }
+              />
+              <Input
+                placeholder={t('applicants.form.position')}
+                value={row.position}
+                onChange={(e) =>
+                  set({
+                    experience: f.experience.map((r, idx) =>
+                      idx === i ? { ...r, position: e.target.value } : r,
+                    ),
+                  })
+                }
+              />
+              <Input
+                type="date"
+                value={row.from}
+                onChange={(e) =>
+                  set({
+                    experience: f.experience.map((r, idx) =>
+                      idx === i ? { ...r, from: e.target.value } : r,
+                    ),
+                  })
+                }
+                dir="ltr"
+              />
+              <Input
+                type="date"
+                value={row.to}
+                onChange={(e) =>
+                  set({
+                    experience: f.experience.map((r, idx) =>
+                      idx === i ? { ...r, to: e.target.value } : r,
+                    ),
+                  })
+                }
+                dir="ltr"
+              />
               <div className="flex gap-1">
-                <Input placeholder={t('applicants.form.leavingReason')} value={row.leavingReason} onChange={(e) => set({ experience: f.experience.map((r, idx) => (idx === i ? { ...r, leavingReason: e.target.value } : r)) })} />
-                <Button size="sm" variant="ghost" onClick={() => set({ experience: f.experience.filter((_, idx) => idx !== i) })} aria-label={t('common.remove')}>
+                <Input
+                  placeholder={t('applicants.form.leavingReason')}
+                  value={row.leavingReason}
+                  onChange={(e) =>
+                    set({
+                      experience: f.experience.map((r, idx) =>
+                        idx === i ? { ...r, leavingReason: e.target.value } : r,
+                      ),
+                    })
+                  }
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => set({ experience: f.experience.filter((_, idx) => idx !== i) })}
+                  aria-label={t('common.remove')}
+                >
                   <TrashIcon className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           ))}
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader
-          title={t('applicants.form.references')}
-          actions={
-            <Button size="sm" variant="secondary" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => set({ references: [...f.references, { name: '', relationship: '', phone: '' }] })}>
-              {t('applicants.form.addRow')}
-            </Button>
-          }
-        />
+      <FormSection
+        id="applicant-references"
+        index={8}
+        icon={<UsersIcon className="h-5 w-5" />}
+        title={t('applicants.form.references')}
+        actions={
+          <Button
+            size="sm"
+            variant="secondary"
+            leftIcon={<PlusIcon className="h-4 w-4" />}
+            onClick={() =>
+              set({ references: [...f.references, { name: '', relationship: '', phone: '' }] })
+            }
+          >
+            {t('applicants.form.addRow')}
+          </Button>
+        }
+      >
         <CardBody className="space-y-3">
-          {f.references.length === 0 && <p className="text-sm text-slate-400">{t('applicants.form.noRows')}</p>}
+          {f.references.length === 0 && (
+            <p className="text-sm text-slate-400">{t('applicants.form.noRows')}</p>
+          )}
           {f.references.map((row, i) => (
-            <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-4">
-              <Input placeholder={t('applicants.form.refName')} value={row.name} onChange={(e) => set({ references: f.references.map((r, idx) => (idx === i ? { ...r, name: e.target.value } : r)) })} />
-              <Input placeholder={t('applicants.form.relationship')} value={row.relationship} onChange={(e) => set({ references: f.references.map((r, idx) => (idx === i ? { ...r, relationship: e.target.value } : r)) })} />
-              <Input placeholder={t('applicants.form.phone')} value={row.phone} onChange={(e) => set({ references: f.references.map((r, idx) => (idx === i ? { ...r, phone: e.target.value } : r)) })} dir="ltr" />
-              <Button size="sm" variant="ghost" onClick={() => set({ references: f.references.filter((_, idx) => idx !== i) })} aria-label={t('common.remove')}>
+            <div
+              key={i}
+              className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-4"
+            >
+              <Input
+                placeholder={t('applicants.form.refName')}
+                value={row.name}
+                onChange={(e) =>
+                  set({
+                    references: f.references.map((r, idx) =>
+                      idx === i ? { ...r, name: e.target.value } : r,
+                    ),
+                  })
+                }
+              />
+              <Input
+                placeholder={t('applicants.form.relationship')}
+                value={row.relationship}
+                onChange={(e) =>
+                  set({
+                    references: f.references.map((r, idx) =>
+                      idx === i ? { ...r, relationship: e.target.value } : r,
+                    ),
+                  })
+                }
+              />
+              <Input
+                placeholder={t('applicants.form.phone')}
+                value={row.phone}
+                onChange={(e) =>
+                  set({
+                    references: f.references.map((r, idx) =>
+                      idx === i ? { ...r, phone: e.target.value } : r,
+                    ),
+                  })
+                }
+                dir="ltr"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => set({ references: f.references.filter((_, idx) => idx !== i) })}
+                aria-label={t('common.remove')}
+              >
                 <TrashIcon className="h-4 w-4" />
               </Button>
             </div>
           ))}
         </CardBody>
-      </Card>
+      </FormSection>
 
       {/* Driving licences and certificates are separate records of separate things — a licence has
           a class and an expiry the Fleet module reads; a certificate is a line of prose. They used
           to share a card, which read as though one were a kind of the other. */}
-      <Card>
-        <CardHeader
-          title={t('applicants.form.licenses')}
-          description={t('applicants.form.licensesHint')}
-          actions={
-            <Button size="sm" variant="secondary" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => set({ drivingLicenses: [...f.drivingLicenses, { class: '', expiry: '' }] })}>
-              {t('applicants.form.addRow')}
-            </Button>
-          }
-        />
+      <FormSection
+        id="applicant-licenses"
+        index={9}
+        icon={<TruckIcon className="h-5 w-5" />}
+        title={t('applicants.form.licenses')}
+        description={t('applicants.form.licensesHint')}
+        actions={
+          <Button
+            size="sm"
+            variant="secondary"
+            leftIcon={<PlusIcon className="h-4 w-4" />}
+            onClick={() =>
+              set({ drivingLicenses: [...f.drivingLicenses, { class: '', expiry: '' }] })
+            }
+          >
+            {t('applicants.form.addRow')}
+          </Button>
+        }
+      >
         <CardBody className="space-y-3">
-          {f.drivingLicenses.length === 0 && <p className="text-sm text-slate-400">{t('applicants.form.noRows')}</p>}
+          {f.drivingLicenses.length === 0 && (
+            <p className="text-sm text-slate-400">{t('applicants.form.noRows')}</p>
+          )}
           {f.drivingLicenses.map((row, i) => (
-            <div key={i} className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-3">
-              <Input placeholder={t('applicants.form.licenseClass')} value={row.class} onChange={(e) => set({ drivingLicenses: f.drivingLicenses.map((r, idx) => (idx === i ? { ...r, class: e.target.value } : r)) })} />
-              <Input type="date" value={row.expiry} onChange={(e) => set({ drivingLicenses: f.drivingLicenses.map((r, idx) => (idx === i ? { ...r, expiry: e.target.value } : r)) })} dir="ltr" />
-              <Button size="sm" variant="ghost" onClick={() => set({ drivingLicenses: f.drivingLicenses.filter((_, idx) => idx !== i) })} aria-label={t('common.remove')}>
+            <div
+              key={i}
+              className="grid grid-cols-1 gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-3"
+            >
+              <Input
+                placeholder={t('applicants.form.licenseClass')}
+                value={row.class}
+                onChange={(e) =>
+                  set({
+                    drivingLicenses: f.drivingLicenses.map((r, idx) =>
+                      idx === i ? { ...r, class: e.target.value } : r,
+                    ),
+                  })
+                }
+              />
+              <Input
+                type="date"
+                value={row.expiry}
+                onChange={(e) =>
+                  set({
+                    drivingLicenses: f.drivingLicenses.map((r, idx) =>
+                      idx === i ? { ...r, expiry: e.target.value } : r,
+                    ),
+                  })
+                }
+                dir="ltr"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  set({ drivingLicenses: f.drivingLicenses.filter((_, idx) => idx !== i) })
+                }
+                aria-label={t('common.remove')}
+              >
                 <TrashIcon className="h-4 w-4" />
               </Button>
             </div>
           ))}
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <Card>
-        <CardHeader title={t('applicants.form.certifications')} />
+      <FormSection
+        id="applicant-certifications"
+        index={10}
+        icon={<BadgeIcon className="h-5 w-5" />}
+        title={t('applicants.form.certifications')}
+      >
         <CardBody>
-          <Field label={t('applicants.form.certifications')} hint={t('applicants.form.certificationsHint')}>
-            <Input value={f.certifications} onChange={(e) => set({ certifications: e.target.value })} />
+          <Field
+            label={t('applicants.form.certifications')}
+            hint={t('applicants.form.certificationsHint')}
+          >
+            <Input
+              value={f.certifications}
+              onChange={(e) => set({ certifications: e.target.value })}
+            />
           </Field>
         </CardBody>
-      </Card>
+      </FormSection>
 
-      <FormActions>
-        <Button variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>
-        <Button type="submit" loading={submitting} disabled={mode === 'create' && internalSourceId === null}>
-          {mode === 'create' ? t('applicants.actions.create') : t('common.save')}
-        </Button>
-      </FormActions>
+      {/* Kept in reach on a long form: the save bar sticks to the bottom of the screen. */}
+      <div className="sticky bottom-3 z-20 rounded-2xl border border-slate-200 bg-white/90 px-4 py-2 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+        <FormActions>
+          <Button variant="secondary" className="min-h-[44px] px-5" onClick={onCancel}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" className="min-h-[44px] px-6" loading={submitting}>
+            {mode === 'create' ? t('applicants.actions.create') : t('common.save')}
+          </Button>
+        </FormActions>
+      </div>
     </Form>
   );
 };

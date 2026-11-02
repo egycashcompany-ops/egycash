@@ -56,3 +56,14 @@ def test_the_issue_year_is_taken_from_the_date_piece_even_with_its_slash_misread
     row = [{"text": "٢٠١٩١٧", "score": 0.9, "box": (0, 0, 1, 1)},
            {"text": "٣٠٣٠٧٢٥٠١٠٠٠١٥", "score": 0.9, "box": (2, 0, 3, 1)}]
     assert _issue_year(row) == 2019
+
+
+def test_an_issue_year_after_today_is_reported_not_silently_dropped():
+    import datetime as dt
+
+    from nidocr.crosscheck import cross_check
+
+    fields = {"nationalIdExpiry": {"value": "2030-01-01", "confidence": "high"}}
+    failed = cross_check(fields, 2031, today=dt.date(2026, 10, 14))
+    assert "issueAfterToday" in failed
+    assert fields["nationalIdExpiry"]["confidence"] == "medium"

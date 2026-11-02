@@ -27,6 +27,8 @@ import {
   type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
   EMPLOYED_STATUSES,
+  EMPLOYEE_NATIONAL_ID_CARD_ENTITY_TYPE,
+  type FileDto,
   type EmployeeLoginProvisionDto,
   type JobValueSource,
 } from '@ecms/contracts';
@@ -52,6 +54,8 @@ import { rbacService } from '../../../../platform/rbac';
 import { deliverCredentials, userService, type UserDoc } from '../../../../platform/users';
 import { normalizeArabic } from '../../shared/arabic';
 import { applicantService } from '../../recruitment/applicants';
+import { resolveNationalIdCardCategoryId } from '../../recruitment/applicants/national-id-card.files';
+import { fileService } from '../../../../platform/files';
 import { jobOfferService } from '../../recruitment/job-offers';
 // File import (not the barrel) — the barrel would close an import cycle via the actions service.
 import { employeeActionRepository } from '../employee-actions/employee-action.repository';
@@ -139,6 +143,19 @@ export type DirectRegisterEmployeeInput = Omit<DirectRegisterEmployee, 'personal
       nationalId?: string;
     };
   };
+};
+
+/**
+ * Reading an employee's card files once the employee itself has passed its scope check. Files
+ * carry no branch of their own (they are scoped by the entity that owns them), so the employee
+ * lookup is the gate and the file query is not narrowed again.
+ */
+const FILES_UNSCOPED: ScopeSelector = {
+  scope: 'organization',
+  userId: '',
+  branchId: null,
+  departmentId: null,
+  sectionId: null,
 };
 
 class EmployeeService {
@@ -319,6 +336,7 @@ class EmployeeService {
       );
     }
     await jobOfferService.markHired(String(doc.jobOfferId), String(doc._id));
+    await this.carryNationalIdCard(ctx, doc);
     await this.notifyHire(doc);
     const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
     return { doc, provisionedLogin };
@@ -950,6 +968,78 @@ class EmployeeService {
 
   async getById(id: string, scope: ScopeSelector): Promise<EmployeeDoc> {
     return employeeRepository.getById(id, scope);
+  }
+
+  /**
+   * The employee's National-ID card images (front and back), newest first.
+   *
+   * An employee hired before the card was carried over at hire has none of their own yet; the
+   * first look copies it from their applicant file, so the card is there from then on.
+   */
+  async nationalIdCard(ctx: AuthContext, id: string, scope: ScopeSelector): Promise<FileDto[]> {
+    const employee = await employeeRepository.getById(id, scope);
+    let files = await this.cardFiles(id);
+    if (files.length === 0 && employee.applicantId !== null) {
+      await this.carryNationalIdCard(ctx, employee);
+      files = await this.cardFiles(id);
+    }
+    return files.map((f) => fileService.toDto(f) as FileDto);
+  }
+
+  private async cardFiles(employeeId: string): Promise<Awaited<ReturnType<typeof fileService.list>>['items']> {
+    const page = await fileService.list(
+      {
+        moduleId: 'hr',
+        entityType: EMPLOYEE_NATIONAL_ID_CARD_ENTITY_TYPE,
+        entityId: employeeId,
+        page: 1,
+        pageSize: 10,
+        sortDir: 'desc',
+      },
+      FILES_UNSCOPED,
+    );
+    return page.items;
+  }
+
+  /**
+   * Copies the card the applicant was registered with onto the employee, so HR can open it from
+   * the profile for as long as the person works here. Never fails the hire: the person is hired
+   * either way, and a card can still be opened from the applicant's file.
+   */
+  private async carryNationalIdCard(
+    ctx: AuthContext,
+    employee: Pick<EmployeeDoc, '_id' | 'code' | 'applicantId'>,
+  ): Promise<void> {
+    if (employee.applicantId === null) return;
+    try {
+      const categoryId = await resolveNationalIdCardCategoryId();
+      const source = await fileService.list(
+        {
+          moduleId: 'hr',
+          entityType: 'applicant',
+          entityId: String(employee.applicantId),
+          categoryId,
+          page: 1,
+          pageSize: 3,
+          sortDir: 'asc',
+        },
+        FILES_UNSCOPED,
+      );
+      for (const [index, file] of source.items.entries()) {
+        await fileService.copy(ctx, String(file._id), {
+          moduleId: 'hr',
+          entityType: EMPLOYEE_NATIONAL_ID_CARD_ENTITY_TYPE,
+          entityId: String(employee._id),
+          categoryId,
+          displayName: `${employee.code} — national id ${index + 1}`,
+          visibility: 'private',
+          // Keeps which side it is (front, back, the face), as the applicant's folder knew it.
+          tags: [...file.tags],
+        });
+      }
+    } catch (error) {
+      logger.warn({ err: error, employeeId: String(employee._id) }, 'carrying the national-id card failed');
+    }
   }
 
   /** Employed direct reports (manager tree seed). Reports reference the manager's USER id. */

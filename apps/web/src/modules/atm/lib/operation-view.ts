@@ -78,9 +78,8 @@ export const doneRange = (
   return from <= to ? { from, to } : { from: to, to: from };
 };
 
-// ── The owner's rule: a machine is never open twice (port doc OD-1) ─────────────────────────────
-
-export type AtmOperationKind = 'replenishment' | 'maintenance';
+// ── The owner's rule: a machine's maintenance is never open twice a day (port doc OD-1) ─────────
+// Replenishments are outside it since 2026-11-01 (OD-1b): a machine may have several open.
 
 /**
  * A list of machine codes as every ATM refusal line prints it, joined in the reader's language —
@@ -89,17 +88,7 @@ export type AtmOperationKind = 'replenishment' | 'maintenance';
 export const joinCodes = (codes: readonly string[], locale: Locale): string =>
   codes.join(listSeparator(locale));
 
-/** The line an open form prints for the codes it did NOT open because they are already open. */
-export const alreadyOpenCodesKey = (kind: AtmOperationKind): string =>
-  kind === 'replenishment'
-    ? 'atm.replenishments.alreadyOpenCodes'
-    : 'atm.maintenance.alreadyOpenCodes';
-
-/** The done page's words for a reopen the rule refused. */
-export const reopenRefusalKey = (kind: AtmOperationKind): string =>
-  kind === 'replenishment' ? 'atm.done.reopenAlreadyOpenRep' : 'atm.done.reopenAlreadyOpenMaint';
-
-/** Was this failure the rule's refusal — the machine already has another open operation? */
+/** Was this failure the rule's refusal — the machine already has another open maintenance? */
 export const isAlreadyOpenRefusal = (error: unknown): boolean =>
   error instanceof ApiError && error.code === ErrorCodes.ATM_OPERATION_ALREADY_OPEN;
 

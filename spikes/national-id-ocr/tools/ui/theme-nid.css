@@ -1,0 +1,37 @@
+/* National ID Card: Egypt. A card floating in perspective, tilting toward the pointer, with a slow
+   gold light sweeping its frame and a geometric pattern drifting behind it. Flag colours and gold,
+   nothing else: no emblem, no real card's artwork. Signature motion: the gold sweep, a scan line
+   while reading, and fields rising in with a stagger. */
+
+.hero-nid .pattern { position: absolute; inset: -40px; opacity: .5;
+  background-image:
+    linear-gradient(30deg, transparent 47%, var(--gold-soft) 48%, var(--gold-soft) 52%, transparent 53%),
+    linear-gradient(-30deg, transparent 47%, var(--gold-soft) 48%, var(--gold-soft) 52%, transparent 53%);
+  background-size: 48px 28px; animation: drift 18s linear infinite alternate; }
+.hero-nid .card3d { position: relative; width: 62%; aspect-ratio: 85.6 / 54; transform-style: preserve-3d;
+  transform: rotateX(var(--tilt-x, 8deg)) rotateY(var(--tilt-y, -14deg)) translateY(var(--float, 0px)); will-change: transform; }
+.hero-nid .face { position: absolute; inset: 0; border-radius: 6% / 9.5%; overflow: hidden;
+  background: linear-gradient(160deg, var(--surface), var(--surface-2));
+  box-shadow: 0 1px 0 rgb(255 255 255 / .3) inset, 0 0 0 1px var(--line), 0 24px 40px -12px rgb(0 0 0 / .45), 0 8px 14px -6px rgb(0 0 0 / .25); }
+.hero-nid .flag { position: absolute; inset: 0 0 auto 0; height: 16%; display: grid; grid-template-rows: 1fr 1fr 1fr; }
+.hero-nid .flag i:nth-child(1) { background: var(--flag-red); }
+.hero-nid .flag i:nth-child(2) { background: var(--flag-white); }
+.hero-nid .flag i:nth-child(3) { background: var(--flag-black); }
+.hero-nid .chip { position: absolute; left: 7%; top: 30%; width: 12%; aspect-ratio: 1.25; border-radius: 18%;
+  background: linear-gradient(135deg, var(--gold-soft), var(--gold)); box-shadow: 0 0 0 1px rgb(0 0 0 / .15) inset; }
+.hero-nid .photo { position: absolute; left: 7%; top: 52%; width: 20%; height: 38%; border-radius: 6px; background: var(--surface-2);
+  box-shadow: 0 0 0 1px var(--line) inset; }
+.hero-nid .rows { position: absolute; right: 7%; top: 30%; width: 56%; display: grid; gap: 9%; }
+.hero-nid .rows i { display: block; height: 7px; border-radius: 4px; background: var(--line); }
+.hero-nid .rows i:nth-child(2) { width: 78%; justify-self: end; }
+.hero-nid .rows i:nth-child(3) { width: 62%; justify-self: end; }
+.hero-nid .digits { position: absolute; right: 7%; bottom: 10%; height: 9%; width: 56%; border-radius: 4px;
+  background: repeating-linear-gradient(90deg, var(--muted) 0 6%, transparent 6% 8%); opacity: .45; }
+/* The gold sweep: a narrow band of light crossing the card, slowly, every few seconds. */
+.hero-nid .sweep { position: absolute; inset: -30% auto -30% 0; width: 22%;
+  background: linear-gradient(90deg, transparent, rgb(212 175 55 / .55), rgb(255 236 170 / .65), rgb(212 175 55 / .55), transparent);
+  mix-blend-mode: screen; animation: sweep 5.5s var(--ease-in-out) infinite; }
+.hero-nid .frame { position: absolute; inset: 0; border-radius: 6% / 9.5%; box-shadow: 0 0 0 1.5px var(--gold) inset; opacity: .7; }
+
+/* Fields rise in with the shared stagger when the result arrives. */
+.panel[data-theme="nid"] .field { animation: rise var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * var(--stagger)); }

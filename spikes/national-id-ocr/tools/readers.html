@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EGY CASH Readers</title>
+<meta name="description" content="Read a National ID Card, an EGY CASH ID or an Army Exemption Certificate, offline, each on its own page.">
+<link rel="icon" href="/ui/egycash-logo.svg">
+<link rel="stylesheet" href="/ui/tokens.css">
+<link rel="stylesheet" href="/ui/motion.css">
+<link rel="stylesheet" href="/ui/hero.css">
+<link rel="stylesheet" href="/ui/theme-nid.css">
+<link rel="stylesheet" href="/ui/theme-egyid.css">
+<link rel="stylesheet" href="/ui/theme-army.css">
+<link rel="stylesheet" href="/ui/readers.css">
+<script>
+  // A link straight to a reader's page: hide the home page before it paints (no flash of it).
+  if (/^#\/(national-id|egycash-id|army-exemption)/.test(location.hash)) document.documentElement.dataset.deep = "1";
+</script>
+</head>
+<body data-theme="egyid" data-route="home">
+<a class="skip" href="#main" data-i18n="skip">Skip to content</a>
+
+<header class="site-header">
+  <div class="bar">
+    <a class="logo" href="#/" aria-label="EGY CASH: home">
+      <img src="/ui/egycash-logo-white.svg" alt="EGY CASH" width="150" height="50">
+    </a>
+    <nav class="nav" aria-label="Readers">
+      <a href="#/national-id" data-nav="national_id"><span class="dot" aria-hidden="true"></span><span data-i18n="navNid">National ID Card</span></a>
+      <a href="#/egycash-id" data-nav="egycash_id"><span class="dot" aria-hidden="true"></span><span data-i18n="navEgyid">EGY CASH ID</span></a>
+      <a href="#/army-exemption" data-nav="army_exemption"><span class="dot" aria-hidden="true"></span><span data-i18n="navArmy">Army Exemption</span></a>
+    </nav>
+    <div class="tools">
+      <span class="service" id="service" data-up="unknown" role="status"><span class="dot" aria-hidden="true"></span><span class="service-text"></span></span>
+      <button type="button" class="icon-btn" id="lang" aria-label="العربية" lang="ar">ع</button>
+      <button type="button" class="icon-btn" id="color" data-i18n-aria="colorToggle" aria-label="Switch light or dark">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+  <!-- Home -->
+  <section class="page home" data-page="home" aria-labelledby="home-title">
+    <div class="stage stage-home">
+      <div class="stage-inner">
+        <div class="copy">
+          <p class="eyebrow" data-i18n="homeEyebrow">EGY CASH · Document readers</p>
+          <h1 id="home-title" data-i18n="homeTitle">Read a document in seconds. Check it before it counts.</h1>
+          <p class="lead" data-i18n="homeLead">Three readers, each on its own page: the National ID Card, the EGY CASH ID and the Army Exemption Certificate. Everything runs on this computer. Nothing is saved until a person confirms it.</p>
+          <div class="cta">
+            <a class="btn primary big" href="#/national-id" data-i18n="ctaNid">Read a National ID Card</a>
+            <a class="btn glass big" href="#/egycash-id" data-i18n="ctaEgyid">Read an EGY CASH ID</a>
+          </div>
+        </div>
+        <div class="hero hero-egyid hero-xl" data-hero="egyid">
+          <img class="poster" src="/ui/poster-egyid.svg" alt="" width="640" height="480">
+        </div>
+      </div>
+    </div>
+    <div class="wrap">
+      <h2 class="section-title" data-i18n="chooseTitle">Choose a reader</h2>
+      <div class="choices">
+        <a class="choice" href="#/national-id" data-theme="nid">
+          <span class="choice-art art-nid" aria-hidden="true"></span>
+          <span class="choice-name" data-i18n="navNid">National ID Card</span>
+          <span class="choice-text" data-i18n="nidBlurb">Front and back. Name, number, address, dates and the back's details.</span>
+          <span class="choice-go" aria-hidden="true">→</span>
+        </a>
+        <a class="choice" href="#/egycash-id" data-theme="egyid">
+          <span class="choice-art art-egyid" aria-hidden="true"></span>
+          <span class="choice-name" data-i18n="navEgyid">EGY CASH ID</span>
+          <span class="choice-text" data-i18n="egyidBlurb">The company badge. Name, job title and employee code.</span>
+          <span class="choice-go" aria-hidden="true">→</span>
+        </a>
+        <a class="choice" href="#/army-exemption" data-theme="army">
+          <span class="choice-art art-army" aria-hidden="true"></span>
+          <span class="choice-name" data-i18n="navArmy">Army Exemption</span>
+          <span class="choice-text" data-i18n="armyBlurb">Format and consistency checks only. Only the issuing authority can confirm a certificate.</span>
+          <span class="choice-go" aria-hidden="true">→</span>
+        </a>
+      </div>
+      <ol class="steps">
+        <li><b data-i18n="step1t">Add the photos</b><span data-i18n="step1">Take them with the phone or drop them in. They stay in this page.</span></li>
+        <li><b data-i18n="step2t">Read</b><span data-i18n="step2">The reader checks it is the right document first, then reads each field.</span></li>
+        <li><b data-i18n="step3t">Check every value</b><span data-i18n="step3">Each value shows how sure the reader is. A person confirms before anything is saved.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- One page per reader, filled from the template. -->
+  <div id="reader-pages"></div>
+
+  <template id="page-template">
+    <section class="page reader" tabindex="-1">
+      <div class="stage">
+        <div class="stage-inner">
+          <div class="copy">
+            <p class="eyebrow"></p>
+            <h1 class="page-title"></h1>
+            <p class="lead"></p>
+            <ul class="facts"></ul>
+          </div>
+          <div class="hero hero-xl">
+            <img class="poster" alt="" width="640" height="480">
+          </div>
+        </div>
+      </div>
+      <div class="wrap">
+        <div class="panel" data-state="idle">
+          <div class="workspace">
+            <form class="inputs card" novalidate>
+              <div class="card-head">
+                <h2 class="name"></h2>
+                <span class="chip state" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" width="14" height="14"></svg><span class="state-text"></span></span>
+              </div>
+              <!-- Each side a capture card: take it now, or upload one already saved (an image someone
+                   sent). Tapping the card opens the saved-photo picker; a computer can drop one in. -->
+              <div class="drops">
+                <div class="drop" data-side="front">
+                  <div class="drop-head">
+                    <span class="side-num" aria-hidden="true">1</span>
+                    <span class="drop-label"></span>
+                    <span class="done-badge" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="photoAdded">Added</span></span>
+                  </div>
+                  <div class="frame">
+                    <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+                    <svg class="frame-art" viewBox="0 0 160 100" aria-hidden="true"><rect x="2" y="2" width="156" height="96" rx="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="5 6"/><rect x="16" y="24" width="34" height="42" rx="5" fill="currentColor" opacity=".18"/><rect x="62" y="28" width="78" height="7" rx="3.5" fill="currentColor" opacity=".22"/><rect x="62" y="44" width="58" height="7" rx="3.5" fill="currentColor" opacity=".16"/><rect x="62" y="60" width="68" height="7" rx="3.5" fill="currentColor" opacity=".12"/></svg>
+                    <img class="thumb" alt="">
+                  </div>
+                  <p class="drop-hint"></p>
+                  <div class="pick-row">
+                    <label class="pick-btn camera">
+                      <input type="file" accept="image/*" capture="environment" data-pick="camera">
+                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.6-2h5.8L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span class="when-empty" data-i18n="takePhoto">Take photo</span><span class="when-filled" data-i18n="retakePhoto">Retake</span>
+                    </label>
+                    <label class="pick-btn upload">
+                      <input type="file" accept="image/*" data-pick="upload">
+                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="10" r="1.6" fill="currentColor"/><path d="m4.5 17 4.5-4.5 3.5 3.5 2.5-2.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span class="when-empty" data-i18n="uploadPhoto">Upload</span><span class="when-filled" data-i18n="replacePhoto">Replace</span>
+                    </label>
+                  </div>
+                  <p class="drag-hint" data-i18n="dragHint">or drag a photo here</p>
+                </div>
+                <div class="drop" data-side="back">
+                  <div class="drop-head">
+                    <span class="side-num" aria-hidden="true">2</span>
+                    <span class="drop-label"></span>
+                    <span class="done-badge" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="photoAdded">Added</span></span>
+                  </div>
+                  <div class="frame">
+                    <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+                    <svg class="frame-art" viewBox="0 0 160 100" aria-hidden="true"><rect x="2" y="2" width="156" height="96" rx="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="5 6"/><rect x="16" y="24" width="34" height="42" rx="5" fill="currentColor" opacity=".18"/><rect x="62" y="28" width="78" height="7" rx="3.5" fill="currentColor" opacity=".22"/><rect x="62" y="44" width="58" height="7" rx="3.5" fill="currentColor" opacity=".16"/><rect x="62" y="60" width="68" height="7" rx="3.5" fill="currentColor" opacity=".12"/></svg>
+                    <img class="thumb" alt="">
+                  </div>
+                  <p class="drop-hint"></p>
+                  <div class="pick-row">
+                    <label class="pick-btn camera">
+                      <input type="file" accept="image/*" capture="environment" data-pick="camera">
+                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.6-2h5.8L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span class="when-empty" data-i18n="takePhoto">Take photo</span><span class="when-filled" data-i18n="retakePhoto">Retake</span>
+                    </label>
+                    <label class="pick-btn upload">
+                      <input type="file" accept="image/*" data-pick="upload">
+                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="10" r="1.6" fill="currentColor"/><path d="m4.5 17 4.5-4.5 3.5 3.5 2.5-2.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span class="when-empty" data-i18n="uploadPhoto">Upload</span><span class="when-filled" data-i18n="replacePhoto">Replace</span>
+                    </label>
+                  </div>
+                  <p class="drag-hint" data-i18n="dragHint">or drag a photo here</p>
+                </div>
+              </div>
+              <div class="actions">
+                <button type="submit" class="btn primary big read" data-i18n="read">Read</button>
+                <button type="button" class="btn ghost reset" data-i18n="reset">Clear</button>
+                <span class="timer" aria-hidden="true"></span>
+              </div>
+              <p class="status" role="status" aria-live="polite"></p>
+            </form>
+
+            <div class="outcome card">
+              <div class="placeholder">
+                <p class="placeholder-title" data-i18n="resultTitle">The result appears here</p>
+                <p class="placeholder-text" data-i18n="resultHint">Each value comes with how sure the reader is. Check every one before using it.</p>
+              </div>
+              <div class="alert shake-once" role="alert" hidden>
+                <svg class="icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3 2 21h20L12 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v5M12 18v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <div><p class="msg-en" lang="en" dir="ltr"></p><p class="msg-ar" lang="ar" dir="rtl"></p><p class="why"></p>
+                  <details class="detail" hidden><summary data-i18n="detail">Technical detail</summary><code></code></details></div>
+              </div>
+              <!-- The card as the reader saw it: each side cut out and turned upright, and the
+                   holder's photo cut from the front. Kept in this page only; never stored. -->
+              <div class="as-read" hidden>
+                <p class="as-read-title" data-i18n="asRead">The card as read</p>
+                <div class="sides"></div>
+                <div class="portrait-row" hidden>
+                  <img class="portrait" alt="" width="120" height="150">
+                  <div class="portrait-text">
+                    <p class="portrait-title" data-i18n="portraitTitle">Photo from the card</p>
+                    <p class="portrait-hint" data-i18n="portraitHint">Cut from the front, as printed.</p>
+                    <a class="btn ghost small portrait-dl" download="card-photo.jpg" data-i18n="downloadPhoto">Download photo</a>
+                  </div>
+                </div>
+              </div>
+              <div class="result-card" hidden>
+                <div class="verdict">
+                  <svg class="mark-check" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <p class="verdict-text"></p>
+                </div>
+                <dl class="fields"></dl>
+                <details class="more" hidden><summary data-i18n="moreDetails">More from the certificate</summary><dl class="fields more-fields"></dl></details>
+                <p class="note"></p>
+              </div>
+              <!-- Army Exemption only: parts of the certificate that must agree, and how a person
+                   confirms it with the issuing authority (this page never contacts anyone). -->
+              <section class="checks-card" hidden>
+                <p class="checks-line"></p>
+                <p class="confirm-line"></p>
+              </section>
+              <div class="skeletons" hidden aria-hidden="true">
+                <div class="skeleton" style="width:72%"></div><div class="skeleton" style="width:54%"></div>
+                <div class="skeleton" style="width:80%"></div><div class="skeleton" style="width:40%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </template>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap foot-inner">
+    <img src="/ui/egycash-logo-white.svg" alt="" width="110" height="37">
+    <p data-i18n="footer">Matching a format is not proof a document is genuine. Only the issuing authority can confirm that.</p>
+  </div>
+</footer>
+<script type="module" src="/ui/readers.js"></script>
+</body>
+</html>

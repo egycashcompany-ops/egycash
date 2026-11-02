@@ -1,14 +1,4 @@
-"""The capture gate: does this photograph carry enough signal to be worth reading?
-
-The failure this guards against is not a crash. It is a 200 px-wide photograph of a card producing
-fourteen confident digits that belong to nobody, and a reviewer accepting them because they look
-like a national ID. Nothing downstream can catch that — the information was never in the pixels —
-so it has to be caught here, and it has to be caught in a way the user can act on.
-
-Two properties matter and both are tested: that the reasons are SPECIFIC (a user told "too small"
-moves closer, a user told "unreadable" retakes the same photograph), and that a poor capture caps
-confidence rather than discarding the read.
-"""
+"""The capture gate: does this photograph carry enough signal to be worth reading?"""
 
 from __future__ import annotations
 
@@ -67,11 +57,7 @@ def test_a_blurred_capture_is_caught():
 
 
 def test_glare_is_measured_as_blobs_not_stray_bright_pixels():
-    """A card's own pale stock is not glare. A reflection that swallowed a field is.
-
-    Measuring raw bright pixels would flag every well-lit capture of pale card stock, which would
-    make the warning meaningless. Only a contiguous blown-out region counts.
-    """
+    """A card's own pale stock is not glare. A reflection that swallowed a field is."""
     speckled = _card().copy()
     rng = np.random.default_rng(0)
     ys = rng.integers(0, speckled.shape[0], 4000)
@@ -88,13 +74,7 @@ def test_glare_is_measured_as_blobs_not_stray_bright_pixels():
 
 
 def test_a_rejected_capture_is_still_read_but_capped():
-    """Rejection shapes confidence; it does not throw the read away.
-
-    Some fields survive a poor capture, the reviewer has the card in hand either way, and a
-    partly-filled form beats an empty one. Equally, these thresholds are reasoned priors rather
-    than measurements — so the failure mode when one is wrong should be a mis-ranked confidence,
-    not a readable card silently discarded.
-    """
+    """Rejection shapes confidence; it does not throw the read away."""
     rejected = QualityReport("reject", ("blurred",), {})
     assert not rejected.readable
     assert rejected.confidence_ceiling == "low"
@@ -105,12 +85,7 @@ def test_a_rejected_capture_is_still_read_but_capped():
 
 
 def test_an_already_cropped_scan_is_not_reported_as_a_missing_card():
-    """The most ordinary input must not raise a warning.
-
-    Flagging every pre-cropped scan as 'card_not_located' would fire constantly on the common path
-    and train everyone to ignore the warning — at which point it stops working for the case it
-    exists for.
-    """
+    """The most ordinary input must not raise a warning."""
     report = assess(rectify(_card(), CANONICAL))
     assert "card_not_located" not in report.reasons
 
@@ -123,11 +98,7 @@ def test_metrics_are_reported_even_when_the_verdict_passes():
 
 
 def test_measures_are_taken_on_the_card_not_the_frame():
-    """A 12 MP photo of a distant card is not sharp, however sharp the background is.
-
-    Measuring the source frame would call it sharp and pass a capture with no readable text on it,
-    which is exactly the confident-garbage case this module exists to prevent.
-    """
+    """A 12 MP photo of a distant card is not sharp, however sharp the background is."""
     distant = compose(_card(), DISTANT, background="sand")
     assert sharpness(rectify(distant, CANONICAL).image) < sharpness(_card())
     assert contrast(_card()) > 0

@@ -11,26 +11,36 @@
 // which is a mark that is technically there and practically not. `onBrand` is the reversed mark for
 // the brand gradient itself (the sign-in panel), where any purple would disappear: the bands white,
 // the ribbons white at 72%, so the fold still reads with the band in front, as it does in the logo.
+// `muted` is the watermark: one faint tone, for an empty frame waiting for a photograph.
 import { cn } from '../lib/cn';
 import { MARK_BAND_PATH, MARK_HEIGHT, MARK_RIBBON_PATH, MARK_WIDTH } from './brand-mark-paths';
 
-type BrandSize = 'sm' | 'md' | 'lg';
-type BrandVariant = 'brand' | 'onBrand';
+type BrandSize = 'sm' | 'md' | 'lg' | 'fill';
+type BrandVariant = 'brand' | 'onBrand' | 'muted';
 
 const HEIGHT: Record<BrandSize, string> = {
   sm: 'h-8',
   md: 'h-10',
   lg: 'h-12',
+  // No height of its own: the caller sizes it. For a mark that fills a frame rather than sitting
+  // in a row of chrome — `cn` is a plain joiner with no conflict resolution, so a caller's own
+  // height would otherwise sit beside `h-10` and the winner would be whichever Tailwind emitted
+  // last, not whichever the caller meant.
+  fill: '',
 };
 
 const RIBBON: Record<BrandVariant, string> = {
   brand: 'fill-[#3e4097] dark:fill-[#8c90e0]',
   onBrand: 'fill-white/[0.72]',
+  muted: 'fill-slate-300 dark:fill-white/[0.09]',
 };
 
 const BAND: Record<BrandVariant, string> = {
   brand: 'fill-[#5d60a9] dark:fill-[#b5b8ec]',
   onBrand: 'fill-white',
+  // One tone, not two: as a watermark behind an empty photo frame the fold should read as a
+  // single faint shape, and at 9% on dark the two-tone fold is just noise.
+  muted: 'fill-slate-300 dark:fill-white/[0.09]',
 };
 
 export const BrandMark = ({

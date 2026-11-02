@@ -1,12 +1,4 @@
-# Offline National-ID OCR sidecar.
-#
-# The weights are baked into the image, so the container needs no egress at all. The bench profile
-# below runs with `network_mode: none` to prove exactly that: if an external dependency ever crept
-# in, the measurement run would fail loudly instead of quietly phoning home.
-#
-# The API reaches the service over the shared network and is pointed at it with
-# NATIONAL_ID_OCR_URL=http://nid-ocr:8099. Without that variable the API keeps the null stub and
-# National-ID OCR reports `available: false`, exactly as before this existed.
+# Runs the OCR service. Models are inside the image, so it needs no network.
 services:
   nid-ocr:
     build: .
@@ -14,23 +6,24 @@ services:
     restart: unless-stopped
     environment:
       OCR_PORT: "8099"
-      OCR_PRELOAD: "1" # pay the model load at start, not on a user's first request
-      # Geometry defaults to /app/profiles/egypt-nid.json, baked into the image — see the Dockerfile.
-      # Set this only to override it with your own calibration, and mount the file it names:
+      OCR_PRELOAD: "1" # load the models at start
+      OCR_WORKERS: "3" # one Paddle process per reader, so the three run at once (see pool.py)
+      # To use your own field positions, mount a profile and set:
       # OCR_LAYOUT_PROFILE: /profiles/egypt-2027.json
     # volumes:
     #   - ./profiles:/profiles:ro
     ports:
-      - "127.0.0.1:8099:8099" # loopback only — never expose this beyond the host
+      - "127.0.0.1:8099:8099" # this computer only
+      - "[::1]:8099:8099" # and its IPv6 loopback: "localhost" can resolve to ::1 on Windows
     networks: [ecms]
 
-  # Measurement run: the same image, a different command, no network whatsoever.
+  # Accuracy measurement on local cards, with networking disabled.
   nid-ocr-bench:
     profiles: [bench]
     image: ecms/nid-ocr:latest
     network_mode: none
     volumes:
-      - ./fixtures/real:/app/fixtures/real:ro # anonymized cards, never baked into a layer
+      - ./fixtures/real:/app/fixtures/real:ro # local test cards, not part of the image
     command: ["bench/measure.py", "--fixtures", "fixtures/real", "--recognizer", "paddle"]
 
 networks:

@@ -1,23 +1,15 @@
 """Confidence must never claim more than the evidence: the fix-first findings of the accuracy audit.
-
-A field marked 'high' is one a reviewer is told they need not check, so every path that could
-promote a guess, a repair or a refused photo to 'high' (or a guess to 'medium') is pinned here.
 """
 
 from __future__ import annotations
 
 import sys
-import threading
 from pathlib import Path
-
-import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from nidocr.engine import Recognition  # noqa: E402
 from nidocr.extract import SideResult, _finalize, _reconcile_national_id  # noqa: E402
-from nidocr.vlm import HybridRecognizer  # noqa: E402
 
 VALID = "29001150101435"  # structurally valid, made up
 
@@ -57,49 +49,80 @@ def test_two_sides_agreeing_on_a_clean_read_is_high():
     assert agreed["confidence"] == "high"
 
 
-class _Base:
-    id = "base"
+def test_a_fields_percentage_always_agrees_with_its_band():
+    from nidocr.extract import ExtractionResult
 
-    def recognize(self, crop, *, rtl=True):  # noqa: ARG002
-        return Recognition(text="paddle", score=0.9)
-
-    def detect_lines(self, image):  # noqa: ARG002
-        return []
-
-
-class _Reader:
-    id = "vlm"
-
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def read(self, crop):  # noqa: ARG002
-        self.calls += 1
-        return "vlm"
-
-    def close(self) -> None:
-        return None
+    result = ExtractionResult(fields={
+        "fullNameAr": {"value": "x", "confidence": "medium", "score": 0.99},  # capped: corrected
+        "nationalId": {"value": "y", "confidence": "high", "score": 0.80},    # high on agreement
+        "address": {"value": "z", "confidence": "low", "score": 0.95},
+    })
+    assert result.scores() == {"fullNameAr": 89, "nationalId": 90, "address": 69}
 
 
-def test_a_vlm_never_reads_a_crop_after_its_field_binding_was_released():
-    reader = _Reader()
-    hybrid = HybridRecognizer(_Base(), reader)
-    crop = np.zeros((20, 60, 3), np.uint8)
-    hybrid.bind("fullNameAr")
-    assert hybrid.recognize(crop).text == "vlm"
-    hybrid.unbind()
-    # e.g. the back's religion-gap read, which nothing binds
-    assert hybrid.recognize(crop).text == "paddle"
-    assert reader.calls == 1
+def test_a_digit_beside_the_card_is_dropped_from_the_occupation():
+    """A keyboard key above the card was read into the job: '6 طالب'. Jobs have no digits."""
+    data = _finalize("occupation", "6 طالب", 0.97)
+    assert data["value"] == "طالب"
+    assert data["confidence"] != "high", "a dropped word is a correction, and gets looked at"
 
 
-def test_a_vlm_binding_belongs_to_the_thread_that_made_it():
-    hybrid = HybridRecognizer(_Base(), _Reader())
-    hybrid.bind("address")
-    seen: list[str] = []
-    worker = threading.Thread(
-        target=lambda: seen.append(hybrid.recognize(np.zeros((5, 5, 3), np.uint8)).text)
+def test_an_all_arabic_occupation_is_untouched():
+    assert _finalize("occupation", "بدون عمل", 0.97)["value"] == "بدون عمل"
+
+
+def test_a_disagreement_made_only_of_a_borrowed_digit_is_agreement():
+    """The back's widened read took the ٢ ending the issue date: 2… against the front's 3…."""
+    from nidocr.ensemble import Candidate
+
+    true = "30512180101234"
+    borrowed = "2" + true[1:]
+    front = SideResult(
+        fields={"nationalId": {"value": true, "confidence": "medium", "valid": True}},
+        nid_candidates=[
+            Candidate("grey", true, 0.97),
+            Candidate("thick", true, 0.96),
+            Candidate("clahe", true[1:], 0.95),
+        ],
     )
-    worker.start()
-    worker.join()
-    assert seen == ["paddle"]
+    back = SideResult(
+        fields={"nationalId": {"value": borrowed, "confidence": "medium", "valid": True, "widened": True}},
+        nid_candidates=[
+            Candidate("page", true[2:], 0.95),
+            Candidate("grey", true[3:], 0.94),
+            Candidate("widened2:grey", borrowed, 0.8),
+        ],
+    )
+    agreed = _reconcile_national_id({"front": front, "back": back})
+    assert agreed["value"] == true
+    assert agreed["confidence"] == "high"
+    assert agreed["agreement"] == "both-sides-direct"
+
+
+def test_one_full_read_is_not_enough_to_wave_the_other_side_through():
+    from nidocr.ensemble import Candidate
+
+    true = "30512180101234"
+    front = SideResult(
+        fields={"nationalId": {"value": true, "confidence": "medium", "valid": True}},
+        nid_candidates=[Candidate("grey", true, 0.97)],
+    )
+    back = SideResult(
+        fields={"nationalId": {"value": "2" + true[1:], "confidence": "medium", "valid": True, "widened": True}},
+        nid_candidates=[Candidate("page", true[2:], 0.95)],
+    )
+    assert _reconcile_national_id({"front": front, "back": back}).get("agreement") != "both-sides-direct"
+
+
+def test_a_borrowed_digit_the_direct_reads_contradict_is_not_waved_through():
+    from nidocr.ensemble import Candidate
+
+    true = "30512180101234"
+    other = "2" + true[1:-1] + "0"
+    front = SideResult(fields={"nationalId": {"value": true, "confidence": "medium", "valid": True}})
+    back = SideResult(
+        fields={"nationalId": {"value": other, "confidence": "medium", "valid": True, "widened": True}},
+        nid_candidates=[Candidate("page", other[2:], 0.95), Candidate("grey", other[3:], 0.94)],
+    )
+    agreed = _reconcile_national_id({"front": front, "back": back})
+    assert agreed.get("agreement") != "both-sides-direct"

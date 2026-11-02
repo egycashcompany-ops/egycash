@@ -110,8 +110,8 @@ class AtmMaintenanceService {
    * port doc OD-1) — overriding the legacy, which had no duplicate guard here either: a machine
    * that already has an open maintenance ON THE BATCH'S DAY, anywhere in the company, is not
    * opened again (one left open on an earlier day does not block), and a code pasted twice opens once;
-   * both are reported in `alreadyOpenCodes` while the other lines still open. Independent of
-   * replenishment — a machine may have one open of each.
+   * both are reported in `alreadyOpenCodes` while the other lines still open. Replenishments never
+   * block it: they are outside the rule since OD-1b (2026-11-01).
    */
   async open(
     input: OpenAtmMaintenances,

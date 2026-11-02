@@ -1,14 +1,4 @@
-"""Fragment ordering — the difference between a usable field and a shuffled one.
-
-Three real cards came back with every word correct and the sequence meaningless: a name arrived
-as its own words out of order, and an address as its own lines interleaved. Detection returns
-fragments in its own order, and the pipeline was joining them as they arrived.
-
-The direction is per-field, not global. Arabic names and addresses read right to left; the
-national ID is a number whose spaced groups read left to right, on the same card, in the same
-image. Getting that backwards produces a number with every digit correct in the wrong order —
-which passes a glance, passes a length check, and is wrong.
-"""
+"""Fragment ordering, the difference between a usable field and a shuffled one."""
 
 from __future__ import annotations
 
@@ -61,8 +51,9 @@ def test_reading_a_number_right_to_left_reverses_it():
 
 
 def test_rows_are_grouped_by_overlap_not_exact_baseline():
-    """Words on one printed line rarely share a baseline pixel-for-pixel; a few px of jitter must
-    not split them into separate rows and scramble the line order."""
+    """Words on one printed line rarely share a baseline pixel-for-pixel; a few px of jitter must not
+    split them into separate rows and scramble the line order.
+    """
     jittered = [
         (box(700, 141, 860, 199), "ثالث", 0.9),
         (box(500, 138, 660, 202), "ثاني", 0.9),

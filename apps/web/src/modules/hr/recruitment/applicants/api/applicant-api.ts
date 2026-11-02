@@ -128,7 +128,17 @@ export const listFileCategories = (): Promise<Paginated<FileCategoryDto>> =>
   getPage<FileCategoryDto>(`/platform/file-categories${buildQuery({ pageSize: 100 })}`);
 
 /** Upload a raw file to the platform Files service (used by the OCR flow to obtain a fileId). */
-export const uploadPlatformFile = (form: FormData): Promise<FileDto> => upload<FileDto>('/platform/files', form);
+/**
+ * One National-ID card photograph, filed by HR's own endpoint.
+ *
+ * NOT `POST /platform/files`, which needs `file.create`, and no category id in the body, because
+ * finding the category needed `file.view`. An HR role holds neither — so the generic route gave
+ * them an empty category list and the screen blamed a missing category. This route needs only
+ * `applicant.create`, the same key registering an applicant needs, and resolves the category
+ * server-side.
+ */
+export const uploadNationalIdCardScan = (form: FormData): Promise<{ fileId: string }> =>
+  upload<{ fileId: string }>('/hr/applicants/national-id-card/upload', form);
 
 /** Export the current filtered set as CSV (paging/search are ignored server-side). */
 export const exportApplicantsCsv = (params: ApplicantListParams): Promise<void> =>

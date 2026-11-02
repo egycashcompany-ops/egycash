@@ -31,6 +31,10 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { resolveNationalIdCardCategoryId } from './national-id-card.files';
+import {
+  APPLICANT_CARD_SCAN_ENTITY_ID,
+  APPLICANT_CARD_SCAN_ENTITY_TYPE,
+} from './national-id-scan.files';
 import { normalizeArabic } from '../../shared/arabic';
 import {
   materializeAfterMoveToOffer,
@@ -510,6 +514,50 @@ class ApplicantService {
     } catch {
       return applicantSourceRepository.findByKey(DIRECT_REGISTRATION_SOURCE_KEY);
     }
+  }
+
+  /**
+   * File one freshly photographed card image, server-side, and hand back its id.
+   *
+   * THE CATEGORY IS RESOLVED HERE, which is the whole point. The browser used to list
+   * `/platform/file-categories` to find it — a route behind `file.view`, which no HR role holds —
+   * so the list came back empty and the screen blamed a missing category. `resolveNationalIdCardCategoryId`
+   * ensures the category as it reads it, so a database seeded before the category existed gets it
+   * created on first use instead of failing.
+   *
+   * IMAGE ONLY, checked here rather than left to the category. The National-ID category also
+   * allows `application/pdf`, which is right for a scan filed by hand but wrong for this route:
+   * what arrives here came from a camera or a photo picker, and the reader cannot do anything with
+   * a PDF. Refusing it at the edge keeps the error about the file instead of about the OCR.
+   */
+  async uploadNationalIdCardScan(
+    ctx: AuthContext,
+    binary: UploadedBinary,
+  ): Promise<{ fileId: string }> {
+    if (!binary.mime.startsWith('image/')) {
+      throw new ValidationError([
+        {
+          field: 'body.file',
+          code: 'UNSUPPORTED_MEDIA_TYPE',
+          message: 'a National-ID card scan must be an image',
+        },
+      ]);
+    }
+    const categoryId = await resolveNationalIdCardCategoryId();
+    const file = await fileService.upload(
+      ctx,
+      {
+        moduleId: 'hr',
+        entityType: APPLICANT_CARD_SCAN_ENTITY_TYPE,
+        entityId: APPLICANT_CARD_SCAN_ENTITY_ID,
+        categoryId,
+        displayName: binary.originalName,
+        visibility: 'private',
+        tags: [],
+      },
+      binary,
+    );
+    return { fileId: String(file._id) };
   }
 
   private async fileNationalIdCards(

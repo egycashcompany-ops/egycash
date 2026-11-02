@@ -587,6 +587,31 @@ describe('a list that floats — a table’s column filter, «يكون Drop Down
     expect(markup).toContain('SYN A');
   });
 
+  it('closes on Tab from the floating panel, the focus going on from its trigger', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    const tab = source.slice(source.indexOf("if (floating && open && e.key === 'Tab')"));
+    expect(tab.length).toBeGreaterThan(0);
+    const body = tab.slice(0, tab.indexOf('return;\n    }'));
+    expect(body).toContain('setOpen(false)');
+    expect(body).toContain('triggerRef.current?.focus()');
+    expect(body).toContain('if (e.shiftKey) e.preventDefault()');
+  });
+
+  it('offers «every match» only while the search looks for a letter or a digit', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toMatch(
+      /const matchesRow =\s+pickMatches && !remote && \/\[\\p\{L\}\\p\{N\}\]\/u\.test\(query\)/,
+    );
+    // The owner's matcher, when given, replaces the app's own rule.
+    expect(source).toContain('(match ?? foldIncludes)(o.label, query)');
+  });
+
   it('a press on the floating panel is not a press outside it', () => {
     const source = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),

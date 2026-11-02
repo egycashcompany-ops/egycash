@@ -939,15 +939,21 @@ answers in the same conversation):
   one multi-pick drop-down per text column, the way the bank and area filters above are
   (`shared/lib/column-filter.ts`):
   - a column's list holds the values its cells SHOW, each once — trimmed, inner spaces one — sorted
-    as the reader reads (Arabic collation, a run of digits as a number), an empty cell as one
+    as the reader reads (`columnSortKey`: Arabic collation, a number with its digit groups closed
+    up, a date year first, a time on the 24-hour clock), an empty cell — blank or «—» — as one
     «(فارغ)» entry, last;
   - the list is made from the rows the OTHER columns' picks keep, as a sheet's own filter is, so it
     never offers a value that would empty the table; a value still picked that no row holds any
     more (a filter above moved on) is listed first, to be seen and dropped;
   - a column's picks keep the rows whose cell is any of them; the columns add up with each other
     and with the filters above;
-  - the list's search finds values (`fold`), and «كل النتائج» — or Enter — ticks every value found:
-    «704» then Enter keeps every code holding 704, as the box typed into used to;
+  - the list's search finds values as the box typed into did (`columnSearchMatches`: Arabic or
+    Latin digits, any hamza form, several words in any order, a date's «/» and a time's «:» kept —
+    «2/11» never finds 21/10; a search of punctuation only searches nothing), and «كل النتائج» — or
+    Enter — ticks every value found: «704» then Enter ticks every code holding 704 that the column
+    shows at that moment (a row arriving later with another such code is not among the picks);
+  - a floating list closes on Tab, the focus going on from its trigger — the panel sits at the
+    page's end, and Tab would otherwise walk off into the page with the list still open;
   - the list is made only when it is opened (`MultiSelect` `loadOptions`): a board re-renders every
     second for its timers. It opens over the page (`floating`: a portal fixed to the trigger, below
     it or above it, following it on a scroll), so the table's scrolling box never cuts it off, and

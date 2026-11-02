@@ -5,13 +5,15 @@
 // built by hand renders them in a row of its own `<thead>`. The rules are
 // `shared/lib/column-filter.ts`.
 import { useT } from '../../platform/localization/useT';
+import { columnSearchMatches } from '../lib/column-filter';
 import { MultiSelect, type MultiSelectOption } from './MultiSelect';
 
 /**
  * One column's list. Its values are asked for only while it is open (`choices`), it opens over
  * the page rather than inside the table's scrolling box, the closed trigger names what is picked,
- * and what its search finds can be picked at once (`pickMatches`) — «704» then Enter keeps every
- * code holding 704, as the box typed into used to.
+ * and what its search finds can be picked at once (`pickMatches`) — «704» then Enter ticks every
+ * code holding 704 that the column shows NOW (a row that arrives later with another such code is
+ * not among the picks). The search keeps a date's «/» and a time's «:» (`columnSearchMatches`).
  *
  * The control FILLS its column and never sizes it (`w-0 min-w-full` on the inner box): a trigger
  * naming its picks at its natural width would widen the column the moment something is picked,
@@ -54,6 +56,7 @@ export const ColumnFilterSelect = ({
           fullWidth
           floating
           pickMatches
+          match={columnSearchMatches}
           showSelectedValues
           panelWidth="w-64"
           placeholder={placeholder ?? t('common.filters.all')}

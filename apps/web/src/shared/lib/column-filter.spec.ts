@@ -16,8 +16,11 @@ import {
   cellValue,
   columnFilterChoices,
   columnFilterChoicesOf,
+  columnSearchMatches,
+  columnSortKey,
   filterRowsByColumns,
   hasColumnFilters,
+  isColumnSearch,
   type ColumnFilterValues,
 } from './column-filter';
 
@@ -130,5 +133,95 @@ describe('what a column’s list offers', () => {
     const of = columnFilterChoicesOf(ROWS, { area: ['زايد'] }, textOf);
     expect(of('bank')).toEqual(['NBE']);
     expect(of('area')).toEqual(['أكتوبر', 'الدقي', 'زايد']);
+  });
+});
+
+describe('an empty cell, whichever way a page prints it', () => {
+  it('«—» is the empty value, as a blank cell is — one «(فارغ)» entry, last', () => {
+    expect(cellValue(' — ')).toBe('');
+    // A dash inside a value is part of it.
+    expect(cellValue('SYN — 1')).toBe('SYN — 1');
+    const lines = [
+      { id: 'x', serial: '—' },
+      { id: 'y', serial: '١٠١' },
+      { id: 'z', serial: '' },
+    ];
+    const serialOf = (line: { serial: string }, key: string): string | null =>
+      key === 'serial' ? line.serial : null;
+    expect(columnFilterChoices(lines, {}, 'serial', serialOf)).toEqual(['١٠١', '']);
+    expect(filterRowsByColumns(lines, { serial: [''] }, serialOf).map((l) => l.id)).toEqual([
+      'x',
+      'z',
+    ]);
+  });
+});
+
+describe('the list’s search — as the box typed into matched', () => {
+  const at = [
+    '٠٢\u200F/١١\u200F/٢٠٢٦، ١٠:٣٠ ص',
+    '٢١\u200F/١٠\u200F/٢٠٢٦، ١١:٣٠ ص',
+    '٢١\u200F/١١\u200F/٢٠٢٦، ١١:٠٣ ص',
+  ];
+  const found = (typed: string): number[] =>
+    at.flatMap((value, index) => (columnSearchMatches(value, typed) ? [index] : []));
+
+  it('keeps a date’s «/» and a time’s «:» — «2/11» never finds 21/10, «1:03» never 10:30', () => {
+    expect(found('2/11')).toEqual([0]);
+    expect(found('1:03')).toEqual([2]);
+    expect(found('١٠:٣٠')).toEqual([0]);
+  });
+
+  it('Arabic or Latin digits and separators, digit groups closed up, any hamza form, words in any order', () => {
+    expect(columnSearchMatches('١٬٢٥٠٫٥٠ ج.م', '1,250.50')).toBe(true);
+    expect(columnSearchMatches('١٬٢٥٠٫٥٠ ج.م', '1250')).toBe(true);
+    expect(columnSearchMatches('١٬٢٥٠٫٥٠ ج.م', '2501')).toBe(false);
+    expect(columnSearchMatches('SYN الإسماعيلية', 'الاسماعيليه syn')).toBe(true);
+  });
+
+  it('punctuation alone searches for nothing — it matches all, and is no search', () => {
+    expect(found('/')).toEqual([0, 1, 2]);
+    expect(isColumnSearch(' / — ')).toBe(false);
+    expect(isColumnSearch('704')).toBe(true);
+  });
+});
+
+describe('the order a list reads in', () => {
+  const sorted = (values: string[]): string[] =>
+    columnFilterChoices(
+      values.map((value) => ({ value })),
+      {},
+      'value',
+      (row: { value: string }) => row.value,
+    );
+
+  it('numbers with digit groups as the numbers they are', () => {
+    expect(sorted(['٩٠٠٬٠٠٠', '١٬٢٥٠٬٠٠٠', '٥٠٬٠٠٠', '١٬٠٠٠', '٩٩'])).toEqual([
+      '٩٩',
+      '١٬٠٠٠',
+      '٥٠٬٠٠٠',
+      '٩٠٠٬٠٠٠',
+      '١٬٢٥٠٬٠٠٠',
+    ]);
+  });
+
+  it('dates in time order, Arabic and English, and times on the 24-hour clock', () => {
+    expect(
+      sorted([
+        '٠١\u200F/١٢\u200F/٢٠٢٦، ٩:٠٠ ص',
+        '٠٢\u200F/١١\u200F/٢٠٢٦، ٣:٠٥ م',
+        '٠٢\u200F/١١\u200F/٢٠٢٦، ١١:٠٠ ص',
+      ]),
+    ).toEqual([
+      '٠٢\u200F/١١\u200F/٢٠٢٦، ١١:٠٠ ص',
+      '٠٢\u200F/١١\u200F/٢٠٢٦، ٣:٠٥ م',
+      '٠١\u200F/١٢\u200F/٢٠٢٦، ٩:٠٠ ص',
+    ]);
+    expect(sorted(['1 Dec 2026, 09:00', '21 Oct 2026, 11:30', '2 Nov 2026, 15:05'])).toEqual([
+      '21 Oct 2026, 11:30',
+      '2 Nov 2026, 15:05',
+      '1 Dec 2026, 09:00',
+    ]);
+    expect(columnSortKey('12:15 ص')).toBe('0:15');
+    expect(columnSortKey('12:15 م')).toBe('12:15');
   });
 });

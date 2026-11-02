@@ -554,10 +554,9 @@ describe('the lines table’s column lists (2026-11-02, «فلتر لكل عمو
     expect(planLineText(one, 'status', t2, 'ar')).toBe(issued);
     expect(planLineText(one, 'unknown', t2, 'ar')).toBeNull();
     const text = (l: AtmPlanLineDto, key: string): string | null => planLineText(l, key, t2, 'ar');
-    // The serial's list: what the cells show, each once — a draft's «—» among them.
-    expect([...columnFilterChoices(lines, {}, 'serial', text)].sort()).toEqual(
-      ['١٠١', '١٠٣', '—'].sort(),
-    );
+    // The serial's list: what the cells show, each once, in order — a draft's «—» the empty
+    // value («(فارغ)»), last.
+    expect(columnFilterChoices(lines, {}, 'serial', text)).toEqual(['١٠١', '١٠٣', '']);
     // A list offers only what the OTHER columns' picks leave: no value that would empty the table.
     expect(columnFilterChoices(lines, { code: ['BRKN9002'] }, 'status', text)).toEqual([draft]);
   });
@@ -567,6 +566,8 @@ describe('the lines table’s column lists (2026-11-02, «فلتر لكل عمو
     expect(codes({ serial: ['١٠٣'] })).toEqual(['BRKN9003']);
     // The pick is the cell's own text: «103» in Latin digits is no value the column shows.
     expect(codes({ serial: ['103'] })).toEqual([]);
+    // The empty value keeps the draft whose serial shows «—» — picked as «(فارغ)», or as «—».
+    expect(codes({ serial: [''] })).toEqual(['BRKN9002']);
     expect(codes({ serial: ['—'] })).toEqual(['BRKN9002']);
     expect(codes({ status: [draft] })).toEqual(['BRKN9002']);
     // A whole value, not a part of one.

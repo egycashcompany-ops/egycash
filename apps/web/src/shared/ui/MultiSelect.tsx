@@ -220,6 +220,7 @@ export const MultiSelect = ({
   clearable = false,
   floating = false,
   pickMatches = false,
+  match,
   loadOptions,
   size = 'default',
   className,
@@ -355,6 +356,12 @@ export const MultiSelect = ({
    */
   pickMatches?: boolean;
   /**
+   * How the search box matches an option's label, when the app's own rule (`foldIncludes`, which
+   * drops punctuation) would match too much: a table's column filter lists dates and times, and
+   * «2/11» must not find 21/10. Opt-in; a list searched by its owner (`onSearch`) ignores it.
+   */
+  match?: (label: string, query: string) => boolean;
+  /**
    * The list, asked for only while it is OPEN — `options` then needs to name the chosen values
    * only, for the closed trigger. For a list that is costly to make and seldom looked at: a
    * table's filter row has one per column, made from every row, on a board that re-renders every
@@ -464,9 +471,9 @@ export const MultiSelect = ({
   const matches = useMemo(
     () =>
       !remote && searchable && query !== ''
-        ? listed.filter((o) => foldIncludes(o.label, query))
+        ? listed.filter((o) => (match ?? foldIncludes)(o.label, query))
         : listed,
-    [listed, query, searchable, remote],
+    [listed, query, searchable, remote, match],
   );
 
   const current = active ?? (edge === null ? null : nextActiveOption(matches, null, edge));
@@ -502,7 +509,9 @@ export const MultiSelect = ({
   };
 
   // `pickMatches`: the row over the matches, shown while the search narrows a list searched here.
-  const matchesRow = pickMatches && !remote && query !== '' && matches.length > 0;
+  // Only while the search LOOKS for something — a letter or a digit. A lone «/» or «—» matches
+  // every option, and «every match» would then pick the whole list.
+  const matchesRow = pickMatches && !remote && /[\p{L}\p{N}]/u.test(query) && matches.length > 0;
   const allMatchesPicked = matchesRow && matches.every((o) => value.includes(o.value));
   const pickAllMatches = (drop: boolean): void => {
     const found = new Set(matches.map((o) => o.value));
@@ -522,6 +531,18 @@ export const MultiSelect = ({
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (e.nativeEvent.isComposing) return;
+    if (floating && open && e.key === 'Tab') {
+      // A floating panel sits at the page's END (a portal), not after its trigger: Tab from inside
+      // it would walk off into the page with the list still open. The list closes and the focus
+      // goes on from the trigger, as from a list that does not float — Shift+Tab to the trigger
+      // itself, Tab past it to whatever follows.
+      setOpen(false);
+      if (panelRef.current?.contains(e.target as Node) === true) {
+        triggerRef.current?.focus();
+        if (e.shiftKey) e.preventDefault();
+      }
+      return;
+    }
     const from =
       e.target === searchRef.current
         ? 'search'

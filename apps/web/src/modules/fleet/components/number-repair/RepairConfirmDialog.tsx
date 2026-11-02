@@ -200,7 +200,12 @@ export const RepairConfirmDialog = ({
                     <span className={cn(NUM, 'text-slate-600 dark:text-slate-300')}>
                       {cycle.cars.map((car, i) => (
                         <Fragment key={car}>
-                          {i > 0 && <ReadArrow className="mx-1" />}
+                          {i > 0 && (
+                            <>
+                              {' '}
+                              <ReadArrow />{' '}
+                            </>
+                          )}
                           {car}
                         </Fragment>
                       ))}

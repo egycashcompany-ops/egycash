@@ -7,8 +7,10 @@
 //     that day's reading less the counter of the counting service in force on it, or «—» before
 //     any service and on a day without a reading (`RowGapCell`);
 //   · the car's NEWEST row on the page carries what is about the car NOW (`NewestGapCell`): its
-//     figure today, the level badge, «المتبقي X من Y كم» (so a long distance with no alarm explains
-//     itself), the amber mark when a newer visit does not count yet, and the card;
+//     figure today with the ⓘ that opens the card, and nothing else — the owner: «I want the rest
+//     of it removed, leaving only the exclamation mark next to the reading». The level, «المتبقي X
+//     من Y كم», the reading the figure stands on and a newer visit that does not count yet are all
+//     in the card;
 //   · the alarms board's «منذ الخدمة» opens the same card (`BoardSinceCell`), and its «المتبقي»
 //     says «من Y كم» beside what is left (`BoardRemaining`).
 //
@@ -19,21 +21,18 @@ import { type FleetAlarmLevel, type FleetMaintenanceAlarmDto } from '@ecms/contr
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
 import { bindFigures, remainingOf, type HoverControl } from '../lib/alarm-reason-card';
-import { AlarmBadge } from './AlarmBadge';
 import { Glyph, INFO, ReasonCardLayer, keyboardFocus, useReasonCard } from './AlarmReasonCell';
-import { Day, Sentence } from './AlarmReasonFacts';
+import { Sentence } from './AlarmReasonFacts';
 import { FIGURE_WORDS, HowComputedCard, NEWER_MARK, WARN } from './alarm-figure-card';
 import { NUM } from './FuelCardBoard';
 
 const LATIN = new Intl.NumberFormat('en-US');
-const CARD = 'fleet.odometer.alarmReason.card.';
 const F = FIGURE_WORDS;
 
 /**
- * The lines under the figure are a step smaller than the row — RELATIVE to the row's own type
- * (the alarms board's sizes, which every column of the register wears), never a size of their own.
+ * The amber mark under the board's figure is a step smaller than the row — RELATIVE to the row's
+ * own type (the alarms board's sizes), never a size of its own.
  */
-const UNDER = 'text-[0.8125em] leading-5';
 const MARK_SIZE = 'text-[0.78em] leading-4';
 
 /** A figure in the boards' digits, left to right, never broken. */
@@ -90,33 +89,7 @@ const FigureTrigger = ({
   </span>
 );
 
-/** «المتبقي 1,993 من 7,500 كم» — or, past the interval, «متأخر … كم عن … كم». */
-export const RemainingOf = ({ alarm }: { alarm: FleetMaintenanceAlarmDto }): JSX.Element | null => {
-  const t = useT();
-  const of = remainingOf(alarm);
-  if (of === null) return null;
-  return (
-    <span
-      data-odo-remaining={of.overdue ? 'overdue' : 'left'}
-      className={cn(
-        'whitespace-normal text-center',
-        UNDER,
-        of.overdue ? 'text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-slate-400',
-      )}
-    >
-      <Sentence
-        template={bindFigures(t(of.overdue ? `${F}overdueOf` : `${F}remainingOf`))}
-        parts={{
-          left: <Num value={of.left} className="text-slate-700 dark:text-slate-200" />,
-          over: <Num value={Math.abs(of.left)} />,
-          interval: <Num value={of.interval} className="text-slate-700 dark:text-slate-200" />,
-        }}
-      />
-    </span>
-  );
-};
-
-/** The amber mark beside the figure: a newer visit that does not count (yet). */
+/** The amber mark under the board's figure: a newer visit that does not count (yet). */
 const NewerMark = ({ alarm }: { alarm: FleetMaintenanceAlarmDto }): JSX.Element | null => {
   const t = useT();
   const newer = alarm.newerUncountedVisit;
@@ -136,18 +109,16 @@ const NewerMark = ({ alarm }: { alarm: FleetMaintenanceAlarmDto }): JSX.Element 
 };
 
 /**
- * The car's NEWEST row on the page: today's figure (the card's trigger), the level badge, what is
- * left of the interval, and the amber mark. When the row is not the car's latest reading itself (a
- * day without a reading, or a range that ends before it), a muted line says which reading the
- * figure stands on. `tint`: the page's cell tint for the car's level, on the figure and badge only.
+ * The car's NEWEST row on the page: today's figure with its ⓘ — the trigger of «كيف حُسب الفارق» —
+ * and nothing under or beside it. Everything else about the car now (the level, what is left of
+ * the interval, the reading the figure stands on, a newer visit that does not count yet) is in the
+ * card. `tint`: the page's cell tint for the car's level, on the figure.
  */
 export const NewestGapCell = ({
   alarm,
-  rowIsLatest,
   tint,
 }: {
   alarm: FleetMaintenanceAlarmDto;
-  rowIsLatest: boolean;
   tint?: string | undefined;
 }): JSX.Element | null => {
   const t = useT();
@@ -156,30 +127,17 @@ export const NewestGapCell = ({
   const { open, control } = useReasonCard();
   if (alarm.sinceServiceKm === null) return null;
   return (
-    // `max-w`: no wider than the figure's cell was, so the columns beside it keep their width —
-    // the badge and «من … كم» take a second line instead.
     <span
       ref={anchor}
-      className="inline-flex max-w-[9.75rem] flex-col items-center gap-1"
+      className="inline-flex items-center justify-center"
       data-odo-gap="newest"
       data-odo-car={alarm.code}
     >
-      <span className={cn('inline-flex flex-wrap items-center justify-center gap-2', tint)}>
+      <span className={cn('inline-flex items-center justify-center', tint)}>
         <FigureTrigger control={control} describedBy={open ? id : undefined}>
           <KmFigure km={alarm.sinceServiceKm} />
         </FigureTrigger>
-        <AlarmBadge level={alarm.level} size="lg" />
       </span>
-      <RemainingOf alarm={alarm} />
-      {!rowIsLatest && alarm.latestReadingAt !== null && (
-        <span
-          className={cn('whitespace-nowrap text-slate-500 dark:text-slate-400', UNDER)}
-          data-odo-latest-on="true"
-        >
-          {t(`${CARD}latestReading`)} <Day iso={alarm.latestReadingAt} />
-        </span>
-      )}
-      <NewerMark alarm={alarm} />
       {open && (
         <ReasonCardLayer id={id} anchor={anchor} figure>
           <HowComputedCard alarm={alarm} footer={t(`${F}footer`)} />

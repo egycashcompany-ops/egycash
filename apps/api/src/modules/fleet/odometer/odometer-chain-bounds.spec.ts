@@ -57,21 +57,26 @@ describe('the UNBOUNDED read is different, and deliberately still takes the max'
     // cut, the shared reading IS this vehicle's furthest point, and dropping it would understate
     // the FR-2 floor.
     //
-    // Batch 3 (rewritten on purpose): the max is no longer taken AFTER picking a row by its opening
-    // reading — that let a parked day hide the next day's closing reading — but BEFORE, as the
-    // figure the rows are RANKED by (`EFFECTIVE_READING`, an aggregation `$max`).
+    // The max is what the read REPORTS for the row it picks (`EFFECTIVE_READING`, an aggregation
+    // `$max`) — how far that row got, its closing reading on a closed row.
     const body = methodBody('latestReadings');
     expect(body).toContain('EFFECTIVE_READING');
+    expect(body).toContain("reading: { $first: '$top' }");
     expect(source).toContain(
       "const EFFECTIVE_READING = {\n  $max: ['$outReading', { $ifNull: ['$inReading', '$outReading'] }],",
     );
     expect(body, 'and it takes no date at all').not.toMatch(/\$lt:|\$gte:/);
   });
 
-  it('it RANKS by that figure, then by day, then by insert — never by the opening reading', () => {
+  it('it PICKS the row by عداد الخروج, then by day, then by insert — never by the max', () => {
+    // PR #639 ranked by the max itself, so an OLD row whose closing reading sat above the next
+    // row's opening one (a book that did not chain, a typo, a test figure) became the car's latest
+    // reading — «الخادم يتوقع 1,008,500 كم» for a car at 128,457. The opening reading is what the
+    // FR-2 guard ranks by (`NEWEST_FIRST`), so the hint and the guard name one row; the DAY before
+    // `_id` keeps a parked day from hiding the next day's closing reading (batch 3, step 0).
     const body = methodBody('latestReadings');
-    expect(body).toContain('{ $sort: { vehicleId: 1, top: -1, date: -1, _id: -1 } }');
-    expect(body, 'no ranking by the opening reading alone').not.toContain('outReading: -1');
+    expect(body).toContain('{ $sort: { vehicleId: 1, outReading: -1, date: -1, _id: -1 } }');
+    expect(body, 'no ranking by the effective reading').not.toMatch(/top: -1/);
   });
 
   it('the expected reading asks the very same read — the hint and the alarm name one reading', () => {

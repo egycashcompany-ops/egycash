@@ -126,9 +126,10 @@ describe('the row is on NO chain, and every question the chain asks must skip it
   });
 
   it('how far the car has got — the expected reading asks `latestReadings`, which carries it', () => {
-    // Batch 3 (rewritten on purpose): `findLatest` is gone. It ranked rows by the opening reading,
-    // so a parked day could hide the next day's closing one; the expected reading now asks the
-    // alarm's own read, `latestReadings`, which is in the list above and skips such a day.
+    // Batch 3 (rewritten on purpose): `findLatest` is gone. It broke a tie on the opening reading
+    // by `_id` alone, so a parked day written last could hide the next day's closing one; the
+    // expected reading now asks the alarm's own read, `latestReadings`, which is in the list above
+    // and skips such a day.
     expect(repository).not.toContain('async findLatest(');
     expect(source('odometer.service.ts')).toContain(
       'await fleetOdometerRepository.latestReadings([vehicleId])',

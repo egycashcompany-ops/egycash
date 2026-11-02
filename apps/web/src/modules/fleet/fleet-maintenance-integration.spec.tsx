@@ -33,6 +33,7 @@ import { translate } from '../../platform/localization/i18n';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { OdometerPage } from './pages/OdometerPage';
+import { HowComputedCard } from './components/alarm-figure-card';
 import { currentMonthRange } from './lib/odometer-range';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -290,12 +291,19 @@ describe('the three screens agree about one vehicle', () => {
     return render(<OdometerPage />, '/fleet/odometer', qc);
   };
 
-  it('shows the same LEVEL on the two screens that still name one', () => {
-    // «أحمر» — one word, one source. The maintenance grid stopped being one of them: the level
-    // column came off it by request, because a row there is a VISIT and one car has several.
+  it('names the LEVEL on the alarms board, and in the odometer’s card — never in a grid cell', () => {
+    // «أحمر» — one word, one source. The maintenance grid stopped naming it: the level column came
+    // off it by request, because a row there is a VISIT and one car has several. The odometer's
+    // newest row stopped too — its cell is the figure and its ⓘ (the owner: «I want the rest of it
+    // removed, leaving only the exclamation mark next to the reading») — and the card that ⓘ
+    // opens says the level.
     const red = 'أحمر';
     expect(alarmsBoard(), 'alarms board').toContain(red);
-    expect(odometer(), 'odometer').toContain(red);
+    expect(odometer(), 'the odometer’s cell names no level').not.toContain(red);
+    expect(
+      render(<HowComputedCard alarm={ALARM} footer="" />, '/fleet/odometer', client()),
+      'its card does',
+    ).toContain(red);
     expect(maintenance(), 'maintenance names no level').not.toContain(red);
   });
 

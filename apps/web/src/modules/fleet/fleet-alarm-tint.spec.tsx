@@ -37,6 +37,7 @@ import { ALARM_ROW_HOLD, alarmCellTint, alarmRowTint } from './components/AlarmB
 import { MaintenancePage } from './pages/MaintenancePage';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { OdometerPage } from './pages/OdometerPage';
+import { HowComputedCard } from './components/alarm-figure-card';
 import { currentMonthRange } from './lib/odometer-range';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -346,9 +347,10 @@ describe('the alarms board tints the ROW — there, a row is a vehicle', () => {
     );
   });
 
-  it('the board’s level is a SOLID pill — and the odometer keeps the shared one', () => {
-    // The saturated pill is a variant of the one component, asked for by the board alone; the
-    // odometer log's badge and its cell patch are exactly what they were.
+  it('the board’s level is a SOLID pill — the odometer has no pill, only its cell patch', () => {
+    // The saturated pill is a variant of the one component, asked for by the board alone. The
+    // odometer log's newest row lost its badge (the owner: «I want the rest of it removed, leaving
+    // only the exclamation mark next to the reading»); its cell patch is exactly what it was.
     const board = alarmsBoard([
       alarm(),
       alarm({
@@ -364,10 +366,11 @@ describe('the alarms board tints the ROW — there, a row is a vehicle', () => {
     expect(read('pages/MaintenanceAlarmsPage.tsx')).toContain('variant="solid"');
 
     const onOdometer = odometer([alarm()], [log()]);
-    expect(onOdometer, 'the odometer’s badge is the shared soft pill').toContain(
+    expect(onOdometer, 'no soft pill on the odometer any more').not.toContain(
       'bg-red-100 text-red-700',
     );
-    expect(onOdometer, 'not the board’s').not.toContain('bg-red-600 text-white');
+    expect(onOdometer, 'nor the board’s').not.toContain('bg-red-600 text-white');
+    expect(onOdometer, 'the patch stays').toContain(alarmCellTint('red') as string);
     expect(alarmCellTint('red')).toContain('bg-red-100/80 dark:bg-red-950/50');
     expect(alarmCellTint('yellow')).toContain('bg-amber-100/80 dark:bg-amber-950/50');
   });
@@ -458,12 +461,20 @@ describe('the maintenance screen carries no alarm colour at all any more', () =>
 
 describe('colour is a second signal, never the only one', () => {
   it('every tinted surface still carries the level in WORDS', () => {
-    // A reader who cannot separate the two tints must lose nothing. The badge says «أحمر».
+    // A reader who cannot separate the two tints must lose nothing. The board's badge says «أحمر».
     // The list is the screens that still TINT: the maintenance grid left it, so it owes no word
     // — and the assertion below is what stops a tint returning there without one.
-    for (const markup of [alarmsBoard([alarm()]), odometer([alarm()], [log()])]) {
-      expect(markup).toContain('أحمر');
-    }
+    expect(alarmsBoard([alarm()])).toContain('أحمر');
+    // The odometer's tinted figure is no longer beside a badge: it IS the trigger of «كيف حُسب
+    // الفارق» — focusable, its ⓘ beside it — and that card says the level in words.
+    const tinted = rows(odometer([alarm()], [log()]))[0] as string;
+    expect(tinted).toContain(alarmCellTint('red') as string);
+    expect(tinted).toContain('data-odo-figure-trigger="true"');
+    expect(tinted).toContain('tabindex="0"');
+    expect(
+      draw(<HowComputedCard alarm={alarm()} footer="" />, '/fleet/odometer', client([])),
+      'the card names the level',
+    ).toContain('أحمر');
     const onMaintenance = maintenance([alarm()], [visit()]);
     expect(onMaintenance, 'no alarm word').not.toContain('أحمر');
     expect(onMaintenance, 'and no alarm tint to need one').not.toContain(

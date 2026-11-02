@@ -662,7 +662,7 @@ describe('figureFacts — the card of a COMPUTED figure lays the server’s numb
   });
 });
 
-describe('remainingOf — «المتبقي X من Y كم» beside the figure', () => {
+describe('remainingOf — «X من Y كم» on the alarms board’s «المتبقي»', () => {
   const rule = (intervalKm: number) => ({
     vehicleType: null,
     intervalKm,

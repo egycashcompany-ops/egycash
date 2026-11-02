@@ -846,8 +846,10 @@ answers in the same conversation):
   it is not remembered across visits — the board opens on today, as asked. The board is still
   read whole (D8); the view only picks the rows (`apps/web/src/modules/atm/lib/board-day.ts`).
 - **Copy columns.** «مش عايز كل الأعمدة تبقي Selectable عايز بس البنك والكود واسم الماكينة وتوقيت
-  التغذية». The table is `select-none`; bank, code, name and the schedule time — on maintenance the
-  open time, its "when" (the owner's answer) — are `select-text`. Chromium then copies a drag across
+  التغذية». The table is `select-none`; bank, code, name and the schedule time are `select-text`. On
+  maintenance the fourth is the service type, not a time: «فى الـ Selection بتاع بيانات الجدول فى
+  الأعطال مش عايز التوقيت .. لكن عايز نوع الخدمة يبقى Selectable معاهم» (2026-11-02; it was the
+  open time before, the owner's first answer). Chromium then copies a drag across
   rows as exactly those cells, a tab between columns and a line per row; Ctrl+A outside a field
   selects the table's rows the same way (`lib/board-copy.ts`).
 - **«Select all» on F8.** «شيل الـ Select all من فوق الجدول … خليها تظهر فقط عند الضغط على F8 …

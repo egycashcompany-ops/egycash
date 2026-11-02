@@ -148,6 +148,36 @@ export const emptyListText = (
   { searching, emptyText }: { searching: boolean; emptyText?: string | undefined },
 ): string => (searching ? t('common.loading') : (emptyText ?? t('common.noResults')));
 
+/**
+ * Pure: the picks after «every match» (`pickMatches`) — the matches not yet picked added after the
+ * picks, in the list's order; or, with `drop`, exactly the matches taken out and every other pick
+ * kept.
+ */
+export const withAllMatches = (
+  value: readonly string[],
+  matches: readonly string[],
+  drop: boolean,
+): string[] => {
+  if (drop) {
+    const found = new Set(matches);
+    return value.filter((v) => !found.has(v));
+  }
+  const had = new Set(value);
+  return [...value, ...matches.filter((m) => !had.has(m))];
+};
+
+/** Does `later` come after `earlier` in the document? */
+const followsInDocument = (earlier: Node, later: Node): boolean =>
+  earlier !== later &&
+  (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+  !earlier.contains(later);
+
+/** The controls of a floating panel that Tab stops at, in order — its options are not among them. */
+const panelTabStops = (panel: HTMLElement): HTMLElement[] =>
+  [...panel.querySelectorAll<HTMLElement>('input, button, [tabindex]')].filter(
+    (el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled,
+  );
+
 /** Where a floating panel sits, in the viewport's terms (`floating`). */
 export interface FloatingSpot {
   left: number;
@@ -473,13 +503,23 @@ export const MultiSelect = ({
   // would render every MultiSelect in the app twice for each key.
   const [spot, setSpot] = useState<FloatingSpot | null>(null);
   const spotRef = useRef<FloatingSpot | null>(null);
+  // Has this opening been placed once? Its first pass brings the trigger into sight instead.
+  const placedRef = useRef(false);
   useLayoutEffect(() => {
     if (!open || !floating) {
+      placedRef.current = false;
       if (spotRef.current !== null) {
         spotRef.current = null;
         setSpot(null);
       }
       return undefined;
+    }
+    if (!placedRef.current) {
+      // Opened from a trigger half scrolled past its table's edge — the reader clicked the half
+      // they could see: the table turns just enough to show it whole, rather than the list
+      // closing on its first measure as "out of sight" before it was ever drawn.
+      placedRef.current = true;
+      boxRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     }
     const place = (): void => {
       const box = boxRef.current;
@@ -514,7 +554,9 @@ export const MultiSelect = ({
   // A list made only when open (`loadOptions`): closed, `options` names the chosen values. Made
   // ONCE per opening and per pick — not on every render: a board re-renders every second, and an
   // arrow key or a typed letter re-renders the control, while a column's list of 1,500 rows takes a
-  // tenth of a second to make. Nothing it is made from changes while it is open but the picks.
+  // tenth of a second to make. So the list is a SNAPSHOT, taken at the opening and at each pick:
+  // a refetch while it is open (preparation and control poll every minute) reaches it on the next
+  // pick or the next opening.
   const pickedKey = value.join('\u0000');
   const loaded = useMemo(
     () => (open && loadOptions !== undefined ? loadOptions() : null),
@@ -571,21 +613,24 @@ export const MultiSelect = ({
   const allMatchesPicked = matchesRow && matches.every((o) => value.includes(o.value));
   // What «every match» just did, for a screen reader: the row is no option the arrows reach, and
   // Enter in the search box picks without moving anything a reader would hear.
+  // Each announcement differs from the last by a trailing no-break space at most: the same words
+  // twice («تم اختيار 3», then 3 more) would change nothing in the region, and say nothing.
   const [announced, setAnnounced] = useState('');
   const pickAllMatches = (drop: boolean): void => {
-    const found = new Set(matches.map((o) => o.value));
-    onChange(
-      drop
-        ? value.filter((v) => !found.has(v))
-        : [...value, ...matches.map((o) => o.value).filter((v) => !value.includes(v))],
-    );
-    setAnnounced(
-      t(drop ? 'common.filters.droppedMatches' : 'common.filters.pickedMatches', {
-        count: found.size,
-      }),
-    );
+    const found = matches.map((o) => o.value);
+    onChange(withAllMatches(value, found, drop));
+    const words = t(drop ? 'common.filters.droppedMatches' : 'common.filters.pickedMatches', {
+      count: found.length,
+    });
+    setAnnounced((last) => (last === words ? `${words}\u00A0` : words));
     searchRef.current?.focus();
   };
+  // A closed list keeps nothing to say: reopened, its region starts silent.
+  useEffect(() => {
+    // Only when there is something to drop: no state is set on the closing of a list that never
+    // announced anything — every filter bar's MultiSelect.
+    if (!open && announced !== '') setAnnounced('');
+  }, [open]);
 
   const clearAll = (): void => {
     onChange([]);
@@ -596,15 +641,40 @@ export const MultiSelect = ({
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (e.nativeEvent.isComposing) return;
     if (floating && open && e.key === 'Tab') {
-      // A floating panel sits at the page's END (a portal), not after its trigger: Tab from inside
-      // it would walk off into the page with the list still open. The list closes and the focus
-      // goes on from the trigger, as from a list that does not float — Shift+Tab to the trigger
-      // itself, Tab past it to whatever follows.
-      setOpen(false);
-      if (panelRef.current?.contains(e.target as Node) === true) {
-        triggerRef.current?.focus();
-        if (e.shiftKey) e.preventDefault();
+      // A floating panel sits at the page's END (a portal), not after its trigger, so Tab is led
+      // by hand: from the trigger into the panel, through the panel's own controls (the search,
+      // «every match», the clear button — the options are the arrows' — and out at either end,
+      // the list closing and the focus going on from the trigger, as from a list that does not
+      // float: Shift+Tab to the trigger itself, Tab past it to whatever follows.
+      const panel = panelRef.current;
+      const target = e.target as HTMLElement;
+      const items = panel === null ? [] : panelTabStops(panel);
+      if (panel === null || !panel.contains(target)) {
+        const first = items[0];
+        if (!e.shiftKey && first !== undefined) {
+          e.preventDefault();
+          first.focus();
+        } else {
+          setOpen(false);
+        }
+        return;
       }
+      // The stop to go to, by document order — the focus may sit on something in the panel that is
+      // not a stop of its own (a browser lets a scrolling list take it).
+      const next = e.shiftKey
+        ? [...items].reverse().find((item) => followsInDocument(item, target))
+        : items.find((item) => followsInDocument(target, item));
+      if (next !== undefined) {
+        e.preventDefault();
+        next.focus();
+        return;
+      }
+      // Off either end: the list closes, and the focus goes on from the trigger — to the trigger
+      // itself on Shift+Tab; on Tab the browser's own step carries it past the trigger, as from a
+      // list that does not float.
+      setOpen(false);
+      triggerRef.current?.focus();
+      if (e.shiftKey) e.preventDefault();
       return;
     }
     const from =
@@ -814,9 +884,10 @@ export const MultiSelect = ({
                       // when nothing is highlighted.
                       if (e.key !== 'Enter' || activeIndex !== -1) return;
                       if (matchesRow) {
-                        // `pickMatches`: Enter takes what the search found, as a sheet's filter does.
+                        // `pickMatches`: Enter takes what the search found, as a sheet's filter does —
+                        // and gives it back when all of it is already picked.
                         e.preventDefault();
-                        if (!allMatchesPicked) pickAllMatches(false);
+                        pickAllMatches(allMatchesPicked);
                         return;
                       }
                       if (onCommitSearch === undefined) return;
@@ -869,6 +940,9 @@ export const MultiSelect = ({
 
             <ul
               ref={listRef}
+              // Not a Tab stop of its own: a browser may make a scrolling list one, and a floating
+              // panel leads Tab by hand (see `onKeyDown`).
+              {...(floating ? { tabIndex: -1 } : {})}
               className={cn(
                 'overflow-y-auto py-1',
                 clearable || floating ? 'min-h-0 flex-1' : 'max-h-52',
@@ -918,6 +992,9 @@ export const MultiSelect = ({
                       type="button"
                       role="option"
                       id={optionId(index)}
+                      // A floating list's options are the arrows' (`aria-activedescendant`), not Tab's:
+                      // Tab goes on to the panel's own controls rather than through every value.
+                      {...(floating ? { tabIndex: -1 } : {})}
                       aria-selected={checked}
                       {...(highlighted ? { 'data-active': 'true' } : {})}
                       // Pressing an option does not take the focus from the search box — the caret

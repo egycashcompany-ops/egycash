@@ -281,7 +281,7 @@ describe('the layouts page’s toolbar and column lists (2026-11-02)', () => {
   ] as const;
   const noLayout = t('atm.layouts.flag.noLayout');
   const chips = '200 100 50 ↻20';
-  /** One column's list in the filter row: its trigger, and its ✕ once something is picked. */
+  /** One column's list in the filter row: its trigger, from the list's marker to its cell's end. */
   const listOf = (markup: string, key: string): string => {
     const at = markup.indexOf(`data-column-filter="${key}"`);
     return at < 0 ? '' : markup.slice(at, markup.indexOf('</th>', at));

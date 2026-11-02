@@ -17,6 +17,7 @@ import {
   emptyListText,
   floatingSpot,
   triggerInSight,
+  withAllMatches,
   multiSelectKey,
   nextActiveOption,
   optionLabel,
@@ -588,17 +589,47 @@ describe('a list that floats — a table’s column filter, «يكون Drop Down
     expect(markup).toContain('SYN A');
   });
 
-  it('closes on Tab from the floating panel, the focus going on from its trigger', () => {
+  it('leads Tab through a floating panel’s own controls, closing at either end', () => {
     const source = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
       'utf8',
     );
-    const tab = source.slice(source.indexOf("if (floating && open && e.key === 'Tab')"));
-    expect(tab.length).toBeGreaterThan(0);
-    const body = tab.slice(0, tab.indexOf('return;\n    }'));
-    expect(body).toContain('setOpen(false)');
-    expect(body).toContain('triggerRef.current?.focus()');
-    expect(body).toContain('if (e.shiftKey) e.preventDefault()');
+    const start = source.indexOf("if (floating && open && e.key === 'Tab')");
+    expect(start).toBeGreaterThan(0);
+    const tab = source.slice(start, source.indexOf('const from =', start));
+    // From the trigger, into the panel's first stop.
+    expect(tab).toContain('first.focus()');
+    // Out at either end: the list closes, the focus goes on from the trigger.
+    // The next stop by document order — the focus may sit on a scrolling list, not a stop.
+    expect(tab).toContain('items.find((item) => followsInDocument(target, item))');
+    expect(tab).toContain('next.focus()');
+    expect(tab).toContain('setOpen(false)');
+    expect(tab).toContain('triggerRef.current?.focus()');
+    expect(tab).toContain('if (e.shiftKey) e.preventDefault()');
+    // The options are the arrows', not Tab's — in a floating list only.
+    // Neither the options nor their scrolling list.
+    expect(source.split('{...(floating ? { tabIndex: -1 } : {})}')).toHaveLength(3);
+  });
+
+  it('brings a half-hidden trigger into sight when its floating list opens', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    const effect = source.slice(source.indexOf('if (!placedRef.current) {'));
+    expect(
+      effect.indexOf("scrollIntoView?.({ block: 'nearest', inline: 'nearest' })"),
+    ).toBeLessThan(effect.indexOf('const place = (): void =>'));
+  });
+
+  it('Enter in the search ticks every match, and unticks them when all are ticked', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('pickAllMatches(allMatchesPicked);');
+    // The same words twice still change the live region.
+    expect(source).toContain('(last === words ? `${words}\\u00A0` : words)');
   });
 
   it('offers «every match» only while the search looks for a letter or a digit', () => {
@@ -669,5 +700,23 @@ describe('a list that floats — a table’s column filter, «يكون Drop Down
     expect(source).toContain('useOnClickOutside(insideRefs');
     expect(source).toContain('[boxRef, panelRef]');
     expect(source).toContain('createPortal(panel, document.body)');
+  });
+});
+
+describe('«every match» — what it does to the picks', () => {
+  it('adds the matches not yet picked after the picks, in the list’s order, once each', () => {
+    expect(withAllMatches(['b', 'x'], ['a', 'b', 'c'], false)).toEqual(['b', 'x', 'a', 'c']);
+    expect(withAllMatches([], ['a', 'b'], false)).toEqual(['a', 'b']);
+  });
+
+  it('drops exactly the matches, keeping every other pick in its order', () => {
+    expect(withAllMatches(['x', 'a', 'y', 'b'], ['a', 'b', 'c'], true)).toEqual(['x', 'y']);
+    expect(withAllMatches(['x'], [], true)).toEqual(['x']);
+  });
+
+  it('never changes what it was given', () => {
+    const value = ['a'];
+    withAllMatches(value, ['b'], false);
+    expect(value).toEqual(['a']);
   });
 });

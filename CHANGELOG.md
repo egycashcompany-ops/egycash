@@ -541,11 +541,12 @@ its entry here in the same PR.
 - **A filter list under every column of the ATM tables.** «فلتر لكل عمود», then «لأ عايز الفلتر
   الكبير اللى فوق الجداول يكون Drop Down بـ Multi select». Under each column's name a drop-down
   lists the values that column shows — each once, in alphabetical order, numbers in number order,
-  dates and times in time order, and «(فارغ)» for empty cells — and keeps the rows holding any of
-  the values ticked in it. Typing in the list's search finds values (a date's «/» counts: «2/11»
-  never finds 21/10), and «كل النتائج» (or Enter) ticks every value found. A list only
-  offers the values left by the other columns' picks and by the bank and area filters above, so it
-  never offers a value that would empty the table. The columns add up with each other and with
+  dates and times in time order, runs first to third, and «(فارغ)» for empty cells — and keeps the
+  rows holding any of the values ticked in it. Typing in the list's search finds values (a date's
+  «/» counts: «2/11» never finds 21/10), and «كل النتائج» (or Enter) ticks every value found; a
+  second press unticks them. A list offers the values left by the other columns' picks and by the
+  bank and area filters above, as they stand when it opens, so it never offers a value that would
+  empty the table. The columns add up with each other and with
   those filters. On the boards the day buttons' counts and the area lines follow them, a checked
   row they hide is never acted on, Excel and PDF name them under the title, and the reset clears
   them. The list opens over the page, so the table's edge never cuts it off. On the boards, the done

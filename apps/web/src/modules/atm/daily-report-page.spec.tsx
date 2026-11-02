@@ -122,7 +122,7 @@ describe('the two tables’ column lists (2026-11-02, «فلتر لكل عمود
     ['open', 'atm.reports.open'],
     ['total', 'atm.reports.total'],
   ] as const;
-  /** Every column list of the page, in order: its trigger, and its ✕ once something is picked. */
+  /** Every column list of the page, in order: its trigger, from the list's marker to its cell's end. */
   const listsOf = (html: string): string[] =>
     [...html.matchAll(/data-column-filter="[^"]+"/g)].map((m) =>
       html.slice(m.index, html.indexOf('</th>', m.index)),

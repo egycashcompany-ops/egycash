@@ -6,7 +6,8 @@
 //   · a filter under every text column — «فلتر لكل عمود», then «لأ عايز الفلتر الكبير اللى فوق
 //     الجداول يكون Drop Down بـ Multi select»: a multi-select list of the values the column's cells
 //     show, that narrows the range's rows before the reader's order — a row kept when its cell IS
-//     one of the picks, the columns adding up — and says so when it hides every row.
+//     one of the picks, the columns adding up — and says so when it hides every row. Each list
+//     offers the values of the range's rows, narrowed by the OTHER columns' picks, never its own.
 //
 // Every code and name below is synthetic.
 import { describe, expect, it, vi } from 'vitest';
@@ -28,6 +29,7 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
+import type * as ColumnFilterSelectModule from '../../shared/ui/ColumnFilterSelect';
 import { ReplenishmentsDonePage } from './pages/ReplenishmentsDonePage';
 import { MaintenanceDonePage } from './pages/MaintenanceDonePage';
 import { maintenanceColumns, replenishmentColumns } from './lib/operation-sheet';
@@ -51,6 +53,27 @@ vi.mock('../../shared/ui/useColumnFilters', () => ({
     generation: 0,
   }),
 }));
+
+// A list's values are asked for only when it opens, and a static render never opens one: each
+// column's filter is drawn as it is, beside a hidden mark carrying what its list WOULD offer
+// (`choicesOf`) — so the lists' wiring is pinned, not only their triggers.
+vi.mock('../../shared/ui/ColumnFilterSelect', async () => {
+  const actual = await vi.importActual<typeof ColumnFilterSelectModule>(
+    '../../shared/ui/ColumnFilterSelect',
+  );
+  return {
+    ColumnFilterSelect: (props: Parameters<typeof actual.ColumnFilterSelect>[0]) => (
+      <>
+        <actual.ColumnFilterSelect {...props} />
+        <span
+          hidden
+          data-choices-for={props.columnKey}
+          data-choices={JSON.stringify(props.choices())}
+        />
+      </>
+    ),
+  };
+});
 
 const t = (key: string): string => translate('ar', key);
 const TODAY = cairoToday();
@@ -169,6 +192,18 @@ const filterTrigger = (markup: string, key: string): string => {
   expect(at, `the ${key} column filter is rendered`).toBeGreaterThan(-1);
   return markup.slice(at, markup.indexOf('</button>', at));
 };
+/** What one column's list would offer, in its order — read from the mark the mock draws. */
+const choicesOf = (markup: string, key: string): string[] => {
+  const found = new RegExp(`data-choices-for="${key}" data-choices="([^"]*)"`).exec(markup);
+  expect(found, `the ${key} column's list is rendered`).not.toBeNull();
+  const json = (found?.[1] ?? '[]')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+  return JSON.parse(json) as string[];
+};
 
 describe.each(['replenishments', 'maintenances'] as const)('the %s done page', (kind) => {
   it('puts the range and its files on the title’s line', () => {
@@ -227,5 +262,33 @@ describe.each(['replenishments', 'maintenances'] as const)('the %s done page', (
     expect(filterTrigger(markup, 'area')).toContain('>الدقي<');
     expect(filterTrigger(markup, 'bank')).toContain('>SYN CIB, SYN NBE<');
     expect(filterTrigger(markup, 'code')).toContain(`>${t('common.filters.all')}<`);
+  });
+
+  it('lists the values of the range’s rows', () => {
+    const markup = render(kind);
+    expect(choicesOf(markup, 'code')).toEqual(['99990301', '99990302', '99990303']);
+    expect(choicesOf(markup, 'area')).toEqual(['الدقي', 'زايد']);
+    expect(choicesOf(markup, 'bank')).toEqual(['SYN CIB', 'SYN NBE']);
+  });
+
+  it('does not shrink a list by its own column’s picks — another column’s picks narrow it', () => {
+    const daqi = render(kind, { area: ['الدقي'] });
+    expect(codesShown(daqi)).toEqual(['99990301', '99990303']);
+    // The area list still offers «زايد», which the table no longer shows…
+    expect(choicesOf(daqi, 'area')).toEqual(['الدقي', 'زايد']);
+    // …while the code and bank lists hold only what «الدقي» keeps.
+    expect(choicesOf(daqi, 'code')).toEqual(['99990301', '99990303']);
+    expect(choicesOf(daqi, 'bank')).toEqual(['SYN CIB', 'SYN NBE']);
+    const cib = render(kind, { bank: ['SYN CIB'] });
+    expect(choicesOf(cib, 'area')).toEqual(['الدقي']);
+    expect(choicesOf(cib, 'code')).toEqual(['99990303']);
+    expect(choicesOf(cib, 'bank')).toEqual(['SYN CIB', 'SYN NBE']);
+    // A stale pick — a code no row has — is listed first, so it can be seen and un-picked.
+    expect(choicesOf(render(kind, { code: ['99990399'] }), 'code')).toEqual([
+      '99990399',
+      '99990301',
+      '99990302',
+      '99990303',
+    ]);
   });
 });

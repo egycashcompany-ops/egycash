@@ -11,7 +11,8 @@
 //     «فلتر لكل عمود», then «لأ عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi
 //     select»: a multi-select list of the values the column's cells show, that narrows the rows the
 //     filters kept (a cell that IS one of the picks; the columns adding up) — the status by its
-//     label, an empty cell as «(فارغ)».
+//     label, an empty cell as «(فارغ)». Each list offers the values of the rows the filters above
+//     keep, narrowed by the OTHER columns' picks, never its own.
 //
 // Every code below is synthetic.
 import { describe, expect, it, vi } from 'vitest';
@@ -32,6 +33,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
+import type * as ColumnFilterSelectModule from '../../shared/ui/ColumnFilterSelect';
 import { MailLogPage } from './pages/MailLogPage';
 import { atmMailKeys } from './api/atm-queries';
 import { cairoToday } from './lib/operation-view';
@@ -56,6 +58,27 @@ vi.mock('../../shared/ui/useColumnFilters', () => ({
     generation: 0,
   }),
 }));
+
+// A list's values are asked for only when it opens, and a static render never opens one: each
+// column's filter is drawn as it is, beside a hidden mark carrying what its list WOULD offer
+// (`choicesOf`) — so the lists' wiring is pinned, not only their triggers.
+vi.mock('../../shared/ui/ColumnFilterSelect', async () => {
+  const actual = await vi.importActual<typeof ColumnFilterSelectModule>(
+    '../../shared/ui/ColumnFilterSelect',
+  );
+  return {
+    ColumnFilterSelect: (props: Parameters<typeof actual.ColumnFilterSelect>[0]) => (
+      <>
+        <actual.ColumnFilterSelect {...props} />
+        <span
+          hidden
+          data-choices-for={props.columnKey}
+          data-choices={JSON.stringify(props.choices())}
+        />
+      </>
+    ),
+  };
+});
 
 const t = (key: string): string => translate('ar', key);
 const STAMP = '2026-10-28T08:00:00.000Z';
@@ -157,6 +180,18 @@ const rowOf = (markup: string, code: string): string => {
   const at = markup.indexOf(`>${code}<`);
   expect(at, `the row of ${code} is rendered`).toBeGreaterThan(-1);
   return markup.slice(markup.lastIndexOf('<tr', at), markup.indexOf('</tr>', at));
+};
+/** What one column's list would offer, in its order — read from the mark the mock draws. */
+const choicesOf = (markup: string, key: string): string[] => {
+  const found = new RegExp(`data-choices-for="${key}" data-choices="([^"]*)"`).exec(markup);
+  expect(found, `the ${key} column's list is rendered`).not.toBeNull();
+  const json = (found?.[1] ?? '[]')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+  return JSON.parse(json) as string[];
 };
 
 describe('«استرجاع» on the log', () => {
@@ -359,5 +394,54 @@ describe('the log on the title’s line, with a filter list under every column (
     expect(filterTrigger(markup, 'actionBy')).toContain(`>${t('common.filters.blank')}<`);
     expect(t('common.filters.blank')).toBe('(فارغ)');
     expect(filterTrigger(markup, 'bank')).toContain(`>${t('common.filters.all')}<`);
+  });
+});
+
+describe('the log’s column lists offer the values of the rows the filters above keep', () => {
+  const lists = (values: Record<string, string[]>, search = ''): string => {
+    columnValues = values;
+    try {
+      return render(DECIDE, search);
+    } finally {
+      columnValues = {};
+    }
+  };
+  const codes = TICKETS.map((row) => row.machineCode);
+
+  it('list every row of the range while nothing above narrows it', () => {
+    const markup = lists({});
+    expect(choicesOf(markup, 'code')).toEqual(codes);
+    expect(choicesOf(markup, 'bank')).toEqual(['SYN CIB', 'SYN NBE']);
+    expect(choicesOf(markup, 'area')).toEqual(['SYN RAML', 'SYN SMOUHA']);
+  });
+
+  it('leave out the rows the status, bank or area filter hides', () => {
+    const nbe = lists({}, 'banks=SYN+NBE');
+    expect(choicesOf(nbe, 'code')).toEqual([PENDING.machineCode, ACCEPTED.machineCode]);
+    expect(choicesOf(nbe, 'bank')).toEqual(['SYN NBE']);
+    const rejected = lists({}, 'status=rejected');
+    expect(choicesOf(rejected, 'code')).toEqual([REJECTED.machineCode]);
+    expect(choicesOf(rejected, 'status')).toEqual([t('atm.mail.status.rejected')]);
+    expect(choicesOf(rejected, 'bank')).toEqual(['SYN CIB']);
+    expect(choicesOf(lists({}, 'areas=SYN+RAML'), 'code')).toEqual([ACCEPTED.machineCode]);
+  });
+
+  it('are not shrunk by their own column’s picks — another column’s picks narrow them', () => {
+    // A code picked: the table shows its row, and the code list still offers the others.
+    const one = lists({ code: [PENDING.machineCode] });
+    expect(choicesOf(one, 'code')).toEqual(codes);
+    expect(choicesOf(one, 'bank')).toEqual(['SYN NBE']);
+    // …the others the filters above keep, and only those.
+    expect(choicesOf(lists({ code: [PENDING.machineCode] }, 'banks=SYN+NBE'), 'code')).toEqual([
+      PENDING.machineCode,
+      ACCEPTED.machineCode,
+    ]);
+    // A bank picked: the code and status lists hold only its rows', the bank list both banks.
+    const cib = lists({ bank: ['SYN CIB'] });
+    expect(choicesOf(cib, 'code')).toEqual([REJECTED.machineCode]);
+    expect(choicesOf(cib, 'status')).toEqual([t('atm.mail.status.rejected')]);
+    expect(choicesOf(cib, 'bank')).toEqual(['SYN CIB', 'SYN NBE']);
+    // An empty cell picked: the pending mail's row alone.
+    expect(choicesOf(lists({ actionBy: [''] }), 'code')).toEqual([PENDING.machineCode]);
   });
 });

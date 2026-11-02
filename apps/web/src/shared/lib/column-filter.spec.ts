@@ -225,3 +225,35 @@ describe('the order a list reads in', () => {
     expect(columnSortKey('12:15 م')).toBe('12:15');
   });
 });
+
+describe('a column that puts something first — the run, first to third', () => {
+  it('sorts by what each value’s row puts first, then by the value itself', () => {
+    const lines = [
+      { run: 3, text: 'التغذية الثالثة 3:00 م' },
+      { run: 2, text: 'التغذية الثانية 12:00 م' },
+      { run: 1, text: 'التغذية الأولى 8:00 ص' },
+      { run: 2, text: 'التغذية الثانية 9:00 ص' },
+    ];
+    const textOf = (line: { text: string }, key: string): string | null =>
+      key === 'run' ? line.text : null;
+    // The alphabet alone reads first, third, second: ث-ا-ل before ث-ا-ن.
+    expect(columnFilterChoices(lines, {}, 'run', textOf)).toEqual([
+      'التغذية الأولى 8:00 ص',
+      'التغذية الثالثة 3:00 م',
+      'التغذية الثانية 9:00 ص',
+      'التغذية الثانية 12:00 م',
+    ]);
+    const runFirst = (line: { run: number }, key: string): string | null =>
+      key === 'run' ? String(line.run) : null;
+    // With the run's number first: first, second (its morning before its noon), third.
+    expect(columnFilterChoices(lines, {}, 'run', textOf, runFirst)).toEqual([
+      'التغذية الأولى 8:00 ص',
+      'التغذية الثانية 9:00 ص',
+      'التغذية الثانية 12:00 م',
+      'التغذية الثالثة 3:00 م',
+    ]);
+    expect(columnFilterChoicesOf(lines, {}, textOf, runFirst)('run')[1]).toBe(
+      'التغذية الثانية 9:00 ص',
+    );
+  });
+});

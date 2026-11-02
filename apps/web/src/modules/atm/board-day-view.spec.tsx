@@ -15,7 +15,9 @@
 //   · (2026-11-02) a filter under every text column — «فلتر لكل عمود», then «لأ عايز الفلتر الكبير
 //     اللى فوق الجداول يكون Drop Down بـ Multi select»: a multi-select list of the values the
 //     column's cells show, a row kept when its cell IS one of the picks (any of them), the columns
-//     adding up — narrowing the rows before the day view counts and groups them.
+//     adding up — narrowing the rows before the day view counts and groups them. Each list offers
+//     the values of the day view's rows only, narrowed by the OTHER columns' picks, never its own,
+//     a stale pick first.
 //
 // Every code and name below is synthetic.
 import { readFileSync } from 'node:fs';
@@ -40,6 +42,7 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { formatNumber } from '../../shared/lib/format';
+import type * as ColumnFilterSelectModule from '../../shared/ui/ColumnFilterSelect';
 import { ReplenishmentsPage } from './pages/ReplenishmentsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { LeaderField } from './components/ReplenishmentDialogs';
@@ -67,6 +70,27 @@ vi.mock('../../shared/ui/useColumnFilters', () => ({
     generation: 0,
   }),
 }));
+
+// A list's values are asked for only when it opens, and a static render never opens one: each
+// column's filter is drawn as it is, beside a hidden mark carrying what its list WOULD offer
+// (`choicesOf`) — so the lists' wiring is pinned, not only their triggers.
+vi.mock('../../shared/ui/ColumnFilterSelect', async () => {
+  const actual = await vi.importActual<typeof ColumnFilterSelectModule>(
+    '../../shared/ui/ColumnFilterSelect',
+  );
+  return {
+    ColumnFilterSelect: (props: Parameters<typeof actual.ColumnFilterSelect>[0]) => (
+      <>
+        <actual.ColumnFilterSelect {...props} />
+        <span
+          hidden
+          data-choices-for={props.columnKey}
+          data-choices={JSON.stringify(props.choices())}
+        />
+      </>
+    ),
+  };
+});
 
 const t = (key: string): string => translate('ar', key);
 
@@ -185,6 +209,18 @@ const filterTrigger = (markup: string, key: string): string => {
   const at = markup.indexOf(`data-column-filter="${key}"`);
   expect(at, `the ${key} column filter is rendered`).toBeGreaterThan(-1);
   return markup.slice(at, markup.indexOf('</button>', at));
+};
+/** What one column's list would offer, in its order — read from the mark the mock draws. */
+const choicesOf = (markup: string, key: string): string[] => {
+  const found = new RegExp(`data-choices-for="${key}" data-choices="([^"]*)"`).exec(markup);
+  expect(found, `the ${key} column's list is rendered`).not.toBeNull();
+  const json = (found?.[1] ?? '[]')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+  return JSON.parse(json) as string[];
 };
 
 /** The header's toolbar slot alone, from its `<div` to the `</div>` that closes it. */
@@ -627,6 +663,69 @@ describe.each([
     });
   },
 );
+
+describe.each([
+  { kind: 'replenishments' as const, make: rep, keys: ['atmReplenishment.view'] },
+  { kind: 'maintenances' as const, make: maint, keys: ['atmMaintenance.view'] },
+])('the $kind board’s column lists offer the day view’s values', ({ kind, make, keys }) => {
+  // Three rows today in two areas; one tomorrow, one further ahead, one left from an earlier day —
+  // the earlier one in an area no other row has.
+  const rows = [
+    { ...make('650000000000000000000a41', '99990401', NOW), area: 'الدقي' },
+    { ...make('650000000000000000000a42', '99990402', NOW), area: 'زايد' },
+    { ...make('650000000000000000000a43', '99990403', NOW), area: 'الدقي' },
+    { ...make('650000000000000000000a44', '99990404', TOMORROW), area: 'الدقي' },
+    { ...make('650000000000000000000a45', '99990405', IN_FIVE_DAYS), area: 'زايد' },
+    { ...make('650000000000000000000a46', '99990406', THREE_DAYS_AGO), area: 'أكتوبر' },
+  ];
+  const withPicks = (values: Record<string, string[]>, search = ''): string => {
+    columnValues = values;
+    try {
+      return table(renderBoard(kind, rows, keys, search));
+    } finally {
+      columnValues = {};
+    }
+  };
+
+  it('on «اليوم», list only today’s values — none of tomorrow’s, the days ahead or the earlier days', () => {
+    const board = withPicks({});
+    expect(choicesOf(board, 'code')).toEqual(['99990401', '99990402', '99990403']);
+    expect(choicesOf(board, 'area')).toEqual(['الدقي', 'زايد']);
+    expect(choicesOf(board, 'bank')).toEqual(['SYN BANK']);
+  });
+
+  it('follow the day view switched to', () => {
+    expect(choicesOf(withPicks({}, 'day=tomorrow'), 'code')).toEqual(['99990404']);
+    expect(choicesOf(withPicks({}, 'day=upcoming'), 'code')).toEqual(['99990404', '99990405']);
+    const earlier = withPicks({}, 'day=earlier');
+    expect(choicesOf(earlier, 'code')).toEqual(['99990406']);
+    expect(choicesOf(earlier, 'area')).toEqual(['أكتوبر']);
+  });
+
+  it('are not shrunk by their own column’s picks — another column’s picks narrow them', () => {
+    // A code picked: the table shows its row, and the code list still offers the view's others.
+    const onePicked = withPicks({ code: ['99990401'] });
+    expect([...bodyOf(onePicked).matchAll(/>(9999\d{4})</g)].map((m) => m[1])).toEqual([
+      '99990401',
+    ]);
+    expect(choicesOf(onePicked, 'code')).toEqual(['99990401', '99990402', '99990403']);
+    // …while the area list holds only the picked code's area.
+    expect(choicesOf(onePicked, 'area')).toEqual(['الدقي']);
+    // An area picked: the code list holds that area's codes of the view, the area list both areas.
+    const zayed = withPicks({ area: ['زايد'] });
+    expect(choicesOf(zayed, 'code')).toEqual(['99990402']);
+    expect(choicesOf(zayed, 'area')).toEqual(['الدقي', 'زايد']);
+    // …on whichever view is shown.
+    expect(choicesOf(withPicks({ area: ['زايد'] }, 'day=upcoming'), 'code')).toEqual(['99990405']);
+  });
+
+  it('list a stale pick — a value no row has — first, so it can be seen and un-picked', () => {
+    const stale = withPicks({ code: ['99990499'] });
+    expect(choicesOf(stale, 'code')).toEqual(['99990499', '99990401', '99990402', '99990403']);
+    // It narrows the other lists to nothing: no row of the view is left to offer.
+    expect(choicesOf(stale, 'area')).toEqual([]);
+  });
+});
 
 describe('the maintenance board’s «نوع الخدمة» list knows the «بريد» badge its cell shows', () => {
   it('lists a mail-opened service as its own value — picking it keeps the mail rows, the plain service the manual ones', () => {

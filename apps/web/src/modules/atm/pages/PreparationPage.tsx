@@ -88,6 +88,7 @@ import {
   PREPARATION_STATUS_TONE,
   preparationStatusKey,
   prepStateOf,
+  runFirst,
   runLabel,
   settlementErrorText,
   settlementErrorToast,
@@ -570,6 +571,7 @@ export const PreparationPage = (): JSX.Element => {
                               columnFilters.values,
                               column.key,
                               (line, key) => prepLineText(line, key, t, locale),
+                              runFirst,
                             )
                           }
                           onChange={(picked) => columnFilters.set(column.key, picked)}

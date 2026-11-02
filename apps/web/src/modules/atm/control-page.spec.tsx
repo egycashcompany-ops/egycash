@@ -369,7 +369,7 @@ describe('the data tab’s column lists (2026-11-02, «فلتر لكل عمود�
       columnValues = {};
     }
   };
-  /** One column's list in the filter row: its trigger, and its ✕ once something is picked. */
+  /** One column's list in the filter row: its trigger, from the list's marker to its cell's end. */
   const listOf = (html: string, key: string): string => {
     const at = html.indexOf(`data-column-filter="${key}"`);
     return at < 0 ? '' : html.slice(at, html.indexOf('</th>', at));

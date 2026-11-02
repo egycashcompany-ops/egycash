@@ -532,7 +532,7 @@ describe('the column lists (2026-11-02, «فلتر لكل عمود», a Multi se
       columnValues = {};
     }
   };
-  /** One column's list in the filter row: its trigger, and its ✕ once something is picked. */
+  /** One column's list in the filter row: its trigger, from the list's marker to its cell's end. */
   const listOf = (markup: string, key: string): string => {
     const at = markup.indexOf(`data-column-filter="${key}"`);
     return at < 0 ? '' : markup.slice(at, markup.indexOf('</th>', at));

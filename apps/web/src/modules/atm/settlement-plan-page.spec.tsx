@@ -50,6 +50,7 @@ import {
 } from './api/settlements-queries';
 import { atmBanksKey } from './api/atm-queries';
 import { cairoTomorrow } from './lib/settlement-dates';
+import { runFirst } from './lib/settlement-view';
 
 // The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
 // by default, so every other test renders the plan unfiltered.
@@ -502,7 +503,7 @@ describe('the lines table’s column lists (2026-11-02, «فلتر لكل عمو
   };
   const headOf = (html: string): string =>
     html.slice(html.indexOf('data-plan-lines'), html.indexOf('</thead>'));
-  /** One column's list in the filter row: its trigger, and its ✕ once something is picked. */
+  /** One column's list in the filter row: its trigger, from the list's marker to its cell's end. */
   const listOf = (html: string, key: string): string => {
     const at = html.indexOf(`data-column-filter="${key}"`);
     return at < 0 ? '' : html.slice(at, html.indexOf('</th>', at));
@@ -559,6 +560,26 @@ describe('the lines table’s column lists (2026-11-02, «فلتر لكل عمو
     expect(columnFilterChoices(lines, {}, 'serial', text)).toEqual(['١٠١', '١٠٣', '']);
     // A list offers only what the OTHER columns' picks leave: no value that would empty the table.
     expect(columnFilterChoices(lines, { code: ['BRKN9002'] }, 'status', text)).toEqual([draft]);
+  });
+
+  it('lists the runs first, second, third — not in the alphabet’s order', () => {
+    const text = (l: AtmPlanLineDto, key: string): string | null => planLineText(l, key, t2, 'ar');
+    const runs = [
+      line(1, { run: 3, scheduleTime: '15:00' }),
+      line(2, { run: 2, scheduleTime: '12:00' }),
+      line(3, { run: 1, scheduleTime: '08:00' }),
+      line(4, { run: 2, scheduleTime: '09:00' }),
+    ];
+    const listed = columnFilterChoices(runs, {}, 'run', text, runFirst);
+    expect(listed).toHaveLength(4);
+    expect(listed.map((value) => value.split(' ').slice(0, 2).join(' '))).toEqual([
+      t('atm.settlement.run.1'),
+      t('atm.settlement.run.2'),
+      t('atm.settlement.run.2'),
+      t('atm.settlement.run.3'),
+    ]);
+    // Inside a run, its morning before its noon.
+    expect(listed[1]).toBe(text(runs[3] as AtmPlanLineDto, 'run'));
   });
 
   it('keeps the lines whose cell IS a pick — the serial picked as the page writes it', () => {

@@ -22,10 +22,11 @@ import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { ChevronIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
 import {
-  PREPARATION_STATUS_TONE,
   formatEgp,
   lineCode,
+  PREPARATION_STATUS_TONE,
   preparationStatusKey,
+  runFirst,
   runLabel,
 } from '../../lib/settlement-view';
 import { type BankLookup } from '../../lib/bank-catalog';
@@ -222,8 +223,12 @@ export const ControlDataTab = ({
                 <ColumnFilterSelect
                   value={columnFilters.values[column.key] ?? []}
                   choices={() =>
-                    columnFilterChoices(day.lines, columnFilters.values, column.key, (line, key) =>
-                      controlLineText(line, key, { t, locale, banks, routeName }),
+                    columnFilterChoices(
+                      day.lines,
+                      columnFilters.values,
+                      column.key,
+                      (line, key) => controlLineText(line, key, { t, locale, banks, routeName }),
+                      runFirst,
                     )
                   }
                   onChange={(picked) => columnFilters.set(column.key, picked)}

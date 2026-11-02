@@ -21,11 +21,12 @@ import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { AlertIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
 import {
-  LINE_STATUS_TONE,
   formatEgp,
+  LINE_STATUS_TONE,
   lineBags,
   lineCode,
   lineStatusKey,
+  runFirst,
   runLabel,
 } from '../../lib/settlement-view';
 import { LineChips, lineChipsText } from './LineChips';
@@ -172,8 +173,12 @@ export const PlanLinesTable = ({
                 <ColumnFilterSelect
                   value={columnFilters.values[column.key] ?? []}
                   choices={() =>
-                    columnFilterChoices(allLines, columnFilters.values, column.key, (line, key) =>
-                      planLineText(line, key, t, locale),
+                    columnFilterChoices(
+                      allLines,
+                      columnFilters.values,
+                      column.key,
+                      (line, key) => planLineText(line, key, t, locale),
+                      runFirst,
                     )
                   }
                   onChange={(picked) => columnFilters.set(column.key, picked)}

@@ -6,9 +6,10 @@
 //
 // The rules, one definition for every table that has the row:
 //   · a column's list holds the values its cells SHOW — each once, in the reader's order (Arabic
-//     collation, numbers as numbers, dates and times in time order), an empty cell («—» on screen)
-//     as one «(فارغ)» entry, last — taken from the rows the OTHER columns' picks keep, as a sheet's
-//     own filter does: a list never offers a value that would empty the table;
+//     collation, numbers as numbers, dates and times in time order, or what the column puts first:
+//     `ColumnOrderOf`), an empty cell («—» on screen) as one «(فارغ)» entry, last — taken from the
+//     rows the OTHER columns' picks keep, as a sheet's own filter does: a list never offers a value
+//     that would empty the table (as the rows stand when it is made: `MultiSelect` `loadOptions`);
 //   · the list's search matches as the box typed into used to (`columnSearchMatches`): Arabic or
 //     Latin digits, any hamza form, several words in any order — and a date's «/» or a time's «:»
 //     kept, so «2/11» never finds 21/10;
@@ -130,6 +131,13 @@ export const filterRowsByColumns = <T>(
   return rows.filter((row) => passes(row, active, textOf));
 };
 
+/**
+ * What a row says to sort its value by FIRST, for a column whose text does not read in its own
+ * order — the run, «التغذية الأولى / الثانية / الثالثة», which Arabic collation puts as first,
+ * third, second. Null, or no function: the value's own text decides (`columnSortKey`).
+ */
+export type ColumnOrderOf<T> = (row: T, key: string) => string | null;
+
 /** Alphabetical, the way the reader reads: Arabic collation, a run of digits as a number. */
 const collator = new Intl.Collator('ar', { numeric: true, sensitivity: 'base' });
 
@@ -187,21 +195,25 @@ export const columnFilterChoices = <T>(
   values: ColumnFilterValues,
   key: string,
   textOf: (row: T, key: string) => string | null,
+  orderOf?: ColumnOrderOf<T>,
 ): string[] => {
   const active = pickedSets(values);
-  const seen = new Set<string>();
+  // Each value once, with what its first row says to sort it by first (`orderOf`).
+  const seen = new Map<string, string>();
   for (const row of rows) {
     if (!passes(row, active, textOf, key)) continue;
     const text = textOf(row, key);
-    if (text !== null) seen.add(cellValue(text));
+    if (text === null) continue;
+    const value = cellValue(text);
+    if (!seen.has(value)) seen.set(value, orderOf?.(row, key) ?? '');
   }
   const missing = [...new Set((values[key] ?? []).map(cellValue))].filter(
     (value) => !seen.has(value),
   );
   // Each value's sort key made once, not once per comparison.
   const sorted = [...seen]
-    .filter((value) => value !== '')
-    .map((value) => ({ value, key: columnSortKey(value) }))
+    .filter(([value]) => value !== '')
+    .map(([value, first]) => ({ value, key: `${first} ${columnSortKey(value)}` }))
     .sort((a, b) => collator.compare(a.key, b.key) || collator.compare(a.value, b.value))
     .map((entry) => entry.value);
   if (seen.has('')) sorted.push('');
@@ -218,6 +230,7 @@ export const columnFilterChoicesOf =
     rows: readonly T[],
     values: ColumnFilterValues,
     textOf: (row: T, key: string) => string | null,
+    orderOf?: ColumnOrderOf<T>,
   ): ((key: string) => string[]) =>
   (key) =>
-    columnFilterChoices(rows, values, key, textOf);
+    columnFilterChoices(rows, values, key, textOf, orderOf);

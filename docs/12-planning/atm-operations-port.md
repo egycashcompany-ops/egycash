@@ -73,6 +73,16 @@ ECMS" means.
 - **D7 — the report's day is a parameter.** The legacy screen could only ever show today
   (contad_app.js:2244-2249), which made "what did yesterday look like" unanswerable. A date on a
   read-only aggregate changes no behaviour and stores nothing; the default is still today.
+  **Widened 2026-11-02 to a period** — «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى ..
+  بس الـ Default يكون اليوم»: `GET /atm/reports/daily?from=&to=` counts every operation opened
+  from the first Cairo day's midnight to the midnight after the last (`reportPeriod`: one bound
+  serves as both, none is today, a reversed pair is put in order; a bound wins over the older
+  single `date`, which a link from before the period still carries). The answer names the period
+  it counted (`from`, `to`; `date` is the first day, for a screen older than the period). The
+  page takes the done pages' «من / إلى» fields and ladder (`doneRange`, `DoneRangeBar`); an empty
+  period says «لا توجد عمليات في هذه الفترة». No cap on the period: the answer is one row per bank
+  per kind whatever its length, and the counts are one aggregation per kind over the branch's
+  operations.
 - **D4 — no `openedAt >= today` floor on the open lists.** The legacy floor (contad_app.js:263)
   made an open row with a past open date invisible on every screen forever — un-closable. Open is
   open; the client still renders non-today rows as the grey carried-over group with no timer,
@@ -748,7 +758,7 @@ argument for the suite existing at all:
 | — | `/atm/settings`: the mailbox on a screen, branches switched on one at a time, branches that work together (§6a–§6c); suites `tests/integration/atm-mailbox.spec.ts`, `atm-branch-links.spec.ts` | delivered |
 | — | The two mail pages' filters and row buttons, and the log's «إسترجاع» (`POST /atm/mail-tickets/restore`, §6d); suite `tests/integration/atm-mail-restore.spec.ts` | delivered |
 | ATM-7 | Legacy importer (`npm run atm:import`) with the T1 repair, §7 | delivered |
-| — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7) | delivered |
+| — | Daily report `/atm/reports/daily` (legacy `/reports_atm`, D3/D7; a period since 2026-11-02) | delivered |
 | — | Integration suite `tests/integration/atm.spec.ts` (endpoints, authZ, validation) | delivered |
 | — | OD-1: one open replenishment and one open maintenance per machine, company-wide (§4a); suite `tests/integration/atm-no-double-open.spec.ts` | delivered |
 | — | OD-1a: the rule per Cairo day, the edits guarded, the any-day index dropped (§4a); the boards one day at a time, sort, reset, copy columns, F8, the «الوردية» box, Excel/PDF on the four tables (§10) | delivered |

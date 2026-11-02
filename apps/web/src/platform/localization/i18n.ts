@@ -10708,14 +10708,14 @@ const en: Record<string, string> = {
   'atm.nav.dailyReport': 'Daily Report',
   'atm.cards.dailyReport': "Today's open and total operations per bank.",
   'atm.reports.title': 'Daily Report',
-  'atm.reports.subtitle': 'Open over total operations per bank, for one day.',
-  'atm.reports.day': 'Day',
+  'atm.reports.subtitle': 'Open over total operations per bank, for a day or a period.',
   'atm.reports.replenishments': 'Replenishments',
   'atm.reports.maintenance': 'Maintenance',
   'atm.reports.open': 'Still open',
   'atm.reports.total': 'Total',
   'atm.reports.totalsLine': '{{open}} still open out of {{total}}.',
   'atm.reports.empty': 'Nothing opened on this day.',
+  'atm.reports.emptyPeriod': 'Nothing opened in this period.',
 
   // ── ATM efficiency register (docs/12-planning/atm-efficiency-register.md §9) ──
   'atm.nav.register': 'ATM Register',
@@ -22498,14 +22498,14 @@ const ar: Record<string, string> = {
   'atm.nav.dailyReport': 'تقرير اليوم',
   'atm.cards.dailyReport': 'المفتوح والإجمالي لكل بنك اليوم.',
   'atm.reports.title': 'تقرير اليوم',
-  'atm.reports.subtitle': 'المفتوح من إجمالي العمليات لكل بنك، ليوم واحد.',
-  'atm.reports.day': 'اليوم',
+  'atm.reports.subtitle': 'المفتوح من إجمالي العمليات لكل بنك، عن يوم أو فترة.',
   'atm.reports.replenishments': 'التغذيات',
   'atm.reports.maintenance': 'الصيانات',
   'atm.reports.open': 'ما زال مفتوحًا',
   'atm.reports.total': 'الإجمالي',
   'atm.reports.totalsLine': '{{open}} ما زالت مفتوحة من إجمالي {{total}}.',
   'atm.reports.empty': 'لا توجد عمليات في هذا اليوم.',
+  'atm.reports.emptyPeriod': 'لا توجد عمليات في هذه الفترة.',
 
   // ── ATM efficiency register (docs/12-planning/atm-efficiency-register.md §9) ──
   'atm.nav.register': 'سجل الماكينات',

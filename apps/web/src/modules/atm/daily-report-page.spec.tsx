@@ -31,6 +31,7 @@ import {
   shownBankCounts,
   sumBankCounts,
 } from './pages/DailyReportPage';
+import { cairoToday } from './lib/operation-view';
 
 // The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
 // by default, so every other test renders the report unfiltered. Both tables read the same picks.
@@ -57,6 +58,8 @@ const REPLENISHMENTS: AtmBankCountsDto[] = [
 ];
 
 const REPORT: AtmDailyReportDto = {
+  from: DAY,
+  to: DAY,
   date: DAY,
   replenishments: REPLENISHMENTS,
   maintenances: [{ bankName: 'بنك تجريبي أول', total: 4, open: 1 }],
@@ -75,13 +78,25 @@ const store = () =>
     },
   });
 
-const render = (): string => {
+/**
+ * The page at an address, its report read for `period` — the period the page should ask for. Any
+ * other period finds nothing in the cache, and the page shows its tables loading.
+ */
+const render = (
+  search = `?date=${DAY}`,
+  period: { from: string; to: string } = { from: DAY, to: DAY },
+  report: AtmDailyReportDto = REPORT,
+): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(listKey('atm', 'reports', { kind: 'daily', date: DAY }), REPORT);
+  qc.setQueryData(listKey('atm', 'reports', { kind: 'daily', ...period }), {
+    ...report,
+    ...period,
+    date: period.from,
+  });
   return renderToStaticMarkup(
     <Provider store={store()}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[`/atm/reports/daily?date=${DAY}`]}>
+        <MemoryRouter initialEntries={[`/atm/reports/daily${search}`]}>
           <DailyReportPage />
         </MemoryRouter>
       </QueryClientProvider>
@@ -104,15 +119,69 @@ const toolbarOf = (html: string): string => {
   return '';
 };
 
-describe('the day on the title’s line (2026-11-02)', () => {
-  it('sits inside the header, after the title', () => {
+/** The two date fields of the toolbar, «من» then «إلى», by their values. */
+const periodShown = (html: string): string[] =>
+  [...toolbarOf(html).matchAll(/<input[^>]*type="date"[^>]*>/g)].map(
+    (m) => /value="([^"]*)"/.exec(m[0])?.[1] ?? '',
+  );
+const BANK_ROW = '>SYN BANK<';
+
+describe('the period on the title’s line (2026-11-02)', () => {
+  it('sits inside the header, after the title — «من» and «إلى»', () => {
     const html = render();
     const toolbar = toolbarOf(html);
     expect(toolbar).toContain('data-report-toolbar="true"');
-    expect(toolbar).toContain(`value="${DAY}"`);
-    expect(toolbar).toContain(t('atm.reports.day'));
+    expect(toolbar).toContain(t('atm.done.from'));
+    expect(toolbar).toContain(t('atm.done.to'));
+    expect(periodShown(html)).toEqual([DAY, DAY]);
     expect(toolbar).not.toContain('max-w-xs');
     expect(html.indexOf('<h1')).toBeLessThan(html.indexOf('data-page-toolbar'));
+  });
+});
+
+describe('a period, «من … إلى …» — «بس الـ Default يكون اليوم» (2026-11-02)', () => {
+  it('is today, from and to, when the address names no day', () => {
+    const today = cairoToday();
+    const html = render('', { from: today, to: today });
+    expect(periodShown(html)).toEqual([today, today]);
+    // The report read is today's: its rows are on the page.
+    expect(html).toContain(BANK_ROW);
+  });
+
+  it('reads the period the address names, and asks the server for exactly it', () => {
+    const period = { from: '2026-10-20', to: '2026-10-28' };
+    const html = render('?from=2026-10-20&to=2026-10-28', period);
+    expect(periodShown(html)).toEqual(['2026-10-20', '2026-10-28']);
+    expect(html).toContain(BANK_ROW);
+    // Another period is another read: nothing of this one's is shown for it.
+    expect(render('?from=2026-10-21&to=2026-10-28', period)).not.toContain(BANK_ROW);
+  });
+
+  it('one bound serves as both, and a «إلى» before the «من» reads the days between', () => {
+    expect(
+      periodShown(render('?from=2026-10-20', { from: '2026-10-20', to: '2026-10-20' })),
+    ).toEqual(['2026-10-20', '2026-10-20']);
+    const swapped = { from: '2026-10-20', to: '2026-10-28' };
+    const html = render('?from=2026-10-28&to=2026-10-20', swapped);
+    expect(periodShown(html)).toEqual(['2026-10-20', '2026-10-28']);
+    expect(html).toContain(BANK_ROW);
+  });
+
+  it('opens a link from before the period (`?date=`) on its one day', () => {
+    const html = render(`?date=${DAY}`, { from: DAY, to: DAY });
+    expect(periodShown(html)).toEqual([DAY, DAY]);
+    expect(html).toContain(BANK_ROW);
+  });
+
+  it('says «nothing in this period» for a period, and «nothing on this day» for a day', () => {
+    const none: AtmDailyReportDto = { ...REPORT, replenishments: [], maintenances: [] };
+    const period = { from: '2026-10-20', to: '2026-10-28' };
+    const longer = render('?from=2026-10-20&to=2026-10-28', period, none);
+    expect(longer).toContain(t('atm.reports.emptyPeriod'));
+    expect(longer).not.toContain(t('atm.reports.empty'));
+    const oneDay = render(`?from=${DAY}&to=${DAY}`, { from: DAY, to: DAY }, none);
+    expect(oneDay).toContain(t('atm.reports.empty'));
+    expect(oneDay).not.toContain(t('atm.reports.emptyPeriod'));
   });
 });
 

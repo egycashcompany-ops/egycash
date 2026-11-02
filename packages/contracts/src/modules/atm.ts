@@ -1223,7 +1223,10 @@ export const AtmSettingKeys = {
 //
 // One read-only widening (port doc D7): the day is a PARAMETER defaulting to today. The legacy
 // could only ever show today, which made "what did yesterday look like" a question the screen
-// could not answer; a date on a read changes no behaviour and stores nothing.
+// could not answer; a date on a read changes no behaviour and stores nothing. Since 2026-11-02 it
+// is a PERIOD, «من … إلى …», still today by default — «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار
+// فترة من إلى .. بس الـ Default يكون اليوم»: the same counts over every day from the first to
+// the last, both included.
 
 export interface AtmBankCountsDto {
   /** The `bank` label the operations were opened under — the legacy `_id` of the $group. */
@@ -1235,19 +1238,29 @@ export interface AtmBankCountsDto {
 }
 
 export interface AtmDailyReportDto {
-  /** The Cairo calendar day the counts cover (`YYYY-MM-DD`). */
+  /** The first Cairo calendar day the counts cover (`YYYY-MM-DD`). */
+  from: string;
+  /** The last Cairo calendar day the counts cover, included — `from` itself for one day. */
+  to: string;
+  /** The first day again — what a screen older than the period reads. */
   date: string;
   /** Empty when the caller may not read that half — the report never leaks past a grant. */
   replenishments: AtmBankCountsDto[];
   maintenances: AtmBankCountsDto[];
 }
 
+const ReportDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * The period: `from` and `to`, Cairo days, both included. One bound alone serves as both, none is
+ * today, and a «to» before the «from» reads the days between — the done pages' ladder. `date`, a
+ * single day, is what a link from before the period carries; a bound wins over it.
+ */
 export const AtmDailyReportQuerySchema = z
   .object({
-    date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    from: ReportDaySchema.optional(),
+    to: ReportDaySchema.optional(),
+    date: ReportDaySchema.optional(),
   })
   .strict();
 export type AtmDailyReportQuery = z.infer<typeof AtmDailyReportQuerySchema>;

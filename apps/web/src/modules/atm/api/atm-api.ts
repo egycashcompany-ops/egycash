@@ -471,5 +471,6 @@ export const restoreMailTickets = async (
 };
 
 // ── Daily report (legacy /reports_atm) ──────────────────────────────────────
-export const atmDailyReport = (date: string | null): Promise<AtmDailyReportDto> =>
-  get<AtmDailyReportDto>(`/atm/reports/daily${date === null ? '' : buildQuery({ date })}`);
+/** The counts over a period of Cairo days, both included — one day when `from` is `to`. */
+export const atmDailyReport = (period: { from: string; to: string }): Promise<AtmDailyReportDto> =>
+  get<AtmDailyReportDto>(`/atm/reports/daily${buildQuery(period)}`);

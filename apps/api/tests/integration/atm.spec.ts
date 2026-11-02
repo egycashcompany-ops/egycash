@@ -740,6 +740,59 @@ describe('atm daily report', () => {
     );
   });
 
+  // «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى .. بس الـ Default يكون اليوم»
+  // (2026-11-02): the same counts over a period of days, both ends included.
+  it('counts a period, «من … إلى …», its last day whole — and names the period it counted', async () => {
+    type Report = {
+      from: string;
+      to: string;
+      date: string;
+      replenishments: { bankName: string; total: number; open: number }[];
+    };
+    const shift = (day: string, days: number): string => {
+      const [y, m, d] = day.split('-').map(Number) as [number, number, number];
+      return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+    };
+    const read = async (query: string): Promise<Report> => {
+      const res = await request(app)
+        .get(`/api/v1/atm/reports/daily${query}`)
+        .set('Authorization', `Bearer ${alexToken}`);
+      expect(res.status, query).toBe(200);
+      return data<Report>(res);
+    };
+    const nbe = (report: Report) => report.replenishments.find((row) => row.bankName === 'NBE');
+
+    const oneDay = await read(`?date=${fixtureDay}`);
+    expect(oneDay).toMatchObject({ from: fixtureDay, to: fixtureDay, date: fixtureDay });
+
+    // A period ending on the fixtures' day counts them all, as the day alone does.
+    const before = shift(fixtureDay, -3);
+    const ending = await read(`?from=${before}&to=${fixtureDay}`);
+    expect(ending).toMatchObject({ from: before, to: fixtureDay, date: before });
+    expect(nbe(ending)?.total).toBe(nbe(oneDay)?.total);
+    expect(nbe(ending)?.open).toBe(nbe(oneDay)?.open);
+
+    // A «to» before the «from» reads the days between.
+    const swapped = await read(`?from=${fixtureDay}&to=${before}`);
+    expect(swapped).toMatchObject({ from: before, to: fixtureDay });
+    expect(nbe(swapped)?.total).toBe(nbe(oneDay)?.total);
+
+    // A period that stops the day before holds none of them.
+    const ended = await read(`?from=${before}&to=${shift(fixtureDay, -1)}`);
+    expect(nbe(ended)?.total ?? 0).toBeLessThan(nbe(oneDay)?.total ?? 0);
+
+    // Nothing asked is today.
+    const today = await read('');
+    expect(today.from).toBe(today.to);
+  });
+
+  it('refuses a day that is not a Cairo day string', async () => {
+    const res = await request(app)
+      .get('/api/v1/atm/reports/daily?from=28-10-2026')
+      .set('Authorization', `Bearer ${alexToken}`);
+    expect(res.status).toBe(400);
+  });
+
   it('is refused to a caller holding no ATM view grant', async () => {
     const res = await request(app)
       .get('/api/v1/atm/reports/daily')

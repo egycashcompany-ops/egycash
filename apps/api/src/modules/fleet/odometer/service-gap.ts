@@ -14,7 +14,7 @@
 //     visit asked by the alarm's own `visitBounds` (R3, R4), and the row's reading standing where
 //     the car's latest reading stands for the alarm;
 //   • the row's reading is its EFFECTIVE one, `max(out, in ?? out)` — how far the car had got by
-//     the end of that row, the figure `latestReadings` ranks by.
+//     the end of that row, the figure `latestReadings` reports for the row it picks.
 // So the row the alarm measured (`latestReadingLogId`) carries exactly the alarm's `sinceServiceKm`
 // whenever the alarm computed one, and every earlier row the figure the alarm would have shown that
 // day.

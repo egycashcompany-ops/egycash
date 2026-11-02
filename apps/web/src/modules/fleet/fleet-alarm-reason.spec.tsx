@@ -319,10 +319,11 @@ describe('each screen says the reason at the size its rows can carry', () => {
   it('a HEALTHY car is given no reason on ANY screen, and says «لا يوجد» where a level is shown', () => {
     // The distinction the change exists for: this `none` was measured, and inventing a cause for
     // it would be the same lie in the opposite direction. Only the screens that still SHOW a
-    // level owe the word — maintenance stopped being one of them when its level column came off.
-    // The odometer still prints the badge beside «فارق عداد الصيانة»; what it never prints is a
-    // REASON.
-    const SHOWS_A_LEVEL = new Set(['maintenance-alarms', 'odometer']);
+    // level owe the word — maintenance stopped being one of them when its level column came off,
+    // and the odometer when its newest row's cell became the figure and its ⓘ alone (the owner:
+    // «I want the rest of it removed, leaving only the exclamation mark next to the reading»; the
+    // level is in «كيف حُسب الفارق»). What neither ever prints is a REASON.
+    const SHOWS_A_LEVEL = new Set(['maintenance-alarms']);
     for (const [name, render] of SCREENS) {
       const markup = render(HEALTHY);
       if (SHOWS_A_LEVEL.has(name)) {

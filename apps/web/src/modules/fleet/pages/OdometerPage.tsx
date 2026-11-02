@@ -638,7 +638,6 @@ export const OdometerPage = (): JSX.Element => {
           return (
             <NewestGapCell
               alarm={alarm}
-              rowIsLatest={alarm.latestReadingLogId === log.id}
               // The tint is on the figure, NOT on the row: a row here is one READING, and a car
               // has many — tinting them all would show five alarms for one car.
               tint={alarmCellTint(alarm.level)}

@@ -87,9 +87,9 @@ const ShareBar = ({
     <Meter parts={parts} height="h-1.5" />
     <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
       <span className="min-w-0">{text}</span>
-      <span dir="ltr" className={cn(PCT, 'shrink-0')}>
-        {pct}
-      </span>
+      {/* In the line's own direction, so two shares read in the words' order («كارت ثم عهدة»:
+          the card's share first, at the start); each share keeps its «%» after the figure. */}
+      <span className={cn(PCT, 'shrink-0')}>{pct}</span>
     </div>
   </div>
 );

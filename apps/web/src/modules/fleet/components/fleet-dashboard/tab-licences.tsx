@@ -176,6 +176,18 @@ const Bucket = ({
   </Fig>
 );
 
+/** A licence row's car: its code in the approved drawing's framed box, the box itself the link to
+ *  the car's file. */
+const CodeBox = ({ code, link }: { code: string; link: DashLink | null }): JSX.Element => (
+  <Fig
+    link={link}
+    linkedClassName=""
+    className="inline-grid h-9 min-w-[3rem] shrink-0 place-items-center rounded-md border border-slate-300 bg-slate-50 px-2 text-[15px] font-bold leading-5 text-slate-900 shadow-sm transition-colors hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:hover:border-slate-500"
+  >
+    <N>{code}</N>
+  </Fig>
+);
+
 const VehicleLicences = ({
   lic,
   links,
@@ -281,7 +293,7 @@ const VehicleLicences = ({
                 data-licence-row={row.vehicleId}
                 className={cn(ROW, 'py-2.5')}
               >
-                <CarChip
+                <CodeBox
                   code={row.code}
                   link={links.vehicle(row.vehicleId, 'licenceVehicles.row')}
                 />

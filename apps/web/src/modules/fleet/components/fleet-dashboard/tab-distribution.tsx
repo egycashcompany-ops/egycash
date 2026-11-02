@@ -151,6 +151,36 @@ const Stat = ({
   </div>
 );
 
+/**
+ * The drivers' track of a pool: as many drivers as there are cars in the solid indigo, the drivers
+ * above the number of cars in a lighter one after it (the approved drawing), so the gap the line
+ * below names can be seen.
+ */
+const DriversMeter = ({
+  cars,
+  drivers,
+  longer,
+}: {
+  cars: number;
+  drivers: number;
+  longer: number;
+}): JSX.Element => {
+  const extra = drivers > cars ? (share(drivers - cars, longer) ?? 0) : 0;
+  if (extra === 0) return <Meter parts={[{ pct: share(drivers, longer) ?? 0, tone: 'brand' }]} />;
+  return (
+    <div className="flex h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-[#162135]">
+      <div
+        className={cn('h-full rounded-s-full', TONE.brand.bar)}
+        style={{ width: `${share(cars, longer) ?? 0}%` }}
+      />
+      <div
+        className="h-full rounded-e-full bg-brand-300 dark:bg-brand-400/40"
+        style={{ width: `${extra}%` }}
+      />
+    </div>
+  );
+};
+
 const PoolCard = ({
   data,
   title,
@@ -210,7 +240,7 @@ const PoolCard = ({
             <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
               {t('fleet.dash.distribution.drivers')}
             </span>
-            <Meter parts={[{ pct: share(drivers.n, longer) ?? 0, tone: 'brand' }]} />
+            <DriversMeter cars={cars.n} drivers={drivers.n} longer={longer} />
             <N className={cn('text-[13px] font-black', LEAD_INK)}>{count(drivers.n)}</N>
           </div>
           <p className="mt-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -436,7 +466,11 @@ const BranchCard = ({
           )}
         >
           {none ? (
-            t('fleet.dash.distribution.noBranchUnit')
+            // The counted noun («1 سيارة», «3 سيارات») before the words, as the branches say it.
+            <Phrase
+              text={t('fleet.dash.distribution.noBranchCounted')}
+              parts={{ noun: noun('car', total) }}
+            />
           ) : (
             <Phrase
               text={t('fleet.dash.distribution.activeUnit')}

@@ -100,6 +100,25 @@ const U = ({ children }: { children: ReactNode }): JSX.Element => (
   <span className={UNIT}>{children}</span>
 );
 
+/** A phrase as the side box's figure («منذ 18 يومًا»): its parts as given, every word around them
+ *  a size down (`U`), as the units are; the box's gap spaces the pieces. */
+const BoxPhrase = ({
+  text,
+  parts,
+}: {
+  text: string;
+  parts: Record<string, ReactNode>;
+}): JSX.Element => (
+  <>
+    {text.split(/(\{\{\w+\}\})/u).map((piece, i) => {
+      const name = /^\{\{(\w+)\}\}$/u.exec(piece)?.[1];
+      if (name !== undefined && name in parts) return <Fragment key={i}>{parts[name]}</Fragment>;
+      const words = piece.trim();
+      return words === '' ? null : <U key={i}>{words}</U>;
+    })}
+  </>
+);
+
 /** An amount as the side box's figure: the box's own face (`F`), its «ج.م.» a size down (`U`). */
 const BoxMoney = ({ value }: { value: number }): JSX.Element => {
   const { figure, currency } = useMoney()(value);
@@ -228,10 +247,13 @@ const useLineView = (
                     oldest.days === 0 ? (
                       <U>{t('fleet.dash.common.today')}</U>
                     ) : (
-                      <>
-                        <F>{count(-oldest.days)}</F>
-                        <U>{noun('day', -oldest.days)}</U>
-                      </>
+                      <BoxPhrase
+                        text={t('fleet.dash.common.since')}
+                        parts={{
+                          count: <F>{count(-oldest.days)}</F>,
+                          noun: <U>{noun('day', -oldest.days)}</U>,
+                        }}
+                      />
                     ),
                 },
           actions: [{ link: links.vehicleLicencesExpired(), label: k('action') }],

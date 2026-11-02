@@ -9,7 +9,15 @@
 // A key no rule matches is never dropped: under a department this file knows it goes to that
 // department's «more» section, and under one it does not, to Other.
 
-export const SETTING_DEPARTMENTS = ['general', 'hr', 'fleet', 'operations', 'atm', 'it', 'other'] as const;
+export const SETTING_DEPARTMENTS = [
+  'general',
+  'hr',
+  'fleet',
+  'operations',
+  'atm',
+  'it',
+  'other',
+] as const;
 export type SettingDepartment = (typeof SETTING_DEPARTMENTS)[number];
 
 /** Each department's sections, in the order the screen shows them. `more` catches the unplaced. */
@@ -106,9 +114,15 @@ export const placementOf = (key: string): SettingPlacement => {
  */
 export const MANAGED_ELSEWHERE: Readonly<Record<string, { route: string; screen: string }>> = {
   'atm.maintenanceLeaderDepartmentIds': { route: '/atm/settings', screen: 'atm.settings.title' },
+  // A fallback: each branch's category is set on ATM Settings (its mailbox row), and this list
+  // answers only for a branch that has none there. That screen is where a category is changed.
   'atm.mail.branchCategories': { route: '/atm/settings', screen: 'atm.settings.title' },
   'atm.branchLinks': { route: '/atm/settings', screen: 'atm.settings.title' },
-  'it.technicianDepartmentIds': { route: '/it/helpdesk-settings', screen: 'it.nav.helpDeskSettings' },
+  'atm.register.branchCodes': { route: '/atm/register/import', screen: 'atm.registerImport.title' },
+  'it.technicianDepartmentIds': {
+    route: '/it/helpdesk-settings',
+    screen: 'it.nav.helpDeskSettings',
+  },
   'operations.crewDepartmentIds': {
     route: '/operations/requirements',
     screen: 'operations.crew.requirements.title',
@@ -122,4 +136,16 @@ export const MANAGED_ELSEWHERE: Readonly<Record<string, { route: string; screen:
 export const RETIRED_SETTINGS: ReadonlySet<string> = new Set(['atm.register.bankLabels']);
 
 /** The i18n key of a setting's user-facing description (both locales). */
-export const settingDescriptionKey = (key: string): string => `systemAdmin.settings.descriptions.${key}`;
+export const settingDescriptionKey = (key: string): string =>
+  `systemAdmin.settings.descriptions.${key}`;
+
+/**
+ * Pattern tokens a description quotes as the administrator must type them. The dictionary cannot
+ * hold `{year}` itself — `translate()` fills only `{{name}}`, and a single-brace word there is
+ * refused as a broken placeholder — so a description names the token and it is filled in here.
+ */
+export const DESCRIPTION_TOKENS: Readonly<Record<string, string>> = {
+  yearToken: '{year}',
+  seqToken: '{seq}',
+  seqPaddedToken: '{seq:6}',
+};

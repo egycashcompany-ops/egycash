@@ -81,9 +81,12 @@ export const editorFor = (type: string): SettingEditor => {
 
 /**
  * Group the registry for display: department, then section, in the order `settings-catalog`
- * declares them, then by key inside a section, so two loads of the same registry produce the same
- * screen — the definitions arrive in declaration order, which is boot order, which is not stable
- * enough to render. Empty departments and sections are left out.
+ * declares them. Inside a section the rows keep the order their module DECLARES them in — password
+ * length before complexity before lockout — which reads as the module meant it; sorting by key put
+ * «صلاحية رابط التفعيل» above «الحد الأدنى لطول كلمة المرور». That order is stable: a section's
+ * keys come from one declaration file, and the definitions arrive in declaration order (only the
+ * order BETWEEN modules follows boot, and departments and sections fix that). Empty departments
+ * and sections are left out.
  */
 export const buildSettingGroups = (
   definitions: readonly SettingDefinitionDto[],
@@ -114,13 +117,11 @@ export const buildSettingGroups = (
   return SETTING_DEPARTMENTS.flatMap((department) => {
     const sections = SETTING_SECTIONS[department].flatMap((id) => {
       const rows = buckets.get(`${department}/${id}`);
-      return rows === undefined ? [] : [{ id, rows: [...rows].sort(byKeyAsc) }];
+      return rows === undefined ? [] : [{ id, rows }];
     });
     return sections.length === 0 ? [] : [{ department, sections }];
   });
 };
-
-const byKeyAsc = (a: SettingRowModel, b: SettingRowModel): number => a.key.localeCompare(b.key);
 
 /** How many settings a department (or the whole screen) holds. */
 export const countRows = (groups: readonly SettingDepartmentModel[]): number =>

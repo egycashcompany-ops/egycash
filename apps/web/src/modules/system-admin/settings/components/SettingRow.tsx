@@ -24,7 +24,7 @@ import { Button } from '../../../../shared/ui/Button';
 import { Checkbox, Input } from '../../../../shared/ui/form';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { toast } from '../../../../shared/ui/toast/toast-store';
-import { settingDescriptionKey } from '../lib/settings-catalog';
+import { DESCRIPTION_TOKENS, settingDescriptionKey } from '../lib/settings-catalog';
 import {
   parseValue,
   rowEditability,
@@ -53,7 +53,7 @@ export const useSettingText = (): ((row: SettingRowModel) => {
       const labelKey = settingLabelKey(row.key);
       const label = t(labelKey);
       const descriptionKey = settingDescriptionKey(row.key);
-      const description = t(descriptionKey);
+      const description = t(descriptionKey, DESCRIPTION_TOKENS);
       return {
         // A setting declared after this screen was written has no label yet. It keeps its place
         // and shows its key — hiding it would remove the only way to configure it.
@@ -197,25 +197,28 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
             }}
           />
         ) : (
-          <Input
-            id={fieldId}
-            dir="ltr"
-            value={draft}
-            error={message !== null}
-            aria-invalid={message !== null}
-            aria-describedby={message === null ? hintId : `${hintId} ${errorId}`}
-            readOnly={row.editor === 'readonly'}
-            disabled={disabled || save.isPending}
-            inputMode={row.editor === 'number' ? 'numeric' : undefined}
-            placeholder={row.editor === 'list' ? t('systemAdmin.settings.listHint') : undefined}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-        )}
-
-        {hasField && row.editor !== 'boolean' && (
-          <div className="flex items-center gap-2">
+          // The field and its Save on one line: a row is read, changed and saved in one place.
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <Input
+                id={fieldId}
+                // Numbers and lists read left-to-right; free text follows its own script, or an
+                // Arabic signature line would be cut off at its start.
+                dir={row.editor === 'text' ? 'auto' : 'ltr'}
+                value={draft}
+                error={message !== null}
+                aria-invalid={message !== null}
+                aria-describedby={message === null ? hintId : `${hintId} ${errorId}`}
+                readOnly={row.editor === 'readonly'}
+                disabled={disabled || save.isPending}
+                inputMode={row.editor === 'number' ? 'numeric' : undefined}
+                placeholder={row.editor === 'list' ? t('systemAdmin.settings.listHint') : undefined}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+            </div>
             <Button
               size="sm"
+              className="mt-1"
               onClick={() => submit(draft)}
               disabled={disabled || !dirty}
               loading={save.isPending}
@@ -226,6 +229,7 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
               <Button
                 size="sm"
                 variant="ghost"
+                className="mt-1"
                 onClick={() => {
                   setDraft(storedText);
                   setLocalError(null);
@@ -247,7 +251,9 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
             {t(`systemAdmin.settings.locked.${editability}`)}
           </p>
         )}
-        {hasField && (
+        {/* The default is worth a line only when the value is not it — the badge already says so
+            when it is. */}
+        {hasField && resolvedFrom !== 'default' && (
           <p className="text-xs text-slate-400 dark:text-slate-500">
             {t('systemAdmin.settings.defaultValueLabel')}{' '}
             <span dir="ltr">{serializeValue(row.definition.defaultValue, row.editor)}</span>

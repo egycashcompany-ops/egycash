@@ -120,7 +120,7 @@ class ItPeopleService {
       departmentIds.includes(employee.departmentId);
     if (!inIt) {
       throw new BusinessRuleError(
-        'a ticket can only be assigned to a current employee of the IT departments (it.technicianDepartmentIds)',
+        'A ticket can be assigned only to a current employee of the departments in “Help desk technicians’ departments” (System settings → IT).',
       );
     }
   }

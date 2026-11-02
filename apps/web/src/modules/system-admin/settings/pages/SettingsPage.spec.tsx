@@ -294,6 +294,18 @@ describe('every setting is titled and described in both languages', () => {
       }
     }
   });
+
+  // The contract-number description quotes `{year}` and `{seq}` as they are typed. The dictionary
+  // names them (a single brace there is a broken placeholder), and the row fills them in.
+  it('quotes pattern tokens as they are typed, and leaves no placeholder unfilled', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const markup = render({ locale });
+      expect(markup, locale).toContain('{year}');
+      expect(markup, locale).toContain('{seq:6}');
+      expect(markup, locale).toContain('{seq}');
+      expect(markup, `an unfilled placeholder (${locale})`).not.toMatch(/\{\{\w+\}?\}/);
+    }
+  });
 });
 
 describe('every setting reaches the screen', () => {

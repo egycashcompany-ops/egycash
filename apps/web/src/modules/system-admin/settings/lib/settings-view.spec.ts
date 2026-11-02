@@ -160,9 +160,16 @@ describe('buildSettingGroups', () => {
     expect(general?.sections.map((s) => s.id)).toEqual(['signIn', 'audit']);
   });
 
-  it('sorts rows inside a section by key, so two loads render identically', () => {
+  it('keeps the declaration order inside a section — the order the module wrote them in', () => {
     const general = buildSettingGroups(definitions, [])[0];
     expect(general?.sections[0]?.rows.map((r) => r.key)).toEqual([
+      'auth.password.minLength',
+      'auth.lockout.minutes',
+    ]);
+    // It is the order the definitions ARRIVE in (one section's keys are one file's declarations),
+    // not an alphabetical one: reversed input, reversed rows.
+    const shuffled = buildSettingGroups([...definitions].reverse(), [])[0];
+    expect(shuffled?.sections[0]?.rows.map((r) => r.key)).toEqual([
       'auth.lockout.minutes',
       'auth.password.minLength',
     ]);

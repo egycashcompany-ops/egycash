@@ -8,7 +8,9 @@
 //   · the bank CATALOG tab (DEC-35): add under `atmBank.create`, edit under `atmBank.edit`, and
 //     neither Operations' keys nor `manage` reach it — it belongs to Efficiency and the admins;
 //   · the tabs sit in the header, on the title's line, as a segmented switch (2026-11-02), and only
-//     the bank tab — the whole catalog — has a filter box per column; the paged tabs have none.
+//     the bank tab — the whole catalog — has a column filter per column («فلتر لكل عمود», then «لأ
+//     عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select»): a drop-down list of
+//     the values the column's cells show, several of them pickable; the paged tabs have none.
 //
 // Every code, name and label below is synthetic.
 import { describe, expect, it, vi } from 'vitest';
@@ -52,6 +54,19 @@ vi.mock('react-dom', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('react-dom');
   return { ...actual, createPortal: (node: unknown) => node };
 });
+
+// The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
+// by default, so every other test renders the tabs unfiltered.
+let columnValues: Record<string, string[]> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
+  }),
+}));
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -495,40 +510,105 @@ describe('the tabs on the title’s line (2026-11-02)', () => {
   });
 });
 
-describe('the filter boxes (2026-11-02, «فلتر لكل عمود»): the bank tab only', () => {
-  it('draws a box under every text column of the catalog, none under the edit button', () => {
+describe('the column lists (2026-11-02, «فلتر لكل عمود», a Multi select drop-down): the bank tab only', () => {
+  const COLUMNS = [
+    ['code', 'atm.bankCatalog.code'],
+    ['nameAr', 'atm.bankCatalog.nameAr'],
+    ['nameEn', 'atm.bankCatalog.nameEn'],
+    ['opsLabel', 'atm.bankCatalog.opsLabel'],
+    ['color', 'atm.bankCatalog.color'],
+    ['status', 'atm.dataEdit.status'],
+  ] as const;
+  const codes = (values: Record<string, string[]>): string[] =>
+    filterRowsByColumns(CATALOG, values, (bank, key) => bankCellText(bank, key, t)).map(
+      (bank) => bank.code,
+    );
+  /** The bank tab, its lists holding these picks. */
+  const withPicks = (values: Record<string, string[]>): string => {
+    columnValues = values;
+    try {
+      return renderPage([VIEW_ONLY, 'atmBank.edit'], 'bank');
+    } finally {
+      columnValues = {};
+    }
+  };
+  /** One column's list in the filter row: its trigger, and its ✕ once something is picked. */
+  const listOf = (markup: string, key: string): string => {
+    const at = markup.indexOf(`data-column-filter="${key}"`);
+    return at < 0 ? '' : markup.slice(at, markup.indexOf('</th>', at));
+  };
+  /** The catalog banks the table shows, by the English name only their own row writes. */
+  const banksShown = (markup: string): string[] => {
+    const body = markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
+    return CATALOG.filter((bank) => body.includes(`>${bank.name.en}<`)).map((bank) => bank.code);
+  };
+
+  it('draws a list under every text column of the catalog, none under the edit button', () => {
     const markup = renderPage([VIEW_ONLY, 'atmBank.edit'], 'bank');
     const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
-    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual([
-      'code',
-      'nameAr',
-      'nameEn',
-      'opsLabel',
-      'color',
-      'status',
-    ]);
+    expect([...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1])).toEqual(
+      COLUMNS.map(([key]) => key),
+    );
+    // Each a drop-down named after its column, saying «الكل» while nothing is picked.
+    for (const [key, header] of COLUMNS) {
+      const list = listOf(head, key);
+      expect(list).toContain('aria-haspopup="listbox"');
+      expect(list).toContain(`aria-label="${t('atm.common.filterColumn', { column: t(header) })}"`);
+      expect(list).toContain(`>${t('common.filters.all')}<`);
+    }
+    expect(head).not.toContain('type="search"');
   });
 
   it.each(['machines', 'bankLabel', 'area'] as const)(
-    'leaves the %s tab — read a page at a time from the server — without boxes',
+    'leaves the %s tab — read a page at a time from the server — without column filters',
     (tab) => {
       expect(renderPage(MANAGE, tab)).not.toContain('data-column-filter');
     },
   );
 
-  it('matches what each cell shows, and keeps the banks every box matches', () => {
+  it('names the picks on the list’s trigger, and shows only the banks they keep', () => {
+    expect(banksShown(renderPage([VIEW_ONLY, 'atmBank.edit'], 'bank'))).toEqual(
+      CATALOG.map((bank) => bank.code),
+    );
+    const markup = withPicks({ code: ['NBE', 'BM'] });
+    expect(listOf(markup, 'code')).toContain('>NBE, BM<');
+    expect(listOf(markup, 'status')).toContain(`>${t('common.filters.all')}<`);
+    expect(banksShown(markup)).toEqual(['NBE', 'BM']);
+    expect(markup).not.toContain(t('atm.common.emptyColumnFiltered'));
+  });
+
+  it('says the lists hid every bank when no bank holds their picks — and only then', () => {
+    const none = withPicks({ status: [t('atm.dataEdit.archived')] });
+    expect(banksShown(none)).toEqual([]);
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    expect(renderPage([VIEW_ONLY, 'atmBank.edit'], 'bank')).not.toContain(
+      t('atm.common.emptyColumnFiltered'),
+    );
+  });
+
+  it('lists what each cell shows, and keeps the banks whose cell IS a pick', () => {
     const nbe = CATALOG.find((bank) => bank.code === 'NBE');
     if (nbe === undefined) throw new Error('fixture');
     expect(bankCellText(nbe, 'nameAr', t)).toBe(nbe.name.ar);
     expect(bankCellText(nbe, 'status', t)).toBe(t('atm.dataEdit.active'));
     expect(bankCellText(nbe, 'actions', t)).toBeNull();
-    const codes = (values: Record<string, string>): string[] =>
-      filterRowsByColumns(CATALOG, values, (bank, key) => bankCellText(bank, key, t)).map(
-        (bank) => bank.code,
-      );
-    expect(codes({ code: 'nbe' })).toEqual(['NBE']);
-    expect(codes({ nameAr: 'الاهلي' })).toEqual(['NBE']);
-    expect(codes({ status: t('atm.dataEdit.archived') })).toEqual([]);
+    expect(codes({ code: ['NBE'] })).toEqual(['NBE']);
+    expect(codes({ nameAr: [nbe.name.ar] })).toEqual(['NBE']);
+    // The pick is the cell's own text, as it is written: no other case, no other hamza.
+    expect(codes({ code: ['nbe'] })).toEqual([]);
+    const unhamzaed = nbe.name.ar.replace('أ', 'ا');
+    expect(unhamzaed).not.toBe(nbe.name.ar);
+    expect(codes({ nameAr: [unhamzaed] })).toEqual([]);
+    expect(codes({ status: [t('atm.dataEdit.archived')] })).toEqual([]);
     expect(codes({})).toEqual(CATALOG.map((bank) => bank.code));
+  });
+
+  it('keeps a bank that is ANY pick of a column, and only banks every column keeps', () => {
+    expect(codes({ code: ['NBE', 'BM'] })).toEqual(['NBE', 'BM']);
+    expect(codes({ code: ['NBE', 'BM'], opsLabel: ['MISR'] })).toEqual(['BM']);
+    expect(codes({ code: ['NBE'], opsLabel: ['MISR'] })).toEqual([]);
+    expect(codes({ status: [t('atm.dataEdit.active'), t('atm.dataEdit.archived')] })).toEqual(
+      CATALOG.map((bank) => bank.code),
+    );
   });
 });

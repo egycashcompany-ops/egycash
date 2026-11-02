@@ -15,6 +15,7 @@ import { localeSlice } from '../../store/localeSlice';
 import {
   MultiSelect,
   emptyListText,
+  floatingSpot,
   multiSelectKey,
   nextActiveOption,
   optionLabel,
@@ -64,8 +65,16 @@ const CARS = [
 
 /** People, where the VALUE is an opaque id rather than the thing the reader recognises. */
 const DRIVERS = [
-  { value: '6a9c87ff7ae99d20407ded49', label: 'محمد حاتم البنداري — 0100022', shortLabel: 'محمد حاتم البنداري' },
-  { value: '6a9d579fe017f8c85ade413b', label: 'جمال أحمد محمد — 0100031', shortLabel: 'جمال أحمد محمد' },
+  {
+    value: '6a9c87ff7ae99d20407ded49',
+    label: 'محمد حاتم البنداري — 0100022',
+    shortLabel: 'محمد حاتم البنداري',
+  },
+  {
+    value: '6a9d579fe017f8c85ade413b',
+    label: 'جمال أحمد محمد — 0100031',
+    shortLabel: 'جمال أحمد محمد',
+  },
 ];
 
 // The IT registers' name filter: a list that could not be READ must not claim nothing matched.
@@ -103,7 +112,9 @@ describe('optionLabel — what one chosen value is CALLED', () => {
 
   it('is the SAME answer the trigger gives, so chip and trigger cannot disagree', () => {
     const ids = DRIVERS.map((d) => d.value);
-    expect(selectionSummary(DRIVERS, ids, 3)).toBe(ids.map((id) => optionLabel(DRIVERS, id)).join(', '));
+    expect(selectionSummary(DRIVERS, ids, 3)).toBe(
+      ids.map((id) => optionLabel(DRIVERS, id)).join(', '),
+    );
   });
 });
 
@@ -512,5 +523,77 @@ describe('the caret stays in the search box — «عاوز المؤسر يفضل
     );
     expect(opening).toContain('setEdge(');
     expect(opening).not.toContain('setActive(');
+  });
+});
+
+describe('a list that floats — a table’s column filter, «يكون Drop Down بـ Multi select»', () => {
+  const viewport = { width: 1366, height: 768, rtl: true };
+  const trigger = { top: 200, bottom: 232, left: 900, right: 1000 };
+
+  it('opens under the trigger, along the text from its start edge — the right, in Arabic', () => {
+    const spot = floatingSpot(trigger, 256, viewport);
+    expect(spot.below).toBe(true);
+    expect(spot.top).toBe(236);
+    expect(spot.left).toBe(1000 - 256);
+    expect(spot.maxHeight).toBe(288);
+    expect(floatingSpot(trigger, 256, { ...viewport, rtl: false }).left).toBe(900);
+  });
+
+  it('never past either side of the screen', () => {
+    expect(floatingSpot({ ...trigger, left: 0, right: 100 }, 256, viewport).left).toBe(8);
+    expect(
+      floatingSpot({ ...trigger, left: 1300, right: 1366 }, 256, { ...viewport, rtl: false }).left,
+    ).toBe(1366 - 256 - 8);
+  });
+
+  it('opens above a trigger near the bottom, its bottom on the trigger — as tall as the room', () => {
+    const low = { ...trigger, top: 700, bottom: 732 };
+    const spot = floatingSpot(low, 256, viewport);
+    expect(spot.below).toBe(false);
+    expect(spot.bottom).toBe(768 - 700 + 4);
+    expect(spot.maxHeight).toBe(288);
+    // Little room either side: the larger side, as tall as it allows.
+    const short = floatingSpot({ ...trigger, top: 150, bottom: 182 }, 256, {
+      ...viewport,
+      height: 300,
+    });
+    expect(short.below).toBe(false);
+    expect(short.maxHeight).toBe(150 - 4 - 8);
+  });
+
+  it('the compact trigger is shorter and smaller, the filter bar’s is as it was', () => {
+    const props = { label: 'L', options: [], value: [], onChange: () => {} };
+    expect(render(<MultiSelect {...props} size="sm" />)).toMatch(
+      /<button[^>]*class="[^"]*\bh-8 py-1 text-xs\b/,
+    );
+    const plain = render(<MultiSelect {...props} />);
+    expect(plain).toMatch(/<button[^>]*class="[^"]*\bpy-2 text-sm\b/);
+    expect(plain).not.toContain('h-8');
+  });
+
+  it('a closed list asks for no values (`loadOptions`) and names its picks from `options`', () => {
+    const markup = render(
+      <MultiSelect
+        label="L"
+        options={[{ value: 'a', label: 'SYN A' }]}
+        loadOptions={() => {
+          throw new Error('closed');
+        }}
+        value={['a']}
+        onChange={() => {}}
+        showSelectedValues
+      />,
+    );
+    expect(markup).toContain('SYN A');
+  });
+
+  it('a press on the floating panel is not a press outside it', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('useOnClickOutside(insideRefs');
+    expect(source).toContain('[boxRef, panelRef]');
+    expect(source).toContain('createPortal(panel, document.body)');
   });
 });

@@ -49,7 +49,6 @@ const KEYS = [
   'atm.common.unknownCodes',
   'atm.common.emptyColumnFiltered',
   'atm.common.filterColumn',
-  'atm.common.filterPlaceholder',
   'atm.common.shift',
   'atm.common.leaderShiftHint',
   'atm.common.leaderShiftManyHint',

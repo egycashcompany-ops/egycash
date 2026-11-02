@@ -8,7 +8,10 @@
 //   · lines issued after the last «بيان التغذية» print raise the stale notice;
 //   · a bank added to the catalog and enabled for settlements (DEC-35) is named from the catalog;
 //   · the toolbar sits in the header, on the title's line (2026-11-02), and the lines table has a
-//     filter box per column whose rules — and «السطور المحددة» — follow what the table shows.
+//     column filter per column («فلتر لكل عمود», then «لأ عايز الفلتر الكبير اللى فوق الجداول يكون
+//     Drop Down بـ Multi select»): a drop-down list of the values its cells show, several of them
+//     pickable — a line stays when its cell is one of a column's picks, in every column with
+//     picks — whose rules, and «السطور المحددة», follow what the table shows.
 //
 // Every code, name, count and amount below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -16,7 +19,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ATM_BANK_SEED,
   type AtmBankDto,
@@ -30,6 +33,8 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
+import { columnFilterChoices } from '../../shared/lib/column-filter';
+import { formatNumber } from '../../shared/lib/format';
 import { SettlementPlanPage } from './pages/SettlementPlanPage';
 import { PlanLinePanel, schedulePatch } from './components/settlements/PlanLinePanel';
 import {
@@ -45,6 +50,19 @@ import {
 } from './api/settlements-queries';
 import { atmBanksKey } from './api/atm-queries';
 import { cairoTomorrow } from './lib/settlement-dates';
+
+// The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
+// by default, so every other test renders the plan unfiltered.
+let columnValues: Record<string, string[]> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
+  }),
+}));
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -464,48 +482,118 @@ describe('the toolbar on the title’s line (2026-11-02)', () => {
   });
 });
 
-describe('the lines table’s filter boxes (2026-11-02, «فلتر لكل عمود»)', () => {
+describe('the lines table’s column lists (2026-11-02, «فلتر لكل عمود», a Multi select drop-down)', () => {
   const t2 = (key: string, params?: Record<string, string | number>): string =>
     translate('ar', key, params);
+  const draft = t('atm.settlement.status.draft');
+  const issued = t('atm.settlement.status.issued');
+  const lines = [line(1), line(2, { status: 'draft', serial: null }), line(3)];
+  const ALL = ['BRKN9001', 'BRKN9002', 'BRKN9003'];
+  const codes = (values: Record<string, string[]>): string[] =>
+    filterPlanLines(lines, values, t2, 'ar').map((l) => l.machineCode ?? '');
+  /** The page, its lists holding these picks. */
+  const withPicks = (values: Record<string, string[]>): string => {
+    columnValues = values;
+    try {
+      return render(context(), plan({ lines }));
+    } finally {
+      columnValues = {};
+    }
+  };
+  const headOf = (html: string): string =>
+    html.slice(html.indexOf('data-plan-lines'), html.indexOf('</thead>'));
+  /** One column's list in the filter row: its trigger, and its ✕ once something is picked. */
+  const listOf = (html: string, key: string): string => {
+    const at = html.indexOf(`data-column-filter="${key}"`);
+    return at < 0 ? '' : html.slice(at, html.indexOf('</th>', at));
+  };
+  const shownLines = (html: string): string[] =>
+    [...html.matchAll(/data-plan-line="([^"]+)"/g)].map((m) => m[1] ?? '');
 
-  it('draws one box per column under the head, none for the print checkbox', () => {
-    const html = render(context(), plan());
-    const head = html.slice(html.indexOf('data-plan-lines'), html.indexOf('</thead>'));
+  it('draws one list per column under the head, none for the print checkbox', () => {
+    const head = headOf(render(context(), plan()));
     expect(head).toContain('data-column-filters="true"');
-    const boxes = [...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
-    expect(boxes).toEqual(PLAN_LINE_COLUMNS.map((c) => c.key));
-    expect(head).toContain(
-      `aria-label="${t('atm.common.filterColumn', { column: t('atm.settlement.machineCode') })}"`,
+    const lists = [...head.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
+    expect(lists).toEqual(PLAN_LINE_COLUMNS.map((c) => c.key));
+    // Each a drop-down named after its column, saying «الكل» while nothing is picked — never a box
+    // to type in.
+    for (const column of PLAN_LINE_COLUMNS) {
+      const list = listOf(head, column.key);
+      expect(list).toContain('aria-haspopup="listbox"');
+      expect(list).toContain(
+        `aria-label="${t('atm.common.filterColumn', { column: t(column.header) })}"`,
+      );
+      expect(list).toContain(`>${t('common.filters.all')}<`);
+    }
+    expect(head).not.toContain('type="search"');
+    expect(head).not.toContain('placeholder=');
+  });
+
+  it('names the picks on the list’s trigger, and shows only the lines they keep', () => {
+    const html = withPicks({ serial: ['١٠١', '١٠٣'] });
+    expect(listOf(html, 'serial')).toContain('>١٠١, ١٠٣<');
+    expect(listOf(html, 'serial')).not.toContain(`>${t('common.filters.all')}<`);
+    expect(listOf(html, 'code')).toContain(`>${t('common.filters.all')}<`);
+    expect(shownLines(html)).toEqual([line(1).id, line(3).id]);
+    expect(html).not.toContain('data-plan-lines-empty');
+  });
+
+  it('says the lists hid every line when no line holds their picks — and only then', () => {
+    const none = withPicks({ code: ['BRKN9001'], status: [draft] });
+    expect(shownLines(none)).toEqual([]);
+    expect(none).toContain('data-plan-lines-empty="true"');
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    expect(render(context(), plan({ lines }))).not.toContain(t('atm.common.emptyColumnFiltered'));
+  });
+
+  it('lists the text each cell shows: the serial in the page’s digits, the run, the status', () => {
+    const one = line(1);
+    expect(planLineText(one, 'serial', t2, 'ar')).toBe('١٠١');
+    expect(planLineText(one, 'code', t2, 'ar')).toBe('BRKN9001');
+    expect(planLineText(one, 'run', t2, 'ar')).toContain(t('atm.settlement.run.1'));
+    expect(planLineText(one, 'status', t2, 'ar')).toBe(issued);
+    expect(planLineText(one, 'unknown', t2, 'ar')).toBeNull();
+    const text = (l: AtmPlanLineDto, key: string): string | null => planLineText(l, key, t2, 'ar');
+    // The serial's list: what the cells show, each once — a draft's «—» among them.
+    expect([...columnFilterChoices(lines, {}, 'serial', text)].sort()).toEqual(
+      ['١٠١', '١٠٣', '—'].sort(),
     );
+    // A list offers only what the OTHER columns' picks leave: no value that would empty the table.
+    expect(columnFilterChoices(lines, { code: ['BRKN9002'] }, 'status', text)).toEqual([draft]);
   });
 
-  it('matches the text each cell shows: the serial in the page’s digits, the run, the status', () => {
-    const issued = line(1);
-    expect(planLineText(issued, 'serial', t2, 'ar')).toBe('١٠١');
-    expect(planLineText(issued, 'code', t2, 'ar')).toBe('BRKN9001');
-    expect(planLineText(issued, 'run', t2, 'ar')).toContain(t('atm.settlement.run.1'));
-    expect(planLineText(issued, 'status', t2, 'ar')).toBe(t('atm.settlement.status.issued'));
-    expect(planLineText(issued, 'unknown', t2, 'ar')).toBeNull();
+  it('keeps the lines whose cell IS a pick — the serial picked as the page writes it', () => {
+    expect(codes({})).toEqual(ALL);
+    expect(codes({ serial: ['١٠٣'] })).toEqual(['BRKN9003']);
+    // The pick is the cell's own text: «103» in Latin digits is no value the column shows.
+    expect(codes({ serial: ['103'] })).toEqual([]);
+    expect(codes({ serial: ['—'] })).toEqual(['BRKN9002']);
+    expect(codes({ status: [draft] })).toEqual(['BRKN9002']);
+    // A whole value, not a part of one.
+    expect(codes({ code: ['BRKN900'] })).toEqual([]);
+    const cassettes = `200 × ${formatNumber(1000, 'ar')} 100 × ${formatNumber(1000, 'ar')}`;
+    expect(planLineText(line(1), 'cassettes', t2, 'ar')).toBe(cassettes);
+    expect(codes({ cassettes: [cassettes] })).toEqual(ALL);
+    // A column with nothing picked narrows nothing.
+    expect(codes({ name: [] })).toEqual(ALL);
   });
 
-  it('keeps only the lines every box matches — Latin digits find Arabic ones', () => {
-    const lines = [line(1), line(2, { status: 'draft', serial: null }), line(3)];
-    const codes = (values: Record<string, string>): string[] =>
-      filterPlanLines(lines, values, t2, 'ar').map((l) => l.machineCode ?? '');
-    expect(codes({})).toEqual(['BRKN9001', 'BRKN9002', 'BRKN9003']);
-    expect(codes({ serial: '103' })).toEqual(['BRKN9003']);
-    expect(codes({ status: t('atm.settlement.status.draft') })).toEqual(['BRKN9002']);
-    expect(codes({ code: '9001', status: t('atm.settlement.status.draft') })).toEqual([]);
-    expect(codes({ cassettes: '200 1,000' })).toEqual(['BRKN9001', 'BRKN9002', 'BRKN9003']);
-    expect(codes({ name: '   ' })).toEqual(['BRKN9001', 'BRKN9002', 'BRKN9003']);
+  it('keeps a line that is ANY pick of a column, and only lines every column keeps', () => {
+    expect(codes({ serial: ['١٠١', '١٠٣'] })).toEqual(['BRKN9001', 'BRKN9003']);
+    expect(codes({ status: [draft, issued] })).toEqual(ALL);
+    expect(codes({ code: ['BRKN9001', 'BRKN9002'], status: [issued] })).toEqual(['BRKN9001']);
+    expect(codes({ code: ['BRKN9001'], status: [draft] })).toEqual([]);
   });
 
-  it('«السطور المحددة» prints only the ticked lines the boxes leave on screen', () => {
-    const lines = [line(1), line(2), line(3)];
+  it('«السطور المحددة» prints only the ticked lines the lists leave on screen', () => {
+    const three = [line(1), line(2), line(3)];
     const ticked = new Set([line(1).id, line(3).id]);
-    expect(shownTicks(lines, ticked)).toEqual([line(1).id, line(3).id]);
-    const shown = filterPlanLines(lines, { serial: '103' }, t2, 'ar');
+    expect(shownTicks(three, ticked)).toEqual([line(1).id, line(3).id]);
+    const shown = filterPlanLines(three, { serial: ['١٠٣'] }, t2, 'ar');
     expect(shownTicks(shown, ticked)).toEqual([line(3).id]);
-    expect(shownTicks(filterPlanLines(lines, { serial: '102' }, t2, 'ar'), ticked)).toEqual([]);
+    expect(shownTicks(filterPlanLines(three, { serial: ['١٠٢'] }, t2, 'ar'), ticked)).toEqual([]);
+    expect(
+      shownTicks(filterPlanLines(three, { serial: ['١٠١', '١٠٢'] }, t2, 'ar'), ticked),
+    ).toEqual([line(1).id]);
   });
 });

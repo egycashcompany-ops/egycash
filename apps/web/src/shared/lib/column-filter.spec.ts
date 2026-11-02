@@ -1,136 +1,134 @@
-// The row of column filters under a table's head (2026-11-02, «فلتر لكل عمود»). These pin the
-// matching rules every table with the row shares:
+// The row of column filters under a table's head (2026-11-02, «فلتر لكل عمود», then «لأ عايز
+// الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select»). These pin the rules every table
+// with the row shares:
 //
-//   · a box keeps the rows whose cell contains what was typed, matched the way every search box in
-//     the app matches — hamza forms, ى/ي, ة/ه, and Arabic or Latin digits are one;
-//   · several words in one box must all appear in that cell, in any order;
-//   · the boxes add up: a row stays only if every box that holds something matches;
-//   · an empty box, or one of spaces and punctuation only, narrows nothing;
-//   · a box for a column the table does not have is ignored rather than emptying the table.
+//   · a column's list holds the values its cells show — each once, alphabetical (numbers as
+//     numbers), an empty cell last — from the rows the OTHER columns' picks keep;
+//   · picking values in one column keeps the rows whose cell is any of them;
+//   · the columns add up: a row stays only if every column with picks keeps it;
+//   · a column with nothing picked narrows nothing, and a pick for a column the table does not
+//     have is ignored rather than emptying the table.
 //
 // Every code and name below is synthetic.
 import { describe, expect, it } from 'vitest';
 import {
   activeColumnFilters,
-  cellMatches,
+  cellValue,
+  columnFilterChoices,
+  columnFilterChoicesOf,
   filterRowsByColumns,
-  filterWords,
   hasColumnFilters,
+  type ColumnFilterValues,
 } from './column-filter';
 
-type Row = { id: string; bank: string; code: string; name: string; area: string; taken: string };
+type Row = { id: string; bank: string; code: string; name: string; area: string; leader: string };
 const ROWS: Row[] = [
-  {
-    id: 'a',
-    bank: 'بنك مصر',
-    code: '70493',
-    name: 'SYN الإسماعيلية',
-    area: 'الدقي',
-    taken: '3h : 05m',
-  },
-  { id: 'b', bank: 'NBE', code: '70492', name: 'SYN سموحة', area: 'زايد', taken: '0h : 40m' },
-  {
-    id: 'c',
-    bank: 'مصر - بنك',
-    code: '71210',
-    name: 'SYN المعادي',
-    area: 'الدقي',
-    taken: '12h : 05m',
-  },
+  { id: 'a', bank: 'بنك مصر', code: '70493', name: 'SYN الإسماعيلية', area: 'الدقي', leader: '' },
+  { id: 'b', bank: 'NBE', code: '70492', name: 'SYN سموحة', area: 'زايد', leader: 'SYN علي' },
+  { id: 'c', bank: 'بنك مصر', code: '9100', name: 'SYN المعادي', area: 'الدقي', leader: 'SYN علي' },
+  { id: 'd', bank: 'CIB', code: '71210', name: 'SYN  المعادي ', area: 'أكتوبر', leader: '  ' },
 ];
 const textOf = (row: Row, key: string): string | null =>
   key in row && key !== 'id' ? (row[key as keyof Row] as string) : null;
-const ids = (values: Record<string, string>): string[] =>
+const ids = (values: ColumnFilterValues): string[] =>
   filterRowsByColumns(ROWS, values, textOf).map((row) => row.id);
+const choices = (key: string, values: ColumnFilterValues = {}): string[] =>
+  columnFilterChoices(ROWS, values, key, textOf);
 
-describe('what one box matches', () => {
-  it('a cell containing the text, in any case', () => {
-    expect(ids({ code: '7049' })).toEqual(['a', 'b']);
-    expect(ids({ bank: 'nbe' })).toEqual(['b']);
+describe('what one column’s picks keep', () => {
+  it('the rows whose cell is ANY of the picked values', () => {
+    expect(ids({ bank: ['NBE'] })).toEqual(['b']);
+    expect(ids({ bank: ['NBE', 'CIB'] })).toEqual(['b', 'd']);
+    expect(ids({ bank: ['بنك مصر'] })).toEqual(['a', 'c']);
   });
 
-  it('Arabic digits are the same number, and its separators the same marks', () => {
-    expect(ids({ code: '٧١٢' })).toEqual(['c']);
-    const amounts = [{ id: 'x', total: '١٬٢٥٠٫٥٠ ج.م' }];
-    const keep = (typed: string): number =>
-      filterRowsByColumns(amounts, { total: typed }, (row, key) =>
-        key === 'total' ? row.total : null,
-      ).length;
-    expect(keep('1,250.50')).toBe(1);
-    // Typed without the thousands mark, as people type amounts: found all the same.
-    expect(keep('1250')).toBe(1);
-    expect(keep('١٢٥٠٫٥')).toBe(1);
-    expect(keep('1,25')).toBe(1);
-    expect(keep('2501')).toBe(0);
+  it('the whole cell, never a part of it — «7049» picked keeps no 70493', () => {
+    expect(ids({ code: ['7049'] })).toEqual([]);
+    expect(ids({ code: ['70493'] })).toEqual(['a']);
   });
 
-  it('hamza forms and ة/ه are one — «الاسماعيليه» finds «الإسماعيلية»', () => {
-    expect(ids({ name: 'الاسماعيليه' })).toEqual(['a']);
+  it('a cell read the way its list reads it: trimmed, its spaces one', () => {
+    expect(cellValue('  SYN  المعادي ')).toBe('SYN المعادي');
+    expect(ids({ name: ['SYN المعادي'] })).toEqual(['c', 'd']);
   });
 
-  it('several words must all be in the cell, in any order', () => {
-    expect(ids({ bank: 'بنك مصر' })).toEqual(['a', 'c']);
-    expect(ids({ bank: 'مصر بنك' })).toEqual(['a', 'c']);
-    expect(ids({ bank: 'بنك القاهرة' })).toEqual([]);
-    // Punctuation in the cell is not in the way: «3h 05m» finds «3h : 05m».
-    expect(ids({ taken: '3h 05m' })).toEqual(['a']);
+  it('an empty cell is a value of its own — blank and spaces alike', () => {
+    expect(ids({ leader: [''] })).toEqual(['a', 'd']);
+    expect(ids({ leader: ['', 'SYN علي'] })).toEqual(['a', 'b', 'c', 'd']);
   });
 
-  it('keeps the punctuation it shows: «2/11» finds 02/11, never 21/10 — the RLM between ignored', () => {
-    // As an Arabic date renders: digits, a right-to-left mark after each part, «/» between.
-    const dates = [
-      { id: 'nov2', at: '٠٢\u200F/١١\u200F/٢٠٢٦، ١٠:٣٠ ص' },
-      { id: 'oct21', at: '٢١\u200F/١٠\u200F/٢٠٢٦، ١١:٣٠ ص' },
-      { id: 'dec1', at: '٠١\u200F/١٢\u200F/٢٠٢٦، ٠٩:٠٠ ص' },
-    ];
-    const kept = (typed: string): string[] =>
-      filterRowsByColumns(dates, { at: typed }, (row, key) => (key === 'at' ? row.at : null)).map(
-        (row) => row.id,
-      );
-    expect(kept('2/11')).toEqual(['nov2']);
-    expect(kept('1/12')).toEqual(['dec1']);
-    // With the separators dropped, as `fold` drops them, «2/11» would be «211» and keep 21/10 too.
-    expect(kept('12/11')).toEqual([]);
-    expect(kept('١٠:٣٠')).toEqual(['nov2']);
-    expect(kept('2026 ص')).toEqual(['nov2', 'oct21', 'dec1']);
-  });
-
-  it('an empty box, or one of spaces or punctuation only, narrows nothing', () => {
-    expect(ids({ code: '' })).toEqual(['a', 'b', 'c']);
-    expect(ids({ code: '   ' })).toEqual(['a', 'b', 'c']);
-    expect(ids({ code: ' - : ' })).toEqual(['a', 'b', 'c']);
-    expect(filterWords(' - : ')).toEqual([]);
-    expect(cellMatches('anything', [])).toBe(true);
+  it('nothing picked narrows nothing', () => {
+    expect(ids({ code: [] })).toEqual(['a', 'b', 'c', 'd']);
+    expect(ids({})).toEqual(['a', 'b', 'c', 'd']);
   });
 });
 
-describe('the boxes together', () => {
-  it('add up: every box that holds something must match its own column', () => {
-    expect(ids({ area: 'دقي' })).toEqual(['a', 'c']);
-    expect(ids({ area: 'دقي', code: '704' })).toEqual(['a']);
-    expect(ids({ area: 'زايد', code: '712' })).toEqual([]);
+describe('the columns together', () => {
+  it('add up: every column with picks must keep the row', () => {
+    expect(ids({ area: ['الدقي'] })).toEqual(['a', 'c']);
+    expect(ids({ area: ['الدقي'], leader: ['SYN علي'] })).toEqual(['c']);
+    expect(ids({ area: ['زايد'], bank: ['CIB'] })).toEqual([]);
   });
 
-  it('match a column on its own text only — the code box never matches the name', () => {
-    expect(ids({ code: 'سموحة' })).toEqual([]);
+  it('match a column on its own cells only — a code picked never matches a name', () => {
+    expect(ids({ code: ['SYN سموحة'] })).toEqual([]);
   });
 
-  it('ignore a box for a column the table does not have', () => {
-    expect(ids({ nope: 'x', code: '7049' })).toEqual(['a', 'b']);
+  it('ignore picks for a column the table does not have', () => {
+    expect(ids({ nope: ['x'], bank: ['NBE'] })).toEqual(['b']);
   });
 
-  it('say which boxes narrow the table, trimmed, with their words', () => {
-    expect(activeColumnFilters({ code: ' 70 ', name: '', area: ' : ' })).toEqual([
-      { key: 'code', typed: '70', words: ['70'] },
+  it('say which columns narrow the table, with their picks', () => {
+    expect(activeColumnFilters({ code: ['70'], name: [], area: ['الدقي', 'زايد'] })).toEqual([
+      { key: 'code', picked: ['70'] },
+      { key: 'area', picked: ['الدقي', 'زايد'] },
     ]);
-    expect(hasColumnFilters({ name: '', area: '  ' })).toBe(false);
-    expect(hasColumnFilters({ name: 'x' })).toBe(true);
+    expect(hasColumnFilters({ name: [] })).toBe(false);
+    expect(hasColumnFilters({ name: [''] })).toBe(true);
   });
 
   it('keep the rows in the order they came, and never change the input', () => {
     const before = ROWS.map((row) => row.id);
-    expect(ids({ area: 'دقي' })).toEqual(['a', 'c']);
+    expect(ids({ area: ['الدقي'] })).toEqual(['a', 'c']);
     expect(ROWS.map((row) => row.id)).toEqual(before);
     expect(filterRowsByColumns(ROWS, {}, textOf)).not.toBe(ROWS);
+  });
+});
+
+describe('what a column’s list offers', () => {
+  it('each value once, alphabetical, numbers as numbers, an empty cell last', () => {
+    expect(choices('bank')).toEqual(['بنك مصر', 'CIB', 'NBE']);
+    // 9100 before 70492: a run of digits sorts as the number it is.
+    expect(choices('code')).toEqual(['9100', '70492', '70493', '71210']);
+    expect(choices('leader')).toEqual(['SYN علي', '']);
+    expect(choices('name')).toEqual(['SYN الإسماعيلية', 'SYN المعادي', 'SYN سموحة']);
+  });
+
+  it('from the rows the OTHER columns keep — never a value that would empty the table', () => {
+    expect(choices('bank', { area: ['الدقي'] })).toEqual(['بنك مصر']);
+    expect(choices('area', { bank: ['NBE', 'CIB'] })).toEqual(['أكتوبر', 'زايد']);
+  });
+
+  it('ignore the column’s own picks, so a second value can be added', () => {
+    expect(choices('bank', { bank: ['NBE'] })).toEqual(['بنك مصر', 'CIB', 'NBE']);
+  });
+
+  it('keep a picked value the rows no longer hold, first, so it can be dropped', () => {
+    expect(choices('bank', { bank: ['SYN GONE', 'NBE'] })).toEqual([
+      'SYN GONE',
+      'بنك مصر',
+      'CIB',
+      'NBE',
+    ]);
+  });
+
+  it('nothing for a column the table does not have', () => {
+    expect(choices('nope')).toEqual([]);
+  });
+
+  it('are asked for one column at a time', () => {
+    const of = columnFilterChoicesOf(ROWS, { area: ['زايد'] }, textOf);
+    expect(of('bank')).toEqual(['NBE']);
+    expect(of('area')).toEqual(['أكتوبر', 'الدقي', 'زايد']);
   });
 });

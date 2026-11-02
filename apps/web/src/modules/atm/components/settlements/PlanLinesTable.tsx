@@ -2,16 +2,21 @@
 // time and position). A click selects the line for the side panel; the checkbox picks the issued
 // lines «السطور المحددة» prints. A real table (§9.10): the status is written, never colour only.
 //
-// A ROW OF FILTER BOXES under the head, one per column (2026-11-02, «فلتر لكل عمود»): the PAGE
-// keeps what they hold and hands this table the lines they keep (`filterPlanLines`), so what the
-// table shows is what «السطور المحددة» may print. Each box matches the text its cell shows.
+// A ROW OF FILTER LISTS under the head, one multi-pick drop-down per column (2026-11-02, «فلتر لكل
+// عمود», «يكون Drop Down بـ Multi select»): the PAGE keeps what they hold and hands this table the
+// lines they keep (`filterPlanLines`), so what the table shows is what «السطور المحددة» may print.
+// Each list holds the texts its column's cells show.
 import { type AtmPlanLineDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
-import { filterRowsByColumns, type ColumnFilterValues } from '../../../../shared/lib/column-filter';
+import {
+  columnFilterChoices,
+  filterRowsByColumns,
+  type ColumnFilterValues,
+} from '../../../../shared/lib/column-filter';
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
-import { ColumnFilterBox } from '../../../../shared/ui/ColumnFilterBox';
+import { ColumnFilterSelect } from '../../../../shared/ui/ColumnFilterSelect';
 import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { AlertIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
@@ -61,7 +66,7 @@ const issuesText = (line: AtmPlanLineDto, t: Translate, locale: Locale): string 
 
 /**
  * Pure: what a line's cell in that column shows, as text — the run chip's run and time, the
- * cassette chips, the status with its issues — so a box finds what a reader sees. Null for a
+ * cassette chips, the status with its issues — so a list offers what a reader sees. Null for a
  * column the table does not have.
  */
 export const planLineText = (
@@ -94,7 +99,7 @@ export const planLineText = (
   }
 };
 
-/** Pure: the lines every box keeps, in the plan's order. */
+/** Pure: the lines every column filter keeps, in the plan's order. */
 export const filterPlanLines = (
   lines: readonly AtmPlanLineDto[],
   values: ColumnFilterValues,
@@ -105,7 +110,7 @@ export const filterPlanLines = (
 
 /**
  * Pure: the ticked lines «السطور المحددة» may print — those the table shows, in its order. A tick
- * on a line a box hides is kept, and shows again with the line, but is never printed unseen.
+ * on a line a column filter hides is kept, and shows again with the line, but is never printed unseen.
  */
 export const shownTicks = (
   shown: readonly Pick<AtmPlanLineDto, 'id'>[],
@@ -113,7 +118,7 @@ export const shownTicks = (
 ): string[] => shown.filter((line) => checked.has(line.id)).map((line) => line.id);
 
 const TH = 'px-3 py-2.5 text-start text-xs font-semibold text-slate-600 dark:text-slate-300';
-/** The filter row's cells: the head's side gutter, so each box sits under its own header. */
+/** The filter row's cells: the head's side gutter, so each list sits under its own header. */
 const FILTER_TH = 'px-3 pb-2 font-normal';
 const TD = 'px-3 py-2.5 align-middle text-sm text-slate-700 dark:text-slate-200';
 
@@ -125,12 +130,15 @@ export const PlanLinesTable = ({
   onSelect,
   onCheck,
   columnFilters,
-  totalLines,
+  allLines,
 }: {
-  /** The lines the filter boxes keep (`filterPlanLines`) — the page filters, the table shows. */
+  /** The lines the column filters keep (`filterPlanLines`) — the page filters, the table shows. */
   lines: readonly AtmPlanLineDto[];
-  /** How many lines the plan holds before the boxes — the empty row blames them only when > 0. */
-  totalLines: number;
+  /**
+   * The plan's lines before the column filters: what each list offers, and the empty row blames
+   * the filters only when there are some.
+   */
+  allLines: readonly AtmPlanLineDto[];
   locale: Locale;
   selectedId: string | null;
   checked: ReadonlySet<string>;
@@ -156,24 +164,28 @@ export const PlanLinesTable = ({
               </th>
             ))}
           </tr>
-          {/* The filter row sticks with the head: the print checkbox's column takes no box. */}
+          {/* The filter row sticks with the head: the print checkbox's column takes no list. */}
           <tr key={`filters-${String(columnFilters.generation)}`} data-column-filters="true">
             <th className={FILTER_TH} />
             {PLAN_LINE_COLUMNS.map((column) => (
               <th key={column.key} className={FILTER_TH}>
-                <ColumnFilterBox
-                  value={columnFilters.values[column.key] ?? ''}
-                  onValueChange={(typed) => columnFilters.set(column.key, typed)}
+                <ColumnFilterSelect
+                  value={columnFilters.values[column.key] ?? []}
+                  choices={() =>
+                    columnFilterChoices(allLines, columnFilters.values, column.key, (line, key) =>
+                      planLineText(line, key, t, locale),
+                    )
+                  }
+                  onChange={(picked) => columnFilters.set(column.key, picked)}
                   label={t('atm.common.filterColumn', { column: t(column.header) })}
                   columnKey={column.key}
-                  placeholder={t('atm.common.filterPlaceholder')}
                 />
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {lines.length === 0 && columnFilters.active && totalLines > 0 && (
+          {lines.length === 0 && columnFilters.active && allLines.length > 0 && (
             <tr data-plan-lines-empty="true">
               <td
                 colSpan={PLAN_LINE_COLUMNS.length + 1}

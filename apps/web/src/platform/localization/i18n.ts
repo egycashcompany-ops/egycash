@@ -565,6 +565,8 @@ const en: Record<string, string> = {
   'common.filters.clear': 'Clear filters',
   'common.filters.clearOne': 'Clear selection',
   'common.filters.clearAll': 'Clear all',
+  'common.filters.blank': '(Blank)',
+  'common.filters.pickMatches': 'Every match ({{count}})',
   'common.input.numbersOnly': 'This box takes numbers only.',
   'common.input.arabicOnly': 'This box takes Arabic only — English letters are not accepted.',
   'common.input.englishOnly': 'This box takes English only — Arabic letters are not accepted.',
@@ -10339,7 +10341,6 @@ const en: Record<string, string> = {
   'atm.common.emptyFiltered': 'No open operation matches the chosen bank or area.',
   'atm.common.emptyColumnFiltered': 'No row matches the column filters.',
   'atm.common.filterColumn': 'Filter {{column}}',
-  'atm.common.filterPlaceholder': 'Filter',
   'atm.common.shift': 'Shift',
   'atm.common.leaderShiftHint':
     'Changing the leader applies to every open operation of the same area in the same shift.',
@@ -12556,6 +12557,8 @@ const ar: Record<string, string> = {
   'common.filters.clear': 'مسح عوامل التصفية',
   'common.filters.clearOne': 'مسح التحديد',
   'common.filters.clearAll': 'مسح الكل',
+  'common.filters.blank': '(فارغ)',
+  'common.filters.pickMatches': 'كل النتائج ({{count}})',
   'common.input.numbersOnly': 'هذه الخانة أرقام فقط.',
   'common.input.arabicOnly': 'هذه الخانة بالعربية فقط — لا تُقبل الحروف الإنجليزية.',
   'common.input.englishOnly': 'هذه الخانة بالإنجليزية فقط — لا تُقبل الحروف العربية.',
@@ -22137,7 +22140,6 @@ const ar: Record<string, string> = {
   'atm.common.emptyFiltered': 'لا توجد عمليات مفتوحة تطابق البنك أو المنطقة المختارة.',
   'atm.common.emptyColumnFiltered': 'لا توجد سطور تطابق فلاتر الأعمدة.',
   'atm.common.filterColumn': 'فلترة {{column}}',
-  'atm.common.filterPlaceholder': 'فلترة',
   'atm.common.shift': 'الوردية',
   'atm.common.leaderShiftHint':
     'تغيير القائد يسري على كل العمليات المفتوحة لنفس المنطقة في نفس الوردية.',

@@ -4,8 +4,11 @@
 //   · no head «select all» until F8 asks for it, as on the boards — «في رسائل الصيانة
 //     /atm/mail-tickets عايزك تزود موضوع الـ Select All من خلال F8» (2026-11-02; on 2026-10-28 it
 //     had been removed outright); every row keeps its own box;
-//   · (2026-11-02) the filter row on the title's line, and a box under every text column that
-//     narrows the rows the filters kept — the selection follows what is shown;
+//   · (2026-11-02) the filter row on the title's line, and a filter under every text column —
+//     «فلتر لكل عمود», then «لأ عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi
+//     select»: a multi-select list of the values the column's cells show, that narrows the rows the
+//     filters kept (a cell that IS one of the picks; the columns adding up) — the selection follows
+//     what is shown;
 //   · accept and reject as the ROW's buttons — «في /atm/mail-tickets يكون 2 قبول ورفض» (2026-10-28):
 //     always painted, pinned to the row's end, only for a holder of `atmMailTicket.decide`, and on
 //     a CHECKED row they speak for every checked row («… المحدد»); the bar is gone;
@@ -52,14 +55,15 @@ vi.mock('./lib/select-all-reveal', async () => {
   return { ...actual, useSelectAllReveal: (enabled: boolean) => enabled && revealed };
 });
 
-/** The column boxes' state — a static render cannot type into them. Empty unless a test sets it. */
-let columnValues: Record<string, string> = {};
+/** The column lists' picks — a static render cannot open a list. Empty unless a test sets it. */
+let columnValues: Record<string, string[]> = {};
 vi.mock('../../shared/ui/useColumnFilters', () => ({
   useColumnFilters: () => ({
     values: columnValues,
     set: () => {},
     clear: () => {},
-    active: Object.values(columnValues).some((value) => value.trim() !== ''),
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
   }),
 }));
 
@@ -211,8 +215,8 @@ describe('/atm/mail-tickets has «select all» on F8 only', () => {
   });
 });
 
-describe('the filter row on the title’s line, and a box under every column (2026-11-02)', () => {
-  const withBoxes = (values: Record<string, string>, picked: readonly string[] = []): string => {
+describe('the filter row on the title’s line, and a filter list under every column (2026-11-02)', () => {
+  const withPicks = (values: Record<string, string[]>, picked: readonly string[] = []): string => {
     columnValues = values;
     try {
       return render(DECIDE, picked);
@@ -220,37 +224,97 @@ describe('the filter row on the title’s line, and a box under every column (20
       columnValues = {};
     }
   };
-  const codesShown = (markup: string): string[] =>
-    [...markup.matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
+  /** The codes the rows show — the body only: the filter row's triggers name what is picked. */
+  const codesShown = (markup: string): string[] => {
+    const at = markup.indexOf('<tbody>');
+    expect(at, 'the table body is rendered').toBeGreaterThan(-1);
+    return [...markup.slice(at, markup.indexOf('</tbody>', at)).matchAll(/>(9999\d{4})</g)].map(
+      (m) => m[1] as string,
+    );
+  };
+  /** One column's filter, from its marker to the end of its list's trigger. */
+  const filterTrigger = (markup: string, key: string): string => {
+    const at = markup.indexOf(`data-column-filter="${key}"`);
+    expect(at, `the ${key} column filter is rendered`).toBeGreaterThan(-1);
+    return markup.slice(at, markup.indexOf('</button>', at));
+  };
 
   it('puts the bank, area, search and reset in the header’s toolbar', () => {
     const toolbar = toolbarOf(render(DECIDE));
     expect(toolbar).toContain(`>${t('atm.common.bank')}<`);
     expect(toolbar).toContain(`>${t('atm.common.area')}<`);
     expect(toolbar).toContain(`placeholder="${t('atm.mail.search')}"`);
-    // The reset sits there too, lit while a box narrows the list.
-    expect(toolbarOf(withBoxes({ bank: 'CIB' }))).toContain('data-board-reset');
+    // The reset sits there too, lit while a column filter narrows the list.
+    expect(toolbarOf(withPicks({ bank: ['SYN CIB'] }))).toContain('data-board-reset');
   });
 
-  it('draws a box under every text column — none for the buttons', () => {
-    const boxes = [...render(DECIDE).matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
-    expect(boxes).toEqual(['bank', 'code', 'name', 'issue', 'area', 'received', 'sender']);
+  it('draws a filter list under every text column — none for the buttons', () => {
+    const markup = render(DECIDE);
+    const headers: [string, string][] = [
+      ['bank', 'atm.common.bank'],
+      ['code', 'atm.common.machineId'],
+      ['name', 'atm.common.machineName'],
+      ['issue', 'atm.mail.issue'],
+      ['area', 'atm.common.area'],
+      ['received', 'atm.mail.receivedAt'],
+      ['sender', 'atm.mail.sender'],
+    ];
+    const lists = [...markup.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
+    expect(lists).toEqual(headers.map(([key]) => key));
+    for (const [key, header] of headers) {
+      // A drop-down, named for its column, saying «الكل» while nothing is picked.
+      const trigger = filterTrigger(markup, key);
+      expect(trigger).toContain('aria-haspopup="listbox"');
+      expect(trigger).toContain(
+        `aria-label="${translate('ar', 'atm.common.filterColumn', { column: t(header) })}"`,
+      );
+      expect(trigger).toContain(`>${t('common.filters.all')}<`);
+      expect(trigger).not.toContain('<input');
+    }
   });
 
-  it('narrows the rows, matching what the cell shows — «مكررة» included', () => {
-    expect(codesShown(withBoxes({ bank: 'CIB' }))).toEqual([THREE.machineCode]);
-    expect(codesShown(withBoxes({ issue: t('atm.mail.duplicate') }))).toEqual([TWO.machineCode]);
-    expect(codesShown(withBoxes({ bank: 'NBE', area: 'RAML' }))).toEqual([TWO.machineCode]);
+  it('narrows the rows to the values picked, matching what the cell shows — «مكررة» included', () => {
+    expect(codesShown(withPicks({ bank: ['SYN CIB'] }))).toEqual([THREE.machineCode]);
+    // The duplicate's issue reads with its badge: a value of its own in the list.
+    expect(codesShown(withPicks({ issue: [`CASH OUT ${t('atm.mail.duplicate')}`] }))).toEqual([
+      TWO.machineCode,
+    ]);
+    expect(codesShown(withPicks({ issue: ['CASH OUT'] }))).toEqual([
+      ONE.machineCode,
+      THREE.machineCode,
+    ]);
+    // Two values in one column: a row whose cell is either.
+    expect(codesShown(withPicks({ code: [ONE.machineCode, THREE.machineCode] }))).toEqual([
+      ONE.machineCode,
+      THREE.machineCode,
+    ]);
+    // Two columns: a row both keep.
+    expect(codesShown(withPicks({ bank: ['SYN NBE'], area: ['SYN RAML'] }))).toEqual([
+      TWO.machineCode,
+    ]);
+    expect(codesShown(withPicks({ bank: ['SYN CIB', 'SYN NBE'], area: ['SYN SMOUHA'] }))).toEqual([
+      ONE.machineCode,
+      THREE.machineCode,
+    ]);
+    // A pick is the whole cell, not a part of it.
+    expect(codesShown(withPicks({ bank: ['CIB'] }))).toEqual([]);
   });
 
-  it('decides only what is shown: a checked row the boxes hide drops out of the selection', () => {
-    // ONE and THREE checked; the box hides ONE — THREE's buttons speak for itself alone.
-    const markup = withBoxes({ bank: 'CIB' }, [ONE.id, THREE.id]);
+  it('names what is picked on the list’s trigger', () => {
+    const markup = withPicks({ bank: ['SYN CIB', 'SYN NBE'], area: ['SYN SMOUHA'] });
+    expect(filterTrigger(markup, 'bank')).toContain('>SYN CIB, SYN NBE<');
+    expect(filterTrigger(markup, 'area')).toContain('>SYN SMOUHA<');
+    expect(filterTrigger(markup, 'code')).toContain(`>${t('common.filters.all')}<`);
+  });
+
+  it('decides only what is shown: a checked row the column filters hide drops out of the selection', () => {
+    // ONE and THREE checked; the bank's pick hides ONE — THREE's buttons speak for itself alone.
+    const markup = withPicks({ bank: ['SYN CIB'] }, [ONE.id, THREE.id]);
     expect(rowOf(markup, THREE.machineCode)).toContain(title('atm.mail.accept'));
     expect(rowOf(markup, THREE.machineCode)).not.toContain(title('atm.mail.acceptSelected'));
   });
 
-  it('the reset clears the boxes with the filters', () => {
+  it('the reset clears the column filters with the filters', () => {
     const source = readFileSync(
       resolve(dirname(fileURLToPath(import.meta.url)), './pages/MailTicketsPage.tsx'),
       'utf8',
@@ -259,8 +323,9 @@ describe('the filter row on the title’s line, and a box under every column (20
     expect(reset.slice(0, reset.indexOf('/>'))).toContain('columnFilters.clear();');
   });
 
-  it('lights the reset, and says so when the boxes hide every row', () => {
-    const none = withBoxes({ code: '12345678' });
+  it('lights the reset, and says so when the column filters hide every row', () => {
+    // A code no row has: the list would never offer it, but a pick left from before can remain.
+    const none = withPicks({ code: ['99990009'] });
     expect(codesShown(none)).toEqual([]);
     expect(none).toContain(t('atm.common.emptyColumnFiltered'));
     expect(none).toContain('data-board-reset');

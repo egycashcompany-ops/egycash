@@ -231,10 +231,10 @@ export const restoreRefusalToasts = (
   });
 
 /**
- * What a mail table's cell SAYS, as text — for its row of column boxes (`shared/lib/column-filter`,
+ * What a mail table's cell SAYS, as text — for its row of column filters (`shared/lib/column-filter`,
  * «فلتر لكل عمود», 2026-11-02). The same text the cell renders: the issue with its «مكررة» badge
  * on a duplicate, the status by its label, a time on the reader's clock as the table prints it,
- * «—» never (an empty cell matches only an empty box). A key the table has no column for answers
+ * «—» never (an empty cell is the list's «(فارغ)»). A key the table has no column for answers
  * null, which narrows nothing.
  */
 export const mailCellText =

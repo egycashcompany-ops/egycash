@@ -9,12 +9,25 @@
 // a narrow table is exactly as wide as it always was, and a wide one asks for the room it needs.
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { Provider } from 'react-redux';
+import { configureStore } from '@reduxjs/toolkit';
+import { type Locale } from '@ecms/contracts';
+import { localeSlice } from '../../store/localeSlice';
 import { DataTable, groupRuns, type Column } from './DataTable';
 
 interface Row {
   id: string;
 }
 const ROWS: Row[] = [{ id: 'r1' }];
+
+/** The filter lists speak the reader's language, so a table that has them renders in a store. */
+const inStore = (node: JSX.Element): string => {
+  const store = configureStore({
+    reducer: { locale: localeSlice.reducer },
+    preloadedState: { locale: { locale: 'ar' as Locale, dir: 'rtl' as const } },
+  });
+  return renderToStaticMarkup(<Provider store={store}>{node}</Provider>);
+};
 
 const columns = (count: number): Column<Row>[] =>
   Array.from({ length: count }, (_unused, index) => ({
@@ -175,13 +188,14 @@ describe('a line above each group of rows', () => {
   });
 });
 
-describe('a row of filter boxes under the head', () => {
-  // «فلتر لكل عمود» (2026-11-02): one box per filterable column; the page filters the rows.
+describe('a row of filter lists under the head', () => {
+  // «فلتر لكل عمود», then «يكون Drop Down بـ Multi select» (2026-11-02): one multi-pick list per
+  // filterable column; the page filters the rows.
   interface Row {
     id: string;
   }
-  const render = (extra: Record<string, unknown> = {}, values: Record<string, string> = {}) =>
-    renderToStaticMarkup(
+  const render = (extra: Record<string, unknown> = {}, values: Record<string, string[]> = {}) =>
+    inStore(
       <DataTable
         columns={[
           { key: 'code', header: 'الكود', render: (row: Row) => row.id, filterable: true },
@@ -198,8 +212,10 @@ describe('a row of filter boxes under the head', () => {
         columnFilters={{
           values,
           onChange: () => {},
+          choices: () => {
+            throw new Error('a closed list asks for no values');
+          },
           label: (header: string) => `فلترة ${header}`,
-          placeholder: 'فلترة',
         }}
         {...extra}
       />,
@@ -208,33 +224,45 @@ describe('a row of filter boxes under the head', () => {
     const at = markup.indexOf('data-column-filters="true"');
     return markup.slice(at, markup.indexOf('</tr>', at));
   };
+  /** One column's control, from its box to the box's end. */
+  const filterOf = (markup: string, key: string): string => {
+    const at = markup.indexOf(`data-column-filter="${key}"`);
+    return markup.slice(at, markup.indexOf('</th>', at));
+  };
 
-  it('draws a box for each filterable column only, inside the head, named by its header', () => {
+  it('draws a list for each filterable column only, inside the head, named by its header', () => {
     const markup = render();
     const row = filterRow(markup);
     expect(markup.indexOf('data-column-filters="true"')).toBeLessThan(markup.indexOf('</thead>'));
     expect(row.match(/data-column-filter="/g)).toHaveLength(2);
     expect(row).toContain('data-column-filter="code"');
     expect(row).toContain('data-column-filter="name"');
-    expect(row).toContain('aria-label="فلترة الكود"');
-    expect(row).toContain('placeholder="فلترة"');
-    expect(row).toContain('type="search"');
+    expect(filterOf(markup, 'code')).toContain('aria-label="فلترة الكود"');
+    expect(filterOf(markup, 'code')).toContain('aria-haspopup="listbox"');
+    // Nothing picked: the trigger says «الكل», and no text box is left in the row.
+    expect(filterOf(markup, 'code')).toContain('>الكل<');
+    expect(row).not.toContain('<input');
   });
 
-  it('fills the column and never sizes it', () => {
-    const box = /<input[^>]*data-column-filter="code"[^>]*>/.exec(render())?.[0] ?? '';
-    expect(box).toContain('size="1"');
-    expect(box).toMatch(/class="[^"]*\bw-full\b/);
+  it('fills the column and never sizes it — the compact trigger', () => {
+    const control = filterOf(render(), 'code');
+    // A floor for «الكل» and its chevron; inside it, a box that fills the cell without sizing it.
+    expect(control).toMatch(
+      /^data-column-filter="code" class="min-w-\[4\.5rem\]"><div class="w-0 min-w-full">/,
+    );
+    expect(control).toMatch(/<button[^>]*class="[^"]*\bh-8\b[^"]*\btext-xs\b/);
   });
 
-  it('shows what each box holds, and keeps a pinned column pinned', () => {
-    const markup = render({}, { code: '704' });
-    expect(/<input[^>]*data-column-filter="code"[^>]*>/.exec(markup)?.[0]).toContain('value="704"');
+  it('names what each list has picked, and keeps a pinned column pinned', () => {
+    const markup = render({}, { code: ['70493', ''] });
+    // The picks, in the order picked; an empty cell picked is «(فارغ)».
+    expect(filterOf(markup, 'code')).toContain('70493, (فارغ)');
+    expect(filterOf(markup, 'name')).toContain('>الكل<');
     // The actions column's head is pinned; its cell in the filter row is too.
     expect(filterRow(markup)).toContain('sticky end-0 PINNED');
   });
 
-  it('keeps an empty cell for the selection box, so the boxes stay under their columns', () => {
+  it('keeps an empty cell for the selection box, so the lists stay under their columns', () => {
     const selectable = render({
       selection: { selectedIds: new Set<string>(), toggleRow: () => {}, toggleAll: () => {} },
     });
@@ -261,7 +289,12 @@ describe('a row of filter boxes under the head', () => {
           columns={[{ key: 'code', header: 'الكود', render: (row: Row) => row.id }]}
           rows={[{ id: 'r1' }]}
           rowKey={(row) => row.id}
-          columnFilters={{ values: {}, onChange: () => {}, label: (h: string) => h }}
+          columnFilters={{
+            values: {},
+            onChange: () => {},
+            choices: () => [],
+            label: (h: string) => h,
+          }}
         />,
       ),
     ).not.toContain('data-column-filters');

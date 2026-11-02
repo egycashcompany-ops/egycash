@@ -14,7 +14,11 @@
 // grouped and keep the plain reader's order.
 import { useMemo } from 'react';
 import { type useSearchParams } from 'react-router-dom';
-import { filterRowsByColumns, type ColumnFilterValues } from '../../../shared/lib/column-filter';
+import {
+  columnFilterChoicesOf,
+  filterRowsByColumns,
+  type ColumnFilterValues,
+} from '../../../shared/lib/column-filter';
 import { sortRows } from '../../../shared/lib/sort-rows';
 import {
   chosenSorts,
@@ -40,7 +44,7 @@ import { cairoDay } from './operation-view';
 
 type SearchParams = ReturnType<typeof useSearchParams>;
 
-/** No box narrows anything — one shared value, so a page without boxes keeps its memos. */
+/** No column filter narrows anything — one shared value, so a page without them keeps its memos. */
 const NO_COLUMN_FILTERS: ColumnFilterValues = {};
 
 /** Replaces rather than pushes: a view of a table is not a place to go Back to. */
@@ -95,10 +99,12 @@ export interface BoardView<T> extends ReaderOrder<T> {
   /** The day or days the view's statement is «عن». */
   range: { from: string; to: string };
   /**
-   * How many rows the view holds BEFORE the column boxes — so an empty table blames the boxes only
+   * How many rows the view holds BEFORE the column filters — so an empty table blames them only
    * when they are what emptied it, not a day that has nothing at all.
    */
   beforeBoxes: number;
+  /** What each column's filter lists: the values of the view's rows (`columnFilterChoices`). */
+  choices: (key: string) => string[];
 }
 
 /**
@@ -133,31 +139,45 @@ export const useAreaGroupedOrder = <T extends AtmOperationRow>(
 };
 
 /**
- * The rows the table's column boxes keep (`shared/lib/column-filter.ts`), matched on the text each
- * column's cell shows. A key the table has no column for narrows nothing.
+ * What a sheet column's filter knows a row's cell by: the text the cell shows (`filterText` when
+ * it shows more than `text`), an empty cell as `''`. A key the table has no column for is null.
  */
-export const useColumnFiltered = <T>(
-  rows: readonly T[],
+export const useSheetCellText = <T>(
   columns: readonly SheetColumn<T>[],
-  values: ColumnFilterValues,
-): T[] => {
+): ((row: T, key: string) => string | null) => {
   // The headers are in the key, not only the keys: the cells' text is the reader's language (a
   // time on the Cairo clock, in its digits), and a language switch must refilter on the new text.
   const identity = columns.map((column) => `${column.key}:${column.header}`).join('|');
   return useMemo(() => {
     const byKey = new Map(columns.map((column) => [column.key, column]));
-    return filterRowsByColumns(rows, values, (row, key) => {
+    return (row: T, key: string) => {
       const column = byKey.get(key);
       if (column === undefined) return null;
       return column.filterText === undefined ? column.text(row, '') : column.filterText(row);
-    });
-  }, [rows, values, identity]);
+    };
+  }, [identity]);
+};
+
+/**
+ * The rows the table's column filters keep (`shared/lib/column-filter.ts`), matched on the text
+ * each column's cell shows, and what each column's list offers — the values of `rows`, the rows
+ * the filters above the table already chose.
+ */
+export const useColumnFiltered = <T>(
+  rows: readonly T[],
+  columns: readonly SheetColumn<T>[],
+  values: ColumnFilterValues,
+): { kept: T[]; choices: (key: string) => string[] } => {
+  const textOf = useSheetCellText(columns);
+  const kept = useMemo(() => filterRowsByColumns(rows, values, textOf), [rows, values, textOf]);
+  return { kept, choices: columnFilterChoicesOf(rows, values, textOf) };
 };
 
 /**
  * An open board: the rows of its day view (`?day=`, today by default), grouped by area, in the
- * reader's order inside each area. The column boxes narrow the rows FIRST, so the day buttons'
- * counts and the area lines follow them, as they follow the bank and area filters.
+ * reader's order inside each area. The column filters narrow the rows FIRST, so the day buttons'
+ * counts and the area lines follow them, as they follow the bank and area filters; their lists
+ * offer the values of the day view's rows.
  */
 export const useBoardView = <T extends AtmOperationRow>(
   params: SearchParams,
@@ -169,10 +189,16 @@ export const useBoardView = <T extends AtmOperationRow>(
   const view = readBoardDayView(params[0].get('day'));
   // The view moves on at Cairo midnight, not every second the timer ticks.
   const today = cairoDay(now);
-  const kept = useColumnFiltered(rows, columns, columnFilters);
+  const textOf = useSheetCellText(columns);
+  const kept = useMemo(
+    () => filterRowsByColumns(rows, columnFilters, textOf),
+    [rows, columnFilters, textOf],
+  );
   const inView = useMemo(() => rowsInDayView(kept, view, now), [kept, view, today]);
-  const beforeBoxes = useMemo(
-    () => (kept.length === rows.length ? inView.length : rowsInDayView(rows, view, now).length),
+  // The view's rows before the column filters: what the lists offer, and what an empty table is
+  // measured against.
+  const viewRows = useMemo(
+    () => (kept.length === rows.length ? inView : rowsInDayView(rows, view, now)),
     [rows, kept, inView, view, today],
   );
   const counts = useMemo(() => dayViewCounts(kept, now), [kept, today]);
@@ -183,6 +209,7 @@ export const useBoardView = <T extends AtmOperationRow>(
     setView: (next) => patchParam(params, 'day', next === 'today' ? null : next),
     counts,
     range: dayViewRange(view, order.rows, now),
-    beforeBoxes,
+    beforeBoxes: viewRows.length,
+    choices: columnFilterChoicesOf(viewRows, columnFilters, textOf),
   };
 };

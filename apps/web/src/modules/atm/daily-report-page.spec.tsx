@@ -2,8 +2,10 @@
 //
 //   · the day sits in the header, on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form
 //     يبقي بجانب العنوان عشان نستفيد بالمساحة»);
-//   · each of the two tables has a filter box per column (2026-11-02, «فلتر لكل عمود»), and the
-//     totals line under a table adds up exactly the banks its boxes keep — never rows off screen.
+//   · each of the two tables has a column filter per column (2026-11-02, «فلتر لكل عمود», then «لأ
+//     عايز الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select»): a drop-down list of the
+//     values the column's cells show, several of them pickable — and the totals line under a table
+//     adds up exactly the banks its lists keep, never rows off screen.
 //
 // Every bank name and count below is synthetic.
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -11,7 +13,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   type AtmBankCountsDto,
   type AtmDailyReportDto,
@@ -29,6 +31,19 @@ import {
   shownBankCounts,
   sumBankCounts,
 } from './pages/DailyReportPage';
+
+// The column lists' picks, set per test: a static render cannot open a list to pick from it. Empty
+// by default, so every other test renders the report unfiltered. Both tables read the same picks.
+let columnValues: Record<string, string[]> = {};
+vi.mock('../../shared/ui/useColumnFilters', () => ({
+  useColumnFilters: () => ({
+    values: columnValues,
+    set: () => {},
+    clear: () => {},
+    active: Object.values(columnValues).some((value) => value.length > 0),
+    generation: 0,
+  }),
+}));
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -101,17 +116,61 @@ describe('the day on the title’s line (2026-11-02)', () => {
   });
 });
 
-describe('the two tables’ filter boxes (2026-11-02, «فلتر لكل عمود»)', () => {
-  it('draws a box under every column of each table', () => {
-    const html = render();
-    const boxes = [...html.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
-    expect(boxes).toEqual(['bank', 'open', 'total', 'bank', 'open', 'total']);
-    expect(html).toContain(
-      `aria-label="${t('atm.common.filterColumn', { column: t('atm.common.bank') })}"`,
+describe('the two tables’ column lists (2026-11-02, «فلتر لكل عمود», a Multi select drop-down)', () => {
+  const COLUMNS = [
+    ['bank', 'atm.common.bank'],
+    ['open', 'atm.reports.open'],
+    ['total', 'atm.reports.total'],
+  ] as const;
+  /** Every column list of the page, in order: its trigger, and its ✕ once something is picked. */
+  const listsOf = (html: string): string[] =>
+    [...html.matchAll(/data-column-filter="[^"]+"/g)].map((m) =>
+      html.slice(m.index, html.indexOf('</th>', m.index)),
     );
+  /** The page, its lists holding these picks. */
+  const withPicks = (values: Record<string, string[]>): string => {
+    columnValues = values;
+    try {
+      return render();
+    } finally {
+      columnValues = {};
+    }
+  };
+
+  it('draws a list under every column of each table', () => {
+    const html = render();
+    const lists = [...html.matchAll(/data-column-filter="([^"]+)"/g)].map((m) => m[1]);
+    expect(lists).toEqual(['bank', 'open', 'total', 'bank', 'open', 'total']);
+    // Each a drop-down named after its column, saying «الكل» while nothing is picked.
+    const triggers = listsOf(html);
+    [...COLUMNS, ...COLUMNS].forEach(([, header], at) => {
+      expect(triggers[at]).toContain('aria-haspopup="listbox"');
+      expect(triggers[at]).toContain(
+        `aria-label="${t('atm.common.filterColumn', { column: t(header) })}"`,
+      );
+      expect(triggers[at]).toContain(`>${t('common.filters.all')}<`);
+    });
+    expect(html).not.toContain('type="search"');
   });
 
-  it('matches what each cell shows: the bank’s name, the counts as written', () => {
+  it('names the picks on the list’s trigger, and totals the banks they keep', () => {
+    const html = withPicks({ bank: ['بنك تجريبي أول', 'SYN BANK'] });
+    const [bank, open] = listsOf(html);
+    expect(bank).toContain('>بنك تجريبي أول, SYN BANK<');
+    expect(open).toContain(`>${t('common.filters.all')}<`);
+    expect(html).toContain(t('atm.reports.totalsLine', { open: 14, total: 32 }));
+    expect(html).toContain(t('atm.reports.totalsLine', { open: 1, total: 4 }));
+  });
+
+  it('says the lists hid every bank when no bank holds their picks — and only then', () => {
+    const none = withPicks({ total: ['99'] });
+    expect(none).toContain(t('atm.common.emptyColumnFiltered'));
+    expect(none).not.toContain(t('atm.reports.totalsLine', { open: 14, total: 39 }));
+    expect(none).not.toContain(t('atm.reports.totalsLine', { open: 0, total: 0 }));
+    expect(render()).not.toContain(t('atm.common.emptyColumnFiltered'));
+  });
+
+  it('lists what each cell shows: the bank’s name, the counts as written', () => {
     const [first] = REPLENISHMENTS;
     if (first === undefined) throw new Error('fixture');
     expect(bankCountsText(first, 'bank')).toBe('بنك تجريبي أول');
@@ -120,26 +179,38 @@ describe('the two tables’ filter boxes (2026-11-02, «فلتر لكل عمود
     expect(bankCountsText(first, 'nothing')).toBeNull();
   });
 
-  it('totals exactly the banks the boxes keep', () => {
+  it('totals exactly the banks the lists keep', () => {
     expect(shownBankCounts(REPLENISHMENTS, {})).toEqual({
       rows: REPLENISHMENTS,
       totals: sumBankCounts(REPLENISHMENTS),
     });
-    const tried = shownBankCounts(REPLENISHMENTS, { bank: 'تجريبي' });
-    expect(tried.rows.map((row) => row.bankName)).toEqual(['بنك تجريبي أول', 'بنك تجريبي ثان']);
-    expect(tried.totals).toEqual({ total: 19, open: 3 });
-    // «اول» finds «أول» (hamza folded); two boxes add up.
-    expect(shownBankCounts(REPLENISHMENTS, { bank: 'اول', open: '3' }).totals).toEqual({
-      total: 12,
-      open: 3,
-    });
-    expect(shownBankCounts(REPLENISHMENTS, { total: '99' })).toEqual({
+    // Two picks in one column: either keeps the bank.
+    const two = shownBankCounts(REPLENISHMENTS, { bank: ['بنك تجريبي أول', 'بنك تجريبي ثان'] });
+    expect(two.rows.map((row) => row.bankName)).toEqual(['بنك تجريبي أول', 'بنك تجريبي ثان']);
+    expect(two.totals).toEqual({ total: 19, open: 3 });
+    // Two columns: both must.
+    expect(
+      shownBankCounts(REPLENISHMENTS, { bank: ['بنك تجريبي أول', 'SYN BANK'], open: ['3'] }).totals,
+    ).toEqual({ total: 12, open: 3 });
+    // A pick no bank holds: nothing, and nothing to total.
+    expect(shownBankCounts(REPLENISHMENTS, { total: ['99'] })).toEqual({
       rows: [],
       totals: { total: 0, open: 0 },
     });
   });
 
-  it('the page’s totals line, with no box typed, is the whole report’s', () => {
+  it('keeps a bank whose cell IS the pick — a whole name, written as the cell writes it', () => {
+    expect(shownBankCounts(REPLENISHMENTS, { bank: ['بنك تجريبي أول'] }).totals).toEqual({
+      total: 12,
+      open: 3,
+    });
+    // A part of a name is no value of the column, and neither is a spelling the cell does not use:
+    // «اول» without its hamza is not «أول».
+    expect(shownBankCounts(REPLENISHMENTS, { bank: ['تجريبي'] }).rows).toEqual([]);
+    expect(shownBankCounts(REPLENISHMENTS, { bank: ['بنك تجريبي اول'] }).rows).toEqual([]);
+  });
+
+  it('the page’s totals line, with nothing picked, is the whole report’s', () => {
     expect(render()).toContain(t('atm.reports.totalsLine', { open: 14, total: 39 }));
   });
 });

@@ -4,15 +4,20 @@
 // (:296-420); the counts are the same numbers, rendered as a table that needs no edit when a bank
 // is added. The day is a parameter here (port doc D7) — the legacy could only show today.
 //
-// A ROW OF FILTER BOXES under each table's head, one per column (2026-11-02, «فلتر لكل عمود»). The
-// totals line under a table adds up the rows the boxes KEEP — the banks on screen — so it never
+// A ROW OF FILTER LISTS under each table's head, one multi-pick drop-down per column (2026-11-02,
+// «فلتر لكل عمود», «يكون Drop Down بـ Multi select»). The totals line under a table adds up the
+// rows the lists KEEP — the banks on screen — so it never
 // states a sum of rows the reader cannot see.
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type AtmBankCountsDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { filterRowsByColumns, type ColumnFilterValues } from '../../../shared/lib/column-filter';
+import {
+  columnFilterChoicesOf,
+  filterRowsByColumns,
+  type ColumnFilterValues,
+} from '../../../shared/lib/column-filter';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../shared/ui/board-scroll';
 import { Field, Input } from '../../../shared/ui/form';
@@ -37,7 +42,7 @@ export const bankCountsText = (row: AtmBankCountsDto, key: string): string | nul
         ? String(row.total)
         : null;
 
-/** Pure: the banks every box keeps, and the totals line's sums over exactly those. */
+/** Pure: the banks every column filter keeps, and the totals line's sums over exactly those. */
 export const shownBankCounts = (
   rows: readonly AtmBankCountsDto[],
   values: ColumnFilterValues,
@@ -62,7 +67,7 @@ const CountsTable = ({
   emptyLabel: string;
 }): JSX.Element => {
   const t = useT();
-  // This table's own boxes: each table of the page narrows its own banks.
+  // This table's own column filters: each table of the page narrows its own banks.
   const columnFilters = useColumnFilters();
   const shown = useMemo(
     () => shownBankCounts(rows, columnFilters.values),
@@ -120,9 +125,9 @@ const CountsTable = ({
           columnFilters={{
             values: columnFilters.values,
             onChange: columnFilters.set,
+            choices: columnFilterChoicesOf(rows, columnFilters.values, bankCountsText),
             generation: columnFilters.generation,
             label: (header) => t('atm.common.filterColumn', { column: header }),
-            placeholder: t('atm.common.filterPlaceholder'),
           }}
           stickyHead
         />

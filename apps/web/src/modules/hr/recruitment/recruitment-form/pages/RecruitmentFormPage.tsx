@@ -107,7 +107,7 @@ export const RecruitmentFormPage = (): JSX.Element => {
       <PageHeader
         title={t('recruitmentForm.title')}
         breadcrumbs={[
-          { label: t('recruitment.title'), to: '/' },
+          { label: t('hr.settings.title'), to: '/hr-settings' },
           { label: t('recruitmentForm.title') },
         ]}
         actions={

@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { HR_SETTINGS_HUB } from '@ecms/contracts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (file: string): string => readFileSync(resolve(HERE, file), 'utf8');
@@ -68,9 +69,9 @@ describe('the parse itself', () => {
   // Guards every assertion below: an empty set satisfies "no duplicates" and "all covered".
   it('found the navigation rows and the sections', () => {
     expect(NAV_ROUTES.length).toBeGreaterThan(15);
-    expect(HR_SECTIONS.length).toBe(7);
+    expect(HR_SECTIONS.length).toBe(6);
     expect(HR_SECTIONS.map((s) => s.en)).toEqual([
-      'Communication',
+      // No Communication: its two rows are tabs of «الإعدادات» now.
       'Recruitment',
       'Employees',
       'Employee File',
@@ -84,8 +85,16 @@ describe('the parse itself', () => {
 });
 
 describe('every HR page has exactly one home', () => {
-  it('no navigation row is left out of a group', () => {
-    expect(NAV_ROUTES.filter((route) => !GROUPED.includes(route))).toEqual([]);
+  it('no navigation row is left out of a group — save «الإعدادات»', () => {
+    expect(NAV_ROUTES.filter((route) => !GROUPED.includes(route))).toEqual([HR_SETTINGS_HUB.route]);
+  });
+
+  // The sidebar draws a module's ungrouped rows ABOVE its groups, so being the only ungrouped HR
+  // row is exactly what puts the settings «فوق خالص». Filing it would bury it in a group; leaving
+  // another row ungrouped would put that row beside it at the top.
+  it('leaves «الإعدادات» in no group, the first HR row', () => {
+    expect(GROUPED).not.toContain(HR_SETTINGS_HUB.route);
+    expect(NAV_ROUTES[0]).toBe(HR_SETTINGS_HUB.route);
   });
 
   // The failure this prevents is a page appearing twice in one sidebar — which is what the split
@@ -157,16 +166,14 @@ describe('candidate and employee do not mix', () => {
       '/applicants',
       '/screening',
       '/interviews',
-      '/interviews/stages',
       '/evaluations',
-      '/evaluations/phases',
       // P-HR-APP §5 — a candidate's own documents, collected before anybody is hired.
       '/applicant-documents',
       // No batch rows: each phase's batches are opened from that phase's own page, so the sidebar
       // no longer lists them («كدا كدا هنوصلهم بالزرارين من داخل كل صفحة»).
       '/job-offers',
-      '/applicant-sources',
-      '/recruitment-form',
+      // The form, the sources and the two stage catalogues configure the pipeline: they are tabs
+      // of «الإعدادات», not rows here.
     ]);
   });
 

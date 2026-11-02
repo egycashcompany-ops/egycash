@@ -107,49 +107,42 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         revision: 1,
         routes: ['/evaluation-batches/phase/securityCheck', '/evaluation-batches/phase/drivingTest'],
       },
+      // «الإعدادات» — these six are the tabs of `/hr-settings` now, and their old addresses
+      // redirect into it.
+      {
+        revision: 2,
+        routes: [
+          '/recruitment-form',
+          '/applicant-sources',
+          '/interviews/stages',
+          '/evaluations/phases',
+          '/announcements',
+          '/notification-rules',
+        ],
+      },
     ],
     apps: [
-      // Three of these rows are catching up with pages that shipped without one. They were routed
-      // and permission-gated but absent from this catalog and unlinked from every screen, so the
-      // only way in was typing the URL — which made a hint unfollowable: registering an applicant
-      // from inside the system says "set the internal source on the Application Form page", and
-      // there was no such page to open. Each sits beside the stage it configures rather than in a
-      // settings group of its own: they are part of the recruitment cycle, not general setup.
+      // «عايز الجزء اللى فالصورة دا يبقي جوا صفحة واحده أسمها إعدادات وتبقي فوق خالص». The six screens
+      // that configure HR rather than run it — the two groups «إعدادات التوظيف» and «التواصل» — are
+      // the tabs of this one page now (`HR_SETTINGS_HUB` in the contracts), and their own rows are
+      // retired below. Holding ANY tab's key shows this row, and the page shows only the tabs held,
+      // so it advertises nothing the six rows did not. The key declared here is the first tab's; it
+      // is what the Applications screen displays.
+      //
+      // FIRST, and in no section: the sidebar draws a module's unsectioned rows above its groups,
+      // and every other HR row is filed in one — which is what puts it «فوق خالص».
       {
-        en: 'Announcements',
-        ar: 'الإعلانات',
-        route: '/announcements',
-        icon: 'chat',
-        permission: 'announcement.send',
-      },
-      // Beside Announcements because they are the same act from two directions: a person saying
-      // something once, and the system saying it every time a thing happens.
-      {
-        en: 'Notification Rules',
-        ar: 'قواعد الإشعارات',
-        route: '/notification-rules',
-        icon: 'bell',
-        permission: 'notificationRule.view',
+        en: 'Settings',
+        ar: 'الإعدادات',
+        route: '/hr-settings',
+        icon: 'cog',
+        permission: 'recruitmentForm.manage',
       },
       {
         en: 'Applicants',
         ar: 'المتقدمون',
         route: '/applicants',
         icon: 'users',
-        permission: 'applicant.view',
-      },
-      {
-        en: 'Application Form',
-        ar: 'نموذج التقديم',
-        route: '/recruitment-form',
-        icon: 'inbox',
-        permission: 'recruitmentForm.manage',
-      },
-      {
-        en: 'Applicant Sources',
-        ar: 'مصادر التقديم',
-        route: '/applicant-sources',
-        icon: 'link',
         permission: 'applicant.view',
       },
       {
@@ -167,25 +160,11 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'interview.view',
       },
       {
-        en: 'Interview Stages',
-        ar: 'مراحل المقابلات',
-        route: '/interviews/stages',
-        icon: 'layers',
-        permission: 'interviewStage.manage',
-      },
-      {
         en: 'Evaluations',
         ar: 'التقييمات',
         route: '/evaluations',
         icon: 'clipboard',
         permission: 'evaluation.view',
-      },
-      {
-        en: 'Evaluation Phases',
-        ar: 'مراحل التقييم',
-        route: '/evaluations/phases',
-        icon: 'layers',
-        permission: 'evaluationPhase.manage',
       },
       {
         en: 'Job Offers',

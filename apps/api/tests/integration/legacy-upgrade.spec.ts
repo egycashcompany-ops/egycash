@@ -14,7 +14,13 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
-import { platformPermissions, SettingKeys, type ApplicantDto, type PermissionDef } from '@ecms/contracts';
+import {
+  HR_SETTINGS_HUB,
+  platformPermissions,
+  SettingKeys,
+  type ApplicantDto,
+  type PermissionDef,
+} from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
@@ -319,6 +325,60 @@ describe('navigation catalog boot sync', () => {
     await applicationService.update(String(back?._id), { status: 'active', version: back?.__v ?? 0 }, adminId);
     await syncNavigationCatalog();
     expect((await applicationRepository.findOne({ route: retired[0] as string }))?.status).toBe('active');
+  });
+
+  /**
+   * «عايز الجزء اللى فالصورة دا يبقي جوا صفحة واحده أسمها إعدادات وتبقي فوق خالص». An install that
+   * already took the first retirement still shows the six settings rows; the next boot switches
+   * them off and gives HR the one «الإعدادات» row, outside every group.
+   */
+  it('folds the six settings rows into «الإعدادات» on an install past the first retirement', async () => {
+    const tabs = [
+      '/recruitment-form',
+      '/applicant-sources',
+      '/interviews/stages',
+      '/evaluations/phases',
+      '/announcements',
+      '/notification-rules',
+    ];
+    const hr = await applicationCategoryRepository.findOne({ 'name.en': 'HR' });
+    expect(hr).not.toBeNull();
+    for (const [index, route] of tabs.entries()) {
+      const row = await applicationRepository.findOne({ route });
+      if (row === null) {
+        await applicationService.create(
+          {
+            name: { ar: route, en: route },
+            icon: 'layers',
+            route,
+            categoryId: String(hr?._id),
+            sortOrder: 800 + index,
+            permissionKey: HR_SETTINGS_HUB.tabs[index]?.permission ?? 'applicant.view',
+          },
+          adminId,
+        );
+      } else if (row.status !== 'active') {
+        await applicationService.update(String(row._id), { status: 'active', version: row.__v }, adminId);
+      }
+    }
+    const tile = await applicationCategoryRepository.findOne({ 'name.en': 'HR' });
+    await applicationCategoryRepository.updateById(
+      String(tile?._id),
+      { retiredRevision: 1 },
+      { by: adminId, version: tile?.__v ?? 0 },
+    );
+
+    await syncNavigationCatalog();
+    for (const route of tabs) {
+      expect((await applicationRepository.findOne({ route }))?.status, route).toBe('inactive');
+    }
+    const hub = await applicationRepository.findOne({ route: HR_SETTINGS_HUB.route });
+    expect(hub?.status).toBe('active');
+    expect(hub?.name.ar).toBe('الإعدادات');
+    expect(String(hub?.categoryId)).toBe(String(hr?._id));
+    // In no group: the sidebar draws a module's ungrouped rows above its groups.
+    expect(hub?.sectionId ?? null).toBeNull();
+    expect((await applicationCategoryRepository.findOne({ 'name.en': 'HR' }))?.retiredRevision).toBe(2);
   });
 });
 

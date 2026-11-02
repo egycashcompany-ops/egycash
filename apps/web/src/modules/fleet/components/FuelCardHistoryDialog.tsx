@@ -13,6 +13,13 @@
 // violet chip naming the sheet and when — and no ✎ 🗑 (it is changed nowhere); the adjustment that
 // cancelled it adds «وأُلغي شحن …». A card moved car by a sheet decision has its own line, «نُقل من
 // … إلى … — شيت الشركة», amount 0. Every file name is set in order («وطنية 4-10-2026.xlsx»).
+//
+// 6d: «تصحيح أرقام الكروت» writes one more line no one changes here, «تصحيح بيانات» (indigo): on a
+// crossed record «صُحّح رقم الكارت: كان •••• 2813 وأصبح •••• 0935 — تصحيح بيانات التشغيل», amount
+// «—», and what moved with the number (its PIN only when one is stored — else «تُرك فارغًا»); on
+// the 0849 pair the name and the go-live opening, amount the opening's difference. Last fours only,
+// never a PIN. Every line older than the card's repair line is marked «سُجِّلت قبل التصحيح» — kept
+// exactly as it was: no top-up is said to have reached any particular physical card.
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -35,6 +42,7 @@ import {
 } from '../api/fleet-queries';
 import { CLOSE_PATH, DesignLogo, LOOK, MONO, SANS, Stroke } from './FuelCardDialog';
 import { groupCardNumber } from '../lib/fuel-card-number';
+import { beforeRepair, expiryMoves, repairLineAtOf } from '../lib/fuel-number-repair';
 import { FileName, Filled } from './fuel-reconcile/reconcile-cells';
 
 const stamp = (iso: string): string => {
@@ -56,11 +64,17 @@ const KIND_TONE: Record<FleetFuelCardMovementDto['kind'], string> = {
   transferOut: 'border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300',
   receipt:
     'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
+  dataFix:
+    'border-indigo-300 dark:border-indigo-400/40 bg-indigo-500/15 text-indigo-700 dark:text-indigo-200',
 };
 
 /** The sheet's three lines — a decision on «مطابقة أرصدة الكروت»; never changed here. */
 const isSheetLine = (line: FleetFuelCardMovementDto): boolean =>
   line.kind === 'sheetAdjust' || line.kind === 'sheetReject' || line.kind === 'sheetLink';
+/** 6d: «تصحيح أرقام الكروت»'s line — written once by the repair; never changed here. */
+const isRepairLine = (line: FleetFuelCardMovementDto): boolean => line.kind === 'dataFix';
+/** «2027/03/31». */
+const dayOf = (ymd: string): string => ymd.slice(0, 10).replace(/-/gu, '/');
 /** Σ the charges a sheet line cancelled with it, to the piastre. */
 const cancelledWith = (line: FleetFuelCardMovementDto): number =>
   (line.sheet?.cancelledCharges ?? []).reduce(
@@ -115,6 +129,8 @@ export const FuelCardHistoryDialog = ({
   const figure = (n: number): string =>
     n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const lines = log.data?.items ?? [];
+  // 6d: when the card's repair line was written — the lines before it are marked.
+  const fixedAt = repairLineAtOf(lines);
   const placeOf = (cardId: string | null): string => {
     const other = cards.find((c) => c.id === cardId);
     return other?.vehicleCode ?? other?.label ?? '—';
@@ -122,7 +138,7 @@ export const FuelCardHistoryDialog = ({
   // Who may change a line: the one who may charge for a charge, the one who may transfer for a
   // transfer. A receipt line and the sheet's two lines are never changed here.
   const mayChange = (line: FleetFuelCardMovementDto): boolean =>
-    isSheetLine(line) || line.cancelledBySheet !== null
+    isSheetLine(line) || isRepairLine(line) || line.cancelledBySheet !== null
       ? false
       : line.kind === 'charge'
         ? can('fleetFuelCharge.approve')
@@ -192,6 +208,73 @@ export const FuelCardHistoryDialog = ({
         · {fileWords(line.sheet.fileName)}
       </>
     );
+  };
+
+  /**
+   * 6d: the repair line's own sentence — the number before and after (last fours), or the pair's
+   * name and opening before and after.
+   */
+  const repairTitle = (line: FleetFuelCardMovementDto): JSX.Element | null => {
+    const fix = line.repair;
+    if (fix === null) return null;
+    const last4 = (value: string | null): JSX.Element => (
+      <span dir="ltr" className={MONO}>
+        •••• {value ?? '—'}
+      </span>
+    );
+    return fix.kind === 'number' ? (
+      <Filled
+        template={t('fleet.fuelCards.history.dataFix.number')}
+        values={{ before: last4(fix.numberBeforeLast4), after: last4(fix.numberAfterLast4) }}
+      />
+    ) : (
+      <Filled
+        template={t('fleet.fuelCards.history.dataFix.nameSwap')}
+        values={{
+          before: (
+            <span dir="ltr" className={MONO}>
+              {fix.nameBefore ?? '—'}
+            </span>
+          ),
+          after: (
+            <span dir="ltr" className={MONO}>
+              {fix.nameAfter ?? '—'}
+            </span>
+          ),
+          from: (
+            <span dir="ltr" className={MONO}>
+              {figure(fix.openingBefore ?? 0)}
+            </span>
+          ),
+          to: (
+            <span dir="ltr" className={MONO}>
+              {figure(fix.openingAfter ?? 0)}
+            </span>
+          ),
+        }}
+      />
+    );
+  };
+  /** 6d: what moved with the number, and what stayed — the line's small print. */
+  const repairWords = (line: FleetFuelCardMovementDto): string[] => {
+    const fix = line.repair;
+    if (fix === null) return [];
+    if (fix.kind === 'nameSwap') return [t('fleet.fuelCards.history.dataFix.nameSwapKept')];
+    const pin = fix.pinMoved === true;
+    const photo = fix.photoMoved === true;
+    const expiry =
+      fix.expiryBefore !== null &&
+      fix.expiryAfter !== null &&
+      expiryMoves({ expiryBefore: fix.expiryBefore, expiryAfter: fix.expiryAfter })
+        ? dayOf(fix.expiryAfter)
+        : t('fleet.fuelCards.history.dataFix.sameDate');
+    const moved =
+      pin && photo ? 'movedAll' : photo ? 'movedNoPin' : pin ? 'movedNoPhoto' : 'movedExpiry';
+    return [
+      t(`fleet.fuelCards.history.dataFix.${moved}`, { expiry }),
+      ...(fix.pinMoved === false ? [t('fleet.fuelCards.history.dataFix.noPin')] : []),
+      t('fleet.fuelCards.history.dataFix.kept'),
+    ];
   };
 
   const cents = (n: number): number => Math.round(n * 100) / 100;
@@ -338,20 +421,27 @@ export const FuelCardHistoryDialog = ({
                 const negative = moves.some((move) => move.to < 0);
                 const cancelled = line.cancelledBySheet;
                 const words = sheetWords(line);
+                // 6d: the repair's own line, and the lines before it.
+                const repairing = isRepairLine(line) && line.repair !== null;
+                const fixWords = repairWords(line);
+                const before = beforeRepair(line, fixedAt);
                 return (
                   <li
                     key={line.id}
                     data-fuel-history-line={line.id}
                     data-fuel-history-cancelled={cancelled === null ? undefined : 'sheet'}
+                    data-fuel-history-before-repair={before ? 'true' : undefined}
                     className={cn(
                       'rounded-xl border px-4 py-3 transition',
                       cancelled !== null
                         ? 'border-dashed border-violet-300 bg-violet-50/50 dark:border-violet-500/40 dark:bg-violet-500/[0.06]'
-                        : isRemoving
-                          ? 'border-red-500/60 bg-red-500/10 shadow-[0_0_22px_-8px_rgba(239,68,68,0.6)]'
-                          : isEditing
-                            ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.14),rgba(255,255,255,0.95))] dark:[background:linear-gradient(145deg,rgba(108,99,255,0.18),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-6px_rgba(108,99,255,0.55)]'
-                            : 'border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/60',
+                        : repairing
+                          ? 'border-indigo-300 bg-indigo-50/70 shadow-[0_0_0_1px_rgba(108,99,255,0.12)] dark:border-indigo-400/40 dark:bg-indigo-500/[0.08]'
+                          : isRemoving
+                            ? 'border-red-500/60 bg-red-500/10 shadow-[0_0_22px_-8px_rgba(239,68,68,0.6)]'
+                            : isEditing
+                              ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.14),rgba(255,255,255,0.95))] dark:[background:linear-gradient(145deg,rgba(108,99,255,0.18),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-6px_rgba(108,99,255,0.55)]'
+                              : 'border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/60',
                     )}
                   >
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -372,8 +462,11 @@ export const FuelCardHistoryDialog = ({
                         {what(line)}
                       </span>
                       <span className="ms-auto flex items-center gap-4">
-                        {line.kind === 'sheetReject' || line.kind === 'sheetLink' ? (
-                          // Nothing moved: the sheet's figure was refused, or the card changed car.
+                        {line.kind === 'sheetReject' ||
+                        line.kind === 'sheetLink' ||
+                        (isRepairLine(line) && line.amount === 0) ? (
+                          // Nothing moved: the sheet's figure was refused, the card changed car, or
+                          // the repair moved a number (6d) — its balance stays.
                           <span className="text-base font-black text-slate-400 dark:text-slate-500">
                             —
                           </span>
@@ -431,11 +524,41 @@ export const FuelCardHistoryDialog = ({
                         )}
                       </span>
                     </div>
-                    {(line.byName !== null || words !== null || cancelled !== null) && (
+                    {repairing && (
+                      <p
+                        data-fuel-history-repair={line.id}
+                        className="mt-1.5 text-[13px] font-bold text-indigo-800 dark:text-indigo-200"
+                      >
+                        {repairTitle(line)}
+                      </p>
+                    )}
+                    {(line.byName !== null ||
+                      words !== null ||
+                      cancelled !== null ||
+                      fixWords.length > 0 ||
+                      before) && (
                       <div
                         data-fuel-history-by={line.id}
                         className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400"
                       >
+                        {before && (
+                          <span
+                            data-fuel-history-before-repair-tag={line.id}
+                            className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-1.5 py-px font-bold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          >
+                            {t('fleet.fuelCards.history.beforeRepair')}
+                          </span>
+                        )}
+                        {fixWords.map((said, i) => (
+                          <span
+                            key={said}
+                            data-fuel-history-repair-words={line.id}
+                            className="text-slate-600 dark:text-slate-300"
+                          >
+                            {i > 0 && '· '}
+                            {said}
+                          </span>
+                        ))}
                         {words !== null && (
                           <span
                             data-fuel-history-sheet={line.id}

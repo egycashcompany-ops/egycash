@@ -8,6 +8,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   cairoYmd,
+  ErrorCodes,
   type ChangeFleetVehicleStatus,
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
@@ -82,8 +83,10 @@ import { nextViolationsPage } from '../lib/violations-paging';
 import { fetchWholeCatalog } from '../lib/whole-catalog';
 import { fetchWholeVehicleRegistry } from '../lib/whole-vehicle-registry';
 import { writeRefusalOf } from '../lib/write-refusal';
+import { makeFuelCardThumb } from '../lib/fuel-card-thumb';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import { errorMessage } from '../../../shared/lib/errors';
+import { ApiError } from '../../../shared/lib/api-client';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { store } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -1110,10 +1113,51 @@ export const useUpdateFuelCard = () =>
     api.updateFuelCard(id, body),
   );
 export const useDeleteFuelCard = () => useFuelCardMutation((id: string) => api.deleteFuelCard(id));
+/**
+ * The photo goes up with its blurred thumbnail (6d), made here from the picked file — every caller
+ * (the photo box, the card form, «إضافة» from the sheet) gets one without asking. When the browser
+ * cannot make one, or the server refuses the one it made (`FLEET_FUEL_CARD_THUMB_INVALID` — it
+ * should not), the photo still goes up, without it.
+ */
+export const uploadPhotoWithThumb = async (id: string, file: File) => {
+  const thumb = await makeFuelCardThumb(file);
+  if (thumb === null) return api.uploadFuelCardImage(id, file);
+  try {
+    return await api.uploadFuelCardImage(id, file, thumb);
+  } catch (error) {
+    if (error instanceof ApiError && error.code === ErrorCodes.FLEET_FUEL_CARD_THUMB_INVALID) {
+      return api.uploadFuelCardImage(id, file);
+    }
+    throw error;
+  }
+};
 export const useUploadFuelCardImage = () =>
-  useFuelCardMutation(({ id, file }: { id: string; file: File }) =>
-    api.uploadFuelCardImage(id, file),
-  );
+  useFuelCardMutation(({ id, file }: { id: string; file: File }) => uploadPhotoWithThumb(id, file));
+/**
+ * The thumbnail's bytes (`fleetFuelCard.view`) — under the cards' subtree, so a card's photo
+ * changing (a replace, a delete, the repair moving it) fetches it again. `cardId` null: nothing.
+ */
+export const useFuelCardThumb = (cardId: string | null, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'fuelCards', { thumb: cardId }),
+    queryFn: () => api.fetchFuelCardThumb(cardId ?? ''),
+    enabled: enabled && cardId !== null && cardId !== '',
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+/**
+ * Back-fills the thumbnail of a photo uploaded before 6d, from the full photo an edit + reveal
+ * holder has just opened. Best effort and silent: a failure is not the reader's business, and the
+ * next opening tries again.
+ */
+export const useBackfillFuelCardThumb = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, thumb }: { id: string; thumb: Blob }) => api.uploadFuelCardThumb(id, thumb),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.fuelCards }),
+    onError: () => undefined,
+  });
+};
 export const useDeleteFuelCardImage = () =>
   useFuelCardMutation((id: string) => api.deleteFuelCardImage(id));
 export const useRequestFuelCharge = () =>

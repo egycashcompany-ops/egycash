@@ -550,13 +550,35 @@ export const createFuelCard = (body: CreateFleetFuelCard): Promise<FleetFuelCard
 export const updateFuelCard = (id: string, body: UpdateFleetFuelCard): Promise<FleetFuelCardDto> =>
   patch<FleetFuelCardDto>(`/fleet/fuel-cards/${id}`, body);
 export const deleteFuelCard = (id: string): Promise<void> => del<void>(`/fleet/fuel-cards/${id}`);
-export const uploadFuelCardImage = (id: string, file: File): Promise<FleetFuelCardDto> => {
+/**
+ * The photo, and (6d) its blurred thumbnail as the part `thumb` — made in the browser
+ * (`lib/fuel-card-thumb.ts`); a photo sent without one reads «no thumbnail» (`imageThumb: false`).
+ */
+export const uploadFuelCardImage = (
+  id: string,
+  file: File,
+  thumb?: Blob,
+): Promise<FleetFuelCardDto> => {
   const form = new FormData();
   form.append('file', file);
+  if (thumb !== undefined) form.append('thumb', thumb, 'thumb.jpg');
   return upload<FleetFuelCardDto>(`/fleet/fuel-cards/${id}/image`, form);
 };
+/**
+ * The FULL photo — it shows the PIN on its sticker, so the server answers it only to a holder of
+ * `fleetFuelCard.reveal` (403 otherwise). Never called without that grant.
+ */
 export const fetchFuelCardImage = (id: string): Promise<Blob> =>
   fetchBlob(`/fleet/fuel-cards/${id}/image`);
+/** The photo's thumbnail (6d) — `fleetFuelCard.view`; 404 with no photo or no thumbnail. */
+export const fetchFuelCardThumb = (id: string): Promise<Blob> =>
+  fetchBlob(`/fleet/fuel-cards/${id}/image/thumb`);
+/** Back-fills the thumbnail of the photo the card already has — `.edit` + `.reveal`. */
+export const uploadFuelCardThumb = (id: string, thumb: Blob): Promise<FleetFuelCardDto> => {
+  const form = new FormData();
+  form.append('thumb', thumb, 'thumb.jpg');
+  return upload<FleetFuelCardDto>(`/fleet/fuel-cards/${id}/image/thumb`, form);
+};
 export const deleteFuelCardImage = (id: string): Promise<FleetFuelCardDto> =>
   del<FleetFuelCardDto>(`/fleet/fuel-cards/${id}/image`);
 export const requestFuelCharge = (

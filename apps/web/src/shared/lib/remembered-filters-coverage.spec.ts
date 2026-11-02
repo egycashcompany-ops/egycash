@@ -176,17 +176,41 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
 
 /** Screens whose query state must not survive a visit. Every reason is a fact about the code. */
 const EXCLUDED: readonly (readonly [string, string])[] = [
-  ['modules/atm/pages/DailyReportPage.tsx', '`date` opens on cairoToday() \u2014 the day the report IS'],
-  ['modules/atm/pages/ControlPage.tsx', '`date` is the server\u2019s suggested day \u2014 the day being dispatched (DS-25); `tab` is a view'],
-  ['modules/atm/pages/MaintenanceDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
-  ['modules/atm/pages/ReplenishmentsDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
+  [
+    'modules/atm/pages/DailyReportPage.tsx',
+    '`date` opens on cairoToday() \u2014 the day the report IS',
+  ],
+  [
+    'modules/atm/pages/ControlPage.tsx',
+    '`date` is the server\u2019s suggested day \u2014 the day being dispatched (DS-25); `tab` is a view',
+  ],
+  [
+    'modules/atm/pages/MaintenanceDonePage.tsx',
+    '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range',
+  ],
+  [
+    'modules/atm/pages/ReplenishmentsDonePage.tsx',
+    '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range',
+  ],
   ['modules/operations/mobile/CaptainDayPage.tsx', '`date` is the day being driven'],
-  ['modules/fleet/pages/NoticeEditorPage.tsx', '`id` names the saved notice open in the form \u2014 a record, not a filter'],
-  ['modules/operations/pages/CatalogsPage.tsx', '`kind` selects which catalogue renders \u2014 navigation, not a filter'],
+  [
+    'modules/fleet/pages/NoticeEditorPage.tsx',
+    '`id` names the saved notice open in the form \u2014 a record, not a filter',
+  ],
+  [
+    'modules/operations/pages/CatalogsPage.tsx',
+    '`kind` selects which catalogue renders \u2014 navigation, not a filter',
+  ],
   ['modules/operations/pages/CrewAttendancePage.tsx', '`date` is the day being recorded'],
-  ['modules/operations/pages/CrewBoardPage.tsx', '`date` resolves server-side to tomorrow \u2014 the day the board IS'],
+  [
+    'modules/operations/pages/CrewBoardPage.tsx',
+    '`date` resolves server-side to tomorrow \u2014 the day the board IS',
+  ],
   ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
-  ['modules/operations/pages/SecuredDispatchPage.tsx', '`date` resolves to the due day being dispatched'],
+  [
+    'modules/operations/pages/SecuredDispatchPage.tsx',
+    '`date` resolves to the due day being dispatched',
+  ],
 ];
 
 /**
@@ -208,7 +232,10 @@ const MIGRATION_PENDING: readonly string[] = [];
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
   ['modules/atm/pages/AtmSettingsPage.tsx'],
-  ['modules/atm/pages/LayoutImportPage.tsx', 'an upload form: the bank select picks the file\u2019s profile and the table previews one upload; nothing narrows a stored list'],
+  [
+    'modules/atm/pages/LayoutImportPage.tsx',
+    'an upload form: the bank select picks the file\u2019s profile and the table previews one upload; nothing narrows a stored list',
+  ],
   ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
   ['modules/atm/pages/RegisterImportPage.tsx'],
   ['modules/atm/pages/RegisterReportPage.tsx'],
@@ -218,6 +245,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/fleet/pages/DriverProfilePage.tsx'],
   ['modules/fleet/pages/FleetSettingsPage.tsx'],
   ['modules/fleet/pages/FuelReconcilePage.tsx'],
+  ['modules/fleet/pages/FuelNumberRepairPage.tsx'],
   ['modules/fleet/pages/LicenseExpenseEditorPage.tsx'],
   ['modules/fleet/pages/LicenseExpenseSetupPage.tsx'],
   ['modules/fleet/pages/NoticeSetupPage.tsx'],
@@ -237,14 +265,26 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/gold/portal/pages/PortalSecurityPage.tsx'],
   ['modules/gold/portal/pages/PortalTransfersPage.tsx'],
   ['modules/hr/announcements/pages/ComposeAnnouncementPage.tsx'],
-  ['modules/hr/attendance/pages/AssignmentsPage.tsx', 'its search and selects are fields of the "add assignment" dialog, reset on success'],
-  ['modules/hr/attendance/pages/EmployeeMonthPage.tsx', '`month` is the month being read on one employee, on a :id route'],
+  [
+    'modules/hr/attendance/pages/AssignmentsPage.tsx',
+    'its search and selects are fields of the "add assignment" dialog, reset on success',
+  ],
+  [
+    'modules/hr/attendance/pages/EmployeeMonthPage.tsx',
+    '`month` is the month being read on one employee, on a :id route',
+  ],
   ['modules/hr/attendance/pages/MyAttendancePage.tsx'],
   ['modules/hr/attendance/pages/ShiftsPage.tsx'],
   ['modules/hr/contracts/pages/ContractCreatePage.tsx'],
-  ['modules/hr/contracts/pages/ContractDetailPage.tsx', 'the select assigns a category to this contract'],
+  [
+    'modules/hr/contracts/pages/ContractDetailPage.tsx',
+    'the select assigns a category to this contract',
+  ],
   ['modules/hr/contracts/pages/TemplateEditorPage.tsx'],
-  ['modules/hr/contracts/pages/TemplatesListPage.tsx', 'the select edits one template\u2019s language'],
+  [
+    'modules/hr/contracts/pages/TemplatesListPage.tsx',
+    'the select edits one template\u2019s language',
+  ],
   ['modules/hr/contracts/pages/VerifyContractPage.tsx'],
   ['modules/hr/employee-loans/pages/MyLoansPage.tsx'],
   ['modules/hr/employee-management/employee-files/pages/EmployeeFileDetailPage.tsx'],
@@ -255,7 +295,10 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/hr/leave-management/pages/ApprovalsInboxPage.tsx'],
   ['modules/hr/leave-management/pages/HolidaysPage.tsx'],
   ['modules/hr/leave-management/pages/LeaveRequestDetailPage.tsx'],
-  ['modules/hr/leave-management/pages/LeaveTypesPage.tsx', 'the selects are fields of the leave-type form'],
+  [
+    'modules/hr/leave-management/pages/LeaveTypesPage.tsx',
+    'the selects are fields of the leave-type form',
+  ],
   ['modules/hr/leave-management/pages/MyLeavePage.tsx'],
   ['modules/hr/leave-management/pages/TeamCalendarPage.tsx'],
   ['modules/hr/medical/pages/MyMedicalPage.tsx'],
@@ -269,8 +312,14 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/hr/recruitment/applicant-portal/pages/ApplicantPortalPage.tsx'],
   ['modules/hr/recruitment/applicants/pages/ApplicantDetailPage.tsx'],
   ['modules/hr/recruitment/applicants/pages/ApplicantFormPage.tsx'],
-  ['modules/hr/recruitment/evaluation-batches/pages/EvaluationBatchDetailPage.tsx', 'the select records a grade'],
-  ['modules/hr/recruitment/evaluations/pages/EvaluationDetailPage.tsx', 'the select records a decision'],
+  [
+    'modules/hr/recruitment/evaluation-batches/pages/EvaluationBatchDetailPage.tsx',
+    'the select records a grade',
+  ],
+  [
+    'modules/hr/recruitment/evaluations/pages/EvaluationDetailPage.tsx',
+    'the select records a decision',
+  ],
   ['modules/hr/recruitment/evaluations/pages/EvaluationPhasesPage.tsx'],
   ['modules/hr/recruitment/hiring-documents/pages/HiringDocsDetailPage.tsx'],
   ['modules/hr/recruitment/interviews/pages/InterviewDetailPage.tsx'],
@@ -290,8 +339,14 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/it/pages/MaintenanceOrderDetailPage.tsx'],
   ['modules/it/pages/TicketDetailPage.tsx'],
   ['modules/operations/mobile/StopDetailPage.tsx'],
-  ['modules/operations/pages/BankReportPage.tsx', '`from`/`to` arrive from the link; the page renders no control for them'],
-  ['modules/operations/pages/CaptainReportPage.tsx', '`from`/`to` arrive from the link; the page renders no control for them'],
+  [
+    'modules/operations/pages/BankReportPage.tsx',
+    '`from`/`to` arrive from the link; the page renders no control for them',
+  ],
+  [
+    'modules/operations/pages/CaptainReportPage.tsx',
+    '`from`/`to` arrive from the link; the page renders no control for them',
+  ],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
   ['modules/operations/pages/SecuredBacklogPage.tsx', 'reads only `page`'],
   ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
@@ -312,7 +367,10 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/organization/sections/pages/SectionDetailPage.tsx'],
   ['modules/organization/shared/UnitFormPage.tsx'],
   ['modules/system-admin/notification-templates/pages/TemplateDetailPage.tsx'],
-  ['modules/system-admin/roles/pages/RoleDetailPage.tsx', '`tab` and `page` on one role, on a :id route'],
+  [
+    'modules/system-admin/roles/pages/RoleDetailPage.tsx',
+    '`tab` and `page` on one role, on a :id route',
+  ],
   ['modules/system-admin/users/pages/UserDetailPage.tsx'],
   ['platform/account/PreferencesPage.tsx'],
   ['platform/account/SecurityPage.tsx'],

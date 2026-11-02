@@ -1,7 +1,15 @@
 // «صوره كل فيزا» — the photo of a fuel card: on the card's line a frame with the eye (or the upload
 // for a card with none), and the dialog that shows it large, replaces it and deletes it. The bytes
 // are guarded, so they are fetched with the session and shown as an object URL.
-import { useEffect, useState } from 'react';
+//
+// 6d: the photo shows the PIN written on the card's sticker, so the FULL photo opens only for a
+// holder of `fleetFuelCard.reveal` («إظهار كلمة سر بطاقة الوقود») — the server refuses it to anyone
+// else (403 on the card's endpoint, 404 through the Files screens), and this screen never asks for
+// it without the grant. Everyone else sees the small blurred thumbnail (`GET …/image/thumb`,
+// `fleetFuelCard.view`), not zoomable, with a line saying who sees the full photo. A photo uploaded
+// before 6d has no thumbnail until an edit + reveal holder opens it; it is then made from the full
+// photo and sent back once, silently.
+import { useEffect, useRef, useState } from 'react';
 import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { type FleetFuelCardDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -15,40 +23,142 @@ import { CloudUploadIcon } from './row-action-icons';
 import { ZoomableImage } from './ZoomableImage';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { fetchFuelCardImage } from '../api/fleet-api';
-import { useDeleteFuelCardImage, useUploadFuelCardImage } from '../api/fleet-queries';
+import {
+  useBackfillFuelCardThumb,
+  useDeleteFuelCardImage,
+  useFuelCardThumb,
+  useUploadFuelCardImage,
+} from '../api/fleet-queries';
+import { makeFuelCardThumb } from '../lib/fuel-card-thumb';
 
-const useFuelCardImageUrl = (
+/** The grant that opens the FULL card photo — the one that shows the PIN. */
+export const FULL_PHOTO_GRANT = 'fleetFuelCard.reveal';
+
+/**
+ * The FULL photo's bytes as an object URL — fetched only while `allowed` (the reader holds
+ * `fleetFuelCard.reveal`) and a photo is there; `blob` is kept for the thumbnail back-fill.
+ */
+export const useFuelCardImageUrl = (
   cardId: string,
   fileId: string | null,
-): { url: string | null; loading: boolean; failed: boolean } => {
-  const [state, setState] = useState<{ url: string | null; loading: boolean; failed: boolean }>({
-    url: null,
-    loading: false,
-    failed: false,
-  });
+  allowed: boolean,
+): { url: string | null; blob: Blob | null; loading: boolean; failed: boolean } => {
+  const [state, setState] = useState<{
+    url: string | null;
+    blob: Blob | null;
+    loading: boolean;
+    failed: boolean;
+  }>({ url: null, blob: null, loading: false, failed: false });
   useEffect(() => {
-    if (fileId === null || cardId === '') {
-      setState({ url: null, loading: false, failed: false });
+    if (!allowed || fileId === null || cardId === '') {
+      setState({ url: null, blob: null, loading: false, failed: false });
       return;
     }
     let objectUrl: string | null = null;
     let cancelled = false;
-    setState({ url: null, loading: true, failed: false });
+    setState({ url: null, blob: null, loading: true, failed: false });
     void fetchFuelCardImage(cardId)
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
-        setState({ url: objectUrl, loading: false, failed: false });
+        setState({ url: objectUrl, blob, loading: false, failed: false });
       })
       .catch(() => {
-        if (!cancelled) setState({ url: null, loading: false, failed: true });
+        if (!cancelled) setState({ url: null, blob: null, loading: false, failed: true });
       });
     return () => {
       cancelled = true;
       if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
     };
-  }, [cardId, fileId]);
+  }, [cardId, fileId, allowed]);
   return state;
+};
+
+/** A blob as an object URL for as long as it is shown; revoked when it changes or goes. */
+const useObjectUrl = (blob: Blob | undefined): string | null => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (blob === undefined) {
+      setUrl(null);
+      return undefined;
+    }
+    const made = URL.createObjectURL(blob);
+    setUrl(made);
+    return () => URL.revokeObjectURL(made);
+  }, [blob]);
+  return url;
+};
+
+/**
+ * The thumbnail as an object URL (`fleetFuelCard.view`) — `cardId` null, or `enabled` false: none.
+ * The bytes are cached under the cards' subtree, so the same card's thumbnail is fetched once.
+ */
+export const useFuelCardThumbUrl = (
+  cardId: string | null,
+  enabled = true,
+): { url: string | null; loading: boolean; failed: boolean } => {
+  const thumb = useFuelCardThumb(cardId, enabled);
+  const url = useObjectUrl(thumb.data);
+  return { url, loading: thumb.isLoading, failed: thumb.isError };
+};
+
+/**
+ * 6d: a photo uploaded before this release has no thumbnail. When an edit + reveal holder has its
+ * full photo open, the thumbnail is made from it and sent once — best effort, silent.
+ */
+const useThumbBackfill = (card: FleetFuelCardDto | null, blob: Blob | null): void => {
+  const can = useCan();
+  const backfill = useBackfillFuelCardThumb();
+  const tried = useRef<string | null>(null);
+  const needed =
+    card !== null &&
+    card.image !== null &&
+    card.imageThumb === false &&
+    blob !== null &&
+    can('fleetFuelCard.edit') &&
+    can(FULL_PHOTO_GRANT);
+  const key = card === null ? null : `${card.id}:${card.image?.fileId ?? ''}`;
+  useEffect(() => {
+    if (!needed || card === null || blob === null || tried.current === key) return;
+    tried.current = key;
+    void makeFuelCardThumb(blob).then((thumb) => {
+      if (thumb !== null) backfill.mutate({ id: card.id, thumb });
+    });
+    // `backfill` changes identity on every render; the guard above keeps this to once per photo.
+  }, [needed, key, blob]);
+};
+
+/** The small thumbnail alone — what a reader without `fleetFuelCard.reveal` sees of the photo. */
+export const FuelCardThumbOnly = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
+  const t = useT();
+  const { url, loading } = useFuelCardThumbUrl(
+    card.id,
+    card.image !== null && card.imageThumb === true,
+  );
+  return (
+    <div className="flex flex-col items-center gap-3 py-2" data-fuel-image-thumb-only={card.id}>
+      {url !== null ? (
+        <img
+          src={url}
+          alt={t('fleet.fuelCards.image.thumbAlt')}
+          data-fuel-image-thumb={card.id}
+          className="h-[100px] w-[160px] rounded-lg border border-slate-200 object-cover shadow-sm dark:border-slate-700"
+        />
+      ) : loading ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
+      ) : (
+        <p
+          className="text-sm text-slate-500 dark:text-slate-400"
+          data-fuel-image-no-thumb={card.id}
+        >
+          {t('fleet.fuelCards.image.noThumb')}
+        </p>
+      )}
+      <p className="text-center text-[13px] text-slate-500 dark:text-slate-400">
+        {t('fleet.fuelCards.image.thumbOnly')}
+      </p>
+    </div>
+  );
 };
 
 /** A file input dressed as a button: picking a file uploads it onto the card. */
@@ -100,8 +210,15 @@ export const FuelCardImageDialog = ({
   const t = useT();
   const can = useCan();
   const mayEdit = can('fleetFuelCard.edit');
+  // 6d: the full photo (it shows the PIN) only for a holder of the reveal grant.
+  const mayReveal = can(FULL_PHOTO_GRANT);
   const fileId = card?.image?.fileId ?? null;
-  const { url, loading, failed } = useFuelCardImageUrl(card?.id ?? '', open ? fileId : null);
+  const { url, blob, loading, failed } = useFuelCardImageUrl(
+    card?.id ?? '',
+    open ? fileId : null,
+    mayReveal,
+  );
+  useThumbBackfill(open ? card : null, blob);
   const remove = useDeleteFuelCardImage();
   const [confirming, setConfirming] = useState(false);
   const confirmDelete = async (): Promise<void> => {
@@ -149,6 +266,7 @@ export const FuelCardImageDialog = ({
           </>
         }
       >
+        {!mayReveal && card !== null && card.image !== null && <FuelCardThumbOnly card={card} />}
         {loading && (
           <p className="text-sm text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
         )}
@@ -237,7 +355,8 @@ export const FuelCardPhotoPanel = ({
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const { url } = useFuelCardImageUrl(card.id, card.image?.fileId ?? null);
+  // 6d: the preview box is always the blurred thumbnail (or the icon) — never the full photo.
+  const { url } = useFuelCardThumbUrl(card.id, card.image !== null && card.imageThumb === true);
   const image = card.image;
   return (
     <div
@@ -249,7 +368,8 @@ export const FuelCardPhotoPanel = ({
           {url !== null ? (
             <img
               src={url}
-              alt={t('fleet.fuelCards.image.title')}
+              alt={t('fleet.fuelCards.image.thumbAlt')}
+              data-fuel-photo-thumb={card.id}
               className="h-full w-full object-cover"
             />
           ) : (

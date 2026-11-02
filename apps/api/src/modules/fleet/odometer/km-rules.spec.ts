@@ -5,6 +5,7 @@ import {
   classifyRows,
   closedAverage,
   confirmedThrough,
+  inWorkshopThroughout,
   kmBreakdownOf,
   kmBuckets,
   kmDays,
@@ -57,6 +58,7 @@ const car = (id: string, over: Partial<KmVehicle> = {}): KmVehicle => ({
   branchId: 'B1',
   typeId: 'T1',
   visit: null,
+  workshopThroughout: false,
   ...over,
 });
 
@@ -373,7 +375,8 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
       car('201'), // (a) no row
       car('202'), // (b) only its open row
       car('203'), // (c) only a day recorded without a counter
-      car('204', { visit: { inDate: '2026-09-20', outDate: null } }), // (d) in the workshop throughout
+      // (d) in the workshop throughout
+      car('204', { visit: { inDate: '2026-09-20', outDate: null }, workshopThroughout: true }),
       car('205', { status: 'outOfService' }), // (e) not active now
       car('206', { joinedAt: '2026-11-05' }), // (f) joined after the period
       car('207', { status: 'disposed' }), // disposed long ago, no row: no news
@@ -408,6 +411,27 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
   it('a visit that ended before the period does not count as the workshop throughout', () => {
     const outOfShop = car('210', { visit: { inDate: '2026-09-01', outDate: '2026-10-03' } });
     expect(noReadingReason(outOfShop, undefined, range)).toBe('noRow');
+  });
+
+  it('(d) is the period’s own question: a newer, shorter visit does not hide an older one that covered it', () => {
+    // 211: in from 20 September to 1 November (covers October), then in again since 2 November —
+    // its NEWEST visit began after the period did, yet it was in the workshop all October.
+    const covered = car('211', {
+      visit: { inDate: '2026-11-02', outDate: null },
+      workshopThroughout: true,
+    });
+    expect(inWorkshopThroughout(covered)).toBe(true);
+    expect(noReadingReason(covered, undefined, range)).toBe('inWorkshop');
+    const out = breakdown({ vehicles: fleet(car('201'), covered) });
+    expect(out.withoutReadings.map((r) => [r.code, r.reason])).toEqual([
+      ['201', 'noRow'],
+      ['211', 'inWorkshop'],
+    ]);
+    // Y leaves it out: one car, not two.
+    expect(out.coverage).toEqual({ withReadings: 0, of: 1 });
+    // The newest visit alone does not make it (d): it only says «في الورشة منذ».
+    const newestOnly = car('212', { visit: { inDate: '2026-09-20', outDate: null } });
+    expect(noReadingReason(newestOnly, undefined, range)).toBe('noRow');
   });
 });
 

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { Provider } from 'react-redux';
+import { QueryClient } from '@tanstack/react-query';
 import { configureStore } from '@reduxjs/toolkit';
 import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
@@ -15,6 +16,7 @@ import {
   NOW_STALE_MS,
   PERIOD_STALE_MS,
   freshness,
+  midnightClock,
   msUntilCairoMidnight,
   periodLiveness,
 } from './lib/fleet-dashboard-refresh';
@@ -26,7 +28,7 @@ import {
   toPeriodQuery,
 } from './lib/fleet-dashboard-url';
 import { RefreshTools } from './components/fleet-dashboard/dash-shell';
-import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
+import { fleetDashboardKeys, invalidateAtCairoMidnight } from './api/fleet-dashboard-queries';
 import { ar } from './fleet-dashboard-fixtures';
 
 const HOUR = 60 * 60 * 1000;
@@ -262,6 +264,45 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     expect(source('api/fleet-dashboard-queries.ts')).toContain(
       'void qc.invalidateQueries({ queryKey: fleetDashboardKeys.livePeriod });',
     );
+  });
+
+  it('midnight moves «الشهر الماضي» too — its key names another month from the 1st', () => {
+    // 31 October, 23:50 in Cairo: the page holds R1, this month, last month and an old custom range.
+    const qc = new QueryClient();
+    const keys = {
+      now: fleetDashboardKeys.now,
+      thisMonth: fleetDashboardKeys.period('live', { preset: 'thisMonth' }),
+      lastMonth: fleetDashboardKeys.period('past', { preset: 'lastMonth' }),
+      lastMonthByType: fleetDashboardKeys.period('past', { preset: 'lastMonth', typeIds: ['t'] }),
+      oldRange: fleetDashboardKeys.period('past', {
+        preset: 'custom',
+        from: '2026-08-01',
+        to: '2026-08-31',
+      }),
+    };
+    for (const key of Object.values(keys)) qc.setQueryData(key, { asOf: '2026-10-31T21:50:00Z' });
+    invalidateAtCairoMidnight(qc);
+    const moved = (key: readonly unknown[]): boolean | undefined =>
+      qc.getQueryState(key)?.isInvalidated;
+    expect(moved(keys.now)).toBe(true);
+    expect(moved(keys.thisMonth)).toBe(true);
+    expect(moved(keys.lastMonth)).toBe(true);
+    expect(moved(keys.lastMonthByType)).toBe(true);
+    // A range that ended before today is the same range tomorrow.
+    expect(moved(keys.oldRange)).toBe(false);
+  });
+
+  it('the timer runs from R1, or from R2 for a reader who holds only the period tabs', () => {
+    const r1 = { data: { asOf: '2026-11-30T08:00:00.000Z' }, dataUpdatedAt: 111 };
+    const r2 = { data: { asOf: '2026-11-30T09:00:00.000Z' }, dataUpdatedAt: 222 };
+    const none = { data: undefined, dataUpdatedAt: 0 };
+    expect(midnightClock(r1, r2)).toEqual({ asOf: r1.data.asOf, fetchedAt: 111 });
+    // e.g. only `fleetReceipt.view`: no R1 at all — R2's echo still reaches Cairo's midnight.
+    expect(midnightClock(none, r2)).toEqual({ asOf: r2.data.asOf, fetchedAt: 222 });
+    expect(midnightClock(none, none)).toEqual({ asOf: undefined, fetchedAt: 0 });
+    const page = source('pages/FleetDashboardPage.tsx');
+    expect(page).toContain('const midnight = midnightClock(nowQ, periodQ);');
+    expect(page).toContain('useCairoMidnightRefresh(midnight.asOf, midnight.fetchedAt);');
   });
 
   it('a custom range that ended is `past` from the first render — R1’s `today` or the Cairo day', () => {

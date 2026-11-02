@@ -4,7 +4,9 @@
 //      at the next Cairo midnight — «today» turns over there, so every figure of the day must too.
 //   R2 (the period tabs): 5 minutes fresh, the previous answer kept on screen while a new filter
 //      loads. A range wholly in the past is a different key (`past`) from a live one, so the realtime
-//      registry can leave a closed month alone.
+//      registry can leave a closed month alone. Midnight moves the live ones and «الشهر الماضي»
+//      (the same key names another month from the 1st); the timer runs from R1, or from R2 for a
+//      reader who holds only R2.
 //
 // Everything here is pure: the page passes the clock in, so the specs can pin it.
 import { nextCairoMidnight, type FleetDashboardPeriodQuery } from '@ecms/contracts';
@@ -31,6 +33,24 @@ export const msUntilCairoMidnight = (asOf: string, fetchedAt: number, now: numbe
   const toMidnight = nextCairoMidnight(new Date(serverNow)).getTime() - serverNow;
   return Math.max(MIN_DELAY_MS, toMidnight - Math.max(0, now - fetchedAt));
 };
+
+/** A read as the timer needs it: its echoed server clock and when it reached this browser. */
+interface Answered {
+  data?: { asOf: string } | undefined;
+  dataUpdatedAt: number;
+}
+
+/**
+ * The answer the midnight timer measures from: R1's when the reader holds it, else R2's (the period
+ * read echoes `asOf` too) — so a reader of the period tabs only still turns over at midnight.
+ */
+export const midnightClock = (
+  now: Answered,
+  period: Answered,
+): { asOf: string | undefined; fetchedAt: number } =>
+  now.data !== undefined
+    ? { asOf: now.data.asOf, fetchedAt: now.dataUpdatedAt }
+    : { asOf: period.data?.asOf, fetchedAt: period.dataUpdatedAt };
 
 export type PeriodLiveness = 'past' | 'live';
 

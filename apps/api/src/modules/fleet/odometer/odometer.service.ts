@@ -549,7 +549,8 @@ class FleetOdometerService {
    * cars that may not be ranked and why. The rules are `km-rules.ts`; this only gathers the facts.
    *
    * Reads: the rows dated in [from, to + 1] (never a car's whole history), the cars of the set and of
-   * those rows, each car's newest workshop visit, and the branch / type names.
+   * those rows, the cars a visit held throughout the period (R-16 (d) — any visit, not the newest),
+   * each car's newest workshop visit («في الورشة منذ»), and the branch / type names.
    */
   async kmBreakdown(
     query: OdometerKmQuery,
@@ -570,8 +571,10 @@ class FleetOdometerService {
     ]);
     const rowCars = rows.flatMap((row) => (row.vehicleId === null ? [] : [row.vehicleId]));
     const ids = [...new Set([...(setIds ?? everyLiveCar), ...rowCars])];
-    const [docs, visits, branches] = await Promise.all([
+    const range = { from: query.from, to: query.to };
+    const [docs, throughout, visits, branches] = await Promise.all([
       fleetVehicleRepository.findByIdsSystem(ids),
+      fleetMaintenanceRepository.vehicleIdsInWorkshopThroughout(ids, range),
       fleetMaintenanceRepository.newestVisits(ids),
       branchRepository.listAll(),
     ]);
@@ -596,6 +599,7 @@ class FleetOdometerService {
                     inDate: ymdOf(visit.inDate),
                     outDate: visit.outDate === null ? null : ymdOf(visit.outDate),
                   },
+            workshopThroughout: throughout.has(id),
           },
         ];
       }),
@@ -614,7 +618,7 @@ class FleetOdometerService {
       rows,
       vehicles,
       setIds,
-      range: { from: query.from, to: query.to },
+      range,
       today: ctx.today,
       staleDays: ctx.staleDays,
       byType,

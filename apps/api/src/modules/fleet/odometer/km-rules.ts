@@ -296,8 +296,14 @@ export interface KmVehicle {
   joinedAt: string;
   branchId: string | null;
   typeId: string | null;
-  /** The car's newest workshop visit by check-in day, or `null`. */
+  /** The car's newest workshop visit by check-in day, or `null` — for «في الورشة منذ» only. */
   visit: { inDate: string; outDate: string | null } | null;
+  /**
+   * (d) — SOME visit held it from the first day of the period to the last (still open counts),
+   * asked of the period itself (`vehicleIdsInWorkshopThroughout`), never read off `visit`: a later
+   * visit must not hide an older one that covered a past period.
+   */
+  workshopThroughout: boolean;
 }
 
 /** What one car's rows of the period hold. */
@@ -326,14 +332,8 @@ export const activeNow = (car: KmVehicle): boolean => !car.isDeleted && car.stat
 /** (f) — it joined the fleet after the period ended. */
 export const joinedAfter = (car: KmVehicle, to: string): boolean => car.joinedAt > to;
 
-/** (d) — one visit held it from the first day of the period to the last (still open counts). */
-export const inWorkshopThroughout = (
-  car: KmVehicle,
-  range: { from: string; to: string },
-): boolean =>
-  car.visit !== null &&
-  car.visit.inDate <= range.from &&
-  (car.visit.outDate === null || car.visit.outDate >= range.to);
+/** (d) — a visit held it from the first day of the period to the last (still open counts). */
+export const inWorkshopThroughout = (car: KmVehicle): boolean => car.workshopThroughout;
 
 /**
  * Why a car of the set has no valid reading in the period — ONE reason, the first that applies:
@@ -350,7 +350,7 @@ export const noReadingReason = (
   if ((facts?.valid ?? 0) > 0) return null;
   if (joinedAfter(car, range.to)) return 'joinedAfter';
   if (!activeNow(car)) return 'notActive';
-  if (inWorkshopThroughout(car, range)) return 'inWorkshop';
+  if (inWorkshopThroughout(car)) return 'inWorkshop';
   if ((facts?.open ?? 0) > 0) return 'onlyOpen';
   if ((facts?.noCounter ?? 0) > 0) return 'onlyNoCounter';
   if ((facts?.invalid ?? 0) > 0) return 'onlyInvalid';
@@ -377,7 +377,7 @@ export const byKmThenCode =
 
 /** May be measured against the others: active now, and neither (d) nor (f). */
 const eligible = (car: KmVehicle, range: { from: string; to: string }): boolean =>
-  activeNow(car) && !inWorkshopThroughout(car, range) && !joinedAfter(car, range.to);
+  activeNow(car) && !inWorkshopThroughout(car) && !joinedAfter(car, range.to);
 
 // ── The whole breakdown (tabs 6–8) ──────────────────────────────────────────────────────────────
 

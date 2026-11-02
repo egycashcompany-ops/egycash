@@ -92,6 +92,7 @@ import {
   licenceCheckLinks,
   missionTone,
   readView,
+  reasonChips,
   reasonSubtotals,
   UNSAVED_ROW,
   visibleRows,
@@ -498,7 +499,7 @@ export const RosterPage = (): JSX.Element => {
     [shown, search, missionsKey, view, sortParam],
   );
 
-  const filtered = search !== '' || missions.length > 0 || view !== null;
+  const filtered = search !== '' || missions.length > 0 || view !== null || reasons.length > 0;
   /** Every car the board reports on, as the picker's options — no request for what is on screen. */
   const codeOptions = useMemo(
     () => shown.map((row) => ({ value: row.code, label: row.code })),
@@ -510,7 +511,7 @@ export const RosterPage = (): JSX.Element => {
    * `date` is deliberately not cleared. It is not a filter: it is what the screen is ABOUT, and a
    * reset that jumped the dispatcher back to today would throw away the day they navigated to.
    */
-  const resetFilters = (): void => patch({ q: null, mission: null, view: null });
+  const resetFilters = (): void => patch({ q: null, mission: null, view: null, unavailable: null });
 
   // Ascending, then descending, then out of the order altogether — and a column the table
   // is NOT sorted by joins the end of it rather than replacing what is there.
@@ -719,6 +720,8 @@ export const RosterPage = (): JSX.Element => {
   // The unavailable panel: per-reason subtotals of the whole day, and the reason filter on top of
   // the name search — both display only, like the search.
   const subtotals = useMemo(() => reasonSubtotals(unavailable), [unavailable]);
+  // …and a pressed chip (0) for a reason asked for that nobody has today, so it can be taken off.
+  const chips = useMemo(() => reasonChips(subtotals, reasons), [subtotals, reasonsKey]);
   const shownUnavailable = useMemo(
     () => byReasons(filterDrivers(unavailable, searchIndex, unavailableSearch), reasons),
     [unavailable, searchIndex, unavailableSearch, reasonsKey],
@@ -1228,8 +1231,8 @@ export const RosterPage = (): JSX.Element => {
         </div>
 
         {/* Offered only when there is something to undo — a reset beside no filters is one more
-            control to read and nothing to press. Clears the three view filters together; the day
-            is not one of them. */}
+            control to read and nothing to press. Clears the view filters together — the search,
+            the mission, the view and the unavailable panel's reasons; the day is not one of them. */}
         {filtered && (
           <button
             type="button"
@@ -1512,13 +1515,13 @@ export const RosterPage = (): JSX.Element => {
               {/* One subtotal per reason, each a filter: «غائبون اليوم: التمامات X · إجازة Y» is
                   the dashboard's figure, and these chips are where its links land. They add up to
                   the count beside the title. */}
-              {subtotals.length > 0 && (
+              {chips.length > 0 && (
                 <div
                   role="group"
                   aria-label={t('fleet.roster.reasonFilter')}
                   className="flex flex-wrap justify-center gap-1"
                 >
-                  {subtotals.map(({ reason, count }) => {
+                  {chips.map(({ reason, count }) => {
                     const on = reasons.includes(reason);
                     return (
                       <button
@@ -1549,8 +1552,13 @@ export const RosterPage = (): JSX.Element => {
             {board === undefined || unavailable.length === 0 ? (
               <EmptyState title={t('fleet.roster.unavailableEmpty')} />
             ) : shownUnavailable.length === 0 ? (
+              // Emptied by the reason chips alone (nothing typed): say so, not «no search match».
               <p className="px-3 pb-3 text-center text-sm text-slate-600 dark:text-slate-300">
-                {t('fleet.fixedRoster.driverSearchEmpty')}
+                {t(
+                  unavailableSearch === '' && reasons.length > 0
+                    ? 'fleet.roster.reasonFilterEmpty'
+                    : 'fleet.fixedRoster.driverSearchEmpty',
+                )}
               </p>
             ) : (
               <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">

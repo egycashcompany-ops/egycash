@@ -394,6 +394,27 @@ describe('the unavailable panel — per-reason subtotals and the reason filter',
     }
   });
 
+  it('a reason nobody has today still shows its chip, pressed at 0, and says why the list is empty', () => {
+    // The dashboard links its zeros too: «إجازة 0» opens `unavailable=hrLeave` on a day without leave.
+    const board = {
+      ...FLAG_BOARD,
+      unavailableDrivers: FLAG_BOARD.unavailableDrivers.filter((d) => d.reason !== 'hrLeave'),
+    };
+    const markup = render('&unavailable=hrLeave', board);
+    const at = markup.indexOf('data-reason-filter="hrLeave"');
+    expect(at, 'the asked reason has its chip').toBeGreaterThan(-1);
+    const chip = markup.slice(at, markup.indexOf('</button>', at));
+    expect(chip).toContain('aria-pressed="true"');
+    expect(chip).toContain('٠');
+    expect(markup).not.toContain(`data-unavailable-driver="${E.absent}"`);
+    expect(markup).toContain(t('fleet.roster.reasonFilterEmpty'));
+    expect(markup).not.toContain(t('fleet.fixedRoster.driverSearchEmpty'));
+    // «إعادة ضبط» is offered, and takes the reasons off with the other filters.
+    expect(markup).toContain('data-reset-filters="true"');
+    expect(SOURCE).toContain('patch({ q: null, mission: null, view: null, unavailable: null })');
+    expect(render('', board)).not.toContain('data-reset-filters="true"');
+  });
+
   it('is a REMEMBERED filter, written through the URL', () => {
     expect(SOURCE).toContain(
       "const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view', 'unavailable'] as const;",

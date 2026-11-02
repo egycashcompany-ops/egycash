@@ -186,7 +186,12 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
     rosterReady: (): DashLink => roster('roster.ready', { view: 'ready' }),
     rosterUnmanned: (metric = 'roster.unmanned'): DashLink => roster(metric, { view: 'unmanned' }),
     rosterWorkshop: (): DashLink => roster('roster.inWorkshop', { view: 'workshop' }),
-    rosterAvailable: (metric = 'roster.available'): DashLink => roster(metric, {}),
+    /**
+     * The roster's available panel, whose heading counts the licensed drivers the day's board seats
+     * on NO car — T2.6's «بلا سيارة», not its headline. «المتاحون» counts the seated too, and no
+     * screen lists the two together, so the headline has no link (a named exception).
+     */
+    rosterAvailable: (metric = 'roster.availableWithoutVehicle'): DashLink => roster(metric, {}),
     rosterAbsent: (reason: 'fleetUnavailability' | 'hrLeave'): DashLink =>
       roster(reason === 'hrLeave' ? 'roster.absent.leave' : 'roster.absent.attendance', {
         unavailable: reason,
@@ -244,11 +249,22 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
     /** T4.9 / T10.1: the accident's day on the accidents screen. */
     accidentDay: (code: string, day: string, metric = 'recentAccidents.row'): DashLink =>
       at('accidents', { vehicleCodes: [code], from: day, to: day }, metric),
-    /** The two «سجل …» foot links of «آخر ما سُجّل» — the 30-day window the list shows. */
+    /**
+     * The two «سجل …» foot links of «آخر ما سُجّل» — the 30-day window the list shows, and its
+     * branch: the lists are narrowed to the chosen branch on the server, so the screens are too.
+     */
     accidentsRecent: (days: number): DashLink =>
-      at('accidents', { from: addDaysYmd(today, 1 - days), to: today }, 'recentAccidents.all'),
+      at(
+        'accidents',
+        { from: addDaysYmd(today, 1 - days), to: today, ...br },
+        'recentAccidents.all',
+      ),
     visitsRecent: (days: number): DashLink =>
-      at('maintenance', { from: addDaysYmd(today, 1 - days), to: today }, 'recentWorkshop.all'),
+      at(
+        'maintenance',
+        { from: addDaysYmd(today, 1 - days), to: today, ...br },
+        'recentWorkshop.all',
+      ),
 
     // Tab 5 — summaries.
     /** T5.10. */

@@ -634,6 +634,15 @@ describe('R1 parity — tab 2 «الحركة الآن»', () => {
     const board = ok<FleetRosterDayDto>(await get('/fleet/roster', { date: TODAY }));
     const r = now.roster;
     expect(r?.available).toBe(board.availableDrivers.filter((d) => d.licence !== 'expired').length);
+    // «بلا سيارة» is the linked figure (the headline counts the seated too): the roster's available
+    // panel = the licensed drivers the day's board seats on no car.
+    const seated = new Set(
+      board.rows.flatMap((row) => [row.driver1EmployeeId, row.driver2EmployeeId]),
+    );
+    expect(r?.availableWithoutVehicle).toBe(
+      board.availableDrivers.filter((d) => d.licence !== 'expired' && !seated.has(d.employeeId))
+        .length,
+    );
     expect(r?.absent.attendance).toBe(
       board.unavailableDrivers.filter((d) => d.reason === 'fleetUnavailability').length,
     );

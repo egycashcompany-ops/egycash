@@ -311,6 +311,21 @@ describe('the link census — every figure link against the screen it opens', ()
   });
 });
 
+describe('a figure no screen shows is not linked (named exceptions)', () => {
+  it('«المتاحون» has no link — it counts the seated drivers too; «بلا سيارة» opens the roster', () => {
+    // The roster's available panel lists, and counts in its heading, only the licensed drivers
+    // the day's board seats on no car: the dashboard's «بلا سيارة», not its headline.
+    const metrics = new Set(LINKS.map((l) => l.metric));
+    expect(metrics.has('roster.available')).toBe(false);
+    expect(metrics.has('roster.available.balance')).toBe(false);
+    const free = LINKS.filter((l) => l.metric.startsWith('roster.availableWithoutVehicle'));
+    expect(new Set(free.map((l) => l.metric))).toEqual(
+      new Set(['roster.availableWithoutVehicle', 'roster.availableWithoutVehicle.balance']),
+    );
+    for (const link of free) expect(link.href).toBe(`/fleet/roster?date=${TODAY}`);
+  });
+});
+
 // ── The retired old-page spec's pins that no other spec carries ────────────────────────────────
 
 describe('what the retired page spec pinned, kept', () => {

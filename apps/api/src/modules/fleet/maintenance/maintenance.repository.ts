@@ -1,5 +1,5 @@
 import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
-import { type Paginated } from '@ecms/contracts';
+import { addDaysYmd, ymdToUtcDate, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
@@ -162,6 +162,37 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       .lean<{ vehicleId: Types.ObjectId }[]>()
       .exec();
     return new Set(rows.map((row) => String(row.vehicleId)));
+  }
+
+  /**
+   * The visits that held a car from the first day of [from, to] to the last: checked in on or
+   * before `from`, and still open or checked out on or after `to`. R-16 (d) is asked of the period
+   * itself, so ANY visit answers it — an older one that covered the period is not hidden by a later
+   * one, which is what reading the car's newest visit did. Bounded by `ix_vehicle_in`.
+   */
+  workshopThroughoutFilter(
+    vehicleIds: readonly string[],
+    range: { from: string; to: string },
+  ): FilterQuery<FleetMaintenanceVisitDoc> {
+    return {
+      vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+      isDeleted: false,
+      inDate: { $lt: ymdToUtcDate(addDaysYmd(range.from, 1)) },
+      // `outDate: null` also matches an old row without the field — open, as everywhere here.
+      $or: [{ outDate: null }, { outDate: { $gte: ymdToUtcDate(range.to) } }],
+    };
+  }
+
+  /** The cars `workshopThroughoutFilter` answers for — R-16 (d), «في الورشة طوال الفترة». */
+  async vehicleIdsInWorkshopThroughout(
+    vehicleIds: readonly string[],
+    range: { from: string; to: string },
+  ): Promise<ReadonlySet<string>> {
+    if (vehicleIds.length === 0) return new Set();
+    const ids = await this.model
+      .distinct('vehicleId', this.workshopThroughoutFilter(vehicleIds, range))
+      .exec();
+    return new Set(ids.map(String));
   }
 
   /**

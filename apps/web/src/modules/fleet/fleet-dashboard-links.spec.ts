@@ -254,9 +254,19 @@ describe('the branch and the vehicle set travel as filters', () => {
       NOW_BRANCH.drivers(),
       NOW_BRANCH.driverLicencesExpired(),
       NOW_BRANCH.violationsUnknown(2026),
+      // «سجل الحوادث» / «سجل الزيارات»: the lists above them are the branch's.
+      NOW_BRANCH.accidentsRecent(30),
+      NOW_BRANCH.visitsRecent(30),
     ]) {
       expect(parse(link).params.get('branch'), link.to).toBe('b1');
     }
+    expect(parse(NOW.accidentsRecent(30)).params.has('branch')).toBe(false);
+    expect(parse(NOW.visitsRecent(30)).params.has('branch')).toBe(false);
+    expect(Object.fromEntries(parse(NOW_BRANCH.visitsRecent(30)).params)).toEqual({
+      from: addDaysYmd(TODAY, -29),
+      to: TODAY,
+      branch: 'b1',
+    });
     // The company-wide sources take no branch (fuel, notices).
     expect(parse(NOW_BRANCH.charging('low')).params.has('branch')).toBe(false);
     expect(parse(NOW_BRANCH.noticesOpen()).params.has('branch')).toBe(false);

@@ -39,7 +39,7 @@ import {
   toPeriodQuery,
   type PeriodFilters,
 } from '../lib/fleet-dashboard-url';
-import { periodLiveness } from '../lib/fleet-dashboard-refresh';
+import { midnightClock, periodLiveness } from '../lib/fleet-dashboard-refresh';
 import {
   alertLines,
   alertSummary,
@@ -127,7 +127,6 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
 
   const reads = dashboardReads(can);
   const nowQ = useFleetDashboardNow(reads.now);
-  useCairoMidnightRefresh(nowQ.data?.asOf, nowQ.dataUpdatedAt);
   // R1's `today` once it has answered; until then (and for a reader without R1) the browser's own
   // Cairo day — so a custom range that ended before today is `past` from the first render, and its
   // key does not flip (and R2 is not read twice) when R1 lands.
@@ -136,6 +135,8 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
     periodLiveness(query, nowQ.data?.today ?? cairoYmd(new Date())),
     reads.period,
   );
+  const midnight = midnightClock(nowQ, periodQ);
+  useCairoMidnightRefresh(midnight.asOf, midnight.fetchedAt);
 
   const answers = { can, now: nowQ.data, period: periodQ.data };
   const visible = visibleTabs(answers);

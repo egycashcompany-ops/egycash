@@ -5,7 +5,9 @@
 //      CAR, a negative row («قراءة تحتاج مراجعة»), an open row, a day without a counter and a row
 //      kept from the old book;
 //   2. `kmBreakdown`: Σ confirmed + Σ span = the summary's km = Σ by branch + the rows without a car,
-//      and a car out of service since the 5th does not keep the 5th pending on the 9th (N = 3);
+//      a car out of service since the 5th does not keep the 5th pending on the 9th (N = 3), and
+//      «في الورشة طوال الفترة» is asked of the period — an older visit that covered October still
+//      counts when a newer, shorter one followed it;
 //   3. `noReadingDigest` (R-07): on 2026-11-01 with N = 3 a last chain date of 2026-10-28 fires and
 //      2026-10-29 does not, a workshop car never fires, a never-read car has its own line;
 //   4. `explain()`: neither period read nor either no-reading step scans the collection.
@@ -37,6 +39,8 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
+import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { fleetMaintenanceRepository } from '../../src/modules/fleet/maintenance/maintenance.repository';
 import { fleetOdometerRepository } from '../../src/modules/fleet/odometer/odometer.repository';
 import { fleetOdometerService } from '../../src/modules/fleet/odometer/odometer.service';
 
@@ -156,6 +160,7 @@ let shop: FleetVehicleDto; // in the workshop since the 20th, last read that day
 let stale28: FleetVehicleDto; // last read 2026-10-28
 let fresh29: FleetVehicleDto; // last read 2026-10-29
 let never: FleetVehicleDto; // never read
+let twice: FleetVehicleDto; // never read; in the workshop 20 Sep → 1 Nov, then again since 2 Nov
 
 const legacy = { isDeleted: false, schemaVersion: 1, createdBy: null, updatedBy: null };
 const day = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
@@ -236,6 +241,7 @@ beforeAll(async () => {
   stale28 = await mkVehicle({ typeId: T1, branchId: B1, operationId: O1 });
   fresh29 = await mkVehicle({ typeId: T1, branchId: B1, operationId: O1 });
   never = await mkVehicle({ typeId: T2, branchId: B2, operationId: O2 });
+  twice = await mkVehicle({ typeId: T1, branchId: B1, operationId: O1 });
 
   await read(
     a1,
@@ -286,6 +292,21 @@ beforeAll(async () => {
     }),
     201,
   );
+  // Two visits the API would not back-date: one that held the car all October (20 September →
+  // 1 November), then a newer, shorter one still open since 2 November — the car's NEWEST visit.
+  const visit = (inDate: string, outDate: string | null) => ({
+    ...legacy,
+    vehicleId: new Types.ObjectId(twice.id),
+    vehicleCode: null,
+    inDate: day(inDate),
+    outDate: outDate === null ? null : day(outDate),
+    workshopId: new Types.ObjectId(workshopId),
+    workTypeId: new Types.ObjectId(workTypeId),
+  });
+  await FleetMaintenanceVisitModel.create([
+    visit('2026-09-20', '2026-11-01'),
+    visit('2026-11-02', null),
+  ]);
   // Rows the API cannot write: a book's negative period on a registry car, and two readings kept
   // from the old book for a car the registry never had.
   await FleetOdometerLogModel.create([
@@ -439,6 +460,33 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
     expect(km.bottom5.map((r) => r.vehicleId)).not.toContain(oos.id);
   });
 
+  it('«في الورشة طوال الفترة» is asked of the period: an older visit covering it counts though a newer one followed', async () => {
+    const ctx = { today: '2026-11-03', staleDays: 3, branchId: null, setNarrows: false };
+    const km = await fleetOdometerService.kmBreakdown(OCTOBER, ctx);
+    const reasons = new Map(km.withoutReadings.map((r) => [r.vehicleId, r.reason]));
+    expect(reasons.get(twice.id)).toBe('inWorkshop');
+    // Y = the set's active cars less (d) and (f): `twice` is not one of them.
+    const set = [a1.code, never.code, twice.code];
+    const narrowed = await fleetOdometerService.kmBreakdown(
+      { ...OCTOBER, vehicleCodes: set },
+      { ...ctx, setNarrows: true },
+    );
+    expect(narrowed.coverage).toEqual({ withReadings: 1, of: 2 });
+    expect(new Map(narrowed.withoutReadings.map((r) => [r.vehicleId, r.reason]))).toEqual(
+      new Map([
+        [never.id, 'noRow'],
+        [twice.id, 'inWorkshop'],
+      ]),
+    );
+    // A period the older visit did not cover from its first day: not (d).
+    const late = await fleetOdometerService.kmBreakdown(
+      { from: '2026-09-15', to: '2026-10-31', vehicleCodes: set },
+      { ...ctx, setNarrows: true },
+    );
+    expect(late.coverage).toEqual({ withReadings: 1, of: 3 });
+    expect(late.withoutReadings.find((r) => r.vehicleId === twice.id)?.reason).toBe('noRow');
+  });
+
   it('with a set and a branch: the km by type, and no «غير مسجّلة» line', async () => {
     const km = await fleetOdometerService.kmBreakdown(
       { ...RANGE, branchIds: [B1] },
@@ -504,6 +552,18 @@ describe('explain() — the period reads never scan the collection', () => {
       const filter = await fleetOdometerService.kmWindowFilter(query);
       noCollscan(await FleetOdometerLogModel.find(filter).explain('queryPlanner'));
     }
+  });
+
+  it('«في الورشة طوال الفترة»: the visits of the asked cars, through ix_vehicle_in', async () => {
+    const filter = fleetMaintenanceRepository.workshopThroughoutFilter(
+      [a1.id, shop.id, twice.id],
+      OCTOBER,
+    );
+    const plan = JSON.stringify(
+      await FleetMaintenanceVisitModel.find(filter).explain('queryPlanner'),
+    );
+    expect(plan).toContain('ix_vehicle_in');
+    expect(plan).not.toContain('COLLSCAN');
   });
 
   it('both no-reading steps', async () => {

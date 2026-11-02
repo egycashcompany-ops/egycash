@@ -363,7 +363,8 @@ const Summary = ({
             <BalanceRow
               label={t('fleet.dash.now.balanceDrivers')}
               figure={roster.available}
-              link={links.rosterAvailable('roster.available.balance')}
+              // Seated or not: the roster lists only the unseated (named exception, see the KPI).
+              link={null}
               note={branch ? <CompanyWide show /> : null}
               parts={[
                 { pct: pct(onVehicle, roster.available), tone: 'teal' },
@@ -386,7 +387,11 @@ const Summary = ({
                     </Small>
                   ),
                   carNoun: noun('car', roster.unmanned),
-                  drivers: <Small>{count(roster.availableWithoutVehicle)}</Small>,
+                  drivers: (
+                    <Small link={links.rosterAvailable('roster.availableWithoutVehicle.balance')}>
+                      {count(roster.availableWithoutVehicle)}
+                    </Small>
+                  ),
                   driverNoun: noun('driver', roster.availableWithoutVehicle),
                 }}
               />
@@ -664,7 +669,10 @@ const Cards = ({
             title={t('fleet.dash.now.availableTitle')}
             icon={I.users}
             figure={roster.available}
-            link={links.rosterAvailable()}
+            // A named exception: «المتاحون» counts the drivers seated on a car too, and the roster
+            // it would open lists only those still without one. That count is the «بلا سيارة» row
+            // below, and it is the one linked.
+            link={null}
             unit={t('fleet.dash.now.availableUnit', { noun: noun('driver', roster.available) })}
             part={roster.available}
             whole={roster.registry}
@@ -706,6 +714,7 @@ const Cards = ({
                       label: t('fleet.dash.now.withoutVehicle'),
                       n: roster.availableWithoutVehicle,
                       tone: 'amber',
+                      link: links.rosterAvailable(),
                     },
                     {
                       label: t('fleet.dash.now.licenceNotRecorded'),

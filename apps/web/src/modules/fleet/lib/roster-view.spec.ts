@@ -23,6 +23,7 @@ import {
   missionTone,
   readFixedView,
   readView,
+  reasonChips,
   reasonSubtotals,
   ROSTER_VIEWS,
   UNSAVED_ROW,
@@ -594,5 +595,16 @@ describe('the day’s drivers — the licence flag and the reasons', () => {
       { reason: 'somethingNew', count: 1 },
     ]);
     expect(subtotals.reduce((sum, s) => sum + s.count, 0)).toBe(day.unavailableDrivers.length);
+  });
+
+  it('draws a chip (0) for a reason asked for that nobody has today, so it can be taken off', () => {
+    const subtotals = reasonSubtotals(day.unavailableDrivers);
+    expect(reasonChips(subtotals, [])).toEqual(subtotals);
+    expect(reasonChips(subtotals, ['hrLeave'])).toEqual(subtotals);
+    expect(reasonChips(subtotals, ['notEmployed', 'hrLeave', 'notEmployed'])).toEqual([
+      ...subtotals,
+      { reason: 'notEmployed', count: 0 },
+    ]);
+    expect(reasonChips([], ['hrLeave'])).toEqual([{ reason: 'hrLeave', count: 0 }]);
   });
 });

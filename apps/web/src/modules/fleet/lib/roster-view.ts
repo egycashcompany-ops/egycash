@@ -226,6 +226,25 @@ export const reasonSubtotals = (
   return [...known, ...unknown].map((reason) => ({ reason, count: counts.get(reason) ?? 0 }));
 };
 
+/**
+ * The reason chips: one per subtotal of the day, AND one per reason asked for that nobody has
+ * today (count 0) — the dashboard links every part, zeros included, so `unavailable=hrLeave` can
+ * arrive on a day without leave. Its chip is drawn pressed, so the filter is seen and one click
+ * takes it off; without it the panel emptied with nothing on screen saying why.
+ */
+export const reasonChips = (
+  subtotals: readonly { reason: string; count: number }[],
+  asked: readonly string[],
+): { reason: string; count: number }[] => {
+  const present = new Set(subtotals.map((s) => s.reason));
+  return [
+    ...subtotals,
+    ...[...new Set(asked)]
+      .filter((reason) => !present.has(reason))
+      .map((reason) => ({ reason, count: 0 })),
+  ];
+};
+
 // ── the STANDING board ─────────────────────────────────────────────────────
 //
 // «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات». The same bar, and now the same

@@ -531,6 +531,14 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The daily report covers a period.** «فى تقرير اليوم بقي عايز كمان تسمح بإنى أختار فترة من إلى ..
+  بس الـ Default يكون اليوم». `/atm/reports/daily` now has «من» and «إلى» on the title's line in
+  place of the one day, today in both by default. For each bank the two tables count every
+  replenishment and maintenance opened from the first day to the last, both included, and how many
+  of them are still open. One day filled in serves as both, a «إلى» before the «من» reads the days
+  between, and a link that names a single day (`?date=`) still opens on that day. An empty period of
+  more than one day says «لا توجد عمليات في هذه الفترة»; a single day, today's included, still says
+  «لا توجد عمليات في هذا اليوم».
 - **System settings: every setting titled and described in Arabic and English, grouped by
   department.** «فى الـ /system/settings في عناوين كتير بالشكل دا atm.mail.branchCategories !! عايز
   أخليهم بالعربي وأظبطهم بالإنجليزي بردو» · «وحاول تظبط الـ UI بتاعت الصفحة دي عموماً وتقسم

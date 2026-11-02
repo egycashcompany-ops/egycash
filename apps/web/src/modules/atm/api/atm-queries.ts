@@ -693,8 +693,8 @@ export const useRestoreAtmMailTickets = () => {
 };
 
 // ── Daily report ────────────────────────────────────────────────────────────
-export const useAtmDailyReport = (date: string | null) =>
+export const useAtmDailyReport = (period: { from: string; to: string }) =>
   useQuery({
-    queryKey: listKey(MODULE, 'reports', { kind: 'daily', date }),
-    queryFn: () => api.atmDailyReport(date),
+    queryKey: listKey(MODULE, 'reports', { kind: 'daily', from: period.from, to: period.to }),
+    queryFn: () => api.atmDailyReport(period),
   });

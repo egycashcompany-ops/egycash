@@ -22,6 +22,7 @@ import {
   FLEET_FUEL_CARD_COMPANIES,
   FLEET_FUEL_TYPES,
   compareFleetVehicleCodes,
+  periodGranularity,
   type FleetCustodyAlertsDto,
   type FleetCustodyCountAmountDto,
   type FleetCustodyDashboardDto,
@@ -69,8 +70,6 @@ export type CustodyDashboardExtras = Omit<FleetCustodyDashboardDto, keyof FleetC
 const round = (value: number): number => Math.round(value * 100) / 100;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** «بالتفصيل يوم بيوم» only while the filter spans a month at most — past it, a column a month. */
-const MAX_DAY_SPAN = 31;
 
 /** The board's own day and month — the UTC slice the table prints. */
 const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
@@ -135,15 +134,14 @@ const monthsBetween = (first: string, last: string): string[] => {
   }
 };
 
-/** By the day when BOTH dates are chosen and at most a month apart; else by the month. */
-export const custodyGranularity = (filter: {
-  from?: Date | undefined;
-  to?: Date | undefined;
-}): 'day' | 'month' => {
-  if (filter.from === undefined || filter.to === undefined) return 'month';
-  const span = (filter.to.getTime() - filter.from.getTime()) / DAY_MS;
-  return span >= 0 && span <= MAX_DAY_SPAN ? 'day' : 'month';
-};
+/**
+ * By the day when BOTH dates are chosen and at most a month apart; else by the month — «بالتفصيل
+ * يوم بيوم» only while the filter spans a month at most, past it a column a month.
+ *
+ * The rule now lives in contracts as `periodGranularity`, so the fleet dashboard's period tabs and
+ * this board draw the same axis for the same range; the name stays for the board's own callers.
+ */
+export const custodyGranularity = periodGranularity;
 
 const emptyBucket = (key: string): FleetCustodyTimeBucketDto => ({
   key,

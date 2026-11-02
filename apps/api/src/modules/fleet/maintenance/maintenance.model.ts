@@ -79,6 +79,20 @@ maintenanceSchema.index(
 maintenanceSchema.index({ vehicleCode: 1, inDate: -1 }, { name: 'ix_code_in', sparse: true });
 maintenanceSchema.index({ vehicleId: 1, outDate: -1 }, { name: 'ix_vehicle_out' });
 maintenanceSchema.index({ workTypeId: 1, outDate: -1 }, { name: 'ix_worktype_out' });
+// The visits by CHECK-IN day across the whole fleet (fleet dashboard plan K-22, P1-05): «visits that
+// started in [from, to]» for the period tabs and the recent records. Every other index leads with the
+// car or the work type, which answers a fleet-wide day question only by walking every car's history.
+// It constrains nothing — a read index, not a rule.
+maintenanceSchema.index({ inDate: -1 }, { name: 'ix_in_date' });
+// Each car's NEWEST visit (`newestVisits`: the alarm board and the period km, every car on every
+// read) in one index seek per car, already in the `$sort` order — never its whole history sorted
+// in memory. Also the period km's «في الورشة طوال الفترة» (`workshopThroughoutFilter`: the asked
+// cars' visits in before the period began). A read index, not a rule.
+maintenanceSchema.index({ vehicleId: 1, inDate: -1, _id: -1 }, { name: 'ix_vehicle_in' });
+// The visits by CHECK-OUT day across the fleet: the recent records' «checked in OR out on or after
+// `since`» (`recentWritten`'s `$or` — each branch needs its own index) and the workshop-now count
+// (`outDate: null`, which also matches an old row without the field). A read index, not a rule.
+maintenanceSchema.index({ outDate: -1 }, { name: 'ix_out_date' });
 
 export const FleetMaintenanceVisitModel = model<FleetMaintenanceVisitDoc>(
   'FleetMaintenanceVisit',

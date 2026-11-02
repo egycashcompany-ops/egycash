@@ -65,6 +65,7 @@ import {
 } from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { VehicleSetChip } from '../components/VehicleSetChip';
 import { DriverCell } from '../components/DriverPerson';
 import {
   CheckInDialog,
@@ -74,6 +75,7 @@ import {
 import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import { useVehicleTypeOptions, vehicleSetReaders } from '../lib/vehicle-set-params';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -83,8 +85,11 @@ const REMEMBERED_FILTERS = [
   'notes',
   'operation',
   'outFrom',
+  'outTo',
   'parts',
   'state',
+  'to',
+  'type',
   'vehicleCodes',
   'workTypes',
   'workshops',
@@ -164,7 +169,18 @@ export const MaintenancePage = (): JSX.Element => {
 
   const from = sp.get('from') ?? '';
   const outFrom = sp.get('outFrom') ?? '';
+  // The LAST day of each window, which a fleet-dashboard figure carries («زيارات الفترة»: checked
+  // in from … to …). The screen's own question is one bound, so a `to` is shown on the bar only
+  // while it narrows — never a filter in force with nothing saying so.
+  const to = sp.get('to') ?? '';
+  const outTo = sp.get('outTo') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
+  // «النوع» — the car's type («الماركة» on the registry), several at once, under the `type`
+  // parameter the vehicles screen carries; resolved by the server like the operation.
+  const typeIds = csv(sp.get('type'));
+  // The types list is its own endpoint's (TYPE_READERS), not this screen's guard.
+  const sets = vehicleSetReaders(can);
+  const typeOptions = useVehicleTypeOptions(sets.types);
   // «انا اقدر اعمل فلتر ب نوع التشغيل» — the car's «التشغيل», several at once, under the same
   // `operation` parameter the vehicles screen carries.
   const operationIds = csv(sp.get('operation'));
@@ -206,8 +222,11 @@ export const MaintenancePage = (): JSX.Element => {
   };
   const hasActiveFilters =
     from !== '' ||
+    to !== '' ||
     outFrom !== '' ||
+    outTo !== '' ||
     vehicleCodes.length > 0 ||
+    typeIds.length > 0 ||
     operationIds.length > 0 ||
     branchIds.length > 0 ||
     drivers.length > 0 ||
@@ -230,8 +249,11 @@ export const MaintenancePage = (): JSX.Element => {
   const filters = useMemo(
     () => ({
       from: from || undefined,
+      to: to || undefined,
       outFrom: outFrom || undefined,
+      outTo: outTo || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
+      typeIds: typeIds.length > 0 ? typeIds : undefined,
       operationIds: operationIds.length > 0 ? operationIds : undefined,
       branchIds: branchIds.length > 0 ? branchIds : undefined,
       workshopIds: workshopIds.length > 0 ? workshopIds : undefined,
@@ -776,8 +798,9 @@ export const MaintenancePage = (): JSX.Element => {
         </div>
 
         {/* The vehicles board's dark bar: every filter's name written in its box, an icon at its
-            start, one row on a computer. Eleven filters, in the order the question is asked — the
-            two dates are ONE caption apiece rather than a range. Below a computer's width the bar
+            start, one row on a computer. Twelve filters, in the order the question is asked — the
+            two dates are ONE caption apiece rather than a range (a dashboard link's last day adds
+            its own box while it narrows). Below a computer's width the bar
             wraps, filling the screen left to right and flowing onto a second line only where the
             viewport actually runs out: no horizontal page scroll, nothing clipped. */}
         <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
@@ -786,8 +809,11 @@ export const MaintenancePage = (): JSX.Element => {
             onClear={() =>
               patch({
                 from: null,
+                to: null,
                 outFrom: null,
+                outTo: null,
                 vehicleCodes: null,
+                type: null,
                 operation: null,
                 branch: null,
                 drv: null,
@@ -800,9 +826,13 @@ export const MaintenancePage = (): JSX.Element => {
             }
           >
             {/* One bound, not a range: the screen asks "checked in from this date". The caption is
-                inside the field — see `dateBound`. */}
+                inside the field — see `dateBound`. A `to` / `outTo` from a dashboard link gets a
+                box of its own beside its bound, there only while it narrows, so it can be seen and
+                cleared. */}
             {dateBound('fleet.maintenance.inRange', from, 'from')}
+            {to !== '' && dateBound('fleet.maintenance.inTo', to, 'to')}
             {dateBound('fleet.maintenance.outRange', outFrom, 'outFrom')}
+            {outTo !== '' && dateBound('fleet.maintenance.outTo', outTo, 'outTo')}
             <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-600 dark:text-emerald-400">
               <VehicleCodeFilter
                 fullWidth
@@ -824,6 +854,27 @@ export const MaintenancePage = (): JSX.Element => {
                 label={t('fleet.vehicles.filters.operation')}
               />
             </FilterWithIcon>
+            {/* «النوع» beside «التشغيل» — the registry's «الماركة» control, the same type list. */}
+            {sets.types ? (
+              <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                <MultiSelect
+                  clearable
+                  fullWidth
+                  className="w-full"
+                  density={TIGHT}
+                  showSelectedValues
+                  chips
+                  label={t('fleet.vehicles.filters.make')}
+                  options={typeOptions}
+                  value={typeIds}
+                  onChange={(next) => patch({ type: next.length === 0 ? null : next.join(',') })}
+                />
+              </FilterWithIcon>
+            ) : (
+              typeIds.length > 0 && (
+                <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+              )
+            )}
             {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized from here. */}
             <FilterWithIcon
               icon={FILTER_ICON.branch}

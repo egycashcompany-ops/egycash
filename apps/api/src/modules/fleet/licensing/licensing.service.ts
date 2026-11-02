@@ -5,6 +5,8 @@
 // see `licensing.model.ts` for why — so a car appears and disappears as an admin renames its
 // licence class, with no migration and no second list to keep in step.
 import {
+  FLEET_LICENSING_PAPERS,
+  paperStage,
   type FleetLicensingRowDto,
   type SetFleetLicensingMark,
 } from '@ecms/contracts';
@@ -84,6 +86,44 @@ class FleetLicensingService {
         taxReceipt: row?.taxReceipt ?? false,
       };
     });
+  }
+
+  /**
+   * R-11 — how many cars on the board have an OPEN insurance paper and an OPEN tax paper: exactly
+   * one of the paper's two ticks set, by the contracts' `paperStage`, the same rule the board's
+   * colours and its stats bar read. The fleet dashboard's «أوراق مفتوحة» (T4.6).
+   *
+   * READ-ONLY, and that is the reason it exists beside `board`: `board` sweeps the voided marks on
+   * every read (`sweepVoided` writes), and a dashboard that refreshes every few minutes must never
+   * write. The sweep only retires marks of cars that are NOT on the board, and only the board's own
+   * cars are read here, so the counts are the ones the board's stats bar shows after its sweep —
+   * the same cars (the «ت» classes, `vehiclesOfClasses` under the reader's scope), the same live
+   * marks, the same four-falses reading of a car nobody ticked anything for.
+   */
+  async openPaperCounts(scope: ScopeSelector): Promise<{ insurance: number; tax: number }> {
+    const classIds = (await fleetCatalogItemRepository.listKind('licenseClass'))
+      .filter((item) => isLicensingClass(item.name.ar))
+      .map((item) => String(item._id));
+    if (classIds.length === 0) return { insurance: 0, tax: 0 };
+    const vehicles = await this.vehiclesOfClasses(classIds, scope);
+    const marks = await fleetVehicleLicensingRepository.findForVehicles(
+      vehicles.map((vehicle) => String(vehicle._id)),
+    );
+    const byVehicle = new Map(marks.map((row) => [String(row.vehicleId), row]));
+    const counts = { insurance: 0, tax: 0 };
+    for (const vehicle of vehicles) {
+      const row = byVehicle.get(String(vehicle._id));
+      const ticks = {
+        insuranceHandover: row?.insuranceHandover ?? false,
+        insuranceReceipt: row?.insuranceReceipt ?? false,
+        taxHandover: row?.taxHandover ?? false,
+        taxReceipt: row?.taxReceipt ?? false,
+      };
+      for (const paper of FLEET_LICENSING_PAPERS) {
+        if (paperStage(ticks, paper) === 'open') counts[paper.key] += 1;
+      }
+    }
+    return counts;
   }
 
   /**

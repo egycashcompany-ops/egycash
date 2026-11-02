@@ -4,6 +4,8 @@
 // No domain events: the frozen surface (§8) has none for profiles; enrollment is configuration.
 import {
   FleetEvents,
+  calendarDayBounds,
+  licenceWindows,
   parseFleetSort,
   type CreateFleetDriverProfile,
   type FleetCatalogKind,
@@ -26,8 +28,47 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { resolveDriverDocsCategoryId } from './driver-files';
 import { fleetDriverProfileRepository } from './driver-profile.repository';
-import { matchesFleetFilters, matchesRosterBranch, sortDriverRows } from './driver-roster';
+import {
+  matchesFleetFilters,
+  matchesRosterBranch,
+  sortDriverRows,
+  type DriverProfileFacts,
+} from './driver-roster';
+import { drivingSeatRoster } from './driving-seat-roster';
 import { DRIVER_PROFILE_KIND, type FleetDriverProfileDoc } from './driver-profile.model';
+
+/**
+ * What the fleet dashboard reads off the drivers registry (R-08, R-10) — counts only, each one the
+ * `totalItems` of a `/fleet/drivers` link (see `registryDigest`).
+ */
+export interface FleetDriverRegistryDigest {
+  /** Everyone in a driving seat (in the HR branch, when one is named) — `?branch=`'s total. */
+  total: number;
+  licence: {
+    /** Expiry on or before today (Q-02: expired ON the expiry day). */
+    expired: number;
+    /** today < expiry ≤ today + warnDays. */
+    expiring: number;
+    /** today + warnDays < expiry ≤ today + 60 (0 when warnDays ≥ 60). */
+    soon: number;
+    /** A profile on file whose licence expiry nobody recorded — «بلا تاريخ». */
+    notRecorded: number;
+    /** A seat-holder with no profile at all — «غير مسجّلين» (no list parameter: named exception). */
+    unregistered: number;
+  };
+  /** `drivers` includes `legacy`: the profiles matched only through the legacy «التخصص» enum. */
+  cash: { drivers: number; legacy: number };
+  atm: { drivers: number; legacy: number };
+}
+
+/** The legacy enum's reading of a profile nobody re-classified — `both` counts on both sides. */
+const legacyKinds = (profile: DriverProfileFacts): { cash: boolean; atm: boolean } => {
+  if (profile.specializationId != null) return { cash: false, atm: false };
+  return {
+    cash: profile.specialization === 'cashTransport' || profile.specialization === 'both',
+    atm: profile.specialization === 'atm' || profile.specialization === 'both',
+  };
+};
 
 const entityRef = (id: string) => ({
   moduleId: 'fleet',
@@ -209,6 +250,72 @@ class FleetDriverProfileService {
     };
   }
 
+  /**
+   * The registry's figures for the fleet dashboard — R-08's population, R-10's windows.
+   *
+   * THE SAME ROWS AND THE SAME FILTER AS THE SCREEN. The population is `drivingSeatRoster()` — the
+   * seat-holders `listRoster` lists — joined to their profiles; the branch is the HR branch, read
+   * by `matchesRosterBranch` exactly as `?branch=` reads it; and every count is the number of rows
+   * `matchesFleetFilters` keeps for the query the figure's link sends. So «منتهية N» is the total
+   * of `/fleet/drivers?licExpBefore=<today>` by construction, not by a second spelling of it.
+   *
+   * The licence windows are `licenceWindows` (contracts), turned into instants by
+   * `calendarDayBounds` — the first and last instant of the named days, the bounds the page sends.
+   *
+   * «نقل أموال» / «ATM» (T3.6/T3.8): the catalog ids the caller resolved (`cashSpecIds`,
+   * `atmSpecIds`) — what `?spec=` matches — plus the profiles still classified only by the legacy
+   * enum, which `?spec=` cannot list and the screen therefore shows as «منها N بتصنيف قديم». A
+   * profile with a catalog specialization is read by it alone; the enum is only a second chance.
+   */
+  async registryDigest(input: {
+    today: string;
+    warnDays: number;
+    branchId: string | null;
+    cashSpecIds: readonly string[];
+    atmSpecIds: readonly string[];
+  }): Promise<FleetDriverRegistryDigest> {
+    const roster = await drivingSeatRoster();
+    const profiles = await fleetDriverProfileRepository.findForEmployeesSystem(
+      roster.map((employee) => employee.employeeId),
+    );
+    const byEmployee = new Map(profiles.map((doc) => [String(doc.employeeId), doc]));
+    const branch = input.branchId === null ? undefined : [input.branchId];
+    const rows = roster
+      .filter((employee) => matchesRosterBranch(employee.branchId, branch))
+      .map((employee) => byEmployee.get(employee.employeeId) ?? null);
+
+    const count = (query: Parameters<typeof matchesFleetFilters>[1]): number =>
+      rows.filter((profile) => matchesFleetFilters(profile, query)).length;
+    const windows = licenceWindows(input.today, input.warnDays);
+    const between = (from: string, to: string): number => {
+      const bounds = calendarDayBounds(from, to);
+      return count({ licenseExpiresFrom: bounds.from, licenseExpiresBefore: bounds.before });
+    };
+
+    const kind = (specIds: readonly string[], legacy: 'cash' | 'atm') => {
+      const viaCatalog = specIds.length === 0 ? 0 : count({ specializationId: [...specIds] });
+      const viaLegacy = rows.filter(
+        (profile) => profile !== null && legacyKinds(profile)[legacy],
+      ).length;
+      return { drivers: viaCatalog + viaLegacy, legacy: viaLegacy };
+    };
+
+    return {
+      total: rows.length,
+      licence: {
+        expired: count({
+          licenseExpiresBefore: calendarDayBounds(windows.expired.to, windows.expired.to).before,
+        }),
+        expiring: between(windows.expiring.from, windows.expiring.to),
+        soon: windows.soon === null ? 0 : between(windows.soon.from, windows.soon.to),
+        notRecorded: count({ licenseNotRecorded: true }),
+        unregistered: rows.filter((profile) => profile === null).length,
+      },
+      cash: kind(input.cashSpecIds, 'cash'),
+      atm: kind(input.atmSpecIds, 'atm'),
+    };
+  }
+
   async list(query: ListFleetDriversQuery): Promise<Paginated<FleetDriverProfileDoc>> {
     const clauses: FilterQuery<FleetDriverProfileDoc>[] = [];
     if (query.specialization !== undefined) {
@@ -220,6 +327,14 @@ class FleetDriverProfileService {
       // `$lte` already excludes null in Mongo's ordering — null sorts below every date — but only
       // by accident of that ordering, so the absence is stated rather than relied upon.
       clauses.push({ licenseExpiresAt: { $ne: null, $lte: query.licenseExpiresBefore } });
+    }
+    if (query.licenseExpiresFrom !== undefined) {
+      clauses.push({ licenseExpiresAt: { $ne: null, $gte: query.licenseExpiresFrom } });
+    }
+    if (query.licenseNotRecorded !== undefined) {
+      clauses.push(
+        query.licenseNotRecorded ? { licenseExpiresAt: null } : { licenseExpiresAt: { $ne: null } },
+      );
     }
     if (query.search !== undefined) {
       // A regex against null matches nothing, which is the right answer: a driver whose number is

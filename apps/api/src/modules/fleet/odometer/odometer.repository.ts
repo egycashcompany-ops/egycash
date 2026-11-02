@@ -1,10 +1,12 @@
-import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { type Paginated } from '@ecms/contracts';
+import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
+import { ymdOf, ymdToUtcDate, type FleetOdometerSummaryDto, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetOdometerLogModel, type FleetOdometerLogDoc } from './odometer.model';
+import { FleetVehicleModel } from '../vehicles/vehicle.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 import { driverNameSorts } from '../fleet-sort-keys';
 import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
+import { KM_ROW_KIND_EXPR, type KmRow } from './km-rules';
 
 export interface LatestReading {
   vehicleId: string;
@@ -558,6 +560,135 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       clauses.push({ date: { $lt: dayAfter } });
     }
     return clauses.length === 0 ? {} : { $and: clauses };
+  }
+
+  // ── The period reads (fleet dashboard plan R-07, R-14, R-15) ────────────────────────────────
+
+  /** A `logFilter` as the register reads it: live rows only, as `listLogs` adds through the base. */
+  private static live(filter: FilterQuery<FleetOdometerLogDoc>): FilterQuery<FleetOdometerLogDoc> {
+    return Object.keys(filter).length === 0
+      ? { isDeleted: false }
+      : { $and: [{ isDeleted: false }, filter] };
+  }
+
+  /**
+   * R-14 — the register's total: ONE `$group` over exactly the rows `listLogs` pages through for the
+   * same filter, so «إجمالي الكيلومترات» is the km column of every matching row, added up — valid
+   * rows only, the negative ones counted apart as «قراءات تحتاج مراجعة» (`km-rules.ts`).
+   */
+  async summaryOf(filter: FilterQuery<FleetOdometerLogDoc>): Promise<FleetOdometerSummaryDto> {
+    const count = (when: unknown) => ({ $sum: { $cond: [when, 1, 0] } });
+    const [row] = await this.model.aggregate<FleetOdometerSummaryDto>([
+      { $match: FleetOdometerRepository.live(filter) },
+      {
+        $group: {
+          _id: null,
+          km: { $sum: { $cond: [KM_ROW_KIND_EXPR.valid, '$km', 0] } },
+          validRows: count(KM_ROW_KIND_EXPR.valid),
+          invalidRows: count(KM_ROW_KIND_EXPR.invalid),
+          openRows: count(KM_ROW_KIND_EXPR.open),
+        },
+      },
+      { $project: { _id: 0, km: 1, validRows: 1, invalidRows: 1, openRows: 1 } },
+    ]);
+    return row ?? { km: 0, validRows: 0, invalidRows: 0, openRows: 0 };
+  }
+
+  /**
+   * The rows a period's kilometres are read from — chain rows AND days recorded without a counter —
+   * for a filter whose dates already name the window [from, to + 1]. No join and no look beyond the
+   * window: a row's successor, when it makes the row single-day, is always inside it (R-15). Exposed
+   * as a query so the plan behind it can be explained.
+   */
+  kmWindowQuery(filter: FilterQuery<FleetOdometerLogDoc>) {
+    return this.model
+      .find(FleetOdometerRepository.live(filter))
+      .select({ vehicleId: 1, vehicleCode: 1, date: 1, outReading: 1, km: 1 });
+  }
+
+  async kmWindowRows(filter: FilterQuery<FleetOdometerLogDoc>): Promise<KmRow[]> {
+    const rows = await this.kmWindowQuery(filter)
+      .lean<
+        Pick<
+          FleetOdometerLogDoc,
+          '_id' | 'vehicleId' | 'vehicleCode' | 'date' | 'outReading' | 'km'
+        >[]
+      >()
+      .exec();
+    return rows.map((row) => ({
+      vehicleId: row.vehicleId === null ? null : String(row.vehicleId),
+      vehicleCode: row.vehicleCode ?? null,
+      date: ymdOf(row.date),
+      outReading: row.outReading ?? null,
+      km: row.km ?? null,
+      order: String(row._id),
+    }));
+  }
+
+  /**
+   * R-07, step 1 — the cars that DO have a chain reading dated on or after `sinceYmd`: one bounded
+   * read over the recent days (the `{date: -1}` index), never a car's whole history.
+   */
+  readSincePipeline(vehicleIds: readonly string[], sinceYmd: string): PipelineStage[] {
+    return [
+      {
+        $match: {
+          vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+          isDeleted: false,
+          ...ON_THE_CHAIN,
+          date: { $gte: ymdToUtcDate(sinceYmd) },
+        },
+      },
+      { $group: { _id: '$vehicleId' } },
+    ];
+  }
+
+  async vehiclesReadSince(vehicleIds: readonly string[], sinceYmd: string): Promise<Set<string>> {
+    if (vehicleIds.length === 0) return new Set();
+    const rows = await this.model.aggregate<{ _id: Types.ObjectId }>(
+      this.readSincePipeline(vehicleIds, sinceYmd),
+    );
+    return new Set(rows.map((row) => String(row._id)));
+  }
+
+  /**
+   * R-07, step 2 — each car's latest chain-reading DATE (`MAX(date)` over its live rows that carry a
+   * counter; a day recorded without one is not a reading), for the cars step 1 did not find. A car
+   * absent from the answer has never been read at all.
+   *
+   * ONE row per car, whatever its history: the pipeline runs over the REGISTRY (one document per
+   * asked id) and fetches each car's newest chain row through `ix_vehicle_date` with `$limit: 1`.
+   * After a holiday every active car can be unread; a `$sort`+`$group` over the log would then read
+   * every car's whole history on every refresh.
+   */
+  latestChainDatesPipeline(vehicleIds: readonly string[]): PipelineStage[] {
+    return [
+      { $match: { _id: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) } } },
+      {
+        $lookup: {
+          from: this.model.collection.name,
+          localField: '_id',
+          foreignField: 'vehicleId',
+          pipeline: [
+            { $match: { isDeleted: false, ...ON_THE_CHAIN } },
+            { $sort: { date: -1 } },
+            { $limit: 1 },
+            { $project: { _id: 0, date: 1 } },
+          ],
+          as: 'latest',
+        },
+      },
+      { $unwind: '$latest' },
+      { $project: { _id: 1, date: '$latest.date' } },
+    ];
+  }
+
+  async latestChainDates(vehicleIds: readonly string[]): Promise<Map<string, string>> {
+    if (vehicleIds.length === 0) return new Map();
+    const rows = await FleetVehicleModel.aggregate<{ _id: Types.ObjectId; date: Date }>(
+      this.latestChainDatesPipeline(vehicleIds),
+    );
+    return new Map(rows.map((row) => [String(row._id), ymdOf(row.date)]));
   }
 }
 

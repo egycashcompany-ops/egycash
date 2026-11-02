@@ -108,7 +108,9 @@ export const matchesFleetFilters = (
     | 'search'
     | 'area'
     | 'hasLicenseImage'
-  >,
+  > &
+    // Optional in the pick, so every caller that builds a query by hand compiles unchanged.
+    Partial<Pick<ListFleetDriversQuery, 'licenseExpiresFrom' | 'licenseNotRecorded'>>,
 ): boolean => {
   const asked =
     query.jobId !== undefined ||
@@ -117,6 +119,8 @@ export const matchesFleetFilters = (
     query.specialization !== undefined ||
     query.isActive !== undefined ||
     query.licenseExpiresBefore !== undefined ||
+    query.licenseExpiresFrom !== undefined ||
+    query.licenseNotRecorded !== undefined ||
     query.search !== undefined ||
     query.area !== undefined ||
     query.hasLicenseImage !== undefined;
@@ -148,6 +152,20 @@ export const matchesFleetFilters = (
     // shows up unfiltered, where the empty cell says what is actually missing.
     if (profile.licenseExpiresAt === null) return false;
     if (profile.licenseExpiresAt.getTime() > query.licenseExpiresBefore.getTime()) return false;
+  }
+  // The other bound of the same window (`$gte`), with the same answer for a date nobody gave:
+  // «تنتهي خلال 30 يومًا» is a question about dates, so a driver without one is not in it.
+  if (query.licenseExpiresFrom !== undefined) {
+    // `== null`: a profile written before the field existed has no key at all.
+    if (profile.licenseExpiresAt == null) return false;
+    if (profile.licenseExpiresAt.getTime() < query.licenseExpiresFrom.getTime()) return false;
+  }
+  // «بلا تاريخ» — the question the two bounds above cannot ask: a profile on file whose licence
+  // expiry nobody has recorded. `false` asks the opposite, a profile that has one. A driver with
+  // no profile at all is neither (they are «غير مسجّل», already excluded above).
+  if (query.licenseNotRecorded !== undefined) {
+    const notRecorded = profile.licenseExpiresAt == null;
+    if (notRecorded !== query.licenseNotRecorded) return false;
   }
   if (query.search !== undefined && !contains(profile.licenseNumber, query.search)) return false;
   if (query.area !== undefined && !contains(profile.area, query.area)) return false;

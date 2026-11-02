@@ -8,9 +8,17 @@
 // the transaction has committed.
 import {
   FleetEvents,
+  addDaysYmd,
+  compareFleetVehicleCodes,
   parseFleetSort,
+  ymdOf,
+  ymdToUtcDate,
   type CorrectFleetOdometer,
+  type FleetDashboardPeriodKmDto,
+  type FleetOdometerSummaryDto,
+  type FleetOdometerSummaryQuery,
   type ListFleetOdometerQuery,
+  type LocalizedString,
   type Paginated,
   type RecordFleetOdometer,
 } from '@ecms/contracts';
@@ -19,14 +27,23 @@ import { ConflictError, ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { branchRepository } from '../../../platform/organization/branches/branch.repository';
+import {
+  fleetVehicleRepository,
+  intersectVehicleIds,
+  vehicleSetPart,
+} from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { alarmSortsFor } from '../maintenance/alarm-sort';
+import { fleetMaintenanceRepository } from '../maintenance/maintenance.repository';
 import { fleetOdometerRepository } from './odometer.repository';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
 import { planCorrection } from './correction-rules';
+import { kmBreakdownOf, missingReadingCutoff, type KmVehicle } from './km-rules';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'odometerLog', entityId: id });
 
@@ -88,6 +105,42 @@ export interface OdometerBracket {
 export type OdometerLogPage = Paginated<FleetOdometerLogDoc> & {
   codes: ReadonlyMap<string, string>;
 };
+
+/**
+ * The kilometres of a period (tabs 6–8): the register's VEHICLE filters — what a dashboard link
+ * carries to `/fleet/odometer` — and the two Cairo days. The driver, note and alarm filters are not
+ * offered: a row's successor decides whether it is single-day, and a filter that dropped the
+ * successor (another driver's shift) would turn every day into a span.
+ */
+export type OdometerKmQuery = Pick<
+  FleetOdometerSummaryQuery,
+  'vehicleId' | 'vehicleCodes' | 'typeIds' | 'operationIds' | 'branchIds'
+> & { from: string; to: string };
+
+export interface OdometerKmContext {
+  /** The Cairo day of the request's clock. */
+  today: string;
+  /** N = `fleet.odometer.missingReadingDays`: the grace before an open row turns stale (R-15). */
+  staleDays: number;
+  /** The switcher's branch (`activeBranchId`): the km by type is drawn only when one is chosen. */
+  branchId: string | null;
+  /** A vehicle set narrows the period (R-13): rows without a car are then not reported apart. */
+  setNarrows: boolean;
+}
+
+/** R-07: the cars that fire «بلا قراءة عداد منذ N أيام», and the ones never read at all. */
+export interface OdometerNoReadingDigest {
+  /** Latest chain date before today − days; code order. */
+  stale: { vehicleId: string; code: string; lastDate: string }[];
+  /** No chain reading ever; code order. */
+  neverRead: { vehicleId: string; code: string }[];
+}
+
+/** The vehicle half of a register filter, resolved: the ids, and the typed codes that may stand alone. */
+interface OdometerVehicleClause {
+  vehicleIds: string[] | undefined;
+  vehicleCodes: readonly string[] | undefined;
+}
 
 class FleetOdometerService {
   /** §4.3 — one reading closes the open period and opens the next, atomically. */
@@ -401,36 +454,223 @@ class FleetOdometerService {
     return { ...page, codes };
   }
 
-  /** What the page is cut from — the two resolved filters `list` describes, folded into one. */
+  /**
+   * What the page is cut from — the resolved filters `list` describes, folded into one. The total
+   * (`summary`) is counted from the very same filter, so it describes every row the list pages.
+   */
   private async filterFor(
-    query: ListFleetOdometerQuery,
+    query: FleetOdometerSummaryQuery,
   ): Promise<FilterQuery<FleetOdometerLogDoc>> {
-    let vehicleIds: string[] | undefined;
+    const clause = await this.vehicleClause(query);
+    return fleetOdometerRepository.logFilter({ ...query, ...clause });
+  }
 
-    if (query.vehicleCodes !== undefined) {
-      const matched = await fleetVehicleRepository.list({
-        filter: { code: { $in: [...query.vehicleCodes] } },
-        page: 1,
-        pageSize: query.vehicleCodes.length,
-      });
-      vehicleIds = matched.items.map((vehicle) => String(vehicle._id));
-    }
+  /**
+   * The vehicle half of the filter, resolved to ids:
+   *
+   *   • `vehicleCodes` — against the live registry, as this screen always has;
+   *   • `alerts` — the derived maintenance level (FR-3), computed and then used to pick cars;
+   *   • «النوع / التشغيل / الفرع» (`typeIds`, `operationIds`, `branchIds`, plan D10) — the vehicle set,
+   *     deleted cars included, as the other registers resolve it (`resolveVehicleFilterIds`).
+   *
+   * All of them INTERSECT, and an empty intersection is a real answer (an empty page). The typed
+   * codes may stand on their own — reaching a row kept from the old book on a car the registry never
+   * had — only when nothing else narrowed the ids: such a row has no alarm level, type, operation or
+   * branch to match.
+   */
+  private async vehicleClause(
+    query: Pick<
+      FleetOdometerSummaryQuery,
+      'vehicleCodes' | 'alerts' | 'typeIds' | 'operationIds' | 'branchIds'
+    >,
+  ): Promise<OdometerVehicleClause> {
+    const [byCode, byLevel, bySet] = await Promise.all([
+      query.vehicleCodes === undefined
+        ? undefined
+        : fleetVehicleRepository
+            .list({
+              filter: { code: { $in: [...query.vehicleCodes] } },
+              page: 1,
+              pageSize: query.vehicleCodes.length,
+            })
+            .then((matched) => matched.items.map((vehicle) => String(vehicle._id))),
+      query.alerts === undefined
+        ? undefined
+        : computeAlarms().then((alarms) => {
+            const wanted = new Set<string>(query.alerts);
+            return alarms.filter((a) => wanted.has(a.level)).map((a) => a.vehicleId);
+          }),
+      resolveVehicleFilterIds(vehicleSetPart(query)),
+    ]);
+    return {
+      vehicleIds: intersectVehicleIds(intersectVehicleIds(byCode, byLevel), bySet),
+      vehicleCodes: byLevel === undefined && bySet === undefined ? query.vehicleCodes : undefined,
+    };
+  }
 
-    if (query.alerts !== undefined) {
-      const wanted = new Set<string>(query.alerts);
-      const alarms = await computeAlarms();
-      const byLevel = alarms.filter((a) => wanted.has(a.level)).map((a) => a.vehicleId);
-      vehicleIds =
-        vehicleIds === undefined ? byLevel : vehicleIds.filter((id) => byLevel.includes(id));
-    }
+  /**
+   * `GET /fleet/odometer/summary` — R-14 over the register's own filter: «إجمالي الكيلومترات» is the
+   * sum of the km column of every row the list would page through, valid rows only; the closed rows
+   * with negative km are «قراءات تحتاج مراجعة». The dashboard's period total is the same rows, so
+   * the figure and the screen it links to agree by construction.
+   */
+  async summary(query: FleetOdometerSummaryQuery): Promise<FleetOdometerSummaryDto> {
+    return fleetOdometerRepository.summaryOf(await this.filterFor(query));
+  }
 
+  /**
+   * The filter `kmBreakdown` reads with: the register's vehicle filter over [from, to + 1] — the
+   * window that holds every successor that can make a row single-day (R-15). Public so the plan
+   * behind it can be explained in a spec; nothing else needs it.
+   */
+  async kmWindowFilter(query: OdometerKmQuery): Promise<FilterQuery<FleetOdometerLogDoc>> {
+    const clause = await this.vehicleClause(query);
+    return this.kmFilterOf(query, clause);
+  }
+
+  private kmFilterOf(
+    query: OdometerKmQuery,
+    clause: OdometerVehicleClause,
+  ): FilterQuery<FleetOdometerLogDoc> {
     return fleetOdometerRepository.logFilter({
-      ...query,
-      vehicleIds,
-      // The typed codes may stand on their own only when nothing else narrowed the ids: a
-      // reading kept from the old book on a car the registry never had has no alarm level.
-      vehicleCodes: query.alerts === undefined ? query.vehicleCodes : undefined,
+      vehicleId: query.vehicleId,
+      ...clause,
+      from: ymdToUtcDate(query.from),
+      // `logFilter`'s `to` covers the whole day it names: [from, to + 1] in full.
+      to: ymdToUtcDate(addDaysYmd(query.to, 1)),
     });
+  }
+
+  /**
+   * The kilometres of a period, for the dashboard's tabs 6–8 (R-14…R-17): the total — the same rows
+   * `summary` counts for `/fleet/odometer?from&to` with the same vehicle filter —, the daily (or
+   * monthly) drawing with its confirmed, span, pending and stale parts, «مؤكدة حتى» and the average
+   * line, the coverage, the km by the car's current branch (and type), and the rankings with the
+   * cars that may not be ranked and why. The rules are `km-rules.ts`; this only gathers the facts.
+   *
+   * Reads: the rows dated in [from, to + 1] (never a car's whole history), the cars of the set and of
+   * those rows, the cars a visit held throughout the period (R-16 (d) — any visit, not the newest),
+   * each car's newest workshop visit («في الورشة منذ»), and the branch / type names.
+   */
+  async kmBreakdown(
+    query: OdometerKmQuery,
+    ctx: OdometerKmContext,
+  ): Promise<FleetDashboardPeriodKmDto> {
+    const clause = await this.vehicleClause(query);
+    const setIds =
+      query.vehicleId !== undefined
+        ? intersectVehicleIds([query.vehicleId], clause.vehicleIds)
+        : clause.vehicleIds;
+    const [rows, everyLiveCar] = await Promise.all([
+      fleetOdometerRepository.kmWindowRows(this.kmFilterOf(query, clause)),
+      // Nothing narrows: the set is the whole registry, so coverage and the cars without readings
+      // are asked of every live car.
+      setIds === undefined
+        ? fleetVehicleRepository.idsMatching({}).then((ids) => ids.map(String))
+        : Promise.resolve([]),
+    ]);
+    const rowCars = rows.flatMap((row) => (row.vehicleId === null ? [] : [row.vehicleId]));
+    const ids = [...new Set([...(setIds ?? everyLiveCar), ...rowCars])];
+    const range = { from: query.from, to: query.to };
+    const [docs, throughout, visits, branches] = await Promise.all([
+      fleetVehicleRepository.findByIdsSystem(ids),
+      fleetMaintenanceRepository.vehicleIdsInWorkshopThroughout(ids, range),
+      fleetMaintenanceRepository.newestVisits(ids),
+      branchRepository.listAll(),
+    ]);
+    const vehicles = new Map<string, KmVehicle>(
+      docs.map((doc) => {
+        const id = String(doc._id);
+        const visit = visits.get(id);
+        return [
+          id,
+          {
+            vehicleId: id,
+            code: doc.code,
+            status: doc.status,
+            isDeleted: doc.isDeleted,
+            joinedAt: ymdOf(doc.joinedAt),
+            branchId: doc.branchId === null ? null : String(doc.branchId),
+            typeId: String(doc.typeId),
+            visit:
+              visit === undefined
+                ? null
+                : {
+                    inDate: ymdOf(visit.inDate),
+                    outDate: visit.outDate === null ? null : ymdOf(visit.outDate),
+                  },
+            workshopThroughout: throughout.has(id),
+          },
+        ];
+      }),
+    );
+    const byType = ctx.branchId !== null;
+    const typeIds = byType
+      ? [
+          ...new Set(
+            [...vehicles.values()].flatMap((car) => (car.typeId === null ? [] : [car.typeId])),
+          ),
+        ]
+      : [];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    return kmBreakdownOf({
+      rows,
+      vehicles,
+      setIds,
+      range,
+      today: ctx.today,
+      staleDays: ctx.staleDays,
+      byType,
+      setNarrows: ctx.setNarrows,
+      branchNames: new Map(branches.map((b) => [String(b._id), b.name as LocalizedString])),
+      typeNames: new Map(types.map((type) => [String(type._id), type.name as LocalizedString])),
+    });
+  }
+
+  /**
+   * R-07 — «بلا قراءة عداد منذ N أيام»: every ACTIVE car (of `vehicleIds`, when given) with no open
+   * workshop visit whose latest chain-reading date is before today − days; a car never read at all
+   * is on its own line, never mixed in. Two bounded reads, never a whole-history `$group` for the
+   * fleet: the cars read on or after the cutoff are found from the recent days alone, and only the
+   * rest — normally a handful — are asked for their latest date.
+   */
+  async noReadingDigest(input: {
+    today: string;
+    days: number;
+    vehicleIds?: readonly string[];
+  }): Promise<OdometerNoReadingDigest> {
+    const active = (await fleetVehicleRepository.idsMatching({ status: 'active' })).map(String);
+    const candidates =
+      input.vehicleIds === undefined
+        ? active
+        : (intersectVehicleIds(active, input.vehicleIds) ?? []);
+    const inWorkshop = await fleetMaintenanceRepository.openVisitVehicleIds(candidates);
+    const outside = candidates.filter((id) => !inWorkshop.has(id));
+    const readSince = await fleetOdometerRepository.vehiclesReadSince(
+      outside,
+      missingReadingCutoff(input.today, input.days),
+    );
+    const unread = outside.filter((id) => !readSince.has(id));
+    const [latest, codes] = await Promise.all([
+      fleetOdometerRepository.latestChainDates(unread),
+      fleetVehicleRepository.codesByIds(unread),
+    ]);
+    const byCode = <T extends { code: string }>(a: T, b: T): number =>
+      compareFleetVehicleCodes(a.code, b.code);
+    const codeOf = (id: string): string => codes.get(id) ?? '';
+    return {
+      stale: unread
+        .flatMap((id) => {
+          const lastDate = latest.get(id);
+          return lastDate === undefined ? [] : [{ vehicleId: id, code: codeOf(id), lastDate }];
+        })
+        .sort(byCode),
+      neverRead: unread
+        .filter((id) => !latest.has(id))
+        .map((id) => ({ vehicleId: id, code: codeOf(id) }))
+        .sort(byCode),
+    };
   }
 
   /**

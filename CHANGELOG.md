@@ -11,6 +11,42 @@ its entry here in the same PR.
 
 ### Added
 
+- **«لوحة تحكم الحركة» at `/fleet`: ten tabs of today's figures and of a chosen period, in the
+  system's own colours, each figure opening the screen that shows the same number.** «عاوز اغير
+  الشاشات دول لكدا ورينى سامبل مع تعديلاتك الجميلة» — «شاشات لوحة التحكم حط بقى الوان بتاعت السيستم
+  بتاعتنا». The fleet module's home is rebuilt from the approved samples, in the platform's palette,
+  light and dark. Five tabs answer for Cairo's today, whatever filter is chosen: «التنبيهات» (the
+  maintenance alarm, expired vehicle, driver and fuel-card licences, crews short of an absent
+  driver, charging requests and low balances, pending dealership invoices, notices missing an image,
+  the custody fund's own banner lines, and the active cars with no odometer reading for N days),
+  «الحركة الآن» (ready cars and those without a driver, available and absent drivers, the workshop
+  now), «توزيع السيارات» (cars by type, branch and operation; drivers by specialization), «التراخيص
+  وآخر ما سُجّل» (licence windows, open papers, the last 30 days of visits and accidents) and
+  «ملخصات» (fuel balances, custody, open accidents and the year's fines). Five more answer for a
+  period — this month (the default), last month, the last 30 days, this year or a custom range of up
+  to 366 days — narrowed by type, operation and car codes: «أرقام الفترة», «الكيلومترات» (by day or
+  by month, «مؤكدة حتى», the coverage «قراءات لـ X من Y سيارة», by branch and by type), «ترتيب
+  السيارات» (the top and bottom five, and every car without a valid reading with its one reason),
+  «الصيانة» and «الحوادث». A branch chosen in the switcher narrows the figures that belong to a
+  branch. Every figure is the server's, and opens the screen that shows it with the same filters as
+  parameters — never a bare list link, so a reader's remembered filters cannot change the number; a
+  figure no list shows exactly is plain text. The screens learned the parameters they lacked: `type`
+  / `operation` / `branch` on the odometer, accidents, dealership, receipts and violations; licence
+  windows on vehicles and drivers (and `licExp=none`); `expiresFrom` on fuel cards; `view` and
+  `unavailable` on the roster; `type`, `outFrom` and `outTo` on maintenance. The odometer screen now
+  shows the kilometres of its own filters. The roster marks a driver's or a vehicle's expired
+  licence (badges, views, the list «منهم رخصة منتهية N») and subtotals the unavailable drivers by
+  reason. Reads: `GET /fleet/dashboard/now` and `GET /fleet/dashboard/period`, each section returned
+  only to a reader who holds both its data's key and its screen's (`fleetVehicle.view`,
+  `fleetRoster.view`, `fleetMaintenance.view`, `fleetOdometer.view`, `fleetDriver.view`,
+  `fleetFuelCard.view`, `fleetAccident.view`, …; with none, 403); `GET /fleet/odometer/summary`
+  (`fleetOdometer.view`). The old `GET /fleet/dashboard` is retired. No server cache: «الآن» is read
+  again every five minutes, on focus and at Cairo's midnight, and realtime signals refetch at most
+  once per 30 seconds. Two organization settings, also on `/fleet/settings`:
+  `fleet.roster.refuseExpiredLicence` (default **off** — the roster only marks; on, planning refuses
+  a driver or a vehicle whose licence expired) and `fleet.odometer.missingReadingDays` (default
+  **3**, 1–30). Phase 2 (supply contracts, driver rankings, cost ranking) is not part of it.
+
 - **«مقارنة بملف» on `/atm/data-edit`: a machines file compared with the branch, then applied.**
   «ضرورى جداً اتأكد إن الماكينات دى متضافه على السيستم لفرع المهندسين» — «البنك والكود والأسم
   والمنطقة». Upload the machine list (Excel: Bank, ID, ATM Name, Area — the old system's export

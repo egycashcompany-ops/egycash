@@ -19,7 +19,12 @@ import '@fontsource/azeret-mono/500.css';
 import '@fontsource/azeret-mono/600.css';
 import '@fontsource/azeret-mono/700.css';
 import '@fontsource/azeret-mono/800.css';
-import { type FleetFuelCardCompany, type FleetFuelCardDto } from '@ecms/contracts';
+import {
+  cairoYmd,
+  expiryStateOn,
+  type FleetFuelCardCompany,
+  type FleetFuelCardDto,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
@@ -31,20 +36,22 @@ import { groupCardNumber } from '../lib/fuel-card-number';
 import { ACTION_GROUP, actionColour, actionTone } from './row-actions-look';
 import { SquarePenIcon, Trash2Icon } from './row-action-icons';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 export type ExpiryState = 'valid' | 'soon' | 'expired' | 'unknown';
 
-/** Where a card's expiry stands today, against the setting's warning days. */
+/**
+ * Where a card's (or a licence's) expiry stands TODAY, against the setting's warning days — by the
+ * Cairo calendar day, R-02 / Q-02: expired ON its expiry day (`expiryStateOn`, the rule the
+ * dashboard counts with and every list filter's `licExpBefore` applies). The instant comparison it
+ * replaced called a card expiring today «soon» until the stored midnight passed, so a screen's own
+ * «منتهية» was one lower than the dashboard figure that linked to it.
+ */
 export const expiryState = (
   expiresAt: string | null,
   warnDays: number,
   now = Date.now(),
 ): ExpiryState => {
-  if (expiresAt === null) return 'unknown';
-  const left = new Date(expiresAt).getTime() - now;
-  if (left < 0) return 'expired';
-  return left <= warnDays * DAY_MS ? 'soon' : 'valid';
+  const state = expiryStateOn(expiresAt, cairoYmd(new Date(now)), warnDays);
+  return state === 'notRecorded' ? 'unknown' : state === 'expiring' ? 'soon' : state;
 };
 
 /** The design's type: Cairo for the words. */

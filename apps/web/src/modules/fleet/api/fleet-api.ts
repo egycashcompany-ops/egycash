@@ -79,7 +79,6 @@ import {
   type FleetAccidentDto,
   type FleetAccidentTotalsDto,
   type FleetCatalogItemDto,
-  type FleetDashboardDto,
   type FleetDefaultBranchDto,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
@@ -98,6 +97,7 @@ import {
   type FleetVehicleTypeDto,
   type FleetViolationDto,
   type FleetViolationRollupDto,
+  type FleetViolationRollupQuery,
   type Paginated,
   type PlanFleetRoster,
   type RecordFleetDriverViolation,
@@ -334,16 +334,6 @@ export const planRoster = (
 ): Promise<FleetRosterDayDto & { changedCount: number }> =>
   post<FleetRosterDayDto & { changedCount: number }>('/fleet/roster', body);
 
-/**
- * The module's landing read (FW-2) — every figure the dashboard shows, in one request.
- *
- * The sections it answers with are the ones the CALLER may read; a section they may not comes
- * back `null` and the page renders nothing there. So this hook needs no permission argument and
- * the screen needs no second opinion about what it is allowed to see.
- */
-export const getFleetDashboard = (): Promise<FleetDashboardDto> =>
-  get<FleetDashboardDto>('/fleet/dashboard');
-
 export const getFixedRoster = (): Promise<FleetFixedRosterDto> =>
   get<FleetFixedRosterDto>('/fleet/fixed-roster');
 export const saveFixedRoster = (
@@ -392,12 +382,17 @@ export const violationRollup = (
   years: readonly number[] | undefined,
   /** SEVERAL cars, by the code the picker writes — resolved against the registry server-side. */
   vehicleCodes?: readonly string[],
+  /** The vehicle set a dashboard link narrows the screen to — type, operation, branch ids. */
+  vehicleSet: Pick<FleetViolationRollupQuery, 'typeIds' | 'operationIds' | 'branchIds'> = {},
 ): Promise<FleetViolationRollupDto[]> =>
   get<FleetViolationRollupDto[]>(
     `/fleet/violations/rollup${buildQuery({
       // Comma-separated, which is the shape `listQuery` parses on the other side.
       year: years === undefined ? undefined : years.map(String),
       vehicleCodes: vehicleCodes === undefined ? undefined : [...vehicleCodes],
+      typeIds: vehicleSet.typeIds,
+      operationIds: vehicleSet.operationIds,
+      branchIds: vehicleSet.branchIds,
     })}`,
   );
 export const recordVehicleViolation = (

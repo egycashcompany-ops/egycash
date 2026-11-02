@@ -88,6 +88,10 @@ odometerSchema.index({ vehicleCode: 1, date: -1 }, { name: 'ix_code_date', spars
 // The chain is ordered by reading (monotonic, FR-2), which is what neighbor lookups walk.
 odometerSchema.index({ vehicleId: 1, outReading: -1 }, { name: 'ix_vehicle_reading' });
 odometerSchema.index({ vehicleId: 1, date: -1 }, { name: 'ix_vehicle_date' });
+// The period reads (fleet dashboard R-07, R-14, R-15) ask by DAY across the whole fleet — «which rows
+// fall in these days», «which cars were read since that day» — so the date leads here; every index
+// above leads with the car, which answers those only by walking each car's whole history.
+odometerSchema.index({ date: -1 }, { name: 'ix_date' });
 
 export const FleetOdometerLogModel = model<FleetOdometerLogDoc>(
   'FleetOdometerLog',

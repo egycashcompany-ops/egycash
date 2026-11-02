@@ -53,8 +53,15 @@ import { groupCardNumber } from '../lib/fuel-card-number';
 import { saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
+import { expiryWindowQuery } from '../lib/vehicle-set-params';
 
-const REMEMBERED_FILTERS = ['vehicleCodes', 'company', 'number', 'expiresBefore'] as const;
+const REMEMBERED_FILTERS = [
+  'vehicleCodes',
+  'company',
+  'number',
+  'expiresBefore',
+  'expiresFrom',
+] as const;
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
 export const FuelCardsPage = (): JSX.Element => {
@@ -69,6 +76,9 @@ export const FuelCardsPage = (): JSX.Element => {
   const company = sp.get('company') ?? '';
   const number = sp.get('number') ?? '';
   const expiresBefore = sp.get('expiresBefore') ?? '';
+  // The other side of the window: the dashboard's «expiring» figure starts TOMORROW, so the cards
+  // already expired (its own red line) are not counted twice.
+  const expiresFrom = sp.get('expiresFrom') ?? '';
   const paramsKey = sp.toString();
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -80,16 +90,21 @@ export const FuelCardsPage = (): JSX.Element => {
   };
   // A filter on the CARD (its company, its number, its expiry) leaves a car's other card out of the
   // answer — that slot is filtered away, not empty, and must not read «لا يوجد كارت».
-  const cardFiltered = company !== '' || number !== '' || expiresBefore !== '';
-  const filters = useMemo(
-    () => ({
+  const cardFiltered =
+    company !== '' || number !== '' || expiresBefore !== '' || expiresFrom !== '';
+  const filters = useMemo(() => {
+    // Both bounds are DAYS, asked as the first instant of `expiresFrom` and the LAST instant of
+    // `expiresBefore` (R-02): a card is expired on its expiry day, so «تنتهي قبل» a day includes
+    // the cards that run out on it, whatever time they were stamped at.
+    const bounds = expiryWindowQuery(expiresFrom, expiresBefore);
+    return {
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       company: company || undefined,
       number: number || undefined,
-      expiresBefore: expiresBefore || undefined,
-    }),
-    [paramsKey],
-  );
+      expiresFrom: bounds.from,
+      expiresBefore: bounds.before,
+    };
+  }, [paramsKey]);
   const { data, isLoading, isError, error, refetch } = useAllFuelCards(filters);
   const cards = data?.items ?? [];
   const noCarCards = useMemo(() => cards.filter((card) => card.vehicleId === null), [cards]);
@@ -166,20 +181,24 @@ export const FuelCardsPage = (): JSX.Element => {
   const dayFromToday = (days: number): string =>
     new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
   const [customDate, setCustomDate] = useState(false);
+  // A lower bound is a window neither ready answer names, so it always opens the two date boxes.
   const datePreset =
-    expiresBefore === ''
-      ? customDate
-        ? 'custom'
-        : ''
-      : expiresBefore === dayFromToday(30) && !customDate
-        ? '30'
-        : expiresBefore === dayFromToday(60) && !customDate
-          ? '60'
-          : 'custom';
+    expiresFrom !== ''
+      ? 'custom'
+      : expiresBefore === ''
+        ? customDate
+          ? 'custom'
+          : ''
+        : expiresBefore === dayFromToday(30) && !customDate
+          ? '30'
+          : expiresBefore === dayFromToday(60) && !customDate
+            ? '60'
+            : 'custom';
   const pickDatePreset = (value: string): void => {
     setCustomDate(value === 'custom');
-    if (value === '30' || value === '60') patch({ expiresBefore: dayFromToday(Number(value)) });
-    else if (value === '') patch({ expiresBefore: null });
+    if (value === '30' || value === '60')
+      patch({ expiresBefore: dayFromToday(Number(value)), expiresFrom: null });
+    else if (value === '') patch({ expiresBefore: null, expiresFrom: null });
   };
 
   // «ربط من كروت العهدة»: a card of the stock put on a car's free slot.
@@ -418,7 +437,13 @@ export const FuelCardsPage = (): JSX.Element => {
             hasActiveFilters={vehicleCodes.length > 0 || cardFiltered}
             onClear={() => {
               setCustomDate(false);
-              patch({ vehicleCodes: null, company: null, number: null, expiresBefore: null });
+              patch({
+                vehicleCodes: null,
+                company: null,
+                number: null,
+                expiresBefore: null,
+                expiresFrom: null,
+              });
             }}
           >
             <FilterWithIcon
@@ -503,6 +528,24 @@ export const FuelCardsPage = (): JSX.Element => {
                 }
               />
             </FilterWithIcon>
+            {datePreset === 'custom' && (
+              <FilterWithIcon
+                icon={FILTER_ICON.calendar}
+                tone="text-cyan-600 dark:text-cyan-400"
+                className="w-36 shrink-0"
+                datePicker={{ label: t('fleet.fuelCards.filters.expiresFrom') }}
+              >
+                <Input
+                  type="date"
+                  data-fuel-expires-from="true"
+                  aria-label={t('fleet.fuelCards.filters.expiresFrom')}
+                  value={expiresFrom}
+                  density="tight"
+                  onChange={(e) => patch({ expiresFrom: e.target.value || null })}
+                  className="[color-scheme:dark]"
+                />
+              </FilterWithIcon>
+            )}
             {datePreset === 'custom' && (
               <FilterWithIcon
                 icon={FILTER_ICON.calendar}

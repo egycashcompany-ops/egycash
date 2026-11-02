@@ -60,6 +60,18 @@ import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { AlarmReasonCell, NotActiveCell } from '../components/AlarmReasonCell';
 import { reasonRows } from '../lib/alarm-reason-rows';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { VehicleSetChip } from '../components/VehicleSetChip';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import {
+  CLEAR_VEHICLE_SET,
+  hasVehicleSet,
+  useVehicleTypeOptions,
+  vehicleSetReaders,
+  vehicleSetQuery,
+} from '../lib/vehicle-set-params';
+import { useOdometerSummary } from '../api/odometer-summary-queries';
 
 /**
  * Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept.
@@ -72,9 +84,12 @@ import { reasonRows } from '../lib/alarm-reason-rows';
  */
 const REMEMBERED_FILTERS = [
   'alerts',
+  'branch',
   'drv',
   'from',
+  'operation',
   'to',
+  'type',
   'vehicleCodes',
   'notes',
   'size',
@@ -163,6 +178,18 @@ export const OdometerPage = (): JSX.Element => {
   const drivers = (sp.get('drv') ?? '').split(',').filter((id) => id !== '');
   const alerts = (sp.get('alerts') ?? '').split(',').filter((a) => a !== '');
   const notes = sp.get('notes') ?? '';
+  // The cars a dashboard figure was counted over — «النوع» · «التشغيل» · «الفرع» — resolved by the
+  // server against the registry (deleted cars included), so the readings here are the ones it counted.
+  const vehicleSet = {
+    typeIds: readList(sp, 'type'),
+    operationIds: readList(sp, 'operation'),
+    branchIds: readList(sp, 'branch'),
+  };
+  const narrowedToSet = hasVehicleSet(vehicleSet);
+  // The types list and the operations catalog are their own endpoints' (TYPE_READERS /
+  // OPERATION_READERS), not this screen's guard: never asked for without them.
+  const sets = vehicleSetReaders(can);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet && sets.types);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   /**
@@ -196,7 +223,8 @@ export const OdometerPage = (): JSX.Element => {
     !range.defaulted ||
     drivers.length > 0 ||
     alerts.length > 0 ||
-    notes !== '';
+    notes !== '' ||
+    narrowedToSet;
 
   // NO HR SEARCH STEP ANY MORE.
   //
@@ -221,6 +249,7 @@ export const OdometerPage = (): JSX.Element => {
       alerts: alerts.length > 0 ? alerts : undefined,
       driverEmployeeIds: drivers.length > 0 ? drivers : undefined,
       notes: notes || undefined,
+      ...vehicleSetQuery(vehicleSet),
     }),
     [paramsKey],
   );
@@ -230,6 +259,8 @@ export const OdometerPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useOdometerLogs(params);
   const rows = data?.items ?? [];
+  // «إجمالي الكيلومترات» over the SAME filters, every matching row — not the page (R-14).
+  const summary = useOdometerSummary(filters);
 
   /**
    * THE MONTH IS THE REASON THE TABLE IS EMPTY — say so, and offer the way out.
@@ -249,7 +280,11 @@ export const OdometerPage = (): JSX.Element => {
    * months would NARROW the question.
    */
   const monthIsTheReason =
-    range.defaulted && vehicleCodes.length === 0 && drivers.length === 0 && alerts.length === 0;
+    range.defaulted &&
+    vehicleCodes.length === 0 &&
+    drivers.length === 0 &&
+    alerts.length === 0 &&
+    !narrowedToSet;
   const wider = widerRange(now);
   const emptyMonth = (
     <EmptyState
@@ -725,6 +760,30 @@ export const OdometerPage = (): JSX.Element => {
                   count: formatNumber(data.meta.totalItems, locale),
                 })}
           </span>
+          {/* The distance those rows record, and the closed rows left out of it — the server's
+              figures over the same filters; nothing is added up from the page. */}
+          {summary.data !== undefined && !isError && (
+            <span className="me-auto flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-sm font-bold">
+              <span
+                data-odometer-total
+                title={t('fleet.odometer.summary.totalHint')}
+                className="text-slate-700 dark:text-slate-200"
+              >
+                {t('fleet.odometer.summary.total', { km: LATIN.format(summary.data.km) })}
+              </span>
+              {summary.data.invalidRows > 0 && (
+                <span
+                  data-odometer-review
+                  title={t('fleet.odometer.summary.reviewHint')}
+                  className="text-amber-700 dark:text-amber-300"
+                >
+                  {t('fleet.odometer.summary.review', {
+                    count: LATIN.format(summary.data.invalidRows),
+                  })}
+                </span>
+              )}
+            </span>
+          )}
           <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just told
                 the reader it has no data reads as a way out of the failure, and the file behind
@@ -783,6 +842,7 @@ export const OdometerPage = (): JSX.Element => {
                 drv: null,
                 alerts: null,
                 notes: null,
+                ...CLEAR_VEHICLE_SET,
               })
             }
           >
@@ -869,6 +929,57 @@ export const OdometerPage = (): JSX.Element => {
                 onChange={(e) => patch({ notes: e.target.value || null })}
               />
             </FilterWithIcon>
+            {/* The vehicle set a dashboard link narrowed the readings to — shown only while it
+                does, so a remembered one is never a filter with nothing on the bar saying so. The
+                same controls the registry (type) and the maintenance screen (operation, branch) use. */}
+            {narrowedToSet && (
+              <>
+                {sets.types ? (
+                  <div className="min-w-[8rem] flex-1">
+                    <MultiSelect
+                      clearable
+                      fullWidth
+                      showSelectedValues
+                      chips
+                      density={TIGHT}
+                      className="w-full"
+                      label={t('fleet.vehicles.filters.short.make')}
+                      options={typeOptions}
+                      value={vehicleSet.typeIds}
+                      onChange={(ids) => patch({ type: writeList(ids) })}
+                    />
+                  </div>
+                ) : (
+                  vehicleSet.typeIds.length > 0 && (
+                    <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+                  )
+                )}
+                {sets.operations ? (
+                  <div className="min-w-[8rem] flex-1">
+                    <CatalogMultiSelect
+                      kind="operation"
+                      className="w-full"
+                      fullWidth
+                      value={vehicleSet.operationIds}
+                      onChange={(ids) => patch({ operation: writeList(ids) })}
+                      label={t('fleet.vehicles.filters.short.operation')}
+                    />
+                  </div>
+                ) : (
+                  vehicleSet.operationIds.length > 0 && (
+                    <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
+                  )
+                )}
+                {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
+                <div className="min-w-[8rem] flex-1 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between">
+                  <BranchFilterSelect
+                    clearable
+                    value={vehicleSet.branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </div>
+              </>
+            )}
           </FilterBar>
         </div>
 

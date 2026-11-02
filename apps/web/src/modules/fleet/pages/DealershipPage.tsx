@@ -53,9 +53,31 @@ import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { VehicleSetChip } from '../components/VehicleSetChip';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import {
+  CLEAR_VEHICLE_SET,
+  hasVehicleSet,
+  useVehicleTypeOptions,
+  vehicleSetReaders,
+  vehicleSetQuery,
+} from '../lib/vehicle-set-params';
 
 /** Remembered across visits: the filters and the view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['from', 'to', 'vehicleCodes', 'state', 'work', 'size', 'sort'] as const;
+const REMEMBERED_FILTERS = [
+  'from',
+  'to',
+  'vehicleCodes',
+  'state',
+  'work',
+  'type',
+  'operation',
+  'branch',
+  'size',
+  'sort',
+] as const;
 const DEFAULT_PAGE_SIZE = 25;
 const DEFAULT_SORT = 'outDate:desc';
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
@@ -98,6 +120,18 @@ export const DealershipPage = (): JSX.Element => {
   const vehicleCodes = csv(sp.get('vehicleCodes'));
   const state = sp.get('state') ?? '';
   const work = sp.get('work') ?? '';
+  // The cars a dashboard figure was counted over — «النوع» · «التشغيل» · «الفرع» — resolved by the
+  // server against the registry, so the rows here are the ones the figure counted.
+  const vehicleSet = {
+    typeIds: readList(sp, 'type'),
+    operationIds: readList(sp, 'operation'),
+    branchIds: readList(sp, 'branch'),
+  };
+  const narrowedToSet = hasVehicleSet(vehicleSet);
+  // The types list and the operations catalog are their own endpoints' (TYPE_READERS /
+  // OPERATION_READERS), not this screen's guard: never asked for without them.
+  const sets = vehicleSetReaders(can);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet && sets.types);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const sortParam = sp.get('sort');
@@ -117,7 +151,12 @@ export const DealershipPage = (): JSX.Element => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
   const hasActiveFilters =
-    from !== '' || to !== '' || vehicleCodes.length > 0 || state !== '' || work !== '';
+    from !== '' ||
+    to !== '' ||
+    vehicleCodes.length > 0 ||
+    state !== '' ||
+    work !== '' ||
+    narrowedToSet;
 
   /** What the reader is looking at — the filters alone, which is also what the totals are asked for. */
   const filters = useMemo(
@@ -127,6 +166,7 @@ export const DealershipPage = (): JSX.Element => {
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       pending: state === '' ? undefined : state === 'pending',
       workKind: work || undefined,
+      ...vehicleSetQuery(vehicleSet),
     }),
     [paramsKey],
   );
@@ -507,6 +547,7 @@ export const DealershipPage = (): JSX.Element => {
                 vehicleCodes: null,
                 state: null,
                 work: null,
+                ...CLEAR_VEHICLE_SET,
               })
             }
           >
@@ -552,6 +593,65 @@ export const DealershipPage = (): JSX.Element => {
                 onChange={(next) => patch({ work: pickOne(one(work), next) })}
               />
             </FilterWithIcon>
+            {/* The vehicle set a dashboard link narrowed the bills to — shown only while it does,
+                so a remembered one is never a filter with nothing on the bar saying so. The same
+                controls the registry (type) and the maintenance screen (operation, branch) use. */}
+            {narrowedToSet && (
+              <>
+                {sets.types ? (
+                  <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                    <MultiSelect
+                      clearable
+                      className="w-full"
+                      fullWidth
+                      density="tight"
+                      showSelectedValues
+                      chips
+                      label={t('fleet.vehicles.filters.short.make')}
+                      options={typeOptions}
+                      value={vehicleSet.typeIds}
+                      onChange={(ids) => patch({ type: writeList(ids) })}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.typeIds.length > 0 && (
+                    <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+                  )
+                )}
+                {sets.operations ? (
+                  <FilterWithIcon
+                    icon={FILTER_ICON.operation}
+                    tone="text-slate-600 dark:text-slate-300"
+                  >
+                    <CatalogMultiSelect
+                      kind="operation"
+                      className="w-full"
+                      fullWidth
+                      density="tight"
+                      value={vehicleSet.operationIds}
+                      onChange={(ids) => patch({ operation: writeList(ids) })}
+                      label={t('fleet.vehicles.filters.short.operation')}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.operationIds.length > 0 && (
+                    <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
+                  )
+                )}
+                {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
+                <FilterWithIcon
+                  icon={FILTER_ICON.branch}
+                  tone="text-violet-600 dark:text-violet-300"
+                  className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+                >
+                  <BranchFilterSelect
+                    clearable
+                    value={vehicleSet.branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              </>
+            )}
           </FilterBar>
         </div>
 

@@ -37,6 +37,8 @@ const FRAME = new Set([
   'FilteredCount',
   'ResetIcon',
   'DateBox',
+  // A removable chip («أنواع مختارة ×») for a narrowing the reader cannot name: a button, no list.
+  'VehicleSetChip',
 ]);
 
 const barFiles = (): string[] =>

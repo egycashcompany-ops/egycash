@@ -75,6 +75,7 @@ import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import { chosenSorts, clickChosenSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { licenceMonthOptions } from '../lib/licence-months';
+import { expiryWindowLabel, expiryWindowQuery } from '../lib/vehicle-set-params';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
@@ -86,6 +87,8 @@ const REMEMBERED_FILTERS = [
   'insurance',
   'licenseClass',
   'licenseMonths',
+  'licExpBefore',
+  'licExpFrom',
   'motor',
   'operation',
   'plate',
@@ -140,6 +143,12 @@ export const VehiclesListPage = (): JSX.Element => {
     readList(sp, 'licenseMonths').length > 0
       ? readList(sp, 'licenseMonths')
       : readList(sp, 'licenseMonth');
+  // The licence-expiry WINDOW a dashboard figure names in days — expired, or expiring within the
+  // warning days — sent as the first instant of `licExpFrom` and the last of `licExpBefore`
+  // (R-02), beside the months above: each is a question of its own, and asked together they mean
+  // both.
+  const licExpFrom = sp.get('licExpFrom') ?? '';
+  const licExpBefore = sp.get('licExpBefore') ?? '';
   const operationIds = readList(sp, 'operation');
   const insuranceCompanyIds = readList(sp, 'insurance');
   const branchIds = readList(sp, 'branch');
@@ -232,12 +241,15 @@ export const VehiclesListPage = (): JSX.Element => {
     motor !== '' ||
     licenseClassIds.length > 0 ||
     licenseMonths.length > 0 ||
+    licExpFrom !== '' ||
+    licExpBefore !== '' ||
     operationIds.length > 0 ||
     insuranceCompanyIds.length > 0 ||
     branchIds.length > 0;
 
-  const params = useMemo(
-    () => ({
+  const params = useMemo(() => {
+    const licenceWindow = expiryWindowQuery(licExpFrom, licExpBefore);
+    return {
       page,
       pageSize,
       ...sortQuery(sorts),
@@ -249,12 +261,14 @@ export const VehiclesListPage = (): JSX.Element => {
       motorNumber: motor || undefined,
       licenseClassId: licenseClassIds.length === 0 ? undefined : licenseClassIds,
       licenseExpiryMonths: licenseMonths.length === 0 ? undefined : licenseMonths,
+      licenseExpiresFrom: licenceWindow.from,
+      licenseExpiresBefore: licenceWindow.before,
       operationId: operationIds.length === 0 ? undefined : operationIds,
       insuranceCompanyId: insuranceCompanyIds.length === 0 ? undefined : insuranceCompanyIds,
       branchId: branchIds.length === 0 ? undefined : branchIds,
-    }),
-    [paramsKey],
-  );
+    };
+  }, [paramsKey]);
+  const licenceWindowLabel = expiryWindowLabel(licExpFrom, licExpBefore, t);
   const { data, isLoading, isError, error, refetch, dataUpdatedAt } = useVehicles(params);
   const rows = data?.items ?? [];
 
@@ -984,6 +998,8 @@ export const VehiclesListPage = (): JSX.Element => {
                 licenseClass: null,
                 licenseMonths: null,
                 licenseMonth: null,
+                licExpFrom: null,
+                licExpBefore: null,
                 operation: null,
                 insurance: null,
                 branch: null,
@@ -1125,6 +1141,31 @@ export const VehiclesListPage = (): JSX.Element => {
                 onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
               />
             </FilterWithIcon>
+            {/* The window a dashboard link narrowed the registry to — shown only while it does, so
+                a remembered one is never a filter with nothing on the bar saying so. Its one
+                option is the window itself; taking it off drops both bounds. */}
+            {licenceWindowLabel !== null && (
+              <FilterWithIcon
+                icon={FILTER_ICON.calendar}
+                tone="text-cyan-600 dark:text-cyan-400"
+                className="w-44 shrink-0"
+              >
+                <MultiSelect
+                  clearable
+                  className="w-full"
+                  fullWidth
+                  density="tight"
+                  showSelectedValues
+                  searchThreshold={0}
+                  label={t('fleet.vehicles.columns.license')}
+                  options={[{ value: 'window', label: licenceWindowLabel }]}
+                  value={['window']}
+                  onChange={(next) => {
+                    if (next.length === 0) patch({ licExpFrom: null, licExpBefore: null });
+                  }}
+                />
+              </FilterWithIcon>
+            )}
             {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
               («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
               multi-select can only say what a single one already said. */}

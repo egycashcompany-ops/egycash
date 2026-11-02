@@ -16,7 +16,12 @@ import { fileService, type FileDoc, type UploadedBinary } from '../../../platfor
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { type AuthContext } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import {
+  fleetVehicleRepository,
+  intersectVehicleIds,
+  vehicleSetPart,
+} from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { vehicleIdOf } from '../fleet.mappers';
 import { type FleetMaintenanceVisitDoc } from '../maintenance/maintenance.model';
@@ -229,15 +234,24 @@ class FleetDealershipService {
     }
   }
 
+  /**
+   * One filter for the page and its figures. The codes the reader picked are intersected with the
+   * vehicle set — «النوع / التشغيل / الفرع» (plan D10, `resolveVehicleFilterIds`, deleted cars
+   * included). Once a set is asked, the old book's codes stop reaching rows on their own: a bill
+   * kept on a car the registry never had has no type, operation or branch to match.
+   */
   private async filterFor(
     query: FleetDealershipSummaryQuery,
   ): Promise<FilterQuery<FleetDealershipInvoiceDoc>> {
+    const [byCode, bySet] = await Promise.all([
+      query.vehicleCodes === undefined
+        ? undefined
+        : fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+      resolveVehicleFilterIds(vehicleSetPart(query)),
+    ]);
     return fleetDealershipRepository.dealershipFilter({
-      vehicleIds:
-        query.vehicleCodes === undefined
-          ? undefined
-          : await fleetVehicleRepository.idsByCodes(query.vehicleCodes),
-      vehicleCodes: query.vehicleCodes,
+      vehicleIds: intersectVehicleIds(byCode, bySet),
+      vehicleCodes: bySet === undefined ? query.vehicleCodes : undefined,
       pending: query.pending,
       workKind: query.workKind,
       from: query.from,
@@ -262,6 +276,15 @@ class FleetDealershipService {
   }
 
   async summary(query: FleetDealershipSummaryQuery): Promise<FleetDealershipTotalsDto> {
+    return this.summaryOver(query);
+  }
+
+  /**
+   * The figures over the rows the screen's query matches — `/summary` answers through it, and so
+   * does the fleet dashboard (T1.9, T6.9), so the dashboard's number is the screen's own (R-20:
+   * by the car's exit day `outDate`; rows, not invoices; pending = no amount yet).
+   */
+  async summaryOver(query: FleetDealershipSummaryQuery): Promise<FleetDealershipTotalsDto> {
     return fleetDealershipRepository.totals(await this.filterFor(query));
   }
 

@@ -860,10 +860,24 @@ answers in the same conversation):
   The shared `DataTable` gained `selectAll` (default on) for it (`lib/select-all-reveal.ts`).
 - **Sort and reset.** Every text column sorts in the browser — the board is whole — through the
   shared `table-sort` (`?sort=`, remembered) and `sort-rows` (moved from Fleet to `shared/lib`, as
-  `table-sort` was); the server's order (area) breaks ties. One red reset, the ATM machine list's,
-  clears the bank and area filters; the day view is not a filter and stays, the Fleet day boards'
-  rule. Excel and PDF are offered once the rows on screen are the answer — never while the board
-  loads, fails or settles a bank change.
+  `table-sort` was); the server's order breaks ties. On the two open boards the area decides first
+  (the next item), and a column orders the rows inside each area. One red reset, the ATM machine
+  list's, clears the bank and area filters; the day view is not a filter and stays, the Fleet day
+  boards' rule. Excel and PDF are offered once the rows on screen are the answer — never while the
+  board loads, fails or settles a bank change.
+- **Grouped by area.** «عايز كمان إن التغذيات والأعطال يبقي معمولها Group by المناطق + Sorting
+  بالمناطق بردو · يعني كل منطقة تظهر اعطالها وتغذياتها تحت بعض + بترتيب ابجدى للمناطق» (2026-11-02).
+  On `/atm/replenishments` and `/atm/maintenance` each area's rows sit together under a line that
+  names the area and counts its rows. The areas run in Arabic alphabetical order (`localeCompare`
+  'ar', so «أ» and «إ» read as «ا»), and a row with no area goes last under «بدون منطقة». An area is
+  its trimmed name, as the filters treat it, so « الدقي » and «الدقي» are one group. The area's
+  arrow is always lit and first: a click turns the areas round (ي → أ) and the next turns them
+  back; it never lets go. A click on any other column orders the rows inside each area, by the
+  usual rule, and the head numbers the two arrows 1 and 2. `?sort=` holds only the reader's
+  choice: the areas appear in it only while they run backwards. The lines take no part in a copy,
+  a selection or the export, and the Excel and PDF carry the rows in the same order. The done pages
+  are not grouped. The shared `DataTable` gained `group` for it
+  (`apps/web/src/modules/atm/lib/area-groups.ts`).
 - **The «الوردية» box.** «يكون في Check Box بجانب عنوان المجال اسمة مثلاً شيفت. الطبيعي بتاعه انه
   يبقي متعلم ودا اللى هينفذ الحالي … بس لو شيلت من عليه الـ Check يغير القائد للى معمول عليهم Select
   فقط». Beside the leader label in both edit dialogs, ticked on open. `cascadeLeader` on the edit

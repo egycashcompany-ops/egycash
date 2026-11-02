@@ -151,7 +151,38 @@ export interface DataTableProps<T> {
    * merged with it rather than replacing it). Returning `undefined` leaves the row as it was.
    */
   rowProps?: (row: T) => HTMLAttributes<HTMLTableRowElement> | undefined;
+  /**
+   * A HEADER LINE BEFORE EACH RUN OF ROWS THAT SHARE A GROUP. The ATM open boards use it, grouped
+   * by area: «كل منطقة تظهر اعطالها وتغذياتها تحت بعض».
+   *
+   * The table only DRAWS the groups. `rows` must already come in group order: a line is drawn
+   * wherever `of` changes from one row to the next, so a group split in two would show twice.
+   * `label` is what the line says; the table adds how many rows the run holds. The line spans
+   * the whole row, the selection box included, and takes no part in the selection, the sort or
+   * a row's `index`.
+   */
+  group?: {
+    of: (row: T) => string;
+    label: (group: string) => ReactNode;
+    /** How the run's row count is written — the reader's digits. */
+    count: (rows: number) => string;
+  };
 }
+
+/** Pure: where each run of rows sharing a group starts, and how long it is. */
+export const groupRuns = <T,>(
+  rows: readonly T[],
+  of: (row: T) => string,
+): { group: string; start: number; size: number }[] => {
+  const runs: { group: string; start: number; size: number }[] = [];
+  rows.forEach((row, index) => {
+    const group = of(row);
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.group === group) last.size += 1;
+    else runs.push({ group, start: index, size: 1 });
+  });
+  return runs;
+};
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
   start: 'text-start',
@@ -181,6 +212,7 @@ export const DataTable = <T,>({
   tightGutter = false,
   stickyHead = false,
   rowProps,
+  group,
 }: DataTableProps<T>): JSX.Element => {
   // One shape inside, whichever shape came in: the single-column callers (every module but Fleet)
   // and the multi-column ones read the same way from here down.
@@ -257,13 +289,44 @@ export const DataTable = <T,>({
         </tr>
       );
     }
-    return rows.map((row, index) => {
+    // The run that starts at each row, if one does — the group line goes before that row.
+    const runAt = new Map(
+      group === undefined ? [] : groupRuns(rows, group.of).map((run) => [run.start, run]),
+    );
+    return rows.flatMap((row, index) => {
       const id = rowKey(row);
       const isSelected = selected.has(id);
       // `className` is pulled out and folded in with the rest below, so a caller adding a drag
       // hook does not silently drop the table's own row styling.
       const { className: extraClass, ...extra } = rowProps?.(row) ?? {};
-      return (
+      const run = runAt.get(index);
+      const groupLine =
+        group === undefined || run === undefined ? null : (
+          <tr
+            key={`group:${index}`}
+            data-row-group={run.group}
+            className="border-t border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/60"
+          >
+            {/* A spanning cell, not a `<th>`: one `<tbody>` holds every group (Ctrl+A on the ATM
+                boards selects it whole), and a row-group header there would claim every later
+                row too. The cells' own side gutter, so the name lines up with the column under it. */}
+            <td
+              colSpan={colCount}
+              className={cn(
+                dense ? (tightGutter ? 'px-2' : 'px-3') : 'px-4',
+                'py-1.5 text-start text-xs font-semibold text-slate-600 dark:text-slate-300',
+              )}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {group.label(run.group)}
+                <span className="rounded bg-slate-200 px-1.5 tabular-nums text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                  {group.count(run.size)}
+                </span>
+              </span>
+            </td>
+          </tr>
+        );
+      const line = (
         <tr
           key={id}
           {...extra}
@@ -315,6 +378,7 @@ export const DataTable = <T,>({
           ))}
         </tr>
       );
+      return groupLine === null ? [line] : [groupLine, line];
     });
   })();
 

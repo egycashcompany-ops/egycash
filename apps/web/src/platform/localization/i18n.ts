@@ -9342,6 +9342,7 @@ const en: Record<string, string> = {
   'atm.common.pressAgain': 'Press «{{action}}» again.',
   'atm.common.pasteMaybeDone':
     'The first {{count}} were in the request that stopped and some may have gone through; sending them again is safe:',
+  'atm.board.noArea': 'No area',
   'atm.board.day.label': 'Day shown',
   'atm.board.day.today': 'Today',
   'atm.board.day.tomorrow': 'Tomorrow',
@@ -20141,6 +20142,7 @@ const ar: Record<string, string> = {
   'atm.common.pressAgain': 'اضغط «{{action}}» مرة أخرى.',
   'atm.common.pasteMaybeDone':
     'أول {{count}} منها كانت في الطلب الذي توقف وقد يكون بعضها تمّ، وإرسالها مرة أخرى آمن:',
+  'atm.board.noArea': 'بدون منطقة',
   'atm.board.day.label': 'اليوم المعروض',
   'atm.board.day.today': 'اليوم',
   'atm.board.day.tomorrow': 'غدًا',

@@ -42,9 +42,6 @@ describe('a phase’s batches are reached from that phase', () => {
   it('turns the bare address into a redirect to the evaluations', () => {
     expect(read('routes.tsx')).toContain('<Route index element={<Navigate to="/evaluations" replace />} />');
   });
-
-  /** Every row on the list is the same phase now, so a phase column would say one thing 25 times. */
-  it('carries no phase column', () => {
-    expect(read('evaluation-batches/pages/EvaluationBatchesPage.tsx')).not.toContain("key: 'phase'");
-  });
+  // The missing phase column is pinned beside the rest of the list's shape, in
+  // batch-screens-per-phase.spec.ts.
 });

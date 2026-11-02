@@ -6,17 +6,30 @@
 import { describe, expect, it } from 'vitest';
 import { type FleetFixedCrewRowDto, type FleetRosterRowDto } from '@ecms/contracts';
 import {
+  ABSENCE_REASONS,
+  byReasons,
   carriesPlan,
   COUNTER_TONES,
+  expiredLicenceIds,
   FIXED_ROSTER_VIEWS,
+  hasCrewGap,
   hasDriver,
+  hasOtherCrewGap,
+  isManned,
+  isReady,
+  isUnmanned,
+  licenceCheckLinks,
   MISSION_TONES,
   missionTone,
   readFixedView,
   readView,
+  reasonChips,
+  reasonSubtotals,
+  ROSTER_VIEWS,
   UNSAVED_ROW,
   visibleFixedRows,
   visibleRows,
+  withoutExpiredLicence,
 } from './roster-view';
 
 const MISSION_A = '65000000000000000000a001';
@@ -397,5 +410,201 @@ describe('readFixedView — the URL is user-writable', () => {
       6,
     );
     expect(readFixedView('workshop'), 'and the one they share is read').toBe('workshop');
+  });
+});
+
+// ── the day's rules, as the server marked each row (R-03…R-06) ─────────────
+//
+// The three views the fleet dashboard links to. Each reads the row's own server field, so the rows
+// a link opens are the rows the dashboard counted — and an answer from a server that does not send
+// the field yet is read the way the board read it before.
+
+/** A day with every rule shape, each row marked as the server marks it. */
+const RULES_DAY: FleetRosterRowDto[] = [
+  // ready, manned by an available driver
+  row({
+    vehicleId: 'r1',
+    code: '150',
+    driver1EmployeeId: 'e1',
+    assignable: true,
+    manned: true,
+    crewGaps: [],
+  }),
+  // ready, nobody on it, its fixed driver on التمامات → an ABSENCE gap
+  row({
+    vehicleId: 'r2',
+    code: '151',
+    assignable: true,
+    manned: false,
+    crewGaps: [{ seat: 1, employeeId: 'f2', reason: 'fleetUnavailability' }],
+  }),
+  // ready, its fixed driver's licence expired → a gap, but not an absence
+  row({
+    vehicleId: 'r3',
+    code: '152',
+    driver1EmployeeId: 'f3',
+    assignable: true,
+    manned: false,
+    crewGaps: [{ seat: 1, employeeId: 'f3', reason: 'licenceExpired' }],
+  }),
+  // in the workshop — never ready, never a gap
+  row({
+    vehicleId: 'r4',
+    code: '153',
+    inMaintenance: true,
+    assignable: false,
+    manned: false,
+    crewGaps: [],
+  }),
+  // its own licence expired — flagged, not ready
+  row({
+    vehicleId: 'r5',
+    code: '154',
+    licenceExpired: true,
+    assignable: false,
+    manned: false,
+    crewGaps: [],
+  }),
+  // ready, a planned driver who is no longer available, no fixed crew → a stale plan, unmanned
+  row({
+    vehicleId: 'r6',
+    code: '155',
+    planned: true,
+    driver1EmployeeId: 'g6',
+    assignable: true,
+    manned: false,
+    crewGaps: [],
+    stalePlan: true,
+  }),
+];
+
+describe('the three rule views', () => {
+  it('reads the five states it knows, and nothing else', () => {
+    expect([...ROSTER_VIEWS]).toEqual(['workshop', 'assigned', 'ready', 'unmanned', 'crewGap']);
+    for (const view of ['ready', 'unmanned', 'crewGap'] as const) expect(readView(view)).toBe(view);
+    for (const raw of ['READY', 'crewgap', 'manned', 'stalePlan']) expect(readView(raw)).toBeNull();
+  });
+
+  it('«جاهزة» shows the rows the server marked assignable', () => {
+    expect(codes(visibleRows(RULES_DAY, { view: 'ready' }))).toEqual(['150', '151', '152', '155']);
+  });
+
+  it('«بلا سائق» shows ready rows that no available driver mans — a planned unavailable driver included', () => {
+    expect(codes(visibleRows(RULES_DAY, { view: 'unmanned' }))).toEqual(['151', '152', '155']);
+  });
+
+  it('«غياب الطاقم الثابت» shows only gaps whose reason is an ABSENCE', () => {
+    expect(codes(visibleRows(RULES_DAY, { view: 'crewGap' }))).toEqual(['151']);
+    expect([...ABSENCE_REASONS]).toEqual(['fleetUnavailability', 'hrLeave']);
+    expect(
+      RULES_DAY.filter(hasOtherCrewGap).map((r) => r.code),
+      'the licence gap, on its own',
+    ).toEqual(['152']);
+  });
+
+  it('combines with the other filters by AND, like every view', () => {
+    expect(codes(visibleRows(RULES_DAY, { view: 'unmanned', term: '151' }))).toEqual(['151']);
+    expect(codes(visibleRows(RULES_DAY, { view: 'ready', missions: [MISSION_A] }))).toEqual([]);
+  });
+
+  it('reads an answer WITHOUT the fields the way the board read it before them', () => {
+    // An older server: no `assignable`, `manned` or `crewGaps`. Ready was «not in the workshop»,
+    // manned was «a driver in a seat», and there was no gap to show.
+    const legacy = [
+      row({ vehicleId: 'l1', code: '160' }),
+      row({ vehicleId: 'l2', code: '161', inMaintenance: true }),
+      row({ vehicleId: 'l3', code: '162', driver1EmployeeId: 'e1' }),
+    ];
+    expect(legacy.map(isReady)).toEqual([true, false, true]);
+    expect(legacy.map(isManned)).toEqual([false, false, true]);
+    expect(legacy.map(isUnmanned)).toEqual([true, false, false]);
+    expect(legacy.some(hasCrewGap)).toBe(false);
+  });
+
+  it('gives each new state its own readable tone, worn by no mission', () => {
+    const tones = [COUNTER_TONES.ready, COUNTER_TONES.unmanned, COUNTER_TONES.crewGap];
+    expect(new Set(Object.values(COUNTER_TONES)).size).toBe(Object.keys(COUNTER_TONES).length);
+    for (const tone of tones) {
+      const hue = /bg-([a-z]+)-100/.exec(tone)?.[1] ?? '';
+      expect(
+        MISSION_TONES.some((m) => m.includes(`bg-${hue}-100`)),
+        hue,
+      ).toBe(false);
+    }
+  });
+});
+
+describe('the day’s drivers — the licence flag and the reasons', () => {
+  const day = {
+    availableDrivers: [
+      { employeeId: 'a1', assignedVehicleId: null, licence: 'valid' as const },
+      { employeeId: 'a2', assignedVehicleId: 'v1', licence: 'expired' as const },
+      { employeeId: 'a3', assignedVehicleId: null, licence: 'expired' as const },
+      { employeeId: 'a4', assignedVehicleId: null, licence: 'notRecorded' as const },
+      { employeeId: 'a5', assignedVehicleId: null },
+    ],
+    unavailableDrivers: [
+      { employeeId: 'u1', reason: 'hrLeave' },
+      { employeeId: 'u2', reason: 'licenceExpired' },
+      { employeeId: 'u3', reason: 'fleetUnavailability' },
+      { employeeId: 'u4', reason: 'hrLeave' },
+      { employeeId: 'u5', reason: 'somethingNew' },
+    ],
+  };
+
+  it('collects every licence-expired driver of the day — flagged or refused', () => {
+    expect([...expiredLicenceIds(day)].sort()).toEqual(['a2', 'a3', 'u2']);
+    expect(expiredLicenceIds(undefined).size).toBe(0);
+  });
+
+  it('leaves them out of the available list, and never a missing date', () => {
+    const expired = expiredLicenceIds(day);
+    expect(withoutExpiredLicence(day.availableDrivers, expired).map((d) => d.employeeId)).toEqual([
+      'a1',
+      'a4',
+      'a5',
+    ]);
+  });
+
+  it('links the owner’s list for the board’s day — drivers, and ACTIVE vehicles', () => {
+    expect(licenceCheckLinks('2026-11-20')).toEqual({
+      drivers: '/fleet/drivers?licExpBefore=2026-11-20',
+      vehicles: '/fleet/vehicles?status=active&licExpBefore=2026-11-20',
+    });
+  });
+
+  it('narrows the unavailable list to the reasons asked for — none asked is everyone', () => {
+    expect(byReasons(day.unavailableDrivers, []).length).toBe(5);
+    expect(byReasons(day.unavailableDrivers, ['hrLeave']).map((d) => d.employeeId)).toEqual([
+      'u1',
+      'u4',
+    ]);
+    expect(
+      byReasons(day.unavailableDrivers, ['hrLeave', 'fleetUnavailability']).map(
+        (d) => d.employeeId,
+      ),
+    ).toEqual(['u1', 'u3', 'u4']);
+  });
+
+  it('subtotals every reason present, in the seam’s order, adding up to the total', () => {
+    const subtotals = reasonSubtotals(day.unavailableDrivers);
+    expect(subtotals).toEqual([
+      { reason: 'fleetUnavailability', count: 1 },
+      { reason: 'hrLeave', count: 2 },
+      { reason: 'licenceExpired', count: 1 },
+      { reason: 'somethingNew', count: 1 },
+    ]);
+    expect(subtotals.reduce((sum, s) => sum + s.count, 0)).toBe(day.unavailableDrivers.length);
+  });
+
+  it('draws a chip (0) for a reason asked for that nobody has today, so it can be taken off', () => {
+    const subtotals = reasonSubtotals(day.unavailableDrivers);
+    expect(reasonChips(subtotals, [])).toEqual(subtotals);
+    expect(reasonChips(subtotals, ['hrLeave'])).toEqual(subtotals);
+    expect(reasonChips(subtotals, ['notEmployed', 'hrLeave', 'notEmployed'])).toEqual([
+      ...subtotals,
+      { reason: 'notEmployed', count: 0 },
+    ]);
+    expect(reasonChips([], ['hrLeave'])).toEqual([{ reason: 'hrLeave', count: 0 }]);
   });
 });

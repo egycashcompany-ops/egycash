@@ -43,6 +43,7 @@
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
 //   /fleet/settings           fleetMaintenanceRule.manage  FW-10
 import { Route, Routes } from 'react-router-dom';
+import { FLEET_DASHBOARD_PAGE_KEYS } from '@ecms/contracts';
 import { FilterResetStyleContext } from '../../shared/ui/FilterBar';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
@@ -95,7 +96,14 @@ export default function FleetRoutes(): JSX.Element {
     <FilterResetStyleContext.Provider value={FLEET_RESET}>
       <Routes>
         <Route element={<AppShell />}>
-          <Route index element={<FleetDashboardPage />} />
+          <Route
+            index
+            element={
+              <RequirePermission anyOf={FLEET_DASHBOARD_PAGE_KEYS}>
+                <FleetDashboardPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="vehicles"
             element={

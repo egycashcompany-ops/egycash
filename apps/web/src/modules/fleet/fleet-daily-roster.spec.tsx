@@ -461,13 +461,12 @@ describe('Reset', () => {
     }
   });
 
-  it('clears q, mission and view together — and leaves the DAY alone', () => {
-    // The button is one `patch` of exactly three keys; `date` is what the screen is about, not a
-    // filter, and a reset that jumped back to today would throw away the day somebody navigated to.
-    expect(SOURCE).toContain('patch({ q: null, mission: null, view: null })');
-    expect(SOURCE, 'the day survives a reset').not.toContain(
-      'patch({ q: null, mission: null, view: null, date: null })',
-    );
+  it('clears q, mission, view and the unavailable reasons together — and leaves the DAY alone', () => {
+    // The button is one `patch` of exactly four keys — the unavailable panel's `unavailable` is a
+    // remembered filter like the others; `date` is what the screen is about, not a filter, and a
+    // reset that jumped back to today would throw away the day somebody navigated to.
+    expect(SOURCE).toContain('patch({ q: null, mission: null, view: null, unavailable: null })');
+    expect(SOURCE, 'the day survives a reset').not.toMatch(/patch\(\{ q: null[^}]*date: null/u);
   });
 
   it('brings every row back and returns «إجمالي» to the applied state', () => {

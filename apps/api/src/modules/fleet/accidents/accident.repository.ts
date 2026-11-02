@@ -165,6 +165,34 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
     };
   }
 
+  /**
+   * R-12 — the most recently WRITTEN live files `filter` matches (`createdAt` desc, `_id` desc),
+   * at most `limit`; the fleet dashboard's «آخر ما سُجّل». Only the fields its row prints.
+   */
+  async recentWritten(
+    filter: FilterQuery<FleetAccidentDoc>,
+    limit: number,
+  ): Promise<FleetAccidentDoc[]> {
+    // `limit(0)` is «no limit» to Mongo, so a request for nothing is answered without asking.
+    if (limit <= 0) return [];
+    return this.model
+      .find(this.baseFilter(undefined, filter))
+      .select({
+        vehicleId: 1,
+        vehicleCode: 1,
+        occurredAt: 1,
+        culprit: 1,
+        culpritEmployeeId: 1,
+        culpritEmployeeIds: 1,
+        status: 1,
+        createdAt: 1,
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit)
+      .lean<FleetAccidentDoc[]>()
+      .exec();
+  }
+
   // ── transfers: reads and writes that run INSIDE a transaction ─────────────
   //
   // `BaseRepository`'s reads take no session, and a transfer's check has to read the very state

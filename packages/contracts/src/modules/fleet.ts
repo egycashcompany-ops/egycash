@@ -541,6 +541,21 @@ export const vehicleCodesQuery = (max = 50) =>
   );
 
 /**
+ * The vehicle-set filter (fleet dashboard, plan D10): the cars of these types, operations and
+ * registered branches — each a list ORed within itself, ANDed with the others and with
+ * `vehicleCodes`. Resolved server-side against the registry, deleted cars included (an old record of
+ * a car since removed still matches), by each screen the way it resolves its own codes.
+ */
+const vehicleSetFilters = () => ({
+  /** «النوع» — vehicle type ids. */
+  typeIds: listQuery(objectId()),
+  /** «التشغيل» — vehicle operation ids. */
+  operationIds: listQuery(objectId()),
+  /** «الفرع» — the branch the car is registered to. */
+  branchIds: listQuery(objectId()),
+});
+
+/**
  * The registry query a VEHICLE-CODE selector asks — code only, and nothing else.
  *
  * Every control in the application whose job is to pick or filter A CAR asks by the code: the
@@ -776,6 +791,10 @@ export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
   specialization: FleetDriverSpecializationSchema.optional(),
   isActive: booleanQuery().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
+  /** `$gte`, beside `licenseExpiresBefore` (`$lte`) — the same pair the vehicles API has. */
+  licenseExpiresFrom: z.coerce.date().optional(),
+  /** `true` → only profiles with no licence expiry recorded («بلا تاريخ»). */
+  licenseNotRecorded: booleanQuery().optional(),
   /** Substring match on the licence number (المنطقة has its own parameter). */
   search: z.string().trim().min(1).max(100).optional(),
   /** Substring match on the fleet-owned area (المنطقة). */
@@ -1027,9 +1046,8 @@ export const FleetOdometerBracketQuerySchema = z
   .strict();
 export type FleetOdometerBracketQuery = z.infer<typeof FleetOdometerBracketQuerySchema>;
 
-export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
-  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
-  sort: fleetSortQuery(),
+/** The odometer log's FILTERS — shared by the list and its total (`/fleet/odometer/summary`). */
+const odometerFilters = {
   /** Single vehicle — kept because the vehicle profile links here with it. */
   vehicleId: objectId().optional(),
   /**
@@ -1064,8 +1082,37 @@ export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
    * visit search their own notes, so the three read alike.
    */
   notes: z.string().trim().min(1).max(100).optional(),
+  ...vehicleSetFilters(),
+};
+
+export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
+  ...odometerFilters,
 }).strict();
 export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema>;
+
+/**
+ * `GET /fleet/odometer/summary` — the list's filters WITHOUT paging or sorting, so the total
+ * describes every row the filters match, never one page (the accidents summary's guarantee).
+ */
+export const FleetOdometerSummaryQuerySchema = z.object(odometerFilters).strict();
+export type FleetOdometerSummaryQuery = z.infer<typeof FleetOdometerSummaryQuerySchema>;
+
+/** R-14: the distance the matching rows record. */
+export interface FleetOdometerSummaryDto {
+  /** Σ valid km of the rows the filter matches. */
+  km: number;
+  /** Rows counted in `km`. */
+  validRows: number;
+  /**
+   * Closed rows excluded from `km` (km < 0, or above a cap if one is ever set) —
+   * «قراءات تحتاج مراجعة».
+   */
+  invalidRows: number;
+  /** Chain rows still open (km = null). */
+  openRows: number;
+}
 
 // ── Maintenance alarm (FR-3 — derived, never stored) ────────────────────────
 
@@ -1518,6 +1565,8 @@ export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
    * fact, resolved server-side like `operationIds`; a car the registry never had has no branch.
    */
   branchIds: listQuery(objectId()),
+  /** «النوع» — visits of cars of these vehicle types, resolved like `operationIds`. */
+  typeIds: listQuery(objectId()),
   /** Substring over the visit's own note. */
   notes: z.string().trim().min(1).max(100).optional(),
   /** Inclusive bounds on the counter the vehicle went in on. */
@@ -1566,6 +1615,42 @@ export interface FleetDutyAssignmentDto {
   updatedAt: string;
 }
 
+/**
+ * Why a driver is not available on a date — the availability seam's verdicts, in its precedence.
+ *
+ * `licenceExpired` is checked LAST (R-04), so every unavailable driver carries exactly one reason;
+ * the seam returns it only while `fleet.roster.refuseExpiredLicence` is on (plan D2). Off, an expired
+ * licence is a FLAG (`FleetDriverLicenceState`) beside an available verdict.
+ */
+export const FLEET_DRIVER_UNAVAILABLE_REASONS = [
+  'notADriver',
+  'profileInactive',
+  'notEmployed',
+  'fleetUnavailability',
+  'hrLeave',
+  'licenceExpired',
+] as const;
+export type FleetDriverUnavailableReason = (typeof FLEET_DRIVER_UNAVAILABLE_REASONS)[number];
+
+/**
+ * A driver's licence on the board's date (R-02: expired ON the expiry day). `notRecorded` — a profile
+ * with no expiry date; `noProfile` — nobody recorded a profile. Neither ever blocks.
+ */
+export const FLEET_DRIVER_LICENCE_STATES = [
+  'valid',
+  'expired',
+  'notRecorded',
+  'noProfile',
+] as const;
+export type FleetDriverLicenceState = (typeof FLEET_DRIVER_LICENCE_STATES)[number];
+
+/** R-06: a seat whose FIXED driver is unavailable on the date, and that no available driver mans. */
+export interface FleetRosterCrewGapDto {
+  seat: 1 | 2;
+  employeeId: string;
+  reason: FleetDriverUnavailableReason;
+}
+
 /** One board row: the assignment merged with the DERIVED vehicle-side facts. */
 export interface FleetRosterRowDto {
   vehicleId: string;
@@ -1593,14 +1678,36 @@ export interface FleetRosterRowDto {
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
   notes: string | null;
+  // ── Derived on the board's date (R-03, R-06). Optional on the wire for older fixtures only: the
+  // server always fills them, and a reader treats `undefined` as the legacy meaning.
+  /** R-03: active ∧ ¬inMaintenance ∧ licence not expired on the board's date. */
+  assignable?: boolean;
+  /** The vehicle's licence expired on the board's date (a null date → false). */
+  licenceExpired?: boolean;
+  /** R-06: ≥ 1 seat names a driver available on the date (R-04, licence included). */
+  manned?: boolean;
+  /** R-06: per seat whose FIXED driver is unavailable and that seat is not manned. */
+  crewGaps?: FleetRosterCrewGapDto[];
+  /** Seats whose fixed driver is unavailable but that are manned by a substitute. */
+  crewCovered?: number;
+  /** A PLANNED seat names an unavailable driver who is not this car's fixed driver. */
+  stalePlan?: boolean;
 }
 
 export interface FleetRosterDayDto {
   date: string;
   rows: FleetRosterRowDto[];
   /** Active driver profiles, split by availability on the date (§4.5 pool). */
-  availableDrivers: { employeeId: string; assignedVehicleId: string | null }[];
+  availableDrivers: {
+    employeeId: string;
+    assignedVehicleId: string | null;
+    /** The licence on the date; 'expired' appears here only while `licenceRule` is 'flag'. */
+    licence?: FleetDriverLicenceState;
+  }[];
+  /** `reason` is one of `FLEET_DRIVER_UNAVAILABLE_REASONS`. */
   unavailableDrivers: { employeeId: string; reason: string }[];
+  /** `fleet.roster.refuseExpiredLicence` for this answer: off → 'flag', on → 'refuse'. */
+  licenceRule?: 'flag' | 'refuse';
 }
 
 export const PlanFleetRosterRowSchema = z
@@ -2012,6 +2119,7 @@ const accidentFilters = {
   notes: z.string().trim().min(1).max(100).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  ...vehicleSetFilters(),
 };
 
 export const ListFleetAccidentsQuerySchema = PaginationQuerySchema.extend({
@@ -2446,6 +2554,7 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    */
   collected: booleanQuery().optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
+  ...vehicleSetFilters(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;
 
@@ -2484,6 +2593,7 @@ export const FleetViolationRollupQuerySchema = z
     vehicleCodes: vehicleCodesQuery(),
     /** @deprecated One car, by id — still honoured for links saved before the codes existed. */
     vehicleId: objectId().optional(),
+    ...vehicleSetFilters(),
   })
   .strict();
 export type FleetViolationRollupQuery = z.infer<typeof FleetViolationRollupQuerySchema>;
@@ -2729,119 +2839,6 @@ export const FLEET_DEALERSHIP_FILE_CATEGORY = 'fleet-dealership-invoices';
 
 // ── Declared settings (owner principle 4 — nothing threshold-like hardcoded) ─
 
-// ── The module's landing surface (FW-2): one read, one screen ───────────────
-//
-// The dashboard asks a dozen questions about the same fleet — how many cars of each type sit in
-// each branch, who drives them, how far they ran, what is due, what happened today — and every
-// one of them is an AGGREGATE over a collection the page cannot hold. Answering them from the
-// list endpoints would mean a request per branch per type and a page cap in front of a fleet of
-// two hundred, so the server answers them, once.
-//
-// Every section is NULLABLE, and that is the permission model rather than an accident: a reader
-// who may see the workshop but not the registry gets the maintenance sections and `null` where
-// the vehicle ones would be. The client renders what it was given and nothing where it was given
-// nothing — it never has to know which permission produced which section.
-
-/** A branch, named once and referred to by id everywhere below. */
-export interface FleetDashboardBranchDto {
-  id: string;
-  name: LocalizedString;
-}
-
-/** One row of «توزيع الأسطول»: a vehicle TYPE, its count per branch, and its total. */
-export interface FleetDashboardTypeRowDto {
-  typeId: string;
-  name: LocalizedString;
-  /** Branch id → how many active vehicles of this type it holds. Absent branch = zero. */
-  counts: Record<string, number>;
-  total: number;
-}
-
-/**
- * «إحصائيات الفرع» for ONE branch, or for the whole company when `branchId` is null.
- *
- * The operation split (نقل أموال / ATM) is the vehicle's `operation` catalog reference, which is
- * what the registry already stores; the driver split is the profile's own `specialization`. Both
- * are read, never inferred from a name.
- */
-export interface FleetDashboardBranchStatsDto {
-  branchId: string | null;
-  vehicles: number;
-  drivers: number;
-  /** Vehicles whose operation names the cash run, and the drivers specialised in it. */
-  cashVehicles: number;
-  cashDrivers: number;
-  atmVehicles: number;
-  atmDrivers: number;
-}
-
-/** Distance recorded per branch, and the cars at either end of it. */
-export interface FleetDashboardVehicleKmDto {
-  vehicleId: string;
-  code: string;
-  km: number;
-}
-
-export interface FleetDashboardBranchKmDto {
-  branchId: string;
-  km: number;
-}
-
-/** A licence coming due, with the branch that has to renew it. */
-export interface FleetDashboardDueLicenseDto {
-  vehicleId: string;
-  code: string;
-  branchId: string | null;
-  licenseExpiresAt: string;
-}
-
-/** A workshop visit that started today, as the strip under the board lists it. */
-export interface FleetDashboardVisitDto {
-  visitId: string;
-  code: string;
-  workshop: LocalizedString | null;
-  workType: LocalizedString | null;
-  spareParts: LocalizedString[];
-  notes: string | null;
-}
-
-/** An accident recorded today. */
-export interface FleetDashboardAccidentDto {
-  accidentId: string;
-  code: string;
-  occurredAt: string;
-  culprit: string | null;
-  /**
-   * The drivers of ours behind `culprit` — the accident's own `culpritEmployeeIds`, under the same
-   * accidents grant — so the name opens the driver card here as it does on the accidents board.
-   * Empty for a third party.
-   */
-  culpritEmployeeIds: string[];
-  status: FleetAccidentStatus;
-}
-
-export interface FleetDashboardDto {
-  /** Every branch that holds a vehicle, in the order the matrix's columns run. */
-  branches: FleetDashboardBranchDto[];
-  /** `null` = the caller may not read the registry. */
-  fleet: {
-    types: FleetDashboardTypeRowDto[];
-    /** The whole company first, then one entry per branch. */
-    stats: FleetDashboardBranchStatsDto[];
-    dueLicenses: FleetDashboardDueLicenseDto[];
-  } | null;
-  /** `null` = the caller may not read the odometer log. */
-  odometer: {
-    byBranch: FleetDashboardBranchKmDto[];
-    top: FleetDashboardVehicleKmDto[];
-    bottom: FleetDashboardVehicleKmDto[];
-  } | null;
-  /** `null` = the caller may not read the workshop. */
-  maintenance: { today: FleetDashboardVisitDto[]; monthCount: number } | null;
-  /** `null` = the caller may not read accidents. */
-  accidents: { today: FleetDashboardAccidentDto[]; monthCount: number } | null;
-}
-
 export const FleetSettingKeys = {
   /** Remaining-km threshold that turns the maintenance alarm yellow. */
   AlarmYellowKm: 'fleet.alarm.yellowKm',
@@ -2891,6 +2888,14 @@ export const FleetSettingKeys = {
   /** A card balance below this reads yellow on the charging screen; below `BalanceRed`, red. */
   FuelCardBalanceYellow: 'fleet.fuelCard.balanceYellow',
   FuelCardBalanceRed: 'fleet.fuelCard.balanceRed',
+  /**
+   * Planning REFUSES a driver or a vehicle whose licence expired (Q-01). Off by default: the roster
+   * only FLAGS them until the owner has checked the list of expired licences and switched it on.
+   * A licence with no recorded date never blocks.
+   */
+  RosterRefuseExpiredLicence: 'fleet.roster.refuseExpiredLicence',
+  /** R-07: an active car with no counter reading for this many days is flagged (default 3). */
+  OdometerMissingReadingDays: 'fleet.odometer.missingReadingDays',
 } as const;
 export type FleetSettingKey = (typeof FleetSettingKeys)[keyof typeof FleetSettingKeys];
 
@@ -3375,6 +3380,7 @@ const dealershipFilters = {
   /** `true` — only rows still waiting for their invoice; `false` — only recorded ones. */
   pending: booleanQuery().optional(),
   workKind: FleetDealershipWorkKindSchema.optional(),
+  ...vehicleSetFilters(),
 };
 
 export const ListFleetDealershipInvoicesQuerySchema = PaginationQuerySchema.extend({
@@ -3548,6 +3554,8 @@ const fuelCardFilters = {
   /** Part of the card number. */
   number: z.string().trim().min(1).max(40).optional(),
   expiresBefore: z.coerce.date().optional(),
+  /** `$gte`, beside `expiresBefore` — the window a dashboard link names. */
+  expiresFrom: z.coerce.date().optional(),
   /** `true` — only cards with a charge request waiting. */
   requested: booleanQuery().optional(),
   /** Only cards whose balance is below this. */
@@ -4419,6 +4427,7 @@ const receiptFilters = {
   driver: z.string().trim().min(1).max(200).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  ...vehicleSetFilters(),
 };
 export const ListFleetReceiptsQuerySchema = PaginationQuerySchema.extend({
   ...receiptFilters,

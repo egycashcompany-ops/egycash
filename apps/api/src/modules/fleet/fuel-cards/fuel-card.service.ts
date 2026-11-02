@@ -192,6 +192,7 @@ class FleetFuelCardService {
       company: query.company,
       number: query.number,
       expiresBefore: query.expiresBefore,
+      expiresFrom: query.expiresFrom,
       requested: query.requested,
       balanceBelow: query.balanceBelow,
     });
@@ -211,8 +212,16 @@ class FleetFuelCardService {
     return { ...page, codes: await this.codesFor(page.items) };
   }
 
-  async summary(query: FleetFuelCardSummaryQuery): Promise<FleetFuelCardTotalsDto> {
-    return fleetFuelCardRepository.totals(await this.filterFor(query), new Date());
+  /**
+   * The cards' totals. `now` is the clock «شُحن اليوم» (its Cairo day) is measured from — the
+   * request's own instant by default, as it always was; the fleet dashboard passes the one clock its
+   * whole read runs on, so every figure on it is counted at the same instant.
+   */
+  async summary(
+    query: FleetFuelCardSummaryQuery,
+    now: Date = new Date(),
+  ): Promise<FleetFuelCardTotalsDto> {
+    return fleetFuelCardRepository.totals(await this.filterFor(query), now);
   }
 
   async get(id: string): Promise<FuelCardWithCode> {

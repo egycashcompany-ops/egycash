@@ -8,6 +8,7 @@ import {
   FLEET_UNKNOWN_DRIVER_NAME,
   FleetEvents,
   parseFleetSort,
+  type FleetDashboardNowViolationsDto,
   type FleetViolationKind,
   type FleetViolationRollupDto,
   type FleetViolationSide,
@@ -28,11 +29,17 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import {
+  fleetVehicleRepository,
+  intersectVehicleIds,
+  vehicleSetPart,
+  type VehicleFilterQuery,
+} from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { fleetGrievanceRepository, fleetViolationRepository } from './violation.repository';
-import { assembleRollups } from './violation-rollup';
+import { assembleRollups, assembleYearDigest } from './violation-rollup';
 import { type FleetGrievanceDoc, type FleetViolationDoc } from './violation.model';
 import { vehicleIdOf } from '../fleet.mappers';
 
@@ -309,17 +316,45 @@ class FleetViolationService {
     return updated;
   }
 
+  /**
+   * WHICH CARS a query asks about, as the repository's two narrowings take them.
+   *
+   * A violation stores its vehicle by id and never carries the code, so the picker's codes are
+   * resolved against the registry first — the same two-step accidents and maintenance take —
+   * and intersected with the vehicle set, «النوع / التشغيل / الفرع» (plan D10, deleted cars
+   * included). `vehicleIds: undefined` when nothing narrows; `[]` when the codes or the set match
+   * no car, which narrows to nothing rather than dropping the filter. The typed codes still reach
+   * the old book's rows on a car the registry never had — until a set is asked: such a row has no
+   * type, operation or branch to be of.
+   */
+  private async carsOf(
+    query: VehicleFilterQuery,
+    extra?: readonly string[],
+  ): Promise<{ vehicleIds: string[] | undefined; vehicleCodes: readonly string[] | undefined }> {
+    const [asked, bySet] = await Promise.all([
+      query.vehicleCodes === undefined
+        ? undefined
+        : fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+      resolveVehicleFilterIds(vehicleSetPart(query)),
+    ]);
+    // The deprecated single id, folded in beside the codes (the rollup's old link).
+    const byCode =
+      extra === undefined || extra.length === 0
+        ? asked
+        : [...new Set([...(asked ?? []), ...extra])];
+    return {
+      vehicleIds: intersectVehicleIds(byCode, bySet),
+      vehicleCodes: bySet === undefined ? query.vehicleCodes : undefined,
+    };
+  }
+
   async list(query: ListFleetViolationsQuery): Promise<Paginated<FleetViolationDoc>> {
+    const cars = await this.carsOf(query);
     return fleetViolationRepository.listViolations({
       filter: fleetViolationRepository.violationFilter({
         ...query,
-        // A violation stores its vehicle by id and never carries the code, so the picker's codes
-        // are resolved against the registry first — the same two-step accidents and maintenance
-        // take. `undefined` when nothing was picked; `[]` when the codes match no car, which
-        // narrows to nothing rather than dropping the filter.
-        ...(query.vehicleCodes === undefined
-          ? {}
-          : { vehicleIds: await fleetVehicleRepository.idsByCodes(query.vehicleCodes) }),
+        ...(cars.vehicleIds === undefined ? {} : { vehicleIds: cars.vehicleIds }),
+        vehicleCodes: cars.vehicleCodes,
       }),
       page: query.page,
       pageSize: query.pageSize,
@@ -528,6 +563,8 @@ class FleetViolationService {
     years: readonly number[] | undefined,
     vehicleId?: string,
     vehicleCodes?: readonly string[],
+    /** «النوع / التشغيل / الفرع» — the vehicle set (plan D10), intersected with the codes. */
+    set: VehicleFilterQuery = {},
   ): Promise<FleetViolationRollupDto[]> {
     /*
      * WHICH CARS the board is asking about — several, and by CODE.
@@ -544,19 +581,12 @@ class FleetViolationService {
      * The deprecated single `vehicleId` is folded in beside them, so a link saved before the
      * codes existed still narrows to the car it names.
      */
-    const asked =
-      vehicleCodes === undefined
-        ? undefined
-        : await fleetVehicleRepository.idsByCodes(vehicleCodes);
-    const vehicleIds =
-      asked === undefined
-        ? vehicleId === undefined
-          ? undefined
-          : [vehicleId]
-        : vehicleId === undefined
-          ? asked
-          : [...new Set([...asked, vehicleId])];
-    const scope = { vehicleIds, vehicleCodes } as const;
+    // …and the vehicle set beside them, which a (code, year) of the old book cannot be in.
+    const scope = await this.carsOf(
+      { ...set, vehicleCodes },
+      vehicleId === undefined ? undefined : [vehicleId],
+    );
+    const { vehicleIds } = scope;
     const [sums, grievances] = await Promise.all([
       fleetViolationRepository.yearSums(years, scope),
       fleetGrievanceRepository.forYears(years, vehicleIds),
@@ -582,6 +612,24 @@ class FleetViolationService {
       })),
       codes,
     );
+  }
+
+  /**
+   * R-24 / T5.11–T5.12 — the year's uncollected violations for the fleet dashboard: the company's
+   * statements and the drivers' fines, the drivers' total split into attributed, «مجهول» and
+   * «اسم غير مربوط» (amount and count each). The rollup's own sums over the rollup's own year rule
+   * and vehicle narrowing — see `assembleYearDigest` — so the figure is the board's for that year.
+   */
+  async yearDigest(input: {
+    year: number;
+    filter: VehicleFilterQuery;
+  }): Promise<FleetDashboardNowViolationsDto> {
+    const scope = await this.carsOf(input.filter);
+    const [sums, groups] = await Promise.all([
+      fleetViolationRepository.yearSums([input.year], scope),
+      fleetViolationRepository.driverFineGroups(input.year, scope),
+    ]);
+    return assembleYearDigest(input.year, sums, groups);
   }
 }
 

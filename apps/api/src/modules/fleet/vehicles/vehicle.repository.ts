@@ -1,12 +1,16 @@
 import { type ClientSession, type FilterQuery, Types } from 'mongoose';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
+import { type ScopeSelector } from '../../../shared/types';
 import {
   FLEET_FIRST_WORKING_CODE,
   type ListFleetVehiclesQuery,
   type Paginated,
+  calendarDayBounds,
+  compareFleetVehicleCodes,
   fleetMonthWindow,
 } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
+import { memoisedVehicleIds } from './vehicle-filter-memo';
 import { FleetVehicleTypeModel } from '../vehicle-types/vehicle-type.model';
 
 /**
@@ -293,6 +297,145 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * «النوع» on the period screens — every car, deleted ones included, whose type is one of these.
+   *
+   * The twin of `idsWithOperations`, for the same reasons: a `distinct` rather than a page, and the
+   * deleted cars kept, because their visits, accidents and receipts are still history the screens
+   * show. An empty list asks nothing and answers nothing; the caller decides what that means.
+   */
+  async idsWithTypes(typeIds: readonly string[]): Promise<string[]> {
+    if (typeIds.length === 0) return [];
+    const ids = await this.model
+      .distinct('_id', { typeId: { $in: typeIds.map((id) => new Types.ObjectId(id)) } })
+      .exec();
+    return ids.map((id) => String(id));
+  }
+
+  // ── The fleet dashboard's reads (P1-03) ────────────────────────────────────────────────────
+  //
+  // Each one counts through the SAME base filter the registry list applies — soft delete and the
+  // reader's `scopeSelector(ctx, 'fleetVehicle.view')` — so a figure equals the list its link
+  // opens, under the same grant, by construction. None of them spells a filter of its own: the
+  // list's `vehicleListFilter` is called where a bar control is involved.
+
+  /** T2.1/T2.2 — the registry's three statuses in the reader's scope, in one `$group`. */
+  async statusCounts(
+    scope: ScopeSelector,
+  ): Promise<{ active: number; outOfService: number; disposed: number }> {
+    const counts = await this.countByStatus({}, scope);
+    return {
+      active: counts['active'] ?? 0,
+      outOfService: counts['outOfService'] ?? 0,
+      disposed: counts['disposed'] ?? 0,
+    };
+  }
+
+  /**
+   * T2.2 — the cars out of service and why, in the fleet's code order. The reason is printed as
+   * the clerk wrote it (free text, never grouped); a legacy row without one reads `null`.
+   */
+  async outOfServiceList(
+    scope: ScopeSelector,
+  ): Promise<{ vehicleId: string; code: string; reason: string | null }[]> {
+    const rows = await this.model
+      .find(this.baseFilter(scope, { status: 'outOfService' }))
+      .select({ code: 1, statusReason: 1 })
+      .lean<{ _id: Types.ObjectId; code: string; statusReason?: string | null }[]>()
+      .exec();
+    return rows
+      .map((row) => ({
+        vehicleId: String(row._id),
+        code: row.code,
+        reason: row.statusReason ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          compareFleetVehicleCodes(a.code, b.code) || a.vehicleId.localeCompare(b.vehicleId),
+      );
+  }
+
+  /**
+   * How many cars the registry LIST would show for these bar controls — its `totalItems`, without
+   * the page. The list's own `vehicleListFilter` and base filter, so the count and the link agree
+   * for every control the bar has, the licence-expiry bounds included.
+   */
+  async countListed(query: Partial<ListFleetVehiclesQuery>, scope: ScopeSelector): Promise<number> {
+    return this.count(vehicleListFilter(query), scope);
+  }
+
+  /**
+   * T4.4 — the active cars whose licence runs out on or before `toYmd` (the expired included), the
+   * longest-expired first, at most `limit` of them; `total` is how many there are in all, so the
+   * card can say «+N». The day's bound is `calendarDayBounds` — the last instant of `toYmd` — the
+   * same `$lte` the list's `licenseExpiresBefore` gets from the page.
+   */
+  async nearestLicences(
+    scope: ScopeSelector,
+    toYmd: string,
+    limit: number,
+  ): Promise<{
+    rows: { vehicleId: string; code: string; expiresAt: string }[];
+    total: number;
+  }> {
+    const filter = this.baseFilter(scope, {
+      status: 'active',
+      licenseExpiresAt: { $lte: calendarDayBounds(toYmd, toYmd).before },
+    });
+    const [rows, total] = await Promise.all([
+      // `limit(0)` is «no limit» to Mongo, so a request for no rows is answered without asking.
+      limit <= 0
+        ? Promise.resolve([])
+        : this.model
+            .find(filter)
+            .select({ code: 1, licenseExpiresAt: 1 })
+            .sort({ licenseExpiresAt: 1, _id: 1 })
+            .limit(limit)
+            .lean<{ _id: Types.ObjectId; code: string; licenseExpiresAt: Date }[]>()
+            .exec(),
+      this.model.countDocuments(filter).exec(),
+    ]);
+    return {
+      rows: rows.map((row) => ({
+        vehicleId: String(row._id),
+        code: row.code,
+        expiresAt: row.licenseExpiresAt.toISOString(),
+      })),
+      total,
+    };
+  }
+
+  /**
+   * T3.1 — active cars per (type, branch), the distribution table in one pass. Moved here from the
+   * old dashboard repository, now through the registry's base filter: a branch-scoped reader sees
+   * the cells the list shows them, and an `own` grant means what it means on the list. A car with
+   * no branch (a legacy row) comes back under `branchId: null` — the «بلا فرع» column — rather
+   * than vanishing from its row's total.
+   */
+  async activeByTypeAndBranch(
+    scope: ScopeSelector,
+  ): Promise<{ typeId: string; branchId: string | null; count: number }[]> {
+    const rows = await this.model
+      .aggregate<{
+        _id: { typeId: Types.ObjectId; branchId: Types.ObjectId | null };
+        count: number;
+      }>([
+        { $match: this.baseFilter(scope, { status: 'active' }) },
+        {
+          $group: {
+            _id: { typeId: '$typeId', branchId: { $ifNull: ['$branchId', null] } },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
+    return rows.map((row) => ({
+      typeId: String(row._id.typeId),
+      branchId: row._id.branchId === null ? null : String(row._id.branchId),
+      count: row.count,
+    }));
+  }
+
+  /**
    * The ids of every vehicle whose CODE contains `term`, case-insensitively.
    *
    * The screens that file paperwork against a car — accidents, maintenance — store the car by id
@@ -353,8 +496,23 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     return new Map(rows.map((row) => [row.code, String(row._id)]));
   }
 
+  /**
+   * How many of these ids are registry cars today (not soft-deleted, any status) — the count a
+   * registry screen shows for the same filter. The set itself keeps its deleted cars for the
+   * history figures; only this display count leaves them out.
+   */
+  async countLive(ids: readonly string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    return this.model.countDocuments({ _id: { $in: [...ids] }, isDeleted: false }).exec();
+  }
+
+  /** Inside a dashboard read the same codes are looked up once (`vehicle-filter-memo.ts`). */
   async idsByCodes(codes: readonly string[]): Promise<string[]> {
     if (codes.length === 0) return [];
+    return memoisedVehicleIds('codes', codes, (asked) => this.readIdsByCodes(asked));
+  }
+
+  private async readIdsByCodes(codes: readonly string[]): Promise<string[]> {
     const rows = await this.model
       .find({ code: { $in: [...codes] } })
       .select({ _id: 1 })
@@ -363,6 +521,47 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     return rows.map((row) => String(row._id));
   }
 }
+
+/**
+ * The screen-shaped vehicle filter (plan D9/D10) as the screens' own queries carry it: every key
+ * optional and `undefined` meaning «not asked». Structurally the vehicle set's `VehicleFilter`, so
+ * either one is accepted wherever this is.
+ */
+export interface VehicleFilterQuery {
+  vehicleCodes?: readonly string[] | undefined;
+  typeIds?: readonly string[] | undefined;
+  operationIds?: readonly string[] | undefined;
+  branchIds?: readonly string[] | undefined;
+}
+
+/** The set half of the filter — types, operations, branches — with the keys nobody asked left off. */
+export const vehicleSetPart = (
+  query: VehicleFilterQuery,
+): {
+  typeIds?: readonly string[];
+  operationIds?: readonly string[];
+  branchIds?: readonly string[];
+} => ({
+  ...(query.typeIds === undefined ? {} : { typeIds: query.typeIds }),
+  ...(query.operationIds === undefined ? {} : { operationIds: query.operationIds }),
+  ...(query.branchIds === undefined ? {} : { branchIds: query.branchIds }),
+});
+
+/**
+ * The cars TWO narrowings agree on — a screen's own code resolution and the vehicle set's
+ * `typeIds ∩ operationIds ∩ branchIds` (plan D10). `undefined` is «not asked» and narrows nothing,
+ * so it gives way to the other side; `[]` is a real answer (no car) and stays empty. The order of
+ * the first list is kept, so a caller that sorted it keeps its sort.
+ */
+export const intersectVehicleIds = (
+  first: readonly string[] | undefined,
+  second: readonly string[] | undefined,
+): string[] | undefined => {
+  if (first === undefined) return second === undefined ? undefined : [...second];
+  if (second === undefined) return [...first];
+  const keep = new Set(second);
+  return first.filter((id) => keep.has(id));
+};
 
 const escaped = (term: string): RegExp =>
   new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');

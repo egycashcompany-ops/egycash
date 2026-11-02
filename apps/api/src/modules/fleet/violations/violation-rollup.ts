@@ -2,8 +2,12 @@
 // vehicle codes into the DTO the page shows. Kept free of I/O so the merge — the part with the
 // off-by-one traps (a grievance with no violations, violations with no grievance) — is
 // unit-tested without a database. Everything here is derived at query time, never stored.
-import { type FleetViolationRollupDto } from '@ecms/contracts';
-import { type ViolationYearSums } from './violation.repository';
+import {
+  isUnknownFleetDriver,
+  type FleetDashboardNowViolationsDto,
+  type FleetViolationRollupDto,
+} from '@ecms/contracts';
+import { type DriverFineGroup, type ViolationYearSums } from './violation.repository';
 
 export interface GrievanceFigure {
   vehicleId: string;
@@ -111,4 +115,54 @@ export const assembleRollups = (
   return [...byVehicle.values()]
     .filter(hasSomethingInIt)
     .sort((a, b) => b.year - a.year || a.code.localeCompare(b.code));
+};
+
+/** To the piastre — `$sum` of pounds carries binary residue a card would print. */
+const money = (value: number): number => {
+  const rounded = Math.round(value * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
+};
+
+/**
+ * R-24 / T5.11–T5.12 — one year's uncollected violations, as the fleet dashboard shows them.
+ *
+ * THE ROLLUP'S OWN SUMS: `company` is Σ `outstandingVehicleAmount` and the drivers' total is
+ * Σ `outstandingDriverAmount` over the same `yearSums` rows the rollup endpoint is built from, so
+ * the card and `/fleet/violations?year=Y` agree by construction (a grievance adds no money).
+ *
+ * THE DRIVERS' TOTAL, SPLIT — never folded: the fines no employee is named on are «مجهول» when the
+ * name is the book's word for it or empty (`isUnknownFleetDriver`, the list filter's rule) and
+ * «اسم غير مربوط» when the book wrote a name nobody linked. Each is an amount AND a count, and
+ * `attributed` is what is left, so attributed + «مجهول» + «اسم غير مربوط» is the total exactly.
+ */
+export const assembleYearDigest = (
+  year: number,
+  sums: readonly ViolationYearSums[],
+  groups: readonly DriverFineGroup[],
+): FleetDashboardNowViolationsDto => {
+  const company = money(sums.reduce((sum, row) => sum + row.outstandingVehicleAmount, 0));
+  const drivers = money(sums.reduce((sum, row) => sum + row.outstandingDriverAmount, 0));
+  const unknown = { amount: 0, count: 0 };
+  const unlinked = { amount: 0, count: 0 };
+  for (const group of groups) {
+    if (group.attributed) continue;
+    const bucket = isUnknownFleetDriver({ driverEmployeeId: null, driverName: group.driverName })
+      ? unknown
+      : unlinked;
+    bucket.amount += group.amount;
+    bucket.count += group.count;
+  }
+  unknown.amount = money(unknown.amount);
+  unlinked.amount = money(unlinked.amount);
+  return {
+    year,
+    company,
+    drivers: {
+      total: drivers,
+      attributed: money(drivers - unknown.amount - unlinked.amount),
+      unknown,
+      unlinked,
+    },
+    total: money(company + drivers),
+  };
 };

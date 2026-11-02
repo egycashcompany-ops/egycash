@@ -102,6 +102,8 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   [FleetSettingKeys.FuelCardExpiryWarnDays]: { type: 'number', defaultValue: 30 },
   [FleetSettingKeys.FuelCardBalanceYellow]: { type: 'number', defaultValue: 300 },
   [FleetSettingKeys.FuelCardBalanceRed]: { type: 'number', defaultValue: 100 },
+  [FleetSettingKeys.RosterRefuseExpiredLicence]: { type: 'boolean', defaultValue: false },
+  [FleetSettingKeys.OdometerMissingReadingDays]: { type: 'number', defaultValue: 3 },
 };
 
 /** Every key the contracts declare, which is what the API registers at boot. */
@@ -215,9 +217,9 @@ const isDisabled = (tag: string): boolean => tag.includes('disabled=""');
 const cardsOnly = (markup: string): string => markup.slice(markup.lastIndexOf('</select>'));
 
 describe('the fixture tracks the real registry', () => {
-  it('covers every declared setting key, and there are forty-five of them', () => {
-    expect(DECLARED_KEYS).toHaveLength(45);
-    expect(new Set(DECLARED_KEYS).size).toBe(45);
+  it('covers every declared setting key, and there are forty-seven of them', () => {
+    expect(DECLARED_KEYS).toHaveLength(47);
+    expect(new Set(DECLARED_KEYS).size).toBe(47);
     const uncovered = DECLARED_KEYS.filter((key) => SHAPES[key] === undefined);
     expect(uncovered, 'a setting was declared without a shape in this fixture').toEqual([]);
   });
@@ -228,14 +230,14 @@ describe('every setting reaches the screen', () => {
 
   // The claim the whole slice exists for. Twenty-four of these could previously be changed only by
   // editing the database.
-  it('renders all forty-five keys', () => {
+  it('renders all forty-seven keys', () => {
     const missing = DECLARED_KEYS.filter((key) => !markup.includes(key));
     expect(missing, 'a setting is declared but not on screen').toEqual([]);
   });
 
   it('renders one editable control per setting', () => {
-    // 45 settings + the search box = 46 inputs. The owner filter is a <select>, not an input.
-    expect(inputs(markup)).toHaveLength(46);
+    // 47 settings + the search box = 48 inputs. The owner filter is a <select>, not an input.
+    expect(inputs(markup)).toHaveLength(48);
   });
 
   it('groups them under their owners', () => {
@@ -271,7 +273,7 @@ describe('every setting reaches the screen', () => {
   });
 
   it('shows a count of what is displayed against the total', () => {
-    expect(markup).toContain('Showing 45 of 45');
+    expect(markup).toContain('Showing 47 of 47');
   });
 });
 
@@ -349,7 +351,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
     const markup = render({ permissions: ['setting.view'] });
     // The search box stays usable — reading is what this actor may do.
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(45);
+    expect(controls).toHaveLength(47);
     const enabled = controls.filter((tag) => !isDisabled(tag));
     expect(enabled, 'a setting control is editable without setting.edit').toEqual([]);
   });
@@ -363,7 +365,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
   it('leaves the controls enabled for an actor who holds setting.edit', () => {
     const markup = render();
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(45);
+    expect(controls).toHaveLength(47);
     expect(controls.filter(isDisabled)).toEqual([]);
     expect(markup).not.toContain('do not hold the edit-settings permission');
   });
@@ -471,14 +473,14 @@ describe('the filters are addressable', () => {
     const markup = render({ search: '?q=lockout' });
     expect(markup).toContain(SettingKeys.LockoutMaxAttempts);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 2 of 45');
+    expect(markup).toContain('Showing 2 of 47');
   });
 
   it('reads the owner filter from the URL', () => {
     const markup = render({ search: '?owner=fleet' });
     expect(markup).toContain(FleetSettingKeys.AlarmRedKm);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 19 of 45');
+    expect(markup).toContain('Showing 21 of 47');
   });
 
   it('says so plainly when the filters match nothing', () => {

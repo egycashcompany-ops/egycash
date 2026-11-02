@@ -4,6 +4,7 @@
 // §9.1; availability reads approved/active leave when `fleet.availability.useHrLeave` is on).
 // OP-6 adds the SELF lookup — "which employee is this login?" — which the captain-mobile read
 // surface uses so a captain's identity comes from the token, never from a client-supplied id.
+import { Types } from 'mongoose';
 import {
   type DirectoryEmployee,
   type DirectoryEmployeeListing,
@@ -211,14 +212,24 @@ export const registerHrDirectorySeams = (): void => {
     nameField: 'personal.fullNameAr',
   });
 
-  registerLeaveLookup(async (employeeId, date) => {
-    // approved/active only — a pending request is not yet a fact a roster may plan around.
-    const covering = await LeaveRequestModel.exists({
-      employeeId,
-      status: { $in: ['approved', 'active'] },
-      startDate: { $lte: date },
-      endDate: { $gte: date },
-    });
-    return covering !== null;
+  // approved/active only — a pending request is not yet a fact a roster may plan around.
+  const covering = (date: Date) => ({
+    status: { $in: ['approved', 'active'] },
+    startDate: { $lte: date },
+    endDate: { $gte: date },
   });
+  registerLeaveLookup(
+    async (employeeId, date) =>
+      (await LeaveRequestModel.exists({ employeeId, ...covering(date) })) !== null,
+    // The batched twin: one `distinct` for a whole roster instead of one `exists` per person.
+    async (employeeIds, date) => {
+      const ids = employeeIds.filter((id) => Types.ObjectId.isValid(id));
+      if (ids.length === 0) return new Set();
+      const onLeave = await LeaveRequestModel.distinct('employeeId', {
+        employeeId: { $in: ids.map((id) => new Types.ObjectId(id)) },
+        ...covering(date),
+      }).exec();
+      return new Set(onLeave.map((id) => String(id)));
+    },
+  );
 };

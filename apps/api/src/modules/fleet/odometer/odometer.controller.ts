@@ -5,6 +5,7 @@ import {
   type CorrectFleetOdometer,
   type FleetOdometerBracketQuery,
   type FleetOdometerLogDto,
+  type FleetOdometerSummaryQuery,
   type FleetVehicleIdQuery,
   type ListFleetOdometerQuery,
   type RecordFleetOdometer,
@@ -38,6 +39,15 @@ export const listOdometerLogs = async (req: Request, res: Response): Promise<voi
       page.gaps.get(String(doc._id)) ?? null,
     ),
   );
+};
+
+/**
+ * «إجمالي الكيلومترات» and «قراءات تحتاج مراجعة» over the register's own filters (R-14) — the same
+ * filters the list takes, without its paging, so the total describes every row the list pages.
+ */
+export const odometerSummary = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetOdometerSummaryQuery>(req);
+  ok(res, await fleetOdometerService.summary(query));
 };
 
 export const recordOdometer = async (req: Request, res: Response): Promise<void> => {

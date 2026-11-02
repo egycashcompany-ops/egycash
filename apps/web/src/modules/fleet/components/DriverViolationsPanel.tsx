@@ -45,6 +45,7 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { sortQuery, writeSorts, type TableSort } from '../lib/table-sort';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
+import { type VehicleSetQuery } from '../lib/vehicle-set-params';
 import { splitDriverFilter } from '../lib/driver-filter-selection';
 import { offersCompanyCars } from '../lib/company-cars';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
@@ -96,9 +97,12 @@ export const DriverViolationsPanel = ({
   vehicleCodes,
   companyVehicleCodes = [],
   driverEmployeeIds,
+  vehicleSet = {},
   typeIds,
   amount,
   settled,
+  year = null,
+  onYearClear,
   sorts,
   onSortChange,
   entryVehicleId,
@@ -118,11 +122,23 @@ export const DriverViolationsPanel = ({
   companyVehicleCodes?: readonly string[];
   /** Several drivers at once — a supervisor asks about a crew, not about one person. */
   driverEmployeeIds: string[];
+  /**
+   * The vehicle set a dashboard link narrowed BOTH ledgers to (type, operation, branch) — the
+   * page's, held above the two halves, so it is not one of this half's own filters.
+   */
+  vehicleSet?: VehicleSetQuery;
   typeIds: string[];
   /** «قيمة المخالفة» — an exact amount, as it is filed. '' = every amount. */
   amount: string;
   /** '' = both, 'true' = settled, 'false' = still outstanding. */
   settled: string;
+  /**
+   * The drivers' fines of ONE year (`dyear`) — what a dashboard figure counted («على السائقين» of
+   * the Cairo year), so its link lists the same rows. This half's own narrowing, apart from the
+   * company half's years; shown as a chip and cleared with the others. `null` = every year.
+   */
+  year?: number | null;
+  onYearClear?: () => void;
   /**
    * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — one pick, both halves. Held by the page; the
    * company's bar beside this one reads the same value. See `CompanyViolationsPanel` for why.
@@ -169,7 +185,8 @@ export const DriverViolationsPanel = ({
     driverEmployeeIds.length > 0 ||
     typeIds.length > 0 ||
     amount !== '' ||
-    settled !== '';
+    settled !== '' ||
+    year !== null;
 
   // The WHOLE registry: a car past the first hundred by code read as «—».
   const vehicles = useAllVehicles({ anyStatus: true });
@@ -308,10 +325,23 @@ export const DriverViolationsPanel = ({
         : { amount: amount.trim() }),
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
+      ...(year === null ? {} : { year }),
+      // The page's vehicle set — only the lists that hold something, so an un-narrowed board
+      // keeps exactly the key it always had.
+      ...vehicleSet,
     }),
     // The ORDER as one string, not the array: a fresh array each render would rebuild
     // the params — and the query key — on every keystroke elsewhere on the screen.
-    [vehicleCodes, driverEmployeeIds, typeIds, amount, settled, writeSorts(sorts)],
+    [
+      vehicleCodes,
+      driverEmployeeIds,
+      typeIds,
+      amount,
+      settled,
+      year,
+      writeSorts(sorts),
+      vehicleSet,
+    ],
   );
   const list = useViolationsPages(params);
   // EVERY page fetched so far, in the order the server sorted them. This is what replaced the
@@ -1087,6 +1117,25 @@ export const DriverViolationsPanel = ({
           </>
         }
       >
+        {year !== null && (
+          <FilterField
+            label={t('fleet.violations.fields.year')}
+            active
+            className="shrink-0"
+            density={TIGHT}
+          >
+            <button
+              type="button"
+              data-driver-year={year}
+              onClick={onYearClear}
+              aria-label={`${t('common.remove')} ${t('fleet.violations.fields.year')} ${year}`}
+              className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-300 bg-brand-50 px-2 text-sm font-medium tabular-nums text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
+            >
+              {year}
+              <span aria-hidden="true">×</span>
+            </button>
+          </FilterField>
+        )}
         <FilterField
           label={t('fleet.vehicles.fields.code')}
           active={vehicleCodes.length > 0}

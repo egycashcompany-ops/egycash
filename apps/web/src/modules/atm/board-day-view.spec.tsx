@@ -200,11 +200,11 @@ describe.each([
       'atm.common.bank',
       'atm.common.machineId',
       'atm.common.machineName',
-      'atm.common.openTime',
+      'atm.maintenance.serviceType',
     ],
     plainHeaders: [
       'atm.common.area',
-      'atm.maintenance.serviceType',
+      'atm.common.openTime',
       'atm.common.leader',
       'atm.common.addedBy',
     ],

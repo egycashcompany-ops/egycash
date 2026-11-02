@@ -8689,6 +8689,7 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.atmSettlementPrint': 'Printed replenishment papers',
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'Moved ATM data between linked branches',
+  'systemAdmin.users.audit.applicantFolderDeleted': "Emptied an applicant's documents folder",
   'systemAdmin.users.audit.unlock': 'Unlocked',
   'systemAdmin.users.audit.employeeLinked': 'Employee linked',
   'systemAdmin.users.audit.employeeUnlinked': 'Employee unlinked',
@@ -10133,6 +10134,59 @@ const en: Record<string, string> = {
   'hr.applicantFolders.kind.card': 'National ID card',
   'hr.applicantFolders.kind.attachment': 'Attachment',
   'hr.applicantFolders.kind.document': 'Handed-in document',
+  // The sub-folders a folder opens onto, and emptying one.
+  'hr.applicantFolders.sub.card': 'National ID card',
+  'hr.applicantFolders.sub.documents': "Applicant's documents",
+  'hr.applicantFolders.sub.attachments': 'HR attachments',
+  'hr.applicantFolders.subEmpty': 'Empty',
+  'hr.applicantFolders.subNone.documents': 'The candidate has handed nothing in yet.',
+  'hr.applicantFolders.subNone.attachments': 'HR has attached nothing here yet.',
+  'hr.applicantFolders.untypedDocuments': 'Not classified',
+  'hr.applicantFolders.moreCardImages': 'More card images ({{n}})',
+  'hr.applicantFolders.breadcrumb': 'Folder path',
+  'hr.applicantFolders.back': 'Back',
+  'hr.applicantFolders.downloadDrawer': 'Download this folder',
+  'hr.applicantFolders.select': 'Select folders',
+  'hr.applicantFolders.selectDone': 'Done',
+  'hr.applicantFolders.selectFolder': 'Select this folder',
+  'hr.applicantFolders.deleteSelected': 'Delete selected',
+  'hr.applicantFolders.deleteFolder': 'Delete folder',
+  'hr.applicantFolders.deleteTitle': 'Delete this folder?',
+  'hr.applicantFolders.deleteBulkTitle': 'Delete the selected folders?',
+  'hr.applicantFolders.deleteBody':
+    'Everything kept for {{name}} ({{code}}) will be removed — {{n}} files. The applicant record itself stays.',
+  'hr.applicantFolders.deleteBulkBody':
+    '{{folders}} folders will be emptied, {{n}} files in all. The applicant records themselves stay.',
+  'hr.applicantFolders.deleteSoftNote':
+    'The files are kept in the system rather than destroyed. There is no restore screen: recovery is done by the system administrator on request.',
+  'hr.applicantFolders.alsoWithdraw': 'Also withdraw the application',
+  'hr.applicantFolders.withdrawReasonLabel': 'Reason for the withdrawal',
+  'hr.applicantFolders.withdrawReasonOther': 'State the reason',
+  'hr.applicantFolders.withdrawNote':
+    'The applicant record stays. Its status becomes withdrawn, with this reason recorded against it.',
+  'hr.applicantFolders.withdrawSkipsKept':
+    '{{n}} kept folders are neither emptied nor withdrawn.',
+  'hr.applicantFolders.withdrawn': 'Application withdrawn',
+  'hr.applicantFolders.withdrawnMany': '{{n}} applications withdrawn',
+  'hr.applicantFolders.withdrawReasons.candidateWithdrew': 'The candidate withdrew',
+  'hr.applicantFolders.withdrawReasons.candidateAskedToRemove':
+    'The candidate asked for their documents to be removed',
+  'hr.applicantFolders.withdrawReasons.unreachable': 'The candidate could not be reached',
+  'hr.applicantFolders.withdrawReasons.notSuitable':
+    'The candidate does not meet the requirements of the role',
+  'hr.applicantFolders.withdrawReasons.positionClosed': 'The vacancy was closed',
+  'hr.applicantFolders.withdrawReasons.duplicate': 'A duplicate record of an existing applicant',
+  'hr.applicantFolders.withdrawReasons.other': 'Another reason',
+  'hr.applicantFolders.deleted': 'Folder deleted',
+  'hr.applicantFolders.deletedMany': '{{n}} folders deleted',
+  'hr.applicantFolders.deleteFailed': 'The folder could not be deleted.',
+  'hr.applicantFolders.deleteRefused': '{{n}} folders were kept: {{names}}',
+  'hr.applicantFolders.blocked.hired':
+    'This applicant was hired. Their folder is a kept record and cannot be deleted.',
+  'hr.applicantFolders.blocked.employed':
+    'An employee record was created from this applicant, and their card is still read from this folder.',
+  'hr.applicantFolders.blocked.acceptedOffer':
+    'This applicant accepted an offer and is being hired. Their card is about to be needed.',
   'hr.applicantDocuments.searchPlaceholder': 'Name or applicant code',
   'hr.applicantDocuments.loadFailed': 'We could not load the queue. Try again.',
   'hr.applicantDocuments.emptyWaiting': 'Nothing is waiting on a decision',
@@ -20471,6 +20525,7 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.atmSettlementPrint': 'طباعة أوراق التغذية',
   // ATM branch links — one row per run that moves a linked branch's ATM data to its target.
   'systemAdmin.users.audit.atmBranchMove': 'نقل بيانات الصراف الآلي بين فرعين مرتبطين',
+  'systemAdmin.users.audit.applicantFolderDeleted': 'إفراغ مجلد مستندات أحد المتقدمين',
   'systemAdmin.users.audit.unlock': 'إلغاء القفل',
   'systemAdmin.users.audit.employeeLinked': 'ربط موظف',
   'systemAdmin.users.audit.employeeUnlinked': 'فك ربط موظف',
@@ -21883,6 +21938,58 @@ const ar: Record<string, string> = {
   'hr.applicantFolders.kind.card': 'بطاقة الرقم القومي',
   'hr.applicantFolders.kind.attachment': 'مرفق',
   'hr.applicantFolders.kind.document': 'مستند مقدَّم',
+  // المجلدات الفرعية داخل المجلد، وإفراغ أحدها.
+  'hr.applicantFolders.sub.card': 'بطاقة الرقم القومي',
+  'hr.applicantFolders.sub.documents': 'مستندات المتقدم',
+  'hr.applicantFolders.sub.attachments': 'مرفقات الموارد البشرية',
+  'hr.applicantFolders.subEmpty': 'فارغ',
+  'hr.applicantFolders.subNone.documents': 'لم يُقدِّم المتقدم أي مستند بعد.',
+  'hr.applicantFolders.subNone.attachments': 'لم تُرفِق الموارد البشرية أي ملف هنا بعد.',
+  'hr.applicantFolders.untypedDocuments': 'غير مُصنَّف',
+  'hr.applicantFolders.moreCardImages': 'صور أخرى للبطاقة ({{n}})',
+  'hr.applicantFolders.breadcrumb': 'مسار المجلد',
+  'hr.applicantFolders.back': 'رجوع',
+  'hr.applicantFolders.downloadDrawer': 'تنزيل هذا المجلد',
+  'hr.applicantFolders.select': 'تحديد المجلدات',
+  'hr.applicantFolders.selectDone': 'إنهاء التحديد',
+  'hr.applicantFolders.selectFolder': 'تحديد هذا المجلد',
+  'hr.applicantFolders.deleteSelected': 'حذف المحدد',
+  'hr.applicantFolders.deleteFolder': 'حذف المجلد',
+  'hr.applicantFolders.deleteTitle': 'حذف هذا المجلد؟',
+  'hr.applicantFolders.deleteBulkTitle': 'حذف المجلدات المحددة؟',
+  'hr.applicantFolders.deleteBody':
+    'سيُحذف كل ما هو محفوظ لـ {{name}} ({{code}}) — {{n}} ملفات. ويبقى سجل المتقدم نفسه كما هو.',
+  'hr.applicantFolders.deleteBulkBody':
+    'سيُفرَغ {{folders}} مجلدات بإجمالي {{n}} ملفات. وتبقى سجلات المتقدمين نفسها كما هي.',
+  'hr.applicantFolders.deleteSoftNote':
+    'تبقى الملفات محفوظة في النظام ولا تُدمَّر. ولا توجد شاشة لاستعادتها؛ تُستعاد بطلب يُوجَّه إلى مدير النظام.',
+  'hr.applicantFolders.alsoWithdraw': 'سحب الطلب أيضًا',
+  'hr.applicantFolders.withdrawReasonLabel': 'سبب السحب',
+  'hr.applicantFolders.withdrawReasonOther': 'اذكر السبب',
+  'hr.applicantFolders.withdrawNote':
+    'يبقى سجل المتقدم، وتتحول حالته إلى «منسحب» مع تدوين هذا السبب في سجله.',
+  'hr.applicantFolders.withdrawSkipsKept':
+    'لا يُفرَّغ {{n}} من المجلدات المحفوظة ولا تُسحب طلباتها.',
+  'hr.applicantFolders.withdrawn': 'تم سحب الطلب',
+  'hr.applicantFolders.withdrawnMany': 'تم سحب {{n}} طلبات',
+  'hr.applicantFolders.withdrawReasons.candidateWithdrew': 'انسحب المتقدم من التقديم',
+  'hr.applicantFolders.withdrawReasons.candidateAskedToRemove':
+    'طلب المتقدم حذف مستنداته',
+  'hr.applicantFolders.withdrawReasons.unreachable': 'تعذّر الوصول إلى المتقدم',
+  'hr.applicantFolders.withdrawReasons.notSuitable': 'المتقدم غير مطابق لشروط الوظيفة',
+  'hr.applicantFolders.withdrawReasons.positionClosed': 'أُغلقت الوظيفة المتقدَّم إليها',
+  'hr.applicantFolders.withdrawReasons.duplicate': 'سجل مكرر لمتقدم مسجَّل بالفعل',
+  'hr.applicantFolders.withdrawReasons.other': 'سبب آخر',
+  'hr.applicantFolders.deleted': 'تم حذف المجلد',
+  'hr.applicantFolders.deletedMany': 'تم حذف {{n}} مجلدات',
+  'hr.applicantFolders.deleteFailed': 'تعذّر حذف المجلد.',
+  'hr.applicantFolders.deleteRefused': 'تم الإبقاء على {{n}} مجلدات: {{names}}',
+  'hr.applicantFolders.blocked.hired':
+    'تم تعيين هذا المتقدم، ومجلده سجل محفوظ لا يجوز حذفه.',
+  'hr.applicantFolders.blocked.employed':
+    'أُنشئ سجل موظف من هذا المتقدم، ولا تزال بطاقته تُقرأ من هذا المجلد.',
+  'hr.applicantFolders.blocked.acceptedOffer':
+    'قَبِل هذا المتقدم عرضًا وجارٍ تعيينه، وبطاقته مطلوبة قريبًا.',
   'hr.applicantDocuments.searchPlaceholder': 'الاسم أو كود المتقدم',
   'hr.applicantDocuments.loadFailed': 'تعذّر تحميل القائمة. حاول مرة أخرى.',
   'hr.applicantDocuments.emptyWaiting': 'لا شيء ينتظر قرارًا',

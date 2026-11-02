@@ -6,12 +6,16 @@
 import {
   type ApplicantFolderDetailDto,
   type ApplicantFolderDto,
+  type BulkDeleteApplicantFolders,
+  type DeleteApplicantFolder,
+  type DeleteApplicantFoldersResultDto,
+  type DeletedApplicantFolderDto,
   type DownloadTicketDto,
   type ApplicantDocumentSetDto,
   type Paginated,
   type ReviewApplicantDocument,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, post } from '../../../../../shared/lib/api-client';
+import { buildQuery, del, get, getPage, post } from '../../../../../shared/lib/api-client';
 
 const BASE = '/hr/applicant-documents';
 
@@ -52,6 +56,20 @@ export const fetchApplicantFolders = (
 
 export const fetchApplicantFolder = (applicantId: string): Promise<ApplicantFolderDetailDto> =>
   get(`${BASE}/folders/${applicantId}`);
+
+/**
+ * Empty one applicant's folder. `applicantDocument.delete`, and refused outright for a candidate
+ * who was hired or is being hired — the API decides, so a disabled button is a courtesy.
+ */
+export const deleteApplicantFolder = (
+  applicantId: string,
+  body: DeleteApplicantFolder,
+): Promise<DeletedApplicantFolderDto> => del(`${BASE}/folders/${applicantId}`, body);
+
+/** Empty several. Partial by contract: the answer says what went and what was kept. */
+export const bulkDeleteApplicantFolders = (
+  body: BulkDeleteApplicantFolders,
+): Promise<DeleteApplicantFoldersResultDto> => post(`${BASE}/folders/bulk-delete`, body);
 
 /** A short-lived signed URL for one file's bytes (the URL itself needs no session). */
 export const fileTicket = (fileId: string): Promise<DownloadTicketDto> =>

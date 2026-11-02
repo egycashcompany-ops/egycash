@@ -12,7 +12,9 @@ import {
   type ApplicantDocumentSetDoc,
 } from './applicant-document.model';
 
-const live = (extra: FilterQuery<ApplicantDocumentSetDoc> = {}): FilterQuery<ApplicantDocumentSetDoc> => ({
+const live = (
+  extra: FilterQuery<ApplicantDocumentSetDoc> = {},
+): FilterQuery<ApplicantDocumentSetDoc> => ({
   isDeleted: false,
   ...extra,
 });
@@ -52,6 +54,42 @@ class ApplicantDocumentRepository {
     )
       .lean<ApplicantDocumentSetDoc>()
       .exec();
+  }
+
+  /**
+   * Drop the whole set for one applicant, when their folder is deleted.
+   *
+   * THE POINTERS MUST GO WITH THE BYTES. Each item mirrors a `fileId`, and a row that still names
+   * a file nobody can open is worse than no row: the reviewer's queue keeps showing the document
+   * as waiting, and the candidate's next attempt at that slot is refused — `addDocument`'s `$ne`
+   * guard says the slot is taken, and `fileService.replace` cannot find the file it would replace.
+   * So the slot would be bricked, silently, by a delete that reported success.
+   *
+   * Soft, like everything else here. `ensureFor` upserts on `isDeleted: false` and the unique index
+   * is partial on the same field, so the candidate's next upload opens a fresh empty set rather
+   * than colliding with this one — which is exactly the state a deleted folder should leave behind.
+   *
+   * Returns how many documents the set was holding, so the caller can say what it removed. Zero
+   * when there was no set at all, which is the ordinary case for a candidate who never uploaded.
+   */
+  async softDeleteForApplicant(applicantId: string, by: string): Promise<number> {
+    if (!Types.ObjectId.isValid(applicantId)) return 0;
+    const before = await ApplicantDocumentSetModel.findOneAndUpdate(
+      live({ applicantId: new Types.ObjectId(applicantId) }),
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedBy: new Types.ObjectId(by),
+          updatedBy: new Types.ObjectId(by),
+        },
+        $inc: { __v: 1 },
+      },
+      { new: false },
+    )
+      .lean<ApplicantDocumentSetDoc>()
+      .exec();
+    return before?.documents.length ?? 0;
   }
 
   /** Add a document to a slot that is currently EMPTY — the guard against a double first upload. */

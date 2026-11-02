@@ -15,12 +15,33 @@
 import { logger } from '../../infrastructure/logging/logger';
 import { type AuthContext } from '../../shared/types';
 
-/** What the caller wants to do with the file. Reads cover metadata AND bytes. */
-export type FileAccessIntent = 'read' | 'write';
+/**
+ * What the caller wants to do with the file. Reads cover metadata AND bytes.
+ *
+ * `delete` is a third intent and not a flavour of `write`, because for at least one entity they
+ * are genuinely different questions. A candidate's handed-in document may never be WRITTEN by
+ * staff — the whole point of `applicant-document.files.ts` is that evidence somebody else could
+ * file in your name is worth less than evidence you filed yourself — and yet HR must be able to
+ * REMOVE the folder of a candidate who will not continue. One intent could not say both.
+ *
+ * It is opt-in per authorizer (`understandsDelete`), so nothing written before this existed had to
+ * be revisited — see `authorizeFileEntity`.
+ */
+export type FileAccessIntent = 'read' | 'write' | 'delete';
 
 export interface FileEntityAuthorizer {
   /** The module-local entity type, e.g. `ticket` or `ticketComment`. */
   entityType: string;
+  /**
+   * Does this authorizer tell a DELETE apart from any other write?
+   *
+   * Absent — the default, and what every authorizer written before the intent existed says — a
+   * delete is presented to it as `'write'`. That is deliberate and it is the only safe default:
+   * most authorizers decide with `intent === 'write' ? EDIT : VIEW`, so an unannounced third
+   * intent would fall into their VIEW branch and quietly turn a view-only reader into somebody who
+   * can delete. Opting in is a statement that this authorizer has a branch for it.
+   */
+  understandsDelete?: boolean;
   /**
    * May this caller reach files owned by this entity?
    *
@@ -69,7 +90,9 @@ export const registerFileEntityAuthorizers = (
   const seen = new Set<string>();
   for (const authorizer of authorizers) {
     if (seen.has(authorizer.entityType)) {
-      throw new Error(`duplicate file entity authorizer for ${key(moduleId, authorizer.entityType)}`);
+      throw new Error(
+        `duplicate file entity authorizer for ${key(moduleId, authorizer.entityType)}`,
+      );
     }
     seen.add(authorizer.entityType);
   }
@@ -136,8 +159,14 @@ export const authorizeFileEntity = async (
   if (entityRef === undefined) return true;
   const authorizer = registry.get(key(entityRef.moduleId, entityRef.entityType));
   if (authorizer === undefined) return true;
+  // An authorizer that has not said it understands a delete is asked about a WRITE instead, so it
+  // answers exactly what it answered before the intent existed. See `understandsDelete`.
+  const asked: FileAccessIntent =
+    intent === 'delete' && authorizer.understandsDelete !== true ? 'write' : intent;
   try {
-    return await withTimeout(authorizer.authorize({ ctx, entityId: entityRef.entityId, intent }));
+    return await withTimeout(
+      authorizer.authorize({ ctx, entityId: entityRef.entityId, intent: asked }),
+    );
   } catch (error) {
     // Deliberately not rethrown: the service turns a denial into the right status code, and a
     // module's internal failure must never surface to a caller as a 500 that leaks its existence.

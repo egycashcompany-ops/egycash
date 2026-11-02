@@ -291,6 +291,7 @@ class ApplicantService {
         duplicateFlag: false,
         duplicateOf: [],
         attachmentCount: 0,
+        documentsFolderDeletedAt: null,
         withdrawnReason: null,
         withdrawnAt: null,
         movedToOfferAt: null,

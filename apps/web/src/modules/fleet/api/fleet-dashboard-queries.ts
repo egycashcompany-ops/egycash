@@ -23,6 +23,8 @@ export const fleetDashboardKeys = {
   now: ['fleet', 'dashboard', 'now'] as const,
   period: (liveness: PeriodLiveness, query: FleetDashboardPeriodQuery) =>
     ['fleet', 'dashboard', 'period', liveness, query] as const,
+  /** Every period read whose range reaches today — what midnight and the realtime signals move. */
+  livePeriod: ['fleet', 'dashboard', 'period', 'live'] as const,
 };
 
 /** R1. Fresh for a minute; re-read on focus and every five minutes while the page is seen. */
@@ -52,15 +54,20 @@ export const useFleetDashboardPeriod = (
   });
 
 /**
- * One timer: at the next Cairo midnight (from R1's echoed `asOf`), R1 is invalidated, so «today»
- * turns over with the city even on a page left open all night.
+ * One timer: at the next Cairo midnight (from R1's echoed `asOf`), R1 AND the live period reads
+ * are invalidated, so «today» turns over with the city even on a page left open all night: a preset
+ * («هذا الشهر», «آخر 30 يوم») moves its window, and today's hatched column moves on. A past range
+ * (`'past'` in its key) is unaffected — midnight changes nothing in it.
  */
 export const useCairoMidnightRefresh = (asOf: string | undefined, fetchedAt: number): void => {
   const qc = useQueryClient();
   useEffect(() => {
     if (asOf === undefined || fetchedAt <= 0) return undefined;
     const timer = window.setTimeout(
-      () => void qc.invalidateQueries({ queryKey: fleetDashboardKeys.now }),
+      () => {
+        void qc.invalidateQueries({ queryKey: fleetDashboardKeys.now });
+        void qc.invalidateQueries({ queryKey: fleetDashboardKeys.livePeriod });
+      },
       msUntilCairoMidnight(asOf, fetchedAt, Date.now()),
     );
     return () => window.clearTimeout(timer);

@@ -398,7 +398,11 @@ const accident = (over: Partial<FleetAccidentDto> = {}): FleetAccidentDto => ({
   ...over,
 });
 
-const accidentsAt = (route: string, filters: Record<string, unknown>): string => {
+const accidentsAt = (
+  route: string,
+  filters: Record<string, unknown>,
+  extraKeys: readonly string[] = [],
+): string => {
   const qc = client();
   qc.setQueryData(
     listKey('fleet', 'accidents', {
@@ -411,7 +415,13 @@ const accidentsAt = (route: string, filters: Record<string, unknown>): string =>
     }),
     paged([accident()]),
   );
-  return mount(qc, ['fleetAccident.view'], route, '/fleet/accidents', <AccidentsPage />);
+  return mount(
+    qc,
+    ['fleetAccident.view', ...extraKeys],
+    route,
+    '/fleet/accidents',
+    <AccidentsPage />,
+  );
 };
 
 const dealershipRow = (
@@ -441,7 +451,11 @@ const dealershipRow = (
   ...over,
 });
 
-const dealershipAt = (route: string, filters: Record<string, unknown>): string => {
+const dealershipAt = (
+  route: string,
+  filters: Record<string, unknown>,
+  extraKeys: readonly string[] = [],
+): string => {
   const qc = client();
   qc.setQueryData(
     listKey('fleet', 'dealership', {
@@ -454,7 +468,13 @@ const dealershipAt = (route: string, filters: Record<string, unknown>): string =
     }),
     paged([dealershipRow()]),
   );
-  return mount(qc, ['fleetDealership.view'], route, '/fleet/dealership', <DealershipPage />);
+  return mount(
+    qc,
+    ['fleetDealership.view', ...extraKeys],
+    route,
+    '/fleet/dealership',
+    <DealershipPage />,
+  );
 };
 
 const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
@@ -486,7 +506,11 @@ const receipt = (over: Partial<FleetReceiptDto> = {}): FleetReceiptDto => ({
   ...over,
 });
 
-const receiptsAt = (route: string, filters: Record<string, unknown>): string => {
+const receiptsAt = (
+  route: string,
+  filters: Record<string, unknown>,
+  extraKeys: readonly string[] = [],
+): string => {
   const qc = client();
   qc.setQueryData(
     listKey('fleet', 'receipts', {
@@ -499,7 +523,7 @@ const receiptsAt = (route: string, filters: Record<string, unknown>): string => 
     }),
     paged([receipt()]),
   );
-  return mount(qc, ['fleetReceipt.view'], route, '/fleet/receipts', <ReceiptsPage />);
+  return mount(qc, ['fleetReceipt.view', ...extraKeys], route, '/fleet/receipts', <ReceiptsPage />);
 };
 
 describe('the period screens read the vehicle set — type, operation, branch', () => {
@@ -567,27 +591,47 @@ describe('the period screens read the vehicle set — type, operation, branch', 
     const make = ar('fleet.vehicles.filters.short.make');
     const operation = ar('fleet.vehicles.filters.short.operation');
     const branch = ar('recruitment.filters.branch');
+    // A reader who may read the types list and the operations catalog (fleetVehicle.view).
+    const registry = ['fleetVehicle.view'];
     for (const [name, narrowed, plain] of [
       [
         'accidents',
-        accidentsAt(`/fleet/accidents?${SET_ROUTE}`, SET_QUERY),
-        accidentsAt('/fleet/accidents', {}),
+        accidentsAt(`/fleet/accidents?${SET_ROUTE}`, SET_QUERY, registry),
+        accidentsAt('/fleet/accidents', {}, registry),
       ],
       [
         'dealership',
-        dealershipAt(`/fleet/dealership?${SET_ROUTE}`, SET_QUERY),
-        dealershipAt('/fleet/dealership', {}),
+        dealershipAt(`/fleet/dealership?${SET_ROUTE}`, SET_QUERY, registry),
+        dealershipAt('/fleet/dealership', {}, registry),
       ],
       [
         'receipts',
-        receiptsAt(`/fleet/receipts?${SET_ROUTE}`, SET_QUERY),
-        receiptsAt('/fleet/receipts', {}),
+        receiptsAt(`/fleet/receipts?${SET_ROUTE}`, SET_QUERY, registry),
+        receiptsAt('/fleet/receipts', {}, registry),
       ],
     ] as const) {
       for (const label of [make, operation, branch]) {
         expect(narrowed, `${name}: ${label} is on the bar`).toContain(label);
       }
       expect(plain, `${name}: no operation control on an ordinary visit`).not.toContain(operation);
+    }
+  });
+
+  it('without the types list’s and the catalog’s own guards: nameless, removable chips — no 403s', () => {
+    // The screen's own key opens neither GET /fleet/vehicle-types nor the operations catalog, so
+    // the named controls are not drawn (their hooks never ask); the narrowing still shows.
+    for (const [name, html] of [
+      ['accidents', accidentsAt(`/fleet/accidents?${SET_ROUTE}`, SET_QUERY)],
+      ['dealership', dealershipAt(`/fleet/dealership?${SET_ROUTE}`, SET_QUERY)],
+      ['receipts', receiptsAt(`/fleet/receipts?${SET_ROUTE}`, SET_QUERY)],
+    ] as const) {
+      expect(html, `${name}: no make control`).not.toContain(
+        ar('fleet.vehicles.filters.short.make'),
+      );
+      expect(html, `${name}: the type chip`).toContain('data-vehicle-set-chip="type"');
+      expect(html, `${name}: the operation chip`).toContain('data-vehicle-set-chip="operation"');
+      expect(html).toContain(ar('fleet.dash.filters.someTypes'));
+      expect(html).toContain(ar('fleet.dash.filters.someOperations'));
     }
   });
 
@@ -701,6 +745,17 @@ describe('/fleet/violations reads «مجهول» and the vehicle set', () => {
       drivers: { unknownDriver: 'true', collected: false },
     });
     expect(halves(html).drivers, 'the seeded fine is on the board').toContain('733');
+  });
+
+  it('asks the drivers’ ledger for the dashboard’s YEAR only (dyear → year), shown as its chip', () => {
+    // The figure counts the Cairo year's unpaid fines; the link must list that year, not every one.
+    const html = violationsAt('/fleet/violations?year=2026&dyear=2026&dunknown=true&dset=false', {
+      drivers: { unknownDriver: 'true', collected: false, year: 2026 },
+    });
+    const { drivers } = halves(html);
+    expect(drivers, 'the seeded fine is on the board').toContain('733');
+    expect(drivers).toContain('data-driver-year="2026"');
+    expect(source('ViolationsPage.tsx')).toContain('onYearClear={() => patch({ dyear: null })}');
   });
 
   it('shows «مجهول» as the drivers picker’s own chip, so it comes off the way it went on', () => {

@@ -92,6 +92,25 @@ const Headline = ({
   );
 };
 
+/** A money figure in a line or a small box: the Fleet figure face (NUM), bold — only a card's or a
+ *  box's headline is written in Cairo (`Headline`). */
+const LineMoney = ({
+  value,
+  link,
+  className,
+}: {
+  value: number | null;
+  link: DashLink | null;
+  className?: string;
+}): JSX.Element => {
+  if (value === null) return <span className={cn(className, MUTED)}>—</span>;
+  return (
+    <Fig link={link} className={cn(className, value < 0 && RED)}>
+      <Amount value={value} />
+    </Fig>
+  );
+};
+
 const SplitBar = ({
   parts,
 }: {
@@ -380,10 +399,10 @@ const CustodyKpi = ({
         {label}
       </div>
       <div className="mt-1">
-        <Headline
+        <LineMoney
           value={value}
           link={custodyDashboardLink(metric)}
-          className={cn('text-[15px] font-bold leading-6', STRONG)}
+          className={cn('text-[15px] leading-6', STRONG)}
         />
       </div>
     </div>
@@ -442,10 +461,10 @@ const OpenKpi = ({
   ) : accidents !== null ? (
     <Headline value={accidents.remaining} link={links.accidentsOpen()} />
   ) : (
-    <Headline
-      value={violations?.total ?? 0}
-      link={violations === null ? null : links.violationsDrivers(violations.year)}
-    />
+    // The year's unpaid fines are the company's statements AND the drivers' fines; no one list
+    // shows both halves unpaid, so — like the both-parts total — the headline opens nothing (a
+    // named exception). Its two halves link from the summaries' violations card.
+    <Headline value={violations?.total ?? 0} link={null} />
   );
   return (
     <Kpi
@@ -561,7 +580,7 @@ const FuelColumn = ({
                 link={links.chargingCompany(company)}
                 className={cn('text-lg font-black dark:font-bold', STRONG)}
               >
-                <Amount value={fuel[company]} className="!font-[inherit]" />
+                <Amount value={fuel[company]} className="font-black dark:font-bold" />
               </Fig>
             </div>
             <div className={cn('mt-2.5 h-1.5 overflow-hidden rounded-full', TRACK)}>
@@ -709,10 +728,10 @@ const CustodyColumn = ({
         icon={I.refresh}
         tone="sky"
         end={
-          <Headline
+          <LineMoney
             value={custody.waiting}
             link={custodyDashboardLink('custodyFund.waiting')}
-            className={cn('text-[15px] font-bold', STRONG)}
+            className={cn('text-[15px]', STRONG)}
           />
         }
         sub={t('fleet.dash.summaries.waitingSub')}
@@ -725,10 +744,10 @@ const CustodyColumn = ({
         icon={I.clipboardCheck}
         tone="emerald"
         end={
-          <Headline
+          <LineMoney
             value={custody.settle}
             link={custodyDashboardLink('custodyFund.settle')}
-            className={cn('text-[15px] font-bold', STRONG)}
+            className={cn('text-[15px]', STRONG)}
           />
         }
         sub={t('fleet.dash.summaries.settleSub')}

@@ -67,6 +67,7 @@ export const NOW_DTO: FleetDashboardNowDto = {
     readyManned: 28,
     unmanned: 5,
     unmannedCrewGap: 2,
+    unmannedStalePlan: 1,
     unmannedNoCrew: 2,
     crewGap: { vehicles: 2, otherReasons: 0, covered: 3, stalePlan: 1 },
     registry: 52,

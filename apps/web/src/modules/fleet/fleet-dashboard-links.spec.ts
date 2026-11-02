@@ -107,7 +107,8 @@ const everyLink = (): DashLink[] => {
       L.driversBySpec(['s1'], 'distributionDrivers.cash'),
       L.licensing('insurance'),
       L.licensing('tax'),
-      L.visitDay('231', TODAY),
+      L.visitDay('231', TODAY, true),
+      L.visitDay('295', '2026-10-31', false),
       L.accidentDay('154', TODAY),
       L.accidentsRecent(30),
       L.visitsRecent(30),
@@ -173,7 +174,7 @@ describe('every link the dashboard can make', () => {
       ['/fleet/receipts', ['from', 'to']],
       ['/fleet/dealership', ['from', 'to', 'state']],
       ['/fleet/accidents', ['from', 'to', 'status']],
-      ['/fleet/maintenance', ['from', 'to', 'state']],
+      ['/fleet/maintenance', ['from', 'to', 'state', 'outFrom']],
       ['/fleet/violations', ['year']],
     ];
     for (const link of links) {
@@ -188,6 +189,19 @@ describe('every link the dashboard can make', () => {
     expect(parse(NOW.rosterReady()).params.get('date')).toBe(TODAY);
     expect(parse(NOW.custodyExpenses()).params.get('from')).toBe(addDaysYmd(TODAY, -29));
     expect(parse(NOW.custodyExpenses()).params.get('to')).toBe(TODAY);
+  });
+});
+
+describe('a recent workshop row (T4.8, R-12)', () => {
+  it('opens an open visit on its check-in day and a closed one on its check-out day', () => {
+    // The row's date is its business day: the check-in while open, the check-out once closed. The
+    // screen's `from`/`to` bound the check-in, so a closed row must travel as `outFrom`/`outTo`.
+    expect(NOW.visitDay('231', TODAY, true).to).toBe(
+      `/fleet/maintenance?vehicleCodes=231&from=${TODAY}&to=${TODAY}`,
+    );
+    expect(NOW.visitDay('295', '2026-10-31', false).to).toBe(
+      '/fleet/maintenance?vehicleCodes=295&outFrom=2026-10-31&outTo=2026-10-31',
+    );
   });
 });
 

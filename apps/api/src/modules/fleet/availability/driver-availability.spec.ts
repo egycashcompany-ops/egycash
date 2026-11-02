@@ -72,6 +72,9 @@ vi.mock('../../../platform/settings', () => ({
 vi.mock('../../../platform/directory', () => ({
   getDirectoryEmployee: vi.fn(async (id: string) => ({ id, status: statusOf(id) })),
   isOnApprovedLeave: vi.fn(async (id: string) => ON_LEAVE.has(id)),
+  approvedLeaveEmployeeIds: vi.fn(
+    async (ids: readonly string[]) => new Set(ids.filter((id) => ON_LEAVE.has(id))),
+  ),
 }));
 vi.mock('../driver-profiles/driver-profile.repository', () => ({
   fleetDriverProfileRepository: {

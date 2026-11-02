@@ -178,10 +178,14 @@ const store = (permissions: string[]) =>
 const render = (
   query = '',
   board: FleetRosterDayDto = FLAG_BOARD,
-  { url = `/fleet/roster?date=${DATE}${query}`, date = DATE } = {},
+  {
+    url = `/fleet/roster?date=${DATE}${query}`,
+    date = DATE,
+    permissions = ['fleetRoster.view', 'fleetRoster.plan'],
+  } = {},
 ): string =>
   renderToStaticMarkup(
-    <Provider store={store(['fleetRoster.view', 'fleetRoster.plan'])}>
+    <Provider store={store(permissions)}>
       <QueryClientProvider client={client(board, date)}>
         <MemoryRouter initialEntries={[url]}>
           <RosterPage />
@@ -324,10 +328,33 @@ describe('the available panel — «منهم رخصة منتهية N»', () => {
   });
 
   it('links the owner’s list for the board’s day — drivers and active vehicles', () => {
-    const panel = section(render(), 'data-licence-expired-panel="true"');
+    const panel = section(
+      render('', FLAG_BOARD, {
+        permissions: [
+          'fleetRoster.view',
+          'fleetRoster.plan',
+          'fleetDriver.view',
+          'fleetVehicle.view',
+        ],
+      }),
+      'data-licence-expired-panel="true"',
+    );
     expect(panel).toContain(`href="/fleet/drivers?licExpBefore=${DATE}"`);
     expect(panel).toContain(`href="/fleet/vehicles?status=active&amp;licExpBefore=${DATE}"`);
     expect(panel).toContain(t('fleet.roster.expiredLicence.vehiclesLink', { count: '١' }));
+  });
+
+  it('offers each check only with its own screen’s guard — the roster’s opens neither', () => {
+    const rosterOnly = section(render(), 'data-licence-expired-panel="true"');
+    expect(rosterOnly).not.toContain('data-licence-check=');
+    const drivers = section(
+      render('', FLAG_BOARD, {
+        permissions: ['fleetRoster.view', 'fleetRoster.plan', 'fleetDriver.view'],
+      }),
+      'data-licence-expired-panel="true"',
+    );
+    expect(drivers).toContain('data-licence-check="drivers"');
+    expect(drivers).not.toContain('data-licence-check="vehicles"');
   });
 
   it('is gone once the rule REFUSES — those drivers are unavailable, with the reason', () => {

@@ -142,6 +142,21 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
   it('shows one honest empty state when nothing is left to show', () => {
     const answers = { can: () => false, now: undefined, period: undefined };
     expect(visibleTabs(answers)).toEqual([]);
+    // A reader of the vehicles whose every vehicle section came back null: no bar, one message.
+    const now = { ...NOW_DTO, vehicles: null, distributionVehicles: null, licenceVehicles: null };
+    const html = renderDashboard({
+      permissions: ['fleetVehicle.view'],
+      client: dashboardClient({ now }),
+    });
+    expect(html).not.toContain('data-dash-nav');
+    expect(html).toContain(ar('fleet.dash.shell.nothingTitle'));
+  });
+
+  it('shows the skeleton of a tab while R1 is on its way — never zeroes pretending to be data', () => {
+    const html = renderDashboard({ url: '/fleet?tab=now', client: dashboardClient({ now: null }) });
+    expect(html).toContain('data-dash-loading="true"');
+    expect(html).toContain('animate-pulse');
+    expect(html).not.toContain('data-now-card=');
   });
 });
 

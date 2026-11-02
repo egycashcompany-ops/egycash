@@ -3,15 +3,22 @@
 // `invalidateQueries` over the registry's key prefixes, and TanStack Query refetches whatever is
 // actually on screen through the normal authorized api. The socket is the same one the
 // notification bell's live push rides; auth is the in-memory access token, re-read on every
-// (re)connect attempt.
+// (re)connect attempt. The few prefixes the registry marks as throttled (D13: the fleet dashboard's
+// live reads) are not swept: they are marked stale at once and refetched at most once per window.
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
 import { useAppSelector } from '../../store';
 import { apiOrigin, getAccessToken } from '../../shared/lib/api-client';
 import { createRealtimeClient, NOTIFICATIONS_TOPIC } from './realtime-client';
-import { ALL_REALTIME_KEY_PREFIXES, keysForTopic, NOTIFICATION_KEYS } from './invalidation-registry';
+import {
+  ALL_REALTIME_KEY_PREFIXES,
+  keysForTopic,
+  NOTIFICATION_KEYS,
+  THROTTLED_KEY_PREFIXES,
+} from './invalidation-registry';
 import { setRealtimeConnected } from './realtime-status';
+import { createRefetchThrottle } from './throttle';
 
 export const RealtimeProvider = (): null => {
   const queryClient = useQueryClient();
@@ -20,10 +27,25 @@ export const RealtimeProvider = (): null => {
   useEffect(() => {
     if (!signedIn) return undefined;
 
+    const throttle = createRefetchThrottle(
+      {
+        markStale: (queryKey) =>
+          void queryClient.invalidateQueries({ queryKey, refetchType: 'none' }),
+        // `cancelRefetch: false`: a throttled trailing refetch joins a read already in flight (an
+        // interval or focus refetch) instead of cancelling and restarting it on the server.
+        refetch: (queryKey) =>
+          void queryClient.refetchQueries({ queryKey, type: 'active' }, { cancelRefetch: false }),
+      },
+      THROTTLED_KEY_PREFIXES,
+    );
+
     const invalidate = (prefixes: Iterable<readonly unknown[]>): void => {
       const unique = new Map<string, readonly unknown[]>();
       for (const prefix of prefixes) unique.set(JSON.stringify(prefix), prefix);
-      for (const queryKey of unique.values()) void queryClient.invalidateQueries({ queryKey });
+      for (const queryKey of unique.values()) {
+        if (throttle.owns(queryKey)) throttle.push(queryKey);
+        else void queryClient.invalidateQueries({ queryKey });
+      }
     };
 
     const client = createRealtimeClient({
@@ -60,6 +82,7 @@ export const RealtimeProvider = (): null => {
       return undefined;
     }
     return () => {
+      throttle.cancel();
       try {
         client.stop();
       } catch {

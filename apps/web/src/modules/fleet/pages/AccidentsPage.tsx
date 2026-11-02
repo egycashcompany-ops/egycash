@@ -67,11 +67,13 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { VehicleSetChip } from '../components/VehicleSetChip';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import {
   CLEAR_VEHICLE_SET,
   hasVehicleSet,
   useVehicleTypeOptions,
+  vehicleSetReaders,
   vehicleSetQuery,
 } from '../lib/vehicle-set-params';
 
@@ -135,7 +137,10 @@ export const AccidentsPage = (): JSX.Element => {
     branchIds: readList(sp, 'branch'),
   };
   const narrowedToSet = hasVehicleSet(vehicleSet);
-  const typeOptions = useVehicleTypeOptions(narrowedToSet);
+  // The types list and the operations catalog are their own endpoints' (TYPE_READERS /
+  // OPERATION_READERS), not this screen's guard: never asked for without them.
+  const sets = vehicleSetReaders(can);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet && sets.types);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   /**
@@ -707,29 +712,41 @@ export const AccidentsPage = (): JSX.Element => {
               controls the registry (type) and the maintenance screen (operation, branch) use. */}
           {narrowedToSet && (
             <>
-              <div className="min-w-[8rem] flex-1">
-                <MultiSelect
-                  clearable
-                  fullWidth
-                  showSelectedValues
-                  chips
-                  className="w-full"
-                  label={t('fleet.vehicles.filters.short.make')}
-                  options={typeOptions}
-                  value={vehicleSet.typeIds}
-                  onChange={(ids) => patch({ type: writeList(ids) })}
-                />
-              </div>
-              <div className="min-w-[8rem] flex-1">
-                <CatalogMultiSelect
-                  kind="operation"
-                  className="w-full"
-                  fullWidth
-                  value={vehicleSet.operationIds}
-                  onChange={(ids) => patch({ operation: writeList(ids) })}
-                  label={t('fleet.vehicles.filters.short.operation')}
-                />
-              </div>
+              {sets.types ? (
+                <div className="min-w-[8rem] flex-1">
+                  <MultiSelect
+                    clearable
+                    fullWidth
+                    showSelectedValues
+                    chips
+                    className="w-full"
+                    label={t('fleet.vehicles.filters.short.make')}
+                    options={typeOptions}
+                    value={vehicleSet.typeIds}
+                    onChange={(ids) => patch({ type: writeList(ids) })}
+                  />
+                </div>
+              ) : (
+                vehicleSet.typeIds.length > 0 && (
+                  <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+                )
+              )}
+              {sets.operations ? (
+                <div className="min-w-[8rem] flex-1">
+                  <CatalogMultiSelect
+                    kind="operation"
+                    className="w-full"
+                    fullWidth
+                    value={vehicleSet.operationIds}
+                    onChange={(ids) => patch({ operation: writeList(ids) })}
+                    label={t('fleet.vehicles.filters.short.operation')}
+                  />
+                </div>
+              ) : (
+                vehicleSet.operationIds.length > 0 && (
+                  <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
+                )
+              )}
               {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
               <div className="min-w-[8rem] flex-1 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between">
                 <BranchFilterSelect

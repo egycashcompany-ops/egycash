@@ -37,6 +37,26 @@ const attendanceDaySweep: readonly KeyPrefix[] = [
   ['hr', 'attendanceMyDays'],
 ];
 
+/**
+ * «لوحة تحكم الحركة» (D13): R1, the «الآن» tabs, and R2 while its period is still LIVE (a period
+ * that ended — `past` — never moves, so no signal names it). A dashboard counts over every fleet
+ * screen at once, so a busy morning would re-read it on every save: these two prefixes are NOT
+ * swept like the rest — the provider hands them to the platform throttle (`throttle.ts`), which
+ * marks them stale at once and refetches what is on screen at most once per window.
+ */
+const FLEET_DASHBOARD_NOW: KeyPrefix = ['fleet', 'dashboard', 'now'];
+const FLEET_DASHBOARD_LIVE: KeyPrefix = ['fleet', 'dashboard', 'period', 'live'];
+/** The rows whose writes move a figure of both reads (a «الآن» count and a period total). */
+const fleetDashboardBoth: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW, FLEET_DASHBOARD_LIVE];
+/** The rows whose writes move only a «الآن» figure (roster, licences, notices, fuel, violations). */
+const fleetDashboardNow: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW];
+
+/** Every prefix realtime refreshes through the throttle rather than the plain sweep. */
+export const THROTTLED_KEY_PREFIXES: readonly KeyPrefix[] = [
+  FLEET_DASHBOARD_NOW,
+  FLEET_DASHBOARD_LIVE,
+];
+
 const recruitmentPipeline: readonly KeyPrefix[] = [
   ['hr', 'applicants'],
   ['hr', 'recruitmentStageCounts'],
@@ -341,62 +361,58 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // The alarms board (`['fleet', 'alarms']`) has a key of its own, outside the odometer and
   // maintenance subtrees: every write that moves the alarm names it, here as in `fleet-queries.ts`,
   // or a board left open never hears of a reading somebody else recorded.
+  // The dashboard's two live reads ride the rows whose writes move one of its figures (D13); the
+  // custody rows do not — tab 1's custody line is the custody hooks' own `['fleet', 'custody']`.
   'fleet.vehicle': [
     ['fleet', 'vehicles'],
     ['fleet', 'roster'],
     ['fleet', 'availability'],
     ['fleet', 'alarms'],
+    ...fleetDashboardBoth,
   ],
   'fleet.vehicleType': [
     ['fleet', 'vehicleTypes'],
     ['fleet', 'vehicles'],
     ['fleet', 'alarms'],
+    ...fleetDashboardBoth,
   ],
-  'fleet.catalogItem': [
-    ['fleet', 'catalogs'],
-    ['fleet', 'alarms'],
-  ],
+  'fleet.catalogItem': [['fleet', 'catalogs'], ['fleet', 'alarms'], ...fleetDashboardBoth],
   'fleet.driverProfile': [
     ['fleet', 'drivers'],
     ['fleet', 'roster'],
     ['fleet', 'availability'],
+    ...fleetDashboardNow,
   ],
   'fleet.driverUnavailability': [
     ['fleet', 'availability'],
     ['fleet', 'roster'],
+    ...fleetDashboardNow,
   ],
-  'fleet.dutyAssignment': [
-    ['fleet', 'roster'],
-    ['fleet', 'availability'],
-  ],
-  'fleet.fixedCrew': [['fleet', 'roster']],
+  'fleet.dutyAssignment': [['fleet', 'roster'], ['fleet', 'availability'], ...fleetDashboardNow],
+  'fleet.fixedCrew': [['fleet', 'roster'], ...fleetDashboardNow],
   'fleet.maintenanceVisit': [
     ['fleet', 'maintenance'],
     ['fleet', 'odometer'],
     ['fleet', 'vehicles'],
     ['fleet', 'alarms'],
+    ...fleetDashboardBoth,
   ],
   'fleet.odometerLog': [
     ['fleet', 'odometer'],
     ['fleet', 'vehicles'],
     ['fleet', 'alarms'],
+    ...fleetDashboardBoth,
   ],
-  'fleet.accident': [
-    ['fleet', 'accidents'],
-    ['fleet', 'vehicles'],
-  ],
-  'fleet.violation': [
-    ['fleet', 'violations'],
-    ['fleet', 'drivers'],
-  ],
-  'fleet.violationGrievance': [['fleet', 'violations']],
-  // The board and nothing else: a tick is a fact about the papers, and no other screen reads it.
-  'fleet.vehicleLicensing': [['fleet', 'licensing']],
-  'fleet.notice': [['fleet', 'notices']],
+  'fleet.accident': [['fleet', 'accidents'], ['fleet', 'vehicles'], ...fleetDashboardBoth],
+  'fleet.violation': [['fleet', 'violations'], ['fleet', 'drivers'], ...fleetDashboardNow],
+  'fleet.violationGrievance': [['fleet', 'violations'], ...fleetDashboardNow],
+  // The board — and tab 4's paper counts, which read the same papers.
+  'fleet.vehicleLicensing': [['fleet', 'licensing'], ...fleetDashboardNow],
+  'fleet.notice': [['fleet', 'notices'], ...fleetDashboardNow],
   // A notice's scans (Files rows owned by `fleetNotice`) and a form's set-up both live on the
-  // notices screen and its editor.
-  'fleet.fleetNotice': [['fleet', 'notices']],
-  'fleet.noticeSettings': [['fleet', 'notices']],
+  // notices screen and its editor (and in tab 1's «إخطارات ناقصة المرفقات»).
+  'fleet.fleetNotice': [['fleet', 'notices'], ...fleetDashboardNow],
+  'fleet.noticeSettings': [['fleet', 'notices'], ...fleetDashboardNow],
   // A licence record is a settle candidate of the custody fund («تسوية العهدة») too.
   'fleet.licenseExpense': [
     ['fleet', 'licenseExpenses'],
@@ -405,15 +421,16 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'fleet.licenseExpenseSettings': [['fleet', 'licenseExpenses']],
   // «عقود توريد السيارات» alone: a contract, a delivery or an attachment moves nothing else.
   'fleet.vehicleContract': [['fleet', 'vehicleContracts']],
-  // The dealership board alone: an invoice is saved as entered and moves nothing else — not the
-  // custody ledger, not a fuel card.
-  'fleet.dealershipInvoice': [['fleet', 'dealership']],
-  'fleet.fuelCard': [['fleet', 'fuelCards']],
+  // The dealership board — not the custody ledger, not a fuel card — and the dashboard's
+  // «فواتير التوكيل» figures.
+  'fleet.dealershipInvoice': [['fleet', 'dealership'], ...fleetDashboardBoth],
+  'fleet.fuelCard': [['fleet', 'fuelCards'], ...fleetDashboardNow],
   // A receipt is its own row, a line of the ledger, and money off a card.
   'fleet.receipt': [
     ['fleet', 'receipts'],
     ['fleet', 'custody'],
     ['fleet', 'fuelCards'],
+    ...fleetDashboardBoth,
   ],
   // «المذكرات», «سجل العهدة» and «إعداد المذكرات» live under the custody subtree. A memo also
   // moves the receipts screen (each receipt says which memo holds it); an operation moves the

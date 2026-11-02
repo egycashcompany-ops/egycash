@@ -358,6 +358,9 @@ vi.mock('../../../platform/settings', () => ({
 }));
 vi.mock('../../../platform/directory', () => ({
   isOnApprovedLeave: vi.fn(async (employeeId: string) => ON_LEAVE.has(employeeId)),
+  approvedLeaveEmployeeIds: vi.fn(
+    async (ids: readonly string[]) => new Set(ids.filter((id) => ON_LEAVE.has(id))),
+  ),
   getDirectoryEmployee: vi.fn(async (employeeId: string) => ({
     id: employeeId,
     status: employeeId === D.K ? 'suspended' : 'active',

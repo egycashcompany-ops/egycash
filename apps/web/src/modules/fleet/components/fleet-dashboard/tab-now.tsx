@@ -238,14 +238,20 @@ const BalanceRow = ({
   figure,
   link,
   parts,
+  note = null,
 }: {
   label: string;
   figure: number;
   link: DashLink | null;
   parts: readonly { pct: number; tone: Tone }[];
+  /** Under the label — «الشركة كلها» when this row's scope is not the switcher's branch. */
+  note?: ReactNode;
 }): JSX.Element => (
   <div className="flex items-center gap-3">
-    <span className={cn('w-[116px] shrink-0', BAND_LABEL)}>{label}</span>
+    <span className={cn('w-[116px] shrink-0', BAND_LABEL)}>
+      {label}
+      {note !== null && <span className="mt-1 block">{note}</span>}
+    </span>
     <Meter className="min-w-0 flex-1" height="h-2.5" parts={parts} />
     <Small link={link} className={cn('w-8 shrink-0 text-end text-[15px] !font-black', STRONG)}>
       {count(figure)}
@@ -256,15 +262,21 @@ const BalanceRow = ({
 const Summary = ({
   roster,
   links,
+  branch,
 }: {
   roster: NonNullable<FleetDashboardNowDto['roster']>;
   links: NowLinks;
+  /** A branch is chosen: the cars are the branch's, the driver pool the company's (R-27). */
+  branch: boolean;
 }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
   const onVehicle = roster.available - roster.availableWithoutVehicle;
-  const scale = Math.max(roster.ready, roster.available);
-  const pct = (n: number): number => share(n, scale) ?? 0;
+  // One shared scale — and «drivers more than cars by N» — only while both rows count the same
+  // fleet. With a branch chosen the two are different scopes: each row is drawn on its own total,
+  // the drivers' marked «الشركة كلها», and no difference is offered as a balance.
+  const shared = Math.max(roster.ready, roster.available);
+  const pct = (n: number, own: number): number => share(n, branch ? own : shared) ?? 0;
   const gap = roster.available - roster.ready;
   return (
     <Card accent="slate" className="mb-5" data-now-card="summary">
@@ -321,20 +333,22 @@ const Summary = ({
                 <p className={NOTE}>{t('fleet.dash.now.balanceNote')}</p>
               </div>
             </div>
-            <span className={cn(COUNT_CHIP, TONE.teal.soft)}>
-              {gap === 0 ? (
-                t('fleet.dash.now.balanceEven')
-              ) : (
-                <Phrase
-                  text={t(
-                    gap > 0
-                      ? 'fleet.dash.now.balanceMoreDrivers'
-                      : 'fleet.dash.now.balanceMoreCars',
-                  )}
-                  parts={{ count: <N className="font-bold">{count(Math.abs(gap))}</N> }}
-                />
-              )}
-            </span>
+            {!branch && (
+              <span data-now-balance-gap="true" className={cn(COUNT_CHIP, TONE.teal.soft)}>
+                {gap === 0 ? (
+                  t('fleet.dash.now.balanceEven')
+                ) : (
+                  <Phrase
+                    text={t(
+                      gap > 0
+                        ? 'fleet.dash.now.balanceMoreDrivers'
+                        : 'fleet.dash.now.balanceMoreCars',
+                    )}
+                    parts={{ count: <N className="font-bold">{count(Math.abs(gap))}</N> }}
+                  />
+                )}
+              </span>
+            )}
           </div>
           <div className="mt-4 space-y-3">
             <BalanceRow
@@ -342,17 +356,18 @@ const Summary = ({
               figure={roster.ready}
               link={links.rosterReady()}
               parts={[
-                { pct: pct(roster.readyManned), tone: 'sky' },
-                { pct: pct(roster.unmanned), tone: 'amber' },
+                { pct: pct(roster.readyManned, roster.ready), tone: 'sky' },
+                { pct: pct(roster.unmanned, roster.ready), tone: 'amber' },
               ]}
             />
             <BalanceRow
               label={t('fleet.dash.now.balanceDrivers')}
               figure={roster.available}
               link={links.rosterAvailable('roster.available.balance')}
+              note={branch ? <CompanyWide show /> : null}
               parts={[
-                { pct: pct(onVehicle), tone: 'teal' },
-                { pct: pct(roster.availableWithoutVehicle), tone: 'amber' },
+                { pct: pct(onVehicle, roster.available), tone: 'teal' },
+                { pct: pct(roster.availableWithoutVehicle, roster.available), tone: 'amber' },
               ]}
             />
           </div>
@@ -581,23 +596,29 @@ const Cards = ({
                   <span className="flex items-center gap-1.5 text-xs font-bold dark:font-semibold">
                     <Icon d={I.clock} className="h-3.5 w-3.5" />
                     {t('fleet.dash.now.oldest')}
+                    {/* The car's file is the vehicles screen's (fleetVehicle.view), not this
+                        section's (fleetMaintenance.view): a link only with its own guard. */}
                     <CarChip
                       code={workshop.oldest.code}
                       link={
-                        workshop.oldest.vehicleId === null
+                        workshop.oldest.vehicleId === null || !can('fleetVehicle.view')
                           ? null
                           : links.vehicle(workshop.oldest.vehicleId, 'workshop.oldest')
                       }
                     />
                   </span>
                   <span className={cn('whitespace-nowrap text-xs font-bold', RED)}>
-                    <Phrase
-                      text={t('fleet.dash.common.since')}
-                      parts={{
-                        count: <N>{count(workshop.oldest.days)}</N>,
-                        noun: noun('day', workshop.oldest.days),
-                      }}
-                    />
+                    {workshop.oldest.days === 0 ? (
+                      t('fleet.dash.common.sinceToday')
+                    ) : (
+                      <Phrase
+                        text={t('fleet.dash.common.since')}
+                        parts={{
+                          count: <N>{count(workshop.oldest.days)}</N>,
+                          noun: noun('day', workshop.oldest.days),
+                        }}
+                      />
+                    )}
                   </span>
                 </div>
               )}
@@ -629,7 +650,7 @@ const Cards = ({
                 <div className="mt-2.5 grid flex-1 grid-cols-3 gap-2">
                   <Tile n={roster.unmannedCrewGap} label={t('fleet.dash.now.unmannedCrewGap')} />
                   <Tile
-                    n={roster.crewGap.stalePlan}
+                    n={roster.unmannedStalePlan}
                     label={t('fleet.dash.now.unmannedStalePlan')}
                   />
                   <Tile n={roster.unmannedNoCrew} label={t('fleet.dash.now.unmannedNoCrew')} />
@@ -783,9 +804,11 @@ const Suggestion = ({
 const Suggestions = ({
   now,
   links,
+  can,
 }: {
   now: FleetDashboardNowDto;
   links: NowLinks;
+  can: (p: string) => boolean;
 }): JSX.Element | null => {
   const t = useT();
   const noun = useNoun();
@@ -855,7 +878,8 @@ const Suggestions = ({
             >
               {t('fleet.dash.now.suggest.workshopAction')}
             </Btn>
-            {oldest.vehicleId !== null && (
+            {/* The car's file needs the vehicles screen's own guard (fleetVehicle.view). */}
+            {oldest.vehicleId !== null && can('fleetVehicle.view') && (
               <Btn
                 link={links.vehicle(oldest.vehicleId, 'workshop.oldest.file')}
                 kind="outline"
@@ -878,10 +902,14 @@ const Suggestions = ({
             code: <CarChip code={oldest.code} />,
             since: (
               <span className={cn('font-bold', RED)}>
-                <Phrase
-                  text={t('fleet.dash.common.since')}
-                  parts={{ count: <N>{count(oldest.days)}</N>, noun: noun('day', oldest.days) }}
-                />
+                {oldest.days === 0 ? (
+                  t('fleet.dash.common.today')
+                ) : (
+                  <Phrase
+                    text={t('fleet.dash.common.since')}
+                    parts={{ count: <N>{count(oldest.days)}</N>, noun: noun('day', oldest.days) }}
+                  />
+                )}
               </span>
             ),
             open: <Small>{count(workshop.open)}</Small>,
@@ -987,9 +1015,11 @@ export const NowTab = (props: NowTabProps): JSX.Element => {
       />
       {now !== null && (
         <>
-          {now.roster !== null && <Summary roster={now.roster} links={nowLinks(now)} />}
+          {now.roster !== null && (
+            <Summary roster={now.roster} links={nowLinks(now)} branch={now.branchId !== null} />
+          )}
           <Cards now={now} links={nowLinks(now)} can={props.can} onRetry={props.onRetry} />
-          <Suggestions now={now} links={nowLinks(now)} />
+          <Suggestions now={now} links={nowLinks(now)} can={props.can} />
         </>
       )}
     </div>

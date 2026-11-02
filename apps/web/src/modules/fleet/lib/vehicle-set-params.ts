@@ -57,6 +57,37 @@ export const hasVehicleSet = (set: VehicleSetFilter): boolean =>
 /** The whole set dropped in ONE write — for a screen's reset, beside its other filters. */
 export const CLEAR_VEHICLE_SET = { type: null, operation: null, branch: null } as const;
 
+/** Who may read the vehicle types list (`GET /fleet/vehicle-types`'s `authorizeAny`). */
+export const TYPE_READERS = [
+  'fleetVehicle.view',
+  'fleetCatalog.manage',
+  'fleetMaintenanceRule.manage',
+  'fleetVehicleContract.view',
+] as const;
+/** Who may read the operations catalog (`GET /fleet/catalogs?kind=operation`'s `authorizeAny`). */
+export const OPERATION_READERS = [
+  'fleetVehicle.view',
+  'fleetMaintenance.view',
+  'fleetRoster.view',
+  'fleetViolation.view',
+  'fleetCatalog.manage',
+] as const;
+/** Who may read the vehicle registry the codes filter offers (its list endpoint's guard). */
+export const CODE_READERS = ['fleetVehicle.view'] as const;
+
+/**
+ * Which of the set's two named controls this reader's screen may draw. A screen's own guard (an
+ * accidents or receipts clerk) does not open the types list or the operations catalog, and asking
+ * anyway costs a 403 and a denial audit row on every visit; the screen then shows a NAMELESS chip
+ * for a set it cannot name (`VehicleSetChip`), still removable.
+ */
+export const vehicleSetReaders = (
+  can: (permission: string) => boolean,
+): { types: boolean; operations: boolean } => ({
+  types: TYPE_READERS.some((key) => can(key)),
+  operations: OPERATION_READERS.some((key) => can(key)),
+});
+
 /**
  * The vehicle types as a multi-select offers them, in the catalog's order — the list the registry's
  * «الماركة» filter reads (same cache entry). Asked for only while `enabled`, so a screen that shows

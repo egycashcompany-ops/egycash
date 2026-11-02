@@ -73,6 +73,9 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
   ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
   ['modules/fleet/pages/DealershipPage.tsx', []],
+  // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period filters are ONE
+  // state for the five period tabs (TAB_SHARED below).
+  ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab']],
   ['modules/fleet/pages/FuelCardsPage.tsx', []],
   ['modules/fleet/pages/FuelChargingPage.tsx', []],
   ['modules/fleet/pages/ReceiptsPage.tsx', []],
@@ -210,7 +213,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/fleet/pages/CustodyMemoEditorPage.tsx'],
   ['modules/fleet/pages/CustodyPapersSetupPage.tsx'],
   ['modules/fleet/pages/DriverProfilePage.tsx'],
-  ['modules/fleet/pages/FleetDashboardPage.tsx'],
   ['modules/fleet/pages/FleetSettingsPage.tsx'],
   ['modules/fleet/pages/FuelReconcilePage.tsx'],
   ['modules/fleet/pages/LicenseExpenseEditorPage.tsx'],
@@ -467,15 +469,34 @@ const TAB_SCOPED: readonly (readonly [string, string])[] = [
   ['modules/it/pages/SoftwarePage.tsx', 'products'],
 ];
 
+/**
+ * The screens whose tab lives in the query string but whose tabs SHARE one filter state, each with
+ * the reason that is a fact about the screen.
+ *
+ * The opposite case to TAB_SCOPED: here every tab offers the same filter bar over the same things,
+ * and the owner asked for the filters to stay put while he moves between the tabs. One memory for
+ * the path is then exactly right — and the tab itself is still never remembered.
+ */
+const TAB_SHARED: readonly (readonly [string, string])[] = [
+  [
+    'modules/fleet/pages/FleetDashboardPage.tsx',
+    'the five period tabs draw one filter bar (period, type, operation, codes) over one read, R2 — «الفلاتر ثابتة بين التبويبات»',
+  ],
+];
+
 describe('a tabbed screen keeps one memory per tab', () => {
   it('covers every screen whose tab lives in the query string', () => {
     // Kept in step with the exclusion lists above: a screen that excludes `tab` is a screen whose
-    // tab is in the URL, and every one of those must be scoped or its filters cross tabs.
+    // tab is in the URL, and every one of those must be scoped — or, by a written decision, share —
+    // or its filters cross tabs unseen.
     const excludesTab = COVERED.filter(([, ex]) => ex.includes('tab'))
       .map(([p]) => p)
       .sort();
-    expect(TAB_SCOPED.map(([p]) => p).sort()).toEqual(excludesTab);
+    expect([...TAB_SCOPED, ...TAB_SHARED].map(([p]) => p).sort()).toEqual(excludesTab);
     expect(TAB_SCOPED).toHaveLength(7);
+    // A screen is one or the other, never both.
+    const scoped = new Set(TAB_SCOPED.map(([p]) => p));
+    expect(TAB_SHARED.filter(([p]) => scoped.has(p)).map(([p]) => p)).toEqual([]);
   });
 
   it.each(TAB_SCOPED.map(([path, fallback]) => ({ path, fallback })))(
@@ -507,6 +528,36 @@ describe('a tabbed screen keeps one memory per tab', () => {
       // Switching to a tab that saved something gets THAT, never the tab being left.
       const arriving = `${keep[0] as string}=y`;
       expect(scopedView(onTabA, keep, arriving)).toBe(`tab=a&${arriving}`);
+    },
+  );
+
+  it.each(TAB_SHARED.map(([path, why]) => ({ path, why })))(
+    '$path reads its tab from the URL and keeps ONE memory for every tab, by decision',
+    ({ path, why }) => {
+      expect(why.trim()).not.toBe('');
+      const src = text(path);
+      // The tab comes from the URL, like a scoped screen's…
+      expect(src).toMatch(/sp\.get\('tab'\)/);
+      expect(src).not.toMatch(/useState<Tab>/);
+      // …but the hook is called with NO scope: one memory for the pathname, shared by the tabs.
+      expect(src).toContain('useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);');
+      expect(src).not.toMatch(/useRememberedFilters\(\[sp, setSp\], REMEMBERED_FILTERS, /);
+      // And the tab is never itself a remembered filter: a link names its tab, memory never does.
+      expect(declared(src)).not.toContain('tab');
+    },
+  );
+
+  it.each(TAB_SHARED.map(([path]) => ({ path })))(
+    'filters set on one tab of $path stay with the reader on the next, and the tab stays the URL’s',
+    ({ path }) => {
+      const keep = declared(text(path));
+      const onTabA = new URLSearchParams([
+        ['tab', 'a'],
+        ...keep.map((k): [string, string] => [k, 'x']),
+      ]);
+      // One memory: what was saved on any tab is what any tab gets back; the tab is not in it.
+      const saved = keep.map((k) => `${k}=y`).join('&');
+      expect(scopedView(onTabA, keep, saved)).toBe(`tab=a&${saved}`);
     },
   );
 

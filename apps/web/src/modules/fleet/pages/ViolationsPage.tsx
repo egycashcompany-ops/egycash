@@ -17,6 +17,7 @@ import {
   type FleetViolationRollupDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { useAppSelector } from '../../../store';
@@ -41,12 +42,14 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { VehicleSetChip } from '../components/VehicleSetChip';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import { UNKNOWN_DRIVER } from '../lib/driver-filter-selection';
 import {
   CLEAR_VEHICLE_SET,
   hasVehicleSet,
   useVehicleTypeOptions,
+  vehicleSetReaders,
   vehicleSetQuery,
 } from '../lib/vehicle-set-params';
 
@@ -68,6 +71,7 @@ const REMEMBERED_FILTERS = [
   'dset',
   'dsort',
   'dunknown',
+  'dyear',
   'type',
   'operation',
   'branch',
@@ -112,6 +116,13 @@ export const ViolationsPage = (): JSX.Element => {
       ? [...driverEmployeeIds, UNKNOWN_DRIVER]
       : driverEmployeeIds;
   const driverAmount = sp.get('damt') ?? '';
+  // The drivers' fines of ONE year — a dashboard figure's year («على السائقين» / «مجهول» of the
+  // Cairo year). The company half's `year` stays its own: each half keeps its own narrowing.
+  const driverYearParam = Number(sp.get('dyear') ?? '');
+  const driverYear =
+    Number.isInteger(driverYearParam) && driverYearParam >= 2000 && driverYearParam <= 2100
+      ? driverYearParam
+      : null;
   // «الحالة» on each half: '' = both, 'true' = settled, 'false' = still outstanding.
   const companySettled = sp.get('cset') ?? '';
   const driverSettled = sp.get('dset') ?? '';
@@ -125,7 +136,11 @@ export const ViolationsPage = (): JSX.Element => {
     branchIds: readList(sp, 'branch'),
   };
   const narrowedToSet = hasVehicleSet(vehicleSet);
-  const typeOptions = useVehicleTypeOptions(narrowedToSet);
+  const can = useCan();
+  // The types list and the operations catalog are their own endpoints' (TYPE_READERS /
+  // OPERATION_READERS), not this screen's guard: never asked for without them.
+  const sets = vehicleSetReaders(can);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet && sets.types);
   const setKey = [vehicleSet.typeIds, vehicleSet.operationIds, vehicleSet.branchIds].join('|');
   const setQuery = useMemo(() => vehicleSetQuery(vehicleSet), [setKey]);
   /**
@@ -210,34 +225,46 @@ export const ViolationsPage = (): JSX.Element => {
             className={cn(DARK_FILTER_BAR, 'shrink-0 [&_[role=listbox]]:animate-menu-in')}
           >
             <FilterBar hasActiveFilters onClear={() => patch({ ...CLEAR_VEHICLE_SET })}>
-              <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
-                <MultiSelect
-                  clearable
-                  className="w-full"
-                  fullWidth
-                  density="tight"
-                  showSelectedValues
-                  chips
-                  label={t('fleet.vehicles.filters.short.make')}
-                  options={typeOptions}
-                  value={vehicleSet.typeIds}
-                  onChange={(ids) => patch({ type: writeList(ids) })}
-                />
-              </FilterWithIcon>
-              <FilterWithIcon
-                icon={FILTER_ICON.operation}
-                tone="text-slate-600 dark:text-slate-300"
-              >
-                <CatalogMultiSelect
-                  kind="operation"
-                  className="w-full"
-                  fullWidth
-                  density="tight"
-                  value={vehicleSet.operationIds}
-                  onChange={(ids) => patch({ operation: writeList(ids) })}
-                  label={t('fleet.vehicles.filters.short.operation')}
-                />
-              </FilterWithIcon>
+              {sets.types ? (
+                <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                  <MultiSelect
+                    clearable
+                    className="w-full"
+                    fullWidth
+                    density="tight"
+                    showSelectedValues
+                    chips
+                    label={t('fleet.vehicles.filters.short.make')}
+                    options={typeOptions}
+                    value={vehicleSet.typeIds}
+                    onChange={(ids) => patch({ type: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              ) : (
+                vehicleSet.typeIds.length > 0 && (
+                  <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+                )
+              )}
+              {sets.operations ? (
+                <FilterWithIcon
+                  icon={FILTER_ICON.operation}
+                  tone="text-slate-600 dark:text-slate-300"
+                >
+                  <CatalogMultiSelect
+                    kind="operation"
+                    className="w-full"
+                    fullWidth
+                    density="tight"
+                    value={vehicleSet.operationIds}
+                    onChange={(ids) => patch({ operation: writeList(ids) })}
+                    label={t('fleet.vehicles.filters.short.operation')}
+                  />
+                </FilterWithIcon>
+              ) : (
+                vehicleSet.operationIds.length > 0 && (
+                  <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
+                )
+              )}
               {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
               <FilterWithIcon
                 icon={FILTER_ICON.branch}
@@ -297,6 +324,8 @@ export const ViolationsPage = (): JSX.Element => {
             typeIds={typeIds}
             amount={driverAmount}
             settled={driverSettled}
+            year={driverYear}
+            onYearClear={() => patch({ dyear: null })}
             onSettledChange={(next) => patch({ dset: next })}
             onVehicleCodesChange={(next) =>
               patch({ dcodes: next.length === 0 ? null : next.join(',') })
@@ -312,6 +341,7 @@ export const ViolationsPage = (): JSX.Element => {
                 dtype: null,
                 damt: null,
                 dset: null,
+                dyear: null,
               })
             }
             onEdit={setEditing}

@@ -343,8 +343,15 @@ const Pools = ({
 
 // ── Row 2 · the branches ──────────────────────────────────────────────────────────────────────
 
-/** A branch's letter: its first, past the Arabic article («القاهرة» → «ق»). */
-const initial = (name: string): string => name.replace(/^ال/u, '').slice(0, 1);
+/**
+ * A branch's letter: its first, past the Arabic article («القاهرة» → «ق») and past a leading alef
+ * («الإسكندرية» → «س»): a lone «إ» or «أ» in the badge reads as «!», the «بلا فرع» badge's mark.
+ */
+const initial = (name: string): string =>
+  name
+    .replace(/^ال/u, '')
+    .replace(/^[اأإآ](?=.)/u, '')
+    .slice(0, 1);
 
 const Letter = ({
   letter,
@@ -861,7 +868,9 @@ const Branchless = ({ m }: { m: Matrix }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
   return (
-    <Card accent="red" data-branchless="true">
+    // Its own height beside «قراءة سريعة»: it has no list to fill a stretched card with (the
+    // «بلا فرع» cars have no exact list to open — a named exception).
+    <Card accent="red" data-branchless="true" className="lg:self-start">
       <div className="flex flex-1 flex-col p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">

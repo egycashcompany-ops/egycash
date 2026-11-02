@@ -6,7 +6,7 @@
 //   · The tab heading's «آخر تحديث قبل N ثانية» + «تحديث» (D6).
 //   · A section the server could not compute shows its error and «إعادة المحاولة»; a whole read
 //     that failed shows the read's error; a read on its way shows the skeleton of a tab.
-import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   FLEET_DASHBOARD_NOW_TABS,
   FLEET_DASHBOARD_PERIOD_TABS,
@@ -160,6 +160,32 @@ export const TopNav = ({
   };
   const live = group(FLEET_DASHBOARD_NOW_TABS, 'now');
   const filtered = group(FLEET_DASHBOARD_PERIOD_TABS, 'filters');
+  // On a narrow screen the pills scroll sideways: bring the pressed one into the strip, sideways
+  // only (the page itself never moves) — again whenever the pills change width (a tab or a badge
+  // arrives with its read, the fonts land).
+  const strip = useRef<HTMLDivElement>(null);
+  const shape = `${visible.join()}|${Object.values(badges)
+    .map((badge) => badge.n)
+    .join()}`;
+  useEffect(() => {
+    let live = true;
+    const reveal = (): void => {
+      const box = strip.current;
+      const pill = box?.querySelector<HTMLElement>('[aria-selected="true"]');
+      if (!live || box === null || box === undefined || pill === null || pill === undefined) {
+        return;
+      }
+      const outer = box.getBoundingClientRect();
+      const inner = pill.getBoundingClientRect();
+      if (inner.left < outer.left) box.scrollLeft -= outer.left - inner.left + 8;
+      else if (inner.right > outer.right) box.scrollLeft += inner.right - outer.right + 8;
+    };
+    reveal();
+    void document.fonts?.ready.then(reveal);
+    return () => {
+      live = false;
+    };
+  }, [active, shape]);
   return (
     <div
       data-dash-sticky="true"
@@ -178,15 +204,20 @@ export const TopNav = ({
         >
           <Icon d={I.truck} className="h-5 w-5" />
         </span>
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto">
-          {live}
-          {live !== null && filtered !== null && (
-            <span
-              aria-hidden="true"
-              className="mx-1 h-6 w-px shrink-0 bg-slate-200 dark:bg-[#26324a]"
-            />
-          )}
-          {filtered}
+        {/* Centred while the pills fit; once they overflow, the auto margins fall to zero, so the
+            strip starts at its first pill and every pill can be scrolled to (a centred overflow
+            would push the first pills out of reach). */}
+        <div ref={strip} className="flex min-w-0 flex-1 items-center overflow-x-auto">
+          <div className="mx-auto flex shrink-0 items-center gap-2">
+            {live}
+            {live !== null && filtered !== null && (
+              <span
+                aria-hidden="true"
+                className="mx-1 h-6 w-px shrink-0 bg-slate-200 dark:bg-[#26324a]"
+              />
+            )}
+            {filtered}
+          </div>
         </div>
       </nav>
     </div>
@@ -238,7 +269,15 @@ export const RefreshTools = ({
           )}
         </span>
       )}
-      <button type="button" data-dash-refresh="true" onClick={onRefresh} className={BTN.outline}>
+      {/* Held while a read is on its way: a second press would only start the same read again. */}
+      <button
+        type="button"
+        data-dash-refresh="true"
+        onClick={onRefresh}
+        disabled={refreshing}
+        aria-busy={refreshing}
+        className={cn(BTN.outline, 'disabled:cursor-wait disabled:opacity-70')}
+      >
         <Icon d={I.refresh} className={cn('h-4 w-4', refreshing && 'animate-spin')} />
         {t('fleet.dash.shell.refresh')}
       </button>
@@ -299,7 +338,9 @@ export const useNoun = (): ((noun: DashNoun, n: number) => string) => {
 export const count = (n: number): string => COUNT.format(n);
 
 /** An amount and «ج.م.», kept on one line: the figure face, the unit a size down. A negative keeps
- *  its minus before the figure, left to right. */
+ *  its minus before the figure, left to right. The two sit in the line (not in an inline-flex box,
+ *  which a decoration never enters), so inside a link (`Fig`) the figure wears the link's dotted
+ *  line; the unit is an inline block, so it does not. */
 export const Amount = ({
   value,
   className,
@@ -311,12 +352,12 @@ export const Amount = ({
 }): JSX.Element => {
   const { figure, currency } = useMoney()(Math.abs(value));
   return (
-    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+    <span className="whitespace-nowrap">
       <N className={cn('font-bold', className)}>
         {value < 0 ? '−' : ''}
         {figure}
       </N>
-      <span className={unitClassName}>{currency}</span>
+      <span className={cn('ms-1 inline-block', unitClassName)}>{currency}</span>
     </span>
   );
 };

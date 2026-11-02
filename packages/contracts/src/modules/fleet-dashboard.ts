@@ -527,6 +527,12 @@ export interface FleetDashboardNowRosterDto {
   unmanned: number;
   /** Of unmanned: has crewGaps. */
   unmannedCrewGap: number;
+  /**
+   * Of unmanned without a crew gap: its plan names a driver unavailable today (`stalePlan`). The
+   * three «أسباب عدم التعيين» tiles are disjoint and each ≤ unmanned (`crewGap.stalePlan` counts
+   * every ready row, manned by its other seat or not, so it is not one of them).
+   */
+  unmannedStalePlan: number;
   /** Of unmanned: no fixed crew and no planned seat. */
   unmannedNoCrew: number;
   crewGap: {
@@ -563,8 +569,11 @@ export interface FleetDashboardNowAlarmDto {
   red: number;
   overdue: number;
   yellow: number;
-  /** Only when a branch narrows (≤ 50 codes, else []). */
-  codes: string[] | null;
+  /**
+   * Only when a branch narrows: the codes of each level apart (the link already carries `level`), each
+   * capped at 50 on its own (over 50 → [] for that level only).
+   */
+  codes: { red: string[]; yellow: string[] } | null;
 }
 
 /** T1.12, R-07 — active, no open visit. */
@@ -721,15 +730,24 @@ export interface FleetDashboardKmBucketDto {
   spanVehicles: number;
 }
 
-/** R-16 (a)–(f). */
+/**
+ * R-16 (a)–(f), plus `onlyInvalid`: a car whose only closed rows in the period have negative km
+ * (R-14 «تحتاج مراجعة») — it has a row, closed, with a counter, so none of (a)–(c) names it.
+ */
 export type FleetDashboardNoReadingReason =
-  'noRow' | 'onlyOpen' | 'onlyNoCounter' | 'inWorkshop' | 'notActive' | 'joinedAfter';
+  | 'noRow'
+  | 'onlyOpen'
+  | 'onlyNoCounter'
+  | 'onlyInvalid'
+  | 'inWorkshop'
+  | 'notActive'
+  | 'joinedAfter';
 
 /** Tabs 6–8, R-14…R-17. */
 export interface FleetDashboardPeriodKmDto {
   total: number;
   invalidRows: number;
-  /** total ÷ coverage.withReadings. */
+  /** total ÷ the cars with a valid row in it (any status, old-book codes included); null when none. */
   perVehicleAvg: number | null;
   coverage: { withReadings: number; of: number };
   /** R-15 average line. */

@@ -19,6 +19,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_PERIOD_KEYS,
+  cairoYmd,
   FLEET_DASHBOARD_PERIOD_TABS,
   type FleetDashboardTab,
 } from '@ecms/contracts';
@@ -127,9 +128,12 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   const reads = dashboardReads(can);
   const nowQ = useFleetDashboardNow(reads.now);
   useCairoMidnightRefresh(nowQ.data?.asOf, nowQ.dataUpdatedAt);
+  // R1's `today` once it has answered; until then (and for a reader without R1) the browser's own
+  // Cairo day — so a custom range that ended before today is `past` from the first render, and its
+  // key does not flip (and R2 is not read twice) when R1 lands.
   const periodQ = useFleetDashboardPeriod(
     query,
-    periodLiveness(query, nowQ.data?.today),
+    periodLiveness(query, nowQ.data?.today ?? cairoYmd(new Date())),
     reads.period,
   );
 
@@ -161,9 +165,14 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
     );
   }
 
+  // «تحديث»: never a read this reader may not send (`refetch()` ignores `enabled`), and never a
+  // second R1 while one is in flight (`cancelRefetch: false` joins it rather than restarting it).
   const refreshNow = (): void => {
-    void nowQ.refetch();
+    if (reads.now) void nowQ.refetch({ cancelRefetch: false });
     custody?.refetch();
+  };
+  const refreshPeriod = (): void => {
+    if (reads.period) void periodQ.refetch({ cancelRefetch: false });
   };
 
   let panel: JSX.Element;
@@ -174,11 +183,12 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         data={periodQ.data}
         loading={reads.period && periodQ.isPending}
         error={periodQ.isError}
-        onRetry={() => void periodQ.refetch()}
+        onRetry={refreshPeriod}
         filters={filters}
         onFilters={onFilters}
         updatedAt={periodQ.dataUpdatedAt}
-        onRefresh={() => void periodQ.refetch()}
+        refreshing={periodQ.isFetching}
+        onRefresh={refreshPeriod}
         can={can}
       />
     );

@@ -126,6 +126,20 @@ class FleetRosterService {
    * its crew on Tuesday's board and keeps it in the standing configuration.
    */
   async board(date: Date, scope: ScopeSelector): Promise<FleetRosterDayDto> {
+    return (await this.boardWithCrews(date, scope)).board;
+  }
+
+  /**
+   * `board()` with the standing crews it read on the way — the dashboard's roster digest needs
+   * «which cars have a fixed crew» and would otherwise read `fleet_fixed_crews` a second time.
+   */
+  async boardWithCrews(
+    date: Date,
+    scope: ScopeSelector,
+  ): Promise<{
+    board: FleetRosterDayDto;
+    fixedCrews: Awaited<ReturnType<typeof fleetFixedCrewRepository.findAll>>;
+  }> {
     const day = utcDay(date);
     // The day the board DESCRIBES, as the rules read it (R-02): the date part of `day`. The
     // dashboard hands in the Cairo day; the HTTP route hands in its `?date=`.
@@ -292,11 +306,14 @@ class FleetRosterService {
     );
 
     return {
-      date: day.toISOString(),
-      rows,
-      availableDrivers,
-      unavailableDrivers,
-      licenceRule,
+      board: {
+        date: day.toISOString(),
+        rows,
+        availableDrivers,
+        unavailableDrivers,
+        licenceRule,
+      },
+      fixedCrews,
     };
   }
 

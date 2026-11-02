@@ -72,6 +72,8 @@ type EmployeeBatchLookup = (
   employeeIds: readonly string[],
 ) => Promise<Map<string, DirectoryEmployee>>;
 type LeaveLookup = (employeeId: string, date: Date) => Promise<boolean>;
+/** The same question for many people in ONE read: the ids an approved/active leave covers. */
+type LeaveBatchLookup = (employeeIds: string[], date: Date) => Promise<Set<string>>;
 /**
  * A day's attendance answer for a SET of employees. Batch by design: the consumers are boards
  * that ask about a whole crew at once, and a per-employee call would make one screen N queries.
@@ -122,6 +124,7 @@ type EmployeesByJobTitlesLookup = (
 let employeeLookup: EmployeeLookup | null = null;
 let employeeBatchLookup: EmployeeBatchLookup | null = null;
 let leaveLookup: LeaveLookup | null = null;
+let leaveBatchLookup: LeaveBatchLookup | null = null;
 let attendanceDayLookup: AttendanceDayLookup | null = null;
 let selfEmployeeLookup: SelfEmployeeLookup | null = null;
 let employeesByDepartmentLookup: EmployeesByDepartmentLookup | null = null;
@@ -136,8 +139,14 @@ export const registerEmployeeBatchLookup = (lookup: EmployeeBatchLookup): void =
   employeeBatchLookup = lookup;
 };
 
-export const registerLeaveLookup = (lookup: LeaveLookup): void => {
+/**
+ * The leave provider: the one-person lookup and, optionally, its batched twin. One registration
+ * sets BOTH (the last wins), so a test that installs a fake single lookup is never shadowed by the
+ * real batch one; without a batch lookup, `approvedLeaveEmployeeIds` asks the single one per person.
+ */
+export const registerLeaveLookup = (lookup: LeaveLookup, batch?: LeaveBatchLookup): void => {
   leaveLookup = lookup;
+  leaveBatchLookup = batch ?? null;
 };
 
 export const registerAttendanceDayLookup = (lookup: AttendanceDayLookup): void => {
@@ -402,6 +411,23 @@ export const getDirectoryAttendanceDay = async (
 /** True when an APPROVED or ACTIVE leave covers the date — pending requests are not yet facts. */
 export const isOnApprovedLeave = async (employeeId: string, date: Date): Promise<boolean> =>
   leaveLookup === null ? false : leaveLookup(employeeId, date);
+
+/**
+ * Of these employees, the ones an APPROVED or ACTIVE leave covers on the date — one read for the
+ * whole list when the provider registered a batch lookup (a roster asks it for every seat-holder on
+ * every board read), else the single lookup per person, concurrently.
+ */
+export const approvedLeaveEmployeeIds = async (
+  employeeIds: readonly string[],
+  date: Date,
+): Promise<Set<string>> => {
+  if (employeeIds.length === 0) return new Set();
+  if (leaveBatchLookup !== null) return leaveBatchLookup([...employeeIds], date);
+  const single = leaveLookup;
+  if (single === null) return new Set();
+  const covered = await Promise.all(employeeIds.map((id) => single(id, date)));
+  return new Set(employeeIds.filter((_, index) => covered[index] === true));
+};
 
 export { directoryProfileService } from './directory-profile.service';
 export { buildDirectoryRouter } from './directory.routes';

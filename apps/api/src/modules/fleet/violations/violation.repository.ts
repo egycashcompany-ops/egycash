@@ -220,7 +220,11 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       );
     }
     if (query.amount !== undefined) clauses.push({ amount: query.amount });
-    if (query.collected !== undefined) clauses.push({ collected: query.collected });
+    // «غير محصّل» is `$ne: true`, as the rollup and the dashboard's year digest count it: a row
+    // whose flag is missing has not been collected either.
+    if (query.collected !== undefined) {
+      clauses.push(query.collected ? { collected: true } : { collected: { $ne: true } });
+    }
     if (query.violationTypeId !== undefined) {
       clauses.push({
         violationTypeId: { $in: query.violationTypeId.map((id) => new Types.ObjectId(id)) },

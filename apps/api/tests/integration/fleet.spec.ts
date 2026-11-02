@@ -4003,6 +4003,12 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     await mkDriverProfile(employeeId);
     return employeeId;
   };
+  /**
+   * A plan day `n` days after the real clock's UTC day. Planning refuses a past date (PAST_DATE in
+   * `roster.service.ts`), so a hard-coded day turned into a 400 the morning it passed.
+   */
+  const planDay = (n: number): string =>
+    new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const savePlan = (date: string, rows: unknown[]) =>
     request(app)
       .post('/api/v1/fleet/roster')
@@ -4145,7 +4151,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
     const missionTypeId = await missionTypeIdSeeded();
-    const date = '2026-11-01';
+    const date = planDay(1);
 
     const save = await savePlan(date, [
       { vehicleId: v.id, missionTypeId, driver1EmployeeId: driver },
@@ -4182,7 +4188,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const vA = data<FleetVehicleDto>(await createVehicle(adminToken));
     const vB = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const date = '2026-11-02';
+    const date = planDay(2);
 
     expect((await savePlan(date, [{ vehicleId: vA.id, driver1EmployeeId: driver }])).status).toBe(
       200,
@@ -4204,7 +4210,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('FR-5 — an in-workshop vehicle is flagged and unassignable; clearing it stays allowed', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const date = '2026-11-03';
+    const date = planDay(3);
 
     const workshop = await request(app)
       .post('/api/v1/fleet/catalog-items')
@@ -4242,7 +4248,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('FR-6 — the availability seam is the only authority, and the pool names the reason', async () => {
     const driver = await mkDriver();
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const date = '2026-11-04';
+    const date = planDay(4);
 
     await request(app)
       .post('/api/v1/fleet/availability')
@@ -4262,11 +4268,11 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   it('schema guards — the same person in both slots, or a vehicle twice, never reach the service', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
-    const twoSlots = await savePlan('2026-11-05', [
+    const twoSlots = await savePlan(planDay(5), [
       { vehicleId: v.id, driver1EmployeeId: driver, driver2EmployeeId: driver },
     ]);
     expect(twoSlots.status).toBe(400);
-    const twice = await savePlan('2026-11-05', [{ vehicleId: v.id }, { vehicleId: v.id }]);
+    const twice = await savePlan(planDay(5), [{ vehicleId: v.id }, { vehicleId: v.id }]);
     expect(twice.status).toBe(400);
   });
 

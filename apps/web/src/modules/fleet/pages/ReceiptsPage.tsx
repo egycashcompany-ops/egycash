@@ -58,11 +58,13 @@ import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { VehicleSetChip } from '../components/VehicleSetChip';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import {
   CLEAR_VEHICLE_SET,
   hasVehicleSet,
   useVehicleTypeOptions,
+  vehicleSetReaders,
   vehicleSetQuery,
 } from '../lib/vehicle-set-params';
 import { receiptMemoState } from '../lib/receipt-memo-lock';
@@ -243,7 +245,10 @@ export const ReceiptsPage = (): JSX.Element => {
     branchIds: readList(sp, 'branch'),
   };
   const narrowedToSet = hasVehicleSet(vehicleSet);
-  const typeOptions = useVehicleTypeOptions(narrowedToSet);
+  // The types list and the operations catalog are their own endpoints' (TYPE_READERS /
+  // OPERATION_READERS), not this screen's guard: never asked for without them.
+  const sets = vehicleSetReaders(can);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet && sets.types);
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const sortParam = sp.get('sort');
@@ -824,34 +829,46 @@ export const ReceiptsPage = (): JSX.Element => {
                 controls the registry (type) and the maintenance screen (operation, branch) use. */}
             {narrowedToSet && (
               <>
-                <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
-                  <MultiSelect
-                    clearable
-                    className="w-full"
-                    fullWidth
-                    density="tight"
-                    showSelectedValues
-                    chips
-                    label={t('fleet.vehicles.filters.short.make')}
-                    options={typeOptions}
-                    value={vehicleSet.typeIds}
-                    onChange={(ids) => patch({ type: writeList(ids) })}
-                  />
-                </FilterWithIcon>
-                <FilterWithIcon
-                  icon={FILTER_ICON.operation}
-                  tone="text-slate-600 dark:text-slate-300"
-                >
-                  <CatalogMultiSelect
-                    kind="operation"
-                    className="w-full"
-                    fullWidth
-                    density="tight"
-                    value={vehicleSet.operationIds}
-                    onChange={(ids) => patch({ operation: writeList(ids) })}
-                    label={t('fleet.vehicles.filters.short.operation')}
-                  />
-                </FilterWithIcon>
+                {sets.types ? (
+                  <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                    <MultiSelect
+                      clearable
+                      className="w-full"
+                      fullWidth
+                      density="tight"
+                      showSelectedValues
+                      chips
+                      label={t('fleet.vehicles.filters.short.make')}
+                      options={typeOptions}
+                      value={vehicleSet.typeIds}
+                      onChange={(ids) => patch({ type: writeList(ids) })}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.typeIds.length > 0 && (
+                    <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+                  )
+                )}
+                {sets.operations ? (
+                  <FilterWithIcon
+                    icon={FILTER_ICON.operation}
+                    tone="text-slate-600 dark:text-slate-300"
+                  >
+                    <CatalogMultiSelect
+                      kind="operation"
+                      className="w-full"
+                      fullWidth
+                      density="tight"
+                      value={vehicleSet.operationIds}
+                      onChange={(ids) => patch({ operation: writeList(ids) })}
+                      label={t('fleet.vehicles.filters.short.operation')}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.operationIds.length > 0 && (
+                    <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
+                  )
+                )}
                 {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
                 <FilterWithIcon
                   icon={FILTER_ICON.branch}

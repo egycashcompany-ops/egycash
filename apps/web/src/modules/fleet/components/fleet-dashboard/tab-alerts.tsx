@@ -6,7 +6,11 @@
 // line's count from the custody screen's own banner (D3). The chips count LINES (`alertSummary`), as
 // the bar's badge does. No supply-contract line (Phase 2), no receipt-audit part (D3), no Q marker.
 import { Fragment, useState, type ReactNode } from 'react';
-import { type FleetDashboardNowDto } from '@ecms/contracts';
+import {
+  FLEET_DASHBOARD_TAB_SECTIONS,
+  type FleetDashboardNowDto,
+  type FleetDashboardNowSection,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import {
   custodyDashboardLink,
@@ -46,8 +50,17 @@ import {
   cn,
   type IconPath,
 } from './dash-kit';
-import { Amount, Phrase, RefreshTools, count, useNoun, type NowTabProps } from './dash-shell';
+import {
+  Amount,
+  Phrase,
+  RefreshTools,
+  SectionError,
+  count,
+  useNoun,
+  type NowTabProps,
+} from './dash-shell';
 import { type CustodyFigures } from './custody-fund-line';
+import { useMoney } from '../custody-dashboard-parts';
 
 // ── The pieces of a line ──────────────────────────────────────────────────────────────────────
 
@@ -87,6 +100,17 @@ const U = ({ children }: { children: ReactNode }): JSX.Element => (
   <span className={UNIT}>{children}</span>
 );
 
+/** An amount as the side box's figure: the box's own face (`F`), its «ج.م.» a size down (`U`). */
+const BoxMoney = ({ value }: { value: number }): JSX.Element => {
+  const { figure, currency } = useMoney()(value);
+  return (
+    <>
+      <F>{figure}</F>
+      <U>{currency}</U>
+    </>
+  );
+};
+
 /** Up to this many cars are named in a sentence; the rest are behind the line's button. */
 const CHIPS = 6;
 
@@ -100,7 +124,9 @@ interface LineView {
 }
 
 /** What a line says, from its section's own figures. */
-const useLineView = (): ((
+const useLineView = (
+  can: (permission: string) => boolean,
+): ((
   line: AlertLine,
   now: FleetDashboardNowDto | null,
   custody: CustodyFigures | null,
@@ -119,8 +145,8 @@ const useLineView = (): ((
       case 'maintenanceRed': {
         const alarm = now?.maintenanceAlarm;
         if (alarm == null || links === null) return null;
-        const red = links.alarm('red', alarm.codes);
-        const yellow = links.alarm('yellow', alarm.codes);
+        const red = links.alarm('red', alarm.codes?.red ?? null);
+        const yellow = links.alarm('yellow', alarm.codes?.yellow ?? null);
         return {
           icon: I.cog,
           text: (
@@ -128,7 +154,7 @@ const useLineView = (): ((
               text={k('text')}
               parts={{
                 ...headline(red, alarm.red, 'car'),
-                overdue: <B>{count(alarm.overdue)}</B>,
+                overdue: <B link={red}>{count(alarm.overdue)}</B>,
                 yellow: <B link={yellow}>{count(alarm.yellow)}</B>,
               }}
             />
@@ -166,10 +192,15 @@ const useLineView = (): ((
                       link={links.vehicle(row.vehicleId, 'licenceVehicles.row')}
                     />{' '}
                     <Hot>
-                      <Phrase
-                        text={t('fleet.dash.common.since')}
-                        parts={{ count: <N>{count(-row.days)}</N>, noun: noun('day', -row.days) }}
-                      />
+                      {/* Q-02: expired ON its expiry day — «منتهٍ اليوم», as tab 4 says it. */}
+                      {row.days === 0 ? (
+                        t('fleet.dash.licences.expiredToday')
+                      ) : (
+                        <Phrase
+                          text={t('fleet.dash.common.since')}
+                          parts={{ count: <N>{count(-row.days)}</N>, noun: noun('day', -row.days) }}
+                        />
+                      )}
                     </Hot>
                   </G>
                 </Fragment>
@@ -193,12 +224,15 @@ const useLineView = (): ((
               ? { label: k('figureCount'), value: <F>{count(lic.expired)}</F> }
               : {
                   label: k('figure'),
-                  value: (
-                    <>
-                      <F>{count(-oldest.days)}</F>
-                      <U>{noun('day', -oldest.days)}</U>
-                    </>
-                  ),
+                  value:
+                    oldest.days === 0 ? (
+                      <U>{t('fleet.dash.common.today')}</U>
+                    ) : (
+                      <>
+                        <F>{count(-oldest.days)}</F>
+                        <U>{noun('day', -oldest.days)}</U>
+                      </>
+                    ),
                 },
           actions: [{ link: links.vehicleLicencesExpired(), label: k('action') }],
           companyWide: false,
@@ -269,7 +303,11 @@ const useLineView = (): ((
         const reading = now?.noReading;
         if (reading == null || links === null) return null;
         const staleLink = links.noReading(reading.stale.map((row) => row.code));
-        const neverLink = links.neverRead(reading.neverRead.map((row) => row.code));
+        // The never-read cars open the VEHICLES screen (fleetVehicle.view), not this section's
+        // odometer screen: offered only with that screen's own guard.
+        const neverLink = can('fleetVehicle.view')
+          ? links.neverRead(reading.neverRead.map((row) => row.code))
+          : null;
         const since = earliestDay(reading.stale.map((row) => row.lastDate));
         return {
           icon: I.gauge,
@@ -350,7 +388,7 @@ const useLineView = (): ((
           subs: [],
           figure: {
             label: k('figure'),
-            value: <Amount value={fuel.requested.amount} className="!font-black" />,
+            value: <BoxMoney value={fuel.requested.amount} />,
           },
           actions: [{ link, label: k('action') }],
           companyWide: branch,
@@ -608,7 +646,7 @@ const Section = ({
 // ── The filter chips ──────────────────────────────────────────────────────────────────────────
 
 const CHIP = cn(
-  'inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-bold transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
+  'inline-flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-bold transition active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
   CAIRO,
 );
 const BUBBLE = cn(
@@ -655,9 +693,17 @@ const CATEGORIES: readonly { key: AlertCategory; icon: IconPath }[] = [
 
 // ── The tab ───────────────────────────────────────────────────────────────────────────────────
 
+/** The sources of tab 1's lines that R1 answers (custody is the page's own read, below). */
+const ALERT_SECTIONS = FLEET_DASHBOARD_TAB_SECTIONS.alerts.filter(
+  (section): section is FleetDashboardNowSection => section !== 'custodyFund',
+);
+
 export const AlertsTab = (props: NowTabProps): JSX.Element => {
   const t = useT();
-  const view = useLineView();
+  const view = useLineView(props.can);
+  // A source that FAILED gives no line: say so, with its retry, and never call the tab clear.
+  const failed = ALERT_SECTIONS.filter((section) => props.now?.unavailable.includes(section));
+  const custodyFailed = props.custody?.error === true;
   const [level, setLevel] = useState<'all' | 'red' | 'orange'>('all');
   const [category, setCategory] = useState<AlertCategory | null>(null);
 
@@ -708,22 +754,35 @@ export const AlertsTab = (props: NowTabProps): JSX.Element => {
         }
       />
 
-      {rows.length === 0 ? (
-        <div
-          data-alerts-none="true"
-          className={cn(SURFACE, 'flex flex-col items-center gap-2 px-6 py-12 text-center')}
-        >
-          <IconTile d={I.check} tone="emerald" />
-          <p className={TITLE}>{t('fleet.dash.alerts.none.title')}</p>
-          <p className={cn('text-[13px]', MUTED)}>{t('fleet.dash.alerts.none.note')}</p>
+      {(failed.length > 0 || custodyFailed) && (
+        <div className="mb-5 grid grid-cols-1 gap-5 md:grid-cols-3">
+          {failed.map((section) => (
+            <SectionError key={section} section={section} onRetry={props.onRetry} />
+          ))}
+          {custodyFailed && props.custody !== null && (
+            <SectionError section="custodyFund" onRetry={props.custody.refetch} />
+          )}
         </div>
+      )}
+      {rows.length === 0 ? (
+        failed.length > 0 || custodyFailed ? null : (
+          <div
+            data-alerts-none="true"
+            className={cn(SURFACE, 'flex flex-col items-center gap-2 px-6 py-12 text-center')}
+          >
+            <IconTile d={I.check} tone="emerald" />
+            <p className={TITLE}>{t('fleet.dash.alerts.none.title')}</p>
+            <p className={cn('text-[13px]', MUTED)}>{t('fleet.dash.alerts.none.note')}</p>
+          </div>
+        )
       ) : (
         <>
           <div className="mb-5 flex">
             <div
               role="toolbar"
               aria-label={t('fleet.dash.alerts.toolbar')}
-              className={cn(SEG.tray, 'w-full')}
+              // One row that scrolls sideways on a narrow screen, never a stack of stray chips.
+              className={cn(SEG.tray, 'w-full flex-nowrap overflow-x-auto')}
             >
               <Chip
                 on={level === 'all' && category === null}
@@ -750,7 +809,10 @@ export const AlertsTab = (props: NowTabProps): JSX.Element => {
                 label={t('fleet.dash.alerts.chip.orange')}
                 n={all.orange}
               />
-              <span aria-hidden="true" className="mx-1.5 h-6 w-px bg-slate-200 dark:bg-slate-700" />
+              <span
+                aria-hidden="true"
+                className="mx-1.5 h-6 w-px shrink-0 bg-slate-200 dark:bg-slate-700"
+              />
               {CATEGORIES.map((c) => (
                 <Chip
                   key={c.key}

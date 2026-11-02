@@ -43,8 +43,13 @@ const query = (params: Record<string, Param>): string => {
   return parts.length === 0 ? '' : `?${parts.join('&')}`;
 };
 
-const at = (path: string, params: Record<string, Param>, metric: string): DashLink => ({
-  to: `${path}${query(params)}`,
+/**
+ * A list screen's link. `screen` is the route under `/fleet` («vehicles», «fuel-cards/charging»):
+ * this file names SCREENS for the browser to open, never an API endpoint — the registry's API is
+ * reached only through `api/fleet-api.ts`.
+ */
+const at = (screen: string, params: Record<string, Param>, metric: string): DashLink => ({
+  to: `/fleet/${screen}${query(params)}`,
   metric,
 });
 
@@ -80,25 +85,20 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
   /** `{br}` — the active branch, on the screens that read `branch`. */
   const br = { branch: branchId };
   const licence = (metric: string, from: string | null, before: string) =>
-    at('/fleet/vehicles', { status: 'active', licExpFrom: from, licExpBefore: before }, metric);
+    at('vehicles', { status: 'active', licExpFrom: from, licExpBefore: before }, metric);
   const driverLicence = (metric: string, from: string | null, before: string) =>
-    at('/fleet/drivers', { licExpFrom: from, licExpBefore: before, ...br }, metric);
+    at('drivers', { licExpFrom: from, licExpBefore: before, ...br }, metric);
   const roster = (metric: string, extra: Record<string, Param>) =>
-    at('/fleet/roster', { date: today, ...extra }, metric);
+    at('roster', { date: today, ...extra }, metric);
   return {
     // Tab 1 — alerts.
     /** T1.1: the alarms board, narrowed to the branch's cars when a branch is chosen (D19). */
     alarm: (level: 'red' | 'yellow', codes: readonly string[] | null): DashLink | null => {
-      if (codes === null)
-        return at('/fleet/maintenance-alarms', { level }, `maintenanceAlarm.${level}`);
+      if (codes === null) return at('maintenance-alarms', { level }, `maintenanceAlarm.${level}`);
       const narrowed = codesOrNull(codes);
       return narrowed === null
         ? null
-        : at(
-            '/fleet/maintenance-alarms',
-            { level, vehicleCodes: narrowed },
-            `maintenanceAlarm.${level}`,
-          );
+        : at('maintenance-alarms', { level, vehicleCodes: narrowed }, `maintenanceAlarm.${level}`);
     },
     /** T1.2 / T4.1: expired = on or before today (R-02). */
     vehicleLicencesExpired: (): DashLink => licence('licenceVehicles.expired', null, today),
@@ -135,14 +135,14 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
           ),
     /** «بلا تاريخ» (D18). «غير مسجّلين» has no list (named exception): no builder. */
     driverLicencesNotRecorded: (): DashLink =>
-      at('/fleet/drivers', { licExp: 'none', ...br }, 'licenceDrivers.notRecorded'),
+      at('drivers', { licExp: 'none', ...br }, 'licenceDrivers.notRecorded'),
     /** T1.4. */
     fuelCardsExpired: (): DashLink =>
-      at('/fleet/fuel-cards', { expiresBefore: today }, 'fuelCards.expired'),
+      at('fuel-cards', { expiresBefore: today }, 'fuelCards.expired'),
     /** T4.7: today+1 … today+N, expired cards excluded. */
     fuelCardsExpiring: (warnDays: number): DashLink =>
       at(
-        '/fleet/fuel-cards',
+        'fuel-cards',
         { expiresFrom: addDaysYmd(today, 1), expiresBefore: addDaysYmd(today, warnDays) },
         'fuelCards.expiring',
       ),
@@ -150,43 +150,39 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
     crewGap: (): DashLink => roster('roster.crewGap', { view: 'crewGap' }),
     /** T1.7 / T5.3, T1.8 / T5.4, T5.5. */
     charging: (state: 'requested' | 'low' | 'charged'): DashLink =>
-      at('/fleet/fuel-cards/charging', { state }, `fuelCharging.${state}`),
+      at('fuel-cards/charging', { state }, `fuelCharging.${state}`),
     /** T5.1 / T5.2. */
     chargingCompany: (company: 'wataniya' | 'chillout'): DashLink =>
-      at('/fleet/fuel-cards/charging', { company }, `fuelCharging.${company}`),
+      at('fuel-cards/charging', { company }, `fuelCharging.${company}`),
     /** T1.9. */
     dealershipPending: (): DashLink =>
-      at('/fleet/dealership', { state: 'pending', ...br }, 'dealershipPending.rows'),
+      at('dealership', { state: 'pending', ...br }, 'dealershipPending.rows'),
     /** T1.10: the union headline is a named exception (D16) — the open notices, its closest list. */
-    noticesOpen: (): DashLink => at('/fleet/notices', { status: 'open' }, 'notices.missingAny'),
+    noticesOpen: (): DashLink => at('notices', { status: 'open' }, 'notices.missingAny'),
     noticesCheckImage: (): DashLink =>
-      at('/fleet/notices', { status: 'open', checkImage: 'missing' }, 'notices.missingCheckImage'),
+      at('notices', { status: 'open', checkImage: 'missing' }, 'notices.missingCheckImage'),
     custodyDashboard: custodyDashboardLink,
     /** T5.9: the spend screen over the last 30 days. */
     custodyExpenses: (): DashLink =>
-      at(
-        '/fleet/custody-expenses',
-        { from: addDaysYmd(today, -29), to: today },
-        'custodyFund.expenses',
-      ),
+      at('custody-expenses', { from: addDaysYmd(today, -29), to: today }, 'custodyFund.expenses'),
     /** T1.12: the stale cars' whole history (`period=all`), at most 50 of them. */
     noReading: (codes: readonly string[]): DashLink | null => {
       const narrowed = codesOrNull(codes);
       return narrowed === null
         ? null
-        : at('/fleet/odometer', { vehicleCodes: narrowed, period: 'all' }, 'noReading.stale');
+        : at('odometer', { vehicleCodes: narrowed, period: 'all' }, 'noReading.stale');
     },
     neverRead: (codes: readonly string[]): DashLink | null => {
       const narrowed = codesOrNull(codes);
       return narrowed === null
         ? null
-        : at('/fleet/vehicles', { vehicleCodes: narrowed }, 'noReading.neverRead');
+        : at('vehicles', { vehicleCodes: narrowed }, 'noReading.neverRead');
     },
 
     // Tab 2 — «الحركة الآن».
-    vehiclesActive: (): DashLink => at('/fleet/vehicles', { status: 'active' }, 'vehicles.active'),
+    vehiclesActive: (): DashLink => at('vehicles', { status: 'active' }, 'vehicles.active'),
     vehiclesOutOfService: (): DashLink =>
-      at('/fleet/vehicles', { status: 'outOfService' }, 'vehicles.outOfService'),
+      at('vehicles', { status: 'outOfService' }, 'vehicles.outOfService'),
     rosterReady: (): DashLink => roster('roster.ready', { view: 'ready' }),
     rosterUnmanned: (metric = 'roster.unmanned'): DashLink => roster(metric, { view: 'unmanned' }),
     rosterWorkshop: (): DashLink => roster('roster.inWorkshop', { view: 'workshop' }),
@@ -200,11 +196,10 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
       metric: string,
     ): DashLink => roster(metric, { unavailable: reason }),
     /** A secondary link (its own page guard, `fleetAvailability.view`). */
-    attendance: (): DashLink =>
-      at('/fleet/attendance', { date: today }, 'roster.absent.attendanceSheet'),
+    attendance: (): DashLink => at('attendance', { date: today }, 'roster.absent.attendanceSheet'),
     /** T2.4 — open visits of any status. */
     workshopOpen: (metric = 'workshop.open'): DashLink =>
-      at('/fleet/maintenance', { state: 'open', ...br }, metric),
+      at('maintenance', { state: 'open', ...br }, metric),
 
     // Tab 3 — distribution.
     vehiclesBy: (
@@ -212,7 +207,7 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
       metric: string,
     ): DashLink =>
       at(
-        '/fleet/vehicles',
+        'vehicles',
         {
           status: 'active',
           type: cell.typeId,
@@ -223,59 +218,60 @@ export const nowLinks = ({ today, branchId }: NowEcho) => {
       ),
     /** T3.4: the registry, never bare (a bare URL restores remembered filters, CR-11). */
     drivers: (): DashLink =>
-      at('/fleet/drivers', { sort: 'employeeCode:asc', ...br }, 'distributionDrivers.total'),
+      at('drivers', { sort: 'employeeCode:asc', ...br }, 'distributionDrivers.total'),
     /** T3.6 / T3.8: the catalog specialisations (the legacy-only profiles are a sub-line). */
     driversBySpec: (specializationIds: readonly string[], metric: string): DashLink | null =>
       specializationIds.length === 0
         ? null
-        : at('/fleet/drivers', { spec: specializationIds, ...br }, metric),
+        : at('drivers', { spec: specializationIds, ...br }, metric),
 
     // Tab 4 — licences and recent records.
     /** T4.6 (D17): the licensing board's own stats bar, never the bare page. */
     licensing: (paper: 'insurance' | 'tax'): DashLink =>
-      at('/fleet/licensing', { sort: 'asc' }, `papers.${paper}`),
-    /** T4.8: the visit's day on the maintenance screen. */
-    visitDay: (code: string, day: string): DashLink =>
-      at('/fleet/maintenance', { vehicleCodes: [code], from: day, to: day }, 'recentWorkshop.row'),
+      at('licensing', { sort: 'asc' }, `papers.${paper}`),
+    /**
+     * T4.8: the visit's business day on the maintenance screen (R-12) — its check-in day while open,
+     * its check-out day once closed (`outFrom`/`outTo`, the bounds that filter on the check-out).
+     */
+    visitDay: (code: string, day: string, open: boolean): DashLink =>
+      at(
+        'maintenance',
+        open
+          ? { vehicleCodes: [code], from: day, to: day }
+          : { vehicleCodes: [code], outFrom: day, outTo: day },
+        'recentWorkshop.row',
+      ),
     /** T4.9 / T10.1: the accident's day on the accidents screen. */
     accidentDay: (code: string, day: string, metric = 'recentAccidents.row'): DashLink =>
-      at('/fleet/accidents', { vehicleCodes: [code], from: day, to: day }, metric),
+      at('accidents', { vehicleCodes: [code], from: day, to: day }, metric),
     /** The two «سجل …» foot links of «آخر ما سُجّل» — the 30-day window the list shows. */
     accidentsRecent: (days: number): DashLink =>
-      at(
-        '/fleet/accidents',
-        { from: addDaysYmd(today, 1 - days), to: today },
-        'recentAccidents.all',
-      ),
+      at('accidents', { from: addDaysYmd(today, 1 - days), to: today }, 'recentAccidents.all'),
     visitsRecent: (days: number): DashLink =>
-      at(
-        '/fleet/maintenance',
-        { from: addDaysYmd(today, 1 - days), to: today },
-        'recentWorkshop.all',
-      ),
+      at('maintenance', { from: addDaysYmd(today, 1 - days), to: today }, 'recentWorkshop.all'),
 
     // Tab 5 — summaries.
     /** T5.10. */
     accidentsOpen: (): DashLink =>
-      at('/fleet/accidents', { status: 'open', ...br }, 'accidentsOpen.count'),
-    /** T5.11: company statements and the drivers' ledger of the Cairo year, unpaid. */
+      at('accidents', { status: 'open', ...br }, 'accidentsOpen.count'),
+    /**
+     * T5.11: company statements and the drivers' ledger of the Cairo year, unpaid. The drivers'
+     * half has its own year (`dyear`): without it the ledger listed every year's unpaid fines
+     * under a figure that counts one.
+     */
     violationsCompany: (year: number): DashLink =>
-      at(
-        '/fleet/violations',
-        { year: String(year), cset: 'false', ...br },
-        'violationsYear.company',
-      ),
+      at('violations', { year: String(year), cset: 'false', ...br }, 'violationsYear.company'),
     violationsDrivers: (year: number): DashLink =>
       at(
-        '/fleet/violations',
-        { year: String(year), dset: 'false', ...br },
+        'violations',
+        { year: String(year), dyear: String(year), dset: 'false', ...br },
         'violationsYear.drivers',
       ),
     /** T5.12 «مجهول». «اسم غير مربوط» has no list parameter (named exception). */
     violationsUnknown: (year: number): DashLink =>
       at(
-        '/fleet/violations',
-        { year: String(year), dunknown: 'true', dset: 'false', ...br },
+        'violations',
+        { year: String(year), dyear: String(year), dunknown: 'true', dset: 'false', ...br },
         'violationsYear.unknown',
       ),
     /** «مطابقة أرصدة الكروت» — a quick link to an existing screen that keeps no filters. */
@@ -303,14 +299,14 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
     vehicleCodes: vehicleScope.vehicleCodes,
   };
   const dates = { from: range.from, to: range.to };
-  const over = (path: string, metric: string, extra: Record<string, Param> = {}) =>
-    at(path, { ...dates, ...set, ...extra }, metric);
+  const over = (screen: string, metric: string, extra: Record<string, Param> = {}) =>
+    at(screen, { ...dates, ...set, ...extra }, metric);
   return {
     /** T6.1 / T7 / T8. */
-    km: (metric = 'km.total'): DashLink => over('/fleet/odometer', metric),
+    km: (metric = 'km.total'): DashLink => over('odometer', metric),
     /** T8.x: one car's readings over the period. */
     carKm: (code: string, metric: string): DashLink =>
-      at('/fleet/odometer', { vehicleCodes: [code], ...dates }, metric),
+      at('odometer', { vehicleCodes: [code], ...dates }, metric),
     vehicle: (vehicleId: string, metric: string): DashLink => ({
       to: `/fleet/vehicles/${encodeURIComponent(vehicleId)}`,
       metric,
@@ -324,28 +320,29 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
         workshops?: readonly string[];
         vehicleCodes?: readonly string[];
       } = {},
-    ): DashLink => over('/fleet/maintenance', metric, extra),
+    ): DashLink => over('maintenance', metric, extra),
     /** T6.5 / T6.6 / T10.2. */
     accidents: (metric = 'accidents.count', status?: 'open'): DashLink =>
-      over('/fleet/accidents', metric, { status }),
+      over('accidents', metric, { status }),
     accidentDay: (code: string, day: string, metric = 'accidentList.row'): DashLink =>
-      at('/fleet/accidents', { vehicleCodes: [code], from: day, to: day }, metric),
-    /** T6.7 / T6.8. */
-    opex: (metric = 'opex.total', source?: 'card'): DashLink =>
-      over('/fleet/receipts', metric, { source }),
+      at('accidents', { vehicleCodes: [code], from: day, to: day }, metric),
+    /** T6.7 / T6.8 (`custody`: the custody part for a reader without the custody screen, D20). */
+    opex: (metric = 'opex.total', source?: 'card' | 'custody'): DashLink =>
+      over('receipts', metric, { source }),
     /** D20: the custody part — the spend screen when nothing but codes narrows, else the receipts. */
     opexCustody: (): DashLink =>
       vehicleScope.typeIds.length === 0 &&
       vehicleScope.operationIds.length === 0 &&
       vehicleScope.branchId === null
         ? at(
-            '/fleet/custody-expenses',
+            'custody-expenses',
             { ...dates, vehicleCodes: vehicleScope.vehicleCodes },
             'opex.custody',
           )
-        : over('/fleet/receipts', 'opex.custody', { source: 'custody' }),
-    /** T6.9. */
-    dealership: (metric = 'dealership.amount'): DashLink => over('/fleet/dealership', metric),
+        : over('receipts', 'opex.custody', { source: 'custody' }),
+    /** T6.9 (+ «بانتظار تسجيل القيمة»: `state=pending`). */
+    dealership: (metric = 'dealership.amount', state?: 'pending'): DashLink =>
+      over('dealership', metric, { state }),
   };
 };
 export type PeriodLinks = ReturnType<typeof periodLinks>;

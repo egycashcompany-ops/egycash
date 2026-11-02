@@ -1462,24 +1462,32 @@ export const RosterPage = (): JSX.Element => {
                     })}
                   </ul>
                 )}
-                <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs">
-                  <Link
-                    to={checkLinks.drivers}
-                    data-licence-check="drivers"
-                    className="font-medium text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
-                  >
-                    {t('fleet.roster.expiredLicence.driversLink')}
-                  </Link>
-                  <Link
-                    to={checkLinks.vehicles}
-                    data-licence-check="vehicles"
-                    className="font-medium text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
-                  >
-                    {t('fleet.roster.expiredLicence.vehiclesLink', {
-                      count: formatNumber(expiredVehicles.length, locale),
-                    })}
-                  </Link>
-                </div>
+                {/* Each check opens ITS screen, so each is offered only with that screen's own
+                    guard — the roster's (fleetRoster.view) opens neither. */}
+                {(can('fleetDriver.view') || can('fleetVehicle.view')) && (
+                  <div className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs">
+                    {can('fleetDriver.view') && (
+                      <Link
+                        to={checkLinks.drivers}
+                        data-licence-check="drivers"
+                        className="font-medium text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
+                      >
+                        {t('fleet.roster.expiredLicence.driversLink')}
+                      </Link>
+                    )}
+                    {can('fleetVehicle.view') && (
+                      <Link
+                        to={checkLinks.vehicles}
+                        data-licence-check="vehicles"
+                        className="font-medium text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200"
+                      >
+                        {t('fleet.roster.expiredLicence.vehiclesLink', {
+                          count: formatNumber(expiredVehicles.length, locale),
+                        })}
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

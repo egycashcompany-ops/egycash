@@ -21,7 +21,11 @@ import {
   type FleetDriverUnavailableReason,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
-import { getDirectoryEmployee, isOnApprovedLeave } from '../../../platform/directory';
+import {
+  approvedLeaveEmployeeIds,
+  getDirectoryEmployee,
+  isOnApprovedLeave,
+} from '../../../platform/directory';
 import { settingsService } from '../../../platform/settings';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
 import { type FleetDriverProfileDoc } from '../driver-profiles/driver-profile.model';
@@ -218,16 +222,17 @@ export const driverAvailabilityForRoster = async (
     for (const employeeId of stillFree) settle(employeeId, { available: true, reason: null });
     return out;
   }
-  // `isOnApprovedLeave` is one employee at a time on the platform seam; asked concurrently rather
-  // than in series, and only for the drivers a leave could still change the answer for.
-  const onLeave = await Promise.all(stillFree.map((id) => isOnApprovedLeave(id, date)));
-  stillFree.forEach((employeeId, index) => {
+  // One batched leave read for everyone still free (the platform seam's `approvedLeaveEmployeeIds`),
+  // never one per driver: the roster board, and the dashboard on every refresh, asks this for the
+  // whole driving-seat roster.
+  const onLeave = await approvedLeaveEmployeeIds(stillFree, date);
+  for (const employeeId of stillFree) {
     settle(
       employeeId,
-      onLeave[index] === true
+      onLeave.has(employeeId)
         ? { available: false, reason: 'hrLeave' }
         : { available: true, reason: null },
     );
-  });
+  }
   return out;
 };

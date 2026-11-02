@@ -19,6 +19,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  cairoYmd,
   type FleetPersonDto,
   type FleetRosterDayDto,
   type Locale,
@@ -38,7 +39,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const D1 = '64b1f0dddddddddddddddd01';
 const D2 = '64b1f0dddddddddddddddd02';
 const CAIRO = '64b1f0bbbbbbbbbbbbbbbb01';
-const TODAY = new Date().toISOString().slice(0, 10);
+// The card reads TODAY's board on the Cairo day (`useRosterToday`), as the roster page does.
+const TODAY = cairoYmd(new Date());
 
 const person = (over: Partial<FleetPersonDto> & { employeeId: string }): FleetPersonDto => ({
   code: 'HR-D1',

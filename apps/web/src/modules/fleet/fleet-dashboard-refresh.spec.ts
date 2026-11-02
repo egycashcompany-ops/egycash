@@ -1,5 +1,8 @@
 // «لوحة تحكم الحركة» — freshness with no server cache (plan §5.6, D15): the Cairo-midnight timer, the
 // liveness segment of R2's key, the «آخر تحديث قبل N ثانية» words, and the address bar's filter state.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
@@ -23,6 +26,7 @@ import {
   toPeriodQuery,
 } from './lib/fleet-dashboard-url';
 import { RefreshTools } from './components/fleet-dashboard/dash-shell';
+import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
 import { ar } from './fleet-dashboard-fixtures';
 
 const HOUR = 60 * 60 * 1000;
@@ -206,5 +210,69 @@ describe('the address bar is the filter state (D14)', () => {
     expect(readTab('km', ['alerts', 'now'])).toBe('alerts');
     expect(readTab('nonsense', ['now', 'licences'])).toBe('now');
     expect(readTab(null, ['distribution'])).toBe('distribution');
+  });
+});
+
+describe('«تحديث» and midnight never start a read twice, nor a read the reader may not send', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = (rel: string): string => readFileSync(join(here, rel), 'utf8');
+  const store = () =>
+    configureStore({
+      reducer: { locale: localeSlice.reducer },
+      preloadedState: { locale: { locale: 'ar' as Locale, dir: 'rtl' as const } },
+    });
+  const renderTools = (refreshing: boolean): string =>
+    renderToStaticMarkup(
+      createElement(Provider, {
+        store: store(),
+        children: createElement(RefreshTools, {
+          updatedAt: 1_000,
+          onRefresh: () => undefined,
+          refreshing,
+          clock: 2_000,
+        }),
+      }),
+    );
+
+  it('holds the button while its read is on its way', () => {
+    const busy = renderTools(true);
+    expect(busy).toMatch(/data-dash-refresh="true"[^>]*disabled=""/u);
+    expect(busy).toContain('animate-spin');
+    expect(renderTools(false)).not.toMatch(/data-dash-refresh="true"[^>]*disabled=""/u);
+  });
+
+  it('the page refetches R1 only for a reader of R1, joining a read already in flight', () => {
+    const page = source('pages/FleetDashboardPage.tsx');
+    expect(page).toContain('if (reads.now) void nowQ.refetch({ cancelRefetch: false });');
+    expect(page).toContain('if (reads.period) void periodQ.refetch({ cancelRefetch: false });');
+    // The period tabs' button spins and holds like the «الآن» tabs' one.
+    expect(page).toContain('refreshing={periodQ.isFetching}');
+    expect(source('components/fleet-dashboard/period-tabs.tsx')).toContain(
+      'refreshing={props.refreshing ?? false}',
+    );
+  });
+
+  it('midnight moves the live period reads too, not only R1 (a past range is left alone)', () => {
+    expect(fleetDashboardKeys.livePeriod).toEqual(['fleet', 'dashboard', 'period', 'live']);
+    const live = fleetDashboardKeys.period('live', { preset: 'thisMonth' });
+    expect(live.slice(0, 4)).toEqual([...fleetDashboardKeys.livePeriod]);
+    expect(fleetDashboardKeys.period('past', { preset: 'lastMonth' }).slice(0, 4)).not.toEqual([
+      ...fleetDashboardKeys.livePeriod,
+    ]);
+    expect(source('api/fleet-dashboard-queries.ts')).toContain(
+      'void qc.invalidateQueries({ queryKey: fleetDashboardKeys.livePeriod });',
+    );
+  });
+
+  it('a custom range that ended is `past` from the first render — R1’s `today` or the Cairo day', () => {
+    expect(source('pages/FleetDashboardPage.tsx')).toContain(
+      'periodLiveness(query, nowQ.data?.today ?? cairoYmd(new Date()))',
+    );
+  });
+
+  it('a throttled realtime refetch joins a read in flight instead of restarting it', () => {
+    expect(source('../../platform/realtime/RealtimeProvider.tsx')).toContain(
+      "queryClient.refetchQueries({ queryKey, type: 'active' }, { cancelRefetch: false })",
+    );
   });
 });

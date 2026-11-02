@@ -188,6 +188,30 @@ describe('tab 2 — the movement now', () => {
     ]);
   });
 
+  it('splits «أسباب عدم التعيين» into parts of the unmanned cars only — never the ready stale plans', () => {
+    const roster = NOW_DTO.roster as NonNullable<typeof NOW_DTO.roster>;
+    const html2 = tab('now', {
+      now: {
+        ...NOW_DTO,
+        roster: {
+          ...roster,
+          unmannedCrewGap: 1,
+          unmannedStalePlan: 2,
+          unmannedNoCrew: 1,
+          crewGap: { ...roster.crewGap, stalePlan: 9 },
+        },
+      },
+    });
+    const unmanned = text(part(html2, 'data-now-card="unmanned"', /data-now-card="/u)).replace(
+      /\s+/gu,
+      '',
+    );
+    const tile = (n: number): string =>
+      `${n}${ar('fleet.dash.now.unmannedStalePlan')}`.replace(/\s+/gu, '');
+    expect(unmanned).toContain(tile(2));
+    expect(unmanned).not.toContain(tile(9));
+  });
+
   it('writes the out-of-service reasons as recorded, and says so when there is none', () => {
     const body = text(card('vehicles'));
     expect(body).toContain('حادث');
@@ -330,11 +354,30 @@ describe('tab 4 — licences and the latest records', () => {
     expect(hrefOf(vehicles, 'licenceVehicles.row')).toContain('/fleet/vehicles/v249');
   });
 
+  it('colours a row amber up to the warn-days SETTING, as the bucket above counts it', () => {
+    const toneOf = (html: string, id: string): string | undefined =>
+      new RegExp(`data-licence-row="${id}"[\\s\\S]*?data-licence-tone="(\\w+)"`, 'u').exec(
+        html,
+      )?.[1];
+    expect(toneOf(vehicles, 'v297')).toBe('amber'); // 16 days, warnDays 30
+    const lic = NOW_DTO.licenceVehicles as NonNullable<typeof NOW_DTO.licenceVehicles>;
+    const short = tab('licences', {
+      now: { ...NOW_DTO, licenceVehicles: { ...lic, warnDays: 10 } },
+    });
+    expect(toneOf(short, 'v152')).toBe('amber'); // 4 days
+    expect(toneOf(short, 'v297')).toBe('grey'); // 16 days: past 10, counted in the grey bucket
+    expect(toneOf(short, 'v249')).toBe('red');
+  });
+
   it('writes a workshop row’s day and when it was written, in Cairo time', () => {
     expect(text(latest)).toContain('سُجّلت 09:12');
     expect(text(latest)).toContain('سُجّلت 15:47');
     expect(hrefOf(latest, 'recentWorkshop.row')).toContain(
       `/fleet/maintenance?vehicleCodes=231&from=${TODAY}&to=${TODAY}`,
+    );
+    // A closed visit's business day is its check-out day (R-12): it opens on `outFrom`/`outTo`.
+    expect(hrefOf(latest, 'recentWorkshop.row')).toContain(
+      '/fleet/maintenance?vehicleCodes=295&outFrom=2026-10-31&outTo=2026-10-31',
     );
   });
 
@@ -425,7 +468,7 @@ describe('tab 5 — the summaries', () => {
     expect(column).toContain('450.00');
     expect(column).toContain('150.00');
     expect(hrefOf(html, 'violationsYear.unknown')).toContain(
-      '/fleet/violations?year=2026&dunknown=true&dset=false',
+      '/fleet/violations?year=2026&dyear=2026&dunknown=true&dset=false',
     );
     expect(column).toContain(ar('fleet.dash.summaries.annualNote'));
   });
@@ -490,5 +533,104 @@ describe('tabs 1–5 count nothing in the browser and draw no ruled-out piece', 
         [],
       );
     }
+  });
+});
+
+// ── The final-fix pins: failures said, links only with their own guard, one scope per balance ──
+
+describe('the final fixes on tabs 1, 2 and 5', () => {
+  const without = (key: string): string[] => ALL_KEYS.filter((k) => k !== key);
+  const SILENT_ALERTS = {
+    ...NOW_DTO,
+    maintenanceAlarm: null,
+    licenceVehicles: null,
+    licenceDrivers: null,
+    fuelCards: null,
+    fuelCharging: null,
+    dealershipPending: null,
+    notices: null,
+    noReading: null,
+    roster: null,
+    alerts: [],
+  };
+
+  it('tab 1 says which source failed, with its retry — never «لا توجد تنبيهات الآن» over it', () => {
+    const failed = tab('alerts', {
+      now: { ...SILENT_ALERTS, unavailable: ['maintenanceAlarm', 'licenceVehicles'] },
+      custody: false,
+    });
+    expect(failed).toContain('data-section-error="maintenanceAlarm"');
+    expect(failed).toContain('data-section-error="licenceVehicles"');
+    expect(failed).not.toContain('data-alerts-none="true"');
+    // Nothing failed and nothing fires: the all-clear stays.
+    const clear = tab('alerts', { now: { ...SILENT_ALERTS, unavailable: [] }, custody: false });
+    expect(clear).toContain('data-alerts-none="true"');
+  });
+
+  it('tab 1 offers «سيارات بلا أي قراءة» only with the vehicles screen’s own guard', () => {
+    expect(hrefOf(tab('alerts'), 'noReading.neverRead')).toHaveLength(1);
+    const blind = tab('alerts', {}, without('fleetVehicle.view'));
+    expect(hrefOf(blind, 'noReading.neverRead')).toEqual([]);
+    expect(text(blind)).toContain('318'); // the car is still named, as plain text
+  });
+
+  it('tab 1 says «منتهٍ اليوم» for a licence that expires today, as tab 4 does', () => {
+    const lic = NOW_DTO.licenceVehicles as NonNullable<typeof NOW_DTO.licenceVehicles>;
+    const today = tab('alerts', {
+      now: {
+        ...NOW_DTO,
+        licenceVehicles: {
+          ...lic,
+          list: [{ vehicleId: 'v500', code: '500', expiresAt: `${TODAY}T00:00:00.000Z`, days: 0 }],
+        },
+      },
+    });
+    const line = part(today, 'data-alert="vehicleLicenceExpired"', /data-alert="/u);
+    expect(text(line)).toContain(ar('fleet.dash.licences.expiredToday'));
+    expect(text(line)).not.toContain('منذ 0');
+  });
+
+  it('tab 2 links the workshop’s oldest car and «ملف السيارة» only with fleetVehicle.view', () => {
+    const full = tab('now');
+    expect(hrefOf(full, 'workshop.oldest')).toEqual(['/fleet/vehicles/v141']);
+    expect(hrefOf(full, 'workshop.oldest.file')).toEqual(['/fleet/vehicles/v141']);
+    const blind = tab('now', {}, without('fleetVehicle.view'));
+    expect(hrefOf(blind, 'workshop.oldest')).toEqual([]);
+    expect(hrefOf(blind, 'workshop.oldest.file')).toEqual([]);
+    expect(hrefOf(blind, 'workshop.open.suggestion')).toHaveLength(1);
+  });
+
+  it('tab 2 says «منذ اليوم» for a car that entered the workshop today, never «منذ 0 أيام»', () => {
+    const workshop = NOW_DTO.workshop as NonNullable<typeof NOW_DTO.workshop>;
+    const oldest = workshop.oldest as NonNullable<typeof workshop.oldest>;
+    const today = text(
+      tab('now', {
+        now: { ...NOW_DTO, workshop: { ...workshop, oldest: { ...oldest, days: 0 } } },
+      }),
+    );
+    expect(today).toContain(ar('fleet.dash.common.sinceToday'));
+    expect(today).not.toContain('منذ 0');
+  });
+
+  it('tab 2’s balance offers no driver-versus-car difference while a branch is chosen', () => {
+    const company = part(tab('now'), 'data-now-card="summary"', /data-now-card="/u);
+    expect(company).toContain('data-now-balance-gap="true"');
+    const branch = part(
+      tab('now', { now: { ...NOW_DTO, branchId: B1 } }),
+      'data-now-card="summary"',
+      /data-now-card="/u,
+    );
+    expect(branch).not.toContain('data-now-balance-gap="true"');
+    expect(branch).toContain('data-company-wide="true"');
+  });
+
+  it('tab 5’s open total links nowhere when it is the fines alone (company + drivers, no one list)', () => {
+    const open = part(
+      tab('summaries', { now: { ...NOW_DTO, accidentsOpen: null } }),
+      'data-summary-card="open"',
+      /data-summary-(?:card|column)="/u,
+    );
+    expect(open).not.toBe('');
+    expect(links(open).filter((l) => l.metric === 'violationsYear.drivers')).toEqual([]);
   });
 });

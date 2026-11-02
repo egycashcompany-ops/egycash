@@ -36,6 +36,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
+  cairoYmd,
+  expiryStateOn,
   type FleetCatalogKind,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
@@ -466,7 +468,9 @@ export const DriversListPage = (): JSX.Element => {
   const figures = useMemo(() => {
     const items = wholeRegistry.data ?? [];
     const thisMonth = new Date().toISOString().slice(0, 7);
-    const now = Date.now();
+    // «منتهية»: expired ON its expiry day, by the Cairo calendar (R-02 / Q-02) — the rule the
+    // dashboard figure that links here counts with (`expiryStateOn`).
+    const today = cairoYmd(new Date());
     /** How many drivers sit on each entry of one catalog; the unrecorded ones last. */
     const tally = (
       pick: (profile: FleetDriverProfileDto) => string | null,
@@ -492,7 +496,7 @@ export const DriversListPage = (): JSX.Element => {
       total: items.length,
       recorded: items.filter((d) => d.profile !== null).length,
       thisMonth: expiries.filter((day) => day.slice(0, 7) === thisMonth).length,
-      expired: expiries.filter((day) => new Date(day).getTime() < now).length,
+      expired: expiries.filter((day) => expiryStateOn(day, today, 0) === 'expired').length,
       noImage: items.filter((d) => d.profile === null || d.profile.licenseImage === null).length,
       jobs: tally((profile) => profile.jobId, jobName),
       specializations: tally((profile) => profile.specializationId, specializationName),

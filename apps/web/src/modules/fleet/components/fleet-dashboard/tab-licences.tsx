@@ -124,8 +124,12 @@ const Panel = ({
   </Card>
 );
 
-/** «منتهٍ منذ N يومًا» · «منتهٍ اليوم» · «بعد N يومًا»: the state at a licence row's end. */
-const useAge = (): ((days: number) => { tone: Age; text: ReactNode }) => {
+/**
+ * «منتهٍ منذ N يومًا» · «منتهٍ اليوم» · «بعد N يومًا»: the state at a licence row's end. Amber up to
+ * `warnDays` — the setting the yellow bucket above counts with — so a row's colour never
+ * contradicts the bucket it is counted in.
+ */
+const useAge = (warnDays: number): ((days: number) => { tone: Age; text: ReactNode }) => {
   const t = useT();
   const noun = useNoun();
   return (days) => {
@@ -135,7 +139,7 @@ const useAge = (): ((days: number) => { tone: Age; text: ReactNode }) => {
     return days < 0
       ? { tone: 'red', text: <Phrase text={t('fleet.dash.licences.expiredSince')} parts={parts} /> }
       : {
-          tone: days <= 30 ? 'amber' : 'grey',
+          tone: days <= warnDays ? 'amber' : 'grey',
           text: <Phrase text={t('fleet.dash.licences.expiresIn')} parts={parts} />,
         };
   };
@@ -181,7 +185,7 @@ const VehicleLicences = ({
 }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
-  const age = useAge();
+  const age = useAge(lic.warnDays);
   const within = (days: number): ReactNode => (
     <Phrase
       text={t('fleet.dash.licences.within')}
@@ -285,7 +289,10 @@ const VehicleLicences = ({
                 <N className="shrink-0 text-[13px] font-medium text-slate-600 dark:text-slate-300">
                   {slashDay(row.expiresAt)}
                 </N>
-                <span className={cn(STATE, 'w-[118px] 2xl:w-[128px]', PILL[state.tone])}>
+                <span
+                  data-licence-tone={state.tone}
+                  className={cn(STATE, 'w-[118px] 2xl:w-[128px]', PILL[state.tone])}
+                >
                   <span
                     aria-hidden="true"
                     className={cn('h-1.5 w-1.5 rounded-full', PILL_DOT[state.tone])}
@@ -367,7 +374,7 @@ const VisitRow = ({
       </span>
       <span className="min-w-0 flex-1">
         <Fig
-          link={links.visitDay(row.code, row.date)}
+          link={links.visitDay(row.code, row.date, row.open)}
           linkedClassName=""
           className={cn('block text-[13px] font-bold leading-6', STRONG)}
         >

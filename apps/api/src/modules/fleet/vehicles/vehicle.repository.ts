@@ -10,6 +10,7 @@ import {
   fleetMonthWindow,
 } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
+import { memoisedVehicleIds } from './vehicle-filter-memo';
 import { FleetVehicleTypeModel } from '../vehicle-types/vehicle-type.model';
 
 /**
@@ -495,8 +496,23 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     return new Map(rows.map((row) => [row.code, String(row._id)]));
   }
 
+  /**
+   * How many of these ids are registry cars today (not soft-deleted, any status) — the count a
+   * registry screen shows for the same filter. The set itself keeps its deleted cars for the
+   * history figures; only this display count leaves them out.
+   */
+  async countLive(ids: readonly string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    return this.model.countDocuments({ _id: { $in: [...ids] }, isDeleted: false }).exec();
+  }
+
+  /** Inside a dashboard read the same codes are looked up once (`vehicle-filter-memo.ts`). */
   async idsByCodes(codes: readonly string[]): Promise<string[]> {
     if (codes.length === 0) return [];
+    return memoisedVehicleIds('codes', codes, (asked) => this.readIdsByCodes(asked));
+  }
+
+  private async readIdsByCodes(codes: readonly string[]): Promise<string[]> {
     const rows = await this.model
       .find({ code: { $in: [...codes] } })
       .select({ _id: 1 })

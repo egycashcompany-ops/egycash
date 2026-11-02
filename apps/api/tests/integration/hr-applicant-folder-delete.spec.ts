@@ -146,7 +146,9 @@ const attach = async (
     .field('entityType', 'applicant')
     .field('entityId', applicantId)
     .field('categoryId', categoryId);
-  for (const tag of tags) req = req.field('tags[]', tag);
+  // `tags` is ONE multipart field holding a JSON array, and `UploadFileFieldsSchema` is strict —
+  // a repeated `tags[]` field is an unknown key and the upload comes back 400.
+  if (tags.length > 0) req = req.field('tags', JSON.stringify(tags));
   const res = await req.attach('file', Buffer.from(`bytes-of-${filename}`), {
     filename,
     contentType: 'image/png',

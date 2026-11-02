@@ -134,8 +134,12 @@ export const filterControlLines = (
   filterRowsByColumns(lines, values, (line, key) => controlLineText(line, key, context));
 
 const TH = 'px-3 py-2.5 text-start text-xs font-semibold text-slate-600 dark:text-slate-300';
-/** The filter row's cells: the head's side gutter, so each list sits under its own header. */
-const FILTER_TH = 'px-3 pb-2 font-normal';
+/**
+ * The filter row's cells: a gutter a step narrower than the head's. Thirteen lists, each with the
+ * floor that keeps «الكل» whole, would otherwise push the tab past its `min-w-[72rem]` and add a
+ * sideways scroll the text boxes never needed; a list still sits under its own header.
+ */
+const FILTER_TH = 'px-2 pb-2 font-normal';
 const TD = 'px-3 py-2.5 align-middle text-sm text-slate-700 dark:text-slate-200';
 
 /** A bag's QR cell: the value, or «—», with ⚠ and the warning's words when it is a duplicate. */

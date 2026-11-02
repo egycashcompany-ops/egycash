@@ -16,6 +16,7 @@ import {
   MultiSelect,
   emptyListText,
   floatingSpot,
+  triggerInSight,
   multiSelectKey,
   nextActiveOption,
   optionLabel,
@@ -610,6 +611,54 @@ describe('a list that floats — a table’s column filter, «يكون Drop Down
     );
     // The owner's matcher, when given, replaces the app's own rule.
     expect(source).toContain('(match ?? foldIncludes)(o.label, query)');
+  });
+
+  it('closes when its trigger scrolls out of sight — off the screen or out of a clipping box', () => {
+    const trigger = { top: 200, bottom: 232, left: 900, right: 1000 };
+    const table = { top: 150, bottom: 700, left: 300, right: 1200 };
+    expect(triggerInSight(trigger, [table], 1366, 768)).toBe(true);
+    // The table turned sideways: the trigger left the table's box.
+    expect(triggerInSight({ ...trigger, left: 1250, right: 1350 }, [table], 1366, 768)).toBe(false);
+    // The page scrolled the trigger up under the top bar, out of the page's scroll box.
+    expect(
+      triggerInSight({ ...trigger, top: 30, bottom: 62 }, [{ ...table, top: 56 }], 1366, 768),
+    ).toBe(false);
+    // Off the screen with no clipping box at all.
+    expect(triggerInSight({ ...trigger, top: -40, bottom: -8 }, [], 1366, 768)).toBe(false);
+  });
+
+  it('names its picks to a screen reader — the question, then what is picked', () => {
+    const props = {
+      label: 'فلترة الكود',
+      options: [
+        { value: 'a', label: '70493' },
+        { value: 'b', label: '70492' },
+      ],
+      onChange: () => {},
+    };
+    const named = render(<MultiSelect {...props} value={['a', 'b']} showSelectedValues />, 'ar');
+    expect(named).toContain('aria-label="فلترة الكود"');
+    const described = /aria-describedby="([^"]+)"/.exec(named)?.[1] ?? '';
+    expect(described).not.toBe('');
+    expect(named).toContain(`id="${described}" class="max-w-48 truncate" title="70493, 70492"`);
+    // A count-only trigger, and nothing picked, describe nothing.
+    expect(render(<MultiSelect {...props} value={['a']} />, 'ar')).not.toContain(
+      'aria-describedby',
+    );
+    expect(render(<MultiSelect {...props} value={[]} showSelectedValues />, 'ar')).not.toContain(
+      'aria-describedby',
+    );
+  });
+
+  it('makes a lazy list once per opening and pick, and never sets an unchanged spot', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('[open, pickedKey, loadOptions === undefined]');
+    expect(source).not.toMatch(/const listed = open && loadOptions/);
+    expect(source).not.toContain('setSpot((current)');
+    expect(source).toContain('if (sameSpot(spotRef.current, next)) return;');
   });
 
   it('a press on the floating panel is not a press outside it', () => {

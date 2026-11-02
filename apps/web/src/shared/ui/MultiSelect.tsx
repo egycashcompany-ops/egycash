@@ -189,6 +189,35 @@ export const floatingSpot = (
   };
 };
 
+/** The boxes that clip an element: every ancestor whose overflow is not `visible`. */
+const scrollBoxes = (element: HTMLElement): DOMRect[] => {
+  const boxes: DOMRect[] = [];
+  for (let at = element.parentElement; at !== null && at !== document.body; at = at.parentElement) {
+    const style = getComputedStyle(at);
+    if (`${style.overflowX} ${style.overflowY}` !== 'visible visible') {
+      boxes.push(at.getBoundingClientRect());
+    }
+  }
+  return boxes;
+};
+
+/**
+ * Pure: can the reader still see the trigger — is its middle inside the screen and inside every
+ * box that clips it? A floating panel whose trigger has scrolled away closes (`floating`).
+ */
+export const triggerInSight = (
+  trigger: { top: number; bottom: number; left: number; right: number },
+  clips: readonly { top: number; bottom: number; left: number; right: number }[],
+  width: number,
+  height: number,
+): boolean => {
+  const x = (trigger.left + trigger.right) / 2;
+  const y = (trigger.top + trigger.bottom) / 2;
+  return [{ top: 0, bottom: height, left: 0, right: width }, ...clips].every(
+    (box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom,
+  );
+};
+
 const sameSpot = (a: FloatingSpot | null, b: FloatingSpot): boolean =>
   a !== null &&
   a.left === b.left &&
@@ -437,22 +466,40 @@ export const MultiSelect = ({
   // Where a FLOATING panel sits: fixed to the trigger, in the viewport's terms. Below it when the
   // list fits there or there is more room below than above; above it otherwise, its bottom on the
   // trigger's top, so a list that shrinks as it is searched stays against the trigger.
+  //
+  // Measured after every render (the trigger moves when the rows it filters change the columns'
+  // widths), but the state is SET only when the spot really changes — through a ref, never a
+  // same-value `setSpot`: React cannot drop that cheaply right after the control's own update, and
+  // would render every MultiSelect in the app twice for each key.
   const [spot, setSpot] = useState<FloatingSpot | null>(null);
+  const spotRef = useRef<FloatingSpot | null>(null);
   useLayoutEffect(() => {
     if (!open || !floating) {
-      setSpot(null);
+      if (spotRef.current !== null) {
+        spotRef.current = null;
+        setSpot(null);
+      }
       return undefined;
     }
     const place = (): void => {
       const box = boxRef.current;
       const panel = panelRef.current;
       if (box === null || panel === null) return;
-      const next = floatingSpot(box.getBoundingClientRect(), panel.offsetWidth, {
+      const trigger = box.getBoundingClientRect();
+      // A trigger scrolled out of sight — the table turned sideways, the page scrolled under its
+      // top bar — takes its list with it, rather than leave it hanging over whatever is there.
+      if (!triggerInSight(trigger, scrollBoxes(box), window.innerWidth, window.innerHeight)) {
+        setOpen(false);
+        return;
+      }
+      const next = floatingSpot(trigger, panel.offsetWidth, {
         width: window.innerWidth,
         height: window.innerHeight,
         rtl: getComputedStyle(box).direction === 'rtl',
       });
-      setSpot((current) => (sameSpot(current, next) ? current : next));
+      if (sameSpot(spotRef.current, next)) return;
+      spotRef.current = next;
+      setSpot(next);
     };
     place();
     // `capture`: the table's own scroll does not bubble to the window.
@@ -464,8 +511,17 @@ export const MultiSelect = ({
     };
   });
 
-  // A list made only when open (`loadOptions`): closed, `options` names the chosen values.
-  const listed = open && loadOptions !== undefined ? loadOptions() : options;
+  // A list made only when open (`loadOptions`): closed, `options` names the chosen values. Made
+  // ONCE per opening and per pick — not on every render: a board re-renders every second, and an
+  // arrow key or a typed letter re-renders the control, while a column's list of 1,500 rows takes a
+  // tenth of a second to make. Nothing it is made from changes while it is open but the picks.
+  const pickedKey = value.join('\u0000');
+  const loaded = useMemo(
+    () => (open && loadOptions !== undefined ? loadOptions() : null),
+    // Not `loadOptions` itself: it is a new function on every render (see above).
+    [open, pickedKey, loadOptions === undefined],
+  );
+  const listed = loaded ?? options;
   const remote = onSearch !== undefined;
   const searchable = remote || listed.length >= searchThreshold;
   const matches = useMemo(
@@ -513,12 +569,20 @@ export const MultiSelect = ({
   // every option, and «every match» would then pick the whole list.
   const matchesRow = pickMatches && !remote && /[\p{L}\p{N}]/u.test(query) && matches.length > 0;
   const allMatchesPicked = matchesRow && matches.every((o) => value.includes(o.value));
+  // What «every match» just did, for a screen reader: the row is no option the arrows reach, and
+  // Enter in the search box picks without moving anything a reader would hear.
+  const [announced, setAnnounced] = useState('');
   const pickAllMatches = (drop: boolean): void => {
     const found = new Set(matches.map((o) => o.value));
     onChange(
       drop
         ? value.filter((v) => !found.has(v))
         : [...value, ...matches.map((o) => o.value).filter((v) => !value.includes(v))],
+    );
+    setAnnounced(
+      t(drop ? 'common.filters.droppedMatches' : 'common.filters.pickedMatches', {
+        count: found.size,
+      }),
     );
     searchRef.current?.focus();
   };
@@ -604,6 +668,9 @@ export const MultiSelect = ({
           aria-expanded={open}
           {...(open ? { 'aria-controls': listId } : {})}
           aria-label={label}
+          // The label replaces what the trigger SHOWS, so once the picks are named on it they are
+          // its description: a screen reader hears the question, then what is picked.
+          {...(summary === null ? {} : { 'aria-describedby': `${listId}-summary` })}
           // The same question the screen reader gets, for a pointer — a trigger sized by its bar
           // can be narrower than the words on it, and then this is the only way to read them.
           title={label}
@@ -653,7 +720,7 @@ export const MultiSelect = ({
               {placeholder ?? label}
             </span>
           ) : (
-            <span className="max-w-48 truncate" title={summary}>
+            <span id={`${listId}-summary`} className="max-w-48 truncate" title={summary}>
               {summary}
             </span>
           )}
@@ -738,6 +805,8 @@ export const MultiSelect = ({
                     {...(activeIndex === -1
                       ? {}
                       : { 'aria-activedescendant': optionId(activeIndex) })}
+                    // «every match» says what Enter will do while it is offered.
+                    {...(matchesRow ? { 'aria-describedby': `${listId}-matches` } : {})}
                     value={query}
                     onChange={(e) => searchFor(e.target.value)}
                     onKeyDown={(e) => {
@@ -834,7 +903,7 @@ export const MultiSelect = ({
                     >
                       {allMatchesPicked && <CheckIcon className="h-3 w-3" />}
                     </span>
-                    <span className="truncate">
+                    <span id={`${listId}-matches`} className="truncate">
                       {t('common.filters.pickMatches', { count: matches.length })}
                     </span>
                   </button>
@@ -881,6 +950,11 @@ export const MultiSelect = ({
                 );
               })}
             </ul>
+            {pickMatches && (
+              <span className="sr-only" aria-live="polite">
+                {announced}
+              </span>
+            )}
 
             {selected > 0 && (
               <div className="shrink-0 border-t border-slate-100 p-1.5 dark:border-slate-700">

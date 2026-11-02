@@ -176,10 +176,6 @@ export const columnSortKey = (value: string): string =>
       },
     );
 
-/** Pure: two values in the reader's order (`columnSortKey`), their own text breaking a tie. */
-const byReaderOrder = (a: string, b: string): number =>
-  collator.compare(columnSortKey(a), columnSortKey(b)) || collator.compare(a, b);
-
 /**
  * Pure: one column's list — the values its cells show among the rows the OTHER columns' picks
  * keep, each once, sorted, an empty cell (`''`) last. A value still picked that no longer appears
@@ -202,11 +198,13 @@ export const columnFilterChoices = <T>(
   const missing = [...new Set((values[key] ?? []).map(cellValue))].filter(
     (value) => !seen.has(value),
   );
-  const sorted = [...seen].sort((a, b) => {
-    if (a === '') return 1;
-    if (b === '') return -1;
-    return byReaderOrder(a, b);
-  });
+  // Each value's sort key made once, not once per comparison.
+  const sorted = [...seen]
+    .filter((value) => value !== '')
+    .map((value) => ({ value, key: columnSortKey(value) }))
+    .sort((a, b) => collator.compare(a.key, b.key) || collator.compare(a.value, b.value))
+    .map((entry) => entry.value);
+  if (seen.has('')) sorted.push('');
   return [...missing, ...sorted];
 };
 

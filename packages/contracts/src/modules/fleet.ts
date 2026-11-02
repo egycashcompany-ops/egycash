@@ -3592,10 +3592,34 @@ export interface FleetFuelCardDto {
   lastChargedAt: string | null;
   /** The photo of the card («صوره كل فيزا»); the bytes are fetched on their own, under the grant. */
   image: FleetLicenseImageDto | null;
+  /**
+   * A small blurred thumbnail of the photo can be served (`GET /fleet/fuel-cards/:id/image/thumb`,
+   * `fleetFuelCard.view`). The full photo shows the PIN sticker, so it is served only to a holder of
+   * `fleetFuelCard.reveal`. Optional ON PURPOSE (6d): the server always sends it; a card built
+   * elsewhere (a fixture) may leave it out and reads as no thumbnail.
+   */
+  imageThumb?: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * The card photo's thumbnail (6d) — what a reader without `fleetFuelCard.reveal` sees instead of
+ * the photo, whose sticker carries the PIN. At most this many pixels on its longer side, and at most
+ * this many bytes; JPEG, PNG or WebP. The server never decodes an image: it reads the size from the
+ * file's header and refuses a larger one (422 `FLEET_FUEL_CARD_THUMB_INVALID`).
+ */
+export const FLEET_FUEL_CARD_THUMB_MAX_SIDE = 160;
+export const FLEET_FUEL_CARD_THUMB_MAX_BYTES = 16 * 1024;
+/**
+ * How a thumbnail is made — the go-live thumbnails were made so (ImageMagick: `-resize 160x160>
+ * -blur 0x1.2 -quality 55`), and the browser makes a new upload's the same way: a Gaussian blur of
+ * this radius in pixels, then JPEG at this quality (0–1). At this size and blur the embossed digits
+ * and the sticker's handwriting cannot be read.
+ */
+export const FLEET_FUEL_CARD_THUMB_BLUR_PX = 1.2;
+export const FLEET_FUEL_CARD_THUMB_JPEG_QUALITY = 0.55;
 
 export interface FleetFuelCardSecretDto {
   password: string | null;
@@ -3686,11 +3710,13 @@ export interface FleetFuelTransferResultDto {
 }
 
 /**
- * A card log's line kinds. The first four keep their order; the last three are written only by
+ * A card log's line kinds. The first four keep their order; the next three are written only by
  * «مطابقة أرصدة الكروت»: `sheetAdjust` sets the balance to the company's sheet (✓),
  * `sheetReject` records, with amount 0, that the sheet's figure was refused (✗), and `sheetLink`
  * records, with amount 0, that the card moved car by a sheet decision («نُقل من … إلى … — شيت
- * الشركة»). New kinds are only ever appended.
+ * الشركة»). `dataFix` is written only by «تصحيح أرقام الكروت» (6d): «صُحّح رقم الكارت …» (amount 0)
+ * or, on the 0849 pair, the name and go-live opening swap (amount = the opening's difference). New
+ * kinds are only ever appended.
  */
 export const FLEET_FUEL_MOVEMENT_KINDS = [
   'charge',
@@ -3700,6 +3726,7 @@ export const FLEET_FUEL_MOVEMENT_KINDS = [
   'sheetAdjust',
   'sheetReject',
   'sheetLink',
+  'dataFix',
 ] as const;
 export const FleetFuelMovementKindSchema = z.enum(FLEET_FUEL_MOVEMENT_KINDS);
 export type FleetFuelMovementKind = z.infer<typeof FleetFuelMovementKindSchema>;
@@ -3734,6 +3761,8 @@ export interface FleetFuelCardMovementDto {
   cancelledBySheet: FleetFuelCancelledBySheetDto | null;
   /** A `sheetLink` line's move — from which car or label to which; `null` on every other line. */
   link: FleetFuelMovementLinkDto | null;
+  /** A `dataFix` line's correction («تصحيح أرقام الكروت»); `null` on every other line. */
+  repair: FleetFuelMovementRepairDto | null;
 }
 
 export const ListFleetFuelCardMovementsQuerySchema = PaginationQuerySchema.extend({
@@ -4016,6 +4045,12 @@ export interface FleetFuelReconcileLineDto {
    * (difference < 0); `[]` otherwise. Newest first.
    */
   charges: FleetFuelReconcileChargeDto[];
+  /**
+   * ✓ held back until «تصحيح أرقام الكروت» runs («ضمن تصحيح الأرقام»): a card of the 0849 pair, whose
+   * name — what the sheet is matched by — sits on the other car's record until then (6d). ✗ is
+   * allowed. Lifts by itself for a sheet read after the repair.
+   */
+  inRepair: boolean;
 }
 /** A live charge on the card the sheet does not show — a candidate to cancel (difference < 0 only). */
 export interface FleetFuelReconcileChargeDto {
@@ -4290,6 +4325,298 @@ export const AddFleetFuelSheetCardSchema = z
   .strict()
   .superRefine(cardOnACarOrNamed);
 export type AddFleetFuelSheetCard = z.infer<typeof AddFleetFuelSheetCardSchema>;
+
+// ── «تصحيح أرقام الكروت» (6d) — the go-live's crossed Wataniya card numbers ─────────────────────
+//
+// The go-live sheet put 15 Wataniya card NUMBERS on the wrong records, in three closed cycles
+// (C4 239→241→243→209 · C5 233→525→284→269→230 · C6 232→800→256→267→251→246; «A→B» = car A's
+// record holds car B's physical card number), and swapped the NAME and opening balance of the 0849
+// pair (cars 530 and 283, both numbers ending 0849). THE PHYSICAL CARD IS THE NUMBER: the PIN, the
+// photo and the expiry belong with the number. The repair, run once by the owner after he reviewed
+// the live dry run:
+//   · a cycle record keeps its name, car, balance and log, and RECEIVES the number of the card
+//     embossed with its name — with that card's PIN (as stored, never read), photo and expiry. Its
+//     balance does not change: the latest company statement, approved afterwards in «مطابقة
+//     أرصدة الكروت», gives each card the company's figure for its own physical card;
+//   · the pair keeps number, car, photo, expiry and PIN, swaps the names, and moves each balance by
+//     the go-live opening's difference (530 −11,872.62 · 283 +11,872.62).
+// A unit (one cycle, or the pair) is fixed whole or not at all; a record whose car, number or name
+// changed by hand since the go-live holds its whole unit (its expiry, photo and PIN belong to the
+// physical card and travel with the number as they are when it runs). Nothing runs by itself. Each
+// record gets a `dataFix` log line — what makes its unit read «done» from then on.
+
+/** The four units, in the order they are executed. */
+export const FLEET_FUEL_NUMBER_REPAIR_UNITS = ['C4', 'C5', 'C6', 'pair'] as const;
+export const FleetFuelNumberRepairUnitSchema = z.enum(FLEET_FUEL_NUMBER_REPAIR_UNITS);
+export type FleetFuelNumberRepairUnit = z.infer<typeof FleetFuelNumberRepairUnitSchema>;
+/** The three cycles — every unit but the pair. */
+export type FleetFuelNumberRepairCycleUnit = Exclude<FleetFuelNumberRepairUnit, 'pair'>;
+
+/**
+ * A record's state in the dry run: `ok` — it reads the reviewed «before», its unit is ready;
+ * `changed` — it reads neither «before» nor «after» («تغيّر — لن يُلمس»), see `changes`; `held` —
+ * it reads «before» but its unit has a changed record («موقوف مع الدائرة»); `done` — its unit is
+ * repaired (or was fixed by hand to the «after» values).
+ */
+export const FLEET_FUEL_NUMBER_REPAIR_ROW_STATES = ['ok', 'changed', 'held', 'done'] as const;
+export type FleetFuelNumberRepairRowState = (typeof FLEET_FUEL_NUMBER_REPAIR_ROW_STATES)[number];
+/** A unit is `ready` (every record reads «before»), `held` (one does not) or `done`. */
+export const FLEET_FUEL_NUMBER_REPAIR_UNIT_STATES = ['ready', 'held', 'done'] as const;
+export type FleetFuelNumberRepairUnitState = (typeof FLEET_FUEL_NUMBER_REPAIR_UNIT_STATES)[number];
+/** The repair as a whole: no unit done, some, or all four. */
+export const FLEET_FUEL_NUMBER_REPAIR_STATES = ['pending', 'partial', 'done'] as const;
+export type FleetFuelNumberRepairState = (typeof FLEET_FUEL_NUMBER_REPAIR_STATES)[number];
+/**
+ * What a changed record differs in: `missing` — no live Wataniya card on the car; `vehicle` — the
+ * expected card is on another car (or on none); `number`, `name` (compared exactly); `repairLine` —
+ * the pair reads swapped without its two `dataFix` lines, or the reverse, so its balances cannot be
+ * known to be right. `expiry`, `photo` and `pin` are no longer reported: they belong to the physical
+ * card and never hold a unit (kept in the list so an older reader still parses).
+ */
+export const FLEET_FUEL_NUMBER_REPAIR_FIELDS = [
+  'missing',
+  'vehicle',
+  'number',
+  'name',
+  'expiry',
+  'photo',
+  'pin',
+  'repairLine',
+] as const;
+export type FleetFuelNumberRepairField = (typeof FLEET_FUEL_NUMBER_REPAIR_FIELDS)[number];
+/** A `dataFix` line moves a number (a cycle record) or swaps a name and opening (the pair). */
+export const FLEET_FUEL_MOVEMENT_REPAIR_KINDS = ['number', 'nameSwap'] as const;
+export type FleetFuelMovementRepairKind = (typeof FLEET_FUEL_MOVEMENT_REPAIR_KINDS)[number];
+
+/** A `dataFix` line's correction, as the card's log shows it — last fours only, never a PIN. */
+export interface FleetFuelMovementRepairDto {
+  /** The repair it belongs to («6d:2026-10-04»). */
+  key: string;
+  unit: FleetFuelNumberRepairUnit;
+  kind: FleetFuelMovementRepairKind;
+  /** `number`: «كان •••• 2813 وأصبح •••• 0935»; `null` on `nameSwap`. */
+  numberBeforeLast4: string | null;
+  numberAfterLast4: string | null;
+  /** `number`: a PIN came with the number (`false`: the number has none stored — left empty). */
+  pinMoved: boolean | null;
+  /** `number`: a photo came with the number. */
+  photoMoved: boolean | null;
+  /** `number`: the expiry before and after, `YYYY-MM-DD` (equal when it did not change). */
+  expiryBefore: string | null;
+  expiryAfter: string | null;
+  /** `nameSwap`: the name and the go-live opening before and after; `null` on `number`. */
+  nameBefore: string | null;
+  nameAfter: string | null;
+  openingBefore: number | null;
+  openingAfter: number | null;
+}
+
+/** A photo as the dry run shows it — what the analyst read on it, and where it is now. */
+export interface FleetFuelNumberRepairPhotoDto {
+  /** The live card that carries this go-live photo now; `null` when none does. */
+  cardId: string | null;
+  /** That card serves a thumbnail (`GET /fleet/fuel-cards/:id/image/thumb`). */
+  thumb: boolean;
+  /** The name embossed on the card in the photo. */
+  embossedName: string;
+  /** The car code written on the card's sticker. */
+  stickerCar: string;
+  /** «VALID THRU» as printed, `MM/YY`. */
+  validThru: string;
+  /** The last four of the number the photo is of. */
+  last4: string;
+}
+/** One way a changed record differs from what the owner reviewed. */
+export interface FleetFuelNumberRepairChangeDto {
+  field: FleetFuelNumberRepairField;
+  /**
+   * Display values only: a number's last four, a name, a car code, `YYYY-MM-DD`, `'yes'`/`'no'` for
+   * the PIN; for the photo, the last four of the go-live photo expected / shown (`'other'` for a
+   * photo uploaded since, `null` for none). `null` when there is nothing to show.
+   */
+  expected: string | null;
+  now: string | null;
+  /** The newest audit row on that card touching that field, when one is found. */
+  at: string | null;
+  byName: string | null;
+}
+/** A charge logged on a record since go-live — for information only; the repair moves no money. */
+export interface FleetFuelNumberRepairTopUpDto {
+  id: string;
+  at: string;
+  amount: number;
+  /** «أُلغي بشيت الشركة». */
+  cancelledBySheet: boolean;
+}
+/** The record's `dataFix` line, once the repair wrote it. */
+export interface FleetFuelNumberRepairLogDto {
+  movementId: string;
+  at: string;
+  byName: string | null;
+}
+/** One record of a cycle. */
+export interface FleetFuelNumberRepairCycleRowDto {
+  car: string;
+  /** Exactly as the statement spells it (two names carry a chassis typo — kept). */
+  name: string;
+  /** The live Wataniya card on the car; `null` when there is none. */
+  cardId: string | null;
+  /** Live; unchanged by the repair. `null` without a card. */
+  balance: number | null;
+  state: FleetFuelNumberRepairRowState;
+  /** The first three digits, «548». */
+  numberPrefix: string;
+  numberBeforeLast4: string;
+  numberAfterLast4: string;
+  /** The car whose record holds the right number today. */
+  afterIsNowOnCar: string;
+  /** The car whose record receives the number this record holds today. */
+  beforeGoesToCar: string;
+  /**
+   * The expiry of the card whose number the record holds today / of the right number's card — as
+   * stored now (it travels with the number); the definition's when no live card holds the number.
+   */
+  expiryBefore: string;
+  expiryAfter: string;
+  /** A PIN is stored with the number held today / with the right number (yes/no — never a PIN). */
+  pinBefore: boolean;
+  pinAfter: boolean;
+  photoBefore: FleetFuelNumberRepairPhotoDto;
+  photoAfter: FleetFuelNumberRepairPhotoDto;
+  /** The name's chassis differs from the registry's — the statement's spelling, kept. */
+  chassisTypo: boolean;
+  /** Up to `FLEET_FUEL_NUMBER_REPAIR_TOP_UPS` charges, oldest first; `topUpsMore` the rest. */
+  topUps: FleetFuelNumberRepairTopUpDto[];
+  topUpsMore: number;
+  /** Why a `changed` record is changed; `[]` otherwise. */
+  changes: FleetFuelNumberRepairChangeDto[];
+  log: FleetFuelNumberRepairLogDto | null;
+}
+export interface FleetFuelNumberRepairCycleDto {
+  unit: FleetFuelNumberRepairCycleUnit;
+  /** «الدائرة 1/2/3». */
+  n: 1 | 2 | 3;
+  /** The cars in chain order — each record holds the next car's card number. */
+  cars: string[];
+  /** The last four each record holds before the repair, in the order of `cars`. */
+  heldLast4: string[];
+  state: FleetFuelNumberRepairUnitState;
+  rows: FleetFuelNumberRepairCycleRowDto[];
+}
+/** One record of the 0849 pair. */
+export interface FleetFuelNumberRepairPairRowDto {
+  car: string;
+  cardId: string | null;
+  state: FleetFuelNumberRepairRowState;
+  numberPrefix: string;
+  /** Both read «0849» — the pair is told apart by its car. */
+  numberLast4: string;
+  expiry: string;
+  hasPin: boolean;
+  nameBefore: string;
+  nameAfter: string;
+  openingBefore: number;
+  openingAfter: number;
+  /** `openingAfter − openingBefore` — what the repair adds to the balance. */
+  delta: number;
+  /** Live; `null` without a card. */
+  balance: number | null;
+  /** The live balance + `delta` while pending; the live balance once done. */
+  balanceAfter: number | null;
+  /** The car's figure on the go-live day's statement, by its own name row. */
+  statementOpening: number;
+  statementDay: string;
+  photo: FleetFuelNumberRepairPhotoDto;
+  topUps: FleetFuelNumberRepairTopUpDto[];
+  topUpsMore: number;
+  changes: FleetFuelNumberRepairChangeDto[];
+  log: FleetFuelNumberRepairLogDto | null;
+}
+/** A company statement's ✓ applied to a pair record — matched by NAME, i.e. the other card's figure. */
+export interface FleetFuelNumberRepairSheetAdjustDto {
+  cardId: string;
+  car: string;
+  movementId: string;
+  at: string;
+  amount: number;
+  balanceAfter: number;
+  fileName: string;
+}
+export interface FleetFuelNumberRepairPairDto {
+  state: FleetFuelNumberRepairUnitState;
+  /** Car 530, then car 283. */
+  rows: [FleetFuelNumberRepairPairRowDto, FleetFuelNumberRepairPairRowDto];
+  /** Every live `sheetAdjust` on either record since go-live, oldest first. */
+  sheetAdjustments: FleetFuelNumberRepairSheetAdjustDto[];
+}
+/** The most charges listed per record; the rest are counted (`topUpsMore`). */
+export const FLEET_FUEL_NUMBER_REPAIR_TOP_UPS = 12;
+/** GET /fleet/fuel-cards/number-repair — the live dry run. Masked numbers only; no PIN. */
+export interface FleetFuelNumberRepairDto {
+  /** «6d:2026-10-04». */
+  key: string;
+  company: 'wataniya';
+  /** The go-live day the definition was read from. */
+  goLiveDay: string;
+  /** When this dry run was read (ISO). */
+  readAt: string;
+  state: FleetFuelNumberRepairState;
+  /** The newest `dataFix` line of the repair, and who wrote it; `null` before. */
+  executedAt: string | null;
+  executedByName: string | null;
+  counts: {
+    /** 17. */
+    records: number;
+    /** 15 — the cycle records. */
+    crossed: number;
+    /** 2. */
+    pair: number;
+    /** Records in units that are ready / held / done. */
+    ready: number;
+    held: number;
+    done: number;
+  };
+  /** The units ready to execute, in execution order — what «تنفيذ التصحيح» sends. */
+  readyUnits: FleetFuelNumberRepairUnit[];
+  /**
+   * The cars whose record ends (or ended) with no PIN — the number it receives has none stored —
+   * among the units not held; the owner types those PINs himself.
+   */
+  noPinAfterCars: string[];
+  cycles: FleetFuelNumberRepairCycleDto[];
+  pair: FleetFuelNumberRepairPairDto;
+}
+/**
+ * «تنفيذ التصحيح» — after «راجعتُ الصفوف». `units`: the ready units the reviewed dry run showed, each
+ * once. The server re-checks every unit inside its own transaction: a unit not named is never run, a
+ * named unit that is held (or already done) at execution is skipped and reported.
+ */
+export const ExecuteFleetFuelNumberRepairSchema = z
+  .object({
+    reviewed: z.literal(true),
+    units: z
+      .array(FleetFuelNumberRepairUnitSchema)
+      .min(1)
+      .max(FLEET_FUEL_NUMBER_REPAIR_UNITS.length)
+      .refine((units) => new Set(units).size === units.length, {
+        message: 'a unit is named twice',
+      }),
+  })
+  .strict();
+export type ExecuteFleetFuelNumberRepair = z.infer<typeof ExecuteFleetFuelNumberRepairSchema>;
+/** POST /fleet/fuel-cards/number-repair/execute — what each unit did, and the fresh dry run. */
+export interface FleetFuelNumberRepairResultDto {
+  at: string;
+  /** Written now. */
+  executed: FleetFuelNumberRepairUnit[];
+  /** Named, and already done — nothing written. */
+  alreadyDone: FleetFuelNumberRepairUnit[];
+  /** Named, and held at execution (a record changed since the review) — nothing written. */
+  held: FleetFuelNumberRepairUnit[];
+  /** Ready, but not named — nothing written. */
+  notRequested: FleetFuelNumberRepairUnit[];
+  repair: FleetFuelNumberRepairDto;
+}
 
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ───────────────────
 //

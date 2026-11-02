@@ -26,6 +26,7 @@ export const DesignDialog = ({
   footer,
   children,
   panelProps,
+  wrapTitle = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -40,6 +41,11 @@ export const DesignDialog = ({
   children: ReactNode;
   /** Hooks on the panel (`data-*`) a screen's tests and harness find it by. */
   panelProps?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string>;
+  /**
+   * A title that must be read whole (6d's «تنفيذ تصحيح أرقام الكروت») wraps on a narrow screen
+   * instead of ending in «…». Off by default: every other form keeps its one-line title.
+   */
+  wrapTitle?: boolean;
 }): JSX.Element | null => {
   const t = useT();
   useEffect(() => {
@@ -85,7 +91,12 @@ export const DesignDialog = ({
               <Stroke d={[...icon]} className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="truncate text-xl font-bold tracking-wide text-slate-900 dark:text-white">
+              <h2
+                className={cn(
+                  wrapTitle ? 'break-words' : 'truncate',
+                  'text-xl font-bold tracking-wide text-slate-900 dark:text-white',
+                )}
+              >
                 {title}
               </h2>
               {subtitle !== undefined && (

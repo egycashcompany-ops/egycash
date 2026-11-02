@@ -98,6 +98,7 @@ const line = (over: Partial<FleetFuelCardMovementDto>): FleetFuelCardMovementDto
   sheet: null,
   cancelledBySheet: null,
   link: null,
+  repair: null,
   ...over,
 });
 // Sample F2/07: the top-up the 1-11 sheet cancelled, under the adjustment that cancelled it.
@@ -240,5 +241,143 @@ describe('every line kind', () => {
     }
     // F0's stand-in is gone: `sheetLink` no longer borrows `sheetReject`'s rose.
     expect(SOURCE).not.toContain('B3-F0 stub');
+  });
+});
+
+// ── 6d «تصحيح أرقام الكروت»: the repair's line, and the lines before it ─────────────────────────
+
+const REPAIRED_AT = '2026-11-02T10:31:00.000Z';
+/** Sample 07: car 239's record took the number •••• 0935 — PIN, photo and expiry with it. */
+const FIX_NUMBER = line({
+  id: 'fix-1',
+  kind: 'dataFix',
+  amount: 0,
+  balanceAfter: 10203.43,
+  at: REPAIRED_AT,
+  repair: {
+    key: '6d:2026-10-04',
+    unit: 'C4',
+    kind: 'number',
+    numberBeforeLast4: '2813',
+    numberAfterLast4: '0935',
+    pinMoved: true,
+    photoMoved: true,
+    expiryBefore: '2027-03-31',
+    expiryAfter: '2027-03-31',
+    nameBefore: null,
+    nameAfter: null,
+    openingBefore: null,
+    openingAfter: null,
+  },
+});
+/** Car 284's record: the number it takes has no PIN stored — left empty; the expiry moves. */
+const FIX_NO_PIN = line({
+  ...FIX_NUMBER,
+  id: 'fix-2',
+  repair: {
+    ...FIX_NUMBER.repair!,
+    unit: 'C5',
+    numberBeforeLast4: '8713',
+    numberAfterLast4: '9096',
+    pinMoved: false,
+    expiryBefore: '2027-11-30',
+    expiryAfter: '2029-01-31',
+  },
+});
+/** The 0849 pair, car 530: the name and the go-live opening swap; the balance moves by Δ. */
+const FIX_PAIR = line({
+  id: 'fix-3',
+  kind: 'dataFix',
+  amount: -11872.62,
+  balanceAfter: 11258,
+  at: REPAIRED_AT,
+  repair: {
+    key: '6d:2026-10-04',
+    unit: 'pair',
+    kind: 'nameSwap',
+    numberBeforeLast4: null,
+    numberAfterLast4: null,
+    pinMoved: null,
+    photoMoved: null,
+    expiryBefore: null,
+    expiryAfter: null,
+    nameBefore: 'EGYCASH-8616-783211',
+    nameAfter: 'EGYCASH-1137-401485',
+    openingBefore: 13130.62,
+    openingAfter: 1258,
+  },
+});
+const BEFORE_FIX = line({ id: 'charge-3', at: '2026-10-23T08:40:00.000Z' });
+const AFTER_FIX = line({ id: 'charge-4', at: '2026-11-03T08:40:00.000Z' });
+
+describe('6d — the repair’s line «تصحيح بيانات»', () => {
+  it('a moved number: «صُحّح رقم الكارت: كان •••• 2813 وأصبح •••• 0935 — تصحيح بيانات التشغيل», amount «—»', () => {
+    const fix = lineOf(logOf([FIX_NUMBER, BEFORE_FIX]), 'fix-1');
+    expect(fix).toContain(ar(`${H}kind.dataFix`));
+    expect(fix).toContain('indigo');
+    expect(fix).toContain('data-fuel-history-repair="fix-1"');
+    const sentence = fix.slice(fix.indexOf('data-fuel-history-repair="fix-1"'));
+    expect(sentence.replace(/<[^>]+>/gu, '')).toContain(
+      ar(`${H}dataFix.number`, { before: '•••• 2813', after: '•••• 0935' }),
+    );
+    expect(ar(`${H}dataFix.number`, { before: '•••• 2813', after: '•••• 0935' })).toBe(
+      'صُحّح رقم الكارت: كان •••• 2813 وأصبح •••• 0935 — تصحيح بيانات التشغيل',
+    );
+    // What moved with it: its PIN (one is stored), the photo, the expiry — the same date.
+    expect(fix).toContain(ar(`${H}dataFix.movedAll`, { expiry: ar(`${H}dataFix.sameDate`) }));
+    expect(fix).toContain(ar(`${H}dataFix.kept`));
+    expect(fix).not.toContain(ar(`${H}dataFix.noPin`));
+    // Nothing moved in money: «—», never «+0.00».
+    expect(fix).toContain('—');
+    expect(fix).not.toContain('+0.00');
+    // Changed nowhere.
+    expect(fix).not.toContain('data-fuel-history-edit');
+    expect(fix).not.toContain('data-fuel-history-remove');
+  });
+
+  it('a number with no PIN stored: «تُرك فارغًا», and the new expiry date', () => {
+    const fix = lineOf(logOf([FIX_NO_PIN]), 'fix-2');
+    expect(fix).toContain(ar(`${H}dataFix.movedNoPin`, { expiry: '2029/01/31' }));
+    expect(fix).toContain(ar(`${H}dataFix.noPin`));
+    expect(fix).not.toContain(ar(`${H}dataFix.movedAll`, { expiry: '2029/01/31' }));
+  });
+
+  it('the 0849 pair: the name and the opening before and after, the difference signed', () => {
+    const fix = lineOf(logOf([FIX_PAIR]), 'fix-3');
+    expect(fix.replace(/<[^>]+>/gu, '')).toContain(
+      ar(`${H}dataFix.nameSwap`, {
+        before: 'EGYCASH-8616-783211',
+        after: 'EGYCASH-1137-401485',
+        from: '13,130.62',
+        to: '1,258.00',
+      }),
+    );
+    expect(fix).toContain(ar(`${H}dataFix.nameSwapKept`));
+    expect(fix).toContain('−11,872.62');
+    expect(fix).not.toContain('data-fuel-history-edit');
+  });
+
+  it('marks every older line «سُجِّلت قبل التصحيح» — and only on a card that has the line', () => {
+    const html = logOf([AFTER_FIX, FIX_NUMBER, BEFORE_FIX]);
+    const tag = ar(`${H}beforeRepair`);
+    expect(lineOf(html, 'charge-3')).toContain(tag);
+    expect(lineOf(html, 'charge-3')).toContain('data-fuel-history-before-repair="true"');
+    // The older top-up keeps its pen and bin: it is kept exactly as it was.
+    expect(lineOf(html, 'charge-3')).toContain('data-fuel-history-edit="charge-3"');
+    expect(lineOf(html, 'charge-4')).not.toContain(tag);
+    expect(lineOf(html, 'fix-1')).not.toContain(tag);
+    expect(logOf([BEFORE_FIX])).not.toContain(tag);
+    // As the approved sample draws it: «بواسطة» follows the tag (and the repair's words) on those
+    // lines; a line after the repair keeps it at the far end, as every log line did before.
+    expect(lineOf(html, 'charge-3')).not.toContain('class="ms-auto"');
+    expect(lineOf(html, 'fix-1')).not.toContain('class="ms-auto"');
+    expect(lineOf(html, 'charge-4')).toContain('class="ms-auto"');
+  });
+
+  it('shows last fours only — never a full number, never a PIN', () => {
+    const html = logOf([FIX_NUMBER, FIX_NO_PIN, FIX_PAIR]);
+    const body = html.slice(html.indexOf('data-fuel-history-lines'));
+    expect(body).not.toMatch(/\d{9,}/u);
+    expect(html).not.toMatch(/password/iu);
   });
 });

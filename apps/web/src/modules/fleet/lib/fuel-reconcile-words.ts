@@ -13,7 +13,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { ApiError } from '../../../shared/lib/api-client';
 import { custodyPlural, type CustodyCountForm } from './custody-words';
-import { decidedCardIds, movedCardIds } from './fuel-reconcile';
+import { decidedCardIds, inRepairCardIds, movedCardIds } from './fuel-reconcile';
 import { CARD_NAME_MAX, addCardRefusalOf, linkRefusalOf } from './fuel-reconcile-links';
 
 export type ReconcileCountNoun =
@@ -122,7 +122,8 @@ export const isSheetRefusal = (error: unknown): boolean => sheetRefusalOf(error)
  * already cancelled, or more than the sheet takes off the card).
  */
 export interface DecideRefusal {
-  kind: 'moved' | 'decided' | 'cancel';
+  /** 6d: `inRepair` — a ✓ named a line of the 0849 pair before «تصحيح أرقام الكروت» ran. */
+  kind: 'moved' | 'decided' | 'cancel' | 'inRepair';
   cardIds: string[];
   /** For `cancel`: why — `NOT_A_CANDIDATE`, `CANCELLED` or `EXCEEDS_DIFFERENCE`. */
   code?: string;
@@ -132,6 +133,10 @@ export const decideRefusalOf = (error: unknown): DecideRefusal | null => {
   if (moved.length > 0) return { kind: 'moved', cardIds: moved };
   const decided = decidedCardIds(error);
   if (decided.length > 0) return { kind: 'decided', cardIds: decided };
+  // 6d: worded as the link ✓'s own refusal — «هذا الكارت ضمن تصحيح الأرقام — لم يُسجَّل شيء.»
+  if (error instanceof ApiError && error.code === ErrorCodes.FLEET_FUEL_RECONCILE_IN_REPAIR) {
+    return { kind: 'inRepair', cardIds: inRepairCardIds(error) };
+  }
   if (error instanceof ApiError && error.code === ErrorCodes.FLEET_FUEL_RECONCILE_CANCEL_REFUSED) {
     const details = (error.details ?? []).filter((detail) => detail.field === 'cancelCharges');
     return {

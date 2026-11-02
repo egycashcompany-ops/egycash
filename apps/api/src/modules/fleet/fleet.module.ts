@@ -30,7 +30,7 @@ import { buildFleetCustodyPaperSettingsRouter } from './custody/custody-papers.r
 import { buildFleetCustodyFundRouter } from './custody/custody-fund.routes';
 import { buildFleetVehicleContractsRouter } from './vehicle-contracts/vehicle-contract.routes';
 import { receiptFileAuthorizer } from './receipts/receipt-files';
-import { fuelCardFileAuthorizer } from './fuel-cards/fuel-card-files';
+import { fuelCardFileAuthorizer, fuelCardThumbFileAuthorizer } from './fuel-cards/fuel-card-files';
 import { noticeFileAuthorizer } from './notices/notice-files';
 import { dealershipFileAuthorizer } from './dealership/dealership-files';
 import { vehicleContractFileAuthorizer } from './vehicle-contracts/vehicle-contract-files';
@@ -580,6 +580,8 @@ export const fleetModule: ModuleManifest = {
     dealershipFileAuthorizer,
     receiptFileAuthorizer,
     fuelCardFileAuthorizer,
+    // 6d — the card photo's thumbnail: the cards' view grant (the photo itself: the reveal grant).
+    fuelCardThumbFileAuthorizer,
     noticeFileAuthorizer,
     vehicleContractFileAuthorizer,
   ],

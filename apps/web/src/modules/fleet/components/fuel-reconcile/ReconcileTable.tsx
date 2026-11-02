@@ -10,6 +10,10 @@
 // الشيت: 1,000.00 · 2026/11/01 10:05», tagged when it is after the sheet's date) and a pending
 // «طلب رصيد» the difference equals. Such a row's ✓ opens the confirm instead of writing at once.
 //
+// 6d: a line of the 0849 pair, read while «تصحيح أرقام الكروت» is pending (`inRepair`), shows
+// «ضمن تصحيح الأرقام» where its ✓ would be; «تحديد الكل» passes it by and the bulk ✓ leaves it out;
+// its ✗ stays. A note under the table says why.
+//
 // The small cells it shares with the folds and the dialog are in `reconcile-cells.tsx`.
 import { type ReactNode } from 'react';
 import {
@@ -26,6 +30,7 @@ import { BoardIcon, CompanyBadge, NUM, PATH } from '../FuelCardBoard';
 import { MOVES_CHIP, SECTION_CARD, SECTION_STRIP } from '../custody-board-looks';
 import { TITLE } from '../custody-dashboard-parts';
 import {
+  applicableLines,
   asksFirst,
   decisionOf,
   dots,
@@ -36,9 +41,11 @@ import {
   openLines,
   requestMatches,
   stampOf,
+  tickAllLines,
   tickedLines,
   timeOf,
   unseenCharges,
+  waitsForRepair,
   type ReconcileSelection,
 } from '../../lib/fuel-reconcile';
 import { useReconcileCount } from '../../lib/fuel-reconcile-words';
@@ -247,6 +254,8 @@ const Decision = ({
       </span>
     );
   }
+  // 6d: the 0849 pair's ✓ waits for «تصحيح أرقام الكروت» — the chip in its place; ✗ stays.
+  const repairing = waitsForRepair(line);
   // 6a: a ✓ that asks first says so — about the charge, or about the request.
   const apply = moved
     ? t('fleet.fuelCards.reconcile.movedApply')
@@ -260,20 +269,31 @@ const Decision = ({
   const reject = t('fleet.fuelCards.reconcile.reject', { balance: money(line.card.balance) });
   return (
     <span className="mx-auto inline-flex items-center gap-1.5">
-      <button
-        type="button"
-        data-recon-apply={line.card.id}
-        title={apply}
-        aria-label={apply}
-        disabled={busy || !allowed || moved}
-        onClick={() => onDecide('apply')}
-        className={cn(
-          DECIDE,
-          'border-emerald-500/40 bg-emerald-600/15 text-emerald-700 hover:bg-emerald-600/25 dark:text-emerald-400',
-        )}
-      >
-        ✓
-      </button>
+      {repairing ? (
+        <span
+          data-recon-in-repair={line.card.id}
+          title={t('fleet.fuelCards.reconcile.inRepairLine')}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-indigo-300 bg-indigo-50 px-1.5 py-1 text-[11px] font-bold text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200"
+        >
+          <BoardIcon d={PATH.lock} className="h-3 w-3" />
+          {t('fleet.fuelCards.reconcile.links.inRepair')}
+        </span>
+      ) : (
+        <button
+          type="button"
+          data-recon-apply={line.card.id}
+          title={apply}
+          aria-label={apply}
+          disabled={busy || !allowed || moved}
+          onClick={() => onDecide('apply')}
+          className={cn(
+            DECIDE,
+            'border-emerald-500/40 bg-emerald-600/15 text-emerald-700 hover:bg-emerald-600/25 dark:text-emerald-400',
+          )}
+        >
+          ✓
+        </button>
+      )}
       <button
         type="button"
         data-recon-reject={line.card.id}
@@ -329,11 +349,17 @@ export const ReconcileTable = ({
   // The edit dialog writes through the card's own PATCH — offered to those who may edit cards.
   const updateNumber = can('fleetFuelCard.edit') ? onUpdateNumber : null;
   const count = useReconcileCount();
-  const tickable = openLines(lines, selection);
+  // «تحديد الكل» ticks every open card but those waiting for the number repair (6d).
+  const tickable = tickAllLines(lines, selection);
   const ticked = tickedLines(lines, selection);
   const largest = largestOf(lines);
   const reviewed = Object.keys(selection.decided).length;
-  const allTicked = tickable.length > 0 && ticked.length === tickable.length;
+  const allTicked =
+    tickable.length > 0 &&
+    tickable.every((line) => selection.picked.has(line.card.id.toLowerCase()));
+  // 6d: the bulk ✓ names only the ticked lines a ✓ may name.
+  const applicable = applicableLines(ticked);
+  const repairing = openLines(lines, selection).some(waitsForRepair);
   const companyName = (line: FleetFuelReconcileLineDto): string =>
     t(`fleet.fuelCards.company.${line.card.company}`);
   const head = (cell: ReactNode, align: 'start' | 'center' = 'center'): JSX.Element => (
@@ -377,7 +403,7 @@ export const ReconcileTable = ({
             <button
               type="button"
               data-recon-apply-selected="true"
-              disabled={deciding}
+              disabled={deciding || applicable.length === 0}
               onClick={() => onBulk('apply')}
               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-sm font-bold text-white shadow-sm shadow-emerald-700/30 transition hover:bg-emerald-500 disabled:opacity-50"
             >
@@ -526,6 +552,15 @@ export const ReconcileTable = ({
           </tbody>
         </table>
       </div>
+      {repairing && (
+        <p
+          data-recon-in-repair-note="true"
+          className="flex items-start gap-1.5 border-t border-slate-200 px-4 py-2.5 text-[12px] leading-relaxed text-indigo-800 dark:border-[#1c293f] dark:text-indigo-200"
+        >
+          <BoardIcon d={PATH.lock} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {t('fleet.fuelCards.reconcile.inRepairLineNote')}
+        </p>
+      )}
     </section>
   );
 };

@@ -62,6 +62,7 @@ import {
   rowDto,
 } from './fuel-reconcile-parts';
 import { linkWorldOf } from './fuel-reconcile-links';
+import { fleetFuelNumberRepairService } from '../number-repair/number-repair.service';
 
 const oid = (id: string | null): Types.ObjectId | null =>
   id === null ? null : new Types.ObjectId(id);
@@ -122,6 +123,11 @@ class FleetFuelReconcileService {
       },
     });
     const matches = [...plan.differs, ...plan.equal];
+    // «ضمن تصحيح الأرقام» — the 0849 pair until «تصحيح أرقام الكروت» (6d) repairs it, read live: its
+    // link (6b) and its balance ✓ (6c) are held back, and lift for a sheet read after the repair.
+    const repairing = new Set(await fleetFuelNumberRepairService.pairNumbersInRepair());
+    const byCardId = new Map(cards.map((card) => [String(card._id), card]));
+    const inRepair = (cardId: string): boolean => repairing.has(byCardId.get(cardId)?.number ?? '');
     const proposed = compareCardLinks({
       matches: matches.map((match) => ({ cardId: match.cardId, sheet: match.sheet })),
       // A row that names no card cannot be one: «إضافة» needs the name the sheet gives it.
@@ -129,6 +135,7 @@ class FleetFuelReconcileService {
       carColumn: sheet.carColumn,
       world,
       resolver,
+      inRepair: [...repairing],
     });
     // «شحن لا يظهر في الشيت» — only where the sheet is LOWER than the card.
     const candidates = await chargeCandidatesOf(
@@ -163,6 +170,7 @@ class FleetFuelReconcileService {
             amount,
             at,
           })),
+          inRepair: inRepair(match.cardId),
           decision: null,
           decidedAt: null,
           decidedBy: null,
@@ -243,6 +251,7 @@ class FleetFuelReconcileService {
         charges: (candidates.get(match.cardId) ?? []).map((charge) =>
           chargeDto(charge, sheetDate, names),
         ),
+        inRepair: inRepair(match.cardId),
       };
     };
     return {
@@ -314,6 +323,12 @@ class FleetFuelReconcileService {
     let sessionId = '';
     let decided: Decided[] = [];
     let at = new Date();
+    // The 0849 pair while «تصحيح أرقام الكروت» has not repaired it — live, so a session read before
+    // this lock existed is held too.
+    const repairing =
+      input.decision === 'apply'
+        ? new Set(await fleetFuelNumberRepairService.pairNumbersInRepair())
+        : new Set<string>();
     await unitOfWork(async (session) => {
       // A retried transaction starts over from nothing.
       decided = [];
@@ -354,6 +369,15 @@ class FleetFuelReconcileService {
           moved.has(cardId)
         );
       });
+      // «ضمن تصحيح الأرقام»: a ✓ on a card of the 0849 pair, while it waits for the repair or on a
+      // session read before it ran (its name matched the other car's card). ✗ stays allowed.
+      if (input.decision === 'apply') {
+        const held = cardIds.filter((cardId) => {
+          const line = lines.get(cardId) as FleetFuelReconcileLine;
+          return line.inRepair === true || repairing.has(live.get(cardId)?.number ?? '');
+        });
+        if (held.length > 0) throw refusal(ErrorCodes.FLEET_FUEL_RECONCILE_IN_REPAIR, held);
+      }
       if (changed.length > 0) throw refusal(ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED, changed);
       // «اعتماد طلب الرصيد» only while the request IS the sheet's difference, to the piastre.
       const requestChanged = [...approving].filter((cardId) => {

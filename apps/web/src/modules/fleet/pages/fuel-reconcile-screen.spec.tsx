@@ -122,6 +122,8 @@ const line = (
   numberHolder: null,
   placeMatches: null,
   charges: [],
+  // 6d: not part of the card-number repair.
+  inRepair: false,
   ...over,
 });
 

@@ -5,7 +5,7 @@
 // the store supports it, app-level HMAC signing otherwise).
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
-import { Types, type FilterQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   ErrorCodes,
   PlatformEvents,
@@ -346,6 +346,25 @@ class FileService {
     });
     await enqueueFileProcessing(doc._id);
     return doc;
+  }
+
+  /**
+   * Moves a file — every version of its group — to ANOTHER entity of the same module and entity
+   * type, inside the caller's transaction. For a module's own data correction that moves an
+   * attachment from one of its records to another (fleet «تصحيح أرقام الكروت»: a fuel card's photo
+   * travels with the card number), so that the owning entity's authorizer (ADR-023) is asked about
+   * the record that shows the file now, and the Files listing files it there. No bytes move and no
+   * version is added; the module and the entity type are part of the filter, so a file can never
+   * change owner module or entity type this way. Not request-driven: the caller has authorized the
+   * correction and audits it on its own entity. Returns how many version rows were re-pointed —
+   * `0` when `fileId` is no file of that module and type.
+   */
+  async reassignEntity(
+    fileId: string,
+    to: { moduleId: string; entityType: string; entityId: string },
+    session: ClientSession,
+  ): Promise<number> {
+    return fileRepository.reassignGroupEntity(fileId, to, to.entityId, session);
   }
 
   // ── Reads ──────────────────────────────────────────────────────────────────

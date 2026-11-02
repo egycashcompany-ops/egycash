@@ -80,13 +80,26 @@ export const formatBusinessDateTime = (
   locale: Locale,
 ): string => {
   const d = toDate(value);
-  return d === null
-    ? PLACEHOLDER
-    : new Intl.DateTimeFormat(intlLocale(locale), {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone: CAIRO_TZ,
-      }).format(d);
+  return d === null ? PLACEHOLDER : businessDateTimeFormat(locale).format(d);
+};
+
+/**
+ * One formatter per locale, made once: building an `Intl.DateTimeFormat` costs far more than
+ * using one, and the ATM boards format every row's time on every tick of their clock — and again
+ * for a column filter's list of every value.
+ */
+const businessDateTimeFormats = new Map<Locale, Intl.DateTimeFormat>();
+const businessDateTimeFormat = (locale: Locale): Intl.DateTimeFormat => {
+  let format = businessDateTimeFormats.get(locale);
+  if (format === undefined) {
+    format = new Intl.DateTimeFormat(intlLocale(locale), {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: CAIRO_TZ,
+    });
+    businessDateTimeFormats.set(locale, format);
+  }
+  return format;
 };
 
 export const formatNumber = (value: number | null | undefined, locale: Locale): string =>

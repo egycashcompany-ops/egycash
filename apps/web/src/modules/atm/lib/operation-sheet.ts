@@ -41,8 +41,8 @@ export interface SheetColumn<T> {
    */
   copy?: boolean;
   /**
-   * What the column's filter box matches, when the cell SHOWS more than `text` — the maintenance
-   * board's service with its «بريد» badge. Absent: the box matches `text`.
+   * What the column's filter lists, when the cell SHOWS more than `text` — the maintenance
+   * board's service with its «بريد» badge, a value of its own. Absent: the list holds `text`.
    */
   filterText?: (row: T) => string;
 }
@@ -161,7 +161,7 @@ export const maintenanceColumns = (
       header: t('atm.maintenance.serviceType'),
       text: (row, empty) => orEmpty(row.serviceType, empty),
       copy: page === 'open',
-      // The open board draws a «بريد» badge beside a mail-opened service; its box matches it too.
+      // The open board draws a «بريد» badge beside a mail-opened service; its list names it too.
       ...(page === 'open'
         ? {
             filterText: (row: AtmMaintenanceDto) =>
@@ -309,9 +309,9 @@ export const statementTitle = (
 
 /**
  * The line under the printed title: the bank and area filters in force, by name, then the column
- * boxes, each under its column's header. A filter in force is never left off the page — a
- * statement narrowed to one bank, or to the codes holding «70», that printed without saying so
- * would read as the company's. Empty when nothing narrows it.
+ * filters, each under its column's header with the values picked in it. A filter in force is never
+ * left off the page — a statement narrowed to one bank, or to two codes, that printed without
+ * saying so would read as the company's. Empty when nothing narrows it.
  */
 export const statementFilterLine = (
   t: Translate,
@@ -319,8 +319,8 @@ export const statementFilterLine = (
   filters: {
     banks: readonly string[];
     areas: readonly string[];
-    /** The column boxes in force, by header — «الكود: «704»» (`columnFilterEntries`). */
-    columns?: readonly { header: string; typed: string }[];
+    /** The column filters in force, by header — «الكود: «704، 705»» (`columnFilterEntries`). */
+    columns?: readonly { header: string; picked: readonly string[] }[];
   },
 ): string =>
   [
@@ -331,24 +331,33 @@ export const statementFilterLine = (
       ? null
       : t('atm.export.areasAre', { names: filters.areas.join(listSeparator(locale)) }),
     ...(filters.columns ?? []).map((entry) =>
-      t('atm.export.columnIs', { column: entry.header, value: entry.typed }),
+      t('atm.export.columnIs', {
+        column: entry.header,
+        // An empty cell picked is named as its list names it: «(فارغ)».
+        value: entry.picked
+          .map((value) => (value === '' ? t('common.filters.blank') : value))
+          .join(listSeparator(locale)),
+      }),
     ),
   ]
     .filter((part): part is string => part !== null)
     .join(' · ');
 
 /**
- * Pure: the column boxes that narrow the table, in the table's column order, each under its
- * header — what the statement's filter line names. A box for a column the table lacks is left out.
+ * Pure: the column filters that narrow the table, in the table's column order, each under its
+ * header with its picks — what the statement's filter line names. A filter for a column the table
+ * lacks is left out.
  */
 export const columnFilterEntries = (
   columns: readonly { key: string; header: string }[],
   values: ColumnFilterValues,
-): { header: string; typed: string }[] => {
-  const typedByKey = new Map(activeColumnFilters(values).map((entry) => [entry.key, entry.typed]));
+): { header: string; picked: readonly string[] }[] => {
+  const pickedByKey = new Map(
+    activeColumnFilters(values).map((entry) => [entry.key, entry.picked]),
+  );
   return columns.flatMap((column) => {
-    const typed = typedByKey.get(column.key);
-    return typed === undefined ? [] : [{ header: column.header, typed }];
+    const picked = pickedByKey.get(column.key);
+    return picked === undefined ? [] : [{ header: column.header, picked }];
   });
 };
 

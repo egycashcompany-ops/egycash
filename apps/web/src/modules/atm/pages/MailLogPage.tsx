@@ -13,7 +13,8 @@
 //     leaves /atm/maintenance with it while that maintenance is still open — a closed one is
 //     finished work, and the server refuses the restore (`meta.refused`), which a toast names;
 //   · (2026-11-02) that row sits on the title's line («عايز تطلع الصف بتاع الـ Form يبقي بجانب
-//     العنوان»), and a box under every column narrows the rows further («فلتر لكل عمود»).
+//     العنوان»), and a list under every column narrows the rows further («فلتر لكل عمود», a
+//     multi-pick drop-down: «يكون Drop Down بـ Multi select»).
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type AtmMailTicketDto, type AtmMailTicketStatus } from '@ecms/contracts';
@@ -33,7 +34,7 @@ import { UndoIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
-import { filterRowsByColumns } from '../../../shared/lib/column-filter';
+import { columnFilterChoicesOf, filterRowsByColumns } from '../../../shared/lib/column-filter';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { useAtmMailLog, useRestoreAtmMailTickets } from '../api/atm-queries';
 import { cairoToday, doneRange, joinCodes } from '../lib/operation-view';
@@ -92,16 +93,12 @@ export const MailLogPage = (): JSX.Element => {
   const filters = useMemo(() => readMailFilters(sp), [sp]);
   const status = readMailStatus(sp);
   const filtered = useMemo(() => filterMailTickets(read, filters, status), [read, filters, status]);
-  // The boxes under the head narrow what the filters above kept, on what each cell shows.
+  // The lists under the head narrow what the filters above kept, on what each cell shows.
   const columnFilters = useColumnFilters();
+  const cellText = useMemo(() => mailCellText(t, locale, { duplicateBadge: false }), [t, locale]);
   const rows = useMemo(
-    () =>
-      filterRowsByColumns(
-        filtered,
-        columnFilters.values,
-        mailCellText(t, locale, { duplicateBadge: false }),
-      ),
-    [filtered, columnFilters.values, t, locale],
+    () => filterRowsByColumns(filtered, columnFilters.values, cellText),
+    [filtered, columnFilters.values, cellText],
   );
   const options = useMemo(() => mailFilterOptions(read, filters), [read, filters]);
 
@@ -257,7 +254,7 @@ export const MailLogPage = (): JSX.Element => {
                   // `replace`: a pause in typing is not a step the Back button should walk through.
                   onChange={(text) => setSp(withMailParam(sp, 'q', text), { replace: true })}
                 />
-                {/* Clears the status and the column boxes too — every narrowing, but never the range. */}
+                {/* Clears the status and the column filters too — every narrowing, but never the range. */}
                 <BoardResetButton
                   active={isMailFiltered(filters, status) || columnFilters.active}
                   onReset={() => {
@@ -291,9 +288,9 @@ export const MailLogPage = (): JSX.Element => {
             columnFilters={{
               values: columnFilters.values,
               onChange: columnFilters.set,
+              choices: columnFilterChoicesOf(filtered, columnFilters.values, cellText),
               generation: columnFilters.generation,
               label: (header) => t('atm.common.filterColumn', { column: header }),
-              placeholder: t('atm.common.filterPlaceholder'),
             }}
             // The outcome's paint, reaching the pinned button's cell too (`MAIL_ROW_PAINT`).
             rowClassName={(row) => ROW_CLASS[row.status]}

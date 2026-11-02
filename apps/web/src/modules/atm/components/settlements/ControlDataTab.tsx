@@ -3,25 +3,30 @@
 // the crew line it travels on. «النوع» and «المنطقة» are the seals sheet's TYPE and HUB. A
 // duplicate shows ⚠ with Preparation's own words (DS-15); expanding a row lists its seals.
 //
-// A ROW OF FILTER BOXES under the head, one per column (2026-11-02, «فلتر لكل عمود»): the PAGE
-// keeps what they hold and hands this tab the lines they keep (`filterControlLines`). Each box
-// matches the text its cell shows — the QR itself, «٢ من ٢» for the seals, the route's name.
+// A ROW OF FILTER LISTS under the head, one multi-pick drop-down per column (2026-11-02, «فلتر لكل
+// عمود», «يكون Drop Down بـ Multi select»): the PAGE keeps what they hold and hands this tab the
+// lines they keep (`filterControlLines`). Each list holds the texts its column's cells show — the QR itself, «٢ من ٢» for the seals, the route's name.
 import { Fragment, useState } from 'react';
 import { type AtmControlDayDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { cn } from '../../../../shared/lib/cn';
-import { filterRowsByColumns, type ColumnFilterValues } from '../../../../shared/lib/column-filter';
+import {
+  columnFilterChoices,
+  filterRowsByColumns,
+  type ColumnFilterValues,
+} from '../../../../shared/lib/column-filter';
 import { formatNumber } from '../../../../shared/lib/format';
 import { Badge } from '../../../../shared/ui/Badge';
-import { ColumnFilterBox } from '../../../../shared/ui/ColumnFilterBox';
+import { ColumnFilterSelect } from '../../../../shared/ui/ColumnFilterSelect';
 import { type ColumnFilters } from '../../../../shared/ui/useColumnFilters';
 import { ChevronIcon } from '../../../../shared/ui/icons';
 import { formatTime12 } from '../../lib/settlement-dates';
 import {
-  PREPARATION_STATUS_TONE,
   formatEgp,
   lineCode,
+  PREPARATION_STATUS_TONE,
   preparationStatusKey,
+  runFirst,
   runLabel,
 } from '../../lib/settlement-view';
 import { type BankLookup } from '../../lib/bank-catalog';
@@ -69,8 +74,8 @@ const sealsText = (line: ControlLine, t: Translate, locale: Locale): string =>
   });
 
 /**
- * Pure: what a line's cell in that column shows, as text — what its filter box matches. Null for a
- * column the table does not have.
+ * Pure: what a line's cell in that column shows, as text — what its column filter lists. Null for
+ * a column the table does not have.
  */
 export const controlLineText = (
   line: ControlLine,
@@ -121,7 +126,7 @@ export const controlLineText = (
 export const routeNames = (day: Pick<AtmControlDayDto, 'routes'>): Map<string, string> =>
   new Map(day.routes.map((r) => [r.id, r.name]));
 
-/** Pure: the day's lines every box keeps, in the server's order. */
+/** Pure: the day's lines every column filter keeps, in the server's order. */
 export const filterControlLines = (
   lines: readonly ControlLine[],
   values: ColumnFilterValues,
@@ -130,8 +135,12 @@ export const filterControlLines = (
   filterRowsByColumns(lines, values, (line, key) => controlLineText(line, key, context));
 
 const TH = 'px-3 py-2.5 text-start text-xs font-semibold text-slate-600 dark:text-slate-300';
-/** The filter row's cells: the head's side gutter, so each box sits under its own header. */
-const FILTER_TH = 'px-3 pb-2 font-normal';
+/**
+ * The filter row's cells: a gutter a step narrower than the head's. Thirteen lists, each with the
+ * floor that keeps «الكل» whole, would otherwise push the tab past its `min-w-[72rem]` and add a
+ * sideways scroll the text boxes never needed; a list still sits under its own header.
+ */
+const FILTER_TH = 'px-2 pb-2 font-normal';
 const TD = 'px-3 py-2.5 align-middle text-sm text-slate-700 dark:text-slate-200';
 
 /** A bag's QR cell: the value, or «—», with ⚠ and the warning's words when it is a duplicate. */
@@ -164,9 +173,12 @@ export const ControlDataTab = ({
   banks,
   columnFilters,
 }: {
-  /** The whole day — `day.lines` is what the boxes narrow, and an empty row blames them only then. */
+  /**
+   * The whole day — `day.lines` is what the column filters narrow and what their lists offer, and
+   * an empty row blames them only when it holds lines.
+   */
   day: AtmControlDayDto;
-  /** The day's lines the filter boxes keep (`filterControlLines`) — the page filters. */
+  /** The day's lines the column filters keep (`filterControlLines`) — the page filters. */
   lines: readonly ControlLine[];
   locale: Locale;
   /** The catalog's bank names (DEC-35): a line of a bank added since the workbook is named too. */
@@ -203,17 +215,25 @@ export const ControlDataTab = ({
               </th>
             ))}
           </tr>
-          {/* The filter row sticks with the head: the seals toggle's column takes no box. */}
+          {/* The filter row sticks with the head: the seals toggle's column takes no list. */}
           <tr key={`filters-${String(columnFilters.generation)}`} data-column-filters="true">
             <th className={FILTER_TH} />
             {CONTROL_LINE_COLUMNS.map((column) => (
               <th key={column.key} className={FILTER_TH}>
-                <ColumnFilterBox
-                  value={columnFilters.values[column.key] ?? ''}
-                  onValueChange={(typed) => columnFilters.set(column.key, typed)}
+                <ColumnFilterSelect
+                  value={columnFilters.values[column.key] ?? []}
+                  choices={() =>
+                    columnFilterChoices(
+                      day.lines,
+                      columnFilters.values,
+                      column.key,
+                      (line, key) => controlLineText(line, key, { t, locale, banks, routeName }),
+                      runFirst,
+                    )
+                  }
+                  onChange={(picked) => columnFilters.set(column.key, picked)}
                   label={t('atm.common.filterColumn', { column: t(column.header) })}
                   columnKey={column.key}
-                  placeholder={t('atm.common.filterPlaceholder')}
                 />
               </th>
             ))}

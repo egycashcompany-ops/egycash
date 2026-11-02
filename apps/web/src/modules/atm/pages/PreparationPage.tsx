@@ -17,10 +17,11 @@
 // THE DAY IS THE SERVER'S SUGGESTION (DS-25) — the earliest day from today with issued lines not yet
 // prepared — and is never remembered; `bank` is; `line` is a selection.
 //
-// A ROW OF FILTER BOXES under the lines' head, one per column (2026-11-02, «فلتر لكل عمود»),
+// A ROW OF FILTER LISTS under the lines' head, one multi-pick drop-down per column (2026-11-02,
+// «فلتر لكل عمود», «يكون Drop Down بـ Multi select»),
 // narrows the list the page shows. «المسلسل أو رقم الماكينة» still searches the whole day — a scan
 // must always find its Note — and the line it opens shows in the capture whole, under its code,
-// even while a box hides its row.
+// even while a list hides its row.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -33,13 +34,17 @@ import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
-import { filterRowsByColumns, type ColumnFilterValues } from '../../../shared/lib/column-filter';
+import {
+  columnFilterChoices,
+  filterRowsByColumns,
+  type ColumnFilterValues,
+} from '../../../shared/lib/column-filter';
 import { formatNumber } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
 import { BOARD_FRAME } from '../../../shared/ui/board-scroll';
-import { ColumnFilterBox } from '../../../shared/ui/ColumnFilterBox';
+import { ColumnFilterSelect } from '../../../shared/ui/ColumnFilterSelect';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import { SettlementDialog } from '../components/settlements/SettlementDialog';
 import { Field, Input, Select } from '../../../shared/ui/form';
@@ -83,6 +88,7 @@ import {
   PREPARATION_STATUS_TONE,
   preparationStatusKey,
   prepStateOf,
+  runFirst,
   runLabel,
   settlementErrorText,
   settlementErrorToast,
@@ -174,7 +180,7 @@ export const prepLineText = (
   }
 };
 
-/** Pure: the day's lines every box keeps, in the server's order. */
+/** Pure: the day's lines every column filter keeps, in the server's order. */
 export const filterPrepLines = (
   lines: readonly AtmPreparationLineDto[],
   values: ColumnFilterValues,
@@ -213,7 +219,7 @@ export const PreparationPage = (): JSX.Element => {
   const lines = useMemo(() => linesQuery.data ?? [], [linesQuery.data]);
   const lineParam = sp.get('line');
   const selected = lines.find((l) => l.lineId === lineParam) ?? null;
-  // The boxes narrow what the list shows; the find and the open line read the whole day.
+  // The column filters narrow what the list shows; the find and the open line read the whole day.
   const columnFilters = useColumnFilters();
   const shownLines = useMemo(
     () => filterPrepLines(lines, columnFilters.values, t, locale),
@@ -550,19 +556,27 @@ export const PreparationPage = (): JSX.Element => {
                       </th>
                     ))}
                   </tr>
-                  {/* The filter row, one box per column, sticking with the head. */}
+                  {/* The filter row, one list per column, sticking with the head. */}
                   <tr
                     key={`filters-${String(columnFilters.generation)}`}
                     data-column-filters="true"
                   >
                     {PREP_LINE_COLUMNS.map((column) => (
                       <th key={column.key} className="px-3 pb-2 font-normal">
-                        <ColumnFilterBox
-                          value={columnFilters.values[column.key] ?? ''}
-                          onValueChange={(typed) => columnFilters.set(column.key, typed)}
+                        <ColumnFilterSelect
+                          value={columnFilters.values[column.key] ?? []}
+                          choices={() =>
+                            columnFilterChoices(
+                              lines,
+                              columnFilters.values,
+                              column.key,
+                              (line, key) => prepLineText(line, key, t, locale),
+                              runFirst,
+                            )
+                          }
+                          onChange={(picked) => columnFilters.set(column.key, picked)}
                           label={t('atm.common.filterColumn', { column: t(column.header) })}
                           columnKey={column.key}
-                          placeholder={t('atm.common.filterPlaceholder')}
                         />
                       </th>
                     ))}

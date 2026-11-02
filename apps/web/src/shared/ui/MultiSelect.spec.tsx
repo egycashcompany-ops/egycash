@@ -15,6 +15,9 @@ import { localeSlice } from '../../store/localeSlice';
 import {
   MultiSelect,
   emptyListText,
+  floatingSpot,
+  triggerInSight,
+  withAllMatches,
   multiSelectKey,
   nextActiveOption,
   optionLabel,
@@ -64,8 +67,16 @@ const CARS = [
 
 /** People, where the VALUE is an opaque id rather than the thing the reader recognises. */
 const DRIVERS = [
-  { value: '6a9c87ff7ae99d20407ded49', label: 'محمد حاتم البنداري — 0100022', shortLabel: 'محمد حاتم البنداري' },
-  { value: '6a9d579fe017f8c85ade413b', label: 'جمال أحمد محمد — 0100031', shortLabel: 'جمال أحمد محمد' },
+  {
+    value: '6a9c87ff7ae99d20407ded49',
+    label: 'محمد حاتم البنداري — 0100022',
+    shortLabel: 'محمد حاتم البنداري',
+  },
+  {
+    value: '6a9d579fe017f8c85ade413b',
+    label: 'جمال أحمد محمد — 0100031',
+    shortLabel: 'جمال أحمد محمد',
+  },
 ];
 
 // The IT registers' name filter: a list that could not be READ must not claim nothing matched.
@@ -103,7 +114,9 @@ describe('optionLabel — what one chosen value is CALLED', () => {
 
   it('is the SAME answer the trigger gives, so chip and trigger cannot disagree', () => {
     const ids = DRIVERS.map((d) => d.value);
-    expect(selectionSummary(DRIVERS, ids, 3)).toBe(ids.map((id) => optionLabel(DRIVERS, id)).join(', '));
+    expect(selectionSummary(DRIVERS, ids, 3)).toBe(
+      ids.map((id) => optionLabel(DRIVERS, id)).join(', '),
+    );
   });
 });
 
@@ -512,5 +525,198 @@ describe('the caret stays in the search box — «عاوز المؤسر يفضل
     );
     expect(opening).toContain('setEdge(');
     expect(opening).not.toContain('setActive(');
+  });
+});
+
+describe('a list that floats — a table’s column filter, «يكون Drop Down بـ Multi select»', () => {
+  const viewport = { width: 1366, height: 768, rtl: true };
+  const trigger = { top: 200, bottom: 232, left: 900, right: 1000 };
+
+  it('opens under the trigger, along the text from its start edge — the right, in Arabic', () => {
+    const spot = floatingSpot(trigger, 256, viewport);
+    expect(spot.below).toBe(true);
+    expect(spot.top).toBe(236);
+    expect(spot.left).toBe(1000 - 256);
+    expect(spot.maxHeight).toBe(288);
+    expect(floatingSpot(trigger, 256, { ...viewport, rtl: false }).left).toBe(900);
+  });
+
+  it('never past either side of the screen', () => {
+    expect(floatingSpot({ ...trigger, left: 0, right: 100 }, 256, viewport).left).toBe(8);
+    expect(
+      floatingSpot({ ...trigger, left: 1300, right: 1366 }, 256, { ...viewport, rtl: false }).left,
+    ).toBe(1366 - 256 - 8);
+  });
+
+  it('opens above a trigger near the bottom, its bottom on the trigger — as tall as the room', () => {
+    const low = { ...trigger, top: 700, bottom: 732 };
+    const spot = floatingSpot(low, 256, viewport);
+    expect(spot.below).toBe(false);
+    expect(spot.bottom).toBe(768 - 700 + 4);
+    expect(spot.maxHeight).toBe(288);
+    // Little room either side: the larger side, as tall as it allows.
+    const short = floatingSpot({ ...trigger, top: 150, bottom: 182 }, 256, {
+      ...viewport,
+      height: 300,
+    });
+    expect(short.below).toBe(false);
+    expect(short.maxHeight).toBe(150 - 4 - 8);
+  });
+
+  it('the compact trigger is shorter and smaller, the filter bar’s is as it was', () => {
+    const props = { label: 'L', options: [], value: [], onChange: () => {} };
+    expect(render(<MultiSelect {...props} size="sm" />)).toMatch(
+      /<button[^>]*class="[^"]*\bh-8 py-1 text-xs\b/,
+    );
+    const plain = render(<MultiSelect {...props} />);
+    expect(plain).toMatch(/<button[^>]*class="[^"]*\bpy-2 text-sm\b/);
+    expect(plain).not.toContain('h-8');
+  });
+
+  it('a closed list asks for no values (`loadOptions`) and names its picks from `options`', () => {
+    const markup = render(
+      <MultiSelect
+        label="L"
+        options={[{ value: 'a', label: 'SYN A' }]}
+        loadOptions={() => {
+          throw new Error('closed');
+        }}
+        value={['a']}
+        onChange={() => {}}
+        showSelectedValues
+      />,
+    );
+    expect(markup).toContain('SYN A');
+  });
+
+  it('leads Tab through a floating panel’s own controls, closing at either end', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    const start = source.indexOf("if (floating && open && e.key === 'Tab')");
+    expect(start).toBeGreaterThan(0);
+    const tab = source.slice(start, source.indexOf('const from =', start));
+    // From the trigger, into the panel's first stop.
+    expect(tab).toContain('first.focus()');
+    // Out at either end: the list closes, the focus goes on from the trigger.
+    // The next stop by document order — the focus may sit on a scrolling list, not a stop.
+    expect(tab).toContain('items.find((item) => followsInDocument(target, item))');
+    expect(tab).toContain('next.focus()');
+    expect(tab).toContain('setOpen(false)');
+    expect(tab).toContain('triggerRef.current?.focus()');
+    expect(tab).toContain('if (e.shiftKey) e.preventDefault()');
+    // The options are the arrows', not Tab's — in a floating list only.
+    // Neither the options nor their scrolling list.
+    expect(source.split('{...(floating ? { tabIndex: -1 } : {})}')).toHaveLength(3);
+  });
+
+  it('brings a half-hidden trigger into sight when its floating list opens', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    const effect = source.slice(source.indexOf('if (!placedRef.current) {'));
+    expect(
+      effect.indexOf("scrollIntoView?.({ block: 'nearest', inline: 'nearest' })"),
+    ).toBeLessThan(effect.indexOf('const place = (): void =>'));
+  });
+
+  it('Enter in the search ticks every match, and unticks them when all are ticked', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('pickAllMatches(allMatchesPicked);');
+    // The same words twice still change the live region.
+    expect(source).toContain('(last === words ? `${words}\\u00A0` : words)');
+  });
+
+  it('offers «every match» only while the search looks for a letter or a digit', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toMatch(
+      /const matchesRow =\s+pickMatches && !remote && \/\[\\p\{L\}\\p\{N\}\]\/u\.test\(query\)/,
+    );
+    // The owner's matcher, when given, replaces the app's own rule.
+    expect(source).toContain('(match ?? foldIncludes)(o.label, query)');
+  });
+
+  it('closes when its trigger scrolls out of sight — off the screen or out of a clipping box', () => {
+    const trigger = { top: 200, bottom: 232, left: 900, right: 1000 };
+    const table = { top: 150, bottom: 700, left: 300, right: 1200 };
+    expect(triggerInSight(trigger, [table], 1366, 768)).toBe(true);
+    // The table turned sideways: the trigger left the table's box.
+    expect(triggerInSight({ ...trigger, left: 1250, right: 1350 }, [table], 1366, 768)).toBe(false);
+    // The page scrolled the trigger up under the top bar, out of the page's scroll box.
+    expect(
+      triggerInSight({ ...trigger, top: 30, bottom: 62 }, [{ ...table, top: 56 }], 1366, 768),
+    ).toBe(false);
+    // Off the screen with no clipping box at all.
+    expect(triggerInSight({ ...trigger, top: -40, bottom: -8 }, [], 1366, 768)).toBe(false);
+  });
+
+  it('names its picks to a screen reader — the question, then what is picked', () => {
+    const props = {
+      label: 'فلترة الكود',
+      options: [
+        { value: 'a', label: '70493' },
+        { value: 'b', label: '70492' },
+      ],
+      onChange: () => {},
+    };
+    const named = render(<MultiSelect {...props} value={['a', 'b']} showSelectedValues />, 'ar');
+    expect(named).toContain('aria-label="فلترة الكود"');
+    const described = /aria-describedby="([^"]+)"/.exec(named)?.[1] ?? '';
+    expect(described).not.toBe('');
+    expect(named).toContain(`id="${described}" class="max-w-48 truncate" title="70493, 70492"`);
+    // A count-only trigger, and nothing picked, describe nothing.
+    expect(render(<MultiSelect {...props} value={['a']} />, 'ar')).not.toContain(
+      'aria-describedby',
+    );
+    expect(render(<MultiSelect {...props} value={[]} showSelectedValues />, 'ar')).not.toContain(
+      'aria-describedby',
+    );
+  });
+
+  it('makes a lazy list once per opening and pick, and never sets an unchanged spot', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('[open, pickedKey, loadOptions === undefined]');
+    expect(source).not.toMatch(/const listed = open && loadOptions/);
+    expect(source).not.toContain('setSpot((current)');
+    expect(source).toContain('if (sameSpot(spotRef.current, next)) return;');
+  });
+
+  it('a press on the floating panel is not a press outside it', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'MultiSelect.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('useOnClickOutside(insideRefs');
+    expect(source).toContain('[boxRef, panelRef]');
+    expect(source).toContain('createPortal(panel, document.body)');
+  });
+});
+
+describe('«every match» — what it does to the picks', () => {
+  it('adds the matches not yet picked after the picks, in the list’s order, once each', () => {
+    expect(withAllMatches(['b', 'x'], ['a', 'b', 'c'], false)).toEqual(['b', 'x', 'a', 'c']);
+    expect(withAllMatches([], ['a', 'b'], false)).toEqual(['a', 'b']);
+  });
+
+  it('drops exactly the matches, keeping every other pick in its order', () => {
+    expect(withAllMatches(['x', 'a', 'y', 'b'], ['a', 'b', 'c'], true)).toEqual(['x', 'y']);
+    expect(withAllMatches(['x'], [], true)).toEqual(['x']);
+  });
+
+  it('never changes what it was given', () => {
+    const value = ['a'];
+    withAllMatches(value, ['b'], false);
+    expect(value).toEqual(['a']);
   });
 });

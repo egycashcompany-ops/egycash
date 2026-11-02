@@ -16,7 +16,8 @@
 //     in the browser (`lib/mail-view.ts`), its dropdowns drawn from the rows read; the address bar
 //     carries it, a visit restores it, and the red reset clears it, as on the boards;
 //   · (2026-11-02) that row sits on the title's line («عايز تطلع الصف بتاع الـ Form يبقي بجانب
-//     العنوان»), a box under every column narrows the rows further («فلتر لكل عمود»), and F8
+//     العنوان»), a list under every column narrows the rows further («فلتر لكل عمود», a multi-pick
+//     drop-down: «يكون Drop Down بـ Multi select»), and F8
 //     brings the head's «select all» back, as on the boards — «في رسائل الصيانة /atm/mail-tickets
 //     عايزك تزود موضوع الـ Select All من خلال F8» (it was removed outright on 2026-10-28).
 import { useMemo, useState } from 'react';
@@ -38,7 +39,7 @@ import { CheckIcon, CloseIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDateTime } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
-import { filterRowsByColumns } from '../../../shared/lib/column-filter';
+import { columnFilterChoicesOf, filterRowsByColumns } from '../../../shared/lib/column-filter';
 import { useColumnFilters } from '../../../shared/ui/useColumnFilters';
 import {
   useAcceptAtmMailTickets,
@@ -77,19 +78,15 @@ export const MailTicketsPage = (): JSX.Element => {
   const filters = useMemo(() => readMailFilters(sp), [sp]);
   const filtered = useMemo(() => filterMailTickets(pending, filters), [pending, filters]);
   const options = useMemo(() => mailFilterOptions(pending, filters), [pending, filters]);
-  // The boxes under the head narrow what the filters above kept, on what each cell shows.
+  // The lists under the head narrow what the filters above kept, on what each cell shows.
   const columnFilters = useColumnFilters();
+  const cellText = useMemo(() => mailCellText(t, locale, { duplicateBadge: true }), [t, locale]);
   const rows = useMemo(
-    () =>
-      filterRowsByColumns(
-        filtered,
-        columnFilters.values,
-        mailCellText(t, locale, { duplicateBadge: true }),
-      ),
-    [filtered, columnFilters.values, t, locale],
+    () => filterRowsByColumns(filtered, columnFilters.values, cellText),
+    [filtered, columnFilters.values, cellText],
   );
 
-  // Selection is over the rows on screen: a mail the filters or the boxes hide is never decided
+  // Selection is over the rows on screen: a mail the filters or the column filters hide is never decided
   // unseen — F8's «select all» checks exactly these.
   const selection = useTableSelection(rows.map((row) => row.id));
   const byId = new Map(rows.map((row) => [row.id, row]));
@@ -238,7 +235,7 @@ export const MailTicketsPage = (): JSX.Element => {
                   // `replace`: a pause in typing is not a step the Back button should walk through.
                   onChange={(text) => setSp(withMailParam(sp, 'q', text), { replace: true })}
                 />
-                {/* One reset for everything that narrows the list: the filters and the boxes. */}
+                {/* One reset for everything that narrows the list: the filters and the column filters. */}
                 <BoardResetButton
                   active={isMailFiltered(filters) || columnFilters.active}
                   onReset={() => {
@@ -274,9 +271,9 @@ export const MailTicketsPage = (): JSX.Element => {
             columnFilters={{
               values: columnFilters.values,
               onChange: columnFilters.set,
+              choices: columnFilterChoicesOf(filtered, columnFilters.values, cellText),
               generation: columnFilters.generation,
               label: (header) => t('atm.common.filterColumn', { column: header }),
-              placeholder: t('atm.common.filterPlaceholder'),
             }}
             // The duplicate row paint — the legacy's yellow background (:771), as a row class that
             // reaches the pinned buttons' cell too (`MAIL_ROW_PAINT`).

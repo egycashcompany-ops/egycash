@@ -11,6 +11,7 @@
 //  • The list is searchable and folds Arabic spelling, because a stage or branch list gets long and
 //    scrolling to find one entry is slower than typing three letters of it.
 import { useEffect, useId, useMemo, useRef, useState, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../lib/cn';
 import { type ControlDensity } from './form';
 import { foldIncludes } from '../lib/fold';
@@ -147,6 +148,114 @@ export const emptyListText = (
   { searching, emptyText }: { searching: boolean; emptyText?: string | undefined },
 ): string => (searching ? t('common.loading') : (emptyText ?? t('common.noResults')));
 
+/**
+ * Pure: the picks after «every match» (`pickMatches`) — the matches not yet picked added after the
+ * picks, in the list's order; or, with `drop`, exactly the matches taken out and every other pick
+ * kept.
+ */
+export const withAllMatches = (
+  value: readonly string[],
+  matches: readonly string[],
+  drop: boolean,
+): string[] => {
+  if (drop) {
+    const found = new Set(matches);
+    return value.filter((v) => !found.has(v));
+  }
+  const had = new Set(value);
+  return [...value, ...matches.filter((m) => !had.has(m))];
+};
+
+/** Does `later` come after `earlier` in the document? */
+const followsInDocument = (earlier: Node, later: Node): boolean =>
+  earlier !== later &&
+  (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+  !earlier.contains(later);
+
+/** The controls of a floating panel that Tab stops at, in order — its options are not among them. */
+const panelTabStops = (panel: HTMLElement): HTMLElement[] =>
+  [...panel.querySelectorAll<HTMLElement>('input, button, [tabindex]')].filter(
+    (el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled,
+  );
+
+/** Where a floating panel sits, in the viewport's terms (`floating`). */
+export interface FloatingSpot {
+  left: number;
+  /** Below the trigger: its top edge. */
+  top: number;
+  /** Above the trigger: its bottom edge, from the viewport's bottom. */
+  bottom: number;
+  maxHeight: number;
+  below: boolean;
+}
+
+/** The panel's tallest — `max-h-72`, as the panel that does not float. */
+const PANEL_MAX = 288;
+
+/**
+ * Pure: where a floating panel goes for a trigger at `trigger` in a viewport of `viewport`.
+ * Along the text from the trigger's start edge, as the panel that does not float, but never past
+ * either side of the screen; below the trigger unless there is more room above and the list
+ * does not fit below; as tall as the room on its side allows, up to the usual height.
+ */
+export const floatingSpot = (
+  trigger: { top: number; bottom: number; left: number; right: number },
+  width: number,
+  viewport: { width: number; height: number; rtl: boolean },
+): FloatingSpot => {
+  const gap = 4;
+  const edge = 8;
+  const start = viewport.rtl ? trigger.right - width : trigger.left;
+  const left = Math.max(edge, Math.min(start, viewport.width - width - edge));
+  const roomBelow = viewport.height - trigger.bottom - gap - edge;
+  const roomAbove = trigger.top - gap - edge;
+  const below = roomBelow >= PANEL_MAX || roomBelow >= roomAbove;
+  return {
+    left,
+    top: trigger.bottom + gap,
+    bottom: viewport.height - trigger.top + gap,
+    maxHeight: Math.max(96, Math.min(PANEL_MAX, below ? roomBelow : roomAbove)),
+    below,
+  };
+};
+
+/** The boxes that clip an element: every ancestor whose overflow is not `visible`. */
+const scrollBoxes = (element: HTMLElement): DOMRect[] => {
+  const boxes: DOMRect[] = [];
+  for (let at = element.parentElement; at !== null && at !== document.body; at = at.parentElement) {
+    const style = getComputedStyle(at);
+    if (`${style.overflowX} ${style.overflowY}` !== 'visible visible') {
+      boxes.push(at.getBoundingClientRect());
+    }
+  }
+  return boxes;
+};
+
+/**
+ * Pure: can the reader still see the trigger — is its middle inside the screen and inside every
+ * box that clips it? A floating panel whose trigger has scrolled away closes (`floating`).
+ */
+export const triggerInSight = (
+  trigger: { top: number; bottom: number; left: number; right: number },
+  clips: readonly { top: number; bottom: number; left: number; right: number }[],
+  width: number,
+  height: number,
+): boolean => {
+  const x = (trigger.left + trigger.right) / 2;
+  const y = (trigger.top + trigger.bottom) / 2;
+  return [{ top: 0, bottom: height, left: 0, right: width }, ...clips].every(
+    (box) => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom,
+  );
+};
+
+const sameSpot = (a: FloatingSpot | null, b: FloatingSpot): boolean =>
+  a !== null &&
+  a.left === b.left &&
+  a.top === b.top &&
+  a.bottom === b.bottom &&
+  a.maxHeight === b.maxHeight &&
+  a.below === b.below;
+
 export const MultiSelect = ({
   label,
   options,
@@ -168,6 +277,11 @@ export const MultiSelect = ({
   clearSearchOnPick = false,
   panelWidth,
   clearable = false,
+  floating = false,
+  pickMatches = false,
+  match,
+  loadOptions,
+  size = 'default',
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -283,6 +397,43 @@ export const MultiSelect = ({
    * it on for every multi-pick (`fleet-multi-clear.spec.ts`).
    */
   clearable?: boolean;
+  /**
+   * The list opens in a layer of its own over the page, fixed under (or above) the trigger,
+   * instead of inside the control's box. For a control that sits INSIDE a scrolling container —
+   * a table's filter row, «الفلتر الكبير اللى فوق الجداول يكون Drop Down بـ Multi select» — whose
+   * edge would otherwise cut the list off, or make the reader scroll the table to reach it. It
+   * follows the trigger while the page or the table scrolls. Off by default: a filter bar's list
+   * opens where it always did.
+   */
+  floating?: boolean;
+  /**
+   * While something is typed in the search box, a row above the matches picks them ALL — or, when
+   * all are picked, drops them all — and Enter with no option highlighted picks them too. For a
+   * long list of values where the reader means «every one holding 704», as a sheet's own filter
+   * takes what its search box found: a table's column filter, which used to be a box typed into.
+   * Opt-in, and only for a list searched here (not `onSearch`).
+   */
+  pickMatches?: boolean;
+  /**
+   * How the search box matches an option's label, when the app's own rule (`foldIncludes`, which
+   * drops punctuation) would match too much: a table's column filter lists dates and times, and
+   * «2/11» must not find 21/10. Opt-in; a list searched by its owner (`onSearch`) ignores it.
+   */
+  match?: (label: string, query: string) => boolean;
+  /**
+   * The list, asked for only while it is OPEN — `options` then needs to name the chosen values
+   * only, for the closed trigger. For a list that is costly to make and seldom looked at: a
+   * table's filter row has one per column, made from every row, on a board that re-renders every
+   * second for its timers.
+   */
+  loadOptions?: () => readonly MultiSelectOption[];
+  /**
+   * `sm`: a shorter trigger in smaller type, for a row where every control is one of these — a
+   * table's filter row under its head, where a filter-bar trigger would make the head a line
+   * taller than the rows it labels. Not for a bar that mixes this with `Input` or `Select`: see
+   * the trigger's note on why one row of controls must be one height.
+   */
+  size?: 'default' | 'sm';
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -309,14 +460,16 @@ export const MultiSelect = ({
   const [edge, setEdge] = useState<'ArrowDown' | 'ArrowUp' | null>(null);
   // Counts what the KEYS do to the highlight; the list scrolls to it on a key and on nothing else.
   const [steps, setSteps] = useState(0);
-  useOnClickOutside(boxRef, () => setOpen(false), open);
+  // The panel is not inside the box once it floats (`floating`): a press on it is still inside.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const insideRefs = useMemo(() => [boxRef, panelRef], []);
+  useOnClickOutside(insideRefs, () => setOpen(false), open);
   // «لما بفتح دى بتفتح برا الشاشه»: a list wider than its trigger opens toward the page's edge
   // when the trigger sits at that edge — the last filter of a bar. Measured once open, it is
   // pinned to the trigger's other side instead, so it opens back into the screen.
-  const panelRef = useRef<HTMLDivElement>(null);
   const [pin, setPin] = useState<'left' | 'right' | null>(null);
   useLayoutEffect(() => {
-    if (!open) {
+    if (!open || floating) {
       setPin(null);
       return undefined;
     }
@@ -338,16 +491,87 @@ export const MultiSelect = ({
     place();
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
-  }, [open, value.length]);
+  }, [open, value.length, floating]);
 
+  // Where a FLOATING panel sits: fixed to the trigger, in the viewport's terms. Below it when the
+  // list fits there or there is more room below than above; above it otherwise, its bottom on the
+  // trigger's top, so a list that shrinks as it is searched stays against the trigger.
+  //
+  // Measured after every render (the trigger moves when the rows it filters change the columns'
+  // widths), but the state is SET only when the spot really changes — through a ref, never a
+  // same-value `setSpot`: React cannot drop that cheaply right after the control's own update, and
+  // would render every MultiSelect in the app twice for each key.
+  const [spot, setSpot] = useState<FloatingSpot | null>(null);
+  const spotRef = useRef<FloatingSpot | null>(null);
+  // Has this opening been placed once? Its first pass brings the trigger into sight instead.
+  const placedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!open || !floating) {
+      placedRef.current = false;
+      if (spotRef.current !== null) {
+        spotRef.current = null;
+        setSpot(null);
+      }
+      return undefined;
+    }
+    if (!placedRef.current) {
+      // Opened from a trigger half scrolled past its table's edge — the reader clicked the half
+      // they could see: the table turns just enough to show it whole, rather than the list
+      // closing on its first measure as "out of sight" before it was ever drawn.
+      placedRef.current = true;
+      boxRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    }
+    const place = (): void => {
+      const box = boxRef.current;
+      const panel = panelRef.current;
+      if (box === null || panel === null) return;
+      const trigger = box.getBoundingClientRect();
+      // A trigger scrolled out of sight — the table turned sideways, the page scrolled under its
+      // top bar — takes its list with it, rather than leave it hanging over whatever is there.
+      if (!triggerInSight(trigger, scrollBoxes(box), window.innerWidth, window.innerHeight)) {
+        setOpen(false);
+        return;
+      }
+      const next = floatingSpot(trigger, panel.offsetWidth, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        rtl: getComputedStyle(box).direction === 'rtl',
+      });
+      if (sameSpot(spotRef.current, next)) return;
+      spotRef.current = next;
+      setSpot(next);
+    };
+    place();
+    // `capture`: the table's own scroll does not bubble to the window.
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  });
+
+  // A list made only when open (`loadOptions`): closed, `options` names the chosen values. Made
+  // ONCE per opening and per pick — not on every render: a board re-renders every second, and an
+  // arrow key or a typed letter re-renders the control, while a column's list of 1,500 rows takes a
+  // tenth of a second to make. So the list is a SNAPSHOT, taken at the opening and at each pick:
+  // a refetch while it is open (preparation and control poll every minute) reaches it on the next
+  // pick or the next opening.
+  const pickedKey = value.join('\u0000');
+  const loaded = useMemo(
+    () => (open && loadOptions !== undefined ? loadOptions() : null),
+    // Not `loadOptions` itself: it is a new function on every render (see above).
+    [open, pickedKey, loadOptions === undefined],
+  );
+  const listed = loaded ?? options;
   const remote = onSearch !== undefined;
-  const searchable = remote || options.length >= searchThreshold;
+  const searchable = remote || listed.length >= searchThreshold;
   const matches = useMemo(
     () =>
       !remote && searchable && query !== ''
-        ? options.filter((o) => foldIncludes(o.label, query))
-        : options,
-    [options, query, searchable, remote],
+        ? listed.filter((o) => (match ?? foldIncludes)(o.label, query))
+        : listed,
+    [listed, query, searchable, remote, match],
   );
 
   const current = active ?? (edge === null ? null : nextActiveOption(matches, null, edge));
@@ -382,6 +606,32 @@ export const MultiSelect = ({
     searchRef.current?.focus();
   };
 
+  // `pickMatches`: the row over the matches, shown while the search narrows a list searched here.
+  // Only while the search LOOKS for something — a letter or a digit. A lone «/» or «—» matches
+  // every option, and «every match» would then pick the whole list.
+  const matchesRow = pickMatches && !remote && /[\p{L}\p{N}]/u.test(query) && matches.length > 0;
+  const allMatchesPicked = matchesRow && matches.every((o) => value.includes(o.value));
+  // What «every match» just did, for a screen reader: the row is no option the arrows reach, and
+  // Enter in the search box picks without moving anything a reader would hear.
+  // Each announcement differs from the last by a trailing no-break space at most: the same words
+  // twice («تم اختيار 3», then 3 more) would change nothing in the region, and say nothing.
+  const [announced, setAnnounced] = useState('');
+  const pickAllMatches = (drop: boolean): void => {
+    const found = matches.map((o) => o.value);
+    onChange(withAllMatches(value, found, drop));
+    const words = t(drop ? 'common.filters.droppedMatches' : 'common.filters.pickedMatches', {
+      count: found.length,
+    });
+    setAnnounced((last) => (last === words ? `${words}\u00A0` : words));
+    searchRef.current?.focus();
+  };
+  // A closed list keeps nothing to say: reopened, its region starts silent.
+  useEffect(() => {
+    // Only when there is something to drop: no state is set on the closing of a list that never
+    // announced anything — every filter bar's MultiSelect.
+    if (!open && announced !== '') setAnnounced('');
+  }, [open]);
+
   const clearAll = (): void => {
     onChange([]);
     if (query !== '') searchFor('');
@@ -390,6 +640,43 @@ export const MultiSelect = ({
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (e.nativeEvent.isComposing) return;
+    if (floating && open && e.key === 'Tab') {
+      // A floating panel sits at the page's END (a portal), not after its trigger, so Tab is led
+      // by hand: from the trigger into the panel, through the panel's own controls (the search,
+      // «every match», the clear button — the options are the arrows' — and out at either end,
+      // the list closing and the focus going on from the trigger, as from a list that does not
+      // float: Shift+Tab to the trigger itself, Tab past it to whatever follows.
+      const panel = panelRef.current;
+      const target = e.target as HTMLElement;
+      const items = panel === null ? [] : panelTabStops(panel);
+      if (panel === null || !panel.contains(target)) {
+        const first = items[0];
+        if (!e.shiftKey && first !== undefined) {
+          e.preventDefault();
+          first.focus();
+        } else {
+          setOpen(false);
+        }
+        return;
+      }
+      // The stop to go to, by document order — the focus may sit on something in the panel that is
+      // not a stop of its own (a browser lets a scrolling list take it).
+      const next = e.shiftKey
+        ? [...items].reverse().find((item) => followsInDocument(item, target))
+        : items.find((item) => followsInDocument(target, item));
+      if (next !== undefined) {
+        e.preventDefault();
+        next.focus();
+        return;
+      }
+      // Off either end: the list closes, and the focus goes on from the trigger — to the trigger
+      // itself on Shift+Tab; on Tab the browser's own step carries it past the trigger, as from a
+      // list that does not float.
+      setOpen(false);
+      triggerRef.current?.focus();
+      if (e.shiftKey) e.preventDefault();
+      return;
+    }
     const from =
       e.target === searchRef.current
         ? 'search'
@@ -431,6 +718,10 @@ export const MultiSelect = ({
     }
   };
   const showClear = clearable && selected > 0;
+  // A floating panel goes to the page's body, out of every scrolling box around the trigger.
+  // Keys and clicks on it still reach this box: React passes a portal's events up its own tree.
+  const renderPanel = (panel: JSX.Element): React.ReactNode =>
+    floating ? createPortal(panel, document.body) : panel;
 
   return (
     // Keys are read on the whole box, so the arrows work from wherever the focus is — the search
@@ -447,6 +738,9 @@ export const MultiSelect = ({
           aria-expanded={open}
           {...(open ? { 'aria-controls': listId } : {})}
           aria-label={label}
+          // The label replaces what the trigger SHOWS, so once the picks are named on it they are
+          // its description: a screen reader hears the question, then what is picked.
+          {...(summary === null ? {} : { 'aria-describedby': `${listId}-summary` })}
           // The same question the screen reader gets, for a pointer — a trigger sized by its bar
           // can be narrower than the words on it, and then this is the only way to read them.
           title={label}
@@ -456,7 +750,8 @@ export const MultiSelect = ({
             searchFor('');
           }}
           className={cn(
-            'inline-flex items-center rounded-lg border py-2 text-sm',
+            'inline-flex items-center rounded-lg border',
+            size === 'sm' ? 'h-8 py-1 text-xs' : 'py-2 text-sm',
             // `justify-between` as well as `w-full`: once the trigger is wider than its own text the
             // chevron belongs at the far edge, the way a `<select>`'s does, not tucked against the
             // label with dead space after it.
@@ -495,7 +790,7 @@ export const MultiSelect = ({
               {placeholder ?? label}
             </span>
           ) : (
-            <span className="max-w-48 truncate" title={summary}>
+            <span id={`${listId}-summary`} className="max-w-48 truncate" title={summary}>
               {summary}
             </span>
           )}
@@ -526,174 +821,237 @@ export const MultiSelect = ({
         )}
       </div>
 
-      {open && (
-        <div
-          ref={panelRef}
-          id={listId}
-          role="listbox"
-          aria-multiselectable
-          {...(activeIndex === -1 ? {} : { 'aria-activedescendant': optionId(activeIndex) })}
-          style={
-            pin === 'left'
-              ? { left: 0, right: 'auto' }
-              : pin === 'right'
-                ? { right: 0, left: 'auto' }
-                : undefined
-          }
-          className={cn(
-            'absolute z-30 mt-1 max-h-72 overflow-hidden rounded-lg border border-slate-200 shadow-lg',
-            // A column, so the list SHRINKS to leave the search, the chips and «مسح الكل» on screen.
-            // Without it the list kept its own height and pushed the footer out of the panel.
-            clearable && 'flex flex-col',
-            panelWidth ?? 'w-56',
-            // A step lighter than the page in dark mode: on near-black a shadow says nothing, so
-            // the surface itself has to read as floating.
-            'bg-white dark:border-slate-600 dark:bg-slate-800',
-          )}
-        >
-          {searchable && (
-            <div className="shrink-0 border-b border-slate-100 p-2 dark:border-slate-700">
-              <div className="relative">
-                <SearchIcon className="pointer-events-none absolute inset-y-0 start-2 my-auto h-4 w-4 text-slate-400" />
-                <input
-                  ref={searchRef}
-                  type="text"
-                  autoFocus
-                  role="combobox"
-                  aria-expanded
-                  aria-controls={listId}
-                  aria-autocomplete="list"
-                  {...(activeIndex === -1
-                    ? {}
-                    : { 'aria-activedescendant': optionId(activeIndex) })}
-                  value={query}
-                  onChange={(e) => searchFor(e.target.value)}
-                  onKeyDown={(e) => {
-                    // A highlighted option takes Enter (see `multiSelectKey`); the typed text only
-                    // when nothing is highlighted.
-                    if (onCommitSearch === undefined || e.key !== 'Enter' || activeIndex !== -1) {
-                      return;
+      {open &&
+        renderPanel(
+          <div
+            ref={panelRef}
+            id={listId}
+            role="listbox"
+            aria-multiselectable
+            {...(activeIndex === -1 ? {} : { 'aria-activedescendant': optionId(activeIndex) })}
+            style={
+              floating
+                ? spot === null
+                  ? // Measured before it is painted (a layout effect), so it never flashes at the
+                    // page's corner. Transparent, not `visibility: hidden`: a hidden search box
+                    // refuses the focus `autoFocus` gives it on this very render.
+                    { top: 0, left: 0, opacity: 0 }
+                  : {
+                      left: spot.left,
+                      maxHeight: spot.maxHeight,
+                      ...(spot.below ? { top: spot.top } : { bottom: spot.bottom }),
                     }
-                    e.preventDefault();
-                    onCommitSearch(query);
-                    searchFor('');
-                  }}
-                  placeholder={t('common.search')}
-                  className="w-full rounded-md border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                />
+                : pin === 'left'
+                  ? { left: 0, right: 'auto' }
+                  : pin === 'right'
+                    ? { right: 0, left: 'auto' }
+                    : undefined
+            }
+            className={cn(
+              floating ? 'fixed z-[60]' : 'absolute z-30 mt-1',
+              'max-h-72 overflow-hidden rounded-lg border border-slate-200 shadow-lg',
+              // A column, so the list SHRINKS to leave the search, the chips and «مسح الكل» on screen.
+              // Without it the list kept its own height and pushed the footer out of the panel — and
+              // a floating panel's height is the room the viewport has left it.
+              (clearable || floating) && 'flex flex-col',
+              panelWidth ?? 'w-56',
+              // A step lighter than the page in dark mode: on near-black a shadow says nothing, so
+              // the surface itself has to read as floating.
+              'bg-white dark:border-slate-600 dark:bg-slate-800',
+            )}
+          >
+            {searchable && (
+              <div className="shrink-0 border-b border-slate-100 p-2 dark:border-slate-700">
+                <div className="relative">
+                  <SearchIcon className="pointer-events-none absolute inset-y-0 start-2 my-auto h-4 w-4 text-slate-400" />
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    autoFocus
+                    role="combobox"
+                    aria-expanded
+                    aria-controls={listId}
+                    aria-autocomplete="list"
+                    {...(activeIndex === -1
+                      ? {}
+                      : { 'aria-activedescendant': optionId(activeIndex) })}
+                    // «every match» says what Enter will do while it is offered.
+                    {...(matchesRow ? { 'aria-describedby': `${listId}-matches` } : {})}
+                    value={query}
+                    onChange={(e) => searchFor(e.target.value)}
+                    onKeyDown={(e) => {
+                      // A highlighted option takes Enter (see `multiSelectKey`); the typed text only
+                      // when nothing is highlighted.
+                      if (e.key !== 'Enter' || activeIndex !== -1) return;
+                      if (matchesRow) {
+                        // `pickMatches`: Enter takes what the search found, as a sheet's filter does —
+                        // and gives it back when all of it is already picked.
+                        e.preventDefault();
+                        pickAllMatches(allMatchesPicked);
+                        return;
+                      }
+                      if (onCommitSearch === undefined) return;
+                      e.preventDefault();
+                      onCommitSearch(query);
+                      searchFor('');
+                    }}
+                    placeholder={t('common.search')}
+                    className="w-full rounded-md border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {chips && selected > 0 && (
-            <div
-              className={cn(
-                'flex flex-wrap gap-1 border-b border-slate-100 p-2 dark:border-slate-700',
-                clearable && 'max-h-24 shrink-0 overflow-y-auto',
-              )}
-            >
-              {value.map((selectedValue) => {
-                // A chip says what the OPTION says, not what the value is — `optionLabel`, the
-                // same function the trigger's summary uses, so the two always agree.
-                const shown = optionLabel(options, selectedValue);
-                return (
-                  <span
-                    key={selectedValue}
-                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-800 dark:bg-brand-950 dark:text-brand-200"
-                  >
-                    {/* `auto` rather than `ltr`: these chips carry Latin codes on some screens and
+            {chips && selected > 0 && (
+              <div
+                className={cn(
+                  'flex flex-wrap gap-1 border-b border-slate-100 p-2 dark:border-slate-700',
+                  clearable && 'max-h-24 shrink-0 overflow-y-auto',
+                )}
+              >
+                {value.map((selectedValue) => {
+                  // A chip says what the OPTION says, not what the value is — `optionLabel`, the
+                  // same function the trigger's summary uses, so the two always agree.
+                  const shown = optionLabel(options, selectedValue);
+                  return (
+                    <span
+                      key={selectedValue}
+                      className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-800 dark:bg-brand-950 dark:text-brand-200"
+                    >
+                      {/* `auto` rather than `ltr`: these chips carry Latin codes on some screens and
                         Arabic names on others, and a name forced left-to-right puts its comma on
                         the wrong end. The first strong character decides, which is right for both. */}
-                    <span dir="auto" className="truncate">
-                      {shown}
+                      <span dir="auto" className="truncate">
+                        {shown}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`${t('common.filters.clearOne')} ${shown}`}
+                        onClick={() => toggle(selectedValue)}
+                        className="shrink-0 text-brand-500 hover:text-brand-800 dark:hover:text-brand-100"
+                      >
+                        ×
+                      </button>
                     </span>
-                    <button
-                      type="button"
-                      aria-label={`${t('common.filters.clearOne')} ${shown}`}
-                      onClick={() => toggle(selectedValue)}
-                      className="shrink-0 text-brand-500 hover:text-brand-800 dark:hover:text-brand-100"
-                    >
-                      ×
-                    </button>
-                  </span>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
 
-          <ul
-            ref={listRef}
-            className={cn('overflow-y-auto py-1', clearable ? 'min-h-0 flex-1' : 'max-h-52')}
-          >
-            {matches.length === 0 && (
-              <li className="px-3 py-2 text-sm text-slate-400">
-                {emptyListText(t, { searching, emptyText })}
-              </li>
-            )}
-            {matches.length > 0 && statusText !== undefined && (
-              <li className="px-3 py-2 text-sm text-slate-400">{statusText}</li>
-            )}
-            {matches.map((option, index) => {
-              const checked = value.includes(option.value);
-              const highlighted = index === activeIndex;
-              return (
-                <li key={option.value}>
+            <ul
+              ref={listRef}
+              // Not a Tab stop of its own: a browser may make a scrolling list one, and a floating
+              // panel leads Tab by hand (see `onKeyDown`).
+              {...(floating ? { tabIndex: -1 } : {})}
+              className={cn(
+                'overflow-y-auto py-1',
+                clearable || floating ? 'min-h-0 flex-1' : 'max-h-52',
+              )}
+            >
+              {matches.length === 0 && (
+                <li className="px-3 py-2 text-sm text-slate-400">
+                  {emptyListText(t, { searching, emptyText })}
+                </li>
+              )}
+              {matches.length > 0 && statusText !== undefined && (
+                <li className="px-3 py-2 text-sm text-slate-400">{statusText}</li>
+              )}
+              {matchesRow && (
+                <li className="border-b border-slate-100 dark:border-slate-700">
                   <button
                     type="button"
-                    role="option"
-                    id={optionId(index)}
-                    aria-selected={checked}
-                    {...(highlighted ? { 'data-active': 'true' } : {})}
-                    // Pressing an option does not take the focus from the search box — the caret
-                    // stays where the reader is typing. The click still lands as it always did.
+                    data-multiselect-matches="true"
+                    aria-pressed={allMatchesPicked}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => toggle(option.value)}
-                    className={cn(
-                      'flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700',
-                      // The keyboard's row: the hover's own grey, so it reads as "here", not "picked"
-                      // — and a grey outline, so it is told from the row the pointer rests on, the
-                      // one Enter does NOT pick.
-                      highlighted &&
-                        'bg-slate-100 ring-1 ring-inset ring-slate-300 dark:bg-slate-700 dark:ring-slate-500',
-                    )}
+                    onClick={() => pickAllMatches(allMatchesPicked)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     <span
                       aria-hidden
                       className={cn(
                         'grid h-4 w-4 shrink-0 place-items-center rounded border',
-                        checked
+                        allMatchesPicked
                           ? 'border-brand-600 bg-brand-600 text-white'
                           : 'border-slate-300 bg-white dark:border-slate-500 dark:bg-slate-900',
                       )}
                     >
-                      {checked && <CheckIcon className="h-3 w-3" />}
+                      {allMatchesPicked && <CheckIcon className="h-3 w-3" />}
                     </span>
-                    <span className="truncate">{option.label}</span>
+                    <span id={`${listId}-matches`} className="truncate">
+                      {t('common.filters.pickMatches', { count: matches.length })}
+                    </span>
                   </button>
                 </li>
-              );
-            })}
-          </ul>
+              )}
+              {matches.map((option, index) => {
+                const checked = value.includes(option.value);
+                const highlighted = index === activeIndex;
+                return (
+                  <li key={option.value}>
+                    <button
+                      type="button"
+                      role="option"
+                      id={optionId(index)}
+                      // A floating list's options are the arrows' (`aria-activedescendant`), not Tab's:
+                      // Tab goes on to the panel's own controls rather than through every value.
+                      {...(floating ? { tabIndex: -1 } : {})}
+                      aria-selected={checked}
+                      {...(highlighted ? { 'data-active': 'true' } : {})}
+                      // Pressing an option does not take the focus from the search box — the caret
+                      // stays where the reader is typing. The click still lands as it always did.
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => toggle(option.value)}
+                      className={cn(
+                        'flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700',
+                        // The keyboard's row: the hover's own grey, so it reads as "here", not "picked"
+                        // — and a grey outline, so it is told from the row the pointer rests on, the
+                        // one Enter does NOT pick.
+                        highlighted &&
+                          'bg-slate-100 ring-1 ring-inset ring-slate-300 dark:bg-slate-700 dark:ring-slate-500',
+                      )}
+                    >
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'grid h-4 w-4 shrink-0 place-items-center rounded border',
+                          checked
+                            ? 'border-brand-600 bg-brand-600 text-white'
+                            : 'border-slate-300 bg-white dark:border-slate-500 dark:bg-slate-900',
+                        )}
+                      >
+                        {checked && <CheckIcon className="h-3 w-3" />}
+                      </span>
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {pickMatches && (
+              <span className="sr-only" aria-live="polite">
+                {announced}
+              </span>
+            )}
 
-          {selected > 0 && (
-            <div className="shrink-0 border-t border-slate-100 p-1.5 dark:border-slate-700">
-              <button
-                type="button"
-                {...(clearable ? { 'data-multiselect-clear-all': 'true' } : {})}
-                onClick={clearable ? clearAll : () => onChange([])}
-                className={cn(
-                  'w-full rounded-md px-2 py-1.5 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-700',
-                  clearable
-                    ? 'font-medium text-red-600 dark:text-red-400'
-                    : 'text-slate-500 dark:text-slate-400',
-                )}
-              >
-                {clearable ? t('common.filters.clearAll') : t('common.filters.clearOne')}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            {selected > 0 && (
+              <div className="shrink-0 border-t border-slate-100 p-1.5 dark:border-slate-700">
+                <button
+                  type="button"
+                  {...(clearable ? { 'data-multiselect-clear-all': 'true' } : {})}
+                  onClick={clearable ? clearAll : () => onChange([])}
+                  className={cn(
+                    'w-full rounded-md px-2 py-1.5 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-700',
+                    clearable
+                      ? 'font-medium text-red-600 dark:text-red-400'
+                      : 'text-slate-500 dark:text-slate-400',
+                  )}
+                >
+                  {clearable ? t('common.filters.clearAll') : t('common.filters.clearOne')}
+                </button>
+              </div>
+            )}
+          </div>,
+        )}
     </div>
   );
 };

@@ -7,10 +7,11 @@
 // the list's search (as on the unlocated screen) and `machine` a link that opens one machine's
 // editor — neither is a narrowing worth keeping.
 //
-// A ROW OF FILTER BOXES under the table's head, one per column (2026-11-02, «فلتر لكل عمود»),
-// narrows what the status and the search above keep — the boxes and the filters add up. The bank's
-// machines come whole in one answer, so a box searches every one of them. A machine open in the
-// editor stays open when a box hides its row: the editor shows it whole.
+// A ROW OF FILTER LISTS under the table's head, one multi-pick drop-down per column (2026-11-02,
+// «فلتر لكل عمود», «يكون Drop Down بـ Multi select»), narrows what the status and the search above
+// keep — the lists and the filters add up. The bank's machines come whole in one answer, so a list
+// offers the values of every one of them. A machine open in the editor stays open when a list hides
+// its row: the editor shows it whole.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -19,7 +20,7 @@ import {
   type Locale,
   type SaveAtmCassetteLayout,
 } from '@ecms/contracts';
-import { filterRowsByColumns } from '../../../shared/lib/column-filter';
+import { columnFilterChoicesOf, filterRowsByColumns } from '../../../shared/lib/column-filter';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { useAppSelector } from '../../../store';
@@ -90,7 +91,7 @@ const cassetteFlags = (row: AtmCassetteLayoutRowDto): AtmCassetteLayoutRowDto['f
 
 /**
  * Pure: what a row's cell in that column shows, as text — the cassettes' chips and flags, the
- * load and its warning — what its filter box matches. Null for a column the table does not have.
+ * load and its warning — what its column filter lists. Null for a column the table does not have.
  */
 export const layoutRowText = (
   row: AtmCassetteLayoutRowDto,
@@ -183,13 +184,12 @@ export const CassetteLayoutsPage = (): JSX.Element => {
       return row.machineCode.toLowerCase().startsWith(text) || foldIncludes(row.machineName, query);
     });
   }, [dto, status, query]);
-  // The boxes narrow what the status and the search kept.
+  // The column filters narrow what the status and the search kept.
   const columnFilters = useColumnFilters();
+  const cellText = (row: AtmCassetteLayoutRowDto, key: string): string | null =>
+    layoutRowText(row, key, { t, locale, loadName });
   const shown = useMemo(
-    () =>
-      filterRowsByColumns(rows, columnFilters.values, (row, key) =>
-        layoutRowText(row, key, { t, locale, loadName }),
-      ),
+    () => filterRowsByColumns(rows, columnFilters.values, cellText),
     [rows, columnFilters.values, locale, loadName],
   );
   const textOf = (row: AtmCassetteLayoutRowDto, key: string): string =>
@@ -211,7 +211,7 @@ export const CassetteLayoutsPage = (): JSX.Element => {
     );
   };
 
-  // Every column is text, so every column takes a box (`layoutRowText` reads each cell's words).
+  // Every column is text, so every column takes a list (`layoutRowText` reads each cell's words).
   const columns: Column<AtmCassetteLayoutRowDto>[] = [
     {
       key: 'code',
@@ -441,9 +441,9 @@ export const CassetteLayoutsPage = (): JSX.Element => {
                 columnFilters={{
                   values: columnFilters.values,
                   onChange: columnFilters.set,
+                  choices: columnFilterChoicesOf(rows, columnFilters.values, cellText),
                   generation: columnFilters.generation,
                   label: (header) => t('atm.common.filterColumn', { column: header }),
-                  placeholder: t('atm.common.filterPlaceholder'),
                 }}
                 dense
                 stickyHead

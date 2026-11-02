@@ -105,6 +105,8 @@ import {
 const REMEMBERED_FILTERS = ['bank'] as const;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A day with no plan has no lines — one array, so the table's lists are not handed a new one. */
+const NO_LINES: readonly AtmPlanLineDto[] = [];
 
 type ReasonFor = { kind: 'reopen' | 'cancel'; line: AtmPlanLineDto } | null;
 
@@ -170,11 +172,12 @@ export const SettlementPlanPage = (): JSX.Element => {
     });
   }, [plan]);
 
-  // The row of boxes under the lines' head, one per column (2026-11-02, «فلتر لكل عمود»): they
+  // The row of lists under the lines' head, one multi-pick drop-down per column (2026-11-02,
+  // «فلتر لكل عمود», «يكون Drop Down بـ Multi select»): they
   // narrow the bank's lines of the day before the table shows them. The plan's own papers — the
   // receipt, the Notes of every or every unprinted line, the handover, the REP. TAPE — stay the
   // whole plan's, as do the header's figures and the footer's «إجمالي الخطة»: they are the plan's
-  // records, not the table's. A line open in the panel stays open when a box hides its row — the
+  // records, not the table's. A line open in the panel stays open when a list hides its row — the
   // panel shows that one line whole, under its code, so nothing is changed unseen.
   const columnFilters = useColumnFilters();
   const shownLines = useMemo(
@@ -683,7 +686,7 @@ export const SettlementPlanPage = (): JSX.Element => {
               )}
               <PlanLinesTable
                 lines={shownLines}
-                totalLines={plan?.lines.length ?? 0}
+                allLines={plan?.lines ?? NO_LINES}
                 columnFilters={columnFilters}
                 locale={locale}
                 selectedId={selected?.id ?? null}

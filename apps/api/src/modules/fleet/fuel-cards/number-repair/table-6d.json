@@ -1,0 +1,535 @@
+{
+  "source": "scratchpad/6d/table.json (analyst, 2026-11-02) — PIN-free extract; regenerate only from that table",
+  "cycles": [
+    {
+      "id": "C4",
+      "cars": ["239", "241", "243", "209"],
+      "numbersHeld": ["548 •••• 2813", "548 •••• 3375", "548 •••• 4116", "548 •••• 0935"]
+    },
+    {
+      "id": "C5",
+      "cars": ["233", "525", "284", "269", "230"],
+      "numbersHeld": [
+        "548 •••• 2653",
+        "548 •••• 9096",
+        "548 •••• 8713",
+        "548 •••• 7800",
+        "548 •••• 2179"
+      ]
+    },
+    {
+      "id": "C6",
+      "cars": ["232", "800", "256", "267", "251", "246"],
+      "numbersHeld": [
+        "548 •••• 2516",
+        "548 •••• 9641",
+        "548 •••• 4503",
+        "548 •••• 6548",
+        "548 •••• 4146",
+        "548 •••• 4142"
+      ]
+    }
+  ],
+  "records15": [
+    {
+      "cycle": "C4",
+      "car": "239",
+      "name": "EGYCASH-4643-4209073",
+      "number": {
+        "currentFull": "5485640006602813",
+        "correctFull": "5485640005010935",
+        "correctNumberIsNowOnRecordOfCar": "209"
+      },
+      "expiry": {
+        "current": "2027-03-31",
+        "correct": "2027-03-31"
+      },
+      "goLiveBalance_unchanged": 3049.73,
+      "registry": {
+        "chassisMatches": false
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-4645-422193",
+          "stickerCar": "241",
+          "validThru": "03/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-4643-4209073",
+          "stickerCar": "239",
+          "validThru": "03/27"
+        }
+      }
+    },
+    {
+      "cycle": "C4",
+      "car": "241",
+      "name": "EGYCASH-4645-422193",
+      "number": {
+        "currentFull": "5485640006433375",
+        "correctFull": "5485640006602813",
+        "correctNumberIsNowOnRecordOfCar": "239"
+      },
+      "expiry": {
+        "current": "2027-03-31",
+        "correct": "2027-03-31"
+      },
+      "goLiveBalance_unchanged": 9594.55,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-4649-422195",
+          "stickerCar": "243",
+          "validThru": "03/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-4645-422193",
+          "stickerCar": "241",
+          "validThru": "03/27"
+        }
+      }
+    },
+    {
+      "cycle": "C4",
+      "car": "243",
+      "name": "EGYCASH-4649-422195",
+      "number": {
+        "currentFull": "5485640005044116",
+        "correctFull": "5485640006433375",
+        "correctNumberIsNowOnRecordOfCar": "241"
+      },
+      "expiry": {
+        "current": "2028-11-30",
+        "correct": "2027-03-31"
+      },
+      "goLiveBalance_unchanged": 7620.0,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-1781-312986",
+          "stickerCar": "209",
+          "validThru": "11/28"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-4649-422195",
+          "stickerCar": "243",
+          "validThru": "03/27"
+        }
+      }
+    },
+    {
+      "cycle": "C4",
+      "car": "209",
+      "name": "EGYCASH-1781-312986",
+      "number": {
+        "currentFull": "5485640005010935",
+        "correctFull": "5485640005044116",
+        "correctNumberIsNowOnRecordOfCar": "243"
+      },
+      "expiry": {
+        "current": "2027-03-31",
+        "correct": "2028-11-30"
+      },
+      "goLiveBalance_unchanged": 7950.0,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-4643-4209073",
+          "stickerCar": "239",
+          "validThru": "03/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-1781-312986",
+          "stickerCar": "209",
+          "validThru": "11/28"
+        }
+      }
+    },
+    {
+      "cycle": "C5",
+      "car": "233",
+      "name": "EGYCASH-6163-313110",
+      "number": {
+        "currentFull": "5485640006632653",
+        "correctFull": "5485640006842179",
+        "correctNumberIsNowOnRecordOfCar": "230"
+      },
+      "expiry": {
+        "current": "2028-06-30",
+        "correct": "2026-11-30"
+      },
+      "goLiveBalance_unchanged": 12800.0,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-6731-350118",
+          "stickerCar": "525",
+          "validThru": "06/28"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-6163-313110",
+          "stickerCar": "233",
+          "validThru": "11/26"
+        }
+      }
+    },
+    {
+      "cycle": "C5",
+      "car": "525",
+      "name": "EGYCASH-6731-350118",
+      "number": {
+        "currentFull": "5485640006639096",
+        "correctFull": "5485640006632653",
+        "correctNumberIsNowOnRecordOfCar": "233"
+      },
+      "expiry": {
+        "current": "2029-01-31",
+        "correct": "2028-06-30"
+      },
+      "goLiveBalance_unchanged": 13650.0,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-8618-778864",
+          "stickerCar": "284",
+          "validThru": "01/29"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-6731-350118",
+          "stickerCar": "525",
+          "validThru": "06/28"
+        }
+      }
+    },
+    {
+      "cycle": "C5",
+      "car": "284",
+      "name": "EGYCASH-8618-778864",
+      "number": {
+        "currentFull": "5485640004788713",
+        "correctFull": "5485640006639096",
+        "correctNumberIsNowOnRecordOfCar": "525"
+      },
+      "expiry": {
+        "current": "2027-11-30",
+        "correct": "2029-01-31"
+      },
+      "goLiveBalance_unchanged": 6837.9,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-3237-675891",
+          "stickerCar": "269",
+          "validThru": "11/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-8618-778864",
+          "stickerCar": "284",
+          "validThru": "01/29"
+        }
+      }
+    },
+    {
+      "cycle": "C5",
+      "car": "269",
+      "name": "EGYCASH-3237-675891",
+      "number": {
+        "currentFull": "5485640006497800",
+        "correctFull": "5485640004788713",
+        "correctNumberIsNowOnRecordOfCar": "284"
+      },
+      "expiry": {
+        "current": "2026-11-30",
+        "correct": "2027-11-30"
+      },
+      "goLiveBalance_unchanged": 6008.81,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-6167-2573534",
+          "stickerCar": "230",
+          "validThru": "11/26"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-3237-675891",
+          "stickerCar": "269",
+          "validThru": "11/27"
+        }
+      }
+    },
+    {
+      "cycle": "C5",
+      "car": "230",
+      "name": "EGYCASH-6167-2573534",
+      "number": {
+        "currentFull": "5485640006842179",
+        "correctFull": "5485640006497800",
+        "correctNumberIsNowOnRecordOfCar": "269"
+      },
+      "expiry": {
+        "current": "2026-11-30",
+        "correct": "2026-11-30"
+      },
+      "goLiveBalance_unchanged": 7351.33,
+      "registry": {
+        "chassisMatches": false
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-6163-313110",
+          "stickerCar": "233",
+          "validThru": "11/26"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-6167-2573534",
+          "stickerCar": "230",
+          "validThru": "11/26"
+        }
+      }
+    },
+    {
+      "cycle": "C6",
+      "car": "232",
+      "name": "EGYCASH-6164-313107",
+      "number": {
+        "currentFull": "5485640005952516",
+        "correctFull": "5485640005934142",
+        "correctNumberIsNowOnRecordOfCar": "246"
+      },
+      "expiry": {
+        "current": "2027-07-31",
+        "correct": "2026-11-30"
+      },
+      "goLiveBalance_unchanged": 6280.0,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-4822-48085",
+          "stickerCar": "800",
+          "validThru": "07/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-6164-313107",
+          "stickerCar": "232",
+          "validThru": "11/26"
+        }
+      }
+    },
+    {
+      "cycle": "C6",
+      "car": "800",
+      "name": "EGYCASH-4822-48085",
+      "number": {
+        "currentFull": "5485640006489641",
+        "correctFull": "5485640005952516",
+        "correctNumberIsNowOnRecordOfCar": "232"
+      },
+      "expiry": {
+        "current": "2027-07-31",
+        "correct": "2027-07-31"
+      },
+      "goLiveBalance_unchanged": 8780.0,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-9931-450279",
+          "stickerCar": "256",
+          "validThru": "07/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-4822-48085",
+          "stickerCar": "800",
+          "validThru": "07/27"
+        }
+      }
+    },
+    {
+      "cycle": "C6",
+      "car": "256",
+      "name": "EGYCASH-9931-450279",
+      "number": {
+        "currentFull": "5485640005054503",
+        "correctFull": "5485640006489641",
+        "correctNumberIsNowOnRecordOfCar": "800"
+      },
+      "expiry": {
+        "current": "2027-11-30",
+        "correct": "2027-07-31"
+      },
+      "goLiveBalance_unchanged": 1469.52,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-3235-676916",
+          "stickerCar": "267",
+          "validThru": "11/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-9931-450279",
+          "stickerCar": "256",
+          "validThru": "07/27"
+        }
+      }
+    },
+    {
+      "cycle": "C6",
+      "car": "267",
+      "name": "EGYCASH-3235-676916",
+      "number": {
+        "currentFull": "5485640005076548",
+        "correctFull": "5485640005054503",
+        "correctNumberIsNowOnRecordOfCar": "256"
+      },
+      "expiry": {
+        "current": "2027-03-31",
+        "correct": "2027-11-30"
+      },
+      "goLiveBalance_unchanged": 5745.0,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-1344-438318",
+          "stickerCar": "251",
+          "validThru": "03/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-3235-676916",
+          "stickerCar": "267",
+          "validThru": "11/27"
+        }
+      }
+    },
+    {
+      "cycle": "C6",
+      "car": "251",
+      "name": "EGYCASH-1344-438318",
+      "number": {
+        "currentFull": "5485640006234146",
+        "correctFull": "5485640005076548",
+        "correctNumberIsNowOnRecordOfCar": "267"
+      },
+      "expiry": {
+        "current": "2027-03-31",
+        "correct": "2027-03-31"
+      },
+      "goLiveBalance_unchanged": 8239.21,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-1337-446321",
+          "stickerCar": "246",
+          "validThru": "03/27"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-1344-438318",
+          "stickerCar": "251",
+          "validThru": "03/27"
+        }
+      }
+    },
+    {
+      "cycle": "C6",
+      "car": "246",
+      "name": "EGYCASH-1337-446321",
+      "number": {
+        "currentFull": "5485640005934142",
+        "correctFull": "5485640006234146",
+        "correctNumberIsNowOnRecordOfCar": "251"
+      },
+      "expiry": {
+        "current": "2026-11-30",
+        "correct": "2027-03-31"
+      },
+      "goLiveBalance_unchanged": 285.07,
+      "registry": {
+        "chassisMatches": true
+      },
+      "photo": {
+        "current": {
+          "embossedName": "EGYCASH-6164-313107",
+          "stickerCar": "232",
+          "validThru": "11/26"
+        },
+        "correct": {
+          "embossedName": "EGYCASH-1337-446321",
+          "stickerCar": "246",
+          "validThru": "03/27"
+        }
+      }
+    }
+  ],
+  "pair0849": {
+    "records": [
+      {
+        "numberFull": "5485640006210849",
+        "car": {
+          "code": "530"
+        },
+        "name": {
+          "before": "EGYCASH-8616-783211",
+          "after": "EGYCASH-1137-401485"
+        },
+        "openingBalance": {
+          "before": 13130.62,
+          "after": 1258.0,
+          "delta": -11872.62
+        },
+        "photo": {
+          "embossedName": "EGYCASH-1137-401485",
+          "stickerCar": "530",
+          "validThru": "01/29"
+        },
+        "statement_d81237e3": {
+          "balance": 1258.0
+        }
+      },
+      {
+        "numberFull": "5485640006880849",
+        "car": {
+          "code": "283"
+        },
+        "name": {
+          "before": "EGYCASH-1137-401485",
+          "after": "EGYCASH-8616-783211"
+        },
+        "openingBalance": {
+          "before": 1258.0,
+          "after": 13130.62,
+          "delta": 11872.62
+        },
+        "photo": {
+          "embossedName": "EGYCASH-8616-783211",
+          "stickerCar": "283",
+          "validThru": "01/29"
+        },
+        "statement_d81237e3": {
+          "balance": 11430.62
+        }
+      }
+    ]
+  }
+}

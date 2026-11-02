@@ -20,7 +20,7 @@ import {
 import { authenticate } from '../../../platform/auth';
 import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
-import { multipartSingle } from '../license-image-upload';
+import { multipartImageAndThumb, multipartThumb } from './fuel-card-upload';
 import {
   approveFuelCharge,
   createFuelCard,
@@ -29,6 +29,7 @@ import {
   fuelCardSummary,
   getFuelCard,
   getFuelCardImage,
+  getFuelCardImageThumb,
   listFuelCardMovements,
   listFuelCards,
   requestFuelCharge,
@@ -39,6 +40,7 @@ import {
   deleteFuelCardMovement,
   updateFuelCard,
   uploadFuelCardImage,
+  uploadFuelCardThumb,
 } from './fuel-card.controller';
 import {
   addFuelReconcileCard,
@@ -47,6 +49,7 @@ import {
   uploadFuelSheet,
 } from './reconcile/fuel-reconcile.controller';
 import { fuelSheetUpload, noStore } from './reconcile/fuel-sheet-upload';
+import { buildFleetFuelNumberRepairRouter } from './number-repair/number-repair.routes';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -106,6 +109,8 @@ export const buildFleetFuelCardsRouter = (): Router => {
     validate({ body: TransferFleetFuelBatchSchema }),
     asyncHandler(transferFuelBatch),
   );
+  // «تصحيح أرقام الكروت» (6d) — its own router, BEFORE the `/:id` group like `reconcile` below.
+  router.use('/number-repair', buildFleetFuelNumberRepairRouter());
   // «مطابقة أرصدة الكروت» — BEFORE the `/:id` group, so `reconcile` is never read as a card id.
   // Reading the company's sheet writes no balance: the charging screen's view grant. Deciding on
   // it sets balances: the grant that approves a charge.
@@ -184,21 +189,40 @@ export const buildFleetFuelCardsRouter = (): Router => {
     validate({ params: IdParamSchema }),
     asyncHandler(deleteFuelCard),
   );
-  // The photo of the card — whoever may edit the card may manage it, whoever may view may see it.
+  // The photo of the card — whoever may edit the card may manage it. 6d: the photo shows the PIN on
+  // its sticker, so the FULL photo is the PIN's own grant (`reveal`, as `/:id/password`); every
+  // reader of the cards sees its thumbnail. A thumbnail for a photo uploaded before 6d is made by the
+  // screen of an editor who may see the photo — so its route asks both.
   router.get(
     '/:id/image',
     authenticate,
-    authorize('fleetFuelCard.view'),
+    authorize('fleetFuelCard.reveal'),
     validate({ params: IdParamSchema }),
     asyncHandler(getFuelCardImage),
+  );
+  router.get(
+    '/:id/image/thumb',
+    authenticate,
+    authorize('fleetFuelCard.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getFuelCardImageThumb),
   );
   router.post(
     '/:id/image',
     authenticate,
     authorize('fleetFuelCard.edit'),
-    multipartSingle(),
+    multipartImageAndThumb(),
     validate({ params: IdParamSchema }),
     asyncHandler(uploadFuelCardImage),
+  );
+  router.post(
+    '/:id/image/thumb',
+    authenticate,
+    authorize('fleetFuelCard.edit'),
+    authorize('fleetFuelCard.reveal'),
+    multipartThumb(),
+    validate({ params: IdParamSchema }),
+    asyncHandler(uploadFuelCardThumb),
   );
   router.delete(
     '/:id/image',

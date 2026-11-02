@@ -309,6 +309,20 @@ export const ErrorCodes = {
    * from the sheet's (`MISMATCH`). `{ field: 'number', code: 'REQUIRED' | 'MISMATCH' }`.
    */
   FLEET_FUEL_SHEET_CARD_NUMBER: 'FLEET_FUEL_SHEET_CARD_NUMBER',
+  /**
+   * 409 — a balance ✓ (`apply`) names a card of the 0849 pair while «تصحيح أرقام الكروت» (6d) has not
+   * run, or on a session read before it ran («ضمن تصحيح الأرقام»): the sheet is matched by name, and
+   * each of the two names sits on the other car's record until the repair. Nothing was written; ✗
+   * is allowed. One detail per card: `{ field: 'cardIds', code: 'IN_REPAIR', message: <cardId> }`.
+   */
+  FLEET_FUEL_RECONCILE_IN_REPAIR: 'FLEET_FUEL_RECONCILE_IN_REPAIR',
+  /**
+   * 422 — a fuel card photo's thumbnail (the multipart part `thumb`) is not a JPEG, PNG or WebP
+   * (`TYPE`), is larger than `FLEET_FUEL_CARD_THUMB_MAX_SIDE` pixels on a side (`SIZE`), or than
+   * `FLEET_FUEL_CARD_THUMB_MAX_BYTES` (`BYTES`), or is missing where required (`REQUIRED`). Read from
+   * the file's header only. Nothing was written. `{ field: 'thumb', code: … }`.
+   */
+  FLEET_FUEL_CARD_THUMB_INVALID: 'FLEET_FUEL_CARD_THUMB_INVALID',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

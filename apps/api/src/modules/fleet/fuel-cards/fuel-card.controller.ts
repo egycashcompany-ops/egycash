@@ -16,6 +16,8 @@ import { created, noContent, ok, okPage, validated } from '../../../platform/web
 import { ValidationError } from '../../../shared/errors';
 import { authContext } from '../../../platform/auth';
 import { fleetFuelCardService, toFuelCardDto, toFuelMovementDto } from './fuel-card.service';
+import { thumbRequired } from './fuel-card-thumbs';
+import { partOf } from './fuel-card-upload';
 
 type IdParam = { id: string };
 
@@ -120,21 +122,53 @@ export const deleteFuelCardMovement = async (req: Request, res: Response): Promi
   noContent(res);
 };
 
+const binaryOf = (part: Express.Multer.File) => ({
+  originalName: part.originalname,
+  mime: part.mimetype,
+  size: part.size,
+  buffer: part.buffer,
+});
+
+/** The photo, and — when the browser made one — its thumbnail beside it (`thumb`). */
 export const uploadFuelCardImage = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
-  const uploaded = req.file;
+  const uploaded = partOf(req, 'file');
   if (uploaded === undefined) {
     throw new ValidationError([
       { field: 'file', code: 'REQUIRED', message: 'a file part named "file" is required' },
     ]);
   }
-  const card = await fleetFuelCardService.setImage(authContext(req), params.id, {
-    originalName: uploaded.originalname,
-    mime: uploaded.mimetype,
-    size: uploaded.size,
-    buffer: uploaded.buffer,
-  });
+  const thumb = partOf(req, 'thumb');
+  const card = await fleetFuelCardService.setImage(
+    authContext(req),
+    params.id,
+    binaryOf(uploaded),
+    thumb === undefined ? null : binaryOf(thumb),
+  );
   ok(res, toFuelCardDto(card));
+};
+
+/** A thumbnail for the photo the card already has (6d back-fill). */
+export const uploadFuelCardThumb = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const thumb = partOf(req, 'thumb');
+  if (thumb === undefined) throw thumbRequired();
+  ok(
+    res,
+    toFuelCardDto(
+      await fleetFuelCardService.setThumb(authContext(req), params.id, binaryOf(thumb)),
+    ),
+  );
+};
+
+/** The photo's thumbnail — what every reader of the cards may see. */
+export const getFuelCardImageThumb = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const thumb = await fleetFuelCardService.readThumb(authContext(req), params.id);
+  res.setHeader('Content-Type', thumb.mime);
+  res.setHeader('Content-Disposition', 'inline; filename="thumb"');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(thumb.buffer);
 };
 
 export const getFuelCardImage = async (req: Request, res: Response): Promise<void> => {

@@ -37,6 +37,18 @@ import {
   FLEET_CUSTODY_MEMO_STATUSES,
   FLEET_CUSTODY_OPERATION_STATUSES,
   FLEET_FUEL_MOVEMENT_KINDS,
+  FLEET_FUEL_MOVEMENT_REPAIR_KINDS,
+  FLEET_FUEL_NUMBER_REPAIR_FIELDS,
+  FLEET_FUEL_NUMBER_REPAIR_ROW_STATES,
+  FLEET_FUEL_NUMBER_REPAIR_STATES,
+  FLEET_FUEL_NUMBER_REPAIR_TOP_UPS,
+  FLEET_FUEL_NUMBER_REPAIR_UNIT_STATES,
+  FLEET_FUEL_NUMBER_REPAIR_UNITS,
+  FLEET_FUEL_CARD_THUMB_BLUR_PX,
+  FLEET_FUEL_CARD_THUMB_JPEG_QUALITY,
+  FLEET_FUEL_CARD_THUMB_MAX_BYTES,
+  FLEET_FUEL_CARD_THUMB_MAX_SIDE,
+  ExecuteFleetFuelNumberRepairSchema,
   FLEET_FUEL_RECONCILE_MAX_CARDS,
   FleetCustodyMemoStatusSchema,
   UploadFleetFuelSheetSchema,
@@ -1511,7 +1523,8 @@ describe('batch 3 — the contracts the build is frozen on', () => {
   });
 
   it('the log ends with `sheetLink`; the conflicts keep `noName` and only ever append', () => {
-    expect(FLEET_FUEL_MOVEMENT_KINDS).toEqual([
+    // 6d appended `dataFix` after these seven — pinned whole in the 6d block below.
+    expect(FLEET_FUEL_MOVEMENT_KINDS.slice(0, 7)).toEqual([
       'charge',
       'transferIn',
       'transferOut',
@@ -1566,5 +1579,74 @@ describe('batch 3 — the contracts the build is frozen on', () => {
     }
     expect(FLEET_FUEL_SHEET_NEVER_READ.secret).toContain('pass');
     expect(FLEET_FUEL_SHEET_NEVER_READ.ignored).toContain('قيمهالشحن');
+  });
+});
+
+describe('«تصحيح أرقام الكروت» (6d)', () => {
+  it('the log gains `dataFix` at the very end — every earlier kind keeps its place', () => {
+    expect(FLEET_FUEL_MOVEMENT_KINDS).toEqual([
+      'charge',
+      'transferIn',
+      'transferOut',
+      'receipt',
+      'sheetAdjust',
+      'sheetReject',
+      'sheetLink',
+      'dataFix',
+    ]);
+    expect(FLEET_FUEL_MOVEMENT_REPAIR_KINDS).toEqual(['number', 'nameSwap']);
+  });
+
+  it('the units run in a fixed order — the three cycles, then the pair', () => {
+    expect(FLEET_FUEL_NUMBER_REPAIR_UNITS).toEqual(['C4', 'C5', 'C6', 'pair']);
+    expect(FLEET_FUEL_NUMBER_REPAIR_ROW_STATES).toEqual(['ok', 'changed', 'held', 'done']);
+    expect(FLEET_FUEL_NUMBER_REPAIR_UNIT_STATES).toEqual(['ready', 'held', 'done']);
+    expect(FLEET_FUEL_NUMBER_REPAIR_STATES).toEqual(['pending', 'partial', 'done']);
+    expect(FLEET_FUEL_NUMBER_REPAIR_FIELDS).toEqual([
+      'missing',
+      'vehicle',
+      'number',
+      'name',
+      'expiry',
+      'photo',
+      'pin',
+      'repairLine',
+    ]);
+    expect(FLEET_FUEL_NUMBER_REPAIR_TOP_UPS).toBe(12);
+  });
+
+  it('execute needs «راجعتُ الصفوف» (`reviewed: true`) and each unit once, nothing else', () => {
+    expect(
+      ExecuteFleetFuelNumberRepairSchema.parse({ reviewed: true, units: ['C4', 'pair'] }),
+    ).toEqual({ reviewed: true, units: ['C4', 'pair'] });
+    expect(
+      ExecuteFleetFuelNumberRepairSchema.safeParse({
+        reviewed: true,
+        units: ['C4', 'C5', 'C6', 'pair'],
+      }).success,
+    ).toBe(true);
+    const refused = [
+      { reviewed: false, units: ['C4'] },
+      { reviewed: 'true', units: ['C4'] },
+      { units: ['C4'] },
+      { reviewed: true },
+      { reviewed: true, units: [] },
+      { reviewed: true, units: ['C4', 'C4'] },
+      { reviewed: true, units: ['C7'] },
+      { reviewed: true, units: ['C4', 'C5', 'C6', 'pair', 'C4'] },
+      { reviewed: true, units: ['C4'], force: true },
+    ];
+    for (const body of refused) {
+      expect(ExecuteFleetFuelNumberRepairSchema.safeParse(body).success, JSON.stringify(body)).toBe(
+        false,
+      );
+    }
+  });
+
+  it('a thumbnail is small: 160 px on its longer side, 16 KB, blurred, JPEG at 0.55', () => {
+    expect([FLEET_FUEL_CARD_THUMB_MAX_SIDE, FLEET_FUEL_CARD_THUMB_MAX_BYTES]).toEqual([160, 16384]);
+    expect([FLEET_FUEL_CARD_THUMB_BLUR_PX, FLEET_FUEL_CARD_THUMB_JPEG_QUALITY]).toEqual([
+      1.2, 0.55,
+    ]);
   });
 });

@@ -1,5 +1,6 @@
 // Fuel cards: the registry of cards, the charging the clerk approves, and the transfers between
 // two cards. Every balance change is written with its movement in ONE transaction.
+import { readFile } from 'node:fs/promises';
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   type ApproveFleetFuelCharge,
@@ -9,6 +10,7 @@ import {
   type FleetFuelCardSummaryQuery,
   type FleetFuelCardTotalsDto,
   type FleetFuelLinkPlaceDto,
+  type FleetFuelMovementRepairDto,
   type FleetFuelTransferResultDto,
   type ListFleetFuelCardMovementsQuery,
   type ListFleetFuelCardsQuery,
@@ -41,8 +43,10 @@ import {
   type FleetFuelCardDoc,
   type FleetFuelCardMovementDoc,
   type FleetFuelMovementPlace,
+  type FleetFuelMovementRepair,
 } from './fuel-card.model';
 import { resolveFuelCardDocsCategoryId } from './fuel-card-files';
+import { goLiveThumbOf, hasThumb, validateThumb } from './fuel-card-thumbs';
 
 /** A card's audit ref — the realtime entity `fleet.fuelCard` the cards and charging screens follow. */
 export const fuelCardEntityRef = (id: string) => ({
@@ -84,6 +88,7 @@ export const toFuelCardDto = ({ doc, vehicleCode }: FuelCardWithCode): FleetFuel
           size: doc.image.size,
           uploadedAt: doc.image.uploadedAt.toISOString(),
         },
+  imageThumb: hasThumb(doc.image),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),
@@ -156,6 +161,30 @@ export const toFuelMovementDto = (
           reconciliationId: String(doc.link.reconciliationId),
           fileName: doc.link.fileName,
         },
+  // Only on a `dataFix` line («تصحيح أرقام الكروت») — numbers by their last four only.
+  repair: doc.repair == null ? null : repairDto(doc.repair),
+});
+
+const lastFour = (number: string | null | undefined): string | null =>
+  number == null || number === '' ? null : number.replace(/\D/gu, '').slice(-4);
+const dayOf = (date: Date | null | undefined): string | null =>
+  date == null ? null : date.toISOString().slice(0, 10);
+
+/** A `dataFix` line's correction, as the log shows it. */
+export const repairDto = (repair: FleetFuelMovementRepair): FleetFuelMovementRepairDto => ({
+  key: repair.key,
+  unit: repair.unit,
+  kind: repair.kind,
+  numberBeforeLast4: lastFour(repair.numberBefore),
+  numberAfterLast4: lastFour(repair.numberAfter),
+  pinMoved: repair.pinMoved ?? null,
+  photoMoved: repair.photoMoved ?? null,
+  expiryBefore: dayOf(repair.expiryBefore),
+  expiryAfter: dayOf(repair.expiryAfter),
+  nameBefore: repair.nameBefore ?? null,
+  nameAfter: repair.nameAfter ?? null,
+  openingBefore: repair.openingBefore ?? null,
+  openingAfter: repair.openingAfter ?? null,
 });
 
 /** The password never enters the audit trail. */
@@ -679,6 +708,17 @@ class FleetFuelCardService {
           { field: 'params.id', code: 'INVALID', message: 'a sheet line is not changed here' },
         ]);
       }
+      // «تصحيح أرقام الكروت»: the record of a data repair (and, on the 0849 pair, of the opening's
+      // difference) — never changed or removed, like the sheet's lines.
+      if (line.kind === 'dataFix') {
+        throw new ValidationError([
+          {
+            field: 'params.id',
+            code: 'INVALID',
+            message: 'a data-repair line is not changed here',
+          },
+        ]);
+      }
       // «أُلغي بشيت الشركة»: the sheet already took this charge's money back — changing it here
       // would take it a second time.
       if (line.cancelledBySheet != null) {
@@ -875,9 +915,52 @@ class FleetFuelCardService {
   }
 
   // ── The photo (Files owns the bytes, the card owns the link) ──────────────
+  //
+  // 6d: the photo shows the PIN on its sticker. The full photo is read under `fleetFuelCard.reveal`
+  // (the route, and the Files authorizer of `fuelCard` for the platform's own endpoints); every
+  // other reader of the cards gets the thumbnail — the go-live photo's committed one, or the one
+  // the browser sent beside the photo (`fuelCardThumb`, its own Files entity).
 
-  /** «صوره كل فيزا» — the first upload creates the file, a later one adds a version of it. */
-  async setImage(ctx: AuthContext, id: string, binary: UploadedBinary): Promise<FuelCardWithCode> {
+  /** A thumbnail the browser sent, checked from its header and stored as its own file. */
+  private async uploadThumb(
+    ctx: AuthContext,
+    id: string,
+    thumb: UploadedBinary,
+  ): Promise<{ file: FileDoc; mime: string }> {
+    const { mime } = validateThumb(thumb.buffer);
+    const file = await fileService.upload(
+      ctx,
+      {
+        moduleId: 'fleet',
+        entityType: 'fuelCardThumb',
+        entityId: id,
+        categoryId: await resolveFuelCardDocsCategoryId(),
+        displayName: `fuel card thumbnail ${id}`,
+        visibility: 'private',
+        tags: [],
+      },
+      {
+        originalName: `thumb.${mime.slice('image/'.length)}`,
+        mime,
+        size: thumb.buffer.byteLength,
+        buffer: thumb.buffer,
+      },
+    );
+    return { file, mime };
+  }
+
+  /**
+   * «صوره كل فيزا» — the first upload creates the file, a later one adds a version of it. With its
+   * thumbnail when the browser made one (checked FIRST: a bad one writes nothing); a photo sent
+   * without one has none until an editor who may see it opens it.
+   */
+  async setImage(
+    ctx: AuthContext,
+    id: string,
+    binary: UploadedBinary,
+    thumb: UploadedBinary | null = null,
+  ): Promise<FuelCardWithCode> {
+    if (thumb !== null) validateThumb(thumb.buffer);
     const before = await fleetFuelCardRepository.getById(id);
     const current = before.image ?? null;
     const isFirst = current === null;
@@ -899,8 +982,10 @@ class FleetFuelCardService {
     } else {
       file = await fileService.replace(ctx, String(current.fileId), binary);
     }
+    let thumbFile: FileDoc | null = null;
     let updated: FleetFuelCardDoc;
     try {
+      if (thumb !== null) thumbFile = (await this.uploadThumb(ctx, id, thumb)).file;
       updated = await fleetFuelCardRepository.updateById(
         id,
         {
@@ -910,15 +995,28 @@ class FleetFuelCardService {
             mime: file.mime,
             size: file.size,
             uploadedAt: new Date(),
+            // A new photo never keeps the old photo's thumbnail.
+            ...(thumbFile === null
+              ? {}
+              : { thumb: { fileId: thumbFile._id, mime: thumbFile.mime, size: thumbFile.size } }),
           },
         },
         { by: ctx.userId, version: before.__v },
       );
     } catch (error) {
       // A first upload the card never came to point at is an orphan — withdrawn. A replace added
-      // a version to the group the card already points at, which is history, not an orphan.
+      // a version to the group the card already points at, which is history, not an orphan. A
+      // thumbnail the card never came to point at is an orphan too.
       if (isFirst) await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
+      if (thumbFile !== null) {
+        await fileService.softDelete(ctx, String(thumbFile._id)).catch(() => undefined);
+      }
       throw error;
+    }
+    // After the card write: the old photo's thumbnail is no longer pointed at.
+    const oldThumb = current?.thumb ?? null;
+    if (oldThumb !== null) {
+      await fileService.softDelete(ctx, String(oldThumb.fileId)).catch(() => undefined);
     }
     await auditService.record({
       entityRef: entityRef(id),
@@ -929,11 +1027,60 @@ class FleetFuelCardService {
           old: current === null ? null : String(current.fileId),
           new: String(file._id),
         },
+        ...(oldThumb === null && thumbFile === null
+          ? []
+          : [
+              {
+                field: 'imageThumb',
+                old: oldThumb === null ? null : String(oldThumb.fileId),
+                new: thumbFile === null ? null : String(thumbFile._id),
+              },
+            ]),
       ],
     });
     return this.withCode(updated);
   }
 
+  /**
+   * A thumbnail for the photo the card already has — the back-fill of a photo uploaded before 6d,
+   * sent by the screen of an editor who may see the full photo. Replaces any thumbnail it had.
+   */
+  async setThumb(ctx: AuthContext, id: string, thumb: UploadedBinary): Promise<FuelCardWithCode> {
+    validateThumb(thumb.buffer);
+    const before = await fleetFuelCardRepository.getById(id);
+    const image = before.image ?? null;
+    if (image === null) throw new ConflictError('this card has no photo to make a thumbnail of');
+    const { file } = await this.uploadThumb(ctx, id, thumb);
+    let updated: FleetFuelCardDoc;
+    try {
+      updated = await fleetFuelCardRepository.updateById(
+        id,
+        { 'image.thumb': { fileId: file._id, mime: file.mime, size: file.size } },
+        { by: ctx.userId, version: before.__v },
+      );
+    } catch (error) {
+      await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
+      throw error;
+    }
+    const oldThumb = image.thumb ?? null;
+    if (oldThumb !== null) {
+      await fileService.softDelete(ctx, String(oldThumb.fileId)).catch(() => undefined);
+    }
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'imageThumb',
+          old: oldThumb === null ? null : String(oldThumb.fileId),
+          new: String(file._id),
+        },
+      ],
+    });
+    return this.withCode(updated);
+  }
+
+  /** The FULL photo — the route asks `fleetFuelCard.reveal`, and so does the Files authorizer. */
   async readImage(
     ctx: AuthContext,
     id: string,
@@ -944,10 +1091,31 @@ class FleetFuelCardService {
     return { buffer, mime: doc.mime, fileName: doc.originalName };
   }
 
+  /**
+   * The photo's thumbnail — under the cards' view grant: the one the browser sent (its own Files
+   * entity), else the go-live photo's committed one (its path from the manifest only), else none.
+   */
+  async readThumb(ctx: AuthContext, id: string): Promise<{ buffer: Buffer; mime: string }> {
+    const card = await fleetFuelCardRepository.getById(id);
+    const image = card.image ?? null;
+    if (image === null) throw new NotFoundError('this card has no photo');
+    if (image.thumb != null) {
+      const { doc, buffer } = await fileService.readEntityOwnedBuffer(
+        ctx,
+        String(image.thumb.fileId),
+      );
+      return { buffer, mime: doc.mime };
+    }
+    const committed = goLiveThumbOf(image);
+    if (committed === null) throw new NotFoundError('this card has no thumbnail');
+    return { buffer: await readFile(committed), mime: 'image/jpeg' };
+  }
+
   async deleteImage(ctx: AuthContext, id: string): Promise<FuelCardWithCode> {
     const before = await fleetFuelCardRepository.getById(id);
     if (before.image == null) throw new ConflictError('this card has no photo to delete');
     const fileId = String(before.image.fileId);
+    const thumbId = before.image.thumb == null ? null : String(before.image.thumb.fileId);
     const updated = await fleetFuelCardRepository.updateById(
       id,
       { image: null },
@@ -955,10 +1123,14 @@ class FleetFuelCardService {
     );
     // After the card write, so a failed detach never leaves the card pointing at a deleted file.
     await fileService.softDelete(ctx, fileId).catch(() => undefined);
+    if (thumbId !== null) await fileService.softDelete(ctx, thumbId).catch(() => undefined);
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
-      changes: [{ field: 'image', old: fileId, new: null }],
+      changes: [
+        { field: 'image', old: fileId, new: null },
+        ...(thumbId === null ? [] : [{ field: 'imageThumb', old: thumbId, new: null }]),
+      ],
     });
     return this.withCode(updated);
   }

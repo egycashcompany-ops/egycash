@@ -59,6 +59,11 @@ export interface FleetFuelReconcileLine {
   sheetCode?: string | null;
   /** The charges the sheet does not show (difference < 0), newest first; absent before 6a. */
   charges?: FleetFuelReconcileCharge[];
+  /**
+   * A card of the 0849 pair read before «تصحيح أرقام الكروت» (6d) ran: matched by a name that sits on
+   * the other car's record, so its ✓ is refused for good; absent on a session read before 6d.
+   */
+  inRepair?: boolean;
   decision: FleetFuelReconcileDecision | null;
   decidedAt: Date | null;
   decidedBy: Types.ObjectId | null;
@@ -168,6 +173,7 @@ const lineSchema = new Schema<FleetFuelReconcileLine>(
     sheetCode: { type: String, default: null },
     // NO default: absent on a session read before 6a — read as no candidates.
     charges: { type: [chargeSchema], default: undefined },
+    inRepair: { type: Boolean, default: false },
     decision: { type: String, enum: [...FLEET_FUEL_RECONCILE_DECISIONS, null], default: null },
     decidedAt: { type: Date, default: null },
     decidedBy: { type: Schema.Types.ObjectId, default: null },

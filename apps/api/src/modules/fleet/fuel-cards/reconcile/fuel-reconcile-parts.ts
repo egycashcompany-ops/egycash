@@ -49,26 +49,33 @@ export const placeOfCard = (
 
 type RefusalCode =
   | typeof ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED
-  | typeof ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED;
+  | typeof ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED
+  | typeof ErrorCodes.FLEET_FUEL_RECONCILE_IN_REPAIR;
 
 const MESSAGES: Record<RefusalCode, string> = {
   [ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED]:
     'a card changed after the sheet was read — nothing was written; read the sheet again',
   [ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED]:
     'a card was already decided on this sheet — nothing was written',
+  [ErrorCodes.FLEET_FUEL_RECONCILE_IN_REPAIR]:
+    'this card waits for the card-number repair — nothing was written',
+};
+
+const DETAIL: Record<RefusalCode, string> = {
+  [ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED]: 'CARD_CHANGED',
+  [ErrorCodes.FLEET_FUEL_RECONCILE_DECIDED]: 'DECIDED',
+  [ErrorCodes.FLEET_FUEL_RECONCILE_IN_REPAIR]: 'IN_REPAIR',
 };
 
 /**
  * 409 naming every card, one detail each. The detail code is the error's own (`CARD_CHANGED` /
- * `DECIDED`) unless a narrower one is given (`LINK_CHANGED`, `REQUEST_CHANGED`).
+ * `DECIDED` / `IN_REPAIR`) unless a narrower one is given (`LINK_CHANGED`, `REQUEST_CHANGED`).
  */
 export const refusal = (code: RefusalCode, cardIds: readonly string[], detail?: string): AppError =>
   new AppError(code, 409, MESSAGES[code], {
     details: cardIds.map((cardId) => ({
       field: 'cardIds',
-      code:
-        detail ??
-        (code === ErrorCodes.FLEET_FUEL_RECONCILE_CARD_CHANGED ? 'CARD_CHANGED' : 'DECIDED'),
+      code: detail ?? DETAIL[code],
       message: cardId,
     })),
   });

@@ -164,6 +164,7 @@ export const ControlDataTab = ({
   banks,
   columnFilters,
 }: {
+  /** The whole day — `day.lines` is what the boxes narrow, and an empty row blames them only then. */
   day: AtmControlDayDto;
   /** The day's lines the filter boxes keep (`filterControlLines`) — the page filters. */
   lines: readonly ControlLine[];
@@ -203,7 +204,7 @@ export const ControlDataTab = ({
             ))}
           </tr>
           {/* The filter row sticks with the head: the seals toggle's column takes no box. */}
-          <tr data-column-filters="true">
+          <tr key={`filters-${String(columnFilters.generation)}`} data-column-filters="true">
             <th className={FILTER_TH} />
             {CONTROL_LINE_COLUMNS.map((column) => (
               <th key={column.key} className={FILTER_TH}>
@@ -219,7 +220,7 @@ export const ControlDataTab = ({
           </tr>
         </thead>
         <tbody>
-          {lines.length === 0 && columnFilters.active && (
+          {lines.length === 0 && columnFilters.active && day.lines.length > 0 && (
             <tr data-control-lines-empty="true">
               <td
                 colSpan={CONTROL_LINE_COLUMNS.length + 1}

@@ -94,6 +94,11 @@ export interface BoardView<T> extends ReaderOrder<T> {
   counts: Record<BoardDayView, number>;
   /** The day or days the view's statement is «عن». */
   range: { from: string; to: string };
+  /**
+   * How many rows the view holds BEFORE the column boxes — so an empty table blames the boxes only
+   * when they are what emptied it, not a day that has nothing at all.
+   */
+  beforeBoxes: number;
 }
 
 /**
@@ -136,14 +141,17 @@ export const useColumnFiltered = <T>(
   columns: readonly SheetColumn<T>[],
   values: ColumnFilterValues,
 ): T[] => {
-  const keys = columns.map((column) => column.key).join(',');
+  // The headers are in the key, not only the keys: the cells' text is the reader's language (a
+  // time on the Cairo clock, in its digits), and a language switch must refilter on the new text.
+  const identity = columns.map((column) => `${column.key}:${column.header}`).join('|');
   return useMemo(() => {
     const byKey = new Map(columns.map((column) => [column.key, column]));
     return filterRowsByColumns(rows, values, (row, key) => {
       const column = byKey.get(key);
-      return column === undefined ? null : column.text(row, '');
+      if (column === undefined) return null;
+      return column.filterText === undefined ? column.text(row, '') : column.filterText(row);
     });
-  }, [rows, values, keys]);
+  }, [rows, values, identity]);
 };
 
 /**
@@ -163,6 +171,10 @@ export const useBoardView = <T extends AtmOperationRow>(
   const today = cairoDay(now);
   const kept = useColumnFiltered(rows, columns, columnFilters);
   const inView = useMemo(() => rowsInDayView(kept, view, now), [kept, view, today]);
+  const beforeBoxes = useMemo(
+    () => (kept.length === rows.length ? inView.length : rowsInDayView(rows, view, now).length),
+    [rows, kept, inView, view, today],
+  );
   const counts = useMemo(() => dayViewCounts(kept, now), [kept, today]);
   const order = useAreaGroupedOrder(params, inView, columns);
   return {
@@ -171,5 +183,6 @@ export const useBoardView = <T extends AtmOperationRow>(
     setView: (next) => patchParam(params, 'day', next === 'today' ? null : next),
     counts,
     range: dayViewRange(view, order.rows, now),
+    beforeBoxes,
   };
 };

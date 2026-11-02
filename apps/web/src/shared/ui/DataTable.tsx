@@ -158,16 +158,6 @@ export interface DataTableProps<T> {
    */
   rowProps?: (row: T) => HTMLAttributes<HTMLTableRowElement> | undefined;
   /**
-   * A HEADER LINE BEFORE EACH RUN OF ROWS THAT SHARE A GROUP. The ATM open boards use it, grouped
-   * by area: «كل منطقة تظهر اعطالها وتغذياتها تحت بعض».
-   *
-   * The table only DRAWS the groups. `rows` must already come in group order: a line is drawn
-   * wherever `of` changes from one row to the next, so a group split in two would show twice.
-   * `label` is what the line says; the table adds how many rows the run holds. The line spans
-   * the whole row, the selection box included, and takes no part in the selection, the sort or
-   * a row's `index`.
-   */
-  /**
    * A ROW OF FILTER BOXES UNDER THE HEAD, one per `filterable` column — the ATM tables' «فلتر لكل
    * عمود» (2026-11-02). The table draws the boxes and reports what is typed (`onChange`, after the
    * typist pauses); the PAGE filters the rows, before it counts, groups, selects or exports them,
@@ -179,7 +169,19 @@ export interface DataTableProps<T> {
     /** The box's accessible name, from the column's header — the table holds no locale. */
     label: (header: string) => string;
     placeholder?: string;
+    /** `useColumnFilters().generation`: the row remounts on a reset, emptying every box. */
+    generation?: number;
   };
+  /**
+   * A HEADER LINE BEFORE EACH RUN OF ROWS THAT SHARE A GROUP. The ATM open boards use it, grouped
+   * by area: «كل منطقة تظهر اعطالها وتغذياتها تحت بعض».
+   *
+   * The table only DRAWS the groups. `rows` must already come in group order: a line is drawn
+   * wherever `of` changes from one row to the next, so a group split in two would show twice.
+   * `label` is what the line says; the table adds how many rows the run holds. The line spans
+   * the whole row, the selection box included, and takes no part in the selection, the sort or
+   * a row's `index`.
+   */
   group?: {
     of: (row: T) => string;
     label: (group: string) => ReactNode;
@@ -510,6 +512,7 @@ export const DataTable = <T,>({
           </tr>
           {columnFilters !== undefined && columns.some((c) => c.filterable === true) && (
             <tr
+              key={`filters-${String(columnFilters.generation ?? 0)}`}
               data-column-filters="true"
               className={cn(
                 'bg-slate-50',

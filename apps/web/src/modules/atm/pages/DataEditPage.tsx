@@ -234,16 +234,19 @@ export const DataEditPage = (): JSX.Element => {
   const lookup = useMemo(() => makeBankLookup(catalog.data), [catalog.data]);
   // The bank tab's boxes narrow what the status filter kept; a tab change empties them.
   const columnFilters = useColumnFilters();
+  const bankRowsBeforeBoxes = useMemo(
+    () =>
+      sortByCatalogOrder(catalog.data ?? []).filter(
+        (bank) => active === '' || bank.isActive === (active === 'true'),
+      ),
+    [catalog.data, active],
+  );
   const bankRows = useMemo(
     () =>
-      filterRowsByColumns(
-        sortByCatalogOrder(catalog.data ?? []).filter(
-          (bank) => active === '' || bank.isActive === (active === 'true'),
-        ),
-        columnFilters.values,
-        (bank, key) => bankCellText(bank, key, t),
+      filterRowsByColumns(bankRowsBeforeBoxes, columnFilters.values, (bank, key) =>
+        bankCellText(bank, key, t),
       ),
-    [catalog.data, active, columnFilters.values, locale],
+    [bankRowsBeforeBoxes, columnFilters.values, locale],
   );
   // The acting branch's bank texts that link to no bank — the spellings tab's callout — each with
   // the row of this branch that already holds it, if any (`unmappedBankLabels`).
@@ -647,10 +650,13 @@ export const DataEditPage = (): JSX.Element => {
               loading={catalog.isLoading}
               error={catalog.isError ? catalog.error : undefined}
               onRetry={() => void catalog.refetch()}
-              {...(columnFilters.active ? { empty: t('atm.common.emptyColumnFiltered') } : {})}
+              {...(columnFilters.active && bankRowsBeforeBoxes.length > 0
+                ? { empty: t('atm.common.emptyColumnFiltered') }
+                : {})}
               columnFilters={{
                 values: columnFilters.values,
                 onChange: columnFilters.set,
+                generation: columnFilters.generation,
                 label: (header) => t('atm.common.filterColumn', { column: header }),
                 placeholder: t('atm.common.filterPlaceholder'),
               }}

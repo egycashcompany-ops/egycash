@@ -45,18 +45,24 @@ describe('a page header with a toolbar', () => {
       expect.arrayContaining([
         'min-w-0',
         'basis-full',
-        'lg:order-2',
+        'lg:order-none',
         'lg:flex-1',
         'lg:basis-0',
         'lg:min-w-[24rem]',
       ]),
     );
     const title = classOf(withToolbar, '<h1 ');
-    expect(title).toEqual(expect.arrayContaining(['order-1', 'lg:shrink-0']));
+    expect(title).toEqual(expect.arrayContaining(['order-1', 'lg:order-none', 'lg:shrink-0']));
     const actions = classOf(withToolbar, '<button type="button">Action</button>');
     expect(actions).toEqual(
-      expect.arrayContaining(['order-2', 'lg:order-3', 'ms-auto', 'min-w-0']),
+      expect.arrayContaining(['order-2', 'lg:order-none', 'ms-auto', 'min-w-0']),
     );
+  });
+
+  it('is written title, row, actions — so Tab follows what a computer screen shows', () => {
+    const at = (marker: string): number => withToolbar.indexOf(marker);
+    expect(at('<h1 ')).toBeLessThan(at('data-page-toolbar'));
+    expect(at('data-page-toolbar')).toBeLessThan(at('<button type="button">Action</button>'));
   });
 
   it('below lg: the row takes a line of its own, after the title and the actions', () => {

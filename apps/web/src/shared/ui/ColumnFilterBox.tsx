@@ -32,15 +32,23 @@ export const ColumnFilterBox = ({
   const [text, setText] = useState(value);
   const report = useRef(onValueChange);
   report.current = onValueChange;
-  // A change from outside — the page's reset — replaces what the box shows.
+  // What this box last told the page. The page's echo of it is not a change from outside — it
+  // must never overwrite what the reader typed since — but any OTHER value is (the page's reset
+  // remounts the row instead: `useColumnFilters().generation`).
+  const reported = useRef(value);
   useEffect(() => {
+    if (value === reported.current) return;
+    reported.current = value;
     setText(value);
   }, [value]);
   useEffect(() => {
-    if (text === value) return undefined;
-    const id = window.setTimeout(() => report.current(text), 200);
+    if (text === reported.current) return undefined;
+    const id = window.setTimeout(() => {
+      reported.current = text;
+      report.current(text);
+    }, 200);
     return () => window.clearTimeout(id);
-  }, [text, value]);
+  }, [text]);
   return (
     <Input
       type="search"

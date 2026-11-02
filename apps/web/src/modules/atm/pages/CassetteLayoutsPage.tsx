@@ -296,8 +296,10 @@ export const CassetteLayoutsPage = (): JSX.Element => {
       <div className={BOARD_FRAME}>
         {/* The bank, the status and the search on the title's line, before the actions
           (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»):
-          when the line runs short they wrap inside it rather than dropping under the title. The
-          last import stays under the header — it is news about the data, not a way to narrow it. */}
+          they wrap inside their slot while it keeps 24rem beside the title, the figures and the
+          actions, and take a line of their own under the title when it cannot (`PageHeader`'s
+          toolbar). The last import stays under the header — it is news about the data, not a way
+          to narrow it. */}
         <PageHeader
           title={t('atm.layouts.title')}
           figures={
@@ -433,10 +435,13 @@ export const CassetteLayoutsPage = (): JSX.Element => {
                 rowClassName={(row) =>
                   row.machineId === machineId ? 'bg-brand-50/70 dark:bg-brand-950/40' : undefined
                 }
-                {...(columnFilters.active ? { empty: t('atm.common.emptyColumnFiltered') } : {})}
+                {...(columnFilters.active && rows.length > 0
+                  ? { empty: t('atm.common.emptyColumnFiltered') }
+                  : {})}
                 columnFilters={{
                   values: columnFilters.values,
                   onChange: columnFilters.set,
+                  generation: columnFilters.generation,
                   label: (header) => t('atm.common.filterColumn', { column: header }),
                   placeholder: t('atm.common.filterPlaceholder'),
                 }}

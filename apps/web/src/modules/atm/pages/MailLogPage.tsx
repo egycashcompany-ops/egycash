@@ -291,6 +291,7 @@ export const MailLogPage = (): JSX.Element => {
             columnFilters={{
               values: columnFilters.values,
               onChange: columnFilters.set,
+              generation: columnFilters.generation,
               label: (header) => t('atm.common.filterColumn', { column: header }),
               placeholder: t('atm.common.filterPlaceholder'),
             }}

@@ -154,6 +154,21 @@ const render = (
 
 const DECIDE = ['atmMailTicket.view', 'atmMailTicket.decide'];
 const count = (markup: string, needle: string): number => markup.split(needle).length - 1;
+
+/** The header's toolbar slot alone, from its `<div` to the `</div>` that closes it. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
 const title = (key: string): string => `title="${t(key)}"`;
 
 /** One row's markup, from its `<tr` to its end, found by the machine code it shows. */
@@ -208,12 +223,13 @@ describe('the filter row on the title’s line, and a box under every column (20
   const codesShown = (markup: string): string[] =>
     [...markup.matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
 
-  it('puts the bank, area, search and reset in the header', () => {
-    const markup = render(DECIDE);
-    const header = markup.slice(markup.indexOf('<h1'), markup.indexOf('<table'));
-    expect(header).toContain('data-page-toolbar="true"');
-    expect(header).toContain(`>${t('atm.common.bank')}<`);
-    expect(header).toContain(`placeholder="${t('atm.mail.search')}"`);
+  it('puts the bank, area, search and reset in the header’s toolbar', () => {
+    const toolbar = toolbarOf(render(DECIDE));
+    expect(toolbar).toContain(`>${t('atm.common.bank')}<`);
+    expect(toolbar).toContain(`>${t('atm.common.area')}<`);
+    expect(toolbar).toContain(`placeholder="${t('atm.mail.search')}"`);
+    // The reset sits there too, lit while a box narrows the list.
+    expect(toolbarOf(withBoxes({ bank: 'CIB' }))).toContain('data-board-reset');
   });
 
   it('draws a box under every text column — none for the buttons', () => {
@@ -232,6 +248,15 @@ describe('the filter row on the title’s line, and a box under every column (20
     const markup = withBoxes({ bank: 'CIB' }, [ONE.id, THREE.id]);
     expect(rowOf(markup, THREE.machineCode)).toContain(title('atm.mail.accept'));
     expect(rowOf(markup, THREE.machineCode)).not.toContain(title('atm.mail.acceptSelected'));
+  });
+
+  it('the reset clears the boxes with the filters', () => {
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), './pages/MailTicketsPage.tsx'),
+      'utf8',
+    );
+    const reset = source.slice(source.indexOf('<BoardResetButton'));
+    expect(reset.slice(0, reset.indexOf('/>'))).toContain('columnFilters.clear();');
   });
 
   it('lights the reset, and says so when the boxes hide every row', () => {

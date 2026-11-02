@@ -429,8 +429,9 @@ export const PreparationPage = (): JSX.Element => {
           only the lines — and the capture beside them — scroll. */}
       <div className={BOARD_FRAME}>
         {/* The day, the bank and the find on the title's line (2026-11-02, «عايز تطلع الصف بتاع
-          الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): when the line runs short they wrap
-          inside it rather than dropping under the title. The find keeps its id, so the scanner's
+          الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): they wrap inside their slot while it
+          keeps 24rem beside the title and the figures, and take a line of their own under the
+          title when it cannot (`PageHeader`'s toolbar). The find keeps its id, so the scanner's
           focus still comes back to it after a save. */}
         <PageHeader
           title={t('atm.prep.title')}
@@ -550,7 +551,10 @@ export const PreparationPage = (): JSX.Element => {
                     ))}
                   </tr>
                   {/* The filter row, one box per column, sticking with the head. */}
-                  <tr data-column-filters="true">
+                  <tr
+                    key={`filters-${String(columnFilters.generation)}`}
+                    data-column-filters="true"
+                  >
                     {PREP_LINE_COLUMNS.map((column) => (
                       <th key={column.key} className="px-3 pb-2 font-normal">
                         <ColumnFilterBox
@@ -565,7 +569,7 @@ export const PreparationPage = (): JSX.Element => {
                   </tr>
                 </thead>
                 <tbody>
-                  {shownLines.length === 0 && columnFilters.active && (
+                  {shownLines.length === 0 && columnFilters.active && lines.length > 0 && (
                     <tr data-prep-lines-empty="true">
                       <td
                         colSpan={PREP_LINE_COLUMNS.length}

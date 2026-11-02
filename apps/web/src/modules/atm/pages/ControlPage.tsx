@@ -323,8 +323,9 @@ export const ControlPage = (): JSX.Element => {
           under their toolbar. */}
       <div className={BOARD_FRAME}>
         {/* The day and the tabs on the title's line, before the prints (2026-11-02, «عايز تطلع
-          الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): when the line runs short
-          they wrap inside it rather than dropping under the title. */}
+          الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): they wrap inside their
+          slot while it keeps 24rem beside the title and the prints, and take a line of their own
+          under the title when it cannot (`PageHeader`'s toolbar). */}
         <PageHeader
           title={t('atm.control.title')}
           actions={actions}

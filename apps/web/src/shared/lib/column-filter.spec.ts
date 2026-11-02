@@ -49,8 +49,19 @@ describe('what one box matches', () => {
     expect(ids({ bank: 'nbe' })).toEqual(['b']);
   });
 
-  it('Arabic digits are the same number', () => {
+  it('Arabic digits are the same number, and its separators the same marks', () => {
     expect(ids({ code: '٧١٢' })).toEqual(['c']);
+    const amounts = [{ id: 'x', total: '١٬٢٥٠٫٥٠ ج.م' }];
+    const keep = (typed: string): number =>
+      filterRowsByColumns(amounts, { total: typed }, (row, key) =>
+        key === 'total' ? row.total : null,
+      ).length;
+    expect(keep('1,250.50')).toBe(1);
+    // Typed without the thousands mark, as people type amounts: found all the same.
+    expect(keep('1250')).toBe(1);
+    expect(keep('١٢٥٠٫٥')).toBe(1);
+    expect(keep('1,25')).toBe(1);
+    expect(keep('2501')).toBe(0);
   });
 
   it('hamza forms and ة/ه are one — «الاسماعيليه» finds «الإسماعيلية»', () => {
@@ -63,6 +74,25 @@ describe('what one box matches', () => {
     expect(ids({ bank: 'بنك القاهرة' })).toEqual([]);
     // Punctuation in the cell is not in the way: «3h 05m» finds «3h : 05m».
     expect(ids({ taken: '3h 05m' })).toEqual(['a']);
+  });
+
+  it('keeps the punctuation it shows: «2/11» finds 02/11, never 21/10 — the RLM between ignored', () => {
+    // As an Arabic date renders: digits, a right-to-left mark after each part, «/» between.
+    const dates = [
+      { id: 'nov2', at: '٠٢\u200F/١١\u200F/٢٠٢٦، ١٠:٣٠ ص' },
+      { id: 'oct21', at: '٢١\u200F/١٠\u200F/٢٠٢٦، ١١:٣٠ ص' },
+      { id: 'dec1', at: '٠١\u200F/١٢\u200F/٢٠٢٦، ٠٩:٠٠ ص' },
+    ];
+    const kept = (typed: string): string[] =>
+      filterRowsByColumns(dates, { at: typed }, (row, key) => (key === 'at' ? row.at : null)).map(
+        (row) => row.id,
+      );
+    expect(kept('2/11')).toEqual(['nov2']);
+    expect(kept('1/12')).toEqual(['dec1']);
+    // With the separators dropped, as `fold` drops them, «2/11» would be «211» and keep 21/10 too.
+    expect(kept('12/11')).toEqual([]);
+    expect(kept('١٠:٣٠')).toEqual(['nov2']);
+    expect(kept('2026 ص')).toEqual(['nov2', 'oct21', 'dec1']);
   });
 
   it('an empty box, or one of spaces or punctuation only, narrows nothing', () => {

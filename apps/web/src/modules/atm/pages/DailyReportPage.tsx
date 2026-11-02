@@ -112,10 +112,15 @@ const CountsTable = ({
           loading={loading}
           error={error}
           onRetry={onRetry}
-          empty={columnFilters.active ? t('atm.common.emptyColumnFiltered') : emptyLabel}
+          empty={
+            columnFilters.active && rows.length > 0
+              ? t('atm.common.emptyColumnFiltered')
+              : emptyLabel
+          }
           columnFilters={{
             values: columnFilters.values,
             onChange: columnFilters.set,
+            generation: columnFilters.generation,
             label: (header) => t('atm.common.filterColumn', { column: header }),
             placeholder: t('atm.common.filterPlaceholder'),
           }}

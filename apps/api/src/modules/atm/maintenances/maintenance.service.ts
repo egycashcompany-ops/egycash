@@ -182,49 +182,49 @@ class AtmMaintenanceService {
    * Called BY the mail-ticket service inside one accept; audited there as the accept.
    *
    * Opens even when the machine already has an open maintenance on the ticket's day — the row the
-   * pending screen flags `duplication` (OD-1c, 2026-11-02; the legacy's own behaviour). Answers
-   * `null`, writing nothing, when a LIVE maintenance already carries this ticket: a concurrent
-   * accept of the same ticket opened it first, and `ux_maintenance_per_mail_ticket` refused this
-   * one — the caller skips the ticket as already decided.
+   * pending screen flags `duplication` (OD-1c, 2026-11-02; the legacy's own behaviour).
+   *
+   * Written inside the CALLER's transaction (`session`), beside the ticket's own flip to accepted,
+   * so neither half ever lands alone: a reject or another accept of the same ticket landing in
+   * between makes the flip stale, and this row rolls back with it. When a live maintenance already
+   * carries the ticket, `ux_maintenance_per_mail_ticket` refuses the insert with a duplicate key
+   * (`isMailTicketTaken`) — thrown, not swallowed: a write error ends the transaction, so the
+   * caller handles it once it is out.
    */
   async openFromMail(
     row: MaintenanceFromMail,
     ctx: AuthContext,
-  ): Promise<AtmMaintenanceDoc | null> {
+    session: ClientSession,
+  ): Promise<AtmMaintenanceDoc> {
     if (row.machineId === null) {
       throw new BusinessRuleError('الماكينة المرتبطة بالرسالة لم تعد موجودة.');
     }
-    try {
-      return await atmMaintenanceRepository.create(
-        {
-          branchId: row.branchId,
-          machineId: row.machineId,
-          machineCode: row.machineCode,
-          bankName: row.bankName,
-          machineName: row.machineName,
-          zone: '',
-          area: row.area,
-          openedAt: row.openedAt,
-          openDay: openDayOf(row.openedAt),
-          closedAt: null,
-          serviceType: row.serviceType,
-          notes: null,
-          referenceNumber: null,
-          source: 'mail',
-          mailTicketId: row.mailTicketId,
-          leaderEmployeeId: null,
-          leaderName: null,
-          openedById: new Types.ObjectId(ctx.userId),
-          openedByName: actorName(ctx),
-          closedById: null,
-          closedByName: null,
-        },
-        { by: ctx.userId },
-      );
-    } catch (error) {
-      if (isMailTicketTaken(error)) return null;
-      throw error;
-    }
+    return atmMaintenanceRepository.create(
+      {
+        branchId: row.branchId,
+        machineId: row.machineId,
+        machineCode: row.machineCode,
+        bankName: row.bankName,
+        machineName: row.machineName,
+        zone: '',
+        area: row.area,
+        openedAt: row.openedAt,
+        openDay: openDayOf(row.openedAt),
+        closedAt: null,
+        serviceType: row.serviceType,
+        notes: null,
+        referenceNumber: null,
+        source: 'mail',
+        mailTicketId: row.mailTicketId,
+        leaderEmployeeId: null,
+        leaderName: null,
+        openedById: new Types.ObjectId(ctx.userId),
+        openedByName: actorName(ctx),
+        closedById: null,
+        closedByName: null,
+      },
+      { by: ctx.userId, session },
+    );
   }
 
   /**

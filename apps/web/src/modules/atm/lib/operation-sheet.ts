@@ -40,6 +40,11 @@ export interface SheetColumn<T> {
    * التغذية». The open boards keep every other cell out of a selection.
    */
   copy?: boolean;
+  /**
+   * What the column's filter box matches, when the cell SHOWS more than `text` — the maintenance
+   * board's service with its «بريد» badge. Absent: the box matches `text`.
+   */
+  filterText?: (row: T) => string;
 }
 
 const orEmpty = (value: string | null, empty: string): string =>
@@ -156,6 +161,15 @@ export const maintenanceColumns = (
       header: t('atm.maintenance.serviceType'),
       text: (row, empty) => orEmpty(row.serviceType, empty),
       copy: page === 'open',
+      // The open board draws a «بريد» badge beside a mail-opened service; its box matches it too.
+      ...(page === 'open'
+        ? {
+            filterText: (row: AtmMaintenanceDto) =>
+              row.source === 'mail'
+                ? `${orEmpty(row.serviceType, '')} ${t('atm.maintenance.fromMail')}`
+                : orEmpty(row.serviceType, ''),
+          }
+        : {}),
     },
     { key: 'area', header: t('atm.common.area'), text: (row) => row.area },
     {

@@ -131,6 +131,21 @@ const render = (
 
 const DECIDE = ['atmMailTicket.viewLog', 'atmMailTicket.decide'];
 const count = (markup: string, needle: string): number => markup.split(needle).length - 1;
+
+/** The header's toolbar slot alone, from its `<div` to the `</div>` that closes it. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
 const restoreButton = `title="${t('atm.mail.restore')}"`;
 
 /** One row's markup, from its `<tr` to its end, found by the machine code it shows. */
@@ -263,11 +278,10 @@ describe('the log on the title’s line, with a box under every column (2026-11-
     [...markup.matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
 
   it('puts the range, the status and the narrowing in the header', () => {
-    const markup = render(DECIDE);
-    const header = markup.slice(markup.indexOf('<h1'), markup.indexOf('<table'));
-    expect(header).toContain('data-page-toolbar="true"');
-    expect(header).toContain('id="mail-log-status"');
-    expect(header).toContain(`placeholder="${t('atm.mail.search')}"`);
+    const toolbar = toolbarOf(render(DECIDE));
+    expect(toolbar).toContain('type="date"');
+    expect(toolbar).toContain('id="mail-log-status"');
+    expect(toolbar).toContain(`placeholder="${t('atm.mail.search')}"`);
   });
 
   it('draws a box under every text column — none for the button', () => {

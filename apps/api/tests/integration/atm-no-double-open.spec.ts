@@ -51,6 +51,7 @@ import { AtmMaintenanceModel } from '../../src/modules/atm/maintenances/maintena
 import { AtmMailTicketModel } from '../../src/modules/atm/mail-tickets/mail-ticket.model';
 import { atmMaintenanceRepository } from '../../src/modules/atm/maintenances/maintenance.repository';
 import { atmMailTicketRepository } from '../../src/modules/atm/mail-tickets/mail-ticket.repository';
+import { atmMaintenanceService } from '../../src/modules/atm/maintenances/maintenance.service';
 import { atmMailIngestionService } from '../../src/modules/atm/mail-tickets/mail-ingestion.service';
 import { AtmMachineModel } from '../../src/modules/atm/machines/machine.model';
 import { importLegacyAtmDeployment } from '../../src/modules/atm/migration/legacy-import';
@@ -262,6 +263,7 @@ beforeAll(async () => {
     { machineCode: '6004', name: 'SYN 6004' },
     { machineCode: '6005', name: 'SYN 6005' },
     { machineCode: '6006', name: 'SYN 6006' },
+    { machineCode: '6008', name: 'SYN 6008' },
     { machineCode: '7101', name: 'SYN 7101' },
     { machineCode: '7102', name: 'SYN 7102' },
     { machineCode: '7103', name: 'SYN 7103' },
@@ -660,7 +662,7 @@ describe('mail accept — a concurrent accept of the SAME ticket opens ONE maint
     expect(await openRows('maint', '6005')).toBe(1);
   });
 
-  it("between the winner's two writes (maintenance opened, ticket not yet flipped) — skipped too", async () => {
+  it('a maintenance left behind by an accept whose flip never landed is ADOPTED — the ticket is accepted onto it, no second opens', async () => {
     const ticketId = await ingestMail('6006');
     const ticket = await AtmMailTicketModel.findById(ticketId).lean().exec();
     // The winner's first write, alone: the maintenance opened FROM this ticket.
@@ -677,12 +679,47 @@ describe('mail accept — a concurrent accept of the SAME ticket opens ONE maint
       source: 'mail',
       mailTicketId: ticket?._id,
     });
-    const loser = await accept(ticketId);
-    expect(loser.status).toBe(200);
-    expect(data<AtmMailTicketDto[]>(loser)).toEqual([]);
-    expect(refusedOf(loser)).toEqual([]);
+    // Left by an accept from before the two writes were one transaction (a reject in between, a
+    // crash): the ticket is still pending. Without adoption the per-ticket index would refuse
+    // every accept of it from now on, and the ticket would sit pending for good.
+    const res = await accept(ticketId);
+    expect(res.status).toBe(200);
+    expect(data<AtmMailTicketDto[]>(res).map((t) => t.id)).toEqual([ticketId]);
+    expect(refusedOf(res)).toEqual([]);
+    expect((await AtmMailTicketModel.findById(ticketId).lean().exec())?.status).toBe('accepted');
     expect(await openRows('maint', '6006')).toBe(1);
     expect(await liveFromTicket(ticketId)).toBe(1);
+  });
+
+  it('an accept racing a reject of the same ticket rolls back whole — no maintenance is left behind', async () => {
+    const ticketId = await ingestMail('6008');
+    // The reject lands between the accept's two writes: after its maintenance is inserted (inside
+    // the transaction), before the ticket's flip.
+    const original = atmMaintenanceService.openFromMail.bind(atmMaintenanceService);
+    vi.spyOn(atmMaintenanceService, 'openFromMail').mockImplementationOnce(
+      async (row, ctx, session) => {
+        const opened = await original(row, ctx, session);
+        const rejected = await post(alexToken, '/atm/mail-tickets/reject', { ids: [ticketId] });
+        expect(data<AtmMailTicketDto[]>(rejected).map((t) => t.id)).toEqual([ticketId]);
+        return opened;
+      },
+    );
+    const res = await accept(ticketId);
+    // The reject won: the accept is skipped like any decided ticket, and its maintenance went with
+    // the rolled-back transaction.
+    expect(res.status).toBe(200);
+    expect(data<AtmMailTicketDto[]>(res)).toEqual([]);
+    expect((await AtmMailTicketModel.findById(ticketId).lean().exec())?.status).toBe('rejected');
+    expect(await liveFromTicket(ticketId)).toBe(0);
+    expect(await openRows('maint', '6008')).toBe(0);
+
+    // The reject was a mistake: restored, the ticket accepts and opens its ONE maintenance.
+    const restored = await post(alexToken, '/atm/mail-tickets/restore', { ids: [ticketId] });
+    expect(restored.status).toBe(200);
+    const again = await accept(ticketId);
+    expect(data<AtmMailTicketDto[]>(again).map((t) => t.id)).toEqual([ticketId]);
+    expect(await liveFromTicket(ticketId)).toBe(1);
+    expect(await openRows('maint', '6008')).toBe(1);
   });
 
   it('three concurrent accepts of one ticket: one accepts it and opens ONE maintenance, none reports it refused', async () => {

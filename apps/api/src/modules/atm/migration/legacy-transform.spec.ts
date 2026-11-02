@@ -115,7 +115,7 @@ describe('replenishmentFromLegacy', () => {
     ).toBe(90 * 60_000);
   });
 
-  it('stores the Cairo day of the REPAIRED open time — the per-day rule’s key', () => {
+  it('stores the Cairo day of the REPAIRED open time — as every open does', () => {
     // 2026-01-15 23:30 Cairo, labelled UTC: the repaired instant is 21:30Z, still the 15th in Cairo.
     const late = { ...doc, open_time: new Date('2026-01-15T23:30:00.000Z') };
     expect(replenishmentFromLegacy(late, BRANCH, MACHINE, 'cairo-labelled', NOW)?.openDay).toBe(

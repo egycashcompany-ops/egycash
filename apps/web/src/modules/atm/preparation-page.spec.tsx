@@ -11,6 +11,9 @@
 //     lines list has a filter box per column — which never narrows what the find searches.
 //
 // Every code, seal and count below is synthetic.
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -332,5 +335,14 @@ describe('the lines’ filter boxes (2026-11-02, «فلتر لكل عمود»)',
     const lines = [CANCELLED, OPEN];
     expect(filterPrepLines(lines, { serial: '201' }, t, 'ar')).toEqual([CANCELLED]);
     expect(findLine(lines, '202')?.line.lineId).toBe(OPEN.lineId);
+    // …and the page hands the find the WHOLE day, never the lines the boxes keep: read from the
+    // source, as a static render cannot scan.
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), './pages/PreparationPage.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('findLine(lines, find)');
+    expect(source).toContain('linesOfCode(lines, find)');
+    expect(source).not.toMatch(/findLine\(shownLines|linesOfCode\(shownLines/);
   });
 });

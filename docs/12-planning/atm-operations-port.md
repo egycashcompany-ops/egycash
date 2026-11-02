@@ -315,13 +315,20 @@ service checks asked by the open time's own day range, so a row stored before th
 - **One live maintenance per mail ticket.** The per-day index used to be what kept two concurrent
   accepts of the SAME ticket (a double click, two people on one screen) from opening two
   maintenances. `ux_maintenance_per_mail_ticket` holds it now: unique on `mailTicketId` over rows
-  opened from a ticket (`mailTicketId` an ObjectId) that are not deleted, closed ones included. The
-  loser's insert is refused, `openFromMail` answers that a live maintenance already carries the
-  ticket, and accept skips it like any decided ticket — never a refusal, never a 409. A closed
-  maintenance keeps its ticket accepted (the restore refuses it, §6d); a soft-deleted one does not,
-  so a restored ticket is accepted again. Manual and imported rows carry no ticket and are outside
-  it. Built at boot by `atm-indexes.ts`, reported (collection, index, counts) and skipped over
-  stored duplicates like every unique index there.
+  opened from a ticket (`mailTicketId` an ObjectId) that are not deleted, closed ones included. A
+  closed maintenance keeps its ticket accepted (the restore refuses it, §6d); a soft-deleted one
+  does not, so a restored ticket is accepted again. Manual and imported rows carry no ticket and
+  are outside it. Built at boot by `atm-indexes.ts`, reported (collection, index, counts) and
+  skipped over stored duplicates like every unique index there.
+- **Accept writes a ticket's two halves in one transaction.** The maintenance and the ticket's flip
+  to accepted commit together (`unitOfWork`, as the restore does). A concurrent decision of the
+  same ticket — the loser of a double click, or an accept racing a reject — rolls back whole: its
+  insert collides with the winner's maintenance (the index), or its flip is stale, and accept
+  skips the ticket like any decided one — never a refusal, never a 409, never a maintenance left
+  behind on the board. Before this, an accept whose flip failed kept its maintenance, and the
+  index then refused every later accept of the ticket; such a leftover is now ADOPTED: a pending
+  ticket that a live maintenance already carries is accepted onto it, no second one opened
+  (audited `adopted: true`).
 - **A carried-over row is still closable where it is shown** (D4).
 - **The legacy importer writes every row** (§7).
 
@@ -915,9 +922,11 @@ answers in the same conversation):
 - **The page's row beside the title.** «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان عشان نستفيد
   بالمساحة (واعمل الحركة دي في كل الصفحات بتاعت ATM)» (2026-11-02). `PageHeader` gained a
   `toolbar` slot: from `lg` the page's row sits on the title's line, between the title (and its
-  figures) and the actions, takes the width left and wraps inside itself; it never narrows below
-  24rem — a header with wide figures and actions (the settlement plan) wraps instead, and the row
-  takes a line of its own. Below `lg` it stacks under the title as before. Moved: the boards' form
+  figures) and the actions — in that DOM order, so the Tab key follows the screen — takes the width
+  left and wraps inside itself; it never narrows below 24rem — a header with wide figures and
+  actions (the settlement plan) wraps instead: the actions take a line of their own, and the row
+  too if 24rem still does not fit beside the title. Below `lg` it stacks under the title as
+  before. Moved: the boards' form
   and filters, the mail pages' filter rows, the done pages' range and files, the daily report's
   date, control's day and tabs, the plan's bank, day and manage buttons, preparation's day, bank
   and find field, the layouts' filters, data-edit's tabs. Left where they were: the machine list's

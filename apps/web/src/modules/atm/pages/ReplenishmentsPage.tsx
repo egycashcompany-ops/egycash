@@ -226,7 +226,8 @@ export const ReplenishmentsPage = (): JSX.Element => {
           بتاع الـ Form يبقي بجانب العنوان عشان نستفيد بالمساحة»): the form runs from the start of
           it, the filters sit at the far end — the LEFT in Arabic, and mirrored in English, because
           `ms-auto` follows the writing direction rather than picking a physical side. When the
-          line runs short, the row wraps inside itself rather than dropping under the title. */}
+          line runs short the row wraps inside itself, down to 24rem; below that it takes a line
+          of its own under the title (`PageHeader`'s toolbar). */}
         <PageHeader
           title={t('atm.replenishments.title')}
           toolbar={
@@ -305,7 +306,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
             error={list.error}
             onRetry={() => void list.refetch()}
             empty={
-              columnFilters.active
+              columnFilters.active && board.beforeBoxes > 0
                 ? t('atm.common.emptyColumnFiltered')
                 : rows.length === 0 && filters.filtered
                   ? t('atm.common.emptyFiltered')
@@ -318,6 +319,7 @@ export const ReplenishmentsPage = (): JSX.Element => {
             columnFilters={{
               values: columnFilters.values,
               onChange: columnFilters.set,
+              generation: columnFilters.generation,
               label: (header) => t('atm.common.filterColumn', { column: header }),
               placeholder: t('atm.common.filterPlaceholder'),
             }}

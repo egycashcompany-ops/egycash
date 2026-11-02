@@ -134,16 +134,29 @@ const render = (kind: 'replenishments' | 'maintenances', values: Record<string, 
     columnValues = {};
   }
 };
+/** The header's toolbar slot alone, from its `<div` to the `</div>` that closes it. */
+const toolbarOf = (html: string): string => {
+  const at = html.indexOf('data-page-toolbar="true"');
+  if (at < 0) return '';
+  const open = html.lastIndexOf('<div', at);
+  const tags = /<div\b|<\/div>/g;
+  tags.lastIndex = open;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0] === '</div>' ? -1 : 1;
+    if (depth === 0) return html.slice(open, m.index + m[0].length);
+  }
+  return '';
+};
+
 const codesShown = (markup: string): string[] =>
   [...markup.matchAll(/>(9999\d{4})</g)].map((m) => m[1] as string);
 
 describe.each(['replenishments', 'maintenances'] as const)('the %s done page', (kind) => {
   it('puts the range and its files on the title’s line', () => {
-    const markup = render(kind);
-    const header = markup.slice(markup.indexOf('<h1'), markup.indexOf('<table'));
-    expect(header).toContain('data-page-toolbar="true"');
-    expect(header).toContain('type="date"');
-    expect(header).toContain('data-export="');
+    const toolbar = toolbarOf(render(kind));
+    expect(toolbar).toContain('type="date"');
+    expect(toolbar).toContain('data-export="');
   });
 
   it('draws a box under every text column — none for the reopen button', () => {

@@ -152,7 +152,10 @@ export interface ImportedOperation {
   zone: string;
   area: string;
   openedAt: Date;
-  /** The Cairo day of `openedAt` — the per-day rule's key (shared/open-operation.ts). */
+  /**
+   * The Cairo day of `openedAt`, stored with it as on every open — the per-day rule's key until
+   * that rule was lifted (OD-1b, OD-1c; shared/open-operation.ts).
+   */
   openDay: string;
   closedAt: Date | null;
   leaderName: string | null;

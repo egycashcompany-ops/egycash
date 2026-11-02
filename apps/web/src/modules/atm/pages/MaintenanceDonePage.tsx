@@ -145,10 +145,15 @@ export const MaintenanceDonePage = (): JSX.Element => {
             loading={list.isLoading}
             error={list.error}
             onRetry={() => void list.refetch()}
-            empty={columnFilters.active ? t('atm.common.emptyColumnFiltered') : t('atm.done.empty')}
+            empty={
+              columnFilters.active && items.length > 0
+                ? t('atm.common.emptyColumnFiltered')
+                : t('atm.done.empty')
+            }
             columnFilters={{
               values: columnFilters.values,
               onChange: columnFilters.set,
+              generation: columnFilters.generation,
               label: (header) => t('atm.common.filterColumn', { column: header }),
               placeholder: t('atm.common.filterPlaceholder'),
             }}

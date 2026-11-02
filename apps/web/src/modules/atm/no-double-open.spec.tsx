@@ -5,8 +5,9 @@
 // screen still speaks of a refusal:
 //   · both open forms print the unknown codes only — every line of a known code opens — and the
 //     refusal lines are gone from the catalog;
-//   · a reopen or an edit that fails is the global toast's, once, on both kinds — no hook keeps a
-//     failure to itself for the rule's code any more;
+//   · no reopen or edit HOOK keeps a failure to itself for the rule's code any more, on either
+//     kind — the global handler toasts it (the screens' own catch adds their «تعذر تنفيذ
+//     العملية», as on replenishments since OD-1b);
 //   · the mail page prints no refusal line; the accept call still reads `meta.refused` (always
 //     empty now) beside `data`, the accepted tickets — and its confirm still counts the selected
 //     mails painted «مكررة», saying that accepting them opens another maintenance;
@@ -27,7 +28,12 @@ import { queryClient } from '../../shared/lib/query-client';
 import { toast } from '../../shared/ui/toast/toast-store';
 import { acceptConfirmBody, joinCodes } from './lib/operation-view';
 import { OpenRefusalNotice } from './components/OpenRefusalNotice';
-import { useReopenAtmMaintenance, useReopenAtmReplenishment } from './api/atm-queries';
+import {
+  useBulkUpdateAtmMaintenances,
+  useReopenAtmMaintenance,
+  useReopenAtmReplenishment,
+  useUpdateAtmMaintenance,
+} from './api/atm-queries';
 import type * as AtmApiModule from './api/atm-api';
 
 /** The 409 an OLDER server answered under the rule — a client must treat it like any failure now. */
@@ -49,6 +55,8 @@ vi.mock('./api/atm-api', async () => {
     ...actual,
     reopenReplenishment: (): Promise<never> => Promise.reject(reopenFailure()),
     reopenMaintenance: (): Promise<never> => Promise.reject(reopenFailure()),
+    updateMaintenance: (): Promise<never> => Promise.reject(reopenFailure()),
+    bulkUpdateMaintenances: (): Promise<never> => Promise.reject(reopenFailure()),
   };
 });
 
@@ -121,7 +129,7 @@ describe('the open forms name only the codes the master does not know', () => {
   });
 });
 
-describe('a reopen or an edit that fails is the global toast’s, once — on both kinds', () => {
+describe('no reopen or edit hook keeps a failure to itself — the global handler toasts it', () => {
   it('the done pages’ and the edit dialog’s refusal wordings are gone', () => {
     gone('atm.done.reopenAlreadyOpenMaint');
     gone('atm.done.reopenAlreadyOpenRep');
@@ -143,6 +151,26 @@ describe('a reopen or an edit that fails is the global toast’s, once — on bo
     await expect(run).rejects.toBeInstanceOf(ApiError);
     expect(errors).toHaveBeenCalledTimes(1);
   });
+
+  // The maintenance edits lost their own refusal handler with the rule (OD-1c), as the
+  // replenishment ones did with OD-1b.
+  it.each([
+    ['an edit', 'the old rule’s 409', refusal],
+    ['an edit', 'a stale write', () => new ApiError('STALE_DOCUMENT', 'stale', 409)],
+    ['a checked set’s edit', 'the old rule’s 409', refusal],
+  ] as const)(
+    'maintenance, %s, %s: toasted once by the global handler',
+    async (what, _w, failure) => {
+      reopenFailure = failure;
+      const errors = vi.spyOn(toast, 'error').mockImplementation(() => 'toast');
+      const run =
+        what === 'an edit'
+          ? held(useUpdateAtmMaintenance).mutateAsync({ id: 'm1', body: { version: 1 } })
+          : held(useBulkUpdateAtmMaintenances).mutateAsync({ ids: ['m1'], leaderName: 'SYN' });
+      await expect(run).rejects.toBeInstanceOf(ApiError);
+      expect(errors).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 describe('the mail page refuses nothing — a flagged mail is accepted (OD-1c)', () => {

@@ -125,9 +125,12 @@ export const PlanLinesTable = ({
   onSelect,
   onCheck,
   columnFilters,
+  totalLines,
 }: {
   /** The lines the filter boxes keep (`filterPlanLines`) — the page filters, the table shows. */
   lines: readonly AtmPlanLineDto[];
+  /** How many lines the plan holds before the boxes — the empty row blames them only when > 0. */
+  totalLines: number;
   locale: Locale;
   selectedId: string | null;
   checked: ReadonlySet<string>;
@@ -154,7 +157,7 @@ export const PlanLinesTable = ({
             ))}
           </tr>
           {/* The filter row sticks with the head: the print checkbox's column takes no box. */}
-          <tr data-column-filters="true">
+          <tr key={`filters-${String(columnFilters.generation)}`} data-column-filters="true">
             <th className={FILTER_TH} />
             {PLAN_LINE_COLUMNS.map((column) => (
               <th key={column.key} className={FILTER_TH}>
@@ -170,7 +173,7 @@ export const PlanLinesTable = ({
           </tr>
         </thead>
         <tbody>
-          {lines.length === 0 && columnFilters.active && (
+          {lines.length === 0 && columnFilters.active && totalLines > 0 && (
             <tr data-plan-lines-empty="true">
               <td
                 colSpan={PLAN_LINE_COLUMNS.length + 1}

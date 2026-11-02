@@ -566,8 +566,10 @@ export const SettlementPlanPage = (): JSX.Element => {
           scroll. */}
       <div className={BOARD_FRAME}>
         {/* ── The toolbar, on the title's line (2026-11-02, «عايز تطلع الصف بتاع الـ Form يبقي
-          بجانب العنوان عشان نستفيد بالمساحة») — between the figures and the prints; when the line
-          runs short it wraps inside itself rather than dropping under the title. ── */}
+          بجانب العنوان عشان نستفيد بالمساحة») — between the figures and the prints. It wraps
+          inside itself while it keeps 24rem there; with the four prints beside three figures it
+          usually cannot, and the header wraps: the prints take a line of their own
+          (`PageHeader`'s toolbar). ── */}
         <PageHeader
           title={t('atm.plan.title')}
           figures={figures}
@@ -681,6 +683,7 @@ export const SettlementPlanPage = (): JSX.Element => {
               )}
               <PlanLinesTable
                 lines={shownLines}
+                totalLines={plan?.lines.length ?? 0}
                 columnFilters={columnFilters}
                 locale={locale}
                 selectedId={selected?.id ?? null}

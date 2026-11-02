@@ -97,31 +97,31 @@ export const PageHeader = ({
       </div>
     ) : null}
     {toolbar !== undefined ? (
-      // The title, the page's row and the actions on ONE line from `lg`, by `order`: below `lg`
-      // the title and the actions share the first line and the row takes the next one whole
-      // (`basis-full`); from `lg` the row moves between them and grows into the width left
-      // (`basis-0 flex-1`), wrapping its own content as it narrows — but never below 24rem: a
-      // header whose title, figures and actions leave less than that (the settlement plan's four
-      // prints) wraps instead, and the row takes a line of its own under the title rather than
-      // being squeezed to nothing over the actions.
+      // The title, the page's row and the actions on ONE line from `lg`, in that DOM order — so
+      // the Tab key walks them as the eye reads them. Below `lg`, `order` alone moves the row
+      // after the actions: the title and the actions share the first line and the row takes the
+      // next one whole (`basis-full`). From `lg` the row grows into the width left (`basis-0
+      // flex-1`), wrapping its own content as it narrows — but never below 24rem: a header whose
+      // title, figures and actions leave less than that (the settlement plan's four prints) wraps
+      // instead, the actions taking a line of their own, rather than squeezing the row to nothing.
       <div className="flex flex-wrap items-center gap-3 lg:gap-4">
-        <div className="order-1 flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 lg:shrink-0">
+        <div className="order-1 flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 lg:order-none lg:shrink-0">
           <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
             {title}
           </h1>
           {figures}
         </div>
-        {actions !== undefined && (
-          <div className="order-2 ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2 lg:order-3">
-            {actions}
-          </div>
-        )}
         <div
-          className="order-3 min-w-0 basis-full lg:order-2 lg:min-w-[24rem] lg:flex-1 lg:basis-0"
+          className="order-3 min-w-0 basis-full lg:order-none lg:min-w-[24rem] lg:flex-1 lg:basis-0"
           data-page-toolbar="true"
         >
           {toolbar}
         </div>
+        {actions !== undefined && (
+          <div className="order-2 ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2 lg:order-none">
+            {actions}
+          </div>
+        )}
       </div>
     ) : (
       /* The title line WRAPS: actions that do not fit beside the whole title go to a line of their

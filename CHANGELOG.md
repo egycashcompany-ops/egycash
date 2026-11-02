@@ -135,8 +135,9 @@ its entry here in the same PR.
   «فرع أكتوبر شغال هو والمهندسين مع بعض بكل بياناتهم والبيانات دي متسجله إنها المهندسين» — with
   October linked to Mohandessin, an October employee sees Mohandessin's ATM data on every ATM page
   and what they record is filed under Mohandessin, where Mohandessin's people see it; outside ATM
-  nothing changes. On `/atm/mail-tickets` the header «select all» box is gone; the row boxes and
-  the accept and reject bar stay ([ATM port §6a–§6c](docs/12-planning/atm-operations-port.md)).
+  nothing changes. On `/atm/mail-tickets` the header «select all» box is gone (F8 brought it back
+  on 2026-11-02, below); the row boxes stay
+  ([ATM port §6a–§6c](docs/12-planning/atm-operations-port.md)).
 
 - **Banks and areas are one list across the ATM pages, in Arabic and English, and a machine added
   on data-edit lands in the register.** «وبالنسبة لإضافة الماكينات /atm/data-edit البنوك والمناطق
@@ -470,7 +471,10 @@ its entry here in the same PR.
   accepted and opens another one. Its row stays yellow with «مكررة», as a warning, and the accept
   confirm says that accepting it opens another maintenance. The refusal lines are gone from these
   screens. Two clicks on «قبول» for the same mail at the same time still open one maintenance: a new
-  index allows one live maintenance per mail (`ux_maintenance_per_mail_ticket`). The boot drops the
+  index allows one live maintenance per mail (`ux_maintenance_per_mail_ticket`), and a mail's
+  maintenance and its «accepted» are now written together, so an accept racing a reject of the
+  same mail leaves nothing behind. A maintenance an earlier accept left without its mail marked
+  accepted is taken up by the next accept of that mail instead of blocking it. The boot drops the
   maintenance log's per-day index (`ux_open_maintenance_per_code_day`) from an existing database,
   and the legacy importer writes every maintenance row as it was.
 - **The IT asset and custody registers filter by several categories and several names, the names

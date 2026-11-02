@@ -9135,10 +9135,8 @@ const en: Record<string, string> = {
   'systemAdmin.settings.subtitle':
     'Every configurable value in ECMS. Values are resolved for you (your own level, then your branch, then the organization, then the code default); changes here are written at the organization level.',
   'systemAdmin.settings.searchPlaceholder': 'Search by name, key or description',
-  'systemAdmin.settings.ownerFilter': 'Owner',
-  'systemAdmin.settings.allOwners': 'All owners',
+  'systemAdmin.settings.departmentsLabel': 'Departments',
   'systemAdmin.settings.count': 'Showing {{shown}} of {{total}}',
-  'systemAdmin.settings.groupCount': '{{count}} settings',
   'systemAdmin.settings.empty': 'No setting matches this view.',
   'systemAdmin.settings.readOnly':
     'You may read these values but not change them — changing one needs the edit-settings permission.',
@@ -9146,23 +9144,30 @@ const en: Record<string, string> = {
   'systemAdmin.settings.shadowed':
     'The value shown is your own, not the organization’s. Saving here changes the organization value, which will not change the value above.',
   'systemAdmin.settings.listHint': 'Separate values with commas',
-  'systemAdmin.settings.defaultValue': 'Default: {{value}}',
-  'systemAdmin.settings.owners.auth': 'Sign-in & passwords',
-  'systemAdmin.settings.owners.audit': 'Audit & activity',
-  'systemAdmin.settings.owners.notifications': 'Notifications',
-  'systemAdmin.settings.owners.flag': 'Feature flags',
-  'systemAdmin.settings.owners.contracts': 'Contracts',
-  'systemAdmin.settings.owners.hr': 'HR',
-  'systemAdmin.settings.owners.fleet': 'Fleet',
-  'systemAdmin.settings.owners.it': 'IT',
-  'systemAdmin.settings.owners.other': 'Other',
-  'systemAdmin.settings.resolvedFrom.user': 'From your own level',
-  'systemAdmin.settings.resolvedFrom.branch': 'From your branch',
-  'systemAdmin.settings.resolvedFrom.organization': 'From the organization',
-  'systemAdmin.settings.resolvedFrom.default': 'Code default',
-  'systemAdmin.settings.scope.organization': 'Settable: organization',
-  'systemAdmin.settings.scope.branch': 'Settable: branch',
-  'systemAdmin.settings.scope.user': 'Settable: user',
+  'systemAdmin.settings.defaultValueLabel': 'Default:',
+  'systemAdmin.settings.resolvedFrom.user': 'Your own value',
+  'systemAdmin.settings.resolvedFrom.branch': 'Your branch’s value',
+  'systemAdmin.settings.resolvedFrom.organization': 'Set for the organization',
+  'systemAdmin.settings.resolvedFrom.default': 'Default value',
+  'systemAdmin.settings.scopes': 'Can be set for: {{scopes}}',
+  'systemAdmin.settings.scopeSeparator': ', ',
+  'systemAdmin.settings.scope.organization': 'Organization',
+  'systemAdmin.settings.scope.branch': 'Branch',
+  'systemAdmin.settings.scope.user': 'User',
+  'systemAdmin.settings.managed.count': '{{count}} configured',
+  'systemAdmin.settings.managed.empty': 'Not configured yet',
+  'systemAdmin.settings.managed.open': 'Edit on «{{screen}}»',
+  'systemAdmin.settings.managed.goTo': 'Open «{{screen}}»',
+  'systemAdmin.settings.managed.clear': 'Clear this list',
+  'systemAdmin.settings.managed.clearTitle': 'Clear «{{label}}»?',
+  'systemAdmin.settings.managed.clearBody':
+    'Every entry in this list is removed for the whole organization. Nothing on «{{screen}}» changes.',
+  'systemAdmin.settings.emptyDefault': 'empty',
+  'systemAdmin.settings.retiredBadge': 'No longer used',
+  'systemAdmin.settings.retiredNote':
+    'This setting is no longer used: changing it has no effect. It is kept only so stored values stay valid.',
+  'systemAdmin.settings.locked.retired': 'This setting is no longer used.',
+  'systemAdmin.settings.locked.managed-elsewhere': 'This setting is edited on its own screen.',
   'systemAdmin.settings.locked.no-permission': 'You do not hold the edit-settings permission.',
   'systemAdmin.settings.locked.unsupported-type':
     'This value has a shape this screen cannot edit yet, so it is shown as it is stored.',
@@ -9171,48 +9176,232 @@ const en: Record<string, string> = {
   'systemAdmin.settings.parse.not-a-number': 'Enter a number.',
   'systemAdmin.settings.parse.not-a-number-list': 'Enter numbers separated by commas.',
   'systemAdmin.settings.parse.not-editable': 'This value cannot be edited here.',
-  'systemAdmin.settings.keys.auth.password.minLength': 'Minimum password length',
-  'systemAdmin.settings.keys.auth.password.requireComplexity': 'Require complex passwords',
+  'systemAdmin.settings.departments.all': 'All',
+  'systemAdmin.settings.departments.general': 'General',
+  'systemAdmin.settings.departments.hr': 'HR',
+  'systemAdmin.settings.departments.fleet': 'Fleet',
+  'systemAdmin.settings.departments.operations': 'Operations',
+  'systemAdmin.settings.departments.atm': 'ATM',
+  'systemAdmin.settings.departments.it': 'IT',
+  'systemAdmin.settings.departments.other': 'Other',
+  'systemAdmin.settings.sections.atm.mail': 'Maintenance mail',
+  'systemAdmin.settings.sections.atm.maintenance': 'Maintenance',
+  'systemAdmin.settings.sections.atm.more': 'Other settings',
+  'systemAdmin.settings.sections.atm.register': 'Register, settlements and branches',
+  'systemAdmin.settings.sections.fleet.fuelCards': 'Fuel cards',
+  'systemAdmin.settings.sections.fleet.fuelPrices': 'Fuel prices',
+  'systemAdmin.settings.sections.fleet.licences': 'Vehicle and driver licences',
+  'systemAdmin.settings.sections.fleet.maintenance': 'Maintenance and odometer',
+  'systemAdmin.settings.sections.fleet.more': 'Other settings',
+  'systemAdmin.settings.sections.fleet.reports': 'Printed report signatures',
+  'systemAdmin.settings.sections.fleet.vehicles': 'Vehicles and drivers',
+  'systemAdmin.settings.sections.general.audit': 'Audit & activity',
+  'systemAdmin.settings.sections.general.featureFlags': 'Feature flags',
+  'systemAdmin.settings.sections.general.more': 'Other settings',
+  'systemAdmin.settings.sections.general.notifications': 'Notifications',
+  'systemAdmin.settings.sections.general.signIn': 'Sign-in & passwords',
+  'systemAdmin.settings.sections.hr.attendance': 'Attendance',
+  'systemAdmin.settings.sections.hr.contracts': 'Contracts',
+  'systemAdmin.settings.sections.hr.leave': 'Leave & work calendar',
+  'systemAdmin.settings.sections.hr.more': 'Other settings',
+  'systemAdmin.settings.sections.it.assets': 'Assets and licences',
+  'systemAdmin.settings.sections.it.helpdesk': 'Help desk',
+  'systemAdmin.settings.sections.it.more': 'Other settings',
+  'systemAdmin.settings.sections.operations.crew': 'Crew',
+  'systemAdmin.settings.sections.operations.more': 'Other settings',
+  'systemAdmin.settings.sections.other.more': 'Other settings',
+  'systemAdmin.settings.keys.atm.branchLinks': 'Branches that work together',
+  'systemAdmin.settings.keys.atm.mail.branchCategories': 'Outlook category per branch',
+  'systemAdmin.settings.keys.atm.maintenanceLeaderDepartmentIds': 'Leader list departments',
+  'systemAdmin.settings.keys.atm.register.bankLabels': 'Bank names in the Operations list',
+  'systemAdmin.settings.keys.atm.register.branchCodes': 'Branch codes in the register workbook',
+  'systemAdmin.settings.keys.atm.settlements.banks': 'Banks enabled for settlements',
+  'systemAdmin.settings.keys.audit.export.maxRows': 'Maximum rows per audit export',
+  'systemAdmin.settings.keys.audit.retention.activityDays': 'Activity-log retention (days)',
+  'systemAdmin.settings.keys.audit.signals.deniedThreshold':
+    'Security alert: denied requests per hour',
+  'systemAdmin.settings.keys.audit.signals.exportSpikeThreshold':
+    'Security alert: data exports per day',
+  'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'Setup-link validity (hours)',
   'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'Failed sign-ins before lockout',
   'systemAdmin.settings.keys.auth.lockout.minutes': 'Lockout duration (minutes)',
-  'systemAdmin.settings.keys.auth.totp.enforcedForPrivileged':
-    'Compulsory two-factor for privileged accounts',
   'systemAdmin.settings.keys.auth.loginIdentifiers': 'Accepted sign-in identifiers',
-  'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'Setup-link validity (hours)',
-  'systemAdmin.settings.keys.auth.passkeys.enabled': 'Allow sign-in with fingerprint or face (passkeys)',
-  'systemAdmin.settings.keys.audit.retention.activityDays': 'Activity-log retention (days)',
-  'systemAdmin.settings.keys.audit.export.maxRows': 'Maximum rows per audit export',
-  'systemAdmin.settings.keys.audit.signals.deniedThreshold':
-    'Denied requests per hour that raise a signal',
-  'systemAdmin.settings.keys.audit.signals.exportSpikeThreshold':
-    'Exports per day that raise a signal',
-  'systemAdmin.settings.keys.notifications.email.enabled': 'Email notifications enabled',
-  'systemAdmin.settings.keys.notifications.quietHours.enabledByDefault':
-    'Quiet hours on by default',
-  'systemAdmin.settings.keys.contracts.numberFormat': 'Contract number format',
-  'systemAdmin.settings.keys.contracts.requireApproval': 'Contracts need approval',
+  'systemAdmin.settings.keys.auth.passkeys.enabled':
+    'Allow sign-in with fingerprint or face (passkeys)',
+  'systemAdmin.settings.keys.auth.password.minLength': 'Minimum password length (characters)',
+  'systemAdmin.settings.keys.auth.password.requireComplexity': 'Require complex passwords',
+  'systemAdmin.settings.keys.auth.totp.enforcedForPrivileged':
+    'Require two-factor authentication for privileged accounts',
   'systemAdmin.settings.keys.contracts.expiryNoticeDays': 'Contract expiry notice (days)',
-  'systemAdmin.settings.keys.hr.workCalendar.weekendDays': 'Weekend days',
+  'systemAdmin.settings.keys.contracts.numberFormat': 'Contract number format',
+  'systemAdmin.settings.keys.contracts.requireApproval':
+    'Require approval before generating a contract',
+  'systemAdmin.settings.keys.fleet.alarm.redKm': 'Red maintenance alarm (km remaining)',
+  'systemAdmin.settings.keys.fleet.alarm.yellowKm': 'Yellow maintenance alarm (km remaining)',
+  'systemAdmin.settings.keys.fleet.availability.useHrLeave':
+    'Count HR leave in driver availability',
+  'systemAdmin.settings.keys.fleet.fuel.price.diesel': 'Diesel price per litre (EGP)',
+  'systemAdmin.settings.keys.fleet.fuel.price.petrol80': 'Petrol 80 price per litre (EGP)',
+  'systemAdmin.settings.keys.fleet.fuel.price.petrol92': 'Petrol 92 price per litre (EGP)',
+  'systemAdmin.settings.keys.fleet.fuel.price.petrol95': 'Petrol 95 price per litre (EGP)',
+  'systemAdmin.settings.keys.fleet.fuelCard.balanceRed': 'Red fuel card balance limit (EGP)',
+  'systemAdmin.settings.keys.fleet.fuelCard.balanceYellow': 'Yellow fuel card balance limit (EGP)',
+  'systemAdmin.settings.keys.fleet.fuelCard.expiryWarnDays': 'Fuel card expiry warning (days)',
+  'systemAdmin.settings.keys.fleet.license.driverWarnDays': 'Driver licence expiry warning (days)',
+  'systemAdmin.settings.keys.fleet.license.vehicleWarnDays':
+    'Vehicle licence expiry warning (days)',
+  'systemAdmin.settings.keys.fleet.odometer.missingReadingDays':
+    'Missing odometer reading alert (days)',
+  'systemAdmin.settings.keys.fleet.report.approvedByName': 'Report approver\'s name',
+  'systemAdmin.settings.keys.fleet.report.approvedByTitle': 'Report approver\'s title',
+  'systemAdmin.settings.keys.fleet.report.endorsedByName':
+    'Report endorser (rank, name and position)',
+  'systemAdmin.settings.keys.fleet.report.endorsementNote': 'Report endorsement request line',
+  'systemAdmin.settings.keys.fleet.report.preparedByName': 'Report preparer\'s name',
+  'systemAdmin.settings.keys.fleet.report.preparedByTitle': 'Report preparer\'s title',
+  'systemAdmin.settings.keys.fleet.roster.refuseExpiredLicence':
+    'Block roster assignments with expired licences',
+  'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'Default branch for new vehicles',
+  'systemAdmin.settings.keys.hr.attendance.absenceNotify': 'Notify employees of recorded absences',
+  'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
+    'Nightly attendance calculation hour (0–23)',
+  'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'Overtime requires approval',
+  'systemAdmin.settings.keys.hr.attendance.selfPunchEnabled': 'Allow self-punch from the web',
   'systemAdmin.settings.keys.hr.leave.approvalReminderDays': 'Leave approval reminder (days)',
   'systemAdmin.settings.keys.hr.leave.serviceAcrossPeriods':
     'Count service across employment periods',
-  'systemAdmin.settings.keys.it.sla.atRiskPercent': 'SLA at-risk threshold (%)',
-  'systemAdmin.settings.keys.it.ticket.autoCloseDays': 'Auto-close resolved tickets after (days)',
+  'systemAdmin.settings.keys.hr.workCalendar.weekendDays': 'Weekend days',
+  'systemAdmin.settings.keys.it.license.warnDays': 'Software licence expiry warning (days)',
   'systemAdmin.settings.keys.it.maintenance.preventiveHorizonDays':
-    'Preventive maintenance horizon (days)',
-  'systemAdmin.settings.keys.it.warranty.warnDays': 'Warranty expiry warning (days)',
-  'systemAdmin.settings.keys.it.license.warnDays': 'IT licence expiry warning (days)',
+    'Create preventive work orders ahead (days)',
+  'systemAdmin.settings.keys.it.sla.atRiskPercent': 'SLA at-risk threshold (%)',
   'systemAdmin.settings.keys.it.technicianDepartmentIds': 'Help desk technicians’ departments',
-  'systemAdmin.settings.keys.fleet.alarm.yellowKm': 'Maintenance alarm — amber (km)',
-  'systemAdmin.settings.keys.fleet.alarm.redKm': 'Maintenance alarm — red (km)',
-  'systemAdmin.settings.keys.fleet.availability.useHrLeave': 'Availability consults HR leave',
-  'systemAdmin.settings.keys.fleet.license.vehicleWarnDays':
-    'Vehicle licence expiry warning (days)',
-  'systemAdmin.settings.keys.fleet.license.driverWarnDays': 'Driver licence expiry warning (days)',
-  'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'Default branch for new vehicles',
-  'systemAdmin.settings.keys.fleet.roster.refuseExpiredLicence':
-    'Refuse planning a driver or vehicle with an expired licence',
-  'systemAdmin.settings.keys.fleet.odometer.missingReadingDays': 'No odometer reading alert (days)',
+  'systemAdmin.settings.keys.it.ticket.autoCloseDays': 'Auto-close resolved tickets after (days)',
+  'systemAdmin.settings.keys.it.warranty.warnDays': 'Warranty expiry warning (days)',
+  'systemAdmin.settings.keys.notifications.email.enabled': 'Send notifications by email',
+  'systemAdmin.settings.keys.notifications.quietHours.enabledByDefault':
+    'Quiet hours on by default',
+  'systemAdmin.settings.keys.operations.cashTransferOperationIds':
+    'Cash-transfer vehicle operations',
+  'systemAdmin.settings.keys.operations.crewDepartmentIds': 'Operations crew departments',
+  'systemAdmin.settings.descriptions.atm.branchLinks':
+    'In ATM only, a linked branch works as another: its users see that branch\'s ATM data, and what they record is filed under it. Nothing outside ATM changes.',
+  'systemAdmin.settings.descriptions.atm.mail.branchCategories':
+    'The Outlook category put on a maintenance mail to show which branch it was filed under. Used only for a branch that has no category of its own in ATM Settings; with none, the mail is still marked read.',
+  'systemAdmin.settings.descriptions.atm.maintenanceLeaderDepartmentIds':
+    'Employees of these departments are offered as the leader when maintenance is closed and when a replenishment or maintenance is edited. When none is chosen, the department named ATM is used.',
+  'systemAdmin.settings.descriptions.atm.register.bankLabels':
+    'No longer used: each bank\'s name in Operations is now set in Banks, in the ATM Register. Changing this value has no effect.',
+  'systemAdmin.settings.descriptions.atm.register.branchCodes':
+    'Links each EGYCASH code in the register workbook to a branch. A branch with no code gets nothing recorded in the ATM Register, and the import stays blocked while the file has an unmapped code.',
+  'systemAdmin.settings.descriptions.atm.settlements.banks':
+    'Codes of the banks, as in Banks (for example BRK), offered on the replenishment plan, cassette denominations, bags and seals, and dispatch pages. A code not in Banks is ignored, and an empty list offers no bank.',
+  'systemAdmin.settings.descriptions.audit.export.maxRows':
+    'The most rows one CSV export from the audit log may contain, from 1,000 to 200,000. When more rows match, the newest are kept.',
+  'systemAdmin.settings.descriptions.audit.retention.activityDays':
+    'Activity-log entries older than this are deleted automatically; the minimum is 365 days. The audit log is never deleted.',
+  'systemAdmin.settings.descriptions.audit.signals.deniedThreshold':
+    'When one user is refused access this many times within an hour, a security alert goes to everyone who can read the organization\'s audit log. The minimum is 3.',
+  'systemAdmin.settings.descriptions.audit.signals.exportSpikeThreshold':
+    'When one user exports data this many times within 24 hours (from the audit log, attendance, contracts or other screens), a security alert is raised. The minimum is 5.',
+  'systemAdmin.settings.descriptions.auth.activationLink.ttlHours':
+    'How long an account setup or password-reset link stays valid after it is sent, from 1 to 336 hours (14 days). An expired link has to be sent again.',
+  'systemAdmin.settings.descriptions.auth.lockout.maxAttempts':
+    'After this many wrong passwords in a row, the account is locked for the lockout duration. A successful sign-in resets the count.',
+  'systemAdmin.settings.descriptions.auth.lockout.minutes':
+    'How long a locked account cannot sign in, from 1 to 1,440 minutes (24 hours). After that, the user can try again.',
+  'systemAdmin.settings.descriptions.auth.loginIdentifiers':
+    'What staff may type on the sign-in page to identify themselves: username, email address or employee code. At least one must stay enabled.',
+  'systemAdmin.settings.descriptions.auth.passkeys.enabled':
+    'When off, nobody can sign in with a passkey or add a new device, and everyone signs in with their password. Devices already added are kept and work again when this is switched back on.',
+  'systemAdmin.settings.descriptions.auth.password.minLength':
+    'The fewest characters a new password may have, from 8 to 64. It applies when a password is set or changed; existing passwords keep working.',
+  'systemAdmin.settings.descriptions.auth.password.requireComplexity':
+    'When on, a new password must include a lower-case letter, an upper-case letter, a digit and a symbol. It applies when a password is set or changed.',
+  'systemAdmin.settings.descriptions.auth.totp.enforcedForPrivileged':
+    'When on, any account holding a system role or a break-glass permission must set up an authenticator app at sign-in and cannot turn it off.',
+  'systemAdmin.settings.descriptions.contracts.expiryNoticeDays':
+    'How many days before a fixed-term contract ends to notify everyone who can view contracts. Each contract gets one notice.',
+  'systemAdmin.settings.descriptions.contracts.numberFormat':
+    'Pattern for new contract numbers: {{yearToken}} becomes the year, and {{seqToken}} a serial that restarts each year, six digits wide unless a width is given (as in {{seqPaddedToken}}). The serial token is required. Numbers already issued never change.',
+  'systemAdmin.settings.descriptions.contracts.requireApproval':
+    'When on, a new contract must be approved before its document can be generated. Contracts already created keep the rule they were created under.',
+  'systemAdmin.settings.descriptions.fleet.alarm.redKm':
+    'A vehicle\'s maintenance alarm turns red when it has this many kilometres or fewer left before its next service, or has already passed it. Keep it lower than the yellow threshold.',
+  'systemAdmin.settings.descriptions.fleet.alarm.yellowKm':
+    'A vehicle\'s maintenance alarm turns yellow when it has this many kilometres or fewer left before its next service. The maintenance interval itself is set for each vehicle type in Fleet Settings.',
+  'systemAdmin.settings.descriptions.fleet.availability.useHrLeave':
+    'When on, a driver on approved leave in Human Resources is unavailable for the roster on those days. When off, leave is ignored; unavailability recorded in Fleet still applies.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.diesel':
+    'A diesel fuel receipt\'s litres are its amount divided by this price. Each receipt is priced when it is saved; 0 leaves its litres blank.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.petrol80':
+    'A petrol 80 fuel receipt\'s litres are its amount divided by this price. Each receipt is priced when it is saved; 0 leaves its litres blank.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.petrol92':
+    'A petrol 92 fuel receipt\'s litres are its amount divided by this price. Each receipt is priced when it is saved; 0 leaves its litres blank.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.petrol95':
+    'A petrol 95 fuel receipt\'s litres are its amount divided by this price. Each receipt is priced when it is saved; 0 leaves its litres blank.',
+  'systemAdmin.settings.descriptions.fleet.fuelCard.balanceRed':
+    'A fuel card with a balance below this amount shows in red on the Fuel card charging screen, and the Fleet dashboard shows how many cards are below it. Keep it lower than the yellow limit.',
+  'systemAdmin.settings.descriptions.fleet.fuelCard.balanceYellow':
+    'A fuel card with a balance below this amount shows in yellow on the Fuel card charging screen and counts as low on the Fleet dashboard.',
+  'systemAdmin.settings.descriptions.fleet.fuelCard.expiryWarnDays':
+    'A fuel card that expires within this many days is flagged as expiring soon on the Fuel cards screen and the Fleet dashboard. Enter 1 to 365.',
+  'systemAdmin.settings.descriptions.fleet.license.driverWarnDays':
+    'From this many days before a driver\'s licence expires, the Fleet dashboard lists the driver as expiring. The system sends no notification for it by itself. Enter 1 to 365.',
+  'systemAdmin.settings.descriptions.fleet.license.vehicleWarnDays':
+    'From this many days before a vehicle\'s licence expires, the Fleet dashboard lists the vehicle as expiring. The system sends no notification for it by itself. Enter 1 to 365.',
+  'systemAdmin.settings.descriptions.fleet.odometer.missingReadingDays':
+    'The Fleet dashboard flags an active vehicle that has had no odometer reading for this many days; vehicles in the workshop are not counted. Enter a whole number from 1 to 30.',
+  'systemAdmin.settings.descriptions.fleet.report.approvedByName':
+    'The person who approves Fleet reports, printed under the approver\'s title in the signature block when a report is printed or exported.',
+  'systemAdmin.settings.descriptions.fleet.report.approvedByTitle':
+    'The job title printed above the approver\'s name in the signature block when a Fleet report is printed or exported.',
+  'systemAdmin.settings.descriptions.fleet.report.endorsedByName':
+    'The executive who endorses a Fleet report\'s totals, printed under the endorsement line with a place to sign. Keep it to one printed line, up to 160 characters.',
+  'systemAdmin.settings.descriptions.fleet.report.endorsementNote':
+    'The line printed at the foot of a Fleet report asking for its totals to be endorsed. It appears above the endorser\'s name.',
+  'systemAdmin.settings.descriptions.fleet.report.preparedByName':
+    'The person who prepares Fleet reports, printed under the preparer\'s title in the signature block when a report is printed or exported.',
+  'systemAdmin.settings.descriptions.fleet.report.preparedByTitle':
+    'The job title printed above the preparer\'s name in the signature block when a Fleet report is printed or exported.',
+  'systemAdmin.settings.descriptions.fleet.roster.refuseExpiredLicence':
+    'When on, the daily roster refuses a driver or vehicle whose licence has expired; when off, it only flags them. A licence with no recorded expiry date never blocks an assignment.',
+  'systemAdmin.settings.descriptions.fleet.vehicle.defaultBranchName':
+    'The branch preselected when a new vehicle is added. Type the branch name as it is registered, in Arabic or English; if no active branch matches, none is preselected.',
+  'systemAdmin.settings.descriptions.hr.attendance.absenceNotify':
+    'When on, an employee is notified the next morning when a day is recorded as an absence, so a mistake can be corrected early. The attendance record itself is not affected.',
+  'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
+    'The hour, Cairo time on a 24-hour clock, at which the previous day\'s attendance is calculated for every employee. For example, 2 runs it shortly after 2:00 am.',
+  'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':
+    'When on, overtime calculated from punches reaches payroll only after it is approved. When off, all calculated overtime goes to payroll automatically.',
+  'systemAdmin.settings.descriptions.hr.attendance.selfPunchEnabled':
+    'When on, employees may record their own check-in and check-out from the web. When off, only device punches, manual punches and approved corrections are accepted.',
+  'systemAdmin.settings.descriptions.hr.leave.approvalReminderDays':
+    'When a leave request is still undecided this many days after it was submitted, a reminder is sent every day until it is decided. It goes to the employee\'s manager at the manager step; otherwise, to everyone who can approve leave.',
+  'systemAdmin.settings.descriptions.hr.leave.serviceAcrossPeriods':
+    'When on, a rehired employee\'s earlier employment periods count toward service-based leave entitlements and minimum-service rules. When off, only the current period counts.',
+  'systemAdmin.settings.descriptions.hr.workCalendar.weekendDays':
+    'Weekly rest days as numbers from 1 (Monday) to 7 (Sunday), so Friday and Saturday are 5 and 6; an empty field means none. Leave counted in working days skips them, and attendance expects no work on them.',
+  'systemAdmin.settings.descriptions.it.license.warnDays':
+    'This many days before a software licence expires, it shows as Expiring soon on the Licences screen. 0 turns that state off, so a licence stays Active until it expires.',
+  'systemAdmin.settings.descriptions.it.maintenance.preventiveHorizonDays':
+    'A preventive maintenance plan\'s work order is created this many days before it falls due. 0 creates it only on the due date.',
+  'systemAdmin.settings.descriptions.it.sla.atRiskPercent':
+    'A ticket shows as at risk once this share of its response or resolution time has passed. For example, 80 flags it when 80% of the time is used.',
+  'systemAdmin.settings.descriptions.it.technicianDepartmentIds':
+    'Help desk tickets can be assigned only to current employees of these departments. Until one is chosen, the technician picker offers nobody.',
+  'systemAdmin.settings.descriptions.it.ticket.autoCloseDays':
+    'A ticket left in Resolved for this many days is closed automatically. 0 turns automatic closing off.',
+  'systemAdmin.settings.descriptions.it.warranty.warnDays':
+    'How many days before an IT asset\'s warranty ends it counts as ending soon; 0 turns that off. This warning does not yet reach anyone or appear on any screen.',
+  'systemAdmin.settings.descriptions.notifications.email.enabled':
+    'When off, no notification is sent by email; notifications still appear in the app. A user\'s own email preference, where set, takes precedence.',
+  'systemAdmin.settings.descriptions.notifications.quietHours.enabledByDefault':
+    'Whether quiet hours (22:00 to 07:00) appear switched on for a user who has not chosen yet. Non-urgent notifications are held overnight only for users who have saved quiet hours of their own.',
+  'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
+    'The record ids of Fleet «Operations» catalog items, separated by commas. Active vehicles whose Operation is one of them are offered for the standing crew; when the list is empty, every active vehicle is offered.',
+  'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
+    'Employees of these departments make up the operations crew used by the roster, the crew board and the standing crew. When none is chosen, the roster keeps only people already on it, and new hires do not appear.',
 
   // P9-A — the setup link an administrator delivers by hand.
   'systemAdmin.users.actions.setupLink': 'Copy setup link',
@@ -9450,8 +9639,7 @@ const en: Record<string, string> = {
     'Who normally crews each cash-transfer vehicle. Each day\u2019s board is seeded from this, and can still be changed for that day.',
   'operations.standingCrew.addVehicle': 'Add a vehicle',
   'operations.standingCrew.unfiltered':
-    'Every vehicle is offered — no cash-transfer operation (التشغيل) is configured yet. ' +
-    'Set operations.cashTransferOperationIds in system settings to narrow it.',
+    'Every active vehicle is offered because no cash-transfer operation is chosen yet. To narrow the list, set “Cash-transfer vehicle operations” under Operations in System settings.',
   'operations.standingCrew.remove': 'Remove',
   'operations.standingCrew.removed': 'Removed {{code}} from the cash-transfer fleet',
   'operations.standingCrew.removeFailed': 'Could not remove this vehicle',
@@ -10703,7 +10891,7 @@ const en: Record<string, string> = {
   'atm.bankCatalog.activeHint':
     'An archived bank is no longer offered for new receipts and machines; its machines and counts stay.',
   'atm.bankCatalog.settlementsWarning':
-    'This bank is enabled for settlements. Archiving does not remove it from them; an administrator edits that setting.',
+    'This bank is enabled for settlements. Archiving does not remove it from them; an administrator removes it from “Banks enabled for settlements” in System settings.',
   'atm.bankCatalog.added': 'Bank added.',
   'atm.bankCatalog.saved': 'Bank saved.',
   'atm.bankCatalog.error.ATM_BANK_CODE_TAKEN': 'A bank with this code already exists.',
@@ -20973,10 +21161,8 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.subtitle':
     'كل قيمة قابلة للضبط في ECMS. القيم محسوبة من أجلك (مستواك، ثم فرعك، ثم المنظمة، ثم الافتراضي في الكود)، والتعديل من هنا يُكتب على مستوى المنظمة.',
   'systemAdmin.settings.searchPlaceholder': 'ابحث بالاسم أو المفتاح أو الوصف',
-  'systemAdmin.settings.ownerFilter': 'الجهة المالكة',
-  'systemAdmin.settings.allOwners': 'كل الجهات',
+  'systemAdmin.settings.departmentsLabel': 'الإدارات',
   'systemAdmin.settings.count': 'عرض {{shown}} من {{total}}',
-  'systemAdmin.settings.groupCount': '{{count}} إعداد',
   'systemAdmin.settings.empty': 'لا يوجد إعداد مطابق لهذا العرض.',
   'systemAdmin.settings.readOnly':
     'يمكنك قراءة هذه القيم دون تغييرها — التعديل يتطلب صلاحية تحرير الإعدادات.',
@@ -20984,23 +21170,30 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.shadowed':
     'القيمة المعروضة قيمتك أنت، لا قيمة المنظمة. الحفظ هنا يغيّر قيمة المنظمة، ولن يغيّر القيمة المعروضة أعلاه.',
   'systemAdmin.settings.listHint': 'افصل بين القيم بفواصل',
-  'systemAdmin.settings.defaultValue': 'الافتراضي: {{value}}',
-  'systemAdmin.settings.owners.auth': 'الدخول وكلمات المرور',
-  'systemAdmin.settings.owners.audit': 'التدقيق والنشاط',
-  'systemAdmin.settings.owners.notifications': 'الإشعارات',
-  'systemAdmin.settings.owners.flag': 'مفاتيح الميزات',
-  'systemAdmin.settings.owners.contracts': 'العقود',
-  'systemAdmin.settings.owners.hr': 'الموارد البشرية',
-  'systemAdmin.settings.owners.fleet': 'الأسطول',
-  'systemAdmin.settings.owners.it': 'تقنية المعلومات',
-  'systemAdmin.settings.owners.other': 'أخرى',
-  'systemAdmin.settings.resolvedFrom.user': 'من مستواك الشخصي',
-  'systemAdmin.settings.resolvedFrom.branch': 'من فرعك',
-  'systemAdmin.settings.resolvedFrom.organization': 'من المنظمة',
-  'systemAdmin.settings.resolvedFrom.default': 'الافتراضي في الكود',
-  'systemAdmin.settings.scope.organization': 'يُضبط على: المنظمة',
-  'systemAdmin.settings.scope.branch': 'يُضبط على: الفرع',
-  'systemAdmin.settings.scope.user': 'يُضبط على: المستخدم',
+  'systemAdmin.settings.defaultValueLabel': 'القيمة الافتراضية:',
+  'systemAdmin.settings.resolvedFrom.user': 'قيمتك الشخصية',
+  'systemAdmin.settings.resolvedFrom.branch': 'قيمة فرعك',
+  'systemAdmin.settings.resolvedFrom.organization': 'مضبوط للمنظمة',
+  'systemAdmin.settings.resolvedFrom.default': 'القيمة الافتراضية',
+  'systemAdmin.settings.scopes': 'يمكن ضبطه على مستوى: {{scopes}}',
+  'systemAdmin.settings.scopeSeparator': '، ',
+  'systemAdmin.settings.scope.organization': 'المنظمة',
+  'systemAdmin.settings.scope.branch': 'الفرع',
+  'systemAdmin.settings.scope.user': 'المستخدم',
+  'systemAdmin.settings.managed.count': 'مضبوط: {{count}}',
+  'systemAdmin.settings.managed.empty': 'لم يُضبط بعد',
+  'systemAdmin.settings.managed.open': 'يُعدَّل من شاشة «{{screen}}»',
+  'systemAdmin.settings.managed.goTo': 'فتح شاشة «{{screen}}»',
+  'systemAdmin.settings.managed.clear': 'مسح هذه القائمة',
+  'systemAdmin.settings.managed.clearTitle': 'مسح «{{label}}»؟',
+  'systemAdmin.settings.managed.clearBody':
+    'تُحذف كل عناصر هذه القائمة على مستوى المنظمة، ولا يتغير شيء في شاشة «{{screen}}».',
+  'systemAdmin.settings.emptyDefault': 'فارغة',
+  'systemAdmin.settings.retiredBadge': 'لم يعد مستخدمًا',
+  'systemAdmin.settings.retiredNote':
+    'لم يعد هذا الإعداد مستخدمًا، وتغييره لا يُحدث أي أثر. أُبقي عليه حتى تظل القيم المحفوظة صالحة.',
+  'systemAdmin.settings.locked.retired': 'لم يعد هذا الإعداد مستخدمًا.',
+  'systemAdmin.settings.locked.managed-elsewhere': 'يُعدَّل هذا الإعداد من شاشته الخاصة.',
   'systemAdmin.settings.locked.no-permission': 'لا تملك صلاحية تحرير الإعدادات.',
   'systemAdmin.settings.locked.unsupported-type':
     'شكل هذه القيمة لا تستطيع هذه الشاشة تحريره بعد، لذا تُعرض كما هي مخزّنة.',
@@ -21009,51 +21202,234 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.parse.not-a-number': 'أدخل رقمًا.',
   'systemAdmin.settings.parse.not-a-number-list': 'أدخل أرقامًا مفصولة بفواصل.',
   'systemAdmin.settings.parse.not-editable': 'لا يمكن تحرير هذه القيمة من هنا.',
-  'systemAdmin.settings.keys.auth.password.minLength': 'أقل طول لكلمة المرور',
-  'systemAdmin.settings.keys.auth.password.requireComplexity': 'اشتراط تعقيد كلمة المرور',
+  'systemAdmin.settings.departments.all': 'الكل',
+  'systemAdmin.settings.departments.general': 'عام',
+  'systemAdmin.settings.departments.hr': 'الموارد البشرية',
+  'systemAdmin.settings.departments.fleet': 'الحركة',
+  'systemAdmin.settings.departments.operations': 'العمليات',
+  'systemAdmin.settings.departments.atm': 'الصراف الآلي',
+  'systemAdmin.settings.departments.it': 'تقنية المعلومات',
+  'systemAdmin.settings.departments.other': 'أخرى',
+  'systemAdmin.settings.sections.atm.mail': 'بريد الصيانة',
+  'systemAdmin.settings.sections.atm.maintenance': 'الصيانة',
+  'systemAdmin.settings.sections.atm.more': 'إعدادات أخرى',
+  'systemAdmin.settings.sections.atm.register': 'سجل الماكينات والتسويات والفروع',
+  'systemAdmin.settings.sections.fleet.fuelCards': 'بطاقات الوقود',
+  'systemAdmin.settings.sections.fleet.fuelPrices': 'أسعار الوقود',
+  'systemAdmin.settings.sections.fleet.licences': 'رخص السيارات والسائقين',
+  'systemAdmin.settings.sections.fleet.maintenance': 'الصيانة والعدادات',
+  'systemAdmin.settings.sections.fleet.more': 'إعدادات أخرى',
+  'systemAdmin.settings.sections.fleet.reports': 'توقيعات التقارير المطبوعة',
+  'systemAdmin.settings.sections.fleet.vehicles': 'السيارات والسائقون',
+  'systemAdmin.settings.sections.general.audit': 'سجلات التدقيق والنشاط',
+  'systemAdmin.settings.sections.general.featureFlags': 'مفاتيح الميزات',
+  'systemAdmin.settings.sections.general.more': 'إعدادات أخرى',
+  'systemAdmin.settings.sections.general.notifications': 'الإشعارات',
+  'systemAdmin.settings.sections.general.signIn': 'الدخول وكلمات المرور',
+  'systemAdmin.settings.sections.hr.attendance': 'الحضور والانصراف',
+  'systemAdmin.settings.sections.hr.contracts': 'العقود',
+  'systemAdmin.settings.sections.hr.leave': 'الإجازات وتقويم العمل',
+  'systemAdmin.settings.sections.hr.more': 'إعدادات أخرى',
+  'systemAdmin.settings.sections.it.assets': 'الأصول والتراخيص',
+  'systemAdmin.settings.sections.it.helpdesk': 'الدعم الفني',
+  'systemAdmin.settings.sections.it.more': 'إعدادات أخرى',
+  'systemAdmin.settings.sections.operations.crew': 'الطاقم',
+  'systemAdmin.settings.sections.operations.more': 'إعدادات أخرى',
+  'systemAdmin.settings.sections.other.more': 'إعدادات أخرى',
+  'systemAdmin.settings.keys.atm.branchLinks': 'فروع تعمل معًا',
+  'systemAdmin.settings.keys.atm.mail.branchCategories': 'تصنيف Outlook لكل فرع',
+  'systemAdmin.settings.keys.atm.maintenanceLeaderDepartmentIds': 'إدارات قائمة القائد',
+  'systemAdmin.settings.keys.atm.register.bankLabels': 'أسماء البنوك في قائمة التشغيل',
+  'systemAdmin.settings.keys.atm.register.branchCodes': 'أكواد الفروع في ملف سجل الماكينات',
+  'systemAdmin.settings.keys.atm.settlements.banks': 'البنوك المفعّلة في التسويات',
+  'systemAdmin.settings.keys.audit.export.maxRows': 'الحد الأقصى لصفوف تصدير سجل التدقيق',
+  'systemAdmin.settings.keys.audit.retention.activityDays': 'مدة الاحتفاظ بسجل النشاط (بالأيام)',
+  'systemAdmin.settings.keys.audit.signals.deniedThreshold':
+    'تنبيه أمني: عدد الطلبات المرفوضة في الساعة',
+  'systemAdmin.settings.keys.audit.signals.exportSpikeThreshold':
+    'تنبيه أمني: عدد عمليات التصدير في اليوم',
+  'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'صلاحية رابط التفعيل (بالساعات)',
   'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'عدد محاولات الدخول الفاشلة قبل القفل',
   'systemAdmin.settings.keys.auth.lockout.minutes': 'مدة القفل (بالدقائق)',
+  'systemAdmin.settings.keys.auth.loginIdentifiers': 'معرّفات الدخول المقبولة',
+  'systemAdmin.settings.keys.auth.passkeys.enabled':
+    'السماح بالدخول بالبصمة أو الوجه (مفاتيح المرور)',
+  'systemAdmin.settings.keys.auth.password.minLength': 'الحد الأدنى لطول كلمة المرور (بالأحرف)',
+  'systemAdmin.settings.keys.auth.password.requireComplexity': 'اشتراط تعقيد كلمة المرور',
   'systemAdmin.settings.keys.auth.totp.enforcedForPrivileged':
     'فرض التحقق بخطوتين على الحسابات ذات الامتياز',
-  'systemAdmin.settings.keys.auth.loginIdentifiers': 'معرّفات الدخول المقبولة',
-  'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'صلاحية رابط التفعيل (بالساعات)',
-  'systemAdmin.settings.keys.auth.passkeys.enabled': 'السماح بالدخول بالبصمة أو الوجه (مفاتيح المرور)',
-  'systemAdmin.settings.keys.audit.retention.activityDays': 'مدة الاحتفاظ بسجل النشاط (بالأيام)',
-  'systemAdmin.settings.keys.audit.export.maxRows': 'أقصى عدد صفوف لتصدير التدقيق',
-  'systemAdmin.settings.keys.audit.signals.deniedThreshold':
-    'عدد الرفض في الساعة الذي يرفع إشارة أمنية',
-  'systemAdmin.settings.keys.audit.signals.exportSpikeThreshold':
-    'عدد التصديرات في اليوم الذي يرفع إشارة أمنية',
-  'systemAdmin.settings.keys.notifications.email.enabled': 'تفعيل إشعارات البريد',
-  'systemAdmin.settings.keys.notifications.quietHours.enabledByDefault':
-    'ساعات الهدوء مفعّلة افتراضيًا',
-  'systemAdmin.settings.keys.contracts.numberFormat': 'صيغة ترقيم العقود',
-  'systemAdmin.settings.keys.contracts.requireApproval': 'العقود تتطلب اعتمادًا',
   'systemAdmin.settings.keys.contracts.expiryNoticeDays': 'التنبيه قبل انتهاء العقد (بالأيام)',
-  'systemAdmin.settings.keys.hr.workCalendar.weekendDays': 'أيام العطلة الأسبوعية',
+  'systemAdmin.settings.keys.contracts.numberFormat': 'صيغة ترقيم العقود',
+  'systemAdmin.settings.keys.contracts.requireApproval': 'اشتراط الاعتماد قبل توليد مستند العقد',
+  'systemAdmin.settings.keys.fleet.alarm.redKm': 'حد الإنذار الأحمر للصيانة (كم متبقية)',
+  'systemAdmin.settings.keys.fleet.alarm.yellowKm': 'حد الإنذار الأصفر للصيانة (كم متبقية)',
+  'systemAdmin.settings.keys.fleet.availability.useHrLeave':
+    'احتساب إجازات الموارد البشرية في إتاحة السائقين',
+  'systemAdmin.settings.keys.fleet.fuel.price.diesel': 'سعر لتر السولار (بالجنيه)',
+  'systemAdmin.settings.keys.fleet.fuel.price.petrol80': 'سعر لتر بنزين 80 (بالجنيه)',
+  'systemAdmin.settings.keys.fleet.fuel.price.petrol92': 'سعر لتر بنزين 92 (بالجنيه)',
+  'systemAdmin.settings.keys.fleet.fuel.price.petrol95': 'سعر لتر بنزين 95 (بالجنيه)',
+  'systemAdmin.settings.keys.fleet.fuelCard.balanceRed': 'الحد الأحمر لرصيد بطاقة الوقود (بالجنيه)',
+  'systemAdmin.settings.keys.fleet.fuelCard.balanceYellow':
+    'الحد الأصفر لرصيد بطاقة الوقود (بالجنيه)',
+  'systemAdmin.settings.keys.fleet.fuelCard.expiryWarnDays':
+    'التنبيه قبل انتهاء بطاقة الوقود (بالأيام)',
+  'systemAdmin.settings.keys.fleet.license.driverWarnDays':
+    'التنبيه قبل انتهاء رخصة السائق (بالأيام)',
+  'systemAdmin.settings.keys.fleet.license.vehicleWarnDays':
+    'التنبيه قبل انتهاء رخصة السيارة (بالأيام)',
+  'systemAdmin.settings.keys.fleet.odometer.missingReadingDays':
+    'تنبيه غياب قراءة العداد (بالأيام)',
+  'systemAdmin.settings.keys.fleet.report.approvedByName': 'اسم معتمِد التقرير',
+  'systemAdmin.settings.keys.fleet.report.approvedByTitle': 'صفة معتمِد التقرير',
+  'systemAdmin.settings.keys.fleet.report.endorsedByName':
+    'المصدِّق على التقرير (الرتبة والاسم والمنصب)',
+  'systemAdmin.settings.keys.fleet.report.endorsementNote': 'عبارة طلب التصديق على التقرير',
+  'systemAdmin.settings.keys.fleet.report.preparedByName': 'اسم مُعِدّ التقرير',
+  'systemAdmin.settings.keys.fleet.report.preparedByTitle': 'صفة مُعِدّ التقرير',
+  'systemAdmin.settings.keys.fleet.roster.refuseExpiredLicence':
+    'منع تعيين السائق أو السيارة برخصة منتهية',
+  'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'الفرع الافتراضي للسيارات الجديدة',
+  'systemAdmin.settings.keys.hr.attendance.absenceNotify': 'إشعار الموظف بتسجيل غيابه',
+  'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
+  'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'اشتراط اعتماد العمل الإضافي',
+  'systemAdmin.settings.keys.hr.attendance.selfPunchEnabled':
+    'السماح للموظف بتسجيل بصمته عبر الويب',
   'systemAdmin.settings.keys.hr.leave.approvalReminderDays': 'تذكير اعتماد طلب الإجازة (بالأيام)',
   'systemAdmin.settings.keys.hr.leave.serviceAcrossPeriods':
     'احتساب الخدمة عبر فترات التوظيف المتعددة',
-  'systemAdmin.settings.keys.it.sla.atRiskPercent': 'عتبة تعرّض اتفاقية الخدمة للخطر (%)',
+  'systemAdmin.settings.keys.hr.workCalendar.weekendDays': 'أيام العطلة الأسبوعية',
+  'systemAdmin.settings.keys.it.license.warnDays': 'التنبيه قبل انتهاء ترخيص البرمجيات (بالأيام)',
+  'systemAdmin.settings.keys.it.maintenance.preventiveHorizonDays':
+    'إنشاء أوامر الصيانة الوقائية قبل موعدها (بالأيام)',
+  'systemAdmin.settings.keys.it.sla.atRiskPercent': 'عتبة اقتراب تجاوز مستوى الخدمة (%)',
+  'systemAdmin.settings.keys.it.technicianDepartmentIds': 'إدارات فنيي الدعم الفني',
   'systemAdmin.settings.keys.it.ticket.autoCloseDays':
     'الإغلاق التلقائي للتذاكر المحلولة (بالأيام)',
-  'systemAdmin.settings.keys.it.maintenance.preventiveHorizonDays':
-    'أفق الصيانة الوقائية (بالأيام)',
   'systemAdmin.settings.keys.it.warranty.warnDays': 'التنبيه قبل انتهاء الضمان (بالأيام)',
-  'systemAdmin.settings.keys.it.license.warnDays': 'التنبيه قبل انتهاء رخصة البرمجيات (بالأيام)',
-  'systemAdmin.settings.keys.it.technicianDepartmentIds': 'أقسام فنيي الدعم الفني',
-  'systemAdmin.settings.keys.fleet.alarm.yellowKm': 'إنذار الصيانة — أصفر (كم)',
-  'systemAdmin.settings.keys.fleet.alarm.redKm': 'إنذار الصيانة — أحمر (كم)',
-  'systemAdmin.settings.keys.fleet.availability.useHrLeave':
-    'احتساب إجازات الموارد البشرية في التوافر',
-  'systemAdmin.settings.keys.fleet.license.vehicleWarnDays':
-    'التنبيه قبل انتهاء رخصة المركبة (بالأيام)',
-  'systemAdmin.settings.keys.fleet.license.driverWarnDays':
-    'التنبيه قبل انتهاء رخصة السائق (بالأيام)',
-  'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'الفرع الافتراضي للسيارات الجديدة',
-  'systemAdmin.settings.keys.fleet.roster.refuseExpiredLicence':
-    'رفض تخطيط السائق أو السيارة برخصة منتهية',
-  'systemAdmin.settings.keys.fleet.odometer.missingReadingDays': 'تنبيه غياب قراءة العداد (أيام)',
+  'systemAdmin.settings.keys.notifications.email.enabled': 'إرسال الإشعارات بالبريد الإلكتروني',
+  'systemAdmin.settings.keys.notifications.quietHours.enabledByDefault':
+    'ساعات الهدوء مفعّلة افتراضيًا',
+  'systemAdmin.settings.keys.operations.cashTransferOperationIds': 'تشغيل مركبات نقل الأموال',
+  'systemAdmin.settings.keys.operations.crewDepartmentIds': 'إدارات طاقم العمليات',
+  'systemAdmin.settings.descriptions.atm.branchLinks':
+    'في الصراف الآلي فقط، يعمل الفرع المرتبط باسم فرع آخر: يرى مستخدموه بيانات الصراف الآلي الخاصة بذلك الفرع، ويُسجَّل ما يُدخلونه باسمه. ولا يتغيّر شيء خارج الصراف الآلي.',
+  'systemAdmin.settings.descriptions.atm.mail.branchCategories':
+    'التصنيف الذي يُضاف في Outlook إلى رسالة الصيانة ليبيّن الفرع الذي سُجِّلت عليه. يُستخدم فقط للفرع الذي ليس له تصنيف في «إعدادات الصراف الآلي»، وإن لم يوجد تصنيف تُعلَّم الرسالة مقروءة دون تصنيف.',
+  'systemAdmin.settings.descriptions.atm.maintenanceLeaderDepartmentIds':
+    'يظهر موظفو هذه الإدارات في قائمة القائد عند إغلاق الصيانة وعند تعديل التغذية أو الصيانة. إذا لم تُحدَّد أي إدارة، تُستخدم إدارة الصراف الآلي باسمها.',
+  'systemAdmin.settings.descriptions.atm.register.bankLabels':
+    'لم يعد مستخدمًا؛ إذ يُضبط اسم كل بنك في التشغيل الآن من «البنوك» في سجل الماكينات. تغيير هذه القيمة لا يُحدث أي أثر.',
+  'systemAdmin.settings.descriptions.atm.register.branchCodes':
+    'يربط كل كود EGYCASH في ملف سجل الماكينات بفرع في النظام. الفرع الذي لا يقابله كود لا يُسجَّل له شيء في سجل الماكينات، ويتوقف الاستيراد ما دام في الملف كود غير مربوط.',
+  'systemAdmin.settings.descriptions.atm.settlements.banks':
+    'أكواد البنوك كما تظهر في «البنوك» (مثل BRK) التي تُعرض في خطة التغذية وفئات الكاسيتات والشوالات والسيلزات وصفحة بيانات التغذية والخطوط. يُتجاهل أي كود غير موجود في «البنوك»، والقائمة الفارغة لا تعرض أي بنك.',
+  'systemAdmin.settings.descriptions.audit.export.maxRows':
+    'أكبر عدد من الصفوف يتضمنه ملف CSV واحد يُصدَّر من سجل التدقيق، من 1000 إلى 200000. إذا طابق التصدير صفوفًا أكثر، تُصدَّر الأحدث منها.',
+  'systemAdmin.settings.descriptions.audit.retention.activityDays':
+    'تُحذف تلقائيًا إدخالات سجل النشاط الأقدم من هذه المدة، والحد الأدنى 365 يومًا. أما سجل التدقيق فلا يُحذف أبدًا.',
+  'systemAdmin.settings.descriptions.audit.signals.deniedThreshold':
+    'إذا رُفض وصول مستخدم واحد هذا العدد من المرات خلال ساعة، يصل تنبيه أمني إلى كل من يملك صلاحية قراءة سجل التدقيق للمؤسسة كاملة. الحد الأدنى 3.',
+  'systemAdmin.settings.descriptions.audit.signals.exportSpikeThreshold':
+    'إذا صدّر مستخدم واحد بيانات هذا العدد من المرات خلال 24 ساعة (من سجل التدقيق أو الحضور أو العقود أو غيرها)، يُرفع تنبيه أمني. الحد الأدنى 5.',
+  'systemAdmin.settings.descriptions.auth.activationLink.ttlHours':
+    'المدة التي يبقى فيها رابط إعداد الحساب أو إعادة تعيين كلمة المرور صالحًا بعد إرساله، من 1 إلى 336 ساعة (14 يومًا). الرابط المنتهي يجب إرساله من جديد.',
+  'systemAdmin.settings.descriptions.auth.lockout.maxAttempts':
+    'بعد هذا العدد من محاولات كلمة المرور الخاطئة المتتالية، يُقفل الحساب طوال مدة القفل. ويُصفَّر العدّ عند نجاح تسجيل الدخول.',
+  'systemAdmin.settings.descriptions.auth.lockout.minutes':
+    'المدة التي يُمنع فيها الحساب المقفل من تسجيل الدخول، من 1 إلى 1440 دقيقة (24 ساعة). بعدها يمكن للمستخدم المحاولة من جديد.',
+  'systemAdmin.settings.descriptions.auth.loginIdentifiers':
+    'ما يمكن للموظف إدخاله في صفحة الدخول للتعريف بنفسه: اسم المستخدم أو البريد الإلكتروني أو الكود الوظيفي. يجب أن يبقى واحد منها على الأقل مفعّلًا.',
+  'systemAdmin.settings.descriptions.auth.passkeys.enabled':
+    'عند الإيقاف، لا يمكن لأحد الدخول بالبصمة أو الوجه ولا إضافة جهاز جديد، ويدخل الجميع بكلمة المرور. الأجهزة المضافة مسبقًا تبقى محفوظة وتعمل مجددًا عند إعادة التفعيل.',
+  'systemAdmin.settings.descriptions.auth.password.minLength':
+    'أقل عدد من الأحرف تقبله كلمة المرور الجديدة، من 8 إلى 64. يُطبَّق عند تعيين كلمة المرور أو تغييرها، وتبقى كلمات المرور الحالية صالحة.',
+  'systemAdmin.settings.descriptions.auth.password.requireComplexity':
+    'عند التفعيل، يجب أن تتضمن كلمة المرور الجديدة حرفًا إنجليزيًا صغيرًا وحرفًا إنجليزيًا كبيرًا ورقمًا ورمزًا خاصًا. يُطبَّق عند تعيين كلمة المرور أو تغييرها.',
+  'systemAdmin.settings.descriptions.auth.totp.enforcedForPrivileged':
+    'عند التفعيل، يلزم كل حساب يحمل دور نظام أو صلاحية استثنائية إعداد تطبيق المصادقة عند تسجيل الدخول، ولا يمكنه إيقافه.',
+  'systemAdmin.settings.descriptions.contracts.expiryNoticeDays':
+    'يُرسَل إشعار إلى كل من يملك صلاحية عرض العقود قبل انتهاء العقد المحدد المدة بهذا العدد من الأيام. ويُرسَل إشعار واحد لكل عقد.',
+  'systemAdmin.settings.descriptions.contracts.numberFormat':
+    'نمط أرقام العقود الجديدة: يُستبدل {{yearToken}} بالسنة، و{{seqToken}} برقم تسلسلي يبدأ من جديد كل سنة ويتكوّن من ست خانات ما لم يُحدَّد عدد آخر (كما في {{seqPaddedToken}}). ولا بد من وجود رمز الرقم التسلسلي. الأرقام الصادرة سابقًا لا تتغير.',
+  'systemAdmin.settings.descriptions.contracts.requireApproval':
+    'عند التفعيل، يجب اعتماد العقد الجديد قبل توليد مستنده. العقود المُنشأة سابقًا تبقى على القاعدة التي أُنشئت بها.',
+  'systemAdmin.settings.descriptions.fleet.alarm.redKm':
+    'يتحول إنذار الصيانة إلى اللون الأحمر عندما تبلغ المسافة المتبقية على الصيانة التالية للسيارة هذا العدد من الكيلومترات أو أقل، أو عندما تتجاوز السيارة المسافة المقررة لصيانتها. ينبغي أن تكون القيمة أقل من حد الإنذار الأصفر.',
+  'systemAdmin.settings.descriptions.fleet.alarm.yellowKm':
+    'يتحول إنذار الصيانة إلى اللون الأصفر عندما تبلغ المسافة المتبقية على الصيانة التالية للسيارة هذا العدد من الكيلومترات أو أقل. أما فترة الصيانة فتُحدَّد لكل نوع سيارة في إعدادات الحركة.',
+  'systemAdmin.settings.descriptions.fleet.availability.useHrLeave':
+    'عند التفعيل يُعدّ السائق الحاصل على إجازة معتمدة في الموارد البشرية غير متاح للتعيين خلال أيامها. وعند الإيقاف تُتجاهل الإجازات، ويظل عدم الإتاحة المسجَّل في الحركة نافذًا.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.diesel':
+    'يُحسب عدد اللترات في إيصال وقود السولار بقسمة مبلغ الإيصال على هذا السعر. يُسعَّر الإيصال بالقيمة السارية عند حفظه، والقيمة صفر تترك عدد اللترات فارغًا.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.petrol80':
+    'يُحسب عدد اللترات في إيصال وقود بنزين 80 بقسمة مبلغ الإيصال على هذا السعر. يُسعَّر الإيصال بالقيمة السارية عند حفظه، والقيمة صفر تترك عدد اللترات فارغًا.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.petrol92':
+    'يُحسب عدد اللترات في إيصال وقود بنزين 92 بقسمة مبلغ الإيصال على هذا السعر. يُسعَّر الإيصال بالقيمة السارية عند حفظه، والقيمة صفر تترك عدد اللترات فارغًا.',
+  'systemAdmin.settings.descriptions.fleet.fuel.price.petrol95':
+    'يُحسب عدد اللترات في إيصال وقود بنزين 95 بقسمة مبلغ الإيصال على هذا السعر. يُسعَّر الإيصال بالقيمة السارية عند حفظه، والقيمة صفر تترك عدد اللترات فارغًا.',
+  'systemAdmin.settings.descriptions.fleet.fuelCard.balanceRed':
+    'تظهر بطاقة الوقود التي يقل رصيدها عن هذا المبلغ باللون الأحمر في شاشة شحن الكروت، ويُعرض عدد هذه البطاقات في لوحة تحكم الحركة. ينبغي أن يكون أقل من الحد الأصفر.',
+  'systemAdmin.settings.descriptions.fleet.fuelCard.balanceYellow':
+    'تظهر بطاقة الوقود التي يقل رصيدها عن هذا المبلغ باللون الأصفر في شاشة شحن الكروت، وتُحتسب ضمن البطاقات منخفضة الرصيد في لوحة تحكم الحركة.',
+  'systemAdmin.settings.descriptions.fleet.fuelCard.expiryWarnDays':
+    'تظهر بطاقة الوقود التي تنتهي خلال هذا العدد من الأيام بحالة «تنتهي قريباً» في شاشة بطاقات الوقود، وتُحتسب ضمن البطاقات التي تقترب من الانتهاء في لوحة تحكم الحركة. القيمة من 1 إلى 365.',
+  'systemAdmin.settings.descriptions.fleet.license.driverWarnDays':
+    'قبل انتهاء رخصة السائق بهذا العدد من الأيام يظهر السائق في لوحة تحكم الحركة ضمن الرخص التي تقترب من الانتهاء. ولا يُرسل النظام إشعارًا بذلك من تلقاء نفسه. القيمة من 1 إلى 365.',
+  'systemAdmin.settings.descriptions.fleet.license.vehicleWarnDays':
+    'قبل انتهاء رخصة السيارة بهذا العدد من الأيام تظهر السيارة في لوحة تحكم الحركة ضمن الرخص التي تقترب من الانتهاء. ولا يُرسل النظام إشعارًا بذلك من تلقاء نفسه. القيمة من 1 إلى 365.',
+  'systemAdmin.settings.descriptions.fleet.odometer.missingReadingDays':
+    'تُنبِّه لوحة تحكم الحركة إلى السيارة النشطة التي لم تُسجَّل لها قراءة عداد طوال هذا العدد من الأيام، ولا تُحسب سيارات الورشة. القيمة عدد صحيح من 1 إلى 30.',
+  'systemAdmin.settings.descriptions.fleet.report.approvedByName':
+    'اسم الشخص الذي يعتمد تقارير الحركة، ويُطبع تحت صفة معتمِد التقرير في خانة التوقيعات عند طباعة التقرير أو تصديره.',
+  'systemAdmin.settings.descriptions.fleet.report.approvedByTitle':
+    'المسمى الوظيفي الذي يُطبع فوق اسم معتمِد التقرير في خانة التوقيعات عند طباعة تقارير الحركة أو تصديرها.',
+  'systemAdmin.settings.descriptions.fleet.report.endorsedByName':
+    'المسؤول الذي يصدّق على إجماليات تقرير الحركة، ويُطبع تحت عبارة طلب التصديق مع موضع للتوقيع. يُفضَّل ألا يتجاوز سطرًا مطبوعًا واحدًا، بحد أقصى 160 حرفًا.',
+  'systemAdmin.settings.descriptions.fleet.report.endorsementNote':
+    'العبارة التي تُطبع في أسفل تقرير الحركة لطلب التصديق على إجمالياته، وتظهر فوق اسم المصدِّق.',
+  'systemAdmin.settings.descriptions.fleet.report.preparedByName':
+    'اسم الشخص الذي يُعِدّ تقارير الحركة، ويُطبع تحت صفة مُعِدّ التقرير في خانة التوقيعات عند طباعة التقرير أو تصديره.',
+  'systemAdmin.settings.descriptions.fleet.report.preparedByTitle':
+    'المسمى الوظيفي الذي يُطبع فوق اسم مُعِدّ التقرير في خانة التوقيعات عند طباعة تقارير الحركة أو تصديرها.',
+  'systemAdmin.settings.descriptions.fleet.roster.refuseExpiredLicence':
+    'عند التفعيل ترفض شاشة تعيين السيارات السائق أو السيارة ذات الرخصة المنتهية، وعند الإيقاف تكتفي بالتنبيه إليهما. الرخصة التي لا يُسجَّل لها تاريخ انتهاء لا تمنع التعيين.',
+  'systemAdmin.settings.descriptions.fleet.vehicle.defaultBranchName':
+    'الفرع الذي يُختار تلقائيًا عند إضافة سيارة جديدة. اكتب اسم الفرع كما هو مسجَّل بالعربية أو الإنجليزية، وإذا لم يطابق فرعًا نشطًا فلا يُختار أي فرع.',
+  'systemAdmin.settings.descriptions.hr.attendance.absenceNotify':
+    'عند التفعيل، يصل إلى الموظف إشعار في صباح اليوم التالي إذا سُجّل يومه غيابًا، ليتمكن من تصحيح الخطأ مبكرًا. لا يغيّر هذا الإعداد سجل الحضور نفسه.',
+  'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
+    'الساعة، بتوقيت القاهرة وبنظام 24 ساعة، التي يُحتسب فيها حضور اليوم السابق لجميع الموظفين. مثلًا، القيمة 2 تعني بعد الساعة الثانية صباحًا بقليل.',
+  'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':
+    'عند التفعيل، لا يصل العمل الإضافي المحتسب من البصمات إلى الرواتب إلا بعد اعتماده. عند الإيقاف، يُحال كل العمل الإضافي المحتسب إلى الرواتب تلقائيًا.',
+  'systemAdmin.settings.descriptions.hr.attendance.selfPunchEnabled':
+    'عند التفعيل، يمكن للموظف تسجيل حضوره وانصرافه بنفسه عبر الويب. عند الإيقاف، لا تُقبل إلا بصمات الأجهزة والبصمات اليدوية والتسويات المعتمدة.',
+  'systemAdmin.settings.descriptions.hr.leave.approvalReminderDays':
+    'إذا بقي طلب الإجازة دون قرار هذا العدد من الأيام بعد تقديمه، يُرسَل تذكير يومي حتى يُبتّ فيه. ويصل التذكير إلى المدير المباشر للموظف في مرحلة المدير، وفي غير ذلك إلى كل من يملك صلاحية اعتماد الإجازات.',
+  'systemAdmin.settings.descriptions.hr.leave.serviceAcrossPeriods':
+    'عند التفعيل، تُحتسب فترات التوظيف السابقة للموظف المُعاد تعيينه ضمن مدة الخدمة التي تُبنى عليها استحقاقات الإجازات وشروط الحد الأدنى للخدمة. عند الإيقاف، تُحتسب فترة التوظيف الحالية فقط.',
+  'systemAdmin.settings.descriptions.hr.workCalendar.weekendDays':
+    'أيام الراحة الأسبوعية بالأرقام من 1 (الاثنين) إلى 7 (الأحد)، فالجمعة والسبت هما 5 و6، ويُترك الحقل فارغًا إن لم تكن هناك عطلة أسبوعية. لا تُحتسب ضمن الإجازات المحسوبة بأيام العمل، ولا يُتوقع فيها حضور.',
+  'systemAdmin.settings.descriptions.it.license.warnDays':
+    'قبل انتهاء ترخيص البرمجيات بهذا العدد من الأيام يظهر الترخيص بحالة «قارب على الانتهاء» في شاشة «التراخيص». القيمة 0 تلغي هذه الحالة، فيبقى الترخيص «ساريًا» حتى ينتهي.',
+  'systemAdmin.settings.descriptions.it.maintenance.preventiveHorizonDays':
+    'يُنشأ أمر العمل لخطة الصيانة الوقائية قبل حلول موعدها بهذا العدد من الأيام. القيمة 0 تعني إنشاءه عند حلول الموعد فقط.',
+  'systemAdmin.settings.descriptions.it.sla.atRiskPercent':
+    'عند انقضاء هذه النسبة من مهلة الاستجابة أو الحل تظهر التذكرة بحالة «قاربت على التجاوز». فمثلًا القيمة 80 تعني ظهورها عند استهلاك 80% من المهلة.',
+  'systemAdmin.settings.descriptions.it.technicianDepartmentIds':
+    'لا تُسنَد تذاكر الدعم الفني إلا إلى الموظفين الحاليين في هذه الإدارات. وما لم تُحدَّد إدارة، لا تعرض قائمة الفنيين أحدًا.',
+  'systemAdmin.settings.descriptions.it.ticket.autoCloseDays':
+    'تُغلَق التذكرة تلقائيًا إذا بقيت بحالة «تم الحل» هذا العدد من الأيام. القيمة 0 توقف الإغلاق التلقائي.',
+  'systemAdmin.settings.descriptions.it.warranty.warnDays':
+    'عدد الأيام قبل انتهاء ضمان أصل من أصول تقنية المعلومات التي يُعدّ فيها الضمان قريب الانتهاء، والقيمة 0 تلغي ذلك. لا يصل هذا التنبيه بعدُ إلى أي مستخدم، ولا يظهر في أي شاشة.',
+  'systemAdmin.settings.descriptions.notifications.email.enabled':
+    'عند الإيقاف، لا يُرسَل أي إشعار بالبريد الإلكتروني، وتبقى الإشعارات ظاهرة داخل التطبيق. ويُقدَّم اختيار المستخدم الخاص بالبريد الإلكتروني إن كان قد حدده.',
+  'systemAdmin.settings.descriptions.notifications.quietHours.enabledByDefault':
+    'يحدد ما إذا كانت ساعات الهدوء (من 22:00 إلى 07:00) تظهر مفعّلة للمستخدم الذي لم يختر بعد. لا تُؤجَّل الإشعارات غير العاجلة ليلًا إلا لمن حفظ ساعات هدوء خاصة به.',
+  'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
+    'معرّفات سجلات عناصر قائمة «التشغيل» في الحركة، مفصولة بفواصل. تُعرض للطاقم الثابت المركبات النشطة التي يكون «التشغيل» الخاص بها أحد هذه العناصر، وإن كانت القائمة فارغة تُعرض كل المركبات النشطة.',
+  'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
+    'موظفو هذه الإدارات هم طاقم العمليات الذي يُستخدم في كشف الأطقم ولوحة التشغيلة والطاقم الثابت. وإن لم تُحدَّد أي إدارة، يقتصر الكشف على المسجَّلين فيه سابقًا ولا يظهر الموظفون الجدد.',
 
   // P9-A — رابط الإعداد الذي يسلّمه المشرف يدويًا
   'systemAdmin.users.actions.setupLink': 'نسخ رابط الإعداد',
@@ -21286,7 +21662,7 @@ const ar: Record<string, string> = {
     'مَن يقود كل مركبة من مركبات نقل الأموال في المعتاد. تشغيلة كل يوم تنزل من هنا، ويظل تعديلها لذلك اليوم ممكنًا.',
   'operations.standingCrew.addVehicle': 'إضافة مركبة',
   'operations.standingCrew.unfiltered':
-    'كل المركبات معروضة — لم يُحدَّد بعد تشغيل نقل الأموال. اضبط operations.cashTransferOperationIds في إعدادات النظام لتضييق القائمة.',
+    'كل المركبات النشطة معروضة لأنه لم يُحدَّد بعد تشغيل نقل الأموال. لتضييق القائمة، حدِّد «تشغيل مركبات نقل الأموال» في إعدادات النظام ضمن العمليات.',
   'operations.standingCrew.remove': 'إزالة',
   'operations.standingCrew.removed': 'تم إخراج {{code}} من أسطول نقل الأموال',
   'operations.standingCrew.removeFailed': 'تعذّر إزالة هذه المركبة',
@@ -22504,7 +22880,7 @@ const ar: Record<string, string> = {
   'atm.bankCatalog.activeHint':
     'البنك المؤرشف لا يُعرض للاستلامات والماكينات الجديدة، وتبقى ماكيناته وأعداده كما هي.',
   'atm.bankCatalog.settlementsWarning':
-    'هذا البنك مفعَّل في التسويات، والأرشفة لا تُزيله منها؛ يعدّل مدير النظام ذلك الإعداد.',
+    'هذا البنك مفعَّل في التسويات، والأرشفة لا تُزيله منها؛ يُزيله مدير النظام من «البنوك المفعّلة في التسويات» في إعدادات النظام.',
   'atm.bankCatalog.added': 'تمت إضافة البنك.',
   'atm.bankCatalog.saved': 'تم حفظ البنك.',
   'atm.bankCatalog.error.ATM_BANK_CODE_TAKEN': 'يوجد بنك بهذا الكود.',

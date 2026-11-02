@@ -531,6 +531,26 @@ its entry here in the same PR.
 
 ### Changed
 
+- **System settings: every setting titled and described in Arabic and English, grouped by
+  department.** «فى الـ /system/settings في عناوين كتير بالشكل دا atm.mail.branchCategories !! عايز
+  أخليهم بالعربي وأظبطهم بالإنجليزي بردو» · «وحاول تظبط الـ UI بتاعت الصفحة دي عموماً وتقسم
+  الحاجات طبقاً للإدارات أو General وهكذا». All 59 settings now have their own title and a short
+  description in both languages; the key stays on the row, small, for search. Tabs split the page
+  into General (sign-in, audit, notifications, feature flags), HR, Fleet, Operations, ATM and IT,
+  and each department into sections (for example Fleet: maintenance, licences, vehicles, fuel
+  prices, fuel cards, reports); «الكل» shows them all. The tab and the search are kept in the
+  address. Each row says where its value comes from, which levels it can be set at, and the
+  default only when the value differs; Save sits beside the field. A setting that is a list of
+  departments or branch rows shows how many are set and links to the screen that edits it by name
+  (ATM settings, register import, help-desk settings, crew requirements). The per-branch Outlook
+  category list is only a fallback that ATM settings never writes, so its row links there without
+  promising an edit and keeps a confirmed «مسح هذه القائمة»; the one setting nothing reads any more
+  (`atm.register.bankLabels`) is marked as retired instead of offering a field. The search folds
+  Arabic as every other search box does. A new setting without a title and description in both
+  languages now fails the tests.
+  - **The SLA «at risk» threshold follows its setting.** `it.sla.atRiskPercent` was declared but
+    the indicator used 80 regardless; it now reads the setting (80 remains the default).
+  - Two messages and one API error that named a setting by its key now name it by its title.
 - **Every ATM page puts its row beside the title.** «عايز تطلع الصف بتاع الـ Form يبقي بجانب العنوان
   عشان نستفيد بالمساحة (واعمل الحركة دي في كل الصفحات بتاعت ATM)». The form, filters or date bar
   that sat under the title now share the title's line on a computer, and the table gets that

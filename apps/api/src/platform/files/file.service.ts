@@ -387,10 +387,20 @@ class FileService {
     return fileRepository.entityIdsWithLiveFiles(moduleId, entityTypes, entityIds);
   }
 
+  /**
+   * `intent` is what the caller is about to DO with the rows, and it defaults to reading.
+   *
+   * An owning module that is about to REMOVE an entity's files has to be able to see them first,
+   * and the question ADR-023 should be asked is the one that matches the act. Listing a folder
+   * about to be emptied with a read question would hide exactly the rows the delete is for —
+   * the delete would then report success having skipped them, which is the silent kind of wrong.
+   * Each row is still authorized individually when it is actually removed.
+   */
   async list(
     query: ListFilesQuery,
     scope: ScopeSelector,
     ctx?: AuthContext,
+    intent: FileAccessIntent = 'read',
   ): Promise<Paginated<FileDoc>> {
     const filter: Record<string, unknown> = {
       isLatest: true,
@@ -428,7 +438,7 @@ class FileService {
         const id = `${doc.entityRef.moduleId}/${doc.entityRef.entityType}/${doc.entityRef.entityId}`;
         let decision = decisions.get(id);
         if (decision === undefined) {
-          decision = authorizeFileEntity(ctx, doc.entityRef, 'read');
+          decision = authorizeFileEntity(ctx, doc.entityRef, intent);
           decisions.set(id, decision);
         }
         return decision;

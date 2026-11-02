@@ -493,7 +493,7 @@ describe('(g) an emptied folder leaves the grid', () => {
       filter.documentsFolderDeletedAt === undefined ? [] : nominated,
     );
     mocks.applicantCount.mockResolvedValue(0);
-    await applicantFolderService.list({ page: 1, pageSize: 24 } as never);
+    await applicantFolderService.list(ctx, { page: 1, pageSize: 24 } as never);
   };
 
   it('asks only about the folders it emptied, by the date the partial index holds', async () => {
@@ -535,5 +535,77 @@ describe('(g) an emptied folder leaves the grid', () => {
 
     expect(mocks.liveFileOwners).not.toHaveBeenCalled();
     expect(pageFilter()._id).toBeUndefined();
+  });
+});
+
+/**
+ * (h) THE FOLDER ASKS THE FILES SERVICE AS THE CALLER, AND ASKS THE RIGHT QUESTION.
+ *
+ * This is the regression guard for the worst bug this feature had, and it is pinned here because
+ * the integration suite that found it cannot run outside CI.
+ *
+ * `fileService.list` drops every GUARDED row — any entity type with a registered ADR-023
+ * authorizer — when it is called without a caller, because «nobody asked» is safest read as «show
+ * nothing guarded». The candidate's handed-in documents are filed under `applicantDocuments`,
+ * which is guarded. So a folder listed without a caller showed the card and HR's attachments and
+ * silently omitted every document the candidate submitted — and the DELETE, which lists the same
+ * way, dropped the set rows pointing at those documents and then left the documents themselves
+ * live and orphaned.
+ *
+ * The intent matters just as much as the caller. The authorizer grants reading to the REVIEWER's
+ * key and removing to the DELETE key, so a listing taken with a read question hands an emptier
+ * holding only `applicantDocument.delete` a folder with no documents in it.
+ */
+describe('(h) the folder lists as the caller, with the intent of the act', () => {
+  /** The 3rd and 4th arguments of the newest `fileService.list` call. */
+  const asked = (): { ctx: unknown; intent: unknown } => {
+    const call = mocks.listFiles.mock.calls.at(-1) ?? [];
+    return { ctx: call[2], intent: call[3] };
+  };
+
+  it('reads the grid as the caller, asking to READ', async () => {
+    mocks.applicantFind.mockImplementation(async (filter: Record<string, unknown>) =>
+      filter.documentsFolderDeletedAt === undefined ? [applicant()] : [],
+    );
+    mocks.applicantCount.mockResolvedValue(1);
+
+    await applicantFolderService.list(ctx, { page: 1, pageSize: 24 } as never);
+
+    expect(asked()).toEqual({ ctx, intent: 'read' });
+  });
+
+  it('reads one open folder as the caller, asking to READ', async () => {
+    const mine = applicant();
+    mocks.applicantFindOne.mockResolvedValue(mine);
+
+    await applicantFolderService.get(ctx, String(mine._id));
+
+    expect(asked()).toEqual({ ctx, intent: 'read' });
+  });
+
+  it('lists the folder it is about to empty asking to DELETE, not to read', async () => {
+    const mine = applicant();
+    folders.set(String(mine._id), [file(String(mine._id))]);
+    mocks.applicantFindOne.mockResolvedValue(mine);
+
+    await applicantFolderService.deleteFolder(ctx, String(mine._id));
+
+    expect(asked()).toEqual({ ctx, intent: 'delete' });
+  });
+
+  /** Never undefined — that is the exact call that made the documents invisible. */
+  it('never asks the Files service anonymously', async () => {
+    const mine = applicant();
+    folders.set(String(mine._id), [file(String(mine._id))]);
+    mocks.applicantFindOne.mockResolvedValue(mine);
+
+    await applicantFolderService.get(ctx, String(mine._id));
+    await applicantFolderService.deleteFolder(ctx, String(mine._id));
+
+    expect(mocks.listFiles.mock.calls.length).toBeGreaterThan(1);
+    for (const call of mocks.listFiles.mock.calls) {
+      expect(call[2], 'the caller').toBeDefined();
+      expect(call[3], 'the intent').toBeDefined();
+    }
   });
 });

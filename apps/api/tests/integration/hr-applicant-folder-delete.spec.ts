@@ -582,17 +582,23 @@ describe('emptying several at once', () => {
     expect(await live(bystanderFile.id)).toBe(true);
   });
 
+  /**
+   * 400 and not 422: both of these are SCHEMA violations, caught by `BulkDeleteApplicantFoldersSchema`
+   * at the route edge before any rule of the feature's own runs. 422 is this codebase's status for a
+   * business rule that refused — «this folder is a kept record» — which is a different answer to a
+   * different question.
+   */
   it('refuses an empty selection and one past the cap', async () => {
     const empty = await request(app)
       .post('/api/v1/hr/applicant-documents/folders/bulk-delete')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ applicantIds: [] });
-    expect(empty.status).toBe(422);
+    expect(empty.status).toBe(400);
     const tooMany = await request(app)
       .post('/api/v1/hr/applicant-documents/folders/bulk-delete')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ applicantIds: Array.from({ length: 51 }, () => new Types.ObjectId().toString()) });
-    expect(tooMany.status).toBe(422);
+    expect(tooMany.status).toBe(400);
   });
 });
 
@@ -608,6 +614,11 @@ describe('the handed-in document’s type reaches the folder', () => {
 
     const open = await folder(applicant.id);
     const handed = open.files.find((f) => f.kind === 'document');
+    // `toBeDefined` first, deliberately: `undefined` sails straight through `not.toBeNull()`, so a
+    // folder that showed no handed-in document at all would have passed this test while proving
+    // the opposite of what it claims. That is exactly what happened before `filesOf` passed the
+    // caller to the Files service.
+    expect(handed).toBeDefined();
     expect(handed?.documentType).not.toBeNull();
     expect(catalogue.map((row) => row.name.ar)).toContain(handed?.documentType?.ar);
     // Nothing else claims a type.
@@ -627,7 +638,7 @@ describe('the handed-in document’s type reaches the folder', () => {
  */
 describe('an emptied folder leaves the grid, and returns with the next document', () => {
   it('is on the grid while it holds something, gone once emptied, back when refilled', async () => {
-    const person = await registerApplicant('29001011590088', '01099880088');
+    const person = await registerApplicant('29001011590166', '01099880166');
     const first = await attach(person.id, generalCategoryId, 'before.png');
 
     const before = await listFolders();
@@ -772,5 +783,48 @@ describe('withdrawing the application with the folder', () => {
     expect(result.deleted).toEqual([]);
     expect(result.refused.map((row) => row.reason)).toEqual(['hired']);
     expect(await statusOf(hired.id)).toBe('hired');
+  });
+});
+
+/**
+ * The folder is listed as the CALLER, asking the question of the ACT — and this is the case that
+ * made it matter.
+ *
+ * What the candidate hands in through the portal is filed under `applicantDocuments`, which carries
+ * an ADR-023 authorizer, and that authorizer grants READING to the reviewer's key and REMOVING to
+ * the delete key. So the folder listing has to be taken with the caller and with the delete intent:
+ *   · taken anonymously, the Files service drops every guarded row and the folder shows the card
+ *     and HR's attachments while silently omitting every document the candidate submitted;
+ *   · taken with a READ question, an emptier who holds `applicantDocument.delete` and not the
+ *     reviewer's key gets the same empty answer.
+ * Either way the delete would drop the set rows that point at those documents and then leave the
+ * documents themselves live and orphaned — reporting success the whole time.
+ *
+ * `folder-emptier@ecms.local` holds the delete key and NOT `.review`, which is exactly the caller
+ * that would have been fooled.
+ */
+describe('emptying a folder reaches what the candidate handed in', () => {
+  it('removes the handed-in document for a caller holding delete but not review', async () => {
+    const person = await registerApplicant('29001011590177', '01099880177');
+    const handedIn = await handInDocument(person, '29001011590177', '01099880177');
+    expect(await live(handedIn), 'the document is on file to begin with').toBe(true);
+
+    // It is IN the folder — the assertion that fails if the listing goes back to being anonymous.
+    const open = await folder(person.id);
+    expect(open.files.some((f) => f.kind === 'document')).toBe(true);
+
+    const res = await deleteFolder(person.id, emptierToken);
+    expect(res.status).toBe(200);
+    expect(data<DeletedApplicantFolderDto>(res).filesRemoved).toBeGreaterThan(0);
+
+    // The document went with the rest. A folder reported as emptied that still held the
+    // candidate's certificate is the silent failure this whole arrangement exists to prevent.
+    expect(await live(handedIn), 'the document after the delete').toBe(false);
+    expect(
+      await ApplicantDocumentSetModel.countDocuments({
+        applicantId: new Types.ObjectId(person.id),
+        isDeleted: false,
+      }),
+    ).toBe(0);
   });
 });

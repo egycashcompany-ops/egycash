@@ -23,7 +23,7 @@ import {
 import { type FilterQuery, type Types } from 'mongoose';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { auditService } from '../../../../platform/audit';
-import { fileService, type FileDoc } from '../../../../platform/files';
+import { fileService, type FileAccessIntent, type FileDoc } from '../../../../platform/files';
 import { hasPermission, type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../../shared/errors';
 import { normalizeArabic } from '../../shared/arabic';
@@ -46,6 +46,9 @@ import { applicantDocumentRepository } from './applicant-document.repository';
 /**
  * Files carry no branch of their own; the folder is reached through the applicant, so the file
  * query is not narrowed again. (Opening a file's bytes is still checked by the Files service.)
+ *
+ * This is the SCOPE and not the authorization. Every listing below also passes the caller, so
+ * ADR-023 asks the owning module about each file — see `filesOf`.
  */
 const FILES_UNSCOPED: ScopeSelector = {
   scope: 'organization',
@@ -107,7 +110,11 @@ class ApplicantFolderService {
    * be DELETED — the files past the cap would survive a delete that reported success. A folder has
    * no natural size, so the only safe bound is the one the data sets.
    */
-  private async filesOf(applicantId: string): Promise<FileDoc[]> {
+  private async filesOf(
+    applicantId: string,
+    ctx: AuthContext,
+    intent: FileAccessIntent,
+  ): Promise<FileDoc[]> {
     const out: FileDoc[] = [];
     for (let page = 1; page <= FOLDER_PAGE_LIMIT; page += 1) {
       const result = await fileService.list(
@@ -119,6 +126,8 @@ class ApplicantFolderService {
           sortDir: 'desc',
         },
         FILES_UNSCOPED,
+        ctx,
+        intent,
       );
       out.push(...result.items);
       if (result.items.length < FOLDER_PAGE_SIZE) break;
@@ -214,9 +223,11 @@ class ApplicantFolderService {
 
   private async classified(
     applicantId: string,
+    ctx: AuthContext,
+    intent: FileAccessIntent,
   ): Promise<{ kind: ApplicantFolderFileKind; file: FileDoc }[]> {
     const cardCategoryId = await resolveNationalIdCardCategoryId();
-    return (await this.filesOf(applicantId))
+    return (await this.filesOf(applicantId, ctx, intent))
       .map((file) => ({ kind: this.kindOf(file, cardCategoryId), file }))
       .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
   }
@@ -262,6 +273,7 @@ class ApplicantFolderService {
 
   /** The folders, newest applicant first, narrowed by name, code or national ID. */
   async list(
+    ctx: AuthContext,
     query: ListApplicantFoldersQuery,
   ): Promise<{ items: ApplicantFolderDto[]; total: number }> {
     const filter: FilterQuery<ApplicantDoc> = { isDeleted: false };
@@ -289,20 +301,24 @@ class ApplicantFolderService {
     const blocks = await this.blocksFor(applicants);
     const items = await Promise.all(
       applicants.map(async (a) =>
-        this.summary(a, await this.classified(String(a._id)), blocks.get(String(a._id)) ?? null),
+        this.summary(
+          a,
+          await this.classified(String(a._id), ctx, 'read'),
+          blocks.get(String(a._id)) ?? null,
+        ),
       ),
     );
     return { items, total };
   }
 
-  /** One applicant's folder, with every file in it. */
-  async get(applicantId: string): Promise<ApplicantFolderDetailDto> {
+  /** One applicant's folder, with every file in it the caller may see. */
+  async get(ctx: AuthContext, applicantId: string): Promise<ApplicantFolderDetailDto> {
     const applicant = await ApplicantModel.findOne({ _id: applicantId, isDeleted: false })
       .lean<ApplicantDoc>()
       .exec();
     if (applicant === null) throw new NotFoundError();
     const [files, types, blocks] = await Promise.all([
-      this.classified(applicantId),
+      this.classified(applicantId, ctx, 'read'),
       this.documentTypesOf(applicantId),
       this.blocksFor([applicant]),
     ]);
@@ -339,7 +355,13 @@ class ApplicantFolderService {
   ): Promise<DeletedApplicantFolderDto> {
     const applicantId = String(applicant._id);
     await applicantDocumentRepository.softDeleteForApplicant(applicantId, ctx.userId);
-    const files = await this.classified(applicantId);
+    // Asked with the DELETE intent, which is what this caller is about to do. Asking to READ would
+    // hand back only the files a REVIEWER may open — the candidate's own handed-in documents are
+    // guarded on `applicantDocument.review` — so an emptier holding `applicantDocument.delete` and
+    // not the reviewer's key would empty a folder that still held every document the candidate
+    // submitted, having just dropped the set rows that pointed at them. Each file is still
+    // authorized on its own account when `softDelete` removes it.
+    const files = await this.classified(applicantId, ctx, 'delete');
     let filesRemoved = 0;
     for (const { file } of files) {
       const removed = await fileService

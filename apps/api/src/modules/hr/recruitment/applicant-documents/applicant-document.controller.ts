@@ -90,13 +90,13 @@ export const listApplicantDocumentSets = async (req: Request, res: Response): Pr
 /** The Applicant documents page's folders: one per applicant. */
 export const listApplicantFolders = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<unknown, ListApplicantFoldersQuery>(req);
-  const { items, total } = await applicantFolderService.list(query);
+  const { items, total } = await applicantFolderService.list(authContext(req), query);
   ok(res, items, pageMeta(query.page, query.pageSize, total));
 };
 
 export const getApplicantFolder = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<unknown, unknown, { applicantId: string }>(req);
-  ok(res, await applicantFolderService.get(params.applicantId));
+  ok(res, await applicantFolderService.get(authContext(req), params.applicantId));
 };
 
 /**

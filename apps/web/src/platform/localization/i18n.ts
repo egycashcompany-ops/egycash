@@ -1202,7 +1202,9 @@ const en: Record<string, string> = {
   // Applicants — OCR
   'applicants.ocr.reviewBanner':
     'The fields below were filled from the National-ID review — edit anything before saving the applicant.',
-  'applicants.ocr.noCategory': 'No image file category is configured.',
+  'applicants.ocr.forbidden':
+    'You do not have permission to read ID cards. Ask your system administrator.',
+  'applicants.ocr.failed': 'The card could not be read right now. Try again.',
 
   // National-ID OCR (reusable across modules)
   'nationalIdOcr.title': 'National ID OCR',
@@ -13186,7 +13188,9 @@ const ar: Record<string, string> = {
   // Applicants — OCR
   'applicants.ocr.reviewBanner':
     'تم ملء الحقول بالأسفل من مراجعة الرقم القومي — عدّل ما يلزم قبل حفظ المتقدم.',
-  'applicants.ocr.noCategory': 'لا توجد فئة ملفات للصور مُهيّأة.',
+  'applicants.ocr.forbidden':
+    'لا تملك صلاحية قراءة بطاقات الرقم القومي. راجع مدير النظام.',
+  'applicants.ocr.failed': 'تعذّرت قراءة البطاقة الآن. حاول مرة أخرى.',
 
   // National-ID OCR (قابل لإعادة الاستخدام عبر الوحدات)
   'nationalIdOcr.title': 'قراءة بطاقة الرقم القومي ضوئيًا',

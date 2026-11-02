@@ -19,8 +19,12 @@ afterAll(() => setOutboundPolicyForTests(null));
 
 // `vi.mock` is hoisted above every top-level statement, so the stub has to be created inside
 // `vi.hoisted` to exist by the time the factory runs.
-const { readBuffer } = vi.hoisted(() => ({ readBuffer: vi.fn() }));
-vi.mock('../../../../platform/files', () => ({ fileService: { readBuffer } }));
+// The provider reads through the entity-owned path, not the generic one: the generic file-level
+// grant (`file.download` for a private file) is the rule for the GENERIC file surface, and an HR
+// role does not hold it — so a registrar could file a card they could never read back. The scan's
+// entity type is claimed by `hrApplicantCardScanFileAuthorizers`, which asks `applicant.create`.
+const { readEntityOwnedBuffer } = vi.hoisted(() => ({ readEntityOwnedBuffer: vi.fn() }));
+vi.mock('../../../../platform/files', () => ({ fileService: { readEntityOwnedBuffer } }));
 
 import { PaddleNationalIdOcrProvider } from './paddle-ocr-provider';
 import { type AuthContext } from '../../../../shared/types';
@@ -36,7 +40,7 @@ const respond = (body: unknown, status = 200): void => {
 };
 
 beforeEach(() => {
-  readBuffer.mockResolvedValue({ doc: {}, buffer: Buffer.from('image-bytes') });
+  readEntityOwnedBuffer.mockResolvedValue({ doc: {}, buffer: Buffer.from('image-bytes') });
 });
 
 afterEach(() => {
@@ -60,9 +64,9 @@ describe('PaddleNationalIdOcrProvider — happy path', () => {
   it('reads the images through the CALLER context, not a standing credential', async () => {
     respond({ fields: {} });
     await provider.extract({ frontFileId: 'f1', backFileId: 'b1', actor: ctx });
-    expect(readBuffer).toHaveBeenCalledTimes(2);
-    expect(readBuffer).toHaveBeenCalledWith(ctx, 'f1');
-    expect(readBuffer).toHaveBeenCalledWith(ctx, 'b1');
+    expect(readEntityOwnedBuffer).toHaveBeenCalledTimes(2);
+    expect(readEntityOwnedBuffer).toHaveBeenCalledWith(ctx, 'f1');
+    expect(readEntityOwnedBuffer).toHaveBeenCalledWith(ctx, 'b1');
   });
 
   it('sends only the side that was supplied', async () => {
@@ -160,7 +164,7 @@ describe('PaddleNationalIdOcrProvider — degradation', () => {
   });
 
   it('returns nothing when the images cannot be read', async () => {
-    readBuffer.mockRejectedValue(new Error('forbidden'));
+    readEntityOwnedBuffer.mockRejectedValue(new Error('forbidden'));
     respond({ fields: { nationalId: { value: '28709011202408', confidence: 'high' } } });
     expect(await provider.extract({ frontFileId: 'f1', actor: ctx })).toEqual({});
   });

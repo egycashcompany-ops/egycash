@@ -542,9 +542,12 @@ its entry here in the same PR.
   address. Each row says where its value comes from, which levels it can be set at, and the
   default only when the value differs; Save sits beside the field. A setting that is a list of
   departments or branch rows shows how many are set and links to the screen that edits it by name
-  (ATM settings, register import, help-desk settings, crew requirements); the one setting nothing
-  reads any more (`atm.register.bankLabels`) is marked as retired instead of offering a field. A
-  new setting without a title and description in both languages now fails the tests.
+  (ATM settings, register import, help-desk settings, crew requirements). The per-branch Outlook
+  category list is only a fallback that ATM settings never writes, so its row links there without
+  promising an edit and keeps a confirmed «مسح هذه القائمة»; the one setting nothing reads any more
+  (`atm.register.bankLabels`) is marked as retired instead of offering a field. The search folds
+  Arabic as every other search box does. A new setting without a title and description in both
+  languages now fails the tests.
   - **The SLA «at risk» threshold follows its setting.** `it.sla.atRiskPercent` was declared but
     the indicator used 80 regardless; it now reads the setting (80 remains the default).
   - Two messages and one API error that named a setting by its key now name it by its title.

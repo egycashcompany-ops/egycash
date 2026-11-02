@@ -53,6 +53,14 @@ const REMEMBERED_FILTERS = [
   'q',
 ] as const;
 
+// A count is a bare figure in a pill, as on the tabs: «1 settings» and «2 إعداد» are what a
+// counted noun gets wrong, and the figure needs no noun beside a heading that already names it.
+const CountPill = ({ count }: { count: number }): JSX.Element => (
+  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+    {count}
+  </span>
+);
+
 const tabClass = (selected: boolean): string =>
   cn(
     'inline-flex items-center gap-1.5 rounded-t-lg px-4 py-2 text-sm transition-colors',
@@ -139,7 +147,7 @@ export const SettingsPage = (): JSX.Element => {
               onClick={() => setParam('dept', '')}
             >
               {t('systemAdmin.settings.departments.all')}
-              <span className="text-xs text-slate-400 dark:text-slate-500">{countRows(searched)}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">{countRows(searched)}</span>
             </button>
             {groups.map((group) => (
               <button
@@ -151,7 +159,7 @@ export const SettingsPage = (): JSX.Element => {
                 onClick={() => setParam('dept', group.department)}
               >
                 {t(`systemAdmin.settings.departments.${group.department}`)}
-                <span className="text-xs text-slate-400 dark:text-slate-500">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {matchesIn(group.department)}
                 </span>
               </button>
@@ -190,20 +198,16 @@ export const SettingsPage = (): JSX.Element => {
               >
                 {/* Under «all», each department is introduced; under its own tab the tab says it. */}
                 {department === '' && (
-                  <h2 className="flex items-baseline gap-2 pt-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+                  <h2 className="flex items-center gap-2 pt-2 text-base font-semibold text-slate-800 dark:text-slate-100">
                     {t(`systemAdmin.settings.departments.${group.department}`)}
-                    <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
-                      {t('systemAdmin.settings.groupCount', { count: countRows([group]) })}
-                    </span>
+                    <CountPill count={countRows([group])} />
                   </h2>
                 )}
                 {group.sections.map((section) => (
                   <Card key={section.id}>
                     <CardHeader
                       title={t(`systemAdmin.settings.sections.${group.department}.${section.id}`)}
-                      description={t('systemAdmin.settings.groupCount', {
-                        count: section.rows.length,
-                      })}
+                      actions={<CountPill count={section.rows.length} />}
                     />
                     <CardBody>
                       <div data-settings-section={`${group.department}.${section.id}`}>

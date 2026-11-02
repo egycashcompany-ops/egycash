@@ -40,7 +40,7 @@ export interface SettingPlacement {
  * Key prefix → placement. The longest matching prefix wins, so a rule for one key can sit beside a
  * rule for its whole namespace. A prefix ending in '.' is a namespace; one without is an exact key.
  */
-const PLACEMENTS: ReadonlyArray<readonly [string, SettingDepartment, string]> = [
+export const PLACEMENTS: ReadonlyArray<readonly [string, SettingDepartment, string]> = [
   ['auth.', 'general', 'signIn'],
   ['audit.', 'general', 'audit'],
   ['notifications.', 'general', 'notifications'],
@@ -100,10 +100,26 @@ export const placementOf = (key: string): SettingPlacement => {
   for (const rule of PLACEMENTS) {
     if (matches(key, rule[0]) && (best === null || rule[0].length > best[0].length)) best = rule;
   }
-  if (best !== null) return { department: best[1], section: best[2] };
+  if (best !== null) {
+    // A rule naming a section its department does not list would hide its rows: «more» takes them.
+    const listed = SETTING_SECTIONS[best[1]].includes(best[2]);
+    return { department: best[1], section: listed ? best[2] : 'more' };
+  }
   const segment = key.split('.')[0] ?? '';
   return { department: DEPARTMENT_OF_SEGMENT[segment] ?? 'other', section: 'more' };
 };
+
+/** Where a structured setting is edited, by the i18n key of that screen's own title. */
+export interface ManagedElsewhere {
+  route: string;
+  screen: string;
+  /**
+   * The screen edits what this value stands BEHIND, not the value itself. The row then lists what
+   * the value holds and can clear it — otherwise nothing anywhere could — instead of promising an
+   * edit on a screen that never writes it.
+   */
+  fallback?: true;
+}
 
 /**
  * Settings whose value is a structure — a list of record ids, or rows pairing a branch with a
@@ -112,11 +128,15 @@ export const placementOf = (key: string): SettingPlacement => {
  *
  * `screen` is the i18n key of that screen's own title, so the link always reads as the screen does.
  */
-export const MANAGED_ELSEWHERE: Readonly<Record<string, { route: string; screen: string }>> = {
+export const MANAGED_ELSEWHERE: Readonly<Record<string, ManagedElsewhere>> = {
   'atm.maintenanceLeaderDepartmentIds': { route: '/atm/settings', screen: 'atm.settings.title' },
-  // A fallback: each branch's category is set on ATM Settings (its mailbox row), and this list
-  // answers only for a branch that has none there. That screen is where a category is changed.
-  'atm.mail.branchCategories': { route: '/atm/settings', screen: 'atm.settings.title' },
+  // A fallback, and ATM Settings never writes it: each branch's category is set there, on its
+  // mailbox row, and this list answers only for a branch with none.
+  'atm.mail.branchCategories': {
+    route: '/atm/settings',
+    screen: 'atm.settings.title',
+    fallback: true,
+  },
   'atm.branchLinks': { route: '/atm/settings', screen: 'atm.settings.title' },
   'atm.register.branchCodes': { route: '/atm/register/import', screen: 'atm.registerImport.title' },
   'it.technicianDepartmentIds': {

@@ -21,6 +21,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useSetSetting } from '../../../../platform/settings/settings-api';
 import { Badge } from '../../../../shared/ui/Badge';
 import { Button } from '../../../../shared/ui/Button';
+import { Dialog } from '../../../../shared/ui/Dialog';
 import { Checkbox, Input } from '../../../../shared/ui/form';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { toast } from '../../../../shared/ui/toast/toast-store';
@@ -85,6 +86,7 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
 
   const [draft, setDraft] = useState(storedText);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
   // A save elsewhere on the screen re-resolves every value; an untouched row follows it rather
   // than keep showing what it was first rendered with.
   useEffect(() => {
@@ -95,6 +97,18 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
   const save = useSetSetting();
   const serverError = save.error instanceof ApiError ? save.error.message : null;
   const { label, description, describedInCatalog } = textOf(row);
+
+  const clear = (): void => {
+    save.mutate(
+      { key: row.key, scope: 'organization', value: [] },
+      {
+        onSuccess: () => {
+          setConfirmingClear(false);
+          toast.success(t('systemAdmin.settings.saved'));
+        },
+      },
+    );
+  };
 
   const submit = (next: string): void => {
     const parsed = parseValue(next, row.editor, row.definition.defaultValue);
@@ -113,6 +127,16 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
   const message = localError ?? serverError;
   const resolvedFrom = row.resolved?.resolvedFrom ?? 'default';
   const entries = Array.isArray(stored) ? stored.length : 0;
+  // Said as the field says it: «نعم/لا» rather than true/false, and an empty list named as empty.
+  const defaultSerialized = serializeValue(row.definition.defaultValue, row.editor);
+  const defaultText =
+    row.editor === 'boolean' ? (
+      t(row.definition.defaultValue === true ? 'common.yes' : 'common.no')
+    ) : defaultSerialized === '' ? (
+      t('systemAdmin.settings.emptyDefault')
+    ) : (
+      <span dir="ltr">{defaultSerialized}</span>
+    );
 
   return (
     <div className="grid gap-x-8 gap-y-3 border-t border-slate-200 py-4 first:border-t-0 first:pt-1 last:pb-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] dark:border-slate-800">
@@ -147,7 +171,7 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
             {t('systemAdmin.settings.shadowed')}
           </p>
         )}
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400 dark:text-slate-500">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
           <span className="break-all font-mono" dir="ltr">
             {row.key}
           </span>
@@ -176,12 +200,52 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
                 ? t('systemAdmin.settings.managed.count', { count: entries })
                 : t('systemAdmin.settings.managed.empty')}
             </p>
-            <Link
-              to={row.managedAt.route}
-              className="mt-1 inline-flex text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
-            >
-              {t('systemAdmin.settings.managed.open', { screen: t(row.managedAt.screen) })}
-            </Link>
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <Link
+                to={row.managedAt.route}
+                className="inline-flex text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+              >
+                {t(
+                  row.managedAt.fallback === true
+                    ? 'systemAdmin.settings.managed.goTo'
+                    : 'systemAdmin.settings.managed.open',
+                  { screen: t(row.managedAt.screen) },
+                )}
+              </Link>
+              {/* A fallback that screen never writes: emptying it here is the only way to. */}
+              {row.managedAt.fallback === true && entries > 0 && canEdit && (
+                <Button size="sm" variant="ghost-danger" onClick={() => setConfirmingClear(true)}>
+                  {t('systemAdmin.settings.managed.clear')}
+                </Button>
+              )}
+            </div>
+            {row.managedAt.fallback === true && (
+              <Dialog
+                open={confirmingClear}
+                onClose={() => setConfirmingClear(false)}
+                title={t('systemAdmin.settings.managed.clearTitle', { label })}
+                size="sm"
+                footer={
+                  <>
+                    <Button variant="ghost" onClick={() => setConfirmingClear(false)}>
+                      {t('common.cancel')}
+                    </Button>
+                    <Button variant="danger" loading={save.isPending} onClick={clear}>
+                      {t('systemAdmin.settings.managed.clear')}
+                    </Button>
+                  </>
+                }
+              >
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  {t('systemAdmin.settings.managed.clearBody', { screen: t(row.managedAt.screen) })}
+                </p>
+                {serverError !== null && (
+                  <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400" dir="ltr">
+                    {serverError}
+                  </p>
+                )}
+              </Dialog>
+            )}
           </div>
         ) : row.editor === 'boolean' ? (
           <Checkbox
@@ -242,7 +306,13 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
         )}
 
         {message !== null && (
-          <p id={errorId} role="alert" className="text-xs text-red-600 dark:text-red-400" dir="ltr">
+          // A parse message is ours, in the page's language; only the server's 422 is English.
+          <p
+            id={errorId}
+            role="alert"
+            className="text-xs text-red-600 dark:text-red-400"
+            dir={localError === null ? 'ltr' : undefined}
+          >
             {message}
           </p>
         )}
@@ -254,9 +324,8 @@ export const SettingRow = ({ row, canEdit }: { row: SettingRowModel; canEdit: bo
         {/* The default is worth a line only when the value is not it — the badge already says so
             when it is. */}
         {hasField && resolvedFrom !== 'default' && (
-          <p className="text-xs text-slate-400 dark:text-slate-500">
-            {t('systemAdmin.settings.defaultValueLabel')}{' '}
-            <span dir="ltr">{serializeValue(row.definition.defaultValue, row.editor)}</span>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('systemAdmin.settings.defaultValueLabel')} {defaultText}
           </p>
         )}
       </div>

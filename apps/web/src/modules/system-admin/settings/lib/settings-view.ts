@@ -23,12 +23,14 @@
 // dropped — `buildSettingGroups` returns exactly as many rows as it was given definitions, and a
 // test pins that.
 import { type ResolvedSettingDto, type SettingDefinitionDto } from '@ecms/contracts';
+import { foldIncludes } from '../../../../shared/lib/fold';
 import {
   MANAGED_ELSEWHERE,
   RETIRED_SETTINGS,
   SETTING_DEPARTMENTS,
   SETTING_SECTIONS,
   placementOf,
+  type ManagedElsewhere,
   type SettingDepartment,
   type SettingPlacement,
 } from './settings-catalog';
@@ -49,7 +51,7 @@ export interface SettingRowModel {
    */
   shadowed: boolean;
   /** Edited on its own screen (a structure of ids or rows): this row links there. */
-  managedAt: { route: string; screen: string } | null;
+  managedAt: ManagedElsewhere | null;
   /** Declared but read by nothing: changing it changes nothing. */
   retired: boolean;
 }
@@ -147,15 +149,11 @@ export const filterSettingGroups = (
   department: string,
   textOf: (row: SettingRowModel) => string,
 ): SettingDepartmentModel[] => {
-  const needle = query.trim().toLowerCase();
-  const matches = (row: SettingRowModel): boolean => {
-    if (needle === '') return true;
-    return (
-      row.key.toLowerCase().includes(needle) ||
-      row.definition.description.toLowerCase().includes(needle) ||
-      textOf(row).toLowerCase().includes(needle)
-    );
-  };
+  // Folded as every search box in the app folds: «الاسماعيليه» finds «الإسماعيلية», «١٥» finds 15.
+  const matches = (row: SettingRowModel): boolean =>
+    foldIncludes(row.key, query) ||
+    foldIncludes(row.definition.description, query) ||
+    foldIncludes(textOf(row), query);
   return groups.flatMap((group) => {
     if (department !== '' && group.department !== department) return [];
     const sections = group.sections.flatMap((section) => {

@@ -9123,7 +9123,6 @@ const en: Record<string, string> = {
   'systemAdmin.settings.searchPlaceholder': 'Search by name, key or description',
   'systemAdmin.settings.departmentsLabel': 'Departments',
   'systemAdmin.settings.count': 'Showing {{shown}} of {{total}}',
-  'systemAdmin.settings.groupCount': '{{count}} settings',
   'systemAdmin.settings.empty': 'No setting matches this view.',
   'systemAdmin.settings.readOnly':
     'You may read these values but not change them — changing one needs the edit-settings permission.',
@@ -9144,6 +9143,12 @@ const en: Record<string, string> = {
   'systemAdmin.settings.managed.count': '{{count}} configured',
   'systemAdmin.settings.managed.empty': 'Not configured yet',
   'systemAdmin.settings.managed.open': 'Edit on «{{screen}}»',
+  'systemAdmin.settings.managed.goTo': 'Open «{{screen}}»',
+  'systemAdmin.settings.managed.clear': 'Clear this list',
+  'systemAdmin.settings.managed.clearTitle': 'Clear «{{label}}»?',
+  'systemAdmin.settings.managed.clearBody':
+    'Every entry in this list is removed for the whole organization. Nothing on «{{screen}}» changes.',
+  'systemAdmin.settings.emptyDefault': 'empty',
   'systemAdmin.settings.retiredBadge': 'No longer used',
   'systemAdmin.settings.retiredNote':
     'This setting is no longer used: changing it has no effect. It is kept only so stored values stay valid.',
@@ -9304,7 +9309,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.descriptions.contracts.expiryNoticeDays':
     'How many days before a fixed-term contract ends to notify everyone who can view contracts. Each contract gets one notice.',
   'systemAdmin.settings.descriptions.contracts.numberFormat':
-    'Pattern for new contract numbers: {{yearToken}} becomes the year and {{seqPaddedToken}} a six-digit serial that restarts each year; {{seqToken}} is required. Numbers already issued never change.',
+    'Pattern for new contract numbers: {{yearToken}} becomes the year, and {{seqToken}} a serial that restarts each year, six digits wide unless a width is given (as in {{seqPaddedToken}}). The serial token is required. Numbers already issued never change.',
   'systemAdmin.settings.descriptions.contracts.requireApproval':
     'When on, a new contract must be approved before its document can be generated. Contracts already created keep the rule they were created under.',
   'systemAdmin.settings.descriptions.fleet.alarm.redKm':
@@ -9328,9 +9333,9 @@ const en: Record<string, string> = {
   'systemAdmin.settings.descriptions.fleet.fuelCard.expiryWarnDays':
     'A fuel card that expires within this many days is flagged as expiring soon on the Fuel cards screen and the Fleet dashboard. Enter 1 to 365.',
   'systemAdmin.settings.descriptions.fleet.license.driverWarnDays':
-    'The licence-expiring notification is sent this many days before a driver\'s licence expires, and the Fleet dashboard lists the driver as expiring from then. Enter 1 to 365.',
+    'From this many days before a driver\'s licence expires, the Fleet dashboard lists the driver as expiring. The system sends no notification for it by itself. Enter 1 to 365.',
   'systemAdmin.settings.descriptions.fleet.license.vehicleWarnDays':
-    'The licence-expiring notification is sent this many days before a vehicle\'s licence expires, and the Fleet dashboard lists the vehicle as expiring from then. Enter 1 to 365.',
+    'From this many days before a vehicle\'s licence expires, the Fleet dashboard lists the vehicle as expiring. The system sends no notification for it by itself. Enter 1 to 365.',
   'systemAdmin.settings.descriptions.fleet.odometer.missingReadingDays':
     'The Fleet dashboard flags an active vehicle that has had no odometer reading for this many days; vehicles in the workshop are not counted. Enter a whole number from 1 to 30.',
   'systemAdmin.settings.descriptions.fleet.report.approvedByName':
@@ -9380,7 +9385,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.descriptions.notifications.quietHours.enabledByDefault':
     'Whether quiet hours (22:00 to 07:00) appear switched on for a user who has not chosen yet. Non-urgent notifications are held overnight only for users who have saved quiet hours of their own.',
   'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
-    'Active vehicles whose Operation in Fleet is one of these are offered for the standing crew. When none is chosen, every active vehicle is offered.',
+    'The record ids of Fleet «Operations» catalog items, separated by commas. Active vehicles whose Operation is one of them are offered for the standing crew; when the list is empty, every active vehicle is offered.',
   'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
     'Employees of these departments make up the operations crew used by the roster, the crew board and the standing crew. When none is chosen, the roster keeps only people already on it, and new hires do not appear.',
 
@@ -21131,7 +21136,6 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.searchPlaceholder': 'ابحث بالاسم أو المفتاح أو الوصف',
   'systemAdmin.settings.departmentsLabel': 'الإدارات',
   'systemAdmin.settings.count': 'عرض {{shown}} من {{total}}',
-  'systemAdmin.settings.groupCount': '{{count}} إعداد',
   'systemAdmin.settings.empty': 'لا يوجد إعداد مطابق لهذا العرض.',
   'systemAdmin.settings.readOnly':
     'يمكنك قراءة هذه القيم دون تغييرها — التعديل يتطلب صلاحية تحرير الإعدادات.',
@@ -21152,6 +21156,12 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.managed.count': 'مضبوط: {{count}}',
   'systemAdmin.settings.managed.empty': 'لم يُضبط بعد',
   'systemAdmin.settings.managed.open': 'يُعدَّل من شاشة «{{screen}}»',
+  'systemAdmin.settings.managed.goTo': 'فتح شاشة «{{screen}}»',
+  'systemAdmin.settings.managed.clear': 'مسح هذه القائمة',
+  'systemAdmin.settings.managed.clearTitle': 'مسح «{{label}}»؟',
+  'systemAdmin.settings.managed.clearBody':
+    'تُحذف كل عناصر هذه القائمة على مستوى المنظمة، ولا يتغير شيء في شاشة «{{screen}}».',
+  'systemAdmin.settings.emptyDefault': 'فارغة',
   'systemAdmin.settings.retiredBadge': 'لم يعد مستخدمًا',
   'systemAdmin.settings.retiredNote':
     'لم يعد هذا الإعداد مستخدمًا، وتغييره لا يُحدث أي أثر. أُبقي عليه حتى تظل القيم المحفوظة صالحة.',
@@ -21314,7 +21324,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.descriptions.contracts.expiryNoticeDays':
     'يُرسَل إشعار إلى كل من يملك صلاحية عرض العقود قبل انتهاء العقد المحدد المدة بهذا العدد من الأيام. ويُرسَل إشعار واحد لكل عقد.',
   'systemAdmin.settings.descriptions.contracts.numberFormat':
-    'نمط أرقام العقود الجديدة: يُستبدل {{yearToken}} بالسنة، و{{seqPaddedToken}} برقم تسلسلي من ست خانات يبدأ من جديد كل سنة، ولا بد من وجود {{seqToken}}. الأرقام الصادرة سابقًا لا تتغير.',
+    'نمط أرقام العقود الجديدة: يُستبدل {{yearToken}} بالسنة، و{{seqToken}} برقم تسلسلي يبدأ من جديد كل سنة ويتكوّن من ست خانات ما لم يُحدَّد عدد آخر (كما في {{seqPaddedToken}}). ولا بد من وجود رمز الرقم التسلسلي. الأرقام الصادرة سابقًا لا تتغير.',
   'systemAdmin.settings.descriptions.contracts.requireApproval':
     'عند التفعيل، يجب اعتماد العقد الجديد قبل توليد مستنده. العقود المُنشأة سابقًا تبقى على القاعدة التي أُنشئت بها.',
   'systemAdmin.settings.descriptions.fleet.alarm.redKm':
@@ -21338,9 +21348,9 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.descriptions.fleet.fuelCard.expiryWarnDays':
     'تظهر بطاقة الوقود التي تنتهي خلال هذا العدد من الأيام بحالة «تنتهي قريباً» في شاشة بطاقات الوقود، وتُحتسب ضمن البطاقات التي تقترب من الانتهاء في لوحة تحكم الحركة. القيمة من 1 إلى 365.',
   'systemAdmin.settings.descriptions.fleet.license.driverWarnDays':
-    'يُرسَل إشعار قرب انتهاء رخصة السائق قبل تاريخ انتهائها بهذا العدد من الأيام، ومن حينها يظهر السائق في لوحة تحكم الحركة ضمن الرخص التي تقترب من الانتهاء. القيمة من 1 إلى 365.',
+    'قبل انتهاء رخصة السائق بهذا العدد من الأيام يظهر السائق في لوحة تحكم الحركة ضمن الرخص التي تقترب من الانتهاء. ولا يُرسل النظام إشعارًا بذلك من تلقاء نفسه. القيمة من 1 إلى 365.',
   'systemAdmin.settings.descriptions.fleet.license.vehicleWarnDays':
-    'يُرسَل إشعار قرب انتهاء رخصة السيارة قبل تاريخ انتهائها بهذا العدد من الأيام، ومن حينها تظهر السيارة في لوحة تحكم الحركة ضمن الرخص التي تقترب من الانتهاء. القيمة من 1 إلى 365.',
+    'قبل انتهاء رخصة السيارة بهذا العدد من الأيام تظهر السيارة في لوحة تحكم الحركة ضمن الرخص التي تقترب من الانتهاء. ولا يُرسل النظام إشعارًا بذلك من تلقاء نفسه. القيمة من 1 إلى 365.',
   'systemAdmin.settings.descriptions.fleet.odometer.missingReadingDays':
     'تُنبِّه لوحة تحكم الحركة إلى السيارة النشطة التي لم تُسجَّل لها قراءة عداد طوال هذا العدد من الأيام، ولا تُحسب سيارات الورشة. القيمة عدد صحيح من 1 إلى 30.',
   'systemAdmin.settings.descriptions.fleet.report.approvedByName':
@@ -21390,7 +21400,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.descriptions.notifications.quietHours.enabledByDefault':
     'يحدد ما إذا كانت ساعات الهدوء (من 22:00 إلى 07:00) تظهر مفعّلة للمستخدم الذي لم يختر بعد. لا تُؤجَّل الإشعارات غير العاجلة ليلًا إلا لمن حفظ ساعات هدوء خاصة به.',
   'systemAdmin.settings.descriptions.operations.cashTransferOperationIds':
-    'تُعرض للطاقم الثابت المركبات النشطة التي يكون «التشغيل» الخاص بها في الحركة إحدى هذه القيم. وإن لم تُحدَّد أي قيمة، تُعرض كل المركبات النشطة.',
+    'معرّفات سجلات عناصر قائمة «التشغيل» في الحركة، مفصولة بفواصل. تُعرض للطاقم الثابت المركبات النشطة التي يكون «التشغيل» الخاص بها أحد هذه العناصر، وإن كانت القائمة فارغة تُعرض كل المركبات النشطة.',
   'systemAdmin.settings.descriptions.operations.crewDepartmentIds':
     'موظفو هذه الإدارات هم طاقم العمليات الذي يُستخدم في كشف الأطقم ولوحة التشغيلة والطاقم الثابت. وإن لم تُحدَّد أي إدارة، يقتصر الكشف على المسجَّلين فيه سابقًا ولا يظهر الموظفون الجدد.',
 

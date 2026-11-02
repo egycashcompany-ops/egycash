@@ -140,7 +140,7 @@ describe('SlaIndicator', () => {
     expect(render(dto, 'resolution')).not.toContain(label('breached'));
   });
 
-  // The threshold is the setting, not a constant: «عتبة تعرّض اتفاقية الخدمة للخطر» changed on
+  // The threshold is the setting, not a constant: «عتبة اقتراب تجاوز مستوى الخدمة (%)» changed on
   // «إعدادات النظام» used to change nothing at all.
   it('takes the at-risk threshold from the it.sla.atRiskPercent setting', () => {
     // 85% of a 100-minute window spent: at risk under the default 80, on track under a 90.

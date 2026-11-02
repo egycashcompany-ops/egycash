@@ -38,6 +38,7 @@ import { localeSlice } from '../../../../store/localeSlice';
 import { authSlice } from '../../../../store/authSlice';
 import { SettingsPage } from './SettingsPage';
 import {
+  DESCRIPTION_TOKENS,
   MANAGED_ELSEWHERE,
   RETIRED_SETTINGS,
   placementOf,
@@ -300,9 +301,16 @@ describe('every setting is titled and described in both languages', () => {
   it('quotes pattern tokens as they are typed, and leaves no placeholder unfilled', () => {
     for (const locale of ['ar', 'en'] as const) {
       const markup = render({ locale });
-      expect(markup, locale).toContain('{year}');
-      expect(markup, locale).toContain('{seq:6}');
-      expect(markup, locale).toContain('{seq}');
+      // The description alone: the field beside it holds a pattern with the same tokens.
+      const description = translate(
+        locale,
+        settingDescriptionKey(HrContractSettingKeys.NumberFormat),
+        DESCRIPTION_TOKENS,
+      );
+      for (const token of ['{year}', '{seq}', '{seq:6}']) {
+        expect(description, `${token} (${locale})`).toContain(token);
+      }
+      expect(markup, locale).toContain(`>${description}</p>`);
       expect(markup, `an unfilled placeholder (${locale})`).not.toMatch(/\{\{\w+\}?\}/);
     }
   });
@@ -326,9 +334,15 @@ describe('every setting reaches the screen', () => {
 
   it('introduces every department under «all», by its name', () => {
     for (const department of ['general', 'hr', 'fleet', 'operations', 'atm', 'it']) {
-      const name = translate('en', `systemAdmin.settings.departments.${department}`);
-      expect(markup, `${department} has no heading`).toContain(`data-settings-department="${department}"`);
-      expect(markup, `${department} is not named`).toContain(name.replace(/&/g, '&amp;'));
+      const name = translate('en', `systemAdmin.settings.departments.${department}`).replace(
+        /&/g,
+        '&amp;',
+      );
+      // The heading opens the department's own section — the tab carries the name as well, so a
+      // match anywhere on the page would prove nothing.
+      expect(markup, `${department} has no heading`).toMatch(
+        new RegExp(`data-settings-department="${department}"[^>]*><h2[^>]*>${name}<`),
+      );
     }
   });
 
@@ -347,6 +361,59 @@ describe('every setting reaches the screen', () => {
       const row = markup.slice(at, next === -1 ? undefined : next);
       expect(row, `${key} does not link to ${route}`).toContain(`href="${route}"`);
     }
+  });
+
+  it('says how much a managed structure holds, and when it holds nothing', () => {
+    const seeded = render({
+      resolved: RESOLVED.map((entry) =>
+        entry.key === ItSettingKeys.TechnicianDepartmentIds
+          ? { ...entry, value: ['64b000000000000000000001', '64b000000000000000000002'] }
+          : entry,
+      ),
+    });
+    const rowOf = (html: string, key: string): string => {
+      const at = html.indexOf(`>${key}<`);
+      const next = html.indexOf('data-settings-section', at + 1);
+      return html.slice(at, next === -1 ? undefined : next);
+    };
+    expect(rowOf(seeded, ItSettingKeys.TechnicianDepartmentIds)).toContain(
+      translate('en', 'systemAdmin.settings.managed.count', { count: 2 }),
+    );
+    expect(rowOf(seeded, OperationsSettingKeys.CrewDepartmentIds)).toContain(
+      translate('en', 'systemAdmin.settings.managed.empty'),
+    );
+  });
+
+  // ATM Settings sets each branch's own category and never writes this fallback list, so the row
+  // must not promise an edit there — and must keep the one way to empty it.
+  describe('a fallback the linked screen never writes', () => {
+    const key = AtmSettingKeys.MailBranchCategories;
+    const screen = translate('en', 'atm.settings.title');
+    const withEntry = RESOLVED.map((entry) =>
+      entry.key === key
+        ? { ...entry, value: [{ branchId: '64b000000000000000000001', category: 'Green Category' }] }
+        : entry,
+    );
+    const rowOf = (html: string): string => {
+      const at = html.indexOf(`>${key}<`);
+      const next = html.indexOf('data-settings-section', at + 1);
+      return html.slice(at, next === -1 ? undefined : next);
+    };
+
+    it('links on without promising an edit, and offers to clear what it holds', () => {
+      const row = rowOf(render({ resolved: withEntry }));
+      expect(row).toContain(translate('en', 'systemAdmin.settings.managed.goTo', { screen }));
+      expect(row).not.toContain(translate('en', 'systemAdmin.settings.managed.open', { screen }));
+      expect(row).toContain(translate('en', 'systemAdmin.settings.managed.clear'));
+    });
+
+    it('offers no clearing when the list is already empty, or to a reader who may not edit', () => {
+      const clear = translate('en', 'systemAdmin.settings.managed.clear');
+      expect(rowOf(render())).not.toContain(clear);
+      expect(rowOf(render({ resolved: withEntry, permissions: ['setting.view'] }))).not.toContain(
+        clear,
+      );
+    });
   });
 
   it('marks a retired setting instead of offering a field for it', () => {
@@ -592,6 +659,10 @@ describe('the filters are addressable', () => {
 
   it('falls back to all for a department the screen has nothing for', () => {
     expect(render({ search: '?dept=warehouse' })).toContain('Showing 59 of 59');
+    // A real department with no setting today (or a stale remembered one) is not a dead end.
+    const other = render({ search: '?dept=other' });
+    expect(other).toContain('Showing 59 of 59');
+    expect(other).toMatch(/role="tab" aria-selected="true"[^>]*>All/);
   });
 
   it('says so plainly when the filters match nothing', () => {

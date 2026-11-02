@@ -29,6 +29,7 @@ import {
 } from './settings-view';
 import {
   MANAGED_ELSEWHERE,
+  PLACEMENTS,
   RETIRED_SETTINGS,
   SETTING_DEPARTMENTS,
   SETTING_SECTIONS,
@@ -113,9 +114,24 @@ describe('placementOf — by department, then section, not by the code that decl
     expect(placementOf('noDotsAtAll')).toEqual({ department: 'other', section: 'more' });
   });
 
-  it('places every section a rule names in that department’s section list', () => {
+  it('gives every department a «more» section for what no rule places', () => {
     for (const department of SETTING_DEPARTMENTS) {
       expect(SETTING_SECTIONS[department], department).toContain('more');
+    }
+  });
+
+  // A rule naming a section its department does not list would place rows nowhere on screen.
+  it('names, in every rule, a section its department lists', () => {
+    const unlisted = PLACEMENTS.filter(
+      ([, department, section]) => !SETTING_SECTIONS[department].includes(section),
+    ).map(([prefix, department, section]) => `${prefix} → ${department}/${section}`);
+    expect(unlisted).toEqual([]);
+  });
+
+  it('places every rule’s own keys where the rule says', () => {
+    for (const [prefix, department, section] of PLACEMENTS) {
+      const key = prefix.endsWith('.') ? `${prefix}example` : prefix;
+      expect(placementOf(key), prefix).toEqual({ department, section });
     }
   });
 });
@@ -281,6 +297,23 @@ describe('filterSettingGroups', () => {
 
   it('is case-insensitive and ignores surrounding space', () => {
     expect(keysOf(filterSettingGroups(groups, '  LOCKOUT  ', '', textOf))).toHaveLength(1);
+  });
+
+  // The app's one folding: hamza forms, ta marbuta and Arabic-Indic digits match as typed.
+  it('folds Arabic as every search box in the app does', () => {
+    const arabic = buildSettingGroups(
+      [define('hr.leave.annualDays', 'number', 21), define('auth.lockout.minutes', 'number', 15)],
+      [],
+    );
+    const said: Record<string, string> = {
+      'hr.leave.annualDays': 'رصيد الإجازة السنوية ٢١ يومًا',
+      'auth.lockout.minutes': 'مدة القفل',
+    };
+    const readAs = (r: SettingRowModel): string => said[r.key] ?? r.key;
+    expect(keysOf(filterSettingGroups(arabic, 'الاجازه', '', readAs))).toEqual([
+      'hr.leave.annualDays',
+    ]);
+    expect(keysOf(filterSettingGroups(arabic, '21', '', readAs))).toEqual(['hr.leave.annualDays']);
   });
 
   it('filters by department', () => {
@@ -498,6 +531,15 @@ describe('every reason this screen can give has a label in both locales', () => 
       for (const { screen } of Object.values(MANAGED_ELSEWHERE)) {
         expect(translate(locale, screen), `${screen} has no ${locale} label`).not.toBe(screen);
       }
+    });
+
+    it(`a managed row's own words, and the clearing of a fallback — ${locale}`, () => {
+      for (const word of ['count', 'empty', 'open', 'goTo', 'clear', 'clearTitle', 'clearBody']) {
+        const key = `systemAdmin.settings.managed.${word}`;
+        expect(translate(locale, key), `${key} has no ${locale} label`).not.toBe(key);
+      }
+      const key = 'systemAdmin.settings.emptyDefault';
+      expect(translate(locale, key), `${key} has no ${locale} label`).not.toBe(key);
     });
   }
 });

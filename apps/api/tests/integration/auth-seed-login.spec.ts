@@ -169,11 +169,19 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/organization/branches');
     expect(routes).toContain('/organization/applications');
     expect(routes).toContain('/contracts');
-    // The three admin pages that were routed but unlisted until they were given catalog rows.
-    expect(routes).toContain('/recruitment-form');
-    expect(routes).toContain('/interviews/stages');
-    expect(routes).toContain('/evaluations/phases');
-    expect(routes).toContain('/applicant-sources');
+    // «الإعدادات» — the six HR configuration screens are tabs of ONE row now, and none of them
+    // has a row of its own any more.
+    expect(routes).toContain('/hr-settings');
+    for (const tab of [
+      '/recruitment-form',
+      '/applicant-sources',
+      '/interviews/stages',
+      '/evaluations/phases',
+      '/announcements',
+      '/notification-rules',
+    ]) {
+      expect(routes).not.toContain(tab);
+    }
     // ITW-1's five rows — the asset registry surface — plus IT-2's custody register, IT-3's help
     // desk, IT-4's maintenance and store, and IT-5's software register. The nav sync is additive,
     // so each slice appends its own rows here as it lands.
@@ -265,14 +273,10 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/atm/register/report');
     // The machine map and its zones (docs/12-planning/atm-map-zones.md §7.3).
     expect(routes).toContain('/atm/map');
-    // The two Communication rows — the same act from two directions: a person saying something
-    // once, and the system saying it every time a thing happens.
-    expect(routes).toContain('/announcements');
-    expect(routes).toContain('/notification-rules');
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
-    // 38 (HR) + 24 (Fleet) + 15 (Operations) + 6 (Organization) + 16 (IT) + 12 (Gold Vault)
-    //   + 18 (ATM) + 10 (Administration) = 139. Re-counted from `seed-navigation.ts`, because an
+    // 31 (HR) + 24 (Fleet) + 15 (Operations) + 6 (Organization) + 16 (IT) + 12 (Gold Vault)
+    //   + 18 (ATM) + 10 (Administration) = 132. Re-counted from `seed-navigation.ts`, because an
     //   earlier breakdown said 103 while the constant beside it said 116 — it had
     //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
     //   above it was written about. A breakdown that does not sum to the constant is worse than
@@ -405,11 +409,10 @@ describe('the default sections migration', () => {
     const named = (sections.body as { data: { name: { ar: string; en: string } }[] }).data;
     // The HR groups follow the employee lifecycle: a candidate (Recruitment), the person once
     // hired (Employees), the record that follows them (Employee File), and what that record
-    // produces month to month (Attendance & Leave, Payroll) — plus Communication, which is not
-    // about anybody's record at all but the company talking to its people.
+    // produces month to month (Attendance & Leave, Payroll). Communication is no longer one of
+    // them: its two screens are tabs of «الإعدادات», which sits above every group.
     expect(named.map((s) => s.name.en)).toEqual(
       expect.arrayContaining([
-        'Communication',
         'Recruitment',
         'Employees',
         'Employee File',
@@ -417,6 +420,7 @@ describe('the default sections migration', () => {
         'Payroll',
       ]),
     );
+    expect(named.map((s) => s.name.en)).not.toContain('Communication');
     // …in both locales, like every other catalog row.
     expect(named.every((s) => s.name.ar.trim() !== '')).toBe(true);
 

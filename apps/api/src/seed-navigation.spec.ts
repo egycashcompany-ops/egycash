@@ -17,6 +17,7 @@ import {
 } from '@ecms/contracts';
 import { moduleManifests } from './modules';
 import { NAVIGATION_CATALOG } from './seed-navigation';
+import { hrPages } from './modules/hr/hr.module';
 import { APPLICATION_SECTION_DEFAULTS } from './seed-application-sections';
 
 const rows = NAVIGATION_CATALOG.flatMap((category) =>
@@ -110,6 +111,16 @@ describe('the seeded navigation catalog', () => {
     expect(hub?.ar).toBe('الإعدادات');
     // The row's own key is one of the tabs', so it never opens for somebody who holds no tab.
     expect(hubPermissions(HR_SETTINGS_HUB.route)).toContain(hub?.permission);
+  });
+
+  /** The role matrix links each settings screen to where it lives now, not to a redirect. */
+  it('documents each settings screen at its tab', () => {
+    const tabRoutes = HR_SETTINGS_HUB.tabs.map((tab) => `${HR_SETTINGS_HUB.route}/${tab.key}`);
+    const documented = hrPages.flatMap((page) => (page.route === undefined ? [] : [page.route]));
+    expect(documented).toEqual(expect.arrayContaining(tabRoutes));
+    for (const retired of NAVIGATION_CATALOG.flatMap((c) => c.retired ?? []).flatMap((e) => e.routes)) {
+      expect(documented, retired).not.toContain(retired);
+    }
   });
 
   /** A tab keyed on a permission nobody declares shows to nobody — and opens the row for nobody. */

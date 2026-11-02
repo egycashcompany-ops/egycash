@@ -1226,20 +1226,23 @@ export const hrPermissions: PermissionDef[] = [
  * Organizational only: nothing authorizes on a page, and declaring one grants nobody anything.
  * Declared here rather than derived from the navigation catalogue, which is runtime data an
  * administrator can edit.
+ *
+ * The six configuration screens live under «الإعدادات» now (`HR_SETTINGS_HUB`), so their routes
+ * are the tabs' addresses — the role matrix links straight to the screen, not to a redirect.
  */
 export const hrPages: PageDef[] = [
   {
     id: 'hr.announcements',
     moduleId: 'hr',
     name: { en: 'Announcements', ar: 'الإعلانات' },
-    route: '/announcements',
+    route: '/hr-settings/announcements',
     sortOrder: 5,
   },
   {
     id: 'hr.notification-rules',
     moduleId: 'hr',
     name: { en: 'Notification rules', ar: 'قواعد الإشعارات' },
-    route: '/notification-rules',
+    route: '/hr-settings/notification-rules',
     sortOrder: 6,
   },
   {
@@ -1253,14 +1256,14 @@ export const hrPages: PageDef[] = [
     id: 'hr.applicant-sources',
     moduleId: 'hr',
     name: { en: 'Applicant sources', ar: 'مصادر التقديم' },
-    route: '/applicant-sources',
+    route: '/hr-settings/applicant-sources',
     sortOrder: 20,
   },
   {
     id: 'hr.application-form',
     moduleId: 'hr',
     name: { en: 'Application form', ar: 'نموذج التقديم' },
-    route: '/recruitment-form',
+    route: '/hr-settings/recruitment-form',
     sortOrder: 30,
   },
   {
@@ -1281,7 +1284,7 @@ export const hrPages: PageDef[] = [
     id: 'hr.interview-stages',
     moduleId: 'hr',
     name: { en: 'Interview stages', ar: 'مراحل المقابلات' },
-    route: '/interviews/stages',
+    route: '/hr-settings/interview-stages',
     sortOrder: 60,
   },
   {
@@ -1295,7 +1298,7 @@ export const hrPages: PageDef[] = [
     id: 'hr.evaluation-phases',
     moduleId: 'hr',
     name: { en: 'Evaluation phases', ar: 'مراحل التقييم' },
-    route: '/evaluations/phases',
+    route: '/hr-settings/evaluation-phases',
     sortOrder: 80,
   },
   {

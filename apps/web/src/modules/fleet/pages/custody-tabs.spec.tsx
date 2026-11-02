@@ -46,6 +46,7 @@ const me = (): MeDto =>
 
 /** The fund as the server answers: 6 memos saved, 3 operations made. */
 const fund: FleetCustodyFundSummaryDto = {
+  deleted: { count: 0 },
   fundTotal: 175_260.54,
   charged: { count: 2, amount: 300_000 },
   spent: { count: 152, amount: 97_794 },
@@ -179,6 +180,8 @@ describe('«سجل العهدة · المذكرات · لوحة تحكم الع�
   it('reads which tab an address is on', () => {
     expect(custodyTabOf('/fleet/custody/log')).toBe('log');
     expect(custodyTabOf('/fleet/custody/log/')).toBe('log');
+    // «العمليات المحذوفة» sits under «سجل العهدة»: its tab stays lit.
+    expect(custodyTabOf('/fleet/custody/log/deleted')).toBe('log');
     expect(custodyTabOf('/fleet/custody/memos')).toBe('memos');
     expect(custodyTabOf('/fleet/custody/memos/650000000000000000000001')).toBe('memos');
     expect(custodyTabOf('/fleet/custody/dashboard')).toBe('dashboard');
@@ -211,6 +214,14 @@ describe('«سجل العهدة · المذكرات · لوحة تحكم الع�
       );
     }
     expect(read('../components/CustodyFundHeader.tsx').match(/<CustodyTabs \/>/gu)).toHaveLength(1);
+    // «العمليات المحذوفة» stands under the fund's head too, first in its page.
+    const deleted = read('CustodyDeletedPage.tsx');
+    expect(deleted).toContain(
+      "import { CustodyFundHeader } from '../components/CustodyFundHeader';",
+    );
+    expect(deleted.match(/<CustodyFundHeader \/>/gu)).toHaveLength(1);
+    expect(deleted).not.toContain('<CustodyTabs />');
+    expect(deleted.indexOf('<CustodyFundHeader />')).toBeLessThan(deleted.indexOf('BOARD_FRAME}'));
     // The board «مصروفات العهدة» draws neither the head nor the tabs.
     const board = read('CustodyPage.tsx');
     expect(board).not.toContain('CustodyTabs');
@@ -255,6 +266,8 @@ describe('«سجل العهدة · المذكرات · لوحة تحكم الع�
       page: 'CustodyPapersSetupPage',
     });
     expect(routed('custody/log')).toEqual({ gates: [VIEW], page: 'CustodyLedgerPage' });
+    // «العمليات المحذوفة» — read on the fund's own grant, like the log it comes from.
+    expect(routed('custody/log/deleted')).toEqual({ gates: [VIEW], page: 'CustodyDeletedPage' });
     // Each page imported from its own file.
     for (const page of [
       'CustodyPage',
@@ -262,6 +275,7 @@ describe('«سجل العهدة · المذكرات · لوحة تحكم الع�
       'CustodyMemoEditorPage',
       'CustodyPapersSetupPage',
       'CustodyLedgerPage',
+      'CustodyDeletedPage',
       'CustodyFundDashboardPage',
     ]) {
       expect(routes, page).toContain(`import { ${page} } from './pages/${page}';`);

@@ -637,7 +637,10 @@ export interface FleetDashboardNowFuelChargingDto {
   chillout: number;
   requested: { count: number; amount: number };
   low: { belowYellow: number; belowRed: number; yellowAt: number; redAt: number };
-  /** «خلال آخر 24 ساعة», rolling. */
+  /**
+   * The fuel summary's `chargedTodayAmount`: «شُحن اليوم», the CAIRO day so far — batch 3 (D5) made
+   * it the day from Cairo's midnight, no longer a rolling 24 hours. The name is kept.
+   */
   charged24h: number;
 }
 

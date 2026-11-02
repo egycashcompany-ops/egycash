@@ -414,7 +414,8 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     return { warnDays, expired: expired.cardCount, expiring: expiring.cardCount };
   }),
 
-  // T1.7, T1.8, T5.1–T5.5 — the charging screen's figures; «خلال آخر 24 ساعة» on the request clock.
+  // T1.7, T1.8, T5.1–T5.5 — the charging screen's figures; «شُحن اليوم» (the Cairo day, batch 3's
+  // D5) on the request clock.
   fuelCharging: section('fuelCharging', 'company+set', async (d) => {
     const [yellowAt, redAt] = await Promise.all([
       d.setting<number>(FleetSettingKeys.FuelCardBalanceYellow),

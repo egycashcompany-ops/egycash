@@ -85,12 +85,51 @@ const contractBody = {
 const distinctLineIds = (body: { lines: { id: string | null }[] }): boolean =>
   distinctIds(body.lines.flatMap((line) => (line.id === null ? [] : [line.id])));
 
+/**
+ * A line of a NEW contract: the line, and «المستلم حتى الآن» — the cars of it already received
+ * when the contract is registered. They are recorded as the contract's first delivery, so the
+ * contract reads exactly as if «تسجيل استلام» had been pressed right after saving. Optional: 0 (or
+ * absent) is nothing received; never more than the line's count. Only a new contract carries it —
+ * an edit records deliveries through «تسجيل استلام».
+ */
+export const FleetVehicleContractCreateLineInputSchema = FleetVehicleContractLineInputSchema.extend(
+  {
+    /** «المستلم حتى الآن» — recorded as the contract's first delivery; 0 (or absent) = nothing. */
+    received: z.number().int().min(0).max(FLEET_VEHICLE_CONTRACT_MAX_COUNT).default(0),
+  },
+);
+export type FleetVehicleContractCreateLineInput = z.infer<
+  typeof FleetVehicleContractCreateLineInputSchema
+>;
+
 export const CreateFleetVehicleContractSchema = z
-  .object(contractBody)
+  .object({
+    ...contractBody,
+    lines: z
+      .array(FleetVehicleContractCreateLineInputSchema)
+      .min(1)
+      .max(FLEET_VEHICLE_CONTRACT_MAX_LINES),
+    /**
+     * The first delivery's day («تاريخ الاستلام»); `null` (or absent) → the server's Cairo day.
+     * Ignored when nothing is received.
+     */
+    receivedDate: z.coerce.date().nullable().default(null),
+  })
   .strict()
   .refine((body) => body.lines.every((line) => line.id === null), {
     path: ['lines'],
     message: 'a new contract has no saved lines',
+  })
+  .superRefine((body, ctx) => {
+    body.lines.forEach((line, i) => {
+      if (line.received > line.count) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', i, 'received'],
+          message: 'more than contracted',
+        });
+      }
+    });
   });
 export type CreateFleetVehicleContract = z.infer<typeof CreateFleetVehicleContractSchema>;
 

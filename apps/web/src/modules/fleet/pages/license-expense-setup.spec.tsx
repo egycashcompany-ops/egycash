@@ -4,15 +4,23 @@
 // item — the same field «قوائم الحركة» writes. No DOM here: what the page does between clicks is
 // held in the pure steps it is built from, and those are run in the order a user's clicks run them.
 // «عاوز اقدر اضيف بند فى اعدادات النماذج»: and a new item added from the same card.
+// «وعاوز احدد البند كمان هو صرفه بفيزا إدارة الحركة او صرفه نقدًا او كلاهما … او امسح بند انا ضيفته»:
+// «طريقة الصرف» beside «يظهر في» on every row and in the new-item box, and the bin on the rows
+// somebody added — the seeded ones say «أساسي» and keep no bin.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { QueryClient, QueryClientProvider, type QueryClientConfig } from '@tanstack/react-query';
+import {
+  MutationCache,
+  QueryClient,
+  QueryClientProvider,
+  type QueryClientConfig,
+} from '@tanstack/react-query';
 import {
   CreateFleetCatalogItemSchema,
   type FleetCatalogItemDto,
@@ -29,19 +37,29 @@ import { LicenseExpensesPage } from './LicenseExpensesPage';
 import {
   LicenseExpenseSetupPage,
   itemNameKey,
+  linesWithout,
   newItemBody,
+  paidByBody,
   sameNamedItem,
   savedElsewhere,
   setupBody,
   setupEntriesOf,
   setupLinesOf,
   showsInBody,
+  templatesWith,
   withCreated,
   withLines,
   withWritten,
+  withoutDeleted,
 } from './LicenseExpenseSetupPage';
 import { PaidGroup } from '../components/LicenseExpensePaidGroup';
-import { licenseExpenseSettingsKey } from '../api/fleet-queries';
+import {
+  licenseExpenseSettingsKey,
+  useCreateCatalogItem,
+  useDeleteCatalogItem,
+  useUpdateCatalogItem,
+} from '../api/fleet-queries';
+import { ApiError } from '../../../shared/lib/api-client';
 import { DEFAULT_SIGNATURES, type LicenseExpenseItemLine } from '../lib/license-expense-memo';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -49,6 +67,32 @@ import { DEFAULT_SIGNATURES, type LicenseExpenseItemLine } from '../lib/license-
 vi.mock('react-dom', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('react-dom');
   return { ...actual, createPortal: (node: unknown) => node };
+});
+// The delete's request, stood in: the hook's own cache work is what is proven here. When `refuse`
+// holds a failure, the item writes fail with it.
+const deleted = vi.hoisted(() => [] as string[]);
+const refuse = vi.hoisted(() => ({ with: null as unknown }));
+vi.mock('../api/fleet-api', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, (...args: unknown[]) => unknown>>();
+  const refusable =
+    (fn: string) =>
+    async (...args: unknown[]): Promise<unknown> => {
+      if (refuse.with !== null) throw refuse.with;
+      return actual[fn]?.(...args);
+    };
+  return {
+    ...actual,
+    createCatalogItem: vi.fn(refusable('createCatalogItem')),
+    updateCatalogItem: vi.fn(refusable('updateCatalogItem')),
+    deleteCatalogItem: vi.fn(async (id: string) => {
+      if (refuse.with !== null) throw refuse.with;
+      deleted.push(id);
+    }),
+  };
+});
+afterEach(() => {
+  deleted.length = 0;
+  refuse.with = null;
 });
 
 const ar = (key: string): string => translate('ar', key);
@@ -93,19 +137,23 @@ const catalogItem = (
   licenseExpenseKind: 'renewal' | 'extension' | null,
   version: number,
   isActive = true,
+  { paidBy = null, builtIn = false }: { paidBy?: 'visa' | 'cash' | null; builtIn?: boolean } = {},
 ): FleetCatalogItemDto =>
   ({
     id,
     kind: 'licenseExpenseItem',
     name: { ar: name, en: name },
     licenseExpenseKind,
+    licenseExpensePaidBy: paidBy,
+    builtIn,
     isActive,
     version,
   }) as unknown as FleetCatalogItemDto;
 
+// The first two are seeded at boot («أساسي»); the third somebody added. All paid both ways.
 const ITEMS = [
-  catalogItem('i-1', 'براءة ذمة', 'renewal', 4),
-  catalogItem('i-2', 'استعلام أمني', 'extension', 7),
+  catalogItem('i-1', 'براءة ذمة', 'renewal', 4, true, { builtIn: true }),
+  catalogItem('i-2', 'استعلام أمني', 'extension', 7, true, { builtIn: true }),
   catalogItem('i-3', 'ضرائب', null, 1),
   catalogItem('i-4', 'بند مؤرشف', null, 2, false),
 ];
@@ -131,15 +179,20 @@ const SETTINGS: FleetLicenseExpenseSettingsDto = {
 
 type Queries = NonNullable<NonNullable<QueryClientConfig['defaultOptions']>['queries']>;
 
-const renderSetup = (permissions = MANAGE, settings = SETTINGS, queries: Queries = {}): string => {
+const renderSetup = (
+  permissions = MANAGE,
+  settings = SETTINGS,
+  queries: Queries = {},
+  items: FleetCatalogItemDto[] = ITEMS,
+): string => {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity, refetchOnMount: false, ...queries },
     },
   });
   qc.setQueryData(listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }), {
-    items: ITEMS,
-    meta: { page: 1, pageSize: 100, totalItems: ITEMS.length, totalPages: 1 },
+    items,
+    meta: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1 },
   });
   qc.setQueryData(['fleet', 'licenseExpenses', 'settings'], settings);
   return renderToStaticMarkup(
@@ -240,8 +293,10 @@ describe('«إعداد النماذج» of the licensing-expenses memo', () => {
     expect(html).toContain(ar('fleet.licenseExpenses.setup.subtitle'));
     // `DesignSave`: the indigo button, told when it is busy.
     expect(html).toMatch(/data-license-expense-setup-save="true"[^>]*aria-busy="false"/u);
+    // The items' card is titled with the reworded key (batch 3: «يظهر في، وطريقة الصرف»); the old
+    // key stays in the dictionary, unused — rewritten on purpose, the assertion is the same.
     for (const title of [
-      'fleet.licenseExpenses.setup.itemsTitle',
+      'fleet.licenseExpenses.setup.itemsTitlePaidBy',
       'fleet.licenseExpenses.signaturesSection',
     ]) {
       expect(html, title).toMatch(
@@ -489,11 +544,13 @@ describe('«عاوز اقدر اضيف بند فى اعدادات النماذج
 
   it('writes the typed name as both halves, the memo it shows in, and no alarm', () => {
     const body = newItemBody('  رسوم مرور  ', 'renewal');
+    // Batch 3 adds «طريقة الصرف» to the body — both (`null`) unless another is pressed.
     expect(body).toEqual({
       kind: 'licenseExpenseItem',
       name: { ar: 'رسوم مرور', en: 'رسوم مرور' },
       countsForAlarm: false,
       licenseExpenseKind: 'renewal',
+      licenseExpensePaidBy: null,
     });
     expect(CreateFleetCatalogItemSchema.safeParse(body).success).toBe(true);
     expect(newItemBody('دمغة', null)?.licenseExpenseKind).toBeNull();
@@ -575,5 +632,348 @@ describe('«عاوز اقدر اضيف بند فى اعدادات النماذج
     expect(source).toContain('toast.error(errorMessage(failure, locale));');
     // The very hook the catalogs screen creates with — its write refreshes every list.
     expect(source).toContain('await createItem.mutateAsync(body)');
+  });
+});
+
+describe('«طريقة الصرف» on the set-up — fixed per item, the same field «قوائم الحركة» writes', () => {
+  const PAID_ITEMS = [
+    catalogItem('i-1', 'براءة ذمة', 'renewal', 4, true, { paidBy: 'visa', builtIn: true }),
+    catalogItem('i-2', 'استعلام أمني', 'extension', 7, true, { paidBy: 'cash' }),
+    catalogItem('i-3', 'ضرائب', null, 1),
+  ];
+
+  it('titles the card with both choices and draws two named trays on every row', () => {
+    const html = renderSetup(MANAGE, SETTINGS, {}, PAID_ITEMS);
+    const card = between(
+      html,
+      'data-license-expense-setup-items="true"',
+      'data-license-expense-setup-template',
+    );
+    expect(card).toContain(ar('fleet.licenseExpenses.setup.itemsTitlePaidBy'));
+    expect(card).toContain(ar('fleet.licenseExpenses.setup.itemsHintPaidBy'));
+    // Each tray named over it, and named for a screen reader.
+    expect(card).toContain(`aria-label="${ar('fleet.catalogs.fields.licenseExpenseKind')}"`);
+    expect(card).toContain(`aria-label="${ar('fleet.catalogs.fields.licenseExpensePaidBy')}"`);
+    const row = between(
+      card,
+      'data-license-expense-item-row="i-1"',
+      'data-license-expense-item-row="i-2"',
+    );
+    // «يظهر في» first, then «طريقة الصرف» — فيزا | نقدي | كليهما.
+    expect(row.indexOf('data-license-expense-item-kind=')).toBeLessThan(
+      row.indexOf('data-license-expense-item-paid='),
+    );
+    expect(row).toMatch(/data-license-expense-item-paid="i-1:visa"[^>]*>فيزا</u);
+    expect(row).toMatch(/data-license-expense-item-paid="i-1:cash"[^>]*>نقدي</u);
+    expect(row).toMatch(/data-license-expense-item-paid="i-1:both"[^>]*>كليهما</u);
+  });
+
+  it("presses each item's payment — an item that never said one reads as both", () => {
+    const card = between(
+      renderSetup(MANAGE, SETTINGS, {}, PAID_ITEMS),
+      'data-license-expense-setup-items="true"',
+    );
+    expect(card).toMatch(/aria-pressed="true"[^>]*data-license-expense-item-paid="i-1:visa"/u);
+    expect(card).toMatch(/aria-pressed="false"[^>]*data-license-expense-item-paid="i-1:both"/u);
+    expect(card).toMatch(/aria-pressed="true"[^>]*data-license-expense-item-paid="i-2:cash"/u);
+    expect(card).toMatch(/aria-pressed="true"[^>]*data-license-expense-item-paid="i-3:both"/u);
+    // An item stored before the question: no field at all.
+    const old = { ...ITEMS[2]! } as Partial<FleetCatalogItemDto>;
+    delete old.licenseExpensePaidBy;
+    expect(
+      between(
+        renderSetup(MANAGE, SETTINGS, {}, [old as FleetCatalogItemDto]),
+        'data-license-expense-setup-items="true"',
+      ),
+    ).toMatch(/aria-pressed="true"[^>]*data-license-expense-item-paid="i-3:both"/u);
+    expect(card).not.toMatch(/data-license-expense-item-paid="[^"]+" disabled=""/u);
+  });
+
+  it('shows the payment but leaves it to whoever manages the lists', () => {
+    const card = between(
+      renderSetup(EDIT, SETTINGS, {}, PAID_ITEMS),
+      'data-license-expense-setup-items="true"',
+    );
+    expect(card).toMatch(/aria-pressed="true"[^>]*data-license-expense-item-paid="i-1:visa"/u);
+    for (const choice of ['i-1:visa', 'i-1:cash', 'i-1:both', 'i-2:cash', 'i-3:both']) {
+      expect(card).toContain(`data-license-expense-item-paid="${choice}" disabled=""`);
+    }
+  });
+
+  it('writes the payment picked with the version it was read at — and nothing for the same one', () => {
+    const [visa, cash, both] = PAID_ITEMS;
+    expect(paidByBody(visa!, 'cash')).toEqual({ licenseExpensePaidBy: 'cash', version: 4 });
+    expect(paidByBody(visa!, null)).toEqual({ licenseExpensePaidBy: null, version: 4 });
+    expect(paidByBody(both!, 'visa')).toEqual({ licenseExpensePaidBy: 'visa', version: 1 });
+    expect(paidByBody(visa!, 'visa')).toBeNull();
+    expect(paidByBody(cash!, 'cash')).toBeNull();
+    expect(paidByBody(both!, null)).toBeNull();
+    // An item stored before the question reads as both: «كليهما» writes nothing.
+    expect(paidByBody({ version: 2 } as FleetCatalogItemDto, null)).toBeNull();
+    // Never touches «يظهر في», and «يظهر في» never touches it.
+    expect(paidByBody(visa!, 'cash')).not.toHaveProperty('licenseExpenseKind');
+    expect(showsInBody(visa!, null)).not.toHaveProperty('licenseExpensePaidBy');
+    // Written over the list, it stands — and the next click carries the version it left.
+    const written = { ...visa!, licenseExpensePaidBy: 'cash', version: 5 } as FleetCatalogItemDto;
+    expect(paidByBody(withWritten(PAID_ITEMS, { 'i-1': written })[0]!, null)).toEqual({
+      licenseExpensePaidBy: null,
+      version: 5,
+    });
+  });
+
+  it('the new-item box asks it too — both until another is pressed — and the body carries it', () => {
+    const row = between(renderSetup(), 'data-license-expense-new-item="true"');
+    expect(row).toContain(`aria-label="${ar('fleet.catalogs.fields.licenseExpensePaidBy')}"`);
+    expect(row).toMatch(
+      /aria-pressed="true" data-license-expense-new-item-paid="both" class="[^"]*bg-brand-600/u,
+    );
+    expect(row).toMatch(
+      /aria-pressed="false" data-license-expense-new-item-paid="visa"[^>]*>فيزا</u,
+    );
+    expect(row).toMatch(
+      /aria-pressed="false" data-license-expense-new-item-paid="cash"[^>]*>نقدي</u,
+    );
+    // «إضافة» stays on the name's line, before the two choices.
+    expect(row.indexOf('data-license-expense-new-item-add')).toBeLessThan(
+      row.indexOf('data-license-expense-new-item-kind='),
+    );
+    for (const paid of ['visa', 'cash', null] as const) {
+      const body = newItemBody('رسوم مرور', null, paid);
+      expect(body?.licenseExpensePaidBy).toBe(paid);
+      expect(CreateFleetCatalogItemSchema.safeParse(body).success, String(paid)).toBe(true);
+    }
+    expect(newItemBody('رسوم مرور', 'renewal')?.licenseExpensePaidBy).toBeNull();
+    const source = readFileSync(join(HERE, 'LicenseExpenseSetupPage.tsx'), 'utf8');
+    expect(source).toContain('const body = newItemBody(newName, newMemo, newPaid);');
+  });
+
+  it("the templates' groups offer an item in its payment's group only — a line already there keeps it", () => {
+    const group = (paid: 'visa' | 'cash', lines: LicenseExpenseItemLine[] = []): string =>
+      renderToStaticMarkup(
+        <Provider store={store(MANAGE)}>
+          <PaidGroup
+            kind="renewal"
+            paid={paid}
+            items={lines}
+            setDraft={() => undefined}
+            catalogItems={setupEntriesOf(PAID_ITEMS, lines, 'ar')}
+          />
+        </Provider>,
+      );
+    // i-1 visa only, i-3 both; i-2 is the extension's.
+    expect(group('visa')).toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(group('visa')).toContain('data-license-expense-count="renewal:visa:i-3"');
+    expect(group('cash')).not.toContain('data-license-expense-count="renewal:cash:i-1"');
+    expect(group('cash')).toContain('data-license-expense-count="renewal:cash:i-3"');
+    // A cash line of the visa-only item, saved before the choice: its counter stays, to count it out.
+    const kept: LicenseExpenseItemLine = {
+      key: 'k-kept',
+      itemId: 'i-1',
+      label: 'براءة ذمة',
+      amount: 600,
+      count: 1,
+      paidBy: 'cash',
+      receipt: true,
+    };
+    expect(group('cash', [kept])).toContain('data-license-expense-count="renewal:cash:i-1"');
+  });
+});
+
+describe('«او امسح بند انا ضيفته» — the bin on the rows somebody added', () => {
+  it('puts a bin on an added row only, and «أساسي» on a seeded one — for whoever manages the lists', () => {
+    const html = renderSetup();
+    const card = between(
+      html,
+      'data-license-expense-setup-items="true"',
+      'data-license-expense-new-item="true"',
+    );
+    expect(card).toContain('data-license-expense-item-delete="i-3"');
+    expect(card).not.toContain('data-license-expense-item-delete="i-1"');
+    expect(card).not.toContain('data-license-expense-item-delete="i-2"');
+    // Archived rows are not drawn, so neither is their bin.
+    expect(card).not.toContain('data-license-expense-item-delete="i-4"');
+    expect(card).toMatch(
+      new RegExp(
+        `data-license-expense-item-builtin="i-1" title="${ar('fleet.licenseExpenses.setup.builtInHint')}"[^>]*>${ar('fleet.licenseExpenses.setup.builtInTag')}<`,
+        'u',
+      ),
+    );
+    expect(card).toContain('data-license-expense-item-builtin="i-2"');
+    expect(card).not.toContain('data-license-expense-item-builtin="i-3"');
+    // The bin is named, in the row actions' red, on the name's line — before the trays.
+    const row = between(card, 'data-license-expense-item-row="i-3"');
+    expect(row).toContain(`aria-label="${ar('fleet.licenseExpenses.setup.deleteItem')} — ضرائب"`);
+    expect(row.indexOf('data-license-expense-item-delete')).toBeLessThan(
+      row.indexOf('data-license-expense-item-kind='),
+    );
+    expect(card).toContain(ar('fleet.licenseExpenses.setup.itemsDeleteHint'));
+  });
+
+  it('offers no bin without the grant — the seeded rows still say «أساسي»', () => {
+    const html = renderSetup(EDIT);
+    expect(html).not.toContain('data-license-expense-item-delete');
+    expect(html).not.toContain(ar('fleet.licenseExpenses.setup.itemsDeleteHint'));
+    expect(html).toContain('data-license-expense-item-builtin="i-1"');
+  });
+
+  it('confirms in the pattern of «حذف هذه المذكرة؟» — the dialog closed until the bin is pressed', () => {
+    const html = renderSetup();
+    expect(html).not.toContain('data-license-expense-item-delete-confirm');
+    const source = readFileSync(join(HERE, 'LicenseExpenseSetupPage.tsx'), 'utf8');
+    expect(source).toContain('onClick={() => setDeleting(item)}');
+    expect(source).toContain("t('fleet.licenseExpenses.setup.deleteItemTitle', {");
+    expect(source).toContain("t('fleet.licenseExpenses.setup.deleteItemBody')");
+    expect(source).toContain("t('fleet.licenseExpenses.setup.deleteItemTemplates', {");
+    expect(source).toMatch(/variant="danger"\s+loading=\{removeItem\.isPending\}/u);
+    // What a delete does after the server said yes: the row goes, the created copy goes, the
+    // held lines go — then the toast.
+    expect(source).toContain('await removeItem.mutateAsync(gone.id);');
+    expect(source).toContain('setDeleted((held) => new Set([...held, gone.id]));');
+    expect(source).toContain('setCreated((held) => held.filter((item) => item.id !== gone.id));');
+    expect(source).toContain('setLines((held) => linesWithout(held, gone.id));');
+    expect(source).toContain("'fleet.licenseExpenses.setup.itemDeletedToast'");
+  });
+
+  it('names the templates the item leaves, as their cards name them', () => {
+    const lines = setupLinesOf(SETTINGS.templates);
+    expect(templatesWith(lines, 'i-1')).toEqual([['renewal', 'visa']]);
+    expect(templatesWith(lines, 'i-2')).toEqual([['extension', 'cash']]);
+    expect(templatesWith(lines, 'i-3')).toEqual([]);
+    // In two of them: in the cards' order.
+    const twice = withLines(lines, 'extension', (held) => ({
+      items: [...held.items, { ...lines.renewal.items[0]!, key: 'k-x', paidBy: 'visa' }],
+    }));
+    expect(templatesWith(twice, 'i-1')).toEqual([
+      ['renewal', 'visa'],
+      ['extension', 'visa'],
+    ]);
+  });
+
+  it('drops the deleted item from the held templates — «حفظ الإعداد» never writes it back', () => {
+    const lines = linesWithout(setupLinesOf(SETTINGS.templates), 'i-1');
+    const body = setupBody(SETTINGS.signatures, lines, 3);
+    expect(body.templates?.renewal.visa).toEqual([]);
+    // Everything else stays: the hand-written line, the other memo's item.
+    expect(body.templates?.renewal.cash).toEqual(SETTINGS.templates.renewal.cash);
+    expect(body.templates?.extension).toEqual(SETTINGS.templates.extension);
+    // No item id → a hand-written line is never mistaken for it.
+    expect(linesWithout(setupLinesOf(SETTINGS.templates), 'nothing')).toEqual(
+      expect.objectContaining({
+        renewal: { items: expect.arrayContaining([expect.objectContaining({ itemId: null })]) },
+      }),
+    );
+  });
+
+  it('takes the row off at once — and an item added on this page does not come back', () => {
+    const added = catalogItem('i-9', 'رسوم مرور', null, 0);
+    const gone = new Set(['i-9']);
+    // Added, then deleted before the list was read again: `withCreated` alone would keep it.
+    expect(withCreated(ITEMS, [added]).map((item) => item.id)).toContain('i-9');
+    expect(withoutDeleted(withCreated(ITEMS, [added]), gone).map((item) => item.id)).toEqual([
+      'i-1',
+      'i-2',
+      'i-3',
+      'i-4',
+    ]);
+    // And with `created` pruned, the list read again without it shows nothing of it either.
+    expect(withoutDeleted(withCreated(ITEMS, []), gone)).toEqual(ITEMS);
+    // Its counters go with it.
+    const html = renderToStaticMarkup(
+      <Provider store={store(MANAGE)}>
+        <PaidGroup
+          kind="renewal"
+          paid="visa"
+          items={[]}
+          setDraft={() => undefined}
+          catalogItems={setupEntriesOf(withoutDeleted([...ITEMS, added], gone), [], 'ar')}
+        />
+      </Provider>,
+    );
+    expect(html).not.toContain('i-9');
+  });
+
+  it('a refused item write raises ONE toast — the page’s own; the global one stays quiet', async () => {
+    const global: string[] = [];
+    const qc = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+      mutationCache: new MutationCache({
+        onError: (_error, _variables, _context, mutation) => {
+          if (mutation.options.onError === undefined) global.push('GLOBAL');
+        },
+      }),
+    });
+    type Write = { mutateAsync: (input: unknown) => Promise<unknown> };
+    const hooks: Record<'remove' | 'update' | 'create' | 'elsewhere', Write | null> = {
+      remove: null,
+      update: null,
+      create: null,
+      elsewhere: null,
+    };
+    const Probe = (): null => {
+      // As the set-up page holds them …
+      hooks.remove = useDeleteCatalogItem() as Write;
+      hooks.update = useUpdateCatalogItem(() => true) as Write;
+      hooks.create = useCreateCatalogItem(() => true) as Write;
+      // … and as every other screen does, which keeps the global toast.
+      hooks.elsewhere = useUpdateCatalogItem() as Write;
+      return null;
+    };
+    renderToStaticMarkup(
+      <QueryClientProvider client={qc}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    for (const failure of [
+      new ApiError('NOT_FOUND', 'Not found', 404),
+      new ApiError('CONFLICT', 'Conflict', 409),
+      new ApiError('FORBIDDEN', 'Forbidden', 403),
+    ]) {
+      refuse.with = failure;
+      await expect(hooks.remove!.mutateAsync('i-3')).rejects.toBe(failure);
+      await expect(hooks.update!.mutateAsync({ id: 'i-3', body: {} })).rejects.toBe(failure);
+      await expect(hooks.create!.mutateAsync({})).rejects.toBe(failure);
+    }
+    expect(global).toEqual([]);
+    await expect(hooks.elsewhere!.mutateAsync({ id: 'i-3', body: {} })).rejects.toBeInstanceOf(
+      ApiError,
+    );
+    expect(global).toEqual(['GLOBAL']);
+    // The page's own catch is the one toast each write raises.
+    const page = readFileSync(join(HERE, 'LicenseExpenseSetupPage.tsx'), 'utf8');
+    expect(page).toContain('useUpdateCatalogItem(() => true)');
+    expect(page).toContain('useCreateCatalogItem(() => true)');
+    // «إضافة إلى القائمة» from a template line (`useAddToCatalog`, here and in the editor) words
+    // every failure in its own catch — so it opts out of the global toast too.
+    const group = readFileSync(join(HERE, '../components/LicenseExpensePaidGroup.tsx'), 'utf8');
+    expect(group).toContain('useCreateCatalogItem(() => true)');
+    expect(group).not.toContain('useCreateCatalogItem()');
+  });
+
+  it('deletes through the server and re-reads the lists and the set-up — not the memos', async () => {
+    const qc = new QueryClient();
+    let mutation: { mutateAsync: (id: string) => Promise<void> } | null = null;
+    const Probe = (): null => {
+      mutation = useDeleteCatalogItem();
+      return null;
+    };
+    renderToStaticMarkup(
+      <QueryClientProvider client={qc}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    const invalidated: string[] = [];
+    vi.spyOn(qc, 'invalidateQueries').mockImplementation(async (filters) => {
+      invalidated.push(
+        `${JSON.stringify(filters?.queryKey)}${filters?.exact === true ? ' exact' : ''}`,
+      );
+    });
+    await mutation!.mutateAsync('i-3');
+    expect(deleted).toEqual(['i-3']);
+    expect(invalidated).toEqual([
+      '["fleet","catalogs"]',
+      '["fleet","odometer"]',
+      '["fleet","alarms"]',
+      `${JSON.stringify(licenseExpenseSettingsKey)} exact`,
+    ]);
   });
 });

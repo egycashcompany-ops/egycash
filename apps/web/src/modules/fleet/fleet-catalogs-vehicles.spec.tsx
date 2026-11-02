@@ -49,6 +49,8 @@ const catalogItem = (kind: string, id: string, name: { ar: string; en: string })
   kind,
   name,
   countsForAlarm: false,
+  licenseExpensePaidBy: null,
+  builtIn: false,
   isActive: true,
   version: 0,
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -198,6 +200,30 @@ describe('the three new catalogs are first-class kinds', () => {
     const markup = render(<CatalogsPage />, { route: '/fleet/catalogs' });
     for (const kind of FLEET_CATALOG_KINDS) {
       expect(markup, `${kind} tab`).toContain(t(`fleet.catalogs.kind.${kind}`));
+    }
+  });
+
+  it('«طريقة الصرف» is a column of the licensing-expenses items only — no other tab draws it', () => {
+    const client = seededClient();
+    client.setQueryData(
+      listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }),
+      page([
+        {
+          ...catalogItem('licenseExpenseItem', 'le1', { ar: 'دمغة', en: 'Stamp duty' }),
+          licenseExpensePaidBy: 'cash',
+        },
+      ]),
+    );
+    const items = render(<CatalogsPage />, {
+      route: '/fleet/catalogs?kind=licenseExpenseItem',
+      client,
+    });
+    expect(items).toContain(t('fleet.catalogs.fields.licenseExpensePaidBy'));
+    expect(items).toMatch(/data-license-expense-paid-by="cash"[^>]*>نقدي</u);
+    for (const kind of Object.keys(CATALOG)) {
+      const other = render(<CatalogsPage />, { route: `/fleet/catalogs?kind=${kind}` });
+      expect(other, kind).not.toContain(t('fleet.catalogs.fields.licenseExpensePaidBy'));
+      expect(other, kind).not.toContain('data-license-expense-paid-by');
     }
   });
 });

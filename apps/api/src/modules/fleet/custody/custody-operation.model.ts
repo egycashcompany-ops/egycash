@@ -4,13 +4,21 @@
 // licensing memos as they were, the fund around it, the bracket figure, the signatures — so a
 // reprint is always the paper that was signed.
 //
-// There is no delete and no edit of what a letter printed. A «استعاضة» alone moves on once: it is
-// recorded `held` (its money not in the fund yet), then «تأكيد التحويل» makes it `done` on the day
-// the money arrived (`transfer`), or it is `cancelled` (`cancellation`) and its memos are free again
-// — a status, never a delete: the row, its letter and its signatures stay. Neither ever touches a
-// frozen figure. A row stored before the statuses has none of the three fields and reads as `done`
-// with no transfer: there is no migration, and none of the three has a schema default, so a legacy
-// row read and written back never gains them. Reads still filter `isDeleted: false`.
+// There is no edit of what a letter printed. A «استعاضة» alone moves on once: it is recorded
+// `held` (its money not in the fund yet), then «تأكيد التحويل» makes it `done` on the day the money
+// arrived (`transfer`), or it is `cancelled` (`cancellation`) and its memos are free again — a
+// status: the row, its letter and its signatures stay. Neither ever touches a frozen figure. A row
+// stored before the statuses has none of the three fields and reads as `done` with no transfer:
+// there is no migration, and none of the three has a schema default, so a legacy row read and
+// written back never gains them.
+//
+// «حذف العملية» is a SOFT delete with a release (`custody-fund-delete.ts`): the row gets
+// `isDeleted` and a `deletion` — who, when, why, and the fund on either side of it — and every
+// read filters `isDeleted: false`, so it leaves «سجل العهدة», the fund and every figure at once and
+// lives on in «العمليات المحذوفة». Nothing it printed is rewritten, and it is never hard-deleted.
+// What it had claimed is freed in the same transaction — the memos a live replenishment holds, the
+// licensing parts a settlement settled — found by query, never by its snapshot. `deletion` has no
+// schema default either: a live row never gains it.
 import { Schema, model, type Types } from 'mongoose';
 import {
   FLEET_CUSTODY_OPERATION_KINDS,
@@ -19,6 +27,7 @@ import {
   FLEET_CUSTODY_SOURCES,
   FLEET_LICENSE_EXPENSE_KINDS,
   type FleetCustodyCancellationDto,
+  type FleetCustodyDeletionDto,
   type FleetCustodyOperationKind,
   type FleetCustodyOperationStatus,
   type FleetCustodySignRole,
@@ -85,6 +94,19 @@ export interface FleetCustodyOperationCancellationDoc {
   at: Date;
 }
 
+/** «حذف العملية» — `at` is the same instant as the base `deletedAt`, `by` as `deletedBy`. */
+export interface FleetCustodyOperationDeletionDoc {
+  /** '' when none was given. */
+  reason: string;
+  by: Types.ObjectId | null;
+  /** Who deleted it, by name as it read then. */
+  byName: string | null;
+  at: Date;
+  /** «إجمالي العهدة» just before the delete, and just after it — equal for a held or cancelled one. */
+  fundBefore: number;
+  fundAfter: number;
+}
+
 export interface FleetCustodyOperationDoc extends BaseDocFields {
   kind: FleetCustodyOperationKind;
   /** Absent on a row from before the statuses — `operationStatusOf` reads it as `done`. */
@@ -93,6 +115,8 @@ export interface FleetCustodyOperationDoc extends BaseDocFields {
   transfer?: FleetCustodyOperationTransferDoc | null;
   /** A cancelled replenishment's cancellation; `null` or absent on the rest. */
   cancellation?: FleetCustodyOperationCancellationDoc | null;
+  /** A deleted operation's deletion; absent on a live one. */
+  deletion?: FleetCustodyOperationDeletionDoc | null;
   /** The letter's day (UTC midnight). */
   date: Date;
   /** The period the letter names — `null` on a charge. */
@@ -182,6 +206,18 @@ const cancellationSchema = new Schema<FleetCustodyOperationCancellationDoc>(
   { _id: false },
 );
 
+const deletionSchema = new Schema<FleetCustodyOperationDeletionDoc>(
+  {
+    reason: { type: String, default: '' },
+    by: { type: Schema.Types.ObjectId, default: null },
+    byName: { type: String, default: null },
+    at: { type: Date, required: true },
+    fundBefore: { type: Number, required: true },
+    fundAfter: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 const operationSchema = new Schema<FleetCustodyOperationDoc>(
   {
     kind: { type: String, enum: FLEET_CUSTODY_OPERATION_KINDS, required: true },
@@ -189,6 +225,8 @@ const operationSchema = new Schema<FleetCustodyOperationDoc>(
     status: { type: String, enum: FLEET_CUSTODY_OPERATION_STATUSES },
     transfer: { type: transferSchema },
     cancellation: { type: cancellationSchema },
+    // No default either: only a delete writes it.
+    deletion: { type: deletionSchema },
     date: { type: Date, required: true },
     from: { type: Date, default: null },
     to: { type: Date, default: null },
@@ -212,6 +250,11 @@ operationSchema.index({ kind: 1, date: 1 }, { name: 'ix_custody_operation_kind' 
 // Which replenishment brought a memo back; which settlement took a licensing memo off.
 operationSchema.index({ 'memos.memoId': 1 }, { name: 'ix_custody_operation_memo' });
 operationSchema.index({ 'parts.expenseId': 1 }, { name: 'ix_custody_operation_expense' });
+// «العمليات المحذوفة», newest delete first — only the deleted rows are in it.
+operationSchema.index(
+  { deletedAt: -1 },
+  { name: 'ix_custody_operation_deleted', partialFilterExpression: { isDeleted: true } },
+);
 
 /** An operation's status — a row from before the statuses is `done`. */
 export const operationStatusOf = (
@@ -244,6 +287,20 @@ export const cancellationDtoOf = (
         reason: doc.cancellation.reason ?? '',
         byName: doc.cancellation.byName ?? null,
         at: doc.cancellation.at.toISOString(),
+      };
+
+/** A stored deletion as the wire carries it; `null` on a live operation. */
+export const deletionDtoOf = (
+  doc: Pick<FleetCustodyOperationDoc, 'deletion'>,
+): FleetCustodyDeletionDto | null =>
+  doc.deletion == null
+    ? null
+    : {
+        reason: doc.deletion.reason ?? '',
+        byName: doc.deletion.byName ?? null,
+        at: doc.deletion.at.toISOString(),
+        fundBefore: doc.deletion.fundBefore,
+        fundAfter: doc.deletion.fundAfter,
       };
 
 export const FleetCustodyOperationModel = model<FleetCustodyOperationDoc>(

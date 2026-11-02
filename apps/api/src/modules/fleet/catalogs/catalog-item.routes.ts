@@ -15,6 +15,7 @@ import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   createCatalogItem,
+  deleteCatalogItem,
   listCatalogItems,
   orderCatalog,
   updateCatalogItem,
@@ -75,6 +76,15 @@ export const buildFleetCatalogRouter = (): Router => {
     authorize('fleetCatalog.manage'),
     validate({ body: UpdateFleetCatalogItemSchema, params: IdParamSchema }),
     asyncHandler(updateCatalogItem),
+  );
+  // «امسح بند انا ضيفته» — only an item the owner added to the licensing-expenses list (the
+  // service refuses every other kind and the built-ins, 409); soft, 204.
+  router.delete(
+    '/:id',
+    authenticate,
+    authorize('fleetCatalog.manage'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(deleteCatalogItem),
   );
   return router;
 };

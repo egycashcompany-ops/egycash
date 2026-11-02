@@ -26,6 +26,7 @@ import { translate } from '../../../platform/localization/i18n';
 import { FuelCardsPage } from './FuelCardsPage';
 import { FuelChargingPage } from './FuelChargingPage';
 import { fuelCardPlace, groupByVehicle, noCarPlaces } from '../components/FuelCardTiles';
+import { CARD_COLUMNS, CHARGE_COLUMNS } from '../components/FuelCardBoard';
 import { FuelCardHistoryDialog } from '../components/FuelCardHistoryDialog';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -188,7 +189,12 @@ describe('one tile per car, Wataniya above Chill Out', () => {
     expect(html).not.toContain('/fleet-fuel-cards/chillout.png');
     // The number in fours, its copy button, the PIN behind its eye, the photo.
     expect(html).toContain('data-fuel-copy="c-1"');
-    expect(html).toContain(ar('fleet.fuelCards.board.pin'));
+    // Batch 3 (item 2, the approved one-row sample): the PIN is a field like the others, its
+    // caption a word with no colon — «PIN», a new key; the old «PIN:» key stays for its readers.
+    expect(html).toContain(`>${ar('fleet.fuelCards.board.pinCaption')}<`);
+    expect(html.indexOf(`>${ar('fleet.fuelCards.board.pinCaption')}<`)).toBeGreaterThan(
+      html.indexOf('data-fuel-pin="c-1"'),
+    );
     expect(html).toContain(ar('fleet.fuelCards.board.photo'));
     expect(html, 'the empty slot offers to fill it').toContain('data-fuel-add="chillout"');
     expect(html).toContain(ar('fleet.fuelCards.board.half'));
@@ -395,7 +401,7 @@ describe('charging', () => {
     });
     expect(html).toContain(ar('fleet.fuelCards.balanceYellow'));
     expect(html).toContain(ar('fleet.fuelCards.board.charge.critical'));
-    // On the balance's own box, after its figure — the line never wraps.
+    // On the balance's own box — its caption line, beside «الرصيد» — so the line never wraps.
     const balance = html.indexOf('data-fuel-balance="y"');
     expect(html.indexOf(ar('fleet.fuelCards.balanceYellow'), balance)).toBeGreaterThan(balance);
   });
@@ -449,6 +455,163 @@ describe('charging', () => {
     expect(DIALOG).toContain('data-fuel-transfer-side={`${i + 1}:from`}');
     expect(DIALOG).toContain('data-fuel-transfer-side={`${i + 1}:to`}');
   });
+
+  // ── Batch 3, item 2: «فى شاشة شحن الكروت عاوز شكل رقم الكارت يكون زى بطاقات الوقود», and the
+  // approved sample's «كل الداتا تكون جمب بعض على صف واحد» — the shared number box, one row.
+  const numberBoxOf = (html: string, id = 'c-1'): string => {
+    const copy = html.indexOf(`data-fuel-copy="${id}"`);
+    const number = html.indexOf(`data-fuel-number="${id}"`);
+    expect(copy, 'the copy button').toBeGreaterThan(-1);
+    expect(number, 'the number, after its caption line').toBeGreaterThan(copy);
+    return html.slice(html.lastIndexOf('<div', copy), html.indexOf('</div>', number) + 6);
+  };
+  const openingTagOf = (html: string, id: string): string =>
+    html.match(new RegExp(`<div[^>]*data-fuel-card="${id}"[^>]*>`, 'u'))?.[0] ?? '';
+
+  it('draws the number in the fuel cards screen’s own box: one line, with its copy button', () => {
+    const box = numberBoxOf(render('charging'));
+    expect(box).toContain(`>${ar('fleet.fuelCards.fields.number')}<`);
+    expect(box).toContain(`title="${ar('fleet.fuelCards.copyNumber')}"`);
+    const span = box.match(/<span[^>]*data-fuel-number="c-1"[^>]*>/u)?.[0] ?? '';
+    expect(span, 'the number never wraps').toContain('whitespace-nowrap');
+    expect(span).toContain('dir="ltr"');
+    expect(box).toContain('>7045 1120 0098 2231<');
+  });
+
+  it('the number box is, byte for byte, the box «بطاقات الوقود» draws', () => {
+    expect(numberBoxOf(render('charging'))).toBe(numberBoxOf(render('cards')));
+  });
+
+  it('the top-up line carries the number only — no PIN and no expiry — as «بطاقات الوقود» keeps both', () => {
+    const html = render('charging');
+    expect(html).not.toContain('data-fuel-pin=');
+    expect(html).not.toContain('data-fuel-reveal=');
+    expect(html).not.toContain('data-fuel-expiry');
+    expect(html).not.toContain(ar('fleet.fuelCards.board.pin'));
+    expect(html).not.toContain(`>${ar('fleet.fuelCards.board.pinCaption')}<`);
+    const cards = render('cards');
+    expect(cards).toContain('data-fuel-pin="c-1"');
+    expect(cards).toContain('data-fuel-expiry-box="c-1"');
+  });
+
+  it('every figure is a field — its caption on top, its value under it — after the shared name cell', () => {
+    const html = render('charging', {
+      cards: [card({ requestedAmount: 500, requestedAt: '2026-10-01T10:00:00.000Z' })],
+    });
+    expect(html).toContain('data-fuel-name="c-1"');
+    expect(render('cards')).toContain('data-fuel-name="c-1"');
+    const order = [
+      'data-fuel-name="c-1"',
+      'data-fuel-number="c-1"',
+      'data-fuel-balance="c-1"',
+      'data-fuel-request-box="c-1"',
+      'data-fuel-history="c-1"',
+    ].map((hook) => html.indexOf(hook));
+    expect(order.every((at) => at > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    const balance = html.slice(order[2], order[3]);
+    expect(balance).toContain(`>${ar('fleet.fuelCards.fields.balance')}<`);
+    expect(balance).toContain('640.00');
+    // The request's ✓ ✕ sit beside the amount, inside the request's own field.
+    const request = html.slice(order[3], order[4]);
+    expect(request).toContain(`>${ar('fleet.fuelCards.fields.request')}<`);
+    expect(request).toContain('data-fuel-request="c-1"');
+    expect(request).toContain('data-fuel-tick="c-1"');
+    expect(request).toContain('data-fuel-cross="c-1"');
+  });
+
+  it('both boards are ONE row from `fuel-grid` up, sharing the gap and the number column', () => {
+    const BOARD = readFileSync(join(HERE, '../components/FuelCardBoard.tsx'), 'utf8');
+    const gap = BOARD.match(/const ONE_ROW_GAP = '([^']+)';/u)?.[1] ?? '';
+    expect(gap).toBe('fuel-grid:gap-x-[clamp(0.375rem,calc((100cqi_-_48.5rem)/4),1rem)]');
+    const track = (columns: string): string[] =>
+      columns.match(/fuel-grid:grid-cols-\[([^\]]+)\]/u)?.[1]?.split('_') ?? [];
+    for (const columns of [CARD_COLUMNS, CHARGE_COLUMNS]) {
+      const classes = columns.split(' ');
+      expect(classes).toContain('fuel-grid:grid');
+      expect(classes).toContain(gap);
+      // One template from `fuel-grid` up: no wider second one, no name on a line of its own.
+      expect(classes.filter((c) => c.includes('grid-cols-'))).toHaveLength(1);
+      expect(columns).not.toContain('fuel-line:');
+      expect(columns).not.toContain('col-span-full');
+      // The card's column first, the same number column second on both boards.
+      expect(track(columns).slice(0, 2)).toEqual(['minmax(13.75rem,1fr)', '14.5rem']);
+    }
+    expect(track(CARD_COLUMNS)).toEqual([
+      'minmax(13.75rem,1fr)',
+      '14.5rem',
+      '7.75rem',
+      '4.25rem',
+      'minmax(6.625rem,1fr)',
+    ]);
+    expect(track(CHARGE_COLUMNS)).toEqual([
+      'minmax(13.75rem,1fr)',
+      '14.5rem',
+      '8rem',
+      '8rem',
+      'minmax(2.625rem,1fr)',
+    ]);
+    // Tailwind reads class names from the source, so the templates are written out there in full,
+    // with the Azeret Mono arithmetic beside them (another figures font means measuring again).
+    expect(BOARD).toContain(
+      'fuel-grid:grid-cols-[minmax(13.75rem,1fr)_14.5rem_7.75rem_4.25rem_minmax(6.625rem,1fr)]',
+    );
+    expect(BOARD).toContain(
+      'fuel-grid:grid-cols-[minmax(13.75rem,1fr)_14.5rem_8rem_8rem_minmax(2.625rem,1fr)]',
+    );
+    expect(BOARD).toContain('The widths, measured in Azeret Mono');
+  });
+
+  it('the top-up page draws the shared pieces and no longer groups the number itself', () => {
+    const PAGE = readFileSync(join(HERE, 'FuelChargingPage.tsx'), 'utf8');
+    expect(PAGE).toContain('<FuelCardNumberBox card={card} />');
+    expect(PAGE).toContain('<FuelCardNameCell card={card} />');
+    expect(PAGE).not.toContain('groupCardNumber(card.number)');
+    expect(PAGE).not.toContain('groupCardNumber');
+  });
+
+  it('«شُحن اليوم» is Cairo’s day: the figure, its note and the filter say «اليوم»', () => {
+    const PAGE = readFileSync(join(HERE, 'FuelChargingPage.tsx'), 'utf8');
+    expect(PAGE).toContain("label={t('fleet.fuelCards.totals.chargedOnCairoDay')}");
+    expect(PAGE).toContain("{t('fleet.fuelCards.board.charge.chargedTodayNote')}");
+    expect(PAGE).toContain("charged: 'fleet.fuelCards.filters.chargedOnCairoDay',");
+    // The row's green and the filter are one rule (`chargedToday`), no longer the browser's day.
+    expect(PAGE).toContain('const charged = chargedToday(card);');
+    expect(PAGE).not.toContain('toDateString()');
+    const html = render('charging');
+    expect(html).toContain(ar('fleet.fuelCards.totals.chargedOnCairoDay'));
+    expect(html).toContain(ar('fleet.fuelCards.board.charge.chargedTodayNote'));
+    expect(html).not.toContain(ar('fleet.fuelCards.totals.chargedToday'));
+    expect(html).not.toContain(ar('fleet.fuelCards.board.charge.chargedNote'));
+    expect(ar('fleet.fuelCards.totals.chargedOnCairoDay')).toBe('شُحن اليوم');
+    expect(ar('fleet.fuelCards.filters.chargedOnCairoDay')).toBe('شُحنت اليوم');
+    expect(ar('fleet.fuelCards.board.charge.chargedTodayNote')).toBe('أضيفت للأرصدة اليوم');
+  });
+
+  it('paints a row green for a charge on today’s Cairo date only — 00:10 yes, 23:30 yesterday no', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-02T07:00:00.000Z')); // 09:00, 2 November, in Cairo
+      const html = render('charging', {
+        cards: [
+          // 00:10 today in Cairo — the UTC date is still the 1st.
+          card({ id: 'early', lastChargedAt: '2026-11-01T22:10:00.000Z' }),
+          // 23:30 yesterday in Cairo — under ten hours ago, yet not «today».
+          card({
+            id: 'late',
+            vehicleId: 'v-178',
+            vehicleCode: '178',
+            lastChargedAt: '2026-11-01T21:30:00.000Z',
+          }),
+        ],
+      });
+      expect(openingTagOf(html, 'early')).toContain('bg-emerald-500/15');
+      expect(openingTagOf(html, 'late')).not.toBe('');
+      expect(openingTagOf(html, 'late')).not.toContain('bg-emerald-500/15');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('the card form', () => {
@@ -491,6 +654,8 @@ describe('the card log — «كارت اخر»: a card that paid for another car
     createdAt: '2026-10-01T00:00:00.000Z',
     byName: null,
     sheet: null,
+    cancelledBySheet: null,
+    link: null,
     ...over,
   });
   const logOf = (logged: FleetFuelCardDto, lines: FleetFuelCardMovementDto[]): string => {
@@ -556,6 +721,8 @@ describe('the card log — the company sheet’s two lines, and who made each li
     createdAt: '2026-10-01T00:00:00.000Z',
     byName: null,
     sheet: null,
+    cancelledBySheet: null,
+    link: null,
     ...over,
   });
   const SHEET = {
@@ -563,6 +730,7 @@ describe('the card log — the company sheet’s two lines, and who made each li
     fileName: 'wataniya-balances-2026-10-20.xlsx',
     sheetBalance: 16745.12,
     systemBalance: 795,
+    cancelledCharges: [],
   };
   const logOf = (lines: FleetFuelCardMovementDto[]): string => {
     const store = configureStore({

@@ -440,7 +440,8 @@ describe('tab 5 — the summaries', () => {
     expect(hrefOf(html, 'fuelCharging.wataniya')[0]).toBe(
       '/fleet/fuel-cards/charging?company=wataniya',
     );
-    expect(text(html)).toContain(ar('fleet.dash.summaries.charged24h'));
+    // T5.5 carries the charging screen's «شُحن اليوم» — the Cairo day (batch 3, D5) — and its caption.
+    expect(text(html)).toContain(ar('fleet.fuelCards.totals.chargedOnCairoDay'));
   });
 
   it('reads the custody figures from the custody screen’s own functions, linked to its dashboard', () => {

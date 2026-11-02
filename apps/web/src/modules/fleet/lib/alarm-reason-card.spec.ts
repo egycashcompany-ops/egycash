@@ -6,15 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type FleetAlarmBaselineDto, type FleetMaintenanceAlarmDto } from '@ecms/contracts';
 import {
   INTERVAL_PERMISSION,
+  bindFigures,
   REASON_CARD_DELAY_MS,
   REASON_FIX,
   cardFacts,
   chipWords,
   counterLabelKey,
+  figureFacts,
   headingWords,
   hoverControl,
   notActiveCard,
   reasonFix,
+  remainingOf,
   templateParts,
 } from './alarm-reason-card';
 
@@ -32,6 +35,7 @@ const baseline = (o: Partial<FleetAlarmBaselineDto> = {}): FleetAlarmBaselineDto
   counterDate: day('2026-10-06'),
   judgedAgainst: { reading: 22_830, date: day('2026-10-06') },
   exitSetAside: null,
+  workType: null,
   ...o,
 });
 
@@ -51,6 +55,8 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   latestReadingLogId: 'r26',
   baseline: baseline(),
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
   ...o,
 });
 
@@ -272,7 +278,15 @@ describe('the facts', () => {
       lastServiceAt: null,
       lastServiceVisitId: null,
       baseline: null,
-      newerUncountedVisit: { visitId: 'n', inDate: day('2026-10-24'), outDate: null, why: 'open' },
+      newerUncountedVisit: {
+        visitId: 'n',
+        inDate: day('2026-10-24'),
+        outDate: null,
+        why: 'open',
+        workType: null,
+        workshop: null,
+        counts: false,
+      },
     });
     expect(kinds(open)).toEqual(['car', 'latest', 'newer']);
     expect(cardFacts(open, 'noService').at(-1)).toEqual({
@@ -286,6 +300,9 @@ describe('the facts', () => {
         inDate: day('2026-10-20'),
         outDate: day('2026-10-21'),
         why: 'notCounting',
+        workType: null,
+        workshop: null,
+        counts: false,
       },
     });
     expect(cardFacts(notCounting, 'baselineBelowChain').at(-1)).toMatchObject({
@@ -409,5 +426,289 @@ describe('opening and closing', () => {
     control.close();
     vi.advanceTimersByTime(REASON_CARD_DELAY_MS * 2);
     expect(seen).toEqual([]);
+  });
+});
+
+// ── «كيف حُسب الفارق» — a computed figure, explained ────────────────────────────────────────────
+
+describe('figureFacts — the card of a COMPUTED figure lays the server’s numbers side by side', () => {
+  const SERVICE = { id: 'wt-service', name: { ar: 'صيانة', en: 'Service' } };
+  const REPAIR = { id: 'wt-repair', name: { ar: 'إصلاح', en: 'Repair' } };
+  const DEALER = { id: 'ws-dealer', name: { ar: 'التوكيل', en: 'Dealership' } };
+  const SPRINTER = { id: 'make-516', name: { ar: 'مرسيدس اسبرانتر 516', en: 'Sprinter 516' } };
+
+  /** Car 295 as the owner sent it: 28,297 − 22,790 = 5,507 km, interval 7,500, 1,993 left. */
+  const car295 = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarmDto =>
+    alarm({
+      noAlarmReason: null,
+      sinceServiceKm: 5_507,
+      remainingKm: 1_993,
+      latestReading: 28_297,
+      latestReadingAt: day('2026-11-01'),
+      latestReadingLogId: 'r1101',
+      baseline: baseline({ workType: SERVICE, judgedAgainst: null }),
+      rule: { vehicleType: SPRINTER, intervalKm: 7_500, yellowKm: 1_000, redKm: 300 },
+      newestReading: { reading: 28_297, date: day('2026-11-01') },
+      ...o,
+    });
+
+  it('nothing for a figure the projection refused — that car gets the reason card', () => {
+    expect(figureFacts(alarm())).toBeNull();
+  });
+
+  it('car 295: the reading, the counted visit and its work type, the arithmetic and the rule', () => {
+    const facts = figureFacts(car295());
+    expect(facts).toMatchObject({
+      code: '295',
+      vehicleType: SPRINTER,
+      latest: { reading: 28_297, date: day('2026-11-01') },
+      newest: null,
+      service: { inDate: day('2026-10-06'), outDate: day('2026-10-06'), workType: SERVICE },
+      subtraction: { latest: 28_297, counter: 22_790, since: 5_507 },
+      intervalKm: 7_500,
+      remaining: { interval: 7_500, since: 5_507, left: 1_993 },
+      thresholds: { yellowKm: 1_000, redKm: 300 },
+      level: 'none',
+      newer: null,
+    });
+    // The used counter is marked; nothing is set aside or in conflict on a computed figure.
+    expect(facts?.counters).toEqual([
+      {
+        kind: 'counter',
+        which: 'entry',
+        value: 22_790,
+        used: true,
+        conflict: false,
+        setAside: null,
+      },
+    ]);
+  });
+
+  it('the exit counter used, the entry beside it unused', () => {
+    const facts = figureFacts(
+      car295({
+        baseline: baseline({
+          entryCounter: 22_700,
+          exitCounter: 22_790,
+          source: 'exit',
+          counter: 22_790,
+          workType: SERVICE,
+        }),
+      }),
+    );
+    expect(facts?.counters.map((c) => (c.kind === 'counter' ? [c.which, c.used] : c.kind))).toEqual(
+      [
+        ['entry', false],
+        ['exit', true],
+      ],
+    );
+  });
+
+  it('an exit counter SET ASIDE stays on the card, with the reading against it (R3)', () => {
+    const aside = {
+      because: 'belowChain' as const,
+      conflict: { reading: 167_520, date: day('2026-10-25') },
+    };
+    const facts = figureFacts(
+      car295({
+        baseline: baseline({
+          entryCounter: 19_790,
+          exitCounter: 19_800,
+          source: 'entry',
+          counter: 19_790,
+          exitSetAside: aside,
+        }),
+        sinceServiceKm: 8_507,
+        remainingKm: -1_007,
+        level: 'red',
+      }),
+    );
+    const exit = facts?.counters.find((c) => c.kind === 'counter' && c.which === 'exit');
+    expect(exit).toMatchObject({ used: false, setAside: aside, conflict: false });
+    expect(facts?.subtraction).toEqual({ latest: 28_297, counter: 19_790, since: 8_507 });
+    // Past the interval the remainder is the server's negative figure, laid out as it came.
+    expect(facts?.remaining).toEqual({ interval: 7_500, since: 8_507, left: -1_007 });
+  });
+
+  it('a reading standing in for both counters is said as such (R4)', () => {
+    const facts = figureFacts(
+      car295({
+        baseline: baseline({
+          entryCounter: null,
+          exitCounter: null,
+          source: 'reading',
+          counter: 22_800,
+        }),
+        sinceServiceKm: 5_497,
+      }),
+    );
+    expect(facts?.counters).toEqual([{ kind: 'standIn', value: 22_800 }]);
+    expect(facts?.subtraction).toEqual({ latest: 28_297, counter: 22_800, since: 5_497 });
+  });
+
+  it('C6: the newest reading is shown only when it is NOT the highest — by figure or by day', () => {
+    expect(figureFacts(car295())?.newest).toBeNull();
+    // A typo-high reading earlier in the cycle (31,297 on 10/12): the highest is not the newest,
+    // and the newest (28,297 on 11/01) is shown beside it.
+    expect(
+      figureFacts(car295({ latestReading: 31_297, latestReadingAt: day('2026-10-12') }))?.newest,
+    ).toEqual({ reading: 28_297, date: day('2026-11-01') });
+    // Same figure, another day (a later day that did not move): still said.
+    const later = { reading: 28_297, date: day('2026-11-02') };
+    expect(figureFacts(car295({ newestReading: later }))?.newest).toEqual(later);
+    // A full instant on the same day is the same day.
+    expect(
+      figureFacts(car295({ newestReading: { reading: 28_297, date: '2026-11-01T00:00:00Z' } }))
+        ?.newest,
+    ).toBeNull();
+  });
+
+  it('no rule: no interval and no remainder — the subtraction still stands', () => {
+    const facts = figureFacts(
+      car295({ rule: { vehicleType: null, intervalKm: 0, yellowKm: 1_000, redKm: 300 } }),
+    );
+    expect(facts?.intervalKm).toBeNull();
+    expect(facts?.remaining).toBeNull();
+    expect(facts?.subtraction).not.toBeNull();
+  });
+
+  it('thresholds and level are the server’s as resolved, never compared here', () => {
+    const facts = figureFacts(
+      car295({
+        level: 'yellow',
+        remainingKm: 800,
+        rule: { vehicleType: SPRINTER, intervalKm: 7_500, yellowKm: 1_200, redKm: 400 },
+      }),
+    );
+    expect(facts?.thresholds).toEqual({ yellowKm: 1_200, redKm: 400 });
+    expect(facts?.level).toBe('yellow');
+  });
+
+  describe('a newer visit that does not count (yet)', () => {
+    const newer = (
+      why: 'open' | 'notCounting' | 'checkedOutEarlier',
+      workType = REPAIR,
+      outDate: string | null = null,
+      // The server's word on the work type (`newerUncountedVisit.counts`); «إصلاح» does not count.
+      counts = why === 'checkedOutEarlier',
+    ) => ({
+      visitId: 'newer',
+      inDate: day('2026-09-10'),
+      outDate,
+      why,
+      workType,
+      workshop: DEALER,
+      counts,
+    });
+
+    // Rewritten on purpose (HUB, W-ODO hand-off): the server now says whether an open visit's work
+    // type counts (`counts`), so the card no longer infers it from the counted visit's work type —
+    // 157's «إصلاح» is stated as not counting even once closed, as sample A/04 says.
+    it('157: open «إصلاح», which the server says does not count — so it never counts once closed', () => {
+      const facts = figureFacts(car295({ newerUncountedVisit: newer('open') }));
+      expect(facts?.newer).toEqual({
+        why: 'open',
+        inDate: day('2026-09-10'),
+        outDate: null,
+        workType: REPAIR,
+        workshop: DEALER,
+        counts: false,
+        countedOut: null,
+      });
+    });
+
+    it('open, of a work type the server says counts — that one counts once closed', () => {
+      expect(
+        figureFacts(car295({ newerUncountedVisit: newer('open', SERVICE, null, true) }))?.newer
+          ?.counts,
+      ).toBe(true);
+    });
+
+    it('the server’s word, never the name: an open visit named like the counted one may not count', () => {
+      expect(
+        figureFacts(car295({ newerUncountedVisit: newer('open', SERVICE, null, false) }))?.newer
+          ?.counts,
+      ).toBe(false);
+    });
+
+    it('closed, of a work type that does not count', () => {
+      const facts = figureFacts(
+        car295({ newerUncountedVisit: newer('notCounting', REPAIR, day('2026-10-21')) }),
+      );
+      expect(facts?.newer).toMatchObject({ why: 'notCounting', counts: false, countedOut: null });
+    });
+
+    it('C8: closed and counting, but checked out before the counted visit — that day is named', () => {
+      const facts = figureFacts(
+        car295({
+          baseline: baseline({
+            inDate: day('2026-09-26'),
+            outDate: day('2026-10-20'),
+            entryCounter: 19_790,
+            counter: 19_790,
+            workType: SERVICE,
+          }),
+          sinceServiceKm: 8_507,
+          newerUncountedVisit: newer('checkedOutEarlier', SERVICE, day('2026-10-06')),
+        }),
+      );
+      expect(facts?.newer).toMatchObject({
+        why: 'checkedOutEarlier',
+        counts: true,
+        outDate: day('2026-10-06'),
+        countedOut: day('2026-10-20'),
+      });
+    });
+  });
+});
+
+describe('remainingOf — «المتبقي X من Y كم» beside the figure', () => {
+  const rule = (intervalKm: number) => ({
+    vehicleType: null,
+    intervalKm,
+    yellowKm: 1_000,
+    redKm: 300,
+  });
+
+  it('what is left of the make’s interval, as the server sent it', () => {
+    expect(remainingOf({ remainingKm: 1_993, rule: rule(7_500) })).toEqual({
+      left: 1_993,
+      interval: 7_500,
+      overdue: false,
+    });
+  });
+
+  it('past the interval: overdue, the remainder kept as it came', () => {
+    expect(remainingOf({ remainingKm: -500, rule: rule(5_000) })).toEqual({
+      left: -500,
+      interval: 5_000,
+      overdue: true,
+    });
+    expect(remainingOf({ remainingKm: 0, rule: rule(5_000) })?.overdue).toBe(false);
+  });
+
+  it('nothing without a rule or a remainder', () => {
+    expect(remainingOf({ remainingKm: 1_993, rule: rule(0) })).toBeNull();
+    expect(remainingOf({ remainingKm: null, rule: rule(7_500) })).toBeNull();
+  });
+});
+
+describe('bindFigures — a line of figures breaks only between its phrases', () => {
+  const NB = '\u00A0';
+  it('binds each figure to the word before it, and the closing unit to the last figure', () => {
+    expect(bindFigures('المتبقي {{left}} من {{interval}} كم')).toBe(
+      `المتبقي${NB}{{left}} من${NB}{{interval}}${NB}كم`,
+    );
+    expect(bindFigures('متأخر {{over}} كم عن {{interval}} كم')).toBe(
+      `متأخر${NB}{{over}} كم عن${NB}{{interval}}${NB}كم`,
+    );
+    expect(bindFigures('من {{interval}} كم')).toBe(`من${NB}{{interval}}${NB}كم`);
+  });
+
+  it('leaves a sentence that does not end on a unit word as it is after its last figure', () => {
+    expect(bindFigures('{{left}} of {{interval}} km left')).toBe(
+      `{{left}} of${NB}{{interval}} km left`,
+    );
+    expect(bindFigures('بلا أرقام')).toBe('بلا أرقام');
   });
 });

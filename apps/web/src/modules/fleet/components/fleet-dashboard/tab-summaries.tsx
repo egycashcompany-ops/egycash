@@ -676,7 +676,9 @@ const FuelColumn = ({
           </Fig>
         }
       >
-        {t('fleet.dash.summaries.charged24h')}
+        {/* The charging screen's own «شُحن اليوم» (batch 3, D5): the figure is its KPI — the
+            Cairo day so far — so the caption is its caption too. */}
+        {t('fleet.fuelCards.totals.chargedOnCairoDay')}
       </Row>
     </Column>
   );

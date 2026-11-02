@@ -1,6 +1,8 @@
 // «عقود توريد السيارات» — the figures the screens work out themselves, pure and React-free:
 //   · the editor's line totals and the contract's total as they are typed — in piastres, so
 //     22 × 4,700,000 never drifts;
+//   · «المستلم حتى الآن» on a new contract — what each line already received, recorded by the
+//     server as the contract's first delivery — and the bodies Save sends;
 //   · «تسجيل استلام»: per line what was contracted, received before, still owed and typed now, and
 //     whether a box asks for more than is owed (the server refuses it too);
 //   · the new delivery's ordinal — its date's place among the live ones;
@@ -11,8 +13,10 @@ import {
   FLEET_VEHICLE_CONTRACT_FILE_MAX_MB,
   FLEET_VEHICLE_CONTRACT_FILE_MIMES,
   fleetContractLineTotal,
+  type CreateFleetVehicleContract,
   type FleetVehicleContractDto,
   type FleetVehicleContractLineDto,
+  type UpdateFleetVehicleContract,
 } from '@ecms/contracts';
 
 const toPiastres = (value: number): number => Math.round(value * 100);
@@ -39,6 +43,11 @@ export interface EditorLine {
   typeId: string;
   count: string;
   price: string;
+  /**
+   * «المستلم حتى الآن» — on a new contract, the cars of this line already received (empty is
+   * none). On an edit it holds the saved figure, shown locked.
+   */
+  received: string;
 }
 
 /** «الإجمالي» of a line — `null` until both its count and its price are written. */
@@ -56,9 +65,13 @@ export interface EditorTotals {
   cars: number;
   /** Lines whose total is worked out (count and price both written). */
   priced: number;
+  /** «المستلم حتى الآن» across the lines — an empty box is none. */
+  received: number;
 }
 
-export const editorTotals = (lines: readonly Pick<EditorLine, 'count' | 'price'>[]): EditorTotals =>
+export const editorTotals = (
+  lines: readonly (Pick<EditorLine, 'count' | 'price'> & Partial<Pick<EditorLine, 'received'>>)[],
+): EditorTotals =>
   lines.reduce<EditorTotals>(
     (sum, line) => {
       const total = editorLineTotal(line);
@@ -66,10 +79,108 @@ export const editorTotals = (lines: readonly Pick<EditorLine, 'count' | 'price'>
         total: (toPiastres(sum.total) + toPiastres(total ?? 0)) / 100,
         cars: sum.cars + typedCount(line.count),
         priced: sum.priced + (total === null ? 0 : 1),
+        received: sum.received + typedCount(line.received),
       };
     },
-    { total: 0, cars: 0, priced: 0 },
+    { total: 0, cars: 0, priced: 0, received: 0 },
   );
+
+// ── «المستلم حتى الآن» ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * How the editor offers «المستلم حتى الآن»:
+ *   edit    — «عقد جديد» for a holder of «تسجيل استلام»: a box per line, recorded as the first delivery;
+ *   locked  — «تعديل العقد»: the saved figure, read-only (it changes through «الاستلامات» on the
+ *             contract's page; the Update schema refuses it);
+ *   hidden  — «عقد جديد» without that grant: the column is not drawn (the server refuses received
+ *             cars from such a user too).
+ */
+export type ReceivedMode = 'edit' | 'locked' | 'hidden';
+
+export const receivedModeOf = (editing: boolean, mayReceive: boolean): ReceivedMode =>
+  editing ? 'locked' : mayReceive ? 'edit' : 'hidden';
+
+/** A received box asking for more cars than its line names — the box turns rose and Save waits. */
+export const receivedOver = (line: Pick<EditorLine, 'count' | 'received'>): boolean =>
+  typedCount(line.received) > typedCount(line.count);
+
+export interface EditorReceived {
+  /** Received across the lines: typed on a new contract, the saved figure on an edit. */
+  received: number;
+  /** Still owed once those arrived — never under 0. */
+  left: number;
+  /** The lines (with a count) whose box is over it — Save waits while there is one. */
+  over: EditorLine[];
+}
+
+export const editorReceived = (
+  lines: readonly EditorLine[],
+  mode: ReceivedMode,
+  saved: number,
+): EditorReceived => {
+  const cars = lines.reduce((sum, line) => sum + typedCount(line.count), 0);
+  const received =
+    mode === 'edit'
+      ? lines.reduce((sum, line) => sum + typedCount(line.received), 0)
+      : mode === 'locked'
+        ? saved
+        : 0;
+  return {
+    received,
+    left: Math.max(0, cars - received),
+    over:
+      mode === 'edit'
+        ? lines.filter((line) => typedCount(line.count) >= 1 && receivedOver(line))
+        : [],
+  };
+};
+
+// ── What Save sends ──────────────────────────────────────────────────────────────────────────────
+
+/** The editor's form, as its boxes hold it. */
+export interface EditorForm {
+  date: string;
+  deadline: string;
+  name: string;
+  supplier: string;
+  lines: EditorLine[];
+  /** «تاريخ الاستلام» of the first delivery — today until changed. */
+  receivedDate: string;
+}
+
+const contractBodyOf = (form: EditorForm): Omit<UpdateFleetVehicleContract, 'version'> => ({
+  name: form.name.trim(),
+  date: new Date(form.date),
+  deadline: form.deadline === '' ? null : new Date(form.deadline),
+  supplier: form.supplier.trim(),
+  lines: form.lines.map((line) => ({
+    id: line.id,
+    typeId: line.typeId,
+    count: typedCount(line.count),
+    unitPrice: line.price.trim() === '' ? null : Number(line.price),
+  })),
+});
+
+/**
+ * A NEW contract: each line with what it already received (0 where the column is not offered) and
+ * the first delivery's day — `null` when nothing was received.
+ */
+export const createBodyOf = (form: EditorForm, mode: ReceivedMode): CreateFleetVehicleContract => {
+  const body = contractBodyOf(form);
+  const received = form.lines.map((line) => (mode === 'edit' ? typedCount(line.received) : 0));
+  const any = received.some((n) => n > 0);
+  return {
+    ...body,
+    lines: body.lines.map((line, index) => ({ ...line, received: received[index] ?? 0 })),
+    receivedDate: any && form.receivedDate !== '' ? new Date(form.receivedDate) : null,
+  };
+};
+
+/** An edit: the contract's own fields only — received cars change through «الاستلامات». */
+export const updateBodyOf = (form: EditorForm, version: number): UpdateFleetVehicleContract => ({
+  ...contractBodyOf(form),
+  version,
+});
 
 // ── «تسجيل استلام» ───────────────────────────────────────────────────────────────────────────────
 

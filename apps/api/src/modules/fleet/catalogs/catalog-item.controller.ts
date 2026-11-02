@@ -35,3 +35,10 @@ export const updateCatalogItem = async (req: Request, res: Response): Promise<vo
   const doc = await fleetCatalogItemService.update(params.id, body, authContext(req).userId);
   ok(res, toCatalogItemDto(doc));
 };
+
+/** «امسح بند انا ضيفته» — an item the owner added to the licensing-expenses list; soft. */
+export const deleteCatalogItem = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  await fleetCatalogItemService.remove(params.id, authContext(req).userId);
+  noContent(res);
+};

@@ -299,6 +299,8 @@ export const CUSTODY_FUND: FleetCustodyFundSummaryDto = {
   operations: 4,
   memos: { count: 5, pending: 0, pendingTotal: 9566 },
   outside: CUSTODY_OUTSIDE,
+  // Batch 3's «العمليات المحذوفة» pill: none deleted, so the fund reads as it always did.
+  deleted: { count: 0 },
 };
 
 export const seedCustody = (qc: QueryClient): void => {

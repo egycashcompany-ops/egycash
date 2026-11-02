@@ -301,8 +301,11 @@ export const useUpdateVehicleType = () =>
     api.updateVehicleType(id, body),
   );
 
+// `said`, when given, is what the sending screen reports itself (`toastUnlessSaid`) — «إعدادات
+// النماذج» words every failure of its own writes; without it the write keeps the global toast.
 const useCatalogItemMutation = <TInput>(
   mutationFn: (input: TInput) => Promise<FleetCatalogItemDto>,
+  said?: SaidByScreen,
 ) => {
   const qc = useQueryClient();
   return useMutation({
@@ -312,11 +315,12 @@ const useCatalogItemMutation = <TInput>(
       void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
       void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
     },
+    ...(said === undefined ? {} : { onError: toastUnlessSaid(said) }),
   });
 };
 
-export const useCreateCatalogItem = () =>
-  useCatalogItemMutation((body: CreateFleetCatalogItem) => api.createCatalogItem(body));
+export const useCreateCatalogItem = (said?: SaidByScreen) =>
+  useCatalogItemMutation((body: CreateFleetCatalogItem) => api.createCatalogItem(body), said);
 /**
  * Save a list's order. Every catalog cache refreshes — the dropdowns across Fleet read the same
  * lists, so they follow the new order too.
@@ -337,10 +341,30 @@ export const useOrderVehicleTypes = () => {
   });
 };
 
-export const useUpdateCatalogItem = () =>
-  useCatalogItemMutation(({ id, body }: { id: string; body: UpdateFleetCatalogItem }) =>
-    api.updateCatalogItem(id, body),
+export const useUpdateCatalogItem = (said?: SaidByScreen) =>
+  useCatalogItemMutation(
+    ({ id, body }: { id: string; body: UpdateFleetCatalogItem }) => api.updateCatalogItem(id, body),
+    said,
   );
+/**
+ * Delete an item somebody added to «بنود مصروفات التراخيص». The lists move as on every catalog
+ * write, and so does the set-up: the server reads its templates without the deleted item's lines.
+ * The set-up's own key only (`exact`) — the memos' board and records do not move with it. The
+ * set-up words every failure itself (a 404, a 409, a 403 alike), so the global toast says none.
+ */
+export const useDeleteCatalogItem = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteCatalogItem(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.catalogs });
+      void qc.invalidateQueries({ queryKey: fleetKeys.odometer });
+      void qc.invalidateQueries({ queryKey: fleetKeys.alarms });
+      void qc.invalidateQueries({ queryKey: licenseExpenseSettingsKey, exact: true });
+    },
+    onError: toastUnlessSaid(SAYS_EVERY_FAILURE),
+  });
+};
 
 /**
  * Fleet settings write: the platform owns the endpoint; what FLEET knows is which of its

@@ -16,6 +16,7 @@ import {
   CreateFleetCustodyReplenishmentSchema,
   CreateFleetCustodySettlementSchema,
   CreateFleetLicenseExpenseSchema,
+  DeleteFleetCustodyOperationSchema,
   UpdateFleetReceiptSchema,
   type FleetCustodySource,
 } from '@ecms/contracts';
@@ -32,6 +33,7 @@ import { fleetReceiptService } from '../../../src/modules/fleet/receipts/receipt
 import { fleetCustodyMemoService } from '../../../src/modules/fleet/custody/custody-memo.service';
 import { fleetCustodyFundService } from '../../../src/modules/fleet/custody/custody-fund.service';
 import { fleetCustodyHoldService } from '../../../src/modules/fleet/custody/custody-fund-hold';
+import { fleetCustodyDeleteService } from '../../../src/modules/fleet/custody/custody-fund-delete';
 import { readCustodyFundTerms } from '../../../src/modules/fleet/custody/custody-fund';
 import { fleetLicenseExpenseService } from '../../../src/modules/fleet/license-expenses/license-expense.service';
 
@@ -183,6 +185,9 @@ export const confirm = (id: string, raw: Record<string, unknown>) =>
   fleetCustodyHoldService.confirmTransfer(id, ConfirmFleetCustodyTransferSchema.parse(raw), ACTOR);
 export const cancel = (id: string, raw: Record<string, unknown> = {}) =>
   fleetCustodyHoldService.cancelHeld(id, CancelFleetCustodyReplenishmentSchema.parse(raw), ACTOR);
+/** «حذف العملية» as the dialog sends it — `version` is the operation's as it was read. */
+export const removeOp = (id: string, raw: Record<string, unknown>) =>
+  fleetCustodyDeleteService.remove(id, DeleteFleetCustodyOperationSchema.parse(raw), ACTOR);
 export const fundNow = async (): Promise<number> => (await readCustodyFundTerms()).fundTotal;
 
 /** A receipt edit as the receipts dialog sends it — the whole receipt back, with `over`. */
@@ -216,6 +221,35 @@ export const licence = (iso: string, amount: number) =>
         items: [{ itemId: null, label: 'تجديد', amount, count: 1, paidBy: 'visa', receipt: true }],
       },
       extension: null,
+      signatures: { agent: 'أ', director: 'ب', generalManager: 'ج' },
+    }),
+    ACTOR,
+  );
+
+/** A licensing record holding a renewal AND an extension, one car each, paid by the card. */
+export const licenceBoth = (iso: string, renewal: number, extension: number) =>
+  fleetLicenseExpenseService.create(
+    CreateFleetLicenseExpenseSchema.parse({
+      date: iso,
+      renewal: {
+        vehicles: [{ vehicleId: null, plate: 'ل ت 2' }],
+        items: [
+          {
+            itemId: null,
+            label: 'تجديد',
+            amount: renewal,
+            count: 1,
+            paidBy: 'visa',
+            receipt: true,
+          },
+        ],
+      },
+      extension: {
+        vehicles: [{ vehicleId: null, plate: 'ل ت 3' }],
+        items: [
+          { itemId: null, label: 'مد', amount: extension, count: 1, paidBy: 'cash', receipt: true },
+        ],
+      },
       signatures: { agent: 'أ', director: 'ب', generalManager: 'ج' },
     }),
     ACTOR,

@@ -19,6 +19,13 @@
 // «إلغاء الاستعاضة المعلّقة» in the footer (`onConfirm` / `onCancel`, given only to whoever may
 // record them); cancelled, no sum, no letter, no print — its memos greyed.
 //
+// «حذف العملية» (`onDelete`, given only to whoever may delete) sits red at the footer's start — on a
+// held replenishment after «إلغاء الاستعاضة المعلّقة». Opened from «العمليات المحذوفة» (`deleted`),
+// the drawer reads the deleted operation (`/deleted/:id`) and only shows it: the red note — who
+// deleted it, when (Cairo time) and why, who had recorded it — the fund before → the delete →
+// after, the letter as printed, greyed; no print, no confirm, no cancel, no delete
+// (`custody-delete-parts.tsx`).
+//
 // The shell is the custody board's car log's (`CustodyCarLog`): its own modal over the page, the
 // page beneath `inert` and held still, Escape taken on its way down so nothing beneath hears it,
 // Tab kept inside, the focus given back to what opened it.
@@ -47,6 +54,7 @@ import {
   useCustodyMemosOutside,
   useCustodyOperation,
 } from '../api/fleet-queries';
+import { useCustodyDeletedOperation } from '../api/custody-delete-queries';
 import {
   letterFileName,
   letterPaperOf,
@@ -102,6 +110,7 @@ import {
   HoldDrawerTitleDay,
 } from './custody-hold-drawer';
 import { operationStatusOf } from '../lib/custody-hold';
+import { DeleteDrawerButton, DeletedChip, DeletedNote, DeletionSum } from './custody-delete-parts';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -508,9 +517,12 @@ const SettleBody = ({ op }: { op: FleetCustodyOperationDto }): JSX.Element => {
 const OperationBody = ({
   op,
   toLetter,
+  deleted = false,
 }: {
   op: FleetCustodyOperationDto;
   toLetter: boolean;
+  /** Opened from «العمليات المحذوفة»: the deletion instead of its place in the fund. */
+  deleted?: boolean;
 }): JSX.Element => {
   const t = useT();
   const kit = useLedgerWordsKit();
@@ -557,11 +569,18 @@ const OperationBody = ({
         ))}
       </p>
 
-      <HoldDrawerNote op={op} memos={count('memo', op.memos.length)} />
+      {deleted ? (
+        <DeletedNote op={op} />
+      ) : (
+        <HoldDrawerNote op={op} memos={count('memo', op.memos.length)} />
+      )}
+
+      {/* A deleted operation: the fund just before its delete → what the delete did → after. */}
+      {deleted && <DeletionSum op={op} />}
 
       {/* The fund before → the operation → the fund after, as the log places it. A cancelled
-          replenishment moved nothing: no sum. */}
-      {!cancelled && (
+          replenishment moved nothing: no sum; a deleted one has no place in the log any more. */}
+      {!cancelled && !deleted && (
         <div
           data-ledger-sum="true"
           className={cn(
@@ -635,17 +654,26 @@ const OperationBody = ({
         </div>
       )}
 
-      {op.kind === 'replenish' && <ReplenishBody op={op} muted={cancelled} />}
+      {op.kind === 'replenish' && <ReplenishBody op={op} muted={cancelled || deleted} />}
       {op.kind === 'settle' && <SettleBody op={op} />}
 
-      {/* A cancelled letter is not printed again: no letter. */}
+      {/* A cancelled letter is not printed again: no letter. A deleted one: as printed, greyed. */}
       {!cancelled && (
         <section ref={letterRef} className={SECTION_CARD} data-ledger-letter-section={op.kind}>
           <div className={SECTION_STRIP}>
             <h3 className={TITLE}>{t(`fleet.custody.ledger.drawer.letter.${op.kind}`)}</h3>
-            <span className={NOTE}>{t('fleet.custody.ledger.drawer.printsAsShown')}</span>
+            <span className={NOTE}>
+              {deleted
+                ? t('fleet.custody.deleted.drawerLetter')
+                : t('fleet.custody.ledger.drawer.printsAsShown')}
+            </span>
           </div>
-          <PaperTray sheets={sheets} name={`ledger-letter:${op.id}`} className="rounded-none" />
+          <div
+            className={cn(deleted && 'opacity-70 [filter:grayscale(1)]')}
+            data-ledger-letter-greyed={deleted ? 'true' : undefined}
+          >
+            <PaperTray sheets={sheets} name={`ledger-letter:${op.id}`} className="rounded-none" />
+          </div>
         </section>
       )}
     </>
@@ -663,6 +691,8 @@ export const CustodyOperationDrawer = ({
   onClose,
   onConfirm,
   onCancel,
+  onDelete,
+  deleted = false,
 }: {
   id: string;
   toLetter: boolean;
@@ -672,10 +702,16 @@ export const CustodyOperationDrawer = ({
   onConfirm?: (() => void) | undefined;
   /** A held replenishment's «إلغاء الاستعاضة المعلّقة». */
   onCancel?: (() => void) | undefined;
+  /** «حذف العملية» — given only to whoever may delete it. */
+  onDelete?: (() => void) | undefined;
+  /** Opened from «العمليات المحذوفة»: read from `/deleted/:id`, nothing to do but read. */
+  deleted?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const read = useCustodyOperation(id);
+  const live = useCustodyOperation(deleted ? '' : id);
+  const gone = useCustodyDeletedOperation(deleted ? id : '');
+  const read = deleted ? gone : live;
   const op = read.data;
   const titleId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -811,6 +847,11 @@ export const CustodyOperationDrawer = ({
               ) : (
                 <>
                   {t(CUSTODY_OPS[op.kind].label)} — <HoldDrawerTitleDay op={op} />
+                  {deleted && (
+                    <span className="ms-2 inline-flex align-middle">
+                      <DeletedChip />
+                    </span>
+                  )}
                 </>
               )}
             </span>
@@ -844,20 +885,34 @@ export const CustodyOperationDrawer = ({
           ) : op === undefined ? (
             <ErrorState error={read.error} onRetry={() => void read.refetch()} />
           ) : (
-            <OperationBody op={op} toLetter={toLetter} />
+            <OperationBody op={op} toLetter={toLetter} deleted={deleted} />
           )}
         </div>
 
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 sm:px-6 dark:border-[#1c263b] dark:bg-[#0c111e]/95">
-          {op !== undefined && opStatus === 'held' && onCancel !== undefined && (
-            <HoldCancelButton id={op.id} onCancel={onCancel} />
-          )}
+          {/* The red ways out at the footer's start: a held one's cancel, then the delete. */}
+          {op !== undefined &&
+            !deleted &&
+            (onDelete !== undefined || (opStatus === 'held' && onCancel !== undefined)) && (
+              <span className="me-auto flex flex-wrap items-center gap-1">
+                {opStatus === 'held' && onCancel !== undefined && (
+                  <HoldCancelButton id={op.id} onCancel={onCancel} />
+                )}
+                {opStatus === 'held' && onCancel !== undefined && onDelete !== undefined && (
+                  <span
+                    aria-hidden="true"
+                    className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700"
+                  />
+                )}
+                {onDelete !== undefined && <DeleteDrawerButton id={op.id} onDelete={onDelete} />}
+              </span>
+            )}
           <Button variant="secondary" onClick={() => close.current()}>
             {t('common.close')}
           </Button>
           {/* A cancelled letter is not printed again. While held the next step is the transfer: the
-              print steps back beside it. */}
-          {op !== undefined && opStatus !== 'cancelled' && (
+              print steps back beside it. A deleted one is not printed again either. */}
+          {op !== undefined && opStatus !== 'cancelled' && !deleted && (
             <Button
               variant={opStatus === 'held' ? 'secondary' : 'primary'}
               onClick={print}
@@ -868,7 +923,7 @@ export const CustodyOperationDrawer = ({
               {t('fleet.custody.ledger.drawer.printLetter', { letter: letterName })}
             </Button>
           )}
-          {op !== undefined && opStatus === 'held' && onConfirm !== undefined && (
+          {op !== undefined && opStatus === 'held' && onConfirm !== undefined && !deleted && (
             <HoldConfirmButton id={op.id} onConfirm={onConfirm} />
           )}
         </footer>

@@ -10,8 +10,8 @@
 //   2. the violations card splits exactly: attributed + «مجهول» + «اسم غير مربوط» = Σ the rollup's
 //      `outstandingDriverAmount`, and «مجهول» is the row count of the list's own unknown filter;
 //   3. the drivers' `licenseExpiresFrom` / `licenseNotRecorded` and `registryDigest` agree with
-//      `/fleet/drivers`; the fuel cards' `expiresFrom` leaves the expired cards out; the 24-hour
-//      figure follows the clock passed in; the vehicle reads equal the registry list.
+//      `/fleet/drivers`; the fuel cards' `expiresFrom` leaves the expired cards out; «شُحن اليوم»
+//      (the Cairo day since batch 3's D5) follows the clock passed in; the vehicle reads equal the registry list.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -722,7 +722,7 @@ describe('fuel cards — the expiry window and the clock', () => {
     ).toBe(2);
   });
 
-  it('summary(q, now) measures «خلال آخر 24 ساعة» from the clock passed in', async () => {
+  it('summary(q, now) measures «شُحن اليوم» (the Cairo day) from the clock passed in', async () => {
     expect(charged).toBeDefined();
     expect((await fleetFuelCardService.summary({}, new Date())).chargedTodayAmount).toBe(500);
     const later = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);

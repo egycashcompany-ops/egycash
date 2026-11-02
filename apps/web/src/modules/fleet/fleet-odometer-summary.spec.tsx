@@ -58,6 +58,8 @@ const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   outReading: 150_000,
   inReading: 150_250,
   km: 250,
+  // Batch 3's per-row «فارق عداد الصيانة»; this spec is about the summary, so no gap.
+  serviceGapKm: null,
   driver1EmployeeId: null,
   driver2EmployeeId: null,
   driver1Name: null,

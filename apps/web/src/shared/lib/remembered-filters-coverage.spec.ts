@@ -84,6 +84,9 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // `open`: a link that opens one operation's drawer, and `letter`: that drawer opened on its
   // printed letter — each names a record, not a narrowing of the list.
   ['modules/fleet/pages/CustodyLedgerPage.tsx', ['open', 'letter']],
+  // `open`: a link that opens one deleted operation's drawer — it names a record, not a narrowing
+  // of the list.
+  ['modules/fleet/pages/CustodyDeletedPage.tsx', ['open']],
   ['modules/fleet/pages/DriversListPage.tsx', []],
   ['modules/fleet/pages/FixedRosterPage.tsx', []],
   ['modules/fleet/pages/LicenseExpensesPage.tsx', []],

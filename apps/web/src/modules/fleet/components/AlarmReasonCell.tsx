@@ -11,6 +11,9 @@
 // leave, blur and Escape, one open at a time (`hoverControl`), drawn in a layer of its own that
 // takes no pointer events, following its chip and hiding once the chip scrolls out of the table's
 // box. The words are never a `title`: the card says them.
+//
+// The card's frame, its placement and its opening rules are exported: «كيف حُسب الفارق»
+// (`AlarmFigureCell`), the card of a figure that WAS computed, opens the same way in the same frame.
 import {
   useEffect,
   useId,
@@ -49,7 +52,7 @@ const CARD = 'fleet.odometer.alarmReason.card.';
 const useBrowserLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /** Was this focus the keyboard's? A click focuses too, and a click is not a question. */
-const keyboardFocus = (el: HTMLElement): boolean => {
+export const keyboardFocus = (el: HTMLElement): boolean => {
   try {
     return el.matches(':focus-visible');
   } catch {
@@ -57,7 +60,7 @@ const keyboardFocus = (el: HTMLElement): boolean => {
   }
 };
 
-const Glyph = ({
+export const Glyph = ({
   children,
   className,
   width = 2,
@@ -79,7 +82,7 @@ const Glyph = ({
     {children}
   </svg>
 );
-const INFO = (
+export const INFO = (
   <>
     <circle cx="12" cy="12" r="9" />
     <path d="M12 11v5" />
@@ -101,14 +104,19 @@ const FORWARD = (
   </>
 );
 
-/** The card, beside its chip: over everything, above the chip or below it, centred on it. */
-const ReasonCardLayer = ({
+/**
+ * The card, beside its chip: over everything, above the chip or below it, centred on it.
+ * `figure`: «كيف حُسب الفارق», a little wider for its arithmetic.
+ */
+export const ReasonCardLayer = ({
   id,
   anchor,
+  figure = false,
   children,
 }: {
   id: string;
   anchor: RefObject<HTMLElement | null>;
+  figure?: boolean;
   children: ReactNode;
 }): JSX.Element | null => {
   const panel = useRef<HTMLDivElement>(null);
@@ -167,10 +175,14 @@ const ReasonCardLayer = ({
       id={id}
       role="tooltip"
       data-odo-reason-card="true"
+      data-odo-figure-card={figure ? 'true' : undefined}
       dir="rtl"
       // Unseen until it has its place, so it never flashes at the corner of the screen.
       style={at === null ? { top: 0, left: 0, visibility: 'hidden' } : at}
-      className="pointer-events-none fixed z-[110] w-[30rem] max-w-[calc(100vw-16px)] animate-menu-in rounded-xl border border-slate-200 bg-white p-3.5 text-start text-slate-900 shadow-2xl dark:border-[#2b3b6b] dark:bg-[#131d35] dark:text-white [font-family:'Cairo',sans-serif]"
+      className={cn(
+        "pointer-events-none fixed z-[110] max-w-[calc(100vw-16px)] animate-menu-in rounded-xl border border-slate-200 bg-white p-3.5 text-start text-slate-900 shadow-2xl dark:border-[#2b3b6b] dark:bg-[#131d35] dark:text-white [font-family:'Cairo',sans-serif]",
+        figure ? 'w-[31rem]' : 'w-[30rem]',
+      )}
     >
       {children}
     </div>,
@@ -179,7 +191,7 @@ const ReasonCardLayer = ({
 };
 
 /** One chip's card: open state, its rules (`hoverControl`), and Escape anywhere while open. */
-const useReasonCard = (): { open: boolean; control: HoverControl } => {
+export const useReasonCard = (): { open: boolean; control: HoverControl } => {
   const [open, setOpen] = useState(false);
   const control = useMemo(() => hoverControl(setOpen), []);
   // Gone with its chip: no timer left to fire, no card left open.

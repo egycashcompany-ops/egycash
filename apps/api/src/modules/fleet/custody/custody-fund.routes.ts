@@ -6,6 +6,10 @@
 // pass. No new permission key, and no licensing grant: the settlement's candidates (each with its
 // whole licensing record, for the eye preview) are served here, under the custody grant. A held
 // replenishment's «تأكيد التحويل» and its cancel ride the same two grants that made it.
+//
+// «حذف العملية» rides the custody grant AND the custody receipts' DELETE grant — the grant that
+// already deletes a custody receipt or a memo; still no new key. «العمليات المحذوفة» is read under
+// the custody grant alone, like «سجل العهدة».
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -14,7 +18,9 @@ import {
   CreateFleetCustodyChargeSchema,
   CreateFleetCustodyReplenishmentSchema,
   CreateFleetCustodySettlementSchema,
+  DeleteFleetCustodyOperationSchema,
   FleetCustodyLedgerSummaryQuerySchema,
+  ListFleetCustodyDeletedQuerySchema,
   ListFleetCustodyLedgerQuerySchema,
   objectId,
 } from '@ecms/contracts';
@@ -29,7 +35,10 @@ import {
   custodyLedgerSummary,
   custodyReplenishCandidates,
   custodySettleCandidates,
+  deleteCustodyOperation,
+  getCustodyDeletedOperation,
   getCustodyOperation,
+  listCustodyDeleted,
   listCustodyLedger,
   replenishCustody,
   settleCustody,
@@ -119,6 +128,29 @@ export const buildFleetCustodyFundRouter = (): Router => {
     authorize('fleetReceipt.create'),
     validate({ params: IdParamSchema, body: CancelFleetCustodyReplenishmentSchema }),
     asyncHandler(cancelCustodyReplenishment),
+  );
+  router.delete(
+    '/operations/:id',
+    authenticate,
+    authorize('fleetCustody.view'),
+    authorize('fleetReceipt.delete'),
+    validate({ params: IdParamSchema, body: DeleteFleetCustodyOperationSchema }),
+    asyncHandler(deleteCustodyOperation),
+  );
+  // «العمليات المحذوفة» — the page, then one deleted operation for its drawer.
+  router.get(
+    '/deleted',
+    authenticate,
+    authorize('fleetCustody.view'),
+    validate({ query: ListFleetCustodyDeletedQuerySchema }),
+    asyncHandler(listCustodyDeleted),
+  );
+  router.get(
+    '/deleted/:id',
+    authenticate,
+    authorize('fleetCustody.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getCustodyDeletedOperation),
   );
   return router;
 };

@@ -44,6 +44,11 @@ export interface CatalogEntry {
   index: number;
   /** The memo that counts it, as set on «قوائم الحركة» — `null` is both. */
   memo: LicenseExpenseKind | null;
+  /**
+   * «طريقة الصرف»: the group that offers it — «ما تم صرفه بفيزا إدارة الحركة», «ما تم صرفه
+   * نقدًا», or both (`null`, which every item said before the question was asked).
+   */
+  paidBy: LicenseExpensePaidBy | null;
 }
 
 /** The department's items as the counters read them; the index keeps each one's colour. */
@@ -56,7 +61,22 @@ export const catalogEntriesOf = (
     name: localized(item.name, locale),
     index,
     memo: item.licenseExpenseKind ?? null,
+    paidBy: item.licenseExpensePaidBy ?? null,
   }));
+
+/**
+ * The counters a memo — or a template — offers: the active items, and an archived one only while
+ * its lines still count it, so it can be counted out. Filtered after mapping, so each keeps its
+ * colour. A deleted item is not on the list at all: its saved lines stay as cards with their label.
+ */
+export const offeredEntriesOf = (
+  items: readonly FleetCatalogItemDto[],
+  lines: readonly Pick<LicenseExpenseItemLine, 'itemId'>[],
+  locale: Locale,
+): CatalogEntry[] =>
+  catalogEntriesOf(items, locale).filter(
+    (entry, i) => items[i]!.isActive || lines.some((line) => line.itemId === entry.id),
+  );
 
 /**
  * The forms' switch (the receipt form's «وقود / كاوتش / غسيل»): a sunken tray, the pressed side in
@@ -219,9 +239,15 @@ export const PaidGroup = <H extends { items: LicenseExpenseItemLine[] }>({
     if (counted.length > 0) setKept((held) => new Set([...held, ...counted]));
   }, [items, kept]);
   // «هضيف البنود واحدد تبع تجديد التراخيص ولا مد المده»: this memo's items as «قوائم الحركة» sets
-  // them, and those in both.
+  // them, and those in both — and in this group only when it is paid this way, or both («عاوز احدد
+  // البند كمان هو صرفه بفيزا إدارة الحركة او صرفه نقدًا او كلاهما»). A line already here keeps its
+  // counter whatever the item says now, so nothing saved ever loses the counter that changes it.
   const counters = catalogItems.filter(
-    (item) => item.memo === null || item.memo === kind || kept.has(item.id) || countOf(item.id) > 0,
+    (item) =>
+      ((item.memo === null || item.memo === kind) &&
+        (item.paidBy === null || item.paidBy === paid)) ||
+      kept.has(item.id) ||
+      countOf(item.id) > 0,
   );
   const newLine = (itemId: string | null, label: string): LicenseExpenseItemLine => ({
     key: newKey(),
@@ -435,7 +461,9 @@ export const useAddToCatalog = (): ((
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const catalog = useFleetCatalog('licenseExpenseItem');
-  const createCatalogItem = useCreateCatalogItem();
+  // Its catch words every failure, on the setup page and in the editor alike — so the global toast
+  // is not raised as well: one refusal, one toast.
+  const createCatalogItem = useCreateCatalogItem(() => true);
   return async (kind, label) => {
     // ALREADY ON THE LIST — under the other memo, or archived: the line is linked to it instead of
     // being refused as a duplicate and left a loose line. Which memo it belongs to stays as
@@ -452,6 +480,8 @@ export const useAddToCatalog = (): ((
         countsForAlarm: false,
         // Added from this memo, it is this memo's item — «قوائم الحركة» can put it in both.
         licenseExpenseKind: kind,
+        // Paid both ways until somebody says otherwise.
+        licenseExpensePaidBy: null,
       });
       toast.success(t('fleet.licenseExpenses.addedToListToast'));
       return item.id;

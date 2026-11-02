@@ -104,6 +104,15 @@ export const FLEET_LICENSE_EXPENSE_KINDS = ['renewal', 'extension'] as const;
 export const FleetLicenseExpenseKindSchema = z.enum(FLEET_LICENSE_EXPENSE_KINDS);
 export type FleetLicenseExpenseKind = z.infer<typeof FleetLicenseExpenseKindSchema>;
 
+/**
+ * By the traffic department's card («فيزا»), or in cash («نقدي»). Declared here, ahead of the
+ * catalogs, because a `licenseExpenseItem` says which of the two pays for it — see
+ * `licenseExpensePaidBy` — and the catalog schemas below are evaluated at import.
+ */
+export const FLEET_LICENSE_EXPENSE_PAYMENTS = ['visa', 'cash'] as const;
+export const FleetLicenseExpensePaidBySchema = z.enum(FLEET_LICENSE_EXPENSE_PAYMENTS);
+export type FleetLicenseExpensePaidBy = z.infer<typeof FleetLicenseExpensePaidBySchema>;
+
 export interface FleetCatalogItemDto {
   id: string;
   kind: FleetCatalogKind;
@@ -117,6 +126,17 @@ export interface FleetCatalogItemDto {
    * المده». `null` is both, which every item was before the question was asked; null elsewhere.
    */
   licenseExpenseKind: FleetLicenseExpenseKind | null;
+  /**
+   * `licenseExpenseItem` only: «طريقة الصرف» — the group of the memo it is offered in: the
+   * traffic department's card («فيزا»), cash («نقدي»), or `null` for both («كليهما»), which every
+   * item was before the question was asked; null elsewhere.
+   */
+  licenseExpensePaidBy: FleetLicenseExpensePaidBy | null;
+  /**
+   * Seeded by the boot (`createdBy === null`) rather than added by the owner. Such an item is
+   * archived, never deleted — the boot would only seed it again.
+   */
+  builtIn: boolean;
   isActive: boolean;
   /**
    * Where the item sits in its list — «اقدر ارتبهم عن طريق الشد والترك». Every list of this kind,
@@ -165,6 +185,8 @@ export const CreateFleetCatalogItemSchema = z
     violationSide: FleetViolationSideSchema.optional(),
     /** Left out or null: both memos. Nothing here is required — «ومش عاوز اى داتا اجبارى». */
     licenseExpenseKind: FleetLicenseExpenseKindSchema.nullable().optional(),
+    /** «طريقة الصرف» — left out or null: both groups («كليهما»). */
+    licenseExpensePaidBy: FleetLicenseExpensePaidBySchema.nullable().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -203,6 +225,17 @@ export const CreateFleetCatalogItemSchema = z
         message: 'only a licenseExpenseItem belongs to a licensing-expenses memo',
       });
     }
+    if (
+      value.kind !== 'licenseExpenseItem' &&
+      value.licenseExpensePaidBy !== undefined &&
+      value.licenseExpensePaidBy !== null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['licenseExpensePaidBy'],
+        message: 'only a licenseExpenseItem is paid by card or in cash',
+      });
+    }
   });
 export type CreateFleetCatalogItem = z.infer<typeof CreateFleetCatalogItemSchema>;
 
@@ -213,6 +246,8 @@ export const UpdateFleetCatalogItemSchema = z
     violationSide: FleetViolationSideSchema.optional(),
     /** null puts the item back in both memos. */
     licenseExpenseKind: FleetLicenseExpenseKindSchema.nullable().optional(),
+    /** null puts the item back in both groups («كليهما»); refused by the service on another kind. */
+    licenseExpensePaidBy: FleetLicenseExpensePaidBySchema.nullable().optional(),
     isActive: z.boolean().optional(),
     version: z.number().int().min(0),
   })
@@ -882,6 +917,21 @@ export interface FleetOdometerLogDto {
   inReading: number | null;
   /** SERVER-derived, never client-supplied. */
   km: number | null;
+  /**
+   * «فارق عداد الصيانة» AT THIS ROW — «مش بيخصم الكيلومترات اللى بتخش كل يوم بيجيب الفرق». SERVER-derived.
+   *
+   * The row's reading (`max(outReading, inReading ?? outReading)`) less the counter of the
+   * counting service IN FORCE on the row's day: the latest closed, alarm-counting visit checked
+   * out STRICTLY before that day, its counter chosen exactly as the maintenance alarm chooses it
+   * (exit, else entry, else the stand-in reading; the same bounds). So each row of a car reads the
+   * distance the car had run since its service ON THAT DAY, and the figure grows day by day; the
+   * newest row equals the alarm's `sinceServiceKm`.
+   *
+   * `null` when there is nothing honest to show: a row with no car, a day recorded without a
+   * reading, no counting service before the row's day, a counter the alarm would refuse, or a car
+   * the alarm does not cover (not active, or its make has no «مسافة الصيانة»).
+   */
+  serviceGapKm: number | null;
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
   /**
@@ -1129,6 +1179,32 @@ export interface FleetAlarmChainPointDto {
   date: string;
 }
 
+/** A make, a work type or a workshop, as the alarm names it — both languages, read from its catalog. */
+export interface FleetAlarmNamedDto {
+  id: string;
+  name: { ar: string; en: string };
+}
+
+/**
+ * What the figure was JUDGED BY — so «كيف حُسب الفارق» never has to ask another screen.
+ *
+ * «مفيش إنذار والمسافة كبيرة»: a car can run a long way without an alarm because its make's
+ * interval is long, and a reader who sees only the distance cannot tell that apart from a broken
+ * rule. The interval and the two thresholds come back beside the figure, exactly as this answer
+ * resolved them, so the card can show the arithmetic and name where each number is set. They are
+ * on the alarm, not joined on the screen, because a reader of the odometer may hold no grant on
+ * the catalogs or the settings.
+ */
+export interface FleetAlarmRuleDto {
+  /** The car's make (`vehicle.typeId`); `null` when it has none or the make is gone. */
+  vehicleType: FleetAlarmNamedDto | null;
+  /** The make's «مسافة الصيانة» (`maintenanceIntervalKm`); 0 = no rule (then `noAlarmReason` is `noInterval`). */
+  intervalKm: number;
+  /** `fleet.alarm.yellowKm` / `fleet.alarm.redKm` as resolved for this answer. */
+  yellowKm: number;
+  redKm: number;
+}
+
 /**
  * The service the cycle is measured FROM, as the alarm actually used it — so a screen can say why
  * a figure is what it is, or why there is none, without recomputing anything.
@@ -1159,18 +1235,40 @@ export interface FleetAlarmBaselineDto {
     because: 'belowChain' | 'aboveReading';
     conflict: FleetAlarmChainPointDto;
   } | null;
+  /** The visit's work type, as the card names it; `null` when it has none or the type is gone. */
+  workType: FleetAlarmNamedDto | null;
 }
 
-/** Why a newer visit does not count: it is still open, or its work type does not count. */
-export type FleetAlarmUncountedWhy = 'open' | 'notCounting';
+/**
+ * Why a newer visit is not the one measured from: it is still open, its work type does not count,
+ * or — `checkedOutEarlier` — it is closed and counts, but another counting visit was checked out
+ * after it (the baseline is the latest CHECK-OUT, the newest visit is the latest CHECK-IN).
+ */
+export type FleetAlarmUncountedWhy = 'open' | 'notCounting' | 'checkedOutEarlier';
 
-/** The car's newest visit, when the alarm cannot measure from it — so a screen can say why. */
+/**
+ * The car's newest visit, when the alarm does not measure from it — so a screen can say why.
+ *
+ * `checkedOutEarlier`: the newest visit by check-in is closed and counts, but another counting
+ * visit was checked out after it, so the cycle is measured from that one.
+ */
 export interface FleetAlarmUncountedVisitDto {
   visitId: string;
   inDate: string;
   /** `null` while the visit is still open. */
   outDate: string | null;
   why: FleetAlarmUncountedWhy;
+  /** The visit's work type; `null` when it has none or the type is gone. */
+  workType: FleetAlarmNamedDto | null;
+  /** The visit's workshop; `null` when it has none or the workshop is gone. */
+  workshop: FleetAlarmNamedDto | null;
+  /**
+   * Does the visit's work type count for the alarm — today's «يُحتسب للإنذار» list? `false` for
+   * `notCounting` and `true` for `checkedOutEarlier` by definition; for an `open` visit it says
+   * whether closing it would make it the one measured from, so the card can say «لا يُحتسب حتى بعد
+   * إغلاقها» without guessing from the work type's name.
+   */
+  counts: boolean;
 }
 
 /**
@@ -1234,9 +1332,18 @@ export interface FleetMaintenanceAlarmDto {
   baseline: FleetAlarmBaselineDto | null;
   /**
    * The car's newest visit when it is not the baseline and does not count — still open, or its
-   * work type does not count; `null` otherwise.
+   * work type does not count — or counts but was checked out before the baseline
+   * (`checkedOutEarlier`); `null` otherwise.
    */
   newerUncountedVisit: FleetAlarmUncountedVisitDto | null;
+  /** The interval and thresholds this figure was judged by — the card's «المسافة» and «الحدود». */
+  rule: FleetAlarmRuleDto;
+  /**
+   * The NEWEST-dated reading on the chain. It differs from `latestReading` (the HIGHEST) only when
+   * the highest reading is not the newest — a typo, or a reading entered on the wrong car — which
+   * the card says in so many words («أعلى قراءة ليست أحدث قراءة»). `null` when there is no reading.
+   */
+  newestReading: FleetAlarmChainPointDto | null;
 }
 
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────
@@ -3371,6 +3478,13 @@ export const FLEET_FUEL_PRICE_KEY: Record<FleetFuelType, string> = {
   diesel: FleetSettingKeys.FuelPriceDiesel,
 };
 
+/**
+ * A card's label and name as every card schema bounds them — exported so a value a company's sheet
+ * puts on a card («ربط الكروت بالسيارات», «إضافة») is held to the same limits as one typed.
+ */
+export const FleetFuelCardLabelSchema = z.string().trim().min(1).max(60);
+export const FleetFuelCardNameSchema = z.string().trim().min(1).max(120);
+
 const fuelCardCore = {
   /**
    * The car the card is on — or `null` for a card that is on none («كروت زيادة ملهمش عربيات»: the
@@ -3378,9 +3492,9 @@ const fuelCardCore = {
    */
   vehicleId: objectId().nullable(),
   /** What a card on no car is called on the fuel screens («سفر 1», «اسبير»). */
-  label: z.string().trim().min(1).max(60).nullish(),
+  label: FleetFuelCardLabelSchema.nullish(),
   company: FleetFuelCardCompanySchema,
-  name: z.string().trim().min(1).max(120),
+  name: FleetFuelCardNameSchema,
   number: z.string().trim().min(4).max(40),
   /**
    * REQUIRED — «تاريخ انتهاء الكارت اجبارى». The DTO still reads `null` for the few imported cards
@@ -3493,7 +3607,10 @@ export interface FleetFuelCardTotalsDto {
   chilloutBalance: number;
   requestedCount: number;
   requestedAmount: number;
-  /** Added to balances within the last 24 hours. */
+  /**
+   * «شُحن اليوم» — Σ the live `charge` lines since TODAY's Cairo midnight; a charge the company's
+   * sheet cancelled («أُلغي بشيت الشركة») is not counted.
+   */
   chargedTodayAmount: number;
   cardCount: number;
 }
@@ -3569,9 +3686,11 @@ export interface FleetFuelTransferResultDto {
 }
 
 /**
- * A card log's line kinds. The first four keep their order; the last two are written only by
- * «مطابقة أرصدة الكروت»: `sheetAdjust` sets the balance to the company's sheet (✓), and
- * `sheetReject` records, with amount 0, that the sheet's figure was refused (✗).
+ * A card log's line kinds. The first four keep their order; the last three are written only by
+ * «مطابقة أرصدة الكروت»: `sheetAdjust` sets the balance to the company's sheet (✓),
+ * `sheetReject` records, with amount 0, that the sheet's figure was refused (✗), and `sheetLink`
+ * records, with amount 0, that the card moved car by a sheet decision («نُقل من … إلى … — شيت
+ * الشركة»). New kinds are only ever appended.
  */
 export const FLEET_FUEL_MOVEMENT_KINDS = [
   'charge',
@@ -3580,6 +3699,7 @@ export const FLEET_FUEL_MOVEMENT_KINDS = [
   'receipt',
   'sheetAdjust',
   'sheetReject',
+  'sheetLink',
 ] as const;
 export const FleetFuelMovementKindSchema = z.enum(FLEET_FUEL_MOVEMENT_KINDS);
 export type FleetFuelMovementKind = z.infer<typeof FleetFuelMovementKindSchema>;
@@ -3606,6 +3726,14 @@ export interface FleetFuelCardMovementDto {
   byName: string | null;
   /** The sheet a `sheetAdjust` / `sheetReject` line came from; `null` on every other line. */
   sheet: FleetFuelMovementSheetDto | null;
+  /**
+   * A `charge` the company's sheet cancelled — «تبقى موجودة بس سجل للكرت وبس»: the line stays in
+   * the card's log, struck, and no longer counts anywhere else (not in «شحن اليوم», not green).
+   * `null` on a live charge and on every other line.
+   */
+  cancelledBySheet: FleetFuelCancelledBySheetDto | null;
+  /** A `sheetLink` line's move — from which car or label to which; `null` on every other line. */
+  link: FleetFuelMovementLinkDto | null;
 }
 
 export const ListFleetFuelCardMovementsQuerySchema = PaginationQuerySchema.extend({
@@ -3634,6 +3762,90 @@ export type UpdateFleetFuelCardMovement = z.infer<typeof UpdateFleetFuelCardMove
 
 /** The sheet's three columns, by header text (any order, any case). */
 export const FLEET_FUEL_SHEET_COLUMNS = ['Card Number', 'Card Name', 'Card Balance'] as const;
+
+/**
+ * What a column of the company's sheet may hold — «الصفحه محتاجه تتظبط جامد»: the data sheet and
+ * the statement print different headers, in English or in Arabic, and the reader finds each
+ * column by its ROLE, not by one spelling. `number` and `balance` are required; the rest are read
+ * when present.
+ */
+export const FLEET_FUEL_SHEET_ROLES = [
+  'number',
+  'name',
+  'balance',
+  'plate',
+  'chassis',
+  'code',
+] as const;
+export type FleetFuelSheetRole = (typeof FLEET_FUEL_SHEET_ROLES)[number];
+
+/**
+ * Header text, FOLDED: NFKC, lower case, «أ إ آ ٱ» → «ا», «ة» → «ه», «ى» → «ي», no tatweel, no
+ * diacritics, no invisible direction marks, and no spaces or `. _ - : / ( )`. «Card  Number» →
+ * `cardnumber`, «اللوحة» → `اللوحه`. Pure; the reader and its tests fold with the same function.
+ */
+export const foldSheetHeader = (text: string): string =>
+  text
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u064B-\u065F\u0670\u0640\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[\s._\-:/()]/g, '');
+
+/** Each role's headers, already folded (`foldSheetHeader`) — a header names a role when it folds to one. */
+export const FLEET_FUEL_SHEET_SYNONYMS: Readonly<Record<FleetFuelSheetRole, readonly string[]>> = {
+  number: [
+    'cardnumber',
+    'cardno',
+    'cardnum',
+    'number',
+    'pan',
+    'رقمالكارت',
+    'رقمالبطاقه',
+    'رقمالكرت',
+    'رقمالفيزا',
+  ],
+  name: ['cardname', 'name', 'cardholder', 'اسمالكارت', 'اسمالبطاقه', 'الاسم', 'اسمالكرت'],
+  balance: [
+    'cardbalance',
+    'balance',
+    'currentbalance',
+    'الرصيد',
+    'رصيد',
+    'رصيدالكارت',
+    'رصيدالبطاقه',
+  ],
+  plate: ['لوحه', 'اللوحه', 'رقماللوحه', 'plate', 'plateno', 'platenumber'],
+  chassis: ['شاسيه', 'الشاسيه', 'شاسي', 'رقمالشاسيه', 'chassis', 'chassisno', 'vin'],
+  code: ['كود', 'الكود', 'code', 'carcode', 'كودالعربيه', 'كودالسياره', 'vehiclecode'],
+};
+
+/**
+ * Recognised and NEVER read: the card's PIN («pass»), and the company's planned top-up («قيمه
+ * الشحن»). They are named in the reading's `layout` so the reader sees they were seen, and their
+ * cells are never read — no PIN reaches a row, the session, an answer or a log. Already folded.
+ */
+export const FLEET_FUEL_SHEET_NEVER_READ = {
+  secret: ['pass', 'password', 'pin', 'الرقمالسري', 'باسورد'],
+  ignored: ['قيمهالشحن', 'الشحن'],
+} as const;
+
+/**
+ * How a row's card number is printed: `full` (12–19 digits, as text), `masked` (some digits, a run
+ * of `*`/`x`/`•`, then at least the last four), `none` (empty), `imprecise` (a NUMERIC cell of more
+ * than 15 digits — the spreadsheet already rounded it, so it is never matched by number), or
+ * `other` (anything else; its last four digits are what is compared).
+ */
+export const FLEET_FUEL_SHEET_NUMBER_KINDS = [
+  'full',
+  'masked',
+  'none',
+  'imprecise',
+  'other',
+] as const;
+export type FleetFuelSheetNumberKind = (typeof FLEET_FUEL_SHEET_NUMBER_KINDS)[number];
 /** The largest sheet accepted, in MB. */
 export const FLEET_FUEL_SHEET_MAX_MB = 10;
 /** What each company's card names start with on its sheet. */
@@ -3650,23 +3862,65 @@ export type FleetFuelReconcileDecision = z.infer<typeof FleetFuelReconcileDecisi
 
 /**
  * Rows that are never decided: one name with differing numbers or balances on the sheet, a name
- * two live cards share, a balance that cannot be read, a row with no name.
+ * two live cards share, a balance that cannot be read, a row with no name (kept for the sessions
+ * read before the rebuilt names), a number whose last four fit two or more cards
+ * (`ambiguousNumber`), one card claimed by two rows (`cardTwice`), and a row with no name to check
+ * whose last four fit exactly one card (`lastFourOnly` — listed with its candidate, not decided).
+ * New reasons are only ever appended.
  */
 export const FLEET_FUEL_SHEET_CONFLICTS = [
   'sheetRowsDiffer',
   'systemNameTwice',
   'badBalance',
   'noName',
+  'ambiguousNumber',
+  'cardTwice',
+  'lastFourOnly',
 ] as const;
 export type FleetFuelSheetConflict = (typeof FLEET_FUEL_SHEET_CONFLICTS)[number];
 
-/** The multipart text field beside `file`. */
+/**
+ * «تاريخ الشيت» — the day the company's sheet is FOR, a multipart text field: '' or absent is
+ * none (`null`); `YYYY-MM-DD` is that calendar day, at UTC midnight; anything else is refused.
+ * Optional, and never guessed by the server — the screen pre-fills it from the file's name.
+ */
+const fuelSheetDay = z
+  .string()
+  .trim()
+  .nullish()
+  .transform((value, ctx): Date | null => {
+    if (value === undefined || value === null || value === '') return null;
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    const day =
+      parts === null
+        ? null
+        : new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+    if (day === null || day.toISOString().slice(0, 10) !== value) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'a sheet date is a day, YYYY-MM-DD' });
+      return z.NEVER;
+    }
+    return day;
+  });
+
+/** The multipart text fields beside `file`. */
 export const UploadFleetFuelSheetSchema = z
-  .object({ company: FleetFuelCardCompanySchema })
+  .object({ company: FleetFuelCardCompanySchema, sheetDate: fuelSheetDay })
   .strict();
 export type UploadFleetFuelSheet = z.infer<typeof UploadFleetFuelSheetSchema>;
 
-/** ✓ or ✗ on chosen cards of one session — each card once, however its id is spelled. */
+/** Ids named once each, however they are spelled. */
+const distinctIds = (ids: readonly string[]): boolean =>
+  new Set(ids.map((id) => id.toLowerCase())).size === ids.length;
+
+/**
+ * ✓ or ✗ on chosen cards of one session — each card once, however its id is spelled.
+ *
+ * With ✓ only, two optional lists: `cancelCharges` — the charges the sheet does not show that the
+ * reader ticked to cancel («أُلغي بشيت الشركة»), each a movement id of a stored candidate; and
+ * `approveRequests` — the cards (of `cardIds`) whose pending «طلب رصيد» is exactly the sheet's
+ * difference and is approved instead of a plain adjustment («اعتماد طلب الرصيد»). A body without
+ * them decides exactly as before.
+ */
 export const DecideFleetFuelReconcileSchema = z
   .object({
     decision: FleetFuelReconcileDecisionSchema,
@@ -3674,11 +3928,42 @@ export const DecideFleetFuelReconcileSchema = z
       .array(objectId())
       .min(1)
       .max(FLEET_FUEL_RECONCILE_MAX_CARDS)
-      .refine((ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length, {
-        message: 'a card is named twice',
-      }),
+      .refine(distinctIds, { message: 'a card is named twice' }),
+    cancelCharges: z
+      .array(objectId())
+      .max(500)
+      .refine(distinctIds, { message: 'a charge is named twice' })
+      .optional(),
+    approveRequests: z
+      .array(objectId())
+      .max(500)
+      .refine(distinctIds, { message: 'a card is named twice' })
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.decision !== 'apply') {
+      for (const field of ['cancelCharges', 'approveRequests'] as const) {
+        if ((value[field]?.length ?? 0) > 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [field],
+            message: 'only a ✓ (apply) cancels a charge or approves a request',
+          });
+        }
+      }
+    }
+    const named = new Set(value.cardIds.map((id) => id.toLowerCase()));
+    value.approveRequests?.forEach((cardId, i) => {
+      if (!named.has(cardId.toLowerCase())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['approveRequests', i],
+          message: 'a request is approved only on a card this decision names',
+        });
+      }
+    });
+  });
 export type DecideFleetFuelReconcile = z.infer<typeof DecideFleetFuelReconcileSchema>;
 
 /** One sheet row as read: its 1-based row number, the number as printed (masked), name, balance. */
@@ -3687,6 +3972,25 @@ export interface FleetFuelSheetRowDto {
   number: string;
   name: string;
   balance: number;
+  /**
+   * The name that was MATCHED: the sheet's own, or — when the sheet prints only the bare company
+   * prefix («EGYCASH») beside a plate or a chassis — rebuilt from them («EGYCASH-3674-B257539»).
+   */
+  builtName: string;
+  /** The sheet's plate and chassis columns, as printed; `null` when the sheet has none. */
+  plate: string | null;
+  chassis: string | null;
+  /** The sheet's car code, as printed; `null` when the sheet has no such column or the cell is empty. */
+  code: string | null;
+  /** How the number is printed — see `FLEET_FUEL_SHEET_NUMBER_KINDS`. */
+  numberKind: FleetFuelSheetNumberKind;
+}
+/** A card named on a line: its name and its car's code or its label. */
+export interface FleetFuelCardRefDto {
+  id: string;
+  name: string;
+  /** The car's code, or the card's label on no car; `null` when neither is known. */
+  place: string | null;
 }
 /** A card matched to its sheet row. */
 export interface FleetFuelReconcileLineDto {
@@ -3696,6 +4000,32 @@ export interface FleetFuelReconcileLineDto {
   difference: number;
   /** The last four digits agree, or the sheet's number shows fewer than four. */
   numberMatches: boolean;
+  /** How the row found its card: by name first, else by its full number. */
+  matchedBy: 'name' | 'number';
+  /** The sheet's name is the card's — `false` only on a line matched by number. */
+  nameMatches: boolean;
+  /**
+   * The live card that holds the sheet's number when it is not this one — a crossed number's
+   * partner («الرقم في الشيت مسجَّل في النظام على …»); `null` otherwise.
+   */
+  numberHolder: FleetFuelCardRefDto | null;
+  /** The sheet's car code agrees with the card's car or label — a hint only; `null` without a code. */
+  placeMatches: boolean | null;
+  /**
+   * The card's live charges the sheet does not show — candidates to cancel when the sheet is LOWER
+   * (difference < 0); `[]` otherwise. Newest first.
+   */
+  charges: FleetFuelReconcileChargeDto[];
+}
+/** A live charge on the card the sheet does not show — a candidate to cancel (difference < 0 only). */
+export interface FleetFuelReconcileChargeDto {
+  /** The charge's movement id — what `cancelCharges` names. */
+  id: string;
+  amount: number;
+  at: string;
+  byName: string | null;
+  /** Its Cairo day is LATER than the session's `sheetDate` — listed apart, never pre-ticked. */
+  afterSheetDate: boolean;
 }
 /** A row the sheet repeats identically — counted once, `times` in all. */
 export interface FleetFuelSheetDuplicateDto extends FleetFuelSheetRowDto {
@@ -3706,8 +4036,42 @@ export interface FleetFuelSheetConflictDto {
   name: string;
   /** The card the name matches, when exactly one does. */
   cardId: string | null;
+  /**
+   * The cards the row could be — `ambiguousNumber` (two or more) and `lastFourOnly` (one); a code
+   * may pre-select one on the screen, never decide. `[]` for every other reason.
+   */
+  candidateIds: string[];
   /** `balance` is `null` when it could not be read. */
   rows: { row: number; number: string; balance: number | null }[];
+}
+/** How one column of the sheet was read — the «طريقة قراءة الشيت» line. */
+export interface FleetFuelSheetLayoutColumnDto {
+  /** `secret` / `ignored`: recognised and never read (`FLEET_FUEL_SHEET_NEVER_READ`). */
+  role: FleetFuelSheetRole | 'secret' | 'ignored';
+  /** The column's letter — «A», «B», … */
+  column: string;
+  /** The header as printed; `null` for an untitled column read by its content. */
+  header: string | null;
+  /** Read by its content, not by its header. */
+  assumed: boolean;
+}
+/** A row that is not a card — no number and no name (a title, a totals line). */
+export interface FleetFuelSheetSkippedRowDto {
+  row: number;
+  /** Its first text cell; '' when none. */
+  text: string;
+  /** What its balance cell holds, when a number; `null` otherwise. */
+  figure: number | null;
+}
+/** A skipped row's figure checked against Σ the card balances read — the totals chip. */
+export interface FleetFuelSheetTotalCheckDto {
+  row: number;
+  text: string;
+  figure: number;
+  /** Σ the card rows' balances, to the piastre. */
+  sum: number;
+  /** `figure === sum` to the piastre. */
+  agrees: boolean;
 }
 /** POST /fleet/fuel-cards/reconcile — the stored session and its comparison; no balance written. */
 export interface FleetFuelReconcileDto {
@@ -3728,6 +4092,26 @@ export interface FleetFuelReconcileDto {
   systemOnly: FleetFuelCardDto[];
   duplicates: FleetFuelSheetDuplicateDto[];
   conflicts: FleetFuelSheetConflictDto[];
+  /** How each column was read, in sheet order — the «طريقة قراءة الشيت» line. `[]` on an old session. */
+  layout: FleetFuelSheetLayoutColumnDto[];
+  /** Some names were rebuilt from the company prefix, the plate and the chassis. */
+  nameRebuilt: boolean;
+  /** Rows read as cards — `rows` less the skipped ones. */
+  cardRows: number;
+  /** Rows that are not cards (titles, totals). */
+  skipped: FleetFuelSheetSkippedRowDto[];
+  /** The totals row checked against the card balances; `null` when no skipped row has a figure. */
+  totalCheck: FleetFuelSheetTotalCheckDto | null;
+  /** The row the layout line shows as its example; `null` when there is none. */
+  example: { row: number; builtName: string } | null;
+  /** «تاريخ الشيت», `YYYY-MM-DD`, as given at upload; `null` when none. */
+  sheetDate: string | null;
+  /** The sheet has a car-code column — without one there are no `links`. */
+  carColumn: boolean;
+  /** «ربط الكروت بالسيارات» — matched cards whose car the sheet says otherwise. */
+  links: FleetFuelReconcileLinkDto[];
+  /** «كروت في الشيت وليست في النظام» — sheet-only rows, with where the sheet puts them. */
+  newCards: FleetFuelReconcileNewCardDto[];
 }
 /** One card's answer to a decision. */
 export interface FleetFuelReconcileResultDto {
@@ -3737,6 +4121,10 @@ export interface FleetFuelReconcileResultDto {
   balance: number;
   at: string;
   byName: string | null;
+  /** Σ the charges this decision cancelled on the card; 0 when none. */
+  cancelledAmount: number;
+  /** The «طلب رصيد» approved instead of an adjustment; `null` when none. */
+  approvedRequest: number | null;
 }
 /** The sheet behind a `sheetAdjust` / `sheetReject` log line. */
 export interface FleetFuelMovementSheetDto {
@@ -3745,7 +4133,163 @@ export interface FleetFuelMovementSheetDto {
   sheetBalance: number;
   /** The card's balance when the sheet was read. */
   systemBalance: number;
+  /** The charges this adjustment cancelled («وأُلغي شحن …»); `[]` on the lines before it. */
+  cancelledCharges: { id: string; amount: number }[];
 }
+/** Which sheet cancelled a charge, and who decided it. */
+export interface FleetFuelCancelledBySheetDto {
+  reconciliationId: string;
+  fileName: string;
+  at: string;
+  byName: string | null;
+}
+
+// «ربط الكروت بالسيارات» — the sheet's car code against the card's car. Every change is the
+// owner's, row by row («كل تغيير بموافقتي»), and leaves a `sheetLink` line in the card's log.
+
+/**
+ * What the sheet says about a matched card's car: put a card on no car on one (`attach`), move it
+ * to another (`move`), take it off its car (`detach` — the sheet says «سفر…», «اسبير» or has no
+ * code), or a code no car or label answers to (`unknownCode` — the reader picks the car).
+ */
+export const FLEET_FUEL_LINK_KINDS = ['attach', 'move', 'detach', 'unknownCode'] as const;
+export type FleetFuelLinkKind = (typeof FLEET_FUEL_LINK_KINDS)[number];
+/**
+ * How the sheet's code was resolved: a remembered alias («تذكّر هذا الكود», or one brought across
+ * at go-live), the registry's car code, or a card's label.
+ */
+export const FLEET_FUEL_LINK_RESOLVERS = ['alias', 'code', 'label'] as const;
+export type FleetFuelLinkResolver = (typeof FLEET_FUEL_LINK_RESOLVERS)[number];
+/** A place a card can be: on a car (its id and code), or on none (its label). */
+export interface FleetFuelLinkPlaceDto {
+  vehicleId: string | null;
+  vehicleCode: string | null;
+  label: string | null;
+}
+/** One matched card whose place the sheet says otherwise. */
+export interface FleetFuelReconcileLinkDto {
+  card: FleetFuelCardDto;
+  sheetRow: number;
+  /** The sheet's code, as printed; `null` when the cell is empty. */
+  sheetCode: string | null;
+  kind: FleetFuelLinkKind;
+  /** Where the sheet puts it; `null` for an unknown code. */
+  to: FleetFuelLinkPlaceDto | null;
+  resolvedBy: FleetFuelLinkResolver | null;
+  /** The car whose chassis is in the card's name or the sheet's chassis column — evidence only. */
+  chassisCar: string | null;
+  /** The target car's card of this company that does not move away in the sheet. */
+  slotHeldBy: FleetFuelCardRefDto | null;
+  /** The other card of a swap or a chain — the two are decided together. */
+  pairWith: string | null;
+  /** Held back until the card-number repair: ✓ off, «ضمن تصحيح الأرقام». */
+  inRepair: boolean;
+  /** ✓ or ✗ once decided; `null` until then. */
+  decision: FleetFuelReconcileDecision | null;
+}
+/** A sheet-only row offered as a new card («إضافة») — never with its PIN. */
+export interface FleetFuelReconcileNewCardDto {
+  sheetRow: number;
+  name: string;
+  /** The number as the sheet prints it. */
+  number: string;
+  /** The sheet prints the full number — otherwise «إضافة» asks for it. */
+  numberIsFull: boolean;
+  balance: number;
+  sheetCode: string | null;
+  to: FleetFuelLinkPlaceDto | null;
+  resolvedBy: FleetFuelLinkResolver | null;
+  chassisCar: string | null;
+  slotHeldBy: FleetFuelCardRefDto | null;
+  /** The card «إضافة» created; `null` until then. */
+  cardId: string | null;
+}
+/** A `sheetLink` line's move. */
+export interface FleetFuelMovementLinkDto {
+  from: FleetFuelLinkPlaceDto;
+  to: FleetFuelLinkPlaceDto;
+  sheetCode: string | null;
+  reconciliationId: string;
+  fileName: string;
+}
+/**
+ * ✓ «تحديث» / ✗ «إبقاء» on chosen link rows of one session — a swap's two cards together, each card
+ * once. An `unknownCode` row needs a `pick` on ✓: the car chosen, or none with a label;
+ * `remember` saves each picked sheet code as an alias («تذكّر هذا الكود»).
+ */
+export const DecideFleetFuelLinksSchema = z
+  .object({
+    decision: FleetFuelReconcileDecisionSchema,
+    cardIds: z
+      .array(objectId())
+      .min(1)
+      .max(FLEET_FUEL_RECONCILE_MAX_CARDS)
+      .refine(distinctIds, { message: 'a card is named twice' }),
+    pick: z
+      .array(
+        z
+          .object({
+            cardId: objectId(),
+            vehicleId: objectId().nullable(),
+            label: FleetFuelCardLabelSchema.nullable().default(null),
+          })
+          .strict()
+          .superRefine(cardOnACarOrNamed),
+      )
+      .max(500)
+      .default([]),
+    remember: z.boolean().default(false),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.decision !== 'apply' && value.pick.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pick'],
+        message: 'only a ✓ (apply) picks a car',
+      });
+    }
+    const named = new Set(value.cardIds.map((id) => id.toLowerCase()));
+    const picked = new Set<string>();
+    value.pick.forEach((pick, i) => {
+      const id = pick.cardId.toLowerCase();
+      if (!named.has(id) || picked.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['pick', i, 'cardId'],
+          message: 'a pick names a card of this decision, once',
+        });
+      }
+      picked.add(id);
+    });
+  });
+export type DecideFleetFuelLinks = z.infer<typeof DecideFleetFuelLinksSchema>;
+/** One card's answer to a link decision — where it was and where it is now. */
+export interface FleetFuelLinkResultDto {
+  cardId: string;
+  decision: FleetFuelReconcileDecision;
+  from: FleetFuelLinkPlaceDto;
+  to: FleetFuelLinkPlaceDto;
+  at: string;
+  byName: string | null;
+}
+/**
+ * «إضافة» a sheet-only card. The number is typed when the sheet's is not full (its last four must
+ * agree); the expiry and the PIN are always typed — the sheet's PIN is never read. The rules are
+ * «إضافة كارت»'s own.
+ */
+export const AddFleetFuelSheetCardSchema = z
+  .object({
+    sheetRow: z.number().int().min(1),
+    number: fuelCardCore.number.optional(),
+    expiresAt: fuelCardCore.expiresAt,
+    password: fuelCardCore.password,
+    vehicleId: fuelCardCore.vehicleId,
+    label: fuelCardCore.label,
+  })
+  .strict()
+  .superRefine(cardOnACarOrNamed);
+export type AddFleetFuelSheetCard = z.infer<typeof AddFleetFuelSheetCardSchema>;
 
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ───────────────────
 //
@@ -4216,10 +4760,9 @@ export interface FleetCustodyMemoStateSpendDto extends FleetCustodyCountAmountDt
 // extension, or both: «ممكن اعمل مد مده لوحده او تجديد ترخيص لوحده او الاتنين». Nothing in it is
 // required — «ومش عاوز اى داتا اجبارى» — beyond saying which of the two it is.
 
-/** By the traffic department's card («فيزا»), or in cash («نقدي»). */
-export const FLEET_LICENSE_EXPENSE_PAYMENTS = ['visa', 'cash'] as const;
-export const FleetLicenseExpensePaidBySchema = z.enum(FLEET_LICENSE_EXPENSE_PAYMENTS);
-export type FleetLicenseExpensePaidBy = z.infer<typeof FleetLicenseExpensePaidBySchema>;
+// `FLEET_LICENSE_EXPENSE_PAYMENTS` / `FleetLicenseExpensePaidBySchema` («فيزا» / «نقدي») are
+// declared ahead of the catalogs, beside `FLEET_LICENSE_EXPENSE_KINDS`: a `licenseExpenseItem`
+// says which of the two pays for it, and the catalog schemas are evaluated at import.
 
 const LicenseExpenseVehicleSchema = z
   .object({
@@ -4832,6 +5375,41 @@ export const CancelFleetCustodyReplenishmentSchema = z
   .object({ reason: custodyText(500) })
   .strict();
 export type CancelFleetCustodyReplenishment = z.infer<typeof CancelFleetCustodyReplenishmentSchema>;
+/**
+ * «حذف العملية» — a charge, a replenishment (transferred, legacy, held or cancelled) or a
+ * settlement. A SOFT delete: the operation leaves the ledger and the fund's figures and lives on in
+ * «العمليات المحذوفة»; the memos a replenishment took and the licensing parts a settlement settled
+ * are free again. The reason is optional; `version` is the operation's version as the dialog read
+ * it, so a delete never lands on an operation somebody changed in between.
+ */
+export const DeleteFleetCustodyOperationSchema = z
+  .object({ reason: custodyText(500), version: z.number().int().min(0) })
+  .strict();
+export type DeleteFleetCustodyOperation = z.infer<typeof DeleteFleetCustodyOperationSchema>;
+/** A deleted operation's deletion — who, when, why, and what it did to the fund. */
+export interface FleetCustodyDeletionDto {
+  /** '' when none was given. */
+  reason: string;
+  byName: string | null;
+  /** Full ISO — the instant of the delete. */
+  at: string;
+  /** «إجمالي العهدة» just before the delete. */
+  fundBefore: number;
+  /** … and just after it — equal to `fundBefore` for a held or a cancelled replenishment. */
+  fundAfter: number;
+}
+/**
+ * GET /fleet/custody/fund/deleted — «العمليات المحذوفة». `from`/`to` are Cairo days of the
+ * delete (`deletion.at`), not of the operation.
+ */
+export const ListFleetCustodyDeletedQuerySchema = PaginationQuerySchema.extend({
+  kind: listQuery(FleetCustodyOperationKindSchema),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  /** `deletedAt:desc` (default) or `deletedAt:asc` only. */
+  sort: fleetSortQuery(),
+}).strict();
+export type ListFleetCustodyDeletedQuery = z.infer<typeof ListFleetCustodyDeletedQuerySchema>;
 /** A held replenishment's confirmed transfer. */
 export interface FleetCustodyTransferDto {
   /** YYYY-MM-DD — the day the money entered the fund. */
@@ -4981,6 +5559,10 @@ export interface FleetCustodyOperationDto {
   signatures: FleetCustodyPaperSignatures;
   /** Its place in the fund, from the ledger's fold — on `GET :id` and the create answer. */
   ledger: { before: number; after: number } | null;
+  /** A deleted operation's deletion («العمليات المحذوفة»); `null` on a live one. */
+  deletion: FleetCustodyDeletionDto | null;
+  /** Who recorded it («سجّلها»); `null` when unknown. */
+  createdByName: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -5081,6 +5663,8 @@ export interface FleetCustodyFundSummaryDto {
   /** `pending` / `pendingTotal`: the memos no replenishment has taken — held ones are in `held`. */
   memos: { count: number; pending: number; pendingTotal: number };
   outside: FleetCustodyOutsideKindDto[];
+  /** Operations in «العمليات المحذوفة» — the toolbar pill. */
+  deleted: { count: number };
 }
 export interface FleetCustodyReplenishCandidatesDto {
   /** The memos no replenishment has taken yet (neither held nor transferred), oldest `no` first. */

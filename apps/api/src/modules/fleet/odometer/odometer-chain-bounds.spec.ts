@@ -56,15 +56,28 @@ describe('the UNBOUNDED read is different, and deliberately still takes the max'
     // The contrast that makes the rule above meaningful rather than a blanket ban: with no date
     // cut, the shared reading IS this vehicle's furthest point, and dropping it would understate
     // the FR-2 floor.
+    //
+    // Batch 3 (rewritten on purpose): the max is no longer taken AFTER picking a row by its opening
+    // reading — that let a parked day hide the next day's closing reading — but BEFORE, as the
+    // figure the rows are RANKED by (`EFFECTIVE_READING`, an aggregation `$max`).
     const body = methodBody('latestReadings');
-    expect(body).toContain('inReading');
-    expect(body).toContain('Math.max');
+    expect(body).toContain('EFFECTIVE_READING');
+    expect(source).toContain(
+      "const EFFECTIVE_READING = {\n  $max: ['$outReading', { $ifNull: ['$inReading', '$outReading'] }],",
+    );
     expect(body, 'and it takes no date at all').not.toMatch(/\$lt:|\$gte:/);
   });
 
-  it('findLatest likewise — the floor `record()` refuses below', () => {
+  it('it RANKS by that figure, then by day, then by insert — never by the opening reading', () => {
+    const body = methodBody('latestReadings');
+    expect(body).toContain('{ $sort: { vehicleId: 1, top: -1, date: -1, _id: -1 } }');
+    expect(body, 'no ranking by the opening reading alone').not.toContain('outReading: -1');
+  });
+
+  it('the expected reading asks the very same read — the hint and the alarm name one reading', () => {
     const service = readFileSync(join(HERE, 'odometer.service.ts'), 'utf8');
-    expect(service).toContain('Math.max(latest.outReading as number, latest.inReading ?? (latest.outReading as number))');
+    expect(service).toContain('await fleetOdometerRepository.latestReadings([vehicleId])');
+    expect(source, 'no second «latest row» query is left').not.toContain('async findLatest(');
   });
 });
 

@@ -1,6 +1,8 @@
 // «حفظ العقد» as one ordered sequence: the contract first, then its files one by one in the tray's
 // order, then — on an edit — the order, only when it differs. A refused contract sends nothing
-// else; a failed file never undoes the contract; a cancelled file is simply not added.
+// else; a failed file never undoes the contract; a cancelled file is simply not added. A new
+// contract's «المستلم حتى الآن» rides in the create body itself (the server records it as the first
+// delivery), so no delivery call follows.
 import { describe, expect, it } from 'vitest';
 import { type FleetVehicleContractDto, type FleetVehicleContractFileDto } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -77,14 +79,38 @@ const BODY = {
   supplier: '',
   lines: [{ id: null, typeId: 't-1', count: 2, unitPrice: null }],
 };
+/** A new contract's body: nothing received yet («المستلم حتى الآن» 0, no day). */
+const CREATE_BODY = {
+  ...BODY,
+  lines: BODY.lines.map((line) => ({ ...line, received: 0 })),
+  receivedDate: null,
+};
 
 describe('a new contract', () => {
+  it('cars already received go in the one create — no delivery call follows', async () => {
+    const { api, calls } = fakeApi();
+    const sent: unknown[] = [];
+    const create = api.create;
+    api.create = async (body) => {
+      sent.push(body);
+      return create(body);
+    };
+    const body = {
+      ...BODY,
+      lines: [{ ...BODY.lines[0]!, received: 2 }],
+      receivedDate: new Date('2026-11-01'),
+    };
+    await saveContractWithFiles(api, { mode: 'create', body, items: [pending('p1')] });
+    expect(sent).toEqual([body]);
+    expect(calls).toEqual(['create', 'upload p1.png']);
+  });
+
   it('is created, then its files go up one by one in the order the tray shows', async () => {
     const { api, calls } = fakeApi();
     const progress: string[] = [];
     const result = await saveContractWithFiles(
       api,
-      { mode: 'create', body: BODY, items: [pending('p3'), pending('p1'), pending('p2')] },
+      { mode: 'create', body: CREATE_BODY, items: [pending('p3'), pending('p1'), pending('p2')] },
       { onProgress: (key, percent) => progress.push(`${key}:${percent}`) },
     );
     expect(calls).toEqual(['create', 'upload p3.png', 'upload p1.png', 'upload p2.png']);
@@ -96,7 +122,7 @@ describe('a new contract', () => {
     const { api, calls } = fakeApi(['p1.png'], ['p2.png']);
     const result = await saveContractWithFiles(api, {
       mode: 'create',
-      body: BODY,
+      body: CREATE_BODY,
       items: [pending('p1'), pending('p2'), pending('p3')],
     });
     expect(calls).toEqual(['create', 'upload p1.png', 'upload p2.png', 'upload p3.png']);
@@ -113,7 +139,7 @@ describe('a new contract', () => {
       ]);
     };
     await expect(
-      saveContractWithFiles(api, { mode: 'create', body: BODY, items: [pending('p1')] }),
+      saveContractWithFiles(api, { mode: 'create', body: CREATE_BODY, items: [pending('p1')] }),
     ).rejects.toMatchObject({ status: 422 });
     expect(calls).toEqual(['create']);
   });

@@ -2,8 +2,10 @@
 //
 // «تنتهي خلال 30 يومًا» must not count the cards already expired — those are T1.4's red line — so the
 // card filter gains `expiresFrom` (`$gte`) beside `expiresBefore` (`$lte`), the vehicles' naming.
-// And «خلال آخر 24 ساعة» is measured from the clock the caller passes: the dashboard runs its whole
-// read on one instant, while `/summary` keeps the request's own, as it always had.
+// And «شُحن اليوم» is measured from the clock the caller passes: the dashboard runs its whole read on
+// one instant, while `/summary` keeps the request's own, as it always had. Since batch 3 (D5) the
+// figure is the CAIRO day of that clock — from its midnight to the next — not the 24 hours before
+// it, so the window both tests read is that day's `[start, end)`.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetFuelCardModel, FleetFuelCardMovementModel } from './fuel-card.model';
 import { fleetFuelCardRepository } from './fuel-card.repository';
@@ -41,7 +43,7 @@ describe('cardFilter — the expiry window', () => {
 /** Drive the real `summary` against stubbed aggregations; hand back what each was asked. */
 const drive = async (run: () => Promise<unknown>) => {
   let cards: { $match?: unknown }[] = [];
-  let moves: { $match?: { at?: { $gte?: Date } } }[] = [];
+  let moves: { $match?: { at?: { $gte?: Date; $lt?: Date } } }[] = [];
   vi.spyOn(FleetFuelCardModel, 'aggregate').mockImplementation(((sent: never[]) => {
     cards = sent;
     return { exec: async () => [] };
@@ -54,11 +56,13 @@ const drive = async (run: () => Promise<unknown>) => {
   return { cards, moves, result };
 };
 
-describe('summary(query, now) — the 24-hour figure is measured from the clock passed in', () => {
+describe('summary(query, now) — «شُحن اليوم» is measured from the clock passed in', () => {
   it('uses the injected clock', async () => {
+    // 01:30 on 1 November in Cairo (UTC+2): the injected clock's Cairo day, not the real one's.
     const now = new Date('2026-10-31T23:30:00.000Z');
     const { moves, result } = await drive(() => fleetFuelCardService.summary({}, now));
-    expect(moves[0]?.$match?.at?.$gte?.toISOString()).toBe('2026-10-30T23:30:00.000Z');
+    expect(moves[0]?.$match?.at?.$gte?.toISOString()).toBe('2026-10-31T22:00:00.000Z');
+    expect(moves[0]?.$match?.at?.$lt?.toISOString()).toBe('2026-11-01T22:00:00.000Z');
     expect((result as { chargedTodayAmount: number }).chargedTodayAmount).toBe(150);
   });
 
@@ -66,7 +70,8 @@ describe('summary(query, now) — the 24-hour figure is measured from the clock 
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-05T12:00:00.000Z'));
     const { moves } = await drive(() => fleetFuelCardService.summary({}));
-    expect(moves[0]?.$match?.at?.$gte?.toISOString()).toBe('2026-11-04T12:00:00.000Z');
+    expect(moves[0]?.$match?.at?.$gte?.toISOString()).toBe('2026-11-04T22:00:00.000Z');
+    expect(moves[0]?.$match?.at?.$lt?.toISOString()).toBe('2026-11-05T22:00:00.000Z');
   });
 
   it('carries expiresFrom from the query into the card filter', async () => {

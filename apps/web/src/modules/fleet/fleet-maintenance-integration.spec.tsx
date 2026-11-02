@@ -66,6 +66,8 @@ const ALARM: FleetMaintenanceAlarmDto = {
   latestReadingLogId: null,
   baseline: null,
   newerUncountedVisit: null,
+  rule: { vehicleType: null, intervalKm: 0, yellowKm: 1000, redKm: 300 },
+  newestReading: null,
 };
 
 const visit = (over: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisitDto =>
@@ -101,6 +103,7 @@ const log = (): FleetOdometerLogDto =>
     outReading: 280_300,
     inReading: null,
     km: null,
+    serviceGapKm: null,
     driver1EmployeeId: null,
     driver2EmployeeId: null,
     notes: null,

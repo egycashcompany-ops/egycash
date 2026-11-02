@@ -39,9 +39,11 @@ export const getVehicleContract = async (req: Request, res: Response): Promise<v
   ok(res, await service.get(params.id, new Date()));
 };
 
+// The caller's whole context, not only their id: cars typed as already received are a delivery,
+// and recording one is `fleetVehicleContract.receive`'s, checked by the service.
 export const createVehicleContract = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<CreateFleetVehicleContract>(req);
-  created(res, await service.create(body, authContext(req).userId));
+  created(res, await service.create(authContext(req), body, new Date()));
 };
 
 export const updateVehicleContract = async (req: Request, res: Response): Promise<void> => {

@@ -1,11 +1,19 @@
 // Thin HTTP mapping only (ADR-003) — «مطابقة أرصدة الكروت».
 import { type Request, type Response } from 'express';
-import { type DecideFleetFuelReconcile, type UploadFleetFuelSheet } from '@ecms/contracts';
+import {
+  type AddFleetFuelSheetCard,
+  type DecideFleetFuelLinks,
+  type DecideFleetFuelReconcile,
+  type UploadFleetFuelSheet,
+} from '@ecms/contracts';
 import { authContext } from '../../../../platform/auth';
-import { ok, validated } from '../../../../platform/web';
+import { created, ok, validated } from '../../../../platform/web';
 import { ValidationError } from '../../../../shared/errors';
 import { uploadFileName } from '../../upload-file-name';
+import { toFuelCardDto } from '../fuel-card.service';
 import { fleetFuelReconcileService } from './fuel-reconcile.service';
+import { decideFuelLinks } from './fuel-reconcile-links';
+import { addFuelSheetCard } from './fuel-reconcile-cards';
 
 export const uploadFuelSheet = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<UploadFleetFuelSheet>(req);
@@ -22,6 +30,8 @@ export const uploadFuelSheet = async (req: Request, res: Response): Promise<void
       // An Arabic file name arrives as latin1-spelled UTF-8 — the name as the person gave it.
       fileName: uploadFileName(uploaded.originalname),
       buffer: uploaded.buffer,
+      // «تاريخ الشيت» — optional; '' or absent is none (the schema's own reading).
+      sheetDate: body.sheetDate,
     }),
   );
 };
@@ -29,4 +39,16 @@ export const uploadFuelSheet = async (req: Request, res: Response): Promise<void
 export const decideFuelReconcile = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<DecideFleetFuelReconcile, never, { id: string }>(req);
   ok(res, await fleetFuelReconcileService.decide(authContext(req), params.id, body));
+};
+
+/** «ربط الكروت بالسيارات» — ✓ «تحديث» / ✗ «إبقاء» on chosen link rows. */
+export const decideFuelReconcileLinks = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<DecideFleetFuelLinks, never, { id: string }>(req);
+  ok(res, await decideFuelLinks(authContext(req), params.id, body));
+};
+
+/** «إضافة» — a sheet-only card made a card. */
+export const addFuelReconcileCard = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<AddFleetFuelSheetCard, never, { id: string }>(req);
+  created(res, toFuelCardDto(await addFuelSheetCard(authContext(req), params.id, body)));
 };

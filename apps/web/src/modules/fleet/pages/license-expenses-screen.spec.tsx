@@ -38,6 +38,8 @@ import {
   licenceStatusText,
 } from '../lib/license-expense-settlement';
 import { writeRefusalOf } from '../lib/write-refusal';
+import { PaidGroup, offeredEntriesOf } from '../components/LicenseExpensePaidGroup';
+import { type LicenseExpenseItemLine } from '../lib/license-expense-memo';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -151,13 +153,16 @@ const catalogItem = (
   id: string,
   name: string,
   licenseExpenseKind: 'renewal' | 'extension' | null = null,
+  { paidBy = null, isActive = true }: { paidBy?: 'visa' | 'cash' | null; isActive?: boolean } = {},
 ): FleetCatalogItemDto =>
   ({
     id,
     kind: 'licenseExpenseItem',
     name: { ar: name, en: name },
     licenseExpenseKind,
-    isActive: true,
+    licenseExpensePaidBy: paidBy,
+    builtIn: false,
+    isActive,
   }) as unknown as FleetCatalogItemDto;
 
 const renderEditor = (
@@ -625,6 +630,204 @@ describe('«قوائم الحركة» says which memo each item belongs to', () 
       <CatalogItemDialog open onClose={() => undefined} kind="workshop" item={null} />,
     );
     expect(html).not.toContain('data-license-expense-kind-option');
+  });
+});
+
+describe('«طريقة الصرف»: each item in its payment’s group — «فيزا» / «نقدي» / «كليهما»', () => {
+  const ITEMS = [
+    catalogItem('i-1', 'الملصق الإلكتروني', null, { paidBy: 'visa' }),
+    catalogItem('i-2', 'طفاية حريق', null, { paidBy: 'cash' }),
+    catalogItem('i-3', 'براءة ذمة'),
+  ];
+  const groupOf = (html: string, paid: 'visa' | 'cash'): string => {
+    const from = html.indexOf(`data-license-expense-group="renewal:${paid}"`);
+    expect(from, paid).toBeGreaterThan(-1);
+    const next = html.indexOf('data-license-expense-group="', from + 1);
+    return html.slice(from, next === -1 ? html.length : next);
+  };
+
+  it('offers a card-only item in the card’s group, a cash-only one in cash, and both in both', () => {
+    const html = renderEditor(ITEMS);
+    const visa = groupOf(html, 'visa');
+    const cash = groupOf(html, 'cash');
+    expect(visa).toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(visa, 'a cash-only item').not.toContain('data-license-expense-count="renewal:visa:i-2"');
+    expect(visa).toContain('data-license-expense-count="renewal:visa:i-3"');
+    expect(cash, 'a card-only item').not.toContain('data-license-expense-count="renewal:cash:i-1"');
+    expect(cash).toContain('data-license-expense-count="renewal:cash:i-2"');
+    expect(cash).toContain('data-license-expense-count="renewal:cash:i-3"');
+  });
+
+  it('keeps the counter of a line already counted in the other group, so it can be counted out', () => {
+    // An older memo (or a template) counted the card-only item in cash.
+    const line: LicenseExpenseItemLine = {
+      key: 'k-old',
+      itemId: 'i-1',
+      label: 'الملصق الإلكتروني',
+      amount: 50,
+      count: 1,
+      paidBy: 'cash',
+      receipt: true,
+    };
+    const cash = (lines: LicenseExpenseItemLine[]): string =>
+      renderToStaticMarkup(
+        <Provider store={store(ALL)}>
+          <PaidGroup
+            kind="renewal"
+            paid="cash"
+            items={lines}
+            setDraft={() => undefined}
+            catalogItems={offeredEntriesOf(ITEMS, lines, 'ar')}
+          />
+        </Provider>,
+      );
+    expect(cash([line])).toContain('data-license-expense-count="renewal:cash:i-1"');
+    expect(cash([line]), 'its card stays, with its label').toContain('>الملصق الإلكتروني</span>');
+    expect(cash([])).not.toContain('data-license-expense-count="renewal:cash:i-1"');
+  });
+
+  it('follows «يظهر في» as before: a card-only item of the extension is on neither renewal group', () => {
+    const html = renderEditor([
+      catalogItem('i-1', 'الملصق الإلكتروني', 'extension', { paidBy: 'visa' }),
+      catalogItem('i-3', 'براءة ذمة'),
+    ]);
+    expect(html).not.toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(html).not.toContain('data-license-expense-count="renewal:cash:i-1"');
+    expect(html).toContain('data-license-expense-count="renewal:cash:i-3"');
+  });
+});
+
+describe('an item archived on «قوائم الحركة» is no longer offered on a new memo', () => {
+  const ITEMS = [
+    catalogItem('i-1', 'براءة ذمة'),
+    catalogItem('i-2', 'استمارة بيانات', null, { isActive: false }),
+    catalogItem('i-3', 'ضرائب'),
+  ];
+
+  it('draws no counter for it on a new memo — in either group', () => {
+    const html = renderEditor(ITEMS);
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(html).toContain('data-license-expense-count="renewal:cash:i-3"');
+    expect(html).not.toContain('data-license-expense-count="renewal:visa:i-2"');
+    expect(html).not.toContain('data-license-expense-count="renewal:cash:i-2"');
+  });
+
+  it('keeps it on a memo that already counts it — and keeps each item’s colour', () => {
+    const line = { itemId: 'i-2' };
+    expect(offeredEntriesOf(ITEMS, [], 'ar').map((entry) => entry.id)).toEqual(['i-1', 'i-3']);
+    const counted = offeredEntriesOf(ITEMS, [line], 'ar');
+    expect(counted.map((entry) => entry.id)).toEqual(['i-1', 'i-2', 'i-3']);
+    // The index is the list's, not the filtered one's: «ضرائب» keeps its colour either way.
+    expect(offeredEntriesOf(ITEMS, [], 'ar')[1]).toMatchObject({ id: 'i-3', index: 2 });
+    // The editor counts across both memos of the record.
+    const source = readFileSync(join(HERE, 'LicenseExpenseEditorPage.tsx'), 'utf8');
+    expect(source).toMatch(
+      /offeredEntriesOf\(\s+catalog\.data\?\.items \?\? \[\],\s+\[\.\.\.drafts\.renewal\.items, \.\.\.drafts\.extension\.items\],/u,
+    );
+  });
+});
+
+describe('«قوائم الحركة» says how each item is paid', () => {
+  const ITEMS = [
+    catalogItem('i-1', 'الملصق الإلكتروني', 'renewal', { paidBy: 'visa' }),
+    catalogItem('i-2', 'طفاية حريق', 'renewal', { paidBy: 'cash' }),
+    catalogItem('i-3', 'براءة ذمة'),
+  ];
+  const mount = (node: JSX.Element, route = '/fleet/catalogs'): string => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+    });
+    qc.setQueryData(listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }), {
+      items: ITEMS,
+      meta: { page: 1, pageSize: 100, totalItems: ITEMS.length, totalPages: 1 },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store([...ALL, 'fleetCatalog.manage'])}>
+        <QueryClientProvider client={qc}>
+          <MemoryRouter initialEntries={[route]}>{node}</MemoryRouter>
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+
+  it('adds the «طريقة الصرف» column beside «يظهر في» on the items tab', () => {
+    const html = mount(<CatalogsPage />, '/fleet/catalogs?kind=licenseExpenseItem');
+    const kindAt = html.indexOf(ar('fleet.catalogs.fields.licenseExpenseKind'));
+    const paidAt = html.indexOf(ar('fleet.catalogs.fields.licenseExpensePaidBy'));
+    expect(kindAt).toBeGreaterThan(-1);
+    expect(paidAt, 'the column after «يظهر في»').toBeGreaterThan(kindAt);
+    expect(html).toMatch(/data-license-expense-paid-by="visa"[^>]*>فيزا</u);
+    expect(html).toMatch(/data-license-expense-paid-by="cash"[^>]*>نقدي</u);
+    expect(html).toMatch(/data-license-expense-paid-by="both"[^>]*>كليهما</u);
+    // An item stored before the question reads as both.
+    const old = { ...ITEMS[2]! } as Partial<FleetCatalogItemDto>;
+    delete old.licenseExpensePaidBy;
+    expect(
+      renderToStaticMarkup(
+        <Provider store={store([...ALL, 'fleetCatalog.manage'])}>
+          <QueryClientProvider
+            client={(() => {
+              const qc = new QueryClient({
+                defaultOptions: { queries: { staleTime: Infinity, refetchOnMount: false } },
+              });
+              qc.setQueryData(listKey('fleet', 'catalogs', { kind: 'licenseExpenseItem' }), {
+                items: [old],
+                meta: { page: 1, pageSize: 100, totalItems: 1, totalPages: 1 },
+              });
+              return qc;
+            })()}
+          >
+            <MemoryRouter initialEntries={['/fleet/catalogs?kind=licenseExpenseItem']}>
+              <CatalogsPage />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </Provider>,
+      ),
+    ).toMatch(/data-license-expense-paid-by="both"[^>]*>كليهما</u);
+  });
+
+  it('asks it in the item form — the saved one pressed, both for a new item — and says where the bin is', () => {
+    const edit = mount(
+      <CatalogItemDialog
+        open
+        onClose={() => undefined}
+        kind="licenseExpenseItem"
+        item={ITEMS[0]!}
+      />,
+    );
+    expect(edit).toContain(ar('fleet.catalogs.fields.licenseExpensePaidBy'));
+    expect(edit).toMatch(/aria-pressed="true"[^>]*data-license-expense-paid-option="visa"/u);
+    expect(edit).toMatch(/aria-pressed="false"[^>]*data-license-expense-paid-option="cash"/u);
+    expect(edit).toMatch(/aria-pressed="false"[^>]*data-license-expense-paid-option="both"/u);
+    // Under «يظهر في».
+    expect(edit.indexOf('data-license-expense-paid-option')).toBeGreaterThan(
+      edit.indexOf('data-license-expense-kind-option'),
+    );
+    // The licensing item's line names «إعداد النماذج» as where an added item is deleted.
+    expect(edit).toContain(ar('fleet.catalogs.licenseExpenseItemArchiveHint'));
+    expect(edit).not.toContain(ar('fleet.catalogs.archiveHint'));
+    const fresh = mount(
+      <CatalogItemDialog open onClose={() => undefined} kind="licenseExpenseItem" item={null} />,
+    );
+    // Nothing is required: a new item is paid both ways until somebody says otherwise.
+    expect(fresh).toMatch(/aria-pressed="true"[^>]*data-license-expense-paid-option="both"/u);
+  });
+
+  it('asks it of no other list, whose form keeps the shared archive line', () => {
+    const html = mount(
+      <CatalogItemDialog open onClose={() => undefined} kind="workshop" item={null} />,
+    );
+    expect(html).not.toContain('data-license-expense-paid-option');
+    expect(html).not.toContain(ar('fleet.catalogs.fields.licenseExpensePaidBy'));
+    expect(html).toContain(ar('fleet.catalogs.archiveHint'));
+  });
+
+  it('sends it on a create, and on an edit only when it changed', () => {
+    const source = readFileSync(join(HERE, '../components/CatalogDialogs.tsx'), 'utf8');
+    expect(source).toContain('? { licenseExpenseKind: memo, licenseExpensePaidBy: paid }');
+    expect(source).toMatch(
+      /kind === 'licenseExpenseItem' && paid !== \(item\.licenseExpensePaidBy \?\? null\)\s+\? \{ licenseExpensePaidBy: paid \}/u,
+    );
   });
 });
 

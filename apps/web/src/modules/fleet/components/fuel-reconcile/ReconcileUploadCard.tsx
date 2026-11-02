@@ -1,7 +1,10 @@
 // «مطابقة أرصدة الكروت» — before the sheet is read: «1 اختر الشركة» (وطنية / شل أوت, each with its
-// cards and balance from «شحن الكروت»'s own summary), «2 ارفع شيت الأرصدة» (.xlsx, its three
-// columns named), and «مقارنة بالأرصدة», which posts the file. The server reads it and answers the
-// comparison; nothing is written yet. The approved sample's card (cs1, cs2), class for class.
+// cards and balance from «شحن الكروت»'s own summary), «2 ارفع شيت الأرصدة» (.xlsx — batch 3 names
+// the layouts the reader takes, the data sheet and the company's statement alike, and the columns
+// it never reads), the optional «تاريخ الشيت» (M23: the day the statement describes, filled from
+// the file's name when it holds one), and «مقارنة بالأرصدة», which posts the file. The server reads
+// it and answers the comparison; nothing is written yet. The approved samples' card, class for
+// class.
 import { type ReactNode } from 'react';
 import {
   FLEET_FUEL_CARD_COMPANIES,
@@ -11,15 +14,18 @@ import {
   type FleetFuelCardCompany,
 } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
+import { Input } from '../../../../shared/ui/form';
 import { FileUpload } from '../../../../shared/ui/FileUpload';
 import { Spinner } from '../../../../shared/ui/Spinner';
 import { CloseIcon } from '../../../../shared/ui/icons';
 import { cn } from '../../../../shared/lib/cn';
 import { useFuelCardSummary } from '../../api/fleet-queries';
 import { BoardIcon, CompanyBadge, NUM, PATH } from '../FuelCardBoard';
+import { DateBox } from '../DateBox';
 import { TITLE } from '../custody-dashboard-parts';
-import { money } from '../../lib/fuel-reconcile';
+import { money, sheetDateOfName } from '../../lib/fuel-reconcile';
 import { useReconcileCount } from '../../lib/fuel-reconcile-words';
+import { FileName } from './reconcile-cells';
 
 const XLSX = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -118,7 +124,12 @@ export const ReconcileUploadCard = ({
   onCompany,
   onFile,
   onCompare,
+  sheetDate,
+  onSheetDate,
 }: {
+  /** M23 — «تاريخ الشيت», optional: `YYYY-MM-DD`, or '' when not given. */
+  sheetDate: string;
+  onSheetDate: (day: string) => void;
   company: FleetFuelCardCompany | null;
   file: File | null;
   reading: boolean;
@@ -127,6 +138,16 @@ export const ReconcileUploadCard = ({
   onCompare: () => void;
 }): JSX.Element => {
   const t = useT();
+  const R = 'fleet.fuelCards.reconcile.';
+  const fromName = file === null ? null : sheetDateOfName(file.name);
+  // The required roles' usual English headers, as the company prints them — on hover.
+  const [numberHeader, nameHeader, balanceHeader] = FLEET_FUEL_SHEET_COLUMNS;
+  const layouts: { key: string; title?: string }[] = [
+    { key: 'layouts.number', title: numberHeader },
+    { key: 'layouts.name', title: nameHeader },
+    { key: 'layouts.balance', title: balanceHeader },
+    { key: 'layouts.code' },
+  ];
   return (
     <section
       data-recon-upload="true"
@@ -160,23 +181,27 @@ export const ReconcileUploadCard = ({
 
         {/* 2 — the sheet */}
         <div className="space-y-3" data-recon-file="true">
-          <Step n={2} label={t('fleet.fuelCards.reconcile.stepSheet')}>
-            <span className="ms-1 inline-flex flex-wrap items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              {t('fleet.fuelCards.reconcile.dropNote')}
-              {FLEET_FUEL_SHEET_COLUMNS.map((column) => (
-                <span
-                  key={column}
-                  dir="ltr"
-                  className={cn(
-                    NUM,
-                    'rounded border border-slate-200 bg-slate-50 px-1.5 py-px text-slate-600 dark:border-slate-700 dark:bg-[#0b0f19] dark:text-slate-300',
-                  )}
-                >
-                  {column}
-                </span>
-              ))}
+          <Step n={2} label={t('fleet.fuelCards.reconcile.stepSheet')} />
+          {/* The layouts the reader takes — the data sheet and the company's statement alike. */}
+          <span
+            data-recon-layouts="true"
+            className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400"
+          >
+            {t(`${R}dropNoteLayouts`)}
+            {layouts.map(({ key, title }) => (
+              <span
+                key={key}
+                title={title}
+                className="rounded border border-slate-200 bg-slate-50 px-1.5 py-px text-slate-600 dark:border-slate-700 dark:bg-[#0b0f19] dark:text-slate-300"
+              >
+                {t(`${R}${key}`)}
+              </span>
+            ))}
+            <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
+              <BoardIcon d={PATH.lock} className="h-3 w-3" />
+              {t(`${R}layouts.never`)}
             </span>
-          </Step>
+          </span>
           {file === null ? (
             <div className="[&_[role=button]]:!min-h-[132px] [&_[role=button]]:!py-6">
               <FileUpload
@@ -195,12 +220,10 @@ export const ReconcileUploadCard = ({
                 <BoardIcon d={PATH.excel} className="h-6 w-6" />
               </span>
               <span className="flex min-w-0 flex-col">
-                <span
-                  dir="ltr"
-                  className="truncate text-end text-[15px] font-bold text-slate-900 dark:text-white"
-                >
-                  {file.name}
-                </span>
+                <FileName
+                  name={file.name}
+                  className="truncate text-start text-[15px] font-bold text-slate-900 dark:text-white"
+                />
                 <span
                   dir="ltr"
                   className={cn(NUM, 'text-end text-xs text-slate-500 dark:text-slate-400')}
@@ -220,6 +243,42 @@ export const ReconcileUploadCard = ({
               </button>
             </div>
           )}
+          {/* M23 — the day the statement describes: optional, filled from the file's name. */}
+          <div className="space-y-1.5" data-recon-sheet-date-field="true">
+            <label
+              htmlFor="recon-sheet-date"
+              className="flex items-center gap-1.5 text-sm font-bold text-slate-900 dark:text-white"
+            >
+              <BoardIcon d={PATH.calendar} className="h-4 w-4 text-[#4f3dff] dark:text-[#a59dff]" />
+              {t(`${R}sheetDate`)}
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                {t(`${R}sheetDateOptional`)}
+              </span>
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <DateBox label={t(`${R}sheetDate`)} className="w-48">
+                <Input
+                  id="recon-sheet-date"
+                  type="date"
+                  value={sheetDate}
+                  onChange={(e) => onSheetDate(e.target.value)}
+                  className={NUM}
+                />
+              </DateBox>
+              {fromName !== null && sheetDate === fromName.day && (
+                <span
+                  data-recon-sheet-date-from={fromName.text}
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                >
+                  <BoardIcon d={['M5 13l4 4L19 7']} className="h-3 w-3" />
+                  {t(`${R}sheetDateFromName`, { text: `\u2066${fromName.text}\u2069` })}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              {t(`${R}sheetDateHint`)}
+            </p>
+          </div>
         </div>
 
         {/* The comparison — under no step of its own: it is what the two steps are for. */}

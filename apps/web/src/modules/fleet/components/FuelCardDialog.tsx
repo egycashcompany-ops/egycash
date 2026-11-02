@@ -6,6 +6,11 @@
 // of that form. It is its own modal rather than the shared `Dialog` because those colours, the
 // Cairo type and the footer inside the body are this form's alone. It behaves like every form
 // dialog: Escape and the × close it, a click outside does not.
+//
+// Batch 3 (6b): «إضافة» on «كروت في الشيت وليست في النظام» opens it filled from the company's
+// sheet (`fromSheet`): the car its code names, the company, the name — each tagged «من الشيت» —
+// and the opening balance (the sheet's). He types the full number when the sheet masks it (its
+// last four must agree), the expiry and the PIN; the card is added through the reading's session.
 import { useEffect, useState, type ReactNode } from 'react';
 import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
 import { createPortal } from 'react-dom';
@@ -42,6 +47,9 @@ import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { groupCardNumber, ungroupCardNumber } from '../lib/fuel-card-number';
 import { CalendarButton, HIDE_NATIVE_PICKER, type DatePicker } from './DateBox';
 import { FIGURES_FONT } from './FuelCardBoard';
+import { useAddSheetCard } from '../api/fuel-reconcile-queries';
+import { numberFitsSheet, type FromSheet } from '../lib/fuel-reconcile-links';
+import { addCardRefusalWords } from '../lib/fuel-reconcile-words';
 
 /**
  * The design's type: Cairo for words, the Fleet figure face (`FIGURES_FONT`, Azeret Mono — a plain
@@ -217,8 +225,11 @@ export const DesignField = ({
   hint,
   endAdornment,
   datePicker,
+  tag,
   children,
 }: {
+  /** A mark beside the label — «من الشيت». */
+  tag?: ReactNode;
   label: string;
   required?: boolean;
   missing?: boolean;
@@ -247,6 +258,7 @@ export const DesignField = ({
     <div className="space-y-2" {...(missing ? { 'data-field-missing': 'true' } : {})}>
       <label className="block text-[15px] font-bold text-slate-900 dark:text-white">
         {label} {required && <span className="font-bold text-rose-500">*</span>}
+        {tag}
       </label>
       <FieldMissingProvider missing={missing}>
         <FieldFeedbackProvider value={setRefused}>
@@ -384,7 +396,13 @@ export const FuelCardDialog = ({
   initialCompany,
   photoCard = null,
   onOpenPhoto,
+  fromSheet = null,
+  onAdded,
 }: {
+  /** 6b — «إضافة» on «كروت في الشيت وليست في النظام»: the sheet row the card is filled from. */
+  fromSheet?: FromSheet | null;
+  /** The card «إضافة» created from the sheet. */
+  onAdded?: (card: FleetFuelCardDto) => void;
   open: boolean;
   onClose: () => void;
   /** null = add. */
@@ -414,16 +432,25 @@ export const FuelCardDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    setVehicleId(card === null ? initialVehicleId : (card.vehicleId ?? ''));
-    setCompany(card?.company ?? initialCompany ?? 'wataniya');
-    setName(card?.name ?? '');
-    setNumber(card?.number ?? '');
+    setVehicleId(
+      fromSheet !== null
+        ? (fromSheet.vehicleId ?? '')
+        : card === null
+          ? initialVehicleId
+          : (card.vehicleId ?? ''),
+    );
+    setCompany(fromSheet?.company ?? card?.company ?? initialCompany ?? 'wataniya');
+    setName(fromSheet?.name ?? card?.name ?? '');
+    // A sheet that prints the full number fills it; a masked one leaves it to be typed.
+    setNumber(
+      fromSheet !== null ? (fromSheet.numberIsFull ? fromSheet.number : '') : (card?.number ?? ''),
+    );
     setExpiresAt(card?.expiresAt?.slice(0, 10) ?? '');
     setPassword('');
     setPasswordShown(false);
     setPasswordVisible(false);
     setPhoto(null);
-  }, [open, card, initialVehicleId, initialCompany]);
+  }, [open, card, initialVehicleId, initialCompany, fromSheet]);
 
   // Escape closes, as every dialog does; a click outside does not — this is a form.
   useEffect(() => {
@@ -443,7 +470,12 @@ export const FuelCardDialog = ({
   const create = useCreateFuelCard();
   const update = useUpdateFuelCard();
   const upload = useUploadFuelCardImage();
-  const pending = create.isPending || update.isPending || upload.isPending;
+  const addFromSheet = useAddSheetCard();
+  const pending =
+    create.isPending || update.isPending || upload.isPending || addFromSheet.isPending;
+  // From a masked sheet: the typed number must end in the sheet's last four (and start as it does).
+  const numberFits =
+    fromSheet === null || fromSheet.numberIsFull || numberFitsSheet(number, fromSheet);
   // «الباسورد اجبارى»: a new card is not saved without one; an edited card that has one keeps it.
   // A stored one that was shown and then emptied is a removal, which a card may not have.
   const keepsPassword = card?.hasPassword === true && !passwordShown;
@@ -454,7 +486,11 @@ export const FuelCardDialog = ({
   const required = useRequiredFields(
     [
       { key: 'name', label: t('fleet.fuelCards.fields.name'), ok: name.trim() !== '' },
-      { key: 'number', label: t('fleet.fuelCards.fields.number'), ok: number.trim().length >= 4 },
+      {
+        key: 'number',
+        label: t('fleet.fuelCards.fields.number'),
+        ok: number.trim().length >= 4 && numberFits,
+      },
       { key: 'password', label: t('fleet.fuelCards.fields.password'), ok: passwordOk },
       // «تاريخ انتهاء الكارت اجبارى».
       { key: 'expiresAt', label: t('fleet.fuelCards.fields.expiresAt'), ok: expiresAt !== '' },
@@ -471,8 +507,37 @@ export const FuelCardDialog = ({
     setPasswordVisible(true);
   };
 
+  /** «إضافة» from the sheet: through the reading's session — the name, company and balance are the row's. */
+  const submitFromSheet = async (from: FromSheet): Promise<void> => {
+    try {
+      const created = await addFromSheet.mutateAsync({
+        id: from.sessionId,
+        body: {
+          sheetRow: from.row,
+          ...(from.numberIsFull ? {} : { number: number.trim() }),
+          expiresAt: new Date(expiresAt),
+          password,
+          vehicleId: vehicleId === '' ? null : vehicleId,
+          label: vehicleId === '' ? (from.label ?? name.trim()) : null,
+        },
+      });
+      if (photo !== null) await upload.mutateAsync({ id: created.id, file: photo });
+      toast.success(t('fleet.fuelCards.reconcile.newCards.toastAdded'));
+      onAdded?.(created);
+      onClose();
+    } catch (failure) {
+      // The refusals the screen words itself; the hook raised the global toast for the rest.
+      const said = addCardRefusalWords(failure);
+      if (said !== null) toast.error(t(said.key, said.values));
+    }
+  };
+
   const submit = async (): Promise<void> => {
     if (pending) return;
+    if (fromSheet !== null) {
+      await submitFromSheet(fromSheet);
+      return;
+    }
     const body = {
       vehicleId: vehicleId === '' ? null : vehicleId,
       // A card on no car keeps the label it is known by, or takes its name.
@@ -538,7 +603,22 @@ export const FuelCardDialog = ({
       </button>
     );
 
-  const title = editing ? t('fleet.fuelCards.edit') : t('fleet.fuelCards.add');
+  const N = 'fleet.fuelCards.reconcile.newCards.';
+  const title =
+    fromSheet !== null
+      ? t(`${N}addTitle`)
+      : editing
+        ? t('fleet.fuelCards.edit')
+        : t('fleet.fuelCards.add');
+  /** «من الشيت» — beside a box the sheet filled. */
+  const sheetTag =
+    fromSheet === null ? undefined : (
+      <span className="ms-2 inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-px align-middle text-[11px] font-bold text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+        {t(`${N}fromSheet`)}
+      </span>
+    );
+  const masked =
+    fromSheet === null ? '' : `\u2066${fromSheet.prefix} •••• ${fromSheet.last4}\u2069`;
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-4">
@@ -553,7 +633,7 @@ export const FuelCardDialog = ({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        data-fuel-card-form={editing ? 'edit' : 'add'}
+        data-fuel-card-form={editing ? 'edit' : fromSheet !== null ? 'sheet' : 'add'}
         className={cn(
           SANS,
           'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-900 dark:text-slate-100 antialiased',
@@ -575,7 +655,14 @@ export const FuelCardDialog = ({
                   look.subtitle,
                 )}
               >
-                {editing ? t('fleet.fuelCards.editSubtitle') : t('fleet.fuelCards.addSubtitle')}
+                {fromSheet !== null
+                  ? t(`${N}addSubtitle`, {
+                      row: fromSheet.row,
+                      company: t(`fleet.fuelCards.company.${fromSheet.company}`),
+                    })
+                  : editing
+                    ? t('fleet.fuelCards.editSubtitle')
+                    : t('fleet.fuelCards.addSubtitle')}
               </p>
             </div>
           </div>
@@ -598,6 +685,7 @@ export const FuelCardDialog = ({
             <DesignField
               label={t('fleet.odometer.columns.vehicle')}
               hint={t('fleet.fuelCards.carHint')}
+              tag={sheetTag}
             >
               <div className={carBoxClass(editing)}>
                 <VehicleCodeCombobox
@@ -619,7 +707,10 @@ export const FuelCardDialog = ({
                       type="button"
                       data-fuel-company-pick={option}
                       aria-pressed={chosen}
-                      onClick={() => setCompany(option)}
+                      // From the sheet the company is the reading's — not changed here.
+                      onClick={() => {
+                        if (fromSheet === null) setCompany(option);
+                      }}
                       className={cn(
                         'relative flex cursor-pointer select-none items-center justify-between gap-1 rounded-xl transition-all',
                         editing ? '' : 'border',
@@ -661,9 +752,11 @@ export const FuelCardDialog = ({
               label={t('fleet.fuelCards.fields.name')}
               required
               missing={required.isMissing('name')}
+              tag={sheetTag}
             >
               <Input
                 value={name}
+                readOnly={fromSheet !== null}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="off"
                 placeholder={
@@ -681,10 +774,17 @@ export const FuelCardDialog = ({
               label={t('fleet.fuelCards.fields.number')}
               required
               missing={required.isMissing('number')}
-              // Typed, but too short to be a card: say so rather than «required».
+              {...(fromSheet !== null && !fromSheet.numberIsFull
+                ? { hint: t(`${N}numberHint`, { masked, last4: fromSheet.last4 }) }
+                : {})}
+              {...(fromSheet?.numberIsFull === true ? { tag: sheetTag } : {})}
+              // Typed, but too short to be a card — or, from a masked sheet, not its number: say
+              // so rather than «required».
               error={
                 required.isMissing('number') && number.trim() !== ''
-                  ? t('fleet.fuelCards.errors.numberShort')
+                  ? fromSheet !== null && number.trim().length >= 4
+                    ? t(`${N}numberMismatch`, { last4: fromSheet.last4 })
+                    : t('fleet.fuelCards.errors.numberShort')
                   : undefined
               }
             >
@@ -693,9 +793,14 @@ export const FuelCardDialog = ({
                 // Shown in fours, «كل 4 جمب بعض»; held and saved as the bare digits.
                 value={groupCardNumber(number)}
                 onChange={(e) => setNumber(ungroupCardNumber(e.target.value))}
+                readOnly={fromSheet?.numberIsFull === true}
                 rule="digits"
                 autoComplete="off"
-                placeholder="0000 0000 0000 7004"
+                placeholder={
+                  fromSheet !== null
+                    ? `${fromSheet.prefix}• •••• •••• ${fromSheet.last4}`
+                    : '0000 0000 0000 7004'
+                }
                 // The digits read from the right, clear of the «!» at the far end.
                 tone={cn(box, MONO, '!pl-10 text-right tracking-wider')}
               />
@@ -742,6 +847,34 @@ export const FuelCardDialog = ({
             </DesignField>
           </div>
 
+          {fromSheet !== null && (
+            <div
+              data-fuel-opening-balance="true"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-50 px-4 py-3 dark:bg-emerald-500/[0.07]"
+            >
+              <span className="space-y-0.5">
+                <span className="flex items-center text-[15px] font-bold text-slate-900 dark:text-white">
+                  {t(`${N}opening`)}
+                  {sheetTag}
+                </span>
+                <span className="block text-[13px] font-medium text-slate-600 dark:text-slate-300">
+                  {t(`${N}openingNote`)}
+                </span>
+              </span>
+              <span className="flex items-baseline gap-1.5">
+                <b dir="ltr" className={cn(MONO, 'text-xl text-emerald-700 dark:text-emerald-300')}>
+                  {fromSheet.balance.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </b>
+                <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                  {t('fleet.fuelCards.board.kpi.currency')}
+                </span>
+              </span>
+            </div>
+          )}
+
           {photoCard !== null ? (
             <div className="pt-1" data-purpose="field-card-image">
               <label className="mb-2 block text-[15px] font-bold text-slate-900 dark:text-white">
@@ -769,7 +902,7 @@ export const FuelCardDialog = ({
               ) : (
                 editing && <Stroke d={['M5 13l4 4L19 7']} className="h-4 w-4" />
               )}
-              <span>{t('common.save')}</span>
+              <span>{fromSheet !== null ? t(`${N}save`) : t('common.save')}</span>
             </button>
             <button
               type="button"

@@ -1,6 +1,11 @@
 // «عقود توريد السيارات» — create, read, edit, soft-delete, and the deliveries («تسجيل استلام»).
 // Every write is audited under the contract. The attachments are vehicle-contract-attachments.ts.
 //
+// «المستلم حتى الآن» ON A NEW CONTRACT. The cars typed as already received when a contract is
+// registered are its first delivery («الاستلام الأول»), written in the same insert — no stored
+// figure of their own, so received, remaining, the alarm, the sorts and the line locks read it
+// exactly as a delivery recorded right after the save. Recording cars needs `receive` there too.
+//
 // WHAT IS ATOMIC WITH WHAT. A contract edit and every delivery write carry the contract's version,
 // so «أكثر من المتبقي» (a delivery) and «أقل من المستلم» (a line edit), each checked on the version
 // read, still hold when the write lands — two at once on one version: one wins, the other is a 409.
@@ -20,9 +25,16 @@ import {
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
-import { AppError, NotFoundError, StaleDocumentError } from '../../../shared/errors';
+import {
+  AppError,
+  ForbiddenError,
+  NotFoundError,
+  StaleDocumentError,
+} from '../../../shared/errors';
+import { type AuthContext, hasPermission } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { ensureCustodyCounter, nextCustodyNumber } from '../custody/custody-counter.model';
+import { cairoTodayAsUtcDay } from '../fleet-cairo-day';
 import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { toVehicleContractDto, typeNamesFor } from './vehicle-contract.dto';
 import {
@@ -157,6 +169,36 @@ const checkedCounts = (
     .map((entry) => ({ lineId: oid(entry.lineId), count: entry.count }));
 };
 
+const RECEIVE = 'fleetVehicleContract.receive';
+
+/**
+ * «الاستلام الأول» of a new contract: every line with cars received, on the form's day — or, when
+ * none was given, Cairo's day of `now` (between Cairo's midnight and UTC's, UTC is still on
+ * yesterday). Over the count is refused by the schema before this runs.
+ */
+const openingDelivery = (
+  input: CreateFleetVehicleContract,
+  lines: readonly FleetVehicleContractLineDoc[],
+  who: Types.ObjectId,
+  now: Date,
+): FleetVehicleContractDeliveryDoc => ({
+  _id: new Types.ObjectId(),
+  date: utcDay(input.receivedDate ?? cairoTodayAsUtcDay(now)),
+  counts: input.lines.flatMap((line, index) => {
+    const own = lines[index];
+    return line.received > 0 && own !== undefined
+      ? [{ lineId: own._id, count: line.received }]
+      : [];
+  }),
+  isDeleted: false,
+  deletedAt: null,
+  deletedBy: null,
+  createdAt: now,
+  createdBy: who,
+  updatedAt: now,
+  updatedBy: who,
+});
+
 class FleetVehicleContractService {
   private async dto(doc: FleetVehicleContractDoc, now: Date): Promise<FleetVehicleContractDto> {
     return toVehicleContractDto(doc, await typeNamesFor([doc]), utcTodayYmd(now));
@@ -199,8 +241,31 @@ class FleetVehicleContractService {
     return this.dto(await repo.getById(id), now);
   }
 
-  async create(input: CreateFleetVehicleContract, by: string): Promise<FleetVehicleContractDto> {
+  /**
+   * A new contract, and — when the form says cars of it already arrived — its first delivery in
+   * the same insert. `receivedDate` is the day the form gave (stored as `addDelivery` stores one);
+   * without one it is the Cairo day of `now`, the day the person registering it is living.
+   */
+  async create(
+    ctx: AuthContext,
+    input: CreateFleetVehicleContract,
+    now: Date = new Date(),
+  ): Promise<FleetVehicleContractDto> {
+    const receivedCars = input.lines.reduce((sum, line) => sum + line.received, 0);
+    // The same separation as the delivery routes: `create` alone registers, never receives.
+    // Refused before anything is read or written, so not even a contract number is spent.
+    if (receivedCars > 0 && !hasPermission(ctx, RECEIVE)) {
+      throw new ForbiddenError('recording received cars needs the receive grant');
+    }
     await assertActiveTypes(input.lines, () => true);
+    const by = ctx.userId;
+    const lines: FleetVehicleContractLineDoc[] = input.lines.map((line) => ({
+      _id: new Types.ObjectId(),
+      typeId: oid(line.typeId),
+      count: line.count,
+      unitPrice: line.unitPrice,
+    }));
+    const opening = receivedCars === 0 ? null : openingDelivery(input, lines, oid(by), now);
     // Outside the transaction, as custody's memos: the counter never starts below a used number.
     await ensureCustodyCounter(VEHICLE_CONTRACT_COUNTER, await repo.maxNo());
     const doc = await unitOfWork(async (session) => {
@@ -212,13 +277,8 @@ class FleetVehicleContractService {
           date: utcDay(input.date),
           deadline: input.deadline === null ? null : utcDay(input.deadline),
           supplier: input.supplier,
-          lines: input.lines.map((line) => ({
-            _id: new Types.ObjectId(),
-            typeId: oid(line.typeId),
-            count: line.count,
-            unitPrice: line.unitPrice,
-          })),
-          deliveries: [],
+          lines,
+          deliveries: opening === null ? [] : [opening],
           files: [],
         },
         { by, session },
@@ -227,9 +287,21 @@ class FleetVehicleContractService {
     await auditService.record({
       entityRef: entityRef(String(doc._id)),
       action: 'create',
-      changes: diffChanges({}, snapshot(doc)),
+      changes: [
+        ...diffChanges({}, snapshot(doc)),
+        // As «تسجيل استلام» records one, so the log reads the same whichever way the cars came.
+        ...(opening === null
+          ? []
+          : [
+              {
+                field: `deliveries.${String(opening._id)}`,
+                old: null,
+                new: deliverySnapshot(opening),
+              },
+            ]),
+      ],
     });
-    return this.dto(doc, new Date());
+    return this.dto(doc, now);
   }
 
   /** The whole contract again. Deliveries and attachments are never touched by an edit. */

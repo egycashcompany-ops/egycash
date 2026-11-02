@@ -20,6 +20,11 @@
 // transfer's day, its letter's day under it, «✓ حُوِّل المبلغ في …» and its reference on a line of
 // their own. A cancelled one stays in the log, muted «ملغاة», its amount struck through, counting
 // for nothing — the eye alone, no printer. Its drawer gives way to the head's dialogs.
+//
+// «حذف العملية»: a red bin, the LAST action of every operation's line and phone card (never on
+// «مصروفات الإيصالات»), given only to whoever may delete (`fleetReceipt.delete`); it and the drawer's
+// footer open the head's dialog (`?deleteOp=<id>`). The toolbar's pill «العمليات المحذوفة · N» leads
+// to the deleted operations (`custody/log/deleted`) — hidden while there is none.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -65,7 +70,7 @@ import {
 import { useOverlayHistory } from '../components/CustodyFundActions';
 import { CustodyOperationDrawer, useLedgerWordsKit } from '../components/CustodyOperationDrawer';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
-import { NUM, ymd } from '../components/FuelCardBoard';
+import { BoardIcon, NUM, ymd } from '../components/FuelCardBoard';
 import { CAIRO, TITLE } from '../components/custody-dashboard-parts';
 import { LedgerFigures } from '../components/CustodyLedgerFigures';
 import {
@@ -90,6 +95,7 @@ import {
   Signed,
   TIGHT,
 } from '../components/custody-memo-parts';
+import { BIN_ICON, DeleteBinButton } from '../components/custody-delete-parts';
 import { ledgerCount, ledgerWords } from '../lib/custody-ledger-words';
 import { ledgerNoteWithStatus, ledgerStatusNote } from '../lib/custody-hold';
 import { custodyPeriodLink } from '../lib/custody-dashboard-fund';
@@ -153,11 +159,14 @@ const LedgerActions = ({
   row,
   open,
   onConfirm,
+  onDelete,
 }: {
   row: FleetCustodyLedgerRowDto;
   open: (id: string, letter: boolean) => void;
   /** A held line's «تأكيد التحويل» — given only to whoever may record it. */
   onConfirm: ((id: string) => void) | undefined;
+  /** «حذف العملية» — the red bin, the LAST icon; given only to `fleetReceipt.delete`. */
+  onDelete: ((id: string) => void) | undefined;
 }): JSX.Element => {
   const t = useT();
   return row.op === 'spend' ? (
@@ -200,6 +209,7 @@ const LedgerActions = ({
           <PrinterIcon className="h-4 w-4" />
         </button>
       )}
+      {onDelete !== undefined && <DeleteBinButton id={row.id} onDelete={onDelete} />}
     </span>
   );
 };
@@ -243,10 +253,12 @@ const LedgerCard = ({
   row,
   open,
   onConfirm,
+  onDelete,
 }: {
   row: FleetCustodyLedgerRowDto;
   open: (id: string, letter: boolean) => void;
   onConfirm: ((id: string) => void) | undefined;
+  onDelete: ((id: string) => void) | undefined;
 }): JSX.Element => {
   const t = useT();
   const kit = useLedgerWordsKit();
@@ -303,7 +315,9 @@ const LedgerCard = ({
           <HoldDetailNote row={row} />
         </p>
       )}
-      <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2.5 dark:border-[#1c273b]">
+      {/* The two figures share a line only when they fit — a 150,000.00 amount and its «الآن»
+          figure do not at 375, so the second takes its own line. */}
+      <div className="mt-2.5 flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-t border-slate-100 pt-2.5 dark:border-[#1c273b]">
         <span className="flex flex-col gap-0.5">
           <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
             {t('fleet.custody.ledger.columns.amount')}
@@ -316,7 +330,7 @@ const LedgerCard = ({
             />
           </span>
         </span>
-        <span className="flex flex-col items-end gap-0.5">
+        <span className="ms-auto flex flex-col items-end gap-0.5">
           <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
             {t('fleet.custody.ledger.columns.after')}
           </span>
@@ -326,7 +340,7 @@ const LedgerCard = ({
         </span>
       </div>
       <div className="mt-2 flex justify-end">
-        <LedgerActions row={row} open={open} onConfirm={onConfirm} />
+        <LedgerActions row={row} open={open} onConfirm={onConfirm} onDelete={onDelete} />
       </div>
     </li>
   );
@@ -389,6 +403,9 @@ export const CustodyLedgerPage = (): JSX.Element => {
   const hold = useHoldParam();
   const mayHold = can('fleetReceipt.create');
   const confirmTransfer = mayHold ? (id: string) => hold.openHold('confirm', id) : undefined;
+  // «حذف العملية» opens in the head's dialog too (`?deleteOp=`), from a line or from the drawer.
+  const mayDelete = can('fleetReceipt.delete');
+  const deleteOperation = mayDelete ? (id: string) => hold.openHold('deleteOp', id) : undefined;
   const hasActiveFilters = from !== '' || to !== '' || ops.length > 0;
   const clearFilters = (): void => patch({ from: null, to: null, op: null });
 
@@ -409,6 +426,8 @@ export const CustodyLedgerPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useCustodyLedger(params);
   const rows = data?.items ?? [];
   const count = totals.data === undefined ? '' : ledgerCount(totals.data, kit);
+  // «العمليات المحذوفة · N» — hidden while there is none, or while it is not known.
+  const deletedCount = fund.data?.deleted?.count ?? 0;
 
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
 
@@ -487,7 +506,14 @@ export const CustodyLedgerPage = (): JSX.Element => {
       key: 'actions',
       header: t('fleet.vehicles.columns.actions'),
       align: 'center',
-      render: (row) => <LedgerActions row={row} open={openOperation} onConfirm={confirmTransfer} />,
+      render: (row) => (
+        <LedgerActions
+          row={row}
+          open={openOperation}
+          onConfirm={confirmTransfer}
+          onDelete={deleteOperation}
+        />
+      ),
     },
   ];
 
@@ -644,6 +670,25 @@ export const CustodyLedgerPage = (): JSX.Element => {
             {count}
           </span>
           <span className="flex flex-wrap items-center justify-end gap-1 sm:gap-2">
+            {deletedCount > 0 && (
+              <Link
+                to="/fleet/custody/log/deleted"
+                title={t('fleet.custody.deleted.pillTitle')}
+                data-ledger-deleted-pill={deletedCount}
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 transition hover:bg-slate-200 active:scale-95 sm:text-xs dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700/80"
+              >
+                <BoardIcon d={BIN_ICON} className="h-3.5 w-3.5 text-red-500 dark:text-[#e86870]" />
+                {t('fleet.custody.deleted.title')}
+                <span
+                  className={cn(
+                    NUM,
+                    'rounded-full bg-slate-200 px-1.5 text-[11px] leading-4 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+                  )}
+                >
+                  {deletedCount}
+                </span>
+              </Link>
+            )}
             {/* Not offered when the log failed: the file behind it would be empty or short. */}
             {!isError && (
               <ExportPill
@@ -703,7 +748,13 @@ export const CustodyLedgerPage = (): JSX.Element => {
             data-ledger-cards="true"
           >
             {rows.map((row) => (
-              <LedgerCard key={row.id} row={row} open={openOperation} onConfirm={confirmTransfer} />
+              <LedgerCard
+                key={row.id}
+                row={row}
+                open={openOperation}
+                onConfirm={confirmTransfer}
+                onDelete={deleteOperation}
+              />
             ))}
           </ul>
           <div
@@ -757,6 +808,7 @@ export const CustodyLedgerPage = (): JSX.Element => {
                 onCancel: () => hold.openHold('cancelHeld', openId, true),
               }
             : {})}
+          {...(mayDelete ? { onDelete: () => hold.openHold('deleteOp', openId, true) } : {})}
         />
       )}
     </PageContainer>

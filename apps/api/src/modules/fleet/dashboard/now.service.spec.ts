@@ -8,7 +8,7 @@
 //     permission scope at all, so an `own` grant never turns into `createdBy` on a company source;
 //   · isolation — one section that throws is `null` + named in `unavailable`, the rest still answer;
 //   · one clock — 2026-10-31T23:30Z is Cairo's 2026-11-01 everywhere, and that instant (not another)
-//     reaches the fuel summary's 24-hour figure.
+//     reaches the fuel summary's «شُحن اليوم» (its Cairo day, batch 3's D5).
 // The figures themselves are proved against real endpoints by the integration specs.
 import {
   FLEET_DASHBOARD_GATES,

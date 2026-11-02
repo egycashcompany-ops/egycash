@@ -1,21 +1,33 @@
 // «عقود توريد السيارات» — the figures the screens work out themselves: the editor's totals as he
-// types (his own contract: 22 × 4,700,000 + 11 × 5,400,000), «تسجيل استلام»'s table and its «over»
+// types (his own contract: 22 × 4,700,000 + 11 × 5,400,000), «المستلم حتى الآن» on a new contract
+// (15 + 11 received of 22 + 11) and the bodies Save sends, «تسجيل استلام»'s table and its «over»
 // rule (the edit's own cars given back first), the new delivery's ordinal, and the files a contract
 // may take.
 import { describe, expect, it } from 'vitest';
-import { type FleetVehicleContractDto } from '@ecms/contracts';
+import {
+  CreateFleetVehicleContractSchema,
+  UpdateFleetVehicleContractSchema,
+  type FleetVehicleContractDto,
+} from '@ecms/contracts';
 import {
   acceptsContractFile,
+  createBodyOf,
   deliveryCounts,
   deliveryFigures,
   deliveryOrdinal,
   deliveryTyped,
   editorLineTotal,
+  editorReceived,
   editorTotals,
   moveItem,
   pct,
+  receivedModeOf,
+  receivedOver,
   splitFileName,
   typedCount,
+  updateBodyOf,
+  type EditorForm,
+  type EditorLine,
 } from './vehicle-contract-figures';
 
 const line = (id: string, count: number, received: number) => ({
@@ -64,7 +76,8 @@ describe('the editor works out the total as he types', () => {
       { count: '22', price: '4700000' },
       { count: '11', price: '540000' },
     ];
-    expect(editorTotals(lines)).toEqual({ total: 109_340_000, cars: 33, priced: 2 });
+    // `received` is batch 3's «المستلم حتى الآن» — none written here.
+    expect(editorTotals(lines)).toEqual({ total: 109_340_000, cars: 33, priced: 2, received: 0 });
     expect(editorTotals([lines[0]!, { count: '11', price: '5400000' }]).total).toBe(162_800_000);
   });
 
@@ -81,6 +94,115 @@ describe('the editor works out the total as he types', () => {
     expect(typedCount('')).toBe(0);
     expect(typedCount(undefined)).toBe(0);
     expect(typedCount('7')).toBe(7);
+  });
+});
+
+const TYPE_1 = '65f000000000000000000021';
+const TYPE_2 = '65f000000000000000000022';
+const editorLine = (key: string, over: Partial<EditorLine> = {}): EditorLine => ({
+  key,
+  id: null,
+  typeId: TYPE_1,
+  count: '',
+  price: '',
+  received: '',
+  ...over,
+});
+/** His new contract: Sprinter 22 at 4,700,000 with 15 received, Accelo 11 at 5,400,000 all received. */
+const NEW_LINES: EditorLine[] = [
+  editorLine('k1', { count: '22', price: '4700000', received: '15' }),
+  editorLine('k2', { typeId: TYPE_2, count: '11', price: '5400000', received: '11' }),
+];
+const form = (lines: EditorLine[], over: Partial<EditorForm> = {}): EditorForm => ({
+  date: '2025-12-08',
+  deadline: '2026-07-31',
+  name: ' عقد توريد عربات نقل أموال ',
+  supplier: '',
+  lines,
+  receivedDate: '2026-11-01',
+  ...over,
+});
+
+describe('«المستلم حتى الآن» on a new contract', () => {
+  it('15 + 11 of 22 + 11: 26 received, 7 still owed, nothing over', () => {
+    expect(editorTotals(NEW_LINES)).toEqual({
+      total: 162_800_000,
+      cars: 33,
+      priced: 2,
+      received: 26,
+    });
+    expect(editorReceived(NEW_LINES, 'edit', 0)).toEqual({ received: 26, left: 7, over: [] });
+  });
+
+  it('25 on the line of 22 is over — Save waits on that line only', () => {
+    const lines = [{ ...NEW_LINES[0]!, received: '25' }, NEW_LINES[1]!];
+    expect(lines.map(receivedOver)).toEqual([true, false]);
+    const figures = editorReceived(lines, 'edit', 0);
+    expect(figures.received).toBe(36);
+    expect(figures.left).toBe(0);
+    expect(figures.over.map((line) => line.key)).toEqual(['k1']);
+  });
+
+  it('as many as the line names is not over; an empty box is none', () => {
+    expect(receivedOver({ count: '11', received: '11' })).toBe(false);
+    expect(receivedOver({ count: '11', received: '' })).toBe(false);
+    expect(receivedOver({ count: '11', received: '12' })).toBe(true);
+    // A line without a count yet is named by the required-fields banner, not as over.
+    expect(editorReceived([editorLine('k1', { received: '3' })], 'edit', 0).over).toEqual([]);
+  });
+
+  it('who types it: a new contract with the grant, locked on an edit, hidden without it', () => {
+    expect(receivedModeOf(false, true)).toBe('edit');
+    expect(receivedModeOf(false, false)).toBe('hidden');
+    expect(receivedModeOf(true, true)).toBe('locked');
+    expect(receivedModeOf(true, false)).toBe('locked');
+  });
+
+  it('an edit shows the saved figure; without the grant nothing is counted', () => {
+    // The boxes are not read on an edit — the contract's own received is.
+    expect(editorReceived(NEW_LINES, 'locked', 32)).toEqual({ received: 32, left: 1, over: [] });
+    expect(editorReceived(NEW_LINES, 'hidden', 0)).toEqual({ received: 0, left: 33, over: [] });
+  });
+});
+
+describe('what Save sends', () => {
+  it('a new contract carries each line’s received and the first delivery’s day', () => {
+    const body = createBodyOf(form(NEW_LINES), 'edit');
+    expect(body.lines.map((line) => [line.count, line.received, line.unitPrice])).toEqual([
+      [22, 15, 4_700_000],
+      [11, 11, 5_400_000],
+    ]);
+    expect(body.receivedDate).toEqual(new Date('2026-11-01'));
+    expect(body.name).toBe('عقد توريد عربات نقل أموال');
+    expect(body.deadline).toEqual(new Date('2026-07-31'));
+    // The server takes it as it is: a valid create body.
+    expect(CreateFleetVehicleContractSchema.safeParse(body).success).toBe(true);
+  });
+
+  it('nothing received: every line 0, and no day', () => {
+    const lines = NEW_LINES.map((line) => ({ ...line, received: '' }));
+    const body = createBodyOf(form(lines), 'edit');
+    expect(body.lines.map((line) => line.received)).toEqual([0, 0]);
+    expect(body.receivedDate).toBeNull();
+    expect(CreateFleetVehicleContractSchema.safeParse(body).success).toBe(true);
+  });
+
+  it('without the grant the boxes are not read — nothing is sent as received', () => {
+    const body = createBodyOf(form(NEW_LINES), 'hidden');
+    expect(body.lines.map((line) => line.received)).toEqual([0, 0]);
+    expect(body.receivedDate).toBeNull();
+  });
+
+  it('an edit sends no received figure and no day — the strict Update schema takes it', () => {
+    const lines = NEW_LINES.map((line, index) => ({
+      ...line,
+      id: `65f00000000000000000001${index}`,
+    }));
+    const body = updateBodyOf(form(lines), 3);
+    expect(body.version).toBe(3);
+    expect(body.lines.every((line) => !('received' in line))).toBe(true);
+    expect('receivedDate' in body).toBe(false);
+    expect(UpdateFleetVehicleContractSchema.safeParse(body).success).toBe(true);
   });
 });
 

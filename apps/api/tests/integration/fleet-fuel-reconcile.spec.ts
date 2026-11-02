@@ -8,6 +8,7 @@
 // The decisions (✓ and ✗, the owner's freshness rule, the card log) are in
 // `fleet-fuel-reconcile-decide.spec.ts`; both share `helpers/fuel-reconcile-world.ts`.
 import { createHash } from 'node:crypto';
+import { Types } from 'mongoose';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,6 +28,7 @@ import {
   mkCard,
   movementCount,
   read,
+  readSheet,
   rowOf,
   upload,
   useFuelReconcileWorld,
@@ -61,8 +63,10 @@ describe('reading a sheet', () => {
     const c = await mkCard('wataniya', 'EGYCASH-C', 300);
     const d = await mkCard('wataniya', 'EGYCASH-D', 5);
     const g = await mkCard('wataniya', 'EGYCASH-G', 10);
-    const f1 = await mkCard('wataniya', 'EGYCASH-F', 1);
-    await mkCard('wataniya', 'egycash-f', 2);
+    // Rewritten on purpose (6c): two cards sharing a name are now told apart by the number when
+    // it fits one of them — these two share their last four as well, so the sheet cannot say.
+    const f1 = await mkCard('wataniya', 'EGYCASH-F', 1, { number: '5485640000990077' });
+    await mkCard('wataniya', 'egycash-f', 2, { number: '5485640000980077' });
     const gone = await mkCard('wataniya', 'EGYCASH-E', 0, { isDeleted: true });
     const n = await mkCard('wataniya', 'EGYCASH-N', 40);
     await mkCard('chillout', 'EGYCASH-A2', 1); // another company is never compared
@@ -125,7 +129,234 @@ describe('reading a sheet', () => {
       duplicates: 1,
       conflicts: 2,
       numbersDiffer: 1,
+      skipped: 0,
+      placesDiffer: 0,
     });
+  });
+});
+
+describe('6c — his company statement, shaped like «4-10-2026»', () => {
+  it('216 rows + 3 totals: every card matched by its rebuilt name, the totals skipped and agreeing', async () => {
+    // 216 Wataniya cards, named as the go-live sheet names them; some chassis begin with a 0.
+    const seed = Array.from({ length: 216 }, (_, i) => {
+      const plate = String(1000 + i);
+      const chassis =
+        i % 3 === 0
+          ? `B${String(200000 + i)}`
+          : i % 5 === 0
+            ? `0${String(40000 + i)}`
+            : String(300000 + i);
+      return {
+        vehicleId: null,
+        label: String(100 + i),
+        company: 'wataniya' as const,
+        name: `EGYCASH-${plate}-${chassis}`,
+        number: `5485640${String(100000000 + i).slice(-9)}`,
+        expiresAt: null,
+        password: null,
+        balance: 1000 + i,
+        plate,
+        chassis,
+      };
+    });
+    await FleetFuelCardModel.insertMany(seed.map(({ plate: _p, chassis: _c, ...doc }) => doc));
+    const last4 = (i: number) => (seed[i] as (typeof seed)[number]).number.slice(-4);
+    // The statement: masked, the bare prefix, plate and chassis split off (an all-digit chassis
+    // typed into a number cell loses its zero), 95 balances that differ, three numbers crossed.
+    let sum = 0;
+    const rows = seed.map((c, i) => {
+      const balance = i < 121 ? c.balance : c.balance + 5;
+      sum += Math.round(balance * 100);
+      const shown = i === 0 ? last4(1) : i === 1 ? last4(2) : i === 2 ? last4(0) : last4(i);
+      return [
+        `548**********${shown}`,
+        'EGYCASH',
+        Number(c.plate),
+        /^\d+$/u.test(c.chassis) ? Number(c.chassis) : c.chassis,
+        balance,
+        c.label,
+        5000,
+      ];
+    });
+    const dto = await readSheet('wataniya', [
+      ['Card Number', 'Card Name', 'لوحه', 'شاسيه', 'Card Balance', 'كود', 'قيمه الشحن'],
+      ...rows,
+      [null, null, null, 'رصيد الكروت', sum / 100, null, null],
+      [null, null, null, 'قيمه الشحن', 1030000, null, null],
+      [null, null, null, 'الرصيد المتوقع', 700000, null, null],
+    ]);
+
+    expect(dto).toMatchObject({
+      rows: 219,
+      cardRows: 216,
+      sheetCompany: 'wataniya',
+      nameRebuilt: true,
+      example: { row: 2, builtName: 'EGYCASH-1000-B200000' },
+      totalCheck: { row: 218, text: 'رصيد الكروت', sum: sum / 100, agrees: true },
+    });
+    expect(dto.conflicts).toEqual([]);
+    expect([
+      dto.equal.length,
+      dto.differs.length,
+      dto.sheetOnly.length,
+      dto.systemOnly.length,
+    ]).toEqual([121, 95, 0, 0]);
+    expect(dto.skipped.map((r) => r.row)).toEqual([218, 219, 220]);
+    expect(dto.layout.map((c) => `${c.role}:${c.column}`)).toEqual([
+      'number:A',
+      'name:B',
+      'plate:C',
+      'chassis:D',
+      'balance:E',
+      'code:F',
+      'ignored:G',
+    ]);
+    // The crossed three: matched by name, each naming the card that holds its number.
+    const crossed = dto.equal.filter((l) => !l.numberMatches);
+    expect(crossed.map((l) => [l.card.name, l.numberHolder?.name, l.matchedBy])).toEqual([
+      [seed[0]?.name, seed[1]?.name, 'name'],
+      [seed[1]?.name, seed[2]?.name, 'name'],
+      [seed[2]?.name, seed[0]?.name, 'name'],
+    ]);
+    expect(dto.equal.every((l) => l.placeMatches === true)).toBe(true);
+    // The leading zero: «EGYCASH-1005-40005» from the sheet is the card «…-040005».
+    const zero = dto.equal.find((l) => l.card.name === 'EGYCASH-1005-040005');
+    expect(zero?.sheet.builtName).toBe('EGYCASH-1005-40005');
+
+    const stored = await FleetFuelReconciliationModel.findById(dto.id).lean().exec();
+    expect(stored?.lines).toHaveLength(95);
+    expect(stored?.lines[0]?.name).toMatch(/^EGYCASH-\d{4}-/u);
+    expect(stored?.lines[0]?.sheetCode).toMatch(/^\d+$/u);
+    expect(stored?.counts).toMatchObject({ skipped: 3, numbersDiffer: 3, placesDiffer: 0 });
+
+    // The decision flow is unchanged.
+    const target = dto.differs[0];
+    const applied = await decide(dto.id, 'apply', [target?.card.id ?? '']);
+    expect(applied.status, applied.text).toBe(200);
+    expect((await card(target?.card.id ?? '')).balance).toBe(target?.sheet.balance);
+  });
+
+  it('«1-11-2026»-shaped Chill Out statement: untitled plate/chassis, 209 matched, 6 new, one number different', async () => {
+    // 210 Chill Out cards; 8 chassis begin with a 0 (Excel drops it from a number cell).
+    const seed = Array.from({ length: 210 }, (_, i) => {
+      const plate = String(2000 + i);
+      const chassis = i < 8 ? `0${String(46000 + i)}` : String(250000 + i);
+      return {
+        vehicleId: null,
+        label: `C${String(i)}`,
+        company: 'chillout' as const,
+        name: `EGYCASHTCS-${plate}-${chassis}`,
+        number: `5485641${String(200000000 + i).slice(-9)}`,
+        expiresAt: null,
+        password: null,
+        balance: 500 + i,
+        plate,
+        chassis,
+      };
+    });
+    await FleetFuelCardModel.insertMany(seed.map(({ plate: _p, chassis: _c, ...doc }) => doc));
+    const rows = seed.map((c, i) => [
+      // Card 50 was replaced: the sheet prints a number no card of the system holds.
+      i === 50 ? '548**********9876' : `548**********${c.number.slice(-4)}`,
+      'EGYCASHTCS',
+      Number(c.plate),
+      Number(c.chassis),
+      i === 209 ? -2214.66 : i < 12 ? c.balance : c.balance + 1,
+      c.label,
+    ]);
+    const extra = [
+      ['548**********1111', 'EGYCASHTCS', 1781, 312986, 4305.09, '209'],
+      ...[305, 306, 307, 308, 309].map((code, k) => [
+        `548**********${String(3000 + k)}`,
+        'EGYCASHTCS',
+        6400 + k,
+        818000 + k,
+        0,
+        String(code),
+      ]),
+    ];
+    const dto = await readSheet('chillout', [
+      ['Card Number', 'Card Name', null, null, 'Card Balance', 'code'],
+      ...rows,
+      ...extra,
+    ]);
+    expect(dto.layout.filter((c) => c.assumed).map((c) => `${c.role}:${c.column}`)).toEqual([
+      'plate:C',
+      'chassis:D',
+    ]);
+    expect([dto.equal.length, dto.differs.length]).toEqual([12, 197]);
+    expect([dto.sheetOnly.length, dto.systemOnly.length, dto.newCards.length]).toEqual([6, 0, 6]);
+    expect(dto.conflicts.map((c) => [c.reason, c.cardId])).toEqual([
+      [
+        'badBalance',
+        String((await FleetFuelCardModel.findOne({ name: seed[209]?.name }).lean().exec())?._id),
+      ],
+    ]);
+    const different = [...dto.equal, ...dto.differs].filter((l) => !l.numberMatches);
+    expect(different.map((l) => [l.card.name, l.numberHolder])).toEqual([[seed[50]?.name, null]]);
+    expect(dto.newCards.map((n) => [n.name, n.balance])).toEqual([
+      ['EGYCASHTCS-1781-312986', 4305.09],
+      ...[0, 1, 2, 3, 4].map((k) => [`EGYCASHTCS-${String(6400 + k)}-${String(818000 + k)}`, 0]),
+    ]);
+    expect(dto.sheetCompany).toBe('chillout');
+  });
+
+  it('a session read before batch 3 — no code, no charges, no new counts — still decides', async () => {
+    const a = await mkCard('wataniya', 'EGYCASH-OLD', 100);
+    const b = await mkCard('wataniya', 'EGYCASH-OLD2', 50);
+    const readAt = new Date();
+    const id = new Types.ObjectId();
+    await FleetFuelReconciliationModel.collection.insertOne({
+      _id: id,
+      company: 'wataniya',
+      fileName: 'old.xlsx',
+      fileSha256: 'f'.repeat(64),
+      readAt,
+      rowsRead: 2,
+      sheetCompany: 'wataniya',
+      lines: [a, b].map((c) => ({
+        cardId: c._id,
+        name: c.name,
+        sheetRow: 2,
+        sheetNumber: '548**********0001',
+        sheetBalance: c.balance + 10,
+        systemBalance: c.balance,
+        numberMatches: true,
+        decision: null,
+        decidedAt: null,
+        decidedBy: null,
+        movementId: null,
+      })),
+      counts: {
+        equal: 0,
+        sheetOnly: 0,
+        systemOnly: 0,
+        duplicates: 0,
+        conflicts: 0,
+        numbersDiffer: 0,
+      },
+      schemaVersion: 1,
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      createdBy: null,
+      updatedBy: null,
+      createdAt: readAt,
+      updatedAt: readAt,
+      __v: 0,
+    });
+    const applied = await decide(String(id), 'apply', [String(a._id)]);
+    expect(applied.status, applied.text).toBe(200);
+    expect(
+      data<{ cancelledAmount: number; approvedRequest: number | null }[]>(applied)[0],
+    ).toMatchObject({
+      cancelledAmount: 0,
+      approvedRequest: null,
+    });
+    expect((await card(a._id)).balance).toBe(110);
+    const rejected = await decide(String(id), 'reject', [String(b._id)]);
+    expect(rejected.status, rejected.text).toBe(200);
+    expect((await card(b._id)).balance).toBe(50);
   });
 });
 

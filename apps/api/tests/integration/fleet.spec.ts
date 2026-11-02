@@ -2323,6 +2323,10 @@ describe('the alarm projection has two permission doors and one answer', () => {
           // a newer visit that does not count, so «—» can say why without a second query.
           'baseline',
           'newerUncountedVisit',
+          // Batch 3: what the figure was judged by (the make, its interval, the two thresholds),
+          // and the newest-dated reading beside the highest — the «كيف حُسب الفارق» card's facts.
+          'rule',
+          'newestReading',
           'level',
           'noAlarmReason',
           'remainingKm',
@@ -2343,6 +2347,25 @@ describe('the alarm projection has two permission doors and one answer', () => {
       }
       expect(row.latestReadingAt === null).toBe(row.latestReading === null);
       expect(row.latestReadingLogId === null).toBe(row.latestReading === null);
+      // Batch 3 — the card's facts, with their real values now (F0 only listed the keys): the rule
+      // the figure was judged by, as resolved for this answer, and the newest reading beside the
+      // highest, present exactly when there is a reading at all.
+      const rule = row.rule as {
+        vehicleType: { id: string; name: { ar: string; en: string } } | null;
+        intervalKm: number;
+        yellowKm: number;
+        redKm: number;
+      };
+      expect(rule.yellowKm).toBe(1000);
+      expect(rule.redKm).toBe(300);
+      expect(rule.intervalKm).toBeGreaterThanOrEqual(0);
+      if (rule.vehicleType === null) expect(rule.intervalKm).toBe(0);
+      else expect(rule.vehicleType.name.ar.length).toBeGreaterThan(0);
+      expect(row.newestReading === null).toBe(row.latestReading === null);
+      if (row.noAlarmReason === null) {
+        expect(row.remainingKm).toBe(rule.intervalKm - (row.sinceServiceKm as number));
+      }
+      if (rule.intervalKm === 0) expect(row.noAlarmReason).toBe('noInterval');
       // The reason travels with the figures, and agrees with them: a stated reason means the
       // calculation did not run, so there are no numbers — and vice versa.
       if (row.noAlarmReason === null) {
@@ -3949,6 +3972,23 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
   });
 });
 
+/**
+ * A day this far ahead of TODAY (the UTC day — the roster's own floor).
+ *
+ * Relative, never a literal: the plan endpoint refuses a date in the past (`PAST_DATE`), so a
+ * hardcoded future date is a test with an expiry — `operations.spec.ts` had three and they took
+ * the suite down when they went stale, and the roster block's own literals did the same on
+ * 2026-11-02, when «2026-11-01» became yesterday. Every roster day the roster block and the
+ * fixed-crew block below plan or read is one of these: `futureDay(61 + days after 2026-11-01)`,
+ * the same order, gaps and shared days as the literals they replaced, and clear of the 40–60
+ * offsets the inheritance tests use. Top level, because both blocks need it.
+ */
+const futureDay = (days: number): string => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
 describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   interface BoardDto {
     changedCount?: number;
@@ -4014,20 +4054,6 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       .query({ date })
       .set('Authorization', `Bearer ${adminToken}`);
 
-  /**
-   * A day this far ahead of TODAY.
-   *
-   * Relative, never a literal: the plan endpoint refuses a date in the past (`PAST_DATE`), so a
-   * hardcoded future date is a test with an expiry — `operations.spec.ts` had three and they took
-   * the suite down when they went stale, and this block's own literals did the same on
-   * 2026-11-02, when «2026-11-01» became yesterday. Every roster day this block plans or reads is
-   * one of these, each test on offsets of its own, so no two tests share a day.
-   */
-  const futureDay = (days: number): string => {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() + days);
-    return d.toISOString().slice(0, 10);
-  };
   const changedFor = (vehicleId: string): number =>
     seenEvents.filter(
       (e) =>
@@ -5673,7 +5699,7 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
     await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null }]);
 
-    const date = '2026-12-11';
+    const date = futureDay(101);
     const dayBoard = await request(app)
       .get('/api/v1/fleet/roster')
       .query({ date })
@@ -5700,7 +5726,7 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
   it('AUDIT — the daily roster’s own rows are untouched by any fixed-crew save', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [daily, fixed] = [await mkDriver(), await mkDriver()];
-    const date = '2026-12-12';
+    const date = futureDay(102);
 
     const plan = await request(app)
       .post('/api/v1/fleet/roster')
@@ -5969,7 +5995,7 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     const [fixed, daily] = [await mkDriver(), await mkDriver()];
     await saveCrews([{ vehicleId: v.id, driver1EmployeeId: fixed }]);
 
-    const date = '2026-12-09';
+    const date = futureDay(99);
     const plan = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)

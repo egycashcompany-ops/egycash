@@ -76,10 +76,13 @@ const PLAN = { r1: 45, r2: 15 };
 // The pool is now in the fixture (SEAT_HOLDERS, HR leave on): its profiles, التمامات, leave (ONE
 // batched query, pinned below) and directory reads add a constant few — and the fixed crews are no
 // longer read twice. The count no longer grows with the registry.
+// R1 was 70 until batch 3: the alarm projection the dashboard reuses as it is (D19) now names the
+// work type and the workshop of the visits it judges by («كيف حُسب الفارق»), in ONE `find` on
+// `fleet_catalog_items` by id (`catalogNames`) — a constant, never one per car or per visit.
 // R2 was 17: «في الورشة طوال الفترة» (R-16 (d)) is now asked of the period itself — one bounded
 // `distinct` over the asked cars' visits (`workshopThroughoutFilter`) — instead of being read off
 // each car's newest visit, which hid an older visit that covered a past period.
-const CEILING = { r1: 70, r2: 18 };
+const CEILING = { r1: 71, r2: 18 };
 /**
  * R2 narrowed by a type and car codes: the same sections plus the set's own resolution. The six
  * modules resolve the filter as their screens do, but inside one read each narrowing is asked of

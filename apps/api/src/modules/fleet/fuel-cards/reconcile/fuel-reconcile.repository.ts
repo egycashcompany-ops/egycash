@@ -22,6 +22,83 @@ class FleetFuelReconciliationRepository extends BaseRepository<FleetFuelReconcil
   }
 
   /**
+   * When a company sheet last JUDGED each of `cardIds`, newest first per card: a line decided ✓ on
+   * it (`decidedAt`, which is also when a «اعتماد طلب الرصيد» wrote its charge — a ✓ is refused
+   * when the card moved after the read, so nothing lies between the two), a line decided ✗ on it,
+   * or a read that showed it equal (both `readAt`: a ✗ has no such check, and a sheet read before a
+   * top-up never showed it, however late its ✗). A card no sheet judged is absent.
+   */
+  async judgedAt(cardIds: readonly Types.ObjectId[]): Promise<Map<string, Date>> {
+    if (cardIds.length === 0) return new Map();
+    const ids = [...cardIds];
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; at: Date }>([
+        {
+          $match: {
+            isDeleted: false,
+            $or: [
+              { lines: { $elemMatch: { cardId: { $in: ids }, decision: { $ne: null } } } },
+              { equalCardIds: { $in: ids } },
+            ],
+          },
+        },
+        {
+          $project: {
+            judged: {
+              $concatArrays: [
+                {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: '$lines',
+                        as: 'line',
+                        cond: {
+                          $and: [
+                            { $in: ['$$line.cardId', ids] },
+                            { $ne: [{ $ifNull: ['$$line.decision', null] }, null] },
+                          ],
+                        },
+                      },
+                    },
+                    as: 'line',
+                    in: {
+                      cardId: '$$line.cardId',
+                      at: {
+                        $cond: [
+                          { $eq: ['$$line.decision', 'reject'] },
+                          '$readAt',
+                          '$$line.decidedAt',
+                        ],
+                      },
+                    },
+                  },
+                },
+                {
+                  $map: {
+                    input: {
+                      $filter: {
+                        input: { $ifNull: ['$equalCardIds', []] },
+                        as: 'cardId',
+                        cond: { $in: ['$$cardId', ids] },
+                      },
+                    },
+                    as: 'cardId',
+                    in: { cardId: '$$cardId', at: '$readAt' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+        { $unwind: '$judged' },
+        { $match: { 'judged.at': { $type: 'date' } } },
+        { $group: { _id: '$judged.cardId', at: { $max: '$judged.at' } } },
+      ])
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.at]));
+  }
+
+  /**
    * Write one line's decision — only while it has none. `false` when the line was decided in the
    * meantime (or is not there), so the caller refuses instead of deciding a card twice.
    */
@@ -46,6 +123,64 @@ class FleetFuelReconciliationRepository extends BaseRepository<FleetFuelReconcil
             'lines.$.decidedAt': decision.at,
             'lines.$.decidedBy': by,
             'lines.$.movementId': decision.movementId,
+            updatedBy: by,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  /** «ربط الكروت بالسيارات» — one link row's decision, written once (`false` when it already was). */
+  async decideLink(
+    id: Types.ObjectId,
+    cardId: Types.ObjectId,
+    decision: {
+      decision: FleetFuelReconcileDecision;
+      at: Date;
+      by: string;
+      movementId: Types.ObjectId | null;
+    },
+    session: ClientSession,
+  ): Promise<boolean> {
+    const by = new Types.ObjectId(decision.by);
+    const result = await this.model
+      .updateOne(
+        { _id: id, isDeleted: false, links: { $elemMatch: { cardId, decision: null } } },
+        {
+          $set: {
+            'links.$.decision': decision.decision,
+            'links.$.decidedAt': decision.at,
+            'links.$.decidedBy': by,
+            'links.$.movementId': decision.movementId,
+            updatedBy: by,
+          },
+          $inc: { __v: 1 },
+        },
+        { session },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  /** «إضافة» — the card a sheet-only row became, written once (`false` when it already was). */
+  async addNewCard(
+    id: Types.ObjectId,
+    sheetRow: number,
+    added: { cardId: Types.ObjectId; at: Date; by: string },
+    session: ClientSession,
+  ): Promise<boolean> {
+    const by = new Types.ObjectId(added.by);
+    const result = await this.model
+      .updateOne(
+        { _id: id, isDeleted: false, newCards: { $elemMatch: { sheetRow, cardId: null } } },
+        {
+          $set: {
+            'newCards.$.cardId': added.cardId,
+            'newCards.$.decidedAt': added.at,
+            'newCards.$.decidedBy': by,
             updatedBy: by,
           },
           $inc: { __v: 1 },

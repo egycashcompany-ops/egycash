@@ -50,7 +50,7 @@ import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
 import { ALARMS_CODE_TYPE, ALARMS_TYPE } from './MaintenanceAlarmsPage';
-import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
+import { alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { dateBoundPatch, odometerRange, widerRange } from '../lib/odometer-range';
 import { DriverCell } from '../components/DriverPerson';
@@ -59,7 +59,8 @@ import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { AlarmReasonCell, NotActiveCell } from '../components/AlarmReasonCell';
-import { reasonRows } from '../lib/alarm-reason-rows';
+import { NewestGapCell, RowGapCell } from '../components/AlarmFigureCell';
+import { newestRows, reasonRows, sheetGapOf } from '../lib/alarm-reason-rows';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { VehicleSetChip } from '../components/VehicleSetChip';
@@ -322,6 +323,11 @@ export const OdometerPage = (): JSX.Element => {
     () => reasonRows(rows, alarmByVehicle, alarmsQuery.isSuccess),
     [rows, alarmByVehicle, alarmsQuery.isSuccess],
   );
+  // «مش بيزود على فارق الصيانه»: what is about the car NOW — its figure today, its level, what is
+  // left of the interval, «كيف حُسب الفارق» — is said once, on the car's NEWEST row on this page;
+  // every other row shows the gap at its own reading (`serviceGapKm`), so the column grows day by
+  // day as the car runs.
+  const newestRowOf = useMemo(() => newestRows(rows), [rows]);
 
   const [recordOpen, setRecordOpen] = useState(false);
   // «تسجيل قراءة» from a reason's link opens the dialog on that car; let go when it closes.
@@ -373,7 +379,9 @@ export const OdometerPage = (): JSX.Element => {
    *
    * TWO CELLS ARE SPLIT, because a spreadsheet cell cannot stack a value and a badge. The
    * maintenance cell shows the distance since the last counting service AND the alarm level it
-   * has reached; each takes a column. The reading columns keep their WORDS — «بدون قراءة» and the
+   * has reached; each takes a column — and each row says what the screen's row says
+   * (`sheetGapOf`): the gap at its own reading, and the car's figure now with its level on the
+   * car's newest row in the file only («مش بيزود على فارق الصيانه» must not come back in the file). The reading columns keep their WORDS — «بدون قراءة» and the
    * open period are facts about the day, not blanks, and the column says so exactly as the table
    * does. Every genuine number goes in as a number, so the sheet stays summable; nothing here is
    * money, so there are no money columns. The row's correct action is a control, so it is left out.
@@ -383,6 +391,7 @@ export const OdometerPage = (): JSX.Element => {
       fleetApi.listOdometerLogs({ ...filtersOnly(params), page: pageNo, pageSize: size }),
     );
     const names = await driverNames(all);
+    const newestOf = newestRows(all);
     saveSheet({
       name: t('fleet.nav.odometer'),
       serialHeader: t('fleet.violations.report.serial'),
@@ -399,11 +408,14 @@ export const OdometerPage = (): JSX.Element => {
         t('fleet.odometer.columns.alert'),
       ],
       rows: all.map((log) => {
-        // The same join the maintenance column makes, and the same refusal: a car with no rule,
+        // The same split the maintenance column makes, and the same refusal: a car with no rule,
         // no service on file or no registry row prints nothing rather than a computed distance
         // the projection deliberately withheld.
-        const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
-        const measured = alarm === undefined || alarm.sinceServiceKm === null ? undefined : alarm;
+        const gap = sheetGapOf(
+          log,
+          log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId),
+          newestOf,
+        );
         return [
           formatDate(log.date, locale),
           log.vehicleCode ?? '',
@@ -415,12 +427,12 @@ export const OdometerPage = (): JSX.Element => {
           log.outReading === null ? '' : (log.inReading ?? t('fleet.odometer.openPeriod')),
           log.km ?? '',
           log.notes ?? '',
-          measured?.sinceServiceKm ?? '',
-          measured === undefined
+          gap.km ?? '',
+          gap.level === null
             ? ''
-            : measured.level === 'none'
+            : gap.level === 'none'
               ? t('fleet.vehicle.alarmNone')
-              : t(`fleet.dashboard.level.${measured.level}`),
+              : t(`fleet.dashboard.level.${gap.level}`),
         ];
       }),
     });
@@ -452,14 +464,6 @@ export const OdometerPage = (): JSX.Element => {
     <span dir="ltr" className={FIGURE}>
       {text}
     </span>
-  );
-  /**
-   * «5,250 كم»: the figure in the boards' figure, the unit in the page's own words — and in the
-   * order the locale's sentence puts them, which is why the template is split rather than the
-   * unit appended. A monospace face has no Arabic letters, so the unit must not wear it.
-   */
-  const [kmBefore = '', kmAfter = ''] = t('fleet.odometer.kmValue', { km: '\u0000' }).split(
-    '\u0000',
   );
 
   // «تحسين شكل البيانات»: the drivers board's table — every value and header CENTRED, a date year
@@ -604,49 +608,47 @@ export const OdometerPage = (): JSX.Element => {
       sortable: true,
       sortKey: 'alarmSinceService',
       render: (log) => {
-        const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
-        // No figure: the projection refused to compute one (no rule, no service on file, numbers
-        // that do not compare), or the car is not active and is not measured at all. Never a
-        // distance the projection withheld. The reason is a fact about the VEHICLE and rows here
-        // are READINGS, so it is said ONCE per car — on the row of its latest reading — and every
-        // other reading of the car keeps the dash; a sentence down all of them would read as
-        // several problems instead of one.
-        if (alarm === undefined || alarm.sinceServiceKm === null) {
-          const said = reasons.get(log.id);
-          if (said?.kind === 'alarm') {
-            return (
-              <AlarmReasonCell
-                alarm={said.alarm}
-                reason={said.reason}
-                onRecord={(code) => {
-                  setRecordCode(code);
-                  setRecordOpen(true);
-                }}
-              />
-            );
-          }
-          if (said?.kind === 'notActive') {
-            return <NotActiveCell vehicleId={said.vehicleId} code={said.code} />;
-          }
-          return DASH;
+        // A car the projection refused (no rule, no service on file, numbers that do not
+        // compare), or one it leaves out because it is not active: the reason, said ONCE per car
+        // on its newest row here (`reasonRows`) — a fact about the VEHICLE, and rows here are
+        // READINGS, so a sentence down all of them would read as several problems instead of one.
+        const said = reasons.get(log.id);
+        if (said?.kind === 'alarm') {
+          return (
+            <AlarmReasonCell
+              alarm={said.alarm}
+              reason={said.reason}
+              onRecord={(code) => {
+                setRecordCode(code);
+                setRecordOpen(true);
+              }}
+            />
+          );
         }
-        return (
-          // The tint is on this element, NOT on the row: a row here is one READING, and a car has
-          // many — tinting them all would show five alarms for one car.
-          <span
-            className={cn(
-              'inline-flex flex-wrap items-center justify-center gap-2',
-              alarmCellTint(alarm.level),
-            )}
-          >
-            <span className="whitespace-nowrap">
-              {kmBefore}
-              {figure(LATIN.format(alarm.sinceServiceKm))}
-              {kmAfter}
-            </span>
-            <AlarmBadge level={alarm.level} size="lg" />
-          </span>
-        );
+        if (said?.kind === 'notActive') {
+          return <NotActiveCell vehicleId={said.vehicleId} code={said.code} />;
+        }
+        const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
+        if (
+          alarm !== undefined &&
+          alarm.sinceServiceKm !== null &&
+          log.vehicleId !== null &&
+          newestRowOf.get(log.vehicleId) === log.id
+        ) {
+          return (
+            <NewestGapCell
+              alarm={alarm}
+              rowIsLatest={alarm.latestReadingLogId === log.id}
+              // The tint is on the figure, NOT on the row: a row here is one READING, and a car
+              // has many — tinting them all would show five alarms for one car.
+              tint={alarmCellTint(alarm.level)}
+            />
+          );
+        }
+        // Every other reading: the gap AT THAT READING, as the server measured it — «—» before
+        // any service and on a day without a reading. Never a distance the projection withheld:
+        // the server leaves this null for a car it refuses or does not cover.
+        return <RowGapCell km={log.serviceGapKm} />;
       },
     },
     ...(can('fleetOdometer.correct') || can('fleetOdometer.delete')

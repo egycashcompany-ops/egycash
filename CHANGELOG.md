@@ -382,6 +382,18 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **«عدادات السيارات»: the expected reading and the maintenance alarm follow عداد الخروج again,
+  and the newest row's «فارق عداد الصيانة» is the figure and its ⓘ.** «فى مشكلة بدات تظهر فى اكتر
+  من سيارة قراءات العدادات … يجى يوم جايب رقم كبير ويقولك مينفعش اقل من الرقم دا واخر قراءة اقل منه
+  بكتير». Since batch 3 a car's latest reading was the highest of any row's opening OR closing
+  reading, so an old row whose closing reading sits above the next day's opening (old-book rows,
+  typos, test figures) became «الخادم يتوقع … كم أو أكثر» on the record form and the alarm's
+  baseline. The latest reading is again the row with the highest عداد الخروج — the same order the
+  save rule checks — reporting that row's closing reading, with the later day winning a tie (the
+  batch-3 parked-day fix kept). «عاوز الباقى يتشال ويفضل علامة التعجب جنب القراءة»: the car's
+  newest row shows only its figure and the ⓘ; the level, what is left of the interval, the
+  reading's day and the newer-visit mark stay in «كيف حُسب الفارق». No data changes.
+
 - **«إضافة ماكينات» on a settlement plan, and the data-edit bulk add and delete, take any number
   of lines.** «صلّح كمان إضافة الماكينات والـ bulk add». A paste past one request's cap (200 on the
   plan, 500 on the data-edit dialog) was refused whole. Both now send the lines in consecutive
